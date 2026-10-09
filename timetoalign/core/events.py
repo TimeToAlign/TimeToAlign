@@ -48,7 +48,7 @@ from .fields import (
     register_value_projector,
 )
 from .protocols import TwelveTETPitchMixin
-from .time import Coordinate, Duration, rational_to_wire, wire_to_rational
+from .time import Coordinate, Duration, rational_from_dict, rational_to_dict
 
 
 def _pc_mod(arr: pa.Array, n: int) -> pa.Array:
@@ -2014,7 +2014,7 @@ class Note(ScalarVocabulary, BaseModel):
                 if raw.get("value") is None:
                     return None
                 unit = raw.get("unit", TimeUnit.quarters)
-                return Coordinate(wire_to_rational(raw), unit)
+                return Coordinate(rational_from_dict(raw), unit)
             return None
 
         def _coerce_duration(raw: Any) -> Duration | None:
@@ -2028,7 +2028,7 @@ class Note(ScalarVocabulary, BaseModel):
                 if raw.get("value") is None:
                     return None
                 unit = raw.get("unit", TimeUnit.quarters)
-                return Duration(wire_to_rational(raw), unit)
+                return Duration(rational_from_dict(raw), unit)
             return None
 
         start = _coerce_coord(start_raw)
@@ -2153,10 +2153,10 @@ class Measure(ScalarVocabulary, BaseModel):
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Measure:
-        """Restore the concrete measure class named by a wire payload.
+        """Restore the concrete measure class named by a dictionary payload.
 
         Args:
-            data: Measure wire dictionary carrying a concrete ``class`` tag.
+            data: Measure dictionary carrying a concrete ``class`` tag.
 
         Returns:
             A measure of the tagged concrete class.
@@ -2199,14 +2199,14 @@ class Measure(ScalarVocabulary, BaseModel):
             )
         for key in ("qstamp", "nominal_length", "actual_length"):
             if values.get(key) is not None:
-                values[key] = wire_to_rational(values[key])
+                values[key] = rational_from_dict(values[key])
         if values.get("next") is not None:
             values["next"] = tuple(values["next"])
         if (
             issubclass(target, MeasureConstituent)
             and values.get("offset_within_measure") is not None
         ):
-            values["offset_within_measure"] = wire_to_rational(
+            values["offset_within_measure"] = rational_from_dict(
                 values["offset_within_measure"]
             )
         return target(**values)
@@ -2253,24 +2253,24 @@ class Measure(ScalarVocabulary, BaseModel):
         return self.name or (self.id or "Measure")
 
     def to_dict(self) -> dict[str, Any]:
-        """Return the concrete measure as a JSON-safe wire dictionary."""
+        """Return the concrete measure as a JSON-safe dictionary."""
         data: dict[str, Any] = {
             "class": type(self).__name__,
             "id": self.id,
             "count": self.count,
             "qstamp": (
-                rational_to_wire(self.qstamp) if self.qstamp is not None else None
+                rational_to_dict(self.qstamp) if self.qstamp is not None else None
             ),
             "number": self.number,
             "name": self.name,
             "time_signature": self.time_signature,
             "nominal_length": (
-                rational_to_wire(self.nominal_length)
+                rational_to_dict(self.nominal_length)
                 if self.nominal_length is not None
                 else None
             ),
             "actual_length": (
-                rational_to_wire(self.actual_length)
+                rational_to_dict(self.actual_length)
                 if self.actual_length is not None
                 else None
             ),
@@ -2280,7 +2280,7 @@ class Measure(ScalarVocabulary, BaseModel):
             "volta": self.volta,
         }
         if isinstance(self, MeasureConstituent):
-            data["offset_within_measure"] = rational_to_wire(self.offset_within_measure)
+            data["offset_within_measure"] = rational_to_dict(self.offset_within_measure)
         return data
 
 
@@ -2492,10 +2492,10 @@ class BeatPolicy(BaseModel):
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> BeatPolicy:
-        """Restore a beat policy from its JSON wire representation."""
+        """Restore a beat policy from its JSON dictionary representation."""
         return cls(
             grouping=tuple(data["grouping"]),
-            beat_size=_duration_from_wire(data["beat_size"]),
+            beat_size=_duration_from_dict(data["beat_size"]),
             name=data.get("name"),
         )
 
@@ -2673,12 +2673,12 @@ class BeatPolicy(BaseModel):
         return self.name or repr(self)
 
     def to_dict(self) -> dict[str, Any]:
-        """Return this policy as a JSON-safe wire dictionary."""
+        """Return this policy as a JSON-safe dictionary."""
         if self.beat_size is None:
             raise ValueError("BeatPolicy states no beat size")
         return {
             "grouping": list(self.grouping),
-            "beat_size": _duration_to_wire(self.beat_size),
+            "beat_size": _duration_to_dict(self.beat_size),
             "name": self.name,
         }
 
@@ -2707,25 +2707,25 @@ _INT64_MIN = -(2**63)
 _INT64_MAX = 2**63 - 1
 
 
-def _duration_to_wire(value: Duration | None) -> dict[str, Any] | None:
+def _duration_to_dict(value: Duration | None) -> dict[str, Any] | None:
     """Encode an optional duration with its exact value and unit."""
     if value is None:
         return None
     return {
-        "value": rational_to_wire(value.value),
+        "value": rational_to_dict(value.value),
         "unit": value.unit.value,
         "number_type": value.number_type.name,
     }
 
 
-def _duration_from_wire(value: dict[str, Any] | None) -> Duration | None:
-    """Restore an optional duration from its typed wire entry."""
+def _duration_from_dict(value: dict[str, Any] | None) -> Duration | None:
+    """Restore an optional duration from its typed dictionary."""
     if value is None:
         return None
     from .enums import NumberType, TimeUnit
 
     return Duration(
-        wire_to_rational(dict(value["value"])),
+        rational_from_dict(dict(value["value"])),
         TimeUnit(value["unit"]),
         number_type=NumberType[value["number_type"]],
     )
@@ -2752,7 +2752,7 @@ class Tempo(BaseModel):
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Tempo:
-        """Restore a tempo from its JSON wire representation.
+        """Restore a tempo from its JSON dictionary representation.
 
         Args:
             data: JSON-safe tempo dictionary.
@@ -2764,18 +2764,18 @@ class Tempo(BaseModel):
             bpm=(
                 None
                 if data.get("bpm") is None
-                else Fraction(wire_to_rational(data["bpm"]))
+                else Fraction(rational_from_dict(data["bpm"]))
             ),
-            beat=_duration_from_wire(data.get("beat")),
+            beat=_duration_from_dict(data.get("beat")),
             to_bpm=(
                 None
                 if data.get("to_bpm") is None
-                else Fraction(wire_to_rational(data["to_bpm"]))
+                else Fraction(rational_from_dict(data["to_bpm"]))
             ),
             mean_at=(
                 None
                 if data.get("mean_at") is None
-                else Fraction(wire_to_rational(data["mean_at"]))
+                else Fraction(rational_from_dict(data["mean_at"]))
             ),
             text=data.get("text"),
         )
@@ -2794,7 +2794,7 @@ class Tempo(BaseModel):
 
     @field_validator("bpm", "to_bpm", "mean_at")
     @classmethod
-    def _validate_exact_wire_range(
+    def _validate_exact_dict_range(
         cls, value: Fraction | None, info: Any
     ) -> Fraction | None:
         if value is None:
@@ -2805,7 +2805,7 @@ class Tempo(BaseModel):
         ):
             raise ValueError(
                 f"Tempo {info.field_name} value {value} exceeds the signed int64 "
-                f"wire limit {_INT64_MAX}"
+                f"dictionary limit {_INT64_MAX}"
             )
         return value
 
@@ -2832,17 +2832,17 @@ class Tempo(BaseModel):
         return f"Tempo({', '.join(parts)})"
 
     def to_dict(self) -> dict[str, Any]:
-        """Return this tempo as a JSON-safe wire dictionary.
+        """Return this tempo as a JSON-safe dictionary.
 
         Returns:
             A dictionary retaining every exact rational value.
         """
         return {
-            "bpm": None if self.bpm is None else rational_to_wire(self.bpm),
-            "beat": _duration_to_wire(self.beat),
-            "to_bpm": (None if self.to_bpm is None else rational_to_wire(self.to_bpm)),
+            "bpm": None if self.bpm is None else rational_to_dict(self.bpm),
+            "beat": _duration_to_dict(self.beat),
+            "to_bpm": (None if self.to_bpm is None else rational_to_dict(self.to_bpm)),
             "mean_at": (
-                None if self.mean_at is None else rational_to_wire(self.mean_at)
+                None if self.mean_at is None else rational_to_dict(self.mean_at)
             ),
             "text": self.text,
         }
@@ -3185,7 +3185,7 @@ class Beat(Address):
         if isinstance(policy_row, dict) and policy_row.get("grouping") is not None:
             policy = BeatPolicy(
                 grouping=tuple(int(entry) for entry in policy_row["grouping"]),
-                division=Fraction(wire_to_rational(policy_row["division"])),
+                division=Fraction(rational_from_dict(policy_row["division"])),
                 name=policy_row.get("name"),
             )
         return cls(

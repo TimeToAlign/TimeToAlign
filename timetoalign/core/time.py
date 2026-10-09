@@ -497,7 +497,7 @@ def rational_to_struct(value: Any) -> dict[str, Any]:
     return number_cell(value, NumberType.fraction)
 
 
-# -- JSON wire format -------------------------------------------------------
+# -- JSON dictionary form ---------------------------------------------------
 #
 # Storage cells and JSON payloads look alike but answer different questions.
 # A storage cell lives in a column whose metadata declares which side is
@@ -509,30 +509,48 @@ def rational_to_struct(value: Any) -> dict[str, Any]:
 # cell of its mirror or turn every serialized float into a ratio on read-back.
 
 
-def rational_to_wire(value: Fraction | int | float) -> dict[str, Any]:
-    """Encode a number as the self-describing JSON wire dict.
+def _dict_ratio_component(component: Any, label: str) -> int:
+    """Read one exact-ratio component from a JSON-safe dictionary."""
+    if isinstance(component, str) and re.fullmatch(r"-?\d+", component):
+        return int(component)
+    return _coerce_ratio_component(component, label)
+
+
+def _json_ratio_component(component: int) -> int | str:
+    """Keep JSON ratio components exact across JavaScript's integer boundary."""
+    return str(component) if abs(component) >= 2**53 else component
+
+
+def rational_to_dict(value: Fraction | int | float) -> dict[str, Any]:
+    """Encode a number as the self-describing JSON dictionary.
 
     * A ``Fraction`` writes its exact ratio alongside the float projection.
-    * Anything else writes ``{"value": float(x), "numerator": None,
+    * An ``int`` writes the exact ratio ``x/1`` alongside its float projection.
+    * A ``float`` writes ``{"value": float(x), "numerator": None,
       "denominator": None}`` — the null ratio is what tells
-      :func:`wire_to_rational` to hand back a plain ``float``.
+      :func:`rational_from_dict` to hand back a plain ``float``.
 
     Raises:
         TypeError: If *value* is not a real number.
     """
     if isinstance(value, bool) or not isinstance(value, (int, float, Fraction)):
         raise TypeError(f"cannot encode {type(value).__name__} as a rational")
-    if not isinstance(value, Fraction):
+    if isinstance(value, float):
         return {"value": float(value), "numerator": None, "denominator": None}
+    exact = Fraction(value)
     return {
-        "value": float(value),
-        "numerator": _require_int64(value.numerator, "numerator", value),
-        "denominator": _require_int64(value.denominator, "denominator", value),
+        "value": float(exact),
+        "numerator": _json_ratio_component(
+            _require_int64(exact.numerator, "numerator", exact)
+        ),
+        "denominator": _json_ratio_component(
+            _require_int64(exact.denominator, "denominator", exact)
+        ),
     }
 
 
-def is_rational_wire(value: Any) -> bool:
-    """Return True if *value* is shaped like a rational wire dict."""
+def is_rational_dict(value: Any) -> bool:
+    """Return True if *value* is shaped like a rational dictionary."""
     return isinstance(value, dict) and set(value) == {
         "value",
         "numerator",
@@ -540,24 +558,34 @@ def is_rational_wire(value: Any) -> bool:
     }
 
 
-def wire_to_rational(wire: dict[str, Any]) -> Fraction | float:
-    """Decode a JSON wire dict back to a Python number.
+def rational_from_dict(data: dict[str, Any]) -> Fraction | float:
+    """Decode a JSON dictionary back to a Python number.
 
     An exact ratio comes back a ``Fraction``, an inexact value a ``float``.
 
     Raises:
-        TypeError: If *wire* is not a dict.
+        TypeError: If *data* is not a dict.
         ValueError: If the dict carries neither a ratio nor a usable value.
     """
-    if not isinstance(wire, dict):
+    if not isinstance(data, dict):
         raise TypeError(
-            f"expected a rational wire dict, got {type(wire).__name__}: {wire!r}"
+            f"expected a rational dictionary, got {type(data).__name__}: {data!r}"
         )
-    if wire.get("numerator") is not None and wire.get("denominator") is not None:
-        return struct_to_rational(wire)
-    value = wire.get("value")
+    numerator = data.get("numerator")
+    denominator = data.get("denominator")
+    if numerator is not None and denominator is not None:
+        numerator = _dict_ratio_component(numerator, "numerator")
+        denominator = _dict_ratio_component(denominator, "denominator")
+        if denominator == 0:
+            raise ValueError("rational dictionary denominator must be non-zero")
+        return Fraction(numerator, denominator)
+    if numerator is not None or denominator is not None:
+        raise ValueError(
+            "rational dictionary ratio members must both be null or present"
+        )
+    value = data.get("value")
     if value is None or isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise ValueError(f"rational wire dict has no usable 'value': {wire!r}")
+        raise ValueError(f"rational dictionary has no usable 'value': {data!r}")
     return float(value)
 
 
@@ -1613,7 +1641,7 @@ def coordinate_numeric_value(value: Any) -> Fraction | float:
     if exact is not None:
         return exact
     if isinstance(value, dict):
-        return wire_to_rational(value)
+        return rational_from_dict(value)
     if hasattr(value, "value"):
         return value.value
     return float(value)

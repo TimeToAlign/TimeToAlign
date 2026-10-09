@@ -28,8 +28,8 @@ from timetoalign.core import (
     Tempo,
     TimeUnit,
 )
-from timetoalign.core.retrieval import coordinate_from_wire_entry, coordinate_wire_entry
-from timetoalign.core.time import rational_to_wire, wire_to_rational
+from timetoalign.core.retrieval import coordinate_from_dict, coordinate_to_dict
+from timetoalign.core.time import rational_from_dict, rational_to_dict
 from timetoalign.timelines.flow import AtomicSection
 
 if TYPE_CHECKING:
@@ -44,7 +44,7 @@ def _exact_quarters(value: Any) -> Fraction:
     if value is None:
         raise ValueError("Measure row states no actual length")
     if isinstance(value, dict):
-        return Fraction(wire_to_rational(value))
+        return Fraction(rational_from_dict(value))
     if hasattr(value, "value"):
         return Fraction(value.value)
     return value if isinstance(value, Fraction) else Fraction(value)
@@ -730,14 +730,14 @@ class SectionHierarchy:
         return list(self._sections)
 
 
-def _coordinate_to_wire(value: Coordinate) -> dict[str, Any]:
-    """Encode a coordinate through the shared typed wire contract."""
-    return dict(coordinate_wire_entry(value))
+def _coordinate_to_dict(value: Coordinate) -> dict[str, Any]:
+    """Encode a coordinate through the shared typed dictionary contract."""
+    return dict(coordinate_to_dict(value))
 
 
-def _coordinate_from_wire(value: Mapping[str, Any]) -> Coordinate:
-    """Restore a coordinate through the shared typed wire contract."""
-    return coordinate_from_wire_entry(value)
+def _coordinate_from_dict(value: Mapping[str, Any]) -> Coordinate:
+    """Restore a coordinate through the shared typed dictionary contract."""
+    return coordinate_from_dict(value)
 
 
 def _unsupported_json_type(value: Any, seen: set[int] | None = None) -> type | None:
@@ -835,7 +835,7 @@ class TempoEntry(BaseModel):
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> TempoEntry:
-        """Restore a tempo entry from its JSON wire representation.
+        """Restore a tempo entry from its JSON dictionary representation.
 
         Args:
             data: JSON-safe tempo-entry dictionary.
@@ -851,18 +851,18 @@ class TempoEntry(BaseModel):
         if observed_data is None:
             observed = None
         elif observed_data["type"] == "coordinate":
-            observed = _coordinate_from_wire(observed_data["value"])
+            observed = _coordinate_from_dict(observed_data["value"])
         elif observed_data["type"] == "interval":
             observed = Interval(
-                start=_coordinate_from_wire(observed_data["start"]),
-                end=_coordinate_from_wire(observed_data["end"]),
+                start=_coordinate_from_dict(observed_data["start"]),
+                end=_coordinate_from_dict(observed_data["end"]),
             )
         else:
             raise ValueError(
                 f"Unknown tempo observation type {observed_data['type']!r}"
             )
         return cls(
-            at=_coordinate_from_wire(data["at"]),
+            at=_coordinate_from_dict(data["at"]),
             tempo=(
                 None if data.get("tempo") is None else Tempo.from_dict(data["tempo"])
             ),
@@ -870,8 +870,8 @@ class TempoEntry(BaseModel):
             observation_undefined=bool(data.get("observation_undefined", False)),
             alternatives=tuple(
                 (
-                    _coordinate_from_wire(item["at"]),
-                    Fraction(wire_to_rational(item["weight"])),
+                    _coordinate_from_dict(item["at"]),
+                    Fraction(rational_from_dict(item["weight"])),
                 )
                 for item in data.get("alternatives", [])
             ),
@@ -960,7 +960,7 @@ class TempoEntry(BaseModel):
         return f"TempoEntry({', '.join(parts)})"
 
     def to_dict(self) -> dict[str, Any]:
-        """Return this entry as a JSON-safe wire dictionary.
+        """Return this entry as a JSON-safe dictionary.
 
         Returns:
             A dictionary retaining typed coordinates and exact tempo values.
@@ -971,21 +971,21 @@ class TempoEntry(BaseModel):
         elif isinstance(self.observed, Interval):
             observed = {
                 "type": "interval",
-                "start": _coordinate_to_wire(self.observed.start),
-                "end": _coordinate_to_wire(self.observed.end),
+                "start": _coordinate_to_dict(self.observed.start),
+                "end": _coordinate_to_dict(self.observed.end),
             }
         else:
             observed = {
                 "type": "coordinate",
-                "value": _coordinate_to_wire(self.observed),
+                "value": _coordinate_to_dict(self.observed),
             }
         return {
-            "at": _coordinate_to_wire(self.at),
+            "at": _coordinate_to_dict(self.at),
             "tempo": None if self.tempo is None else self.tempo.to_dict(),
             "observed": observed,
             "observation_undefined": self.observation_undefined,
             "alternatives": [
-                {"at": _coordinate_to_wire(at), "weight": rational_to_wire(weight)}
+                {"at": _coordinate_to_dict(at), "weight": rational_to_dict(weight)}
                 for at, weight in self.alternatives
             ],
             "is_interpolated": self.is_interpolated,
@@ -1013,7 +1013,7 @@ class TempoMap(BaseModel):
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> TempoMap:
-        """Restore a tempo map from its JSON wire representation.
+        """Restore a tempo map from its JSON dictionary representation.
 
         Args:
             data: JSON-safe tempo-map dictionary.
@@ -1053,7 +1053,7 @@ class TempoMap(BaseModel):
         return f"TempoMap({', '.join(parts)})"
 
     def to_dict(self) -> dict[str, Any]:
-        """Return this map as a JSON-safe wire dictionary.
+        """Return this map as a JSON-safe dictionary.
 
         Returns:
             A dictionary retaining entries and provenance unchanged.
@@ -1085,7 +1085,7 @@ class MetricNode(BaseModel):
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> MetricNode:
-        """Restore a metric node from its JSON wire representation.
+        """Restore a metric node from its JSON dictionary representation.
 
         Args:
             data: JSON-safe metric-node dictionary.
@@ -1096,8 +1096,8 @@ class MetricNode(BaseModel):
         return cls(
             level=data["level"],
             span=Interval(
-                start=_coordinate_from_wire(data["span"]["start"]),
-                end=_coordinate_from_wire(data["span"]["end"]),
+                start=_coordinate_from_dict(data["span"]["start"]),
+                end=_coordinate_from_dict(data["span"]["end"]),
             ),
             expansions=tuple(
                 Expansion.from_dict(expansion) for expansion in data["expansions"]
@@ -1144,7 +1144,7 @@ class MetricNode(BaseModel):
         return self.__repr__()
 
     def to_dict(self) -> dict[str, Any]:
-        """Return this node as a JSON-safe recursive wire dictionary.
+        """Return this node as a JSON-safe recursive dictionary.
 
         Returns:
             A dictionary retaining its exact typed span and all alternatives.
@@ -1152,8 +1152,8 @@ class MetricNode(BaseModel):
         return {
             "level": self.level,
             "span": {
-                "start": _coordinate_to_wire(self.span.start),
-                "end": _coordinate_to_wire(self.span.end),
+                "start": _coordinate_to_dict(self.span.start),
+                "end": _coordinate_to_dict(self.span.end),
             },
             "expansions": [expansion.to_dict() for expansion in self.expansions],
         }
@@ -1174,7 +1174,7 @@ class Expansion(BaseModel):
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Expansion:
-        """Restore an expansion from its JSON wire representation.
+        """Restore an expansion from its JSON dictionary representation.
 
         Args:
             data: JSON-safe expansion dictionary.
@@ -1194,7 +1194,7 @@ class Expansion(BaseModel):
         )
 
     def to_dict(self) -> dict[str, Any]:
-        """Return this expansion as a JSON-safe wire dictionary.
+        """Return this expansion as a JSON-safe dictionary.
 
         Returns:
             A dictionary retaining children and sorted reading identifiers.
@@ -1226,7 +1226,7 @@ class Reading(BaseModel):
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Reading:
-        """Restore reading provenance from its JSON wire representation.
+        """Restore reading provenance from its JSON dictionary representation.
 
         Args:
             data: JSON-safe reading dictionary.
@@ -1260,7 +1260,7 @@ class Reading(BaseModel):
         return f"Reading({', '.join(parts)})"
 
     def to_dict(self) -> dict[str, Any]:
-        """Return this reading as a JSON-safe wire dictionary.
+        """Return this reading as a JSON-safe dictionary.
 
         Returns:
             A dictionary retaining provenance and level vocabulary.

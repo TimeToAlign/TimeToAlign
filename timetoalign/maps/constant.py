@@ -16,9 +16,9 @@ from numpy.typing import NDArray
 from ..core.enums import TimeUnit
 from ..core.time import (
     CoordinateValue,
-    is_rational_wire,
-    rational_to_wire,
-    wire_to_rational,
+    is_rational_dict,
+    rational_from_dict,
+    rational_to_dict,
 )
 from .base import ConversionMap
 
@@ -122,13 +122,13 @@ class ConstantMap(ConversionMap[Any]):
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary.
 
-        A ``Fraction`` constant is encoded as the canonical rational wire
+        A ``Fraction`` constant is encoded as the canonical rational dictionary
         dict; every other constant (the common case is a string label)
         is emitted as-is and must therefore already be JSON-native.
         """
         d = super().to_dict()
         d["value"] = (
-            rational_to_wire(self._value)
+            rational_to_dict(self._value)
             if isinstance(self._value, Fraction)
             else self._value
         )
@@ -146,7 +146,7 @@ class ConstantMap(ConversionMap[Any]):
         """
         raw = data["value"]
         return cls(
-            value=wire_to_rational(raw) if is_rational_wire(raw) else raw,
+            value=rational_from_dict(raw) if is_rational_dict(raw) else raw,
             source_unit=data.get("source_unit"),
             uid=data.get("id"),
             name=data.get("name"),

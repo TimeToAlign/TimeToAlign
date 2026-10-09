@@ -408,7 +408,7 @@ exact `Fraction` equality (`result == expected`).
 
 Every map's `to_dict()` is JSON-serializable: rational parameters (scalars,
 offsets, boundaries, measure starts and lengths, table anchors) are emitted as
-the **rational wire dict** `{value, numerator, denominator}` rather than as
+the **rational dictionary** `{value, numerator, denominator}` rather than as
 `Fraction` objects or `"n/d"` strings, and `from_dict()` reads that shape and
 nothing else. `to_dict()` also always emits `name`, and every subclass
 `from_dict()` passes it to the constructor, so a custom map name round-trips.

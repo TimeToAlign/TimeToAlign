@@ -275,8 +275,8 @@ class TestTimeStampWithCMaps:
 
         assert result["tl:1"] == {
             "value": 480.0,
-            "numerator": None,
-            "denominator": None,
+            "numerator": 480,
+            "denominator": 1,
             "unit": "ticks",
             "number_type": "int",
         }

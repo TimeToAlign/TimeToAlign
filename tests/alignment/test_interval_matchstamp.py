@@ -111,7 +111,7 @@ def _instant_claim(
 
 
 def _wire(value: float) -> dict[str, object]:
-    """Return one expected float-canonical wire entry."""
+    """Return one expected float-canonical dictionary."""
     return {
         "value": value,
         "numerator": None,
@@ -359,32 +359,32 @@ def test_complete_interval_stamp_wire_pairs_match_endpoint_stamps() -> None:
     bundle.add_match_claims([_interval_claim("mix", 10, 20, "track", 30, 40)])
 
     stamp = bundle.get_matchstamp_at(_interval(12, 18), "mix")
-    wire = stamp.to_dict()
+    data = stamp.to_dict()
 
-    assert wire == {
+    assert data == {
         "mix": {"start": _wire(12.0), "end": _wire(18.0)},
         "track": {"start": _wire(32.0), "end": _wire(38.0)},
     }
     assert all(
-        endpoint is not None for pair in wire.values() for endpoint in pair.values()
+        endpoint is not None for pair in data.values() for endpoint in pair.values()
     )
     assert isinstance(stamp.start, MatchStamp)
     assert isinstance(stamp.end, MatchStamp)
     assert (
         stamp.start.get_coordinate_for("mix", format="float")
-        == wire["mix"]["start"]["value"]
+        == data["mix"]["start"]["value"]
     )
     assert (
         stamp.end.get_coordinate_for("mix", format="float")
-        == wire["mix"]["end"]["value"]
+        == data["mix"]["end"]["value"]
     )
     assert (
         stamp.start.get_coordinate_for("track", format="float")
-        == wire["track"]["start"]["value"]
+        == data["track"]["start"]["value"]
     )
     assert (
         stamp.end.get_coordinate_for("track", format="float")
-        == wire["track"]["end"]["value"]
+        == data["track"]["end"]["value"]
     )
 
 

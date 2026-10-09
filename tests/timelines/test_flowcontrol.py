@@ -1,4 +1,4 @@
-"""Exact tests for axis-bound timeline flow-control storage and its wire form."""
+"""Exact tests for axis-bound timeline flow-control storage and its dictionary form."""
 
 from __future__ import annotations
 

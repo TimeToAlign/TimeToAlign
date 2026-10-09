@@ -931,7 +931,7 @@ stamp
 
 # %% [markdown]
 # `to_dict()` is serialization rather than a shortcut to numbers: every leaf is
-# the wire entry `{value, numerator, denominator, unit, number_type}`. The
+# the dictionary `{value, numerator, denominator, unit, number_type}`. The
 # float `value` is a mirror for consumers that only speak JSON numbers, the
 # ratio members carry the exact value where the axis is fraction-canonical, and
 # `number_type` names which side is authoritative. When you want a plain number

@@ -25,8 +25,8 @@ from timetoalign.core import (
     Domain,
     NumberType,
     TimeUnit,
-    rational_to_wire,
-    wire_to_rational,
+    rational_from_dict,
+    rational_to_dict,
 )
 from timetoalign.core.timestamp import _format_coordinate_value
 from timetoalign.maps import ConversionMap
@@ -217,7 +217,7 @@ class Timeline(
     @classmethod
     def _from_dict_initial_length(cls, data: dict[str, Any]) -> CoordinateValue:
         """Return the length to use while reconstructing a payload."""
-        return wire_to_rational(data["length"])
+        return rational_from_dict(data["length"])
 
     def _finalize_from_dict(self, data: dict[str, Any]) -> None:
         """Restore state that must be set after children are added."""
@@ -802,7 +802,7 @@ class Timeline(
                 value.get("numerator") is not None
                 and value.get("denominator") is not None
             ):
-                return wire_to_rational(value)
+                return rational_from_dict(value)
             return value["value"]
         return value
 
@@ -960,8 +960,8 @@ class Timeline(
         created from regions, or unfolded timelines.
 
         Coordinate-valued members — ``length`` and every child
-        ``offset`` — are emitted as the canonical rational wire dict
-        (:func:`~timetoalign.core.rational_to_wire`), so the result is
+        ``offset`` — are emitted as the canonical rational dictionary
+        (:func:`~timetoalign.core.rational_to_dict`), so the result is
         JSON-serializable whatever the timeline's number type, and
         ``Fraction`` coordinates survive the round trip exactly.
 
@@ -986,7 +986,7 @@ class Timeline(
         children_data = {}
         for child_id, child in self._children.items():
             children_data[child_id] = {
-                "offset": rational_to_wire(self._child_offsets[child_id].value),
+                "offset": rational_to_dict(self._child_offsets[child_id].value),
                 "timeline": child.to_dict(
                     events=events,
                     external_references=external_references,
@@ -999,7 +999,7 @@ class Timeline(
             "class": self.class_name,
             "unit": str(self._unit),
             "number_type": str(self._number_type),
-            "length": rational_to_wire(self._length.value),
+            "length": rational_to_dict(self._length.value),
             "locked": self._locked,
             "meta": self._meta,
             "children": children_data,
@@ -1029,9 +1029,9 @@ class Timeline(
     def from_dict(cls, data: dict[str, Any]) -> Self:
         """Create a Timeline from a dictionary.
 
-        Every rational wire dict in *data* — ``length``, the child
+        Every rational dictionary in *data* — ``length``, the child
         ``offset``s, and the event coordinate structs — is decoded by
-        :func:`~timetoalign.core.wire_to_rational`, so an exact ratio
+        :func:`~timetoalign.core.rational_from_dict`, so an exact ratio
         comes back as a ``Fraction`` and an inexact one as a ``float``.
         Feeding the result back through :meth:`to_dict` with the same
         flags reproduces the input dictionary.
@@ -1075,7 +1075,7 @@ class Timeline(
         )
 
         # Add events (filter out segment events - they'll be recreated).
-        # Event coordinates arrive as rational wire dicts; decode them
+        # Event coordinates arrive as rational dictionaries; decode them
         # back to the numbers the EventData builder expects.
         events = []
         for e in data.get("events", []):
@@ -1084,7 +1084,7 @@ class Timeline(
             event = dict(e)
             for coord_col in ("instant", "start", "end", "duration"):
                 if event.get(coord_col) is not None:
-                    event[coord_col] = wire_to_rational(event[coord_col])
+                    event[coord_col] = rational_from_dict(event[coord_col])
             events.append(event)
 
         if events:
@@ -1099,7 +1099,7 @@ class Timeline(
         # Add children
         for child_id, child_data in data.get("children", {}).items():
             child = Timeline.from_dict(child_data["timeline"])
-            timeline.add_child(child, offset=wire_to_rational(child_data["offset"]))
+            timeline.add_child(child, offset=rational_from_dict(child_data["offset"]))
 
         # Add conversion maps
         for map_data in data.get("conversion_maps", []):

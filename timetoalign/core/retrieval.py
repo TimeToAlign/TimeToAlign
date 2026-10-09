@@ -11,7 +11,7 @@ import pandas as pd
 
 from .enums import NumberType, TimeUnit
 from .events import Address
-from .time import Coordinate, IdCoordinate, wire_to_rational
+from .time import Coordinate, IdCoordinate, rational_from_dict, rational_to_dict
 
 CoordinateInput: TypeAlias = (
     int | float | Fraction | Coordinate | IdCoordinate | Address
@@ -448,41 +448,33 @@ def format_coordinates(
     return projected[0] if scalar else projected
 
 
-def coordinate_wire_entry(coordinate: Coordinate) -> dict[str, object]:
-    """Serialize one canonical coordinate as the v2 rational wire entry.
+def coordinate_to_dict(coordinate: Coordinate) -> dict[str, object]:
+    """Serialize one canonical coordinate as a typed rational dictionary.
 
     Args:
         coordinate: Coordinate to serialize.
 
     Returns:
-        A typed coordinate wire dictionary.
+        A typed coordinate dictionary.
     """
-    value = coordinate.value
-    numerator: int | None = None
-    denominator: int | None = None
-    if isinstance(value, Fraction):
-        numerator = value.numerator
-        denominator = value.denominator
     return {
-        "value": float(value),
-        "numerator": numerator,
-        "denominator": denominator,
+        **rational_to_dict(coordinate.value),
         "unit": coordinate.unit.value,
         "number_type": coordinate.number_type.name,
     }
 
 
-def coordinate_from_wire_entry(entry: Mapping[str, Any]) -> Coordinate:
-    """Restore one coordinate from a typed rational wire entry.
+def coordinate_from_dict(entry: Mapping[str, Any]) -> Coordinate:
+    """Restore one coordinate from a typed rational dictionary.
 
     Args:
-        entry: Typed coordinate wire dictionary.
+        entry: Typed coordinate dictionary.
 
     Returns:
         The exact coordinate declared by the entry.
     """
     return Coordinate(
-        wire_to_rational(dict(entry)),
+        rational_from_dict(dict(entry)),
         TimeUnit(entry["unit"]),
         number_type=NumberType[entry["number_type"]],
     )

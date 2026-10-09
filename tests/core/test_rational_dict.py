@@ -1,9 +1,9 @@
-"""Tests for the canonical rational wire format shared by every ``to_dict``.
+"""Tests for the canonical rational dict shared by every ``to_dict``.
 
 Three contracts are exercised here:
 
-1. the codec itself (``rational_to_wire`` / ``wire_to_rational`` /
-   ``is_rational_wire``);
+1. the codec itself (``rational_to_dict`` / ``rational_from_dict`` /
+   ``is_rational_dict``);
 2. the fixpoint guarantee — ``from_dict(json.loads(json.dumps(x.to_dict())))``
    reproduces ``x.to_dict()`` — for timelines and maps, including exact
    ``Fraction`` recovery and conversion-map name round-trips;
@@ -39,7 +39,7 @@ from timetoalign.core import (
     Tempo,
     TimeUnit,
 )
-from timetoalign.core.time import is_rational_wire, rational_to_wire, wire_to_rational
+from timetoalign.core.time import is_rational_dict, rational_from_dict, rational_to_dict
 from timetoalign.maps import (
     ChainMap,
     CombinationMap,
@@ -228,53 +228,53 @@ def _measure_unit() -> MeasureUnit:
 # region Codec
 
 
-class TestRationalWireDict:
-    """The three-key wire dict is the only encoding of a rational."""
+class TestRationalDict:
+    """The three-key dictionary is the only encoding of a rational."""
 
     def test_fraction_carries_its_exact_ratio(self) -> None:
-        assert rational_to_wire(Fraction(10, 3)) == {
+        assert rational_to_dict(Fraction(10, 3)) == {
             "value": 10 / 3,
             "numerator": 10,
             "denominator": 3,
         }
 
     def test_float_encodes_with_a_null_ratio(self) -> None:
-        assert rational_to_wire(2.5) == {
+        assert rational_to_dict(2.5) == {
             "value": 2.5,
             "numerator": None,
             "denominator": None,
         }
 
-    def test_int_encodes_with_a_null_ratio(self) -> None:
-        assert rational_to_wire(7) == {
+    def test_integer_encodes_as_an_exact_ratio(self) -> None:
+        assert rational_to_dict(7) == {
             "value": 7.0,
-            "numerator": None,
-            "denominator": None,
+            "numerator": 7,
+            "denominator": 1,
         }
 
     def test_exact_ratio_decodes_to_a_fraction(self) -> None:
-        decoded = wire_to_rational(rational_to_wire(Fraction(1, 3)))
+        decoded = rational_from_dict(rational_to_dict(Fraction(1, 3)))
         assert decoded == Fraction(1, 3)
         assert isinstance(decoded, Fraction)
 
     def test_legacy_integer_valued_float_ratio_decodes_exactly(self) -> None:
-        wire = {
+        data = {
             "value": 8379000.0,
             "numerator": 8379000.0,
             "denominator": 1.0,
         }
-        decoded = wire_to_rational(wire)
+        decoded = rational_from_dict(data)
         assert decoded == Fraction(8379000, 1)
         assert isinstance(decoded, Fraction)
 
     def test_mixed_integer_valued_float_and_int_ratio_decodes_exactly(self) -> None:
-        wire = {"value": 2.5, "numerator": 5.0, "denominator": 2}
-        decoded = wire_to_rational(wire)
+        data = {"value": 2.5, "numerator": 5.0, "denominator": 2}
+        decoded = rational_from_dict(data)
         assert decoded == Fraction(5, 2)
         assert isinstance(decoded, Fraction)
 
     def test_fractional_float_ratio_member_is_rejected(self) -> None:
-        wire = {"value": 5.5, "numerator": 5.5, "denominator": 1}
+        data = {"value": 5.5, "numerator": 5.5, "denominator": 1}
         with pytest.raises(
             ValueError,
             match=(
@@ -282,39 +282,59 @@ class TestRationalWireDict:
                 r"got non-integral float 5\.5"
             ),
         ):
-            wire_to_rational(wire)
+            rational_from_dict(data)
 
-    def test_null_ratio_decodes_to_a_float(self) -> None:
-        decoded = wire_to_rational(rational_to_wire(2.5))
+    def test_null_ratio_means_an_inexact_float(self) -> None:
+        decoded = rational_from_dict(rational_to_dict(2.5))
         assert decoded == 2.5
         assert isinstance(decoded, float)
 
     @pytest.mark.parametrize("value", [Fraction(-7, 9), Fraction(0, 1), Fraction(5, 1)])
     def test_round_trip_is_exact(self, value: Fraction) -> None:
-        assert wire_to_rational(rational_to_wire(value)) == value
+        assert rational_from_dict(rational_to_dict(value)) == value
 
-    def test_wire_dict_is_json_native(self) -> None:
-        wire = rational_to_wire(Fraction(10, 3))
-        assert json.loads(json.dumps(wire)) == wire
+    def test_dictionary_is_json_native(self) -> None:
+        data = rational_to_dict(Fraction(10, 3))
+        assert json.loads(json.dumps(data)) == data
 
-    def test_is_rational_wire_recognises_the_shape(self) -> None:
-        assert is_rational_wire(rational_to_wire(Fraction(1, 2)))
-        assert is_rational_wire(rational_to_wire(1.5))
-        assert not is_rational_wire({"value": 1.0})
-        assert not is_rational_wire("page1.jpeg")
-        assert not is_rational_wire(1.0)
+    def test_large_ratio_components_encode_as_decimal_strings(self) -> None:
+        assert rational_to_dict(2**53)["numerator"] == "9007199254740992"
+        assert rational_to_dict(Fraction(1, 2**53))["denominator"] == "9007199254740992"
+
+    def test_decimal_string_ratio_components_decode_exactly(self) -> None:
+        assert rational_from_dict(
+            {
+                "value": -9007199254740992.0,
+                "numerator": "-9007199254740992",
+                "denominator": 1,
+            }
+        ) == Fraction(-(2**53), 1)
+        assert rational_from_dict(
+            {"value": 2**-53, "numerator": 1, "denominator": "9007199254740992"}
+        ) == Fraction(1, 2**53)
+
+    def test_boolean_ratio_members_are_refused(self) -> None:
+        with pytest.raises(ValueError):
+            rational_from_dict({"value": 1.0, "numerator": True, "denominator": 1})
+
+    def test_is_rational_dict_recognises_the_shape(self) -> None:
+        assert is_rational_dict(rational_to_dict(Fraction(1, 2)))
+        assert is_rational_dict(rational_to_dict(1.5))
+        assert not is_rational_dict({"value": 1.0})
+        assert not is_rational_dict("page1.jpeg")
+        assert not is_rational_dict(1.0)
 
     def test_non_numeric_input_is_rejected(self) -> None:
         with pytest.raises(TypeError):
-            rational_to_wire("3/4")  # type: ignore[arg-type]
+            rational_to_dict("3/4")  # type: ignore[arg-type]
 
     def test_stale_string_encoding_is_rejected(self) -> None:
         with pytest.raises(TypeError):
-            wire_to_rational("3/4")  # type: ignore[arg-type]
+            rational_from_dict("3/4")  # type: ignore[arg-type]
 
     def test_dict_without_a_usable_value_is_rejected(self) -> None:
         with pytest.raises(ValueError):
-            wire_to_rational({"value": None, "numerator": None, "denominator": None})
+            rational_from_dict({"value": None, "numerator": None, "denominator": None})
 
 
 # endregion
@@ -322,7 +342,7 @@ class TestRationalWireDict:
 # region Timelines
 
 
-class TestTimelineWireFormat:
+class TestTimelineDictForm:
     """``length``, child ``offset``s, and event coordinates share one shape."""
 
     def test_fraction_length_keeps_its_components(self) -> None:
@@ -348,7 +368,7 @@ class TestTimelineWireFormat:
         restored = Timeline.from_dict(
             json.loads(json.dumps(_fraction_timeline().to_dict(events=True)))
         )
-        coordinate = wire_to_rational(list(restored.events)[0]["start"])
+        coordinate = rational_from_dict(list(restored.events)[0]["start"])
         assert coordinate == Fraction(1, 3)
         assert isinstance(coordinate, Fraction)
 
@@ -375,7 +395,7 @@ class TestTimelineWireFormat:
 # region Maps
 
 
-class TestMapWireFormat:
+class TestMapDictForm:
     """Every map serializes rationals and its name the same way."""
 
     @pytest.mark.parametrize("cmap", _conversion_maps(), ids=lambda m: type(m).__name__)
@@ -430,7 +450,7 @@ class TestMapWireFormat:
 def _stamp_cases() -> list[tuple[str, dict[str, Any]]]:
     """``to_dict`` payloads of the stamp family, keyed by a readable id."""
     timeline = _float_timeline()
-    bundle = AlignmentBundle(id="wire")
+    bundle = AlignmentBundle(id="bundle")
     bundle.add_timeline(timeline, uid="clock", as_group="clock-group")
     matchstamp = bundle.get_matchstamp_at(4.5, "clock")
     return [
@@ -515,7 +535,7 @@ def test_to_dict_is_json_serializable(payload: dict[str, Any]) -> None:
     assert json.loads(json.dumps(payload)) is not None
 
 
-class TestClaimWireFormat:
+class TestClaimDictForm:
     """The claim family round-trips through its pydantic-backed codec."""
 
     def test_claim_coordinate_survives_json_exactly(self) -> None:

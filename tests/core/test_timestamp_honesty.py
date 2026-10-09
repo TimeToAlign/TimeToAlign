@@ -44,7 +44,7 @@ def test_group_coordinate_between_anchors_is_interpolated() -> None:
 
 
 def test_conversion_values_are_separate_from_typed_wire_entries() -> None:
-    """Typed wire entries stay structural and conversions remain verbatim."""
+    """Typed dictionaries stay structural and conversions remain verbatim."""
     stamp = _sample_timeline().get_timestamp(2.5)
 
     assert stamp.to_dict() == {

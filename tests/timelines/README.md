@@ -136,13 +136,13 @@ that exact map object. Counts partition it into consecutive normalized slices,
 and any count sum other than the map length raises instead of dropping or
 inventing measures.
 
-Metric wire tests cover a whole-note beat size, a quarters beat size, and a policy
+Metric dictionary tests cover a whole-note beat size, a quarters beat size, and a policy
 authored from division alone. Each reconstructed policy must equal the original
 full pydantic scalar, including its name and the authored beat-size unit. A metric
 hierarchy round trip preserves the recursive forest, attributed reading ids,
 reading provenance, and every independent tempo map as an exact JSON fixpoint.
 
-Equivalence is deliberately narrower than the wire contract. Alternative child
+Equivalence is deliberately narrower than the dictionary contract. Alternative child
 partitions and their asserting reading ids define structural identity. Tempo
 maps, verbal tempo text, reading authorship, reinterpretation links, and local
 level vocabulary remain queryable but do not affect equality.
@@ -302,7 +302,7 @@ the axis's declared canonical number type.
      rejecting calls through a mismatched concrete subclass
    - Duplicate serialized class tags reject registration by a different class;
      registering the already-recorded class remains idempotent
-   - `length` and every child `offset` are emitted as the **rational wire
+    - `length` and every child `offset` are emitted as the **rational dictionary
      dict** (`{value, numerator, denominator}`), the one JSON encoding of a
      rational number in this library; the same shape carries the event
      coordinates, so a `Fraction` timeline serializes to JSON and comes back
@@ -440,7 +440,7 @@ events round-trips intact — the restored table equals the original via
 `pa.Table.equals`. Re-serializing with the same flags reproduces the input
 dictionary (the fixpoint guarantee stated in `tests/core/README.md`).
 
-The rational wire format for `length`, child `offset`s, and event coordinates
+The rational dictionary form for `length`, child `offset`s, and event coordinates
 is untouched by these flags.
 
 `to_typed()` carries the reference table over to the re-typed instance; Arrow
@@ -529,7 +529,7 @@ need contents opt in.
      rather than a float `end - start` subtraction, so an integral length
      (`Fraction(2, 1)`) and a non-integral one (`Fraction(7, 3)`) both
      round-trip through `parent.to_dict()["events"][0]["duration"]` as the
-     exact rational wire dict (`rational_to_wire`) for the child's length —
+      exact rational dictionary (`rational_to_dict`) for the child's length —
      not a rounded float projection.
 
 9. **Child Construction and Boundary Tests**
@@ -830,7 +830,7 @@ grid, which generates beats without end.
 #### Serialization
 
 The grid has none this iteration, and the tests assert none. A grid is
-reconstructed from its segments, which are the source facts; a second wire
+reconstructed from its segments, which are the source facts; a second dictionary
 format for them would be a second source of truth.
 
 #### `create_beatgrid()` on the structural view
@@ -1908,7 +1908,7 @@ keeps an explicit missing-event row.
 
 `test_beatgrid.py` exports a grid in both supported annotation formats. The
 expected files include headers, row order, labels, and boolean spellings so
-format-specific consumers receive a stable wire layout.
+format-specific consumers receive a stable dictionary layout.
 
 `test_factory.py` exercises `EventStore.create_timeline()` for direct events,
 multi-store children, and store selection. It pins child IDs and event counts

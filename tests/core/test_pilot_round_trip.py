@@ -123,7 +123,7 @@ class TestCoordinateRoundTrip:
 
 
 class TestValidationRegimes:
-    """§4, §5, §6: the three regimes wired up."""
+    """§4, §5, §6: the three regimes connected."""
 
     def test_model_construct_and_validate_parity_on_valid_input(self) -> None:
         """§4: for valid input, model_construct and model_validate match."""

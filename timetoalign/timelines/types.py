@@ -283,7 +283,7 @@ class SegmentLineMixin:
 
     @property
     def class_name(self) -> str:
-        """Return the dynamic class name or a bare line's inferred wire tag."""
+        """Return the dynamic class name or a bare line's inferred dictionary tag."""
         if type(self) is SegmentLine and self._segment_type is not None:
             return f"SegmentLine[{self._segment_type.__name__}]"
         return type(self).__name__

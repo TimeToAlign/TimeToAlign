@@ -223,7 +223,7 @@ The validation covers these exact geometries:
   `Interval`. A timeline reached by only one endpoint retains the reached side,
   serializes the other as null, displays the missing side, and refuses interval
   retrieval with the missing side named.
-- When both endpoints reach every timeline, each wire pair is complete and
+- When both endpoints reach every timeline, each dictionary pair is complete and
   agrees exactly with the constituent `MatchStamp` coordinate projections;
   plural timeline-coordinate retrieval rejects conflicting per-claim
   alternatives before projecting any requested coordinate, and plural position
@@ -244,7 +244,7 @@ The validation covers these exact geometries:
   direct-edge transfer fallback remains available, public exports remain stable,
   and a position outside every claim produces a source-only `MatchStamp`.
 
-Every assertion uses exact `Coordinate`, `Interval`, `Fraction`, wire-entry, and
+Every assertion uses exact `Coordinate`, `Interval`, `Fraction`, dictionary, and
 ordering expectations; no tolerance or approximate comparison is used.
 
 ---

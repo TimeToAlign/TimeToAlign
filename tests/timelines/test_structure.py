@@ -28,7 +28,7 @@ from timetoalign.core import (
     Tempo,
     TimeUnit,
 )
-from timetoalign.core.time import rational_to_wire
+from timetoalign.core.time import rational_to_dict
 from timetoalign.timelines import (
     Expansion,
     MeasureMap,
@@ -477,7 +477,7 @@ class TestMeasureMapImmutability:
 
 
 class TestMeasureMapEqualityAndWire:
-    """Map equality preserves concrete classes and exact wire values."""
+    """Map equality preserves concrete classes and exact dictionary values."""
 
     def test_maps_built_twice_compare_equal(self) -> None:
         assert MeasureMap([RegularMeasure(actual_length=F(1, 3))]) == MeasureMap(
@@ -558,7 +558,7 @@ class TestTempoRealizationValues:
         payload = json.loads(json.dumps(entry.to_dict()))
         assert entry.alternatives[0][1] == F(1, 3)
         assert type(entry.alternatives[0][1]) is F
-        assert payload["alternatives"][0]["weight"] == rational_to_wire(F(1, 3))
+        assert payload["alternatives"][0]["weight"] == rational_to_dict(F(1, 3))
         assert TempoEntry.from_dict(payload) == entry
 
     @pytest.mark.parametrize("weight", [float("nan"), float("inf"), F(0), F(-1), F(2)])
@@ -641,7 +641,7 @@ class TestBeatPolicyScalarEquality:
 
 
 class TestBeatPolicyAndMetricHierarchyWire:
-    """Metric wire forms preserve authored units and complete forest values."""
+    """Metric dictionary forms preserve authored units and complete forest values."""
 
     @pytest.mark.parametrize(
         "policy",
@@ -861,7 +861,7 @@ class TestMeasureWire:
 
     def test_undeclared_payload_key_is_rejected_by_name(self) -> None:
         payload = RegularMeasure(id="m1").to_dict()
-        payload["offset_within_measure"] = rational_to_wire(F(1, 3))
+        payload["offset_within_measure"] = rational_to_dict(F(1, 3))
         with pytest.raises(
             ValueError,
             match=(

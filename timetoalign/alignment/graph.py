@@ -45,14 +45,20 @@ from timetoalign.core.retrieval import (
     CoordinateResult,
     KeyCollection,
     Rounding,
-    coordinate_wire_entry,
+    coordinate_to_dict,
     dispatch_retrieval,
     format_coordinates,
     number_type_for_converted_unit,
     validate_coordinate_collection,
     validate_key_collection,
 )
-from timetoalign.core.time import Coordinate, CoordinateValue, IdCoordinate, Interval
+from timetoalign.core.time import (
+    Coordinate,
+    CoordinateValue,
+    IdCoordinate,
+    Interval,
+    rational_from_dict,
+)
 from timetoalign.core.timestamp import (
     ConversionMapsSpec,
     Stamp,
@@ -474,7 +480,7 @@ class MatchStamp(Stamp):
         if format == "graph":
             return {
                 "coordinates": {
-                    timeline_id: coordinate_wire_entry(coordinate)
+                    timeline_id: coordinate_to_dict(coordinate)
                     for timeline_id, coordinate in self.coordinates.items()
                 },
                 "anchor_edges": list(self.anchor_edges),
@@ -499,40 +505,42 @@ class MatchStamp(Stamp):
 
         grouped: dict[str, dict[str, dict[str, object]]] = {}
         for timeline_id, coordinate in self.coordinates.items():
-            wire = coordinate_wire_entry(coordinate)
+            coordinate_data = coordinate_to_dict(coordinate)
             bundle_uid = _bundle_uid(timeline_id)
             if self.source is None:
-                grouped.setdefault(bundle_uid, {})[timeline_id] = wire
+                grouped.setdefault(bundle_uid, {})[timeline_id] = coordinate_data
                 continue
 
             group_id = self.source.timeline_to_group.get(bundle_uid, bundle_uid)
-            grouped.setdefault(group_id, {})[bundle_uid] = wire
+            grouped.setdefault(group_id, {})[bundle_uid] = coordinate_data
 
         if format == "flat":
             return {
-                f"{timeline_id} ({wire['unit']})": wire
+                f"{timeline_id} ({coordinate_data['unit']})": coordinate_data
                 for timeline_coordinates in grouped.values()
-                for timeline_id, wire in timeline_coordinates.items()
+                for timeline_id, coordinate_data in timeline_coordinates.items()
             }
 
         if format == "nested":
             return {
                 group_id: {
-                    f"{timeline_id} ({wire['unit']})": wire
-                    for timeline_id, wire in timeline_coordinates.items()
+                    f"{timeline_id} ({coordinate_data['unit']})": coordinate_data
+                    for timeline_id, coordinate_data in timeline_coordinates.items()
                 }
                 for group_id, timeline_coordinates in grouped.items()
             }
 
         result: dict[str, dict[str, object]] = {}
         for group_id, timeline_coordinates in grouped.items():
-            for timeline_id, wire in timeline_coordinates.items():
-                result[f"{group_id}/{timeline_id} ({wire['unit']})"] = wire
+            for timeline_id, coordinate_data in timeline_coordinates.items():
+                result[f"{group_id}/{timeline_id} ({coordinate_data['unit']})"] = (
+                    coordinate_data
+                )
         return result
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "MatchStamp":
-        """Deserialize a graph-shaped typed wire dictionary.
+        """Deserialize a graph-shaped typed coordinate dictionary.
 
         Args:
             data: Graph-shaped stamp payload.
@@ -541,35 +549,23 @@ class MatchStamp(Stamp):
             A canonical typed match stamp.
         """
         coordinates: dict[str, Coordinate] = {}
-        for timeline_id, wire in data["coordinates"].items():
-            if not isinstance(wire, dict):
-                raise TypeError(
-                    "MatchStamp coordinate leaves must be wire dictionaries"
-                )
-            number_type = wire["number_type"]
+        for timeline_id, coordinate_data in data["coordinates"].items():
+            if not isinstance(coordinate_data, dict):
+                raise TypeError("MatchStamp coordinate leaves must be dictionaries")
+            number_type = coordinate_data["number_type"]
             if number_type == "fraction":
-                numerator = wire["numerator"]
-                denominator = wire["denominator"]
-                if (
-                    isinstance(numerator, bool)
-                    or not isinstance(numerator, int)
-                    or isinstance(denominator, bool)
-                    or not isinstance(denominator, int)
-                ):
-                    raise ValueError(
-                        "Fraction wire entries require integer ratio members"
-                    )
-                value: CoordinateValue = Fraction(numerator, denominator)
-                mirror = wire["value"]
+                value = rational_from_dict(coordinate_data)
+                mirror = coordinate_data["value"]
                 if (
                     isinstance(mirror, bool)
                     or not isinstance(mirror, (int, float))
                     or not math.isfinite(float(mirror))
                     or float(mirror) != float(value)
                 ):
-                    raise ValueError("Fraction wire entry has an invalid float mirror")
+                    raise ValueError("Fraction dictionary has an invalid float mirror")
             elif number_type == "int":
-                mirror = wire["value"]
+                value = rational_from_dict(coordinate_data)
+                mirror = coordinate_data["value"]
                 if (
                     isinstance(mirror, bool)
                     or not isinstance(mirror, (int, float))
@@ -577,29 +573,32 @@ class MatchStamp(Stamp):
                     or not float(mirror).is_integer()
                 ):
                     raise ValueError(
-                        "Integer wire entry requires an integral finite mirror"
+                        "Integer dictionary requires an integral finite mirror"
                     )
-                if wire["numerator"] is not None or wire["denominator"] is not None:
-                    raise ValueError("Integer wire entry ratio members must be null")
-                value = int(mirror)
+                if not isinstance(value, Fraction) or value.denominator != 1:
+                    raise ValueError("Integer dictionary requires an integral ratio")
+                value = value.numerator
             elif number_type == "float":
-                if wire["numerator"] is not None or wire["denominator"] is not None:
-                    raise ValueError("Float wire entry ratio members must be null")
-                mirror = wire["value"]
+                if (
+                    coordinate_data["numerator"] is not None
+                    or coordinate_data["denominator"] is not None
+                ):
+                    raise ValueError("Float dictionary ratio members must be null")
+                mirror = coordinate_data["value"]
                 if (
                     isinstance(mirror, bool)
                     or not isinstance(mirror, (int, float))
                     or not math.isfinite(float(mirror))
                 ):
                     raise ValueError(
-                        "Float wire entry requires a finite numeric mirror"
+                        "Float dictionary requires a finite numeric mirror"
                     )
                 value = float(mirror)
             else:
-                raise ValueError(f"Unknown wire number_type {number_type!r}")
+                raise ValueError(f"Unknown dictionary number_type {number_type!r}")
             coordinates[timeline_id] = Coordinate(
                 value,
-                TimeUnit(wire["unit"]),
+                TimeUnit(coordinate_data["unit"]),
                 number_type=number_type,
             )
         if not coordinates:
@@ -932,8 +931,8 @@ class MatchIntervalStamp:
             start = self.start_stamp.coordinates.get(timeline_id)
             end = self.end_stamp.coordinates.get(timeline_id)
             result[timeline_id] = {
-                "start": None if start is None else coordinate_wire_entry(start),
-                "end": None if end is None else coordinate_wire_entry(end),
+                "start": None if start is None else coordinate_to_dict(start),
+                "end": None if end is None else coordinate_to_dict(end),
             }
         return result
 

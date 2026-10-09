@@ -32,11 +32,11 @@ round-trip equality and a second serialization proves that completion cannot
 turn a policy into a different value.
 
 Tempo specimens cover integer, float, decimal-string, and ``Fraction`` rates,
-including ramps. Their exact stored fractions and rational wire members are
+including ramps. Their exact stored fractions and rational dictionary members are
 asserted directly; positive-rate validation is checked at both ramp ends. A
 ramp mean must lie strictly inside its span and cannot exist without a target
 rate. Construction rejects exact values outside the signed 64-bit rational
-wire before serialization, while the largest permitted denominator survives.
+dictionary before serialization, while the largest permitted denominator survives.
 These cases rule out delayed serialization failures and invented ramp meaning.
 
 Negative-level beats demonstrate groove below the pulse, while a zero beat
@@ -48,6 +48,16 @@ semantic-field machinery to node levels, spans, reading ids, or expansion
 membership.
 
 ## Test Files
+
+### `test_rational_dict.py` - Exact JSON dictionaries
+
+The rational dictionary is validated before its behavior is pinned. Integers
+are exact ratios: `480` writes `{"value": 480.0, "numerator": 480,
+"denominator": 1}`. A null numerator and denominator means an inexact float,
+and nothing else. Each ratio member with magnitude at or above `2**53` writes
+as a decimal string, independently; smaller members remain JSON integers.
+Boolean values are refused rather than accepted as integers. The tests name one
+case for each rule, including `9007199254740992` and `-9007199254740992`.
 
 ### `test_fraction_field_arithmetic.py` - Exact Coordinate Arithmetic
 
@@ -1024,7 +1034,7 @@ The ID system ensures:
    - Unit access through `get_unit()`
    - Missing C-Map raises `KeyError`
    - Missing C-Map raises ValueError
-   - `to_dict()` emits typed wire entries only for stored timeline coordinates;
+    - `to_dict()` emits typed dictionaries only for stored timeline coordinates;
      conversion-map values are retrieved verbatim with `get_conversion_for()`
    - C-Map conversion values assert exact `==`, not `pytest.approx`: the
      `TableMap` anchors (e.g. `[0,960]->[0,2]`, `[0,20]->[0,10]`) are exactly
@@ -1097,7 +1107,7 @@ The unified TimeStamp architecture enables:
 ts = timeline.get_timestamp(30.0)
 ts.axis                              # Typed IdCoordinate
 ts.get_coordinate_for("child:1")    # Typed coordinate; absent axes raise KeyError
-ts.to_dict()                         # Typed coordinate wire entries
+ts.to_dict()                         # Typed coordinate dictionaries
 print(ts)                  # Full cross-section display
 
 # Interval stamps
@@ -1349,9 +1359,9 @@ between two key spellings to recover an exact ratio.
 
 ---
 
-### `test_wire_format.py` - The rational wire dict
+### `test_rational_dict.py` - The rational dict
 
-**Purpose:** Pins the JSON wire format shared by every `to_dict` in the
+**Purpose:** Pins the JSON-safe dictionary form shared by every `to_dict` in the
 library, and its boundary with the Arrow storage cell.
 
 **Two shapes that look alike and are not the same thing.** A storage cell lives
@@ -1364,13 +1374,16 @@ alone with no schema beside it, so it carries its own answer instead:
 {"value": 3.3333333333333335, "numerator": 10, "denominator": 3}
 ```
 
-`rational_to_wire` writes it and `wire_to_rational` reads it. A `Fraction`
-keeps its exact ratio; anything else encodes as `{"value": x, "numerator":
-null, "denominator": null}` and decodes back to a plain `float`. In the wire
-dict — and **only** there — a null ratio is the marker of inexactness.
+`rational_to_dict` writes it and `rational_from_dict` reads it. A `Fraction`
+keeps its exact ratio, and an `int` writes the exact ratio `x / 1`; an inexact
+`float` alone encodes as `{"value": x, "numerator": null, "denominator":
+null}` and decodes back to a plain `float`. In the rational dict — and **only**
+there — a null ratio is the marker of inexactness. Each exact ratio member at
+or above `2**53` in magnitude is a decimal string, preserving values that a
+JSON number consumer could otherwise round.
 
 The tests assert both halves of that boundary, because collapsing them is the
-tempting mistake in either direction: giving the wire dict a mandatory ratio
+tempting mistake in either direction: giving the rational dict a mandatory ratio
 would turn every serialized float into an exact dyadic on read-back and change
 what round-trips out of maps, timelines and claims; giving the storage cell an
 optional one would put readers back to sniffing rows for a fact the schema
@@ -1378,13 +1391,15 @@ already knows.
 
 Integer-valued float ratio members found in artifacts written by earlier
 releases decode losslessly as integers; ratio members with a fractional part
-are rejected and never rounded. `is_rational_wire` recognises the shape for the
+are rejected and never rounded. Integer and decimal-string ratio members both
+decode exactly. `is_rational_dict` recognises the shape for the
 few slots (a `ConstantMap` value) whose payload is genuinely open-ended.
 
 There is exactly one encoding. `Fraction` objects are never emitted raw, and
-the `"n/d"` strings the maps used to write are gone — `wire_to_rational`
-rejects a string rather than parsing it, so a stale payload fails at the
-boundary instead of decoding into a plausible wrong number.
+the ratio members are JSON integers or decimal strings, never an `"n/d"`
+spelling. The tests pin an exact ordinary integer, a string numerator, a string
+denominator, and a null-ratio float so a reader cannot substitute an inexact
+or guessed representation.
 
 ### Coordinate cell rendering
 
@@ -1393,8 +1408,8 @@ both sides are populated whatever the value's kind: an integer, a `Fraction`
 and a float all come back with a `value`, a `numerator` and a `denominator`.
 A float's ratio members are the exact dyadic of the double, which is a fact
 about the double rather than a guess about what it meant. Null members appear
-only in the JSON wire dict, which is a different encoding with a different
-job — see `test_wire_format.py` above. Tests compare the complete
+only in the JSON rational dict, which is a different encoding with a different
+job — see `test_rational_dict.py` above. Tests compare the complete
 dictionaries and verify that `Note.to_dict()` and `Measure.to_dict()` embed
 those cells unchanged.
 

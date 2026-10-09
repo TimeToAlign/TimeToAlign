@@ -37,8 +37,8 @@ from typing import Any
 from timetoalign.core import Coordinate, IdCoordinate, NumberType, TimeUnit
 from timetoalign.core.enums import ActivationCondition, FlowControlElement
 from timetoalign.core.retrieval import (
-    coordinate_from_wire_entry,
-    coordinate_wire_entry,
+    coordinate_from_dict,
+    coordinate_to_dict,
 )
 from timetoalign.core.time import express_scalar_as
 
@@ -105,9 +105,9 @@ class Break:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Break:
-        """Restore a break from its wire representation."""
+        """Restore a break from its dictionary representation."""
         return cls(
-            coordinate=coordinate_from_wire_entry(data["coordinate"]),
+            coordinate=coordinate_from_dict(data["coordinate"]),
             control_type=FlowControlElement(data["control_type"]),
             condition=ActivationCondition(data["condition"]),
             repeat_count=data["repeat_count"],
@@ -155,9 +155,9 @@ class Break:
         return False
 
     def to_dict(self) -> dict[str, Any]:
-        """Return this break as a JSON-safe wire dictionary."""
+        """Return this break as a JSON-safe dictionary."""
         return {
-            "coordinate": coordinate_wire_entry(self.coordinate),
+            "coordinate": coordinate_to_dict(self.coordinate),
             "control_type": self.control_type.value,
             "condition": self.condition.value,
             "repeat_count": self.repeat_count,
@@ -240,10 +240,10 @@ class Jump:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Jump:
-        """Restore a jump from its wire representation."""
+        """Restore a jump from its dictionary representation."""
         return cls(
-            from_coordinate=coordinate_from_wire_entry(data["from_coordinate"]),
-            to_coordinate=coordinate_from_wire_entry(data["to_coordinate"]),
+            from_coordinate=coordinate_from_dict(data["from_coordinate"]),
+            to_coordinate=coordinate_from_dict(data["to_coordinate"]),
             control_type=FlowControlElement(data["control_type"]),
             condition=ActivationCondition(data["condition"]),
             repeat_count=data["repeat_count"],
@@ -327,10 +327,10 @@ class Jump:
         return 0
 
     def to_dict(self) -> dict[str, Any]:
-        """Return this jump as a JSON-safe wire dictionary."""
+        """Return this jump as a JSON-safe dictionary."""
         return {
-            "from_coordinate": coordinate_wire_entry(self.from_coordinate),
-            "to_coordinate": coordinate_wire_entry(self.to_coordinate),
+            "from_coordinate": coordinate_to_dict(self.from_coordinate),
+            "to_coordinate": coordinate_to_dict(self.to_coordinate),
             "control_type": self.control_type.value,
             "condition": self.condition.value,
             "repeat_count": self.repeat_count,
@@ -397,7 +397,7 @@ class FlowControlRegistry:
         for jump in data.get("jumps", []):
             registry.add_jump(Jump.from_dict(jump))
         for name, coordinate in data.get("markers", {}).items():
-            registry.add_marker(name, coordinate_from_wire_entry(coordinate))
+            registry.add_marker(name, coordinate_from_dict(coordinate))
         return registry
 
     def __post_init__(self) -> None:
@@ -612,12 +612,12 @@ class FlowControlRegistry:
         )
 
     def to_dict(self) -> dict[str, Any]:
-        """Return all control events as a JSON-safe wire dictionary."""
+        """Return all control events as a JSON-safe dictionary."""
         return {
             "breaks": [brk.to_dict() for brk in self.breaks],
             "jumps": [jump.to_dict() for jump in self.jumps],
             "markers": {
-                name: coordinate_wire_entry(coordinate)
+                name: coordinate_to_dict(coordinate)
                 for name, coordinate in self.markers.items()
             },
         }

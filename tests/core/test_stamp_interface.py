@@ -191,18 +191,18 @@ def test_matchstamp_to_dict_formats_are_exact() -> None:
     """MatchStamp materializes every supported format exactly."""
     stamp = _matchstamp_with_maps()
 
-    wire = {
+    data = {
         "value": 25.0,
         "numerator": None,
         "denominator": None,
         "unit": "seconds",
         "number_type": "float",
     }
-    assert stamp.to_dict(format="flat") == {"clock (seconds)": wire}
-    assert stamp.to_dict(format="prefix") == {"clock-group/clock (seconds)": wire}
-    assert stamp.to_dict(format="nested") == {"clock-group": {"clock (seconds)": wire}}
+    assert stamp.to_dict(format="flat") == {"clock (seconds)": data}
+    assert stamp.to_dict(format="prefix") == {"clock-group/clock (seconds)": data}
+    assert stamp.to_dict(format="nested") == {"clock-group": {"clock (seconds)": data}}
     assert stamp.to_dict(format="graph") == {
-        "coordinates": {"clock": wire},
+        "coordinates": {"clock": data},
         "anchor_edges": [],
         "inferred_edges": [],
     }

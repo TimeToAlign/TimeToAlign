@@ -275,7 +275,7 @@ for `depth=1`.
 
 **Why this matters:**
 Users interact with the `.diagram()` method, not the module functions. These tests
-ensure the convenience methods are correctly wired to the underlying implementation.
+ensure the convenience methods are correctly connected to the underlying implementation.
 
 ## Flow Visualization Tests -- IMPLEMENTED
 

@@ -442,7 +442,7 @@ class TestGetFieldBlueprintDispatch:
     * (b) blueprint + ``name=`` together → ``TypeError`` (only scalar-class
       dispatch accepts ``name=``).
     * (c) dict-shaped ``source_fields=`` → ``NotImplementedError`` (the
-      mixin's blueprint resolver only wires up the string-spec path so far).
+       mixin's blueprint resolver only connects the string-spec path so far).
     """
 
     def test_blueprint_string_source_field_resolves(self) -> None:
@@ -465,7 +465,7 @@ class TestGetFieldBlueprintDispatch:
         # SpecificPitchField's pa_schema is {step, alter, octave, cents?};
         # a dict-spec blueprint MUST validate against that shape, then the
         # mixin's resolver explicitly rejects dict specs until the multi-
-        # column path is wired up.
+        # column path is connected.
         blueprint = SpecificPitchField(
             source_fields={
                 "step": "specific_pitch",

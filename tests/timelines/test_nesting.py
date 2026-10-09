@@ -25,7 +25,7 @@ from inspect import Parameter, signature
 
 import pytest
 
-from timetoalign.core import Coordinate, NumberType, TimeUnit, rational_to_wire
+from timetoalign.core import Coordinate, NumberType, TimeUnit, rational_to_dict
 from timetoalign.timelines import (
     ContinuousGraphicalTimeline,
     ContinuousLogicalTimeline,
@@ -263,7 +263,7 @@ class TestAddChildDurationExactness:
         parent.add_child(child, offset=Fraction(0, 1))
 
         duration = parent.to_dict(events=True)["events"][0]["duration"]
-        assert duration == rational_to_wire(Fraction(2, 1))
+        assert duration == rational_to_dict(Fraction(2, 1))
 
     def test_non_integral_fraction_length_duration_is_exact(self):
         """A Fraction(7, 3) child length round-trips as an exact ratio."""
@@ -281,7 +281,7 @@ class TestAddChildDurationExactness:
         parent.add_child(child, offset=Fraction(0, 1))
 
         duration = parent.to_dict(events=True)["events"][0]["duration"]
-        assert duration == rational_to_wire(Fraction(7, 3))
+        assert duration == rational_to_dict(Fraction(7, 3))
 
 
 class TestCreateChild:

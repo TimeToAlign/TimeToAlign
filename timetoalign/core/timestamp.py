@@ -44,7 +44,7 @@ from .retrieval import (
     KeyCollection,
     Rounding,
     classify_dispatch_input,
-    coordinate_wire_entry,
+    coordinate_to_dict,
     format_coordinates,
     number_type_for_converted_unit,
     validate_key_collection,
@@ -452,13 +452,13 @@ class Stamp(ABC):
         )
 
     def to_dict(self) -> dict[str, dict[str, object]]:
-        """Serialize stored coordinates as typed rational wire entries.
+        """Serialize stored coordinates as typed rational dictionaries.
 
         Returns:
-            Timeline IDs mapped to canonical coordinate wire entries.
+            Timeline IDs mapped to canonical coordinate dictionaries.
         """
         return {
-            timeline_id: coordinate_wire_entry(coordinate)
+            timeline_id: coordinate_to_dict(coordinate)
             for timeline_id, coordinate in self.coordinates.items()
         }
 

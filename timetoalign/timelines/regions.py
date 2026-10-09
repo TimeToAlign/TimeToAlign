@@ -19,8 +19,8 @@ from typing import Any
 
 from timetoalign.core import Coordinate, IdCoordinate, TimeUnit
 from timetoalign.core.retrieval import (
-    coordinate_from_wire_entry,
-    coordinate_wire_entry,
+    coordinate_from_dict,
+    coordinate_to_dict,
 )
 from timetoalign.core.time import Duration, Interval
 
@@ -73,11 +73,11 @@ end=Coordinate(Fraction(32, 1), quarters))
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Region:
-        """Restore a region from its typed coordinate wire representation."""
+        """Restore a region from its typed coordinate dictionary representation."""
         return cls(
             name=data["name"],
-            start=coordinate_from_wire_entry(data["start"]),
-            end=coordinate_from_wire_entry(data["end"]),
+            start=coordinate_from_dict(data["start"]),
+            end=coordinate_from_dict(data["end"]),
             meta=dict(data.get("meta", {})),
         )
 
@@ -149,11 +149,11 @@ end=Coordinate(Fraction(32, 1), quarters))
         return self.start.value < other.end.value and other.start.value < self.end.value
 
     def to_dict(self) -> dict[str, Any]:
-        """Return this region as a JSON-safe wire dictionary."""
+        """Return this region as a JSON-safe dictionary."""
         return {
             "name": self.name,
-            "start": coordinate_wire_entry(self.start),
-            "end": coordinate_wire_entry(self.end),
+            "start": coordinate_to_dict(self.start),
+            "end": coordinate_to_dict(self.end),
             "meta": self.meta,
         }
 

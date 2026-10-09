@@ -22,8 +22,8 @@ from numpy.typing import NDArray
 from timetoalign.core.enums import ExtrapolationPolicy, InterpolationKind, TimeUnit
 from timetoalign.core.time import (
     CoordinateValue,
-    rational_to_wire,
-    wire_to_rational,
+    rational_from_dict,
+    rational_to_dict,
 )
 from timetoalign.maps.base import ConversionMap
 from timetoalign.maps.table import TableMap
@@ -194,7 +194,7 @@ class IntervalToConstantMap(ConversionMap[T], Generic[T]):
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary."""
         d = super().to_dict()
-        d["boundaries"] = [rational_to_wire(v) for v in self._boundaries_original]
+        d["boundaries"] = [rational_to_dict(v) for v in self._boundaries_original]
         d["values"] = list(self._values)
         return d
 
@@ -202,7 +202,7 @@ class IntervalToConstantMap(ConversionMap[T], Generic[T]):
     def from_dict(cls, data: dict[str, Any]) -> IntervalToConstantMap[Any]:
         """Deserialize from dictionary."""
         return cls(
-            boundaries=[wire_to_rational(v) for v in data["boundaries"]],
+            boundaries=[rational_from_dict(v) for v in data["boundaries"]],
             values=data["values"],
             source_unit=data.get("source_unit"),
             target_unit=data.get("target_unit"),
@@ -392,7 +392,7 @@ class QuartersToMeasureNumber(IntervalToConstantMap[str]):
     def from_dict(cls, data: dict[str, Any]) -> QuartersToMeasureNumber:
         """Deserialize from dictionary."""
         return cls(
-            boundaries=[wire_to_rational(v) for v in data["boundaries"]],
+            boundaries=[rational_from_dict(v) for v in data["boundaries"]],
             mns=[str(v) for v in data["values"]],
             source_unit=data.get("source_unit", TimeUnit.quarters),
             uid=data.get("id"),
@@ -682,8 +682,8 @@ class QuartersToFloatingMeasures(TableMap):
     def from_dict(cls, data: dict[str, Any]) -> QuartersToFloatingMeasures:
         """Deserialize from dictionary."""
         return cls(
-            x_values=[wire_to_rational(v) for v in data["x_values"]],
-            y_values=[float(wire_to_rational(v)) for v in data["y_values"]],
+            x_values=[rational_from_dict(v) for v in data["x_values"]],
+            y_values=[float(rational_from_dict(v)) for v in data["y_values"]],
             source_unit=data.get("source_unit", TimeUnit.quarters),
             target_unit=data.get("target_unit", TimeUnit.floating_measures),
             uid=data.get("id"),

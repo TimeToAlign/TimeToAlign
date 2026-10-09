@@ -384,7 +384,7 @@ class ConversionMap(ABC, Generic[T]):
 
         Subclasses should call super().to_dict() and add their parameters;
         rational parameters go through
-        :func:`~timetoalign.core.rational_to_wire` so that the whole
+        :func:`~timetoalign.core.rational_to_dict` so that the whole
         dictionary stays JSON-serializable.
 
         The map's ``name`` is always emitted, and every subclass

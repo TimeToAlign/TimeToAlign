@@ -242,7 +242,7 @@ class TestAlignmentAnchor:
 
         assert d["timeline_a_id"] == "score:1"
         # quarters count in exact ratios, so the anchor holds one and the
-        # wire dict records it. seconds are a measurement and stay float.
+        # dictionary records it. seconds are a measurement and stay float.
         assert d["coordinate_a"] == {
             "value": 100.0,
             "numerator": 100,

@@ -188,9 +188,9 @@ def _get_scalar_to_field_map() -> dict[type[BaseModel], type[SemanticField[Any]]
         # do not overwrite.  Coordinate / IdCoordinate are distinct
         # scalars so no collision occurs there.
         mapping.setdefault(scalar, field_cls)
-    # Manually wire the TimeScalar pair (CoordinateField / DurationField
+    # Manually connect the TimeScalar pair (CoordinateField / DurationField
     # ship via core.time and are already in the field-type map).  Also
-    # wire IdCoordinate / IdDuration, which carry distinct scalar_cls
+    # connect IdCoordinate / IdDuration, which carry distinct scalar_cls
     # but share a struct shape with their non-Id parents.
     from timetoalign.core.time import (
         CoordinateField,
@@ -1145,7 +1145,7 @@ class SemanticFieldAccessMixin:
                 f"{type(blueprint).__name__} blueprint has no source_fields attached"
             )
 
-        # Only the string-spec path is wired up at this revision.  Dict
+        # Only the string-spec path is connected at this revision. Dict
         # specs are validated up front by ``resolve_source_fields`` but
         # the table-side resolver below still expects a single name.
         if not isinstance(spec, str):

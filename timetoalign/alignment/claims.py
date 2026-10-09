@@ -74,8 +74,8 @@ from timetoalign.core.retrieval import (
 )
 from timetoalign.core.time import (
     express_scalar_as,
-    rational_to_wire,
-    wire_to_rational,
+    rational_from_dict,
+    rational_to_dict,
 )
 from timetoalign.core.timestamp import _format_coordinate
 
@@ -219,13 +219,13 @@ class MatchMetadata(BaseModel):
 
 
 def _coordinate_to_dict(coordinate: Coordinate) -> dict[str, Any]:
-    """Serialize a coordinate as the rational wire dict plus its unit."""
-    return {**rational_to_wire(coordinate.value), "unit": coordinate.unit.value}
+    """Serialize a coordinate as the rational dictionary plus its unit."""
+    return {**rational_to_dict(coordinate.value), "unit": coordinate.unit.value}
 
 
 def _coordinate_from_dict(data: dict[str, Any]) -> Coordinate:
     """Restore a coordinate from its public or claim-storage dictionary."""
-    return Coordinate(wire_to_rational(data), data["unit"])
+    return Coordinate(rational_from_dict(data), data["unit"])
 
 
 def _coordinate_from_input(
@@ -260,7 +260,7 @@ def _event_coordinate_value(raw: Any) -> int | float | Fraction:
     if isinstance(raw, Coordinate):
         return raw.value
     if isinstance(raw, dict):
-        return wire_to_rational(raw)
+        return rational_from_dict(raw)
     return raw
 
 
@@ -372,7 +372,7 @@ class AlignmentAnchor(BaseModel):
 
     @field_serializer("coordinate_a", "coordinate_b")
     def _serialize_coordinate(self, coordinate: Coordinate) -> dict[str, Any]:
-        """Emit a coordinate as the rational wire dict plus its unit."""
+        """Emit a coordinate as the rational dictionary plus its unit."""
         return _coordinate_to_dict(coordinate)
 
     @field_validator("coordinate_a", "coordinate_b", mode="before")
@@ -1185,7 +1185,7 @@ class MatchClaim(BaseModel):
     def _serialize_source_coordinate(
         self, coordinate: Coordinate | None
     ) -> dict[str, Any] | None:
-        """Emit the NOMATCH coordinate as the rational wire dict plus unit."""
+        """Emit the NOMATCH coordinate as the rational dictionary plus unit."""
         return None if coordinate is None else _coordinate_to_dict(coordinate)
 
     @field_validator("source_coordinate", mode="before")

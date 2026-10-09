@@ -28,8 +28,8 @@ from numpy.typing import NDArray
 from timetoalign.core.enums import NumberType, TimeUnit
 from timetoalign.core.time import (
     CoordinateValue,
-    rational_to_wire,
-    wire_to_rational,
+    rational_from_dict,
+    rational_to_dict,
 )
 from timetoalign.maps.base import ConversionMap
 from timetoalign.maps.combination import CombinationMap
@@ -306,20 +306,20 @@ class MetricMap(ConversionMap[int]):
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary."""
         d = super().to_dict()
-        d["starts"] = [rational_to_wire(s) for s in self._starts_frac]
+        d["starts"] = [rational_to_dict(s) for s in self._starts_frac]
         d["mcs"] = [int(mc) for mc in self._mcs]
         d["mns"] = self._mns
-        d["lengths"] = [rational_to_wire(ln) for ln in self._lengths_frac]
+        d["lengths"] = [rational_to_dict(ln) for ln in self._lengths_frac]
         return d
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> MetricMap:
         """Deserialize from dictionary."""
         return cls(
-            starts=[Fraction(wire_to_rational(s)) for s in data["starts"]],
+            starts=[Fraction(rational_from_dict(s)) for s in data["starts"]],
             mcs=data["mcs"],
             mns=data["mns"],
-            lengths=[Fraction(wire_to_rational(ln)) for ln in data["lengths"]],
+            lengths=[Fraction(rational_from_dict(ln)) for ln in data["lengths"]],
             source_unit=data.get("source_unit", TimeUnit.quarters),
             target_unit=data.get("target_unit"),
             uid=data.get("id"),

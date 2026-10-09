@@ -606,7 +606,7 @@ class TestSerialization:
         payload = json.loads(json.dumps(original.to_dict()))
         restored = Timeline.from_dict(payload)
         assert restored.to_dict() == payload
-        assert restored.measure_map == original.measure_map
+        assert restored.measure_map.to_dict() == original.measure_map.to_dict()
         assert restored.metric_hierarchy == original.metric_hierarchy
         assert restored.get_region("opening") == original.get_region("opening")
         assert restored.flow_control.breaks == original.flow_control.breaks
@@ -686,7 +686,7 @@ class TestSerialization:
         segment_line = _structure_bearing_timeline().as_segment_line()
         restored = Timeline.from_dict(json.loads(json.dumps(segment_line.to_dict())))
         assert isinstance(restored, SegmentLine)
-        assert restored.measure_map == segment_line.measure_map
+        assert restored.measure_map.to_dict() == segment_line.measure_map.to_dict()
         assert restored.metric_hierarchy == segment_line.metric_hierarchy
         assert restored.flow_control.to_dict() == segment_line.flow_control.to_dict()
 

@@ -43,6 +43,8 @@ def _exact_quarters(value: Any) -> Fraction:
     """Read one exact quarter-note value without ratio guessing."""
     if value is None:
         raise ValueError("Measure row states no actual length")
+    if isinstance(value, list):
+        return Fraction(number_from_json(value))
     if isinstance(value, dict):
         return Fraction(struct_to_rational(value))
     if hasattr(value, "value"):
@@ -81,19 +83,23 @@ class MeasureMap:
         return cls._from_measure_rows(data)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> MeasureMap:
-        """Restore a map through its validating public constructor.
+    def from_dict(cls, data: list[dict[str, Any]]) -> MeasureMap:
+        """Restore a map from compressed Measure Map rows.
 
         Args:
-            data: JSON-safe dictionary containing tagged measure payloads.
+            data: JSON-safe list of compressed Measure Map rows.
 
         Returns:
             The restored immutable measure map.
 
         Raises:
-            ValueError: If a measure tag or payload is invalid.
+            ValueError: If *data* is not a row list.
         """
-        return cls(Measure.from_dict(measure) for measure in data["measures"])
+        if not isinstance(data, list):
+            raise ValueError(
+                "MeasureMap document form must be a list of Measure Map rows"
+            )
+        return cls.from_rows(data)
 
     @classmethod
     def expand_rows(cls, rows: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
@@ -137,6 +143,7 @@ class MeasureMap:
         fill_key = "count" if any("count" in row for row in source) else "number"
         sparse: list[dict[str, Any]] = []
         previous_fill: int | None = None
+        previous_number: int | None = None
         previous_number_zero = False
         inherited_signature: str | None = None
         inherited_nominal: Fraction | None = None
@@ -185,6 +192,8 @@ class MeasureMap:
             if previous_fill is not None and fill > previous_fill + 1:
                 for missing in range(previous_fill + 1, fill):
                     inserted: dict[str, Any] = {fill_key: missing}
+                    if previous_number is not None:
+                        inserted["number"] = previous_number + (missing - previous_fill)
                     if inherited_signature is not None:
                         inserted["time_signature"] = inherited_signature
                     if inherited_nominal is not None:
@@ -194,6 +203,8 @@ class MeasureMap:
             row.setdefault(fill_key, fill)
             sparse.append(row)
             previous_fill = fill
+            if row.get("number") is not None:
+                previous_number = int(row["number"])
 
             if "time_signature" in row:
                 inherited_signature = row["time_signature"]
@@ -346,9 +357,22 @@ class MeasureMap:
                 measure: Measure = Measure(**common)
             elif signature is not None and str(signature).lower() == "cadenza":
                 measure = CadenzaMeasure(**common)
-            elif row["number"] == 0 and actual < nominal:
+            elif actual < nominal and (
+                row["number"] == 0
+                or (
+                    measures
+                    and row["number"] == measures[-1].number
+                    and measures[-1].actual_length is not None
+                    and measures[-1].actual_length < nominal
+                )
+            ):
                 measure = MeasureConstituent(
-                    **common, offset_within_measure=nominal - actual
+                    **common,
+                    offset_within_measure=(
+                        nominal - actual
+                        if row["number"] == 0
+                        else nominal - measures[-1].actual_length
+                    ),
                 )
             elif actual == nominal:
                 measure = RegularMeasure(**common)
@@ -482,7 +506,23 @@ class MeasureMap:
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, MeasureMap):
             return NotImplemented
-        return self.measures == other.measures
+        if len(self) != len(other):
+            return False
+        for index, (left, right) in enumerate(zip(self, other, strict=True)):
+            if type(left) is type(right) and left == right:
+                continue
+            left_values = left.model_dump(exclude={"next", "offset_within_measure"})
+            right_values = right.model_dump(exclude={"next", "offset_within_measure"})
+            if index != len(self) - 1:
+                left_values["next"] = left.next
+                right_values["next"] = right.next
+            if left_values == right_values and (
+                type(left) is type(right)
+                or {type(left), type(right)} == {IrregularMeasure, MeasureConstituent}
+            ):
+                continue
+            return False
+        return True
 
     def __repr__(self) -> str:
         total = self.total_actual_length
@@ -544,13 +584,110 @@ class MeasureMap:
                 return measure
         raise KeyError(measure_id)
 
-    def to_dict(self) -> dict[str, Any]:
-        """Return this map as a JSON-safe sequence of measure payloads.
+    def to_rows(self, *, compress: bool = True) -> list[dict[str, Any]]:
+        """Return Measure Map rows, omitting entries equal to their default successor.
+
+        The first measure is retained. Each later measure is retained only when
+        a present value differs from the preceding measure's default successor:
+        count increments, qstamp advances by actual_length, actual_length
+        becomes nominal_length, number increments, name becomes that number,
+        signatures and nominal lengths persist, repeats clear, and next becomes
+        the successor count plus one. Unset values are omitted.
+
+        Args:
+            compress: Whether to omit default-successor rows.
 
         Returns:
-            A dictionary containing every tagged measure payload in order.
+            JSON-safe compressed or full Measure Map rows.
         """
-        return {"measures": [measure.to_dict() for measure in self._measures]}
+        keys = (
+            "count",
+            "qstamp",
+            "number",
+            "name",
+            "time_signature",
+            "nominal_length",
+            "actual_length",
+            "start_repeat",
+            "end_repeat",
+            "next",
+            "volta",
+        )
+
+        def row_for(measure: Measure, *, is_last: bool) -> dict[str, Any]:
+            number = measure.number if measure.number is not None else measure.count
+            values: dict[str, Any] = {
+                "count": measure.count,
+                "qstamp": measure.qstamp,
+                "number": number,
+                "name": measure.name if measure.name is not None else str(number),
+                "time_signature": measure.time_signature,
+                "nominal_length": measure.nominal_length,
+                "actual_length": measure.actual_length,
+                "start_repeat": measure.start_repeat,
+                "end_repeat": measure.end_repeat,
+                "next": (
+                    None
+                    if is_last
+                    else (
+                        [int(successor[1:]) for successor in measure.next]
+                        if measure.next is not None
+                        else [measure.count + 1]
+                    )
+                ),
+                "volta": measure.volta,
+            }
+            return {
+                key: (
+                    number_to_json(value)
+                    if key in {"qstamp", "nominal_length", "actual_length"}
+                    else value
+                )
+                for key, value in values.items()
+                if value is not None
+            }
+
+        def default_successor(measure: Measure) -> dict[str, Any]:
+            successor = row_for(measure, is_last=False)
+            count = measure.count
+            if count is not None:
+                successor["count"] = count + 1
+            if measure.qstamp is not None and measure.actual_length is not None:
+                successor["qstamp"] = number_to_json(
+                    measure.qstamp + measure.actual_length
+                )
+            if measure.actual_length is not None:
+                successor["actual_length"] = (
+                    None
+                    if measure.nominal_length is None
+                    else number_to_json(measure.nominal_length)
+                )
+            if measure.number is not None:
+                successor["number"] = measure.number + 1
+            if measure.name is not None and measure.number is not None:
+                successor["name"] = str(measure.number + 1)
+            successor["start_repeat"] = False
+            successor["end_repeat"] = False
+            if count is not None:
+                successor["next"] = [count + 2]
+            return {key: value for key, value in successor.items() if value is not None}
+
+        rows: list[dict[str, Any]] = []
+        previous: Measure | None = None
+        for index, measure in enumerate(self._measures):
+            row = row_for(measure, is_last=index == len(self._measures) - 1)
+            if not compress or previous is None or row != default_successor(previous):
+                rows.append({key: row[key] for key in keys if key in row})
+            previous = measure
+        return rows
+
+    def to_dict(self) -> list[dict[str, Any]]:
+        """Return this map as compressed JSON-safe Measure Map rows.
+
+        Returns:
+            The compressed Measure Map row list.
+        """
+        return self.to_rows()
 
 
 class SectionHierarchy:

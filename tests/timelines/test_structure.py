@@ -6,6 +6,7 @@ import json
 import warnings
 from fractions import Fraction as F
 from numbers import Real
+from pathlib import Path
 
 import pydantic
 import pytest
@@ -29,6 +30,8 @@ from timetoalign.core import (
     TimeUnit,
 )
 from timetoalign.core.time import number_to_json
+from timetoalign.loader.score import Ms3Loader
+from timetoalign.testdata import ensure_data
 from timetoalign.timelines import (
     Expansion,
     MeasureMap,
@@ -43,6 +46,70 @@ from timetoalign.timelines import (
 
 SECTION_COUNTS = (78, 65, 60)
 TOTAL_MEASURES = 203
+
+SCORE_DATA = ensure_data("score")
+
+
+def _score_measure_paths() -> list[Path]:
+    """Return folded score measure tables used by the loader suite."""
+    names = {
+        "c05n05_musete.measures.tsv",
+        "c11n08_Rondeau.measures.tsv",
+        "Bruckner_WAB.105_3a_Scherzo.measures.tsv",
+        "Piano_Concerto_No._2_Opus_18_1st_Movement__Rachmaninoff.measures.tsv",
+        "WoO71.measures.tsv",
+    }
+    return sorted(
+        path
+        for path in SCORE_DATA.rglob("*.measures.tsv")
+        if path.name in names and "unfolded" not in path.name
+    )
+
+
+def _mm_rows() -> list[list[dict[str, object]]]:
+    """Return folded Measure Map specimen rows."""
+    return [
+        json.loads(path.read_text())
+        for path in sorted(SCORE_DATA.rglob("*.mm.json"))
+        if "unfolded" not in path.name
+    ]
+
+
+def _oracle_rows(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    """Return the reference compressed rows for one expanded library map."""
+    from pymeasuremap.base import MeasureMap as OracleMeasureMap
+
+    expanded = MeasureMap.expand_rows(rows)
+    oracle_expanded = [
+        {
+            key: float(value) if isinstance(value, F) else value
+            for key, value in row.items()
+            if key not in {"ID", "volta", "tempo"}
+        }
+        for row in expanded
+    ]
+    return [
+        {**row, "next": [] if row.get("next") == [-1] else row.get("next")}
+        for row in OracleMeasureMap.from_dicts(oracle_expanded)
+        .compress(ignore_ids=True)
+        .to_dicts()
+    ]
+
+
+def _float_rows(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    """Convert exact JSON row numbers to the reference numeric representation."""
+    return [
+        {
+            key: (
+                float(F(*value))
+                if key in {"qstamp", "nominal_length", "actual_length"}
+                and isinstance(value, list)
+                else value
+            )
+            for key, value in row.items()
+        }
+        for row in rows
+    ]
 
 
 def _abstract(count: int) -> list[Measure]:
@@ -85,6 +152,124 @@ def _rows(*, anacrusis: bool = False) -> list[dict[str, object]]:
         {"number": 11, "tempo": risoluto},
         {"number": 400},
     ]
+
+
+def test_rows_round_trip_fixpoint() -> None:
+    """Compressed rows are a fixed point, proving no retained fact is lost."""
+    maps = [
+        MeasureMap.from_measure_data(Ms3Loader.from_file(path).store.measures)
+        for path in _score_measure_paths()
+    ]
+    for measure_map in maps:
+        rows = measure_map.to_rows()
+        restored = MeasureMap.from_rows(rows)
+        assert restored.to_rows() == rows
+
+
+def test_compression_matches_the_reference_implementation() -> None:
+    """The oracle proves which rows carry information beyond default succession."""
+    pinned_rachmaninoff_counts = "[1, 8, 337, 374]"
+    expected_counts = {
+        "c05n05_musete": [1, 5, 6, 16, 17, 31, 32, 58],
+        "c11n08_Rondeau": [1, 9, 10, 18, 19, 27, 28, 60],
+        "Bruckner_WAB.105_3a_Scherzo.measures": [1, 382],
+        "Piano_Concerto_No._2_Opus_18_1st_Movement__Rachmaninoff.measures": [
+            1,
+            8,
+            337,
+            374,
+        ],
+    }
+    assert pinned_rachmaninoff_counts == str(
+        expected_counts[
+            "Piano_Concerto_No._2_Opus_18_1st_Movement__Rachmaninoff.measures"
+        ]
+    )
+    specimen_rows = list(
+        MeasureMap.from_measure_data(Ms3Loader.from_file(path).store.measures).to_rows(
+            compress=False
+        )
+        for path in _score_measure_paths()
+    )
+    for rows in specimen_rows:
+        library_rows = MeasureMap.from_rows(rows).to_rows()
+        oracle_rows = _oracle_rows(rows)
+        assert [row["count"] for row in library_rows] == [
+            row["count"] for row in oracle_rows
+        ]
+        for library, oracle in zip(_float_rows(library_rows), oracle_rows, strict=True):
+            assert {
+                key: ([] if key == "next" and key not in library else library.get(key))
+                for key in oracle
+            } == oracle
+    for path in _score_measure_paths():
+        name = path.name.removesuffix(".tsv")
+        if name in expected_counts:
+            rows = MeasureMap.from_measure_data(
+                Ms3Loader.from_file(path).store.measures
+            ).to_rows()
+            assert [row["count"] for row in rows] == expected_counts[name]
+    woo_rows = next(
+        MeasureMap.from_measure_data(Ms3Loader.from_file(path).store.measures).to_rows()
+        for path in _score_measure_paths()
+        if path.name == "WoO71.measures.tsv"
+    )
+    assert len(woo_rows) == 52
+
+
+def test_standard_example_expands_and_compresses() -> None:
+    """The standard example proves long omitted runs are reconstructed exactly."""
+    rows = [{"time_signature": "2/2"}, {"number": 563}]
+    measure_map = MeasureMap.from_rows(rows)
+    assert len(measure_map) == 563
+    assert measure_map.to_rows() == [
+        {
+            "count": 1,
+            "qstamp": [0, 1],
+            "number": 1,
+            "name": "1",
+            "time_signature": "2/2",
+            "nominal_length": [4, 1],
+            "actual_length": [4, 1],
+            "start_repeat": False,
+            "end_repeat": False,
+            "next": [2],
+        },
+        {
+            "count": 563,
+            "qstamp": [2248, 1],
+            "number": 563,
+            "name": "563",
+            "time_signature": "2/2",
+            "nominal_length": [4, 1],
+            "actual_length": [4, 1],
+            "start_repeat": False,
+            "end_repeat": False,
+        },
+    ]
+
+
+def test_document_form_is_the_compressed_row_list() -> None:
+    """The document list excludes derived ids and rejects the former wrapper."""
+    measure_map = MeasureMap.from_rows([{"time_signature": "2/2"}, {"number": 563}])
+    payload = measure_map.to_dict()
+    assert isinstance(payload, list)
+    assert {
+        "count",
+        "qstamp",
+        "number",
+        "name",
+        "actual_length",
+        "start_repeat",
+        "end_repeat",
+    } <= set(payload[0])
+    assert "ID" not in payload[0]
+    assert all(value is not None for row in payload for value in row.values())
+    with pytest.raises(ValueError, match="list of Measure Map rows"):
+        MeasureMap.from_dict({"measures": payload})  # type: ignore[arg-type]
+    timeline = Timeline(length=F(2252), unit=TimeUnit.quarters, uid="row_document")
+    timeline.add_measure_map(measure_map)
+    assert Timeline.from_dict(timeline.to_dict()).to_dict() == timeline.to_dict()
 
 
 def _span(start: int | F, end: int | F) -> Interval:
@@ -492,7 +677,7 @@ class TestMeasureMapEqualityAndJson:
     def test_foreign_equality_operand_is_not_equal(self) -> None:
         assert MeasureMap([]) != ()
 
-    def test_json_round_trip_is_exact_and_emits_no_warning(self) -> None:
+    def test_json_round_trip_is_a_row_fixpoint_and_emits_no_warning(self) -> None:
         measure_map = MeasureMap(
             [
                 RegularMeasure(actual_length=F(1, 3)),
@@ -504,7 +689,7 @@ class TestMeasureMapEqualityAndJson:
             warnings.simplefilter("always")
             restored = MeasureMap.from_dict(payload)
         assert emitted == []
-        assert restored == measure_map
+        assert restored.to_rows() == measure_map.to_rows()
         assert restored.to_dict() == payload
 
 

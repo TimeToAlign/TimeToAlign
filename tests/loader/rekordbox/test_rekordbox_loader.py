@@ -121,7 +121,7 @@ def test_pickup_grid_change_and_trailing_measure_are_exact(tmp_path: Path) -> No
         "POSITION_MARK": [{"Name": "cue", "Type": "0", "Start": "1.25", "Num": "0"}],
     }
     restored = Timeline.from_dict(json.loads(json.dumps(timeline.to_dict())))
-    assert restored.measure_map == timeline.measure_map
+    assert restored.measure_map.to_dict() == timeline.measure_map.to_dict()
 
 
 def test_displaced_anchor_beats_are_not_counted_twice(tmp_path: Path) -> None:

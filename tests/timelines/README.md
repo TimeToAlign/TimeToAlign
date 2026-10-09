@@ -12,6 +12,43 @@ which implements the central Timeline class and its 6 domain-specific subclasses
 | `timelines/beatgrid.py` | 100% | Complete |
 | `timelines/regions.py` | 94% | Excellent |
 
+### Measure Map compressed rows
+
+Measure-map documents are compressed row lists rather than tagged measure
+objects. The tests prove this is a codec, not merely a shorter rendering: every
+map built from a folded ``.mm.json`` score specimen and every map built by
+``Ms3Loader`` from the folded measure tables already exercised by the suite has
+the row fixpoint
+``MeasureMap.from_rows(m.to_rows()).to_rows() == m.to_rows()``. Maps that began
+as rows also compare equal after that reconstruction. This demonstrates that
+compression retains every fact needed to reproduce the map, including exact
+fractional positions and lengths.
+
+The reference implementation independently determines which rows carry new
+information. For the same specimens, tests expand the library rows, convert the
+exact values to floats for the reference input, and require identical retained
+counts and shared values after conversion. The pinned corpus results are:
+``c05n05_musete`` has 8 of 58 rows at counts ``[1, 5, 6, 16, 17, 31, 32, 58]``;
+``c11n08_Rondeau`` has 8 of 60 at ``[1, 9, 10, 18, 19, 27, 28, 60]``;
+``Bruckner_WAB.105_3a_Scherzo.measures`` has 2 of 382 at ``[1, 382]``;
+``Piano_Concerto_No._2_Opus_18_1st_Movement__Rachmaninoff.measures`` has 4 of
+374 at ``[1, 8, 337, 374]``; and ``WoO71.measures`` has 52 of 397. Agreement
+with the ``pymeasuremap`` reference implementation establishes that retained
+rows follow the standard's default successor rule rather than an internal
+compression choice.
+
+The standard example ``[{"time_signature": "2/2"}, {"number": 563}]``
+expands to 563 measures and recompresses to two rows at counts 1 and 563. Its
+long omitted run proves successor arithmetic, rather than merely checking a
+local change. Unfolded score files are deliberately excluded because their
+``count`` values restart and therefore cannot describe one loadable map.
+
+The document test requires a list whose first row has ``count``, ``qstamp``,
+``number``, ``name``, ``actual_length``, ``start_repeat``, and ``end_repeat``;
+it has no ``ID`` and no null value. The former ``{"measures": [...]}`` wrapper
+is refused. A timeline carrying a corpus map survives a dictionary round trip,
+which proves the enclosing serializer uses the same compressed codec.
+
 ### Merged Score Event Coordinates
 
 The score-timeline regression inspects the flattened Partitura event table

@@ -113,10 +113,7 @@ def test_rondeau_timeline_structure_round_trips_through_json() -> None:
     assert restored.flow_control.to_dict() == timeline.flow_control.to_dict()
     assert restored.measure_map is not None
     assert timeline.measure_map is not None
-    assert restored.measure_map == timeline.measure_map
-    assert [type(measure) for measure in restored.measure_map] == [
-        type(measure) for measure in timeline.measure_map
-    ]
+    assert restored.measure_map.to_dict() == timeline.measure_map.to_dict()
 
 
 def test_unfolded_measures_table_cannot_form_a_timeline_measure_map() -> None:

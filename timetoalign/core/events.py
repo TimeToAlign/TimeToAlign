@@ -48,12 +48,7 @@ from .fields import (
     register_value_projector,
 )
 from .protocols import TwelveTETPitchMixin
-from .time import (
-    Coordinate,
-    Duration,
-    rational_to_wire,
-    wire_to_rational,
-)
+from .time import Coordinate, Duration, rational_to_wire, wire_to_rational
 
 
 def _pc_mod(arr: pa.Array, n: int) -> pa.Array:
@@ -2247,7 +2242,12 @@ class Measure(ScalarVocabulary, BaseModel):
         return "Measure"
 
     def __repr__(self) -> str:
-        return f"{type(self).__name__}(id={self.id!r}, count={self.count!r}, name={self.name!r})"
+        parts = [f"id={self.id!r}", f"count={self.count!r}", f"name={self.name!r}"]
+        for member in ("number", "time_signature", "qstamp", "actual_length"):
+            value = getattr(self, member)
+            if value is not None:
+                parts.append(f"{member}={value!r}")
+        return f"{type(self).__name__}({', '.join(parts)})"
 
     def __str__(self) -> str:
         return self.name or (self.id or "Measure")
@@ -2666,7 +2666,8 @@ class BeatPolicy(BaseModel):
 
     def __repr__(self) -> str:
         grouping = "+".join(str(entry) for entry in self.grouping)
-        return f"BeatPolicy({grouping} x {self.division})"
+        name = f", {self.name!r}" if self.name is not None else ""
+        return f"BeatPolicy({grouping} x {self.division}{name})"
 
     def __str__(self) -> str:
         return self.name or repr(self)
@@ -2738,7 +2739,7 @@ class Tempo(BaseModel):
         beat: The duration unit for which the rate is stated.
         to_bpm: Optional target rate of a ramp.
         mean_at: Optional share of the ramp span at which its mean occurs.
-        text: Optional verbal indication supplied by the source.
+        text: Optional verbal tempo indication supplied by the source.
     """
 
     model_config = ConfigDict(frozen=True, strict=True)

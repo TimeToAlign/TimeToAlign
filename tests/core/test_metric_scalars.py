@@ -1,7 +1,9 @@
-"""Exact scalar validation for metrical structure and tempo realization.
+"""Exact scalar validation below the measure-anchored hierarchy.
 
 The validation rationale and specimens are documented in ``README.md`` under
-"Metrical and realization scalars".
+"Metrical and realization scalars". ``BeatPolicy`` and ``Tempo`` remain core
+event scalars; reading nodes, exact spans, and attribution remain timeline
+structure and must not acquire paired semantic fields.
 """
 
 from __future__ import annotations
@@ -13,14 +15,7 @@ import pytest
 from pydantic import ValidationError
 
 import timetoalign.core as core
-from timetoalign.core import (
-    Address,
-    Beat,
-    BeatPolicy,
-    Duration,
-    Tempo,
-    fields,
-)
+from timetoalign.core import Address, Beat, BeatPolicy, Duration, Tempo, fields
 
 
 @pytest.mark.parametrize(

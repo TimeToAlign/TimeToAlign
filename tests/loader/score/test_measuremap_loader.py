@@ -14,10 +14,13 @@ ZERO TOLERANCE VALIDATION POLICY:
 
 from __future__ import annotations
 
+import json
 from fractions import Fraction
 from pathlib import Path
 
 import pytest
+
+from timetoalign.timelines import MeasureMap
 
 # Specimen data paths - all under tests/data/score/
 TESTS_DATA_DIR = Path(__file__).parents[2] / "data" / "score"
@@ -76,6 +79,16 @@ class TestMeasureMapLoaderBasic:
         """Loader initializes correctly."""
         assert measuremap_loader.unit.value == "quarters"
 
+    def test_file_without_nominal_length_names_path_and_first_row(
+        self, measuremap_loader, tmp_path: Path
+    ) -> None:
+        path = tmp_path / "no_nominal.mm.json"
+        path.write_text(
+            json.dumps([{"number": 1, "actual_length": 3}]), encoding="utf-8"
+        )
+        with pytest.raises(ValueError, match=r"no_nominal\.mm\.json.*row 1"):
+            measuremap_loader.load(path)
+
     @pytest.mark.skipif(not specimens_available(), reason="Specimen files not found")
     def test_load_beethoven_mm_json(self, measuremap_loader):
         """Load Beethoven WoO71 MeasureMap JSON."""
@@ -107,13 +120,13 @@ class TestMeasureMapExpansion:
             {"time_signature": "4/4"},  # First bar, defaults fill in
             {"number": 10},  # 10 bars total
         ]
-        expanded = measuremap_loader._expand_measuremap(compressed)
+        expanded = MeasureMap.expand_rows(compressed)
 
-        assert len(expanded) == 2
+        assert len(expanded) == 10
         assert expanded[0]["count"] == 1
         assert expanded[0]["time_signature"] == "4/4"
-        assert expanded[1]["count"] == 2
-        assert expanded[1]["number"] == 10
+        assert [row["number"] for row in expanded] == list(range(1, 11))
+        assert expanded[-1]["count"] == 10
 
     def test_expand_with_anacrusis(self, measuremap_loader):
         """Expand MeasureMap with anacrusis (pickup measure)."""
@@ -122,7 +135,7 @@ class TestMeasureMapExpansion:
             {"number": 1},  # M1
             {"number": 2},  # M2
         ]
-        expanded = measuremap_loader._expand_measuremap(compressed)
+        expanded = MeasureMap.expand_rows(compressed)
 
         assert len(expanded) == 3
         assert expanded[0]["number"] == 0  # Anacrusis
@@ -139,7 +152,7 @@ class TestMeasureMapExpansion:
             {"end_repeat": True, "next": [2, 5]},  # :||
             {},  # After repeat
         ]
-        expanded = measuremap_loader._expand_measuremap(compressed)
+        expanded = MeasureMap.expand_rows(compressed)
 
         assert len(expanded) == 5
         assert expanded[1]["start_repeat"] is True
@@ -191,9 +204,7 @@ class TestMeasureMapTraversal:
             {},
             {},
         ]
-        measuremap_loader._expanded_data = measuremap_loader._expand_measuremap(
-            compressed
-        )
+        measuremap_loader._expanded_data = MeasureMap.expand_rows(compressed)
 
         traversal = measuremap_loader.compute_default_traversal()
         assert traversal == [1, 2, 3]
@@ -208,9 +219,7 @@ class TestMeasureMapTraversal:
             {"end_repeat": True, "next": [2, 5]},  # MC 4: :|| go to 2 or 5
             {},  # MC 5: after repeat
         ]
-        measuremap_loader._expanded_data = measuremap_loader._expand_measuremap(
-            compressed
-        )
+        measuremap_loader._expanded_data = MeasureMap.expand_rows(compressed)
 
         traversal = measuremap_loader.compute_default_traversal()
         # Expected: 1, 2, 3, 4, 2, 3, 4, 5
@@ -335,9 +344,7 @@ class TestMeasureDataSchema:
 
     def test_flow_control_summary(self):
         """get_flow_control_summary works correctly."""
-        from timetoalign.core.time import (
-            coordinate_to_struct,
-        )
+        from timetoalign.core.time import coordinate_to_struct
         from timetoalign.loader.score.stores import MeasureData
 
         # Use coordinate_to_struct for temporal fields (schema expects struct type)

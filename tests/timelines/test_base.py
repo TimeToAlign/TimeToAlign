@@ -43,6 +43,8 @@ from timetoalign.timelines import (
     MeasureMap,
     MetricHierarchy,
     SegmentLine,
+    TempoEntry,
+    TempoMap,
     Timeline,
 )
 from timetoalign.timelines.flowcontrol import Break, Jump
@@ -56,20 +58,33 @@ def _structure_bearing_timeline() -> Timeline:
         number_type=NumberType.fraction,
         uid="structured",
     )
-    timeline.add_measure_map(
-        MeasureMap(
-            [
-                RegularMeasure(actual_length=Fraction(1, 3)),
-                IrregularMeasure(actual_length=Fraction(2, 3)),
-                MeasureConstituent(
-                    actual_length=Fraction(3),
-                    offset_within_measure=Fraction(1, 3),
-                ),
-            ]
-        )
+    measure_map = MeasureMap(
+        [
+            RegularMeasure(actual_length=Fraction(1, 3)),
+            IrregularMeasure(actual_length=Fraction(2, 3)),
+            MeasureConstituent(
+                actual_length=Fraction(3),
+                offset_within_measure=Fraction(1, 3),
+            ),
+        ]
     )
+    timeline.add_measure_map(measure_map)
     timeline.add_metric_hierarchy(
-        MetricHierarchy.from_sections([Tempo(bpm=Fraction(120), text="triple")])
+        MetricHierarchy(
+            measure_map=measure_map,
+            tempo_maps=(
+                TempoMap(
+                    kind="tempo_indication",
+                    entries=(
+                        TempoEntry(
+                            at=Coordinate(Fraction(0), "quarters"),
+                            tempo=Tempo(bpm=Fraction(120), text="triple"),
+                        ),
+                    ),
+                    provenance={},
+                ),
+            ),
+        )
     )
     timeline.create_region("opening", Fraction(1, 3), Fraction(4, 3), meta={"n": 1})
     timeline.flow_control.add_break(
@@ -613,6 +628,32 @@ class TestSerialization:
             timeline.add_measure_map(timeline.measure_map)
         with pytest.raises(ValueError, match="already has a metric hierarchy"):
             timeline.add_metric_hierarchy(timeline.metric_hierarchy)
+
+    def test_timeline_refuses_hierarchy_without_map_different_map_or_other_unit(
+        self,
+    ) -> None:
+        owned = MeasureMap([RegularMeasure(actual_length=Fraction(4))])
+        hierarchy = MetricHierarchy(measure_map=owned)
+
+        without_map = Timeline(length=Fraction(4), unit=TimeUnit.quarters)
+        with pytest.raises(ValueError, match="requires.*measure map"):
+            without_map.add_metric_hierarchy(hierarchy)
+
+        different_map = MeasureMap(
+            [
+                RegularMeasure(actual_length=Fraction(2)),
+                RegularMeasure(actual_length=Fraction(2)),
+            ]
+        )
+        mismatched = Timeline(length=Fraction(4), unit=TimeUnit.quarters)
+        mismatched.add_measure_map(owned)
+        with pytest.raises(ValueError, match="different measure map"):
+            mismatched.add_metric_hierarchy(MetricHierarchy(measure_map=different_map))
+
+        other_unit = Timeline(length=4.0, unit=TimeUnit.seconds)
+        other_unit.add_measure_map(owned)
+        with pytest.raises(ValueError, match="unit"):
+            other_unit.add_metric_hierarchy(hierarchy)
 
     @pytest.mark.parametrize("conversion", ["typed", "segment", "timeline"])
     def test_same_extent_conversion_carries_structure(self, conversion: str) -> None:

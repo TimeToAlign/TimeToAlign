@@ -16,13 +16,13 @@ This directory contains tests for the `timetoalign.core` module, which provides 
 
 ## Metrical and realization scalars
 
-The scalar tests separate metrical structure from tempo realization. Exact
-time-signature specimens (``6/8``, ``4/4``, common time, cut time, and an
-additive eighth-note signature) pin grouping, division, derived rods, beat
-count, span, and source spelling. Re-expressing each specimen as counted
-divisions must preserve its division and name, produce one unit group per
-division, and be idempotent. This rules out both a meter reader that forgets
-how the source grouped a bar and a grid policy that silently changes its unit.
+The scalar tests establish the arithmetic vocabulary on which anchored metric
+readings rely. Exact time-signature specimens (``6/8``, ``4/4``, common time,
+cut time, and an additive eighth-note signature) pin grouping, division,
+derived rods, beat count, span, and source spelling. Re-expressing each as
+counted divisions produces one unit group per division, preserves its exact
+division and name, and is idempotent. This rules out a meter reader that
+forgets source grouping or silently substitutes a default.
 
 A policy authored with both ``division`` and ``beat_size`` is accepted only
 when the two exact quantities agree in quarters. A contradictory quarter and
@@ -39,12 +39,13 @@ rate. Construction rejects exact values outside the signed 64-bit rational
 wire before serialization, while the largest permitted denominator survives.
 These cases rule out delayed serialization failures and invented ramp meaning.
 
-Negative-level beats construct to demonstrate groove below the pulse, while a
-zero beat index remains invalid. Address storage is inspected to prove that it
-contains no obsolete skeleton identifier. Timeline-structure values are tested
-with their owning hierarchy rather than as event scalars; their absence from
-the paired-field registry proves that recursive forests are not advertised as
-columnar event payloads.
+Negative-level beats demonstrate groove below the pulse, while a zero beat
+index remains invalid. Address storage contains no skeleton identifier.
+Measure-map and forest values are deliberately absent from the paired-field
+registry: they are immutable timeline structure, not event columns. Tempo and
+BeatPolicy remain event scalars, so this separation rules out attaching
+semantic-field machinery to node levels, spans, reading ids, or expansion
+membership.
 
 ## Test Files
 

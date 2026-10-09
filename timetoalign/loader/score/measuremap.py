@@ -36,20 +36,15 @@ from __future__ import annotations
 
 import json
 import logging
-from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
 from timetoalign.core import NumberType, TimeUnit
+from timetoalign.timelines.structure import MeasureMap
 
 from .base import ScoreLoader
 from .store import ScoreStore
-from .stores import (
-    AnnotationEventData,
-    ControlEventData,
-    MeasureData,
-    NoteEventData,
-)
+from .stores import AnnotationEventData, ControlEventData, MeasureData, NoteEventData
 
 module_logger = logging.getLogger(__name__)
 
@@ -127,8 +122,21 @@ class MeasureMapLoader(ScoreLoader):
         if not raw_data:
             return ScoreStore.empty()
 
-        # Expand the compressed format to full format
-        expanded = self._expand_measuremap(raw_data)
+        # Expand through the canonical authoring lane.
+        expanded = MeasureMap.expand_rows(raw_data)
+        incomplete = next(
+            (
+                row
+                for row in expanded
+                if row["actual_length"] is None or row["nominal_length"] is None
+            ),
+            None,
+        )
+        if incomplete is not None:
+            raise ValueError(
+                f"MeasureMap file {source} has no symbolic measure lengths at "
+                f"row {incomplete['count']}"
+            )
         self._expanded_data = expanded
 
         # Validate the expanded data
@@ -156,144 +164,6 @@ class MeasureMapLoader(ScoreLoader):
                 "flow_control": measures_data.get_flow_control_summary(),
             },
         )
-
-    def _expand_measuremap(
-        self, raw_data: list[dict[str, Any]]
-    ) -> list[dict[str, Any]]:
-        """Expand a compressed MeasureMap to full format.
-
-        Expansion rules (from MeasureMap paper):
-        - count: 1 through N (assigned in order)
-        - ID: String of count (if not provided)
-        - qstamp: Cumulative sum of actual_length
-        - nominal_length: Computed from time_signature
-        - actual_length: Defaults to nominal_length
-        - number: Defaults to count if actual_length == nominal_length
-        - name: Defaults to string of number
-        - next: [count+1] unless final bar
-
-        Args:
-            raw_data: The raw JSON array (may be compressed).
-
-        Returns:
-            Fully expanded list of measure dictionaries.
-        """
-        expanded: list[dict[str, Any]] = []
-        current_qstamp = Fraction(0)
-        current_timesig: str | None = None
-        current_nominal_length: Fraction | None = None
-
-        for i, entry in enumerate(raw_data):
-            bar: dict[str, Any] = {}
-
-            # count: 1-indexed position
-            bar["count"] = entry.get("count", i + 1)
-
-            # ID: string of count
-            bar["ID"] = entry.get("ID", str(bar["count"]))
-
-            # time_signature: inherit from previous if not specified
-            if "time_signature" in entry:
-                current_timesig = entry["time_signature"]
-                if current_timesig is not None:
-                    current_nominal_length = self._parse_timesig_length(current_timesig)
-            bar["time_signature"] = current_timesig
-
-            # nominal_length: from time_signature
-            if "nominal_length" in entry:
-                bar["nominal_length"] = Fraction(entry["nominal_length"])
-            elif current_nominal_length is not None:
-                bar["nominal_length"] = current_nominal_length
-            else:
-                bar["nominal_length"] = Fraction(4)  # Default 4/4
-
-            # actual_length: defaults to nominal_length
-            if "actual_length" in entry:
-                bar["actual_length"] = Fraction(entry["actual_length"])
-            else:
-                bar["actual_length"] = bar["nominal_length"]
-
-            # qstamp: cumulative sum OR explicit
-            if "qstamp" in entry:
-                bar["qstamp"] = Fraction(entry["qstamp"])
-            else:
-                bar["qstamp"] = current_qstamp
-
-            # Update cumulative qstamp for next bar
-            current_qstamp = bar["qstamp"] + bar["actual_length"]
-
-            # number: MN as integer
-            if "number" in entry:
-                bar["number"] = entry["number"]
-            else:
-                # Default: same as count if bar is complete
-                if bar["actual_length"] == bar["nominal_length"]:
-                    bar["number"] = bar["count"]
-                else:
-                    # Incomplete bar (anacrusis) defaults to 0
-                    if (
-                        bar["count"] == 1
-                        and bar["actual_length"] < bar["nominal_length"]
-                    ):
-                        bar["number"] = 0
-                    else:
-                        bar["number"] = bar["count"]
-
-            # name: string representation of MN (may have suffix)
-            if "name" in entry:
-                bar["name"] = entry["name"]
-            else:
-                bar["name"] = str(bar["number"])
-
-            # start_repeat, end_repeat: boolean flags
-            bar["start_repeat"] = bool(entry.get("start_repeat", False))
-            bar["end_repeat"] = bool(entry.get("end_repeat", False))
-
-            # next: array of possible successors
-            if "next" in entry:
-                bar["next"] = entry["next"]
-            else:
-                # Default: next count, or -1 for final bar
-                if i < len(raw_data) - 1:
-                    bar["next"] = [bar["count"] + 1]
-                else:
-                    bar["next"] = [-1]
-
-            expanded.append(bar)
-
-        return expanded
-
-    def _parse_timesig_length(self, timesig: str) -> Fraction:
-        """Parse time signature to get nominal length in quarters.
-
-        Args:
-            timesig: Time signature string (e.g., "3/4", "6/8", "C", "cadenza").
-
-        Returns:
-            Nominal length in quarter notes.
-        """
-        if not timesig:
-            return Fraction(4)  # Default 4/4
-
-        # Handle common symbols
-        if timesig in ("C", "c"):
-            return Fraction(4)  # Common time = 4/4
-        if timesig in ("C|", "c|", "cut"):
-            return Fraction(2)  # Cut time = 2/2
-
-        # Handle "cadenza" or other non-standard
-        if "/" not in timesig:
-            return Fraction(4)
-
-        try:
-            num_str, den_str = timesig.split("/")
-            num = int(num_str)
-            den = int(den_str)
-            # Length in quarters = (num / den) * 4
-            return Fraction(num * 4, den)
-        except (ValueError, ZeroDivisionError):
-            module_logger.warning(f"Could not parse time signature: {timesig}")
-            return Fraction(4)
 
     def _validate_measuremap(self, expanded: list[dict[str, Any]]) -> None:
         """Validate the expanded MeasureMap.
@@ -345,9 +215,7 @@ class MeasureMapLoader(ScoreLoader):
         Returns:
             List of row dictionaries for MeasureData.from_dicts().
         """
-        from timetoalign.core.time import (
-            coordinate_to_struct,
-        )
+        from timetoalign.core.time import coordinate_to_struct
 
         rows: list[dict[str, Any]] = []
 

@@ -76,45 +76,42 @@ structure should be partitioned.
 
 ### Measure and hierarchy structure
 
-The metric-hierarchy tests treat the forest as the structural identity and
-tempo maps as independent realization evidence. The five-indication authored
-specimen creates four section nodes and retains all five tempo statements in
-one indication map, while leaving section levels and tempo positions unstated.
-It must differ from a hierarchy that claims those sections are pulse-level.
-This proves authored order is retained without fabricating metrical or symbolic
-coordinates.
+The hierarchy specimens prove that every metrical claim is anchored to the
+exact quarter-note extents of one measure map. A default reading is reconstructed
+from signatures rather than serialized: regular bars cover their beats and
+compound beats cover their divisions, while irregular bars without a stated
+window remain unpartitioned. Constituent bars clip that same nominal grid, so
+an anacrusis pulse means the represented fragment and never an invented full
+beat. Missing levels, positions, gaps, overlaps, and children at or above their
+parent's level all fail validation.
 
-One nested specimen partitions a node into two groups of three, with each group
-partitioned into three units; another partitions the node directly into six
-units. They must compare unequal. Forests that differ only in the reading ids
-asserting an otherwise identical partition must also compare unequal.
-Conversely, appending a tempo map or changing a reading's author,
-reinterpretation link, or level-name vocabulary must preserve equality.
+The Beethoven rows exercise compressed-row expansion across four number
+restarts. Exact counts, qstamps, lengths, classes, tempo positions, pulse
+lengths, levels, and derived policies prove that a tempo indication's beat unit
+selects the pulse without turning its rate or text into structure. Changing
+only rate or text preserves forest equality; changing the beat unit can move
+the pulse and therefore changes equality. Abstract rows remain abstract, and
+unknown keys, contradictory counts or qstamps, unreadable signatures, invalid
+cadenzas, and non-tempo extension values cannot be silently repaired.
+A JSON float length enters as its exact binary expansion, never rounded and
+never guessed, because the Measure Map standard writes lengths as floats.
 
-Reading merge tests add one agreeing and one diverging partition. Agreement
-must reuse the existing child nodes and unite the expansion's reading-id set;
-divergence must preserve both alternatives and attribute only the new one to
-the new reading. A two-alternative query proves that policy derivation uses
-only the named reading's partition. Queries where that reading asserts no
-partition, physical-coordinate queries, and unknown forest reading ids must
-fail explicitly. These cases rule out cross-reading arithmetic and confusion
-between symbolic and physical axes.
+An off-grid beat unit produces a separate deterministic reading only across a
+stretch that complete rational least-common-multiple groups can tile. The
+tests distinguish a valid four-bar reinterpretation from an invalid three-bar
+remainder and prove that a group coinciding with a bar packs as an alternative
+expansion of the same node. Authored hypermeasures similarly pack shared bar
+identities under their stated parents while leaving the default bar partition
+attributed only to the default reading. Reserved reading ids and falsely
+attributed expansions are rejected.
 
-Tempo-entry tests distinguish a physical point, a support interval, a source
-that explicitly declares the observation undefined, and a source that states
-nothing. Exact ``Fraction`` weights survive the rational wire and invalid or
-non-finite weights fail at construction. Symbolic positions accept logical
-units only. Tempo-map provenance and reading level names cannot be mutated
-through returned mappings, and provenance that JSON cannot represent is
-rejected with its key and value type identified.
-
-The nested forest, readings, tempo maps, exact proportions, typed coordinates,
-and reinterpretation links are serialized through JSON and compared both as
-restored values and as a wire fixpoint. Embedding the same hierarchy in a
-timeline and restoring an events-free timeline payload proves the public
-timeline path uses that exact wire contract rather than a private
-approximation. Compact representations expose every non-default member so
-diagnostic output does not conceal structural or realization evidence.
+Tempo observations retain their four source states, but every tempo entry has
+a logical position. Typed coordinates and exact spans survive JSON as a
+fixpoint; derived readings and the owning measure map do not enter the hierarchy
+payload. Timeline restoration supplies that map and rejects a hierarchy payload
+without one or one anchored on a different map. These checks rule out detached
+forests, positionless tempo facts, ambiguous simultaneous pulse units, and
+accidental mixing of symbolic and physical axes.
 
 Measure serialization is tested with all six concrete subclasses and
 non-dyadic fractions such as ``Fraction(1, 3)``. The exact class name and every
@@ -1309,7 +1306,7 @@ The Flow API uses a **MeasureUnit-based architecture** with FlowControlElement i
 
 4. **Flow Serialization Tests** (17 tests)
    - `TestFlow`: Empty flow, simple flow, flow with repeats, `to_dataframe()`
-   - `TestFlowSectionBased`: `from_sections()`, `from_records()`, `to_records()`, `to_csv_rows()`, `is_equivalent()`, `to_mc_sequence()`, `to_atomic_sequence()`, `diff_flows()`, `unfolded_length`
+   - `TestFlowSectionBased`: section and record constructors, record/CSV exports, equivalence, measure-count and atomic sequences, flow diffs, and unfolded length
    - `TestFlowCSVLoading`: `Flow.from_csv()`, invalid mode raises, `load_valid_flows()`
 
 5. **ScoreFlowController Tests** (6 tests)

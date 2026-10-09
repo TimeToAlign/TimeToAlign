@@ -688,16 +688,48 @@ class Timeline(
     # region Authored Structure
 
     def add_measure_map(self, measure_map: MeasureMap) -> Self:
-        """Attach the timeline's single authored measure map."""
+        """Attach the timeline's single authored measure map.
+
+        Args:
+            measure_map: Immutable measure structure to attach.
+
+        Returns:
+            This timeline after attachment.
+
+        Raises:
+            ValueError: If the timeline already carries a measure map.
+        """
         if self._measure_map is not None:
             raise ValueError(f"Timeline {self._id!r} already has a measure map")
         self._measure_map = measure_map
         return self
 
     def add_metric_hierarchy(self, metric_hierarchy: MetricHierarchy) -> Self:
-        """Attach the timeline's single authored metric hierarchy."""
+        """Attach the timeline's single measure-anchored metric hierarchy.
+
+        Args:
+            metric_hierarchy: Hierarchy anchored on this timeline's measure map.
+
+        Returns:
+            This timeline after attachment.
+
+        Raises:
+            ValueError: If the timeline has no matching measure map, is not on
+                the quarter-note axis, or already carries a hierarchy.
+        """
         if self._metric_hierarchy is not None:
             raise ValueError(f"Timeline {self._id!r} already has a metric hierarchy")
+        if self._measure_map is None:
+            raise ValueError("A metric hierarchy requires the timeline's measure map")
+        if metric_hierarchy.measure_map != self._measure_map:
+            raise ValueError(
+                "The metric hierarchy is anchored on a different measure map"
+            )
+        if self.unit is not TimeUnit.quarters:
+            raise ValueError(
+                f"Timeline unit {self.unit.value!r} does not match metric hierarchy "
+                f"unit {TimeUnit.quarters.value!r}"
+            )
         self._metric_hierarchy = metric_hierarchy
         return self
 
@@ -1087,8 +1119,14 @@ class Timeline(
             timeline.add_measure_map(MeasureMap.from_dict(measure_map_data))
         metric_hierarchy_data = data.get("metric_hierarchy")
         if metric_hierarchy_data is not None:
+            if timeline.measure_map is None:
+                raise ValueError(
+                    "A timeline payload with metric_hierarchy requires measure_map"
+                )
             timeline.add_metric_hierarchy(
-                MetricHierarchy.from_dict(metric_hierarchy_data)
+                MetricHierarchy.from_dict(
+                    metric_hierarchy_data, measure_map=timeline.measure_map
+                )
             )
 
         timeline._finalize_from_dict(data)

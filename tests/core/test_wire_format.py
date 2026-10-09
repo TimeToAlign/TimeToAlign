@@ -39,11 +39,7 @@ from timetoalign.core import (
     Tempo,
     TimeUnit,
 )
-from timetoalign.core.time import (
-    is_rational_wire,
-    rational_to_wire,
-    wire_to_rational,
-)
+from timetoalign.core.time import is_rational_wire, rational_to_wire, wire_to_rational
 from timetoalign.maps import (
     ChainMap,
     CombinationMap,
@@ -68,7 +64,13 @@ from timetoalign.maps.interval import (
     QuartersToMeasureNumber,
 )
 from timetoalign.maps.meter import BeatInMeasureMap, MetricalPositionMap, MetricMap
-from timetoalign.timelines import MeasureMap, MetricHierarchy, Timeline
+from timetoalign.timelines import (
+    MeasureMap,
+    MetricHierarchy,
+    TempoEntry,
+    TempoMap,
+    Timeline,
+)
 from timetoalign.timelines.flow.measures import MeasureUnit
 from timetoalign.timelines.flow.sections import AtomicSection, PlaythroughSection
 from timetoalign.timelines.flowcontrol import Break, Jump
@@ -113,11 +115,24 @@ def _structured_timeline() -> Timeline:
         number_type="fraction",
         uid="structure",
     )
-    timeline.add_measure_map(
-        MeasureMap([Measure(actual_length=Fraction(4, 3)) for _ in range(3)])
-    )
+    measure_map = MeasureMap([Measure(actual_length=Fraction(4, 3)) for _ in range(3)])
+    timeline.add_measure_map(measure_map)
     timeline.add_metric_hierarchy(
-        MetricHierarchy.from_sections([Tempo(bpm=Fraction(120), text="triple")])
+        MetricHierarchy(
+            measure_map=measure_map,
+            tempo_maps=(
+                TempoMap(
+                    kind="tempo_indication",
+                    entries=(
+                        TempoEntry(
+                            at=Coordinate(Fraction(0), "quarters"),
+                            tempo=Tempo(bpm=Fraction(120), text="triple"),
+                        ),
+                    ),
+                    provenance={},
+                ),
+            ),
+        )
     )
     timeline.create_region("middle", Fraction(1, 3), Fraction(2, 3))
     timeline.flow_control.add_break(

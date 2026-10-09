@@ -17,13 +17,15 @@ from pathlib import Path
 import pytest
 
 from timetoalign.alignment import TimeSkeleton
-from timetoalign.core import Gap, Measure, NumberType, Tempo, TimeUnit
+from timetoalign.core import Coordinate, Gap, Measure, NumberType, Tempo, TimeUnit
 from timetoalign.loader.score.ms3 import Ms3Loader
 from timetoalign.timelines import (
     ContinuousLogicalTimeline,
     ContinuousPhysicalTimeline,
     MetricHierarchy,
     SectionHierarchy,
+    TempoEntry,
+    TempoMap,
 )
 
 # The published Satie reference score (203 bars of 3/4, section closers on the
@@ -461,15 +463,28 @@ class TestStructuralEquality:
     def test_differing_tempo_maps_do_not_break_structural_equality(self) -> None:
         slow = Tempo(bpm=Fraction(60))
         fast = Tempo(bpm=Fraction(120))
-        first = TimeSkeleton(
-            _concrete_hierarchy(3, 2, 2), MetricHierarchy.from_sections([slow] * 3)
-        )
-        second = TimeSkeleton(
-            _concrete_hierarchy(3, 2, 2), MetricHierarchy.from_sections([fast] * 3)
-        )
-        third = TimeSkeleton(
-            _concrete_hierarchy(3, 2, 2), MetricHierarchy.from_sections([slow] * 3)
-        )
+        section = _concrete_hierarchy(3, 2, 2)
+
+        def hierarchy(tempo: Tempo) -> MetricHierarchy:
+            return MetricHierarchy(
+                measure_map=section.measure_map,
+                tempo_maps=(
+                    TempoMap(
+                        kind="tempo_indication",
+                        entries=(
+                            TempoEntry(
+                                at=Coordinate(Fraction(0), "quarters"),
+                                tempo=tempo,
+                            ),
+                        ),
+                        provenance={},
+                    ),
+                ),
+            )
+
+        first = TimeSkeleton(section, hierarchy(slow))
+        second = TimeSkeleton(section, hierarchy(fast))
+        third = TimeSkeleton(section, hierarchy(slow))
         assert first == second
         assert first == third
 

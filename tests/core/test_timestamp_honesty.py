@@ -43,17 +43,15 @@ def test_group_coordinate_between_anchors_is_interpolated() -> None:
     assert "interpolated" in repr(stamp)
 
 
-def test_conversion_values_are_separate_from_typed_wire_entries() -> None:
+def test_conversion_values_are_separate_from_typed_coordinate_entries() -> None:
     """Typed dictionaries stay structural and conversions remain verbatim."""
     stamp = _sample_timeline().get_timestamp(2.5)
 
     assert stamp.to_dict() == {
         "audio": {
-            "value": 2.5,
-            "numerator": None,
-            "denominator": None,
             "unit": "seconds",
             "number_type": "float",
+            "value": 2.5,
         }
     }
     assert stamp.get_conversion_for("samples") == 110250.0
@@ -65,11 +63,9 @@ def test_disabled_conversion_units_are_absent_from_access_and_rendering() -> Non
 
     assert stamp.to_dict() == {
         "audio": {
-            "value": 2.5,
-            "numerator": None,
-            "denominator": None,
             "unit": "seconds",
             "number_type": "float",
+            "value": 2.5,
         }
     }
     with pytest.raises(KeyError):

@@ -14,12 +14,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from ..core.enums import TimeUnit
-from ..core.time import (
-    CoordinateValue,
-    is_rational_dict,
-    rational_from_dict,
-    rational_to_dict,
-)
+from ..core.time import CoordinateValue, number_from_json, number_to_json
 from .base import ConversionMap
 
 if TYPE_CHECKING:
@@ -122,14 +117,15 @@ class ConstantMap(ConversionMap[Any]):
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary.
 
-        A ``Fraction`` constant is encoded as the canonical rational dictionary
-        dict; every other constant (the common case is a string label)
+        A numeric constant is encoded with the canonical JSON number form;
+        every other constant (the common case is a string label)
         is emitted as-is and must therefore already be JSON-native.
         """
         d = super().to_dict()
         d["value"] = (
-            rational_to_dict(self._value)
-            if isinstance(self._value, Fraction)
+            number_to_json(self._value)
+            if isinstance(self._value, (int, float, Fraction))
+            and not isinstance(self._value, bool)
             else self._value
         )
         return d
@@ -146,7 +142,11 @@ class ConstantMap(ConversionMap[Any]):
         """
         raw = data["value"]
         return cls(
-            value=rational_from_dict(raw) if is_rational_dict(raw) else raw,
+            value=(
+                number_from_json(raw)
+                if isinstance(raw, (int, float, list)) and not isinstance(raw, bool)
+                else raw
+            ),
             source_unit=data.get("source_unit"),
             uid=data.get("id"),
             name=data.get("name"),

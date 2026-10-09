@@ -312,21 +312,21 @@ class TestNote:
         )
         assert note.instrument is None
 
-    def test_to_dict_embeds_exact_coordinate_cells(self) -> None:
+    def test_to_dict_embeds_exact_coordinates(self) -> None:
         note = Note(
             start=Coordinate(Fraction(1, 3), TimeUnit.quarters),
             duration=Coordinate(Fraction(2, 3), TimeUnit.quarters),
         )
         data = note.to_dict()
         assert data["start"] == {
-            "value": 1 / 3,
-            "numerator": 1,
-            "denominator": 3,
+            "unit": "quarters",
+            "number_type": "fraction",
+            "value": [1, 3],
         }
         assert data["duration"] == {
-            "value": 2 / 3,
-            "numerator": 2,
-            "denominator": 3,
+            "unit": "quarters",
+            "number_type": "fraction",
+            "value": [2, 3],
         }
         restored = Note.from_row(data)
         assert restored is not None
@@ -384,7 +384,7 @@ class TestMeasure:
         m = Measure()
         assert m.semantic_type == "Measure"
 
-    def test_wire_id_uses_measure_map_name(self) -> None:
+    def test_serialized_id_uses_measure_map_name(self) -> None:
         measure = Measure.model_validate({"ID": "m1", "number": 1})
         assert measure.id == "m1"
         assert measure.model_dump(by_alias=True)["ID"] == "m1"

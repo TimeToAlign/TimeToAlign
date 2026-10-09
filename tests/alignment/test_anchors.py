@@ -244,17 +244,15 @@ class TestAlignmentAnchor:
         # quarters count in exact ratios, so the anchor holds one and the
         # dictionary records it. seconds are a measurement and stay float.
         assert d["coordinate_a"] == {
-            "value": 100.0,
-            "numerator": 100,
-            "denominator": 1,
             "unit": "quarters",
+            "number_type": "fraction",
+            "value": [100, 1],
         }
         assert d["timeline_b_id"] == "recording:1"
         assert d["coordinate_b"] == {
-            "value": 45.5,
-            "numerator": None,
-            "denominator": None,
             "unit": "seconds",
+            "number_type": "float",
+            "value": 45.5,
         }
         # No is_explicit, is_synchronous, or id in dict
         assert "is_explicit" not in d

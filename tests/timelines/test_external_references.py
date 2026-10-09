@@ -573,7 +573,7 @@ class TestToDictFlags:
         rich = timeline.to_dict(events=True, external_references=True)
         assert {key: rich[key] for key in STRUCTURAL_KEYS} == plain
 
-    def test_the_rational_wire_format_is_untouched(self) -> None:
+    def test_the_fraction_json_format_is_untouched(self) -> None:
         timeline = Timeline(
             length=Fraction(10, 3),
             unit=TimeUnit.quarters,
@@ -581,9 +581,9 @@ class TestToDictFlags:
             uid="rational",
         )
         assert timeline.to_dict(events=True, external_references=True)["length"] == {
-            "value": 10 / 3,
-            "numerator": 10,
-            "denominator": 3,
+            "unit": "quarters",
+            "number_type": "fraction",
+            "value": [10, 3],
         }
 
 

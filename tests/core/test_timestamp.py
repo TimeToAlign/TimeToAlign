@@ -158,18 +158,14 @@ class TestTimeStampWithChildren:
         result = ts.to_dict()
 
         assert result["parent:1"] == {
-            "value": 30.0,
-            "numerator": None,
-            "denominator": None,
             "unit": "seconds",
             "number_type": "float",
+            "value": 30.0,
         }
         assert result["child:1"] == {
-            "value": 10.0,
-            "numerator": None,
-            "denominator": None,
             "unit": "seconds",
             "number_type": "float",
+            "value": 10.0,
         }
 
     def test_present_timelines(self):
@@ -274,11 +270,9 @@ class TestTimeStampWithCMaps:
         result = ts.to_dict()
 
         assert result["tl:1"] == {
-            "value": 480.0,
-            "numerator": 480,
-            "denominator": 1,
             "unit": "ticks",
             "number_type": "int",
+            "value": 480,
         }
         assert ts.get_unit(TimeUnit.seconds, format="float") == 1.0
 

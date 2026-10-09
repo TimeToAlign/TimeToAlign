@@ -408,13 +408,12 @@ exact `Fraction` equality (`result == expected`).
 
 Every map's `to_dict()` is JSON-serializable: rational parameters (scalars,
 offsets, boundaries, measure starts and lengths, table anchors) are emitted as
-the **rational dictionary** `{value, numerator, denominator}` rather than as
-`Fraction` objects or `"n/d"` strings, and `from_dict()` reads that shape and
-nothing else. `to_dict()` also always emits `name`, and every subclass
+exact Fraction pairs rather than as `Fraction` objects or `"n/d"` strings, and
+`from_dict()` reads that shape and nothing else. `to_dict()` also always emits `name`, and every subclass
 `from_dict()` passes it to the constructor, so a custom map name round-trips.
 
 The format, the fixpoint guarantee, and the cross-package JSON-safety sweep
-are specified in `tests/core/README.md` (`test_wire_format.py`), which holds
+are specified in `tests/core/README.md` (`test_number_json.py`), which holds
 the map name and `ConstantMap` `Fraction` round-trip tests.
 
 ## Integration Tests

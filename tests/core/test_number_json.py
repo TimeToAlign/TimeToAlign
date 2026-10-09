@@ -1,9 +1,9 @@
-"""Tests for the canonical rational dict shared by every ``to_dict``.
+"""Tests for the canonical JSON number and coordinate forms.
 
 Three contracts are exercised here:
 
-1. the codec itself (``rational_to_dict`` / ``rational_from_dict`` /
-   ``is_rational_dict``);
+1. the codec itself (``number_to_json`` / ``number_from_json`` /
+   ``is_fraction_json``);
 2. the fixpoint guarantee — ``from_dict(json.loads(json.dumps(x.to_dict())))``
    reproduces ``x.to_dict()`` — for timelines and maps, including exact
    ``Fraction`` recovery and conversion-map name round-trips;
@@ -39,7 +39,13 @@ from timetoalign.core import (
     Tempo,
     TimeUnit,
 )
-from timetoalign.core.time import is_rational_dict, rational_from_dict, rational_to_dict
+from timetoalign.core.retrieval import coordinate_from_dict, coordinate_to_dict
+from timetoalign.core.time import (
+    is_fraction_json,
+    number_from_json,
+    number_to_json,
+    struct_to_rational,
+)
 from timetoalign.maps import (
     ChainMap,
     CombinationMap,
@@ -65,6 +71,7 @@ from timetoalign.maps.interval import (
 )
 from timetoalign.maps.meter import BeatInMeasureMap, MetricalPositionMap, MetricMap
 from timetoalign.timelines import (
+    ContinuousLogicalTimeline,
     MeasureMap,
     MetricHierarchy,
     TempoEntry,
@@ -228,113 +235,88 @@ def _measure_unit() -> MeasureUnit:
 # region Codec
 
 
-class TestRationalDict:
-    """The three-key dictionary is the only encoding of a rational."""
+class TestNumberJson:
+    """The schema's number forms are encoded and decoded exactly."""
 
-    def test_fraction_carries_its_exact_ratio(self) -> None:
-        assert rational_to_dict(Fraction(10, 3)) == {
-            "value": 10 / 3,
-            "numerator": 10,
-            "denominator": 3,
-        }
+    def test_fraction_encodes_as_a_pair(self) -> None:
+        assert number_to_json(Fraction(10, 3)) == [10, 3]
 
-    def test_float_encodes_with_a_null_ratio(self) -> None:
-        assert rational_to_dict(2.5) == {
-            "value": 2.5,
-            "numerator": None,
-            "denominator": None,
-        }
+    def test_float_encodes_as_a_json_number(self) -> None:
+        assert number_to_json(2.5) == 2.5
 
-    def test_integer_encodes_as_an_exact_ratio(self) -> None:
-        assert rational_to_dict(7) == {
-            "value": 7.0,
-            "numerator": 7,
-            "denominator": 1,
-        }
+    def test_integer_encodes_as_a_json_integer(self) -> None:
+        result = number_to_json(7)
+        assert result == 7
+        assert type(result) is int
 
-    def test_exact_ratio_decodes_to_a_fraction(self) -> None:
-        decoded = rational_from_dict(rational_to_dict(Fraction(1, 3)))
+    def test_fraction_decodes_to_a_fraction(self) -> None:
+        decoded = number_from_json([1, 3])
         assert decoded == Fraction(1, 3)
         assert isinstance(decoded, Fraction)
 
-    def test_legacy_integer_valued_float_ratio_decodes_exactly(self) -> None:
-        data = {
-            "value": 8379000.0,
-            "numerator": 8379000.0,
-            "denominator": 1.0,
-        }
-        decoded = rational_from_dict(data)
-        assert decoded == Fraction(8379000, 1)
-        assert isinstance(decoded, Fraction)
-
-    def test_mixed_integer_valued_float_and_int_ratio_decodes_exactly(self) -> None:
-        data = {"value": 2.5, "numerator": 5.0, "denominator": 2}
-        decoded = rational_from_dict(data)
-        assert decoded == Fraction(5, 2)
-        assert isinstance(decoded, Fraction)
-
-    def test_fractional_float_ratio_member_is_rejected(self) -> None:
-        data = {"value": 5.5, "numerator": 5.5, "denominator": 1}
-        with pytest.raises(
-            ValueError,
-            match=(
-                r"numerator must be an integer or integer-valued float, "
-                r"got non-integral float 5\.5"
-            ),
-        ):
-            rational_from_dict(data)
-
-    def test_null_ratio_means_an_inexact_float(self) -> None:
-        decoded = rational_from_dict(rational_to_dict(2.5))
+    def test_float_decodes_to_a_float(self) -> None:
+        decoded = number_from_json(2.5)
         assert decoded == 2.5
         assert isinstance(decoded, float)
 
     @pytest.mark.parametrize("value", [Fraction(-7, 9), Fraction(0, 1), Fraction(5, 1)])
     def test_round_trip_is_exact(self, value: Fraction) -> None:
-        assert rational_from_dict(rational_to_dict(value)) == value
+        assert number_from_json(number_to_json(value)) == value
 
     def test_dictionary_is_json_native(self) -> None:
-        data = rational_to_dict(Fraction(10, 3))
+        data = number_to_json(Fraction(10, 3))
         assert json.loads(json.dumps(data)) == data
 
-    def test_large_ratio_components_encode_as_decimal_strings(self) -> None:
-        assert rational_to_dict(2**53)["numerator"] == "9007199254740992"
-        assert rational_to_dict(Fraction(1, 2**53))["denominator"] == "9007199254740992"
-
-    def test_decimal_string_ratio_components_decode_exactly(self) -> None:
-        assert rational_from_dict(
-            {
-                "value": -9007199254740992.0,
-                "numerator": "-9007199254740992",
-                "denominator": 1,
-            }
-        ) == Fraction(-(2**53), 1)
-        assert rational_from_dict(
-            {"value": 2**-53, "numerator": 1, "denominator": "9007199254740992"}
-        ) == Fraction(1, 2**53)
-
-    def test_boolean_ratio_members_are_refused(self) -> None:
+    def test_boolean_fraction_components_are_refused(self) -> None:
         with pytest.raises(ValueError):
-            rational_from_dict({"value": 1.0, "numerator": True, "denominator": 1})
+            number_from_json([True, 1])
 
-    def test_is_rational_dict_recognises_the_shape(self) -> None:
-        assert is_rational_dict(rational_to_dict(Fraction(1, 2)))
-        assert is_rational_dict(rational_to_dict(1.5))
-        assert not is_rational_dict({"value": 1.0})
-        assert not is_rational_dict("page1.jpeg")
-        assert not is_rational_dict(1.0)
+    def test_is_fraction_json_recognises_the_shape(self) -> None:
+        assert is_fraction_json([1, 2])
+        assert not is_fraction_json([1, 0])
+        assert not is_fraction_json([1, 2, 3])
+        assert not is_fraction_json([True, 1])
 
     def test_non_numeric_input_is_rejected(self) -> None:
         with pytest.raises(TypeError):
-            rational_to_dict("3/4")  # type: ignore[arg-type]
+            number_to_json("3/4")  # type: ignore[arg-type]
 
-    def test_stale_string_encoding_is_rejected(self) -> None:
-        with pytest.raises(TypeError):
-            rational_from_dict("3/4")  # type: ignore[arg-type]
-
-    def test_dict_without_a_usable_value_is_rejected(self) -> None:
+    def test_string_encoding_is_rejected(self) -> None:
         with pytest.raises(ValueError):
-            rational_from_dict({"value": None, "numerator": None, "denominator": None})
+            number_from_json("3/4")
+
+    def test_zero_denominator_is_rejected(self) -> None:
+        with pytest.raises(ValueError):
+            number_from_json([1, 0])
+
+    def test_negative_denominator_is_rejected(self) -> None:
+        with pytest.raises(ValueError):
+            number_from_json([1, -3])
+
+    def test_wrong_length_fraction_is_rejected(self) -> None:
+        with pytest.raises(ValueError):
+            number_from_json([1, 2, 3])
+
+    def test_coordinate_restores_its_declared_number_type(self) -> None:
+        data = {"unit": "quarters", "number_type": "fraction", "value": [1, 3]}
+        restored = coordinate_from_dict(data)
+        assert coordinate_to_dict(restored) == data
+        assert type(restored.value) is Fraction
+
+    def test_timeline_length_axis_mismatch_is_refused(self) -> None:
+        payload = ContinuousLogicalTimeline(length=12, unit="quarters").to_dict()
+        payload["length"]["unit"] = "seconds"
+        with pytest.raises(ValueError, match="length axis"):
+            ContinuousLogicalTimeline.from_dict(payload)
+
+    def test_timeline_offset_axis_mismatch_is_refused(self) -> None:
+        parent = ContinuousLogicalTimeline(length=12, unit="quarters")
+        child = ContinuousLogicalTimeline(length=4, unit="quarters", uid="child")
+        parent.add_child(child, offset=Fraction(1, 3))
+        payload = parent.to_dict()
+        payload["children"]["child"]["offset"]["number_type"] = "int"
+        with pytest.raises(ValueError, match="timeline .*child offset"):
+            ContinuousLogicalTimeline.from_dict(payload)
 
 
 # endregion
@@ -345,30 +327,36 @@ class TestRationalDict:
 class TestTimelineDictForm:
     """``length``, child ``offset``s, and event coordinates share one shape."""
 
-    def test_fraction_length_keeps_its_components(self) -> None:
+    def test_fraction_length_is_a_coordinate(self) -> None:
         data = _fraction_timeline().to_dict()
-        assert data["length"]["numerator"] == 10
-        assert data["length"]["denominator"] == 3
+        assert data["length"] == {
+            "unit": "quarters",
+            "number_type": "fraction",
+            "value": [10, 3],
+        }
 
-    def test_fraction_offset_keeps_its_components(self) -> None:
+    def test_fraction_offset_is_a_coordinate(self) -> None:
         data = _fraction_timeline().to_dict()
         offset = data["children"]["child"]["offset"]
-        assert offset["numerator"] == 5
-        assert offset["denominator"] == 3
+        assert offset == {
+            "unit": "quarters",
+            "number_type": "fraction",
+            "value": [5, 3],
+        }
 
-    def test_float_length_has_a_null_ratio(self) -> None:
+    def test_float_length_is_a_coordinate(self) -> None:
         data = _float_timeline().to_dict()
         assert data["length"] == {
+            "unit": "seconds",
+            "number_type": "float",
             "value": 10.0,
-            "numerator": None,
-            "denominator": None,
         }
 
     def test_event_coordinate_survives_json_exactly(self) -> None:
         restored = Timeline.from_dict(
             json.loads(json.dumps(_fraction_timeline().to_dict(events=True)))
         )
-        coordinate = rational_from_dict(list(restored.events)[0]["start"])
+        coordinate = struct_to_rational(list(restored.events)[0]["start"])
         assert coordinate == Fraction(1, 3)
         assert isinstance(coordinate, Fraction)
 
@@ -409,11 +397,7 @@ class TestMapDictForm:
 
     def test_linear_map_keeps_exact_fractions(self) -> None:
         data = LinearMap(scalar=Fraction(1, 3), offset=Fraction(5, 3)).to_dict()
-        assert data["scalar"] == {
-            "value": 1 / 3,
-            "numerator": 1,
-            "denominator": 3,
-        }
+        assert data["scalar"] == [1, 3]
         restored = LinearMap.from_dict(json.loads(json.dumps(data)))
         assert restored.scalar == Fraction(1, 3)
         assert restored.offset == Fraction(5, 3)
@@ -434,7 +418,7 @@ class TestMapDictForm:
     def test_table_map_keeps_exact_fractions(self) -> None:
         table = TableMap(x_values=[Fraction(0), Fraction(1, 3)], y_values=[0.0, 1.0])
         restored = TableMap.from_dict(json.loads(json.dumps(table.to_dict())))
-        assert restored.to_dict()["x_values"][1]["denominator"] == 3
+        assert restored.to_dict()["x_values"][1] == [1, 3]
 
     def test_metric_map_keeps_exact_fractions(self) -> None:
         data = json.loads(json.dumps(_meter_map().to_dict()))

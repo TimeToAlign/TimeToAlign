@@ -16,8 +16,8 @@ from numpy.typing import NDArray
 from ..core.enums import TimeUnit
 from ..core.time import (
     CoordinateValue,
-    rational_from_dict,
-    rational_to_dict,
+    number_from_json,
+    number_to_json,
 )
 from .base import ConversionMap
 
@@ -157,16 +157,16 @@ class LinearMap(ConversionMap[CoordinateValue]):
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary."""
         d = super().to_dict()
-        d["scalar"] = rational_to_dict(self._scalar)
-        d["offset"] = rational_to_dict(self._offset)
+        d["scalar"] = number_to_json(self._scalar)
+        d["offset"] = number_to_json(self._offset)
         return d
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> LinearMap:
         """Deserialize from dictionary."""
         return cls(
-            scalar=rational_from_dict(data["scalar"]) if "scalar" in data else 1.0,
-            offset=rational_from_dict(data["offset"]) if "offset" in data else 0,
+            scalar=number_from_json(data["scalar"]) if "scalar" in data else 1.0,
+            offset=number_from_json(data["offset"]) if "offset" in data else 0,
             source_unit=data.get("source_unit"),
             target_unit=data.get("target_unit"),
             uid=data.get("id"),
@@ -264,14 +264,14 @@ class ScalarMap(ConversionMap[CoordinateValue]):
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary."""
         d = super().to_dict()
-        d["scalar"] = rational_to_dict(self._scalar)
+        d["scalar"] = number_to_json(self._scalar)
         return d
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ScalarMap:
         """Deserialize from dictionary."""
         return cls(
-            scalar=rational_from_dict(data["scalar"]) if "scalar" in data else 1.0,
+            scalar=number_from_json(data["scalar"]) if "scalar" in data else 1.0,
             source_unit=data.get("source_unit"),
             target_unit=data.get("target_unit"),
             uid=data.get("id"),
@@ -365,14 +365,14 @@ class ShiftMap(ConversionMap[CoordinateValue]):
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary."""
         d = super().to_dict()
-        d["offset"] = rational_to_dict(self._offset)
+        d["offset"] = number_to_json(self._offset)
         return d
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ShiftMap:
         """Deserialize from dictionary."""
         return cls(
-            offset=rational_from_dict(data["offset"]) if "offset" in data else 0,
+            offset=number_from_json(data["offset"]) if "offset" in data else 0,
             source_unit=data.get("source_unit"),
             target_unit=data.get("target_unit"),
             uid=data.get("id"),

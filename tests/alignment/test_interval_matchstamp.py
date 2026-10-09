@@ -110,14 +110,12 @@ def _instant_claim(
     )
 
 
-def _wire(value: float) -> dict[str, object]:
+def _coordinate_data(value: float) -> dict[str, object]:
     """Return one expected float-canonical dictionary."""
     return {
-        "value": value,
-        "numerator": None,
-        "denominator": None,
         "unit": "floating_measures",
         "number_type": "float",
+        "value": value,
     }
 
 
@@ -353,7 +351,7 @@ def test_interval_query_combines_two_matchstamps() -> None:
     assert stamp.get_interval_for("track") == _interval(32, 38)
 
 
-def test_complete_interval_stamp_wire_pairs_match_endpoint_stamps() -> None:
+def test_complete_interval_stamp_data_pairs_match_endpoint_stamps() -> None:
     """Complete endpoint coverage serializes every exact coordinate without nulls."""
     bundle = _bundle("mix", "track")
     bundle.add_match_claims([_interval_claim("mix", 10, 20, "track", 30, 40)])
@@ -362,8 +360,8 @@ def test_complete_interval_stamp_wire_pairs_match_endpoint_stamps() -> None:
     data = stamp.to_dict()
 
     assert data == {
-        "mix": {"start": _wire(12.0), "end": _wire(18.0)},
-        "track": {"start": _wire(32.0), "end": _wire(38.0)},
+        "mix": {"start": _coordinate_data(12.0), "end": _coordinate_data(18.0)},
+        "track": {"start": _coordinate_data(32.0), "end": _coordinate_data(38.0)},
     }
     assert all(
         endpoint is not None for pair in data.values() for endpoint in pair.values()
@@ -402,7 +400,7 @@ def test_interval_query_preserves_a_missing_start_side() -> None:
 
     assert type(stamp) is MatchIntervalStamp
     assert stamp.present_timelines == ["mix", "track-a", "track-b"]
-    assert stamp.to_dict()["track-b"] == {"start": None, "end": _wire(4.0)}
+    assert stamp.to_dict()["track-b"] == {"start": None, "end": _coordinate_data(4.0)}
     with pytest.raises(ValueError, match="missing start"):
         stamp.get_interval_for("track-b")
     html = stamp._repr_html_()
@@ -464,7 +462,10 @@ def test_motivating_dj_set_queries() -> None:
     }
     assert point.is_interpolated is True
     assert interval.get_interval_for("track-a") == _interval(34, 39)
-    assert interval.to_dict()["track-b"] == {"start": None, "end": _wire(4.0)}
+    assert interval.to_dict()["track-b"] == {
+        "start": None,
+        "end": _coordinate_data(4.0),
+    }
     assert "track-b=[MISSING, 4 floating_measures]" in repr(interval)
 
 

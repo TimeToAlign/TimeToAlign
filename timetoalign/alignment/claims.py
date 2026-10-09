@@ -69,14 +69,12 @@ from timetoalign.core.retrieval import (
     KeyCollection,
     Rounding,
     classify_dispatch_input,
+    coordinate_from_dict,
+    coordinate_to_dict,
     format_coordinates,
     validate_key_collection,
 )
-from timetoalign.core.time import (
-    express_scalar_as,
-    rational_from_dict,
-    rational_to_dict,
-)
+from timetoalign.core.time import express_scalar_as, struct_to_rational
 from timetoalign.core.timestamp import _format_coordinate
 
 if TYPE_CHECKING:
@@ -219,13 +217,13 @@ class MatchMetadata(BaseModel):
 
 
 def _coordinate_to_dict(coordinate: Coordinate) -> dict[str, Any]:
-    """Serialize a coordinate as the rational dictionary plus its unit."""
-    return {**rational_to_dict(coordinate.value), "unit": coordinate.unit.value}
+    """Serialize a coordinate through the shared representation."""
+    return dict(coordinate_to_dict(coordinate))
 
 
 def _coordinate_from_dict(data: dict[str, Any]) -> Coordinate:
-    """Restore a coordinate from its public or claim-storage dictionary."""
-    return Coordinate(rational_from_dict(data), data["unit"])
+    """Restore a coordinate through the shared representation."""
+    return coordinate_from_dict(data)
 
 
 def _coordinate_from_input(
@@ -260,7 +258,9 @@ def _event_coordinate_value(raw: Any) -> int | float | Fraction:
     if isinstance(raw, Coordinate):
         return raw.value
     if isinstance(raw, dict):
-        return rational_from_dict(raw)
+        if "number_type" in raw:
+            return coordinate_from_dict(raw).value
+        return struct_to_rational(raw)
     return raw
 
 
@@ -372,7 +372,7 @@ class AlignmentAnchor(BaseModel):
 
     @field_serializer("coordinate_a", "coordinate_b")
     def _serialize_coordinate(self, coordinate: Coordinate) -> dict[str, Any]:
-        """Emit a coordinate as the rational dictionary plus its unit."""
+        """Emit a coordinate through the shared JSON representation."""
         return _coordinate_to_dict(coordinate)
 
     @field_validator("coordinate_a", "coordinate_b", mode="before")
@@ -1185,7 +1185,7 @@ class MatchClaim(BaseModel):
     def _serialize_source_coordinate(
         self, coordinate: Coordinate | None
     ) -> dict[str, Any] | None:
-        """Emit the NOMATCH coordinate as the rational dictionary plus unit."""
+        """Emit the NOMATCH coordinate through the shared JSON representation."""
         return None if coordinate is None else _coordinate_to_dict(coordinate)
 
     @field_validator("source_coordinate", mode="before")
@@ -1273,7 +1273,26 @@ class MatchClaim(BaseModel):
         Returns:
             A reconstructed :class:`MatchClaim`.
         """
-        return cls.from_dict(row)
+        payload = dict(row)
+        for anchor_name in ("start_anchor", "end_anchor"):
+            anchor = payload.get(anchor_name)
+            if not isinstance(anchor, dict):
+                continue
+            restored = dict(anchor)
+            for coordinate_name in ("coordinate_a", "coordinate_b"):
+                coordinate = restored.get(coordinate_name)
+                if not isinstance(coordinate, dict):
+                    continue
+                numerator = coordinate.get("numerator")
+                denominator = coordinate.get("denominator")
+                value = (
+                    Fraction(numerator, denominator)
+                    if numerator is not None and denominator is not None
+                    else coordinate["value"]
+                )
+                restored[coordinate_name] = Coordinate(value, coordinate["unit"])
+            payload[anchor_name] = restored
+        return cls.from_dict(payload)
 
     def __repr__(self) -> str:
         match_type = "interval" if self.is_interval else "instant"
@@ -2451,23 +2470,28 @@ class MatchClaimField(SemanticField[MatchClaim]):
             stored_b = anchor.field("coordinate_b").to_pylist()
             stored_end_a = end_anchor.field("coordinate_a").to_pylist()
             stored_end_b = end_anchor.field("coordinate_b").to_pylist()
+
+            def storage_value(value: dict[str, Any]) -> CoordinateValue:
+                """Read one known claim-coordinate storage cell."""
+                numerator = value["numerator"]
+                denominator = value["denominator"]
+                if numerator is not None and denominator is not None:
+                    return Fraction(numerator, denominator)
+                return value["value"]
+
             columns = {
                 "timeline_a_id": data.field("timeline_a_id").to_pylist(),
                 "timeline_b_id": data.field("timeline_b_id").to_pylist(),
-                "coordinate_a": [
-                    _coordinate_from_dict(value).value for value in stored_a
-                ],
-                "coordinate_b": [
-                    _coordinate_from_dict(value).value for value in stored_b
-                ],
+                "coordinate_a": [storage_value(value) for value in stored_a],
+                "coordinate_b": [storage_value(value) for value in stored_b],
                 "unit_a": [value["unit"] for value in stored_a],
                 "unit_b": [value["unit"] for value in stored_b],
                 "end_coordinate_a": [
-                    None if value is None else _coordinate_from_dict(value).value
+                    None if value is None else storage_value(value)
                     for value in stored_end_a
                 ],
                 "end_coordinate_b": [
-                    None if value is None else _coordinate_from_dict(value).value
+                    None if value is None else storage_value(value)
                     for value in stored_end_b
                 ],
                 "end_unit_a": [

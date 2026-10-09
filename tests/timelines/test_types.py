@@ -22,7 +22,7 @@ from typing import cast
 
 import pytest
 
-from timetoalign.core import Domain, NumberType, TimeUnit
+from timetoalign.core import Domain, NumberType, TimeUnit, number_to_json
 from timetoalign.maps.linear import ScalarMap
 from timetoalign.timelines import (
     ContinuousGraphicalTimeline,
@@ -406,9 +406,9 @@ class TestSerializedTypeParameters:
             for _, _, segment in restored.iter_segments()
         ] == ["event_0", "event_1"]
         assert [
-            segment.to_dict(events=True)["events"][0]["start"]["value"]
+            segment.to_dict(events=True)["events"][0]["start"]
             for _, _, segment in restored.iter_segments()
-        ] == [float(event_instant), float(event_instant)]
+        ] == [number_to_json(event_instant), number_to_json(event_instant)]
         assert [
             segment.get_conversion_map(target_unit).id
             for _, _, segment in restored.iter_segments()
@@ -511,10 +511,10 @@ class TestSerializedTypeParameters:
         assert restored.id == "pickled"
         assert restored.n_segments == 1
 
-    def test_version_1_0_1_nested_payload_compatibility(self):
+    def test_nested_payload_materializes_dynamic_classes(self):
         """A hand-captured nested payload materializes both dynamic classes."""
-        zero = {"value": 0.0, "numerator": 0, "denominator": 1}
-        ten = {"value": 10.0, "numerator": 10, "denominator": 1}
+        zero = {"unit": "pixels", "number_type": "int", "value": 0}
+        ten = {"unit": "pixels", "number_type": "int", "value": 10}
         payload = {
             "id": "systems",
             "name": None,

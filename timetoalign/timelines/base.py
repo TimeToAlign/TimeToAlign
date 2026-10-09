@@ -25,9 +25,9 @@ from timetoalign.core import (
     Domain,
     NumberType,
     TimeUnit,
-    rational_from_dict,
-    rational_to_dict,
 )
+from timetoalign.core.retrieval import coordinate_from_dict, coordinate_to_dict
+from timetoalign.core.time import number_from_json, number_to_json, struct_to_rational
 from timetoalign.core.timestamp import _format_coordinate_value
 from timetoalign.maps import ConversionMap
 from timetoalign.storage import EventData
@@ -217,7 +217,7 @@ class Timeline(
     @classmethod
     def _from_dict_initial_length(cls, data: dict[str, Any]) -> CoordinateValue:
         """Return the length to use while reconstructing a payload."""
-        return rational_from_dict(data["length"])
+        return coordinate_from_dict(data["length"]).value
 
     def _finalize_from_dict(self, data: dict[str, Any]) -> None:
         """Restore state that must be set after children are added."""
@@ -756,7 +756,7 @@ class Timeline(
                     f"expected '{self._unit}'"
                 )
             return value
-        return Coordinate(value, self._unit)
+        return Coordinate(value, self._unit, number_type=self._number_type)
 
     def make_coordinate(self, value: CoordinateValue) -> Coordinate:
         """Create a Coordinate in this timeline's unit.
@@ -802,7 +802,7 @@ class Timeline(
                 value.get("numerator") is not None
                 and value.get("denominator") is not None
             ):
-                return rational_from_dict(value)
+                return struct_to_rational(value)
             return value["value"]
         return value
 
@@ -960,8 +960,8 @@ class Timeline(
         created from regions, or unfolded timelines.
 
         Coordinate-valued members — ``length`` and every child
-        ``offset`` — are emitted as the canonical rational dictionary
-        (:func:`~timetoalign.core.rational_to_dict`), so the result is
+        ``offset`` — are emitted as canonical coordinate dictionaries
+        (:func:`~timetoalign.core.retrieval.coordinate_to_dict`), so the result is
         JSON-serializable whatever the timeline's number type, and
         ``Fraction`` coordinates survive the round trip exactly.
 
@@ -986,7 +986,7 @@ class Timeline(
         children_data = {}
         for child_id, child in self._children.items():
             children_data[child_id] = {
-                "offset": rational_to_dict(self._child_offsets[child_id].value),
+                "offset": coordinate_to_dict(self._child_offsets[child_id]),
                 "timeline": child.to_dict(
                     events=events,
                     external_references=external_references,
@@ -999,7 +999,7 @@ class Timeline(
             "class": self.class_name,
             "unit": str(self._unit),
             "number_type": str(self._number_type),
-            "length": rational_to_dict(self._length.value),
+            "length": coordinate_to_dict(self._length),
             "locked": self._locked,
             "meta": self._meta,
             "children": children_data,
@@ -1019,7 +1019,23 @@ class Timeline(
         }
 
         if events:
-            data["events"] = list(self._events)
+            event_rows: list[dict[str, Any]] = []
+            for stored_event in self._events:
+                event = dict(stored_event)
+                for coord_col in ("instant", "start", "end", "duration"):
+                    value = event.get(coord_col)
+                    if value is None or not isinstance(value, dict):
+                        continue
+                    if self.number_type == NumberType.float:
+                        event[coord_col] = number_to_json(value["value"])
+                    elif self.number_type == NumberType.int:
+                        event[coord_col] = number_to_json(
+                            int(struct_to_rational(value))
+                        )
+                    else:
+                        event[coord_col] = number_to_json(struct_to_rational(value))
+                event_rows.append(event)
+            data["events"] = event_rows
         if external_references:
             data["external_references"] = self._external_references.to_pylist()
 
@@ -1029,9 +1045,9 @@ class Timeline(
     def from_dict(cls, data: dict[str, Any]) -> Self:
         """Create a Timeline from a dictionary.
 
-        Every rational dictionary in *data* — ``length``, the child
+        Every coordinate dictionary in *data* — ``length``, the child
         ``offset``s, and the event coordinate structs — is decoded by
-        :func:`~timetoalign.core.rational_from_dict`, so an exact ratio
+        :func:`~timetoalign.core.retrieval.coordinate_from_dict`, so an exact ratio
         comes back as a ``Fraction`` and an inexact one as a ``float``.
         Feeding the result back through :meth:`to_dict` with the same
         flags reproduces the input dictionary.
@@ -1064,6 +1080,31 @@ class Timeline(
 
         cls._validate_serialized_payload(data)
 
+        timeline_id = data["id"]
+        try:
+            length = coordinate_from_dict(data["length"])
+        except ValueError as error:
+            raise ValueError(
+                f"timeline {timeline_id!r} has an invalid length coordinate: {error}"
+            ) from error
+        try:
+            axis_unit = TimeUnit(data["unit"])
+        except (TypeError, ValueError) as error:
+            raise ValueError(
+                f"timeline {timeline_id!r} has an unknown unit {data['unit']!r}"
+            ) from error
+        try:
+            axis_number_type = NumberType[data["number_type"]]
+        except (KeyError, TypeError) as error:
+            raise ValueError(
+                f"timeline {timeline_id!r} has an unknown number_type "
+                f"{data['number_type']!r}"
+            ) from error
+        if length.unit != axis_unit or length.number_type != axis_number_type:
+            raise ValueError(
+                f"timeline {timeline_id!r} length axis does not match its unit or number_type"
+            )
+
         timeline = cls(
             length=cls._from_dict_initial_length(data),
             unit=data["unit"],
@@ -1075,7 +1116,7 @@ class Timeline(
         )
 
         # Add events (filter out segment events - they'll be recreated).
-        # Event coordinates arrive as rational dictionaries; decode them
+        # Event coordinates arrive as JSON numbers; decode them
         # back to the numbers the EventData builder expects.
         events = []
         for e in data.get("events", []):
@@ -1084,7 +1125,7 @@ class Timeline(
             event = dict(e)
             for coord_col in ("instant", "start", "end", "duration"):
                 if event.get(coord_col) is not None:
-                    event[coord_col] = rational_from_dict(event[coord_col])
+                    event[coord_col] = number_from_json(event[coord_col])
             events.append(event)
 
         if events:
@@ -1099,7 +1140,21 @@ class Timeline(
         # Add children
         for child_id, child_data in data.get("children", {}).items():
             child = Timeline.from_dict(child_data["timeline"])
-            timeline.add_child(child, offset=rational_from_dict(child_data["offset"]))
+            try:
+                offset = coordinate_from_dict(child_data["offset"])
+            except ValueError as error:
+                raise ValueError(
+                    f"timeline {timeline_id!r} has an invalid child offset: {error}"
+                ) from error
+            if (
+                offset.unit != timeline.unit
+                or offset.number_type != timeline.number_type
+            ):
+                raise ValueError(
+                    f"timeline {timeline_id!r} child offset axis does not match its "
+                    "unit or number_type"
+                )
+            timeline.add_child(child, offset=offset)
 
         # Add conversion maps
         for map_data in data.get("conversion_maps", []):

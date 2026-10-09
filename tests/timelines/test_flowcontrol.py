@@ -191,7 +191,7 @@ class TestBoundRegistry:
         assert registry.breaks[1] is late
 
 
-class TestFlowControlWire:
+class TestFlowControlJson:
     """All fields and exact typed coordinates survive JSON serialization."""
 
     def test_break_round_trip(self) -> None:

@@ -26,7 +26,6 @@ Design:
 from __future__ import annotations
 
 import logging
-import math
 from dataclasses import dataclass, field
 from fractions import Fraction
 from types import SimpleNamespace
@@ -45,6 +44,7 @@ from timetoalign.core.retrieval import (
     CoordinateResult,
     KeyCollection,
     Rounding,
+    coordinate_from_dict,
     coordinate_to_dict,
     dispatch_retrieval,
     format_coordinates,
@@ -57,7 +57,6 @@ from timetoalign.core.time import (
     CoordinateValue,
     IdCoordinate,
     Interval,
-    rational_from_dict,
 )
 from timetoalign.core.timestamp import (
     ConversionMapsSpec,
@@ -552,55 +551,7 @@ class MatchStamp(Stamp):
         for timeline_id, coordinate_data in data["coordinates"].items():
             if not isinstance(coordinate_data, dict):
                 raise TypeError("MatchStamp coordinate leaves must be dictionaries")
-            number_type = coordinate_data["number_type"]
-            if number_type == "fraction":
-                value = rational_from_dict(coordinate_data)
-                mirror = coordinate_data["value"]
-                if (
-                    isinstance(mirror, bool)
-                    or not isinstance(mirror, (int, float))
-                    or not math.isfinite(float(mirror))
-                    or float(mirror) != float(value)
-                ):
-                    raise ValueError("Fraction dictionary has an invalid float mirror")
-            elif number_type == "int":
-                value = rational_from_dict(coordinate_data)
-                mirror = coordinate_data["value"]
-                if (
-                    isinstance(mirror, bool)
-                    or not isinstance(mirror, (int, float))
-                    or not math.isfinite(float(mirror))
-                    or not float(mirror).is_integer()
-                ):
-                    raise ValueError(
-                        "Integer dictionary requires an integral finite mirror"
-                    )
-                if not isinstance(value, Fraction) or value.denominator != 1:
-                    raise ValueError("Integer dictionary requires an integral ratio")
-                value = value.numerator
-            elif number_type == "float":
-                if (
-                    coordinate_data["numerator"] is not None
-                    or coordinate_data["denominator"] is not None
-                ):
-                    raise ValueError("Float dictionary ratio members must be null")
-                mirror = coordinate_data["value"]
-                if (
-                    isinstance(mirror, bool)
-                    or not isinstance(mirror, (int, float))
-                    or not math.isfinite(float(mirror))
-                ):
-                    raise ValueError(
-                        "Float dictionary requires a finite numeric mirror"
-                    )
-                value = float(mirror)
-            else:
-                raise ValueError(f"Unknown dictionary number_type {number_type!r}")
-            coordinates[timeline_id] = Coordinate(
-                value,
-                TimeUnit(coordinate_data["unit"]),
-                number_type=number_type,
-            )
+            coordinates[timeline_id] = coordinate_from_dict(coordinate_data)
         if not coordinates:
             raise ValueError("MatchStamp payload must contain at least one coordinate")
         return cls(

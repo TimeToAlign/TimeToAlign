@@ -16,8 +16,8 @@ from numpy.typing import NDArray
 from ..core.enums import TimeUnit
 from ..core.time import (
     CoordinateValue,
-    rational_from_dict,
-    rational_to_dict,
+    number_from_json,
+    number_to_json,
 )
 from .base import ConversionMap
 
@@ -364,7 +364,7 @@ class PiecewiseMap(ConversionMap[CoordinateValue]):
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary."""
         d = super().to_dict()
-        d["breaks"] = [rational_to_dict(b) for b in self._breaks_orig]
+        d["breaks"] = [number_to_json(b) for b in self._breaks_orig]
         d["maps"] = [m.to_dict() for m in self._maps]
         return d
 
@@ -377,7 +377,7 @@ class PiecewiseMap(ConversionMap[CoordinateValue]):
         maps = [ConversionMap.from_dict(m_data) for m_data in maps_data]
 
         return cls(
-            breaks=[rational_from_dict(b) for b in data.get("breaks", [])],
+            breaks=[number_from_json(b) for b in data.get("breaks", [])],
             maps=maps,
             source_unit=data.get("source_unit"),
             target_unit=data.get("target_unit"),

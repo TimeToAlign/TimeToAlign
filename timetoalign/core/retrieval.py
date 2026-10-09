@@ -11,7 +11,7 @@ import pandas as pd
 
 from .enums import NumberType, TimeUnit
 from .events import Address
-from .time import Coordinate, IdCoordinate, rational_from_dict, rational_to_dict
+from .time import Coordinate, IdCoordinate, number_from_json, number_to_json
 
 CoordinateInput: TypeAlias = (
     int | float | Fraction | Coordinate | IdCoordinate | Address
@@ -449,7 +449,7 @@ def format_coordinates(
 
 
 def coordinate_to_dict(coordinate: Coordinate) -> dict[str, object]:
-    """Serialize one canonical coordinate as a typed rational dictionary.
+    """Serialize one coordinate using the TimeSkeleton representation.
 
     Args:
         coordinate: Coordinate to serialize.
@@ -458,14 +458,14 @@ def coordinate_to_dict(coordinate: Coordinate) -> dict[str, object]:
         A typed coordinate dictionary.
     """
     return {
-        **rational_to_dict(coordinate.value),
         "unit": coordinate.unit.value,
         "number_type": coordinate.number_type.name,
+        "value": number_to_json(coordinate.value),
     }
 
 
 def coordinate_from_dict(entry: Mapping[str, Any]) -> Coordinate:
-    """Restore one coordinate from a typed rational dictionary.
+    """Restore one coordinate from the TimeSkeleton representation.
 
     Args:
         entry: Typed coordinate dictionary.
@@ -473,8 +473,37 @@ def coordinate_from_dict(entry: Mapping[str, Any]) -> Coordinate:
     Returns:
         The exact coordinate declared by the entry.
     """
-    return Coordinate(
-        rational_from_dict(dict(entry)),
-        TimeUnit(entry["unit"]),
-        number_type=NumberType[entry["number_type"]],
-    )
+    if not isinstance(entry, Mapping):
+        raise ValueError(f"coordinate must be an object, got {entry!r}")
+    for key in ("unit", "number_type", "value"):
+        if key not in entry:
+            raise ValueError(f"coordinate is missing {key!r}: {entry!r}")
+    try:
+        unit = TimeUnit(entry["unit"])
+    except (TypeError, ValueError) as error:
+        raise ValueError(
+            f"unknown coordinate unit {entry['unit']!r} for key 'unit'"
+        ) from error
+    try:
+        number_type = NumberType[entry["number_type"]]
+    except (KeyError, TypeError) as error:
+        raise ValueError(
+            f"unknown coordinate number type {entry['number_type']!r} for key 'number_type'"
+        ) from error
+    try:
+        value = number_from_json(entry["value"])
+    except (TypeError, ValueError) as error:
+        raise ValueError(
+            f"invalid coordinate value for key 'value': {entry['value']!r}"
+        ) from error
+    expected = {
+        NumberType.int: int,
+        NumberType.float: float,
+        NumberType.fraction: Fraction,
+    }[number_type]
+    if type(value) is not expected:
+        raise ValueError(
+            f"coordinate value for key 'value' does not match declared number_type "
+            f"{number_type.name!r}: {entry['value']!r}"
+        )
+    return Coordinate(value, unit, number_type=number_type)

@@ -113,7 +113,7 @@ def test_tempo_rates_must_be_positive(field: str, value: int) -> None:
         Tempo(**kwargs)
 
 
-def test_tempo_ramp_wire_is_an_exact_fixpoint() -> None:
+def test_tempo_ramp_is_an_exact_fixpoint() -> None:
     tempo = Tempo(
         bpm=Fraction(60),
         beat=Duration(Fraction(3, 8), "w"),
@@ -127,8 +127,7 @@ def test_tempo_ramp_wire_is_an_exact_fixpoint() -> None:
 
     assert restored == tempo
     assert restored.to_dict() == payload
-    assert payload["mean_at"]["numerator"] == 1
-    assert payload["mean_at"]["denominator"] == 3
+    assert payload["mean_at"] == [1, 3]
 
 
 @pytest.mark.parametrize("mean_at", [Fraction(0), Fraction(1), Fraction(5)])
@@ -142,7 +141,7 @@ def test_tempo_mean_requires_target_rate() -> None:
         Tempo(bpm=60, mean_at=Fraction(1, 2))
 
 
-def test_tempo_rejects_exact_rate_outside_wire_limit_at_construction() -> None:
+def test_tempo_rejects_exact_rate_outside_storage_limit_at_construction() -> None:
     limit = 2**63 - 1
     accepted = Tempo(bpm=Fraction(1, limit))
     payload = json.loads(json.dumps(accepted.to_dict()))

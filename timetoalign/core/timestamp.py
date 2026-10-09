@@ -452,7 +452,7 @@ class Stamp(ABC):
         )
 
     def to_dict(self) -> dict[str, dict[str, object]]:
-        """Serialize stored coordinates as typed rational dictionaries.
+        """Serialize stored coordinates as typed coordinate dictionaries.
 
         Returns:
             Timeline IDs mapped to canonical coordinate dictionaries.

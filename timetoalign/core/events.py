@@ -48,7 +48,13 @@ from .fields import (
     register_value_projector,
 )
 from .protocols import TwelveTETPitchMixin
-from .time import Coordinate, Duration, rational_from_dict, rational_to_dict
+from .time import (
+    Coordinate,
+    Duration,
+    number_from_json,
+    number_to_json,
+    struct_to_rational,
+)
 
 
 def _pc_mod(arr: pa.Array, n: int) -> pa.Array:
@@ -1980,26 +1986,31 @@ class Note(ScalarVocabulary, BaseModel):
         }
 
     def to_dict(self) -> dict[str, object]:
-        """Return a dict mirroring the storage struct.
+        """Return a JSON-safe dictionary.
 
         Pitch is intentionally absent — it is stored in a separate field
         on ``NoteEventData`` (columnar separation).
         """
+        from .retrieval import coordinate_to_dict
+
         d: dict[str, object] = {
-            "start": self.start.to_dict(),
-            "end": self.end.to_dict() if self.end is not None else None,
+            "start": coordinate_to_dict(self.start),
+            "end": coordinate_to_dict(self.end) if self.end is not None else None,
             "voice": self.voice,
             "staff": self.staff,
             "velocity": self.velocity,
             "instrument": self.instrument,
         }
-        d["duration"] = self.duration.to_dict() if self.duration is not None else None
+        d["duration"] = (
+            coordinate_to_dict(self.duration) if self.duration is not None else None
+        )
         return d
 
     @classmethod
     def from_row(cls, row: dict[str, Any]) -> Note | None:
         """Construct from a ``NoteEventData`` row dict (trust-boundary regime)."""
         from .enums import TimeUnit
+        from .retrieval import coordinate_from_dict
 
         start_raw = row.get("start")
         if start_raw is None:
@@ -2013,8 +2024,10 @@ class Note(ScalarVocabulary, BaseModel):
             if isinstance(raw, dict):
                 if raw.get("value") is None:
                     return None
+                if "number_type" in raw:
+                    return coordinate_from_dict(raw)
                 unit = raw.get("unit", TimeUnit.quarters)
-                return Coordinate(rational_from_dict(raw), unit)
+                return Coordinate(struct_to_rational(raw), unit)
             return None
 
         def _coerce_duration(raw: Any) -> Duration | None:
@@ -2027,8 +2040,15 @@ class Note(ScalarVocabulary, BaseModel):
             if isinstance(raw, dict):
                 if raw.get("value") is None:
                     return None
+                if "number_type" in raw:
+                    coordinate = coordinate_from_dict(raw)
+                    return Duration(
+                        coordinate.value,
+                        coordinate.unit,
+                        number_type=coordinate.number_type,
+                    )
                 unit = raw.get("unit", TimeUnit.quarters)
-                return Duration(rational_from_dict(raw), unit)
+                return Duration(struct_to_rational(raw), unit)
             return None
 
         start = _coerce_coord(start_raw)
@@ -2199,14 +2219,14 @@ class Measure(ScalarVocabulary, BaseModel):
             )
         for key in ("qstamp", "nominal_length", "actual_length"):
             if values.get(key) is not None:
-                values[key] = rational_from_dict(values[key])
+                values[key] = number_from_json(values[key])
         if values.get("next") is not None:
             values["next"] = tuple(values["next"])
         if (
             issubclass(target, MeasureConstituent)
             and values.get("offset_within_measure") is not None
         ):
-            values["offset_within_measure"] = rational_from_dict(
+            values["offset_within_measure"] = number_from_json(
                 values["offset_within_measure"]
             )
         return target(**values)
@@ -2259,18 +2279,18 @@ class Measure(ScalarVocabulary, BaseModel):
             "id": self.id,
             "count": self.count,
             "qstamp": (
-                rational_to_dict(self.qstamp) if self.qstamp is not None else None
+                number_to_json(self.qstamp) if self.qstamp is not None else None
             ),
             "number": self.number,
             "name": self.name,
             "time_signature": self.time_signature,
             "nominal_length": (
-                rational_to_dict(self.nominal_length)
+                number_to_json(self.nominal_length)
                 if self.nominal_length is not None
                 else None
             ),
             "actual_length": (
-                rational_to_dict(self.actual_length)
+                number_to_json(self.actual_length)
                 if self.actual_length is not None
                 else None
             ),
@@ -2280,7 +2300,7 @@ class Measure(ScalarVocabulary, BaseModel):
             "volta": self.volta,
         }
         if isinstance(self, MeasureConstituent):
-            data["offset_within_measure"] = rational_to_dict(self.offset_within_measure)
+            data["offset_within_measure"] = number_to_json(self.offset_within_measure)
         return data
 
 
@@ -2712,7 +2732,7 @@ def _duration_to_dict(value: Duration | None) -> dict[str, Any] | None:
     if value is None:
         return None
     return {
-        "value": rational_to_dict(value.value),
+        "value": number_to_json(value.value),
         "unit": value.unit.value,
         "number_type": value.number_type.name,
     }
@@ -2725,7 +2745,7 @@ def _duration_from_dict(value: dict[str, Any] | None) -> Duration | None:
     from .enums import NumberType, TimeUnit
 
     return Duration(
-        rational_from_dict(dict(value["value"])),
+        number_from_json(value["value"]),
         TimeUnit(value["unit"]),
         number_type=NumberType[value["number_type"]],
     )
@@ -2764,18 +2784,18 @@ class Tempo(BaseModel):
             bpm=(
                 None
                 if data.get("bpm") is None
-                else Fraction(rational_from_dict(data["bpm"]))
+                else Fraction(number_from_json(data["bpm"]))
             ),
             beat=_duration_from_dict(data.get("beat")),
             to_bpm=(
                 None
                 if data.get("to_bpm") is None
-                else Fraction(rational_from_dict(data["to_bpm"]))
+                else Fraction(number_from_json(data["to_bpm"]))
             ),
             mean_at=(
                 None
                 if data.get("mean_at") is None
-                else Fraction(rational_from_dict(data["mean_at"]))
+                else Fraction(number_from_json(data["mean_at"]))
             ),
             text=data.get("text"),
         )
@@ -2838,12 +2858,10 @@ class Tempo(BaseModel):
             A dictionary retaining every exact rational value.
         """
         return {
-            "bpm": None if self.bpm is None else rational_to_dict(self.bpm),
+            "bpm": None if self.bpm is None else number_to_json(self.bpm),
             "beat": _duration_to_dict(self.beat),
-            "to_bpm": (None if self.to_bpm is None else rational_to_dict(self.to_bpm)),
-            "mean_at": (
-                None if self.mean_at is None else rational_to_dict(self.mean_at)
-            ),
+            "to_bpm": (None if self.to_bpm is None else number_to_json(self.to_bpm)),
+            "mean_at": (None if self.mean_at is None else number_to_json(self.mean_at)),
             "text": self.text,
         }
 
@@ -3185,7 +3203,7 @@ class Beat(Address):
         if isinstance(policy_row, dict) and policy_row.get("grouping") is not None:
             policy = BeatPolicy(
                 grouping=tuple(int(entry) for entry in policy_row["grouping"]),
-                division=Fraction(rational_from_dict(policy_row["division"])),
+                division=Fraction(struct_to_rational(policy_row["division"])),
                 name=policy_row.get("name"),
             )
         return cls(

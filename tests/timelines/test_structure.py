@@ -28,7 +28,7 @@ from timetoalign.core import (
     Tempo,
     TimeUnit,
 )
-from timetoalign.core.time import rational_to_dict
+from timetoalign.core.time import number_to_json
 from timetoalign.timelines import (
     Expansion,
     MeasureMap,
@@ -316,7 +316,7 @@ def test_authored_hypermeasures_share_default_bars() -> None:
         hierarchy.with_reading(Reading(id="bad", source="analysis"), (bad,))
 
 
-def test_wire_requirements_and_fixpoint() -> None:
+def test_json_requirements_and_fixpoint() -> None:
     hierarchy = MetricHierarchy.from_rows(_rows())
     payload = json.loads(json.dumps(hierarchy.to_dict()))
     restored = MetricHierarchy.from_dict(payload, measure_map=hierarchy.measure_map)
@@ -476,7 +476,7 @@ class TestMeasureMapImmutability:
             measure_map.measures[0] = Measure()  # type: ignore[index]
 
 
-class TestMeasureMapEqualityAndWire:
+class TestMeasureMapEqualityAndJson:
     """Map equality preserves concrete classes and exact dictionary values."""
 
     def test_maps_built_twice_compare_equal(self) -> None:
@@ -558,7 +558,7 @@ class TestTempoRealizationValues:
         payload = json.loads(json.dumps(entry.to_dict()))
         assert entry.alternatives[0][1] == F(1, 3)
         assert type(entry.alternatives[0][1]) is F
-        assert payload["alternatives"][0]["weight"] == rational_to_dict(F(1, 3))
+        assert payload["alternatives"][0]["weight"] == number_to_json(F(1, 3))
         assert TempoEntry.from_dict(payload) == entry
 
     @pytest.mark.parametrize("weight", [float("nan"), float("inf"), F(0), F(-1), F(2)])
@@ -640,7 +640,7 @@ class TestBeatPolicyScalarEquality:
         assert first == second
 
 
-class TestBeatPolicyAndMetricHierarchyWire:
+class TestBeatPolicyAndMetricHierarchyJson:
     """Metric dictionary forms preserve authored units and complete forest values."""
 
     @pytest.mark.parametrize(
@@ -718,9 +718,9 @@ class TestBeatPolicyAndMetricHierarchyWire:
         )
         assert restored.authored_readings[0].reinterprets == "default"
 
-    def test_timeline_payload_carries_the_same_hierarchy_wire(self) -> None:
+    def test_timeline_payload_carries_the_same_hierarchy_json(self) -> None:
         hierarchy = self._hierarchy()
-        timeline = Timeline(length=F(1), unit=TimeUnit.quarters, uid="metric_wire")
+        timeline = Timeline(length=F(1), unit=TimeUnit.quarters, uid="metric_json")
         timeline.add_measure_map(hierarchy.measure_map)
         timeline.add_metric_hierarchy(hierarchy)
         payload = json.loads(json.dumps(timeline.to_dict(events=False)))
@@ -799,7 +799,7 @@ class TestMeasureScalar:
         assert [measure.qstamp for measure in measure_map] == [F(0), F(3)]
 
 
-class TestMeasureWire:
+class TestMeasureJson:
     """Every concrete measure class survives JSON with exact fractions."""
 
     @pytest.mark.parametrize(
@@ -861,7 +861,7 @@ class TestMeasureWire:
 
     def test_undeclared_payload_key_is_rejected_by_name(self) -> None:
         payload = RegularMeasure(id="m1").to_dict()
-        payload["offset_within_measure"] = rational_to_dict(F(1, 3))
+        payload["offset_within_measure"] = number_to_json(F(1, 3))
         with pytest.raises(
             ValueError,
             match=(

@@ -14,8 +14,8 @@ from numpy.typing import NDArray
 from ..core.enums import ExtrapolationPolicy, InterpolationKind, TimeUnit
 from ..core.time import (
     CoordinateValue,
-    rational_from_dict,
-    rational_to_dict,
+    number_from_json,
+    number_to_json,
 )
 from .base import ConversionMap
 
@@ -320,8 +320,8 @@ class TableMap(ConversionMap[CoordinateValue]):
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary."""
         d = super().to_dict()
-        d["x_values"] = [rational_to_dict(v) for v in self._x_original]
-        d["y_values"] = [rational_to_dict(v) for v in self._y_original]
+        d["x_values"] = [number_to_json(v) for v in self._x_original]
+        d["y_values"] = [number_to_json(v) for v in self._y_original]
         d["kind"] = self._kind.name
         d["extrapolate"] = self._extrapolate.name
         return d
@@ -330,8 +330,8 @@ class TableMap(ConversionMap[CoordinateValue]):
     def from_dict(cls, data: dict[str, Any]) -> TableMap:
         """Deserialize from dictionary."""
         return cls(
-            x_values=[rational_from_dict(v) for v in data["x_values"]],
-            y_values=[rational_from_dict(v) for v in data["y_values"]],
+            x_values=[number_from_json(v) for v in data["x_values"]],
+            y_values=[number_from_json(v) for v in data["y_values"]],
             kind=data.get("kind", "linear"),
             extrapolate=data.get("extrapolate", "extrapolate"),
             source_unit=data.get("source_unit"),

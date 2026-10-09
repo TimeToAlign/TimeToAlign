@@ -889,7 +889,7 @@ class TestAtomicRaises:
         with pytest.raises(ValueError, match="generates beats without end"):
             _ = grid.n_measures
 
-    def test_a_grid_has_no_wire_format(self) -> None:
+    def test_a_grid_has_no_serialized_format(self) -> None:
         """Segments are the source facts; a second encoding of them would not be."""
         grid = _phantom_grid()
 

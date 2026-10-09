@@ -518,9 +518,9 @@ class TestSerialization:
         assert data["class"] == "Timeline"
         assert data["unit"] == "seconds"
         assert data["length"] == {
+            "unit": "seconds",
+            "number_type": "float",
             "value": 10.0,
-            "numerator": None,
-            "denominator": None,
         }
         assert data["locked"] is False
         assert set(data) == {
@@ -558,9 +558,9 @@ class TestSerialization:
         data = parent.to_dict()
         assert "child" in data["children"]
         assert data["children"]["child"]["offset"] == {
+            "unit": "seconds",
+            "number_type": "float",
             "value": 10.0,
-            "numerator": None,
-            "denominator": None,
         }
         assert data["children"]["child"]["timeline"]["id"] == "child"
 

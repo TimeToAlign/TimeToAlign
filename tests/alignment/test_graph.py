@@ -273,18 +273,14 @@ class TestMatchStamp:
         data = {
             "coordinates": {
                 "tl_a": {
-                    "value": 100.0,
-                    "numerator": None,
-                    "denominator": None,
                     "unit": "number",
                     "number_type": "float",
+                    "value": 100.0,
                 },
                 "tl_b": {
-                    "value": 50.0,
-                    "numerator": None,
-                    "denominator": None,
                     "unit": "number",
                     "number_type": "float",
+                    "value": 50.0,
                 },
             },
             "anchor_edges": [("tl_a", "tl_b")],

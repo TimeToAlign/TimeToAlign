@@ -302,12 +302,12 @@ the axis's declared canonical number type.
      rejecting calls through a mismatched concrete subclass
    - Duplicate serialized class tags reject registration by a different class;
      registering the already-recorded class remains idempotent
-    - `length` and every child `offset` are emitted as the **rational dictionary
-     dict** (`{value, numerator, denominator}`), the one JSON encoding of a
-     rational number in this library; the same shape carries the event
-     coordinates, so a `Fraction` timeline serializes to JSON and comes back
-     exact. The format and its fixpoint guarantee are specified in
-     `tests/core/README.md` (`test_wire_format.py`), which also holds the
+    - `length` and every child `offset` are emitted as coordinate dictionaries
+     (`{unit, number_type, value}`), whose value uses the selected JSON number
+     representation; the same pattern carries event coordinates, so a
+     `Fraction` timeline serializes to JSON and comes back exact. The format
+     and its fixpoint guarantee are specified in `tests/core/README.md`
+     (`test_number_json.py`), which also holds the
      exact-value tests for timeline lengths and offsets.
 
 7. **Magic Methods Tests** (5 tests)
@@ -415,7 +415,7 @@ The remaining keys are identical in all four cases: `id`, `name`, `class`,
 
 Reference rows serialize as plain dicts with `access_points` a nested list of
 `{"uri": ..., "kind": ...}` dicts, so the payload is JSON-safe; JSON safety of
-the whole timeline payload is covered by `tests/core/test_wire_format.py`.
+the whole timeline payload is covered by `tests/core/test_number_json.py`.
 
 #### Child flag forwarding
 
@@ -440,8 +440,8 @@ events round-trips intact — the restored table equals the original via
 `pa.Table.equals`. Re-serializing with the same flags reproduces the input
 dictionary (the fixpoint guarantee stated in `tests/core/README.md`).
 
-The rational dictionary form for `length`, child `offset`s, and event coordinates
-is untouched by these flags.
+The coordinate form for `length`, child `offset`s, and event coordinates is
+untouched by these flags.
 
 `to_typed()` carries the reference table over to the re-typed instance; Arrow
 tables are immutable, so the same table object is shared.
@@ -529,8 +529,8 @@ need contents opt in.
      rather than a float `end - start` subtraction, so an integral length
      (`Fraction(2, 1)`) and a non-integral one (`Fraction(7, 3)`) both
      round-trip through `parent.to_dict()["events"][0]["duration"]` as the
-      exact rational dictionary (`rational_to_dict`) for the child's length —
-     not a rounded float projection.
+     exact Fraction pair (`number_to_json`) for the child's length — not a
+     rounded float projection.
 
 9. **Child Construction and Boundary Tests**
    - `create_child()` defaults its offset to zero and returns the parent's

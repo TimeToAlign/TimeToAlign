@@ -130,11 +130,9 @@ def test_to_dict_shape_is_stable() -> None:
 
     assert stamp.to_dict() == {
         "clock": {
-            "value": 25.0,
-            "numerator": None,
-            "denominator": None,
             "unit": "seconds",
             "number_type": "float",
+            "value": 25.0,
         },
     }
 
@@ -192,11 +190,9 @@ def test_matchstamp_to_dict_formats_are_exact() -> None:
     stamp = _matchstamp_with_maps()
 
     data = {
-        "value": 25.0,
-        "numerator": None,
-        "denominator": None,
         "unit": "seconds",
         "number_type": "float",
+        "value": 25.0,
     }
     assert stamp.to_dict(format="flat") == {"clock (seconds)": data}
     assert stamp.to_dict(format="prefix") == {"clock-group/clock (seconds)": data}

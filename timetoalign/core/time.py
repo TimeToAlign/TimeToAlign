@@ -497,96 +497,95 @@ def rational_to_struct(value: Any) -> dict[str, Any]:
     return number_cell(value, NumberType.fraction)
 
 
-# -- JSON dictionary form ---------------------------------------------------
-#
-# Storage cells and JSON payloads look alike but answer different questions.
-# A storage cell lives in a column whose metadata declares which side is
-# canonical, so the cell itself need not say.  A JSON value — a map's offset,
-# a claim's coordinate, a serialized timeline length — stands alone with no
-# schema beside it, so it carries its own answer: an exact value writes its
-# ratio, an inexact one writes null members and is read back as a float.
-# Keep the two encoders apart; merging them would either strip the storage
-# cell of its mirror or turn every serialized float into a ratio on read-back.
+# -- JSON number form -------------------------------------------------------
 
 
-def _dict_ratio_component(component: Any, label: str) -> int:
-    """Read one exact-ratio component from a JSON-safe dictionary."""
-    if isinstance(component, str) and re.fullmatch(r"-?\d+", component):
-        return int(component)
-    return _coerce_ratio_component(component, label)
+def number_to_json(value: int | float | Fraction) -> int | float | list[int]:
+    """Encode a Python number using the TimeSkeleton JSON representation.
 
+    Integers and floats retain their JSON scalar forms. Exact fractions use
+    their numerator and strictly positive denominator as a two-item list.
 
-def _json_ratio_component(component: int) -> int | str:
-    """Keep JSON ratio components exact across JavaScript's integer boundary."""
-    return str(component) if abs(component) >= 2**53 else component
+    Args:
+        value: Number to encode.
 
-
-def rational_to_dict(value: Fraction | int | float) -> dict[str, Any]:
-    """Encode a number as the self-describing JSON dictionary.
-
-    * A ``Fraction`` writes its exact ratio alongside the float projection.
-    * An ``int`` writes the exact ratio ``x/1`` alongside its float projection.
-    * A ``float`` writes ``{"value": float(x), "numerator": None,
-      "denominator": None}`` — the null ratio is what tells
-      :func:`rational_from_dict` to hand back a plain ``float``.
+    Returns:
+        A JSON integer, JSON number, or exact Fraction pair.
 
     Raises:
-        TypeError: If *value* is not a real number.
+        TypeError: If *value* is not an accepted Python number.
+        ValueError: If a number cannot be represented as JSON or int64.
     """
     if isinstance(value, bool) or not isinstance(value, (int, float, Fraction)):
-        raise TypeError(f"cannot encode {type(value).__name__} as a rational")
+        raise TypeError(f"cannot encode {value!r} as a JSON number")
+    if isinstance(value, int):
+        return _require_int64(value, "integer", value)
     if isinstance(value, float):
-        return {"value": float(value), "numerator": None, "denominator": None}
-    exact = Fraction(value)
-    return {
-        "value": float(exact),
-        "numerator": _json_ratio_component(
-            _require_int64(exact.numerator, "numerator", exact)
-        ),
-        "denominator": _json_ratio_component(
-            _require_int64(exact.denominator, "denominator", exact)
-        ),
-    }
+        if not math.isfinite(value):
+            raise ValueError(f"cannot encode non-finite JSON number {value!r}")
+        return value
+    return [
+        _require_int64(value.numerator, "numerator", value),
+        _require_int64(value.denominator, "denominator", value),
+    ]
 
 
-def is_rational_dict(value: Any) -> bool:
-    """Return True if *value* is shaped like a rational dictionary."""
-    return isinstance(value, dict) and set(value) == {
-        "value",
-        "numerator",
-        "denominator",
-    }
+def is_fraction_json(value: object) -> bool:
+    """Return whether *value* is a valid JSON Fraction pair."""
+    return (
+        isinstance(value, list)
+        and len(value) == 2
+        and all(
+            isinstance(component, int) and not isinstance(component, bool)
+            for component in value
+        )
+        and value[1] > 0
+    )
 
 
-def rational_from_dict(data: dict[str, Any]) -> Fraction | float:
-    """Decode a JSON dictionary back to a Python number.
+def number_from_json(data: Any) -> int | float | Fraction:
+    """Decode one TimeSkeleton JSON number.
 
-    An exact ratio comes back a ``Fraction``, an inexact value a ``float``.
+    Args:
+        data: JSON scalar or Fraction pair to decode.
+
+    Returns:
+        The corresponding Python ``int``, ``float``, or ``Fraction``.
 
     Raises:
-        TypeError: If *data* is not a dict.
-        ValueError: If the dict carries neither a ratio nor a usable value.
+        TypeError: If *data* is not a JSON value type.
+        ValueError: If *data* is not a valid JSON number representation.
     """
-    if not isinstance(data, dict):
-        raise TypeError(
-            f"expected a rational dictionary, got {type(data).__name__}: {data!r}"
+    if isinstance(data, bool) or data is None or isinstance(data, (str, dict)):
+        raise ValueError(f"invalid JSON number {data!r}")
+    if isinstance(data, int):
+        return _require_int64(data, "integer", data)
+    if isinstance(data, float):
+        if not math.isfinite(data):
+            raise ValueError(f"invalid JSON number {data!r}")
+        return data
+    if isinstance(data, list):
+        if len(data) != 2:
+            raise ValueError(f"invalid JSON Fraction {data!r}: expected two items")
+        numerator, denominator = data
+        if (
+            isinstance(numerator, bool)
+            or isinstance(denominator, bool)
+            or not isinstance(numerator, int)
+            or not isinstance(denominator, int)
+        ):
+            raise ValueError(
+                f"invalid JSON Fraction {data!r}: components must be integers"
+            )
+        if denominator <= 0:
+            raise ValueError(
+                f"invalid JSON Fraction {data!r}: denominator must be strictly positive"
+            )
+        return Fraction(
+            _require_int64(numerator, "numerator", data),
+            _require_int64(denominator, "denominator", data),
         )
-    numerator = data.get("numerator")
-    denominator = data.get("denominator")
-    if numerator is not None and denominator is not None:
-        numerator = _dict_ratio_component(numerator, "numerator")
-        denominator = _dict_ratio_component(denominator, "denominator")
-        if denominator == 0:
-            raise ValueError("rational dictionary denominator must be non-zero")
-        return Fraction(numerator, denominator)
-    if numerator is not None or denominator is not None:
-        raise ValueError(
-            "rational dictionary ratio members must both be null or present"
-        )
-    value = data.get("value")
-    if value is None or isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise ValueError(f"rational dictionary has no usable 'value': {data!r}")
-    return float(value)
+    raise TypeError(f"invalid JSON number {data!r} of type {type(data).__name__}")
 
 
 # -- the one array builder --------------------------------------------------
@@ -1641,7 +1640,7 @@ def coordinate_numeric_value(value: Any) -> Fraction | float:
     if exact is not None:
         return exact
     if isinstance(value, dict):
-        return rational_from_dict(value)
+        return struct_to_rational(value)
     if hasattr(value, "value"):
         return value.value
     return float(value)

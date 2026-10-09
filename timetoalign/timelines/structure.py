@@ -29,7 +29,7 @@ from timetoalign.core import (
     TimeUnit,
 )
 from timetoalign.core.retrieval import coordinate_from_dict, coordinate_to_dict
-from timetoalign.core.time import rational_from_dict, rational_to_dict
+from timetoalign.core.time import number_from_json, number_to_json, struct_to_rational
 from timetoalign.timelines.flow import AtomicSection
 
 if TYPE_CHECKING:
@@ -44,7 +44,7 @@ def _exact_quarters(value: Any) -> Fraction:
     if value is None:
         raise ValueError("Measure row states no actual length")
     if isinstance(value, dict):
-        return Fraction(rational_from_dict(value))
+        return Fraction(struct_to_rational(value))
     if hasattr(value, "value"):
         return Fraction(value.value)
     return value if isinstance(value, Fraction) else Fraction(value)
@@ -871,7 +871,7 @@ class TempoEntry(BaseModel):
             alternatives=tuple(
                 (
                     _coordinate_from_dict(item["at"]),
-                    Fraction(rational_from_dict(item["weight"])),
+                    Fraction(number_from_json(item["weight"])),
                 )
                 for item in data.get("alternatives", [])
             ),
@@ -985,7 +985,7 @@ class TempoEntry(BaseModel):
             "observed": observed,
             "observation_undefined": self.observation_undefined,
             "alternatives": [
-                {"at": _coordinate_to_dict(at), "weight": rational_to_dict(weight)}
+                {"at": _coordinate_to_dict(at), "weight": number_to_json(weight)}
                 for at, weight in self.alternatives
             ],
             "is_interpolated": self.is_interpolated,

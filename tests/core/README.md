@@ -32,11 +32,11 @@ round-trip equality and a second serialization proves that completion cannot
 turn a policy into a different value.
 
 Tempo specimens cover integer, float, decimal-string, and ``Fraction`` rates,
-including ramps. Their exact stored fractions and rational dictionary members are
+including ramps. Their exact stored fractions and JSON Fraction pairs are
 asserted directly; positive-rate validation is checked at both ramp ends. A
 ramp mean must lie strictly inside its span and cannot exist without a target
-rate. Construction rejects exact values outside the signed 64-bit rational
-dictionary before serialization, while the largest permitted denominator survives.
+rate. Construction rejects exact values outside signed 64-bit storage before
+serialization, while the largest permitted denominator survives.
 These cases rule out delayed serialization failures and invented ramp meaning.
 
 Negative-level beats demonstrate groove below the pulse, while a zero beat
@@ -49,15 +49,12 @@ membership.
 
 ## Test Files
 
-### `test_rational_dict.py` - Exact JSON dictionaries
+### `test_number_json.py` - Exact JSON numbers
 
-The rational dictionary is validated before its behavior is pinned. Integers
-are exact ratios: `480` writes `{"value": 480.0, "numerator": 480,
-"denominator": 1}`. A null numerator and denominator means an inexact float,
-and nothing else. Each ratio member with magnitude at or above `2**53` writes
-as a decimal string, independently; smaller members remain JSON integers.
-Boolean values are refused rather than accepted as integers. The tests name one
-case for each rule, including `9007199254740992` and `-9007199254740992`.
+The JSON number forms are validated before their behavior is pinned. Integers
+remain JSON integers, floats remain JSON numbers, and `Fraction` values become
+`[numerator, denominator]`. Boolean values and invalid Fraction pairs are
+refused. The tests name one case for each rule.
 
 ### `test_fraction_field_arithmetic.py` - Exact Coordinate Arithmetic
 
@@ -1359,59 +1356,28 @@ between two key spellings to recover an exact ratio.
 
 ---
 
-### `test_rational_dict.py` - The rational dict
+### `test_number_json.py` - JSON numbers and coordinates
 
-**Purpose:** Pins the JSON-safe dictionary form shared by every `to_dict` in the
-library, and its boundary with the Arrow storage cell.
+**Purpose:** Pins the TimeSkeleton JSON forms and their boundary with Arrow
+storage cells. `number_to_json` and `number_from_json` round-trip each native
+number exactly: an `int` is a JSON integer, a `float` is a JSON number, and a
+`Fraction` is `[numerator, denominator]` with a strictly positive denominator.
+The tests reject booleans, zero and negative denominators, and pairs of the
+wrong length. `is_fraction_json` accepts only valid two-item integer pairs.
 
-**Two shapes that look alike and are not the same thing.** A storage cell lives
-in a column whose metadata declares which of its two sides is authoritative, so
-the cell itself never has to say; both sides are always populated. A JSON value
-— a map's offset, a claim's coordinate, a serialized timeline length — stands
-alone with no schema beside it, so it carries its own answer instead:
-
-```json
-{"value": 3.3333333333333335, "numerator": 10, "denominator": 3}
-```
-
-`rational_to_dict` writes it and `rational_from_dict` reads it. A `Fraction`
-keeps its exact ratio, and an `int` writes the exact ratio `x / 1`; an inexact
-`float` alone encodes as `{"value": x, "numerator": null, "denominator":
-null}` and decodes back to a plain `float`. In the rational dict — and **only**
-there — a null ratio is the marker of inexactness. Each exact ratio member at
-or above `2**53` in magnitude is a decimal string, preserving values that a
-JSON number consumer could otherwise round.
-
-The tests assert both halves of that boundary, because collapsing them is the
-tempting mistake in either direction: giving the rational dict a mandatory ratio
-would turn every serialized float into an exact dyadic on read-back and change
-what round-trips out of maps, timelines and claims; giving the storage cell an
-optional one would put readers back to sniffing rows for a fact the schema
-already knows.
-
-Integer-valued float ratio members found in artifacts written by earlier
-releases decode losslessly as integers; ratio members with a fractional part
-are rejected and never rounded. Integer and decimal-string ratio members both
-decode exactly. `is_rational_dict` recognises the shape for the
-few slots (a `ConstantMap` value) whose payload is genuinely open-ended.
-
-There is exactly one encoding. `Fraction` objects are never emitted raw, and
-the ratio members are JSON integers or decimal strings, never an `"n/d"`
-spelling. The tests pin an exact ordinary integer, a string numerator, a string
-denominator, and a null-ratio float so a reader cannot substitute an inexact
-or guessed representation.
+Coordinates are `{ "unit", "number_type", "value" }`; their number type
+selects the value representation. The tests prove that a decoded coordinate
+restores its declared Python type and that timeline lengths and child offsets
+reject unit or number-type mismatches. Arrow storage remains a separate,
+three-member column representation and is not serialized as JSON.
 
 ### Coordinate cell rendering
 
-`Coordinate.to_dict()` and `Duration.to_dict()` emit the **storage cell**, so
-both sides are populated whatever the value's kind: an integer, a `Fraction`
-and a float all come back with a `value`, a `numerator` and a `denominator`.
-A float's ratio members are the exact dyadic of the double, which is a fact
-about the double rather than a guess about what it meant. Null members appear
-only in the JSON rational dict, which is a different encoding with a different
-job — see `test_rational_dict.py` above. Tests compare the complete
-dictionaries and verify that `Note.to_dict()` and `Measure.to_dict()` embed
-those cells unchanged.
+`Coordinate.to_dict()` and `Duration.to_dict()` emit Arrow storage cells, so
+their three stored members remain available for table and Parquet use. Public
+JSON payloads use the number and coordinate forms above instead. Tests compare
+the complete dictionaries and verify that `Note.to_dict()` and `Measure.to_dict()`
+embed storage cells unchanged.
 
 ---
 

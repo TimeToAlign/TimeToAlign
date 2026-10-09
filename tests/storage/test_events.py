@@ -109,7 +109,7 @@ class TestLegacyFloatRatioMembers:
 
         assert data.to_dataframe()["start"].tolist() == [Fraction(8379000, 1)]
 
-    def test_from_dicts_normalizes_carried_coordinate_struct_members(self) -> None:
+    def test_from_dicts_does_not_infer_carried_coordinate_struct_members(self) -> None:
         data = EventData.from_dicts(
             [
                 {
@@ -135,9 +135,11 @@ class TestLegacyFloatRatioMembers:
         assert start.to_pylist() == [
             {"value": 8379000.0, "numerator": 8379000, "denominator": 1}
         ]
-        assert column.type.field("numerator").type == pa.int64()
-        assert column.type.field("denominator").type == pa.int64()
-        assert column.to_pylist() == [{"value": 2.5, "numerator": 5, "denominator": 2}]
+        assert column.type.field("numerator").type == pa.float64()
+        assert column.type.field("denominator").type == pa.float64()
+        assert column.to_pylist() == [
+            {"value": 2.5, "numerator": 5.0, "denominator": 2.0}
+        ]
         assert data.to_dataframe()["start"].tolist() == [Fraction(8379000, 1)]
         assert data.to_dataframe()["legacy_coordinate"].tolist() == [Fraction(5, 2)]
 

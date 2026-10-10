@@ -10,10 +10,11 @@ The full **Developers' Reference** lives on the documentation site at
   an extra: `timeskeleton` (the TimeSkeleton schema the conformance tests
   validate against) and `pymeasuremap` (the Measure Map reference
   implementation, the oracle for compressed measure-map rows). A dependency
-  group is not part of the published distribution metadata, so its git
-  references never reach PyPI. `pip install -e ".[dev]"` does not install it;
-  run `pip install --group conformance` (pip 25.1 or later) as well, or use
-  `tox`, which installs the group in every test environment. From a checkout
+  group is not part of the published distribution metadata, so the git
+  reference pymeasuremap is installed from never reaches PyPI.
+  `pip install -e ".[dev]"` does not install it; run
+  `pip install --group conformance` (pip 25.1 or later) as well, or use `tox`,
+  which installs the group in every test environment. From a checkout
   with the sibling repositories, `pip install -e ../timeskeleton/python
   -e ../pyMeasureMap` works too.
 - The canonical build/test/publish flow via `tox` (envs: default, `lint`,

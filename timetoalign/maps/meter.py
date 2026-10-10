@@ -744,7 +744,13 @@ class MetricalPositionMap(CombinationMap):
     def from_dict(cls, data: dict[str, Any]) -> MetricalPositionMap:
         """Deserialize from dictionary."""
         meter_map = MetricMap.from_dict(data["meter_map"])
-        return cls(meter_map, uid=data.get("id"), name=data.get("name"))
+        position_map = cls(meter_map, uid=data.get("id"), name=data.get("name"))
+        position_map._maps = {
+            name: ConversionMap.from_dict(map_data)
+            for name, map_data in data["maps"].items()
+        }
+        position_map._names = list(data["names"])
+        return position_map
 
     def __repr__(self) -> str:
         return f"MetricalPositionMap(n_measures={self._meter_map.n_measures})"

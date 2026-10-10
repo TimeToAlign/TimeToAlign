@@ -2,6 +2,15 @@
 
 This directory contains tests for the `timetoalign.maps` module, which implements coordinate conversion maps.
 
+## Serialized metrical positions
+
+A `MetricalPositionMap` carries both its authoritative meter map and the
+component maps it exposes. Restoring its dictionary must preserve the complete
+dictionary exactly, including nested map identifiers; otherwise a reader has
+changed a document despite retaining equivalent numerical behavior. The meter
+test therefore serializes a populated map, restores it, and compares the whole
+JSON-safe dictionary.
+
 ## Test Coverage Summary
 
 | Module | Coverage | Status |

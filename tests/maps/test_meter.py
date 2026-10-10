@@ -167,6 +167,13 @@ class TestRegistryDispatch:
         assert restored(7.5) == {"mc": 2, "beat": Fraction(9, 2)}
         assert restored.quarters_at(2, beat=Fraction(9, 2)) == Fraction(15, 2)
 
+    def test_metrical_position_map_dictionary_round_trip_is_exact(self) -> None:
+        source = MetricalPositionMap(
+            MetricMap.from_uniform(2, Fraction(4, 1))
+        ).to_dict()
+        restored = MetricalPositionMap.from_dict(source).to_dict()
+        assert restored == source
+
     def test_metrical_position_map_to_dict_has_no_map_type_key(self) -> None:
         mm = MetricMap.from_uniform(4, Fraction(4, 1))
         pos = MetricalPositionMap(mm)

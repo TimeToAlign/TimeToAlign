@@ -26,7 +26,11 @@ from timetoalign.core import (
     NumberType,
     TimeUnit,
 )
-from timetoalign.core.retrieval import coordinate_from_dict, coordinate_to_dict
+from timetoalign.core.retrieval import (
+    canonical_order,
+    coordinate_from_dict,
+    coordinate_to_dict,
+)
 from timetoalign.core.time import number_from_json, number_to_json, struct_to_rational
 from timetoalign.core.timestamp import _format_coordinate_value
 from timetoalign.maps import ConversionMap
@@ -972,6 +976,18 @@ class Timeline(
         JSON-serializable whatever the timeline's number type, and
         ``Fraction`` coordinates survive the round trip exactly.
 
+        Collections are written in one canonical order, independent of the
+        order in which their content was added, so equal timelines give equal
+        JSON text: ``children`` by offset, then id; ``conversion_maps`` by id;
+        ``regions`` by start, then end, then name; and in ``flow_control``
+        (:meth:`~timetoalign.timelines.flowcontrol.FlowControlRegistry.to_dict`)
+        ``breaks`` by coordinate, ``jumps`` by from and then to coordinate,
+        both then by their canonical JSON text, and ``markers`` by name.
+        Coordinates compare by exact numeric value and strings by Unicode code
+        point (:func:`~timetoalign.core.retrieval.canonical_order`). Every
+        other member keeps its order. The timeline's own storage is not
+        reordered, and :meth:`from_dict` accepts any order.
+
         Args:
             events: If True, include an ``"events"`` key holding this
                 timeline's event rows.
@@ -990,15 +1006,19 @@ class Timeline(
             >>> "events" in tl.to_dict(events=True)
             True
         """
-        children_data = {}
-        for child_id, child in self._children.items():
-            children_data[child_id] = {
-                "offset": coordinate_to_dict(self._child_offsets[child_id]),
-                "timeline": child.to_dict(
-                    events=events,
-                    external_references=external_references,
-                ),
-            }
+        children = [
+            (
+                child_id,
+                {
+                    "offset": coordinate_to_dict(self._child_offsets[child_id]),
+                    "timeline": child.to_dict(
+                        events=events,
+                        external_references=external_references,
+                    ),
+                },
+            )
+            for child_id, child in self._children.items()
+        ]
 
         data: dict[str, Any] = {
             "id": self._id,
@@ -1009,11 +1029,17 @@ class Timeline(
             "length": coordinate_to_dict(self._length),
             "locked": self._locked,
             "meta": self._meta,
-            "children": children_data,
-            "conversion_maps": [
-                cmap.to_dict() for cmap in self._conversion_maps.values()
-            ],
-            "regions": [region.to_dict() for region in self._regions.values()],
+            "children": dict(
+                canonical_order(children, lambda item: (item[1]["offset"], item[0]))
+            ),
+            "conversion_maps": canonical_order(
+                (cmap.to_dict() for cmap in self._conversion_maps.values()),
+                lambda entry: (entry["id"],),
+            ),
+            "regions": canonical_order(
+                (region.to_dict() for region in self._regions.values()),
+                lambda entry: (entry["start"], entry["end"], entry["name"]),
+            ),
             "flow_control": self._flow_control.to_dict(),
             "measure_map": (
                 self._measure_map.to_dict() if self._measure_map is not None else None

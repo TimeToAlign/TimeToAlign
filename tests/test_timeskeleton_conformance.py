@@ -15,6 +15,7 @@ from timeskeleton import (
     SCHEMA_VERSION,
     SUPPORTED_VERSIONS,
     SchemaValidationError,
+    canonical_order,
     fixture_paths,
     migrate,
     validate,
@@ -256,22 +257,31 @@ CATALOGUE: list[tuple[str, Callable[[], list[Timeline]]]] = [
 def test_emitted_manifests_validate(
     name: str, builder: Callable[[], list[Timeline]]
 ) -> None:
-    """Every direct and loader-produced eventless manifest satisfies the schema."""
+    """Every direct and loader-produced eventless manifest satisfies the schema.
+
+    The library writes the canonical order the schema package defines: putting
+    the document in that order changes nothing.
+    """
     del name
-    validate(_document(builder()))
+    document = _document(builder())
+    validate(document)
+    assert json.dumps(canonical_order(document)) == json.dumps(document)
 
 
 @pytest.mark.parametrize("version", SUPPORTED_VERSIONS)
 def test_bundled_fixtures_round_trip(version: str) -> None:
-    """Bundled documents reconstruct without changing any timeline manifest."""
+    """Bundled documents reconstruct without changing any timeline manifest.
+
+    The comparison is by JSON text, so the canonical order of children,
+    conversion maps, regions and flow control must match as well.
+    """
     for path in fixture_paths(version):
         document = json.loads(path.read_text(encoding="utf-8"))
         if version != SCHEMA_VERSION:
             document = migrate(document)
         for manifest in document["manifest"]["timelines"].values():
-            assert (
-                json.loads(json.dumps(Timeline.from_dict(manifest).to_dict()))
-                == manifest
+            assert json.dumps(Timeline.from_dict(manifest).to_dict()) == json.dumps(
+                manifest
             )
 
 

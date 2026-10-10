@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator, Mapping, Sequence, Set
+import json
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence, Set
 from fractions import Fraction
 from typing import Any, Literal, TypeAlias, TypeVar
 
@@ -39,6 +40,7 @@ ROUNDING_MODES: tuple[str, ...] = ("round", "floor", "ceil", "truncate")
 TABLE_FORMATS: tuple[str, ...] = ("table", "dataframe")
 
 ResultT = TypeVar("ResultT")
+EntryT = TypeVar("EntryT")
 
 
 def number_type_for_converted_unit(preferred: NumberType, unit: TimeUnit) -> NumberType:
@@ -504,3 +506,63 @@ def coordinate_from_dict(entry: Mapping[str, Any]) -> Coordinate:
             f"{number_type.name!r}: {entry['value']!r}"
         ) from error
     return Coordinate(value, unit, number_type=number_type)
+
+
+def canonical_json(data: Any) -> str:
+    """Return the canonical JSON text of a JSON-safe value.
+
+    Object keys are sorted by Unicode code point and no whitespace is written,
+    so equal values always give equal text.
+
+    Args:
+        data: A JSON-safe value.
+
+    Returns:
+        The compact JSON text with sorted keys.
+
+    Raises:
+        ValueError: If the value holds a NaN or an infinity, which JSON cannot
+            represent.
+    """
+    return json.dumps(
+        data,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    )
+
+
+def canonical_order(
+    entries: Iterable[EntryT],
+    key: Callable[[EntryT], Sequence[str | Mapping[str, Any]]],
+    *,
+    json_tie_break: bool = False,
+) -> list[EntryT]:
+    """Return serialized entries in the canonical order of a timeline dictionary.
+
+    *key* names the members an entry is ordered by, most significant first.
+    A coordinate dictionary compares by its exact numeric value, never by its
+    JSON spelling (``9`` before ``10``, ``[5, 8]`` before ``[2, 3]``), and a
+    string by Unicode code point. With *json_tie_break*, entries equal on every
+    key are further ordered by their :func:`canonical_json` text. The sort is
+    stable, so entries that remain equal keep their given order.
+
+    Args:
+        entries: Serialized entries, as written by a ``to_dict`` method.
+        key: Returns the ordering members of one entry.
+        json_tie_break: Whether the canonical JSON text of the entry breaks
+            remaining ties.
+
+    Returns:
+        The entries in canonical order.
+    """
+
+    def sort_key(entry: EntryT) -> tuple[Any, ...]:
+        parts = tuple(
+            number_from_json(part["value"]) if isinstance(part, Mapping) else part
+            for part in key(entry)
+        )
+        return (*parts, canonical_json(entry)) if json_tie_break else parts
+
+    return sorted(entries, key=sort_key)

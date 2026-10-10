@@ -202,6 +202,56 @@ A slice carries none of those three objects, pinning the current derivation
 boundary: slicing, child derivation, and unfolding do not infer how authored
 structure should be partitioned.
 
+### Canonical order of a serialized timeline (`test_canonical_order.py`)
+
+`Timeline.to_dict` writes every unordered collection in one canonical order,
+so that two timelines with the same content serialize to the same text however
+their content was added: `children` by offset, then id; `conversion_maps` by
+id; `regions` by start, then end, then name; flow-control `breaks` by
+coordinate, then the entry's canonical JSON text (keys sorted, no whitespace);
+`jumps` by from coordinate, then to coordinate, then canonical JSON text;
+`markers` by name. Coordinates compare by their exact numeric value, never by
+their JSON spelling, and strings by Unicode code point.
+
+What proves it:
+
+- **Invariance.** One fixed content set is built on three axes, `ticks`
+  (`int`), `quarters` (`fraction`) and `seconds` (`float`): four children,
+  two of them at the same offset; three conversion maps; four regions, three
+  sharing a start and two of those sharing start and end; three breaks, two
+  at one coordinate; three jumps, two sharing a from coordinate and two of
+  those also sharing a to coordinate; three markers. For every permutation of
+  the insertion order of each collection, the payload must equal the payload
+  of the reference insertion order under `==`, and its `json.dumps` text must
+  be identical. Equality of dicts ignores key order, so the text comparison is
+  what catches a differing `children` or `markers` order. A serializer that
+  kept insertion order fails on the first non-identity permutation.
+- **The order itself.** Invariance alone would also hold for an arbitrary but
+  fixed order, so the expected sequence of child ids, map ids, region names,
+  break labels, jump labels and marker names is spelled out literally per
+  axis. The values are chosen so that numeric order and JSON-text order
+  disagree: on the `ticks` axis `9` precedes `10`, on the `quarters` axis
+  `5/8` precedes `2/3` although `[2, 3]` sorts first as text, and on the
+  `seconds` axis `9.25` precedes `10.5`. Marker names `Fine`, `coda`, `segno`
+  pin code-point order (an uppercase letter precedes every lowercase one).
+- **Ties.** Children at one offset fall back to id; regions at one start fall
+  back to end, then name; two breaks at one coordinate and two jumps with
+  equal from and to coordinates fall back to their canonical JSON text, whose
+  expected order is spelled out from the literal entries.
+- **Reading accepts any order.** For every permutation of each collection in
+  the canonical payload (the `children` and `markers` objects rebuilt in that
+  key order, the lists reordered), `Timeline.from_dict` must restore a
+  timeline whose `to_dict` is the canonical payload, text-identical.
+- **Storage is untouched.** The order is a property of the serialized form
+  only: a registry's `breaks` keep their stored sequence (sorted by position,
+  ties in insertion order) and `children` keep their insertion order after
+  `to_dict`, proven by reading both back after serializing a permutation
+  whose stored order differs from the canonical one.
+- **The tie-break text.** `canonical_json` writes a literal value with nested
+  objects and non-ASCII keys as one expected text (keys by code point, no
+  whitespace, characters unescaped, `1.0` kept a float), and refuses a NaN or
+  an infinity, which JSON cannot hold, instead of writing `NaN`.
+
 ### Measure and hierarchy structure
 
 The hierarchy specimens prove that every metrical claim is anchored to the

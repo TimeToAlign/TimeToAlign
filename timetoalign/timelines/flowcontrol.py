@@ -30,6 +30,7 @@ Common music notation mappings:
 from __future__ import annotations
 
 import logging
+from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from fractions import Fraction
 from typing import Any
@@ -37,6 +38,7 @@ from typing import Any
 from timetoalign.core import Coordinate, IdCoordinate, NumberType, TimeUnit
 from timetoalign.core.enums import ActivationCondition, FlowControlElement
 from timetoalign.core.retrieval import (
+    canonical_order,
     coordinate_from_dict,
     coordinate_to_dict,
 )
@@ -607,19 +609,37 @@ class FlowControlRegistry:
 
     def copy(self) -> FlowControlRegistry:
         """Return an independent registry with the same binding and content."""
-        return FlowControlRegistry.from_dict(
-            self.to_dict(), unit=self.unit, number_type=self.number_type
-        )
+        return deepcopy(self)
 
     def to_dict(self) -> dict[str, Any]:
-        """Return all control events as a JSON-safe dictionary."""
+        """Return all control events as a JSON-safe dictionary.
+
+        The entries are written in canonical order, whatever order they were
+        added in: ``breaks`` by coordinate, ``jumps`` by from coordinate and
+        then to coordinate, both then by their canonical JSON text, and
+        ``markers`` by name (:func:`~timetoalign.core.retrieval.canonical_order`).
+        The registry's own lists are not reordered.
+        """
         return {
-            "breaks": [brk.to_dict() for brk in self.breaks],
-            "jumps": [jump.to_dict() for jump in self.jumps],
-            "markers": {
-                name: coordinate_to_dict(coordinate)
-                for name, coordinate in self.markers.items()
-            },
+            "breaks": canonical_order(
+                (brk.to_dict() for brk in self.breaks),
+                lambda entry: (entry["coordinate"],),
+                json_tie_break=True,
+            ),
+            "jumps": canonical_order(
+                (jump.to_dict() for jump in self.jumps),
+                lambda entry: (entry["from_coordinate"], entry["to_coordinate"]),
+                json_tie_break=True,
+            ),
+            "markers": dict(
+                canonical_order(
+                    (
+                        (name, coordinate_to_dict(coordinate))
+                        for name, coordinate in self.markers.items()
+                    ),
+                    lambda item: (item[0],),
+                )
+            ),
         }
 
     def __repr__(self) -> str:

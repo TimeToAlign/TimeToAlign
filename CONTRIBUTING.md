@@ -6,6 +6,13 @@ The full **Developers' Reference** lives on the documentation site at
 - Repository layout and the seven-subpackage architecture (with the
   layered import-direction rules).
 - Environment setup, `pip install -e ".[dev]"`, pre-commit registration.
+- Two test-only dependencies have no registry release yet and are referenced by
+  git in the `testing` extra: `timeskeleton` (the TimeSkeleton schema the
+  conformance tests validate against) and `pymeasuremap` (the Measure Map
+  reference implementation, the oracle for compressed measure-map rows). From
+  a checkout with the sibling repositories, `pip install -e ../timeskeleton/python
+  -e ../pyMeasureMap` works too. Both become registry pins at their first release;
+  the git references must be swapped before any PyPI upload of timetoalign.
 - The canonical build/test/publish flow via `tox` (envs: default, `lint`,
   `build`, `clean`, `publish`).
 - Coding standards (style, typing, Google-style docstrings, error

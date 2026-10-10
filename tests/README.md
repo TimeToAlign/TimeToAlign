@@ -20,6 +20,38 @@ To run one test file, use for example:
 pytest tests/path/to/test_file.py
 ```
 
+## TimeSkeleton conformance
+
+The eventless manifest is proven against the schema version published by the
+installed `timeskeleton` package. The conformance module builds a catalogue of
+timelines, wraps each result in a document, and passes it to `validate`, so the
+assertion checks the emitted representation rather than assumptions made by a
+reader. The catalogue directly constructs all six timeline classes with two
+children, a region, registered conversion maps attached across its members,
+one break, one jump, one marker, and a Measure Map built from Measure Map rows.
+It also uses `ensure_data` at module level for the same `Ms3Loader`, MIDI,
+`AudioLoader`, discrete-physical, and graphical specimens listed by the
+fixture corpus, proving loader output has the same structural contract without
+depending on a relative data path.
+
+Every bundled fixture for every `SUPPORTED_VERSIONS` entry from
+`fixture_paths(version)` must round-trip exactly from
+`json.loads(json.dumps(Timeline.from_dict(m).to_dict())) == m` for each
+top-level manifest. Older fixtures are passed through `timeskeleton.migrate`
+first, so this demonstrates that migration leaves the library with a complete,
+lossless current document rather than merely an accepted approximation.
+
+The integer boundary asserts that `number_to_json(2**63 - 1)` remains that
+integer, `number_to_json(2**63)` raises `ValueError`, and
+`number_from_json(9007199254740993)` returns that exact `int`. A
+`DiscreteLogicalTimeline(length=9007199254740993, unit="ticks")` must emit
+`{"unit": "ticks", "number_type": "int", "value": 9007199254740993}` in a
+document `validate` accepts, proving coordinates do not lose integers above
+the floating-point safe range. Finally, a fresh-interpreter subprocess imports
+`timetoalign` and checks `sys.modules`; the absence of `timeskeleton` proves
+schema validation stays a test-only dependency rather than becoming runtime
+library behavior.
+
 ## Layout
 
 Tests live in a directory per subject area, each with a README documenting

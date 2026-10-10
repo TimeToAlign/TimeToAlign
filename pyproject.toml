@@ -76,6 +76,8 @@ all = [                                       # All runtime features
 testing = [                                   # Test-suite execution (used by `tox -e py3xx`)
     "pymeasuremap @ git+https://github.com/measure-map/pyMeasureMap.git@ddcfec3",
     # Measure Map reference implementation, the test oracle for compressed rows; registry pin once a release carries compress
+    "timeskeleton @ git+https://github.com/TimeToAlign/timeskeleton.git@main#subdirectory=python",
+    # TimeSkeleton schema conformance of the eventless manifest; registry pin `timeskeleton>=0.2.0,<1` once the first release exists
     "timetoalign[all,examples]",
     "pytest>=7.0",
     "pytest-cov>=4.0",

@@ -214,7 +214,7 @@ class TestAuthoredFlows:
         self, specimen_timeline: ContinuousLogicalTimeline
     ) -> None:
         skeleton = specimen_timeline.skeleton
-        skeleton.add_flow(["m1-m41", "m44-m78"], id="elision")
+        skeleton.add_flow(["1-41", "44-78"], id="elision")
         # 41 + 35 == 76 measures; 76 * 3 == 228 quarters.
         assert skeleton.materialize(flow="elision").length.value == Fraction(228)
         sections = skeleton.flows["elision"].sections
@@ -222,25 +222,25 @@ class TestAuthoredFlows:
 
     def test_elision_flow_on_miniature(self, mini_skeleton: TimeSkeleton) -> None:
         # The miniature analogue skips m4 and m5: 3 + 2 == 5 bars == 15 quarters.
-        mini_skeleton.add_flow(["m1-m3", "m6-m7"], id="elision")
+        mini_skeleton.add_flow(["1-3", "6-7"], id="elision")
         assert mini_skeleton.materialize(flow="elision").length.value == Fraction(15)
 
     def test_elision_does_not_merge_ranges(self, mini_skeleton: TimeSkeleton) -> None:
-        mini_skeleton.add_flow(["m1-m3", "m6-m7"], id="elision")
+        mini_skeleton.add_flow(["1-3", "6-7"], id="elision")
         sections = mini_skeleton.flows["elision"].sections
         assert len(sections) == 2
         assert [(s.mc_start, s.mc_end) for s in sections] == [(1, 4), (6, 8)]
         assert [s.atomic_section_ids for s in sections] == [
-            ("m1-m3",),
-            ("m6-m7",),
+            ("1-3",),
+            ("6-7",),
         ]
 
     def test_step_order_and_gap_placement(self, mini_skeleton: TimeSkeleton) -> None:
         gap = Gap(6)
-        mini_skeleton.add_flow(["m1-m3", gap, "m6-m7"], id="withgap")
+        mini_skeleton.add_flow(["1-3", gap, "6-7"], id="withgap")
         # The ordered step store keeps played ranges and the Gap marker in
         # authored order; a Gap owns no measure-id span, so it mints no section.
-        assert mini_skeleton._flow_steps["withgap"] == ("m1-m3", gap, "m6-m7")
+        assert mini_skeleton._flow_steps["withgap"] == ("1-3", gap, "6-7")
         sections = mini_skeleton.flows["withgap"].sections
         assert [(s.mc_start, s.mc_end) for s in sections] == [(1, 4), (6, 8)]
 
@@ -253,21 +253,21 @@ class TestAuthoredFlows:
     def test_gap_with_duration_contributes_its_length(
         self, mini_skeleton: TimeSkeleton
     ) -> None:
-        mini_skeleton.add_flow(["m1-m3", Gap(6), "m6-m7"], id="withgap")
+        mini_skeleton.add_flow(["1-3", Gap(6), "6-7"], id="withgap")
         # 15 played quarters plus the explicit 6-quarter gap.
         assert mini_skeleton.materialize(flow="withgap").length.value == Fraction(21)
 
     def test_duration_less_gap_contributes_nothing(
         self, mini_skeleton: TimeSkeleton
     ) -> None:
-        mini_skeleton.add_flow(["m1-m3", Gap(), "m6-m7"], id="autogap")
+        mini_skeleton.add_flow(["1-3", Gap(), "6-7"], id="autogap")
         # A duration-less gap adds no quarters: only the 15 played remain.
         assert mini_skeleton.materialize(flow="autogap").length.value == Fraction(15)
 
     def test_duplicate_flow_id_raises(self, mini_skeleton: TimeSkeleton) -> None:
-        mini_skeleton.add_flow(["m1-m3"], id="dup")
+        mini_skeleton.add_flow(["1-3"], id="dup")
         with pytest.raises(ValueError, match="already exists"):
-            mini_skeleton.add_flow(["m4-m5"], id="dup")
+            mini_skeleton.add_flow(["4-5"], id="dup")
 
     def test_unknown_section_id_raises(self, mini_skeleton: TimeSkeleton) -> None:
         with pytest.raises(KeyError):
@@ -275,11 +275,11 @@ class TestAuthoredFlows:
 
     def test_unknown_measure_id_raises(self, mini_skeleton: TimeSkeleton) -> None:
         with pytest.raises(KeyError):
-            mini_skeleton.add_flow(["m99"], id="bad")
+            mini_skeleton.add_flow(["99"], id="bad")
 
     def test_backwards_range_raises(self, mini_skeleton: TimeSkeleton) -> None:
         with pytest.raises(ValueError, match="runs backwards"):
-            mini_skeleton.add_flow(["m5-m2"], id="bad")
+            mini_skeleton.add_flow(["5-2"], id="bad")
 
 
 # endregion
@@ -349,37 +349,37 @@ class TestMembership:
         self, mini_skeleton: TimeSkeleton
     ) -> None:
         recording = ContinuousPhysicalTimeline(length=30.0, unit="seconds", uid="rec1")
-        mini_skeleton.attach(recording, flow=("m1", "m5"))
+        mini_skeleton.attach(recording, flow=("1", "5"))
         assert mini_skeleton.n_participants == 2
         assert len(mini_skeleton.flows) == 2
-        minted = mini_skeleton.flows["m1-m5"]
+        minted = mini_skeleton.flows["1-5"]
         assert len(minted.sections) == 1
         assert minted.sections[0].mc_range == (1, 6)
-        assert minted.sections[0].atomic_section_ids == ("m1-m5",)
+        assert minted.sections[0].atomic_section_ids == ("1-5",)
 
     def test_same_range_attach_reuses_the_content_derived_flow(
         self, mini_skeleton: TimeSkeleton
     ) -> None:
         first = ContinuousPhysicalTimeline(length=30.0, unit="seconds", uid="rec1")
         second = ContinuousPhysicalTimeline(length=25.0, unit="seconds", uid="rec2")
-        mini_skeleton.attach(first, flow=("m1", "m5"))
-        mini_skeleton.attach(second, flow=("m1", "m5"))
+        mini_skeleton.attach(first, flow=("1", "5"))
+        mini_skeleton.attach(second, flow=("1", "5"))
         assert mini_skeleton.n_participants == 3
-        assert list(mini_skeleton.flows) == ["source", "m1-m5"]
+        assert list(mini_skeleton.flows) == ["source", "1-5"]
 
     def test_range_attach_refuses_a_differing_flow_under_its_id(
         self, mini_skeleton: TimeSkeleton
     ) -> None:
-        mini_skeleton.add_flow(["m1-m3", "m6-m7"], id="m1-m5")
+        mini_skeleton.add_flow(["1-3", "6-7"], id="1-5")
         recording = ContinuousPhysicalTimeline(length=30.0, unit="seconds", uid="rec1")
-        with pytest.raises(ValueError, match="'m1-m5' already exists with steps"):
-            mini_skeleton.attach(recording, flow=("m1", "m5"))
+        with pytest.raises(ValueError, match="'1-5' already exists with steps"):
+            mini_skeleton.attach(recording, flow=("1", "5"))
 
     def test_detach_restores_participant_count_and_structure(
         self, mini_skeleton: TimeSkeleton
     ) -> None:
         recording = ContinuousPhysicalTimeline(length=30.0, unit="seconds", uid="rec1")
-        mini_skeleton.attach(recording, flow=("m1", "m5"))
+        mini_skeleton.attach(recording, flow=("1", "5"))
         mini_skeleton.detach(recording)
         assert mini_skeleton.n_participants == 1
         assert recording not in mini_skeleton.participants
@@ -398,7 +398,7 @@ class TestMembership:
     )
     def test_detach_removes_the_minted_flow(self, mini_skeleton: TimeSkeleton) -> None:
         recording = ContinuousPhysicalTimeline(length=30.0, unit="seconds", uid="rec1")
-        mini_skeleton.attach(recording, flow=("m1", "m5"))
+        mini_skeleton.attach(recording, flow=("1", "5"))
         mini_skeleton.detach(recording)
         assert list(mini_skeleton.flows) == ["source"]
 
@@ -491,9 +491,9 @@ class TestStructuralEquality:
     def test_authored_flows_are_compared_by_content(self) -> None:
         first = TimeSkeleton(_concrete_hierarchy(3, 2, 2))
         second = TimeSkeleton(_concrete_hierarchy(3, 2, 2))
-        first.add_flow(["m1-m3", "m6-m7"], id="elision")
+        first.add_flow(["1-3", "6-7"], id="elision")
         assert first != second
-        second.add_flow(["m1-m3", "m6-m7"], id="elision")
+        second.add_flow(["1-3", "6-7"], id="elision")
         assert first == second
 
     def test_participants_do_not_affect_equality(self) -> None:
@@ -518,8 +518,8 @@ class TestStructuralEquality:
         )
         # The minted flow id is the range step itself, never the participant
         # id, so identical ranges keep the flow stores identical.
-        first.attach(rec_a, flow=("m1", "m5"))
-        second.attach(rec_b, flow=("m1", "m5"))
+        first.attach(rec_a, flow=("1", "5"))
+        second.attach(rec_b, flow=("1", "5"))
         assert first == second
 
 
@@ -610,10 +610,10 @@ def test_reordered_suite_claims_record_exact_reference_onsets(
     claims = [
         mini_skeleton.create_match_claim(recording.id, at=at, coordinate=0.0)
         for at in (
-            MeasureId("m6"),
-            MeasureId("m1"),
-            MeasureId("m4"),
-            MeasureId("m5"),
+            MeasureId("6"),
+            MeasureId("1"),
+            MeasureId("4"),
+            MeasureId("5"),
         )
     ]
 

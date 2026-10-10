@@ -132,7 +132,7 @@ class TimeSkeleton:
         """Enroll a timeline and return this skeleton for chaining.
 
         A measure-range ``flow`` tuple mints a one-step flow whose id is the
-        range step itself (e.g. ``"m1-m5"``) — content-derived, never named
+        range step itself (e.g. ``"1-5"``) — content-derived, never named
         after the participant, so equal ranges share one flow and structural
         equality stays participant-blind. An existing flow under that id is
         reused when it holds exactly the one range step and refused otherwise.
@@ -409,7 +409,7 @@ class TimeSkeleton:
                 count = int(address.value)
                 if not 1 <= count <= len(measures):
                     raise ValueError(f"Measure count {count} is outside the structure")
-                return measures[count - 1].id or f"m{count}"
+                return measures[count - 1].id
             return str(address.value)
         if isinstance(address, MeasureNumber):
             matches = [

@@ -679,6 +679,7 @@ class MetricalPositionMap(CombinationMap):
         *,
         uid: str | None = None,
         name: str | None = None,
+        beat_map_id: str | None = None,
     ) -> None:
         """Initialize a MetricalPositionMap.
 
@@ -686,9 +687,10 @@ class MetricalPositionMap(CombinationMap):
             meter_map: The MetricMap providing measure structure.
             uid: Optional explicit ID.
             name: Human-readable name for this map. Defaults to the map's ID.
+            beat_map_id: Optional explicit ID of the derived BeatInMeasureMap.
         """
         self._meter_map = meter_map
-        beat_map = BeatInMeasureMap(meter_map)
+        beat_map = BeatInMeasureMap(meter_map, uid=beat_map_id)
 
         super().__init__(
             maps={"mc": meter_map, "beat": beat_map},
@@ -735,22 +737,30 @@ class MetricalPositionMap(CombinationMap):
         return self._meter_map.get_mn(mc)
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialize to dictionary."""
-        d = super().to_dict()
-        d["meter_map"] = self._meter_map.to_dict()
-        return d
+        """Serialize to dictionary.
+
+        Both outputs derive from the meter map, so the dictionary holds the
+        meter map once and the identifier of the derived
+        :class:`BeatInMeasureMap` beside it, never the derived maps.
+
+        Returns:
+            The map's common fields, ``meter_map`` and ``beat_map_id``.
+        """
+        return {
+            **ConversionMap.to_dict(self),
+            "meter_map": self._meter_map.to_dict(),
+            "beat_map_id": self._maps["beat"].id,
+        }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> MetricalPositionMap:
-        """Deserialize from dictionary."""
-        meter_map = MetricMap.from_dict(data["meter_map"])
-        position_map = cls(meter_map, uid=data.get("id"), name=data.get("name"))
-        position_map._maps = {
-            name: ConversionMap.from_dict(map_data)
-            for name, map_data in data["maps"].items()
-        }
-        position_map._names = list(data["names"])
-        return position_map
+        """Deserialize from dictionary, restoring the derived map's identifier."""
+        return cls(
+            MetricMap.from_dict(data["meter_map"]),
+            uid=data["id"],
+            name=data["name"],
+            beat_map_id=data["beat_map_id"],
+        )
 
     def __repr__(self) -> str:
         return f"MetricalPositionMap(n_measures={self._meter_map.n_measures})"

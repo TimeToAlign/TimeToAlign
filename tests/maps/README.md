@@ -4,12 +4,18 @@ This directory contains tests for the `timetoalign.maps` module, which implement
 
 ## Serialized metrical positions
 
-A `MetricalPositionMap` carries both its authoritative meter map and the
-component maps it exposes. Restoring its dictionary must preserve the complete
-dictionary exactly, including nested map identifiers; otherwise a reader has
-changed a document despite retaining equivalent numerical behavior. The meter
-test therefore serializes a populated map, restores it, and compares the whole
-JSON-safe dictionary.
+A `MetricalPositionMap` derives both of its outputs from one meter map: the
+measure count is the meter map itself and the beat is a `BeatInMeasureMap`
+built over it. Its dictionary therefore holds the meter map once and the
+identifier of the derived beat map (`beat_map_id`), never the derived maps or
+their names, which would state the same meter map three times. The keys are
+exactly `type`, `id`, `name`, `source_unit`, `target_unit`, `meter_map` and
+`beat_map_id`. Restoring the dictionary must reproduce it exactly, including
+the nested identifiers: the restored derived beat map carries the stated
+`beat_map_id`, and its `meter_map` is the restored meter map, so a reader never
+changes a document while keeping equivalent numerical behaviour. The meter test
+serializes a populated map whose identifiers come from a counter, restores it,
+and compares the whole JSON-safe dictionary.
 
 ## Test Coverage Summary
 

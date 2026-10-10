@@ -59,6 +59,19 @@ class MeasureMapLoader(ScoreLoader):
     - Compressed MeasureMap (minimal entries, defaults inferred)
     - Expanded MeasureMap (all fields explicit)
     - Validation of structure (MC unique, qstamp monotonic, next valid)
+    - The standard's anacrusis convention: a first row numbered 0 that is
+      shorter than its nominal length is the closing part of nominal bar 0,
+      at offset ``nominal_length - actual_length`` within it (see
+      :meth:`_apply_anacrusis_convention`)
+    - ``-1`` in ``next``, the measure-table spelling of the end of the piece:
+      the rows are read without it (it names no row) and the measure map
+      leaves it out, while ``expanded_data``, the measure table and
+      :meth:`compute_default_traversal` keep it where the file states it
+
+    Known limitation: a ``.mm.json`` file states no offset for the parts of
+    an inner split bar, so they load as ``IrregularMeasure``s, whereas an
+    ``Ms3Loader`` measure table stating ``mc_offset`` yields
+    ``MeasureConstituent``s for the same bar.
 
     Attributes:
         unit: Always TimeUnit.quarters (MeasureMap uses quarter beats).
@@ -122,8 +135,29 @@ class MeasureMapLoader(ScoreLoader):
         if not raw_data:
             return ScoreStore.empty()
 
+        # Measure Map files written from measure tables spell the end of the
+        # piece -1, which names no row: the rows are read without it, and the
+        # loader's own table and traversal keep it where the file states it.
+        rows = [
+            (
+                {**row, "next": [entry for entry in row["next"] if entry != -1]}
+                if isinstance(row, dict) and isinstance(row.get("next"), list)
+                else row
+            )
+            for row in raw_data
+        ]
         # Expand through the canonical authoring lane.
-        expanded = MeasureMap.expand_rows(raw_data)
+        expanded = MeasureMap.expand_rows(rows)
+        counts_by_id = {bar["ID"]: bar["count"] for bar in expanded}
+        ends = {
+            row["count"] if "count" in row else counts_by_id[row["ID"]]
+            for row in raw_data
+            if -1 in (row.get("next") or ())
+        }
+        for bar in expanded:
+            if bar["count"] in ends:
+                bar["next"] = [*bar["next"], -1]
+        self._apply_anacrusis_convention(expanded)
         incomplete = next(
             (
                 row
@@ -164,6 +198,47 @@ class MeasureMapLoader(ScoreLoader):
                 "flow_control": measures_data.get_flow_control_summary(),
             },
         )
+
+    def _measure_map(self) -> MeasureMap:
+        """Build the measure map from the expanded rows, not the measure table.
+
+        The end-of-piece ``-1`` the loader keeps for its traversal names no
+        measure, so the map's successors leave it out.
+        """
+        return MeasureMap.from_expanded_rows(
+            [
+                {**bar, "next": [entry for entry in bar["next"] if entry != -1]}
+                for bar in self._expanded_data
+            ]
+        )
+
+    @staticmethod
+    def _apply_anacrusis_convention(expanded: list[dict[str, Any]]) -> None:
+        """Give an anacrusis its offset inside nominal bar 0.
+
+        The Measure Map standard states one convention for a short opening
+        bar: a first row numbered 0 whose actual length is shorter than its
+        nominal length is an anacrusis, the closing part of nominal bar 0.
+        Its offset within that bar is therefore ``nominal - actual``. This
+        loader applies the convention to a first row that states no
+        ``offset_within_measure`` of its own, before measures are built; no
+        other row is ever read as part of a split measure.
+
+        Args:
+            expanded: Rows returned by :meth:`MeasureMap.expand_rows`,
+                updated in place.
+        """
+        first = expanded[0]
+        nominal = first["nominal_length"]
+        actual = first["actual_length"]
+        if (
+            first["number"] == 0
+            and not first["offset_within_measure"]
+            and nominal is not None
+            and actual is not None
+            and actual < nominal
+        ):
+            first["offset_within_measure"] = nominal - actual
 
     def _validate_measuremap(self, expanded: list[dict[str, Any]]) -> None:
         """Validate the expanded MeasureMap.
@@ -306,6 +381,8 @@ class MeasureMapLoader(ScoreLoader):
             sequence.append(current_mc)
 
             next_options = bar["next"]
+            if not next_options:
+                break
             visit_counts[current_mc] += 1
 
             # Choose next based on visit count

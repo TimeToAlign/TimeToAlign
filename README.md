@@ -100,6 +100,7 @@ install with the `dev` extra:
 ```bash
 git clone https://github.com/timetoalign/timetoalign.git
 pip install -e "./timetoalign[dev]"      # Editable install + everything + dev tooling
+cd timetoalign && pip install --group conformance   # Test oracles (pip >= 25.1)
 ```
 
 ## Quick Start

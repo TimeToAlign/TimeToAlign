@@ -271,6 +271,15 @@ MatchStamp: |
   present_timelines lists available timelines, and is_interpolated identifies
   interpolation fallback.
 
+MeasureConstituent: |
+  A measure of a measure map that is only part of its nominal measure: an
+  anacrusis, or one constituent of a split measure. It carries
+  offset_within_measure, the strictly positive quarter-note position at which
+  it begins inside the nominal measure. A measure is a constituent exactly when
+  that offset is stated and non-zero; a shared measure number never marks a
+  split measure. MeasureMapLoader reads a first row numbered 0 that is shorter
+  than nominal as an anacrusis at offset nominal minus actual length.
+
 MetricMap: |
   A table-based ConversionMap from a quarter position to its measure count,
   built from explicit measure-boundary anchors rather than a uniform measure
@@ -283,7 +292,8 @@ MetricalPositionMap: |
   A CombinationMap pairing a MetricMap with a beat-in-measure map to return a
   metrical position {mc, beat} from a quarter coordinate. Adds a reverse lookup
   quarters_at(mc, beat) (metrical position → quarters) and mn_at(quarters)
-  (quarters → measure-number label).
+  (quarters → measure-number label). Its dictionary form holds meter_map once
+  and names the derived beat map by beat_map_id.
 
 MpmLoader: |
   Loader for an MPM-Toolbox project: a sibling .msm score, .mpm modelled

@@ -73,11 +73,7 @@ docs = [                                      # Documentation site building
 all = [                                       # All runtime features
     "timetoalign[tutorial,delta,rdf]",
 ]
-testing = [                                   # Test-suite execution (used by `tox -e py3xx`)
-    "pymeasuremap @ git+https://github.com/measure-map/pyMeasureMap.git@ddcfec3",
-    # Measure Map reference implementation, the test oracle for compressed rows; registry pin once a release carries compress
-    "timeskeleton @ git+https://github.com/TimeToAlign/timeskeleton.git@main#subdirectory=python",
-    # TimeSkeleton schema conformance of the eventless manifest; registry pin `timeskeleton>=0.2.0,<1` once the first release exists
+testing = [                                   # Test-suite execution (used by `tox -e py3xx`, with the `conformance` group)
     "timetoalign[all,examples]",
     "pytest>=7.0",
     "pytest-cov>=4.0",
@@ -90,6 +86,19 @@ dev = [                                       # Testing + docs + lint/format too
     "pre-commit>=2.20",
     "ruff>=0.1",
     "tox>=4.0",
+]
+
+[dependency-groups]
+# Test oracles the suite needs beside the `testing` extra. A dependency group
+# (PEP 735) is not part of the distribution metadata, so these git references
+# never reach a published Requires-Dist. Install with
+# `pip install --group conformance` (pip >= 25.1); tox installs it for every
+# test environment.
+conformance = [
+    "pymeasuremap @ git+https://github.com/measure-map/pyMeasureMap.git@ddcfec3",
+    # Measure Map reference implementation, the test oracle for compressed rows; registry pin once a release carries compress
+    "timeskeleton @ git+https://github.com/TimeToAlign/timeskeleton.git@main#subdirectory=python",
+    # TimeSkeleton schema conformance of the eventless manifest; registry pin `timeskeleton>=0.2.0,<1` once the first release exists
 ]
 
 [project.urls]

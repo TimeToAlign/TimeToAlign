@@ -197,7 +197,6 @@ class RekordboxLoader(Loader[list[RekordboxTrack]]):
                 "POSITION_MARK": [dict(mark) for mark in track.position_marks],
             },
         )
-        timeline.add_measure_map(measure_map)
         timeline.add_conversion_map(
             TableMap(
                 x_values=seconds,
@@ -209,6 +208,8 @@ class RekordboxLoader(Loader[list[RekordboxTrack]]):
         )
         if track.sample_rate is not None:
             timeline.add_conversion_map(SecondsToSamples(sample_rate=track.sample_rate))
+        # The measures are anchored in quarter notes, which a seconds axis
+        # cannot carry; the track's skeleton holds the map instead.
         hierarchy = SectionHierarchy.from_measure_map(measure_map)
         TimeSkeleton(hierarchy, uid=f"{uid}/skeleton", beat_grid=grid).attach(timeline)
         return timeline
@@ -251,18 +252,14 @@ class RekordboxLoader(Loader[list[RekordboxTrack]]):
 
     @staticmethod
     def _measure_map(grid: BeatGrid, downbeats: list[Any]) -> list[Any]:
-        from timetoalign.core import (
-            IrregularMeasure,
-            MeasureConstituent,
-            RegularMeasure,
-        )
+        from timetoalign.core import Measure
 
         measures: list[Any] = []
         first = grid.segments[0]
         if first.battito != 1:
             offset = first.policy.offset_for(first.battito)
             measures.append(
-                MeasureConstituent(
+                Measure.from_values(
                     number=0,
                     time_signature=first.policy.name,
                     nominal_length=first.policy.span,
@@ -278,15 +275,11 @@ class RekordboxLoader(Loader[list[RekordboxTrack]]):
                 downbeats[index + 1][0] if index + 1 < len(downbeats) else extent
             )
             actual_length = grid.quarters_between(downbeat, next_downbeat)
-            nominal_length = segment.policy.span
-            measure_type = (
-                RegularMeasure if actual_length == nominal_length else IrregularMeasure
-            )
             measures.append(
-                measure_type(
+                Measure.from_values(
                     number=index + 1,
                     time_signature=segment.policy.name,
-                    nominal_length=nominal_length,
+                    nominal_length=segment.policy.span,
                     actual_length=actual_length,
                 )
             )

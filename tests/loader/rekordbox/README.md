@@ -8,14 +8,14 @@ with no range or approximation.
 ## Timeline-native measure structure
 
 The synthetic single-track XML fixture already fixes the generated measure count
-from its TEMPO grid. The track timeline must store a ``MeasureMap`` of exactly
-that count, and the attached skeleton hierarchy must reference the same map
-object, proving there is one authored structure rather than two equivalent
-copies. Rekordbox TEMPO data states no score repeat, jump, break, or target marker,
-so the bound flow-control registry must have exactly zero breaks, zero jumps, and
-an empty marker mapping. A JSON timeline round trip must reproduce the exact
-measure map even though the timeline axis is seconds and measure lengths remain
-quarter-note fractions.
+from its TEMPO grid. The measure map belongs to the track's quarter-anchored
+structure, not to the seconds axis: the attached skeleton's section hierarchy
+holds the one ``MeasureMap`` of exactly that count, with row IDs ``"1"`` to
+``"4"``, while the seconds timeline carries none (``measure_map`` is ``None``)
+and its document carries no measure map (the member is ``null``). Rekordbox TEMPO data states no score repeat,
+jump, break, or target marker, so the bound flow-control registry must have
+exactly zero breaks, zero jumps, and an empty marker mapping. A JSON round trip
+of the seconds timeline must reproduce its payload exactly.
 
 ## Ground-truth data files
 
@@ -158,8 +158,8 @@ and the mix's measure records fall from 3526 to **3519** — 3518 grid bars plus
 the ``Battito 4`` pickup as nominal bar 0.
 
 **What the fix moves.** The bar that runs into the 672.729 boundary was a 7 ms
-sliver (``m450``, ``7/1000 × 160/60 = 7/375`` quarters). It is gone; the bar
-carrying that boundary is now ``measure_map[448]`` — id ``m449``, an
+sliver (bar ``450``, ``7/1000 × 160/60 = 7/375`` quarters). It is gone; the bar
+carrying that boundary is now ``measure_map[448]`` — id ``"449"``, an
 ``IrregularMeasure`` spanning ``671.222 → 672.729``, whose actual length is
 ``1507/1000 s × 160/60 = 1507/375`` quarters.
 

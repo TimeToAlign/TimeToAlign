@@ -205,16 +205,38 @@ fixpoint over every structural key. The restored registry must hold exactly
 measure equality.
 
 An unfolded measures table cannot be a measure map. The map lists measures in
-printed order, and each measure id is ``m`` plus its printed measure count
-(``mc``). ``c11n08_Rondeau_unfolded.measures.tsv`` has ``138`` rows that replay
+printed order, and each measure id is its Measure Map row ``ID``, which for a
+measures table is the printed measure count (``mc``) as a string. ``c11n08_Rondeau_unfolded.measures.tsv`` has ``138`` rows that replay
 the printed measures in performance order: its ``mc`` column reads
 ``1..9, 1..18, 10..18, 1..9, 19..27, ...``. The count ``1`` therefore occurs
-more than once, and so does the id ``m1``. Creating a timeline from that table
+more than once, and so does the id ``"1"``. Creating a timeline from that table
 must raise ``ValueError`` stating that measure IDs must be unique within a
 ``MeasureMap``. The rows are a defect of the source, not a lossy reading of it,
 so the loader must not return a timeline without its measure structure. The
 uniqueness check runs before any per-measure count or ``qstamp`` comparison, so
 it must emit no warning at all.
+
+The `.mm.json` loader applies the Measure Map standard's one anacrusis
+convention before any measure is built, and nothing else. A file whose first row
+is numbered 0, in 4/4, with actual length 1 must load as a `MeasureConstituent`
+at offset exactly 3 (nominal 4 minus actual 1), and its document rows must carry
+`"offset_within_measure": [3, 1]`. The same row numbered 1 is an
+`IrregularMeasure` with no offset: the convention names number 0 only. A first
+row that states its own `offset_within_measure` keeps that offset. A later row
+numbered 0 and shorter than nominal stays an `IrregularMeasure`, because only
+the first row is an anacrusis by convention and a shared number never marks a
+split. The loader also reads the measure-table spelling `-1` in `next` (the end of the
+piece). The row form refuses it as a count naming no row, so the rows are read
+without it and the measure map leaves it out; the loader's own expanded data,
+measure table and default traversal keep it where the file states it, since an
+ending bar such as `c05n05_musete`'s with successors `1` and `-1` ends the piece
+on its second visit. Every folded corpus `.mm.json` file states `-1`, so loading
+`WoO71.measures.mm.json` at all pins the conversion, and the exact traversal
+counts (138 for both Couperin pieces, 505 for WoO71) pin that the end survives. Measures are
+built from the expanded rows themselves, never from the measure table the loader
+also fills. On the corpus, `WoO71.measures.mm.json` opens with a `MeasureConstituent`
+at offset 1, exactly the offset `WoO71.measures.tsv` states in its `mc_offset`
+column for MC 1.
 
 MeasureMap tests require unique MC values, monotonic `qstamp`, valid `next` references, exact
 linear/repeat traversals, 397 folded and 505 unfolded WoO71 measures, and matching MS3 MCs and

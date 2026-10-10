@@ -395,3 +395,86 @@ class TestFlowControlSpecimen:
         assert len(measures) == 15  # flow_only specimen has exactly 15 measures
         summary = measures.get_flow_control_summary()
         assert summary["has_repeats"], "Flow control specimen should have repeats"
+
+
+class TestAnacrusisConvention:
+    """The loader's one conversion: a short first row numbered 0 is an anacrusis."""
+
+    @staticmethod
+    def _first_measure(tmp_path: Path, rows: list[dict[str, object]]):
+        from timetoalign.loader.score import MeasureMapLoader
+
+        path = tmp_path / "rows.mm.json"
+        path.write_text(json.dumps(rows), encoding="utf-8")
+        timeline = MeasureMapLoader().load(path).create_timeline()
+        return timeline.measure_map
+
+    def test_short_first_row_numbered_zero_is_a_constituent(self, tmp_path):
+        from timetoalign.core import MeasureConstituent
+
+        measure_map = self._first_measure(
+            tmp_path,
+            [
+                {"count": 1, "number": 0, "time_signature": "4/4", "actual_length": 1},
+                {"count": 3},
+            ],
+        )
+        assert type(measure_map[0]) is MeasureConstituent
+        assert measure_map[0].offset_within_measure == Fraction(3)
+        assert measure_map.to_rows()[0]["offset_within_measure"] == [3, 1]
+
+    def test_the_convention_names_number_zero_only(self, tmp_path):
+        from timetoalign.core import IrregularMeasure
+
+        measure_map = self._first_measure(
+            tmp_path,
+            [
+                {"count": 1, "number": 1, "time_signature": "4/4", "actual_length": 1},
+                {"count": 3},
+            ],
+        )
+        assert type(measure_map[0]) is IrregularMeasure
+        assert "offset_within_measure" not in measure_map.to_rows()[0]
+
+    def test_a_stated_offset_is_kept(self, tmp_path):
+        measure_map = self._first_measure(
+            tmp_path,
+            [
+                {
+                    "count": 1,
+                    "number": 0,
+                    "time_signature": "4/4",
+                    "actual_length": 1,
+                    "offset_within_measure": 2,
+                },
+                {"count": 2},
+            ],
+        )
+        assert measure_map[0].offset_within_measure == Fraction(2)
+
+    def test_a_later_short_row_numbered_zero_is_not_split(self, tmp_path):
+        from timetoalign.core import IrregularMeasure, MeasureConstituent
+
+        measure_map = self._first_measure(
+            tmp_path,
+            [
+                {"count": 1, "number": 0, "time_signature": "4/4", "actual_length": 1},
+                {"count": 2, "number": 0, "actual_length": 3},
+            ],
+        )
+        assert [type(measure) for measure in measure_map] == [
+            MeasureConstituent,
+            IrregularMeasure,
+        ]
+
+    @pytest.mark.skipif(not specimens_available(), reason="Specimen files not found")
+    def test_corpus_anacrusis_matches_the_measure_table(self):
+        from timetoalign.core import MeasureConstituent
+        from timetoalign.loader.score import MeasureMapLoader, Ms3Loader
+
+        from_json = MeasureMapLoader().load(BEETHOVEN_MM_JSON).create_timeline()
+        from_table = Ms3Loader().load(BEETHOVEN_MEASURES_TSV).create_timeline()
+        first = from_json.measure_map[0]
+        assert type(first) is MeasureConstituent
+        assert first.offset_within_measure == Fraction(1)
+        assert from_table.measure_map[0].offset_within_measure == Fraction(1)

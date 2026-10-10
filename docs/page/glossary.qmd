@@ -387,6 +387,21 @@ to the relevant section of the conceptual model.
     varies by producing context.
     See [Alignment](concepts.qmd#alignment).
 
+**MeasureConstituent**
+:   A measure of a measure map that is only part of its nominal measure: an
+    anacrusis, or one constituent of a split measure. It carries
+    `offset_within_measure`, the strictly positive quarter-note position at
+    which it begins inside the nominal measure, and is the only measure class
+    that does. A measure is classified as a constituent exactly when that
+    offset is stated and non-zero: a shared measure number never marks a split
+    measure, because alternative endings ("16a", "16b") share one too. A
+    measure table states the offset in its `mc_offset` column; a Measure Map
+    `.mm.json` file states none, so `MeasureMapLoader` applies the standard's
+    one convention, a first row numbered 0 that is shorter than nominal being
+    an anacrusis at offset nominal minus actual length. In a compressed
+    measure-map row the offset is the `offset_within_measure` extension,
+    written only when non-zero.
+
 **MetricMap**
 :   A table-based {{< glossary ConversionMap >}} from a quarter position to its
     measure count, built from explicit measure-boundary anchors rather than a
@@ -402,7 +417,9 @@ to the relevant section of the conceptual model.
     a beat-in-measure map to return a metrical position `{mc, beat}` from a
     quarter coordinate. Adds a reverse lookup `quarters_at(mc, beat)` (metrical
     position to quarters) and `mn_at(quarters)` (quarters to measure-number
-    label).
+    label). Both outputs derive from the meter map, so its dictionary form
+    holds `meter_map` once and names the derived beat map by `beat_map_id`,
+    never the derived maps themselves.
     See [Conversion maps](concepts.qmd#conversion-maps).
 
 **MpmLoader**

@@ -2172,6 +2172,54 @@ class Measure(ScalarVocabulary, BaseModel):
     volta: int | None = None
 
     @classmethod
+    def from_values(cls, **values: Any) -> Measure:
+        """Build the measure of the concrete class its values describe.
+
+        This is the one classification of a measure, shared by every lane
+        that builds measures from source facts or document rows:
+
+        - no ``nominal_length``: a plain :class:`Measure`;
+        - a ``cadenza`` time signature: :class:`CadenzaMeasure`;
+        - a non-zero ``offset_within_measure``: :class:`MeasureConstituent`;
+        - ``actual_length`` equal to ``nominal_length``: :class:`RegularMeasure`;
+        - otherwise: :class:`IrregularMeasure`.
+
+        Neither ``number`` nor a neighbouring measure takes part: a shared
+        number also marks alternative endings, so it never identifies a
+        split measure.
+
+        Args:
+            **values: Measure fields, optionally with ``offset_within_measure``.
+
+        Returns:
+            The measure, of the class its values describe.
+
+        Raises:
+            ValueError: If a non-zero offset is stated for a measure without
+                nominal length or for a cadenza, which cannot lie inside a
+                nominal measure.
+        """
+        offset = values.pop("offset_within_measure", None) or Fraction(0)
+        signature = values.get("time_signature")
+        target: type[Measure]
+        if values.get("nominal_length") is None:
+            target = Measure
+        elif signature is not None and str(signature).lower() == "cadenza":
+            target = CadenzaMeasure
+        elif offset:
+            return MeasureConstituent(**values, offset_within_measure=offset)
+        elif values.get("actual_length") == values["nominal_length"]:
+            target = RegularMeasure
+        else:
+            target = IrregularMeasure
+        if offset:
+            raise ValueError(
+                f"A {target.__name__} cannot lie at offset {offset} inside a "
+                "nominal measure"
+            )
+        return target(**values)
+
+    @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Measure:
         """Restore the concrete measure class named by a dictionary payload.
 

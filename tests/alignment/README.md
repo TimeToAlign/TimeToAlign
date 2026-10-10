@@ -1416,16 +1416,17 @@ The two section closers cut the 203 measures into **exactly three** leaf section
 
 | Section | Measure ids | Measure count | Quarter span | First onset (quarters) | Last onset (quarters) |
 |---------|-------------|---------------|--------------|------------------------|-----------------------|
-| 1 | m1..m78    | 78 | 78 × 3 = **234** | 0   | 231 |
-| 2 | m79..m143  | 65 | 65 × 3 = **195** | 234 | 426 |
-| 3 | m144..m203 | 60 | 60 × 3 = **180** | 429 | 606 |
+| 1 | 1..78    | 78 | 78 × 3 = **234** | 0   | 231 |
+| 2 | 79..143  | 65 | 65 × 3 = **195** | 234 | 426 |
+| 3 | 144..203 | 60 | 60 × 3 = **180** | 429 | 606 |
 
 Cross-checks a correct implementation must reproduce: 78 + 65 + 60 = 203;
 234 + 195 + 180 = 609; each section's first onset equals the previous section's
 last onset + 3 (231→234, 426→429); the last measure onset 606 + 3 = 609.
 
 Each leaf ``MeasureMap`` segment is immutable and standard-conformant: measure ids
-``m1``..``m203``; ``qstamp`` values are the exact ``Fraction`` prefix sums
+are the Measure Map row IDs ``"1"``..``"203"`` (``str(count)``, since the table
+states no other); ``qstamp`` values are the exact ``Fraction`` prefix sums
 (``Fraction(0)``, ``Fraction(3)``, …, ``Fraction(606)``); ``number`` == ``count``
 here (1..203); ``time_signature`` ``3/4``; ``nominal_length`` == ``actual_length``
 == 3 quarters; no ``start_repeat``/``end_repeat``/``volta``.
@@ -1468,14 +1469,14 @@ it does not produce a participant-less skeleton.
 
 ### (e) Authored flows
 
-**Ground truth.** An authored **elision** flow that traverses ``m1..m41`` then
-``m44..m78``, skipping ``m42`` and ``m43``.
+**Ground truth.** An authored **elision** flow that traverses ``1..41`` then
+``44..78``, skipping ``42`` and ``43``.
 
 **Derivation.**
 
-- ``m1..m41`` = 41 measures; ``m44..m78`` = 35 measures; 41 + 35 = **76 measures**.
-- Elided ``m42, m43`` = 2 measures.
-- Cross-check: the full ``m1..m78`` section is 78 measures; 78 − 2 = 76.
+- ``1..41`` = 41 measures; ``44..78`` = 35 measures; 41 + 35 = **76 measures**.
+- Elided ``42, 43`` = 2 measures.
+- Cross-check: the full ``1..78`` section is 78 measures; 78 − 2 = 76.
 - Quarters: 76 × 3 = **228 quarters** (equivalently 123 + 105, or the section's 234
   minus the 6 quarters of the two elided bars).
 
@@ -1493,7 +1494,7 @@ correct flow store is distinguished by these facts, all of which a test must pin
 - the flow's measure count (**76**, ``Gap`` excluded) and its reference-quarter
   span (228 plus any ``Gap`` quarters).
 
-A store that merged the two non-adjacent ranges into a single ``m1..m78`` step, or
+A store that merged the two non-adjacent ranges into a single ``1..78`` step, or
 reordered steps, or counted a ``Gap`` toward the measure count, must fail.
 
 ### (f) Claim recording

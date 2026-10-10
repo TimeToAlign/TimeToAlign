@@ -15,19 +15,23 @@ which implements the central Timeline class and its 6 domain-specific subclasses
 ### Measure Map compressed rows
 
 Measure-map documents are compressed row lists rather than tagged measure
-objects. The tests prove this is a codec, not merely a shorter rendering: every
-map built from a folded ``.mm.json`` score specimen and every map built by
-``Ms3Loader`` from the folded measure tables already exercised by the suite has
-the row fixpoint
-``MeasureMap.from_rows(m.to_rows()).to_rows() == m.to_rows()``. Maps that began
-as rows also compare equal after that reconstruction. This demonstrates that
-compression retains every fact needed to reproduce the map, including exact
-fractional positions and lengths.
+objects. The tests prove this is a lossless codec, not merely a shorter
+rendering: every map ``MeasureMapLoader`` builds from a folded ``.mm.json``
+score specimen (their anacrusis constituents included) and every map built by
+``Ms3Loader`` from the folded measure tables already exercised by
+the suite satisfies both ``MeasureMap.from_rows(m.to_rows()) == m`` under strict
+equality (same concrete class and every field equal, ``offset_within_measure``
+included) and the row fixpoint
+``MeasureMap.from_rows(m.to_rows()).to_rows() == m.to_rows()``. Equality has no
+exclusions, so a codec that dropped an offset or reclassified a measure fails
+the first assertion even when the rows happen to be a fixpoint.
 
 The reference implementation independently determines which rows carry new
 information. For the same specimens, tests expand the library rows, convert the
 exact values to floats for the reference input, and require identical retained
-counts and shared values after conversion. The pinned corpus results are:
+counts and shared values after conversion (the specimens use default IDs, so a
+library ``next`` of IDs is compared with the reference's counts through
+``int``). The pinned corpus results are:
 ``c05n05_musete`` has 8 of 58 rows at counts ``[1, 5, 6, 16, 17, 31, 32, 58]``;
 ``c11n08_Rondeau`` has 8 of 60 at ``[1, 9, 10, 18, 19, 27, 28, 60]``;
 ``Bruckner_WAB.105_3a_Scherzo.measures`` has 2 of 382 at ``[1, 382]``;
@@ -45,9 +49,94 @@ local change. Unfolded score files are deliberately excluded because their
 
 The document test requires a list whose first row has ``count``, ``qstamp``,
 ``number``, ``name``, ``actual_length``, ``start_repeat``, and ``end_repeat``;
-it has no ``ID`` and no null value. The former ``{"measures": [...]}`` wrapper
-is refused. A timeline carrying a corpus map survives a dictionary round trip,
-which proves the enclosing serializer uses the same compressed codec.
+it has no ``ID`` (the default ``str(count)`` is never written) and no null
+value. The former ``{"measures": [...]}`` wrapper is refused. A timeline
+carrying a corpus map survives a dictionary round trip, which proves the
+enclosing serializer uses the same compressed codec.
+
+**Row identity.** A measure's ``id`` is its row ``ID``: ``str(count)`` unless
+the row states another, and ``next`` names successors by these IDs, so there is
+one spelling of a measure's identity. A map authored with IDs ``a``, ``b``,
+``c`` (each row complete) must reproduce its own rows byte for byte: the first
+row carries ``"ID": "a"`` and ``"next": ["b"]``, and the measures' ids are
+exactly ``("a", "b", "c")``. ``next`` read as the standard's ``count``
+integers and as its ``ID`` strings must build equal maps, an empty ``next``
+ending the piece. ``-1``, the measure tables' spelling of the end of the
+piece, is no row count: the row lane refuses it like any count that names no
+row (``from_measure_data`` and the ``.mm.json`` loader, which read measure-table
+conventions, drop it before rows exist). A ``next`` count beyond the last row,
+``0``, ``-1`` and an ``ID`` no row states are refused by name, as is an ``ID``
+stated twice. A map states every successor: a measure built without ``next`` is
+followed by the next measure in printed order and the last one by none, so a
+map built from ``Measure`` objects and the same map read back from its rows
+compare equal.
+
+**One classifier.** Rows and measure tables are classified by one function,
+``Measure.from_values``. The five outcomes are pinned on one row each: no
+nominal length gives ``Measure``; a ``cadenza`` signature ``CadenzaMeasure``;
+a stated ``offset_within_measure`` ``MeasureConstituent`` carrying exactly that
+offset; actual equal to nominal ``RegularMeasure``; anything else
+``IrregularMeasure``. A stated offset on a measure without nominal length is
+refused, because it could not survive the round trip. For the same reason a
+map holding a ``SplitRegularMeasure`` or ``SplitIrregularMeasure`` cannot be
+written as rows: ``to_rows`` raises a ``ValueError`` naming that measure's ID
+and class and returns nothing, instead of writing a row that would read back
+as a different class. Two short rows sharing a
+``number`` (the standard's ``16a``/``16b`` endings) stay ``IrregularMeasure``:
+a shared number is never read as a split measure. ``to_rows`` writes
+``offset_within_measure`` exactly when it is non-zero and a row stating ``0``
+is refused (the schema's rule), so a constituent and an irregular measure of
+equal lengths produce different rows.
+
+**One reader.** Row numbers are read only by ``number_from_json``: a JSON
+integer, a JSON float (its exact binary expansion, never a guessed ratio), or a
+Fraction pair. A string such as ``"1/2"`` is refused, as is a Python
+``Fraction`` object, which is not a document value.
+
+**Row-level rules.** The standard's compression omits every row equal to its
+predecessor's default successor, so a jump in ``count`` (1 then 3) is an
+omitted run and expands to the default successors it stands for: three
+measures. A ``count`` that does not strictly increase cannot arise from
+compression and is refused with an error naming that count, whether it goes
+backwards (3 then 2) or repeats (2 then 2). ``volta`` carries no constraint: a row outside any repeat may carry
+``volta: 7`` and the value survives the round trip. A stated ``qstamp`` that
+contradicts the position derived from preceding actual lengths emits exactly
+one ``UserWarning`` naming both values and the derived position is kept; the
+same message is emitted by ``MeasureMap`` construction from measures, because
+both go through one helper.
+
+**Axis.** A measure map is anchored in quarter notes: ``add_measure_map`` on a
+timeline of any other unit raises with the same message shape as
+``add_metric_hierarchy``, and the conformance catalogue attaches measure maps
+to quarter timelines only.
+
+**Corpus measure classes.** Every folded corpus specimen was probed before
+and after the classifier was unified; the only differences are the ones the
+classifier specifies:
+
+- twelve folded ``.mm.json`` specimens open with a row numbered 0 that is
+  shorter than nominal; that row was an ``IrregularMeasure`` and is now a
+  ``MeasureConstituent`` at ``nominal - actual`` (the loader's anacrusis
+  convention): ``n04op18-4_04`` and its ``_flow``, ``sq8913219`` and its
+  ``_flow``, ``Beethoven_Op018No4-04`` and its ``_flow`` (offset 3 each),
+  ``WoO71`` and ``original_file_before_cleaning`` (1), ``c05n05_musete``
+  (3/2), ``c11n08_Rondeau`` (1), ``out_of_the_flow_experience-flow_only`` (3),
+  ``-full`` and ``-polyrhythm_only`` (5). Every other ``.mm.json`` row keeps its
+  class; the inner split bars that the corresponding measure tables mark with
+  ``mc_offset`` stay ``IrregularMeasure`` in the ``.mm.json`` lane, because
+  those files state no offset and a shared number is not one;
+- the ``Music21Loader`` and ``PartituraLoader`` extract no time signature into
+  their measure tables (the ``timesig`` column is empty), so the nominal length
+  is unknown: every measure of the 13 Music21 and 19 Partitura specimens that
+  load was a ``RegularMeasure`` (the former loader lane set nominal to actual)
+  and is now a plain ``Measure``, the class of a measure whose nominal length is
+  unknown;
+- Partitura closed a repeat that ends the piece with a successor one past the
+  last bar (``c11n08_Rondeau`` and its ``_reviewed`` revision: count 61 of 60).
+  Such a ``next`` is now refused, and the loader states the end of the piece as
+  ``-1`` instead, so both specimens load as before;
+- no ``Ms3Loader`` measure table and no Rekordbox track changes class or
+  offset.
 
 ### Merged Score Event Coordinates
 
@@ -99,7 +188,9 @@ dictionary. The registry payload has exactly ``breaks``, ``jumps``, and
 ``markers``; a JSON encode/decode cycle cannot change it.
 
 A structure-bearing timeline combines a measure map containing regular,
-irregular, and constituent measures; a metric hierarchy; a region; one break;
+irregular, and constituent measures, each with the number and nominal length
+its class requires (the constituent at offset ``1/3``, so a codec dropping the
+offset fails strict map equality); a metric hierarchy; a region; one break;
 one jump; one marker; one child; and one conversion map. Its default payload has
 exactly ``id``, ``name``, ``class``, ``unit``, ``number_type``, ``length``,
 ``locked``, ``meta``, ``children``, ``conversion_maps``, ``regions``,

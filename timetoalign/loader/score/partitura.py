@@ -598,7 +598,12 @@ class PartituraLoader(ScoreLoader):
 
                 # Resolve next: use pre-computed map, or default sequential.
                 if mc in next_mc_map:
-                    mc_next: list[int] | None = next_mc_map[mc]
+                    # A repeat closing the piece continues past the last bar:
+                    # the piece ends there, which measure tables spell -1.
+                    mc_next: list[int] | None = [
+                        successor if successor <= num_measures else -1
+                        for successor in next_mc_map[mc]
+                    ]
                 else:
                     mc_next = None  # default: next sequential MC (handled by ScoreFlowController)
 

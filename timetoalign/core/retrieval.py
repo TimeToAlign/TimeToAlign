@@ -491,19 +491,16 @@ def coordinate_from_dict(entry: Mapping[str, Any]) -> Coordinate:
             f"unknown coordinate number type {entry['number_type']!r} for key 'number_type'"
         ) from error
     try:
-        value = number_from_json(entry["value"])
+        number_from_json(entry["value"])
     except (TypeError, ValueError) as error:
         raise ValueError(
             f"invalid coordinate value for key 'value': {entry['value']!r}"
         ) from error
-    expected = {
-        NumberType.int: int,
-        NumberType.float: float,
-        NumberType.fraction: Fraction,
-    }[number_type]
-    if type(value) is not expected:
+    try:
+        value = number_from_json(entry["value"], number_type)
+    except ValueError as error:
         raise ValueError(
             f"coordinate value for key 'value' does not match declared number_type "
             f"{number_type.name!r}: {entry['value']!r}"
-        )
+        ) from error
     return Coordinate(value, unit, number_type=number_type)

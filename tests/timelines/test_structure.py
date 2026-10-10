@@ -30,7 +30,7 @@ from timetoalign.core import (
     TimeUnit,
 )
 from timetoalign.core.time import number_to_json
-from timetoalign.loader.score import Ms3Loader
+from timetoalign.loader.score import MeasureMapLoader, Ms3Loader
 from timetoalign.testdata import ensure_data
 from timetoalign.timelines import (
     Expansion,
@@ -66,10 +66,10 @@ def _score_measure_paths() -> list[Path]:
     )
 
 
-def _mm_rows() -> list[list[dict[str, object]]]:
-    """Return folded Measure Map specimen rows."""
+def _mm_paths() -> list[Path]:
+    """Return the folded Measure Map specimens."""
     return [
-        json.loads(path.read_text())
+        path
         for path in sorted(SCORE_DATA.rglob("*.mm.json"))
         if "unfolded" not in path.name
     ]
@@ -84,16 +84,15 @@ def _oracle_rows(rows: list[dict[str, object]]) -> list[dict[str, object]]:
         {
             key: float(value) if isinstance(value, F) else value
             for key, value in row.items()
-            if key not in {"ID", "volta", "tempo"}
+            if key not in {"ID", "volta", "offset_within_measure", "tempo"}
         }
         for row in expanded
     ]
-    return [
-        {**row, "next": [] if row.get("next") == [-1] else row.get("next")}
-        for row in OracleMeasureMap.from_dicts(oracle_expanded)
+    return (
+        OracleMeasureMap.from_dicts(oracle_expanded)
         .compress(ignore_ids=True)
         .to_dicts()
-    ]
+    )
 
 
 def _float_rows(rows: list[dict[str, object]]) -> list[dict[str, object]]:
@@ -135,14 +134,18 @@ def _rows(*, anacrusis: bool = False) -> list[dict[str, object]]:
         {
             "number": 0 if anacrusis else 1,
             "time_signature": "2/2",
-            **({"actual_length": F(1, 2)} if anacrusis else {}),
+            **(
+                {"actual_length": [1, 2], "offset_within_measure": [7, 2]}
+                if anacrusis
+                else {}
+            ),
             "tempo": allegro,
         },
         {"number": 405},
         {
             "number": 0 if anacrusis else 1,
             "time_signature": "3/4",
-            **({"actual_length": 1} if anacrusis else {}),
+            **({"actual_length": 1, "offset_within_measure": 2} if anacrusis else {}),
             "tempo": scherzo,
         },
         {"number": 175},
@@ -155,14 +158,23 @@ def _rows(*, anacrusis: bool = False) -> list[dict[str, object]]:
 
 
 def test_rows_round_trip_fixpoint() -> None:
-    """Compressed rows are a fixed point, proving no retained fact is lost."""
+    """Rows restore the map under strict equality and are a fixed point."""
     maps = [
         MeasureMap.from_measure_data(Ms3Loader.from_file(path).store.measures)
         for path in _score_measure_paths()
+    ] + [
+        MeasureMapLoader.from_file(path).create_timeline().measure_map
+        for path in _mm_paths()
     ]
+    assert any(
+        isinstance(measure, MeasureConstituent) and measure.count != 1
+        for measure_map in maps
+        for measure in measure_map
+    )
     for measure_map in maps:
         rows = measure_map.to_rows()
-        restored = MeasureMap.from_rows(rows)
+        restored = MeasureMap.from_rows(json.loads(json.dumps(rows)))
+        assert restored == measure_map
         assert restored.to_rows() == rows
 
 
@@ -199,7 +211,11 @@ def test_compression_matches_the_reference_implementation() -> None:
         ]
         for library, oracle in zip(_float_rows(library_rows), oracle_rows, strict=True):
             assert {
-                key: ([] if key == "next" and key not in library else library.get(key))
+                key: (
+                    [int(successor) for successor in library.get("next", [])]
+                    if key == "next"
+                    else library.get(key)
+                )
                 for key in oracle
             } == oracle
     for path in _score_measure_paths():
@@ -233,7 +249,7 @@ def test_standard_example_expands_and_compresses() -> None:
             "actual_length": [4, 1],
             "start_repeat": False,
             "end_repeat": False,
-            "next": [2],
+            "next": ["2"],
         },
         {
             "count": 563,
@@ -285,8 +301,8 @@ def test_sonata_rows_anchor_exact_pulses_levels_and_policies() -> None:
     assert len(measure_map) == 1167
     assert all(type(measure) is RegularMeasure for measure in measure_map)
     assert [measure.id for measure in (measure_map[0], measure_map[-1])] == [
-        "m1",
-        "m1167",
+        "1",
+        "1167",
     ]
     assert [measure.number for measure in selected] == [1, 1, 1, 1, 11]
     assert [measure.qstamp for measure in selected] == [0, 1620, 2145, 2706, 2746]
@@ -520,7 +536,6 @@ def test_json_requirements_and_fixpoint() -> None:
     [
         ([{"mystery": 1}], "mystery"),
         ([{"count": 2, "time_signature": "4/4"}], "count"),
-        ([{"time_signature": "4/4", "qstamp": 1}], "qstamp"),
         ([{"time_signature": "nonsense"}], "time signature"),
         ([{"time_signature": "cadenza"}], "actual_length"),
         ([{"time_signature": "4/4", "tempo": 60}], "Tempo instance"),
@@ -606,7 +621,7 @@ class TestSectionHierarchyConstructionEquivalence:
         assert [
             tuple(measure.id for measure in section.measure_map)
             for section in hierarchy.sections
-        ] == [("m1",), ("m2", "m3"), ("m4", "m5", "m6")]
+        ] == [("1",), ("2", "3"), ("4", "5", "6")]
 
     def test_existing_map_partition_must_cover_the_map_exactly(self) -> None:
         measure_map = MeasureMap(_abstract(6))
@@ -961,7 +976,7 @@ class TestMeasureScalar:
         )
         assert [measure.count for measure in measure_map] == [1, 2, 3]
         assert [measure.qstamp for measure in measure_map] == [F(0), F(3), F(6)]
-        assert [measure.id for measure in measure_map] == ["m1", "m2", "m3"]
+        assert [measure.id for measure in measure_map] == ["1", "2", "3"]
 
     def test_disagreeing_count_warns_and_is_corrected(self) -> None:
         with pytest.warns(UserWarning, match="supplies count 5"):
@@ -1263,22 +1278,46 @@ def test_repeated_queries_reuse_the_flattened_reading(monkeypatch) -> None:
 def test_rows_without_nominal_length_are_plain_measures() -> None:
     measure_map = MeasureMap.from_rows(
         [
-            {"number": 0, "actual_length": F(1)},
-            {"number": 1, "actual_length": F(2)},
+            {"number": 0, "actual_length": 1},
+            {"number": 1, "actual_length": 2},
         ]
     )
     assert [type(measure) for measure in measure_map] == [Measure, Measure]
     assert [measure.actual_length for measure in measure_map] == [F(1), F(2)]
 
 
-def test_consecutive_zero_numbered_rows_are_refused() -> None:
-    with pytest.raises(ValueError, match="split anacrusis.*explicit offset"):
-        MeasureMap.expand_rows(
-            [
-                {"number": 0, "nominal_length": 4, "actual_length": 1},
-                {"number": 0, "nominal_length": 4, "actual_length": 3},
-            ]
-        )
+def test_a_shared_number_is_never_read_as_a_split_measure() -> None:
+    """Endings share a number ('16a', '16b'); only a stated offset splits a bar."""
+    endings = MeasureMap.from_rows(
+        [
+            {"number": 15, "time_signature": "4/4"},
+            {"number": 16, "name": "16a", "actual_length": 3, "volta": 1},
+            {"number": 16, "name": "16b", "actual_length": 3, "volta": 2},
+        ]
+    )
+    assert [type(measure) for measure in endings] == [
+        RegularMeasure,
+        IrregularMeasure,
+        IrregularMeasure,
+    ]
+    zeros = MeasureMap.from_rows(
+        [
+            {"number": 0, "time_signature": "4/4", "actual_length": 1},
+            {"number": 0, "actual_length": 3},
+        ]
+    )
+    assert [type(measure) for measure in zeros] == [IrregularMeasure, IrregularMeasure]
+    split = MeasureMap.from_rows(
+        [
+            {"number": 0, "time_signature": "4/4", "actual_length": 1},
+            {"number": 0, "actual_length": 3, "offset_within_measure": 1},
+        ]
+    )
+    assert [type(measure) for measure in split] == [
+        IrregularMeasure,
+        MeasureConstituent,
+    ]
+    assert split[1].offset_within_measure == F(1)
 
 
 def test_count_keyed_anacrusis_row_without_count_is_position_one() -> None:
@@ -1440,3 +1479,309 @@ def test_policy_at_uses_only_the_named_authored_reading() -> None:
         hierarchy.policy_at(Coordinate(F(1, 2), "seconds"), reading="halves")
     with pytest.raises(ValueError, match="Unknown.*known ids: default, halves, thirds"):
         hierarchy.policy_at(0, reading="missing")
+
+
+class TestRowIdentity:
+    """A measure's id is its row ID, and next names successors by these IDs."""
+
+    AUTHORED = [
+        {
+            "ID": "a",
+            "count": 1,
+            "qstamp": [0, 1],
+            "number": 1,
+            "name": "1",
+            "time_signature": "3/4",
+            "nominal_length": [3, 1],
+            "actual_length": [3, 1],
+            "start_repeat": False,
+            "end_repeat": False,
+            "next": ["b"],
+        },
+        {
+            "ID": "b",
+            "count": 2,
+            "qstamp": [3, 1],
+            "number": 2,
+            "name": "2",
+            "time_signature": "3/4",
+            "nominal_length": [3, 1],
+            "actual_length": [3, 1],
+            "start_repeat": False,
+            "end_repeat": False,
+            "next": ["c"],
+        },
+        {
+            "ID": "c",
+            "count": 3,
+            "qstamp": [6, 1],
+            "number": 3,
+            "name": "3",
+            "time_signature": "3/4",
+            "nominal_length": [3, 1],
+            "actual_length": [3, 1],
+            "start_repeat": False,
+            "end_repeat": False,
+        },
+    ]
+
+    def test_authored_ids_round_trip_byte_exact(self) -> None:
+        measure_map = MeasureMap.from_rows(self.AUTHORED)
+        assert [measure.id for measure in measure_map] == ["a", "b", "c"]
+        assert [measure.next for measure in measure_map] == [("b",), ("c",), ()]
+        assert json.dumps(measure_map.to_rows()) == json.dumps(self.AUTHORED)
+
+    def test_counts_and_ids_in_next_build_equal_maps(self) -> None:
+        rows = [
+            {"count": 1, "time_signature": "4/4", "next": [2, 3]},
+            {"count": 2, "end_repeat": True, "next": [1]},
+            {"count": 3, "next": []},
+        ]
+        by_count = MeasureMap.from_rows(rows)
+        by_id = MeasureMap.from_rows(
+            [
+                {"count": 1, "time_signature": "4/4", "next": ["2", "3"]},
+                {"count": 2, "end_repeat": True, "next": ["1"]},
+                {"count": 3, "next": []},
+            ]
+        )
+        assert by_count == by_id
+        assert [measure.next for measure in by_count] == [("2", "3"), ("1",), ()]
+
+    def test_a_map_built_from_measures_equals_its_rows(self) -> None:
+        measure_map = MeasureMap(
+            [
+                RegularMeasure(
+                    number=n, time_signature="2/4", nominal_length=2, actual_length=2
+                )
+                for n in (1, 2, 3)
+            ]
+        )
+        assert [measure.next for measure in measure_map] == [("2",), ("3",), ()]
+        assert MeasureMap.from_rows(measure_map.to_rows()) == measure_map
+
+    @pytest.mark.parametrize(
+        ("rows", "message"),
+        [
+            (
+                [{"count": 1, "time_signature": "4/4", "next": [3]}, {"count": 2}],
+                "next 3 at count 1 lies beyond the last row",
+            ),
+            (
+                [{"count": 1, "time_signature": "4/4", "next": [0]}, {"count": 2}],
+                "next 0 at count 1 lies beyond the last row",
+            ),
+            (
+                [{"count": 1, "time_signature": "4/4", "next": [-1]}, {"count": 2}],
+                "next -1 at count 1 lies beyond the last row",
+            ),
+            (
+                [{"count": 1, "time_signature": "4/4", "next": ["z"]}, {"count": 2}],
+                "next 'z' at count 1 names no row ID",
+            ),
+            (
+                [
+                    {"ID": "x", "count": 1, "time_signature": "4/4"},
+                    {"ID": "x", "count": 2},
+                ],
+                "ID 'x' is stated twice",
+            ),
+        ],
+    )
+    def test_unresolvable_references_are_refused(
+        self, rows: list[dict[str, object]], message: str
+    ) -> None:
+        with pytest.raises(ValueError, match=message):
+            MeasureMap.from_rows(rows)
+
+    @pytest.mark.parametrize(
+        "split_class", [SplitRegularMeasure, SplitIrregularMeasure]
+    )
+    def test_split_classes_have_no_row_form(self, split_class: type[Measure]) -> None:
+        measure_map = MeasureMap(
+            [
+                RegularMeasure(number=1, nominal_length=4, actual_length=4),
+                split_class(number=2, nominal_length=4, actual_length=4),
+            ]
+        )
+        with pytest.raises(
+            ValueError,
+            match=(
+                f"Measure '2' is a {split_class.__name__}, which the Measure Map "
+                "row form cannot express"
+            ),
+        ):
+            measure_map.to_rows()
+
+    def test_a_measure_naming_an_unknown_successor_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="names successor 'z'"):
+            MeasureMap([Measure(next=("z",)), Measure()])
+
+
+class TestOneClassifier:
+    """Rows are classified by Measure.from_values and nothing else."""
+
+    @pytest.mark.parametrize(
+        ("row", "expected"),
+        [
+            ({"number": 1, "actual_length": 2}, Measure),
+            (
+                {"number": 1, "time_signature": "cadenza", "actual_length": 7},
+                CadenzaMeasure,
+            ),
+            (
+                {
+                    "number": 0,
+                    "time_signature": "4/4",
+                    "actual_length": 1,
+                    "offset_within_measure": 3,
+                },
+                MeasureConstituent,
+            ),
+            ({"number": 1, "time_signature": "4/4"}, RegularMeasure),
+            (
+                {"number": 0, "time_signature": "4/4", "actual_length": 1},
+                IrregularMeasure,
+            ),
+        ],
+    )
+    def test_each_class_follows_from_its_row(
+        self, row: dict[str, object], expected: type[Measure]
+    ) -> None:
+        (measure,) = MeasureMap.from_rows([{"count": 1, **row}])
+        assert type(measure) is expected
+
+    def test_constituent_offset_is_written_and_read(self) -> None:
+        constituent = MeasureMap.from_rows(
+            [
+                {
+                    "count": 1,
+                    "number": 0,
+                    "time_signature": "4/4",
+                    "actual_length": 1,
+                    "offset_within_measure": [3, 1],
+                }
+            ]
+        )
+        irregular = MeasureMap.from_rows(
+            [{"count": 1, "number": 0, "time_signature": "4/4", "actual_length": 1}]
+        )
+        assert constituent[0].offset_within_measure == F(3)
+        assert constituent.to_rows()[0]["offset_within_measure"] == [3, 1]
+        assert "offset_within_measure" not in irregular.to_rows()[0]
+        assert constituent != irregular
+
+    @pytest.mark.parametrize(
+        ("row", "message"),
+        [
+            (
+                {"number": 1, "actual_length": 2, "offset_within_measure": 1},
+                "A Measure cannot lie at offset 1",
+            ),
+            (
+                {
+                    "number": 1,
+                    "time_signature": "cadenza",
+                    "actual_length": 7,
+                    "offset_within_measure": 1,
+                },
+                "A CadenzaMeasure cannot lie at offset 1",
+            ),
+            (
+                {"number": 1, "time_signature": "4/4", "offset_within_measure": 0},
+                "offset_within_measure 0 at count 1 is not positive",
+            ),
+        ],
+    )
+    def test_offsets_that_cannot_round_trip_are_refused(
+        self, row: dict[str, object], message: str
+    ) -> None:
+        with pytest.raises(ValueError, match=message):
+            MeasureMap.from_rows([{"count": 1, **row}])
+
+
+class TestOneReader:
+    """Row numbers are read by number_from_json and by nothing else."""
+
+    def test_json_float_is_its_exact_binary_expansion(self) -> None:
+        (measure,) = MeasureMap.from_rows(
+            [{"count": 1, "number": 0, "nominal_length": 1, "actual_length": 0.1}]
+        )
+        assert measure.actual_length == F(0.1)
+        assert measure.actual_length == F(3602879701896397, 36028797018963968)
+
+    @pytest.mark.parametrize("value", ["1/2", F(1, 2)])
+    def test_strings_and_python_fractions_are_refused(self, value: object) -> None:
+        with pytest.raises((TypeError, ValueError), match="invalid JSON number"):
+            MeasureMap.from_rows(
+                [{"count": 1, "nominal_length": 1, "actual_length": value}]
+            )
+
+
+class TestRowRules:
+    """Row-level rules the schema cannot express."""
+
+    @pytest.mark.parametrize(
+        ("rows", "message"),
+        [
+            (
+                [{"count": 1, "time_signature": "4/4"}, {"count": 3}, {"count": 2}],
+                "count 2 does not increase after count 3",
+            ),
+            (
+                [{"count": 1, "time_signature": "4/4"}, {"count": 2}, {"count": 2}],
+                "count 2 does not increase after count 2",
+            ),
+        ],
+        ids=["backwards", "repeated"],
+    )
+    def test_a_count_that_does_not_increase_is_refused(
+        self, rows: list[dict[str, object]], message: str
+    ) -> None:
+        with pytest.raises(ValueError, match=message):
+            MeasureMap.from_rows(rows)
+
+    def test_a_count_jump_expands_to_default_successors(self) -> None:
+        measure_map = MeasureMap.from_rows(
+            [{"count": 1, "time_signature": "4/4"}, {"count": 3, "end_repeat": True}]
+        )
+        assert [measure.count for measure in measure_map] == [1, 2, 3]
+        assert [measure.qstamp for measure in measure_map] == [0, 4, 8]
+
+    def test_volta_carries_no_constraint(self) -> None:
+        rows = [
+            {"count": 1, "time_signature": "4/4", "volta": 7},
+            {"count": 2},
+            {"count": 3, "volta": 7},
+        ]
+        measure_map = MeasureMap.from_rows(rows)
+        assert [measure.volta for measure in measure_map] == [7, None, 7]
+        assert MeasureMap.from_rows(measure_map.to_rows()) == measure_map
+
+    def test_a_contradicting_qstamp_warns_and_is_corrected_in_both_lanes(self) -> None:
+        with warnings.catch_warnings(record=True) as from_rows:
+            warnings.simplefilter("always")
+            measure_map = MeasureMap.from_rows(
+                [{"count": 1, "time_signature": "4/4"}, {"count": 2, "qstamp": 5}]
+            )
+        with warnings.catch_warnings(record=True) as from_measures:
+            warnings.simplefilter("always")
+            MeasureMap(
+                [Measure(actual_length=F(4)), Measure(qstamp=F(5), actual_length=F(4))]
+            )
+        expected = "Measure '2' supplies qstamp 5, but prefix-summing actual lengths computes 4"
+        assert [str(caught.message) for caught in from_rows] == [expected]
+        assert [str(caught.message) for caught in from_measures] == [expected]
+        assert measure_map[1].qstamp == F(4)
+
+
+@pytest.mark.parametrize("unit", ["seconds", "ticks", "pixels"])
+def test_a_measure_map_needs_the_quarter_note_axis(unit: str) -> None:
+    timeline = Timeline(length=F(8), unit=unit)
+    with pytest.raises(
+        ValueError,
+        match=f"Timeline unit '{unit}' does not match measure map unit 'quarters'",
+    ):
+        timeline.add_measure_map(
+            MeasureMap.from_rows([{"count": 1, "time_signature": "4/4"}])
+        )

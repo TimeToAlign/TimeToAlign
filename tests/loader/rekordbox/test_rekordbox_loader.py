@@ -74,9 +74,11 @@ def test_pickup_grid_change_and_trailing_measure_are_exact(tmp_path: Path) -> No
 
     loader = RekordboxLoader.from_file(path)
     timeline = loader.create_timeline()
-    assert isinstance(timeline.measure_map, MeasureMap)
-    assert timeline.measure_map is timeline.skeleton.section_hierarchy.measure_map
-    measures = timeline.measure_map.measures
+    measure_map = timeline.skeleton.section_hierarchy.measure_map
+    assert isinstance(measure_map, MeasureMap)
+    # The map is quarter-anchored; the track timeline's axis is seconds.
+    assert timeline.measure_map is None
+    measures = measure_map.measures
     floating_measures = timeline.get_conversion_map(TimeUnit.floating_measures)
 
     assert len(loader.tracks) == 1
@@ -86,8 +88,8 @@ def test_pickup_grid_change_and_trailing_measure_are_exact(tmp_path: Path) -> No
     first_tempo = loader.tracks[0].tempos[0]
     assert [tempo.metro for tempo in loader.tracks[0].tempos] == ["4/4"] * 3
     assert (first_tempo.numerator, first_tempo.denominator) == (4, 4)
-    assert [measure.id for measure in measures] == ["m1", "m2", "m3", "m4"]
-    assert len(timeline.measure_map) == 4
+    assert [measure.id for measure in measures] == ["1", "2", "3", "4"]
+    assert len(measure_map) == 4
     assert timeline.flow_control.to_dict() == {
         "breaks": [],
         "jumps": [],
@@ -120,8 +122,10 @@ def test_pickup_grid_change_and_trailing_measure_are_exact(tmp_path: Path) -> No
         "SampleRate": 48000,
         "POSITION_MARK": [{"Name": "cue", "Type": "0", "Start": "1.25", "Num": "0"}],
     }
-    restored = Timeline.from_dict(json.loads(json.dumps(timeline.to_dict())))
-    assert restored.measure_map.to_dict() == timeline.measure_map.to_dict()
+    payload = timeline.to_dict()
+    assert payload["measure_map"] is None
+    restored = Timeline.from_dict(json.loads(json.dumps(payload)))
+    assert restored.to_dict() == payload
 
 
 def test_displaced_anchor_beats_are_not_counted_twice(tmp_path: Path) -> None:
@@ -218,7 +222,7 @@ def test_a_grid_reanchoring_mid_measure_continues_the_measure_count(
     floating_measures = timeline.get_conversion_map(TimeUnit.floating_measures)
     grid = timeline.skeleton.create_beatgrid()
 
-    assert [measure.id for measure in measures] == ["m1", "m2", "m3", "m4", "m5"]
+    assert [measure.id for measure in measures] == ["1", "2", "3", "4", "5"]
     # [4, 7.01) crosses the tempo change: 2.01 s at 1 q/s plus 1.0 s at 2 q/s.
     assert measures[1].actual_length == Fraction(401, 100)
     assert isinstance(measures[1], IrregularMeasure)
@@ -431,7 +435,7 @@ def test_real_specimen_collection_and_mix_grids_are_exact() -> None:
     floating_measures = mix_timeline.get_conversion_map(TimeUnit.floating_measures)
 
     pickup = measure_map[0]
-    assert pickup.id == "m1"
+    assert pickup.id == "1"
     assert pickup.number == 0
     assert isinstance(pickup, MeasureConstituent)
     assert pickup.offset_within_measure == Fraction(3)
@@ -453,7 +457,7 @@ def test_real_specimen_collection_and_mix_grids_are_exact() -> None:
     # 1507/1000 s, and 1507/1000 * 160/60 = 1507/375 quarters. The 7 ms
     # sliver that used to follow it was the displaced anchor beat.
     boundary_bar = measure_map[448]
-    assert boundary_bar.id == "m449"
+    assert boundary_bar.id == "449"
     assert isinstance(boundary_bar, IrregularMeasure)
     assert boundary_bar.actual_length == Fraction(1507, 375)
     assert measure_map[449].actual_length == Fraction(4)

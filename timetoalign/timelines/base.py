@@ -697,10 +697,13 @@ class Timeline(
             This timeline after attachment.
 
         Raises:
-            ValueError: If the timeline already carries a measure map.
+            ValueError: If the timeline is not on the quarter-note axis, on
+                which every measure map is anchored, or already carries a
+                measure map.
         """
         if self._measure_map is not None:
             raise ValueError(f"Timeline {self._id!r} already has a measure map")
+        self._require_quarters_axis("measure map")
         self._measure_map = measure_map
         return self
 
@@ -725,13 +728,17 @@ class Timeline(
             raise ValueError(
                 "The metric hierarchy is anchored on a different measure map"
             )
-        if self.unit is not TimeUnit.quarters:
-            raise ValueError(
-                f"Timeline unit {self.unit.value!r} does not match metric hierarchy "
-                f"unit {TimeUnit.quarters.value!r}"
-            )
+        self._require_quarters_axis("metric hierarchy")
         self._metric_hierarchy = metric_hierarchy
         return self
+
+    def _require_quarters_axis(self, structure: str) -> None:
+        """Refuse quarter-anchored structure on any other axis."""
+        if self.unit is not TimeUnit.quarters:
+            raise ValueError(
+                f"Timeline unit {self.unit.value!r} does not match {structure} "
+                f"unit {TimeUnit.quarters.value!r}"
+            )
 
     # endregion
 

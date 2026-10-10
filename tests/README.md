@@ -28,7 +28,9 @@ timelines, wraps each result in a document, and passes it to `validate`, so the
 assertion checks the emitted representation rather than assumptions made by a
 reader. The catalogue directly constructs all six timeline classes with two
 children, a region, registered conversion maps attached across its members,
-one break, one jump, one marker, and a Measure Map built from Measure Map rows.
+one break, one jump, one marker, and, on the quarter-note timeline only, a
+Measure Map built from Measure Map rows (a measure map is anchored in quarter
+notes; the schema refuses one on any other unit and so does `add_measure_map`).
 It also uses `ensure_data` at module level for the same `Ms3Loader`, MIDI,
 `AudioLoader`, discrete-physical, and graphical specimens listed by the
 fixture corpus, proving loader output has the same structural contract without
@@ -40,6 +42,24 @@ Every bundled fixture for every `SUPPORTED_VERSIONS` entry from
 top-level manifest. Older fixtures are passed through `timeskeleton.migrate`
 first, so this demonstrates that migration leaves the library with a complete,
 lossless current document rather than merely an accepted approximation.
+
+Two row-level rules of the Measure Map lie beyond what JSON Schema can
+express, so they are pinned here rather than among the shared rejections: a
+document whose measure map has a `count` that does not increase, and one whose
+`next` names a count beyond the last row, are each accepted by `validate` and
+refused by `Timeline.from_dict` with a `ValueError` naming the count. Both
+readers are needed to accept a document; the test proves the library is the
+stricter one exactly where the schema cannot speak.
+
+JavaScript numbers do not distinguish `480.0` from `480`, so a JavaScript
+writer cannot produce `480.0`. A coordinate `{"number_type": "int", "value":
+480.0}` is accepted by `validate` and must restore as the integer `480`; one
+holding `480.5` is refused by both, with the library naming the declared
+number type ("does not match declared number_type 'int'"). A value that is no
+JSON number at all, such as the string `"480"`, is a different failure and
+gets a different message ("invalid coordinate value for key 'value'"). The mirror case `{"number_type": "float",
+"value": 2}` restores as the float `2.0`. This proves the two readers agree on
+every value either accepts.
 
 The integer boundary asserts that `number_to_json(2**63 - 1)` remains that
 integer, `number_to_json(2**63)` raises `ValueError`, and

@@ -543,28 +543,43 @@ def is_fraction_json(value: object) -> bool:
     )
 
 
-def number_from_json(data: Any) -> int | float | Fraction:
+def number_from_json(
+    data: Any, number_type: NumberType | None = None
+) -> int | float | Fraction:
     """Decode one TimeSkeleton JSON number.
+
+    Without *number_type* the JSON form decides: an integer is an ``int``, a
+    number with a fractional part or exponent is a ``float``, a pair is a
+    ``Fraction``. A declared *number_type* selects the representation
+    instead. JavaScript numbers do not distinguish ``480.0`` from ``480``, so
+    a document written by JavaScript cannot keep that difference: under
+    ``int`` an integral JSON number reads as that integer and a fractional
+    one is refused, and under ``float`` an
+    integer reads as the float it equals exactly. Under ``fraction`` only a
+    pair is accepted.
 
     Args:
         data: JSON scalar or Fraction pair to decode.
+        number_type: The number type that selects the representation, or
+            ``None`` to let the JSON form decide.
 
     Returns:
         The corresponding Python ``int``, ``float``, or ``Fraction``.
 
     Raises:
         TypeError: If *data* is not a JSON value type.
-        ValueError: If *data* is not a valid JSON number representation.
+        ValueError: If *data* is not a valid JSON number representation, or
+            not one *number_type* admits.
     """
     if isinstance(data, bool) or data is None or isinstance(data, (str, dict)):
         raise ValueError(f"invalid JSON number {data!r}")
     if isinstance(data, int):
-        return _require_int64(data, "integer", data)
-    if isinstance(data, float):
+        value: int | float | Fraction = _require_int64(data, "integer", data)
+    elif isinstance(data, float):
         if not math.isfinite(data):
             raise ValueError(f"invalid JSON number {data!r}")
-        return data
-    if isinstance(data, list):
+        value = data
+    elif isinstance(data, list):
         if len(data) != 2:
             raise ValueError(f"invalid JSON Fraction {data!r}: expected two items")
         numerator, denominator = data
@@ -581,11 +596,32 @@ def number_from_json(data: Any) -> int | float | Fraction:
             raise ValueError(
                 f"invalid JSON Fraction {data!r}: denominator must be strictly positive"
             )
-        return Fraction(
+        value = Fraction(
             _require_int64(numerator, "numerator", data),
             _require_int64(denominator, "denominator", data),
         )
-    raise TypeError(f"invalid JSON number {data!r} of type {type(data).__name__}")
+    else:
+        raise TypeError(f"invalid JSON number {data!r} of type {type(data).__name__}")
+    if number_type is None:
+        return value
+    if (
+        number_type is NumberType.int
+        and isinstance(value, float)
+        and value.is_integer()
+    ):
+        return _require_int64(int(value), "integer", data)
+    if number_type is NumberType.float and type(value) is int and float(value) == value:
+        return float(value)
+    expected = {
+        NumberType.int: int,
+        NumberType.float: float,
+        NumberType.fraction: Fraction,
+    }[number_type]
+    if type(value) is not expected:
+        raise ValueError(
+            f"JSON number {data!r} is not a {number_type.name} representation"
+        )
+    return value
 
 
 # -- the one array builder --------------------------------------------------

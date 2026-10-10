@@ -17,7 +17,7 @@ from .store import ScoreStore
 from .stores.notes import NoteEventData
 
 if TYPE_CHECKING:
-    from timetoalign.timelines import Timeline
+    from timetoalign.timelines import MeasureMap, Timeline
     from timetoalign.timelines.flow import ScoreFlowController, SegmentNameGenerator
 
 module_logger = logging.getLogger(__name__)
@@ -118,6 +118,12 @@ class ScoreLoader(EventLoader):
         self._populate_timeline_structure(timeline)
         return timeline
 
+    def _measure_map(self) -> MeasureMap:
+        """Return the measure map the loaded measure table describes."""
+        from timetoalign.timelines import MeasureMap
+
+        return MeasureMap.from_measure_data(self._store.measures)
+
     def _populate_timeline_structure(self, timeline: Timeline) -> None:
         """Attach structure derivable from a non-empty measure store.
 
@@ -133,9 +139,7 @@ class ScoreLoader(EventLoader):
         if len(self._store.measures) == 0:
             return
 
-        from timetoalign.timelines import MeasureMap
-
-        timeline.add_measure_map(MeasureMap.from_measure_data(self._store.measures))
+        timeline.add_measure_map(self._measure_map())
 
         registry = self.create_flow_controller().get_flow_control_registry()
         for brk in registry.breaks:

@@ -14,6 +14,7 @@ import pytest
 from timeskeleton import (
     SCHEMA_VERSION,
     SUPPORTED_VERSIONS,
+    SchemaValidationError,
     fixture_paths,
     migrate,
     validate,
@@ -102,6 +103,8 @@ def _with_structure(cls: type[Timeline], unit: str, length: Any) -> Timeline:
         )
     )
     timeline.flow_control.add_marker("start", length / 6)
+    if unit != "quarters":
+        return timeline
     timeline.add_measure_map(
         MeasureMap.from_rows(
             [
@@ -270,6 +273,66 @@ def test_bundled_fixtures_round_trip(version: str) -> None:
                 json.loads(json.dumps(Timeline.from_dict(manifest).to_dict()))
                 == manifest
             )
+
+
+def _quarters_document(measure_map: list[dict[str, Any]]) -> dict[str, Any]:
+    """Return a valid one-timeline document carrying the given row list."""
+    document = _document(
+        [ContinuousLogicalTimeline(length=Fraction(8), unit="quarters")]
+    )
+    (manifest,) = document["manifest"]["timelines"].values()
+    manifest["measure_map"] = measure_map
+    return document
+
+
+@pytest.mark.parametrize(
+    ("rows", "message"),
+    [
+        (
+            [{"count": 1, "time_signature": "4/4"}, {"count": 3}, {"count": 2}],
+            "count 2 does not increase",
+        ),
+        (
+            [{"count": 1, "time_signature": "4/4", "next": [3]}, {"count": 2}],
+            "next 3 at count 1 lies beyond the last row",
+        ),
+    ],
+)
+def test_row_rules_beyond_the_schema_are_the_library_s(
+    rows: list[dict[str, Any]], message: str
+) -> None:
+    """The schema cannot express these rules; the library reader refuses them."""
+    document = _quarters_document(rows)
+    validate(document)
+    (manifest,) = document["manifest"]["timelines"].values()
+    with pytest.raises(ValueError, match=message):
+        Timeline.from_dict(manifest)
+
+
+def test_both_readers_agree_on_integral_json_numbers() -> None:
+    """JSON writes 480.0 as 480; both readers take it as the integer it is."""
+    ticks = _document([DiscreteLogicalTimeline(length=960, unit="ticks")])
+    (manifest,) = ticks["manifest"]["timelines"].values()
+    manifest["length"]["value"] = 480.0
+    validate(ticks)
+    restored = Timeline.from_dict(manifest).to_dict()["length"]
+    assert restored == {"unit": "ticks", "number_type": "int", "value": 480}
+    assert type(restored["value"]) is int
+    manifest["length"]["value"] = 480.5
+    with pytest.raises(SchemaValidationError):
+        validate(ticks)
+    with pytest.raises(ValueError, match="does not match declared number_type 'int'"):
+        Timeline.from_dict(manifest)
+    manifest["length"]["value"] = "480"
+    with pytest.raises(ValueError, match="invalid coordinate value for key 'value'"):
+        Timeline.from_dict(manifest)
+    seconds = _document([ContinuousPhysicalTimeline(length=4.0, unit="seconds")])
+    (manifest,) = seconds["manifest"]["timelines"].values()
+    manifest["length"]["value"] = 2
+    validate(seconds)
+    restored = Timeline.from_dict(manifest).to_dict()["length"]
+    assert restored == {"unit": "seconds", "number_type": "float", "value": 2.0}
+    assert type(restored["value"]) is float
 
 
 def test_int64_boundary() -> None:

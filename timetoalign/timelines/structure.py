@@ -21,10 +21,11 @@ from timetoalign.core import (
     Domain,
     Duration,
     Interval,
-    IrregularMeasure,
     Measure,
     MeasureConstituent,
     RegularMeasure,
+    SplitIrregularMeasure,
+    SplitRegularMeasure,
     Tempo,
     TimeUnit,
 )
@@ -39,32 +40,91 @@ if TYPE_CHECKING:
 _MemoValue = TypeVar("_MemoValue")
 
 
-def _exact_quarters(value: Any) -> Fraction:
-    """Read one exact quarter-note value without ratio guessing."""
-    if value is None:
-        raise ValueError("Measure row states no actual length")
-    if isinstance(value, list):
-        return Fraction(number_from_json(value))
-    if isinstance(value, dict):
-        return Fraction(struct_to_rational(value))
-    if hasattr(value, "value"):
-        return Fraction(value.value)
-    return value if isinstance(value, Fraction) else Fraction(value)
+_ROW_KEYS = (
+    "ID",
+    "count",
+    "qstamp",
+    "number",
+    "name",
+    "time_signature",
+    "nominal_length",
+    "actual_length",
+    "start_repeat",
+    "end_repeat",
+    "next",
+    "volta",
+    "offset_within_measure",
+)
+"""Measure Map standard keys plus the ``volta`` and ``offset_within_measure`` extensions."""
+
+_QUARTER_KEYS = frozenset(
+    {"qstamp", "nominal_length", "actual_length", "offset_within_measure"}
+)
 
 
-def _parse_next(value: Any) -> tuple[int, ...] | None:
-    """Read successor counts from a sequence or comma-separated spelling."""
+def _row_quarters(row: Mapping[str, Any], key: str) -> Fraction | None:
+    """Read one quarter-note value of a document row exactly.
+
+    Rows carry the TimeSkeleton JSON number forms only, read by
+    :func:`~timetoalign.core.time.number_from_json`; a JSON float becomes
+    its exact binary fraction, never a guessed ratio.
+    """
+    value = row.get(key)
+    return None if value is None else Fraction(number_from_json(value))
+
+
+def _is_cadenza(signature: str | None) -> bool:
+    return signature is not None and str(signature).lower() == "cadenza"
+
+
+def _signature_length(signature: str | None) -> Fraction | None:
+    """Return the nominal length a metered signature implies, else ``None``."""
+    if signature is None or _is_cadenza(signature):
+        return None
+    return BeatPolicy.from_time_signature(str(signature)).span
+
+
+def _reconciled_qstamp(
+    stated: Fraction | None, derived: Fraction | None, label: object
+) -> Fraction | None:
+    """Return the qstamp a measure keeps, warning when the stated one disagrees.
+
+    The position derived from printed order and preceding actual lengths
+    wins; a stated qstamp survives only where no position can be derived.
+    """
+    if stated is None or derived is None:
+        return derived if stated is None else stated
+    if stated != derived:
+        warnings.warn(
+            f"Measure {label!r} supplies qstamp {stated}, but prefix-summing "
+            f"actual lengths computes {derived}",
+            stacklevel=3,
+        )
+    return derived
+
+
+def _table_successors(value: Any) -> list[int] | None:
+    """Read successor counts from a measure table's comma-separated text.
+
+    Measure tables spell the end of the piece ``-1``; it names no measure and
+    is dropped, so ``"-1"`` reads as no successor at all.
+    """
     if value is None or value == "":
         return None
-    if isinstance(value, (list, tuple)):
-        return tuple(int(entry) for entry in value)
     text = str(value).strip().strip("()[]")
-    parts = [part.strip() for part in text.split(",") if part.strip()]
-    return tuple(int(part) for part in parts) or None
+    parts = [int(part.strip()) for part in text.split(",") if part.strip()]
+    return [part for part in parts if part != -1]
 
 
 class MeasureMap:
-    """An immutable sequence of measures in printed order."""
+    """An immutable sequence of measures in printed order.
+
+    A measure's ``id`` is its Measure Map row ``ID``: ``str(count)`` unless a
+    source states another, and ``next`` names successors by these IDs. A
+    map states every successor explicitly: a measure built without ``next``
+    is followed by the next measure in printed order, and the last one by
+    none.
+    """
 
     @classmethod
     def from_measure_data(cls, data: MeasureData) -> MeasureMap:
@@ -80,7 +140,51 @@ class MeasureMap:
             ValueError: If the data is empty or lacks required exact positions
                 and durations.
         """
-        return cls._from_measure_rows(data)
+        rows = list(data)
+        if not rows:
+            raise ValueError("Cannot build a MeasureMap from empty measure data")
+        expanded: list[dict[str, Any]] = []
+        signature: str | None = None
+        for index, row in enumerate(rows, start=1):
+            if row.get("timesig"):
+                signature = str(row["timesig"])
+            if row.get("duration") is None:
+                raise ValueError(f"Measure row {index} states no actual length")
+            actual = Fraction(struct_to_rational(row["duration"]))
+            count = int(row.get("mc") or index)
+            number = row.get("mn_int")
+            offset = row.get("mc_offset")
+            expanded.append(
+                {
+                    "ID": row.get("mm_id") or str(count),
+                    "count": count,
+                    "qstamp": (
+                        Fraction(struct_to_rational(row["start"]))
+                        if row.get("start") is not None
+                        else None
+                    ),
+                    "number": int(number) if number is not None else count,
+                    "name": str(row["mn"]) if row.get("mn") is not None else str(count),
+                    "time_signature": signature,
+                    "nominal_length": (
+                        actual
+                        if _is_cadenza(signature)
+                        else _signature_length(signature)
+                    ),
+                    "actual_length": actual,
+                    "start_repeat": bool(row.get("start_repeat", False)),
+                    "end_repeat": bool(row.get("end_repeat", False)),
+                    "next": _table_successors(row.get("next")),
+                    "volta": row.get("volta"),
+                    # Measure tables state the offset in whole notes.
+                    "offset_within_measure": (
+                        Fraction(str(offset)) * 4
+                        if offset not in (None, "")
+                        else Fraction(0)
+                    ),
+                }
+            )
+        return cls.from_expanded_rows(expanded)
 
     @classmethod
     def from_dict(cls, data: list[dict[str, Any]]) -> MeasureMap:
@@ -105,31 +209,33 @@ class MeasureMap:
     def expand_rows(cls, rows: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
         """Expand compressed Measure Map rows into canonical full rows.
 
+        Rows are in their document form: quarter-note values are JSON numbers
+        or Fraction pairs (``number_from_json``), ``next`` is a list of row
+        ``ID`` strings or ``count`` integers. Omitted rows are restored as
+        default successors of the row before them (count, number and qstamp
+        advance, actual length becomes the nominal length, the name is the
+        number, repeats clear, ``volta`` and ``offset_within_measure`` are
+        unset, ``next`` is the following row, none for the last row).
+
         Args:
-            rows: Compressed or already-expanded rows in Measure Map order.
+            rows: Compressed or full rows in Measure Map order, optionally
+                carrying the in-memory ``tempo`` extension.
 
         Returns:
-            Full rows with exact quarter-note lengths and positions.
+            Full rows with exact quarter-note values, ``ID`` strings and
+            ``next`` as row counts (``[]`` for the last row by default).
 
         Raises:
-            ValueError: If a row uses an unknown key or contradicts derived
-                counts, positions, signatures, or extension values.
+            ValueError: If a row uses an unknown key, a number in another
+                form, a count that does not increase, an ``ID`` stated twice,
+                a ``next`` naming no row, a non-positive offset, or contradicts
+                derived signatures.
+
+        Warns:
+            UserWarning: If a stated qstamp disagrees with the derived one;
+                the derived qstamp is kept.
         """
-        allowed = {
-            "ID",
-            "count",
-            "qstamp",
-            "number",
-            "name",
-            "time_signature",
-            "nominal_length",
-            "actual_length",
-            "start_repeat",
-            "end_repeat",
-            "next",
-            "volta",
-            "tempo",
-        }
+        allowed = {*_ROW_KEYS, "tempo"}
         source = [dict(row) for row in rows]
         for row in source:
             unknown = sorted(set(row) - allowed)
@@ -137,6 +243,10 @@ class MeasureMap:
                 raise ValueError(f"Unknown Measure Map row key {unknown[0]!r}")
             if "tempo" in row and not isinstance(row["tempo"], Tempo):
                 raise ValueError("Measure Map tempo must be a Tempo instance")
+            if "ID" in row and not isinstance(row["ID"], str):
+                raise ValueError(f"Measure Map ID {row['ID']!r} is not a string")
+            if "next" in row and not isinstance(row["next"], list):
+                raise ValueError(f"Measure Map next {row['next']!r} is not a list")
         if not source:
             return []
 
@@ -144,38 +254,18 @@ class MeasureMap:
         sparse: list[dict[str, Any]] = []
         previous_fill: int | None = None
         previous_number: int | None = None
-        previous_number_zero = False
         inherited_signature: str | None = None
         inherited_nominal: Fraction | None = None
 
         for stated in source:
             row = dict(stated)
-            number_zero = row.get("number") == 0
-            if number_zero and previous_number_zero:
-                raise ValueError(
-                    "A split anacrusis needs an explicit offset, which the "
-                    "Measure Map row format does not carry"
-                )
-            previous_number_zero = number_zero
             raw_fill = row.get(fill_key)
             if raw_fill is None:
                 if previous_fill is None:
-                    nominal_probe: Fraction | None = None
-                    signature_probe = row.get("time_signature")
-                    if row.get("nominal_length") is not None:
-                        nominal_probe = _exact_quarters(row["nominal_length"])
-                    elif (
-                        signature_probe is not None
-                        and str(signature_probe).lower() != "cadenza"
-                    ):
-                        nominal_probe = BeatPolicy.from_time_signature(
-                            str(signature_probe)
-                        ).span
-                    actual_probe = (
-                        _exact_quarters(row["actual_length"])
-                        if row.get("actual_length") is not None
-                        else None
-                    )
+                    nominal_probe = _row_quarters(row, "nominal_length")
+                    if nominal_probe is None:
+                        nominal_probe = _signature_length(row.get("time_signature"))
+                    actual_probe = _row_quarters(row, "actual_length")
                     fill = 1
                     if (
                         fill_key == "number"
@@ -188,6 +278,15 @@ class MeasureMap:
                     fill = previous_fill + 1
             else:
                 fill = int(raw_fill)
+                if (
+                    fill_key == "count"
+                    and previous_fill is not None
+                    and fill <= previous_fill
+                ):
+                    raise ValueError(
+                        f"Measure Map count {fill} does not increase after count "
+                        f"{previous_fill}"
+                    )
 
             if previous_fill is not None and fill > previous_fill + 1:
                 for missing in range(previous_fill + 1, fill):
@@ -197,8 +296,8 @@ class MeasureMap:
                     if inherited_signature is not None:
                         inserted["time_signature"] = inherited_signature
                     if inherited_nominal is not None:
-                        inserted["nominal_length"] = inherited_nominal
-                        inserted["actual_length"] = inherited_nominal
+                        inserted["nominal_length"] = number_to_json(inherited_nominal)
+                        inserted["actual_length"] = number_to_json(inherited_nominal)
                     sparse.append(inserted)
             row.setdefault(fill_key, fill)
             sparse.append(row)
@@ -208,15 +307,11 @@ class MeasureMap:
 
             if "time_signature" in row:
                 inherited_signature = row["time_signature"]
-            if "nominal_length" in row:
-                inherited_nominal = _exact_quarters(row["nominal_length"])
+            stated_nominal = _row_quarters(row, "nominal_length")
+            if stated_nominal is not None:
+                inherited_nominal = stated_nominal
             elif inherited_signature is not None:
-                if str(inherited_signature).lower() == "cadenza":
-                    inherited_nominal = None
-                else:
-                    inherited_nominal = BeatPolicy.from_time_signature(
-                        str(inherited_signature)
-                    ).span
+                inherited_nominal = _signature_length(inherited_signature)
 
         expanded: list[dict[str, Any]] = []
         current_signature: str | None = None
@@ -230,27 +325,18 @@ class MeasureMap:
             if "time_signature" in stated:
                 current_signature = stated["time_signature"]
             signature = current_signature
-            cadenza = signature is not None and str(signature).lower() == "cadenza"
+            cadenza = _is_cadenza(signature)
 
-            nominal: Fraction | None
-            actual: Fraction | None
-            if stated.get("nominal_length") is not None:
-                nominal = _exact_quarters(stated["nominal_length"])
-            elif cadenza:
-                if stated.get("actual_length") is None:
+            nominal = _row_quarters(stated, "nominal_length")
+            actual = _row_quarters(stated, "actual_length")
+            if nominal is None and cadenza:
+                if actual is None:
                     raise ValueError("A cadenza measure must state actual_length")
-                nominal = _exact_quarters(stated["actual_length"])
-            elif signature is not None:
-                nominal = BeatPolicy.from_time_signature(str(signature)).span
-            else:
-                nominal = None
-
-            if (
-                stated.get("nominal_length") is not None
-                and signature is not None
-                and not cadenza
-            ):
-                signature_length = BeatPolicy.from_time_signature(str(signature)).span
+                nominal = actual
+            elif nominal is None:
+                nominal = _signature_length(signature)
+            elif signature is not None and not cadenza:
+                signature_length = _signature_length(signature)
                 if nominal != signature_length:
                     row_number = stated.get("number", stated.get(fill_key, position))
                     raise ValueError(
@@ -258,19 +344,15 @@ class MeasureMap:
                         f"{signature!r} with length {signature_length}, but states "
                         f"nominal_length {nominal}"
                     )
-
-            if stated.get("actual_length") is not None:
-                actual = _exact_quarters(stated["actual_length"])
-            else:
+            if actual is None:
                 actual = nominal
+            offset = _row_quarters(stated, "offset_within_measure")
+            if offset is not None and offset <= 0:
+                raise ValueError(
+                    f"Measure Map offset_within_measure {offset} at count {position} "
+                    "is not positive; a measure at offset 0 omits the key"
+                )
 
-            if stated.get("qstamp") is not None:
-                stated_qstamp = _exact_quarters(stated["qstamp"])
-                if qstamp is None or stated_qstamp != qstamp:
-                    raise ValueError(
-                        f"Measure Map qstamp {stated_qstamp} disagrees with "
-                        f"derived qstamp {qstamp} at count {position}"
-                    )
             if "number" in stated:
                 number = int(stated["number"])
             elif (
@@ -284,9 +366,13 @@ class MeasureMap:
             else:
                 number = int(stated.get(fill_key, position))
             row = {
-                "ID": str(stated.get("ID", position)),
+                "ID": stated.get("ID", str(position)),
                 "count": position,
-                "qstamp": qstamp,
+                "qstamp": _reconciled_qstamp(
+                    _row_quarters(stated, "qstamp"),
+                    qstamp,
+                    stated.get("ID", str(position)),
+                ),
                 "number": number,
                 "name": str(stated.get("name", number)),
                 "time_signature": signature,
@@ -296,17 +382,43 @@ class MeasureMap:
                 "end_repeat": bool(stated.get("end_repeat", False)),
                 "next": stated.get("next"),
                 "volta": stated.get("volta"),
+                "offset_within_measure": offset or Fraction(0),
             }
             if "tempo" in stated:
                 row["tempo"] = stated["tempo"]
             expanded.append(row)
             qstamp = None if qstamp is None or actual is None else qstamp + actual
 
+        counts_by_id: dict[str, int] = {}
+        for row in expanded:
+            if row["ID"] in counts_by_id:
+                raise ValueError(f"Measure Map ID {row['ID']!r} is stated twice")
+            counts_by_id[row["ID"]] = row["count"]
         for index, row in enumerate(expanded):
             if row["next"] is None:
-                row["next"] = [index + 2] if index + 1 < len(expanded) else [-1]
-            else:
-                row["next"] = list(_parse_next(row["next"]) or ())
+                row["next"] = [index + 2] if index + 1 < len(expanded) else []
+                continue
+            successors: list[int] = []
+            for entry in row["next"]:
+                if isinstance(entry, str):
+                    if entry not in counts_by_id:
+                        raise ValueError(
+                            f"Measure Map next {entry!r} at count {row['count']} "
+                            "names no row ID"
+                        )
+                    successors.append(counts_by_id[entry])
+                elif isinstance(entry, int) and not isinstance(entry, bool):
+                    if not 1 <= entry <= len(expanded):
+                        raise ValueError(
+                            f"Measure Map next {entry} at count {row['count']} lies "
+                            f"beyond the last row (count {len(expanded)})"
+                        )
+                    successors.append(entry)
+                else:
+                    raise ValueError(
+                        f"Measure Map next {entry!r} is neither an ID nor a count"
+                    )
+            row["next"] = successors
         return expanded
 
     @classmethod
@@ -314,7 +426,8 @@ class MeasureMap:
         """Build a measure map from Measure Map authoring rows.
 
         Args:
-            rows: Compressed or full rows without tempo extensions.
+            rows: Compressed or full rows in their document form, without
+                tempo extensions.
 
         Returns:
             The exact immutable measure map represented by the rows.
@@ -328,118 +441,56 @@ class MeasureMap:
             raise ValueError(
                 "Rows with tempo must be read by MetricHierarchy.from_rows"
             )
-        return cls._from_expanded_rows(expanded)
+        return cls.from_expanded_rows(expanded)
 
     @classmethod
-    def _from_expanded_rows(cls, rows: Iterable[Mapping[str, Any]]) -> MeasureMap:
-        """Build measures from rows already expanded by :meth:`expand_rows`."""
-        measures: list[Measure] = []
-        for row in rows:
-            nominal = row["nominal_length"]
-            actual = row["actual_length"]
-            successors = tuple(f"m{value}" for value in row["next"] if int(value) != -1)
-            common = dict(
-                id=f"m{row['count']}",
-                count=row["count"],
-                qstamp=row["qstamp"],
-                number=row["number"],
-                name=row["name"],
-                time_signature=row["time_signature"],
-                nominal_length=nominal,
-                actual_length=actual,
-                start_repeat=row["start_repeat"],
-                end_repeat=row["end_repeat"],
-                next=successors or None,
-                volta=row["volta"],
-            )
-            signature = row["time_signature"]
-            if nominal is None:
-                measure: Measure = Measure(**common)
-            elif signature is not None and str(signature).lower() == "cadenza":
-                measure = CadenzaMeasure(**common)
-            elif actual < nominal and (
-                row["number"] == 0
-                or (
-                    measures
-                    and row["number"] == measures[-1].number
-                    and measures[-1].actual_length is not None
-                    and measures[-1].actual_length < nominal
-                )
-            ):
-                measure = MeasureConstituent(
-                    **common,
-                    offset_within_measure=(
-                        nominal - actual
-                        if row["number"] == 0
-                        else nominal - measures[-1].actual_length
-                    ),
-                )
-            elif actual == nominal:
-                measure = RegularMeasure(**common)
-            else:
-                measure = IrregularMeasure(**common)
-            measures.append(measure)
-        return cls(measures)
+    def from_expanded_rows(cls, rows: Iterable[Mapping[str, Any]]) -> MeasureMap:
+        """Build measures from full rows whose ``next`` holds row counts.
 
-    @classmethod
-    def _from_measure_rows(cls, source: Iterable[Mapping[str, Any]]) -> MeasureMap:
-        """Build a measure map from normalized loader facts."""
-        rows = list(source)
-        if not rows:
-            raise ValueError("Cannot build a MeasureMap from empty measure data")
+        Every lane ends here: rows from :meth:`expand_rows`, which a loader
+        may complete first, and rows read from a score loader's measure
+        table. Each measure is classified by :meth:`Measure.from_values`;
+        ``next`` counts become row IDs.
 
+        Args:
+            rows: Full rows with the keys :meth:`expand_rows` returns.
+
+        Returns:
+            The measure map the rows describe.
+
+        Raises:
+            ValueError: If a ``next`` count names no row.
+        """
+        source = list(rows)
+        ids_by_count = {row["count"]: row["ID"] for row in source}
         measures: list[Measure] = []
-        current_signature: str | None = None
-        for index, row in enumerate(rows, start=1):
-            signature = row.get("timesig")
-            if signature:
-                current_signature = str(signature)
-            actual_length = _exact_quarters(row.get("duration"))
-            nominal_length = (
-                BeatPolicy.from_time_signature(current_signature).span
-                if current_signature
-                else actual_length
-            )
-            count = int(row.get("mc") or index)
-            label = str(row.get("mn") if row.get("mn") is not None else count)
-            raw_number = row.get("mn_int")
-            number = int(raw_number) if raw_number is not None else count
-            offset_raw = row.get("mc_offset")
-            offset = (
-                Fraction(0) if offset_raw in (None, "") else Fraction(offset_raw) * 4
-            )
-            successors = _parse_next(row.get("next"))
-            next_ids = (
-                tuple(f"m{successor}" for successor in successors if successor != -1)
-                if successors
-                else None
-            )
-            common = dict(
-                id=f"m{count}",
-                count=count,
-                qstamp=_exact_quarters(row.get("start")),
-                number=number,
-                name=label,
-                time_signature=current_signature,
-                nominal_length=nominal_length,
-                actual_length=actual_length,
-                start_repeat=bool(row.get("start_repeat", False)),
-                end_repeat=bool(row.get("end_repeat", False)),
-                next=next_ids or None,
-                volta=row.get("volta"),
-            )
-            if offset:
-                measure = MeasureConstituent(
-                    **common,
-                    offset_within_measure=offset,
+        for row in source:
+            successors: tuple[str, ...] | None = None
+            if row["next"] is not None:
+                unknown = [count for count in row["next"] if count not in ids_by_count]
+                if unknown:
+                    raise ValueError(
+                        f"Measure {row['ID']!r} names successor count {unknown[0]}, "
+                        "which no measure has"
+                    )
+                successors = tuple(ids_by_count[count] for count in row["next"])
+            measures.append(
+                Measure.from_values(
+                    id=row["ID"],
+                    count=row["count"],
+                    qstamp=row["qstamp"],
+                    number=row["number"],
+                    name=row["name"],
+                    time_signature=row["time_signature"],
+                    nominal_length=row["nominal_length"],
+                    actual_length=row["actual_length"],
+                    start_repeat=row["start_repeat"],
+                    end_repeat=row["end_repeat"],
+                    next=successors,
+                    volta=row["volta"],
+                    offset_within_measure=row["offset_within_measure"],
                 )
-            elif current_signature and current_signature.lower() == "cadenza":
-                measure = CadenzaMeasure(**common)
-            elif actual_length == nominal_length:
-                measure = RegularMeasure(**common)
-            else:
-                measure = IrregularMeasure(**common)
-            measures.append(measure)
+            )
         return cls(measures)
 
     @classmethod
@@ -456,7 +507,8 @@ class MeasureMap:
             measures: Measures in printed order.
 
         Raises:
-            ValueError: If measure identifiers are not unique.
+            ValueError: If measure identifiers are not unique, or a ``next``
+                names no measure of the map.
 
         Warns:
             UserWarning: If a stated count or qstamp disagrees with the value
@@ -464,37 +516,41 @@ class MeasureMap:
         """
         source = tuple(measures)
         ids = [
-            measure.id or f"m{count}" for count, measure in enumerate(source, start=1)
+            measure.id or str(count) for count, measure in enumerate(source, start=1)
         ]
         if len(ids) != len(set(ids)):
             raise ValueError("Measure IDs must be unique within a MeasureMap")
+        known = set(ids)
         normalized: list[Measure] = []
         running: Fraction | None = Fraction(0)
-        for count, measure in enumerate(source, start=1):
-            computed_qstamp = running
+        for count, (measure_id, measure) in enumerate(zip(ids, source), start=1):
             if measure.count is not None and measure.count != count:
                 warnings.warn(
-                    f"Measure {measure.id or count!r} supplies count {measure.count}, "
+                    f"Measure {measure_id!r} supplies count {measure.count}, "
                     f"but printed order computes {count}",
                     stacklevel=2,
                 )
-            if (
-                computed_qstamp is not None
-                and measure.qstamp is not None
-                and measure.qstamp != computed_qstamp
-            ):
-                warnings.warn(
-                    f"Measure {measure.id or count!r} supplies qstamp {measure.qstamp}, "
-                    f"but prefix-summing actual lengths computes {computed_qstamp}",
-                    stacklevel=2,
+            successors = measure.next
+            if successors is None:
+                successors = (ids[count],) if count < len(ids) else ()
+            unknown = [successor for successor in successors if successor not in known]
+            if unknown:
+                raise ValueError(
+                    f"Measure {measure_id!r} names successor {unknown[0]!r}, "
+                    "which no measure of the map has"
                 )
-            updates: dict[str, Any] = {
-                "id": measure.id or f"m{count}",
-                "count": count,
-            }
-            if computed_qstamp is not None:
-                updates["qstamp"] = computed_qstamp
-            normalized.append(measure.model_copy(update=updates))
+            normalized.append(
+                measure.model_copy(
+                    update={
+                        "id": measure_id,
+                        "count": count,
+                        "qstamp": _reconciled_qstamp(
+                            measure.qstamp, running, measure_id
+                        ),
+                        "next": successors,
+                    }
+                )
+            )
             if running is not None:
                 running = (
                     running + measure.actual_length
@@ -506,23 +562,10 @@ class MeasureMap:
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, MeasureMap):
             return NotImplemented
-        if len(self) != len(other):
-            return False
-        for index, (left, right) in enumerate(zip(self, other, strict=True)):
-            if type(left) is type(right) and left == right:
-                continue
-            left_values = left.model_dump(exclude={"next", "offset_within_measure"})
-            right_values = right.model_dump(exclude={"next", "offset_within_measure"})
-            if index != len(self) - 1:
-                left_values["next"] = left.next
-                right_values["next"] = right.next
-            if left_values == right_values and (
-                type(left) is type(right)
-                or {type(left), type(right)} == {IrregularMeasure, MeasureConstituent}
-            ):
-                continue
-            return False
-        return True
+        return len(self) == len(other) and all(
+            type(left) is type(right) and left == right
+            for left, right in zip(self, other, strict=True)
+        )
 
     def __repr__(self) -> str:
         total = self.total_actual_length
@@ -587,99 +630,102 @@ class MeasureMap:
     def to_rows(self, *, compress: bool = True) -> list[dict[str, Any]]:
         """Return Measure Map rows, omitting entries equal to their default successor.
 
-        The first measure is retained. Each later measure is retained only when
-        a present value differs from the preceding measure's default successor:
-        count increments, qstamp advances by actual_length, actual_length
-        becomes nominal_length, number increments, name becomes that number,
-        signatures and nominal lengths persist, repeats clear, and next becomes
-        the successor count plus one. Unset values are omitted.
+        A row holds every value its measure states, ``number`` (and ``name``)
+        falling back to the count where a measure states none: ``ID`` only when
+        it is not ``str(count)``, ``next`` as row IDs (on the last row only when it names
+        a successor), ``volta`` when set, and ``offset_within_measure`` only
+        when it is non-zero. The first and the last rows are always retained.
+        Every other row is omitted when it equals the default successor of the
+        preceding measure: count increments, the ID is ``str(count)``, qstamp
+        advances by actual_length, actual_length becomes nominal_length, number
+        increments, name becomes that number, signatures and nominal lengths
+        persist, repeats clear, ``volta`` and ``offset_within_measure`` are
+        unset, and ``next`` names the following measure.
 
         Args:
             compress: Whether to omit default-successor rows.
 
         Returns:
             JSON-safe compressed or full Measure Map rows.
-        """
-        keys = (
-            "count",
-            "qstamp",
-            "number",
-            "name",
-            "time_signature",
-            "nominal_length",
-            "actual_length",
-            "start_repeat",
-            "end_repeat",
-            "next",
-            "volta",
-        )
 
-        def row_for(measure: Measure, *, is_last: bool) -> dict[str, Any]:
-            number = measure.number if measure.number is not None else measure.count
-            values: dict[str, Any] = {
-                "count": measure.count,
-                "qstamp": measure.qstamp,
-                "number": number,
-                "name": measure.name if measure.name is not None else str(number),
-                "time_signature": measure.time_signature,
-                "nominal_length": measure.nominal_length,
-                "actual_length": measure.actual_length,
-                "start_repeat": measure.start_repeat,
-                "end_repeat": measure.end_repeat,
-                "next": (
-                    None
-                    if is_last
-                    else (
-                        [int(successor[1:]) for successor in measure.next]
-                        if measure.next is not None
-                        else [measure.count + 1]
-                    )
-                ),
-                "volta": measure.volta,
-            }
+        Raises:
+            ValueError: If the map holds a ``SplitRegularMeasure`` or
+                ``SplitIrregularMeasure``, which no row can express; nothing
+                is returned.
+        """
+        measures = self._measures
+        for measure in measures:
+            if isinstance(measure, (SplitRegularMeasure, SplitIrregularMeasure)):
+                raise ValueError(
+                    f"Measure {measure.id!r} is a {type(measure).__name__}, which "
+                    "the Measure Map row form cannot express"
+                )
+        last = len(measures) - 1
+
+        def encoded(values: dict[str, Any]) -> dict[str, Any]:
             return {
                 key: (
-                    number_to_json(value)
-                    if key in {"qstamp", "nominal_length", "actual_length"}
-                    else value
+                    number_to_json(values[key]) if key in _QUARTER_KEYS else values[key]
                 )
-                for key, value in values.items()
-                if value is not None
+                for key in _ROW_KEYS
+                if values.get(key) is not None
             }
 
-        def default_successor(measure: Measure) -> dict[str, Any]:
-            successor = row_for(measure, is_last=False)
-            count = measure.count
-            if count is not None:
-                successor["count"] = count + 1
+        def row_for(index: int) -> dict[str, Any]:
+            measure = measures[index]
+            number = measure.number if measure.number is not None else measure.count
+            offset = getattr(measure, "offset_within_measure", Fraction(0))
+            successors = list(measure.next or ())
+            return encoded(
+                {
+                    "ID": None if measure.id == str(measure.count) else measure.id,
+                    "count": measure.count,
+                    "qstamp": measure.qstamp,
+                    "number": number,
+                    "name": measure.name if measure.name is not None else str(number),
+                    "time_signature": measure.time_signature,
+                    "nominal_length": measure.nominal_length,
+                    "actual_length": measure.actual_length,
+                    "start_repeat": measure.start_repeat,
+                    "end_repeat": measure.end_repeat,
+                    "next": successors if index < last or successors else None,
+                    "volta": measure.volta,
+                    "offset_within_measure": offset or None,
+                }
+            )
+
+        def default_successor(index: int) -> dict[str, Any]:
+            """Return the default successor row of the measure at *index*."""
+            measure = measures[index]
+            successor = row_for(index)
+            for key in ("ID", "volta", "offset_within_measure"):
+                successor.pop(key, None)
+            if measure.count is not None:
+                successor["count"] = measure.count + 1
             if measure.qstamp is not None and measure.actual_length is not None:
                 successor["qstamp"] = number_to_json(
                     measure.qstamp + measure.actual_length
                 )
             if measure.actual_length is not None:
-                successor["actual_length"] = (
-                    None
-                    if measure.nominal_length is None
-                    else number_to_json(measure.nominal_length)
-                )
+                successor.pop("actual_length")
+                if measure.nominal_length is not None:
+                    successor["actual_length"] = number_to_json(measure.nominal_length)
             if measure.number is not None:
                 successor["number"] = measure.number + 1
             if measure.name is not None and measure.number is not None:
                 successor["name"] = str(measure.number + 1)
             successor["start_repeat"] = False
             successor["end_repeat"] = False
-            if count is not None:
-                successor["next"] = [count + 2]
-            return {key: value for key, value in successor.items() if value is not None}
+            successor["next"] = [measures[index + 2].id]
+            return successor
 
-        rows: list[dict[str, Any]] = []
-        previous: Measure | None = None
-        for index, measure in enumerate(self._measures):
-            row = row_for(measure, is_last=index == len(self._measures) - 1)
-            if not compress or previous is None or row != default_successor(previous):
-                rows.append({key: row[key] for key in keys if key in row})
-            previous = measure
-        return rows
+        return [
+            row_for(index)
+            for index in range(len(measures))
+            if not compress
+            or index in (0, last)
+            or row_for(index) != default_successor(index - 1)
+        ]
 
     def to_dict(self) -> list[dict[str, Any]]:
         """Return this map as compressed JSON-safe Measure Map rows.
@@ -1642,7 +1688,7 @@ class MetricHierarchy:
             ValueError: If row expansion or metric derivation fails.
         """
         expanded = MeasureMap.expand_rows(rows)
-        measure_map = MeasureMap._from_expanded_rows(expanded)
+        measure_map = MeasureMap.from_expanded_rows(expanded)
         entries = tuple(
             TempoEntry(
                 at=Coordinate(Fraction(row["qstamp"]), TimeUnit.quarters),

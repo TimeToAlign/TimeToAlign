@@ -36,16 +36,14 @@ It also uses `ensure_data` at module level for the same `Ms3Loader`, MIDI,
 fixture corpus, proving loader output has the same structural contract without
 depending on a relative data path.
 
-Every bundled fixture for every `SUPPORTED_VERSIONS` entry from
-`fixture_paths(version)` must round-trip as identical JSON text,
-`json.dumps(Timeline.from_dict(m).to_dict()) == json.dumps(m)`, for each
-top-level manifest. Older fixtures are passed through `timeskeleton.migrate`
-first, so this demonstrates that migration leaves the library with a complete,
-lossless current document rather than merely an accepted approximation. The
-text comparison also covers member order, which dictionary equality ignores:
-the library's canonical order of children, conversion maps, regions and flow
-control must be exactly the order the schema's fixtures and its migration
-write. The library orders its own output and does not depend on the schema
+Every one of the 34 bundled manifest fixtures from `fixture_paths()` must
+round-trip as identical JSON text, `json.dumps(Timeline.from_dict(m).to_dict())
+== json.dumps(m)`, for its timeline manifest, so the library reads each one as
+a complete, lossless manifest rather than merely an accepted approximation.
+The text comparison also covers member order, which dictionary equality
+ignores: the library's canonical order of children, conversion maps, regions
+and flow control must be exactly the order the schema's fixtures are written
+in. The library orders its own output and does not depend on the schema
 package at runtime, so the two implementations are compared directly as well:
 every catalogue document, put through `timeskeleton.canonical_order`, must be
 the same JSON text as the library wrote it.

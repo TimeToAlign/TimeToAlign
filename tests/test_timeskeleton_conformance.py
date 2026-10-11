@@ -13,7 +13,6 @@ import numpy as np
 import pytest
 from timeskeleton import (
     SCHEMA_VERSION,
-    SUPPORTED_VERSIONS,
     SchemaValidationError,
     canonical_order,
     fixture_paths,
@@ -266,25 +265,20 @@ def test_emitted_manifests_validate(
         assert json.dumps(canonical_order(manifest)) == json.dumps(manifest)
 
 
-@pytest.mark.parametrize("version", SUPPORTED_VERSIONS)
-def test_bundled_fixtures_round_trip(version: str) -> None:
+def test_bundled_fixtures_round_trip() -> None:
     """Bundled fixtures reconstruct without changing any timeline manifest.
 
     The comparison is by JSON text, so the canonical order of children,
     conversion maps, regions and flow control must match as well.
     """
-    for path in fixture_paths(version):
-        value = json.loads(path.read_text(encoding="utf-8"))
-        manifests = (
-            [value["timeline"]]
-            if version == "0.4.0"
-            else value["manifest"]["timelines"].values()
+    paths = fixture_paths()
+    assert len(paths) == 34
+    for path in paths:
+        manifest = json.loads(path.read_text(encoding="utf-8"))["timeline"]
+        expected = canonical_order({"timeline": manifest})["timeline"]
+        assert json.dumps(Timeline.from_dict(manifest).to_dict()) == json.dumps(
+            expected
         )
-        for manifest in manifests:
-            expected = canonical_order({"timeline": manifest})["timeline"]
-            assert json.dumps(Timeline.from_dict(manifest).to_dict()) == json.dumps(
-                expected
-            )
 
 
 def _quarters_manifest(measure_map: list[dict[str, Any]]) -> dict[str, Any]:

@@ -412,7 +412,7 @@ class MatchfileLoader(AlignmentLoader):
             self._score_timeline = ContinuousLogicalTimeline(
                 length=timeline_length,
                 unit=self._score_unit,
-                uid="score:clt1",
+                uid="score:clt_1",
                 name=piece_name,
             )
 
@@ -499,7 +499,7 @@ class MatchfileLoader(AlignmentLoader):
         perf_tl = DiscreteLogicalTimeline(
             length=perf_max,
             unit=TimeUnit.ticks,
-            uid=f"perf:{perf_stem}:dlt1",
+            uid=f"perf:{perf_stem}:dlt_1",
             name=perf_stem,
         )
         perf_tl.add_events(perf_event_dicts)
@@ -754,7 +754,7 @@ class MatchfileLoader(AlignmentLoader):
                 )
 
         bundle = AlignmentBundle()
-        bundle.add_timeline(actual_score, uid="score:clt1", as_group="score")
+        bundle.add_timeline(actual_score, uid="score:clt_1", as_group="score")
 
         for perf_tl in self._performance_timelines:
             bundle.add_timeline(perf_tl)
@@ -775,7 +775,7 @@ class MatchfileLoader(AlignmentLoader):
         6. Partial/regex match on any timeline uid.
 
         Args:
-            uid: Timeline uid (e.g. ``"score:clt1"``), role
+            uid: Timeline uid (e.g. ``"score:clt_1"``), role
                 shorthand (``"score"``, ``"perf:1"``), or partial/regex
                 pattern.
 
@@ -787,10 +787,10 @@ class MatchfileLoader(AlignmentLoader):
             RuntimeError: If ``load()`` has not been called yet.
 
         Examples:
-            >>> loader.create_timeline("score")               # -> score:clt1
+            >>> loader.create_timeline("score")               # -> score:clt_1
             >>> loader.create_timeline("perf:1")              # First performance
             >>> loader.create_timeline("perf:p01")            # Same shorthand
-            >>> loader.create_timeline(r"^perf:.*p01:dlt1$")  # Stored-ID regex
+            >>> loader.create_timeline(r"^perf:.*p01:dlt_1$")  # Stored-ID regex
         """
         if self._score_timeline is None:
             raise RuntimeError(

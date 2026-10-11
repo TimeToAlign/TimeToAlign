@@ -276,7 +276,6 @@ class TimeSkeleton:
                 length=float(len(measures) + 1),
                 unit=TimeUnit.floating_measures,
                 number_type=NumberType.float,
-                uid=f"{self._id}/source",
             )
             self._reference_timelines[None] = reference
             reference._add_skeleton_attachment(self)
@@ -291,10 +290,9 @@ class TimeSkeleton:
             length=length,
             unit=TimeUnit.quarters,
             number_type=NumberType.fraction,
-            uid=f"{self._id}/{flow}",
         )
         self._reference_timelines[flow] = reference
-        self._bundle.add_timeline(reference, uid=reference.id)
+        self._bundle.add_timeline(reference)
         reference._add_skeleton_attachment(self)
         return reference
 

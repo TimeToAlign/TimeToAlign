@@ -1346,9 +1346,9 @@ class MatchClaim(BaseModel):
         Examples:
             >>> print(claim)
             MatchClaim (synchronous, interval)
-              Timeline A:  score:clt1  [0.0 -- 0.5]
+              Timeline A:  score:clt_1  [0.0 -- 0.5]
               Event A:     e001 "Intro"
-              Timeline B:  perf:dlt1   [0 -- 261]
+              Timeline B:  perf:dlt_1   [0 -- 261]
               Event B:     e042 "Intro"
               Metadata:    agent=partitura, certainty=1.0
         """

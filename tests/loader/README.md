@@ -95,9 +95,9 @@ or NOMATCH count.
 
 Timeline identity assertions use the library's type-based grammar rather than
 source labels. Matchfile score/performance timelines are stored as
-``score:clt1`` and ``perf:<source-stem>:dlt1``; Performance Precision uses
-``score:clt1`` and ``perf:<performer-key>:cpt1``. TiLiA timelines are numbered
-``cpt1``, ``cpt2``, ... in source order. Source filenames, performer keys, and
+``score:clt_1`` and ``perf:<source-stem>:dlt_1``; Performance Precision uses
+``score:clt_1`` and ``perf:<performer-key>:cpt_1``. TiLiA timelines are numbered
+``cpt_1``, ``cpt_2``, ... in source order. Source filenames, performer keys, and
 TiLiA IDs/titles remain human-readable metadata and lookup inputs, so changing
 these expected IDs tests identity semantics without changing parsed content.
 
@@ -238,10 +238,10 @@ The per-performer ``.beats`` / ``.dyn`` files under the dataset's
 One shared **score group** ``"score"`` (the same 251 notes in two
 logical units):
 
-* ``score:clt1`` — `ContinuousLogicalTimeline`, quarters, 251 note
+* ``score:clt_1`` — `ContinuousLogicalTimeline`, quarters, 251 note
   events with ``start = onset_quarter`` (exact `Fraction`), carrying
   ``pitch`` (MIDI int) and ``voice`` (int).
-* ``score:dlt1`` — `DiscreteLogicalTimeline`, ticks (``divs``), the
+* ``score:dlt_1`` — `DiscreteLogicalTimeline`, ticks (``divs``), the
   same 251 notes with ``start = onset_div`` (int). A divs→quarters
   C-Map ``LinearMap(scalar=Fraction(1,32), offset=Fraction(-1,2))`` is
   attached (``scalar`` / ``offset`` are the constructor's real
@@ -252,12 +252,12 @@ logical units):
 Per performer, a **performance group** ``perf:<key>`` (the same
 performed notes in two physical units):
 
-* ``perf:<key>:cpt1`` — `ContinuousPhysicalTimeline`, seconds, one note
+* ``perf:<key>:cpt_1`` — `ContinuousPhysicalTimeline`, seconds, one note
   event per ``ppart.csv`` row with ``start = onset_sec`` (float),
   carrying ``pitch`` and ``velocity``; **plus** the measured beat
   features (see "Feature events" below) as ``Beat`` and ``Dynamics``
   events on the same timeline.
-* ``perf:<key>:dpt1`` — `DiscretePhysicalTimeline`, samples, the same
+* ``perf:<key>:dpt_1`` — `DiscretePhysicalTimeline`, samples, the same
   notes with ``start = round(onset_sec * sample_rate)``. A
   ``SamplesToSeconds(sample_rate=44100)`` C-Map is attached
   (``sample_rate`` read from the performer's 44100 Hz stereo ``.wav``
@@ -274,14 +274,14 @@ the other four are ``<key>_measure.{beats,dyn}``. All ten files have
 
 * ``.beats`` (7 columns) — header
   ``measure_number  beat  onset_beat  onset_sec  BPM  interp  swap``.
-  Each row becomes a ``Beat`` event on ``perf:<key>:cpt1`` at
+  Each row becomes a ``Beat`` event on ``perf:<key>:cpt_1`` at
   ``start = onset_sec``, carrying ``measure_number`` / ``beat`` /
   ``bpm`` (from ``BPM``) / ``interp`` / ``swap``. Event id
   ``<key>:beat:<i>``.
 * ``.dyn`` (6 columns) — header
   ``measure_number  beat  onset_beat  velocity_mean  velocity_max
   interp`` (**no** ``onset_sec``, **no** ``swap``). Each row becomes a
-  ``Dynamics`` event on ``perf:<key>:cpt1`` carrying ``measure_number``
+  ``Dynamics`` event on ``perf:<key>:cpt_1`` carrying ``measure_number``
   / ``beat`` / ``velocity_mean`` / ``velocity_max`` / ``interp``. Event
   id ``<key>:dyn:<i>``.
 
@@ -294,14 +294,14 @@ are *measured* per-beat features (variable tempo + dynamics from the
 recording); no tempo curve is synthesised (no ``BeatGrid.from_tempo``).
 
 The events are added to the **existing** seconds timeline (not a new
-timeline, not on ``dpt1``) via ``add_events(rows,
-allow_expansion=True)``. The ``cpt1`` schema already holds ``Note``
+timeline, not on ``dpt_1``) via ``add_events(rows,
+allow_expansion=True)``. The ``cpt_1`` schema already holds ``Note``
 columns (``pitch`` / ``velocity``); the ``Beat`` / ``Dynamics`` rows
 introduce new columns (``bpm`` / ``measure_number`` / ``beat`` /
 ``velocity_mean`` / …). Successive ``add_events`` calls grow the schema
 via ``pyarrow.concat_tables(promote_options="default")``, so the
 heterogeneous ``Note`` / ``Beat`` / ``Dynamics`` table round-trips with
-absent columns null-filled. After ingestion each ``perf:<key>:cpt1``
+absent columns null-filled. After ingestion each ``perf:<key>:cpt_1``
 holds its ppart ``Note`` events (the per-performer count above) **plus
 63 ``Beat`` and 63 ``Dynamics``** events.
 
@@ -324,15 +324,15 @@ counts, timeline count (12), and group count (6) are derived from
 One claim per ``align.csv`` row, per performer, faithfully (no
 deduplication):
 
-* **matchtype 0** → `MatchClaim.from_projection` from ``score:clt1`` to
-  ``perf:<key>:cpt1``: source coordinate = the part note's
+* **matchtype 0** → `MatchClaim.from_projection` from ``score:clt_1`` to
+  ``perf:<key>:cpt_1``: source coordinate = the part note's
   ``onset_quarter``, target coordinate = the ppart note's
   ``onset_sec``.
 * **matchtype 1** (score-only) → `MatchClaim.nomatch` with source
-  ``score:clt1`` and target ``perf:<key>:cpt1`` (source coordinate =
+  ``score:clt_1`` and target ``perf:<key>:cpt_1`` (source coordinate =
   the part note's ``onset_quarter``).
 * **matchtype 2** (performance-only) → `MatchClaim.nomatch` with source
-  ``perf:<key>:cpt1`` and target ``score:clt1`` (source coordinate =
+  ``perf:<key>:cpt_1`` and target ``score:clt_1`` (source coordinate =
   the ppart note's ``onset_sec``).
 
 Each performer's claims share a
@@ -353,12 +353,12 @@ with ``certainty=1.0`` (the per-performer key now lives in the agent's
 | **Total** |     | **1275** | **1208** | **67** |
 
 The bundle holds **12** timelines and **6** groups (1 ``score`` + 5
-``perf:<key>``). ``score:clt1`` and ``score:dlt1`` each carry 251
+``perf:<key>``). ``score:clt_1`` and ``score:dlt_1`` each carry 251
 events.
 
 **Coordinate spot-check:** Szegedi's ``align.csv`` row at ``idx 0`` is
 ``0,0,ngx1f26,n149``. It produces a synchronous claim from
-``score:clt1`` to ``perf:1966_Szegedi:cpt1`` whose source coordinate is
+``score:clt_1`` to ``perf:1966_Szegedi:cpt_1`` whose source coordinate is
 ``40.0`` (``score_q_by_id["ngx1f26"]``, an exact quarter) and whose
 target coordinate is ``38.183334`` seconds (``perf_sec_by_id["n149"]``).
 
@@ -371,7 +371,7 @@ asserts the duplicate is present in the raw ``align.csv`` so a future
 reader knows it is data, not a loader fault. The loader does **not**
 deduplicate.
 
-**C-Map round-trip:** ``SamplesToSeconds(44100)`` on a ``dpt1`` timeline
+**C-Map round-trip:** ``SamplesToSeconds(44100)`` on a ``dpt_1`` timeline
 converts ``44100`` samples to ``1.0`` seconds (and ``sample / 44100``
 generally).
 
@@ -394,24 +394,24 @@ parametrized over both specimens:
 carry a spectrogram, so the graphical axis is always present here):
 
 - a shared ``"score"`` group:
-  - ``score:dlt1`` — a ``DiscreteLogicalTimeline`` in ticks holding the
+  - ``score:dlt_1`` — a ``DiscreteLogicalTimeline`` in ticks holding the
     MSM ``Note`` events *and* every MPM markup event (``Tempo`` /
     ``Dynamics`` / ``Articulation`` / ``Asynchrony`` / any other map
     type), carrying a ticks→quarters ``TicksToQuarters(ppq)`` map;
-  - ``score:clt1`` — a ``ContinuousLogicalTimeline`` in quarters holding
+  - ``score:clt_1`` — a ``ContinuousLogicalTimeline`` in quarters holding
     the same ``Note`` events (onset ``date / ppq`` as an exact
     ``Fraction``), carrying a modelled quarters→seconds ``TableMap``;
 - a ``"perf"`` group (3 timelines):
-  - ``perf:cpt1`` — a ``ContinuousPhysicalTimeline`` in seconds, one
+  - ``perf:cpt_1`` — a ``ContinuousPhysicalTimeline`` in seconds, one
     ``Note`` event per observed onset (``milliseconds.date / 1000``);
-  - ``perf:dpt1`` — a ``DiscretePhysicalTimeline`` in samples, the same
+  - ``perf:dpt_1`` — a ``DiscretePhysicalTimeline`` in samples, the same
     onsets scaled by the sample rate, carrying ``SamplesToSeconds``;
-  - ``perf:dgt1`` — a ``DiscreteGraphicalTimeline`` in pixels: the
+  - ``perf:dgt_1`` — a ``DiscreteGraphicalTimeline`` in pixels: the
     spectrogram's frame-column x-axis (see *Spectrogram graphical axis*
     below). It carries **no events** — it is a graphical axis, not an
     event timeline — and a px→seconds ``ScalarMap``;
 - one synchronous cross-group ``MatchClaim`` per score note, projecting
-  ``score:clt1`` (quarters) onto ``perf:cpt1`` (seconds).
+  ``score:clt_1`` (quarters) onto ``perf:cpt_1`` (seconds).
 
 The bundle therefore spans all **three domains**: logical (quarters /
 ticks), physical (seconds / samples), and graphical (pixels). A test
@@ -456,7 +456,7 @@ directory). The width is read directly from the PNG IHDR header (bytes
 is added. The pinned widths are **Beethoven 26469** and **Reger 1587**
 frame columns.
 
-``perf:dgt1`` is built as ``DiscreteGraphicalTimeline(length=<png width>,
+``perf:dgt_1`` is built as ``DiscreteGraphicalTimeline(length=<png width>,
 unit=TimeUnit.pixels)`` and carries **0 events** (the columns are an axis,
 not events). Its only attachment is a px→seconds ``ScalarMap`` with scalar
 ``hopSize / sample_rate`` (so ``seconds = px * hopSize / sample_rate``,
@@ -475,7 +475,7 @@ The map is pulled off the timeline via
 concern — per-event 2-D graphical storage does not exist yet).
 
 When a project carries no ``<spectrogram>`` (or its ``.png`` is missing),
-``perf:dgt1`` is simply absent and the bundle holds 4 timelines; the
+``perf:dgt_1`` is simply absent and the bundle holds 4 timelines; the
 loader does not crash. Both specimens here have one.
 
 #### No-spectrogram fallback
@@ -483,7 +483,7 @@ loader does not crash. Both specimens here have one.
 ``_parse_spectrogram`` returns ``None`` whenever the project carries no
 ``<spectrogram>`` element (or its ``hopSize`` / ``file`` attribute is
 missing, or the referenced ``.png`` is absent / unreadable). In that case
-``perf:dgt1`` is never built: the graphical timeline reference is left
+``perf:dgt_1`` is never built: the graphical timeline reference is left
 ``None`` and the bundle simply omits the graphical domain. Both corpus
 specimens ship a complete spectrogram, so this branch never executes when
 the loader is driven against the real files — it cannot be reached by
@@ -500,14 +500,14 @@ parity) and pin the exact 4-timeline shape:
 - after ``load``, ``loader._perf_dgt is None``;
 - ``create_bundle()`` yields ``n_timelines == 4``, ``n_groups == 2``,
   ``group_ids == ["score", "perf"]``, and ``timeline_ids ==
-  [score:clt1, score:dlt1, perf:cpt1, perf:dpt1]`` (no ``perf:dgt1``);
-  the ``perf`` group holds exactly ``{perf:cpt1, perf:dpt1}``; the claim
+  [score:clt_1, score:dlt_1, perf:cpt_1, perf:dpt_1]`` (no ``perf:dgt_1``);
+  the ``perf`` group holds exactly ``{perf:cpt_1, perf:dpt_1}``; the claim
   count is unchanged (one synchronous claim per note); and the bundle's
   timeline-unit domains are exactly ``{logical, physical}`` — the
   graphical domain is **absent** (the converse of the three-domain test);
 - ``create_timelines()`` returns exactly the four non-graphical timelines
   by ``.id``;
-- ``create_timeline("perf:dgt1")`` raises ``KeyError`` (matching ``No
+- ``create_timeline("perf:dgt_1")`` raises ``KeyError`` (matching ``No
   timeline with uid``) because that timeline was never registered;
 - ``_repr_html_()`` reports ``"4 in 2 group(s) (score, perf)"`` and never
   ``"5 in 2 group(s)"``.
@@ -570,36 +570,36 @@ beat-length, spq 2.4) advances 0.5 quarter to ``map(40.0) == 24.9``.
 |----------|-----------|-------|
 | PPQ | 720 | 720 |
 | MSM notes | 251 | 92 |
-| ``score:clt1`` events (notes) | 251 | 92 |
+| ``score:clt_1`` events (notes) | 251 | 92 |
 | Tempo events (default perf) | 7 | 1 |
 | Dynamics events (default perf) | 34 | 11 |
 | Articulation events (default perf) | 207 | 80 |
 | Asynchrony events (default perf) | 0 | 0 |
 | Other markup (default perf) | 0 | 1 (Ornament) |
-| ``score:dlt1`` events (notes + markup) | 499 | 185 |
+| ``score:dlt_1`` events (notes + markup) | 499 | 185 |
 | Alignment notes | 251 | 92 |
-| ``perf:cpt1`` / ``perf:dpt1`` events | 251 | 92 |
+| ``perf:cpt_1`` / ``perf:dpt_1`` events | 251 | 92 |
 | Synchronous claims | 251 | 92 |
 | NOMATCH claims | 0 | 0 |
 | Tempo-map anchors | 8 | 2 |
 | Sample rate (Hz) | 44100 | 48000 |
-| ``perf:dgt1`` length (frame columns / pixels) | 26469 | 1587 |
-| ``perf:dgt1`` events | 0 | 0 |
+| ``perf:dgt_1`` length (frame columns / pixels) | 26469 | 1587 |
+| ``perf:dgt_1`` events | 0 | 0 |
 | Spectrogram ``hopSize`` | 128 | 512 |
 | px→seconds ``ScalarMap`` scalar | 128 / 44100 | 512 / 48000 |
 
-The bundle holds **5 timelines** (``score:clt1`` / ``score:dlt1`` /
-``perf:cpt1`` / ``perf:dpt1`` / ``perf:dgt1``) and **2 groups**
+The bundle holds **5 timelines** (``score:clt_1`` / ``score:dlt_1`` /
+``perf:cpt_1`` / ``perf:dpt_1`` / ``perf:dgt_1``) and **2 groups**
 (``score`` / ``perf``) for both specimens; the ``perf`` group holds 3
 timelines. The timeline units across the bundle span all three
 ``Domain``s: logical, physical, and graphical.
 
-**C-Map spot-check (``TicksToQuarters``):** on ``score:dlt1``, tick
+**C-Map spot-check (``TicksToQuarters``):** on ``score:dlt_1``, tick
 ``360`` resolves to ``0.5`` quarters and ``720`` to ``1.0`` (queried via
 ``timeline.get_timestamp(tick).get_unit(TimeUnit.quarters)``).
 
 **Onset spot-check:** Beethoven note ``nbwxzb1`` has
-``milliseconds.date == 828.0190259247195``, so its ``perf:cpt1`` onset
+``milliseconds.date == 828.0190259247195``, so its ``perf:cpt_1`` onset
 and its claim target coordinate are ``828.0190259247195 / 1000.0``
 seconds (the loader divides by 1000; the test pins the same Python
 expression, so the IEEE-754 double matches exactly). Its source
@@ -617,7 +617,7 @@ pitchname ``"e"``, accidentals ``-1``, octave ``4``, date ``360`` ticks.
 **Performance selector:** Beethoven
 ``load(mpr, performance="Curzon_1971_DECCA-SXL6523_audio")`` reaches a
 different performance whose inline-numeric bpm values resolve directly —
-its ``score:dlt1`` then carries **25** Asynchrony events (vs 0 in the
+its ``score:dlt_1`` then carries **25** Asynchrony events (vs 0 in the
 default) and **123** Tempo events.
 
 ## Represent pitch once — validation logic
@@ -763,7 +763,7 @@ holds a ``times`` array whose ``i``-th entry is that recording's clock-time
 length, so together they are a dense alignment matrix.  ``ListenHereLoader``
 reads it into one audio-to-audio ``AlignmentBundle``:
 
-* one empty seconds ``ContinuousPhysicalTimeline`` (``<stem>:cpt1``) per
+* one empty seconds ``ContinuousPhysicalTimeline`` (``<stem>:cpt_1``) per
   recording, each in its **own** group named by the recording stem;
   ``length`` is that recording's stored ``duration``;
 * the **complete pairwise topology** — for every unordered pair of recordings
@@ -830,12 +830,12 @@ bundle previously left unanswered, all with exact values:
 |------|-----------|
 | `test_bundle_claim_count` | `n_cross_group_claims == 15` (spans both stores) |
 | `test_bundle_get_match_claims` | 15 claims, all synchronous |
-| `test_bundle_get_match_claims_filtered` | `timeline_id="rec-a:cpt1"` → 10; `between=("rec-a:cpt1","rec-b:cpt1")` → 5 |
+| `test_bundle_get_match_claims_filtered` | `timeline_id="rec-a:cpt_1"` → 10; `between=("rec-a:cpt_1","rec-b:cpt_1")` → 5 |
 | `test_bundle_get_claim_fields` | the vectorized accessor selects `[15]` / `[10]`, and `[]` for an unknown UID |
 | `test_bundle_matchstamp_table_per_claim` | 15 rows × 3 columns, exactly two filled cells per row |
 | `test_bundle_matchstamp_table_from_graph` | the 15 pairwise rows collapse into the 5 reference-grid cross-sections, exact coordinates, ordered by the `rec-a` coordinate |
 | `test_bundle_are_commensurable` | all recording pairs commensurable; an absent ID is not |
-| `test_bundle_transfer` | `transfer(0.02, "rec-a:cpt1", "rec-b:cpt1") == 0.01` — the `MatchLine` → `WarpMap` path over the columnar store |
+| `test_bundle_transfer` | `transfer(0.02, "rec-a:cpt_1", "rec-b:cpt_1") == 0.01` — the `MatchLine` → `WarpMap` path over the columnar store |
 | `test_bundle_diagram_reports_claim_count` | `diagram()` reports `MatchClaims: 15` |
 
 The general two-store parity contract is documented in
@@ -858,8 +858,8 @@ Committed tests use an **inline synthetic** ``alignment.json`` written to
 ```
 
 Sorted keys → ``["rec-a.mp3", "rec-b.mp3", "rec-ref.mp3"]``; stems ``rec-a`` /
-``rec-b`` / ``rec-ref``; timeline uids ``rec-a:cpt1`` / ``rec-b:cpt1`` /
-``rec-ref:cpt1``; pairs ``(a, b)``, ``(a, ref)``, ``(b, ref)``.  ``rec-b``'s
+``rec-b`` / ``rec-ref``; timeline uids ``rec-a:cpt_1`` / ``rec-b:cpt_1`` /
+``rec-ref:cpt_1``; pairs ``(a, b)``, ``(a, ref)``, ``(b, ref)``.  ``rec-b``'s
 first column is ``-0.01`` — a **negative** pre-onset warp coordinate that the
 loader keeps faithfully (never clamped or dropped).  ``peaks`` is
 waveform-display payload and is ignored.
@@ -872,19 +872,19 @@ waveform-display payload and is ignored.
   ``loader.reference == "rec-ref.mp3"``.
 * ``loader.get_field(MatchClaim)`` is a ``MatchClaimField``;
   ``loader.get_field(MatchClaimField)`` returns the same field.
-* ``get_field(MatchClaim).timeline_ids == {"rec-a:cpt1", "rec-b:cpt1",
-  "rec-ref:cpt1"}``.
+* ``get_field(MatchClaim).timeline_ids == {"rec-a:cpt_1", "rec-b:cpt_1",
+  "rec-ref:cpt_1"}``.
 * **Faithfulness:** ``pc.min`` over both coordinate columns of the field is
   exactly ``-0.01`` (negatives kept).
 * ``bundle = loader.create_bundle()``: exactly **3** timelines and **3**
   groups; timeline uids equal the set above; each timeline holds **0** events;
-  ``rec-b:cpt1`` length ``== 0.10``; the claim field is added columnar, so
+  ``rec-b:cpt_1`` length ``== 0.10``; the claim field is added columnar, so
   ``len(bundle.cross_group_claims) == 0`` and
   ``len(bundle.cross_group_claim_fields) == 1``.
-* ``bundle.get_matchstamp_at(0.045, "rec-ref:cpt1")``: ``stamp.n_timelines ==
-  3``; ``stamp.get_coordinate("rec-a:cpt1") == 0.04``;
-  ``stamp.get_coordinate("rec-b:cpt1") == 0.03``;
-  ``stamp.get_coordinate("rec-ref:cpt1") == 0.045``.  The exact float literals
+* ``bundle.get_matchstamp_at(0.045, "rec-ref:cpt_1")``: ``stamp.n_timelines ==
+  3``; ``stamp.get_coordinate("rec-a:cpt_1") == 0.04``;
+  ``stamp.get_coordinate("rec-b:cpt_1") == 0.03``;
+  ``stamp.get_coordinate("rec-ref:cpt_1") == 0.045``.  The exact float literals
   from the specimen are reused so the equality is exact.  Because the bundle's
   Python claim list is empty, this read proves the columnar path resolves the
   matchstamp without exploding the field.

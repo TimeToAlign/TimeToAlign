@@ -860,7 +860,7 @@ class WarpMap:
 
         target_unit = target.unit
 
-        for name, region in source._regions.items():
+        for region in source._regions.values():
             warped_start = self._interpolate_float(region.start.value)
             warped_end = self._interpolate_float(region.end.value)
 
@@ -868,14 +868,16 @@ class WarpMap:
                 module_logger.warning(
                     "Skipping region '%s': warped interval is degenerate "
                     "(%.3f -> %.3f)",
-                    name,
+                    region.id,
                     warped_start,
                     warped_end,
                 )
                 continue
 
             warped_region = Region(
-                name=name,
+                id=region.id,
+                name=region.name,
+                _minted=region._minted,
                 start=Coordinate(
                     warped_start,
                     target_unit,

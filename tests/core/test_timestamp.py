@@ -256,7 +256,7 @@ class TestTimeStampWithCMaps:
 
     def test_to_dict_and_unit_conversion_are_separate(self):
         """Serialization and unit conversion use separate typed surfaces."""
-        tl = Timeline(length=960, unit=TimeUnit.ticks, uid="tl:1")
+        tl = Timeline(length=960, unit=TimeUnit.ticks, uid="dlt_1")
 
         tempo_map = TableMap(
             x_values=[0, 960],
@@ -269,7 +269,7 @@ class TestTimeStampWithCMaps:
         ts = tl.get_timestamp(480)
         result = ts.to_dict()
 
-        assert result["tl:1"] == {
+        assert result["dlt_1"] == {
             "unit": "ticks",
             "number_type": "int",
             "value": 480,
@@ -359,7 +359,7 @@ class TestTimeIntervalStamp:
 
     def test_str_basic(self):
         """__str__ shows header and aligned start/end columns."""
-        parent = Timeline(length=100, unit=TimeUnit.seconds, uid="tl:1")
+        parent = Timeline(length=100, unit=TimeUnit.seconds, uid="cpt_1")
         child = Timeline(length=60, unit=TimeUnit.seconds, uid="child:1")
         parent.add_child(child, offset=20)
 
@@ -368,7 +368,7 @@ class TestTimeIntervalStamp:
         text = str(interval)
 
         assert "TimeIntervalStamp [30, 70) seconds" in text
-        assert "tl:1" in text
+        assert "cpt_1" in text
         assert "child:1" in text
 
     def test_str_straddling_children(self):
@@ -395,7 +395,7 @@ class TestTimeIntervalStamp:
 
     def test_str_omits_fully_out_of_range_children(self):
         """Children where both endpoints are out of range are omitted."""
-        parent = Timeline(length=100, unit=TimeUnit.seconds, uid="tl:1")
+        parent = Timeline(length=100, unit=TimeUnit.seconds, uid="cpt_1")
         child = Timeline(length=10, unit=TimeUnit.seconds, uid="far_child")
         parent.add_child(child, offset=80)
 
@@ -639,16 +639,16 @@ class TestTimeStampReprHtml:
 
     def test_repr_html_renders_coordinate_table(self):
         """The coordinate cross-section table still renders."""
-        tl = Timeline(length=100, unit=TimeUnit.seconds, uid="tl:1")
+        tl = Timeline(length=100, unit=TimeUnit.seconds, uid="cpt_1")
         ts = tl.get_timestamp(50.0)
         html = ts._repr_html_()
         assert "<table" in html
         assert "TimeStamp" in html
-        assert "tl:1" in html
+        assert "cpt_1" in html
 
     def test_repr_html_try_footer(self):
         """A Try footer surfaces the real TimeStamp accessors after the table."""
-        tl = Timeline(length=100, unit=TimeUnit.seconds, uid="tl:1")
+        tl = Timeline(length=100, unit=TimeUnit.seconds, uid="cpt_1")
         ts = tl.get_timestamp(50.0)
         html = ts._repr_html_()
         assert (

@@ -436,9 +436,9 @@ class TestMinimalATONTimeline:
 
     def test_create_timeline_with_uid(self, loaded_minimal_loader: ATONLoader) -> None:
         """create_timeline() accepts custom uid."""
-        timeline = loaded_minimal_loader.create_timeline(uid="dgt1")
+        timeline = loaded_minimal_loader.create_timeline(uid="dgt_1")
 
-        assert timeline.id == "dgt1"
+        assert timeline.id == "dgt_1"
 
 
 # endregion

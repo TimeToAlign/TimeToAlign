@@ -56,10 +56,9 @@ from .sections import AtomicSection, Flow, FlowDiagnostic, PlaythroughSection
 from .unfolding import compute_qb_sections
 
 if TYPE_CHECKING:
-    from timetoalign.core import Coordinate
     from timetoalign.display.ascii import Diagram
 
-    from ..flowcontrol import Break, FlowControlRegistry, Jump
+    from ..flowcontrol import Break, FlowControlRegistry, Jump, Marker
 
 module_logger = logging.getLogger(__name__)
 
@@ -1055,7 +1054,8 @@ class ScoreFlowController(FlowControllerBase):
         jumps: list[Jump] = []
         sorted_mcs = sorted(self._measure_lookup)
 
-        # Find the MC of any named target marker (segno, coda, codab, fine)
+        # Find the MC and the marker id of any named target marker (segno,
+        # coda, codab, fine); the first marker of a name is the target.
         marker_mc: dict[str, int] = {}
         for unit in self._units:
             if unit.segno:
@@ -1064,6 +1064,9 @@ class ScoreFlowController(FlowControllerBase):
                 marker_mc.setdefault(unit.coda, unit.mc)
             if unit.fine:
                 marker_mc.setdefault("fine", unit.mc)
+        marker_ids: dict[str, str] = {}
+        for marker in self.get_markers():
+            marker_ids.setdefault(marker.name, marker.id)
 
         # Resolve every repeat-end to its back-jump target once, via the
         # nearest-first candidate generator (see _repeat_end_resolution).
@@ -1095,7 +1098,7 @@ class ScoreFlowController(FlowControllerBase):
             # D.S./D.C. (and -al-coda/-al-fine) — fire after the first pass.
             fct = unit.flow_control_types
             jump_type: FlowControlElement | None = None
-            target_name: str | None = None
+            target_name: str
             for cand in (
                 FlowControlElement.dal_segno_al_coda,
                 FlowControlElement.dal_segno_al_fine,
@@ -1137,33 +1140,33 @@ class ScoreFlowController(FlowControllerBase):
                     to_coordinate=Coordinate(self._qb_at_mc(to_mc), TimeUnit.quarters),
                     control_type=jump_type,
                     condition=ActivationCondition.after_first,
-                    target_name=target_name,
+                    target=marker_ids.get(target_name),
                     label=f"MC {unit.mc} → {target_name} (MC {to_mc})",
                 )
             )
 
         return jumps
 
-    def get_markers(self) -> list[tuple[str, int, "Coordinate"]]:
+    def get_markers(self) -> list["Marker"]:
         """Return all named target markers (segno / coda / fine instances).
 
         Returns:
-            List of ``(name, mc, coordinate)`` tuples, in MC order. ``name``
+            List of `timetoalign.timelines.flowcontrol.Marker` objects in MC
+            order, with minted ids ``marker_1``, ``marker_2``, ... ``name``
             is the marker instance name (e.g., ``"segno"``, ``"coda"``,
             ``"codab"``, ``"fine"``); ``coordinate`` is the start of the MC.
         """
         from timetoalign.core import Coordinate, TimeUnit
 
-        markers: list[tuple[str, int, Coordinate]] = []
+        from ..flowcontrol import FlowControlRegistry, Marker
+
+        registry = FlowControlRegistry()
         for unit in self._units:
             coord = Coordinate(self._qb_at_mc(unit.mc), TimeUnit.quarters)
-            if unit.segno:
-                markers.append((unit.segno, unit.mc, coord))
-            if unit.coda:
-                markers.append((unit.coda, unit.mc, coord))
-            if unit.fine:
-                markers.append(("fine", unit.mc, coord))
-        return markers
+            for name in (unit.segno, unit.coda, "fine" if unit.fine else None):
+                if name:
+                    registry.add_marker(Marker(coord, name=name))
+        return registry.markers
 
     def get_flow_control_registry(self) -> "FlowControlRegistry":
         """Return a `FlowControlRegistry` populated from this controller.
@@ -1176,10 +1179,10 @@ class ScoreFlowController(FlowControllerBase):
         registry = FlowControlRegistry()
         for brk in self.get_breaks():
             registry.add_break(brk)
+        for marker in self.get_markers():
+            registry.add_marker(marker)
         for jump in self.get_jumps():
             registry.add_jump(jump)
-        for name, _mc, coord in self.get_markers():
-            registry.add_marker(name, coord)
         return registry
 
     @property
@@ -1193,7 +1196,7 @@ class ScoreFlowController(FlowControllerBase):
         return self.get_jumps()
 
     @property
-    def markers(self) -> list[tuple[str, int, "Coordinate"]]:
+    def markers(self) -> list["Marker"]:
         """All named target markers (see `get_markers()`)."""
         return self.get_markers()
 

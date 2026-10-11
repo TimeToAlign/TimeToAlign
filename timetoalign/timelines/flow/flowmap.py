@@ -101,7 +101,7 @@ class FlowMap:
       are built directly from the resulting ``(start, end)`` ranges with a
       cumulative target position, so the played spans concatenate in the
       target axis and any gaps between them map to nothing. *id* defaults to
-      ``"default"``. Accepted descriptors are region names (resolved through
+      ``"default"``. Accepted descriptors are region ids (resolved through
       *resolve*), ``Region`` objects, ``(start, end)`` coordinate pairs,
       ``Timeline`` objects, and interval events — see
       :func:`~timetoalign.timelines.flow.sections._coerce_intervals`.
@@ -156,7 +156,7 @@ class FlowMap:
                 place the spans rather than concatenate them.
             id: Identifier for this FlowMap. Defaults to the flow's mode value
                 for a Flow source, or ``"default"`` for interval descriptors.
-            resolve: Callable mapping a region name to an interval-like object
+            resolve: Callable mapping a region id to an interval-like object
                 (e.g. a timeline's ``get_region``), used only when *source*
                 carries region-name strings.
             at: Target coordinate for each played span, in the order the spans
@@ -241,10 +241,10 @@ class FlowMap:
         Args:
             placements: Mapping from target coordinate to one interval-like
                 descriptor — or a collection of them — in the same shapes the
-                constructor accepts (region names, ``Region`` objects,
+                constructor accepts (region ids, ``Region`` objects,
                 ``(start, end)`` pairs, ``Timeline`` objects, interval events).
             id: Identifier for this FlowMap.
-            resolve: Callable mapping a region name to an interval-like object,
+            resolve: Callable mapping a region id to an interval-like object,
                 needed only when the values carry region-name strings.
             source_length: Total extent of the source axis, when known.
             target_length: Total extent of the target axis, when known.
@@ -275,7 +275,7 @@ class FlowMap:
 
         Args:
             placements: The mapping to flatten.
-            resolve: Callable mapping a region name to an interval-like object.
+            resolve: Callable mapping a region id to an interval-like object.
 
         Returns:
             The played spans in target order, and the matching ``at`` list:

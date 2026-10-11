@@ -32,7 +32,6 @@ from typing_extensions import Self
 from timetoalign.core import (
     IntervalPolicy,
     NumberType,
-    TimelineIdGenerator,
     TimeUnit,
 )
 from timetoalign.core.fields import TIMETOALIGN_METADATA_KEY, field_metadata
@@ -71,7 +70,7 @@ class Loader(ABC, Generic[PayloadT]):
         """Initialize shared loader state."""
         self._sources: list[Path] = []
         self._source_metadata: list[dict[str, Any]] = []
-        self._timeline_id_generator = TimelineIdGenerator()
+        self._minted_timeline_ids: set[str] = set()
 
     @abstractmethod
     def _load_source(self, source: Path) -> PayloadT:
@@ -334,14 +333,9 @@ class EventLoader(Loader[LoadSourceResult]):
             >>> timeline = loader.create_timeline(uid="my_score")
         """
         if uid is None:
-            from timetoalign.timelines.factory import (
-                _infer_timeline_class_and_number_type,
-            )
+            from timetoalign.timelines.factory import _mint_timeline_id
 
-            timeline_class, _ = _infer_timeline_class_and_number_type(
-                self._unit, self._number_type
-            )
-            uid = self._timeline_id_generator.next_id(timeline_class)
+            uid = _mint_timeline_id(self, self._unit)
 
         return self.store.create_timeline(
             uid=uid,

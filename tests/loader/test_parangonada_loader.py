@@ -10,7 +10,7 @@ It verifies:
 
 - discovery of exactly 5 performers from non-uniformly-suffixed
   directories (only two carry ``_parangonada``);
-- the shared score timelines (``score:clt1`` / ``score:dlt1``, 251 notes
+- the shared score timelines (``score:clt_1`` / ``score:dlt_1``, 251 notes
   each) and the divs→quarters ``LinearMap`` reproducing every
   ``onset_quarter`` exactly;
 - per-performer performance-timeline event counts and MatchClaim counts;
@@ -48,8 +48,8 @@ FEATURES_DIR = DATASET_DIR / "features"
 #: Each performer's .beats / .dyn files hold exactly this many data rows.
 FEATURE_ROW_COUNT = 63
 
-SCORE_CLT_ID = "score:clt1"
-SCORE_DLT_ID = "score:dlt1"
+SCORE_CLT_ID = "score:clt_1"
+SCORE_DLT_ID = "score:dlt_1"
 
 # Performers in chronological (sorted-key) order, with their on-disk
 # subdirectory names — note only two carry the ``_parangonada`` suffix.
@@ -101,8 +101,8 @@ def _read_tsv(path: Path) -> list[dict[str, str]]:
 
 
 def _performer_claims(bundle, performer_key: str) -> list[MatchClaim]:
-    """Claims touching this performer's cpt1 timeline (either orientation)."""
-    cpt_id = f"perf:{performer_key}:cpt1"
+    """Claims touching this performer's cpt_1 timeline (either orientation)."""
+    cpt_id = f"perf:{performer_key}:cpt_1"
     return [c for c in bundle.cross_group_claims if c.connects(cpt_id)]
 
 
@@ -205,14 +205,14 @@ def test_divs_to_quarters_cmap_reproduces_all_onsets(
 def test_performance_timeline_event_counts(
     loader: ParangonadaLoader, performer_key: str
 ) -> None:
-    """cpt1 and dpt1 each hold one *Note* event per ppart.csv row.
+    """cpt_1 and dpt_1 each hold one *Note* event per ppart.csv row.
 
-    ``cpt1`` additionally holds Beat/Dynamics feature events, so the Note
-    count is filtered explicitly; ``dpt1`` carries notes only.
+    ``cpt_1`` additionally holds Beat/Dynamics feature events, so the Note
+    count is filtered explicitly; ``dpt_1`` carries notes only.
     """
     expected = PERFORMER_COUNTS[performer_key]["ppart"]
-    cpt = loader.create_timeline(f"perf:{performer_key}:cpt1")
-    dpt = loader.create_timeline(f"perf:{performer_key}:dpt1")
+    cpt = loader.create_timeline(f"perf:{performer_key}:cpt_1")
+    dpt = loader.create_timeline(f"perf:{performer_key}:dpt_1")
     assert cpt.unit == TimeUnit.seconds
     assert dpt.unit == TimeUnit.samples
     assert len(cpt.events.filter(event_type="Note")) == expected
@@ -255,8 +255,8 @@ def test_claim_metadata(bundle) -> None:
 
 @pytest.mark.parametrize("performer_key", PERFORMER_KEYS)
 def test_feature_event_counts(loader: ParangonadaLoader, performer_key: str) -> None:
-    """Each cpt1 holds exactly 63 Beat and 63 Dynamics feature events."""
-    cpt = loader.create_timeline(f"perf:{performer_key}:cpt1")
+    """Each cpt_1 holds exactly 63 Beat and 63 Dynamics feature events."""
+    cpt = loader.create_timeline(f"perf:{performer_key}:cpt_1")
     assert len(cpt.events.filter(event_type="Beat")) == FEATURE_ROW_COUNT
     assert len(cpt.events.filter(event_type="Dynamics")) == FEATURE_ROW_COUNT
 
@@ -265,8 +265,8 @@ def test_feature_event_counts(loader: ParangonadaLoader, performer_key: str) -> 
 def test_feature_events_only_on_cpt(
     loader: ParangonadaLoader, performer_key: str
 ) -> None:
-    """Beat/Dynamics events live on cpt1 (seconds) only, never on dpt1."""
-    dpt = loader.create_timeline(f"perf:{performer_key}:dpt1")
+    """Beat/Dynamics events live on cpt_1 (seconds) only, never on dpt_1."""
+    dpt = loader.create_timeline(f"perf:{performer_key}:dpt_1")
     assert len(dpt.events.filter(event_type="Beat")) == 0
     assert len(dpt.events.filter(event_type="Dynamics")) == 0
 
@@ -301,7 +301,7 @@ def test_szegedi_beat_spot_check(loader: ParangonadaLoader) -> None:
     ``beat`` as ints, ``bpm`` as a float); ``start`` is the coordinate
     struct.
     """
-    cpt = loader.create_timeline("perf:1966_Szegedi:cpt1")
+    cpt = loader.create_timeline("perf:1966_Szegedi:cpt_1")
     beats = cpt.events.filter(event_type="Beat").table.to_pylist()
     matching = [
         r
@@ -321,7 +321,7 @@ def test_szegedi_dynamics_spot_check(loader: ParangonadaLoader) -> None:
     recovered from the .beats row with the same ``(1, 1)`` key.  Carried
     scalar columns keep their native PyArrow types.
     """
-    cpt = loader.create_timeline("perf:1966_Szegedi:cpt1")
+    cpt = loader.create_timeline("perf:1966_Szegedi:cpt_1")
     dyns = cpt.events.filter(event_type="Dynamics").table.to_pylist()
     matching = [
         r
@@ -357,7 +357,7 @@ def test_szegedi_align_row_zero_spot_check(bundle) -> None:
     Source coordinate equals score_q_by_id['ngx1f26'] (40.0 quarters);
     target coordinate equals perf_sec_by_id['n149'] (38.183334 s).
     """
-    cpt_id = "perf:1966_Szegedi:cpt1"
+    cpt_id = "perf:1966_Szegedi:cpt_1"
     matching = [
         c
         for c in bundle.cross_group_claims
@@ -411,7 +411,7 @@ def test_duplicate_matchtype0_row_is_present_in_source(
 
 def test_duplicate_row_yields_duplicate_claim(bundle) -> None:
     """The duplicated Brendel row produces two identical synchronous claims."""
-    cpt_id = "perf:1985_Brendel:cpt1"
+    cpt_id = "perf:1985_Brendel:cpt_1"
     # part note n1qocvw7 onset_quarter and ppart note n65 onset_sec.
     with open(_subdir("1985_Brendel") / "part.csv", encoding="utf-8", newline="") as f:
         part = {r["id"]: r for r in csv.DictReader(f)}
@@ -442,8 +442,8 @@ def test_duplicate_row_yields_duplicate_claim(bundle) -> None:
 
 
 def test_samples_to_seconds_cmap_on_dpt(loader: ParangonadaLoader) -> None:
-    """The dpt1 timeline's SamplesToSeconds map converts 44100 → 1.0 s."""
-    dpt = loader.create_timeline("perf:1966_Szegedi:dpt1")
+    """The dpt_1 timeline's SamplesToSeconds map converts 44100 → 1.0 s."""
+    dpt = loader.create_timeline("perf:1966_Szegedi:dpt_1")
     cmap = dpt.get_conversion_map(TimeUnit.seconds)
     assert isinstance(cmap, SamplesToSeconds)
     assert cmap.sample_rate == 44100

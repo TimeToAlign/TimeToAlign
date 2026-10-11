@@ -50,7 +50,7 @@ UNMAPPED_COMMENT = "segment without petri-net node"
 
 def _references(loader: Any) -> pa.Table:
     """Return the external-reference table of a specimen's spine timeline."""
-    return loader.create_timeline("spine:dlt1").external_references
+    return loader.create_timeline("spine:dlt_1").external_references
 
 
 def _by_comment(table: pa.Table, comment: str) -> list[dict[str, Any]]:
@@ -142,7 +142,7 @@ class TestStructuralResolution:
     def test_rows_cover_every_segmented_spine_event(self, ieee1599_loader) -> None:
         """376 of the 382 spine events are segmented; six are not."""
         loader = ieee1599_loader("gymnopedie")
-        spine = loader.create_timeline("spine:dlt1")
+        spine = loader.create_timeline("spine:dlt_1")
         referenced = set(spine.external_references.column("event_id").to_pylist())
         spine_ids = spine.events.table.column("id").to_pylist()
 
@@ -236,14 +236,14 @@ class TestStructuralDelivery:
     ) -> None:
         """``create_bundle()`` and ``create_timeline()`` deliver the same spine."""
         loader = ieee1599_loader("gymnopedie")
-        bundle_spine = ieee1599_bundle("gymnopedie").timelines["spine:dlt1"]
+        bundle_spine = ieee1599_bundle("gymnopedie").timelines["spine:dlt_1"]
 
-        assert bundle_spine is loader.create_timeline("spine:dlt1")
+        assert bundle_spine is loader.create_timeline("spine:dlt_1")
         assert bundle_spine.external_references.num_rows == GYMNOPEDIE_ROWS
 
     def test_to_dict_renders_the_rows_only_when_asked(self, ieee1599_loader) -> None:
         """The default serialization stays slim; the flag renders every row."""
-        spine = ieee1599_loader("gymnopedie").create_timeline("spine:dlt1")
+        spine = ieee1599_loader("gymnopedie").create_timeline("spine:dlt_1")
 
         assert "external_references" not in spine.to_dict()
         rendered = spine.to_dict(external_references=True)["external_references"]

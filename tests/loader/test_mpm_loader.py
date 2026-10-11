@@ -11,11 +11,11 @@ the ``mpm_toolbox`` corpus:
 It verifies, parametrized over both specimens unless noted:
 
 - the score (PPQ, MSM note count) and the two logical score timelines
-  (``score:clt1`` notes; ``score:dlt1`` notes + per-type MPM markup);
+  (``score:clt_1`` notes; ``score:dlt_1`` notes + per-type MPM markup);
 - the ``TicksToQuarters`` and modelled quarters→seconds ``TableMap``
   C-Maps;
 - the two physical performance timelines and an onset spot-check;
-- the spectrogram graphical timeline (``perf:dgt1``): its pixel length
+- the spectrogram graphical timeline (``perf:dgt_1``): its pixel length
   (= the spectrogram ``.png``'s frame-column width), its 0 events, and
   its px→seconds ``ScalarMap``;
 - the cross-group claims (count, all synchronous, no NOMATCH) and the
@@ -54,11 +54,11 @@ BEETHOVEN_MPR = BEETHOVEN_DIR / "Beethoven_op35_1971Curzon_Var14only.mpr"
 REGER_DIR = ROOT / "Max Reger - Moment Musical (MPM Toolbox Tutorial)"
 REGER_MPR = REGER_DIR / "Reger - Moment Musical op 13 no 4.mpr"
 
-SCORE_CLT_ID = "score:clt1"
-SCORE_DLT_ID = "score:dlt1"
-PERF_CPT_ID = "perf:cpt1"
-PERF_DPT_ID = "perf:dpt1"
-PERF_DGT_ID = "perf:dgt1"
+SCORE_CLT_ID = "score:clt_1"
+SCORE_DLT_ID = "score:dlt_1"
+PERF_CPT_ID = "perf:cpt_1"
+PERF_DPT_ID = "perf:dpt_1"
+PERF_DGT_ID = "perf:dgt_1"
 
 _XML_ID = "{http://www.w3.org/XML/1998/namespace}id"
 
@@ -166,7 +166,7 @@ def test_from_file_matches_load(specimen: dict[str, Any]) -> None:
 
 
 def test_score_clt_holds_only_notes(specimen: dict[str, Any]) -> None:
-    """``score:clt1`` holds exactly the MSM notes (no markup)."""
+    """``score:clt_1`` holds exactly the MSM notes (no markup)."""
     loader = _loaded(specimen["mpr"])
     clt = loader.create_timeline(SCORE_CLT_ID)
     counts = _event_type_counts(clt)
@@ -175,7 +175,7 @@ def test_score_clt_holds_only_notes(specimen: dict[str, Any]) -> None:
 
 
 def test_score_dlt_markup_counts(specimen: dict[str, Any]) -> None:
-    """``score:dlt1`` holds the notes plus the per-type MPM markup events."""
+    """``score:dlt_1`` holds the notes plus the per-type MPM markup events."""
     loader = _loaded(specimen["mpr"])
     dlt = loader.create_timeline(SCORE_DLT_ID)
     counts = _event_type_counts(dlt)
@@ -194,7 +194,7 @@ def test_score_dlt_markup_counts(specimen: dict[str, Any]) -> None:
 
 
 def test_ticks_to_quarters_cmap(specimen: dict[str, Any]) -> None:
-    """The ticks→quarters C-Map on ``score:dlt1`` resolves 360→0.5, 720→1.0."""
+    """The ticks→quarters C-Map on ``score:dlt_1`` resolves 360→0.5, 720→1.0."""
     loader = _loaded(specimen["mpr"])
     dlt = loader.create_timeline(SCORE_DLT_ID)
     assert dlt.get_timestamp(360).get_unit(TimeUnit.quarters, format="float") == 0.5
@@ -252,7 +252,7 @@ def test_perf_timeline_event_counts(specimen: dict[str, Any]) -> None:
 
 
 def test_samples_to_seconds_cmap(specimen: dict[str, Any]) -> None:
-    """``perf:dpt1`` carries a SamplesToSeconds map at the recording's rate."""
+    """``perf:dpt_1`` carries a SamplesToSeconds map at the recording's rate."""
     loader = _loaded(specimen["mpr"])
     dpt = loader.create_timeline(PERF_DPT_ID)
     rate = specimen["sample_rate"]
@@ -269,7 +269,7 @@ def test_beethoven_onset_spot_check() -> None:
 
 
 def test_beethoven_note_pitch_spot_check() -> None:
-    """Beethoven ``nbwxzb1`` carries the MSM number + verbatim spelling on dlt1.
+    """Beethoven ``nbwxzb1`` carries the MSM number + verbatim spelling on dlt_1.
 
     A number-only-plus-inconsistent-spelling source represents pitch as
     its most-expressive faithful type, EnharmonicPitch, carried as a
@@ -296,7 +296,7 @@ def test_beethoven_note_pitch_spot_check() -> None:
 
 
 def test_spectrogram_timeline_is_pixels_axis(specimen: dict[str, Any]) -> None:
-    """``perf:dgt1`` is a pixels axis of the .png's frame-column width, 0 events.
+    """``perf:dgt_1`` is a pixels axis of the .png's frame-column width, 0 events.
 
     The spectrogram x-axis is time in frame columns; the column count is the
     pixel width of the spectrogram ``.png`` (read from its IHDR header).  The
@@ -311,7 +311,7 @@ def test_spectrogram_timeline_is_pixels_axis(specimen: dict[str, Any]) -> None:
 
 
 def test_spectrogram_px_to_seconds_cmap(specimen: dict[str, Any]) -> None:
-    """``perf:dgt1`` carries a px→seconds ``ScalarMap`` of ``hopSize/rate``.
+    """``perf:dgt_1`` carries a px→seconds ``ScalarMap`` of ``hopSize/rate``.
 
     Each frame column advances ``hopSize`` audio samples, so
     ``seconds = px * hopSize / sample_rate``.  The map is a ``ScalarMap``
@@ -359,7 +359,7 @@ def test_reger_spectrogram_first_column() -> None:
 def test_bundle_spans_three_domains(specimen: dict[str, Any]) -> None:
     """The bundle's timeline units span logical, physical, and graphical.
 
-    Adding ``perf:dgt1`` (pixels) completes the third domain: the bundle now
+    Adding ``perf:dgt_1`` (pixels) completes the third domain: the bundle now
     carries a logical member (quarters / ticks), a physical member (seconds
     / samples), and a graphical member (pixels).
     """
@@ -378,8 +378,8 @@ def test_bundle_spans_three_domains(specimen: dict[str, Any]) -> None:
 def test_bundle_shape(specimen: dict[str, Any]) -> None:
     """The bundle holds 5 timelines in 2 groups (score, perf).
 
-    The ``perf`` group holds three timelines (``perf:cpt1`` / ``perf:dpt1``
-    / ``perf:dgt1``); both specimens carry a spectrogram, so the graphical
+    The ``perf`` group holds three timelines (``perf:cpt_1`` / ``perf:dpt_1``
+    / ``perf:dgt_1``); both specimens carry a spectrogram, so the graphical
     axis is always present.
     """
     loader = _loaded(specimen["mpr"])
@@ -538,7 +538,7 @@ def test_performance_selector_reaches_audio_performance() -> None:
     """Selecting the audio performance reaches different markup counts.
 
     The ``Curzon_1971_DECCA-SXL6523_audio`` performance stores inline
-    numeric bpm values; its dlt1 carries 25 Asynchrony events (vs 0 in the
+    numeric bpm values; its dlt_1 carries 25 Asynchrony events (vs 0 in the
     default) and 123 Tempo events.
     """
     loader = _loaded(BEETHOVEN_MPR, performance="Curzon_1971_DECCA-SXL6523_audio")
@@ -614,7 +614,7 @@ def test_create_timelines_id_pattern_no_match(specimen: dict[str, Any]) -> None:
 def test_no_spectrogram_perf_dgt_is_none(
     specimen: dict[str, Any], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """With ``_parse_spectrogram`` stubbed to ``None``, ``perf:dgt1`` is absent."""
+    """With ``_parse_spectrogram`` stubbed to ``None``, ``perf:dgt_1`` is absent."""
     monkeypatch.setattr(
         MpmLoader, "_parse_spectrogram", staticmethod(lambda *a, **k: None)
     )
@@ -627,7 +627,7 @@ def test_no_spectrogram_bundle_shape(
 ) -> None:
     """Without a spectrogram the bundle holds 4 timelines, 2 groups, no graphical.
 
-    The ``perf`` group drops to two timelines (``perf:cpt1`` / ``perf:dpt1``);
+    The ``perf`` group drops to two timelines (``perf:cpt_1`` / ``perf:dpt_1``);
     the claim count is unchanged (one synchronous claim per note); and the
     bundle's timeline-unit domains are exactly logical + physical — the
     graphical domain is absent (the converse of
@@ -677,7 +677,7 @@ def test_no_spectrogram_create_timelines_omits_graphical(
 def test_no_spectrogram_create_timeline_dgt_raises(
     specimen: dict[str, Any], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """``create_timeline('perf:dgt1')`` raises KeyError — it was never built."""
+    """``create_timeline('perf:dgt_1')`` raises KeyError — it was never built."""
     monkeypatch.setattr(
         MpmLoader, "_parse_spectrogram", staticmethod(lambda *a, **k: None)
     )

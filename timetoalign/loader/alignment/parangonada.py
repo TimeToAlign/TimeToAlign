@@ -37,7 +37,7 @@ rest are ``..._measure``):
 These are *measured* per-beat features (variable tempo and dynamics
 extracted from the recording), not a synthesised tempo curve; they are
 added as ``Beat`` and ``Dynamics`` events to the performance's seconds
-timeline (``perf:<key>:cpt1``), alongside its ``Note`` events.  The
+timeline (``perf:<key>:cpt_1``), alongside its ``Note`` events.  The
 ``.dyn`` rows have no onset of their own, so each is joined to the
 ``.beats`` row sharing its ``(measure_number, beat)`` key (the two
 files are 1:1 on that key) to recover its ``onset_sec``.
@@ -51,16 +51,16 @@ expressing the work across the logical and physical domains:
 
 * a shared ``"score"`` group with the same notes in two logical units —
   a quarter-note :class:`~timetoalign.timelines.types.ContinuousLogicalTimeline`
-  (``score:clt1``) and a division-grid
+  (``score:clt_1``) and a division-grid
   :class:`~timetoalign.timelines.types.DiscreteLogicalTimeline`
-  (``score:dlt1``) carrying a divs→quarters
+  (``score:dlt_1``) carrying a divs→quarters
   :class:`~timetoalign.maps.linear.LinearMap`;
 * one ``perf:<key>`` group per performance with the performed notes in
   two physical units — a seconds
   :class:`~timetoalign.timelines.types.ContinuousPhysicalTimeline`
-  (``perf:<key>:cpt1``) and a samples
+  (``perf:<key>:cpt_1``) and a samples
   :class:`~timetoalign.timelines.types.DiscretePhysicalTimeline`
-  (``perf:<key>:dpt1``) carrying a
+  (``perf:<key>:dpt_1``) carrying a
   :class:`~timetoalign.maps.convenience.SamplesToSeconds` map; and
 * a cross-group :class:`~timetoalign.alignment.anchors.MatchClaim` per
   ``align.csv`` row — a synchronous claim for a match and a NOMATCH
@@ -109,8 +109,8 @@ module_logger = logging.getLogger(__name__)
 # region Constants
 
 #: Score-group timeline uids (type-based ids, role prefix).
-_SCORE_CLT_ID = "score:clt1"
-_SCORE_DLT_ID = "score:dlt1"
+_SCORE_CLT_ID = "score:clt_1"
+_SCORE_DLT_ID = "score:dlt_1"
 
 #: Group id for the shared score timelines.
 _SCORE_GROUP = "score"
@@ -390,8 +390,8 @@ class ParangonadaLoader(AlignmentLoader):
             else int(round(seconds_length * sample_rate))
         )
 
-        cpt_id = f"perf:{performer_key}:cpt1"
-        dpt_id = f"perf:{performer_key}:dpt1"
+        cpt_id = f"perf:{performer_key}:cpt_1"
+        dpt_id = f"perf:{performer_key}:dpt_1"
 
         perf_cpt = ContinuousPhysicalTimeline(
             length=seconds_length,
@@ -470,7 +470,7 @@ class ParangonadaLoader(AlignmentLoader):
             performer_key: The stripped performer key (the feature-file
                 stem prefix).
             features_dir: The dataset's ``features/`` directory.
-            perf_cpt: The performer's seconds (``cpt1``) timeline, already
+            perf_cpt: The performer's seconds (``cpt_1``) timeline, already
                 holding its ``Note`` events; feature events are appended in
                 place via ``add_events(..., allow_expansion=True)``.
         """
@@ -707,9 +707,9 @@ class ParangonadaLoader(AlignmentLoader):
         """Return a single timeline by its uid.
 
         Args:
-            uid: A timeline uid — ``"score:clt1"``, ``"score:dlt1"``, or a
-                performer timeline uid (``"perf:<key>:cpt1"`` /
-                ``"perf:<key>:dpt1"``).
+            uid: A timeline uid — ``"score:clt_1"``, ``"score:dlt_1"``, or a
+                performer timeline uid (``"perf:<key>:cpt_1"`` /
+                ``"perf:<key>:dpt_1"``).
 
         Raises:
             KeyError: If no timeline matches.
@@ -732,8 +732,8 @@ class ParangonadaLoader(AlignmentLoader):
 
         available = [_SCORE_CLT_ID, _SCORE_DLT_ID]
         for performer_key in self._perf_cpt:
-            available.append(f"perf:{performer_key}:cpt1")
-            available.append(f"perf:{performer_key}:dpt1")
+            available.append(f"perf:{performer_key}:cpt_1")
+            available.append(f"perf:{performer_key}:dpt_1")
         raise KeyError(
             f"No timeline with uid '{uid}'. Available: "
             + ", ".join(f"'{uid}'" for uid in available)

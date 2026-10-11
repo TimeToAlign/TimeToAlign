@@ -34,7 +34,7 @@ def _set_length(timeline: Timeline, coord: Coordinate) -> object:
 
 
 def _create_region(timeline: Timeline, coord: Coordinate) -> object:
-    return timeline.create_region("section", coord, 10)
+    return timeline.create_region(coord, 10, id="section", name="section")
 
 
 def _get_segment_line_slice(timeline: Timeline, coord: Coordinate) -> object:

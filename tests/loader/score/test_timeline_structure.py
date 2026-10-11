@@ -91,9 +91,10 @@ def test_da_capo_jumps_leave_measure_ends_for_the_piece_start() -> None:
 def test_break_and_marker_facts_are_derived_from_the_tsv_columns() -> None:
     timeline = _rondeau_timeline()
     assert timeline.flow_control.breaks == []
-    assert timeline.flow_control.markers == {
-        "segno": Coordinate(Fraction(11), TimeUnit.quarters)
-    }
+    assert [
+        (marker.id, marker.name, marker.coordinate)
+        for marker in timeline.flow_control.markers
+    ] == [("marker_1", "segno", Coordinate(Fraction(11), TimeUnit.quarters))]
 
 
 def test_flatten_keeps_source_structure_without_attaching_a_skeleton() -> None:

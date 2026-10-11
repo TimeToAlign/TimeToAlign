@@ -8,7 +8,7 @@ This module provides maps that are composed of other maps:
 from __future__ import annotations
 
 import bisect
-from typing import TYPE_CHECKING, Any, Sequence
+from typing import TYPE_CHECKING, Any, ClassVar, Sequence
 
 import numpy as np
 from numpy.typing import NDArray
@@ -190,6 +190,8 @@ class PiecewiseMap(ConversionMap[CoordinateValue]):
                 Anything outside is handled by 'extrapolate' or explicit outer maps.
         maps: Maps for each interval. len(maps) must be len(breaks) - 1.
     """
+
+    _id_prefix: ClassVar[str] = "pmap"
 
     def __init__(
         self,

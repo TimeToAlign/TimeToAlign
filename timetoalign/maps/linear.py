@@ -9,7 +9,7 @@ This module provides maps that perform affine transformations:
 from __future__ import annotations
 
 from fractions import Fraction
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from numpy.typing import NDArray
 
@@ -62,6 +62,8 @@ class LinearMap(ConversionMap[CoordinateValue]):
         >>> f_to_c(212.0)
         100.0
     """
+
+    _id_prefix: ClassVar[str] = "lmap"
 
     def __init__(
         self,

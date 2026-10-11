@@ -340,12 +340,14 @@ class TestFromClaims:
         self, thoresen_segment_claims: list[MatchClaim]
     ) -> None:
         """from_claims() works with interval claims (Thoresen PoC)."""
-        line = MatchLine.from_claims(thoresen_segment_claims, source_timeline_id="dgt1")
+        line = MatchLine.from_claims(
+            thoresen_segment_claims, source_timeline_id="dgt_1"
+        )
 
         # 5 intervals produce 6 unique boundary coordinates on dgt1
         # (0, 78, 268, 561, 801, 967), yielding exactly 6 stamps.
         assert line.n_stamps == 6
-        assert "dgt2" in line.target_timeline_ids()
+        assert "dgt_2" in line.target_timeline_ids()
 
         # Verify ordering
         coords = line.source_coordinates
@@ -358,7 +360,7 @@ class TestFromClaims:
 
     def test_from_claims_with_group_extension(self) -> None:
         """from_claims() with group extension adds group member coordinates."""
-        dgt1 = DiscreteGraphicalTimeline(length=1000, unit="pixels", uid="dgt1")
+        dgt1 = DiscreteGraphicalTimeline(length=1000, unit="pixels", uid="dgt_1")
         audio = ContinuousPhysicalTimeline(length=100.0, unit="seconds", uid="audio")
 
         group = TimelineGroup(id="g1")
@@ -367,30 +369,30 @@ class TestFromClaims:
 
         claims = [
             MatchClaim(
-                timeline_a_id="dgt1",
+                timeline_a_id="dgt_1",
                 timeline_b_id="external",
                 start_anchor=AlignmentAnchor(
-                    timeline_a_id="dgt1",
+                    timeline_a_id="dgt_1",
                     coordinate_a=Coordinate(0.0, TimeUnit.number),
                     timeline_b_id="external",
                     coordinate_b=Coordinate(0.0, TimeUnit.number),
                 ),
             ),
             MatchClaim(
-                timeline_a_id="dgt1",
+                timeline_a_id="dgt_1",
                 timeline_b_id="external",
                 start_anchor=AlignmentAnchor(
-                    timeline_a_id="dgt1",
+                    timeline_a_id="dgt_1",
                     coordinate_a=Coordinate(500.0, TimeUnit.number),
                     timeline_b_id="external",
                     coordinate_b=Coordinate(25.0, TimeUnit.number),
                 ),
             ),
             MatchClaim(
-                timeline_a_id="dgt1",
+                timeline_a_id="dgt_1",
                 timeline_b_id="external",
                 start_anchor=AlignmentAnchor(
-                    timeline_a_id="dgt1",
+                    timeline_a_id="dgt_1",
                     coordinate_a=Coordinate(1000.0, TimeUnit.number),
                     timeline_b_id="external",
                     coordinate_b=Coordinate(50.0, TimeUnit.number),
@@ -400,9 +402,9 @@ class TestFromClaims:
 
         line = MatchLine.from_claims(
             claims,
-            source_timeline_id="dgt1",
+            source_timeline_id="dgt_1",
             groups={"g1": group},
-            timeline_to_group={"dgt1": "g1", "audio": "g1"},
+            timeline_to_group={"dgt_1": "g1", "audio": "g1"},
         )
 
         # Should have 3 stamps, each containing dgt1, external, and audio
@@ -777,15 +779,15 @@ class TestMatchLineIntegration:
         """Build MatchLine from Thoresen segment claims and extract pairs."""
         line = MatchLine.from_claims(
             thoresen_segment_claims,
-            source_timeline_id="dgt1",
+            source_timeline_id="dgt_1",
         )
 
         # Should produce stamps at segment boundaries
         assert line.n_stamps >= 2
-        assert "dgt2" in line.target_timeline_ids()
+        assert "dgt_2" in line.target_timeline_ids()
 
         # Get coordinate pairs
-        pairs = _anchor_values(line, "dgt2")
+        pairs = _anchor_values(line, "dgt_2")
         assert len(pairs) >= 2
 
         # First pair should be (0.0, 0.0)
@@ -798,7 +800,7 @@ class TestMatchLineIntegration:
 
     def test_matchline_with_group_extension_coordinate_pairs(self) -> None:
         """MatchLine from group-extended claims has correct coordinate pairs."""
-        dgt1 = DiscreteGraphicalTimeline(length=1000, unit="pixels", uid="dgt1")
+        dgt1 = DiscreteGraphicalTimeline(length=1000, unit="pixels", uid="dgt_1")
         audio = ContinuousPhysicalTimeline(length=100.0, unit="seconds", uid="audio")
 
         group = TimelineGroup(id="g1")
@@ -808,22 +810,22 @@ class TestMatchLineIntegration:
         # Two claims: boundaries of a single segment
         claims = [
             MatchClaim(
-                timeline_a_id="dgt1",
-                timeline_b_id="dgt2",
+                timeline_a_id="dgt_1",
+                timeline_b_id="dgt_2",
                 start_anchor=AlignmentAnchor(
-                    timeline_a_id="dgt1",
+                    timeline_a_id="dgt_1",
                     coordinate_a=Coordinate(0.0, TimeUnit.number),
-                    timeline_b_id="dgt2",
+                    timeline_b_id="dgt_2",
                     coordinate_b=Coordinate(0.0, TimeUnit.number),
                 ),
             ),
             MatchClaim(
-                timeline_a_id="dgt1",
-                timeline_b_id="dgt2",
+                timeline_a_id="dgt_1",
+                timeline_b_id="dgt_2",
                 start_anchor=AlignmentAnchor(
-                    timeline_a_id="dgt1",
+                    timeline_a_id="dgt_1",
                     coordinate_a=Coordinate(1000.0, TimeUnit.number),
-                    timeline_b_id="dgt2",
+                    timeline_b_id="dgt_2",
                     coordinate_b=Coordinate(800.0, TimeUnit.number),
                 ),
             ),
@@ -831,9 +833,9 @@ class TestMatchLineIntegration:
 
         line = MatchLine.from_claims(
             claims,
-            source_timeline_id="dgt1",
+            source_timeline_id="dgt_1",
             groups={"g1": group},
-            timeline_to_group={"dgt1": "g1", "audio": "g1"},
+            timeline_to_group={"dgt_1": "g1", "audio": "g1"},
         )
 
         # Audio should be available as a target
@@ -844,7 +846,7 @@ class TestMatchLineIntegration:
         assert audio_pairs[0] == (0.0, 0.0)
         assert audio_pairs[1] == (1000.0, 100.0)
 
-        dgt2_pairs = _anchor_values(line, "dgt2")
+        dgt2_pairs = _anchor_values(line, "dgt_2")
         assert len(dgt2_pairs) == 2
         assert dgt2_pairs == [(0.0, 0.0), (1000.0, 800.0)]
 

@@ -582,9 +582,9 @@ class MatchStamp(Stamp):
             >>> print(stamp)
             MatchStamp (3 timelines, 2 edges)
               ID              Coordinate   Type
-              score:clt1      0            anchor
-              perf:dlt1       0            anchor
-              perf:dlt2       128          inferred
+              score:clt_1      0            anchor
+              perf:dlt_1       0            anchor
+              perf:dlt_2       128          inferred
         """
         n_edges = self.n_explicit_edges + self.n_inferred_edges
         lines: list[str] = [

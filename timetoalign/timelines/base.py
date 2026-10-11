@@ -26,6 +26,7 @@ from timetoalign.core import (
     NumberType,
     TimeUnit,
 )
+from timetoalign.core.ids import _admit_id, mint_id, timeline_id_prefix, validate_id
 from timetoalign.core.retrieval import (
     canonical_order,
     coordinate_from_dict,
@@ -59,9 +60,6 @@ if TYPE_CHECKING:
     from timetoalign.display.ascii import Diagram
 
 module_logger = logging.getLogger(__name__)
-
-# Module-level counter for unique ID generation
-_TIMELINE_COUNTER: dict[str, int] = {}
 
 # region Constants
 
@@ -239,7 +237,6 @@ class Timeline(
         length: CoordinateValue = 0,
         unit: TimeUnit | str | None = None,
         number_type: NumberType | str | None = None,
-        id_prefix: str = "tl",
         uid: str | None = None,
         name: str | None = None,
         locked: bool = False,
@@ -252,14 +249,15 @@ class Timeline(
             unit: The time unit for coordinates. Defaults to class default.
             number_type: The number type for coordinates. Defaults to the
                 one the unit itself uses.
-            id_prefix: Prefix for auto-generated ID. Default "tl".
-            uid: Explicit unique identifier. Overrides auto-generation.
+            uid: Explicit identifier, kept verbatim. When None, the id is
+                minted from the unit (``clt_1``, ``dpt_1``, ...).
             name: Human-readable name for display (distinct from uid).
             locked: If True, timeline cannot expand. Default False.
             meta: Additional metadata dictionary.
 
         Raises:
-            ValueError: If unit or number_type is not allowed for this class.
+            ValueError: If unit or number_type is not allowed for this class,
+                or if *uid* is not a valid id.
             TypeError: If length is not a valid coordinate value.
         """
         # Resolve unit
@@ -275,15 +273,13 @@ class Timeline(
         # Resolve number_type -- the unit decides what it can be.
         self._number_type = unit.resolve_number_type(number_type)
 
-        # Generate or use provided ID
-        if uid is not None:
-            self._id = uid
-        else:
-            # Use module-level counter for truly unique IDs
-            if id_prefix not in _TIMELINE_COUNTER:
-                _TIMELINE_COUNTER[id_prefix] = 0
-            _TIMELINE_COUNTER[id_prefix] += 1
-            self._id = f"{id_prefix}:{_TIMELINE_COUNTER[id_prefix]}"
+        # A given id is kept; otherwise one is minted in an empty scope and
+        # re-minted if it collides when this timeline joins a manifest.
+        self._id_minted = uid is None
+        self._id = (
+            mint_id(timeline_id_prefix(unit), ()) if uid is None else validate_id(uid)
+        )
+        self._parent: Timeline | None = None
 
         # Initialize length as Coordinate
         self._length = self._make_coordinate(length)
@@ -318,8 +314,8 @@ class Timeline(
         # Authored structure and control events belong to this exact extent.
         self._measure_map: MeasureMap | None = None
         self._metric_hierarchy: MetricHierarchy | None = None
-        self._flow_control = FlowControlRegistry(
-            unit=self._unit, number_type=self._number_type
+        self._adopt_flow_control(
+            FlowControlRegistry(unit=self._unit, number_type=self._number_type)
         )
 
         # FlowMap storage (coordinate transformations for flow control)
@@ -684,8 +680,136 @@ class Timeline(
 
     @property
     def flow_control(self) -> FlowControlRegistry:
-        """Axis-bound breaks, jumps, and named control markers."""
+        """Axis-bound breaks, jumps, and markers."""
         return self._flow_control
+
+    # endregion
+
+    # region Manifest Identity
+
+    def _adopt_flow_control(self, registry: FlowControlRegistry) -> None:
+        """Make *registry* this timeline's, admitting its ids into the manifest."""
+        self._flow_control = registry
+        registry._admit = self._admit_element_id
+
+    def _set_id(self, new_id: str, *, minted: bool = False) -> None:
+        """Give this timeline a new id, renaming it under its parent."""
+        validate_id(new_id)
+        if self._parent is not None and new_id != self._id:
+            self._parent._rename_child(self._id, new_id)
+        self._id = new_id
+        self._id_minted = minted
+
+    def _identity_entries(self) -> list[tuple[str, bool, str, str]]:
+        """Return ``(id, minted, prefix, description)`` for this timeline and
+        every element it holds itself (its children excluded), in the order
+        timeline, conversion maps, regions, breaks, markers, jumps."""
+        owner = f"of timeline {self._id!r}"
+        return [
+            (
+                self._id,
+                self._id_minted,
+                timeline_id_prefix(self._unit),
+                f"timeline {self._id!r}",
+            ),
+            *(
+                (
+                    cmap.id,
+                    cmap._id_minted,
+                    cmap._id_prefix,
+                    f"conversion map {cmap.id!r} {owner}",
+                )
+                for cmap in self._conversion_maps.values()
+            ),
+            *(
+                (
+                    element.id,
+                    element._minted,
+                    element._id_prefix,
+                    f"{element._id_prefix} {element.id!r} {owner}",
+                )
+                for element in (
+                    *self._regions.values(),
+                    *self._flow_control._elements(),
+                )
+            ),
+        ]
+
+    def _reassign_element_id(self, old_id: str, new_id: str) -> None:
+        """Store the element of this timeline with *old_id* under a minted id."""
+        if old_id == self._id:
+            self._set_id(new_id, minted=True)
+        elif old_id in self._conversion_maps:
+            self._rename_conversion_map(old_id, new_id)
+        elif old_id in self._regions:
+            self._rename_region(old_id, new_id)
+        else:
+            self._flow_control._reassign_id(old_id, new_id)
+
+    def _manifest_ids(self) -> dict[str, str]:
+        """Map every id of this timeline's manifest to its holder's description.
+
+        The manifest is the root timeline above this one and all its
+        descendants; ids are unique within it across all element kinds.
+        """
+        root = self
+        while root._parent is not None:
+            root = root._parent
+        return {
+            element_id: description
+            for timeline in (root, *(child for _, child in root._iter_descendants()))
+            for element_id, _minted, _prefix, description in timeline._identity_entries()
+        }
+
+    def _admit_element_id(
+        self, element_id: str, *, minted: bool, prefix: str, element: str
+    ) -> str:
+        """Return the id under which an element joins this timeline's manifest.
+
+        Raises:
+            ValueError: If the element's given id is already taken.
+        """
+        return _admit_id(
+            element_id,
+            minted=minted,
+            prefix=prefix,
+            taken=self._manifest_ids(),
+            element=f"{element} of timeline {self._id!r}",
+        )
+
+    def _manifest_join_plan(self, child: Timeline) -> list[tuple[Timeline, str, str]]:
+        """Plan how *child*'s whole subtree joins this timeline's manifest.
+
+        A minted id that the manifest holds is minted again; the returned
+        plan lists ``(owner, old_id, new_id)`` for each. Nothing is changed.
+
+        Raises:
+            ValueError: If an id given to an element of the subtree is
+                already held in this manifest, naming both elements.
+        """
+        taken = self._manifest_ids()
+        joining = [
+            (timeline, entry)
+            for timeline in (child, *(t for _, t in child._iter_descendants()))
+            for entry in timeline._identity_entries()
+        ]
+        for _timeline, (element_id, minted, prefix, description) in joining:
+            if not minted:
+                _admit_id(
+                    element_id,
+                    minted=False,
+                    prefix=prefix,
+                    taken=taken,
+                    element=description,
+                )
+        occupied = set(taken) | {entry[0] for _, entry in joining}
+        plan: list[tuple[Timeline, str, str]] = []
+        for timeline, (element_id, _minted, prefix, _description) in joining:
+            if element_id in taken:
+                new_id = mint_id(prefix, occupied)
+                occupied.add(new_id)
+                plan.append((timeline, element_id, new_id))
+        return plan
 
     # endregion
 
@@ -946,7 +1070,8 @@ class Timeline(
         segment_line._flow_maps.update(self._flow_maps)
         segment_line._measure_map = self._measure_map
         segment_line._metric_hierarchy = self._metric_hierarchy
-        segment_line._flow_control = self._flow_control.copy()
+        segment_line._adopt_flow_control(self._flow_control.copy())
+        segment_line._id_minted = self._id_minted
         segment_line._locked = self._locked
         return segment_line
 
@@ -979,10 +1104,10 @@ class Timeline(
         Collections are written in one canonical order, independent of the
         order in which their content was added, so equal timelines give equal
         JSON text: ``children`` by offset, then id; ``conversion_maps`` by id;
-        ``regions`` by start, then end, then name; and in ``flow_control``
+        ``regions`` by start, then end, then id; and in ``flow_control``
         (:meth:`~timetoalign.timelines.flowcontrol.FlowControlRegistry.to_dict`)
-        ``breaks`` by coordinate, ``jumps`` by from and then to coordinate,
-        both then by their canonical JSON text, and ``markers`` by name.
+        ``breaks`` and ``markers`` by coordinate, ``jumps`` by from and then
+        to coordinate, each then by id.
         Coordinates compare by exact numeric value and strings by Unicode code
         point (:func:`~timetoalign.core.retrieval.canonical_order`). Every
         other member keeps its order. The timeline's own storage is not
@@ -1038,7 +1163,7 @@ class Timeline(
             ),
             "regions": canonical_order(
                 (region.to_dict() for region in self._regions.values()),
-                lambda entry: (entry["start"], entry["end"], entry["name"]),
+                lambda entry: (entry["start"], entry["end"], entry["id"]),
             ),
             "flow_control": self._flow_control.to_dict(),
             "measure_map": (
@@ -1197,10 +1322,12 @@ class Timeline(
         # Restore annotations and authored structures before subclass finalization.
         for region_data in data.get("regions", []):
             timeline.add_region(Region.from_dict(region_data))
-        timeline._flow_control = FlowControlRegistry.from_dict(
-            data.get("flow_control", {}),
-            unit=timeline.unit,
-            number_type=timeline.number_type,
+        timeline.flow_control._absorb(
+            FlowControlRegistry.from_dict(
+                data.get("flow_control", {}),
+                unit=timeline.unit,
+                number_type=timeline.number_type,
+            )
         )
         measure_map_data = data.get("measure_map")
         if measure_map_data is not None:
@@ -1314,8 +1441,7 @@ class Timeline(
             typed.add_conversion_map(cmap)
 
         # Transfer regions
-        for region in self._regions.values():
-            typed._regions[region.name] = region
+        typed._regions.update(self._regions)
 
         # Transfer flow maps
         for flow_id, flow_map in self._flow_maps.items():
@@ -1323,7 +1449,8 @@ class Timeline(
 
         typed._measure_map = self._measure_map
         typed._metric_hierarchy = self._metric_hierarchy
-        typed._flow_control = self._flow_control.copy()
+        typed._adopt_flow_control(self._flow_control.copy())
+        typed._id_minted = self._id_minted
 
         typed._length = typed._make_coordinate(self._length.value)
         typed._locked = self._locked
@@ -1366,7 +1493,7 @@ class Timeline(
 
         Examples:
             >>> print(timeline.diagram())
-            DiscreteGraphicalTimeline[dgt1:1] (11 events, 5 children)
+            DiscreteGraphicalTimeline[dgt_1:1] (11 events, 5 children)
             0 ∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶ 4835 pixels
               ├─ system_1     0   ∶∶∶∶∶∶∶                        967
               ├─ system_2   967          ∶∶∶∶∶∶∶∶               1934
@@ -1422,15 +1549,15 @@ class Timeline(
         return self.diagram()._repr_html_()
 
     def __contains__(self, item: str | Region | Timeline) -> bool:
-        """Check if a region name, child ID, or timeline is part of this timeline.
+        """Check if a region ID, child ID, or timeline is part of this timeline.
 
         Checks all noun types uniformly:
-        - ``"name" in tl`` checks regions AND children.
+        - ``"some_id" in tl`` checks region ids AND child ids.
         - ``some_timeline in tl`` checks if it's a child (by identity).
-        - ``some_region in tl`` checks if a region with that name exists.
+        - ``some_region in tl`` checks if a region with that id exists.
         """
         if isinstance(item, Region):
-            return item.name in self._regions
+            return item.id in self._regions
         if isinstance(item, Timeline):
             return item.id in self._children
         # String: check regions first, then children

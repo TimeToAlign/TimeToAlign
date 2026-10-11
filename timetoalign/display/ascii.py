@@ -769,7 +769,7 @@ def timeline_diagram(
 
     Examples:
         >>> print(timeline_diagram(my_timeline))
-        DiscreteGraphicalTimeline[dgt1:1] (11 events, 5 children)
+        DiscreteGraphicalTimeline[dgt_1:1] (11 events, 5 children)
         0 ∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶ 4835 pixels
           ├─ system_1     0   ∶∶∶∶∶∶∶                        967
           ├─ system_2   967          ∶∶∶∶∶∶∶∶               1934
@@ -897,7 +897,11 @@ def timeline_diagram(
         region_info: list[tuple[float, float, str]] = []
         for region in timeline.iter_regions():
             region_info.append(
-                (float(region.start.value), float(region.end.value), region.name)
+                (
+                    float(region.start.value),
+                    float(region.end.value),
+                    region.id if region.name is None else region.name,
+                )
             )
         region_info.sort(key=lambda x: x[0])
 
@@ -962,7 +966,7 @@ def group_diagram(
         >>> print(group_diagram(my_group))
         TimelineGroup[my_group] (2 timelines, 2 timestamps)
         ┌────────────────────────────────────────────────────────────┐
-        │ DiscreteGraphicalTimeline[dgt1:1] (11 events, 5 children)  │
+        │ DiscreteGraphicalTimeline[dgt_1:1] (11 events, 5 children)  │
         │ 0 ∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶ 4835 pixels    │
         │   ├─ system_1     0   ∶∶∶∶∶∶∶                    967       │
         │   └─ ...                                                   │
@@ -1074,7 +1078,7 @@ def bundle_diagram(
 
           TimelineGroup[dgt1_group] (2 timelines, 2 timestamps)
           ┌──────────────────────────────────────────────────────┐
-          │ DiscreteGraphicalTimeline[dgt1:1] (11 events)        │
+          │ DiscreteGraphicalTimeline[dgt_1:1] (11 events)        │
           │ 0 ∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶ 4835 pixels    │
           └──────────────────────────────────────────────────────┘
           Timestamps: 2

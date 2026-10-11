@@ -209,7 +209,7 @@ class TestTimelineRegionManagement:
     def test_add_region_returns_region_object(self):
         """add_region returns the created Region object."""
         tl = Timeline(length=100, unit=TimeUnit.seconds)
-        region = tl.add_region("Chorus", start=30, end=60)
+        region = tl.create_region(30, 60, id="Chorus", name="Chorus")
 
         assert isinstance(region, Region)
         assert region.name == "Chorus"
@@ -218,8 +218,8 @@ class TestTimelineRegionManagement:
     def test_add_region_stores_region(self):
         """Added regions are stored and retrievable."""
         tl = Timeline(length=100, unit=TimeUnit.seconds)
-        tl.add_region("Verse", start=0, end=30)
-        tl.add_region("Chorus", start=30, end=60)
+        tl.create_region(0, 30, id="Verse", name="Verse")
+        tl.create_region(30, 60, id="Chorus", name="Chorus")
 
         assert tl.n_regions == 2
         assert tl.has_region("Verse") is True
@@ -229,7 +229,7 @@ class TestTimelineRegionManagement:
     def test_get_region_returns_region_object(self):
         """get_region returns the Region instance directly."""
         tl = Timeline(length=100, unit=TimeUnit.seconds)
-        tl.add_region("Test", start=10, end=20)
+        tl.create_region(10, 20, id="Test", name="Test")
 
         result = tl.get_region("Test")
         assert isinstance(result, Region)
@@ -240,15 +240,15 @@ class TestTimelineRegionManagement:
     def test_get_region_nonexistent_raises_keyerror(self):
         """get_region raises KeyError for nonexistent region."""
         tl = Timeline(length=100, unit=TimeUnit.seconds)
-        with pytest.raises(KeyError, match="No region named"):
+        with pytest.raises(KeyError, match="No region with id"):
             tl.get_region("NonExistent")
 
     def test_iter_regions(self):
         """iter_regions yields all Region objects."""
         tl = Timeline(length=100, unit=TimeUnit.seconds)
-        tl.add_region("A", start=0, end=25)
-        tl.add_region("B", start=25, end=50)
-        tl.add_region("C", start=50, end=75)
+        tl.create_region(0, 25, id="A", name="A")
+        tl.create_region(25, 50, id="B", name="B")
+        tl.create_region(50, 75, id="C", name="C")
 
         regions = list(tl.iter_regions())
         assert len(regions) == 3
@@ -256,21 +256,22 @@ class TestTimelineRegionManagement:
         assert names == {"A", "B", "C"}
 
     def test_list_regions(self):
-        """list_regions returns region names."""
+        """list_regions returns region ids."""
         tl = Timeline(length=100, unit=TimeUnit.seconds)
-        tl.add_region("X", start=0, end=50)
-        tl.add_region("Y", start=50, end=100)
+        tl.create_region(0, 50, id="X", name="X")
+        tl.create_region(50, 100, id="Y", name="Y")
 
         names = tl.list_regions()
         assert set(names) == {"X", "Y"}
 
-    def test_add_region_rejects_duplicate_name(self):
-        """add_region rejects duplicate region names."""
+    def test_add_region_rejects_duplicate_given_id(self):
+        """A given region id already held raises; a repeated name does not."""
         tl = Timeline(length=100, unit=TimeUnit.seconds)
-        tl.add_region("Chorus", start=30, end=60)
+        tl.create_region(30, 60, id="Chorus", name="Chorus")
 
-        with pytest.raises(ValueError, match="already exists"):
-            tl.add_region("Chorus", start=70, end=90)
+        with pytest.raises(ValueError, match="already held by region 'Chorus'"):
+            tl.create_region(70, 90, id="Chorus", name="Chorus")
+        assert tl.create_region(70, 90, name="Chorus").id == "region_1"
 
     def test_add_region_on_locked_timeline_succeeds(self):
         """add_region works on a locked timeline; regions are pure annotations.
@@ -282,7 +283,7 @@ class TestTimelineRegionManagement:
         """
         tl = Timeline(length=100, unit=TimeUnit.seconds, locked=True)
 
-        region = tl.add_region("Test", start=0, end=10)
+        region = tl.create_region(0, 10, id="Test", name="Test")
 
         assert region.name == "Test"
         assert float(region.start.value) == 0.0
@@ -293,7 +294,7 @@ class TestTimelineRegionManagement:
         """create_region works on a locked timeline with exact bounds."""
         tl = Timeline(length=100, unit=TimeUnit.seconds, locked=True)
 
-        region = tl.create_region("A", start=0, end=40)
+        region = tl.create_region(0, 40, id="A", name="A")
 
         assert region.name == "A"
         assert float(region.start.value) == 0.0
@@ -340,7 +341,7 @@ class TestCreateChildFromRegion:
     def test_create_child_from_region_creates_child(self):
         """create_child_from_region creates a child at the region's offset."""
         tl = Timeline(length=100, unit=TimeUnit.seconds)
-        tl.add_region("Chorus", start=30, end=60)
+        tl.create_region(30, 60, id="Chorus", name="Chorus")
 
         child = tl.create_child_from_region("Chorus")
 
@@ -351,7 +352,7 @@ class TestCreateChildFromRegion:
     def test_create_child_from_region_child_offset(self):
         """Created child has correct offset in parent."""
         tl = Timeline(length=100, unit=TimeUnit.seconds)
-        tl.add_region("Verse", start=20, end=40)
+        tl.create_region(20, 40, id="Verse", name="Verse")
 
         child = tl.create_child_from_region("Verse")
 
@@ -389,7 +390,7 @@ class TestCreateChildFromRegion:
                 },
             ]
         )
-        tl.add_region("Middle", start=30, end=60)
+        tl.create_region(30, 60, id="Middle", name="Middle")
 
         child = tl.create_child_from_region("Middle")
 
@@ -409,7 +410,7 @@ class TestCreateChildFromRegion:
                 },
             ]
         )
-        tl.add_region("Section", start=40, end=60)
+        tl.create_region(40, 60, id="Section", name="Section")
 
         child = tl.create_child_from_region("Section")
 
@@ -442,7 +443,7 @@ class TestCreateChildFromRegion:
                 },
             ]
         )
-        tl.add_region("Section", start=30, end=60)
+        tl.create_region(30, 60, id="Section", name="Section")
 
         child = tl.create_child_from_region("Section", copy_events=False)
 
@@ -458,7 +459,7 @@ class TestCreateChildFromRegion:
     def test_create_child_from_region_locked_timeline_raises(self):
         """create_child_from_region raises RuntimeError on locked timeline."""
         tl = Timeline(length=100, unit=TimeUnit.seconds)
-        tl.add_region("Test", start=0, end=10)
+        tl.create_region(0, 10, id="Test", name="Test")
         tl._locked = True
 
         with pytest.raises(RuntimeError, match="locked"):
@@ -962,7 +963,7 @@ class TestSegmentLineCasting:
             meta={"source": "fixture"},
         )
         parent.add_events([{"id": "marker", "event_type": "Marker", "instant": 1.0}])
-        parent.add_region("whole", 0.0, 4.0)
+        parent.create_region(0.0, 4.0, id="whole", name="whole")
         cmap = LinearMap(
             scalar=1000.0,
             offset=0.0,
@@ -1574,12 +1575,12 @@ class TestTimelineRelationshipsIntegration:
         song = ContinuousPhysicalTimeline(length=180.0, unit=TimeUnit.seconds)
 
         # Define song structure via regions
-        song.add_region("Intro", start=0, end=30)
-        song.add_region("Verse1", start=30, end=60)
-        song.add_region("Chorus1", start=60, end=90)
-        song.add_region("Verse2", start=90, end=120)
-        song.add_region("Chorus2", start=120, end=150)
-        song.add_region("Outro", start=150, end=180)
+        song.create_region(0, 30, id="Intro", name="Intro")
+        song.create_region(30, 60, id="Verse1", name="Verse1")
+        song.create_region(60, 90, id="Chorus1", name="Chorus1")
+        song.create_region(90, 120, id="Verse2", name="Verse2")
+        song.create_region(120, 150, id="Chorus2", name="Chorus2")
+        song.create_region(150, 180, id="Outro", name="Outro")
 
         # create_child_from_region creates children
         assert song.n_regions == 6
@@ -1659,7 +1660,7 @@ class TestCreateRegion:
     def test_create_region_returns_region(self):
         """create_region returns a Region object."""
         tl = Timeline(length=100, unit=TimeUnit.seconds)
-        region = tl.create_region("Chorus", 30, 60)
+        region = tl.create_region(30, 60, id="Chorus", name="Chorus")
 
         assert isinstance(region, Region)
         assert region.name == "Chorus"
@@ -1669,7 +1670,7 @@ class TestCreateRegion:
     def test_create_region_attaches_to_timeline(self):
         """create_region adds the region to the timeline."""
         tl = Timeline(length=100, unit=TimeUnit.seconds)
-        tl.create_region("Chorus", 30, 60)
+        tl.create_region(30, 60, id="Chorus", name="Chorus")
 
         assert tl.n_regions == 1
         assert tl.has_region("Chorus")
@@ -1677,7 +1678,9 @@ class TestCreateRegion:
     def test_create_region_with_meta(self):
         """create_region passes metadata to the Region."""
         tl = Timeline(length=100, unit=TimeUnit.seconds)
-        region = tl.create_region("Chorus", 30, 60, meta={"repeat": 2})
+        region = tl.create_region(
+            30, 60, id="Chorus", name="Chorus", meta={"repeat": 2}
+        )
 
         assert region.meta == {"repeat": 2}
 
@@ -1689,9 +1692,10 @@ class TestAddRegionOverloaded:
         """add_region(Region) attaches an existing Region object."""
         tl = Timeline(length=100, unit=TimeUnit.seconds)
         r = Region(
-            "Chorus",
             Coordinate(30, TimeUnit.seconds),
             Coordinate(60, TimeUnit.seconds),
+            id="Chorus",
+            name="Chorus",
         )
         result = tl.add_region(r)
 
@@ -1702,7 +1706,7 @@ class TestAddRegionOverloaded:
     def test_add_region_with_string_delegates_to_create(self):
         """add_region(name, start, end) delegates to create_region."""
         tl = Timeline(length=100, unit=TimeUnit.seconds)
-        result = tl.add_region("Verse", start=0, end=30)
+        result = tl.create_region(0, 30, id="Verse", name="Verse")
 
         assert isinstance(result, Region)
         assert result.name == "Verse"
@@ -1712,9 +1716,10 @@ class TestAddRegionOverloaded:
         """add_region(Region) rejects unit mismatch."""
         tl = Timeline(length=100, unit=TimeUnit.seconds)
         r = Region(
-            "X",
             Coordinate(0, TimeUnit.quarters),
             Coordinate(10, TimeUnit.quarters),
+            id="X",
+            name="X",
         )
         with pytest.raises(ValueError, match="unit"):
             tl.add_region(r)
@@ -1797,8 +1802,9 @@ class TestCreateRegionsByGrouping:
         assert regions[1].name == "Slow"
         assert regions[1].start.value == 32.0
         assert regions[1].end.value == 56.0
-        # Recurring value auto-disambiguated with _run2 suffix
-        assert regions[2].name == "Fast_run2"
+        # A recurring value repeats the name; the ids tell the runs apart
+        assert regions[2].name == "Fast"
+        assert [region.id for region in regions] == ["region_1", "region_2", "region_3"]
 
     def test_custom_name_format(self):
         """name_format with {run} distinguishes recurrences."""
@@ -1932,9 +1938,9 @@ class TestCreateChildrenFromRegions:
     def test_batch_create_all_regions(self):
         """create_children_from_regions() with no args uses all regions."""
         tl = Timeline(length=90, unit=TimeUnit.seconds)
-        tl.create_region("A", 0, 30)
-        tl.create_region("B", 30, 60)
-        tl.create_region("C", 60, 90)
+        tl.create_region(0, 30, id="A", name="A")
+        tl.create_region(30, 60, id="B", name="B")
+        tl.create_region(60, 90, id="C", name="C")
 
         children = tl.create_children_from_regions()
 
@@ -1947,9 +1953,9 @@ class TestCreateChildrenFromRegions:
     def test_batch_create_subset(self):
         """create_children_from_regions() with names creates only those."""
         tl = Timeline(length=90, unit=TimeUnit.seconds)
-        tl.create_region("A", 0, 30)
-        tl.create_region("B", 30, 60)
-        tl.create_region("C", 60, 90)
+        tl.create_region(0, 30, id="A", name="A")
+        tl.create_region(30, 60, id="B", name="B")
+        tl.create_region(60, 90, id="C", name="C")
 
         children = tl.create_children_from_regions(["A", "C"])
 
@@ -1965,9 +1971,9 @@ class TestGetRegionsAt:
     def test_regions_at_point(self):
         """get_regions_at returns regions containing the coordinate."""
         tl = Timeline(length=100, unit=TimeUnit.seconds)
-        tl.create_region("A", 0, 50)
-        tl.create_region("B", 30, 70)
-        tl.create_region("C", 60, 100)
+        tl.create_region(0, 50, id="A", name="A")
+        tl.create_region(30, 70, id="B", name="B")
+        tl.create_region(60, 100, id="C", name="C")
 
         result = tl.get_regions_at(40)
         names = [r.name for r in result]
@@ -1976,8 +1982,8 @@ class TestGetRegionsAt:
     def test_regions_at_boundary(self):
         """Left-inclusive, right-exclusive boundary behavior."""
         tl = Timeline(length=100, unit=TimeUnit.seconds)
-        tl.create_region("A", 0, 50)
-        tl.create_region("B", 50, 100)
+        tl.create_region(0, 50, id="A", name="A")
+        tl.create_region(50, 100, id="B", name="B")
 
         # At boundary 50: A excludes (right-exclusive), B includes (left-inclusive)
         result = tl.get_regions_at(50)
@@ -2084,9 +2090,9 @@ class TestCreateSegmentLineFromRegions:
     def test_segment_line_from_contiguous_regions(self):
         """Creates SegmentLine from contiguous regions."""
         tl = ContinuousLogicalTimeline(length=90)
-        tl.create_region("A", 0, 30)
-        tl.create_region("B", 30, 60)
-        tl.create_region("C", 60, 90)
+        tl.create_region(0, 30, id="A", name="A")
+        tl.create_region(30, 60, id="B", name="B")
+        tl.create_region(60, 90, id="C", name="C")
 
         sl = tl.create_segment_line_from_regions()
 
@@ -2096,8 +2102,8 @@ class TestCreateSegmentLineFromRegions:
     def test_non_contiguous_regions_raise(self):
         """Non-contiguous regions raise ValueError."""
         tl = ContinuousLogicalTimeline(length=100)
-        tl.create_region("A", 0, 30)
-        tl.create_region("B", 40, 70)  # Gap between 30 and 40
+        tl.create_region(0, 30, id="A", name="A")
+        tl.create_region(40, 70, id="B", name="B")  # Gap between 30 and 40
 
         with pytest.raises(ValueError, match="not contiguous"):
             tl.create_segment_line_from_regions()
@@ -2185,7 +2191,7 @@ class TestContainsRegionsAndChildren:
     def test_contains_region_name(self):
         """String 'in tl' checks regions."""
         tl = Timeline(length=100, unit=TimeUnit.seconds)
-        tl.create_region("Chorus", 30, 60)
+        tl.create_region(30, 60, id="Chorus", name="Chorus")
 
         assert "Chorus" in tl
 
@@ -2200,7 +2206,7 @@ class TestContainsRegionsAndChildren:
     def test_contains_region_object(self):
         """Region object 'in tl' checks by name."""
         tl = Timeline(length=100, unit=TimeUnit.seconds)
-        tl.create_region("Chorus", 30, 60)
+        tl.create_region(30, 60, id="Chorus", name="Chorus")
         region = tl.get_region("Chorus")
 
         assert region in tl
@@ -2374,7 +2380,7 @@ class TestUnifiedAPIWithRealData:
         regions = wagner_timeline.create_regions_by_grouping("timesig")
         first_region = regions[0]
 
-        child = wagner_timeline.create_child_from_region(first_region.name)
+        child = wagner_timeline.create_child_from_region(first_region.id)
 
         assert child.length.value == 968.0
         assert child.name == "9/8"

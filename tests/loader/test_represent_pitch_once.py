@@ -160,7 +160,7 @@ class TestAddEventsRoundTrip:
     def test_add_events_preserves_struct_affordance(self) -> None:
         from timetoalign.timelines import ContinuousPhysicalTimeline
 
-        tl = ContinuousPhysicalTimeline(length=10.0, unit=TimeUnit.seconds, uid="cpt1")
+        tl = ContinuousPhysicalTimeline(length=10.0, unit=TimeUnit.seconds, uid="cpt_1")
         tl.add_events(
             [
                 {"event_type": "Note", "start": 0.0, "pitch": {"midi_number": 60}},
@@ -179,7 +179,7 @@ class TestAddEventsRoundTrip:
         # (without it) must keep the struct column and null-fill.
         from timetoalign.timelines import DiscreteLogicalTimeline
 
-        tl = DiscreteLogicalTimeline(length=1000, unit=TimeUnit.ticks, uid="dlt1")
+        tl = DiscreteLogicalTimeline(length=1000, unit=TimeUnit.ticks, uid="dlt_1")
         tl.add_events(
             [{"event_type": "Note", "start": 0, "pitch": {"midi_number": 60}}],
             allow_expansion=True,

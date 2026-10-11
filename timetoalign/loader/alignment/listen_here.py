@@ -28,7 +28,7 @@ and produces a single :class:`~timetoalign.alignment.bundle.AlignmentBundle`:
 
 * one samples
   :class:`~timetoalign.timelines.types.DiscretePhysicalTimeline`
-  (``<stem>:dpt1``) per recording, each in its **own** group, with
+  (``<stem>:dpt_1``) per recording, each in its **own** group, with
   ``length`` converted from that recording's stored ``duration``.  The recordings
   carry one point event for each source-grid time.  Its integer sample
   coordinate supports the alignment, while its ``seconds`` field preserves the
@@ -345,9 +345,9 @@ class ListenHereLoader(AlignmentLoader):
 
     @staticmethod
     def _timeline_uid(key: str) -> str:
-        """The samples-timeline uid for an audio key: ``<stem>:dpt1``."""
+        """The samples-timeline uid for an audio key: ``<stem>:dpt_1``."""
         stem = os.path.splitext(os.path.basename(key))[0]
-        return f"{stem}:dpt1"
+        return f"{stem}:dpt_1"
 
     @staticmethod
     def _human_name(stem: str) -> str:
@@ -470,7 +470,7 @@ class ListenHereLoader(AlignmentLoader):
         """Return a single recording's samples timeline by its uid.
 
         Args:
-            uid: A timeline uid (``"<stem>:dpt1"``).
+            uid: A timeline uid (``"<stem>:dpt_1"``).
 
         Raises:
             KeyError: If no recording matches.

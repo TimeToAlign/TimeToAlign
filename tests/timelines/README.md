@@ -168,12 +168,13 @@ unit would answer a different question; a raw number query still compares by
 value, and an unbound registry compares values as it always has.
 
 An unbound registry retains the input objects unchanged: an added break, jump, or
-coordinate object is stored as the identical object, so an ``IdCoordinate``
-marker stays that ``IdCoordinate``. A raw marker number names no unit, so an
-unbound registry rejects it. Constructor content passes through the same add
-methods, but the registry copies the given containers first. The caller's list
-therefore remains a distinct object in its original order, even though the
-registry sorts its own copy by coordinate. Copying a registry must reproduce its
+marker whose id is free is stored as the identical object, so a marker at an
+``IdCoordinate`` keeps that ``IdCoordinate``. A raw marker number names no unit,
+so an unbound registry rejects it. Constructor content passes through the same
+add methods, but the registry copies the given containers first. The caller's
+list therefore remains a distinct object in its original order, even though the
+registry sorts its own copy by coordinate; of two breaks constructed without an
+id (both minted ``break_1``), the one added second is stored as ``break_2``. Copying a registry must reproduce its
 binding and exact content while subsequent mutation of either registry leaves the
 other unchanged.
 
@@ -202,16 +203,90 @@ A slice carries none of those three objects, pinning the current derivation
 boundary: slicing, child derivation, and unfolding do not infer how authored
 structure should be partitioned.
 
+### Manifest identity (`test_manifest_ids.py`)
+
+Every element of a manifest (a timeline, a conversion map, a region, a break,
+a jump, a marker) carries an `id` for identification and a `name` for
+display. The tests prove four properties, each against literal expected ids.
+
+- **One form, one generator, no process state.** An element constructed
+  without an id is minted `{prefix}_{N}` with N the smallest positive integer
+  no id in its scope holds. A standalone element's scope is empty, so each
+  class answers `_1`: the six timeline classes `clt_1`, `dlt_1`, `cpt_1`,
+  `dpt_1`, `cgt_1`, `dgt_1`; the base `Timeline` and a segment line by their
+  unit (`Timeline(unit="seconds")` is `cpt_1`, ticks `dlt_1`, pixels `dgt_1`);
+  `LinearMap` `lmap_1`, `TableMap` and its subclasses `tmap_1`, `PiecewiseMap`
+  `pmap_1`, every other map `cmap_1`; `region_1`, `break_1`, `jump_1`,
+  `marker_1`. Determinism is proved by building one reference manifest
+  (a quarters root, two children made by `create_child`, two regions, two
+  breaks, a marker and a jump targeting it, a `LinearMap`) twice, the second
+  time after constructing five unrelated timelines and four maps, and once
+  more with its collections added in the reverse order. The first two must
+  serialize to identical `to_dict` payloads, and all three must carry
+  exactly the ids spelled out literally (`clt_1`; children `clt_2`,
+  `clt_3`; `region_1`, `region_2`; `break_1`, `break_2`; `marker_1`;
+  `jump_1` targeting `marker_1`; `lmap_1`). A process-global counter gives
+  different ids in the second build; insertion order may decide which
+  element holds which id, never which ids exist. Smallest-free
+  is pinned by a given child id `clt_3` on a `clt_1` root: the next two
+  `create_child` calls mint `clt_2`, then `clt_4`. No minted timeline id
+  starts with `tl:` and none lacks the `_` separator.
+- **Whatever is given is the id.** Hand-chosen ids (`performance`, `a`,
+  `Bass Kick`, `score:clt_7`) are kept verbatim on timelines, maps, regions,
+  breaks, jumps and markers, and survive `to_dict` → JSON → `from_dict` →
+  `to_dict` text-identically; a minted manifest round-trips its minted ids
+  verbatim too. Refused ids raise `ValueError` on every kind: the empty
+  string, any id containing `/`, and any containing a control character
+  (`"a\tb"`, `"a\nb"`); `Bass Kick` (a space) is accepted.
+- **Collisions within one manifest, across all kinds.** A manifest is a root
+  timeline and all its descendants. When an element joins it, a minted id
+  that is taken is re-minted in the manifest's scope, and a given id that is
+  taken raises `ValueError` naming both elements. Specimens: two standalone
+  quarters timelines, each `clt_1` with a region `region_1`; adding the
+  second as a child of the first renames the child `clt_2` (its key in
+  `list_children()` and its segment row both say `clt_2`) and its region
+  `region_2`, while the root keeps `clt_1` and `region_1`. A grandchild is
+  renamed under its own parent's key as well (the nested specimen: the child
+  carries a minted child `clt_2` of its own, which becomes `clt_3`). A child
+  whose marker `marker_1` collides is re-minted `marker_2` and its jump's
+  `target` follows to `marker_2`. Given ids: a child `score` under a root
+  `score` raises naming `timeline 'score'` twice; a child timeline `intro`
+  under a root holding a region `intro` raises naming `region 'intro'`; a
+  region `intro` added beside a child `intro` raises; adding a given map id
+  already held by a child's map raises. Each raise is atomic: the parent
+  keeps its children, regions and maps, and the joining child keeps its id.
+- **Regions and markers are keyed by id; jumps target marker ids.** Two
+  regions named `Chorus` coexist as `region_1` and `region_2`; `get_region`,
+  `has_region`, `list_regions`, `create_child_from_region` and
+  `create_children_from_regions` take ids, and `get_region("Chorus")` raises
+  `KeyError` listing the available ids. `create_child_from_region` names the
+  child after the region (`name == "Chorus"`) and mints its id (`clt_2`),
+  never reusing the region's id. `add_jump` refuses a `target` that names no
+  marker of the registry. A score loader resolves D.S. targets to marker
+  ids: the ms3 measures of Couperin's `c05n05_musete` (corpus `score`,
+  `couperin_concerts`) load two markers, `marker_1` named `segno` at
+  quarter 12 and `marker_2` named `fine` at 81/2, and both D.S. al Fine
+  jumps target `marker_1`; the da capo and repeat jumps of the Rondeau
+  `c11n08_Rondeau` target `None`.
+
+Loader parity (`test_manifest_ids.py::TestLoaderParity`): for one specimen
+each of the ms3 (with and without D.S. jumps), score-MIDI, lab, audio,
+Parangonada and IIIF loaders the test walks the whole
+`to_dict` tree and requires every timeline, child, map, region, break, jump
+and marker to carry a valid id (non-empty, no `/`, no control character),
+all ids within one manifest to be distinct, and no id to start with `tl:`.
+
 ### Canonical order of a serialized timeline (`test_canonical_order.py`)
 
 `Timeline.to_dict` writes every unordered collection in one canonical order,
 so that two timelines with the same content serialize to the same text however
 their content was added: `children` by offset, then id; `conversion_maps` by
-id; `regions` by start, then end, then name; flow-control `breaks` by
-coordinate, then the entry's canonical JSON text (keys sorted, no whitespace);
-`jumps` by from coordinate, then to coordinate, then canonical JSON text;
-`markers` by name. Coordinates compare by their exact numeric value, never by
-their JSON spelling, and strings by Unicode code point.
+id; `regions` by start, then end, then id; flow-control `breaks` by
+coordinate, then id; `jumps` by from coordinate, then to coordinate, then id;
+`markers` (a list of `{id, name, coordinate}`) by coordinate, then id. Ids
+are unique within a manifest, so no two entries of one list tie on every
+member. Coordinates compare by their exact numeric value, never by their JSON
+spelling, and strings by Unicode code point.
 
 What proves it:
 
@@ -220,24 +295,27 @@ What proves it:
   two of them at the same offset; three conversion maps; four regions, three
   sharing a start and two of those sharing start and end; three breaks, two
   at one coordinate; three jumps, two sharing a from coordinate and two of
-  those also sharing a to coordinate; three markers. For every permutation of
+  those also sharing a to coordinate; four markers, two at one coordinate.
+  Every element carries a given id (its kind and label, e.g. `break-fine`),
+  because minted ids follow insertion order. For every permutation of
   the insertion order of each collection, the payload must equal the payload
   of the reference insertion order under `==`, and its `json.dumps` text must
   be identical. Equality of dicts ignores key order, so the text comparison is
   what catches a differing `children` or `markers` order. A serializer that
   kept insertion order fails on the first non-identity permutation.
 - **The order itself.** Invariance alone would also hold for an arbitrary but
-  fixed order, so the expected sequence of child ids, map ids, region names,
-  break labels, jump labels and marker names is spelled out literally per
+  fixed order, so the expected sequence of child ids, map ids, region ids,
+  break ids, jump ids and marker ids is spelled out literally per
   axis. The values are chosen so that numeric order and JSON-text order
   disagree: on the `ticks` axis `9` precedes `10`, on the `quarters` axis
   `5/8` precedes `2/3` although `[2, 3]` sorts first as text, and on the
-  `seconds` axis `9.25` precedes `10.5`. Marker names `Fine`, `coda`, `segno`
-  pin code-point order (an uppercase letter precedes every lowercase one).
+  `seconds` axis `9.25` precedes `10.5`. The two markers at one coordinate,
+  `marker-Coda` and `marker-coda`, pin code-point order of the id tie-break
+  (an uppercase letter precedes every lowercase one).
 - **Ties.** Children at one offset fall back to id; regions at one start fall
-  back to end, then name; two breaks at one coordinate and two jumps with
-  equal from and to coordinates fall back to their canonical JSON text, whose
-  expected order is spelled out from the literal entries.
+  back to end, then id; two breaks at one coordinate, two jumps with equal
+  from and to coordinates, and two markers at one coordinate fall back to
+  their id, whose expected order is spelled out from the literal entries.
 - **Reading accepts any order.** For every permutation of each collection in
   the canonical payload (the `children` and `markers` objects rebuilt in that
   key order, the lists reordered), `Timeline.from_dict` must restore a
@@ -247,10 +325,6 @@ What proves it:
   ties in insertion order) and `children` keep their insertion order after
   `to_dict`, proven by reading both back after serializing a permutation
   whose stored order differs from the canonical one.
-- **The tie-break text.** `canonical_json` writes a literal value with nested
-  objects and non-ASCII keys as one expected text (keys by code point, no
-  whitespace, characters unescaped, `1.0` kept a float), and refuses a NaN or
-  an infinity, which JSON cannot hold, instead of writing `NaN`.
 
 ### Measure and hierarchy structure
 
@@ -357,7 +431,7 @@ so that query names pixel `2438` and the group answers with *that pixel's*
 position, `2438/4875 × 150 = 75.01538461538462 s`. It is asserted against the
 same expression rather than against `75.0`. The `75.0` these cases used to
 expect was the group path reading the un-rounded query while simultaneously
-reporting `ts["dgt1"] == 2438`: one stamp claiming two positions. Every
+reporting `ts["dgt_1"] == 2438`: one stamp claiming two positions. Every
 projection of a stamp is now a projection of the one position its axis names,
 so the rounding is visible in the answer instead of only in the pixel column.
 The same correction applies to `test_thoresen_poc.py`, whose width `4835` puts
@@ -1192,28 +1266,29 @@ measures.
      from `create_child_from_region`, which remains lock-guarded — see the
      create_child_from_region group below.)
 
-3. **Phase A — create_region() / add_region() overloaded** (5 tests)
-   - `create_region(name, start, end)` creates and registers a Region
-   - `add_region(Region)` accepts existing Region object
-   - `add_region(name, start, end)` backwards-compatible string overload
+3. **Region creation — create_region() / add_region()** (5 tests)
+   - `create_region(start, end, id=…, name=…)` creates and registers a Region
+   - `add_region(Region)` attaches an existing Region object
+   - a given region id already held raises; a repeated name does not
 
-4. **Phase A — create_regions_from_boundaries()** (5 tests)
+4. **Region creation — create_regions_from_boundaries()** (5 tests)
    - Creates N-1 regions from N boundary coordinates
    - Names follow configurable format pattern
    - Validates sorted, non-negative boundaries
 
-5. **Phase A — create_regions_by_grouping()** (6 tests)
+5. **Region creation — create_regions_by_grouping()** (6 tests)
    - Groups adjacent events by field value
-   - Auto-disambiguates recurring group values (e.g., 4/4 → 3/4 → 4/4)
+   - Recurring group values (e.g., 4/4 → 3/4 → 4/4) repeat the name;
+     minted ids (`region_1`, `region_2`, `region_3`) tell the runs apart
    - Supports custom `name_format` with `{value}` and `{run}` placeholders
    - Raises ValueError for missing field
 
-6. **Phase A — create_regions_by_splitting()** (5 tests)
+6. **Region creation — create_regions_by_splitting()** (5 tests)
    - Splits at events matching a predicate (field name or dict filter)
    - Supports `include_before_first` and `include_after_last`
    - Deduplicates split points at timeline boundaries
 
-7. **Phase B — create_child_from_region()** (7 tests, replaces old partition())
+7. **Children and regions — create_child_from_region()** (7 tests)
    - Creates child at region's offset
    - Copies events within region to child
    - Adjusts event coordinates relative to child origin
@@ -1221,42 +1296,42 @@ measures.
    - Raises KeyError for nonexistent region
    - Raises RuntimeError on locked timeline
 
-8. **Phase B — create_children_from_regions()** (3 tests)
+8. **Children and regions — create_children_from_regions()** (3 tests)
    - Creates children for all or specified regions
    - Returns list of created children
 
-9. **Phase B — get_regions_at() / get_children_at()** (6 tests)
+9. **Children and regions — get_regions_at() / get_children_at()** (6 tests)
    - `get_regions_at(coord)` returns all regions containing that coordinate
    - `get_children_at(coord)` returns all children whose span includes that coordinate
 
-10. **Phase B — list_children() / has_child()** (4 tests)
+10. **Children and regions — list_children() / has_child()** (4 tests)
     - `list_children()` returns sorted list of child IDs
     - `has_child(id_or_obj)` checks by string or Timeline object
 
-11. **Phase C — create_segment_line()** (4 tests)
+11. **Segment lines — create_segment_line()** (4 tests)
     - Creates SegmentLine from boundary coordinates
     - Does NOT modify source timeline
     - Returns `SegmentLine[type(source)]` with the source timeline API
 
-12. **Phase C — create_segment_line_from_regions()** (3 tests)
+12. **Segment lines — create_segment_line_from_regions()** (3 tests)
     - Creates SegmentLine from contiguous regions
     - Validates contiguity
 
-13. **Phase C — create_segment_line_by_grouping()** (3 tests)
+13. **Segment lines — create_segment_line_by_grouping()** (3 tests)
     - Shortcut: groups events and creates SegmentLine directly
     - Does NOT add intermediate regions to source
 
-14. **Phase C — create_segment_line_by_splitting()** (3 tests)
+14. **Segment lines — create_segment_line_by_splitting()** (3 tests)
     - Shortcut: splits and creates SegmentLine directly
 
-15. **Phase C — SegmentLine list_segments() / has_segment()** (5 tests)
+15. **Segment lines — SegmentLine list_segments() / has_segment()** (5 tests)
     - `list_segments()` returns ordered segment IDs
     - `has_segment()` checks by ID or object
     - `__contains__` override on SegmentLine checks segments
 
-16. **Phase D — __contains__ checks regions AND children** (4 tests)
-    - String `in tl` checks region names AND child IDs
-    - Region object `in tl` checks by name
+16. **Membership — __contains__ checks regions AND children** (4 tests)
+    - String `in tl` checks region ids AND child ids
+    - Region object `in tl` checks by id
     - Timeline object `in tl` checks by identity
 
 17. **SegmentLine Basics and Casting Tests**
@@ -1723,17 +1798,18 @@ The module-private helpers in `timetoalign/timelines/flow/sections.py` are
 duck-typed (no hard imports of `Timeline`/`Region`/`Coordinate`). `_as_interval`
 recognises descriptors in strict priority order and each variant yields an
 **exact** `(Fraction, Fraction, label)` triple. The `label` is a best-effort
-identity — a region name for a `str` or a `Region`, the `name`/`id` for a
-`Timeline`, and `None` for a bare coordinate pair or a nameless event — carried
-through so unfolding can name the child timeline and Region it derives from
-each span:
+identity — a region id for a `str` or a `Region`, the `id` for a `Timeline`,
+and `None` for a bare coordinate pair or an id-less event — carried through so
+unfolding can identify the child timeline it derives from each span (the
+identity, never the display name: a region `A8_1` named `Opening` labels its
+span `A8_1`; a timeline `clt_1` named `Score` labels its span `clt_1`):
 
 | Input | Recognised as | Expected `(start, end, label)` |
 |-------|---------------|--------------------------------|
 | `(0, 123)` (raw ints) | 2-element sequence | `(Fraction(0), Fraction(123), None)` |
 | `(Coordinate(0), Coordinate(129))` | 2-element sequence | `(Fraction(0), Fraction(129), None)` |
-| `Region("A8_1", start=0, end=123)` | has `.start`/`.end` | `(Fraction(0), Fraction(123), "A8_1")` |
-| a `Timeline` of length 200 | has `.origin`/`.length` | `(Fraction(0), Fraction(200), tl.name)` |
+| `Region(0, 123, id="A8_1", name="Opening")` | has `.start`/`.end` | `(Fraction(0), Fraction(123), "A8_1")` |
+| a `Timeline` of length 200, id `clt_1`, name `Score` | has `.origin`/`.length` | `(Fraction(0), Fraction(200), "clt_1")` |
 | `Note(start=0, end=123)` interval event | has `.start`/`.end` | `(Fraction(0), Fraction(123), None)` |
 | `"A8_1"` with a `resolve` callable | `str` → resolved region | `(Fraction(0), Fraction(123), "A8_1")` |
 | `"A8_1"` with `resolve=None` | `str`, no resolver | raises `ValueError` |

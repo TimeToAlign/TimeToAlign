@@ -358,10 +358,10 @@ class TestGraphicalBundleDGT1:
 
     def test_create_timeline_creates_correct_timeline(self, dgt1_bundle) -> None:
         """Bundle creates DiscreteGraphicalTimeline with correct length."""
-        timeline = dgt1_bundle.create_timeline(uid="dgt1", name="Thoresen 2009")
+        timeline = dgt1_bundle.create_timeline(uid="dgt_1", name="Thoresen 2009")
         # timeline.length is a Coordinate object, compare the value
         assert timeline.length.value == DGT1_TOTAL_WIDTH
-        assert timeline.id == "dgt1"
+        assert timeline.id == "dgt_1"
         assert timeline.name == "Thoresen 2009"
 
 

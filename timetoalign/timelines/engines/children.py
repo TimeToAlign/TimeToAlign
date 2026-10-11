@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from collections.abc import Iterator, Sequence
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, Literal
@@ -72,7 +73,8 @@ class ChildrenMixin:
 
         Raises:
             TypeError: If child is not a Timeline.
-            ValueError: If units don't match or child already has a parent.
+            ValueError: If units don't match or the timeline already is a child
+                of this timeline.
         """
         if not isinstance(child, Timeline):
             raise TypeError(f"Child must be a Timeline, got {type(child).__name__}")
@@ -85,7 +87,7 @@ class ChildrenMixin:
                 f"For cross-domain relationships, use TimelineGroup instead."
             )
 
-        if child.id in self._children:
+        if any(existing is child for existing in self._children.values()):
             raise ValueError(f"Child '{child.id}' is already a child of this timeline")
 
         # Validate offset
@@ -188,7 +190,7 @@ class ChildrenMixin:
                         del child._unit_maps[self._unit]
 
         # Assign a clear ID and name linking back to the original
-        derived._id = f"{child.id}[{self._unit}]"
+        derived._set_id(f"{child.id}[{self._unit}]")
         derived._name = f"{child.name or child.id} [{self._unit}]"
 
         self._logger.debug(
@@ -209,6 +211,12 @@ class ChildrenMixin:
 
         The child timeline will be locked after being added.
         Parent-child coordinate conversion uses exact offset arithmetic.
+
+        The child's whole subtree joins this timeline's manifest, in which
+        every id is unique across all element kinds: an element of the
+        subtree whose minted id is already held here receives a freshly
+        minted one, and an element whose given id is already held here makes
+        the call raise without changing anything.
 
         A timeline can accommodate events and other timelines, called
         Children, as long as they use the same measuring unit.
@@ -240,8 +248,9 @@ class ChildrenMixin:
 
         Raises:
             TypeError: If child is not a Timeline.
-            ValueError: If units don't match (and no conversion map given)
-                or would exceed bounds.
+            ValueError: If units don't match (and no conversion map given),
+                the child would exceed bounds, or an id given in the child's
+                subtree is already held in this manifest.
             RuntimeError: If this timeline is locked.
         """
         # Convert child's unit if a conversion map is specified
@@ -252,13 +261,18 @@ class ChildrenMixin:
 
         offset_coord = self.get_coordinate_at(offset, format="coordinate")
         child_end = offset_coord.value + child.length.value
+        id_plan = self._manifest_join_plan(child)
 
         # Ensure capacity
         self._ensure_capacity(child_end, allow_expansion)
 
+        for owner, old_id, new_id in id_plan:
+            owner._reassign_element_id(old_id, new_id)
+
         # Store child reference
         self._children[child.id] = child
         self._child_offsets[child.id] = offset_coord
+        child._parent = self
 
         # Lock the child
         child._locked = True
@@ -414,10 +428,22 @@ class ChildrenMixin:
         """
         self._check_not_locked("append child")
         if uid is not None:
-            child._id = uid
+            child._set_id(uid)
         if name is not None:
             child._name = name
         self.add_child(child, self.length, allow_expansion=True)
+
+    def _rename_child(self, old_id: str, new_id: str) -> None:
+        """Re-key a child and its segment row from *old_id* to *new_id*."""
+        self._children = {
+            (new_id if key == old_id else key): child
+            for key, child in self._children.items()
+        }
+        self._child_offsets = {
+            (new_id if key == old_id else key): offset
+            for key, offset in self._child_offsets.items()
+        }
+        self._events = self._events._with_segment_renamed(old_id, new_id)
 
     def get_child(self, child_id: str) -> Timeline:
         """Retrieve a child timeline by ID.
@@ -555,38 +581,40 @@ class ChildrenMixin:
 
     def create_child_from_region(
         self,
-        region_name: str,
+        region_id: str,
         *,
         copy_events: bool = True,
         uid: str | None = None,
     ) -> "Timeline":
-        """Create a child timeline from a named region (partitioning).
+        """Create a child timeline from a region (partitioning).
 
         The child's length = region duration, offset = region start.
-        The child's class matches the parent's concrete class.
-        If copy_events, events in [start, end) are copied with adjusted
-        coordinates.
+        The child's class matches the parent's concrete class, and its name
+        is the region's name. If copy_events, events in [start, end) are
+        copied with adjusted coordinates.
 
         Args:
-            region_name: Name of an existing region.
+            region_id: Id of an existing region.
             copy_events: Copy events within the region to the child.
-            uid: Explicit child ID. Defaults to region name.
+            uid: Explicit child ID. When None, one is minted.
 
         Returns:
             The newly created and attached child timeline.
 
         Raises:
-            KeyError: If region_name not found.
+            KeyError: If region_id not found.
             RuntimeError: If timeline is locked.
 
         Examples:
             >>> tl.create_regions_by_splitting("breaks", prefix="movement")
-            >>> mov4 = tl.create_child_from_region("movement_4")
+            >>> mov4 = tl.create_child_from_region("region_4")
+            >>> mov4.name
+            'movement_4'
         """
-        region = self._regions.get(region_name)
+        region = self._regions.get(region_id)
         if region is None:
             raise KeyError(
-                f"Region '{region_name}' not found on timeline '{self._id}'. "
+                f"Region '{region_id}' not found on timeline '{self._id}'. "
                 f"Available regions: {list(self._regions.keys())}"
             )
 
@@ -596,7 +624,7 @@ class ChildrenMixin:
             length=region.duration.value,
             unit=self._unit,
             number_type=self._number_type,
-            uid=uid or region_name,
+            uid=uid,
             name=region.name,
         )
 
@@ -608,7 +636,7 @@ class ChildrenMixin:
 
     def create_children_from_regions(
         self,
-        region_names: Sequence[str] | None = None,
+        region_ids: Sequence[str] | None = None,
         *,
         copy_events: bool = True,
     ) -> list["Timeline"]:
@@ -618,14 +646,14 @@ class ChildrenMixin:
         are independent.
 
         Args:
-            region_names: Region names. None = all regions in insertion order.
+            region_ids: Region ids. None = all regions in insertion order.
             copy_events: Copy events to children.
 
         Returns:
             List of child timelines in region order.
 
         Raises:
-            KeyError: If any region_name not found.
+            KeyError: If any region id is not found.
             RuntimeError: If timeline is locked.
 
         Examples:
@@ -633,12 +661,12 @@ class ChildrenMixin:
             ...                               name_format="page_{value}")
             >>> tl.create_children_from_regions()  # All pages as children
         """
-        if region_names is None:
-            region_names = list(self._regions.keys())
+        if region_ids is None:
+            region_ids = list(self._regions.keys())
 
         result: list[Timeline] = []
-        for name in region_names:
-            child = self.create_child_from_region(name, copy_events=copy_events)
+        for region_id in region_ids:
+            child = self.create_child_from_region(region_id, copy_events=copy_events)
             result.append(child)
         return result
 
@@ -972,8 +1000,12 @@ class ChildrenMixin:
         # structure is a materialization decision, to be made where
         # children are derived from that structure rather than here.
         for cmap_id, cmap in self._conversion_maps.items():
+            # The slice holds its own copy: a slice may join a manifest that
+            # holds the source's map, so the copy's id may be minted again.
+            copied = copy.copy(cmap)
+            copied._id_minted = True
             try:
-                target.add_conversion_map(cmap)
+                target.add_conversion_map(copied)
             except (ValueError, TypeError):
                 # Skip incompatible maps (e.g., unit mismatch after slicing)
                 self._logger.debug(

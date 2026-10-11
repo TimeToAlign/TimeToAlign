@@ -118,7 +118,6 @@ from timetoalign.core import (
     ResolvedCoordinate,
     ScopedId,
     TimeIntervalStamp,
-    TimelineIdGenerator,
     TimeStamp,
     TimeUnit,
     resolve_coordinate_spec,
@@ -303,7 +302,6 @@ __all__ = [
     # IDs
     "ScopedId",
     "IdGenerator",
-    "TimelineIdGenerator",
     # Loader - Event-based (Type 2)
     "EventData",
     "EventStore",

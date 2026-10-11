@@ -276,12 +276,12 @@ class TabularExportMixin:
         Examples:
             >>> from timetoalign.timelines import Timeline
             >>> parent = Timeline(length=20, unit=TimeUnit.seconds, uid="timeline:1")
-            >>> child = Timeline(length=15, unit=TimeUnit.seconds, uid="child:1")
+            >>> child = Timeline(length=15, unit=TimeUnit.seconds, uid="cpt_2")
             >>> parent.add_child(child, offset=0)
             >>> interval = parent.get_interval_stamp(0.0, 10.0)
             >>> interval.duration
             Duration(10.0, seconds)
-            >>> interval.get_interval("child:1")
+            >>> interval.get_interval("cpt_2")
             Interval(start=Coordinate(0.0, seconds), end=Coordinate(10.0, seconds))
         """
         start_stamp = self.get_timestamp_at(
@@ -337,17 +337,17 @@ class TabularExportMixin:
         Examples:
             >>> from timetoalign.timelines import Timeline
             >>> parent = Timeline(length=20, unit=TimeUnit.seconds, uid="timeline:1")
-            >>> child = Timeline(length=10, unit=TimeUnit.seconds, uid="clt1")
+            >>> child = Timeline(length=10, unit=TimeUnit.seconds, uid="clt_1")
             >>> parent.add_child(child, offset=5)
             >>> parent.add_events([{"event_type": "Note", "instant": 5.0}])
             >>> child.add_events(
-            ...     [{"id": "clt1:note:000001", "event_type": "Note", "start": 0.0, "end": 2.5}]
+            ...     [{"id": "clt_1:note:000001", "event_type": "Note", "start": 0.0, "end": 2.5}]
             ... )
             >>> ts = parent.get_timestamp_for("note:000001")
             >>> ts.axis  # For instant events
             IdCoordinate(5.0, seconds, 'timeline:1')
 
-            >>> ts = parent.get_timestamp_for("clt1:note:000001")
+            >>> ts = parent.get_timestamp_for("clt_1:note:000001")
             >>> ts.start.axis  # For interval events
             IdCoordinate(5.0, seconds, 'timeline:1')
             >>> ts.end.axis
@@ -413,12 +413,12 @@ class TabularExportMixin:
         Examples:
             >>> from timetoalign.core import TimeUnit
             >>> from timetoalign.timelines import Timeline
-            >>> timeline = Timeline(length=60, unit=TimeUnit.seconds, uid="tl:1")
+            >>> timeline = Timeline(length=60, unit=TimeUnit.seconds, uid="cpt_1")
             >>> timeline.add_events(
             ...     [{"id": "beat:1", "instant": 0.0}, {"id": "beat:2", "instant": 55.0}]
             ... )
             >>> stamps = timeline.get_timestamps_for(["beat:1", "beat:2"])
-            >>> [stamp.get_coordinate_for("tl:1", format="float") for stamp in stamps]
+            >>> [stamp.get_coordinate_for("cpt_1", format="float") for stamp in stamps]
             [0.0, 55.0]
 
         See Also:
@@ -960,27 +960,27 @@ class TabularExportMixin:
         Examples:
             >>> from timetoalign.core import IdCoordinate, TimeUnit
             >>> from timetoalign.timelines import Timeline
-            >>> parent = Timeline(length=60, unit=TimeUnit.seconds, uid="tl:1")
-            >>> child = Timeline(length=10, unit=TimeUnit.seconds, uid="child:1")
+            >>> parent = Timeline(length=60, unit=TimeUnit.seconds, uid="cpt_1")
+            >>> child = Timeline(length=10, unit=TimeUnit.seconds, uid="cpt_2")
             >>> parent.add_child(child, offset=50)
             >>> parent.add_events([{"id": "beat:1", "instant": 0.0}])
             >>> parent.get_timestamp_table().column_names
-            ['tl:1', 'child:1']
+            ['cpt_1', 'cpt_2']
 
             Every column names the timeline it belongs to; metadata lives in
             the versioned blob:
 
             >>> from timetoalign.core.fields import field_metadata
-            >>> field_metadata(parent.get_timestamp_table().schema.field("tl:1"))["unit"]
+            >>> field_metadata(parent.get_timestamp_table().schema.field("cpt_1"))["unit"]
             'seconds'
 
             A child position is placed on the parent axis automatically:
 
-            >>> coords = [IdCoordinate(v, TimeUnit.seconds, "child:1") for v in (0.0, 5.0)]
+            >>> coords = [IdCoordinate(v, TimeUnit.seconds, "cpt_2") for v in (0.0, 5.0)]
             >>> parent.get_timestamp_table(coords, format="dataframe", units=False)
-               tl:1  child:1
-            0  50.0      0.0
-            1  55.0      5.0
+               cpt_1  cpt_2
+            0   50.0    0.0
+            1   55.0    5.0
         """
         validate_table_format(format)
         reject_dataframe_options(
@@ -1091,11 +1091,11 @@ class TabularExportMixin:
         Examples:
             >>> from timetoalign.core import TimeUnit
             >>> from timetoalign.timelines import Timeline
-            >>> parent = Timeline(length=60, unit=TimeUnit.seconds, uid="tl:1")
-            >>> child = Timeline(length=10, unit=TimeUnit.seconds, uid="child:1")
+            >>> parent = Timeline(length=60, unit=TimeUnit.seconds, uid="cpt_1")
+            >>> child = Timeline(length=10, unit=TimeUnit.seconds, uid="cpt_2")
             >>> parent.add_child(child, offset=50)
             >>> parent.get_boundary_table().column_names
-            ['tl:1', 'child:1']
+            ['cpt_1', 'cpt_2']
 
             Cells are coordinate structs, so read them through the frame lane
             rather than ``to_pandas()`` — the latter hands back one dict per
@@ -1107,10 +1107,10 @@ class TabularExportMixin:
             ...     format="dataframe",
             ...     units=False,
             ... )
-               tl:1  child:1
-            0   0.0      NaN
-            1  50.0      0.0
-            2  60.0     10.0
+               cpt_1  cpt_2
+            0    0.0    NaN
+            1   50.0    0.0
+            2   60.0   10.0
         """
         table = self.get_timestamp_table(
             self._collect_boundary_coordinates(recursion_limit=recursion_limit),
@@ -1164,7 +1164,7 @@ class TabularExportMixin:
             >>> from pathlib import Path
             >>> from timetoalign.core import TimeUnit
             >>> from timetoalign.timelines import Timeline
-            >>> timeline = Timeline(length=60, unit=TimeUnit.seconds, uid="tl:1")
+            >>> timeline = Timeline(length=60, unit=TimeUnit.seconds, uid="cpt_1")
             >>> timeline.add_events(
             ...     [{"id": "beat:1", "instant": 0.0}, {"id": "beat:2", "instant": 55.0}]
             ... )

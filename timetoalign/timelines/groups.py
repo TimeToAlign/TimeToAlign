@@ -43,6 +43,7 @@ from timetoalign.core import (
 )
 from timetoalign.core.enums import NumberType, TimeUnit
 from timetoalign.core.fields import blob_metadata
+from timetoalign.core.ids import mint_id, timeline_id_prefix
 from timetoalign.core.retrieval import (
     CoordinateCollection,
     CoordinateFormat,
@@ -114,10 +115,10 @@ class GroupTimestamp(Stamp):
 
     Examples:
         >>> ts = group.get_timestamp_at_index(0)
-        >>> ts.get_coordinate_for("dgt1:1", format="float")
+        >>> ts.get_coordinate_for("dgt_1:1", format="float")
         0.0
         >>> ts.present_timelines  # Which timelines have values here
-        ['dgt1:1', 'audio:1']
+        ['dgt_1:1', 'audio:1']
 
     See Also:
         TimeStamp: The unified timestamp class from ``timetoalign.core``.
@@ -362,10 +363,10 @@ class TimelineGroup:
         >>> group = TimelineGroup(id="my_group")
 
         >>> # Or create with initial timelines
-        >>> group = TimelineGroup(id="my_group", timelines=[dgt1, audio])
+        >>> group = TimelineGroup(id="my_group", timelines=[dgt_1, audio])
 
         >>> # Add a timeline
-        >>> group.add_timeline(dgt1)
+        >>> group.add_timeline(dgt_1)
 
         >>> # Add with explicit boundaries
         >>> from timetoalign import IdCoordinate, TimeUnit
@@ -377,7 +378,7 @@ class TimelineGroup:
 
         >>> # Convert coordinates via timestamp lookup
         >>> ts = group.get_timestamp_at(75.0, "audio:1")
-        >>> ts.get_coordinate_for("dgt1:1", format="float")  # -> 2437.5
+        >>> ts.get_coordinate_for("dgt_1:1", format="float")  # -> 2437.5
     """
 
     id: str = field(default="")
@@ -471,13 +472,15 @@ class TimelineGroup:
                 raise an error.
 
         Raises:
-            ValueError: If timeline ID already exists in group.
+            ValueError: If the timeline is already a member, or its given ID
+                is held by a member (a minted ID held by a member is minted
+                again instead).
             ValueError: If start/end specification is ambiguous.
             RuntimeError: If group is locked and extension would be required.
 
         Examples:
             >>> # Add to empty group - defines initial extent
-            >>> group.add_timeline(dgt1)
+            >>> group.add_timeline(dgt_1)
 
             >>> # Add to existing group - maps to existing extent
             >>> group.add_timeline(audio)
@@ -498,7 +501,17 @@ class TimelineGroup:
             ... )
         """
         if timeline.id in self._timelines:
-            raise ValueError(f"Timeline '{timeline.id}' already in group '{self.id}'")
+            if not timeline._id_minted or any(
+                member is timeline for member in self._timelines.values()
+            ):
+                raise ValueError(
+                    f"Timeline '{timeline.id}' already in group '{self.id}'"
+                )
+            # A minted id that a member holds is minted again for the newcomer.
+            timeline._set_id(
+                mint_id(timeline_id_prefix(timeline.unit), self._timelines),
+                minted=True,
+            )
 
         # Resolve start and end to timestamp specifications
         start_spec = self._resolve_boundary(start, is_start=True, new_timeline=timeline)
@@ -575,7 +588,7 @@ class TimelineGroup:
             KeyError: If no timeline matches the pattern.
 
         Examples:
-            >>> group.get_timeline("clt1")           # Exact match
+            >>> group.get_timeline("clt_1")           # Exact match
             >>> group.get_timeline("notes")          # Substring match
             >>> group.get_timeline(r"^score:")       # Regex match
         """
@@ -612,7 +625,7 @@ class TimelineGroup:
             KeyError: If no timeline matches the pattern.
 
         Examples:
-            >>> tl = group["clt1"]           # Exact match
+            >>> tl = group["clt_1"]           # Exact match
             >>> tl = group["score"]          # Substring match
         """
         return self.get_timeline(timeline_id)
@@ -646,7 +659,7 @@ class TimelineGroup:
             >>> df = group.get_events().to_dataframe()
 
             >>> # Get events from a specific timeline
-            >>> df = group.get_events(timeline_id="clt1").to_dataframe()
+            >>> df = group.get_events(timeline_id="clt_1").to_dataframe()
 
             >>> # Get events with filters
             >>> df = group.get_events(
@@ -798,14 +811,14 @@ class TimelineGroup:
             ...     ContinuousPhysicalTimeline,
             ...     DiscreteGraphicalTimeline,
             ... )
-            >>> dgt1 = DiscreteGraphicalTimeline(length=4875, unit="pixels", uid="dgt1:1")
+            >>> dgt_1 = DiscreteGraphicalTimeline(length=4875, unit="pixels", uid="dgt_1:1")
             >>> audio = ContinuousPhysicalTimeline(length=150.0, unit="seconds", uid="audio:1")
-            >>> group = TimelineGroup(id="my_group", timelines=[dgt1, audio])
+            >>> group = TimelineGroup(id="my_group", timelines=[dgt_1, audio])
 
             >>> ts = group.get_timestamp_at(75.0, "audio:1")
             >>> ts.axis
             IdCoordinate(75.0, seconds, 'audio:1')
-            >>> ts.get_coordinate_for("dgt1:1", format="float")
+            >>> ts.get_coordinate_for("dgt_1:1", format="float")
             2438.0
             >>> ts.get_unit(TimeUnit.seconds)  # C-Map conversion
             IdCoordinate(75.0, seconds, 'audio:1')
@@ -973,11 +986,11 @@ class TimelineGroup:
             ...     ContinuousPhysicalTimeline,
             ...     DiscreteGraphicalTimeline,
             ... )
-            >>> pixels = DiscreteGraphicalTimeline(length=4000, unit="pixels", uid="dgt1")
-            >>> audio = ContinuousPhysicalTimeline(length=10.0, unit="seconds", uid="cpt1")
+            >>> pixels = DiscreteGraphicalTimeline(length=4000, unit="pixels", uid="dgt_1")
+            >>> audio = ContinuousPhysicalTimeline(length=10.0, unit="seconds", uid="cpt_1")
             >>> group = TimelineGroup(id="pair", timelines=[pixels, audio])
-            >>> stamps = group.get_timestamps_at([0.0, 2.5], "cpt1")
-            >>> [stamp.get_coordinate_for("dgt1", format="int") for stamp in stamps]
+            >>> stamps = group.get_timestamps_at([0.0, 2.5], "cpt_1")
+            >>> [stamp.get_coordinate_for("dgt_1", format="int") for stamp in stamps]
             [0, 1000]
 
         See Also:
@@ -1047,9 +1060,9 @@ class TimelineGroup:
             stored row.** Every queried lane is exact, so pass the positions
             you want through ``at=``::
 
-                group.get_timestamp_table([Fraction(5, 3)], "clt1")  # 5/3
-                group.get_timestamp_at(Fraction(5, 3), "clt1")       # 5/3
-                group.get_coordinate_at(Fraction(5, 3), "clt1")      # 5/3
+                group.get_timestamp_table([Fraction(5, 3)], "clt_1")  # 5/3
+                group.get_timestamp_at(Fraction(5, 3), "clt_1")       # 5/3
+                group.get_coordinate_at(Fraction(5, 3), "clt_1")      # 5/3
 
             against the stored-row reading::
 
@@ -1071,13 +1084,13 @@ class TimelineGroup:
             ...     ContinuousPhysicalTimeline,
             ...     DiscreteGraphicalTimeline,
             ... )
-            >>> pixels = DiscreteGraphicalTimeline(length=4000, unit="pixels", uid="dgt1")
-            >>> audio = ContinuousPhysicalTimeline(length=10.0, unit="seconds", uid="cpt1")
+            >>> pixels = DiscreteGraphicalTimeline(length=4000, unit="pixels", uid="dgt_1")
+            >>> audio = ContinuousPhysicalTimeline(length=10.0, unit="seconds", uid="cpt_1")
             >>> group = TimelineGroup(id="pair", timelines=[pixels, audio])
             >>> group.get_timestamp_table().column_names
-            ['dgt1', 'cpt1']
-            >>> group.get_timestamp_table([0.0, 2.5], "cpt1", format="dataframe")
-               dgt1 (pixels)  cpt1 (seconds)
+            ['dgt_1', 'cpt_1']
+            >>> group.get_timestamp_table([0.0, 2.5], "cpt_1", format="dataframe")
+               dgt_1 (pixels)  cpt_1 (seconds)
             0              0             0.0
             1           1000             2.5
         """
@@ -2624,9 +2637,9 @@ class TimelineGroup:
             >>> controller = loader.create_flow_controller()
             >>> flow = controller.compute_flow(FlowMode.default)
             >>> score_group = TimelineGroup(
-            ...     id="score", timelines=[clt1, dgt1, openscore]
+            ...     id="score", timelines=[clt_1, dgt_1, openscore]
             ... )
-            >>> unfolded = score_group.apply_flow(flow, controller, "clt1")
+            >>> unfolded = score_group.apply_flow(flow, controller, "clt_1")
         """
         from timetoalign.timelines.flow import FlowMap, compute_qb_sections
 
@@ -2729,7 +2742,7 @@ class TimelineGroup:
             >>> print(group.diagram())
             TimelineGroup[my_group] (2 timelines, 2 timestamps)
             ┌────────────────────────────────────────────────────────────┐
-            │ DiscreteGraphicalTimeline[dgt1:1] (11 events, 5 children)  │
+            │ DiscreteGraphicalTimeline[dgt_1:1] (11 events, 5 children)  │
             │ 0 ∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶ 4835 pixels    │
             │   ├─ system_1     0   ∶∶∶∶∶∶∶                    967       │
             │   └─ ...                                                   │

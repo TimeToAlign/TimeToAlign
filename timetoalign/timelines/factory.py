@@ -14,7 +14,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
-from timetoalign.core import Domain, NumberType, TimelineIdGenerator, TimeUnit
+from timetoalign.core import Domain, NumberType, TimeUnit
+from timetoalign.core.ids import mint_id, timeline_id_prefix
 from timetoalign.storage import EventData, EventStore, SingleStore
 from timetoalign.storage.events import (
     _register_timeline_factory as _register_data_factory,
@@ -29,13 +30,22 @@ if TYPE_CHECKING:
 module_logger = logging.getLogger(__name__)
 
 
-def _mint_timeline_id(owner: object, timeline_class: type["Timeline"]) -> str:
-    """Mint the next type-based timeline ID scoped to a data/store owner."""
-    generator = getattr(owner, "_timeline_id_generator", None)
-    if generator is None:
-        generator = TimelineIdGenerator()
-        setattr(owner, "_timeline_id_generator", generator)
-    return generator.next_id(timeline_class)
+def _mint_timeline_id(owner: object, unit: TimeUnit, *, role: str | None = None) -> str:
+    """Mint a timeline id unique among those minted for *owner* before.
+
+    The id is ``{prefix}_{N}`` with the unit's timeline prefix, led by
+    ``{role}:`` when a role is given (``spine:dlt_1``, then ``los:dlt_2``):
+    the number counts every timeline of the prefix, whatever its role.
+    *owner* is the data, store or loader whose successive timelines must not
+    share an id.
+    """
+    taken: set[str] | None = getattr(owner, "_minted_timeline_ids", None)
+    if taken is None:
+        taken = set()
+        setattr(owner, "_minted_timeline_ids", taken)
+    timeline_id = mint_id(timeline_id_prefix(unit), taken)
+    taken.add(timeline_id)
+    return timeline_id if role is None else f"{role}:{timeline_id}"
 
 
 def create_timeline_from_event_data(
@@ -58,7 +68,7 @@ def create_timeline_from_event_data(
         data.unit, data.number_type
     )
     if uid is None:
-        uid = _mint_timeline_id(data, timeline_class)
+        uid = _mint_timeline_id(data, data.unit)
     coord_range = source.coordinate_range()
     length = coord_range[1] if coord_range else 0
     timeline = timeline_class(
@@ -307,7 +317,7 @@ def create_timeline_from_bundle(
         first_data.unit, first_data.number_type
     )
     if uid is None:
-        uid = _mint_timeline_id(store, timeline_class)
+        uid = _mint_timeline_id(store, first_data.unit)
 
     # Handle group_by: create children from unique field values
     if group_by is not None:

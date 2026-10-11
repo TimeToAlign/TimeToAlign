@@ -47,7 +47,7 @@ from timetoalign.timelines import (
     TempoMap,
     Timeline,
 )
-from timetoalign.timelines.flowcontrol import Break, Jump
+from timetoalign.timelines.flowcontrol import Break, Jump, Marker
 
 
 def _structure_bearing_timeline() -> Timeline:
@@ -92,7 +92,9 @@ def _structure_bearing_timeline() -> Timeline:
             ),
         )
     )
-    timeline.create_region("opening", Fraction(1, 3), Fraction(4, 3), meta={"n": 1})
+    timeline.create_region(
+        Fraction(1, 3), Fraction(4, 3), id="opening", name="opening", meta={"n": 1}
+    )
     timeline.flow_control.add_break(
         Break(
             Coordinate(Fraction(4, 3), TimeUnit.quarters),
@@ -112,7 +114,7 @@ def _structure_bearing_timeline() -> Timeline:
         )
     )
     timeline.flow_control.add_marker(
-        "segno", Coordinate(Fraction(1, 3), TimeUnit.quarters)
+        Marker(Coordinate(Fraction(1, 3), TimeUnit.quarters), name="segno")
     )
     timeline.add_child(
         ContinuousLogicalTimeline(length=Fraction(4), uid="whole"), offset=0
@@ -164,16 +166,9 @@ class TestTimelineConstruction:
         assert tl.id == "my_custom_id"
 
     def test_timeline_auto_generated_id(self):
-        """Timeline generates unique ID if none provided."""
-        tl1 = Timeline()
-        tl2 = Timeline()
-        assert tl1.id != tl2.id
-        assert tl1.id.startswith("tl:")
-
-    def test_timeline_with_id_prefix(self):
-        """Timeline uses custom id_prefix for auto-generation."""
-        tl = Timeline(id_prefix="score")
-        assert tl.id.startswith("score:")
+        """A timeline without a given id mints its unit's prefix, every time."""
+        assert Timeline().id == "cpt_1"
+        assert Timeline().id == "cpt_1"
 
     def test_timeline_locked_on_creation(self):
         """Timeline can be created in locked state."""
@@ -687,7 +682,7 @@ class TestSerialization:
         assert sliced.flow_control.to_dict() == {
             "breaks": [],
             "jumps": [],
-            "markers": {},
+            "markers": [],
         }
 
     def test_segment_line_finalization_preserves_restored_structure(self) -> None:
@@ -751,7 +746,7 @@ class TestMagicMethods:
     def test_contains_region_by_name(self):
         """__contains__ checks regions by string name."""
         tl = Timeline(length=100.0)
-        tl.add_region("Chorus", start=30, end=60)
+        tl.create_region(30, 60, id="Chorus", name="Chorus")
 
         assert "Chorus" in tl
         assert "Bridge" not in tl
@@ -761,7 +756,7 @@ class TestMagicMethods:
         from timetoalign.timelines import Region
 
         tl = Timeline(length=100.0)
-        tl.add_region("Chorus", start=30, end=60)
+        tl.create_region(30, 60, id="Chorus", name="Chorus")
 
         region = tl.get_region("Chorus")
         assert region in tl
@@ -776,7 +771,7 @@ class TestMagicMethods:
     def test_contains_checks_regions_and_children(self):
         """__contains__ with string checks both regions and children."""
         tl = Timeline(length=100.0)
-        tl.add_region("Chorus", start=30, end=60)
+        tl.create_region(30, 60, id="Chorus", name="Chorus")
         child = Timeline(length=5.0, uid="my_child")
         tl.add_child(child, offset=0)
 

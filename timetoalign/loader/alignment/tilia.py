@@ -50,6 +50,7 @@ from timetoalign.core import TimeUnit, resolve_id
 from timetoalign.loader.format.json import JsonLoader, _normalise_array
 from timetoalign.storage.events import EventData
 from timetoalign.storage.store import DictStore
+from timetoalign.timelines.factory import _mint_timeline_id
 from timetoalign.timelines.types import ContinuousPhysicalTimeline
 
 if TYPE_CHECKING:
@@ -534,7 +535,7 @@ class TiliaJsonLoader(JsonLoader):
     def timeline_ids(self) -> list[str]:
         """Type-based identifiers for all parsed timelines.
 
-        IDs are ``cpt1``, ``cpt2``, ... in source order. Source IDs and
+        IDs are ``cpt_1``, ``cpt_2``, ... in source order. Source IDs and
         titles remain accepted by :meth:`create_timeline`.
         """
         return [spec["id"] for spec in self._timeline_specs]
@@ -603,6 +604,7 @@ class TiliaJsonLoader(JsonLoader):
 
         self._timeline_specs = []
         self._timelines_cache = {}
+        self._minted_timeline_ids: set[str] = set()
 
         for idx, tl_obj in enumerate(timelines_array):
             if not isinstance(tl_obj, dict):
@@ -624,7 +626,7 @@ class TiliaJsonLoader(JsonLoader):
 
             # Use tilia_id if available (from v2 format conversion)
             source_id = tl_obj.get("_tilia_id", f"{kind}_{idx}")
-            tl_id = f"cpt{idx + 1}"
+            tl_id = _mint_timeline_id(self, TimeUnit.seconds)
             timeline_name = name or source_id
 
             # Normalise components into a pa.Table
@@ -671,7 +673,7 @@ class TiliaJsonLoader(JsonLoader):
         """Create a single ``ContinuousPhysicalTimeline`` by uid.
 
         The *uid* may be a type-based ID from ``timeline_ids`` (for example,
-        ``"cpt4"``), the original TiLiA source ID/title, or an integer index.
+        ``"cpt_4"``), the original TiLiA source ID/title, or an integer index.
 
         Args:
             uid: Timeline identifier or integer index.
@@ -784,6 +786,7 @@ class TiliaJsonLoader(JsonLoader):
         """Clear all loaded data, including timeline specs and cache."""
         super().clear()
         self._timeline_specs = []
+        self._minted_timeline_ids = set()
         self._timelines_cache = {}
         self._media_length = 0.0
         # Re-create a fresh TiliaDictStore

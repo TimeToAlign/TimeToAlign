@@ -16,7 +16,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from ..core.enums import NumberType, TimeUnit
-from ..core.ids import IdGenerator
+from ..core.ids import mint_id, validate_id
 from ..core.time import Coordinate, CoordinateValue, express_as
 
 if TYPE_CHECKING:
@@ -29,16 +29,6 @@ T = TypeVar("T")
 
 # Input types that maps can accept
 MapInput = Union[CoordinateValue, Coordinate, NDArray[np.floating[Any]]]
-
-# Module-level ID generator for maps
-_map_id_generator = IdGenerator(scope="map")
-
-
-def _reset_map_ids() -> None:
-    """Reset the module-level ID generator. For testing only."""
-    global _map_id_generator
-    _map_id_generator = IdGenerator(scope="map")
-
 
 # region ConversionMap
 
@@ -73,6 +63,10 @@ class ConversionMap(ABC, Generic[T]):
         >>> inv(10.0)
         5.0
     """
+
+    # Prefix of a minted id (``cmap_1``); subclasses inherit their nearest
+    # ancestor's.
+    _id_prefix: ClassVar[str] = "cmap"
 
     # Class-level attributes that subclasses may override
     _default_source_unit: TimeUnit | None = None
@@ -113,16 +107,15 @@ class ConversionMap(ABC, Generic[T]):
         Args:
             source_unit: The unit of input coordinates. Defaults to class default.
             target_unit: The unit of output coordinates. Defaults to class default.
-            uid: Optional explicit ID. If None, auto-generated.
+            uid: Optional explicit ID, kept verbatim. If None, an id
+                ``{prefix}_1`` is minted, which a timeline re-mints should it
+                collide in the timeline's manifest.
             name: Human-readable name for this map. Used as field header in
                 timestamp tables. Defaults to "source_to_target" if units are
                 provided, otherwise uses the map's ID.
         """
-        # Generate or use provided ID
-        if uid is not None:
-            self._id = uid
-        else:
-            self._id = _map_id_generator.create(type_hint=self.__class__.__name__)
+        self._id_minted = uid is None
+        self._id = mint_id(self._id_prefix, ()) if uid is None else validate_id(uid)
 
         # Set units
         if source_unit is not None:

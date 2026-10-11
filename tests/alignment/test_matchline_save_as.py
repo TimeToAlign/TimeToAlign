@@ -583,8 +583,8 @@ class TestRoundTripHow03Notebook:
             match_columns=["pitch", "staff"],
             source_coord_column="start",
             target_coord_column="quarterbeats_playthrough",
-            source_timeline_id="cpt1",
-            target_timeline_id="clt1",
+            source_timeline_id="cpt_1",
+            target_timeline_id="clt_1",
             source_unit=TimeUnit.seconds,
             target_unit=TimeUnit.quarters,
         )
@@ -592,7 +592,7 @@ class TestRoundTripHow03Notebook:
         # Build MatchLine
         score_to_perf = MatchLine.from_claims(
             match_result.match_claims,
-            source_timeline_id="clt1",
+            source_timeline_id="clt_1",
         )
 
         # Step 2: Build context and export

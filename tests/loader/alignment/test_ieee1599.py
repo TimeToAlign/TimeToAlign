@@ -129,14 +129,14 @@ class TestSpineAccumulation:
 
     def test_animals_deltas_accumulate(self, ieee1599_loader) -> None:
         """Eight deltas of 0, 1, 1, ... become coordinates 0 ... 7."""
-        spine = ieee1599_loader("animals").create_timeline("spine:dlt1")
+        spine = ieee1599_loader("animals").create_timeline("spine:dlt_1")
 
         assert spine.n_events == 8
         assert _coordinates(spine) == [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]
 
     def test_animals_source_ids_are_verbatim(self, ieee1599_loader) -> None:
         """Semantic spine ids survive untouched — ``event_ref`` targets them."""
-        spine = ieee1599_loader("animals").create_timeline("spine:dlt1")
+        spine = ieee1599_loader("animals").create_timeline("spine:dlt_1")
 
         assert spine.events.table.column("id").to_pylist() == [
             "event_cow",
@@ -151,7 +151,7 @@ class TestSpineAccumulation:
 
     def test_khomus_first_ten_coordinates(self, ieee1599_loader) -> None:
         """Deltas 0,0,0,0,1024,1024,2048,1024,2048,2048 accumulate as expected."""
-        spine = ieee1599_loader("khomus").create_timeline("spine:dlt1")
+        spine = ieee1599_loader("khomus").create_timeline("spine:dlt_1")
 
         assert _coordinates(spine)[:10] == [
             0.0,
@@ -170,7 +170,7 @@ class TestSpineAccumulation:
         self, ieee1599_loader
     ) -> None:
         """Nine leading ``timing="0"`` events all sit at coordinate 0."""
-        spine = ieee1599_loader("gymnopedie").create_timeline("spine:dlt1")
+        spine = ieee1599_loader("gymnopedie").create_timeline("spine:dlt_1")
 
         assert _coordinates(spine)[:10] == [0.0] * 9 + [1024.0]
         assert spine.events.table.column("id").to_pylist()[:7] == [
@@ -200,7 +200,7 @@ class TestSpineAccumulation:
         length: float,
     ) -> None:
         """Distinct coordinates are fewer than events; length is the delta sum."""
-        spine = ieee1599_loader(specimen).create_timeline("spine:dlt1")
+        spine = ieee1599_loader(specimen).create_timeline("spine:dlt_1")
 
         assert spine.n_events == n_events
         assert len(set(_coordinates(spine))) == n_distinct
@@ -210,7 +210,7 @@ class TestSpineAccumulation:
         self, ieee1599_loader
     ) -> None:
         """``hpos`` is one cumulative int field; the raw deltas are dropped."""
-        spine = ieee1599_loader("khomus").create_timeline("spine:dlt1")
+        spine = ieee1599_loader("khomus").create_timeline("spine:dlt_1")
         columns = spine.events.table.schema.names
 
         assert "hpos" in columns
@@ -226,7 +226,7 @@ class TestSpineAccumulation:
 
     def test_spine_events_stay_interval_free(self, ieee1599_loader) -> None:
         """Spine events are instants: no ``end``, no ``duration``."""
-        table = ieee1599_loader("animals").create_timeline("spine:dlt1").events.table
+        table = ieee1599_loader("animals").create_timeline("spine:dlt_1").events.table
 
         assert table.column("temporal_type").to_pylist() == ["instant"] * 8
         assert table.column("end").null_count == 8
@@ -245,33 +245,33 @@ class TestTimelineIdentity:
     def test_gymnopedie_uids(self, ieee1599_loader) -> None:
         """Roles fold accents and collapse runs outside ``[a-z0-9_]``."""
         assert ieee1599_loader("gymnopedie").timeline_uids == [
-            "spine:dlt1",
-            "los:dlt2",
-            "eng_montreal_les_editions_outremontaises_2006:dgt1",
-            "eng_transcription_2012:dgt2",
-            "satie_gymnopedie1_coleman:cpt1",
-            "satie_gymnopedie1_pfaul:cpt2",
+            "spine:dlt_1",
+            "los:dlt_2",
+            "eng_montreal_les_editions_outremontaises_2006:dgt_1",
+            "eng_transcription_2012:dgt_2",
+            "satie_gymnopedie1_coleman:cpt_1",
+            "satie_gymnopedie1_pfaul:cpt_2",
         ]
 
     def test_animals_uids(self, ieee1599_loader) -> None:
         """Three editions and two tracks, numbered per timeline type."""
         assert ieee1599_loader("animals").timeline_uids == [
-            "spine:dlt1",
-            "los:dlt2",
-            "farm_picture:dgt1",
-            "coloring_page:dgt2",
-            "animal_shapes:dgt3",
-            "animals_eng:cpt1",
-            "animals_ita:cpt2",
+            "spine:dlt_1",
+            "los:dlt_2",
+            "farm_picture:dgt_1",
+            "coloring_page:dgt_2",
+            "animal_shapes:dgt_3",
+            "animals_eng:cpt_1",
+            "animals_ita:cpt_2",
         ]
 
     def test_timeline_types_and_units(self, ieee1599_loader) -> None:
         """Each layer gets the timeline type its coordinates call for."""
         loader = ieee1599_loader("animals")
-        spine = loader.create_timeline("spine:dlt1")
-        los = loader.create_timeline("los:dlt2")
-        edition = loader.create_timeline("farm_picture:dgt1")
-        track = loader.create_timeline("animals_eng:cpt1")
+        spine = loader.create_timeline("spine:dlt_1")
+        los = loader.create_timeline("los:dlt_2")
+        edition = loader.create_timeline("farm_picture:dgt_1")
+        track = loader.create_timeline("animals_eng:cpt_1")
 
         _, page = edition.get_segment_by_index(0)
 
@@ -290,7 +290,7 @@ class TestTimelineIdentity:
         self, ieee1599_loader
     ) -> None:
         """Discrete coordinates round while fractional source values remain."""
-        edition = ieee1599_loader("animals").create_timeline("farm_picture:dgt1")
+        edition = ieee1599_loader("animals").create_timeline("farm_picture:dgt_1")
         cow = _rows(_graphical_events(edition), event_ref="event_cow")[0]
 
         assert edition.unit == TimeUnit.pixels
@@ -306,7 +306,7 @@ class TestTimelineIdentity:
         self, ieee1599_loader
     ) -> None:
         """The document says ``pixels``; that wording is kept per page."""
-        edition = ieee1599_loader("animals").create_timeline("farm_picture:dgt1")
+        edition = ieee1599_loader("animals").create_timeline("farm_picture:dgt_1")
 
         assert [page["measurement_unit"] for page in edition.meta["pages"]] == [
             "pixels"
@@ -365,7 +365,7 @@ class TestLosLayer:
 
     def test_gymnopedie_first_note(self, ieee1599_loader) -> None:
         """A chord's notehead lands at the VTU of the spine event it names."""
-        los = ieee1599_loader("gymnopedie").create_timeline("los:dlt2")
+        los = ieee1599_loader("gymnopedie").create_timeline("los:dlt_2")
         note = _rows(
             los.events.table, event_ref="part_1_voice0_measure5_ev1", event_type="Note"
         )
@@ -399,7 +399,7 @@ class TestLosLayer:
 
     def test_los_events_stay_interval_free(self, ieee1599_loader) -> None:
         """A notated duration is not a tick length: LOS events are instants."""
-        table = ieee1599_loader("khomus").create_timeline("los:dlt2").events.table
+        table = ieee1599_loader("khomus").create_timeline("los:dlt_2").events.table
 
         assert set(table.column("temporal_type").to_pylist()) == {"instant"}
         assert table.column("end").null_count == table.num_rows
@@ -464,16 +464,16 @@ class TestNotationalLayer:
         [
             (
                 "gymnopedie",
-                "eng_montreal_les_editions_outremontaises_2006:dgt1",
+                "eng_montreal_les_editions_outremontaises_2006:dgt_1",
                 382,
                 7686.0,
             ),
-            ("gymnopedie", "eng_transcription_2012:dgt2", 382, 7356.0),
-            ("animals", "farm_picture:dgt1", 8, 2807.0),
-            ("animals", "coloring_page:dgt2", 6, 968.0),
-            ("animals", "animal_shapes:dgt3", 13, 991.0),
-            ("khomus", "original_score:dgt1", 39, 7418.0),
-            ("khomus", "finale_transcription:dgt2", 39, 16926.0),
+            ("gymnopedie", "eng_transcription_2012:dgt_2", 382, 7356.0),
+            ("animals", "farm_picture:dgt_1", 8, 2807.0),
+            ("animals", "coloring_page:dgt_2", 6, 968.0),
+            ("animals", "animal_shapes:dgt_3", 13, 991.0),
+            ("khomus", "original_score:dgt_1", 39, 7418.0),
+            ("khomus", "finale_transcription:dgt_2", 39, 16926.0),
         ],
     )
     def test_edition_shape(
@@ -492,7 +492,7 @@ class TestNotationalLayer:
 
     def test_box_becomes_an_interval_event(self, ieee1599_loader) -> None:
         """The raw integer box is one nested struct, not flat box columns."""
-        edition = ieee1599_loader("animals").create_timeline("farm_picture:dgt1")
+        edition = ieee1599_loader("animals").create_timeline("farm_picture:dgt_1")
         events = _graphical_events(edition)
         cow = _rows(events, event_ref="event_cow")[0]
 
@@ -507,7 +507,7 @@ class TestNotationalLayer:
     def test_integral_boxes_omit_the_source_bbox(self, ieee1599_loader) -> None:
         """Verbatim boxes are stored only when rounding would lose precision."""
         edition = ieee1599_loader("gymnopedie").create_timeline(
-            "eng_montreal_les_editions_outremontaises_2006:dgt1"
+            "eng_montreal_les_editions_outremontaises_2006:dgt_1"
         )
 
         assert "source_bbox" not in _graphical_events(edition).column_names
@@ -516,7 +516,7 @@ class TestNotationalLayer:
         """Four pages per gymnopédie edition, recoverable per box."""
         loader = ieee1599_loader("gymnopedie")
         edition = loader.create_timeline(
-            "eng_montreal_les_editions_outremontaises_2006:dgt1"
+            "eng_montreal_les_editions_outremontaises_2006:dgt_1"
         )
         pages = edition.meta["pages"]
 
@@ -553,12 +553,12 @@ class TestNotationalLayer:
     def test_page_children_name_their_own_image(self, ieee1599_loader) -> None:
         """Each page child is one ``<graphic_instance>``: one file, one origin."""
         edition = ieee1599_loader("gymnopedie").create_timeline(
-            "eng_montreal_les_editions_outremontaises_2006:dgt1"
+            "eng_montreal_les_editions_outremontaises_2006:dgt_1"
         )
         pages = [page for _, _, page in edition.iter_segments()]
 
         assert [page.id for page in pages] == [
-            f"eng_montreal_les_editions_outremontaises_2006:dgt1_page{index}"
+            f"eng_montreal_les_editions_outremontaises_2006:dgt_1_page{index}"
             for index in (1, 2, 3, 4)
         ]
         assert [page.meta["page"]["position_in_group"] for page in pages] == [
@@ -573,7 +573,7 @@ class TestNotationalLayer:
         ]
         assert [page.length.value for page in pages] == [1694, 2152, 2105, 1735]
         assert [accolade.id for _, _, accolade in pages[0].iter_segments()] == [
-            f"eng_montreal_les_editions_outremontaises_2006:dgt1_page1_accolade{index}"
+            f"eng_montreal_les_editions_outremontaises_2006:dgt_1_page1_accolade{index}"
             for index in (1, 2, 3, 4)
         ]
 
@@ -582,7 +582,7 @@ class TestNotationalLayer:
     ) -> None:
         """The first page's first >half-span reset ends the first accolade."""
         edition = ieee1599_loader("gymnopedie").create_timeline(
-            "eng_montreal_les_editions_outremontaises_2006:dgt1"
+            "eng_montreal_les_editions_outremontaises_2006:dgt_1"
         )
         _, page = edition.get_segment_by_index(0)
         _, first = page.get_segment_by_index(0)
@@ -599,7 +599,7 @@ class TestNotationalLayer:
     def test_page_file_map_resolves_each_gymnopedie_page(self, ieee1599_loader) -> None:
         """Every page's first box maps to its verbatim image file name."""
         edition = ieee1599_loader("gymnopedie").create_timeline(
-            "eng_montreal_les_editions_outremontaises_2006:dgt1"
+            "eng_montreal_les_editions_outremontaises_2006:dgt_1"
         )
         page_starts = [
             offset.value + page.get_events().table.to_pylist()[0]["start"]["value"]
@@ -653,12 +653,12 @@ class TestAudioLayer:
     @pytest.mark.parametrize(
         "specimen, uid, n_events, length",
         [
-            ("gymnopedie", "satie_gymnopedie1_coleman:cpt1", 382, 188.77),
-            ("gymnopedie", "satie_gymnopedie1_pfaul:cpt2", 382, 192.22),
-            ("animals", "animals_eng:cpt1", 8, 39.0),
-            ("animals", "animals_ita:cpt2", 8, 37.5),
-            ("khomus", "khomus_audio:cpt1", 41, 46.98),
-            ("khomus", "khomus_video:cpt2", 41, 45.88),
+            ("gymnopedie", "satie_gymnopedie1_coleman:cpt_1", 382, 188.77),
+            ("gymnopedie", "satie_gymnopedie1_pfaul:cpt_2", 382, 192.22),
+            ("animals", "animals_eng:cpt_1", 8, 39.0),
+            ("animals", "animals_ita:cpt_2", 8, 37.5),
+            ("khomus", "khomus_audio:cpt_1", 41, 46.98),
+            ("khomus", "khomus_video:cpt_2", 41, 45.88),
         ],
     )
     def test_track_shape(
@@ -677,7 +677,7 @@ class TestAudioLayer:
 
     def test_track_event_is_an_instant(self, ieee1599_loader) -> None:
         """Start times are seconds; the file name travels with the event."""
-        track = ieee1599_loader("animals").create_timeline("animals_eng:cpt1")
+        track = ieee1599_loader("animals").create_timeline("animals_eng:cpt_1")
         pig = _rows(track.events.table, event_ref="event_pig")[0]
 
         assert pig["temporal_type"] == "instant"
@@ -687,7 +687,7 @@ class TestAudioLayer:
     def test_track_general_is_recorded(self, ieee1599_loader) -> None:
         """``<track_general>`` reaches the timeline whole and verbatim."""
         track = ieee1599_loader("gymnopedie").create_timeline(
-            "satie_gymnopedie1_coleman:cpt1"
+            "satie_gymnopedie1_coleman:cpt_1"
         )
 
         assert track.meta["performers"] == [{"name": "Chase Coleman", "type": "piano"}]
@@ -697,7 +697,7 @@ class TestAudioLayer:
 
     def test_track_without_a_general_section(self, ieee1599_loader) -> None:
         """Nothing is invented for a track that describes itself no further."""
-        track = ieee1599_loader("khomus").create_timeline("khomus_audio:cpt1")
+        track = ieee1599_loader("khomus").create_timeline("khomus_audio:cpt_1")
 
         assert track.meta["performers"] == [
             {"name": "Audio performance", "type": "khomus"}
@@ -709,7 +709,7 @@ class TestAudioLayer:
         self, ieee1599_loader, ieee1599_dir
     ) -> None:
         """``video_avi`` naming a ``.mp4`` is recorded verbatim, not corrected."""
-        track = ieee1599_loader("khomus").create_timeline("khomus_video:cpt2")
+        track = ieee1599_loader("khomus").create_timeline("khomus_video:cpt_2")
 
         assert track.meta["file_name"] == "audio_files/khomus_video.mp4"
         assert track.meta["file_format"] == "video_avi"
@@ -796,7 +796,7 @@ class TestClaims:
 
         assert claim.start_anchor.coordinate_a.unit == unit
         assert claim.start_anchor.coordinate_b.unit == TimeUnit.ticks
-        assert claim.timeline_b_id == "spine:dlt1"
+        assert claim.timeline_b_id == "spine:dlt_1"
         assert claim.is_synchronous
 
     def test_first_graphic_claim_is_exact(self, ieee1599_loader) -> None:
@@ -805,7 +805,7 @@ class TestClaims:
         claim = loader.get_field(MatchClaim)[_first_claim_index(loader, "notational")]
 
         assert claim.timeline_a_id == (
-            "eng_montreal_les_editions_outremontaises_2006:dgt1"
+            "eng_montreal_les_editions_outremontaises_2006:dgt_1"
         )
         assert claim.start_anchor.coordinate_a.value == 50.0
         assert claim.start_anchor.coordinate_b.value == 0
@@ -847,7 +847,7 @@ class TestCrossSection:
     ) -> None:
         """One row per component, never more than one per spine coordinate."""
         table = ieee1599_bundle(specimen).get_matchstamp_table(from_graph=True)
-        spine_column = IdCoordinateField.from_table(table, "spine:dlt1")
+        spine_column = IdCoordinateField.from_table(table, "spine:dlt_1")
 
         assert table.num_rows == n_rows
         assert all(spine_column[position] is not None for position in range(n_rows))
@@ -855,7 +855,7 @@ class TestCrossSection:
             len({spine_column[position].value for position in range(n_rows)}) == n_rows
         )
         assert n_rows <= n_spine_coordinates
-        spine = ieee1599_loader(specimen).create_timeline("spine:dlt1")
+        spine = ieee1599_loader(specimen).create_timeline("spine:dlt_1")
         assert len(set(_coordinates(spine))) == n_spine_coordinates
 
     def test_every_timeline_participates(
@@ -886,16 +886,16 @@ class TestCrossSection:
             }
             for position in range(table.num_rows)
         ]
-        origin = [row for row in rows if row["spine:dlt1"] == 0.0]
+        origin = [row for row in rows if row["spine:dlt_1"] == 0.0]
 
         assert origin == [
             {
-                "spine:dlt1": 0.0,
-                "los:dlt2": 0.0,
-                "eng_montreal_les_editions_outremontaises_2006:dgt1": 49.0,
-                "eng_transcription_2012:dgt2": 75.0,
-                "satie_gymnopedie1_coleman:cpt1": 2.46,
-                "satie_gymnopedie1_pfaul:cpt2": 0.5,
+                "spine:dlt_1": 0.0,
+                "los:dlt_2": 0.0,
+                "eng_montreal_les_editions_outremontaises_2006:dgt_1": 49.0,
+                "eng_transcription_2012:dgt_2": 75.0,
+                "satie_gymnopedie1_coleman:cpt_1": 2.46,
+                "satie_gymnopedie1_pfaul:cpt_2": 0.5,
             }
         ]
 
@@ -918,38 +918,38 @@ class TestCrossSection:
             }
             for position in range(table.num_rows)
         ]
-        by_spine = {row["spine:dlt1"]: row for row in rows}
+        by_spine = {row["spine:dlt_1"]: row for row in rows}
 
         assert sorted(by_spine) == [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]
         # The cow: depicted twice in "Animal shapes", the collapse keeps the
         # smaller rounded box coordinate (14 rather than 159).
         assert by_spine[0.0] == {
-            "spine:dlt1": 0.0,
-            "los:dlt2": 0.0,
-            "farm_picture:dgt1": 993.0,
-            "coloring_page:dgt2": 234.0,
-            "animal_shapes:dgt3": 14.0,
-            "animals_eng:cpt1": 0.0,
-            "animals_ita:cpt2": 0.0,
+            "spine:dlt_1": 0.0,
+            "los:dlt_2": 0.0,
+            "farm_picture:dgt_1": 993.0,
+            "coloring_page:dgt_2": 234.0,
+            "animal_shapes:dgt_3": 14.0,
+            "animals_eng:cpt_1": 0.0,
+            "animals_ita:cpt_2": 0.0,
         }
         # The dog: absent from "Animal shapes"? No — absent from the colouring
         # page, which does not depict it.
-        assert by_spine[2.0]["coloring_page:dgt2"] is None
-        assert by_spine[2.0]["animal_shapes:dgt3"] == 704.0
+        assert by_spine[2.0]["coloring_page:dgt_2"] is None
+        assert by_spine[2.0]["animal_shapes:dgt_3"] == 704.0
         # The cat: absent from the colouring page too.
-        assert by_spine[5.0]["coloring_page:dgt2"] is None
+        assert by_spine[5.0]["coloring_page:dgt_2"] is None
         # The pig and the sheep are missing from "Animal shapes".
-        assert by_spine[1.0]["animal_shapes:dgt3"] is None
-        assert by_spine[3.0]["animal_shapes:dgt3"] is None
+        assert by_spine[1.0]["animal_shapes:dgt_3"] is None
+        assert by_spine[3.0]["animal_shapes:dgt_3"] is None
         # The duck, last event: both recordings and all three pictures.
         assert by_spine[7.0] == {
-            "spine:dlt1": 7.0,
-            "los:dlt2": 7.0,
-            "farm_picture:dgt1": 2656.0,
-            "coloring_page:dgt2": 387.0,
-            "animal_shapes:dgt3": 22.0,
-            "animals_eng:cpt1": 39.0,
-            "animals_ita:cpt2": 37.5,
+            "spine:dlt_1": 7.0,
+            "los:dlt_2": 7.0,
+            "farm_picture:dgt_1": 2656.0,
+            "coloring_page:dgt_2": 387.0,
+            "animal_shapes:dgt_3": 22.0,
+            "animals_eng:cpt_1": 39.0,
+            "animals_ita:cpt_2": 37.5,
         }
 
 
@@ -999,21 +999,23 @@ class TestLoaderContract:
         """A timeline is built once and handed out again."""
         loader = ieee1599_loader("animals")
 
-        assert loader.create_timeline("los:dlt2") is loader.create_timeline("los:dlt2")
-        assert loader.create_timeline() is loader.create_timeline("spine:dlt1")
+        assert loader.create_timeline("los:dlt_2") is loader.create_timeline(
+            "los:dlt_2"
+        )
+        assert loader.create_timeline() is loader.create_timeline("spine:dlt_1")
 
     def test_create_timeline_rejects_unknown_uid(self, ieee1599_loader) -> None:
         """An unknown uid names the available ones."""
-        with pytest.raises(KeyError, match="spine:dlt1"):
-            ieee1599_loader("animals").create_timeline("nope:cpt9")
+        with pytest.raises(KeyError, match="spine:dlt_1"):
+            ieee1599_loader("animals").create_timeline("nope:cpt_9")
 
     def test_create_timelines_id_pattern(self, ieee1599_loader) -> None:
         """Timelines are filterable by a uid regex, matching and not."""
         loader = ieee1599_loader("animals")
 
         assert [tl.id for tl in loader.create_timelines(":cpt")] == [
-            "animals_eng:cpt1",
-            "animals_ita:cpt2",
+            "animals_eng:cpt_1",
+            "animals_ita:cpt_2",
         ]
         assert loader.create_timelines("no-such-timeline") == []
 
@@ -1036,13 +1038,13 @@ class TestLoaderContract:
         with pytest.raises(ValueError, match="already holds"):
             loader.load_element(ElementTree.fromstring(xml))
         assert loader.timeline_uids == [
-            "spine:dlt1",
-            "los:dlt2",
-            "farm_picture:dgt1",
-            "coloring_page:dgt2",
-            "animal_shapes:dgt3",
-            "animals_eng:cpt1",
-            "animals_ita:cpt2",
+            "spine:dlt_1",
+            "los:dlt_2",
+            "farm_picture:dgt_1",
+            "coloring_page:dgt_2",
+            "animal_shapes:dgt_3",
+            "animals_eng:cpt_1",
+            "animals_ita:cpt_2",
         ]
 
     def test_string_ingest_accepts_a_first_document(self, ieee1599_path) -> None:
@@ -1050,7 +1052,7 @@ class TestLoaderContract:
         xml = ieee1599_path("animals").read_text(encoding="utf-8-sig")
         loader = Ieee1599Loader().load_string(xml)
 
-        assert loader.spine_uid == "spine:dlt1"
+        assert loader.spine_uid == "spine:dlt_1"
         assert len(loader) == 59
 
     def test_empty_curated_layers_have_stable_tables(self) -> None:
@@ -1160,13 +1162,13 @@ class TestLargeSpecimens:
         loader = ieee1599_loader("pazzariello")
         bundle = ieee1599_bundle("pazzariello")
 
-        assert loader.create_timeline("spine:dlt1").n_events == 616
+        assert loader.create_timeline("spine:dlt_1").n_events == 616
         assert loader.timeline_uids == [
-            "spine:dlt1",
-            "los:dlt2",
-            "musescore_transcription:dgt1",
-            "partitura_autografa:dgt2",
-            "recording_01:cpt1",
+            "spine:dlt_1",
+            "los:dlt_2",
+            "musescore_transcription:dgt_1",
+            "partitura_autografa:dgt_2",
+            "recording_01:cpt_1",
         ]
         assert _claims_per_layer(loader) == {
             "los": 1070,
@@ -1213,9 +1215,9 @@ class TestLargeSpecimens:
         loader = ieee1599_loader("serie")
         bundle = ieee1599_bundle("serie")
 
-        assert loader.create_timeline("spine:dlt1").n_events == 3509
-        assert loader.edition_uids == ["serie_in_9_8:dgt1"]
-        assert len(loader.create_timeline("serie_in_9_8:dgt1").meta["pages"]) == 28
+        assert loader.create_timeline("spine:dlt_1").n_events == 3509
+        assert loader.edition_uids == ["serie_in_9_8:dgt_1"]
+        assert len(loader.create_timeline("serie_in_9_8:dgt_1").meta["pages"]) == 28
         assert [loader.create_timeline(uid).n_events for uid in loader.track_uids] == [
             3509,
             3509,
@@ -1234,7 +1236,7 @@ class TestLargeSpecimens:
 
     def test_serie_track_recordings(self, ieee1599_loader) -> None:
         """The only specimen with ``<recordings>`` keeps their attributes."""
-        track = ieee1599_loader("serie").create_timeline("serie_9_8_sito:cpt1")
+        track = ieee1599_loader("serie").create_timeline("serie_9_8_sito:cpt_1")
 
         assert track.meta["recordings"] == [{"date": "1988", "studio_name": "LIM"}]
         assert track.meta["notes"] == (
@@ -1248,11 +1250,11 @@ class TestLargeSpecimens:
         bundle = ieee1599_bundle("bach")
         los = loader.store["los"].table
 
-        assert loader.create_timeline("spine:dlt1").n_events == 1144
+        assert loader.create_timeline("spine:dlt_1").n_events == 1144
         assert loader.edition_uids == [
-            "transcription:dgt1",
-            "breitkopf_und_hartel_1878:dgt2",
-            "leipzig_ca_1750:dgt3",
+            "transcription:dgt_1",
+            "breitkopf_und_hartel_1878:dgt_2",
+            "leipzig_ca_1750:dgt_3",
         ]
         assert los.filter(pc.equal(los.column("tie"), True)).num_rows == 140
         assert _claims_per_layer(loader) == {

@@ -32,9 +32,9 @@ from timetoalign.timelines import (
 
 # region Fixture topology
 
-SCORE = "score:clt1"
-PERF_1 = "perf:cpt1"
-PERF_2 = "perf:cpt2"
+SCORE = "score:clt_1"
+PERF_1 = "perf:cpt_1"
+PERF_2 = "perf:cpt_2"
 
 #: Complete pairwise topology at three aligned instants.  Each instant is one
 #: connected component spanning all three timelines, so ``from_graph=True``
@@ -142,7 +142,7 @@ FILTER_CASES: list[tuple[str, dict, int]] = [
     ("nomatch_only", {"nomatch_only": True}, 0),
     ("include_domains", {"include_domains": {Domain.physical}}, 3),
     ("include_units", {"include_units": {TimeUnit.seconds}}, 3),
-    ("unknown_uid", {"timeline_id": "absent:cpt9"}, 0),
+    ("unknown_uid", {"timeline_id": "absent:cpt_9"}, 0),
 ]
 
 # endregion
@@ -223,7 +223,7 @@ def test_get_claim_fields_empty_on_list_bundle(bundle_list: AlignmentBundle) -> 
 
 def test_get_claim_fields_drops_empty_fields(bundle_field: AlignmentBundle) -> None:
     assert bundle_field.get_claim_fields(nomatch_only=True) == []
-    assert bundle_field.get_claim_fields(timeline_id="absent:cpt9") == []
+    assert bundle_field.get_claim_fields(timeline_id="absent:cpt_9") == []
 
 
 # endregion
@@ -327,7 +327,7 @@ def test_are_commensurable(
         assert bundle.are_commensurable(SCORE, PERF_1) is True
         assert bundle.are_commensurable(SCORE, PERF_2) is True
         assert bundle.are_commensurable(PERF_1, PERF_2) is True
-        assert bundle.are_commensurable(SCORE, "absent:cpt9") is False
+        assert bundle.are_commensurable(SCORE, "absent:cpt_9") is False
 
 
 def test_transfer_round_trip(

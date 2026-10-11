@@ -35,7 +35,7 @@ from timetoalign.timelines import (
 
 def _timeline() -> Timeline:
     """A seconds timeline carrying two named instants."""
-    timeline = Timeline(length=10.0, unit=TimeUnit.seconds, uid="cpt1")
+    timeline = Timeline(length=10.0, unit=TimeUnit.seconds, uid="cpt_1")
     timeline.add_events(
         [
             {"id": "e1", "event_type": "Beat", "instant": 2.0},
@@ -47,8 +47,8 @@ def _timeline() -> Timeline:
 
 def _group() -> TimelineGroup:
     """A two-member group: 4000 pixels spanning 10 seconds."""
-    pixels = DiscreteGraphicalTimeline(length=4000, unit="pixels", uid="dgt1")
-    audio = ContinuousPhysicalTimeline(length=10.0, unit="seconds", uid="cpt1")
+    pixels = DiscreteGraphicalTimeline(length=4000, unit="pixels", uid="dgt_1")
+    audio = ContinuousPhysicalTimeline(length=10.0, unit="seconds", uid="cpt_1")
     audio.add_events([{"id": "e1", "event_type": "Beat", "instant": 2.5}])
     return TimelineGroup(id="pair", timelines=[pixels, audio])
 
@@ -60,20 +60,20 @@ def _ratio_bundle(*, columnar: bool) -> AlignmentBundle:
     columnar ``MatchClaimField`` — because they reach the table by different
     reads and only the columnar one goes through a bulk four-column read.
     """
-    score = ContinuousLogicalTimeline(length=Fraction(10), uid="clt1")
-    performance = ContinuousPhysicalTimeline(length=20.0, unit="seconds", uid="cpt1")
+    score = ContinuousLogicalTimeline(length=Fraction(10), uid="clt_1")
+    performance = ContinuousPhysicalTimeline(length=20.0, unit="seconds", uid="cpt_1")
     bundle = AlignmentBundle(id="ratios")
-    bundle.add_timeline(score, uid="clt1", as_group="score_group")
-    bundle.add_timeline(performance, uid="cpt1", as_group="perf_group")
+    bundle.add_timeline(score, uid="clt_1", as_group="score_group")
+    bundle.add_timeline(performance, uid="cpt_1", as_group="perf_group")
 
     claims = [
         MatchClaim(
-            timeline_a_id="clt1",
-            timeline_b_id="cpt1",
+            timeline_a_id="clt_1",
+            timeline_b_id="cpt_1",
             start_anchor=AlignmentAnchor(
-                timeline_a_id="clt1",
+                timeline_a_id="clt_1",
                 coordinate_a=Coordinate(Fraction(third, 3), TimeUnit.quarters),
-                timeline_b_id="cpt1",
+                timeline_b_id="cpt_1",
                 coordinate_b=Coordinate(float(third), TimeUnit.seconds),
             ),
             is_synchronous=True,
@@ -185,19 +185,19 @@ class TestTimelineGroupDispatcher:
         """A position routes to get_timestamp_at and answers identically."""
         group = _group()
 
-        dispatched = group.get_timestamp(2.5, "cpt1")
-        precise = group.get_timestamp_at(2.5, "cpt1")
+        dispatched = group.get_timestamp(2.5, "cpt_1")
+        precise = group.get_timestamp_at(2.5, "cpt_1")
 
         assert dispatched.coordinates == precise.coordinates
-        assert dispatched.get_coordinate_for("dgt1", format="int") == 1000
+        assert dispatched.get_coordinate_for("dgt_1", format="int") == 1000
 
     def test_coordinate_collection_selects_the_plural_getter(self) -> None:
         """A position collection routes to get_timestamps_at and gives a list."""
-        dispatched = _group().get_timestamp([0.0, 10.0], "cpt1")
+        dispatched = _group().get_timestamp([0.0, 10.0], "cpt_1")
 
         assert isinstance(dispatched, list)
         assert [
-            stamp.get_coordinate_for("dgt1", format="int") for stamp in dispatched
+            stamp.get_coordinate_for("dgt_1", format="int") for stamp in dispatched
         ] == [0, 4000]
 
     def test_string_selects_the_key_getter(self) -> None:
@@ -208,7 +208,7 @@ class TestTimelineGroupDispatcher:
         precise = group.get_timestamp_for("e1")
 
         assert dispatched.coordinates == precise.coordinates
-        assert dispatched.get_coordinate_for("dgt1", format="int") == 1000
+        assert dispatched.get_coordinate_for("dgt_1", format="int") == 1000
 
     def test_key_collection_selects_the_plural_key_getter(self) -> None:
         """A key collection routes to get_timestamps_for and gives a list."""
@@ -216,7 +216,7 @@ class TestTimelineGroupDispatcher:
 
         assert isinstance(dispatched, list)
         assert len(dispatched) == 1
-        assert dispatched[0].get_coordinate_for("cpt1", format="float") == 2.5
+        assert dispatched[0].get_coordinate_for("cpt_1", format="float") == 2.5
 
     def test_a_named_member_re_anchors_an_event_stamp(self) -> None:
         """An event's coordinate is on ITS axis; another member gets a transfer.
@@ -227,26 +227,26 @@ class TestTimelineGroupDispatcher:
         group = _group()
 
         owned = group.get_timestamp_for("e1")
-        re_anchored = group.get_timestamp_for("e1", "dgt1")
+        re_anchored = group.get_timestamp_for("e1", "dgt_1")
 
-        assert owned.source_id == "cpt1"
-        assert re_anchored.source_id == "dgt1"
-        assert re_anchored.get_coordinate_for("dgt1", format="int") == 1000
-        assert re_anchored.get_coordinate_for("cpt1", format="float") == 2.5
+        assert owned.source_id == "cpt_1"
+        assert re_anchored.source_id == "dgt_1"
+        assert re_anchored.get_coordinate_for("dgt_1", format="int") == 1000
+        assert re_anchored.get_coordinate_for("cpt_1", format="float") == 2.5
 
     def test_mixed_collection_is_rejected(self) -> None:
         """No element-by-element semantic dispatch."""
         with pytest.raises(TypeError):
-            _group().get_timestamp(["e1", 2.5], "cpt1")
+            _group().get_timestamp(["e1", 2.5], "cpt_1")
 
     def test_boolean_is_not_a_coordinate(self) -> None:
         """bool subclasses int and is still never a position."""
         with pytest.raises(TypeError):
-            _group().get_timestamp(True, "cpt1")
+            _group().get_timestamp(True, "cpt_1")
 
     def test_empty_collection_gives_an_empty_list(self) -> None:
         """An empty collection is a coordinate collection with no members."""
-        assert _group().get_timestamp([], "cpt1") == []
+        assert _group().get_timestamp([], "cpt_1") == []
 
 
 class TestAlignmentBundleDispatcher:
@@ -356,7 +356,7 @@ class TestDispatcherDoesNotShadow:
         The precise getter matches ``get_coordinate_at`` position for
         position, which is what makes the two lanes readable side by side.
         """
-        timeline = Timeline(length=960, unit=TimeUnit.ticks, uid="dlt1")
+        timeline = Timeline(length=960, unit=TimeUnit.ticks, uid="dlt_1")
         timeline.add_conversion_map(
             ScalarMap(
                 scalar=Fraction(1, 480),
@@ -366,7 +366,7 @@ class TestDispatcherDoesNotShadow:
         )
 
         assert timeline.get_timestamp_at(1, unit=TimeUnit.quarters).axis.value == 480
-        assert timeline.get_timestamp_at(480, "dlt1").axis.value == 480
+        assert timeline.get_timestamp_at(480, "dlt_1").axis.value == 480
         with pytest.raises(KeyError, match="Unknown result timeline ID"):
             timeline.get_timestamp_at(480, "other")
 
@@ -441,24 +441,24 @@ class TestStructCells:
         """Axis and timeline columns carry unit, number type and identity."""
         table = _timeline().get_timestamp_table()
 
-        assert table.column_names == ["cpt1"]
+        assert table.column_names == ["cpt_1"]
         for name in table.column_names:
             field = table.schema.field(name)
             assert str(field.type) == self.STRUCT
             metadata = _metadata(field)
             assert metadata["unit"] == "seconds"
             assert metadata["number_type"] == "float"
-            assert metadata["timeline_id"] == "cpt1"
+            assert metadata["timeline_id"] == "cpt_1"
 
     def test_group_columns_are_coordinate_structs(self) -> None:
         """A group's published columns carry each member's declared type."""
         table = _group().get_timestamp_table()
 
-        pixels = _metadata(table.schema.field("dgt1"))
-        assert str(table.schema.field("dgt1").type) == self.STRUCT
+        pixels = _metadata(table.schema.field("dgt_1"))
+        assert str(table.schema.field("dgt_1").type) == self.STRUCT
         assert pixels["unit"] == "pixels"
         assert pixels["number_type"] == "int"
-        assert pixels["timeline_id"] == "dgt1"
+        assert pixels["timeline_id"] == "dgt_1"
 
     def test_matchstamp_columns_are_coordinate_structs(self) -> None:
         """The bundle table uses the same cell shape as the timeline table."""
@@ -502,15 +502,15 @@ class TestStructCells:
         assert self.DYADIC_OF_FIVE_THIRDS == Fraction(float(Fraction(5, 3)))
         assert self.DYADIC_OF_FIVE_THIRDS != Fraction(5, 3)
 
-        authored = ContinuousLogicalTimeline(length=Fraction(10), uid="clt1")
+        authored = ContinuousLogicalTimeline(length=Fraction(10), uid="clt_1")
         table = authored.get_timestamp_table([Fraction(5, 3)])
         frame = authored.get_timestamp_table([Fraction(5, 3)], format="dataframe")
 
-        cell = table.column("clt1").combine_chunks()
+        cell = table.column("clt_1").combine_chunks()
         assert cell.field("numerator").to_pylist() == [5]
         assert cell.field("denominator").to_pylist() == [3]
-        assert frame["clt1 (quarters)"].tolist() == [Fraction(5, 3)]
-        assert frame["clt1 (quarters)"].tolist() != [self.DYADIC_OF_FIVE_THIRDS]
+        assert frame["clt_1 (quarters)"].tolist() == [Fraction(5, 3)]
+        assert frame["clt_1 (quarters)"].tolist() != [self.DYADIC_OF_FIVE_THIRDS]
 
     def test_authored_ratio_survives_the_event_derived_axis(self) -> None:
         """The default table path collects from events and must stay exact.
@@ -519,7 +519,7 @@ class TestStructCells:
         member on the way to the table threw it away again, so a timeline
         whose stamp getter answered 5/3 had a table cell reading the dyadic.
         """
-        timeline = ContinuousLogicalTimeline(length=Fraction(10), uid="clt1")
+        timeline = ContinuousLogicalTimeline(length=Fraction(10), uid="clt_1")
         timeline.add_events(
             [{"id": "e1", "event_type": "Note", "instant": Fraction(5, 3)}]
         )
@@ -527,11 +527,11 @@ class TestStructCells:
         table = timeline.get_timestamp_table()
         frame = timeline.get_timestamp_table(format="dataframe")
 
-        cell = table.column("clt1").combine_chunks()
+        cell = table.column("clt_1").combine_chunks()
         assert cell.field("numerator").to_pylist() == [5]
         assert cell.field("denominator").to_pylist() == [3]
-        assert frame["clt1 (quarters)"].tolist() == [Fraction(5, 3)]
-        assert frame["clt1 (quarters)"].tolist() != [self.DYADIC_OF_FIVE_THIRDS]
+        assert frame["clt_1 (quarters)"].tolist() == [Fraction(5, 3)]
+        assert frame["clt_1 (quarters)"].tolist() != [self.DYADIC_OF_FIVE_THIRDS]
         # The two lanes of one position agree, which is the point.
         assert timeline.get_timestamp_for("e1").axis.value == Fraction(5, 3)
 
@@ -542,8 +542,8 @@ class TestStructCells:
         event carrying it, so the boundary collector has to stay exact on its
         own account.
         """
-        parent = ContinuousLogicalTimeline(length=Fraction(10), uid="clt1")
-        child = ContinuousLogicalTimeline(length=Fraction(1, 3), uid="clt2")
+        parent = ContinuousLogicalTimeline(length=Fraction(10), uid="clt_1")
+        child = ContinuousLogicalTimeline(length=Fraction(1, 3), uid="clt_2")
         parent.add_child(child, offset=Fraction(5, 3))
 
         frame = parent.get_timestamp_table(
@@ -551,15 +551,15 @@ class TestStructCells:
         )
 
         # child spans [5/3, 2) on the parent axis: 5/3 + 1/3 == 2.
-        assert frame["clt1 (quarters)"].tolist() == [
+        assert frame["clt_1 (quarters)"].tolist() == [
             Fraction(0),
             Fraction(5, 3),
             Fraction(2),
             Fraction(10),
         ]
-        assert self.DYADIC_OF_FIVE_THIRDS not in frame["clt1 (quarters)"].tolist()
-        assert frame["clt2 (quarters)"].tolist()[1] == Fraction(0)
-        assert frame["clt2 (quarters)"].tolist()[2] == Fraction(1, 3)
+        assert self.DYADIC_OF_FIVE_THIRDS not in frame["clt_1 (quarters)"].tolist()
+        assert frame["clt_2 (quarters)"].tolist()[1] == Fraction(0)
+        assert frame["clt_2 (quarters)"].tolist()[2] == Fraction(1, 3)
 
     def test_authored_ratio_survives_the_claim_table(self) -> None:
         """Both claim stores tabulate the ratio their anchors were given.
@@ -575,14 +575,14 @@ class TestStructCells:
             columnar = _ratio_bundle(columnar=True).get_matchstamp_table(
                 from_graph=from_graph, format="dataframe"
             )
-            assert per_claim["clt1 (quarters)"].tolist() == [
+            assert per_claim["clt_1 (quarters)"].tolist() == [
                 Fraction(0),
                 Fraction(5, 3),
                 Fraction(5),
             ]
             assert (
-                columnar["clt1 (quarters)"].tolist()
-                == per_claim["clt1 (quarters)"].tolist()
+                columnar["clt_1 (quarters)"].tolist()
+                == per_claim["clt_1 (quarters)"].tolist()
             )
 
     def test_group_stored_boundary_rows_are_a_known_float_lane(self) -> None:
@@ -599,33 +599,33 @@ class TestStructCells:
         Pinned rather than hidden, so that the day the store becomes typed
         this test fails and says exactly what changed.
         """
-        score = ContinuousLogicalTimeline(length=Fraction(5, 3), uid="clt1")
-        audio = ContinuousPhysicalTimeline(length=20.0, unit="seconds", uid="cpt1")
+        score = ContinuousLogicalTimeline(length=Fraction(5, 3), uid="clt_1")
+        audio = ContinuousPhysicalTimeline(length=20.0, unit="seconds", uid="cpt_1")
         group = TimelineGroup(id="ratio_pair", timelines=[score, audio])
 
         stored = group.get_timestamp_table(format="dataframe")
         queried = group.get_timestamp_table(
-            [Fraction(5, 3)], "clt1", format="dataframe"
+            [Fraction(5, 3)], "clt_1", format="dataframe"
         )
 
         # The store itself is doubles, which is where the loss happens.
-        assert group._timestamp_table.column("clt1").to_pylist() == [
+        assert group._timestamp_table.column("clt_1").to_pylist() == [
             0.0,
             float(Fraction(5, 3)),
         ]
-        assert stored["clt1 (quarters)"].tolist()[1] == self.DYADIC_OF_FIVE_THIRDS
+        assert stored["clt_1 (quarters)"].tolist()[1] == self.DYADIC_OF_FIVE_THIRDS
 
         # Every lane that resolves a query rather than replaying a stored row
         # is exact.
-        assert queried["clt1 (quarters)"].tolist() == [Fraction(5, 3)]
-        assert group.get_timestamp_at(Fraction(5, 3), "clt1").axis.value == Fraction(
+        assert queried["clt_1 (quarters)"].tolist() == [Fraction(5, 3)]
+        assert group.get_timestamp_at(Fraction(5, 3), "clt_1").axis.value == Fraction(
             5, 3
         )
-        assert group.get_coordinate_at(Fraction(5, 3), "clt1").value == Fraction(5, 3)
+        assert group.get_coordinate_at(Fraction(5, 3), "clt_1").value == Fraction(5, 3)
 
     def test_authored_ratio_survives_a_parquet_round_trip(self, tmp_path) -> None:
         """Storage is where an unwritten ratio would be lost for good."""
-        timeline = ContinuousLogicalTimeline(length=Fraction(10), uid="clt1")
+        timeline = ContinuousLogicalTimeline(length=Fraction(10), uid="clt_1")
         table = timeline.get_timestamp_table([Fraction(5, 3), Fraction(7, 3)])
 
         path = tmp_path / "timestamps.parquet"
@@ -633,7 +633,7 @@ class TestStructCells:
         restored = pq.read_table(path)
 
         assert restored.schema == table.schema
-        assert table_column(restored, "clt1") == [Fraction(5, 3), Fraction(7, 3)]
+        assert table_column(restored, "clt_1") == [Fraction(5, 3), Fraction(7, 3)]
 
 
 def _metadata(field: pa.Field) -> dict[str, object]:
@@ -657,15 +657,15 @@ class TestFrameParity:
         group = _group()
         positions = [0.0, 2.5, 10.0]
 
-        stamps = group.get_timestamps_at(positions, "cpt1")
-        frame = group.get_timestamp_table(positions, "cpt1", format="dataframe")
+        stamps = group.get_timestamps_at(positions, "cpt_1")
+        frame = group.get_timestamp_table(positions, "cpt_1", format="dataframe")
 
-        assert list(frame.columns) == ["dgt1 (pixels)", "cpt1 (seconds)"]
-        assert frame["cpt1 (seconds)"].tolist() == positions
-        assert frame["dgt1 (pixels)"].tolist() == [0, 1000, 4000]
+        assert list(frame.columns) == ["dgt_1 (pixels)", "cpt_1 (seconds)"]
+        assert frame["cpt_1 (seconds)"].tolist() == positions
+        assert frame["dgt_1 (pixels)"].tolist() == [0, 1000, 4000]
         assert [
-            stamp.get_coordinate_for("dgt1", format="int") for stamp in stamps
-        ] == frame["dgt1 (pixels)"].tolist()
+            stamp.get_coordinate_for("dgt_1", format="int") for stamp in stamps
+        ] == frame["dgt_1 (pixels)"].tolist()
 
     def test_timeline_frame_matches_the_decoded_table(self) -> None:
         """The frame is the table, named and decoded — not a second source."""
@@ -694,7 +694,7 @@ class TestFrameParity:
         frame = timeline.get_timestamp_table(["e2", "e1"], format="dataframe")
 
         assert frame.index.tolist() == ["e2", "e1"]
-        assert frame["cpt1 (seconds)"].tolist() == [6.0, 2.0]
+        assert frame["cpt_1 (seconds)"].tolist() == [6.0, 2.0]
 
     def test_a_child_id_coordinate_still_applies_the_child_offset(self) -> None:
         """Naming a child in the query keeps the automatic offset."""
@@ -720,7 +720,7 @@ class TestAtomicity:
         group = _group()
 
         with pytest.raises(ValueError):
-            group.get_timestamps_at([0.0, 99.0], "cpt1")
+            group.get_timestamps_at([0.0, 99.0], "cpt_1")
 
     def test_a_missing_key_raises_rather_than_emitting_a_null_row(self) -> None:
         """A NaN row for an unknown event would report an answer there is not."""
@@ -739,21 +739,21 @@ class TestAtomicity:
         group = _group()
 
         with pytest.raises(ValueError):
-            group.get_timestamp_table([0.0, 99.0], "cpt1")
+            group.get_timestamp_table([0.0, 99.0], "cpt_1")
         with pytest.raises(ValueError):
-            group.get_timestamp_table([0.0, 99.0], "cpt1", format="dataframe")
+            group.get_timestamp_table([0.0, 99.0], "cpt_1", format="dataframe")
 
     def test_a_null_cell_means_only_that_a_member_is_unreached(self) -> None:
         """The surviving meaning of a null, pinned so it stays the only one."""
-        pixels = DiscreteGraphicalTimeline(length=1000, unit="pixels", uid="dgt1")
-        partial = DiscreteGraphicalTimeline(length=400, unit="pixels", uid="dgt2")
+        pixels = DiscreteGraphicalTimeline(length=1000, unit="pixels", uid="dgt_1")
+        partial = DiscreteGraphicalTimeline(length=400, unit="pixels", uid="dgt_2")
         group = TimelineGroup(id="gapped", timelines=[pixels])
         group.add_timeline(partial, start=0, end=500)
 
         frame = group.get_timestamp_table(format="dataframe")
 
-        assert frame["dgt2 (pixels)"].isna().any()
-        assert frame["dgt2 (pixels)"].dropna().tolist() == [0, 400]
+        assert frame["dgt_2 (pixels)"].isna().any()
+        assert frame["dgt_2 (pixels)"].dropna().tolist() == [0, 400]
 
 
 # endregion

@@ -170,7 +170,7 @@ def dgt1_timeline() -> DiscreteGraphicalTimeline:
     return DiscreteGraphicalTimeline(
         length=DGT1_TOTAL_WIDTH,
         unit="pixels",
-        uid="dgt1",
+        uid="dgt_1",
         name="Thoresen 2009",
     )
 
@@ -181,7 +181,7 @@ def dgt2_timeline() -> DiscreteGraphicalTimeline:
     return DiscreteGraphicalTimeline(
         length=DGT2_TOTAL_WIDTH,
         unit="pixels",
-        uid="dgt2",
+        uid="dgt_2",
         name="Thoresen 2010",
     )
 
@@ -210,20 +210,20 @@ def thoresen_segment_claims() -> list[MatchClaim]:
 
     for i in range(5):
         claim = MatchClaim(
-            timeline_a_id="dgt1",
-            timeline_b_id="dgt2",
+            timeline_a_id="dgt_1",
+            timeline_b_id="dgt_2",
             start_anchor=AlignmentAnchor(
-                timeline_a_id="dgt1",
+                timeline_a_id="dgt_1",
                 coordinate_a=Coordinate(offset_dgt1, TimeUnit.pixels),
-                timeline_b_id="dgt2",
+                timeline_b_id="dgt_2",
                 coordinate_b=Coordinate(offset_dgt2, TimeUnit.pixels),
             ),
             end_anchor=AlignmentAnchor(
-                timeline_a_id="dgt1",
+                timeline_a_id="dgt_1",
                 coordinate_a=Coordinate(
                     offset_dgt1 + DGT1_SEGMENT_LENGTH, TimeUnit.pixels
                 ),
-                timeline_b_id="dgt2",
+                timeline_b_id="dgt_2",
                 coordinate_b=Coordinate(
                     offset_dgt2 + DGT2_SEGMENT_LENGTHS[i], TimeUnit.pixels
                 ),

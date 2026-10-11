@@ -141,13 +141,9 @@ class ScoreLoader(EventLoader):
 
         timeline.add_measure_map(self._measure_map())
 
-        registry = self.create_flow_controller().get_flow_control_registry()
-        for brk in registry.breaks:
-            timeline.flow_control.add_break(brk)
-        for jump in registry.jumps:
-            timeline.flow_control.add_jump(jump)
-        for name, coordinate in registry.markers.items():
-            timeline.flow_control.add_marker(name, coordinate)
+        timeline.flow_control._absorb(
+            self.create_flow_controller().get_flow_control_registry()
+        )
 
     # region Flow Control
 

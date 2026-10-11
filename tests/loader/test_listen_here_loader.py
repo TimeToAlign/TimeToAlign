@@ -149,9 +149,9 @@ def test_claim_field_property_is_gone(loader: ListenHereLoader) -> None:
 
 def test_timeline_ids(loader: ListenHereLoader) -> None:
     assert loader.get_field(MatchClaim).timeline_ids == {
-        "rec-a:dpt1",
-        "rec-b:dpt1",
-        "rec-ref:dpt1",
+        "rec-a:dpt_1",
+        "rec-b:dpt_1",
+        "rec-ref:dpt_1",
     }
 
 
@@ -213,7 +213,7 @@ def test_create_timelines_id_pattern_filters(loader: ListenHereLoader) -> None:
     """The pinned three-recording shape filters to the rec-b timeline."""
     timelines = loader.create_timelines(id_pattern=r"^rec-b:")
     assert len(timelines) == 1
-    assert timelines[0].id == "rec-b:dpt1"
+    assert timelines[0].id == "rec-b:dpt_1"
 
 
 def test_create_timelines_id_pattern_no_match(loader: ListenHereLoader) -> None:
@@ -234,15 +234,15 @@ def test_bundle_uses_columnar_claim_store(loader: ListenHereLoader) -> None:
 def test_bundle_timeline_uids(loader: ListenHereLoader) -> None:
     bundle = loader.create_bundle()
     assert set(bundle.timelines.keys()) == {
-        "rec-a:dpt1",
-        "rec-b:dpt1",
-        "rec-ref:dpt1",
+        "rec-a:dpt_1",
+        "rec-b:dpt_1",
+        "rec-ref:dpt_1",
     }
 
 
 def test_timeline_events_retain_source_seconds(loader: ListenHereLoader) -> None:
     bundle = loader.create_bundle()
-    timeline = bundle.timelines["rec-b:dpt1"]
+    timeline = bundle.timelines["rec-b:dpt_1"]
     assert len(timeline.events) == 5
     assert timeline.events.table.column("seconds").to_pylist() == [
         -0.01,
@@ -263,11 +263,11 @@ def test_recording_timelines_are_discrete_samples(loader: ListenHereLoader) -> N
 
 def test_recording_timeline_length(loader: ListenHereLoader) -> None:
     bundle = loader.create_bundle()
-    assert bundle.timelines["rec-b:dpt1"].length.value == 4410
+    assert bundle.timelines["rec-b:dpt_1"].length.value == 4410
 
 
 def test_assumed_sample_rate_is_recorded(loader: ListenHereLoader) -> None:
-    timeline = loader.create_bundle().timelines["rec-a:dpt1"]
+    timeline = loader.create_bundle().timelines["rec-a:dpt_1"]
     assert timeline.meta["sample_rate"] == 44100
     assert timeline.meta["sample_rate_provenance"] == "assumed"
     assert timeline.events.table.column("seconds").to_pylist() == [
@@ -304,7 +304,7 @@ def test_audio_file_sample_rate_converts_coordinates(tmp_path: Path) -> None:
         # representation that axis declares.
         assert timeline.get_conversion_map(TimeUnit.seconds)(960) == 0.02
         assert timeline.events.table.column("seconds").to_pylist() == (
-            [0.0, 0.02, 0.04] if timeline.id == "rec-a:dpt1" else [0.0, 0.01, 0.03]
+            [0.0, 0.02, 0.04] if timeline.id == "rec-a:dpt_1" else [0.0, 0.01, 0.03]
         )
 
     claim = loader.get_field(MatchClaim)[1]
@@ -346,13 +346,13 @@ def test_claim_source_seconds_are_recoverable_exactly(tmp_path: Path) -> None:
 
 def test_matchstamp_spans_all_recordings(loader: ListenHereLoader) -> None:
     bundle = loader.create_bundle()
-    stamp = bundle.get_matchstamp_at(1984, "rec-ref:dpt1")
+    stamp = bundle.get_matchstamp_at(1984, "rec-ref:dpt_1")
     assert stamp.n_timelines == 3
     # Reference-grid column index 2: rec-a=1764, rec-b=1323, rec-ref=1984.
     for timeline_id, expected in {
-        "rec-a:dpt1": 1764,
-        "rec-b:dpt1": 1323,
-        "rec-ref:dpt1": 1984,
+        "rec-a:dpt_1": 1764,
+        "rec-b:dpt_1": 1323,
+        "rec-ref:dpt_1": 1984,
     }.items():
         coordinate = stamp.get_coordinate(timeline_id)
         assert coordinate.value == expected
@@ -366,7 +366,7 @@ def test_matchstamp_does_not_explode_field(loader: ListenHereLoader) -> None:
     # MatchGraph, never appended to cross_group_claims).
     bundle = loader.create_bundle()
     assert len(bundle.cross_group_claims) == 0
-    stamp = bundle.get_matchstamp_at(1984, "rec-ref:dpt1")
+    stamp = bundle.get_matchstamp_at(1984, "rec-ref:dpt_1")
     assert stamp.n_timelines == 3
     assert len(bundle.cross_group_claims) == 0
 
@@ -375,12 +375,12 @@ def test_matchstamp_at_first_grid_coordinate(loader: ListenHereLoader) -> None:
     # Query an exact grid coordinate read off one recording: rec-a column 0
     # is 0, where rec-b is -441 and rec-ref is 0. Same instant in all 3.
     bundle = loader.create_bundle()
-    stamp = bundle.get_matchstamp_at(0, "rec-a:dpt1")
+    stamp = bundle.get_matchstamp_at(0, "rec-a:dpt_1")
     assert stamp.n_timelines == 3
     for timeline_id, expected in {
-        "rec-a:dpt1": 0,
-        "rec-b:dpt1": -441,
-        "rec-ref:dpt1": 0,
+        "rec-a:dpt_1": 0,
+        "rec-b:dpt_1": -441,
+        "rec-ref:dpt_1": 0,
     }.items():
         coordinate = stamp.get_coordinate(timeline_id)
         assert coordinate.value == expected
@@ -409,22 +409,22 @@ def test_bundle_get_match_claims(loader: ListenHereLoader) -> None:
 def test_bundle_get_match_claims_filtered(loader: ListenHereLoader) -> None:
     bundle = loader.create_bundle()
     # rec-a pairs with the two other recordings at all 5 grid columns.
-    assert len(bundle.get_match_claims(timeline_id="rec-a:dpt1")) == 10
-    assert len(bundle.get_match_claims(between=("rec-a:dpt1", "rec-b:dpt1"))) == 5
+    assert len(bundle.get_match_claims(timeline_id="rec-a:dpt_1")) == 10
+    assert len(bundle.get_match_claims(between=("rec-a:dpt_1", "rec-b:dpt_1"))) == 5
 
 
 def test_bundle_get_claim_fields(loader: ListenHereLoader) -> None:
     # The vectorized accessor answers the same query without materialising.
     bundle = loader.create_bundle()
     assert [len(f) for f in bundle.get_claim_fields()] == [15]
-    assert [len(f) for f in bundle.get_claim_fields(timeline_id="rec-a:dpt1")] == [10]
-    assert bundle.get_claim_fields(timeline_id="missing:dpt1") == []
+    assert [len(f) for f in bundle.get_claim_fields(timeline_id="rec-a:dpt_1")] == [10]
+    assert bundle.get_claim_fields(timeline_id="missing:dpt_1") == []
 
 
 def test_bundle_matchstamp_table_per_claim(loader: ListenHereLoader) -> None:
     table = loader.create_bundle().get_matchstamp_table()
     assert table.num_rows == 15
-    assert table.column_names == ["rec-a:dpt1", "rec-b:dpt1", "rec-ref:dpt1"]
+    assert table.column_names == ["rec-a:dpt_1", "rec-b:dpt_1", "rec-ref:dpt_1"]
     # Every row is one pairwise claim: exactly two filled cells.
     for row in table.to_pylist():
         assert sum(value is not None for value in row.values()) == 2
@@ -434,7 +434,7 @@ def test_bundle_matchstamp_table_from_graph(loader: ListenHereLoader) -> None:
     # The 15 pairwise rows collapse into the 5 reference-grid cross-sections.
     table = loader.create_bundle().get_matchstamp_table(from_graph=True)
     assert table.num_rows == 5
-    assert table.column_names == ["rec-a:dpt1", "rec-b:dpt1", "rec-ref:dpt1"]
+    assert table.column_names == ["rec-a:dpt_1", "rec-b:dpt_1", "rec-ref:dpt_1"]
     semantic_rows = [
         {
             name: (
@@ -448,25 +448,25 @@ def test_bundle_matchstamp_table_from_graph(loader: ListenHereLoader) -> None:
         for position in range(table.num_rows)
     ]
     assert semantic_rows == [
-        {"rec-a:dpt1": 0, "rec-b:dpt1": -441, "rec-ref:dpt1": 0},
-        {"rec-a:dpt1": 882, "rec-b:dpt1": 441, "rec-ref:dpt1": 1102},
-        {"rec-a:dpt1": 1764, "rec-b:dpt1": 1323, "rec-ref:dpt1": 1984},
-        {"rec-a:dpt1": 2646, "rec-b:dpt1": 2205, "rec-ref:dpt1": 2866},
-        {"rec-a:dpt1": 3528, "rec-b:dpt1": 3087, "rec-ref:dpt1": 3749},
+        {"rec-a:dpt_1": 0, "rec-b:dpt_1": -441, "rec-ref:dpt_1": 0},
+        {"rec-a:dpt_1": 882, "rec-b:dpt_1": 441, "rec-ref:dpt_1": 1102},
+        {"rec-a:dpt_1": 1764, "rec-b:dpt_1": 1323, "rec-ref:dpt_1": 1984},
+        {"rec-a:dpt_1": 2646, "rec-b:dpt_1": 2205, "rec-ref:dpt_1": 2866},
+        {"rec-a:dpt_1": 3528, "rec-b:dpt_1": 3087, "rec-ref:dpt_1": 3749},
     ]
 
 
 def test_bundle_are_commensurable(loader: ListenHereLoader) -> None:
     bundle = loader.create_bundle()
-    assert bundle.are_commensurable("rec-a:dpt1", "rec-b:dpt1") is True
-    assert bundle.are_commensurable("rec-b:dpt1", "rec-ref:dpt1") is True
-    assert bundle.are_commensurable("rec-a:dpt1", "missing:dpt1") is False
+    assert bundle.are_commensurable("rec-a:dpt_1", "rec-b:dpt_1") is True
+    assert bundle.are_commensurable("rec-b:dpt_1", "rec-ref:dpt_1") is True
+    assert bundle.are_commensurable("rec-a:dpt_1", "missing:dpt_1") is False
 
 
 def test_bundle_transfer(loader: ListenHereLoader) -> None:
     # The MatchLine -> WarpMap path over the columnar store: grid column 1.
     bundle = loader.create_bundle()
-    assert bundle.transfer(882, "rec-a:dpt1", "rec-b:dpt1") == 441
+    assert bundle.transfer(882, "rec-a:dpt_1", "rec-b:dpt_1") == 441
 
 
 def test_bundle_diagram_reports_claim_count(loader: ListenHereLoader) -> None:
@@ -508,7 +508,7 @@ def test_bare_array_value_form(tmp_path: Path) -> None:
     path = _write_spec(tmp_path, spec)
     bundle = ListenHereLoader.from_file(path).create_bundle()
     # The bare-array recording's length is the max of its times.
-    assert bundle.timelines["rec-y:dpt1"].length.value == 1764
+    assert bundle.timelines["rec-y:dpt_1"].length.value == 1764
 
 
 # endregion

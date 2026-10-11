@@ -1,12 +1,10 @@
-"""Region: Named TimeInterval for timeline partitioning.
+"""Region: an identified TimeInterval for timeline partitioning.
 
-This module provides the Region class, which represents a named part of a
+This module provides the Region class, which represents a part of a
 timeline defined by a TimeInterval. Regions are NOT timelines themselves -
 they cannot hold events or C-maps.
 
-A Region is a named part of a timeline that is defined by a TimeInterval.
-Regions are useful for referring to parts of a timeline by name.
-
+A region is identified by its ``id`` and displayed by its optional ``name``.
 Use ``Timeline.create_child_from_region()`` to create a Child timeline
 from a Region.
 """
@@ -15,9 +13,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from fractions import Fraction
-from typing import Any
+from typing import Any, ClassVar
 
 from timetoalign.core import Coordinate, IdCoordinate, TimeUnit
+from timetoalign.core.ids import _IdentifiedElement
 from timetoalign.core.retrieval import (
     coordinate_from_dict,
     coordinate_to_dict,
@@ -28,61 +27,66 @@ from timetoalign.core.time import Duration, Interval
 
 
 @dataclass(frozen=True)
-class Region:
-    """A named part of a timeline defined by a TimeInterval.
-
-    Regions are useful for referring to parts of a timeline by name.
+class Region(_IdentifiedElement):
+    """An identified part of a timeline defined by a TimeInterval.
 
     IMPORTANT: Regions are NOT timelines. They cannot hold events or C-maps.
-    Use ``Timeline.create_child_from_region(name)`` to create a Child
+    Use ``Timeline.create_child_from_region(region_id)`` to create a Child
     timeline from a Region.
 
     Attributes:
-        name: The region's name (e.g., "Chorus", "Verse").
         start: Start coordinate of the region.
         end: End coordinate of the region.
+        name: Optional display name (e.g., "Chorus"); names may repeat.
         meta: Additional metadata (e.g., traversal order labels).
+        id: The region's id; minted as ``region_{N}`` when not given.
 
     Examples:
         >>> from timetoalign import Coordinate, TimeUnit
         >>> start = Coordinate(16.0, TimeUnit.quarters)
         >>> end = Coordinate(32.0, TimeUnit.quarters)
-        >>> region = Region("Chorus", start=start, end=end)
+        >>> region = Region(start, end, name="Chorus")
+        >>> region.id
+        'region_1'
         >>> region.duration
         Duration(Fraction(16, 1), quarters)
         >>> region.as_interval
         Interval(start=Coordinate(Fraction(16, 1), quarters), \
 end=Coordinate(Fraction(32, 1), quarters))
 
-        A region names part of a timeline; turning it into a Child timeline
+        A region marks part of a timeline; turning it into a Child timeline
         goes through the timeline that owns it:
 
         >>> from timetoalign import ContinuousLogicalTimeline
         >>> tl = ContinuousLogicalTimeline(length=64)
-        >>> tl.create_region("Chorus", start=16, end=32)
-        Region('Chorus', 16-32 quarters)
-        >>> chorus_child = tl.create_child_from_region("Chorus")
+        >>> tl.create_region(16, 32, id="chorus", name="Chorus")
+        Region('chorus', name='Chorus', 16-32 quarters)
+        >>> chorus_child = tl.create_child_from_region("chorus")
         >>> chorus_child.length
         Coordinate(Fraction(16, 1), quarters)
     """
 
-    name: str
+    _id_prefix: ClassVar[str] = "region"
+
     start: Coordinate
     end: Coordinate
+    name: str | None = None
     meta: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Region:
         """Restore a region from its typed coordinate dictionary representation."""
         return cls(
-            name=data["name"],
+            id=data["id"],
+            name=data.get("name"),
             start=coordinate_from_dict(data["start"]),
             end=coordinate_from_dict(data["end"]),
             meta=dict(data.get("meta", {})),
         )
 
     def __post_init__(self) -> None:
-        """Validate region bounds and units."""
+        """Mint or validate the id, then validate region bounds and units."""
+        super().__post_init__()
         if self.end.value < self.start.value:
             raise ValueError(
                 f"Region end ({self.end.value}) cannot be before "
@@ -151,6 +155,7 @@ end=Coordinate(Fraction(32, 1), quarters))
     def to_dict(self) -> dict[str, Any]:
         """Return this region as a JSON-safe dictionary."""
         return {
+            "id": self.id,
             "name": self.name,
             "start": coordinate_to_dict(self.start),
             "end": coordinate_to_dict(self.end),
@@ -158,10 +163,14 @@ end=Coordinate(Fraction(32, 1), quarters))
         }
 
     def __repr__(self) -> str:
-        return f"Region({self.name!r}, {self.start.value}-{self.end.value} {self.unit})"
+        label = (
+            repr(self.id) if self.name is None else f"{self.id!r}, name={self.name!r}"
+        )
+        return f"Region({label}, {self.start.value}-{self.end.value} {self.unit})"
 
     def __str__(self) -> str:
-        return f"{self.name}: [{self.start.value}, {self.end.value}) {self.unit}"
+        label = self.id if self.name is None else f"{self.name} ({self.id})"
+        return f"{label}: [{self.start.value}, {self.end.value}) {self.unit}"
 
 
 # endregion

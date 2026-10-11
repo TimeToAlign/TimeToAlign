@@ -17,7 +17,7 @@ from timetoalign.timelines import ContinuousLogicalTimeline, DiscreteGraphicalTi
 
 def _two_seconds_maps() -> tuple[ContinuousLogicalTimeline, LinearMap, LinearMap]:
     """A quarters timeline reading seconds two ways: at 60 and at 120 bpm."""
-    timeline = ContinuousLogicalTimeline(length=Fraction(16), uid="clt1")
+    timeline = ContinuousLogicalTimeline(length=Fraction(16), uid="clt_1")
     slow = LinearMap(
         scalar=1.0,
         offset=0,
@@ -50,7 +50,7 @@ class TestNothingIsDisplaced:
         assert timeline._unit_maps[TimeUnit.seconds] == [slow, fast]
 
     def test_a_single_map_still_answers_without_a_name(self) -> None:
-        timeline = ContinuousLogicalTimeline(length=Fraction(16), uid="clt1")
+        timeline = ContinuousLogicalTimeline(length=Fraction(16), uid="clt_1")
         only = LinearMap(
             scalar=1.0,
             offset=0,
@@ -156,7 +156,7 @@ class TestDuplicateIdsAreRefused:
     """One id, one map, on one timeline."""
 
     def test_attaching_the_same_map_twice_raises(self) -> None:
-        timeline = ContinuousLogicalTimeline(length=Fraction(16), uid="clt1")
+        timeline = ContinuousLogicalTimeline(length=Fraction(16), uid="clt_1")
         cmap = ScalarMap(
             scalar=2.0,
             source_unit=TimeUnit.quarters,
@@ -169,7 +169,7 @@ class TestDuplicateIdsAreRefused:
             timeline.add_conversion_map(cmap)
 
     def test_a_different_map_reusing_an_id_raises(self) -> None:
-        timeline = ContinuousLogicalTimeline(length=Fraction(16), uid="clt1")
+        timeline = ContinuousLogicalTimeline(length=Fraction(16), uid="clt_1")
         timeline.add_conversion_map(
             ScalarMap(
                 scalar=2.0,
@@ -179,7 +179,7 @@ class TestDuplicateIdsAreRefused:
             )
         )
 
-        with pytest.raises(ValueError, match="already attached"):
+        with pytest.raises(ValueError, match="already held by conversion map 'tempo'"):
             timeline.add_conversion_map(
                 ScalarMap(
                     scalar=3.0,
@@ -194,7 +194,7 @@ class TestDetachRemovesByIdentity:
     """The temporary inverse goes; a pre-existing same-unit map stays."""
 
     def test_a_pre_existing_map_survives_child_conversion(self) -> None:
-        parent = DiscreteGraphicalTimeline(length=1000, uid="dgt1")
+        parent = DiscreteGraphicalTimeline(length=1000, uid="dgt_1")
         parent.add_conversion_map(
             LinearMap(
                 scalar=Fraction(1, 4),
@@ -204,7 +204,7 @@ class TestDetachRemovesByIdentity:
                 uid="pixels_to_quarters",
             )
         )
-        child = ContinuousLogicalTimeline(length=Fraction(100), uid="clt1")
+        child = ContinuousLogicalTimeline(length=Fraction(100), uid="clt_1")
         survivor = LinearMap(
             scalar=8,
             offset=0,
@@ -220,7 +220,7 @@ class TestDetachRemovesByIdentity:
         assert child._get_unit_maps(TimeUnit.pixels) == [survivor]
 
     def test_the_temporary_map_leaves_no_trace(self) -> None:
-        parent = DiscreteGraphicalTimeline(length=1000, uid="dgt1")
+        parent = DiscreteGraphicalTimeline(length=1000, uid="dgt_1")
         parent.add_conversion_map(
             LinearMap(
                 scalar=Fraction(1, 4),
@@ -230,7 +230,7 @@ class TestDetachRemovesByIdentity:
                 uid="pixels_to_quarters",
             )
         )
-        child = ContinuousLogicalTimeline(length=Fraction(100), uid="clt1")
+        child = ContinuousLogicalTimeline(length=Fraction(100), uid="clt_1")
 
         parent.add_child(child, offset=0, use_conversion_map=True)
 

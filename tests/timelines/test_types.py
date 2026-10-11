@@ -1005,7 +1005,7 @@ class TestToTyped:
     def test_to_typed_preserves_regions(self):
         """to_typed preserves regions."""
         tl = Timeline(length=100.0, unit=TimeUnit.seconds)
-        tl.add_region("Chorus", start=30.0, end=60.0)
+        tl.create_region(30.0, 60.0, id="Chorus", name="Chorus")
         typed = tl.to_typed()
         assert "Chorus" in typed
         region = typed.get_region("Chorus")

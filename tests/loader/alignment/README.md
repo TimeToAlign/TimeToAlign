@@ -79,10 +79,10 @@ what `event_ref` resolves against.
 
 | layer | timeline | unit |
 |---|---|---|
-| `<spine>` | `spine:dlt1` (`DiscreteLogicalTimeline`) | ticks, int |
-| `<los>` notes/rests/lyrics | `los:dlt2` (`DiscreteLogicalTimeline`) | ticks, int |
-| each `<graphic_instance_group>` | `<role>:dgt<n>` (`SegmentLine[SegmentLine[DiscreteGraphicalTimeline]]`) | pixels, int |
-| each `<track>` | `<role>:cpt<n>` (`ContinuousPhysicalTimeline`) | seconds, float |
+| `<spine>` | `spine:dlt_1` (`DiscreteLogicalTimeline`) | ticks, int |
+| `<los>` notes/rests/lyrics | `los:dlt_2` (`DiscreteLogicalTimeline`) | ticks, int |
+| each `<graphic_instance_group>` | `<role>:dgt_<n>` (`SegmentLine[SegmentLine[DiscreteGraphicalTimeline]]`) | pixels, int |
+| each `<track>` | `<role>:cpt_<n>` (`ContinuousPhysicalTimeline`) | seconds, float |
 
 Roles are asserted exactly, because they encode the sanitisation rule
 (accent folding, lowercasing, every run outside `[a-z0-9_]` collapsing to one
@@ -172,7 +172,7 @@ object per row.  The three layers are measured in ticks, pixels and seconds
 respectively, which one field can hold because the coordinate storage carries a
 unit *per row*; the tests materialise the first claim of each layer and assert
 its `coordinate_a.unit` (ticks / pixels / seconds) against `coordinate_b.unit`
-(always ticks, always `spine:dlt1`).  Per-layer row counts are recovered by
+(always ticks, always `spine:dlt_1`).  Per-layer row counts are recovered by
 counting the field's `timeline_a_id` column against the loader's `los_uid` /
 `edition_uids` / `track_uids`, which is what the arithmetic above is asserted
 through.  The bundle holds exactly one claim field and its per-claim Python

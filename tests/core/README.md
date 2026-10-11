@@ -291,7 +291,7 @@ is where int64 lives. Both are asserted.
 above governs the constructor, and the identical rule governs every other
 route a value can take onto this axis — see "Number type is preserved
 everywhere" below. `Coordinate(9.5, quarters)` and
-`timeline.get_timestamp(9.5).get_coordinate_for("clt1", format="coordinate")`
+`timeline.get_timestamp(9.5).get_coordinate_for("clt_1", format="coordinate")`
 both give a `Coordinate` containing `Fraction(19, 2)`; there is one answer per
 axis, not one per entry point.
 
@@ -307,7 +307,7 @@ that happens.
 
 ```python
 Coordinate(9.5, quarters)                          # Fraction(19, 2)
-timeline.get_timestamp(9.5).get_coordinate_for("clt1", format="coordinate")
+timeline.get_timestamp(9.5).get_coordinate_for("clt_1", format="coordinate")
 ```
 
 The two agree, and that is the property worth having: a caller reasoning
@@ -425,9 +425,9 @@ carries coordinate structs.
 
 | Axis | stamp getter | published frame |
 |---|---|---|
-| `dgt1` pixels (`int`) | `0`, `12473` | `0`, `12473` |
-| `cpt1` seconds (`float`) | `0.0`, `37.5` | `0.0`, `37.5` |
-| `clt1` quarters (`fraction`) | `Fraction(0, 1)`, `Fraction(19, 2)` | same |
+| `dgt_1` pixels (`int`) | `0`, `12473` | `0`, `12473` |
+| `cpt_1` seconds (`float`) | `0.0`, `37.5` | `0.0`, `37.5` |
+| `clt_1` quarters (`fraction`) | `Fraction(0, 1)`, `Fraction(19, 2)` | same |
 | `pixels_to_beats` C-Map column | — | `Fraction(12473, 4)` |
 | `quarters_to_seconds` C-Map column | — | `38.0` |
 
@@ -957,7 +957,8 @@ stores `grouping` and `division` and derives the rest. The specimens:
 
 ### `test_ids.py` - Scoped ID System
 
-**Purpose:** Validates the `ScopedId` and `IdGenerator` classes for unique identification.
+**Purpose:** Validates the `ScopedId` and `IdGenerator` classes and the
+stateless generator of manifest element ids.
 
 **Test Categories:**
 
@@ -996,6 +997,21 @@ stores `grouping` and `division` and derives the rest. The specimens:
 
 8. **IdGenerator Empty Scope** (2 tests)
    - Unscoped ID generation
+
+9. **The manifest id generator** (`mint_id`, `validate_id`,
+   `timeline_id_prefix`)
+   - `mint_id(prefix, taken)` answers `{prefix}_{N}` with N the smallest
+     positive integer not taken: `("clt", ())` → `clt_1`;
+     `("clt", {"clt_1", "clt_3"})` → `clt_2`; `("clt", {"clt_2"})` →
+     `clt_1`; with a role, `("score:clt", {"score:clt_1"})` →
+     `score:clt_2`. Called twice with the same arguments it answers the same
+     id, because it keeps no state.
+   - `validate_id` returns `"performance"`, `"a"`, `"Bass Kick"`,
+     `"score:clt_7"` unchanged and raises `ValueError` for `""`, `"a/b"`,
+     `"a\tb"`, `"a\nb"` and `"\x00"`.
+   - `timeline_id_prefix` maps one unit of each kind to its prefix:
+     quarters `clt`, ticks `dlt`, seconds `cpt`, samples `dpt`, centimeters
+     `cgt`, pixels `dgt`.
 
 **Validity Rationale:**
 

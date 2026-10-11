@@ -153,25 +153,25 @@ class TestSUPRAAlignmentBundle:
         bundle = AlignmentBundle(name="SUPRA WM 990")
 
         # Add image as reference
-        bundle.add_timeline(image_timeline, uid="dgt1")
+        bundle.add_timeline(image_timeline, uid="dgt_1")
 
         # Add holes timeline with partial alignment
         # Holes region spans first_hole to last_hole in image coordinates
         bundle.add_timeline(
             holes_timeline,
             uid="dgt1_holes",
-            grouped_with="dgt1",
+            grouped_with="dgt_1",
             start=IdCoordinate(
-                float(aton_loader.first_hole.value), TimeUnit.seconds, "dgt1"
+                float(aton_loader.first_hole.value), TimeUnit.seconds, "dgt_1"
             ),
             end=IdCoordinate(
-                float(aton_loader.last_hole.value), TimeUnit.seconds, "dgt1"
+                float(aton_loader.last_hole.value), TimeUnit.seconds, "dgt_1"
             ),
         )
 
         assert bundle.n_timelines == 2
         assert bundle.n_groups == 1
-        assert "dgt1" in bundle.timeline_ids
+        assert "dgt_1" in bundle.timeline_ids
         assert "dgt1_holes" in bundle.timeline_ids
 
     def test_transfer_holes_to_image(
@@ -182,34 +182,34 @@ class TestSUPRAAlignmentBundle:
     ) -> None:
         """Transfer from holes region to full image coordinates."""
         bundle = AlignmentBundle(name="SUPRA WM 990")
-        bundle.add_timeline(image_timeline, uid="dgt1")
+        bundle.add_timeline(image_timeline, uid="dgt_1")
 
         # Add holes with partial alignment via start/end
         bundle.add_timeline(
             holes_timeline,
             uid="dgt1_holes",
-            grouped_with="dgt1",
+            grouped_with="dgt_1",
             start=IdCoordinate(
-                float(aton_loader.first_hole.value), TimeUnit.seconds, "dgt1"
+                float(aton_loader.first_hole.value), TimeUnit.seconds, "dgt_1"
             ),  # 15343.0
             end=IdCoordinate(
-                float(aton_loader.last_hole.value), TimeUnit.seconds, "dgt1"
+                float(aton_loader.last_hole.value), TimeUnit.seconds, "dgt_1"
             ),  # 293119.0
         )
 
         # Coordinate 0 in holes -> first_hole in image - EXACT
-        result_start = bundle.transfer(0.0, "dgt1_holes", "dgt1")
+        result_start = bundle.transfer(0.0, "dgt1_holes", "dgt_1")
         assert result_start is not None
         assert result_start == 15343.0  # EXACT, no tolerance
 
         # Coordinate musical_length in holes -> last_hole in image - EXACT
-        result_end = bundle.transfer(277776.0, "dgt1_holes", "dgt1")
+        result_end = bundle.transfer(277776.0, "dgt1_holes", "dgt_1")
         assert result_end is not None
         assert result_end == 293119.0  # EXACT, no tolerance
 
         # Midpoint: 138888 in holes -> 154231 in image - EXACT
         # (277776/2 = 138888 exactly, 15343 + 138888 = 154231 exactly)
-        result_mid = bundle.transfer(138888.0, "dgt1_holes", "dgt1")
+        result_mid = bundle.transfer(138888.0, "dgt1_holes", "dgt_1")
         assert result_mid is not None
         assert result_mid == 154231.0  # EXACT, no tolerance
 
@@ -221,27 +221,27 @@ class TestSUPRAAlignmentBundle:
     ) -> None:
         """Transfer from full image to holes region coordinates."""
         bundle = AlignmentBundle(name="SUPRA WM 990")
-        bundle.add_timeline(image_timeline, uid="dgt1")
+        bundle.add_timeline(image_timeline, uid="dgt_1")
 
         bundle.add_timeline(
             holes_timeline,
             uid="dgt1_holes",
-            grouped_with="dgt1",
+            grouped_with="dgt_1",
             start=IdCoordinate(
-                float(aton_loader.first_hole.value), TimeUnit.seconds, "dgt1"
+                float(aton_loader.first_hole.value), TimeUnit.seconds, "dgt_1"
             ),
             end=IdCoordinate(
-                float(aton_loader.last_hole.value), TimeUnit.seconds, "dgt1"
+                float(aton_loader.last_hole.value), TimeUnit.seconds, "dgt_1"
             ),
         )
 
         # first_hole in image -> 0 in holes - EXACT
-        result_start = bundle.transfer(15343.0, "dgt1", "dgt1_holes")
+        result_start = bundle.transfer(15343.0, "dgt_1", "dgt1_holes")
         assert result_start is not None
         assert result_start == 0.0  # EXACT, no tolerance
 
         # last_hole in image -> musical_length in holes - EXACT
-        result_end = bundle.transfer(293119.0, "dgt1", "dgt1_holes")
+        result_end = bundle.transfer(293119.0, "dgt_1", "dgt1_holes")
         assert result_end is not None
         assert result_end == 277776.0  # EXACT, no tolerance
 
@@ -271,17 +271,17 @@ class TestSUPRAOrderIndependence:
         holes_tl = Timeline(length=277776, uid="holes1")
 
         bundle = AlignmentBundle(id="order1")
-        bundle.add_timeline(image_tl, uid="dgt1")
+        bundle.add_timeline(image_tl, uid="dgt_1")
         bundle.add_timeline(
             holes_tl,
             uid="dgt1_holes",
-            grouped_with="dgt1",
-            start=IdCoordinate(15343.0, TimeUnit.seconds, "dgt1"),
-            end=IdCoordinate(293119.0, TimeUnit.seconds, "dgt1"),
+            grouped_with="dgt_1",
+            start=IdCoordinate(15343.0, TimeUnit.seconds, "dgt_1"),
+            end=IdCoordinate(293119.0, TimeUnit.seconds, "dgt_1"),
         )
 
         # Test transfer - interior point, compute expected exactly
-        result = bundle.transfer(100000.0, "dgt1_holes", "dgt1")
+        result = bundle.transfer(100000.0, "dgt1_holes", "dgt_1")
         assert result is not None
         # Expected: 15343 + (100000 / 277776) * (293119 - 15343)
         # This is an interior point with irrational scale factor
@@ -299,13 +299,13 @@ class TestSUPRAOrderIndependence:
         holes_tl_1 = Timeline(length=277776, uid="holes1")
 
         b1 = AlignmentBundle(id="b1")
-        b1.add_timeline(image_tl_1, uid="dgt1")
+        b1.add_timeline(image_tl_1, uid="dgt_1")
         b1.add_timeline(
             holes_tl_1,
             uid="dgt1_holes",
-            grouped_with="dgt1",
-            start=IdCoordinate(15343.0, TimeUnit.seconds, "dgt1"),
-            end=IdCoordinate(293119.0, TimeUnit.seconds, "dgt1"),
+            grouped_with="dgt_1",
+            start=IdCoordinate(15343.0, TimeUnit.seconds, "dgt_1"),
+            end=IdCoordinate(293119.0, TimeUnit.seconds, "dgt_1"),
         )
 
         # Order 2: Same order but with different uid assignment
@@ -325,7 +325,7 @@ class TestSUPRAOrderIndependence:
         # Both should produce same coordinate values (just with different UIDs)
         test_coord = 100000.0
 
-        result1 = b1.transfer(test_coord, "dgt1_holes", "dgt1")
+        result1 = b1.transfer(test_coord, "dgt1_holes", "dgt_1")
         result2 = b2.transfer(test_coord, "holes", "image")
 
         assert result1 == result2
@@ -342,20 +342,20 @@ class TestSUPRAOrderIndependence:
         holes1 = Timeline(length=277776, uid="h1")
         midi1 = Timeline(length=871800, uid="m1")  # Simulated MIDI ticks
 
-        b1.add_timeline(img1, uid="dgt1")
+        b1.add_timeline(img1, uid="dgt_1")
         b1.add_timeline(
             holes1,
             uid="dgt1_holes",
-            grouped_with="dgt1",
-            start=IdCoordinate(15343.0, TimeUnit.seconds, "dgt1"),
-            end=IdCoordinate(293119.0, TimeUnit.seconds, "dgt1"),
+            grouped_with="dgt_1",
+            start=IdCoordinate(15343.0, TimeUnit.seconds, "dgt_1"),
+            end=IdCoordinate(293119.0, TimeUnit.seconds, "dgt_1"),
         )
         b1.add_timeline(
             midi1,
-            uid="dlt1",
-            grouped_with="dgt1",
-            start=IdCoordinate(15343.0, TimeUnit.seconds, "dgt1"),
-            end=IdCoordinate(293119.0, TimeUnit.seconds, "dgt1"),
+            uid="dlt_1",
+            grouped_with="dgt_1",
+            start=IdCoordinate(15343.0, TimeUnit.seconds, "dgt_1"),
+            end=IdCoordinate(293119.0, TimeUnit.seconds, "dgt_1"),
         )
 
         # Order 2: image -> midi -> holes (same partial alignments, different order)
@@ -364,28 +364,28 @@ class TestSUPRAOrderIndependence:
         holes2 = Timeline(length=277776, uid="h2")
         midi2 = Timeline(length=871800, uid="m2")
 
-        b2.add_timeline(img2, uid="dgt1")
+        b2.add_timeline(img2, uid="dgt_1")
         b2.add_timeline(
             midi2,
-            uid="dlt1",
-            grouped_with="dgt1",
-            start=IdCoordinate(15343.0, TimeUnit.seconds, "dgt1"),
-            end=IdCoordinate(293119.0, TimeUnit.seconds, "dgt1"),
+            uid="dlt_1",
+            grouped_with="dgt_1",
+            start=IdCoordinate(15343.0, TimeUnit.seconds, "dgt_1"),
+            end=IdCoordinate(293119.0, TimeUnit.seconds, "dgt_1"),
         )
         b2.add_timeline(
             holes2,
             uid="dgt1_holes",
-            grouped_with="dgt1",
-            start=IdCoordinate(15343.0, TimeUnit.seconds, "dgt1"),
-            end=IdCoordinate(293119.0, TimeUnit.seconds, "dgt1"),
+            grouped_with="dgt_1",
+            start=IdCoordinate(15343.0, TimeUnit.seconds, "dgt_1"),
+            end=IdCoordinate(293119.0, TimeUnit.seconds, "dgt_1"),
         )
 
         # Both bundles have holes and midi aligned to the same image region
         # So holes -> midi should give the same result in both
 
         # Test holes -> midi transfer (should be same in both bundles)
-        result1_holes_to_midi = b1.transfer(100000.0, "dgt1_holes", "dlt1")
-        result2_holes_to_midi = b2.transfer(100000.0, "dgt1_holes", "dlt1")
+        result1_holes_to_midi = b1.transfer(100000.0, "dgt1_holes", "dlt_1")
+        result2_holes_to_midi = b2.transfer(100000.0, "dgt1_holes", "dlt_1")
 
         assert result1_holes_to_midi is not None
         assert result2_holes_to_midi is not None
@@ -420,16 +420,16 @@ class TestSUPRASummary:
     ) -> None:
         """Summary has correct structure."""
         bundle = AlignmentBundle(id="supra_bundle", name="SUPRA WM 990")
-        bundle.add_timeline(image_timeline, uid="dgt1")
+        bundle.add_timeline(image_timeline, uid="dgt_1")
         bundle.add_timeline(
             holes_timeline,
             uid="dgt1_holes",
-            grouped_with="dgt1",
+            grouped_with="dgt_1",
             start=IdCoordinate(
-                float(aton_loader.first_hole.value), TimeUnit.seconds, "dgt1"
+                float(aton_loader.first_hole.value), TimeUnit.seconds, "dgt_1"
             ),
             end=IdCoordinate(
-                float(aton_loader.last_hole.value), TimeUnit.seconds, "dgt1"
+                float(aton_loader.last_hole.value), TimeUnit.seconds, "dgt_1"
             ),
         )
 
@@ -439,7 +439,7 @@ class TestSUPRASummary:
         assert summary["name"] == "SUPRA WM 990"
         assert summary["n_timelines"] == 2
         assert summary["n_groups"] == 1
-        assert "dgt1" in summary["timelines"]
+        assert "dgt_1" in summary["timelines"]
         assert "dgt1_holes" in summary["timelines"]
 
     def test_summary_is_deterministic(
@@ -451,13 +451,13 @@ class TestSUPRASummary:
         holes1 = Timeline(length=277776, uid="holes1")
 
         b1 = AlignmentBundle(id="test", name="Test")
-        b1.add_timeline(img1, uid="dgt1")
+        b1.add_timeline(img1, uid="dgt_1")
         b1.add_timeline(
             holes1,
             uid="dgt1_holes",
-            grouped_with="dgt1",
-            start=IdCoordinate(15343.0, TimeUnit.seconds, "dgt1"),
-            end=IdCoordinate(293119.0, TimeUnit.seconds, "dgt1"),
+            grouped_with="dgt_1",
+            start=IdCoordinate(15343.0, TimeUnit.seconds, "dgt_1"),
+            end=IdCoordinate(293119.0, TimeUnit.seconds, "dgt_1"),
         )
 
         summary1 = b1.summary()

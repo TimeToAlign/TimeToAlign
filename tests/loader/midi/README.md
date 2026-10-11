@@ -31,7 +31,7 @@ cover.
   performance columns, and omits `voice`, `staff`, and `part_id`.
 - A program change at 0, note at 240, control change at 480, and note end at 960 produce starts
   `[0.0, 240.0, 480.0]`, ends `[None, None, 960.0]`, coordinate range `(0.0, 960.0)`, timeline
-  length 960, and group ID `perf:dlt1`.
+  length 960, and group ID `perf:dlt_1`.
 - `supra_raw.mid` produces 30,096 total events: 30,092 notes and 4 control changes. Its coordinate
   range is `(0.0, 277776.0)`, its created timeline has length 277776, and it constructs a
   `TimelineGroup` named `supra`.

@@ -231,15 +231,15 @@ class TestTimelineCreation:
         timeline = loaded_regions_loader.create_timeline()
 
         assert timeline is not None
-        assert timeline.id == "cpt1"
+        assert timeline.id == "cpt_1"
         assert timeline.unit == TimeUnit.seconds
         assert timeline.n_events == 6
 
     def test_create_timeline_with_uid(self, loaded_regions_loader: LabLoader) -> None:
         """create_timeline() accepts custom uid."""
-        timeline = loaded_regions_loader.create_timeline(uid="cpt1")
+        timeline = loaded_regions_loader.create_timeline(uid="cpt_1")
 
-        assert timeline.id == "cpt1"
+        assert timeline.id == "cpt_1"
 
     def test_create_timelines(self, loaded_regions_loader: LabLoader) -> None:
         """create_timelines() returns list with one timeline."""

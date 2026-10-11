@@ -1315,7 +1315,7 @@ def timestamp_table_to_dataframe(
         >>> table = timeline.get_timestamp_table()
         >>> df = timestamp_table_to_dataframe(table, units=True)
         >>> df.columns
-        Index(['axis (pixels)', 'dgt1 (pixels)', 'pixels_to_inches (inches)'])
+        Index(['axis (pixels)', 'dgt_1 (pixels)', 'pixels_to_inches (inches)'])
 
         >>> # Use IDs instead of names
         >>> from timetoalign import ColumnNaming

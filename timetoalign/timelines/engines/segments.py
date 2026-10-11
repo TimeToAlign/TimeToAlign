@@ -110,7 +110,7 @@ class SegmentsMixin:
 
     def create_segment_line_from_regions(
         self,
-        region_names: Sequence[str] | None = None,
+        region_ids: Sequence[str] | None = None,
         *,
         copy_events: bool = True,
     ) -> "SegmentLine":
@@ -122,8 +122,8 @@ class SegmentsMixin:
         Does NOT modify self.
 
         Args:
-            region_names: Ordered region names. None = all regions sorted
-                by start coordinate.
+            region_ids: Ordered region ids. None = all regions sorted
+                by start coordinate. Each segment is named after its region.
             copy_events: Copy events into segments.
 
         Returns:
@@ -136,17 +136,17 @@ class SegmentsMixin:
             >>> tl.create_regions_by_grouping("timesig")
             >>> seg_line = tl.create_segment_line_from_regions()
         """
-        if region_names is None:
+        if region_ids is None:
             # Sort regions by start coordinate
             sorted_regions = sorted(
                 self._regions.values(), key=lambda r: float(r.start.value)
             )
-            region_names = [r.name for r in sorted_regions]
+            region_ids = [r.id for r in sorted_regions]
 
-        if not region_names:
+        if not region_ids:
             raise ValueError("No regions to create segment line from")
 
-        regions = [self.get_region(name) for name in region_names]
+        regions = [self.get_region(region_id) for region_id in region_ids]
 
         # Validate contiguity
         for i in range(1, len(regions)):
@@ -154,9 +154,9 @@ class SegmentsMixin:
             curr_start = float(regions[i].start.value)
             if abs(prev_end - curr_start) > 1e-10:
                 raise ValueError(
-                    f"Regions are not contiguous: '{regions[i - 1].name}' "
+                    f"Regions are not contiguous: '{regions[i - 1].id}' "
                     f"ends at {_format_coordinate_value(float(prev_end))} but "
-                    f"'{regions[i].name}' starts at "
+                    f"'{regions[i].id}' starts at "
                     f"{_format_coordinate_value(float(curr_start))}"
                 )
 
@@ -401,7 +401,7 @@ class SegmentsMixin:
         Args:
             intervals: One interval-like descriptor, a collection of them, or
                 a ``{target coordinate -> span}`` mapping. Accepted descriptor
-                forms are region names (``str``, resolved via
+                forms are region ids (``str``, resolved via
                 :meth:`get_region`), ``Region`` objects, ``(start, end)``
                 coordinate pairs, ``Timeline`` objects, and interval events.
                 ``Gap`` entries may be mixed into a collection to space the
@@ -534,10 +534,11 @@ class SegmentsMixin:
         :meth:`~timetoalign.timelines.flow.FlowMap.inverse` — leaves the
         result empty between them.
 
-        Each appended child (and its Region) takes the source section's name —
-        the region name a played span was built from. A span visited more than
-        once (a repeat) is suffixed ``-rend2``, ``-rend3`` … so every child and
-        Region has a unique name. Section events live in the appended children;
+        Each appended child takes the source section's label as its id and
+        name — the id of the region a played span was built from — and the
+        Region marking it in the result takes that label as its name (its id
+        is minted). A span visited more than once (a repeat) is suffixed
+        ``-rend2``, ``-rend3`` … so every child has a unique id. Section events live in the appended children;
         the flattened coordinates remain reachable via
         ``get_events(include_children=True)``.
 

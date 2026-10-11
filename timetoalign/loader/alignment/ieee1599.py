@@ -18,9 +18,9 @@ and produces a single :class:`~timetoalign.alignment.bundle.AlignmentBundle`:
 ============================  =========================================
 IEEE 1599 construct           TimeToAlign! representation
 ============================  =========================================
-``<spine>``                   ``DiscreteLogicalTimeline`` ``spine:dlt1``,
+``<spine>``                   ``DiscreteLogicalTimeline`` ``spine:dlt_1``,
                               unit ``ticks``, ``NumberType.int``
-``<logic><los>`` notes,       ONE ``DiscreteLogicalTimeline`` ``los:dlt2``,
+``<logic><los>`` notes,       ONE ``DiscreteLogicalTimeline`` ``los:dlt_2``,
 rests and lyric syllables     unit ``ticks``
 ``<notational>`` per          ONE nested ``SegmentLine`` per group: one page
 ``graphic_instance_group``    child per ``<graphic_instance>``, each holding
@@ -137,6 +137,7 @@ from timetoalign.display.html import code
 from timetoalign.loader.format.xml import XmlLoader
 from timetoalign.maps.interval import IntervalToConstantMap
 from timetoalign.storage.events import EventData
+from timetoalign.timelines.factory import _mint_timeline_id
 from timetoalign.timelines.types import (
     ContinuousPhysicalTimeline,
     DiscreteGraphicalTimeline,
@@ -531,7 +532,7 @@ class Ieee1599Loader(XmlLoader):
         self._claim_field = None
         self._timeline_cache.clear()
         self._name = None
-        self._timeline_id_generator.reset()
+        self._minted_timeline_ids.clear()
 
     def _process_xml(self, root: ET.Element) -> None:
         """Parse one ``<ieee1599>`` root into curated tables and claim fields.
@@ -582,8 +583,8 @@ class Ieee1599Loader(XmlLoader):
         coordinate and the hpos sum a single integer field.  Events notated as
         simultaneous carry ``timing="0"`` and so share a coordinate.
         """
-        self._spine_uid = self._timeline_id_generator.next_id_with_role(
-            DiscreteLogicalTimeline, self._claim_role("spine")
+        self._spine_uid = _mint_timeline_id(
+            self, TimeUnit.ticks, role=self._claim_role("spine")
         )
         timing = 0
         hpos = 0
@@ -614,8 +615,8 @@ class Ieee1599Loader(XmlLoader):
         recoverable by grouping on ``event_ref`` and ordering by
         ``notehead_index``.
         """
-        self._los_uid = self._timeline_id_generator.next_id_with_role(
-            DiscreteLogicalTimeline, self._claim_role("los")
+        self._los_uid = _mint_timeline_id(
+            self, TimeUnit.ticks, role=self._claim_role("los")
         )
         los = root.find("./logic/los")
         if los is None:
@@ -819,9 +820,7 @@ class Ieee1599Loader(XmlLoader):
             description = group.get("description") or "edition"
             role = self._claim_role(description)
             spec = _EditionSpec(
-                uid=self._timeline_id_generator.next_id_with_role(
-                    DiscreteGraphicalTimeline, role
-                ),
+                uid=_mint_timeline_id(self, TimeUnit.pixels, role=role),
                 role=role,
                 description=description,
                 pages=[],
@@ -957,9 +956,7 @@ class Ieee1599Loader(XmlLoader):
             general = track.find("track_general")
             notes = None if general is None else general.find("notes")
             spec = _TrackSpec(
-                uid=self._timeline_id_generator.next_id_with_role(
-                    ContinuousPhysicalTimeline, role
-                ),
+                uid=_mint_timeline_id(self, TimeUnit.seconds, role=role),
                 role=role,
                 file_name=file_name,
                 attributes={
@@ -1346,12 +1343,12 @@ class Ieee1599Loader(XmlLoader):
 
     @property
     def spine_uid(self) -> str | None:
-        """The spine timeline's uid (``spine:dlt1``), or ``None`` if unloaded."""
+        """The spine timeline's uid (``spine:dlt_1``), or ``None`` if unloaded."""
         return self._spine_uid
 
     @property
     def los_uid(self) -> str | None:
-        """The LOS timeline's uid (``los:dlt2``), or ``None`` if unloaded."""
+        """The LOS timeline's uid (``los:dlt_2``), or ``None`` if unloaded."""
         return self._los_uid
 
     @property

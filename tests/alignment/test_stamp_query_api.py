@@ -65,34 +65,40 @@ def _make_star_bundle():
     # Timelines are number-native to match the units their own claims use,
     # so a number-unit Coordinate/IdCoordinate resolves without conversion.
     score_tl = Timeline(
-        length=100, uid="score:clt1", name="Score", unit=TimeUnit.number
+        length=100, uid="score:clt_1", name="Score", unit=TimeUnit.number
     )
-    perf1_tl = Timeline(length=200, uid="perf:dlt1", name="Perf1", unit=TimeUnit.number)
-    perf2_tl = Timeline(length=200, uid="perf:dlt2", name="Perf2", unit=TimeUnit.number)
-    perf3_tl = Timeline(length=200, uid="perf:dlt3", name="Perf3", unit=TimeUnit.number)
+    perf1_tl = Timeline(
+        length=200, uid="perf:dlt_1", name="Perf1", unit=TimeUnit.number
+    )
+    perf2_tl = Timeline(
+        length=200, uid="perf:dlt_2", name="Perf2", unit=TimeUnit.number
+    )
+    perf3_tl = Timeline(
+        length=200, uid="perf:dlt_3", name="Perf3", unit=TimeUnit.number
+    )
 
     bundle = AlignmentBundle(id="star_test")
-    bundle.add_timeline(score_tl, uid="score:clt1", as_group="score_group")
-    bundle.add_timeline(perf1_tl, uid="perf:dlt1", as_group="perf1_group")
-    bundle.add_timeline(perf2_tl, uid="perf:dlt2", as_group="perf2_group")
-    bundle.add_timeline(perf3_tl, uid="perf:dlt3", as_group="perf3_group")
+    bundle.add_timeline(score_tl, uid="score:clt_1", as_group="score_group")
+    bundle.add_timeline(perf1_tl, uid="perf:dlt_1", as_group="perf1_group")
+    bundle.add_timeline(perf2_tl, uid="perf:dlt_2", as_group="perf2_group")
+    bundle.add_timeline(perf3_tl, uid="perf:dlt_3", as_group="perf3_group")
 
     claims = []
     # 5 coordinates per performer
     for i in range(5):
         coord_s = float(i * 25)
         for perf_id, factor in [
-            ("perf:dlt1", 2.0),
-            ("perf:dlt2", 1.5),
-            ("perf:dlt3", 1.8),
+            ("perf:dlt_1", 2.0),
+            ("perf:dlt_2", 1.5),
+            ("perf:dlt_3", 1.8),
         ]:
             coord_p = coord_s * factor
             claims.append(
                 MatchClaim(
-                    timeline_a_id="score:clt1",
+                    timeline_a_id="score:clt_1",
                     timeline_b_id=perf_id,
                     start_anchor=AlignmentAnchor(
-                        timeline_a_id="score:clt1",
+                        timeline_a_id="score:clt_1",
                         coordinate_a=Coordinate(coord_s, TimeUnit.number),
                         timeline_b_id=perf_id,
                         coordinate_b=Coordinate(coord_p, TimeUnit.number),
@@ -104,8 +110,8 @@ def _make_star_bundle():
     # One NOMATCH claim
     claims.append(
         MatchClaim(
-            timeline_a_id="score:clt1",
-            timeline_b_id="perf:dlt3",
+            timeline_a_id="score:clt_1",
+            timeline_b_id="perf:dlt_3",
             is_synchronous=False,
         )
     )
@@ -132,11 +138,11 @@ class TestGetMatchClaims:
     def test_filter_by_timeline_id(self):
         """Filter by single timeline ID."""
         bundle, _ = _make_star_bundle()
-        result = bundle.get_match_claims(timeline_id="perf:dlt1")
+        result = bundle.get_match_claims(timeline_id="perf:dlt_1")
         # 5 synchronous claims: score <-> perf:dlt1 at 5 coordinates
         assert len(result) == 5
         for c in result:
-            assert c.connects("perf:dlt1")
+            assert c.connects("perf:dlt_1")
 
     def test_filter_by_id_pattern(self):
         """Filter by regex pattern."""
@@ -164,18 +170,18 @@ class TestGetMatchClaims:
         """between filter for exact timeline pair."""
         bundle, _ = _make_star_bundle()
         result = bundle.get_match_claims(
-            between=("score:clt1", "perf:dlt2"),
+            between=("score:clt_1", "perf:dlt_2"),
             synchronous_only=True,
         )
         assert len(result) == 5
         for c in result:
-            assert c.connects_both("score:clt1", "perf:dlt2")
+            assert c.connects_both("score:clt_1", "perf:dlt_2")
 
     def test_filter_combined(self):
         """Multiple filters are AND-combined."""
         bundle, _ = _make_star_bundle()
         result = bundle.get_match_claims(
-            timeline_id="perf:dlt3",
+            timeline_id="perf:dlt_3",
             synchronous_only=True,
         )
         # 5 synchronous claims for perf:dlt3 (the NOMATCH is excluded)
@@ -185,7 +191,7 @@ class TestGetMatchClaims:
         """Pattern + nomatch_only."""
         bundle, _ = _make_star_bundle()
         result = bundle.get_match_claims(
-            id_pattern=r"dlt3$",
+            id_pattern=r"dlt_3$",
             nomatch_only=True,
         )
         assert len(result) == 1
@@ -372,10 +378,10 @@ class TestMatchGraphStarTopology:
             perf_id = f"perf:dlt{i + 1}"
             claims.append(
                 MatchClaim(
-                    timeline_a_id="score:clt1",
+                    timeline_a_id="score:clt_1",
                     timeline_b_id=perf_id,
                     start_anchor=AlignmentAnchor(
-                        timeline_a_id="score:clt1",
+                        timeline_a_id="score:clt_1",
                         coordinate_a=Coordinate(0.0, TimeUnit.number),
                         timeline_b_id=perf_id,
                         coordinate_b=Coordinate(float(i * 10), TimeUnit.number),
@@ -386,7 +392,7 @@ class TestMatchGraphStarTopology:
         assert mg.n_components == 1
         stamp = mg.get_matchstamp()
         assert stamp.n_timelines == 6  # 1 score + 5 performers
-        assert stamp.get_coordinate_for("score:clt1", format="float") == 0.0
+        assert stamp.get_coordinate_for("score:clt_1", format="float") == 0.0
 
     def test_star_determinism(self):
         """Building graph from any single claim gives same stamp.
@@ -400,10 +406,10 @@ class TestMatchGraphStarTopology:
             perf_id = f"perf:dlt{i + 1}"
             claims.append(
                 MatchClaim(
-                    timeline_a_id="score:clt1",
+                    timeline_a_id="score:clt_1",
                     timeline_b_id=perf_id,
                     start_anchor=AlignmentAnchor(
-                        timeline_a_id="score:clt1",
+                        timeline_a_id="score:clt_1",
                         coordinate_a=Coordinate(0.0, TimeUnit.number),
                         timeline_b_id=perf_id,
                         coordinate_b=Coordinate(float(i * 10), TimeUnit.number),
@@ -432,26 +438,26 @@ class TestMatchClaimGetMatchstamp:
     def test_reduced_stamp(self):
         """from_graph=False returns 2-timeline MatchStamp."""
         claim = MatchClaim(
-            timeline_a_id="score:clt1",
-            timeline_b_id="perf:dlt1",
+            timeline_a_id="score:clt_1",
+            timeline_b_id="perf:dlt_1",
             start_anchor=AlignmentAnchor(
-                timeline_a_id="score:clt1",
+                timeline_a_id="score:clt_1",
                 coordinate_a=Coordinate(10.0, TimeUnit.number),
-                timeline_b_id="perf:dlt1",
+                timeline_b_id="perf:dlt_1",
                 coordinate_b=Coordinate(128.0, TimeUnit.number),
             ),
         )
         stamp = claim.get_matchstamp(from_graph=False)
         assert stamp is not None
         assert stamp.n_timelines == 2
-        assert stamp.get_coordinate_for("score:clt1", format="float") == 10.0
-        assert stamp.get_coordinate_for("perf:dlt1", format="float") == 128.0
+        assert stamp.get_coordinate_for("score:clt_1", format="float") == 10.0
+        assert stamp.get_coordinate_for("perf:dlt_1", format="float") == 128.0
 
     def test_nomatch_returns_none(self):
         """NOMATCH claim returns None."""
         claim = MatchClaim(
-            timeline_a_id="score:clt1",
-            timeline_b_id="perf:dlt1",
+            timeline_a_id="score:clt_1",
+            timeline_b_id="perf:dlt_1",
             is_synchronous=False,
         )
         assert claim.get_matchstamp(from_graph=False) is None
@@ -459,12 +465,12 @@ class TestMatchClaimGetMatchstamp:
     def test_from_graph_without_bundle_raises(self):
         """from_graph=True without bundle raises ValueError."""
         claim = MatchClaim(
-            timeline_a_id="score:clt1",
-            timeline_b_id="perf:dlt1",
+            timeline_a_id="score:clt_1",
+            timeline_b_id="perf:dlt_1",
             start_anchor=AlignmentAnchor(
-                timeline_a_id="score:clt1",
+                timeline_a_id="score:clt_1",
                 coordinate_a=Coordinate(10.0, TimeUnit.number),
-                timeline_b_id="perf:dlt1",
+                timeline_b_id="perf:dlt_1",
                 coordinate_b=Coordinate(128.0, TimeUnit.number),
             ),
         )
@@ -495,51 +501,51 @@ class TestMatchGraphCache:
     def test_cache_hit(self):
         """Second lookup returns cached MatchGraph."""
         bundle, _ = _make_star_bundle()
-        mg1 = bundle._get_or_build_matchgraph("score:clt1", 0.0)
-        mg2 = bundle._get_or_build_matchgraph("score:clt1", 0.0)
+        mg1 = bundle._get_or_build_matchgraph("score:clt_1", 0.0)
+        mg2 = bundle._get_or_build_matchgraph("score:clt_1", 0.0)
         assert mg1 is mg2  # Same object
 
     def test_cache_via_different_key(self):
         """Lookup via performer node returns same graph as score node."""
         bundle, _ = _make_star_bundle()
-        mg_score = bundle._get_or_build_matchgraph("score:clt1", 0.0)
+        mg_score = bundle._get_or_build_matchgraph("score:clt_1", 0.0)
         # perf:dlt1 at coordinate 0.0 should map to the same graph
-        mg_perf = bundle._get_or_build_matchgraph("perf:dlt1", 0.0)
+        mg_perf = bundle._get_or_build_matchgraph("perf:dlt_1", 0.0)
         assert mg_score is mg_perf
 
     def test_cache_invalidation(self):
         """add_match_claims() clears the cache."""
         bundle, _ = _make_star_bundle()
-        mg1 = bundle._get_or_build_matchgraph("score:clt1", 0.0)
+        mg1 = bundle._get_or_build_matchgraph("score:clt_1", 0.0)
         # Add more claims
         bundle.add_match_claims(
             [
                 MatchClaim(
-                    timeline_a_id="score:clt1",
-                    timeline_b_id="perf:dlt1",
+                    timeline_a_id="score:clt_1",
+                    timeline_b_id="perf:dlt_1",
                     start_anchor=AlignmentAnchor(
-                        timeline_a_id="score:clt1",
+                        timeline_a_id="score:clt_1",
                         coordinate_a=Coordinate(99.0, TimeUnit.number),
-                        timeline_b_id="perf:dlt1",
+                        timeline_b_id="perf:dlt_1",
                         coordinate_b=Coordinate(198.0, TimeUnit.number),
                     ),
                 ),
             ]
         )
-        mg2 = bundle._get_or_build_matchgraph("score:clt1", 0.0)
+        mg2 = bundle._get_or_build_matchgraph("score:clt_1", 0.0)
         assert mg1 is not mg2  # Cache was invalidated
 
     def test_cache_no_claims_raises(self):
         """Cache miss with no matching claims raises ValueError."""
         bundle, _ = _make_star_bundle()
         with pytest.raises(ValueError, match="No synchronous claims"):
-            bundle._get_or_build_matchgraph("score:clt1", 999.0)
+            bundle._get_or_build_matchgraph("score:clt_1", 999.0)
 
     def test_different_coordinates_different_graphs(self):
         """Different coordinates produce different cached graphs."""
         bundle, _ = _make_star_bundle()
-        mg0 = bundle._get_or_build_matchgraph("score:clt1", 0.0)
-        mg25 = bundle._get_or_build_matchgraph("score:clt1", 25.0)
+        mg0 = bundle._get_or_build_matchgraph("score:clt_1", 0.0)
+        mg25 = bundle._get_or_build_matchgraph("score:clt_1", 25.0)
         assert mg0 is not mg25
 
 
@@ -555,23 +561,23 @@ class TestGetMatchstampAt:
     def test_basic(self):
         """Basic cross-group MatchStamp at a coordinate."""
         bundle, _ = _make_star_bundle()
-        stamp = bundle.get_matchstamp_at(0.0, "score:clt1")
+        stamp = bundle.get_matchstamp_at(0.0, "score:clt_1")
         assert stamp.n_timelines == 4  # score + 3 performers
         assert stamp.is_interpolated is False
-        assert stamp.get_coordinate_for("score:clt1", format="float") == 0.0
-        assert stamp.get_coordinate_for("perf:dlt1", format="float") == 0.0
-        assert stamp.get_coordinate_for("perf:dlt2", format="float") == 0.0
-        assert stamp.get_coordinate_for("perf:dlt3", format="float") == 0.0
+        assert stamp.get_coordinate_for("score:clt_1", format="float") == 0.0
+        assert stamp.get_coordinate_for("perf:dlt_1", format="float") == 0.0
+        assert stamp.get_coordinate_for("perf:dlt_2", format="float") == 0.0
+        assert stamp.get_coordinate_for("perf:dlt_3", format="float") == 0.0
 
     def test_nonzero_coordinate(self):
         """MatchStamp at a non-zero coordinate."""
         bundle, _ = _make_star_bundle()
-        stamp = bundle.get_matchstamp_at(50.0, "score:clt1")
+        stamp = bundle.get_matchstamp_at(50.0, "score:clt_1")
         assert stamp.n_timelines == 4
-        assert stamp.get_coordinate_for("score:clt1", format="float") == 50.0
-        assert stamp.get_coordinate_for("perf:dlt1", format="float") == 100.0
-        assert stamp.get_coordinate_for("perf:dlt2", format="float") == 75.0
-        assert stamp.get_coordinate_for("perf:dlt3", format="float") == 90.0
+        assert stamp.get_coordinate_for("score:clt_1", format="float") == 50.0
+        assert stamp.get_coordinate_for("perf:dlt_1", format="float") == 100.0
+        assert stamp.get_coordinate_for("perf:dlt_2", format="float") == 75.0
+        assert stamp.get_coordinate_for("perf:dlt_3", format="float") == 90.0
 
     def test_not_in_bundle_raises(self):
         """Unknown timeline raises KeyError."""
@@ -582,46 +588,46 @@ class TestGetMatchstampAt:
     def test_between_anchors_uses_interpolation(self):
         """A coordinate between claim anchors uses exact WarpMap interpolation."""
         bundle, _ = _make_star_bundle()
-        stamp = bundle.get_matchstamp_at(37.5, "score:clt1")
+        stamp = bundle.get_matchstamp_at(37.5, "score:clt_1")
 
         assert stamp.is_interpolated is True
         assert stamp.anchor_edges == []
-        assert stamp.get_coordinate_for("score:clt1", format="float") == 37.5
-        assert stamp.get_coordinate_for("perf:dlt1", format="float") == 75.0
-        assert stamp.get_coordinate_for("perf:dlt2", format="float") == 56.25
-        assert stamp.get_coordinate_for("perf:dlt3", format="float") == 67.5
+        assert stamp.get_coordinate_for("score:clt_1", format="float") == 37.5
+        assert stamp.get_coordinate_for("perf:dlt_1", format="float") == 75.0
+        assert stamp.get_coordinate_for("perf:dlt_2", format="float") == 56.25
+        assert stamp.get_coordinate_for("perf:dlt_3", format="float") == 67.5
         assert set(stamp.inferred_edges) == {
-            ("score:clt1", "perf:dlt1"),
-            ("score:clt1", "perf:dlt2"),
-            ("score:clt1", "perf:dlt3"),
+            ("score:clt_1", "perf:dlt_1"),
+            ("score:clt_1", "perf:dlt_2"),
+            ("score:clt_1", "perf:dlt_3"),
         }
-        assert bundle.transfer(37.5, "score:clt1", "perf:dlt1") == 75.0
+        assert bundle.transfer(37.5, "score:clt_1", "perf:dlt_1") == 75.0
 
     def test_filtered_by_pattern(self):
         """Regex filter reduces output."""
         bundle, _ = _make_star_bundle()
         stamp = bundle.get_matchstamp_at(
             0.0,
-            "score:clt1",
-            id_pattern=r"dlt[12]$",
+            "score:clt_1",
+            id_pattern=r"dlt_[12]$",
         )
-        # Only perf:dlt1 and perf:dlt2 pass the filter
-        # (score:clt1 does NOT match the pattern, so it's also excluded)
-        assert "perf:dlt1" in stamp.coordinates
-        assert "perf:dlt2" in stamp.coordinates
-        assert "perf:dlt3" not in stamp.coordinates
+        # Only perf:dlt_1 and perf:dlt_2 pass the filter
+        # (score:clt_1 does NOT match the pattern, so it's also excluded)
+        assert "perf:dlt_1" in stamp.coordinates
+        assert "perf:dlt_2" in stamp.coordinates
+        assert "perf:dlt_3" not in stamp.coordinates
 
     def test_filtered_by_timeline_ids(self):
         """timeline_ids filter reduces output."""
         bundle, _ = _make_star_bundle()
         stamp = bundle.get_matchstamp_at(
             0.0,
-            "score:clt1",
-            timeline_ids={"score:clt1", "perf:dlt1"},
+            "score:clt_1",
+            timeline_ids={"score:clt_1", "perf:dlt_1"},
         )
         assert stamp.n_timelines == 2
-        assert "score:clt1" in stamp.coordinates
-        assert "perf:dlt1" in stamp.coordinates
+        assert "score:clt_1" in stamp.coordinates
+        assert "perf:dlt_1" in stamp.coordinates
 
 
 # endregion
@@ -649,31 +655,31 @@ class TestCoordinateBatch:
     # Full cross-section at score coordinate 50 (score length 100; performer
     # factors 2.0 / 1.5 / 1.8), reused as the gold row across cases.
     COORD_50 = {
-        "score:clt1": 50.0,
-        "perf:dlt1": 100.0,
-        "perf:dlt2": 75.0,
-        "perf:dlt3": 90.0,
+        "score:clt_1": 50.0,
+        "perf:dlt_1": 100.0,
+        "perf:dlt_2": 75.0,
+        "perf:dlt_3": 90.0,
     }
 
     def test_matchstamps_raw_values_ordered(self):
         """Raw-value batch: one ordered stamp per coordinate, exact cross-sections."""
         bundle, _ = _make_star_bundle()
-        stamps = bundle.get_matchstamps_at([0.0, 50.0, 100.0], "score:clt1")
+        stamps = bundle.get_matchstamps_at([0.0, 50.0, 100.0], "score:clt_1")
         assert len(stamps) == 3
         assert {
             timeline_id: stamps[1].get_coordinate_for(timeline_id, format="float")
             for timeline_id in stamps[1].present_timelines
         } == self.COORD_50
-        assert stamps[0].get_coordinate_for("perf:dlt1", format="float") == 0.0
-        assert stamps[2].get_coordinate_for("perf:dlt1", format="float") == 200.0
-        assert stamps[2].get_coordinate_for("perf:dlt2", format="float") == 150.0
-        assert stamps[2].get_coordinate_for("perf:dlt3", format="float") == 180.0
+        assert stamps[0].get_coordinate_for("perf:dlt_1", format="float") == 0.0
+        assert stamps[2].get_coordinate_for("perf:dlt_1", format="float") == 200.0
+        assert stamps[2].get_coordinate_for("perf:dlt_2", format="float") == 150.0
+        assert stamps[2].get_coordinate_for("perf:dlt_3", format="float") == 180.0
 
     def test_matchstamps_idcoordinate_carries_timeline(self):
         """An IdCoordinate carries its own timeline, so timeline_id is optional."""
         bundle, _ = _make_star_bundle()
         stamps = bundle.get_matchstamps_at(
-            [IdCoordinate(50.0, TimeUnit.number, "score:clt1")]
+            [IdCoordinate(50.0, TimeUnit.number, "score:clt_1")]
         )
         assert len(stamps) == 1
         assert {
@@ -686,23 +692,23 @@ class TestCoordinateBatch:
         bundle, _ = _make_star_bundle()
         coords = [0.0, 25.0, 50.0, 75.0, 100.0]
         batched = [
-            s.coordinates for s in bundle.get_matchstamps_at(coords, "score:clt1")
+            s.coordinates for s in bundle.get_matchstamps_at(coords, "score:clt_1")
         ]
         singular = [
-            bundle.get_matchstamp_at(c, "score:clt1").coordinates for c in coords
+            bundle.get_matchstamp_at(c, "score:clt_1").coordinates for c in coords
         ]
         assert batched == singular
 
     def test_table_one_row_per_coordinate(self):
         """Table batch: one row per coordinate, full cross-section columns."""
         bundle, _ = _make_star_bundle()
-        table = bundle.get_matchstamp_table([0.0, 50.0, 100.0], "score:clt1")
+        table = bundle.get_matchstamp_table([0.0, 50.0, 100.0], "score:clt_1")
         assert table.num_rows == 3
         assert set(table.column_names) == {
-            "score:clt1",
-            "perf:dlt1",
-            "perf:dlt2",
-            "perf:dlt3",
+            "score:clt_1",
+            "perf:dlt_1",
+            "perf:dlt_2",
+            "perf:dlt_3",
         }
         assert {
             timeline_id: IdCoordinateField.from_table(table, timeline_id)[1].value
@@ -714,26 +720,26 @@ class TestCoordinateBatch:
         bundle, _ = _make_star_bundle()
         table = bundle.get_matchstamp_table(
             [0.0, 50.0, 100.0],
-            "score:clt1",
-            timeline_filter={"score:clt1", "perf:dlt1"},
+            "score:clt_1",
+            timeline_filter={"score:clt_1", "perf:dlt_1"},
         )
-        assert set(table.column_names) == {"score:clt1", "perf:dlt1"}
+        assert set(table.column_names) == {"score:clt_1", "perf:dlt_1"}
         assert {
             timeline_id: IdCoordinateField.from_table(table, timeline_id)[1].value
             for timeline_id in table.column_names
-        } == {"score:clt1": 50.0, "perf:dlt1": 100.0}
+        } == {"score:clt_1": 50.0, "perf:dlt_1": 100.0}
 
     def test_empty_coordinates_yield_empty_output(self):
         """Empty coordinates yield an empty table and an empty stamp list."""
         bundle, _ = _make_star_bundle()
-        assert bundle.get_matchstamp_table([], "score:clt1").num_rows == 0
-        assert bundle.get_matchstamps_at([], "score:clt1") == []
+        assert bundle.get_matchstamp_table([], "score:clt_1").num_rows == 0
+        assert bundle.get_matchstamps_at([], "score:clt_1") == []
 
     def test_claims_and_positions_mutually_exclusive(self):
         """Supplying both claims and positions raises on the table."""
         bundle, claims = _make_star_bundle()
         with pytest.raises(ValueError, match="not both"):
-            bundle.get_matchstamp_table([0.0], "score:clt1", claims=claims)
+            bundle.get_matchstamp_table([0.0], "score:clt_1", claims=claims)
 
 
 # endregion
@@ -845,37 +851,37 @@ class TestMatchClaimDisplay:
     def test_str_synchronous_instant(self):
         """__str__ for synchronous instant claim."""
         claim = MatchClaim(
-            timeline_a_id="score:clt1",
-            timeline_b_id="perf:dlt1",
+            timeline_a_id="score:clt_1",
+            timeline_b_id="perf:dlt_1",
             start_anchor=AlignmentAnchor(
-                timeline_a_id="score:clt1",
+                timeline_a_id="score:clt_1",
                 coordinate_a=Coordinate(10.0, TimeUnit.number),
-                timeline_b_id="perf:dlt1",
+                timeline_b_id="perf:dlt_1",
                 coordinate_b=Coordinate(128.0, TimeUnit.number),
             ),
         )
         s = str(claim)
         assert "synchronous, instant" in s
-        assert "score:clt1" in s
-        assert "perf:dlt1" in s
+        assert "score:clt_1" in s
+        assert "perf:dlt_1" in s
         assert "@10" in s
         assert "@128" in s
 
     def test_str_synchronous_interval(self):
         """__str__ for synchronous interval claim."""
         claim = MatchClaim(
-            timeline_a_id="score:clt1",
-            timeline_b_id="perf:dlt1",
+            timeline_a_id="score:clt_1",
+            timeline_b_id="perf:dlt_1",
             start_anchor=AlignmentAnchor(
-                timeline_a_id="score:clt1",
+                timeline_a_id="score:clt_1",
                 coordinate_a=Coordinate(0.0, TimeUnit.number),
-                timeline_b_id="perf:dlt1",
+                timeline_b_id="perf:dlt_1",
                 coordinate_b=Coordinate(0.0, TimeUnit.number),
             ),
             end_anchor=AlignmentAnchor(
-                timeline_a_id="score:clt1",
+                timeline_a_id="score:clt_1",
                 coordinate_a=Coordinate(10.0, TimeUnit.number),
-                timeline_b_id="perf:dlt1",
+                timeline_b_id="perf:dlt_1",
                 coordinate_b=Coordinate(128.0, TimeUnit.number),
             ),
         )
@@ -887,25 +893,25 @@ class TestMatchClaimDisplay:
     def test_str_nomatch(self):
         """__str__ for a NOMATCH claim (orphaned event named on one side)."""
         claim = MatchClaim(
-            timeline_a_id="score:clt1",
-            timeline_b_id="perf:dlt1",
+            timeline_a_id="score:clt_1",
+            timeline_b_id="perf:dlt_1",
             is_synchronous=False,
             event_a_id="orphan",
         )
         s = str(claim)
         assert "NOMATCH" in s
-        assert "score:clt1" in s
-        assert "perf:dlt1" in s
+        assert "score:clt_1" in s
+        assert "perf:dlt_1" in s
 
     def test_str_with_metadata(self):
         """__str__ shows metadata."""
         claim = MatchClaim(
-            timeline_a_id="score:clt1",
-            timeline_b_id="perf:dlt1",
+            timeline_a_id="score:clt_1",
+            timeline_b_id="perf:dlt_1",
             start_anchor=AlignmentAnchor(
-                timeline_a_id="score:clt1",
+                timeline_a_id="score:clt_1",
                 coordinate_a=Coordinate(10.0, TimeUnit.number),
-                timeline_b_id="perf:dlt1",
+                timeline_b_id="perf:dlt_1",
                 coordinate_b=Coordinate(128.0, TimeUnit.number),
             ),
             metadata=MatchMetadata(
@@ -944,25 +950,25 @@ class TestMatchClaimDisplay:
     def test_repr_html_valid(self):
         """_repr_html_ produces valid HTML."""
         claim = MatchClaim(
-            timeline_a_id="score:clt1",
-            timeline_b_id="perf:dlt1",
+            timeline_a_id="score:clt_1",
+            timeline_b_id="perf:dlt_1",
             start_anchor=AlignmentAnchor(
-                timeline_a_id="score:clt1",
+                timeline_a_id="score:clt_1",
                 coordinate_a=Coordinate(10.0, TimeUnit.number),
-                timeline_b_id="perf:dlt1",
+                timeline_b_id="perf:dlt_1",
                 coordinate_b=Coordinate(128.0, TimeUnit.number),
             ),
         )
         html = claim._repr_html_()
         assert "<table" in html
         assert "MatchClaim" in html
-        assert "score:clt1" in html
+        assert "score:clt_1" in html
 
     def test_repr_html_nomatch_badge(self):
         """NOMATCH claim (orphaned event named on one side) has red badge in HTML."""
         claim = MatchClaim(
-            timeline_a_id="score:clt1",
-            timeline_b_id="perf:dlt1",
+            timeline_a_id="score:clt_1",
+            timeline_b_id="perf:dlt_1",
             is_synchronous=False,
             event_a_id="orphan",
         )
@@ -973,18 +979,18 @@ class TestMatchClaimDisplay:
     def test_repr_html_try_footer(self):
         """_repr_html_ appends the affordance Try footer after the table."""
         claim = MatchClaim(
-            timeline_a_id="score:clt1",
-            timeline_b_id="perf:dlt1",
+            timeline_a_id="score:clt_1",
+            timeline_b_id="perf:dlt_1",
             start_anchor=AlignmentAnchor(
-                timeline_a_id="score:clt1",
+                timeline_a_id="score:clt_1",
                 coordinate_a=Coordinate(10.0, TimeUnit.number),
-                timeline_b_id="perf:dlt1",
+                timeline_b_id="perf:dlt_1",
                 coordinate_b=Coordinate(128.0, TimeUnit.number),
             ),
         )
         html = claim._repr_html_()
         # The claim detail table still renders.
-        assert "<strong>score:clt1</strong>" in html
+        assert "<strong>score:clt_1</strong>" in html
         # The Try footer surfaces the real MatchClaim accessor.
         assert "Try: <code>claim.get_matchstamp()</code>" in html
         assert html.index("</table>") < html.index("Try:")
@@ -1010,9 +1016,9 @@ class TestMatchClaimEventStorage:
 
         claim = MatchClaim.from_events(
             event_a=event_a,
-            tl_a_id="score:clt1",
+            tl_a_id="score:clt_1",
             event_b=event_b,
-            tl_b_id="perf:dlt1",
+            tl_b_id="perf:dlt_1",
             unit_a=TimeUnit.number,
             unit_b=TimeUnit.number,
         )
@@ -1093,9 +1099,9 @@ class TestMatchClaimEventStorage:
         """__str__ includes event IDs when present."""
         claim = MatchClaim.from_events(
             event_a={"id": "e001", "start": 10.0},
-            tl_a_id="score:clt1",
+            tl_a_id="score:clt_1",
             event_b={"id": "e042", "start": 128.0},
-            tl_b_id="perf:dlt1",
+            tl_b_id="perf:dlt_1",
             unit_a=TimeUnit.number,
             unit_b=TimeUnit.number,
         )

@@ -52,7 +52,7 @@ class ClaimFilter:
         Filter for synchronous claims between score and one performer::
 
             f = ClaimFilter(
-                between=("score:clt1", "perf:dlt1"),
+                between=("score:clt_1", "perf:dlt_1"),
                 synchronous_only=True,
             )
 

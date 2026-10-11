@@ -50,8 +50,8 @@ PERF_LENGTH = Fraction(228)  # 234 - 6
 def score() -> ContinuousLogicalTimeline:
     """The folded score, with the two played spans marked as Regions."""
     tl = ContinuousLogicalTimeline(length=SCORE_LENGTH, name="gymno_1")
-    tl.create_region("A8_1", start=0, end=CUT_START)
-    tl.create_region("A8_2", start=CUT_END, end=SCORE_LENGTH)
+    tl.create_region(0, CUT_START, id="A8_1", name="A8_1")
+    tl.create_region(CUT_END, SCORE_LENGTH, id="A8_2", name="A8_2")
     tl.add_events(
         [
             {"id": "m1", "event_type": "Note", "instant": 0},
@@ -67,8 +67,8 @@ def score() -> ContinuousLogicalTimeline:
 def performance() -> ContinuousLogicalTimeline:
     """The 228 QB performance, with its two spans marked as Regions."""
     tl = ContinuousLogicalTimeline(length=PERF_LENGTH, name="A8")
-    tl.create_region("A8_1", start=0, end=CUT_START)
-    tl.create_region("A8_2", start=CUT_START, end=PERF_LENGTH)
+    tl.create_region(0, CUT_START, id="A8_1", name="A8_1")
+    tl.create_region(CUT_START, PERF_LENGTH, id="A8_2", name="A8_2")
     return tl
 
 
@@ -452,8 +452,8 @@ class TestApplyFlowPlacesChildren:
     def test_regions_match_the_children(
         self, restored: ContinuousLogicalTimeline
     ) -> None:
-        assert restored.list_regions() == ["A8_1", "A8_2"]
-        r2 = restored.get_region("A8_2")
+        assert [r.name for r in restored.iter_regions()] == ["A8_1", "A8_2"]
+        r2 = restored.get_region("region_2")
         assert (r2.start.value, r2.end.value) == (CUT_END, SCORE_LENGTH)
 
     def test_fill_gaps_closes_the_hole_with_an_empty_segment(
@@ -468,7 +468,8 @@ class TestApplyFlowPlacesChildren:
         assert filler.length.value == CUT_LENGTH
         assert filler.n_events == 0
         assert result.get_child_offset("gap_1").value == CUT_START
-        gap = result.get_region("gap_1")
+        gap = result.get_region("region_2")
+        assert gap.name == "gap_1"
         assert (gap.start.value, gap.end.value) == (CUT_START, CUT_END)
 
     def test_fill_gaps_uses_the_gap_label(
@@ -478,12 +479,16 @@ class TestApplyFlowPlacesChildren:
             ["A8_1", Gap(CUT_LENGTH, "skipped_42_43"), "A8_2"], id="restored"
         )
         result = performance.apply_flow("restored", fill_gaps=True)
-        assert "skipped_42_43" in result.list_regions()
+        assert [r.name for r in result.iter_regions()] == [
+            "A8_1",
+            "skipped_42_43",
+            "A8_2",
+        ]
 
     def test_gaps_unmarked_by_default(
         self, restored: ContinuousLogicalTimeline
     ) -> None:
-        assert restored.list_regions() == ["A8_1", "A8_2"]
+        assert [r.name for r in restored.iter_regions()] == ["A8_1", "A8_2"]
 
     def test_segment_line_needs_its_gaps_filled(self) -> None:
         # A SegmentLine admits no space between its segments, so a placing flow
@@ -491,8 +496,8 @@ class TestApplyFlowPlacesChildren:
         sl = SegmentLine[ContinuousLogicalTimeline](unit="q", name="sl")
         for i in range(4):
             sl.append_segment(ContinuousLogicalTimeline(length=10, unit="q"), f"s{i}")
-        sl.create_region("first", start=0, end=10)
-        sl.create_region("last", start=30, end=40)
+        sl.create_region(0, 10, id="first", name="first")
+        sl.create_region(30, 40, id="last", name="last")
         sl.create_flow_map({0: "first", 20: "last"}, id="placed")
 
         with pytest.raises(ValueError, match="fill_gaps=True"):
@@ -561,11 +566,8 @@ class TestInverseRestoresTheSource:
     ) -> None:
         # Before placement was honoured, the Regions said 129 while the
         # children sat at 123 — the result contradicted itself.
-        for name in ("A8_1", "A8_2"):
-            assert (
-                restored.get_region(name).start.value
-                == restored.get_child_offset(name).value
-            )
+        for region in restored.iter_regions():
+            assert region.start.value == restored.get_child_offset(region.name).value
 
     def test_events_land_back_on_their_score_coordinates(
         self, restored: ContinuousLogicalTimeline

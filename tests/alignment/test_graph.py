@@ -108,7 +108,7 @@ def dgt1_1000px_timeline() -> DiscreteGraphicalTimeline:
     return DiscreteGraphicalTimeline(
         length=1000,
         unit="pixels",
-        uid="dgt1",
+        uid="dgt_1",
     )
 
 
@@ -118,7 +118,7 @@ def dgt2_800px_timeline() -> DiscreteGraphicalTimeline:
     return DiscreteGraphicalTimeline(
         length=800,
         unit="pixels",
-        uid="dgt2",
+        uid="dgt_2",
     )
 
 
@@ -530,10 +530,10 @@ class TestMatchGraphGroupExtension:
         """Extending to groups adds inferred edges."""
         # Claim between dgt1 and some external timeline
         claim = MatchClaim(
-            timeline_a_id="dgt1",
+            timeline_a_id="dgt_1",
             timeline_b_id="external",
             start_anchor=AlignmentAnchor(
-                timeline_a_id="dgt1",
+                timeline_a_id="dgt_1",
                 coordinate_a=Coordinate(500.0, TimeUnit.number),
                 timeline_b_id="external",
                 coordinate_b=Coordinate(25.0, TimeUnit.number),
@@ -543,7 +543,7 @@ class TestMatchGraphGroupExtension:
 
         # Set up group mapping
         groups = {"group1": dgt1_group}
-        timeline_to_group = {"dgt1": "group1", "audio": "group1"}
+        timeline_to_group = {"dgt_1": "group1", "audio": "group1"}
 
         extended = graph.extend_to_groups(groups, timeline_to_group)
 
@@ -559,10 +559,10 @@ class TestMatchGraphGroupExtension:
     ) -> None:
         """Extended edges have correct converted coordinates."""
         claim = MatchClaim(
-            timeline_a_id="dgt1",
+            timeline_a_id="dgt_1",
             timeline_b_id="external",
             start_anchor=AlignmentAnchor(
-                timeline_a_id="dgt1",
+                timeline_a_id="dgt_1",
                 coordinate_a=Coordinate(500.0, TimeUnit.pixels),  # Midpoint
                 timeline_b_id="external",
                 coordinate_b=Coordinate(25.0, TimeUnit.number),
@@ -571,7 +571,7 @@ class TestMatchGraphGroupExtension:
         graph = MatchGraph([claim])
 
         groups = {"group1": dgt1_group}
-        timeline_to_group = {"dgt1": "group1", "audio": "group1"}
+        timeline_to_group = {"dgt_1": "group1", "audio": "group1"}
 
         extended = graph.extend_to_groups(groups, timeline_to_group)
 
@@ -588,10 +588,10 @@ class TestMatchGraphGroupExtension:
     ) -> None:
         """Extended edges are marked as inferred, not explicit."""
         claim = MatchClaim(
-            timeline_a_id="dgt1",
+            timeline_a_id="dgt_1",
             timeline_b_id="external",
             start_anchor=AlignmentAnchor(
-                timeline_a_id="dgt1",
+                timeline_a_id="dgt_1",
                 coordinate_a=Coordinate(500.0, TimeUnit.number),
                 timeline_b_id="external",
                 coordinate_b=Coordinate(25.0, TimeUnit.number),
@@ -600,7 +600,7 @@ class TestMatchGraphGroupExtension:
         graph = MatchGraph([claim])
 
         groups = {"group1": dgt1_group}
-        timeline_to_group = {"dgt1": "group1", "audio": "group1"}
+        timeline_to_group = {"dgt_1": "group1", "audio": "group1"}
 
         extended = graph.extend_to_groups(groups, timeline_to_group)
         stamps = extended.get_stamps()
@@ -618,10 +618,10 @@ class TestMatchGraphGroupExtension:
     ) -> None:
         """include_inferred=False returns original graph."""
         claim = MatchClaim(
-            timeline_a_id="dgt1",
+            timeline_a_id="dgt_1",
             timeline_b_id="external",
             start_anchor=AlignmentAnchor(
-                timeline_a_id="dgt1",
+                timeline_a_id="dgt_1",
                 coordinate_a=Coordinate(500.0, TimeUnit.number),
                 timeline_b_id="external",
                 coordinate_b=Coordinate(25.0, TimeUnit.number),
@@ -630,7 +630,7 @@ class TestMatchGraphGroupExtension:
         graph = MatchGraph([claim])
 
         groups = {"group1": dgt1_group}
-        timeline_to_group = {"dgt1": "group1", "audio": "group1"}
+        timeline_to_group = {"dgt_1": "group1", "audio": "group1"}
 
         extended = graph.extend_to_groups(
             groups, timeline_to_group, include_inferred=False
@@ -754,10 +754,10 @@ class TestMatchGraphFilter:
     ) -> None:
         """Filter to include only explicit edges (remove inferred)."""
         claim = MatchClaim(
-            timeline_a_id="dgt1",
+            timeline_a_id="dgt_1",
             timeline_b_id="external",
             start_anchor=AlignmentAnchor(
-                timeline_a_id="dgt1",
+                timeline_a_id="dgt_1",
                 coordinate_a=Coordinate(500.0, TimeUnit.number),
                 timeline_b_id="external",
                 coordinate_b=Coordinate(25.0, TimeUnit.number),
@@ -766,7 +766,7 @@ class TestMatchGraphFilter:
         graph = MatchGraph([claim])
 
         groups = {"group1": dgt1_group}
-        timeline_to_group = {"dgt1": "group1", "audio": "group1"}
+        timeline_to_group = {"dgt_1": "group1", "audio": "group1"}
 
         extended = graph.extend_to_groups(groups, timeline_to_group)
         filtered = extended.filter(explicit_only=True)
@@ -861,7 +861,7 @@ class TestMatchGraphThoresenIntegration:
         # This gives 12 nodes and 6 unique edges.
         assert graph.n_nodes == 12
         assert graph.n_edges == 6
-        assert graph.timeline_ids == {"dgt1", "dgt2"}
+        assert graph.timeline_ids == {"dgt_1", "dgt_2"}
 
     def test_thoresen_coordinates(
         self, thoresen_segment_claims: list[MatchClaim]
@@ -869,8 +869,8 @@ class TestMatchGraphThoresenIntegration:
         """Thoresen graph has correct boundary coordinates."""
         graph = MatchGraph(thoresen_segment_claims)
 
-        dgt1_coords = graph.get_coordinates_for("dgt1", format="float")
-        dgt2_coords = graph.get_coordinates_for("dgt2", format="float")
+        dgt1_coords = graph.get_coordinates_for("dgt_1", format="float")
+        dgt2_coords = graph.get_coordinates_for("dgt_2", format="float")
 
         # DGT1: 5 segments of 967 each = 4835 total
         assert dgt1_coords[0] == 0.0
@@ -891,8 +891,8 @@ class TestMatchGraphThoresenIntegration:
         stamps = graph.get_stamps()
         coord_pairs = {
             (
-                stamp.get_coordinate_for("dgt1", format="float"),
-                stamp.get_coordinate_for("dgt2", format="float"),
+                stamp.get_coordinate_for("dgt_1", format="float"),
+                stamp.get_coordinate_for("dgt_2", format="float"),
             )
             for stamp in stamps
         }
@@ -1055,10 +1055,10 @@ class TestMatchGraphExtendToGroupsImplicitClaims:
     ) -> None:
         """extend_to_groups() adds implicit MatchClaims (case d)."""
         claim = MatchClaim(
-            timeline_a_id="dgt1",
+            timeline_a_id="dgt_1",
             timeline_b_id="external",
             start_anchor=AlignmentAnchor(
-                timeline_a_id="dgt1",
+                timeline_a_id="dgt_1",
                 coordinate_a=Coordinate(500.0, TimeUnit.number),
                 timeline_b_id="external",
                 coordinate_b=Coordinate(25.0, TimeUnit.number),
@@ -1067,7 +1067,7 @@ class TestMatchGraphExtendToGroupsImplicitClaims:
         graph = MatchGraph([claim])
 
         groups = {"group1": dgt1_group}
-        timeline_to_group = {"dgt1": "group1", "audio": "group1"}
+        timeline_to_group = {"dgt_1": "group1", "audio": "group1"}
 
         extended = graph.extend_to_groups(groups, timeline_to_group)
 
@@ -1090,10 +1090,10 @@ class TestMatchGraphExtendToGroupsImplicitClaims:
     ) -> None:
         """Implicit claims have source_claim_id for traceability."""
         claim = MatchClaim(
-            timeline_a_id="dgt1",
+            timeline_a_id="dgt_1",
             timeline_b_id="external",
             start_anchor=AlignmentAnchor(
-                timeline_a_id="dgt1",
+                timeline_a_id="dgt_1",
                 coordinate_a=Coordinate(500.0, TimeUnit.number),
                 timeline_b_id="external",
                 coordinate_b=Coordinate(25.0, TimeUnit.number),
@@ -1102,7 +1102,7 @@ class TestMatchGraphExtendToGroupsImplicitClaims:
         graph = MatchGraph([claim])
 
         groups = {"group1": dgt1_group}
-        timeline_to_group = {"dgt1": "group1", "audio": "group1"}
+        timeline_to_group = {"dgt_1": "group1", "audio": "group1"}
 
         extended = graph.extend_to_groups(groups, timeline_to_group)
 
@@ -1204,10 +1204,10 @@ class TestMatchGraphExtendToGroupsFilters:
     ]:
         """Set up a multi-group scenario for filter tests.
 
-        Group A: dgt1 (1000 pixels), audio (100 seconds)
-        External claim: dgt1@500 <-> external@25
+        Group A: dgt_1 (1000 pixels), audio (100 seconds)
+        External claim: dgt_1@500 <-> external@25
         """
-        dgt1 = DiscreteGraphicalTimeline(length=1000, unit="pixels", uid="dgt1")
+        dgt1 = DiscreteGraphicalTimeline(length=1000, unit="pixels", uid="dgt_1")
         audio = ContinuousPhysicalTimeline(length=100.0, unit="seconds", uid="audio")
 
         group_a = TimelineGroup(id="group_a")
@@ -1215,10 +1215,10 @@ class TestMatchGraphExtendToGroupsFilters:
         group_a.add_timeline(audio)
 
         claim = MatchClaim(
-            timeline_a_id="dgt1",
+            timeline_a_id="dgt_1",
             timeline_b_id="external",
             start_anchor=AlignmentAnchor(
-                timeline_a_id="dgt1",
+                timeline_a_id="dgt_1",
                 coordinate_a=Coordinate(500.0, TimeUnit.number),
                 timeline_b_id="external",
                 coordinate_b=Coordinate(25.0, TimeUnit.number),
@@ -1226,8 +1226,8 @@ class TestMatchGraphExtendToGroupsFilters:
         )
 
         groups = {"group_a": group_a}
-        timeline_to_group = {"dgt1": "group_a", "audio": "group_a"}
-        timelines = {"dgt1": dgt1, "audio": audio}
+        timeline_to_group = {"dgt_1": "group_a", "audio": "group_a"}
+        timelines = {"dgt_1": dgt1, "audio": audio}
 
         return claim, groups, timeline_to_group, timelines
 
@@ -1243,7 +1243,7 @@ class TestMatchGraphExtendToGroupsFilters:
         extended = graph.extend_to_groups(
             groups,
             timeline_to_group,
-            timeline_ids={"dgt1", "external"},
+            timeline_ids={"dgt_1", "external"},
         )
 
         # Audio should NOT be in the graph
@@ -1278,8 +1278,8 @@ class TestMatchGraphExtendToGroupsFilters:
         extended = MatchGraph([claim]).extend_to_groups(
             groups,
             timeline_to_group,
-            timeline_ids={"dgt1", "external"},
-            id_pattern=r"^(dgt1|external)$",
+            timeline_ids={"dgt_1", "external"},
+            id_pattern=r"^(dgt_1|external)$",
         )
 
         assert extended.n_nodes == 2
@@ -1294,16 +1294,16 @@ class TestMatchGraphExtendToGroupsFilters:
 
         line = MatchLine.from_claims(
             [claim],
-            source_timeline_id="dgt1",
+            source_timeline_id="dgt_1",
             groups=groups,
             timeline_to_group=timeline_to_group,
-            timeline_ids={"dgt1", "external"},
-            id_pattern=r"^(dgt1|external)$",
+            timeline_ids={"dgt_1", "external"},
+            id_pattern=r"^(dgt_1|external)$",
         )
 
         assert line.n_stamps == 1
         assert line.stamps[0].coordinates == {
-            "dgt1": Coordinate(500.0, TimeUnit.number),
+            "dgt_1": Coordinate(500.0, TimeUnit.number),
             "external": Coordinate(25.0, TimeUnit.number),
         }
 
@@ -1350,10 +1350,10 @@ class TestMatchGraphFilterPhase64:
     def test_filter_by_include_domains(self) -> None:
         """filter() with include_domains removes timelines of wrong domain."""
         claim = MatchClaim(
-            timeline_a_id="dgt1",
+            timeline_a_id="dgt_1",
             timeline_b_id="audio",
             start_anchor=AlignmentAnchor(
-                timeline_a_id="dgt1",
+                timeline_a_id="dgt_1",
                 coordinate_a=Coordinate(500.0, TimeUnit.pixels),
                 timeline_b_id="audio",
                 coordinate_b=Coordinate(50.0, TimeUnit.seconds),
@@ -1407,10 +1407,10 @@ class TestMatchGraphFilterPhase64:
     def test_filter_by_include_units(self) -> None:
         """filter() with include_units removes timelines of wrong unit."""
         claim = MatchClaim(
-            timeline_a_id="dgt1",
+            timeline_a_id="dgt_1",
             timeline_b_id="audio",
             start_anchor=AlignmentAnchor(
-                timeline_a_id="dgt1",
+                timeline_a_id="dgt_1",
                 coordinate_a=Coordinate(500.0, TimeUnit.pixels),
                 timeline_b_id="audio",
                 coordinate_b=Coordinate(50.0, TimeUnit.seconds),
@@ -1423,7 +1423,7 @@ class TestMatchGraphFilterPhase64:
         )
 
         # dgt1 (pixels) should be removed, audio should remain but isolated
-        assert "dgt1" not in filtered.timeline_ids
+        assert "dgt_1" not in filtered.timeline_ids
         # No edges remain (isolated nodes removed)
         assert filtered.n_edges == 0
 
@@ -1472,15 +1472,15 @@ class TestMatchStampGroupRetrieval:
     ) -> None:
         """Plural retrieval uses timeline_ids in the group's declared order."""
         stamp = MatchStamp(
-            coordinates={"dgt1": 500.0, "audio": 50.0, "external": 25.0},
-            anchor_edges=[("dgt1", "external")],
-            inferred_edges=[("dgt1", "audio")],
+            coordinates={"dgt_1": 500.0, "audio": 50.0, "external": 25.0},
+            anchor_edges=[("dgt_1", "external")],
+            inferred_edges=[("dgt_1", "audio")],
         )
 
         values = stamp.get_coordinates_for(dgt1_group.timeline_ids, format="float")
         group_coords = dict(zip(dgt1_group.timeline_ids, values, strict=True))
 
-        assert group_coords == {"dgt1": 500.0, "audio": 50.0}
+        assert group_coords == {"dgt_1": 500.0, "audio": 50.0}
         assert "external" not in group_coords
 
 
@@ -1501,11 +1501,11 @@ class TestMatchStampDeterminism:
     def _claims() -> list[MatchClaim]:
         """One instant shared by five timelines, named out of lexical order."""
         names = [
-            "score:clt1",
+            "score:clt_1",
             "Chopin_op10_no3_p20",
-            "perf:dlt1",
+            "perf:dlt_1",
             "Chopin_op10_no3_p04",
-            "audio:dpt1",
+            "audio:dpt_1",
         ]
         return [
             MatchClaim(
@@ -1552,9 +1552,9 @@ class TestMatchStampDeterminism:
         assert stamp.present_timelines == [
             "Chopin_op10_no3_p04",
             "Chopin_op10_no3_p20",
-            "audio:dpt1",
-            "perf:dlt1",
-            "score:clt1",
+            "audio:dpt_1",
+            "perf:dlt_1",
+            "score:clt_1",
         ]
         assert stamp.source_id == "Chopin_op10_no3_p04"
 
@@ -1578,11 +1578,11 @@ class TestMatchStampDeterminism:
             from timetoalign.core import Coordinate, TimeUnit
 
             names = [
-                "score:clt1",
+                "score:clt_1",
                 "Chopin_op10_no3_p20",
-                "perf:dlt1",
+                "perf:dlt_1",
                 "Chopin_op10_no3_p04",
-                "audio:dpt1",
+                "audio:dpt_1",
             ]
             claims = [
                 MatchClaim(

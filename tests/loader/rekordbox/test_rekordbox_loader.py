@@ -93,7 +93,7 @@ def test_pickup_grid_change_and_trailing_measure_are_exact(tmp_path: Path) -> No
     assert timeline.flow_control.to_dict() == {
         "breaks": [],
         "jumps": [],
-        "markers": {},
+        "markers": [],
     }
     assert [measure.number for measure in measures] == [0, 1, 2, 3]
     assert isinstance(measures[0], MeasureConstituent)

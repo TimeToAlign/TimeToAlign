@@ -60,7 +60,7 @@ from timetoalign.maps import (
 )
 from timetoalign.testdata import ensure_data
 from timetoalign.timelines import MeasureMap
-from timetoalign.timelines.flowcontrol import Break, Jump
+from timetoalign.timelines.flowcontrol import Break, Jump, Marker
 
 SCORE = ensure_data("score")
 MIDI = ensure_data("midi")
@@ -82,7 +82,7 @@ def _with_structure(cls: type[Timeline], unit: str, length: Any) -> Timeline:
     timeline = cls(length=length, unit=unit)
     timeline.add_child(cls(length=length / 3, unit=unit), length / 6)
     timeline.add_child(cls(length=length / 4, unit=unit), length / 2)
-    timeline.create_region("theme", length / 6, length / 2)
+    timeline.create_region(length / 6, length / 2, id="theme", name="theme")
     timeline.flow_control.add_break(
         Break(
             coordinate=timeline.make_coordinate(length / 2),
@@ -99,7 +99,7 @@ def _with_structure(cls: type[Timeline], unit: str, length: Any) -> Timeline:
             repeat_count=2,
         )
     )
-    timeline.flow_control.add_marker("start", length / 6)
+    timeline.flow_control.add_marker(Marker(length / 6, name="start"))
     if unit != "quarters":
         return timeline
     timeline.add_measure_map(
@@ -268,17 +268,18 @@ def test_emitted_manifests_validate(
 def test_bundled_fixtures_round_trip() -> None:
     """Bundled fixtures reconstruct without changing any timeline manifest.
 
-    The comparison is by JSON text, so the canonical order of children,
-    conversion maps, regions and flow control must match as well.
+    The comparison is by JSON text with object keys sorted, as the schema's
+    writer stores them, so the canonical order of children, conversion maps,
+    regions and flow control must match as well.
     """
     paths = fixture_paths()
     assert len(paths) == 23
     for path in paths:
         manifest = json.loads(path.read_text(encoding="utf-8"))["timeline"]
         expected = canonical_order({"timeline": manifest})["timeline"]
-        assert json.dumps(Timeline.from_dict(manifest).to_dict()) == json.dumps(
-            expected
-        )
+        assert json.dumps(
+            Timeline.from_dict(manifest).to_dict(), sort_keys=True
+        ) == json.dumps(expected, sort_keys=True)
 
 
 def _quarters_manifest(measure_map: list[dict[str, Any]]) -> dict[str, Any]:

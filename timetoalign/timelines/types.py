@@ -328,6 +328,14 @@ class SegmentLineMixin:
             self._segment_type = type(child)
         self._segment_order.append(child.id)
 
+    def _rename_child(self, old_id: str, new_id: str) -> None:
+        """Re-key a segment, keeping its place in the segment order."""
+        super()._rename_child(old_id, new_id)
+        self._segment_order = [
+            new_id if segment_id == old_id else segment_id
+            for segment_id in self._segment_order
+        ]
+
     def append_segment(
         self,
         segment: Timeline,
@@ -503,7 +511,8 @@ class SegmentLineMixin:
         timeline._flow_maps.update(self._flow_maps)
         timeline._measure_map = self._measure_map
         timeline._metric_hierarchy = self._metric_hierarchy
-        timeline._flow_control = self._flow_control.copy()
+        timeline._adopt_flow_control(self._flow_control.copy())
+        timeline._id_minted = self._id_minted
         timeline._length = timeline._make_coordinate(self._length.value)
         timeline._locked = self._locked
         return timeline

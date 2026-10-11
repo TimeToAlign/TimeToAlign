@@ -32,31 +32,31 @@ graphical):
 
 * a shared ``"score"`` group holding the score in two logical units — a
   tick :class:`~timetoalign.timelines.types.DiscreteLogicalTimeline`
-  (``score:dlt1``) carrying the notes *and* every MPM markup event
+  (``score:dlt_1``) carrying the notes *and* every MPM markup event
   (tempo / dynamics / articulation / asynchrony / …), and a quarter-note
   :class:`~timetoalign.timelines.types.ContinuousLogicalTimeline`
-  (``score:clt1``) carrying the notes.  ``score:dlt1`` carries a
+  (``score:clt_1``) carrying the notes.  ``score:dlt_1`` carries a
   ticks→quarters :class:`~timetoalign.maps.convenience.TicksToQuarters`
-  map; ``score:clt1`` carries a modelled quarters→seconds
+  map; ``score:clt_1`` carries a modelled quarters→seconds
   :class:`~timetoalign.maps.table.TableMap` integrated from the
   performance's ``tempoMap``;
 * a ``"perf"`` group holding the observed onsets in two physical units —
   a seconds :class:`~timetoalign.timelines.types.ContinuousPhysicalTimeline`
-  (``perf:cpt1``) and a samples
+  (``perf:cpt_1``) and a samples
   :class:`~timetoalign.timelines.types.DiscretePhysicalTimeline`
-  (``perf:dpt1``) carrying a
+  (``perf:dpt_1``) carrying a
   :class:`~timetoalign.maps.convenience.SamplesToSeconds` map (sample
   rate read from the recording's ``.wav``) — plus, when the project
   carries one, a third graphical timeline: the spectrogram's frame-column
   x-axis as a pixels
   :class:`~timetoalign.timelines.types.DiscreteGraphicalTimeline`
-  (``perf:dgt1``).  It carries no events — it is a graphical axis whose
+  (``perf:dgt_1``).  It carries no events — it is a graphical axis whose
   length is the spectrogram ``.png``'s width in frame columns — and a
   px→seconds :class:`~timetoalign.maps.linear.ScalarMap`
   (``seconds = px * hopSize / sample_rate``); and
 * a cross-group :class:`~timetoalign.alignment.anchors.MatchClaim` per
-  score note — a synchronous projection from ``score:clt1`` (quarters)
-  onto ``perf:cpt1`` (seconds), joined ``xml:id == ref``.
+  score note — a synchronous projection from ``score:clt_1`` (quarters)
+  onto ``perf:cpt_1`` (seconds), joined ``xml:id == ref``.
 
 The ``ref`` → ``xml:id`` correspondence is a bijection (every score note
 has exactly one observed onset and vice versa), so every claim is
@@ -112,13 +112,13 @@ module_logger = logging.getLogger(__name__)
 # region Constants
 
 #: Score-group timeline uids (type-based ids, role prefix).
-_SCORE_CLT_ID = "score:clt1"
-_SCORE_DLT_ID = "score:dlt1"
+_SCORE_CLT_ID = "score:clt_1"
+_SCORE_DLT_ID = "score:dlt_1"
 
 #: Performance-group timeline uids.
-_PERF_CPT_ID = "perf:cpt1"
-_PERF_DPT_ID = "perf:dpt1"
-_PERF_DGT_ID = "perf:dgt1"
+_PERF_CPT_ID = "perf:cpt_1"
+_PERF_DPT_ID = "perf:dpt_1"
+_PERF_DGT_ID = "perf:dgt_1"
 
 #: Group ids.
 _SCORE_GROUP = "score"
@@ -197,7 +197,7 @@ class MpmLoader(AlignmentLoader):
     score, the selected modelled performance's markup, and the observed
     alignment, and assembles a bundle with a shared logical ``"score"``
     group and a physical ``"perf"`` group — the latter also carrying the
-    spectrogram's graphical pixel axis (``perf:dgt1``) when the project
+    spectrogram's graphical pixel axis (``perf:dgt_1``) when the project
     ships one — linked by one synchronous :class:`MatchClaim` per score
     note.  The bundle thus spans the logical, physical, and (when a
     spectrogram is present) graphical domains.
@@ -790,9 +790,9 @@ class MpmLoader(AlignmentLoader):
     ) -> None:
         """Build the two shared logical score timelines.
 
-        ``score:dlt1`` (ticks) holds the Note events *and* every MPM markup
+        ``score:dlt_1`` (ticks) holds the Note events *and* every MPM markup
         event, plus a ticks→quarters :class:`TicksToQuarters` map.
-        ``score:clt1`` (quarters) holds the Note events plus the modelled
+        ``score:clt_1`` (quarters) holds the Note events plus the modelled
         quarters→seconds :class:`TableMap`.
         """
         ppq = self._ppq
@@ -913,8 +913,8 @@ class MpmLoader(AlignmentLoader):
     ) -> None:
         """Build the two physical performance timelines from the onsets.
 
-        ``perf:cpt1`` (seconds) holds one Note event per observed onset
-        (``milliseconds.date / 1000``); ``perf:dpt1`` (samples) holds the
+        ``perf:cpt_1`` (seconds) holds one Note event per observed onset
+        (``milliseconds.date / 1000``); ``perf:dpt_1`` (samples) holds the
         same onsets scaled by the sample rate, with a
         :class:`SamplesToSeconds` map.
         """
@@ -975,7 +975,7 @@ class MpmLoader(AlignmentLoader):
     ) -> None:
         """Build the graphical performance timeline from the spectrogram.
 
-        ``perf:dgt1`` (pixels) is the spectrogram's frame-column x-axis: a
+        ``perf:dgt_1`` (pixels) is the spectrogram's frame-column x-axis: a
         :class:`DiscreteGraphicalTimeline` whose length is the number of
         frame columns (the ``.png``'s pixel width).  It carries **no
         events** — the columns are a graphical axis, not events — and a
@@ -1014,8 +1014,8 @@ class MpmLoader(AlignmentLoader):
 
         The join ``xml_id == ref`` is a bijection, so each score note's
         quarter onset is projected onto its observed seconds onset.  The
-        claim source is ``score:clt1`` (quarters); the target is
-        ``perf:cpt1`` (seconds).
+        claim source is ``score:clt_1`` (quarters); the target is
+        ``perf:cpt_1`` (seconds).
         """
         ppq = self._ppq
         quarter_by_id = {
@@ -1094,8 +1094,8 @@ class MpmLoader(AlignmentLoader):
     def create_timelines(self, id_pattern: str | None = None) -> list["Timeline"]:
         """Return all loaded timelines: the two score, then the performance.
 
-        The performance group always contributes ``perf:cpt1`` and
-        ``perf:dpt1``; ``perf:dgt1`` (the spectrogram graphical axis) is
+        The performance group always contributes ``perf:cpt_1`` and
+        ``perf:dpt_1``; ``perf:dgt_1`` (the spectrogram graphical axis) is
         appended when the project carries a spectrogram.
 
         Args:
@@ -1122,8 +1122,8 @@ class MpmLoader(AlignmentLoader):
         """Return a single timeline by its uid.
 
         Args:
-            uid: One of ``"score:clt1"`` / ``"score:dlt1"`` / ``"perf:cpt1"``
-                / ``"perf:dpt1"`` / ``"perf:dgt1"`` (the last present only
+            uid: One of ``"score:clt_1"`` / ``"score:dlt_1"`` / ``"perf:cpt_1"``
+                / ``"perf:dpt_1"`` / ``"perf:dgt_1"`` (the last present only
                 when the project carries a spectrogram).
 
         Raises:

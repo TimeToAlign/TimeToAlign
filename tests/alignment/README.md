@@ -47,8 +47,8 @@ All Thoresen test data constants and shared fixtures are centralised in `tests/a
 
 | Fixture | Type | Description |
 |---------|------|-------------|
-| `dgt1_timeline` | `DiscreteGraphicalTimeline` | DGT1 (2009): 4835 px, uid="dgt1" |
-| `dgt2_timeline` | `DiscreteGraphicalTimeline` | DGT2 (2010): 4328 px, uid="dgt2" |
+| `dgt1_timeline` | `DiscreteGraphicalTimeline` | DGT1 (2009): 4835 px, uid="dgt_1" |
+| `dgt2_timeline` | `DiscreteGraphicalTimeline` | DGT2 (2010): 4328 px, uid="dgt_2" |
 | `audio_timeline` | `ContinuousPhysicalTimeline` | 150 seconds, uid="audio" |
 | `thoresen_segment_claims` | `list[MatchClaim]` | 5 interval claims mapping DGT1↔DGT2 segments |
 | `dgt1_bundle` / `dgt2_bundle` | `GraphicalBundle` | Full graphical bundles (requires PyMuPDF) |
@@ -96,7 +96,7 @@ equivalent graph, group-extension, match-line, and stamp filtering results.
 
 | Before (deprecated) | After |
 |---------------------|-------------------|
-| `PerfectAlignment(source_start=0, source_end=277776, ref_start=15343, ref_end=293119)` | `group.add_timeline(holes, start=IdCoordinate(15343.0, TimeUnit.seconds, "dgt1"), end=IdCoordinate(293119.0, TimeUnit.seconds, "dgt1"))` |
+| `PerfectAlignment(source_start=0, source_end=277776, ref_start=15343, ref_end=293119)` | `group.add_timeline(holes, start=IdCoordinate(15343.0, TimeUnit.seconds, "dgt_1"), end=IdCoordinate(293119.0, TimeUnit.seconds, "dgt_1"))` |
 | Per-timeline alignment objects | Timestamp table with one field per timeline |
 | `group.reference_timeline_id` | Reference timeline is first field in table |
 
@@ -155,32 +155,32 @@ bridged with `create_match_claims`:
 
 ### Exact Expected Values
 
-**Union query — `merged.get_matchstamp_at(50, "a1:clt1")` (default `omit`):**
+**Union query — `merged.get_matchstamp_at(50, "a1:clt_1")` (default `omit`):**
 
 `is_interpolated is False` (the query carries an exact anchor); 6 timelines,
 no negatives:
 
 | timeline | coordinate | how |
 |---|---|---|
-| `a1:clt1` | 50 | query |
-| `a2:cpt1` | 50 | exact anchor |
-| `a3:cpt2` | 25 | exact anchor |
-| `b_bridge:dpt1` | 5 | exact bridge anchor (unaltered) |
-| `b1:dpt2` | 1300 | reconcile 5 s → 500 samples, warp → 1300 |
-| `b2:dpt3` | 750 | reconcile 5 s → 500 samples, warp → 750 |
+| `a1:clt_1` | 50 | query |
+| `a2:cpt_1` | 50 | exact anchor |
+| `a3:cpt_2` | 25 | exact anchor |
+| `b_bridge:dpt_1` | 5 | exact bridge anchor (unaltered) |
+| `b1:dpt_2` | 1300 | reconcile 5 s → 500 samples, warp → 1300 |
+| `b2:dpt_3` | 750 | reconcile 5 s → 500 samples, warp → 750 |
 
 `b_bridge = 5` is out of the field hull `[200, 800]`; its C-Map inverse
 reinterprets 5 seconds as 500 samples (in hull), and `np.interp(500, …)` gives
 `b1 = 1300`, `b2 = 750`.
 
-**Parity.** `b_bundle.get_matchstamp_at(500, "b_bridge:dpt1")` (the reconciled
+**Parity.** `b_bundle.get_matchstamp_at(500, "b_bridge:dpt_1")` (the reconciled
 native coordinate) yields `b1 = 1300`, `b2 = 750` — identical to the union's B
 portion for the transferred timelines.
 
-**Out-of-support query — `merged.get_matchstamp_at(50, "b_bridge:dpt1")`** (50
+**Out-of-support query — `merged.get_matchstamp_at(50, "b_bridge:dpt_1")`** (50
 samples, below the hull; the query's own coordinate is never reconciled):
 
-| policy | timelines | `b1:dpt2` | `b2:dpt3` |
+| policy | timelines | `b1:dpt_2` | `b2:dpt_3` |
 |---|---|---|---|
 | `omit` | 1 (`b_bridge` only) | — | — |
 | `clamp` | 3 | 100 (`warp(200)`) | 300 (`warp(200)`) |
@@ -275,7 +275,7 @@ Groups contain timelines with "perfect alignment"--any coordinate in one timelin
 
 | Test | Validates |
 |------|-----------|
-| `test_add_with_partial_alignment` | Partial ranges work: `start=IdCoordinate(15343, TimeUnit.seconds, "dgt1")` maps holes 0 -> image 15343 |
+| `test_add_with_partial_alignment` | Partial ranges work: `start=IdCoordinate(15343, TimeUnit.seconds, "dgt_1")` maps holes 0 -> image 15343 |
 | `test_interpolation_exact_boundary` | Exact boundary coordinates return stored values (no interpolation) |
 | `test_interpolation_interior_point` | Interior points are linearly interpolated |
 | `test_conversion_same_timeline` | Self-conversion returns input unchanged (reflexivity) |
@@ -289,12 +289,12 @@ def test_floating_point_precision(self):
     # Partial alignment: holes [0, 277776] -> image [15343, 293119]
     group.add_timeline(
         holes,
-        start=IdCoordinate(15343.0, TimeUnit.seconds, "dgt1"),
-        end=IdCoordinate(293119.0, TimeUnit.seconds, "dgt1"),
+        start=IdCoordinate(15343.0, TimeUnit.seconds, "dgt_1"),
+        end=IdCoordinate(293119.0, TimeUnit.seconds, "dgt_1"),
     )
 
     # Boundary coordinates must be EXACT
-    result = group.convert(0.0, source="holes", target="dgt1")
+    result = group.convert(0.0, source="holes", target="dgt_1")
     assert result == 15343.0  # EXACT, not pytest.approx()
 ```
 
@@ -349,8 +349,8 @@ The TimelineGroup maintains a dictionary of pairwise `InterpolationMap` objects:
 
 ```python
 group._interpolation_maps = {
-    "audio:dgt1": InterpolationMap(...),  # audio -> dgt1
-    "dgt1:audio": InterpolationMap(...),  # dgt1 -> audio
+    "audio:dgt_1": InterpolationMap(...),  # audio -> dgt_1
+    "dgt_1:audio": InterpolationMap(...),  # dgt_1 -> audio
     "audio:score": InterpolationMap(...), # audio -> score
     ...
 }
@@ -455,7 +455,7 @@ falls back to the bare timeline id.
 | Test | Validates |
 |------|-----------|
 | `test_repr_non_synchronous` | NOMATCH claim repr carries the `NOMATCH` flag and never the literal "non-synchronous" |
-| `test_repr_nomatch_with_coordinate_exact` | Exact string `MatchClaim(score:clt1@188.8 <-> perf:Chopin_Ashkenazy [NOMATCH])`; `source_coordinate.value == 188.8` with the source unit |
+| `test_repr_nomatch_with_coordinate_exact` | Exact string `MatchClaim(score:clt_1@188.8 <-> perf:Chopin_Ashkenazy [NOMATCH])`; `source_coordinate.value == 188.8` with the source unit |
 | `test_repr_nomatch_without_coordinate` | No `start` in the event ⇒ `source_coordinate is None` and repr drops the `@coord` segment |
 | `test_nomatch_source_coordinate_roundtrip` | `from_dict(to_dict())` preserves `source_coordinate` and equals the original |
 | `test_repr_synchronous_instant_unchanged` | Regression guard: a synchronous instant repr is byte-for-byte unchanged and its `source_coordinate is None` |
@@ -678,9 +678,9 @@ domains so that domain/unit filters bite:
 
 | Bundle UID | Class | Unit | Domain |
 |------------|-------|------|--------|
-| `score:clt1` | `ContinuousLogicalTimeline` | `quarters` | logical |
-| `perf:cpt1` | `ContinuousPhysicalTimeline` | `seconds` | physical |
-| `perf:cpt2` | `ContinuousPhysicalTimeline` | `seconds` | physical |
+| `score:clt_1` | `ContinuousLogicalTimeline` | `quarters` | logical |
+| `perf:cpt_1` | `ContinuousPhysicalTimeline` | `seconds` | physical |
+| `perf:cpt_2` | `ContinuousPhysicalTimeline` | `seconds` | physical |
 
 Bundle UIDs equal the actual timeline IDs, sidestepping the UID/actual-ID
 key-space split so that a parity failure is never confused with a key-space
@@ -690,7 +690,7 @@ The claim topology is **complete pairwise at three aligned instants** — every
 pair claims at every instant, 3 pairs × 3 instants = **9 synchronous instant
 claims**:
 
-| Instant | `score:clt1` | `perf:cpt1` | `perf:cpt2` |
+| Instant | `score:clt_1` | `perf:cpt_1` | `perf:cpt_2` |
 |---------|--------------|-------------|-------------|
 | 0 | 0.0 | 1.0 | 2.0 |
 | 1 | 4.0 | 3.0 | 5.0 |
@@ -734,12 +734,12 @@ both paths carry the same `float` through, so anything else is a defect.
 | `test_get_claim_fields_empty_on_list_bundle` | a list-only bundle returns `[]` (nothing to serve columnar) |
 | `test_get_claim_fields_drops_empty_fields` | a filter matching no row yields `[]`, not a zero-row field |
 | `test_get_matchstamps` | equal sorted coordinate maps, 9 stamps each |
-| `test_matchstamp_table_per_claim` | both: `num_rows == 9`, `column_names == ["perf:cpt1", "perf:cpt2", "score:clt1"]`, and identical `to_pylist()` — each row exactly two non-null cells |
+| `test_matchstamp_table_per_claim` | both: `num_rows == 9`, `column_names == ["perf:cpt_1", "perf:cpt_2", "score:clt_1"]`, and identical `to_pylist()` — each row exactly two non-null cells |
 | `test_matchstamp_table_from_graph` | both: `num_rows == 3`, same 3 columns, all 9 cells filled, rows in the documented order (instant 0, 1, 2) with the exact coordinates of the topology table above |
-| `test_matchstamp_table_timeline_filter` | `timeline_filter={"score:clt1"}` yields a 1-column table in both modes for both bundles |
+| `test_matchstamp_table_timeline_filter` | `timeline_filter={"score:clt_1"}` yields a 1-column table in both modes for both bundles |
 | `test_are_commensurable` | all three timeline pairs are commensurable in both bundles; a non-member ID is not |
 | `test_get_matchstamp_at` | at each of the three instants, both bundles return a stamp spanning all 3 timelines with the exact coordinates of the topology table |
-| `test_transfer_round_trip` | `transfer(4.0, "score:clt1", "perf:cpt1") == 3.0` in both bundles, and the reverse direction returns `4.0` — exercising the `MatchLine` → `WarpMap` path that was dead for columnar bundles |
+| `test_transfer_round_trip` | `transfer(4.0, "score:clt_1", "perf:cpt_1") == 3.0` in both bundles, and the reverse direction returns `4.0` — exercising the `MatchLine` → `WarpMap` path that was dead for columnar bundles |
 | `test_diagram_reports_claim_count` | `bundle.diagram()` reports `MatchClaims: 9` for both |
 
 ### Collapsed-Row Ordering
@@ -1148,7 +1148,7 @@ method accordingly.
 
 The same parity is validated for `TimelineGroup.convert()` in
 `test_groups.py::TestConvert` (`test_convert_accepts_coordinate_objects`,
-`test_convert_rejects_unsupported_type`): `convert(75 seconds → dgt1)` returns
+`test_convert_rejects_unsupported_type`): `convert(75 seconds → dgt_1)` returns
 the exact pixel value `2438` for all three coordinate forms.
 
 ---
@@ -1347,18 +1347,6 @@ Tests for the Unified Stamp & Query API, using a star-topology bundle (1 score +
 | `TestMatchClaimDisplay` | 9 | `MatchClaim.__str__`/`_repr_html_`: instant, interval, NOMATCH, metadata, inferred, valid HTML, NOMATCH badge, affordance `Try` footer (`claim.get_matchstamp()`) appended after the table |
 | `TestTransferDocstring` | 1 | `transfer()` docstring no longer says "primary user-facing" |
 | `TestTopLevelExports` | 4 | `MatchGraph`, `MatchStamp`, `ClaimFilter` importable from top-level |
-
-### TimelineIdGenerator Tests (`../core/test_ids.py`)
-
-Tests for the `TimelineIdGenerator` class that generates systematic timeline IDs based on type. 12 tests covering:
-
-| Area | Tests | Purpose |
-|------|-------|---------|
-| Basic generation | 3 | Counter increments, prefix mapping for all 6 timeline types |
-| Role-based IDs | 2 | `next_id_with_role()` produces `role:prefix{N}` format |
-| Metadata | 2 | Metadata association and retrieval |
-| Reset/isolation | 3 | Counter reset, independent instances |
-| Edge cases | 2 | Unknown types, large counter values |
 
 ### Deprecated Tests
 

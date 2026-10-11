@@ -324,20 +324,20 @@ class TestMatchClaim:
     def test_interval_creation(self) -> None:
         """Test creating interval match (two anchors)."""
         start = AlignmentAnchor(
-            timeline_a_id="dgt1",
+            timeline_a_id="dgt_1",
             coordinate_a=Coordinate(0.0, TimeUnit.number),
-            timeline_b_id="dgt2",
+            timeline_b_id="dgt_2",
             coordinate_b=Coordinate(0.0, TimeUnit.number),
         )
         end = AlignmentAnchor(
-            timeline_a_id="dgt1",
+            timeline_a_id="dgt_1",
             coordinate_a=Coordinate(975.0, TimeUnit.number),
-            timeline_b_id="dgt2",
+            timeline_b_id="dgt_2",
             coordinate_b=Coordinate(866.0, TimeUnit.number),
         )
         claim = MatchClaim(
-            timeline_a_id="dgt1",
-            timeline_b_id="dgt2",
+            timeline_a_id="dgt_1",
+            timeline_b_id="dgt_2",
             start_anchor=start,
             end_anchor=end,
         )
@@ -465,29 +465,29 @@ class TestMatchClaim:
     def test_get_coordinates_for_interval(self) -> None:
         """Test get_coordinates_for with interval match."""
         start = AlignmentAnchor(
-            timeline_a_id="dgt1",
+            timeline_a_id="dgt_1",
             coordinate_a=Coordinate(0.0, TimeUnit.number),
-            timeline_b_id="dgt2",
+            timeline_b_id="dgt_2",
             coordinate_b=Coordinate(0.0, TimeUnit.number),
         )
         end = AlignmentAnchor(
-            timeline_a_id="dgt1",
+            timeline_a_id="dgt_1",
             coordinate_a=Coordinate(975.0, TimeUnit.number),
-            timeline_b_id="dgt2",
+            timeline_b_id="dgt_2",
             coordinate_b=Coordinate(866.0, TimeUnit.number),
         )
         claim = MatchClaim(
-            timeline_a_id="dgt1",
-            timeline_b_id="dgt2",
+            timeline_a_id="dgt_1",
+            timeline_b_id="dgt_2",
             start_anchor=start,
             end_anchor=end,
         )
 
-        interval = claim.get_interval_for("dgt1")
+        interval = claim.get_interval_for("dgt_1")
         assert interval.start.value == 0.0
         assert interval.end.value == 975.0
 
-        interval = claim.get_interval_for("dgt2")
+        interval = claim.get_interval_for("dgt_2")
         assert interval.start.value == 0.0
         assert interval.end.value == 866.0
 
@@ -613,26 +613,26 @@ class TestMatchClaim:
     def test_interval_factory(self) -> None:
         """Test interval match via direct construction."""
         claim = MatchClaim(
-            timeline_a_id="dgt1",
-            timeline_b_id="dgt2",
+            timeline_a_id="dgt_1",
+            timeline_b_id="dgt_2",
             start_anchor=AlignmentAnchor(
-                timeline_a_id="dgt1",
+                timeline_a_id="dgt_1",
                 coordinate_a=Coordinate(0.0, TimeUnit.number),
-                timeline_b_id="dgt2",
+                timeline_b_id="dgt_2",
                 coordinate_b=Coordinate(0.0, TimeUnit.number),
             ),
             end_anchor=AlignmentAnchor(
-                timeline_a_id="dgt1",
+                timeline_a_id="dgt_1",
                 coordinate_a=Coordinate(975.0, TimeUnit.number),
-                timeline_b_id="dgt2",
+                timeline_b_id="dgt_2",
                 coordinate_b=Coordinate(866.0, TimeUnit.number),
             ),
         )
 
         assert claim.is_interval is True
-        assert claim.timeline_a_id == "dgt1"
-        assert claim.timeline_b_id == "dgt2"
-        interval = claim.get_interval_for("dgt1")
+        assert claim.timeline_a_id == "dgt_1"
+        assert claim.timeline_b_id == "dgt_2"
+        interval = claim.get_interval_for("dgt_1")
         assert interval.start.value == 0.0
         assert interval.end.value == 975.0
 
@@ -945,24 +945,24 @@ class TestMatchClaim:
     def test_repr_interval(self) -> None:
         """Test string representation of interval match."""
         claim = MatchClaim(
-            timeline_a_id="dgt1",
-            timeline_b_id="dgt2",
+            timeline_a_id="dgt_1",
+            timeline_b_id="dgt_2",
             start_anchor=AlignmentAnchor(
-                timeline_a_id="dgt1",
+                timeline_a_id="dgt_1",
                 coordinate_a=Coordinate(0.0, TimeUnit.number),
-                timeline_b_id="dgt2",
+                timeline_b_id="dgt_2",
                 coordinate_b=Coordinate(0.0, TimeUnit.number),
             ),
             end_anchor=AlignmentAnchor(
-                timeline_a_id="dgt1",
+                timeline_a_id="dgt_1",
                 coordinate_a=Coordinate(975.0, TimeUnit.number),
-                timeline_b_id="dgt2",
+                timeline_b_id="dgt_2",
                 coordinate_b=Coordinate(866.0, TimeUnit.number),
             ),
         )
         assert repr(claim) == (
-            "MatchClaim(interval: dgt1[0 number-975 number] <-> "
-            "dgt2[0 number-866 number] [ANCHOR])"
+            "MatchClaim(interval: dgt_1[0 number-975 number] <-> "
+            "dgt_2[0 number-866 number] [ANCHOR])"
         )
 
     def test_repr_non_synchronous(self) -> None:
@@ -991,33 +991,34 @@ class TestMatchClaim:
         """
         claim = MatchClaim.nomatch(
             event={"id": "orphan", "start": 188.8},
-            source_tl_id="score:clt1",
+            source_tl_id="score:clt_1",
             target_tl_id="perf:Chopin_Ashkenazy",
             unit=TimeUnit.number,
         )
         assert claim.source_coordinate.value == 188.8
         assert repr(claim) == (
-            "MatchClaim(score:clt1@188.8 number <-> " "perf:Chopin_Ashkenazy [NOMATCH])"
+            "MatchClaim(score:clt_1@188.8 number <-> "
+            "perf:Chopin_Ashkenazy [NOMATCH])"
         )
 
     def test_repr_nomatch_without_coordinate(self) -> None:
         """NOMATCH claim with no 'start' falls back to bare timeline_a."""
         claim = MatchClaim.nomatch(
             event={"id": "orphan"},
-            source_tl_id="score:clt1",
+            source_tl_id="score:clt_1",
             target_tl_id="perf:Chopin_Ashkenazy",
             unit=TimeUnit.number,
         )
         assert claim.source_coordinate is None
         assert repr(claim) == (
-            "MatchClaim(score:clt1 <-> perf:Chopin_Ashkenazy [NOMATCH])"
+            "MatchClaim(score:clt_1 <-> perf:Chopin_Ashkenazy [NOMATCH])"
         )
 
     def test_nomatch_source_coordinate_roundtrip(self) -> None:
         """to_dict()/from_dict() preserves source_coordinate for a NOMATCH claim."""
         claim = MatchClaim.nomatch(
             event={"start": 188.8},
-            source_tl_id="score:clt1",
+            source_tl_id="score:clt_1",
             target_tl_id="perf:Chopin_Ashkenazy",
             unit=TimeUnit.number,
         )
@@ -1145,20 +1146,20 @@ class TestClaimIntegration:
 
         for i in range(5):
             claim = MatchClaim(
-                timeline_a_id="dgt1",
-                timeline_b_id="dgt2",
+                timeline_a_id="dgt_1",
+                timeline_b_id="dgt_2",
                 start_anchor=AlignmentAnchor(
-                    timeline_a_id="dgt1",
+                    timeline_a_id="dgt_1",
                     coordinate_a=Coordinate(float(offset_dgt1), TimeUnit.number),
-                    timeline_b_id="dgt2",
+                    timeline_b_id="dgt_2",
                     coordinate_b=Coordinate(float(offset_dgt2), TimeUnit.number),
                 ),
                 end_anchor=AlignmentAnchor(
-                    timeline_a_id="dgt1",
+                    timeline_a_id="dgt_1",
                     coordinate_a=Coordinate(
                         float(offset_dgt1 + segment_lengths_dgt1[i]), TimeUnit.number
                     ),
-                    timeline_b_id="dgt2",
+                    timeline_b_id="dgt_2",
                     coordinate_b=Coordinate(
                         float(offset_dgt2 + segment_lengths_dgt2[i]), TimeUnit.number
                     ),
@@ -1179,20 +1180,20 @@ class TestClaimIntegration:
         # Verify
         assert len(claims) == 5
         assert all(c.is_interval for c in claims)
-        assert all(c.connects_both("dgt1", "dgt2") for c in claims)
+        assert all(c.connects_both("dgt_1", "dgt_2") for c in claims)
 
         # Check first segment
-        interval = claims[0].get_interval_for("dgt1")
+        interval = claims[0].get_interval_for("dgt_1")
         assert interval.start.value == 0.0
         assert interval.end.value == 975.0
 
-        interval = claims[0].get_interval_for("dgt2")
+        interval = claims[0].get_interval_for("dgt_2")
         assert interval.start.value == 0.0
         assert interval.end.value == 866.0
 
         # Check last segment ends at total length
-        end_dgt1 = claims[4].get_interval_for("dgt1").end
-        end_dgt2 = claims[4].get_interval_for("dgt2").end
+        end_dgt1 = claims[4].get_interval_for("dgt_1").end
+        end_dgt2 = claims[4].get_interval_for("dgt_2").end
         assert end_dgt1.value == 4875.0
         assert end_dgt2.value == 4328.0
 

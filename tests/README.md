@@ -37,13 +37,15 @@ fixture corpus, proving loader output has the same structural contract without
 depending on a relative data path.
 
 Every one of the 23 bundled manifest fixtures from `fixture_paths()` must
-round-trip as identical JSON text, `json.dumps(Timeline.from_dict(m).to_dict())
-== json.dumps(m)`, for its timeline manifest, so the library reads each one as
-a complete, lossless manifest rather than merely an accepted approximation.
-The text comparison also covers member order, which dictionary equality
-ignores: the library's canonical order of children, conversion maps, regions
-and flow control must be exactly the order the schema's fixtures are written
-in. The library orders its own output and does not depend on the schema
+round-trip as identical JSON text with object keys sorted (the schema's
+writer sorts keys by code point), `json.dumps(Timeline.from_dict(m).to_dict(),
+sort_keys=True) == json.dumps(m, sort_keys=True)`, for its timeline manifest,
+so the library reads each one as a complete, lossless manifest rather than
+merely an accepted approximation. The text comparison also covers list order,
+which a comparison of sets would ignore: the library's canonical order of
+conversion maps, regions and flow control must be exactly the order the
+schema's fixtures are written in. Every element of every fixture carries an
+`id`, and the round trip keeps each one verbatim. The library orders its own output and does not depend on the schema
 package at runtime, so the two implementations are compared directly as well:
 every catalogue document, put through `timeskeleton.canonical_order`, must be
 the same JSON text as the library wrote it.

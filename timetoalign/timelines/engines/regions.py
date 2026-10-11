@@ -1,8 +1,9 @@
-"""Provide named region operations for timeline instances."""
+"""Provide region operations for timeline instances."""
 
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator, Sequence
+from dataclasses import replace
 from typing import Any
 
 from timetoalign.core import CoordinateSpec, CoordinateValue
@@ -47,82 +48,48 @@ def _resolve_boundary_names(
 
 
 class RegionsMixin:
-    """Provide named region operations for timeline instances."""
+    """Provide region operations for timeline instances."""
 
-    def add_region(
-        self,
-        region_or_name: Region | str,
-        start: CoordinateSpec | None = None,
-        end: CoordinateSpec | None = None,
-        *,
-        meta: dict[str, Any] | None = None,
-    ) -> Region:
-        """Add or create a named Region on this timeline.
-
-        Overloaded for backward compatibility:
-        - ``add_region(Region)`` — attach a pre-existing Region object.
-        - ``add_region(name, start, end)`` — delegate to :meth:`create_region`.
-
-        Under the unified verb×noun API, ``add`` means "attach an existing
-        object" while ``create`` means "construct + attach + return".
-
-        Args:
-            region_or_name: A Region object (new) or a string name (legacy).
-            start: Start coordinate (only when region_or_name is a string).
-            end: End coordinate (only when region_or_name is a string).
-            meta: Optional metadata dictionary.
-
-        Returns:
-            The Region object (either the one passed in or the newly created one).
-
-        Raises:
-            ValueError: If region name already exists, end < start, or
-                arguments are inconsistent.
-
-        Examples:
-            >>> # New API — attach a pre-existing Region
-            >>> r = Region("Chorus", Coordinate(10, TimeUnit.seconds),
-            ...            Coordinate(30, TimeUnit.seconds))
-            >>> tl.add_region(r)
-
-            >>> # Legacy API (delegates to create_region)
-            >>> tl.add_region("Verse", 30, 50, meta={"repeat": 2})
-        """
-        if isinstance(region_or_name, Region):
-            return self._add_existing_region(region_or_name)
-        # Legacy path: string name + positional start/end
-        if start is None or end is None:
-            raise ValueError(
-                "add_region(name, start, end) requires both start and end. "
-                "Pass a Region object for the single-argument form."
-            )
-        return self.create_region(region_or_name, start, end, meta=meta)
-
-    def _add_existing_region(self, region: Region) -> Region:
+    def add_region(self, region: Region) -> Region:
         """Attach a pre-existing Region object to this timeline.
+
+        The region's id must be unique in this timeline's manifest: a minted
+        id already held there is replaced by a freshly minted one, a given
+        one raises.
 
         Args:
             region: The Region to attach.
 
         Returns:
-            The same Region object.
+            The stored Region: *region* itself, or a copy under the newly
+            minted id.
 
         Raises:
-            ValueError: If a region with the same name already exists or
-                the region's unit does not match the timeline's unit.
+            ValueError: If the region's unit does not match the timeline's
+                unit, or its given id is already held in this manifest.
+
+        Examples:
+            >>> r = Region(Coordinate(10, TimeUnit.seconds),
+            ...            Coordinate(30, TimeUnit.seconds), name="Chorus")
+            >>> tl.add_region(r)
         """
         if region.unit != self._unit:
             raise ValueError(
                 f"Region unit '{region.unit}' does not match "
                 f"timeline unit '{self._unit}'"
             )
+        region_id = self._admit_element_id(
+            region.id,
+            minted=region._minted,
+            prefix="region",
+            element=f"region {region.id!r}",
+        )
+        if region_id != region.id:
+            region = replace(region, id=region_id, _minted=True)
 
-        if region.name in self._regions:
-            raise ValueError(f"Region '{region.name}' already exists")
-
-        self._regions[region.name] = region
+        self._regions[region.id] = region
         self._logger.debug(
-            f"Added region '{region.name}' "
+            f"Added region '{region.id}' "
             f"[{_format_coordinate_value(float(region.start.value))}, "
             f"{_format_coordinate_value(float(region.end.value))})"
         )
@@ -130,53 +97,55 @@ class RegionsMixin:
 
     def create_region(
         self,
-        name: str,
         start: CoordinateSpec,
         end: CoordinateSpec,
         *,
+        id: str | None = None,
+        name: str | None = None,
         meta: dict[str, Any] | None = None,
     ) -> Region:
-        """Create a new named Region and attach it to this timeline.
+        """Create a new Region and attach it to this timeline.
 
         Under the unified verb×noun API, ``create`` constructs a new object,
         attaches it, and returns it.
 
         Args:
-            name: Unique name for this region.
             start: Start coordinate.
             end: End coordinate (must be >= start).
+            id: The region's id, kept verbatim. When None, ``region_{N}`` is
+                minted, unique in this timeline's manifest.
+            name: Optional display name; names may repeat.
             meta: Optional metadata dictionary.
 
         Returns:
             The created Region object.
 
         Raises:
-            ValueError: If name already exists or end < start.
+            ValueError: If the given id is already held in this manifest or
+                end < start.
 
         Examples:
-            >>> tl.create_region("Chorus", 10.0, 30.0)
-            >>> tl.create_region("Verse", 30.0, 50.0, meta={"repeat": 2})
+            >>> tl.create_region(10.0, 30.0, name="Chorus")
+            >>> tl.create_region(30.0, 50.0, id="verse", meta={"repeat": 2})
         """
-        if name in self._regions:
-            raise ValueError(f"Region '{name}' already exists")
-
-        start_coord = self.get_coordinate_at(start, format="coordinate")
-        end_coord = self.get_coordinate_at(end, format="coordinate")
-
-        region = Region(
-            name=name,
-            start=start_coord,
-            end=end_coord,
-            meta=meta or {},
+        return self.add_region(
+            Region(
+                self.get_coordinate_at(start, format="coordinate"),
+                self.get_coordinate_at(end, format="coordinate"),
+                id=id,
+                name=name,
+                meta=meta or {},
+            )
         )
 
-        self._regions[name] = region
-        self._logger.debug(
-            f"Created region '{name}' "
-            f"[{_format_coordinate_value(float(start_coord.value))}, "
-            f"{_format_coordinate_value(float(end_coord.value))})"
-        )
-        return region
+    def _rename_region(self, old_id: str, new_id: str) -> None:
+        """Store the region *old_id* under the minted id *new_id*."""
+        self._regions = {
+            (new_id if key == old_id else key): (
+                replace(region, id=new_id, _minted=True) if key == old_id else region
+            )
+            for key, region in self._regions.items()
+        }
 
     def create_regions_from_boundaries(
         self,
@@ -189,7 +158,8 @@ class RegionsMixin:
         """Create contiguous regions from boundary coordinates.
 
         Given k+1 sorted boundary coordinates, creates k regions where
-        region_i spans [boundaries[i], boundaries[i+1]).
+        region_i spans [boundaries[i], boundaries[i+1]). The names label the
+        regions; their ids are minted.
 
         Args:
             boundaries: k+1 monotonically increasing coordinates.
@@ -211,8 +181,9 @@ class RegionsMixin:
             ...     [0, 30, 60, 90],
             ...     prefix="movement",
             ... )
-            [Region('movement_1', 0-30), Region('movement_2', 30-60),
-             Region('movement_3', 60-90)]
+            [Region('region_1', name='movement_1', 0-30 quarters),
+             Region('region_2', name='movement_2', 30-60 quarters),
+             Region('region_3', name='movement_3', 60-90 quarters)]
         """
         coords, region_names = _resolve_boundary_names(
             boundaries,
@@ -223,7 +194,7 @@ class RegionsMixin:
         )
 
         return [
-            self.create_region(name, start, end)
+            self.create_region(start, end, name=name)
             for start, end, name in zip(
                 coords[:-1], coords[1:], region_names, strict=True
             )
@@ -241,7 +212,7 @@ class RegionsMixin:
         specified field, creates a region spanning the run's coordinate extent
         ``[min_start, max_end)``. Only adjacent events with the same value are
         grouped — non-adjacent occurrences of the same value produce separate
-        regions.
+        regions, which may share a name; their ids are minted.
 
         This "run-length" semantics is essential for musical data where, e.g.,
         the same time signature may recur after a change (4/4 → 3/4 → 4/4)
@@ -261,7 +232,9 @@ class RegionsMixin:
         Examples:
             >>> # Time-signature regions (adjacent grouping)
             >>> tl.create_regions_by_grouping("timesig")
-            [Region('4/4', 0-64), Region('3/4', 64-88), Region('4/4', 88-120)]
+            [Region('region_1', name='4/4', 0-64 quarters),
+             Region('region_2', name='3/4', 64-88 quarters),
+             Region('region_3', name='4/4', 88-120 quarters)]
         """
         # Collect events sorted by start coordinate
         events_sorted = self._sorted_event_dicts()
@@ -319,11 +292,6 @@ class RegionsMixin:
         if current_value is not None:
             runs.append((current_value, run_start, run_end))
 
-        # Pre-compute total occurrences per value to detect ambiguity
-        from collections import Counter
-
-        total_occurrences = Counter(val for val, _, _ in runs)
-
         # Create regions
         result: list[Region] = []
         for i, (value, start, end) in enumerate(runs):
@@ -335,10 +303,7 @@ class RegionsMixin:
                 n=i + 1,
                 run=value_counts[value],
             )
-            # Auto-disambiguate if the default format would produce duplicates
-            if region_name in self._regions and total_occurrences[value] > 1:
-                region_name = f"{region_name}_run{value_counts[value]}"
-            region = self.create_region(region_name, start, end)
+            region = self.create_region(start, end, name=region_name)
             result.append(region)
 
         return result
@@ -440,7 +405,7 @@ class RegionsMixin:
         result: list[Region] = []
         for i in range(n_regions):
             region = self.create_region(
-                region_names[i], boundaries[i], boundaries[i + 1]
+                boundaries[i], boundaries[i + 1], name=region_names[i]
             )
             result.append(region)
         return result
@@ -501,24 +466,24 @@ class RegionsMixin:
             f"predicate must be str, dict, or callable, got {type(predicate)}"
         )
 
-    def get_region(self, name: str) -> Region:
-        """Get a Region by name.
+    def get_region(self, region_id: str) -> Region:
+        """Get a Region by id.
 
         Args:
-            name: The region name.
+            region_id: The region's id.
 
         Returns:
             The Region object.
 
         Raises:
-            KeyError: If no region with that name exists.
+            KeyError: If no region with that id exists.
         """
-        if name not in self._regions:
+        if region_id not in self._regions:
             raise KeyError(
-                f"No region named '{name}'. "
+                f"No region with id '{region_id}'. "
                 f"Available regions: {list(self._regions.keys())}"
             )
-        return self._regions[name]
+        return self._regions[region_id]
 
     def get_regions_at(
         self,
@@ -538,23 +503,24 @@ class RegionsMixin:
 
         Examples:
             >>> tl.get_regions_at(75.0)
-            [Region('verse_1', 30-90), Region('chorus', 60-120)]
+            [Region('region_1', name='verse', 30-90 quarters),
+             Region('region_2', name='chorus', 60-120 quarters)]
         """
         coord_val = float(self._resolve_axis_value(coord))
         matching = [r for r in self._regions.values() if r.contains(coord_val)]
         matching.sort(key=lambda r: float(r.start.value))
         return matching
 
-    def has_region(self, name: str) -> bool:
+    def has_region(self, region_id: str) -> bool:
         """Check if a region exists.
 
         Args:
-            name: Name of the region.
+            region_id: The region's id.
 
         Returns:
             True if the region exists.
         """
-        return name in self._regions
+        return region_id in self._regions
 
     def iter_regions(self) -> Iterator[Region]:
         """Iterate over all regions in insertion order.
@@ -570,9 +536,9 @@ class RegionsMixin:
         return len(self._regions)
 
     def list_regions(self) -> list[str]:
-        """List all region names.
+        """List all region ids.
 
         Returns:
-            List of region names in insertion order.
+            List of region ids in insertion order.
         """
         return list(self._regions.keys())

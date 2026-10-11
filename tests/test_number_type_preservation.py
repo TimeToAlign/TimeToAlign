@@ -194,8 +194,8 @@ def _mixed_group() -> TimelineGroup:
     return TimelineGroup(
         id="g",
         timelines=[
-            ContinuousLogicalTimeline(length=100, unit=TimeUnit.quarters, uid="clt1"),
-            ContinuousPhysicalTimeline(length=60, unit=TimeUnit.seconds, uid="cpt1"),
+            ContinuousLogicalTimeline(length=100, unit=TimeUnit.quarters, uid="clt_1"),
+            ContinuousPhysicalTimeline(length=60, unit=TimeUnit.seconds, uid="cpt_1"),
         ],
     )
 
@@ -210,17 +210,17 @@ def test_group_axis_follows_the_addressed_timeline_not_the_argument() -> None:
     """
     group = _mixed_group()
 
-    exact = group.get_timestamp_at(9.5, "clt1")
+    exact = group.get_timestamp_at(9.5, "clt_1")
     assert exact.axis.value == Fraction(19, 2)
     assert isinstance(exact.axis.value, Fraction)
 
     # Same position typed exactly: one answer per axis, not one per literal.
-    assert group.get_timestamp_at(Fraction(19, 2), "clt1").axis == exact.axis
-    assert isinstance(group.get_timestamp_at(10, "clt1").axis.value, Fraction)
+    assert group.get_timestamp_at(Fraction(19, 2), "clt_1").axis == exact.axis
+    assert isinstance(group.get_timestamp_at(10, "clt_1").axis.value, Fraction)
 
     # seconds are float-canonical, so an exact argument is written as a float.
     for query in (10, 10.0, Fraction(10, 1)):
-        axis = group.get_timestamp_at(query, "cpt1").axis
+        axis = group.get_timestamp_at(query, "cpt_1").axis
         assert axis.value == 10.0
         assert isinstance(axis.value, float)
 
@@ -233,10 +233,10 @@ def test_group_and_timeline_agree_on_the_same_position() -> None:
     member must not get a differently-typed axis.
     """
     group = _mixed_group()
-    timeline = group.get_timeline("clt1")
+    timeline = group.get_timeline("clt_1")
 
     direct = timeline.get_timestamp(9.5).axis
-    via_group = group.get_timestamp_at(9.5, "clt1").axis
+    via_group = group.get_timestamp_at(9.5, "clt_1").axis
 
     assert direct == via_group
     assert type(direct) is type(via_group)
@@ -251,31 +251,31 @@ def test_bundle_matchstamp_axis_follows_the_declared_type() -> None:
     query on a fraction-canonical timeline came back as ``79.0`` before, so
     the same position answered differently depending on the entry point.
     """
-    score = ContinuousLogicalTimeline(length=100, unit=TimeUnit.quarters, uid="clt1")
+    score = ContinuousLogicalTimeline(length=100, unit=TimeUnit.quarters, uid="clt_1")
     bundle = AlignmentBundle(id="b")
-    bundle.add_timeline(score, uid="clt1", as_group="g")
+    bundle.add_timeline(score, uid="clt_1", as_group="g")
 
     for query in (Fraction(79, 1), 79.0, 79):
-        axis = bundle.get_matchstamp_at(query, "clt1").axis
+        axis = bundle.get_matchstamp_at(query, "clt_1").axis
         assert axis.value == Fraction(79, 1)
         assert isinstance(axis.value, Fraction)
 
-    fractional = bundle.get_matchstamp_at(32.5, "clt1")
+    fractional = bundle.get_matchstamp_at(32.5, "clt_1")
     assert fractional.axis.value == Fraction(65, 2)
     assert isinstance(fractional.axis.value, Fraction)
-    assert fractional.get_coordinate_for("clt1", format="coordinate") == Coordinate(
+    assert fractional.get_coordinate_for("clt_1", format="coordinate") == Coordinate(
         Fraction(65, 2), TimeUnit.quarters
     )
 
 
 def test_bundle_matchstamp_axis_stays_float_on_a_float_axis() -> None:
     """The other direction: an exact query on a float axis is written float."""
-    clock = ContinuousPhysicalTimeline(length=100, unit=TimeUnit.seconds, uid="cpt1")
+    clock = ContinuousPhysicalTimeline(length=100, unit=TimeUnit.seconds, uid="cpt_1")
     bundle = AlignmentBundle(id="b-float")
-    bundle.add_timeline(clock, uid="cpt1", as_group="g")
+    bundle.add_timeline(clock, uid="cpt_1", as_group="g")
 
     for query in (25, 25.0, Fraction(25, 1)):
-        axis = bundle.get_matchstamp_at(query, "cpt1").axis
+        axis = bundle.get_matchstamp_at(query, "cpt_1").axis
         assert axis.value == 25.0
         assert isinstance(axis.value, float)
 
@@ -406,7 +406,7 @@ def test_matchline_and_warpmap_read_the_declared_axis() -> None:
 
 def _typed_group() -> TimelineGroup:
     """A group spanning all three representations plus a C-Map column."""
-    pixels = DiscreteGraphicalTimeline(length=12473, uid="dgt1")
+    pixels = DiscreteGraphicalTimeline(length=12473, uid="dgt_1")
     pixels.add_conversion_map(
         LinearMap(
             scalar=Fraction(1, 4),
@@ -415,7 +415,7 @@ def _typed_group() -> TimelineGroup:
             target_unit=TimeUnit.quarters,
         )
     )
-    score = ContinuousLogicalTimeline(length=Fraction(19, 2), uid="clt1")
+    score = ContinuousLogicalTimeline(length=Fraction(19, 2), uid="clt_1")
     # A fraction axis converting into a float-canonical unit: the target
     # admits either, so the source axis's representation is kept -- the case
     # where a column keyed on the map's own default disagreed with the row.
@@ -429,7 +429,7 @@ def _typed_group() -> TimelineGroup:
     )
     group = TimelineGroup(id="g-typed")
     group.add_timeline(pixels)
-    group.add_timeline(ContinuousPhysicalTimeline(length=37.5, uid="cpt1"))
+    group.add_timeline(ContinuousPhysicalTimeline(length=37.5, uid="cpt_1"))
     group.add_timeline(score)
     return group
 
@@ -445,14 +445,14 @@ def test_stamp_lane_and_frame_lane_write_the_same_positions() -> None:
     """
     group = _typed_group()
 
-    stamps = group.get_timestamps_at([0, 12473], "dgt1")
+    stamps = group.get_timestamps_at([0, 12473], "dgt_1")
     frame = group.get_timestamp_table(format="dataframe")
-    queried = group.get_timestamp_table([0, 12473], "dgt1", format="dataframe")
+    queried = group.get_timestamp_table([0, 12473], "dgt_1", format="dataframe")
 
     assert list(frame.columns) == [
-        "dgt1 (pixels)",
-        "cpt1 (seconds)",
-        "clt1 (quarters)",
+        "dgt_1 (pixels)",
+        "cpt_1 (seconds)",
+        "clt_1 (quarters)",
         "pixels_to_quarters (quarters)",
         "quarters_to_seconds (seconds)",
     ]
@@ -461,24 +461,24 @@ def test_stamp_lane_and_frame_lane_write_the_same_positions() -> None:
         assert list(queried[name]) == list(frame[name])
 
     for position, stamp in enumerate(stamps):
-        assert stamp.get_coordinate_for("dgt1", format="int") == [0, 12473][position]
+        assert stamp.get_coordinate_for("dgt_1", format="int") == [0, 12473][position]
         assert (
-            stamp.get_coordinate_for("clt1").value
+            stamp.get_coordinate_for("clt_1").value
             == [Fraction(0, 1), Fraction(19, 2)][position]
         )
 
-    assert list(frame["dgt1 (pixels)"]) == [0, 12473]
-    assert list(frame["cpt1 (seconds)"]) == [0.0, 37.5]
-    assert list(frame["clt1 (quarters)"]) == [Fraction(0, 1), Fraction(19, 2)]
+    assert list(frame["dgt_1 (pixels)"]) == [0, 12473]
+    assert list(frame["cpt_1 (seconds)"]) == [0.0, 37.5]
+    assert list(frame["clt_1 (quarters)"]) == [Fraction(0, 1), Fraction(19, 2)]
     assert list(frame["pixels_to_quarters (quarters)"]) == [
         Fraction(0, 1),
         Fraction(12473, 4),
     ]
     assert list(frame["quarters_to_seconds (seconds)"]) == [0.0, 38.0]
 
-    assert str(frame["dgt1 (pixels)"].dtype) == "int64"
-    assert str(frame["cpt1 (seconds)"].dtype) == "float64"
-    assert str(frame["clt1 (quarters)"].dtype) == "object"
+    assert str(frame["dgt_1 (pixels)"].dtype) == "int64"
+    assert str(frame["cpt_1 (seconds)"].dtype) == "float64"
+    assert str(frame["clt_1 (quarters)"].dtype) == "object"
     assert str(frame["pixels_to_quarters (quarters)"].dtype) == "object"
     # float64 even though the source axis is exact: a converted reading is
     # written by its target, and seconds are float-canonical.
@@ -488,15 +488,15 @@ def test_stamp_lane_and_frame_lane_write_the_same_positions() -> None:
 def test_a_gapped_integer_column_uses_the_nullable_dtype() -> None:
     """Whole numbers where the axis reaches, a null where it does not."""
     group = TimelineGroup(id="g-gapped")
-    group.add_timeline(DiscreteGraphicalTimeline(length=1000, uid="dgt1"))
+    group.add_timeline(DiscreteGraphicalTimeline(length=1000, uid="dgt_1"))
     group.add_timeline(
-        DiscreteGraphicalTimeline(length=400, uid="dgt2"),
+        DiscreteGraphicalTimeline(length=400, uid="dgt_2"),
         start=0,
         end=500,
     )
 
     frame = group.get_timestamp_table(format="dataframe")
-    column = frame["dgt2 (pixels)"]
+    column = frame["dgt_2 (pixels)"]
 
     assert str(column.dtype) == "Int64"
     assert column.isna().any()
@@ -517,13 +517,15 @@ def test_the_stored_timestamps_stay_the_float_lane() -> None:
         "double",
         "double",
     ]
-    assert group._timestamp_table.column("dgt1").to_pylist() == [0.0, 12473.0]
+    assert group._timestamp_table.column("dgt_1").to_pylist() == [0.0, 12473.0]
 
     published = group.get_timestamp_table()
     assert [str(field.type) for field in published.schema] == [
         "struct<value: double, numerator: int64, denominator: int64>",
     ] * 5
-    assert published.column("dgt1").combine_chunks().field("numerator").to_pylist() == [
+    assert published.column("dgt_1").combine_chunks().field(
+        "numerator"
+    ).to_pylist() == [
         0,
         12473,
     ]
@@ -531,7 +533,7 @@ def test_the_stored_timestamps_stay_the_float_lane() -> None:
 
 def _float_target_timeline() -> ContinuousLogicalTimeline:
     """An exact quarters axis mapped into two float-canonical units."""
-    score = ContinuousLogicalTimeline(length=Fraction(64), uid="clt1")
+    score = ContinuousLogicalTimeline(length=Fraction(64), uid="clt_1")
     score.add_conversion_map(
         LinearMap(
             scalar=Fraction(1, 3),
@@ -595,8 +597,8 @@ def test_one_map_reads_the_same_from_an_exact_and_an_integral_axis() -> None:
     differently -- which is what a caller comparing a score position against
     a scan position would then be doing.
     """
-    quarters = ContinuousLogicalTimeline(length=Fraction(100), uid="clt1")
-    pixels = DiscreteGraphicalTimeline(length=20000, uid="dgt1")
+    quarters = ContinuousLogicalTimeline(length=Fraction(100), uid="clt_1")
+    pixels = DiscreteGraphicalTimeline(length=20000, uid="dgt_1")
     for timeline, source_unit in (
         (quarters, TimeUnit.quarters),
         (pixels, TimeUnit.pixels),
@@ -626,7 +628,7 @@ def test_a_fraction_target_stays_exact_from_any_source() -> None:
     integer-locked pixels axis comes back exact, because quarters are
     fraction-canonical.
     """
-    pixels = DiscreteGraphicalTimeline(length=12473, uid="dgt1")
+    pixels = DiscreteGraphicalTimeline(length=12473, uid="dgt_1")
     pixels.add_conversion_map(
         LinearMap(
             scalar=Fraction(1, 4),

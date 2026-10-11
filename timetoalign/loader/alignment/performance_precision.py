@@ -74,7 +74,7 @@ module_logger = logging.getLogger(__name__)
 # region Constants
 
 #: Score timeline uid (type-based id with role prefix).
-_SCORE_TL_ID = "score:clt1"
+_SCORE_TL_ID = "score:clt_1"
 
 #: Sentinel for an alignment row the aligner could not locate in audio.
 _DANGLING = "N"
@@ -403,7 +403,7 @@ class PerformancePrecisionLoader(AlignmentLoader):
         subsets and need not appear as physical events, since claims carry
         their own target coordinates.
         """
-        perf_tl_id = f"perf:{performer_key}:cpt1"
+        perf_tl_id = f"perf:{performer_key}:cpt_1"
         stem = note_file.stem
 
         # Read all three granularity files up front.
@@ -548,7 +548,7 @@ class PerformancePrecisionLoader(AlignmentLoader):
         Args:
             uid: ``"score"`` (or the score uid) for the score timeline; a
                 performer key (``"Chopin_Ashkenazy"``) or its uid
-                (``"perf:Chopin_Ashkenazy:cpt1"``) for a performance timeline.
+                (``"perf:Chopin_Ashkenazy:cpt_1"``) for a performance timeline.
 
         Raises:
             KeyError: If no timeline matches.

@@ -6,7 +6,7 @@ with interpolation for values between them.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Sequence
+from typing import TYPE_CHECKING, Any, ClassVar, Sequence
 
 import numpy as np
 from numpy.typing import NDArray
@@ -58,6 +58,8 @@ class TableMap(ConversionMap[CoordinateValue]):
         >>> inverse(1.0)
         720.0
     """
+
+    _id_prefix: ClassVar[str] = "tmap"
 
     def __init__(
         self,

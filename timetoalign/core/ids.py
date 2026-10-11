@@ -7,8 +7,9 @@ for resolving partial/regex ID patterns.
 Includes:
 - ScopedId: An identifier with scope:local format.
 - IdGenerator: General-purpose unique ID generation within a scope.
-- TimelineIdGenerator: Generates systematic timeline IDs based on type
-  (e.g., ``clt1``, ``dlt2``, ``score:clt1``, ``perf:dlt3``).
+- mint_id: The one generator of manifest element ids, ``{prefix}_{N}``
+  (e.g., ``clt_1``, ``region_2``, ``score:clt_1``).
+- validate_id: The rule every given id obeys.
 - resolve_id: Resolve a partial string or regex to a single ID.
 - resolve_ids: Resolve a pattern to all matching IDs.
 """
@@ -16,11 +17,11 @@ Includes:
 from __future__ import annotations
 
 import re
+from collections.abc import Container, Mapping
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, ClassVar
+from typing import ClassVar
 
-if TYPE_CHECKING:
-    pass
+from .enums import TimeUnit
 
 
 @dataclass(frozen=True, slots=True)
@@ -227,150 +228,149 @@ class IdGenerator:
         return id_str in self._seen
 
 
-# Mapping from timeline class name to type-based prefix.
-_TIMELINE_TYPE_PREFIXES: dict[str, str] = {
-    "ContinuousLogicalTimeline": "clt",
-    "DiscreteLogicalTimeline": "dlt",
-    "ContinuousPhysicalTimeline": "cpt",
-    "DiscretePhysicalTimeline": "dpt",
-    "ContinuousGraphicalTimeline": "cgt",
-    "DiscreteGraphicalTimeline": "dgt",
-}
+# region Manifest element ids
+
+_REFUSED_ID_CHARACTERS = re.compile(r"[/\x00-\x1f]")
 
 
-@dataclass
-class TimelineIdGenerator:
-    """Generates systematic timeline IDs based on type.
+def validate_id(element_id: str) -> str:
+    """Return *element_id* if it is a valid given id, else raise.
 
-    Timeline IDs follow the pattern ``{prefix}{N}`` where prefix
-    encodes the timeline type (domain + continuity) and N is a
-    1-indexed counter scoped to this generator instance.
+    Any non-empty string is a valid id except one containing ``/`` (the path
+    separator of composed addresses) or a control character
+    (U+0000 to U+001F). Whitespace, colons, dots and unicode are permitted.
 
-    When a role is specified, the ID becomes ``{role}:{prefix}{N}``
-    (e.g., ``score:clt1``, ``perf:dlt3``).
+    Args:
+        element_id: The id to check.
 
-    The counter N is scoped per prefix per generator. Each generator
-    instance maintains its own counter state, so different loaders
-    do not interfere with each other.
+    Returns:
+        The same id.
 
-    Attributes:
-        _counters: Per-prefix counter state.
-        _id_to_meta: Maps generated IDs to metadata dicts for lookup.
+    Raises:
+        ValueError: If the id is empty or contains a refused character.
 
     Examples:
-        >>> gen = TimelineIdGenerator()
-        >>> gen.next_id("ContinuousLogicalTimeline")
-        'clt1'
-        >>> gen.next_id("ContinuousLogicalTimeline")
-        'clt2'
-        >>> gen.next_id("DiscreteLogicalTimeline")
-        'dlt1'
-        >>> gen.next_id_with_role("DiscreteLogicalTimeline", "perf")
-        'perf:dlt2'
+        >>> validate_id("Bass Kick")
+        'Bass Kick'
+        >>> validate_id("a/b")
+        Traceback (most recent call last):
+        ...
+        ValueError: Invalid id 'a/b': an id must be non-empty and contain neither '/' nor a control character
+    """
+    if (
+        not isinstance(element_id, str)
+        or not element_id
+        or (_REFUSED_ID_CHARACTERS.search(element_id))
+    ):
+        raise ValueError(
+            f"Invalid id {element_id!r}: an id must be non-empty and contain "
+            "neither '/' nor a control character"
+        )
+    return element_id
+
+
+def mint_id(prefix: str, taken: Container[str]) -> str:
+    """Mint ``{prefix}_{N}`` with N the smallest positive integer not taken.
+
+    This is the one id generator of the library. It holds no state: the same
+    prefix and the same taken ids always give the same id, whatever was built
+    before in the process.
+
+    Args:
+        prefix: The type prefix, optionally led by a role
+            (``"clt"``, ``"region"``, ``"score:clt"``).
+        taken: The ids already held in the scope the new id must be unique in.
+
+    Returns:
+        The minted id.
+
+    Examples:
+        >>> mint_id("clt", ())
+        'clt_1'
+        >>> mint_id("clt", {"clt_1", "clt_3"})
+        'clt_2'
+        >>> mint_id("score:clt", {"score:clt_1"})
+        'score:clt_2'
+    """
+    number = 1
+    while f"{prefix}_{number}" in taken:
+        number += 1
+    return f"{prefix}_{number}"
+
+
+def timeline_id_prefix(unit: TimeUnit) -> str:
+    """Return the id prefix of a timeline measured in *unit*.
+
+    The prefix encodes the unit's discreteness and domain: ``clt``, ``dlt``,
+    ``cpt``, ``dpt``, ``cgt``, ``dgt``.
+
+    Examples:
+        >>> timeline_id_prefix(TimeUnit.quarters)
+        'clt'
+        >>> timeline_id_prefix(TimeUnit.samples)
+        'dpt'
+    """
+    return f"{'d' if unit.is_discrete else 'c'}{unit.domain.value[0]}t"
+
+
+def _admit_id(
+    element_id: str,
+    *,
+    minted: bool,
+    prefix: str,
+    taken: Mapping[str, str],
+    element: str,
+) -> str:
+    """Return the id under which an element joins a scope.
+
+    An id the scope does not hold is kept. A taken id that was minted is
+    minted again in the scope; a taken id that was given raises.
+
+    Args:
+        element_id: The element's current id.
+        minted: Whether the id was minted rather than given.
+        prefix: The prefix to mint with.
+        taken: Every id of the scope, mapped to a description of its holder.
+        element: A description of the joining element, for the error.
+
+    Raises:
+        ValueError: If a given id is already taken.
+    """
+    if element_id not in taken:
+        return element_id
+    if minted:
+        return mint_id(prefix, taken)
+    raise ValueError(
+        f"{element} cannot join: its id {element_id!r} is already held by "
+        f"{taken[element_id]}"
+    )
+
+
+@dataclass(frozen=True)
+class _IdentifiedElement:
+    """Identity shared by the frozen elements of a timeline manifest.
+
+    A subclass names its kind in ``_id_prefix``. Constructed without an
+    ``id``, an element mints ``{prefix}_1`` (its own scope is empty) and
+    remembers that the id was minted, so that a collision when it joins a
+    timeline re-mints it rather than raising. A given id is validated and
+    kept verbatim. The minted flag is private and never serialized.
     """
 
-    _counters: dict[str, int] = field(default_factory=dict)
-    _id_to_meta: dict[str, dict[str, object]] = field(default_factory=dict)
+    _id_prefix: ClassVar[str]
 
-    def _get_prefix(self, timeline_type: type | str) -> str:
-        """Resolve the prefix for a timeline type.
+    id: str = field(default=None, kw_only=True)  # type: ignore[assignment]
+    _minted: bool = field(default=False, kw_only=True, repr=False, compare=False)
 
-        Args:
-            timeline_type: A timeline class or its name as a string.
-
-        Returns:
-            The type-based prefix (e.g., 'clt', 'dlt').
-
-        Raises:
-            ValueError: If the timeline type is not recognised.
-        """
-        if isinstance(timeline_type, str):
-            type_name = timeline_type
+    def __post_init__(self) -> None:
+        if self.id is None:
+            object.__setattr__(self, "id", mint_id(self._id_prefix, ()))
+            object.__setattr__(self, "_minted", True)
         else:
-            type_name = timeline_type.__name__
+            validate_id(self.id)
 
-        prefix = _TIMELINE_TYPE_PREFIXES.get(type_name)
-        if prefix is None:
-            # Fallback: try to resolve from base Timeline
-            if type_name == "Timeline":
-                return "tl"
-            raise ValueError(
-                f"Unknown timeline type '{type_name}'. "
-                f"Expected one of: {', '.join(_TIMELINE_TYPE_PREFIXES.keys())}"
-            )
-        return prefix
 
-    def next_id(
-        self,
-        timeline_type: type | str,
-        *,
-        meta: dict[str, object] | None = None,
-    ) -> str:
-        """Generate the next ID for a given timeline type.
-
-        Args:
-            timeline_type: A timeline class or class name string.
-            meta: Optional metadata to associate with this ID.
-
-        Returns:
-            An ID like ``clt1``, ``dlt2``, etc.
-        """
-        prefix = self._get_prefix(timeline_type)
-        counter = self._counters.get(prefix, 0) + 1
-        self._counters[prefix] = counter
-        tid = f"{prefix}{counter}"
-        if meta:
-            self._id_to_meta[tid] = dict(meta)
-        return tid
-
-    def next_id_with_role(
-        self,
-        timeline_type: type | str,
-        role: str,
-        *,
-        meta: dict[str, object] | None = None,
-    ) -> str:
-        """Generate the next ID with a role prefix.
-
-        The role is prepended as ``{role}:{prefix}{N}``.
-
-        Args:
-            timeline_type: A timeline class or class name string.
-            role: The role prefix (e.g., 'score', 'perf').
-            meta: Optional metadata to associate with this ID.
-
-        Returns:
-            An ID like ``score:clt1``, ``perf:dlt3``.
-        """
-        prefix = self._get_prefix(timeline_type)
-        counter = self._counters.get(prefix, 0) + 1
-        self._counters[prefix] = counter
-        tid = f"{role}:{prefix}{counter}"
-        if meta:
-            self._id_to_meta[tid] = dict(meta)
-        return tid
-
-    def get_meta(self, timeline_id: str) -> dict[str, object] | None:
-        """Retrieve metadata associated with a generated ID.
-
-        Args:
-            timeline_id: A previously generated timeline ID.
-
-        Returns:
-            The metadata dict, or None if no metadata was stored.
-        """
-        return self._id_to_meta.get(timeline_id)
-
-    def reset(self) -> None:
-        """Reset all counters and metadata."""
-        self._counters.clear()
-        self._id_to_meta.clear()
-
-    @property
-    def count(self) -> int:
-        """Total number of IDs generated."""
-        return sum(self._counters.values())
-
+# endregion
 
 # region ID Resolution Utilities
 
@@ -391,16 +391,16 @@ def resolve_ids(pattern: str, available_ids: list[str]) -> list[str]:
         List of matching IDs (may be empty).
 
     Examples:
-        >>> resolve_ids("clt1", ["clt1", "clt2", "dlt1"])
-        ['clt1']
+        >>> resolve_ids("clt_1", ["clt_1", "clt_2", "dlt_1"])
+        ['clt_1']
 
-        >>> resolve_ids("clt", ["clt1", "clt2", "dlt1"])
-        ['clt1', 'clt2']
+        >>> resolve_ids("clt", ["clt_1", "clt_2", "dlt_1"])
+        ['clt_1', 'clt_2']
 
-        >>> resolve_ids(r"^clt\\d+$", ["clt1", "clt2", "dlt1"])
-        ['clt1', 'clt2']
+        >>> resolve_ids(r"^clt_\\d+$", ["clt_1", "clt_2", "dlt_1"])
+        ['clt_1', 'clt_2']
 
-        >>> resolve_ids("xyz", ["clt1", "clt2"])
+        >>> resolve_ids("xyz", ["clt_1", "clt_2"])
         []
     """
     if not pattern or not available_ids:
@@ -454,16 +454,16 @@ def resolve_id(
         KeyError: If no ID matches the pattern.
 
     Examples:
-        >>> resolve_id("clt1", ["clt1", "clt2", "dlt1"])
-        'clt1'
+        >>> resolve_id("clt_1", ["clt_1", "clt_2", "dlt_1"])
+        'clt_1'
 
-        >>> resolve_id("clt", ["clt1", "clt2", "dlt1"])  # warns
-        'clt1'
+        >>> resolve_id("clt", ["clt_1", "clt_2", "dlt_1"])  # warns
+        'clt_1'
 
-        >>> resolve_id("xyz", ["clt1", "clt2"])
+        >>> resolve_id("xyz", ["clt_1", "clt_2"])
         Traceback (most recent call last):
             ...
-        KeyError: "No ID matches pattern 'xyz'. Available: clt1, clt2"
+        KeyError: "No ID matches pattern 'xyz'. Available: clt_1, clt_2"
     """
     import warnings
 

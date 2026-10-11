@@ -63,23 +63,34 @@ class ConversionMapsMixin:
         reading, and scalar lookup refuses to guess between them
         unless the caller names one.
 
+        The map's id must be unique in this timeline's manifest: a minted id
+        already held there is replaced by a freshly minted one (on the map
+        itself), a given one raises.
+
         Args:
             cmap: The ConversionMap to add.
 
         Raises:
-            ValueError: If the map's source unit is incompatible, or if a
-                map with the same id is already attached.
+            ValueError: If the map's source unit is incompatible, the map is
+                already attached, or its given id is already held in this
+                timeline's manifest.
         """
         if cmap.source_unit is not None and cmap.source_unit != self._unit:
             raise ValueError(
                 f"Map source unit '{cmap.source_unit}' does not match "
                 f"timeline unit '{self._unit}'"
             )
-        if cmap.id in self._conversion_maps:
+        if any(attached is cmap for attached in self._conversion_maps.values()):
             raise ValueError(
-                f"Conversion map id '{cmap.id}' is already attached to timeline "
+                f"Conversion map '{cmap.id}' is already attached to timeline "
                 f"'{self._id}'. Attached map ids: {list(self._conversion_maps)}"
             )
+        cmap._id = self._admit_element_id(
+            cmap.id,
+            minted=cmap._id_minted,
+            prefix=cmap._id_prefix,
+            element=f"conversion map {cmap.id!r}",
+        )
         self._conversion_maps[cmap.id] = cmap
 
         # Register in the unified timestamp system for unit-based lookup
@@ -87,6 +98,15 @@ class ConversionMapsMixin:
             self._unit_maps.setdefault(cmap.target_unit, []).append(cmap)
 
         self._logger.debug(f"Added conversion map '{cmap.id}'")
+
+    def _rename_conversion_map(self, old_id: str, new_id: str) -> None:
+        """Store the attached map *old_id* under the minted id *new_id*."""
+        cmap = self._conversion_maps[old_id]
+        cmap._id = new_id
+        self._conversion_maps = {
+            (new_id if key == old_id else key): attached
+            for key, attached in self._conversion_maps.items()
+        }
 
     def get_conversion_map(
         self, target_unit: TimeUnit | str

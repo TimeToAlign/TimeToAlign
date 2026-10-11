@@ -39,6 +39,7 @@ from timetoalign.core import (
     resolve_id,
 )
 from timetoalign.core.enums import NumberType
+from timetoalign.core.ids import mint_id, timeline_id_prefix
 from timetoalign.core.retrieval import (
     CoordinateCollection,
     CoordinateFormat,
@@ -329,21 +330,33 @@ class AlignmentBundle:
         Examples:
             Linear (full-extent) alignment:
 
-                >>> bundle.add_timeline(audio, uid="dgt1")
-                >>> bundle.add_timeline(midi, uid="dlt1", grouped_with="dgt1")
+                >>> bundle.add_timeline(audio, uid="dgt_1")
+                >>> bundle.add_timeline(midi, uid="dlt_1", grouped_with="dgt_1")
 
             Partial alignment (SUPRA piano roll) using IdCoordinate:
 
                 >>> from timetoalign import IdCoordinate, TimeUnit
-                >>> bundle.add_timeline(image, uid="dgt1")  # Full image
+                >>> bundle.add_timeline(image, uid="dgt_1")  # Full image
                 >>> bundle.add_timeline(
                 ...     holes,
                 ...     uid="dgt1_holes",
-                ...     grouped_with="dgt1",
-                ...     start=IdCoordinate(15343.0, TimeUnit.pixels, "dgt1"),
-                ...     end=IdCoordinate(293119.0, TimeUnit.pixels, "dgt1"),
+                ...     grouped_with="dgt_1",
+                ...     start=IdCoordinate(15343.0, TimeUnit.pixels, "dgt_1"),
+                ...     end=IdCoordinate(293119.0, TimeUnit.pixels, "dgt_1"),
                 ... )
         """
+        # A minted id that the bundle already knows is minted again, so two
+        # timelines never share an id within one bundle.
+        known_ids = set(self.timelines) | set(self._timeline_id_to_uid)
+        if (
+            timeline._id_minted
+            and timeline.id in known_ids
+            and all(held is not timeline for held in self.timelines.values())
+        ):
+            timeline._set_id(
+                mint_id(timeline_id_prefix(timeline.unit), known_ids), minted=True
+            )
+
         # Determine the bundle UID to use
         bundle_uid = uid if uid is not None else timeline.id
 
@@ -436,7 +449,7 @@ class AlignmentBundle:
         Examples:
             Add a recording group with 5 DPTs:
 
-                >>> grp = TimelineGroup(id="normal", timelines=[dpt1, dpt2, dpt3])
+                >>> grp = TimelineGroup(id="normal", timelines=[dpt_1, dpt_2, dpt_3])
                 >>> bundle.add_group(grp)
 
             With custom UIDs:
@@ -495,7 +508,7 @@ class AlignmentBundle:
             KeyError: If no timeline matches the pattern.
 
         Examples:
-            >>> bundle.get_timeline("clt1")          # Exact match
+            >>> bundle.get_timeline("clt_1")          # Exact match
             >>> bundle.get_timeline("score")         # Substring match
             >>> bundle.get_timeline(r"^perf:")       # Regex match
         """
@@ -1246,13 +1259,13 @@ class AlignmentBundle:
             Get all synchronous claims for a performer::
 
                 >>> claims = bundle.get_match_claims(
-                ...     id_pattern=r"dlt1$", synchronous_only=True
+                ...     id_pattern=r"dlt_1$", synchronous_only=True
                 ... )
 
             Get NOMATCH claims for a specific pair::
 
                 >>> nomatches = bundle.get_match_claims(
-                ...     between=("score:clt1", "perf:dlt5"),
+                ...     between=("score:clt_1", "perf:dlt_5"),
                 ...     nomatch_only=True,
                 ... )
         """
@@ -1321,7 +1334,7 @@ class AlignmentBundle:
             Filtered ``MatchClaimField`` objects, empty stores dropped.
 
         Examples:
-            >>> fields = bundle.get_claim_fields(timeline_id="rec-a:cpt1")
+            >>> fields = bundle.get_claim_fields(timeline_id="rec-a:cpt_1")
             >>> sum(len(f) for f in fields)
             66780
         """
@@ -1948,7 +1961,7 @@ class AlignmentBundle:
             KeyError: If timeline_id is not in the bundle.
 
         Examples:
-            >>> ms = bundle.get_matchstamp_at(10.0, "score:clt1")
+            >>> ms = bundle.get_matchstamp_at(10.0, "score:clt_1")
             >>> ms.n_timelines
             23  # score + 22 performers
         """
@@ -2236,8 +2249,8 @@ class AlignmentBundle:
             MatchStamps and Interval elements produce MatchIntervalStamps.
 
         Examples:
-            >>> stamps = bundle.get_matchstamps_at([0.0, 50.0], "score:clt1")
-            >>> stamps[1].get_coordinate_for("score:clt1", format="float")
+            >>> stamps = bundle.get_matchstamps_at([0.0, 50.0], "score:clt_1")
+            >>> stamps[1].get_coordinate_for("score:clt_1", format="float")
             50.0
         """
         values, _ = collection_values(at)
@@ -2769,10 +2782,10 @@ class AlignmentBundle:
             >>> table.num_rows
             100
             >>> table.column_names
-            ['score:clt1', 'perf:dlt1', 'perf:dlt2', ...]
+            ['score:clt_1', 'perf:dlt_1', 'perf:dlt_2', ...]
             >>> bundle.get_matchstamp_table(from_graph=True).num_rows
             25
-            >>> bundle.get_matchstamp_table([0.0, 50.0], "score:clt1").num_rows
+            >>> bundle.get_matchstamp_table([0.0, 50.0], "score:clt_1").num_rows
             2
         """
         validate_table_format(format)
@@ -3655,7 +3668,7 @@ class AlignmentBundle:
 
               TimelineGroup[dgt1_group] (2 timelines, 2 timestamps)
               ┌──────────────────────────────────────────────────────┐
-              │ DiscreteGraphicalTimeline[dgt1:1] (11 events)        │
+              │ DiscreteGraphicalTimeline[dgt_1:1] (11 events)        │
               │ 0 ∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶ 4835 pixels    │
               └──────────────────────────────────────────────────────┘
               Timestamps: 2

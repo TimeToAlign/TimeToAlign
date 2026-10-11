@@ -718,7 +718,7 @@ class TestConversionRowsAgreeWithGetUnit:
             DiscreteGraphicalTimeline,
         )
 
-        quarters_axis = ContinuousLogicalTimeline(length=Fraction(100), uid="clt1")
+        quarters_axis = ContinuousLogicalTimeline(length=Fraction(100), uid="clt_1")
         for scalar, target in (
             (Fraction(7104000, 3278347), TimeUnit.pixels),
             (Fraction(3278347, 7350), TimeUnit.seconds),

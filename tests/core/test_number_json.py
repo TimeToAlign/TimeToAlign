@@ -80,7 +80,7 @@ from timetoalign.timelines import (
 )
 from timetoalign.timelines.flow.measures import MeasureUnit
 from timetoalign.timelines.flow.sections import AtomicSection, PlaythroughSection
-from timetoalign.timelines.flowcontrol import Break, Jump
+from timetoalign.timelines.flowcontrol import Break, Jump, Marker
 
 # region Fixtures
 
@@ -141,7 +141,7 @@ def _structured_timeline() -> Timeline:
             ),
         )
     )
-    timeline.create_region("middle", Fraction(1, 3), Fraction(2, 3))
+    timeline.create_region(Fraction(1, 3), Fraction(2, 3), id="middle", name="middle")
     timeline.flow_control.add_break(
         Break(
             Coordinate(Fraction(2, 3), TimeUnit.quarters),
@@ -158,7 +158,7 @@ def _structured_timeline() -> Timeline:
         )
     )
     timeline.flow_control.add_marker(
-        "segno", Coordinate(Fraction(1, 3), TimeUnit.quarters)
+        Marker(Coordinate(Fraction(1, 3), TimeUnit.quarters), name="segno")
     )
     return timeline
 

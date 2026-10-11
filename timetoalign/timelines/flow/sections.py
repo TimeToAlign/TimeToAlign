@@ -863,22 +863,23 @@ def _as_interval(
     Descriptors are recognised in strict priority order, and each carries a
     best-effort identity ``label`` (``None`` when the descriptor names nothing):
 
-    1. ``str`` — a named region resolved through *resolve* (typically a
+    1. ``str`` — a region id resolved through *resolve* (typically a
        timeline's ``get_region``). The string itself is the label. A ``str``
        with no resolver is an error; a string is never iterated character by
        character.
     2. Any object exposing ``start`` and ``end`` — a ``Region``, an interval
        event (``Note`` / ``Measure``), or a ``TimeIntervalStamp``. The label is
-       ``getattr(obj, "name", None)`` (a ``Region`` carries its ``name``).
+       ``getattr(obj, "id", None) or getattr(obj, "name", None)`` (a
+       ``Region`` is labelled by its ``id``).
     3. Any object exposing ``origin`` and ``length`` — a ``Timeline`` is
        itself an interval running from its origin to its length. The label is
-       ``getattr(obj, "name", None) or getattr(obj, "id", None)``.
+       ``getattr(obj, "id", None) or getattr(obj, "name", None)``.
     4. A two-element sequence — an explicit ``(start, end)`` coordinate pair,
        which names nothing, so the label is ``None``.
 
     Args:
         obj: The descriptor to coerce.
-        resolve: Callable mapping a region name to an interval-like object.
+        resolve: Callable mapping a region id to an interval-like object.
             Required only when *obj* is a ``str``.
 
     Returns:
@@ -896,10 +897,10 @@ def _as_interval(
         start, end, _ = _as_interval(resolve(obj), resolve=resolve)
         return (start, end, obj)
     if hasattr(obj, "start") and hasattr(obj, "end"):
-        label = getattr(obj, "name", None)
+        label = getattr(obj, "id", None) or getattr(obj, "name", None)
         return (_interval_value(obj.start), _interval_value(obj.end), label)
     if hasattr(obj, "origin") and hasattr(obj, "length"):
-        label = getattr(obj, "name", None) or getattr(obj, "id", None)
+        label = getattr(obj, "id", None) or getattr(obj, "name", None)
         return (_interval_value(obj.origin), _interval_value(obj.length), label)
     if isinstance(obj, Sequence) and not isinstance(obj, (str, bytes)):
         if len(obj) != 2:
@@ -928,7 +929,7 @@ def _coerce_intervals(
     Args:
         spec: One interval-like descriptor (see :func:`_as_interval`) or an
             iterable of them.
-        resolve: Callable mapping a region name to an interval-like object,
+        resolve: Callable mapping a region id to an interval-like object,
             forwarded to :func:`_as_interval`.
 
     Returns:
@@ -972,7 +973,7 @@ def _coerce_flow_entries(
     Args:
         spec: One interval-like descriptor (see :func:`_as_interval`), a
             ``Gap``, or an iterable mixing the two.
-        resolve: Callable mapping a region name to an interval-like object,
+        resolve: Callable mapping a region id to an interval-like object,
             forwarded to :func:`_as_interval`.
 
     Returns:

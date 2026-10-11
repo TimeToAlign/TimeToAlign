@@ -583,11 +583,14 @@ class TestMaterialise:
 
         assert len(warped._regions) == 2
 
-        verse = warped._regions["Verse"]
+        # Each warped region keeps its source region's id and name.
+        verse = warped.get_region("region_1")
+        assert verse.name == "Verse"
         assert float(verse.start.value) == 0.0
         assert float(verse.end.value) == 50.0
 
-        chorus = warped._regions["Chorus"]
+        chorus = warped.get_region("region_2")
+        assert chorus.name == "Chorus"
         assert float(chorus.start.value) == 50.0
         assert float(chorus.end.value) == 100.0
 
@@ -733,7 +736,7 @@ class TestTypeConversion:
 
     def test_same_unit_preserves_type(self) -> None:
         """Warping within same unit preserves timeline type."""
-        dgt = DiscreteGraphicalTimeline(length=1000, unit=TimeUnit.pixels, uid="dgt1")
+        dgt = DiscreteGraphicalTimeline(length=1000, unit=TimeUnit.pixels, uid="dgt_1")
         dgt.add_events(
             [
                 {"event_type": "Mark", "instant": 100},
@@ -742,8 +745,8 @@ class TestTypeConversion:
         )
 
         warp = _warp_from_values(
-            "dgt1",
-            "dgt2",
+            "dgt_1",
+            "dgt_2",
             [0, 1000],
             [0, 2000],
             source_unit=TimeUnit.pixels,
@@ -915,8 +918,8 @@ class TestThoresenIntegration:
         dgt1_boundaries = [0, 967, 1934, 2901, 3868, 4835]
 
         warp = _warp_from_values(
-            "dgt2",
-            "dgt1",
+            "dgt_2",
+            "dgt_1",
             dgt2_boundaries,
             dgt1_boundaries,
             source_unit=TimeUnit.pixels,

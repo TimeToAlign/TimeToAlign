@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import copy
 import json
-import math
 from dataclasses import dataclass
 from fractions import Fraction
 from itertools import permutations
@@ -13,7 +12,6 @@ from typing import Any
 import pytest
 
 from timetoalign.core import FlowControlElement
-from timetoalign.core.retrieval import canonical_json
 from timetoalign.maps import ConstantMap, ScalarMap, ShiftMap
 from timetoalign.timelines import (
     ContinuousLogicalTimeline,
@@ -21,7 +19,7 @@ from timetoalign.timelines import (
     DiscreteLogicalTimeline,
     Timeline,
 )
-from timetoalign.timelines.flowcontrol import Break, Jump
+from timetoalign.timelines.flowcontrol import Break, Jump, Marker
 
 
 @dataclass(frozen=True)
@@ -76,7 +74,7 @@ JUMPS = [
     ("segno", FlowControlElement.dal_segno, "hi", "lo"),
     ("first", FlowControlElement.repeat_end, "mid", "lo"),
 ]
-MARKERS = [("segno", "lo"), ("coda", "mid"), ("Fine", "hi")]
+MARKERS = [("segno", "lo"), ("coda", "mid"), ("Fine", "hi"), ("Coda", "mid")]
 
 COLLECTIONS = {
     "children": CHILDREN,
@@ -91,11 +89,13 @@ COLLECTIONS = {
 CANONICAL_CHILDREN = ["m", "z", "b", "a"]  # lo (m before z), mid, hi
 CANONICAL_MAPS = ["label", "scale", "shift"]
 CANONICAL_REGIONS = ["intro", "alpha", "verse", "coda"]  # (lo,mid), (lo,hi)x2, (mid,hi)
-# Both breaks at mid share condition "always"; "fine" < "section_break" in their JSON text.
+# Ties fall back to the id; each element's id is its kind and label.
+# Both breaks at mid: "break-fine" < "break-section".
 CANONICAL_BREAKS = ["early", "fine", "section"]
-# hi->lo twice: "dal_segno" < "repeat_end" in their JSON text; hi->mid follows.
-CANONICAL_JUMPS = ["first", "segno", "repeat", "inner"]
-CANONICAL_MARKERS = ["Fine", "coda", "segno"]  # code point: "F" < "c" < "s"
+# hi->lo twice: "jump-repeat" < "jump-segno"; hi->mid follows.
+CANONICAL_JUMPS = ["first", "repeat", "segno", "inner"]
+# Two markers at mid: code point "marker-Coda" < "marker-coda" ("C" < "c").
+CANONICAL_MARKERS = ["segno", "Coda", "coda", "Fine"]
 
 
 def _map(map_id: str) -> Any:
@@ -116,7 +116,7 @@ def _build(axis: Axis, orders: dict[str, list[Any]]) -> Timeline:
     for map_id in orders["maps"]:
         timeline.add_conversion_map(_map(map_id))
     for name, start, end in orders["regions"]:
-        timeline.create_region(name, position[start], position[end])
+        timeline.create_region(position[start], position[end], id=name, name=name)
     registry = timeline.flow_control
     for label, control_type, at in orders["breaks"]:
         registry.add_break(
@@ -124,6 +124,7 @@ def _build(axis: Axis, orders: dict[str, list[Any]]) -> Timeline:
                 coordinate=timeline.make_coordinate(position[at]),
                 control_type=control_type,
                 label=label,
+                id=f"break-{label}",
             )
         )
     for label, control_type, source, target in orders["jumps"]:
@@ -133,10 +134,11 @@ def _build(axis: Axis, orders: dict[str, list[Any]]) -> Timeline:
                 to_coordinate=timeline.make_coordinate(position[target]),
                 control_type=control_type,
                 label=label,
+                id=f"jump-{label}",
             )
         )
     for name, at in orders["markers"]:
-        registry.add_marker(name, position[at])
+        registry.add_marker(Marker(position[at], name=name, id=f"marker-{name}"))
     return timeline
 
 
@@ -160,7 +162,7 @@ INSERTION_ORDERS = _insertion_orders()
 def test_to_dict_is_invariant_under_every_insertion_order(axis_name: str) -> None:
     axis = AXES[axis_name]
     reference = _build(axis, COLLECTIONS).to_dict()
-    assert len(INSERTION_ORDERS) == 24 + 6 + 24 + 6 + 24 + 6
+    assert len(INSERTION_ORDERS) == 24 + 6 + 24 + 6 + 24 + 24
     for case, orders in INSERTION_ORDERS:
         payload = _build(axis, orders).to_dict()
         assert payload == reference, case
@@ -172,11 +174,11 @@ def test_to_dict_writes_the_canonical_order(axis_name: str) -> None:
     payload = _build(AXES[axis_name], COLLECTIONS).to_dict()
     assert list(payload["children"]) == CANONICAL_CHILDREN
     assert [entry["id"] for entry in payload["conversion_maps"]] == CANONICAL_MAPS
-    assert [entry["name"] for entry in payload["regions"]] == CANONICAL_REGIONS
+    assert [entry["id"] for entry in payload["regions"]] == CANONICAL_REGIONS
     flow = payload["flow_control"]
     assert [entry["label"] for entry in flow["breaks"]] == CANONICAL_BREAKS
     assert [entry["label"] for entry in flow["jumps"]] == CANONICAL_JUMPS
-    assert list(flow["markers"]) == CANONICAL_MARKERS
+    assert [entry["name"] for entry in flow["markers"]] == CANONICAL_MARKERS
 
 
 def test_offsets_compare_by_value_not_by_their_json_spelling() -> None:
@@ -206,9 +208,6 @@ def _reordered(payload: dict[str, Any], name: str, order: tuple[int, ...]) -> di
         result["conversion_maps"] = [maps[index] for index in order]
     elif name == "regions":
         result["regions"] = [result["regions"][index] for index in order]
-    elif name == "markers":
-        items = list(flow["markers"].items())
-        flow["markers"] = dict(items[index] for index in order)
     else:
         flow[name] = [flow[name][index] for index in order]
     return result
@@ -225,7 +224,7 @@ def test_from_dict_accepts_any_order(axis_name: str) -> None:
             assert restored == canonical, (name, order)
             assert _text(restored) == _text(canonical), (name, order)
             checked += 1
-    assert checked == 90
+    assert checked == 108
 
 
 def test_storage_keeps_its_own_order() -> None:
@@ -238,21 +237,12 @@ def test_storage_keeps_its_own_order() -> None:
         "section",
         "fine",
     ]
-    assert list(timeline.flow_control.markers) == ["segno", "coda", "Fine"]
+    assert [marker.name for marker in timeline.flow_control.markers] == [
+        "segno",
+        "coda",
+        "Coda",
+        "Fine",
+    ]
     copied = timeline.flow_control.copy()
     assert [brk.label for brk in copied.breaks] == ["early", "section", "fine"]
     assert copied.to_dict() == timeline.flow_control.to_dict()
-
-
-def test_canonical_json_text() -> None:
-    value = {"\U0001f600": {"b": True, "a": [1, 2.5, None]}, "\u00e9": 1.0, "a": []}
-    assert (
-        canonical_json(value)
-        == '{"a":[],"\u00e9":1.0,"\U0001f600":{"a":[1,2.5,null],"b":true}}'
-    )
-
-
-@pytest.mark.parametrize("number", [math.nan, math.inf, -math.inf], ids=repr)
-def test_canonical_json_refuses_what_json_cannot_hold(number: float) -> None:
-    with pytest.raises(ValueError):
-        canonical_json({"meta": {"x": number}})

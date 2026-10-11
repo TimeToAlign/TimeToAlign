@@ -117,10 +117,10 @@ metrical_position_map = loader.metrical_position_map
 #
 # The score is a logical {{< glossary Timeline >}} measured in quarters. It holds
 # every note of the `.solo` score, each placed at its absolute quarter position.
-# Its stored UID is `score:clt1`.
+# Its stored UID is `score:clt_1`.
 
 # %%
-score_tl = loader.create_timeline(uid="score:clt1")
+score_tl = loader.create_timeline(uid="score:clt_1")
 score_tl
 
 # %% [markdown]
@@ -172,15 +172,15 @@ pitch_field = solo.events.get_field(EnharmonicPitch)
 #
 # Each recording is a physical {{< glossary Timeline >}} measured in seconds, one
 # event per aligned note onset. Their stored UIDs follow
-# `perf:<performer>:cpt1`, so the Ashkenazy recording is
-# `perf:Chopin_Ashkenazy:cpt1`:
+# `perf:<performer>:cpt_1`, so the Ashkenazy recording is
+# `perf:Chopin_Ashkenazy:cpt_1`:
 
 # %%
 performer_keys = [tl.name for tl in loader.create_timelines() if tl is not score_tl]
 performer_keys
 
 # %%
-ashkenazy = loader.create_timeline(uid="perf:Chopin_Ashkenazy:cpt1")
+ashkenazy = loader.create_timeline(uid="perf:Chopin_Ashkenazy:cpt_1")
 ashkenazy
 
 # %% [markdown]
@@ -207,7 +207,7 @@ bundle
 # the aligning agent's `identifier` carries the granularity. Counting the
 # claims for one performer shows the shape of a single recording's alignment.
 # A {{< glossary NOMATCH >}} claim prints its unmatched score coordinate
-# (`score:clt1@…`) so the dangling position stays legible at a glance:
+# (`score:clt_1@…`) so the dangling position stays legible at a glance:
 
 # %%
 bundle.cross_group_claims

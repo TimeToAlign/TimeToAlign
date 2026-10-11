@@ -186,7 +186,7 @@ print(bundle.diagram())
 # from roughly the middle of the work, read off the reference recording's clock.
 
 # %%
-reference_uid = f"{os.path.splitext(loader.reference)[0]}:dpt1"
+reference_uid = f"{os.path.splitext(loader.reference)[0]}:dpt_1"
 
 reference_claims = field.connecting(reference_uid)
 mid_claim = reference_claims[len(reference_claims) // 2]
@@ -250,11 +250,11 @@ stamp
 #
 # | What the bundle expresses | How |
 # |---|---|
-# | One recording per group | `<stem>:dpt1` samples timeline, one point event per grid column, recording-length |
+# | One recording per group | `<stem>:dpt_1` samples timeline, one point event per grid column, recording-length |
 # | The whole pairwise alignment | a columnar {{< glossary MatchClaimField >}} via `get_field(MatchClaim)` |
 # | One claim, materialised | `field[i]` → a synchronous instant {{< glossary MatchClaim >}} |
 # | The reference recording | `loader.reference` — the grid origin, but just another recording |
-# | A point placed everywhere | `bundle.get_matchstamp_at(coord, "<stem>:dpt1")` → every recording at once |
+# | A point placed everywhere | `bundle.get_matchstamp_at(coord, "<stem>:dpt_1")` → every recording at once |
 #
 # A single file encodes an entire audio-to-audio {{< glossary MatchGraph >}} —
 # every recording of one work warped onto a shared reference grid, every pair

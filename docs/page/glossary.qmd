@@ -158,8 +158,8 @@ to the relevant section of the conceptual model.
 **DictStore**
 :   A generic `EventStore` subclass holding a `dict[str, EventData]` with
     arbitrary keys. Used internally by AlignmentLoaders to store one
-    `EventData` table per timeline-to-be (e.g., `"score:clt1"`,
-    `"perf:Chopin_op10_no3_p01:cpt1"`).
+    `EventData` table per timeline-to-be (e.g., `"score:clt_1"`,
+    `"perf:Chopin_op10_no3_p01:cpt_1"`).
     Maintains the uniform `EventStore` interface.
     See the [API reference](reference/DictStore.qmd).
 
@@ -176,6 +176,24 @@ to the relevant section of the conceptual model.
     See [Foundations](concepts.qmd#foundations).
 
 ## E
+
+**element id**
+:   The id that identifies a {{< glossary Timeline >}},
+    {{< glossary ConversionMap >}}, {{< glossary Region >}}, Break,
+    {{< glossary Jump >}} or {{< glossary Marker >}}. It is unique within one
+    timeline tree (a root timeline and all its descendants) across every kind,
+    so the id alone names the element. An id is whatever was given and is kept
+    verbatim: any non-empty string without `/` and without a control
+    character; spaces, colons and dots are allowed. Only an element given no
+    id gets a minted one, `{prefix}_{N}` with `N` the smallest positive
+    integer not yet taken in the tree. The prefix names the kind: `clt`,
+    `dlt`, `cpt`, `dpt`, `cgt` or `dgt` for a timeline (continuous or
+    discrete, logical, physical or graphical), `cmap`, `lmap`, `tmap` or
+    `pmap` for a conversion map, and `region`, `break`, `jump` or `marker`;
+    a loader role leads it (`score:clt_1`). A minted id that
+    collides when its element joins a tree is re-minted; a given id that
+    collides raises. The id identifies, the `name` displays: a name may be
+    absent or repeat, and an id is never derived from it.
 
 **EndInstant**
 :   An {{< glossary Instant >}} marking the end of a
@@ -285,6 +303,10 @@ to the relevant section of the conceptual model.
 :   A {{< glossary ControlEvent >}} with **JumpFrom** and **JumpTo**
     {{< glossary Instant >}}s. When active, makes events at JumpTo
     contiguous with those ending at JumpFrom (e.g., repeats, *dal segno*).
+    Its `target` is the {{< glossary "element id" >}} of a
+    {{< glossary Marker >}} of the same timeline (a segno, a coda), or `None`
+    when it lands on no marker (to the start, a plain repeat); JumpTo carries
+    the destination coordinate either way.
     See [Flow control](concepts.qmd#flow-control).
 
 ## L
@@ -304,6 +326,13 @@ to the relevant section of the conceptual model.
     See [Nested timelines](concepts.qmd#nested-timelines).
 
 ## M
+
+**Marker**
+:   A named position in a timeline's flow control that a
+    {{< glossary Jump >}} can target, such as a segno or a coda sign. A Marker
+    carries an {{< glossary "element id" >}}, an optional `name`, and a
+    coordinate; a Jump refers to it by its id, never by its name.
+    See [Flow control](concepts.qmd#flow-control).
 
 **Match**
 :   See {{< glossary MatchClaim >}}.
@@ -506,9 +535,11 @@ to the relevant section of the conceptual model.
     shift when comparing coordinates across loaders.
 
 **Region**
-:   A named part of a {{< glossary Timeline >}} defined by a
-    {{< glossary TimeInterval >}} (e.g., "Chorus", "Verse"). Regions are
-    not timelines and cannot hold events or maps directly.
+:   A part of a {{< glossary Timeline >}} defined by a
+    {{< glossary TimeInterval >}}, identified by its
+    {{< glossary "element id" >}} and displayed by its `name` (e.g.,
+    "Chorus", "Verse"). Regions are not timelines and cannot hold events or
+    maps directly.
     See [Regions](concepts.qmd#regions).
 
 **Root**

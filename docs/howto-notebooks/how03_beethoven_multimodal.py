@@ -122,7 +122,7 @@ def build_recording_group(xml_path, group_id, group_name, dpt_base):
         xml_path: Path to the recording's XML manifest file.
         group_id: ID for the TimelineGroup.
         group_name: Human-readable name for the group.
-        dpt_base: Starting DPT number (e.g. 1 for dpt1-dpt5).
+        dpt_base: Starting DPT number (e.g. 1 for dpt_1-dpt_5).
 
     Returns:
         TimelineGroup with 5 hierarchical DPTs (parent + children).
@@ -131,7 +131,7 @@ def build_recording_group(xml_path, group_id, group_name, dpt_base):
     n = dpt_base
 
     # 1. Audio (mono as parent, 6 sources as children)
-    audio = rv.create_timeline("mono", uid=f"dpt{n}", name="Audio")
+    audio = rv.create_timeline("mono", uid=f"dpt_{n}", name="Audio")
     for src in AUDIO_SOURCES:
         audio.add_child(rv.create_timeline(src, uid=src), offset=0)
 
@@ -145,7 +145,7 @@ def build_recording_group(xml_path, group_id, group_name, dpt_base):
     for desc_type, desc_name, offset in desc_cfgs:
         parent = rv.create_timeline(
             f"{desc_type}.{desc_name}.mono",
-            uid=f"dpt{n + offset}",
+            uid=f"dpt_{n + offset}",
             name=desc_type.title(),
         )
         for src in AUDIO_SOURCES:
@@ -160,7 +160,7 @@ def build_recording_group(xml_path, group_id, group_name, dpt_base):
     # 5. MoCap bb_angle (from the DescriptorGroup section of the XML)
     mocap = rv.create_timeline(
         rv.find_descriptor("bb_angle", "vln1"),
-        uid=f"dpt{n + 4}",
+        uid=f"dpt_{n + 4}",
         name="MoCap",
     )
     for inst in INSTRUMENTS:
@@ -204,7 +204,7 @@ normal_group
 # The audio timeline now carries the note annotations as a child:
 
 # %%
-normal_group.get_timeline("dpt1")
+normal_group.get_timeline("dpt_1")
 
 # %% [markdown]
 # ## 3. Group 2: Mechanical Recording (DPT6-DPT10)
@@ -260,7 +260,7 @@ abc_loader = Ms3Loader.from_file(
     ABC_DIR / "n04op18-4_04.measures.tsv",
     ABC_DIR / "n04op18-4_04.harmonies.tsv",
 )
-clt1 = abc_loader.create_timeline(uid="clt1")
+clt1 = abc_loader.create_timeline(uid="clt_1")
 clt1
 
 # %% [markdown]
@@ -324,7 +324,7 @@ dgt1 = SegmentLine[SegmentLine[DiscreteGraphicalTimeline]](
     length=0,
     unit=TimeUnit.pixels,
     number_type=NumberType.int,
-    uid="dgt1",
+    uid="dgt_1",
 )
 
 for page_idx, page_data in noteheads.groupby("page", sort=True):
@@ -392,15 +392,16 @@ os_full
 # %% [markdown]
 # The loader's `create_flow_controller()` derives section boundaries from
 # the score's flow control markup. Splitting at those coordinates creates
-# one region per movement.
+# one region per movement, named `movement_1` to `movement_4`; the child is
+# taken from the fourth by its id.
 
 # %%
 os_flow_controller = os_loader.create_flow_controller()
 boundaries = os_flow_controller.get_section_boundary_coordinates()
-os_full.create_regions_from_boundaries(
+movements = os_full.create_regions_from_boundaries(
     [0, *[float(b) for b in boundaries], float(os_full.length.value)], prefix="movement"
 )
-openscore = os_full.create_child_from_region("movement_4", uid="openscore")
+openscore = os_full.create_child_from_region(movements[3].id, uid="openscore")
 openscore
 
 # %% [markdown]
@@ -444,10 +445,10 @@ for _seg_id in dgt1.list_segments():
 
 _section_rows = []
 for _sid, _qb in abc_controller.get_atomic_section_coordinates(flow=abc_flow).items():
-    _ts = score_group.get_timestamp_at(float(_qb), "clt1")
+    _ts = score_group.get_timestamp_at(float(_qb), "clt_1")
     _px = (
-        _ts.get_coordinate_for("dgt1", format="int")
-        if "dgt1" in _ts.present_timelines
+        _ts.get_coordinate_for("dgt_1", format="int")
+        if "dgt_1" in _ts.present_timelines
         else None
     )
     _page = next(
@@ -481,7 +482,7 @@ section_boundary_table
 
 # %%
 score_group_unfolded = score_group.apply_flow(
-    abc_flow, abc_controller, reference_timeline_id="clt1"
+    abc_flow, abc_controller, reference_timeline_id="clt_1"
 )
 score_group_unfolded
 
@@ -490,7 +491,7 @@ score_group_unfolded
 # Extract them for note matching:
 
 # %%
-clt1_unfolded = score_group_unfolded.get_timeline("clt1")
+clt1_unfolded = score_group_unfolded.get_timeline("clt_1")
 abc_notes_df = clt1_unfolded.get_events(
     event_type="Note", include_children=True
 ).to_dataframe()
@@ -527,9 +528,9 @@ len(abc_prepared)  # note onsets after dropping tied notes
 # %%
 match_results = {}
 for xml_path, dpt_id in [
-    (NORMAL_XML, "dpt1"),
-    (MECHANICAL_XML, "dpt6"),
-    (EXAGGERATED_XML, "dpt11"),
+    (NORMAL_XML, "dpt_1"),
+    (MECHANICAL_XML, "dpt_6"),
+    (EXAGGERATED_XML, "dpt_11"),
 ]:
     rv = RepoVizzLoader.from_file(xml_path)
     eep_events = rv.store.notes.to_dataframe()
@@ -541,14 +542,14 @@ for xml_path, dpt_id in [
         source_coord_column="start",
         target_coord_column="quarterbeats_playthrough",
         source_timeline_id=dpt_id,
-        target_timeline_id="clt1",
+        target_timeline_id="clt_1",
         source_unit=TimeUnit.seconds,
         target_unit=TimeUnit.quarters,
     )
 
-normal_match = match_results["dpt1"]
-mechanical_match = match_results["dpt6"]
-exaggerated_match = match_results["dpt11"]
+normal_match = match_results["dpt_1"]
+mechanical_match = match_results["dpt_6"]
+exaggerated_match = match_results["dpt_11"]
 
 # %%
 {
@@ -608,7 +609,7 @@ rec_loader = Ms3Loader.from_file(
     REC_DIR / "Beethoven_Op018No4-04.measures.tsv",
     REC_DIR / "Beethoven_Op018No4-04.harmonies.tsv",
 )
-clt2 = rec_loader.create_timeline(uid="clt2")
+clt2 = rec_loader.create_timeline(uid="clt_2")
 clt2
 
 # %% [markdown]
@@ -672,7 +673,7 @@ ema_df
 
 # %%
 dpt16_duration = float(ema_df["seconds_end"].iloc[-1])
-dpt16 = ContinuousPhysicalTimeline(length=dpt16_duration, uid="dpt16")
+dpt16 = ContinuousPhysicalTimeline(length=dpt16_duration, uid="dpt_16")
 dpt16
 
 # %% [markdown]
@@ -694,13 +695,13 @@ for _, row in ema_df.iterrows():
     anchor = AlignmentAnchor(
         timeline_a_id="clt2_unfolded",
         coordinate_a=Coordinate(float(row["measure_unfold_start"]), TimeUnit.quarters),
-        timeline_b_id="dpt16",
+        timeline_b_id="dpt_16",
         coordinate_b=Coordinate(float(row["seconds_start"]), TimeUnit.seconds),
     )
     emerson_claims.append(
         MatchClaim(
             timeline_a_id="clt2_unfolded",
-            timeline_b_id="dpt16",
+            timeline_b_id="dpt_16",
             start_anchor=anchor,
             metadata=MatchMetadata(
                 agent=Agent(
@@ -718,13 +719,13 @@ final_anchor = AlignmentAnchor(
     coordinate_a=Coordinate(
         float(ema_df["measure_unfold_end"].iloc[-1]), TimeUnit.quarters
     ),
-    timeline_b_id="dpt16",
+    timeline_b_id="dpt_16",
     coordinate_b=Coordinate(float(ema_df["seconds_end"].iloc[-1]), TimeUnit.seconds),
 )
 emerson_claims.append(
     MatchClaim(
         timeline_a_id="clt2_unfolded",
-        timeline_b_id="dpt16",
+        timeline_b_id="dpt_16",
         start_anchor=final_anchor,
         metadata=MatchMetadata(
             agent=Agent(
@@ -762,11 +763,11 @@ len(emerson_claims)
 # timeline in both groups.
 
 # %%
-clt1_unfolded = score_group_unfolded.get_timeline("clt1")
+clt1_unfolded = score_group_unfolded.get_timeline("clt_1")
 score_group_unfolded.add_timeline(
     clt2_unfolded,
-    start=IdCoordinate(0.0, TimeUnit.quarters, "clt1"),
-    end=IdCoordinate(float(clt1_unfolded.length.value), TimeUnit.quarters, "clt1"),
+    start=IdCoordinate(0.0, TimeUnit.quarters, "clt_1"),
+    end=IdCoordinate(float(clt1_unfolded.length.value), TimeUnit.quarters, "clt_1"),
 )
 score_group_unfolded
 
@@ -808,7 +809,7 @@ bundle.add_group(exaggerated_group)
 bundle.add_group(emerson_group)
 
 # Add EEP recording <-> CLT1 match claims
-for dpt_id in ["dpt1", "dpt6", "dpt11"]:
+for dpt_id in ["dpt_1", "dpt_6", "dpt_11"]:
     bundle.add_match_claims(match_results[dpt_id].match_claims)
 
 # Add Emerson section boundary claims (CLT2_unfolded <-> DPT16)
@@ -825,22 +826,22 @@ pd.DataFrame(
         {
             "recording": name,
             "source": dpt_id,
-            "target": "clt1",
+            "target": "clt_1",
             "matched": match_results[dpt_id].n_matched,
             "unmatched_source": match_results[dpt_id].n_unmatched_source,
             "unmatched_target": match_results[dpt_id].n_unmatched_target,
         }
         for name, dpt_id in [
-            ("Normal", "dpt1"),
-            ("Mechanical", "dpt6"),
-            ("Exaggerated", "dpt11"),
+            ("Normal", "dpt_1"),
+            ("Mechanical", "dpt_6"),
+            ("Exaggerated", "dpt_11"),
         ]
     ]
     + [
         {
             "recording": "Emerson",
             "source": "clt2_unfolded",
-            "target": "dpt16",
+            "target": "dpt_16",
             "matched": len(emerson_claims),
             "unmatched_source": 0,
             "unmatched_target": 0,
@@ -863,7 +864,9 @@ emerson_matchline = MatchLine.from_claims(
 emerson_matchline
 
 # %%
-emerson_warpmap = WarpMap.from_match_line(emerson_matchline, target_timeline_id="dpt16")
+emerson_warpmap = WarpMap.from_match_line(
+    emerson_matchline, target_timeline_id="dpt_16"
+)
 emerson_warpmap
 
 # %% [markdown]
@@ -911,7 +914,7 @@ annotations_df[["start", "name"]].head(15)
 # `TimelineGroup`:
 
 # %%
-stamp = bundle.get_matchstamp_at(79.0, "clt1")
+stamp = bundle.get_matchstamp_at(79.0, "clt_1")
 stamp
 
 # %% [markdown]
@@ -925,7 +928,7 @@ stamp
 
 # %%
 {
-    "CLT1 coordinate": stamp.get_coordinate("clt1"),
+    "CLT1 coordinate": stamp.get_coordinate("clt_1"),
     "interpolated": stamp.is_interpolated,
 }
 
@@ -938,7 +941,7 @@ stamp
 # instead, ask for one with `get_coordinate_for(id, format="float")`.
 
 # %%
-bundle.get_matchstamp_at(79.0, "clt1").to_dict(format="nested")
+bundle.get_matchstamp_at(79.0, "clt_1").to_dict(format="nested")
 
 # %% [markdown]
 # Note that the `emerson` group now appears in the output: the
@@ -949,7 +952,7 @@ bundle.get_matchstamp_at(79.0, "clt1").to_dict(format="nested")
 # The flat format is useful for programmatic access:
 
 # %%
-bundle.get_matchstamp_at(79.0, "clt1").to_dict(format="flat")
+bundle.get_matchstamp_at(79.0, "clt_1").to_dict(format="flat")
 
 # %% [markdown]
 # ### 14.3 USE CASE B — Reverse Transfer: Emerson to All Groups
@@ -959,7 +962,7 @@ bundle.get_matchstamp_at(79.0, "clt1").to_dict(format="flat")
 # connected timeline — including the three EEP recording groups:
 
 # %%
-bundle.get_matchstamp_at(120.0, "dpt16").to_dict(format="nested")
+bundle.get_matchstamp_at(120.0, "dpt_16").to_dict(format="nested")
 
 # %% [markdown]
 # A coordinate at 120 seconds into the Emerson recording is mapped
@@ -982,7 +985,7 @@ section_coords
 # %%
 boundary_rows = []
 for _qb in section_coords.values():
-    _stamp = bundle.get_matchstamp_at(float(_qb), "clt1")
+    _stamp = bundle.get_matchstamp_at(float(_qb), "clt_1")
     _row = {}
     for _tl_id in _stamp.present_timelines:
         _coord = _stamp.get_coordinate_for(_tl_id)
@@ -997,7 +1000,7 @@ boundary_df
 
 # %% [markdown]
 # Each row gives the exact coordinate of a section boundary in every
-# timeline and domain — including the Emerson recording's `dpt16`
+# timeline and domain — including the Emerson recording's `dpt_16`
 # column. Every column matches its own timeline's native type, and that is
 # the point worth pausing on: pixel and sample counts are integers because
 # those axes are discrete, seconds are floats, and quarterbeats are exact

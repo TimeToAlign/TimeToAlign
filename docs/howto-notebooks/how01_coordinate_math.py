@@ -219,8 +219,8 @@ except TypeError as e:
 # `timeline_id`. Mixing two different timelines raises.
 
 # %%
-p = IdCoordinate(10, TimeUnit.quarters, timeline_id="clt1")
-q = IdCoordinate(4, TimeUnit.quarters, timeline_id="clt1")
+p = IdCoordinate(10, TimeUnit.quarters, timeline_id="clt_1")
+q = IdCoordinate(4, TimeUnit.quarters, timeline_id="clt_1")
 span = p - q
 
 {

@@ -419,7 +419,7 @@ eroica_bundle
 # quarters. Selecting it keeps the performance timelines out of this example.
 
 # %%
-eroica_score_timeline = eroica_bundle.get_timeline("score:clt1")
+eroica_score_timeline = eroica_bundle.get_timeline("score:clt_1")
 eroica_score_timeline
 
 # %% [markdown]

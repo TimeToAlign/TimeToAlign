@@ -330,8 +330,8 @@ unmapped.to_pandas()
 #
 # | What the bundle expresses | How |
 # |---|---|
-# | The spine, a cumulative VTU axis | `spine:dlt1`, `DiscreteLogicalTimeline`, ``ticks`` |
-# | Notes, rests, lyrics at spine coordinates | `los:dlt2`, verbatim `duration_num`/`duration_den` |
+# | The spine, a cumulative VTU axis | `spine:dlt_1`, `DiscreteLogicalTimeline`, ``ticks`` |
+# | Notes, rests, lyrics at spine coordinates | `los:dlt_2`, verbatim `duration_num`/`duration_den` |
 # | Engraved editions, page-image boxes | one nested `SegmentLine` per edition:
 # |   4 page segments carrying 18 accolades, an `IntervalToConstantMap` to page images, ``pixels`` |
 # | Audio recordings | one `ContinuousPhysicalTimeline` per track, ``seconds`` |

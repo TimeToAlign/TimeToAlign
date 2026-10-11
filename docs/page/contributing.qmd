@@ -145,7 +145,7 @@ find yourself wanting to break one, raise it as a discussion before coding.
   whose values are Python `type` objects.
 - **Timeline IDs are systematic:** `clt`/`dlt`/`cpt`/`dpt`/`cgt`/`dgt`
   prefixes for the six domain × modality combinations, with optional
-  role prefixes (`score:clt1`, `perf:dlt1`).
+  role prefixes, each minted as `{prefix}_{N}` (`clt_1`, `score:clt_1`, `perf:dlt_1`).
 
 For the full conceptual rationale see [Concepts](concepts.qmd) and the
 [Glossary](glossary.qmd).

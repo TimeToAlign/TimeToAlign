@@ -44,7 +44,7 @@
 #    source's own type whose played spans are appended as named children, each
 #    also recorded as a {{< glossary Region >}}
 # 6. Recognise that FlowMap construction takes **one** argument in many shapes:
-#    region names, `Region` objects, coordinate pairs, a `Timeline`, or a
+#    region ids, `Region` objects, coordinate pairs, a `Timeline`, or a
 #    collection of any of these
 # 7. **Place** the spans instead of concatenating them — with `Gap` entries,
 #    with `at` coordinates, or with a `{coordinate: span}` mapping — so the
@@ -120,15 +120,16 @@ score = build_score()
 # - measures 1–41 → `[0, 123)`
 # - measures 44–50 → `[129, 150)`
 #
-# We record each span as a named {{< glossary Region >}} on the folded timeline.
+# We record each span as a {{< glossary Region >}} on the folded timeline, giving
+# each an id to refer to it by and a name to display.
 
 # %%
 CUT = (42, 43)
 before_end = downbeat(CUT[0])  # 123.0 — start of measure 42
 after_start = downbeat(CUT[1] + 1)  # 129.0 — start of measure 44
 
-score.create_region("before_cut", start=0, end=before_end)
-score.create_region("after_cut", start=after_start, end=score.length)
+score.create_region(0, before_end, id="before_cut", name="Before the cut")
+score.create_region(after_start, score.length, id="after_cut", name="After the cut")
 
 score.list_regions()
 
@@ -136,7 +137,7 @@ score.list_regions()
 # ## Build and attach the FlowMap
 #
 # `Timeline.create_flow_map()` takes the played spans as a single argument,
-# resolves each region name against the timeline's own {{< glossary Region >}}s,
+# resolves each region id against the timeline's own {{< glossary Region >}}s,
 # builds the {{< glossary FlowMap >}}, attaches it under the given id, and
 # returns it. The spans concatenate in the order given, so the unfolded timeline
 # runs measures 1–41 straight into measures 44–50 with no gap.
@@ -226,8 +227,8 @@ unfolded = score.apply_flow("cut")
 }
 
 # %% [markdown]
-# Each played span is now a **child** whose id and name are the source Region's
-# name, in the order they are played. `list_children()` names them and
+# Each played span is now a **child** whose id and name are the id of the
+# source Region, in the order they are played. `list_children()` names them and
 # `get_child()` returns one:
 
 # %%
@@ -239,11 +240,12 @@ unfolded = score.apply_flow("cut")
 # %% [markdown]
 # `apply_flow()` also records each span as a {{< glossary Region >}} on the
 # result — in **performance** (unfolded) coordinates, not the folded ones. These
-# named Regions are what let the unfolding be inverted later: they carry the
+# Regions, named after the source Regions' ids and given minted ids of their
+# own, are what let the unfolding be inverted later: they carry the
 # information needed to fold a performance coordinate back onto the score.
 
 # %%
-unfolded.list_regions()
+{region.id: region.name for region in unfolded.iter_regions()}
 
 # %% [markdown]
 # The flattened event stream — every child's events in performance order —
@@ -256,7 +258,7 @@ unfolded.get_events(include_children=True).to_dataframe()
 # ## One argument, many shapes
 #
 # FlowMap construction is uniform: the same single argument accepts anything
-# that describes an interval, on its own or as a collection. The region-name
+# that describes an interval, on its own or as a collection. The region-id
 # list above is one shape. `FlowMap(...)` builds the map directly (without
 # attaching it to a timeline) from the others.
 #
@@ -322,8 +324,8 @@ probe(one_span, [downbeat(11), downbeat(46)])
 from timetoalign.timelines import Gap  # noqa: E402
 
 performance = build_score(n_measures=48)  # 144 QB: the cut playthrough
-performance.create_region("before_cut", start=0, end=before_end)
-performance.create_region("after_cut", start=before_end, end=performance.length)
+performance.create_region(0, before_end, id="before_cut")
+performance.create_region(before_end, performance.length, id="after_cut")
 
 restored_gaps = performance.create_flow_map(
     ["before_cut", Gap(6), "after_cut"], id="restored_gaps"
@@ -442,10 +444,10 @@ filled = unfolded.apply_flow("source", fill_gaps=True)
 #
 # | Task | API |
 # |------|-----|
-# | Mark a played span | `timeline.create_region(name, start, end)` |
+# | Mark a played span | `timeline.create_region(start, end, id=..., name=...)` |
 # | Build + attach a FlowMap from spans | `timeline.create_flow_map(intervals, id=...)` |
 # | Build a FlowMap directly | `FlowMap(intervals, id=...)` |
-# | Accepted `intervals` shapes | region name, `Region`, `(start, end)`, `Timeline`, or interval event |
+# | Accepted `intervals` shapes | region id, `Region`, `(start, end)`, `Timeline`, or interval event |
 # | Coordinate folded → performance (1→N) | `flow_map.unfold_coordinate(coord)` · `timeline.unfold_coordinate(coord)` |
 # | A skipped coordinate | `unfold_coordinate()` returns `[]` |
 # | Map a coordinate performance → folded (N → 1) | `flow_map.fold(coord)` · `timeline.fold(coord, id=...)` |

@@ -91,32 +91,33 @@ page_and_performance
 # %% [markdown]
 # ## Naming the played spans
 #
-# A {{< glossary Region >}} gives a stable name to a span of the written score.
-# We reuse `create_region` from the nesting tutorial.
+# A {{< glossary Region >}} gives a stable id to a span of the written score.
+# We reuse `create_region` from the nesting tutorial, giving each span its letter
+# as its id.
 
 # %%
 created_regions = [
-    written_score.create_region(name, start, end)
-    for name, (start, end) in span_bounds.items()
+    written_score.create_region(start, end, id=span_id)
+    for span_id, (start, end) in span_bounds.items()
 ]
 opening_region = created_regions[0]
 closing_region = created_regions[2]
 named_spans = written_score.list_regions()
 region_overview = {
     "opening span": opening_region,
-    "region names": named_spans,
+    "region ids": named_spans,
 }
 region_overview
 
 # %% [markdown]
-# Each region keeps its quarter-valued start and end. These names now let the
+# Each region keeps its quarter-valued start and end. These ids now let the
 # played route refer to legible musical spans rather than unexplained numbers.
 
 # %% [markdown]
 # ## Building the map
 #
 # A {{< glossary FlowMap >}} records how folded spans are placed in played
-# order. `create_flow_map(intervals)` accepts a name, a Region, a `(start, end)`
+# order. `create_flow_map(intervals)` accepts a region id, a Region, a `(start, end)`
 # pair, a Timeline, or an iterable mixing any of those shapes.
 
 # %%
@@ -197,7 +198,7 @@ fold_report
 # %%
 unfolded_score = written_score.apply_flow("played")
 unfolded_children = unfolded_score.list_children()
-unfolded_regions = unfolded_score.list_regions()
+unfolded_regions = {region.id: region.name for region in unfolded_score.iter_regions()}
 reverse_map = unfolded_score.get_flow_map("source")
 unfolded_overview = {
     "same concrete type": type(unfolded_score) is type(written_score),
@@ -208,9 +209,11 @@ unfolded_overview = {
 unfolded_overview
 
 # %% [markdown]
-# The second visit to A is named `A-rend2`; further visits would use `-rend3`
-# and so on. Matching regions cover the spans in unfolded coordinates; those
-# named intervals are what make the route invertible through the `source` map.
+# Each child takes the id of the span it plays; the second visit to A is
+# `A-rend2`, and further visits would use `-rend3` and so on. Matching regions
+# cover the spans in unfolded coordinates: their ids are minted, and their names
+# repeat the children's. Those named intervals are what make the route
+# invertible through the `source` map.
 
 # %% [markdown]
 # ## Inspecting repeat events
@@ -240,6 +243,36 @@ repeat_events
 # These six rows form three repeat-start and repeat-end pairs. The `next`
 # column shows the encoded destinations; each repeat end has both a backward
 # destination and the following written measure.
+
+# %% [markdown]
+# ## Ids and names of flow-control elements
+#
+# Every element of a timeline (a region, a break, a jump, a marker) has an `id`
+# that identifies it, unique across the timeline and its children, and a name
+# or label for display. A loader gives ids where the source has none, minting
+# `break_1`, `jump_1`, `marker_1`, and so on. A short score with a *Fine*, a
+# segno and a coda shows all three kinds of flow-control element.
+
+# %%
+flow_dir = score_data / "flow_control" / "flow_only"
+flow_score = Ms3Loader.from_file(
+    flow_dir / "out_of_the_flow_experience-flow_only.measures.tsv",
+).create_timeline(uid="flow_only")
+flow_elements = flow_score.flow_control
+element_ids = {
+    "regions": {region.id: region.name for region in written_score.iter_regions()},
+    "breaks": {brk.id: brk.name for brk in flow_elements.breaks},
+    "jumps": {jump.id: jump.label for jump in flow_elements.jumps},
+    "markers": {marker.id: marker.name for marker in flow_elements.markers},
+    "jump targets": {jump.id: jump.target for jump in flow_elements.jumps},
+}
+element_ids
+
+# %% [markdown]
+# The written score's regions carry the ids you gave and no names. A jump
+# that lands on a marker names that marker's id as its `target`; these repeats
+# and the *Da Capo* land on no marker, so their targets are `None`, and each
+# jump still carries its destination coordinate.
 
 # %% [markdown]
 # ## Computing and checking the route

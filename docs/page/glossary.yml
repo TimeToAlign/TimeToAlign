@@ -152,6 +152,21 @@ Domain: |
   (symbolic/musical), or Physical (audio/sound). Each domain has both
   discrete and continuous timeline variants.
 
+element id: |
+  The id that identifies a timeline, ConversionMap, Region, Break, Jump or
+  Marker. It is unique within one timeline tree (a root timeline and all its
+  descendants) across every kind, so the id alone names the element. An id is
+  whatever was given and is kept verbatim: any non-empty string without "/"
+  and without a control character; spaces, colons and dots are allowed. Only
+  an element given no id gets a minted one, {prefix}_{N} with N the smallest
+  positive integer not yet taken in the tree. The prefix names the kind: clt,
+  dlt, cpt, dpt, cgt or dgt for a timeline (continuous or discrete, logical,
+  physical or graphical), cmap, lmap, tmap or pmap for a conversion map, and
+  region, break, jump or marker; a loader role leads it (score:clt_1).
+  A minted id that collides when its element joins a tree is re-minted; a
+  given id that collides raises. The id identifies, the name displays: a name
+  may be absent or repeat, and an id is never derived from it.
+
 EndAnchor: "The second AlignmentAnchor of a synchronous interval MatchClaim, derived from the end coordinates."
 
 EndInstant: |
@@ -204,6 +219,9 @@ InverseMap: "The reverse transformation of a bijective ConversionMap."
 Jump: |
   A control event with JumpFrom and JumpTo Instants. When active, makes events
   at JumpTo contiguous with those ending at JumpFrom (e.g., repeats, dal segno).
+  Its target is the element id of a Marker of the same timeline (a segno, a
+  coda), or None when it lands on no marker (to the start, a plain repeat);
+  JumpTo carries the destination coordinate either way.
 
 JumpFrom: "The originating Instant of a Jump control event."
 
@@ -219,6 +237,11 @@ Locked: |
   coordinate axis only — non-structural annotations such as Regions may still be
   added to a locked timeline. Child timelines are automatically locked when
   embedded in a parent.
+
+Marker: |
+  A named position in a timeline's flow control that a Jump can target, such
+  as a segno or a coda sign. A Marker carries an element id, an optional
+  name, and a coordinate; a Jump refers to it by its id, never by its name.
 
 MatchfileLoader: |
   Loader for Vienna Match (.match) alignment files. Uses the standard two-step
@@ -348,8 +371,9 @@ Parent: |
   exact offset arithmetic.
 
 Region: |
-  A named part of a timeline defined by a TimeInterval (e.g., "Chorus", "Verse").
-  Regions are not timelines and cannot hold events or maps directly.
+  A part of a timeline defined by a TimeInterval, identified by its element id
+  and displayed by its name (e.g., "Chorus", "Verse"). Regions are not
+  timelines and cannot hold events or maps directly.
 
 raw_quarters: |
   The conventional name for the ShiftMap attached to a score timeline. The

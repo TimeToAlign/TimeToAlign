@@ -187,7 +187,7 @@ stored_note_view
 # human.
 
 # %%
-score_timeline = partitura_loader.create_timeline(uid="score:clt1")
+score_timeline = partitura_loader.create_timeline(uid="score:clt_1")
 score_timeline.name = "Chopin, Étude Op. 10 No. 3"
 timeline_identity = {
     "automatic id": preview_timeline.id,
@@ -197,8 +197,8 @@ timeline_identity = {
 timeline_identity
 
 # %% [markdown]
-# `clt1` means the first continuous logical timeline created by that loader;
-# `score:clt1` adds an optional role prefix. The descriptive title is metadata,
+# `clt_1` means the first continuous logical timeline created by that loader;
+# `score:clt_1` adds an optional role prefix. The descriptive title is metadata,
 # not identity, so changing it would not change the timeline's `id`.
 
 # %% [markdown]
@@ -303,7 +303,7 @@ note_examples_view
 
 # %%
 ms3_loader = Ms3Loader.from_file(ms3_path)
-ms3_timeline = ms3_loader.create_timeline(uid="ms3:clt1")
+ms3_timeline = ms3_loader.create_timeline(uid="ms3:clt_1")
 ms3_events = ms3_timeline.get_events()
 ms3_notes = ms3_timeline.get_events(event_type="Note")
 

@@ -270,10 +270,13 @@ segment_line_view
 #
 # A {{< glossary Region >}} names a range without adding another coordinate
 # system. A child is a timeline with its own coordinates; a region is a name
-# for an interval of this timeline's coordinates.
+# for an interval of this timeline's coordinates. Like every element of a
+# timeline, a region has an `id` that identifies it and an optional `name`
+# for display: give the id yourself, or let the timeline mint `region_1`,
+# `region_2`, and so on.
 
 # %%
-transition = piece.create_region("transition", Fraction(8), Fraction(11))
+transition = piece.create_region(Fraction(8), Fraction(11), id="transition")
 large_regions = piece.create_regions_from_boundaries(
     [Fraction(0), Fraction(8), Fraction(16), Fraction(20)],
     names=["first part", "second part", "final part"],
@@ -286,13 +289,15 @@ region_view = {
     "one region": named_transition,
     "boundary regions": large_regions,
     "regions at the position": regions_here,
-    "all names": listed_regions,
+    "all ids": listed_regions,
     "count": region_count,
 }
 region_view
 
 # %% [markdown]
-# The queried position belongs to both `transition` and `second part`, because
+# The three boundary regions were given names only, so their ids were minted;
+# `get_region` and `list_regions` work with ids. The queried position belongs to
+# both `transition` and the region named `second part`, because
 # regions may overlap. Rule of thumb: choose a child when the span needs local
 # coordinates of its own; choose a region when a name on the current axis is
 # enough.

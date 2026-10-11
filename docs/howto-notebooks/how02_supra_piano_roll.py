@@ -121,7 +121,7 @@ assert aton_loader.image_dimensions["height"] == 299400
 # image with holes at absolute coordinates.
 
 # %%
-dgt1 = aton_loader.create_timeline(uid="dgt1", name="Piano Roll Image (WM 990)")
+dgt1 = aton_loader.create_timeline(uid="dgt_1", name="Piano Roll Image (WM 990)")
 dgt1
 
 # %% [markdown]
@@ -218,18 +218,18 @@ timestamps_df = dgt1.get_timestamp_table(format="dataframe")
 # **Why ~20,680 timestamps?**
 #
 # The timestamp table has one row per **unique** event coordinate in the hierarchy:
-# - Parent timeline (dgt1) contains 30,092 hole events at absolute pixel coordinates
+# - Parent timeline (dgt_1) contains 30,092 hole events at absolute pixel coordinates
 # - But many holes share the same pixel row (multiple notes at one time position)
 # - After de-duplication: ~20,676 unique coordinates plus 4 boundary coordinates
 #
 # Each row shows the coordinate in **all** coordinate systems simultaneously,
 # and every column is named for the timeline or C-Map it belongs to:
-# - `dgt1 (pixels)`: The root (parent) coordinate in pixels
+# - `dgt_1 (pixels)`: The root (parent) coordinate in pixels
 # - `dgt_holes (pixels)`: **Relative** coordinate in child timeline (first hole = 0, NaN if outside)
 # - C-Map columns: Physical units with names like "pixels_to_inches (inches)"
 #
 # There is no separate `axis` column. The coordinate the query was made on is
-# already the `dgt1` column, so a second column repeating it under a generic
+# already the `dgt_1` column, so a second column repeating it under a generic
 # name carried no information the row did not already hold.
 
 # %%

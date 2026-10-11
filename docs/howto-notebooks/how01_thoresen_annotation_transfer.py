@@ -144,7 +144,7 @@ IMAGE_TO_SEGMENT = {name: i for i, name in enumerate(DGT2_IMAGE_FILES)}
 dgt2 = SegmentLine[DiscreteGraphicalTimeline](
     length=0,
     unit="pixels",
-    uid="dgt2",
+    uid="dgt_2",
     name="Thoresen 2010",
 )
 
@@ -283,7 +283,7 @@ DGT1_TOTAL_WIDTH = DGT1_SEGMENT_LENGTH * 5  # 4835
 dgt1 = DiscreteGraphicalTimeline(
     length=DGT1_TOTAL_WIDTH,
     unit="pixels",
-    uid="dgt1",
+    uid="dgt_1",
     name="Thoresen 2009",
 )
 
@@ -319,8 +319,8 @@ print(f"Number of children: {len(dgt1_children)}")
 
 # %%
 bundle = AlignmentBundle(name="Thoresen Annotation Transfer")
-bundle.add_timeline(dgt2, uid="dgt2")
-bundle.add_timeline(dgt1, uid="dgt1")
+bundle.add_timeline(dgt2, uid="dgt_2")
+bundle.add_timeline(dgt1, uid="dgt_1")
 print(bundle)
 
 # %% [markdown]
@@ -360,8 +360,8 @@ for event_id in event_ids:
     # Create the MatchClaim
     claim = MatchClaim.from_projection(
         event={"id": event_id, "name": event_id, "start": dgt2_start, "end": dgt2_end},
-        source_tl_id="dgt2",
-        target_tl_id="dgt1",
+        source_tl_id="dgt_2",
+        target_tl_id="dgt_1",
         target_coord=dgt1_start,
         source_unit=TimeUnit.pixels,
         target_unit=TimeUnit.pixels,

@@ -113,22 +113,22 @@ bundle
 # The score lives in the `"score"` group, in **two logical units** — the same
 # notes, measured two ways:
 #
-# - `score:dlt1` carries integer **tick** onsets (the `pulsesPerQuarter` grid the
+# - `score:dlt_1` carries integer **tick** onsets (the `pulsesPerQuarter` grid the
 #   score was notated on).
-# - `score:clt1` carries **quarter-note** onsets (an exact rational).
+# - `score:clt_1` carries **quarter-note** onsets (an exact rational).
 
 # %%
-score_dlt = bundle.get_timeline("score:dlt1")
+score_dlt = bundle.get_timeline("score:dlt_1")
 score_dlt
 
 # %%
-score_clt = bundle.get_timeline("score:clt1")
+score_clt = bundle.get_timeline("score:clt_1")
 score_clt
 
 # %% [markdown]
 # Both hold the same 251 notes. The `.msm` records each note's MIDI pitch
 # together with the spelling it was notated with (`pitchname` / `octave`); a look
-# at the first few notes of `score:clt1` shows what the score carried:
+# at the first few notes of `score:clt_1` shows what the score carried:
 
 # %%
 score_clt.get_events().table.slice(0, 5).to_pandas()[
@@ -139,9 +139,9 @@ score_clt.get_events().table.slice(0, 5).to_pandas()[
 # ### The tick grid and the quarter grid are one conversion apart
 #
 # The two logical timelines are not independent: a `TicksToQuarters`
-# {{< glossary ConversionMap >}} on `score:dlt1` carries the tick grid to
+# {{< glossary ConversionMap >}} on `score:dlt_1` carries the tick grid to
 # quarters — 720 ticks to the quarter. A {{< glossary TimeStamp >}} on
-# `score:dlt1` exposes the conversion at any coordinate, so asking for the
+# `score:dlt_1` exposes the conversion at any coordinate, so asking for the
 # quarter reading at a tick is the continuous↔discrete link of the logical
 # domain made visible. The reading comes back typed: an `IdCoordinate` in
 # `quarters`, still tagged with the tick timeline it converted from, because a
@@ -163,7 +163,7 @@ score_clt.get_events().table.slice(0, 5).to_pandas()[
 #
 # A `.mpm` overlays the score with expressive markup — tempo, dynamics,
 # articulation, asynchrony, and any other map type the project carries. The
-# loader places every markup entry on `score:dlt1` as an {{< glossary Event >}}
+# loader places every markup entry on `score:dlt_1` as an {{< glossary Event >}}
 # at its tick onset, sitting alongside the `Note` events. A single logical
 # timeline therefore carries both the notes and the modelled performance markup,
 # read with the same event query used everywhere else — filter by `event_type`.
@@ -271,13 +271,13 @@ tempo_map
 # The model above is one account of the performance. The `.mpr` carries another:
 # an **observed** alignment, recording for every score note the moment it was
 # actually played in the recording. The loader places these onsets in the
-# physical `"perf"` group, in **two units** — `perf:cpt1` in seconds and
-# `perf:dpt1` in samples, linked (as in any physical timeline) by a
+# physical `"perf"` group, in **two units** — `perf:cpt_1` in seconds and
+# `perf:dpt_1` in samples, linked (as in any physical timeline) by a
 # `SamplesToSeconds` {{< glossary ConversionMap >}} carrying the recording's
 # sample rate.
 
 # %%
-perf_cpt = bundle.get_timeline("perf:cpt1")
+perf_cpt = bundle.get_timeline("perf:cpt_1")
 perf_cpt
 
 # %% [markdown]
@@ -316,12 +316,12 @@ quarter_half_claims[0]
 #
 # Because the performance is anchored back to the score, a single score
 # coordinate resolves across the whole bundle. `get_matchstamp_at` takes a
-# coordinate on `score:clt1` (quarters) and returns the corresponding coordinate
+# coordinate on `score:clt_1` (quarters) and returns the corresponding coordinate
 # on every connected timeline — here score quarter 2.0 mapped to the second at
 # which it was observed:
 
 # %%
-stamp = bundle.get_matchstamp_at(2.0, "score:clt1")
+stamp = bundle.get_matchstamp_at(2.0, "score:clt_1")
 stamp
 
 # %% [markdown]
@@ -337,7 +337,7 @@ stamp
 #
 # The project also ships a rendered **spectrogram** of the recording — a `.png`
 # whose horizontal axis is time. The loader reads that axis as a third
-# performance-group {{< glossary Timeline >}}, `perf:dgt1`, measured in
+# performance-group {{< glossary Timeline >}}, `perf:dgt_1`, measured in
 # **pixels** (frame columns): one position per column of the image. This is the
 # graphical domain — the same work, now reached visually.
 #
@@ -347,7 +347,7 @@ stamp
 # frame columns:
 
 # %%
-perf_dgt = bundle.get_timeline("perf:dgt1")
+perf_dgt = bundle.get_timeline("perf:dgt_1")
 perf_dgt
 
 # %%
@@ -359,7 +359,7 @@ perf_dgt
 
 # %% [markdown]
 # A pixel column is only meaningful once tied to clock time. Each column
-# advances the recording by a fixed hop of audio samples, so `perf:dgt1` carries
+# advances the recording by a fixed hop of audio samples, so `perf:dgt_1` carries
 # a px→seconds {{< glossary ConversionMap >}} — a `ScalarMap` whose scalar is
 # `hopSize / sample_rate`. Pulling it off the timeline and reading a couple of
 # columns places the picture on the same seconds clock as the performance:
@@ -387,13 +387,13 @@ last_column = perf_dgt.length.value
 #
 # | What the bundle expresses | How |
 # |---|---|
-# | Score, two logical units | `score:dlt1` (ticks) + `score:clt1` (quarters), one `TicksToQuarters` map |
-# | Performance markup | `Tempo` / `Dynamics` / `Articulation` events on `score:dlt1`, via `filter(event_type=...)` |
+# | Score, two logical units | `score:dlt_1` (ticks) + `score:clt_1` (quarters), one `TicksToQuarters` map |
+# | Performance markup | `Tempo` / `Dynamics` / `Articulation` events on `score:dlt_1`, via `filter(event_type=...)` |
 # | Modelled tempo | a quarters→seconds `TableMap` (`loader.tempo_map`), constant-tempo-per-segment |
-# | Observed performance, two physical units | `perf:cpt1` (s) + `perf:dpt1` (samples), one `SamplesToSeconds` |
-# | Spectrogram, a graphical axis | `perf:dgt1` (pixels), no events, one px→seconds `ScalarMap` |
+# | Observed performance, two physical units | `perf:cpt_1` (s) + `perf:dpt_1` (samples), one `SamplesToSeconds` |
+# | Spectrogram, a graphical axis | `perf:dgt_1` (pixels), no events, one px→seconds `ScalarMap` |
 # | Score ↔ performance | one synchronous {{< glossary MatchClaim >}} per note (a perfect bijection) |
-# | A score position read across domains | `bundle.get_matchstamp_at(coord, "score:clt1")` |
+# | A score position read across domains | `bundle.get_matchstamp_at(coord, "score:clt_1")` |
 #
 # One {{< glossary AlignmentBundle >}} now expresses this single work across all
 # three domains — logical (score ticks and quarters), physical (performance

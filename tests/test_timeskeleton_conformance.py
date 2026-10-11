@@ -272,7 +272,7 @@ def test_bundled_fixtures_round_trip() -> None:
     conversion maps, regions and flow control must match as well.
     """
     paths = fixture_paths()
-    assert len(paths) == 34
+    assert len(paths) == 23
     for path in paths:
         manifest = json.loads(path.read_text(encoding="utf-8"))["timeline"]
         expected = canonical_order({"timeline": manifest})["timeline"]

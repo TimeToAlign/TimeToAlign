@@ -36,7 +36,7 @@ It also uses `ensure_data` at module level for the same `Ms3Loader`, MIDI,
 fixture corpus, proving loader output has the same structural contract without
 depending on a relative data path.
 
-Every one of the 34 bundled manifest fixtures from `fixture_paths()` must
+Every one of the 23 bundled manifest fixtures from `fixture_paths()` must
 round-trip as identical JSON text, `json.dumps(Timeline.from_dict(m).to_dict())
 == json.dumps(m)`, for its timeline manifest, so the library reads each one as
 a complete, lossless manifest rather than merely an accepted approximation.

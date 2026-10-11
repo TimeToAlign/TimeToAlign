@@ -97,8 +97,8 @@ dev = [                                       # Testing + docs + lint/format too
 conformance = [
     "pymeasuremap @ git+https://github.com/measure-map/pyMeasureMap.git@ddcfec3",
     # Measure Map reference implementation, the test oracle for compressed rows; registry pin once a release carries compress
-    "timeskeleton>=0.2.1,<1",
-    # TimeSkeleton schema conformance of the eventless manifest (validator, canonical_order and the 0.2.1 fixtures)
+    "timeskeleton @ git+https://github.com/TimeToAlign/timeskeleton.git@d668f281a6dc5c418b4008633efc0e883ac44a61#subdirectory=python",
+    # TimeSkeleton schema conformance of the eventless manifest; registry pin `timeskeleton>=0.4.0,<1` once 0.4.0 is released (one manifest per file and its fixtures)
 ]
 
 [project.urls]

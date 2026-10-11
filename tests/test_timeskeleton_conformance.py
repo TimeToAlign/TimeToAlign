@@ -17,7 +17,6 @@ from timeskeleton import (
     SchemaValidationError,
     canonical_order,
     fixture_paths,
-    migrate,
     validate,
 )
 
@@ -71,13 +70,11 @@ PARANGONAR = ensure_data("parangonar")
 SUPRA = ensure_data("supra")
 
 
-def _document(timelines: list[Timeline]) -> dict[str, Any]:
-    """Wrap timelines in the current schema envelope."""
+def _manifest(timeline: Timeline) -> dict[str, Any]:
+    """Wrap one timeline in the current manifest shape."""
     return {
         "meta": {"schema_version": SCHEMA_VERSION, "generator": "timetoalign tests"},
-        "manifest": {
-            "timelines": {timeline.id: timeline.to_dict() for timeline in timelines}
-        },
+        "timeline": timeline.to_dict(),
     }
 
 
@@ -260,39 +257,41 @@ def test_emitted_manifests_validate(
     """Every direct and loader-produced eventless manifest satisfies the schema.
 
     The library writes the canonical order the schema package defines: putting
-    the document in that order changes nothing.
+    the manifest in that order changes nothing.
     """
     del name
-    document = _document(builder())
-    validate(document)
-    assert json.dumps(canonical_order(document)) == json.dumps(document)
+    for timeline in builder():
+        manifest = _manifest(timeline)
+        validate(manifest)
+        assert json.dumps(canonical_order(manifest)) == json.dumps(manifest)
 
 
 @pytest.mark.parametrize("version", SUPPORTED_VERSIONS)
 def test_bundled_fixtures_round_trip(version: str) -> None:
-    """Bundled documents reconstruct without changing any timeline manifest.
+    """Bundled fixtures reconstruct without changing any timeline manifest.
 
     The comparison is by JSON text, so the canonical order of children,
     conversion maps, regions and flow control must match as well.
     """
     for path in fixture_paths(version):
-        document = json.loads(path.read_text(encoding="utf-8"))
-        if version != SCHEMA_VERSION:
-            document = migrate(document)
-        for manifest in document["manifest"]["timelines"].values():
+        value = json.loads(path.read_text(encoding="utf-8"))
+        manifests = (
+            [value["timeline"]]
+            if version == "0.4.0"
+            else value["manifest"]["timelines"].values()
+        )
+        for manifest in manifests:
+            expected = canonical_order({"timeline": manifest})["timeline"]
             assert json.dumps(Timeline.from_dict(manifest).to_dict()) == json.dumps(
-                manifest
+                expected
             )
 
 
-def _quarters_document(measure_map: list[dict[str, Any]]) -> dict[str, Any]:
-    """Return a valid one-timeline document carrying the given row list."""
-    document = _document(
-        [ContinuousLogicalTimeline(length=Fraction(8), unit="quarters")]
-    )
-    (manifest,) = document["manifest"]["timelines"].values()
-    manifest["measure_map"] = measure_map
-    return document
+def _quarters_manifest(measure_map: list[dict[str, Any]]) -> dict[str, Any]:
+    """Return a valid manifest carrying the given row list."""
+    result = _manifest(ContinuousLogicalTimeline(length=Fraction(8), unit="quarters"))
+    result["timeline"]["measure_map"] = measure_map
+    return result
 
 
 @pytest.mark.parametrize(
@@ -312,17 +311,17 @@ def test_row_rules_beyond_the_schema_are_the_library_s(
     rows: list[dict[str, Any]], message: str
 ) -> None:
     """The schema cannot express these rules; the library reader refuses them."""
-    document = _quarters_document(rows)
-    validate(document)
-    (manifest,) = document["manifest"]["timelines"].values()
+    value = _quarters_manifest(rows)
+    validate(value)
+    manifest = value["timeline"]
     with pytest.raises(ValueError, match=message):
         Timeline.from_dict(manifest)
 
 
 def test_both_readers_agree_on_integral_json_numbers() -> None:
     """JSON writes 480.0 as 480; both readers take it as the integer it is."""
-    ticks = _document([DiscreteLogicalTimeline(length=960, unit="ticks")])
-    (manifest,) = ticks["manifest"]["timelines"].values()
+    ticks = _manifest(DiscreteLogicalTimeline(length=960, unit="ticks"))
+    manifest = ticks["timeline"]
     manifest["length"]["value"] = 480.0
     validate(ticks)
     restored = Timeline.from_dict(manifest).to_dict()["length"]
@@ -336,8 +335,8 @@ def test_both_readers_agree_on_integral_json_numbers() -> None:
     manifest["length"]["value"] = "480"
     with pytest.raises(ValueError, match="invalid coordinate value for key 'value'"):
         Timeline.from_dict(manifest)
-    seconds = _document([ContinuousPhysicalTimeline(length=4.0, unit="seconds")])
-    (manifest,) = seconds["manifest"]["timelines"].values()
+    seconds = _manifest(ContinuousPhysicalTimeline(length=4.0, unit="seconds"))
+    manifest = seconds["timeline"]
     manifest["length"]["value"] = 2
     validate(seconds)
     restored = Timeline.from_dict(manifest).to_dict()["length"]
@@ -357,7 +356,7 @@ def test_int64_boundary() -> None:
         "number_type": "int",
         "value": 9007199254740993,
     }
-    validate(_document([timeline]))
+    validate(_manifest(timeline))
 
 
 def test_library_never_imports_timeskeleton() -> None:

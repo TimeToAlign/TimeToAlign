@@ -134,18 +134,14 @@ def test_group_retrieval_returns_exact_target_coordinate_or_raises() -> None:
     assert converted == Coordinate(Fraction(2, 3), TimeUnit.quarters)
     assert isinstance(converted.value, Fraction)
 
-    partial = ContinuousLogicalTimeline(length=Fraction(2), uid="partial")
-    group.add_timeline(
-        partial,
-        start=IdCoordinate(Fraction(2), TimeUnit.quarters, "a"),
-        end=IdCoordinate(Fraction(4), TimeUnit.quarters, "a"),
-    )
+    # Every member spans the whole group, so the only unresolvable query is
+    # a position outside the source member's own span.
     import pytest
 
-    with pytest.raises(KeyError):
+    with pytest.raises(ValueError, match="outside range for 'a'"):
         group.get_coordinate_at(
-            IdCoordinate(Fraction(1), TimeUnit.quarters, "a"),
-            timeline_id="partial",
+            IdCoordinate(Fraction(13), TimeUnit.quarters, "a"),
+            timeline_id="b",
         )
 
 
@@ -253,7 +249,7 @@ def test_bundle_matchstamp_axis_follows_the_declared_type() -> None:
     """
     score = ContinuousLogicalTimeline(length=100, unit=TimeUnit.quarters, uid="clt_1")
     bundle = AlignmentBundle(id="b")
-    bundle.add_timeline(score, uid="clt_1", as_group="g")
+    bundle.add_timeline(score, as_group="g")
 
     for query in (Fraction(79, 1), 79.0, 79):
         axis = bundle.get_matchstamp_at(query, "clt_1").axis
@@ -272,7 +268,7 @@ def test_bundle_matchstamp_axis_stays_float_on_a_float_axis() -> None:
     """The other direction: an exact query on a float axis is written float."""
     clock = ContinuousPhysicalTimeline(length=100, unit=TimeUnit.seconds, uid="cpt_1")
     bundle = AlignmentBundle(id="b-float")
-    bundle.add_timeline(clock, uid="cpt_1", as_group="g")
+    bundle.add_timeline(clock, as_group="g")
 
     for query in (25, 25.0, Fraction(25, 1)):
         axis = bundle.get_matchstamp_at(query, "cpt_1").axis
@@ -299,8 +295,8 @@ def _claimed_bundle() -> tuple[AlignmentBundle, list[MatchClaim]]:
     audio_cells = audio.get_events().table.column("start").to_pylist()
 
     bundle = AlignmentBundle(id="b-claims")
-    bundle.add_timeline(score, uid="score", as_group="g-score")
-    bundle.add_timeline(audio, uid="audio", as_group="g-audio")
+    bundle.add_timeline(score, as_group="g-score")
+    bundle.add_timeline(audio, as_group="g-audio")
     claims = [
         MatchClaim.from_events(
             event_a={"id": f"a{index}", "start": score_cells[index]},
@@ -438,10 +434,9 @@ def test_stamp_lane_and_frame_lane_write_the_same_positions() -> None:
     """The stamp getter and the frame present one set of positions.
 
     Asserted side by side rather than as two pinned tables, because the
-    property is agreement: the group's stored timestamps are a float64
-    interpolation lane, and the frame used to hand that lane's doubles
-    straight to the reader while the stamp getter reported ``12473`` where
-    the frame said ``12473.0``.
+    property is agreement: the stored rows and the queried rows are built by
+    different paths, and the frame once said ``12473.0`` where the stamp
+    getter reported ``12473``.
     """
     group = _typed_group()
 
@@ -486,40 +481,35 @@ def test_stamp_lane_and_frame_lane_write_the_same_positions() -> None:
 
 
 def test_a_gapped_integer_column_uses_the_nullable_dtype() -> None:
-    """Whole numbers where the axis reaches, a null where it does not."""
-    group = TimelineGroup(id="g-gapped")
-    group.add_timeline(DiscreteGraphicalTimeline(length=1000, uid="dgt_1"))
-    group.add_timeline(
-        DiscreteGraphicalTimeline(length=400, uid="dgt_2"),
-        start=0,
-        end=500,
-    )
+    """Whole numbers where the axis reaches, a null where it does not.
 
-    frame = group.get_timestamp_table(format="dataframe")
+    A member's child covers only part of the member, so a queried row beyond
+    the child's span leaves the child's cell null.
+    """
+    member = DiscreteGraphicalTimeline(length=1000, uid="dgt_1")
+    member.add_child(DiscreteGraphicalTimeline(length=400, uid="dgt_2"), offset=0)
+    group = TimelineGroup(id="g-gapped", timelines=[member])
+
+    frame = group.get_timestamp_table([0, 200, 1000], "dgt_1", format="dataframe")
     column = frame["dgt_2 (pixels)"]
 
     assert str(column.dtype) == "Int64"
-    assert column.isna().any()
-    assert list(column.dropna()) == [0, 400]
+    assert column.isna().tolist() == [False, False, True]
+    assert list(column.dropna()) == [0, 200]
 
 
-def test_the_stored_timestamps_stay_the_float_lane() -> None:
-    """The store keeps its doubles; the published table carries structs.
+def test_the_stored_timestamps_are_exact() -> None:
+    """The stored rows are the common start and end, written exactly.
 
-    Interpolation runs on doubles, so the group's own store must stay
-    float64. Re-expression happens where the table is published, which is
-    also where the exact side is written alongside it.
+    Each member stands at 0 and at its own length, in its declared number
+    type, so an exact length survives into the published struct cells.
     """
     group = _typed_group()
 
-    assert [str(field.type) for field in group._timestamp_table.schema] == [
-        "double",
-        "double",
-        "double",
-    ]
-    assert group._timestamp_table.column("dgt_1").to_pylist() == [0.0, 12473.0]
-
     published = group.get_timestamp_table()
+    score = published.column("clt_1").combine_chunks()
+    assert score.field("numerator").to_pylist() == [0, 19]
+    assert score.field("denominator").to_pylist() == [1, 2]
     assert [str(field.type) for field in published.schema] == [
         "struct<value: double, numerator: int64, denominator: int64>",
     ] * 5

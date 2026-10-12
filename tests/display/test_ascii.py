@@ -553,7 +553,7 @@ class TestGroupDiagram:
     """Tests for group_diagram function."""
 
     def test_basic_group_output(self) -> None:
-        """Basic group renders header, box, and footer."""
+        """Basic group renders header and box; a group has no stored-row footer."""
         from timetoalign.timelines import TimelineGroup
 
         tl = DiscreteGraphicalTimeline(length=100, uid="grp_basic")
@@ -569,8 +569,8 @@ class TestGroupDiagram:
         assert BOX_CHARS["top_left"] in result
         assert BOX_CHARS["bottom_right"] in result
 
-        # Footer
-        assert "Timestamps:" in result
+        # No footer: the stored rows are always the common start and end
+        assert result.splitlines()[-1].startswith(BOX_CHARS["bottom_left"])
 
     def test_group_with_multiple_timelines(self) -> None:
         """Group with multiple timelines shows all."""
@@ -609,12 +609,11 @@ class TestGroupDiagram:
         group = TimelineGroup(id="recursive_group", timelines=[root])
 
         assert group_diagram(group, depth=0) == (
-            "TimelineGroup[recursive_group] (1 timelines, 2 timestamps)\n"
+            "TimelineGroup[recursive_group] (1 timelines)\n"
             "┌────────────────────────────────────────────────────────────────────┐\n"
             "│ ContinuousPhysicalTimeline[group_root] (1 children)                │\n"
             "│                       0 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 100 seconds │\n"
-            "└────────────────────────────────────────────────────────────────────┘\n"
-            "Timestamps: 2"
+            "└────────────────────────────────────────────────────────────────────┘"
         )
 
 
@@ -632,7 +631,7 @@ class TestBundleDiagram:
 
         tl = DiscreteGraphicalTimeline(length=100, uid="bnd_basic")
         bundle = AlignmentBundle(id="test_bundle")
-        bundle.add_timeline(tl, uid="tl1")
+        bundle.add_timeline(tl)
 
         result = bundle_diagram(bundle)
 
@@ -654,8 +653,8 @@ class TestBundleDiagram:
         bundle = AlignmentBundle(id="columnar_bundle")
         tl_a = ContinuousPhysicalTimeline(length=1.0, uid="rec-a:cpt_1")
         tl_b = ContinuousPhysicalTimeline(length=1.0, uid="rec-b:cpt_1")
-        bundle.add_timeline(tl_a, uid="rec-a:cpt_1", as_group="rec-a")
-        bundle.add_timeline(tl_b, uid="rec-b:cpt_1", as_group="rec-b")
+        bundle.add_timeline(tl_a, as_group="rec-a")
+        bundle.add_timeline(tl_b, as_group="rec-b")
 
         # Three synchronous instant claims, held columnar (never materialised).
         field = MatchClaimField.from_columns(
@@ -688,8 +687,8 @@ class TestBundleDiagram:
         bundle = AlignmentBundle(id="mixed_bundle")
         tl_a = ContinuousPhysicalTimeline(length=1.0, uid="rec-a:cpt_1")
         tl_b = ContinuousPhysicalTimeline(length=1.0, uid="rec-b:cpt_1")
-        bundle.add_timeline(tl_a, uid="rec-a:cpt_1", as_group="rec-a")
-        bundle.add_timeline(tl_b, uid="rec-b:cpt_1", as_group="rec-b")
+        bundle.add_timeline(tl_a, as_group="rec-a")
+        bundle.add_timeline(tl_b, as_group="rec-b")
 
         # Two Python-list claims ...
         bundle.add_match_claims(
@@ -758,7 +757,7 @@ class TestDiagramMethods:
 
         tl = DiscreteGraphicalTimeline(length=100, uid="meth_bnd")
         bundle = AlignmentBundle(id="bundle_method")
-        bundle.add_timeline(tl, uid="tl1")
+        bundle.add_timeline(tl)
 
         method_result = bundle.diagram()
         func_result = bundle_diagram(bundle)

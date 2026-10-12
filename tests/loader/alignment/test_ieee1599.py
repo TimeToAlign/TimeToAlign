@@ -320,9 +320,11 @@ class TestTimelineIdentity:
         bundle = ieee1599_bundle("gymnopedie")
 
         assert list(bundle.timelines) == loader.timeline_uids
-        assert set(bundle.groups) == set(loader.timeline_uids)
+        group_ids = [f"group_{n}" for n in range(1, len(loader.timeline_uids) + 1)]
+        assert bundle.group_ids == group_ids
+        assert [group.name for group in bundle.groups.values()] == loader.timeline_uids
         assert all(group.n_timelines == 1 for group in bundle.groups.values())
-        assert bundle.timeline_to_group == {uid: uid for uid in loader.timeline_uids}
+        assert bundle.timeline_to_group == dict(zip(loader.timeline_uids, group_ids))
         assert loader.create_group() is None
 
 
@@ -557,10 +559,11 @@ class TestNotationalLayer:
         )
         pages = [page for _, _, page in edition.iter_segments()]
 
-        assert [page.id for page in pages] == [
-            f"eng_montreal_les_editions_outremontaises_2006:dgt_1_page{index}"
-            for index in (1, 2, 3, 4)
+        # A page is named by its position; its id is minted in the edition.
+        assert [page.name for page in pages] == [
+            f"page_{index}" for index in (1, 2, 3, 4)
         ]
+        assert [page.id for page in pages] == ["dgt_1", "dgt_7", "dgt_12", "dgt_18"]
         assert [page.meta["page"]["position_in_group"] for page in pages] == [
             1,
             2,
@@ -572,9 +575,15 @@ class TestNotationalLayer:
             for index in (1, 2, 3, 4)
         ]
         assert [page.length.value for page in pages] == [1694, 2152, 2105, 1735]
-        assert [accolade.id for _, _, accolade in pages[0].iter_segments()] == [
-            f"eng_montreal_les_editions_outremontaises_2006:dgt_1_page1_accolade{index}"
-            for index in (1, 2, 3, 4)
+        accolades = [accolade for _, _, accolade in pages[0].iter_segments()]
+        assert [accolade.name for accolade in accolades] == [
+            f"accolade_{index}" for index in (1, 2, 3, 4)
+        ]
+        assert [accolade.id for accolade in accolades] == [
+            "dgt_2",
+            "dgt_3",
+            "dgt_4",
+            "dgt_5",
         ]
 
     def test_gymnopedie_first_drop_starts_the_second_accolade(

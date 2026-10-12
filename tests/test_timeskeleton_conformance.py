@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import tempfile
 from collections.abc import Callable
 from fractions import Fraction
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -20,6 +22,7 @@ from timeskeleton import (
 )
 
 from timetoalign import (
+    AlignmentBundle,
     ContinuousGraphicalTimeline,
     ContinuousLogicalTimeline,
     ContinuousPhysicalTimeline,
@@ -28,10 +31,18 @@ from timetoalign import (
     DiscretePhysicalTimeline,
     Ms3Loader,
     Timeline,
+    TimelineGroup,
 )
 from timetoalign.core import ActivationCondition, FlowControlElement
 from timetoalign.core.time import number_from_json, number_to_json
-from timetoalign.loader.alignment import ParangonadaLoader
+from timetoalign.loader.alignment import (
+    Ieee1599Loader,
+    ListenHereLoader,
+    MatchfileLoader,
+    MpmLoader,
+    ParangonadaLoader,
+)
+from timetoalign.loader.alignment.tilia import TiliaJsonLoader
 from timetoalign.loader.graphical.iiif import IIIFManifestLoader
 from timetoalign.loader.midi.score import ScoreMidiLoader
 from timetoalign.loader.physical.audio import AudioLoader
@@ -67,6 +78,10 @@ MIDI = ensure_data("midi")
 AUDIO = ensure_data("audio")
 PARANGONAR = ensure_data("parangonar")
 SUPRA = ensure_data("supra")
+VIENNA = ensure_data("vienna_1x22")
+MPM = ensure_data("mpm_toolbox")
+IEEE1599 = ensure_data("ieee1599")
+TILIA = SCORE / "bruckner5_scherzo/harnoncourt/Bruckner5_Scherzo.json"
 
 
 def _manifest(timeline: Timeline) -> dict[str, Any]:
@@ -263,6 +278,140 @@ def test_emitted_manifests_validate(
         manifest = _manifest(timeline)
         validate(manifest)
         assert json.dumps(canonical_order(manifest)) == json.dumps(manifest)
+
+
+def _file(content: dict[str, Any]) -> dict[str, Any]:
+    """Wrap the content of a group or bundle file in the current file shape."""
+    meta = {"schema_version": SCHEMA_VERSION, "generator": "timetoalign tests"}
+    return {"meta": meta, **content}
+
+
+def _direct_groups() -> list[TimelineGroup]:
+    """A group across number types, and one whose member is a child."""
+    score = ContinuousLogicalTimeline(length=Fraction(12), unit="quarters")
+    performance = ContinuousPhysicalTimeline(length=12.5, unit="seconds")
+    page = DiscreteGraphicalTimeline(length=Fraction(1920), unit="pixels")
+    number_types = TimelineGroup(timelines=[score, page, performance])
+    piece = ContinuousLogicalTimeline(length=Fraction(16), unit="quarters")
+    second_half = ContinuousLogicalTimeline(length=Fraction(8), unit="quarters")
+    piece.add_child(second_half, Fraction(8))
+    recording = ContinuousPhysicalTimeline(length=10.0, unit="seconds")
+    return [number_types, TimelineGroup(timelines=[second_half, recording])]
+
+
+def _direct_bundle() -> list[AlignmentBundle]:
+    """Two groups, an ungrouped root, and a grouped child whose root is not."""
+    score = ContinuousLogicalTimeline(length=Fraction(12), unit="quarters")
+    performance = ContinuousPhysicalTimeline(length=12.5, unit="seconds")
+    page = DiscreteGraphicalTimeline(length=Fraction(1920), unit="pixels")
+    recording = DiscretePhysicalTimeline(length=Fraction(441000), unit="samples")
+    excerpt = DiscretePhysicalTimeline(length=Fraction(88200), unit="samples")
+    recording.add_child(excerpt, Fraction(44100))
+    bundle = AlignmentBundle(name="Mixed")
+    bundle.add_timeline(score, as_group="Performance")
+    bundle.add_timeline(performance, grouped_with=score.id)
+    bundle.add_timeline(page, as_group="Facsimile")
+    bundle.add_timeline(excerpt, grouped_with=page.id)
+    bundle.add_timeline(ContinuousLogicalTimeline(length=Fraction(12), unit="quarters"))
+    return [bundle]
+
+
+LISTEN_HERE = {
+    "header": {"ref": "rec-ref.mp3", "createdBy": "Listen Here! v0.20.0"},
+    "body": {
+        "audio": {
+            "rec-a.mp3": {"times": [0.0, 0.02, 0.04], "peaks": [], "duration": 0.04},
+            "rec-ref.mp3": {"times": [0.0, 0.025, 0.05], "peaks": [], "duration": 0.05},
+        }
+    },
+}
+
+
+def _listen_here() -> AlignmentBundle:
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / "alignment.json"
+        path.write_text(json.dumps(LISTEN_HERE), encoding="utf-8")
+        return ListenHereLoader.from_file(path).create_bundle()
+
+
+FILE_CATALOGUE: list[tuple[str, Callable[[], list[Any]]]] = [
+    ("direct_groups", _direct_groups),
+    ("direct_bundle", _direct_bundle),
+    ("tilia_group", lambda: [TiliaJsonLoader.from_file(TILIA).create_group()]),
+    (
+        "parangonada",
+        lambda: [
+            ParangonadaLoader.from_file(
+                PARANGONAR / "Beethoven_Eroica_op35-cpjku"
+            ).create_bundle()
+        ],
+    ),
+    (
+        "matchfile",
+        lambda: [
+            MatchfileLoader.from_file(
+                VIENNA / "Chopin_op10_no3_p01.match"
+            ).create_bundle()
+        ],
+    ),
+    (
+        "mpm",
+        lambda: [
+            MpmLoader.from_file(
+                MPM
+                / "MPRproject_1971Curzon_VariationXIV"
+                / "Beethoven_op35_1971Curzon_Var14only.mpr"
+            ).create_bundle()
+        ],
+    ),
+    (
+        "ieee1599",
+        lambda: [
+            Ieee1599Loader.from_file(
+                IEEE1599 / "Khorus Music/khomus.xml"
+            ).create_bundle()
+        ],
+    ),
+    ("listen_here", lambda: [_listen_here()]),
+    ("tilia_bundle", lambda: [TiliaJsonLoader.from_file(TILIA).create_bundle()]),
+]
+
+
+@pytest.mark.parametrize(
+    ("name", "builder"), FILE_CATALOGUE, ids=[name for name, _ in FILE_CATALOGUE]
+)
+def test_emitted_group_and_bundle_files_validate(
+    name: str, builder: Callable[[], list[Any]]
+) -> None:
+    """Every direct and loader-produced group and bundle file satisfies the schema.
+
+    ``validate`` checks the file against its kind's document and the identity
+    rules; the library writes the canonical order the schema package defines.
+    """
+    del name
+    for item in builder():
+        document = _file(item.to_dict())
+        validate(document)
+        assert json.dumps(canonical_order(document)) == json.dumps(document)
+
+
+@pytest.mark.parametrize(
+    ("kind", "reader", "count"),
+    [("group", TimelineGroup, 3), ("bundle", AlignmentBundle, 7)],
+)
+def test_bundled_group_and_bundle_fixtures_round_trip(
+    kind: str, reader: type, count: int
+) -> None:
+    """Every bundled group and bundle fixture reconstructs to the same file."""
+    paths = fixture_paths(kind=kind)
+    assert len(paths) == count
+    for path in paths:
+        content = json.loads(path.read_text(encoding="utf-8"))
+        del content["meta"]
+        rebuilt = reader.from_dict(content).to_dict()
+        assert json.dumps(rebuilt, sort_keys=True) == json.dumps(
+            content, sort_keys=True
+        ), path.name
 
 
 def test_bundled_fixtures_round_trip() -> None:

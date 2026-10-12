@@ -524,10 +524,12 @@ class TestSerialization:
             "value": 10.0,
         }
         assert data["locked"] is False
+        assert data["is_segment_line"] is False
         assert set(data) == {
             "id",
             "name",
             "class",
+            "is_segment_line",
             "unit",
             "number_type",
             "length",

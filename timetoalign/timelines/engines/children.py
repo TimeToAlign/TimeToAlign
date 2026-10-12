@@ -8,6 +8,7 @@ from fractions import Fraction
 from typing import TYPE_CHECKING, Any, Literal
 
 from timetoalign.core import Coordinate, CoordinateSpec, CoordinateValue, NumberType
+from timetoalign.core.ids import mint_id, timeline_id_prefix
 from timetoalign.core.time import (
     coordinate_numeric_value,
     shift_coordinate,
@@ -109,8 +110,9 @@ class ChildrenMixin:
         We find a map whose ``target_unit`` matches the child's unit, invert
         it, and use it to derive a copy of the child in the parent's unit.
 
-        The derived copy receives the ID ``{child.id}[{parent.unit}]`` and
-        retains all events with converted coordinates.
+        The derived copy is named ``"{child.name} [{parent.unit}]"``, gets a
+        minted id in the parent's unit (minted again in the parent's manifest
+        when it joins), and retains all events with converted coordinates.
 
         Args:
             child: The child timeline to convert.
@@ -189,8 +191,9 @@ class ChildrenMixin:
                     if not registered:
                         del child._unit_maps[self._unit]
 
-        # Assign a clear ID and name linking back to the original
-        derived._set_id(f"{child.id}[{self._unit}]")
+        # The name links back to the original; the id is minted, because a
+        # label is no identity.
+        derived._set_id(mint_id(timeline_id_prefix(self._unit), ()), minted=True)
         derived._name = f"{child.name or child.id} [{self._unit}]"
 
         self._logger.debug(
@@ -228,7 +231,8 @@ class ChildrenMixin:
         the ``child_unit -> parent_unit`` conversion. The child's events are
         copied with converted coordinates; the original child is NOT modified.
 
-        The converted child receives the ID ``{child.id}[{parent.unit}]``.
+        The converted child is named ``"{child.name} [{parent.unit}]"`` and
+        receives a minted id.
 
         Args:
             child: The timeline to embed.

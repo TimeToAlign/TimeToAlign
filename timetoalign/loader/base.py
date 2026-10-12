@@ -332,17 +332,21 @@ class EventLoader(Loader[LoadSourceResult]):
             >>> loader.load("notes.tsv")
             >>> timeline = loader.create_timeline(uid="my_score")
         """
-        if uid is None:
-            from timetoalign.timelines.factory import _mint_timeline_id
+        from timetoalign.timelines.factory import _flag_minted, _mint_timeline_id
 
+        minted = uid is None
+        if minted:
             uid = _mint_timeline_id(self, self._unit)
 
-        return self.store.create_timeline(
-            uid=uid,
-            store_filters=store_filters,
-            include_stores=include_stores,
-            exclude_stores=exclude_stores,
-            flatten=flatten,
+        return _flag_minted(
+            self.store.create_timeline(
+                uid=uid,
+                store_filters=store_filters,
+                include_stores=include_stores,
+                exclude_stores=exclude_stores,
+                flatten=flatten,
+            ),
+            minted,
         )
 
     def create_timelines(

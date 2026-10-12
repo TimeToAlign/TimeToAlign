@@ -910,6 +910,9 @@ class TiliaJsonLoader(JsonLoader):
             uid=tl_id,
             name=name,
         )
+        # The loader minted the id, so a scope that already holds it mints
+        # it again rather than refusing the timeline.
+        tl._set_id(tl_id, minted=True)
 
         # Convert components to events using the appropriate converter
         converter = _EVENT_CONVERTERS.get(kind, _generic_to_events)

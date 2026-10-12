@@ -10,6 +10,22 @@ import pytest
 
 from timetoalign.core import TimeUnit
 from timetoalign.loader.midi import MidiEventData, MidiStore
+from timetoalign.timelines import Timeline
+
+
+def _child_names(timeline: Timeline) -> list[str]:
+    """The names of a timeline's children, in child order."""
+    return [timeline.get_child(child_id).name for child_id in timeline.list_children()]
+
+
+def _child_named(timeline: Timeline, name: str) -> Timeline:
+    """The one child of *timeline* named *name*; child ids are minted."""
+    (child,) = [
+        timeline.get_child(child_id)
+        for child_id in timeline.list_children()
+        if timeline.get_child(child_id).name == name
+    ]
+    return child
 
 
 class TestMidiStoreFromData:
@@ -347,14 +363,16 @@ class TestMidiStoreToTimeline:
         """Children are embedded at offset 0."""
         timeline = sample_store.create_timeline()
 
-        assert timeline.get_child_offset("notes").value == 0
-        assert timeline.get_child_offset("controls").value == 0
+        assert timeline.get_child_offset(_child_named(timeline, "notes").id).value == 0
+        assert (
+            timeline.get_child_offset(_child_named(timeline, "controls").id).value == 0
+        )
 
     def test_notes_child_has_correct_count(self, sample_store: MidiStore):
         """Notes child has exact event count."""
         timeline = sample_store.create_timeline()
 
-        notes_tl = timeline.get_child("notes")
+        notes_tl = _child_named(timeline, "notes")
         # Exact count: 2 notes
         assert notes_tl.n_events == 2
 
@@ -362,6 +380,6 @@ class TestMidiStoreToTimeline:
         """Controls child has exact event count."""
         timeline = sample_store.create_timeline()
 
-        controls_tl = timeline.get_child("controls")
+        controls_tl = _child_named(timeline, "controls")
         # Exact count: 1 control change
         assert controls_tl.n_events == 1

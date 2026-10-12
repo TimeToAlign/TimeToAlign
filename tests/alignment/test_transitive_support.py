@@ -63,9 +63,9 @@ def _make_bundles() -> tuple[AlignmentBundle, AlignmentBundle]:
     a2 = Timeline(length=100, unit=TimeUnit.seconds, uid="a2:cpt_1")
     a3 = Timeline(length=100, unit=TimeUnit.seconds, uid="a3:cpt_2")
     bundle_a = AlignmentBundle(id="bundle_a")
-    bundle_a.add_timeline(a1, uid="a1:clt_1", as_group="ga1")
-    bundle_a.add_timeline(a2, uid="a2:cpt_1", as_group="ga2")
-    bundle_a.add_timeline(a3, uid="a3:cpt_2", as_group="ga3")
+    bundle_a.add_timeline(a1, as_group="ga1")
+    bundle_a.add_timeline(a2, as_group="ga2")
+    bundle_a.add_timeline(a3, as_group="ga3")
     star: list[MatchClaim] = []
     for a_coord in (0.0, 50.0, 100.0):
         star.append(_star_claim(a_coord, "a2:cpt_1", a_coord))  # a2 = a1
@@ -85,9 +85,9 @@ def _make_bundles() -> tuple[AlignmentBundle, AlignmentBundle]:
     b1 = Timeline(length=3000, unit=TimeUnit.samples, uid="b1:dpt_2")
     b2 = Timeline(length=3000, unit=TimeUnit.samples, uid="b2:dpt_3")
     bundle_b = AlignmentBundle(id="bundle_b")
-    bundle_b.add_timeline(b_bridge, uid="b_bridge:dpt_1", as_group="gb0")
-    bundle_b.add_timeline(b1, uid="b1:dpt_2", as_group="gb1")
-    bundle_b.add_timeline(b2, uid="b2:dpt_3", as_group="gb2")
+    bundle_b.add_timeline(b_bridge, as_group="gb0")
+    bundle_b.add_timeline(b1, as_group="gb1")
+    bundle_b.add_timeline(b2, as_group="gb2")
     field = MatchClaimField.from_columns(
         timeline_a_ids=["b_bridge:dpt_1"] * 8,
         timeline_b_ids=["b1:dpt_2"] * 4 + ["b2:dpt_3"] * 4,
@@ -176,8 +176,8 @@ class TestTransitiveUnion:
         )
         target = Timeline(length=100, unit=TimeUnit.seconds, uid="target")
         bundle = AlignmentBundle()
-        bundle.add_timeline(source, uid="source", as_group="source_group")
-        bundle.add_timeline(target, uid="target", as_group="target_group")
+        bundle.add_timeline(source, as_group="source_group")
+        bundle.add_timeline(target, as_group="target_group")
         source_coordinates = [
             Coordinate(2.0, TimeUnit.seconds),
             Coordinate(400.0, TimeUnit.samples),

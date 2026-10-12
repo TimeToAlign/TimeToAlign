@@ -7,19 +7,19 @@ Tests the full SUPRA piano roll alignment workflow using:
 
 Per ZERO TOLERANCE policy, all assertions use exact expected values.
 
-NOTE: These tests use the TimelineGroup timestamp-based architecture.
-Partial alignment is achieved via the start/end parameters in
-AlignmentBundle.add_timeline().
+NOTE: Partial alignment is spelled as a child: the holes region is a child
+of the image timeline at the first hole, and the bundle reaches the image
+through that exact offset.
 """
 
 from __future__ import annotations
 
+from fractions import Fraction
 from pathlib import Path
 
 import pytest
 
 from timetoalign.alignment import AlignmentBundle
-from timetoalign.core import IdCoordinate, TimeUnit
 from timetoalign.loader.graphical.aton import ATONLoader
 from timetoalign.loader.graphical.iiif import IIIFManifestLoader
 from timetoalign.timelines import Timeline
@@ -132,15 +132,25 @@ class TestSUPRATimelineCreation:
 # endregion
 
 
-# region Test: AlignmentBundle Integration
+# region Test: Alignment Bundle
 
 
-@pytest.mark.slow
+def _holes_bundle(
+    image: Timeline, holes: Timeline, first_hole: int, **bundle_kwargs: str
+) -> AlignmentBundle:
+    """Bundle the holes region as the child of the image it is part of."""
+    image.add_child(holes, offset=first_hole)
+    bundle = AlignmentBundle(**bundle_kwargs)
+    bundle.add_timeline(holes, as_group="holes")
+    return bundle
+
+
 class TestSUPRAAlignmentBundle:
-    """Tests for SUPRA workflow using AlignmentBundle with partial alignment.
+    """Tests for the SUPRA workflow using AlignmentBundle with partial alignment.
 
-    Uses the timestamp-based API where partial alignment is specified via
-    start/end parameters in add_timeline().
+    The holes region takes part as a child of the image, placed at the first
+    hole, in a group of its own; the bundle registers the child and, with it,
+    the image it belongs to.
     """
 
     def test_create_supra_bundle(
@@ -150,29 +160,21 @@ class TestSUPRAAlignmentBundle:
         aton_loader: ATONLoader,
     ) -> None:
         """Can create a bundle with SUPRA timelines using partial alignment."""
-        bundle = AlignmentBundle(name="SUPRA WM 990")
-
-        # Add image as reference
-        bundle.add_timeline(image_timeline, uid="dgt_1")
-
-        # Add holes timeline with partial alignment
-        # Holes region spans first_hole to last_hole in image coordinates
-        bundle.add_timeline(
+        bundle = _holes_bundle(
+            image_timeline,
             holes_timeline,
-            uid="dgt1_holes",
-            grouped_with="dgt_1",
-            start=IdCoordinate(
-                float(aton_loader.first_hole.value), TimeUnit.seconds, "dgt_1"
-            ),
-            end=IdCoordinate(
-                float(aton_loader.last_hole.value), TimeUnit.seconds, "dgt_1"
-            ),
+            aton_loader.first_hole.value,
+            name="SUPRA WM 990",
         )
 
+        # The grouped child brings its root along, ungrouped.
         assert bundle.n_timelines == 2
         assert bundle.n_groups == 1
-        assert "dgt_1" in bundle.timeline_ids
+        assert "dgt1_image" in bundle.timeline_ids
         assert "dgt1_holes" in bundle.timeline_ids
+        assert holes_timeline.length.value == (
+            aton_loader.last_hole.value - aton_loader.first_hole.value
+        )
 
     def test_transfer_holes_to_image(
         self,
@@ -181,35 +183,23 @@ class TestSUPRAAlignmentBundle:
         aton_loader: ATONLoader,
     ) -> None:
         """Transfer from holes region to full image coordinates."""
-        bundle = AlignmentBundle(name="SUPRA WM 990")
-        bundle.add_timeline(image_timeline, uid="dgt_1")
-
-        # Add holes with partial alignment via start/end
-        bundle.add_timeline(
-            holes_timeline,
-            uid="dgt1_holes",
-            grouped_with="dgt_1",
-            start=IdCoordinate(
-                float(aton_loader.first_hole.value), TimeUnit.seconds, "dgt_1"
-            ),  # 15343.0
-            end=IdCoordinate(
-                float(aton_loader.last_hole.value), TimeUnit.seconds, "dgt_1"
-            ),  # 293119.0
+        bundle = _holes_bundle(
+            image_timeline, holes_timeline, aton_loader.first_hole.value
         )
 
         # Coordinate 0 in holes -> first_hole in image - EXACT
-        result_start = bundle.transfer(0.0, "dgt1_holes", "dgt_1")
+        result_start = bundle.transfer(0.0, "dgt1_holes", "dgt1_image")
         assert result_start is not None
         assert result_start == 15343.0  # EXACT, no tolerance
 
         # Coordinate musical_length in holes -> last_hole in image - EXACT
-        result_end = bundle.transfer(277776.0, "dgt1_holes", "dgt_1")
+        result_end = bundle.transfer(277776.0, "dgt1_holes", "dgt1_image")
         assert result_end is not None
         assert result_end == 293119.0  # EXACT, no tolerance
 
         # Midpoint: 138888 in holes -> 154231 in image - EXACT
         # (277776/2 = 138888 exactly, 15343 + 138888 = 154231 exactly)
-        result_mid = bundle.transfer(138888.0, "dgt1_holes", "dgt_1")
+        result_mid = bundle.transfer(138888.0, "dgt1_holes", "dgt1_image")
         assert result_mid is not None
         assert result_mid == 154231.0  # EXACT, no tolerance
 
@@ -220,28 +210,17 @@ class TestSUPRAAlignmentBundle:
         aton_loader: ATONLoader,
     ) -> None:
         """Transfer from full image to holes region coordinates."""
-        bundle = AlignmentBundle(name="SUPRA WM 990")
-        bundle.add_timeline(image_timeline, uid="dgt_1")
-
-        bundle.add_timeline(
-            holes_timeline,
-            uid="dgt1_holes",
-            grouped_with="dgt_1",
-            start=IdCoordinate(
-                float(aton_loader.first_hole.value), TimeUnit.seconds, "dgt_1"
-            ),
-            end=IdCoordinate(
-                float(aton_loader.last_hole.value), TimeUnit.seconds, "dgt_1"
-            ),
+        bundle = _holes_bundle(
+            image_timeline, holes_timeline, aton_loader.first_hole.value
         )
 
         # first_hole in image -> 0 in holes - EXACT
-        result_start = bundle.transfer(15343.0, "dgt_1", "dgt1_holes")
+        result_start = bundle.transfer(15343.0, "dgt1_image", "dgt1_holes")
         assert result_start is not None
         assert result_start == 0.0  # EXACT, no tolerance
 
         # last_hole in image -> musical_length in holes - EXACT
-        result_end = bundle.transfer(293119.0, "dgt_1", "dgt1_holes")
+        result_end = bundle.transfer(293119.0, "dgt1_image", "dgt1_holes")
         assert result_end is not None
         assert result_end == 277776.0  # EXACT, no tolerance
 
@@ -257,8 +236,6 @@ class TestSUPRAOrderIndependence:
 
     The bundle must produce identical transfer results regardless
     of the order in which timelines are added.
-
-    Uses the timestamp-based API with start/end parameters for partial alignment.
     """
 
     @pytest.mark.slow
@@ -266,137 +243,86 @@ class TestSUPRAOrderIndependence:
         self,
         aton_loader: ATONLoader,
     ) -> None:
-        """Create bundle: image first, then holes."""
-        image_tl = Timeline(length=299400, uid="img1")
-        holes_tl = Timeline(length=277776, uid="holes1")
+        """Image registered first, then the holes child."""
+        image = Timeline(length=299400, uid="dgt_1")
+        holes = Timeline(length=277776, uid="dgt1_holes")
+        image.add_child(holes, offset=15343)
 
         bundle = AlignmentBundle(id="order1")
-        bundle.add_timeline(image_tl, uid="dgt_1")
-        bundle.add_timeline(
-            holes_tl,
-            uid="dgt1_holes",
-            grouped_with="dgt_1",
-            start=IdCoordinate(15343.0, TimeUnit.seconds, "dgt_1"),
-            end=IdCoordinate(293119.0, TimeUnit.seconds, "dgt_1"),
-        )
+        bundle.add_timeline(image)
+        bundle.add_timeline(holes, as_group="holes")
 
-        # Test transfer - interior point, compute expected exactly
         result = bundle.transfer(100000.0, "dgt1_holes", "dgt_1")
         assert result is not None
-        # Expected: 15343 + (100000 / 277776) * (293119 - 15343)
-        # This is an interior point with irrational scale factor
-        expected = 15343.0 + (100000.0 / 277776.0) * (293119.0 - 15343.0)
-        assert result == expected  # Same floating-point computation
+        # 100000 + 15343 = 115343
+        assert result == 115343.0
 
     @pytest.mark.slow
     def test_order_both_produce_same_result(
         self,
         aton_loader: ATONLoader,
     ) -> None:
-        """Both orderings produce identical transfer results."""
-        # Order 1: image as reference
+        """Registering the child before or after its root gives one answer."""
         image_tl_1 = Timeline(length=299400, uid="img1")
         holes_tl_1 = Timeline(length=277776, uid="holes1")
-
+        image_tl_1.add_child(holes_tl_1, offset=15343)
         b1 = AlignmentBundle(id="b1")
-        b1.add_timeline(image_tl_1, uid="dgt_1")
-        b1.add_timeline(
-            holes_tl_1,
-            uid="dgt1_holes",
-            grouped_with="dgt_1",
-            start=IdCoordinate(15343.0, TimeUnit.seconds, "dgt_1"),
-            end=IdCoordinate(293119.0, TimeUnit.seconds, "dgt_1"),
-        )
+        b1.add_timeline(image_tl_1)
+        b1.add_timeline(holes_tl_1, as_group="holes")
 
-        # Order 2: Same order but with different uid assignment
         image_tl_2 = Timeline(length=299400, uid="img2")
         holes_tl_2 = Timeline(length=277776, uid="holes2")
-
+        image_tl_2.add_child(holes_tl_2, offset=15343)
         b2 = AlignmentBundle(id="b2")
-        b2.add_timeline(image_tl_2, uid="image")  # Different bundle UID
-        b2.add_timeline(
-            holes_tl_2,
-            uid="holes",
-            grouped_with="image",
-            start=IdCoordinate(15343.0, TimeUnit.seconds, "image"),
-            end=IdCoordinate(293119.0, TimeUnit.seconds, "image"),
-        )
+        b2.add_timeline(holes_tl_2, as_group="holes")  # brings its root along
 
-        # Both should produce same coordinate values (just with different UIDs)
         test_coord = 100000.0
 
-        result1 = b1.transfer(test_coord, "dgt1_holes", "dgt_1")
-        result2 = b2.transfer(test_coord, "holes", "image")
+        result1 = b1.transfer(test_coord, "holes1", "img1")
+        result2 = b2.transfer(test_coord, "holes2", "img2")
 
-        assert result1 == result2
+        assert result1 == result2 == 115343.0
 
     def test_three_timeline_same_partial_alignment(self) -> None:
-        """Three timelines with same partial alignment produce identical transfers.
+        """Two members sharing one image region transfer identically in any order.
 
-        When all three timelines are partial-aligned to the same region,
-        the transfer between any two should be consistent regardless of order.
+        The holes region is a child of the image; the MIDI timeline is grouped
+        with it, so both span the same region of the image.
         """
-        # Order 1: image -> holes -> midi (both partial to same region)
+        # Order 1: holes first, then midi joins its group
+        img1 = Timeline(length=299400, uid="dgt_1")
+        holes1 = Timeline(length=277776, uid="dgt1_holes")
+        midi1 = Timeline(length=871800, uid="dlt_1")  # Simulated MIDI ticks
+        img1.add_child(holes1, offset=15343)
         b1 = AlignmentBundle(id="b1")
-        img1 = Timeline(length=299400, uid="i1")
-        holes1 = Timeline(length=277776, uid="h1")
-        midi1 = Timeline(length=871800, uid="m1")  # Simulated MIDI ticks
+        b1.add_timeline(holes1, as_group="roll")
+        b1.add_timeline(midi1, grouped_with="dgt1_holes")
 
-        b1.add_timeline(img1, uid="dgt_1")
-        b1.add_timeline(
-            holes1,
-            uid="dgt1_holes",
-            grouped_with="dgt_1",
-            start=IdCoordinate(15343.0, TimeUnit.seconds, "dgt_1"),
-            end=IdCoordinate(293119.0, TimeUnit.seconds, "dgt_1"),
-        )
-        b1.add_timeline(
-            midi1,
-            uid="dlt_1",
-            grouped_with="dgt_1",
-            start=IdCoordinate(15343.0, TimeUnit.seconds, "dgt_1"),
-            end=IdCoordinate(293119.0, TimeUnit.seconds, "dgt_1"),
-        )
-
-        # Order 2: image -> midi -> holes (same partial alignments, different order)
+        # Order 2: midi first, then holes joins its group
+        img2 = Timeline(length=299400, uid="dgt_1")
+        holes2 = Timeline(length=277776, uid="dgt1_holes")
+        midi2 = Timeline(length=871800, uid="dlt_1")
+        img2.add_child(holes2, offset=15343)
         b2 = AlignmentBundle(id="b2")
-        img2 = Timeline(length=299400, uid="i2")
-        holes2 = Timeline(length=277776, uid="h2")
-        midi2 = Timeline(length=871800, uid="m2")
+        b2.add_timeline(midi2, as_group="roll")
+        b2.add_timeline(holes2, grouped_with="dlt_1")
 
-        b2.add_timeline(img2, uid="dgt_1")
-        b2.add_timeline(
-            midi2,
-            uid="dlt_1",
-            grouped_with="dgt_1",
-            start=IdCoordinate(15343.0, TimeUnit.seconds, "dgt_1"),
-            end=IdCoordinate(293119.0, TimeUnit.seconds, "dgt_1"),
-        )
-        b2.add_timeline(
-            holes2,
-            uid="dgt1_holes",
-            grouped_with="dgt_1",
-            start=IdCoordinate(15343.0, TimeUnit.seconds, "dgt_1"),
-            end=IdCoordinate(293119.0, TimeUnit.seconds, "dgt_1"),
-        )
-
-        # Both bundles have holes and midi aligned to the same image region
-        # So holes -> midi should give the same result in both
-
-        # Test holes -> midi transfer (should be same in both bundles)
         result1_holes_to_midi = b1.transfer(100000.0, "dgt1_holes", "dlt_1")
         result2_holes_to_midi = b2.transfer(100000.0, "dgt1_holes", "dlt_1")
 
         assert result1_holes_to_midi is not None
         assert result2_holes_to_midi is not None
-        # Both have same partial alignment, so results should be equal
         assert result1_holes_to_midi == result2_holes_to_midi
 
-        # Verify the actual value: 100000 in holes -> midi
-        # holes spans [0, 277776], midi spans [0, 871800], both over same image region
-        # ratio = 100000 / 277776, result = ratio * 871800
-        expected = (100000.0 / 277776.0) * 871800.0
+        # holes spans [0, 277776], midi spans [0, 871800], over the same region
+        expected = float(Fraction(100000 * 871800, 277776))
         assert result1_holes_to_midi == expected
+
+        # The image is reached through the child's offset in both orders.
+        assert b1.transfer(100000.0, "dlt_1", "dgt_1") == b2.transfer(
+            100000.0, "dlt_1", "dgt_1"
+        )
+        assert b1.transfer(0.0, "dlt_1", "dgt_1") == 15343.0
 
 
 # endregion
@@ -407,10 +333,7 @@ class TestSUPRAOrderIndependence:
 
 @pytest.mark.slow
 class TestSUPRASummary:
-    """Tests for bundle summary with SUPRA data.
-
-    Uses the timestamp-based API with start/end parameters for partial alignment.
-    """
+    """Tests for bundle summary with SUPRA data."""
 
     def test_summary_structure(
         self,
@@ -419,18 +342,12 @@ class TestSUPRASummary:
         aton_loader: ATONLoader,
     ) -> None:
         """Summary has correct structure."""
-        bundle = AlignmentBundle(id="supra_bundle", name="SUPRA WM 990")
-        bundle.add_timeline(image_timeline, uid="dgt_1")
-        bundle.add_timeline(
+        bundle = _holes_bundle(
+            image_timeline,
             holes_timeline,
-            uid="dgt1_holes",
-            grouped_with="dgt_1",
-            start=IdCoordinate(
-                float(aton_loader.first_hole.value), TimeUnit.seconds, "dgt_1"
-            ),
-            end=IdCoordinate(
-                float(aton_loader.last_hole.value), TimeUnit.seconds, "dgt_1"
-            ),
+            aton_loader.first_hole.value,
+            id="supra_bundle",
+            name="SUPRA WM 990",
         )
 
         summary = bundle.summary()
@@ -439,7 +356,7 @@ class TestSUPRASummary:
         assert summary["name"] == "SUPRA WM 990"
         assert summary["n_timelines"] == 2
         assert summary["n_groups"] == 1
-        assert "dgt_1" in summary["timelines"]
+        assert "dgt1_image" in summary["timelines"]
         assert "dgt1_holes" in summary["timelines"]
 
     def test_summary_is_deterministic(
@@ -450,15 +367,7 @@ class TestSUPRASummary:
         img1 = Timeline(length=299400, uid="img1")
         holes1 = Timeline(length=277776, uid="holes1")
 
-        b1 = AlignmentBundle(id="test", name="Test")
-        b1.add_timeline(img1, uid="dgt_1")
-        b1.add_timeline(
-            holes1,
-            uid="dgt1_holes",
-            grouped_with="dgt_1",
-            start=IdCoordinate(15343.0, TimeUnit.seconds, "dgt_1"),
-            end=IdCoordinate(293119.0, TimeUnit.seconds, "dgt_1"),
-        )
+        b1 = _holes_bundle(img1, holes1, 15343, id="test", name="Test")
 
         summary1 = b1.summary()
         summary2 = b1.summary()

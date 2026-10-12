@@ -384,12 +384,8 @@ def test_alignment_bundle_rejects_conflicting_coordinate_id(
 ) -> None:
     """Bundle queries reject an embedded ID that conflicts with the explicit ID."""
     bundle = AlignmentBundle(id="bundle")
-    bundle.add_timeline(
-        Timeline(length=10, unit=TimeUnit.seconds, uid="source"), uid="source"
-    )
-    bundle.add_timeline(
-        Timeline(length=10, unit=TimeUnit.seconds, uid="target"), uid="target"
-    )
+    bundle.add_timeline(Timeline(length=10, unit=TimeUnit.seconds, uid="source"))
+    bundle.add_timeline(Timeline(length=10, unit=TimeUnit.seconds, uid="target"))
     coord = IdCoordinate(2, TimeUnit.seconds, "other")
 
     with pytest.raises(ValueError) as exc_info:

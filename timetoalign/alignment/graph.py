@@ -486,11 +486,6 @@ class MatchStamp(Stamp):
                 "inferred_edges": list(self.inferred_edges),
             }
 
-        def _bundle_uid(timeline_id: str) -> str:
-            if self.source is None:
-                return timeline_id
-            return self.source._timeline_id_to_uid.get(timeline_id, timeline_id)
-
         if format not in ("flat", "prefix", "nested"):
             raise ValueError(
                 f"Unknown format: {format!r}. Use 'flat', 'prefix', "
@@ -505,13 +500,12 @@ class MatchStamp(Stamp):
         grouped: dict[str, dict[str, dict[str, object]]] = {}
         for timeline_id, coordinate in self.coordinates.items():
             coordinate_data = coordinate_to_dict(coordinate)
-            bundle_uid = _bundle_uid(timeline_id)
             if self.source is None:
-                grouped.setdefault(bundle_uid, {})[timeline_id] = coordinate_data
+                grouped.setdefault(timeline_id, {})[timeline_id] = coordinate_data
                 continue
 
-            group_id = self.source.timeline_to_group.get(bundle_uid, bundle_uid)
-            grouped.setdefault(group_id, {})[bundle_uid] = coordinate_data
+            group_id = self.source.timeline_to_group.get(timeline_id, timeline_id)
+            grouped.setdefault(group_id, {})[timeline_id] = coordinate_data
 
         if format == "flat":
             return {

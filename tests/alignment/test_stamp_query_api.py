@@ -59,8 +59,7 @@ def _make_star_bundle():
     Claims: score <-> each perf at coordinates 0, 25, 50, 75, 100
     Plus one NOMATCH claim: score <-> perf3 (non-synchronous).
 
-    Bundle UIDs = actual timeline IDs (no UID mapping needed since
-    add_match_claims uses actual timeline IDs in claims).
+    Claims name the timeline IDs the bundle registers its timelines under.
     """
     # Timelines are number-native to match the units their own claims use,
     # so a number-unit Coordinate/IdCoordinate resolves without conversion.
@@ -78,10 +77,10 @@ def _make_star_bundle():
     )
 
     bundle = AlignmentBundle(id="star_test")
-    bundle.add_timeline(score_tl, uid="score:clt_1", as_group="score_group")
-    bundle.add_timeline(perf1_tl, uid="perf:dlt_1", as_group="perf1_group")
-    bundle.add_timeline(perf2_tl, uid="perf:dlt_2", as_group="perf2_group")
-    bundle.add_timeline(perf3_tl, uid="perf:dlt_3", as_group="perf3_group")
+    bundle.add_timeline(score_tl, as_group="score_group")
+    bundle.add_timeline(perf1_tl, as_group="perf1_group")
+    bundle.add_timeline(perf2_tl, as_group="perf2_group")
+    bundle.add_timeline(perf3_tl, as_group="perf3_group")
 
     claims = []
     # 5 coordinates per performer

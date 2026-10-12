@@ -674,17 +674,15 @@ class ParangonadaLoader(AlignmentLoader):
             )
 
         bundle = AlignmentBundle(name=self._name)
-        bundle.add_timeline(self._score_clt, uid=_SCORE_CLT_ID, as_group=_SCORE_GROUP)
-        bundle.add_timeline(
-            self._score_dlt, uid=_SCORE_DLT_ID, grouped_with=_SCORE_CLT_ID
-        )
+        bundle.add_timeline(self._score_clt, as_group=_SCORE_GROUP)
+        bundle.add_timeline(self._score_dlt, grouped_with=self._score_clt.id)
 
         for performer_key in self._perf_cpt:
             cpt = self._perf_cpt[performer_key]
             dpt = self._perf_dpt[performer_key]
             group_id = f"perf:{performer_key}"
-            bundle.add_timeline(cpt, uid=cpt.id, as_group=group_id)
-            bundle.add_timeline(dpt, uid=dpt.id, grouped_with=cpt.id)
+            bundle.add_timeline(cpt, as_group=group_id)
+            bundle.add_timeline(dpt, grouped_with=cpt.id)
 
         bundle.add_match_claims(self._claims)
         return bundle

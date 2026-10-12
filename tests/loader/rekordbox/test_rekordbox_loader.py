@@ -12,11 +12,6 @@ from timetoalign.loader import RekordboxLoader
 from timetoalign.maps import QuartersToFloatingMeasures
 from timetoalign.timelines import MeasureMap, Timeline
 
-SPECIMEN = Path(
-    "/home/laser/git/tta/tta_test_data/data/audio/moriero_dj_set/rekordbox.xml"
-)
-
-
 _DEFAULT_LOCATION = object()
 
 
@@ -380,11 +375,10 @@ def test_interval_positional_construction_and_coordinate_passthrough() -> None:
         Interval(Fraction(1, 3), Fraction(2, 3), TimeUnit.ticks)
 
 
-def test_real_specimen_collection_and_mix_grids_are_exact() -> None:
-    if not SPECIMEN.exists():
-        pytest.skip(f"Test data file not found: {SPECIMEN}")
-
-    loader = RekordboxLoader.from_file(SPECIMEN)
+def test_real_specimen_collection_and_mix_grids_are_exact(
+    rekordbox_specimen: Path,
+) -> None:
+    loader = RekordboxLoader.from_file(rekordbox_specimen)
     mix = next(track for track in loader.tracks if track.track_id == "147337955")
     expected_spans = [
         Fraction("212.639"),
@@ -509,11 +503,10 @@ def test_real_specimen_collection_and_mix_grids_are_exact() -> None:
     assert brace_fm(first_downbeat) == 1.0
 
 
-def test_real_specimen_timeline_ids_are_decoded_file_stems() -> None:
-    if not SPECIMEN.exists():
-        pytest.skip(f"Test data file not found: {SPECIMEN}")
-
-    bundle = RekordboxLoader.from_file(SPECIMEN).create_bundle()
+def test_real_specimen_timeline_ids_are_decoded_file_stems(
+    rekordbox_specimen: Path,
+) -> None:
+    bundle = RekordboxLoader.from_file(rekordbox_specimen).create_bundle()
     ids = set(bundle.timelines)
 
     assert len(ids) == 38

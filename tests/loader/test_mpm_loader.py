@@ -386,7 +386,8 @@ def test_bundle_shape(specimen: dict[str, Any]) -> None:
     bundle = loader.create_bundle()
     assert bundle.n_timelines == 5
     assert bundle.n_groups == 2
-    assert bundle.group_ids == ["score", "perf"]
+    assert bundle.group_ids == ["group_1", "group_2"]
+    assert [group.name for group in bundle.groups.values()] == ["score", "perf"]
     assert bundle.timeline_ids == [
         SCORE_CLT_ID,
         SCORE_DLT_ID,
@@ -395,7 +396,7 @@ def test_bundle_shape(specimen: dict[str, Any]) -> None:
         PERF_DGT_ID,
     ]
     # The perf group now holds three timelines.
-    perf_group = bundle.get_group("perf")
+    perf_group = bundle.get_group_for_timeline(PERF_CPT_ID)
     assert set(perf_group.timeline_ids) == {PERF_CPT_ID, PERF_DPT_ID, PERF_DGT_ID}
 
 
@@ -641,14 +642,15 @@ def test_no_spectrogram_bundle_shape(
 
     assert bundle.n_timelines == 4
     assert bundle.n_groups == 2
-    assert bundle.group_ids == ["score", "perf"]
+    assert bundle.group_ids == ["group_1", "group_2"]
+    assert [group.name for group in bundle.groups.values()] == ["score", "perf"]
     assert bundle.timeline_ids == [
         SCORE_CLT_ID,
         SCORE_DLT_ID,
         PERF_CPT_ID,
         PERF_DPT_ID,
     ]
-    perf_group = bundle.get_group("perf")
+    perf_group = bundle.get_group_for_timeline(PERF_CPT_ID)
     assert set(perf_group.timeline_ids) == {PERF_CPT_ID, PERF_DPT_ID}
 
     assert len(bundle.get_match_claims()) == specimen["claims"]

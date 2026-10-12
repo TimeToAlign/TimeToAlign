@@ -399,51 +399,136 @@ partitions and their asserting reading ids define structural identity. Tempo
 maps, verbal tempo text, reading authorship, reinterpretation links, and local
 level vocabulary remain queryable but do not affect equality.
 
-### `test_groups.py` - Timeline Groups
+### `test_groups.py` and `test_group_definition.py` - Timeline Groups
 
-`TimelineGroup` and `GroupTimestamp` are timeline-layer concepts, so their tests
-reside beside the timeline implementation. Boundary tests construct
-`IdCoordinate` values to retain both the reference timeline and its unit; raw
-`(coordinate, timeline_id)` pairs are intentionally outside the accepted
-coordinate contract. Event aggregation tests assert `EventData` results because
-the group preserves Arrow schemas, null-fills fields that are absent from some
-member timelines, and adds a constant `timeline_id` provenance column. A member's
-own `timeline_id` is overwritten by authoritative group membership. Columns
-present in multiple members must retain the same Arrow type; incompatible types
-raise an exact `ValueError` naming the column and both types, while genuinely
-missing columns remain null-filled. DataFrame views are tested only through
-`EventData.to_dataframe()`.
+A `TimelineGroup` is an array of member timelines that, by definition, share
+one graphical start and one graphical end: every member's 0 coincides with
+every other member's 0, every member's length with every other member's
+length, and a position in between converts linearly. When only part of a
+timeline takes part, the participant is a **child** of that timeline, which
+carries the part's exact offset; a member is never placed partially. The tests
+are written to prove that definition and nothing richer.
 
-Coordinate conversions and interpolations here are asserted exactly (`==`)
-wherever the arithmetic lands on a binary-exact value. The exactness does
-**not** come from the pixel/second ratios being representable in general — of
-the two axes, only 4875 px / 150 s reduces to a dyadic ratio (`= 32.5`);
-4328 px / 150 s reduces to `2164/75`, which is **not** exactly representable in
-binary. What makes the assertions exact is that the tested coordinates sit at
-dyadic fractions (0.0, 0.5, 1.0) of the *integer* pixel endpoints, and the
-group interpolates `fraction × 150`: `2164/4328 = 0.5` reduces exactly, and
-`0.5 × 150 = 75.0`, `1.0 × 150 = 150.0` are exact. So `2164 px ↔ 75.0 s` and
-`4328 px ↔ 150.0 s` are bit-exact.
+**What proves the definition.** The conversion is pinned by exact values that
+only the linear map `p · len_B / len_A`, computed on exact ratios, produces.
+The fixture mixes the three number types so that each re-expression rule is
+exercised: A is a `ContinuousLogicalTimeline` of `Fraction(16)` quarters
+(fraction-canonical), B a `ContinuousPhysicalTimeline` of `40.0` seconds
+(float-canonical), C a `DiscreteGraphicalTimeline` of `4800` pixels
+(int-canonical):
+
+| From | Position | To B (seconds) | To C (pixels) | To A (quarters) |
+|---|---|---|---|---|
+| A | `8` | `20.0` | `2400` | — |
+| A | `Fraction(1, 3)` | `0.8333333333333334` (= `float(Fraction(5, 6))`) | `100` | — |
+| A | `16` | `40.0` | `4800` | — |
+| C | `1` | `float(Fraction(1, 120))` | — | `Fraction(1, 300)` |
+| A | `Fraction(1, 7)` | — | `43` | — |
+| A | `Fraction(1, 600)` | — | `0` | — |
+| A | `Fraction(1, 200)` | — | `2` | — |
+
+`A 1/3 → B` is the case a float pipeline gets wrong in the last place: the
+exact image is `5/6`, and the expected float is `5/6` rounded once. A float
+query enters as its exact dyadic `Fraction`, so the arithmetic never rounds
+before the target axis writes the result.
+
+**The int-canonical rule.** A result on an int-canonical member is written
+under the library's boundary rule for a *computed* value (`express_as`, the
+re-expression documented in "Rounding and exactness"): an exact non-integral
+ratio is rounded to the nearest integer, ties to even. Construction refuses an
+exact non-integral value; re-expression of a conversion result rounds, because
+a conversion into pixels is a quantization by intent. `300/7 = 42.857…` names
+pixel `43`; the two tie cases pin the tie rule itself: `1/600 · 300 = 0.5`
+names pixel `0` and `1/200 · 300 = 1.5` names pixel `2`. Each expected value
+is also asserted with its Python type (`float`, `int`, `Fraction`), so a
+correct number in the wrong representation fails.
+
+**A child member.** Root R is a `DiscreteGraphicalTimeline` of 5000 px with a
+child K of 2000 px at offset 1000; the group holds A′ (`Fraction(8)` quarters)
+and K. A′ `2` is a quarter of the way, so K `500`. R is no member, so the group
+stamp holds A′ and K only; R's own stamp at `1500` holds K at `500`, which is
+what places the part inside its root. The dictionary form writes the roots A′
+and R (sorted by id) and names the members A′ and K (sorted by id); the member
+order is the order of addition.
+
+**Stored rows and intervals.** The stored rows are the common start and end:
+each member at `0` and at its own length, exact in its declared number type.
+The fraction member of that test is `Fraction(5, 3)` quarters long, a length
+no float holds, so its end row must read `Fraction(5, 3)` exactly; the float
+and int members read `40.0` and `4800`. `get_interval_for(member)` is
+`[0, length]` of that member. A position outside `[0, length]` on the queried
+member raises `ValueError`; there is no other unreachable position, because
+every member spans the whole group. The only null a group table can carry is
+in a descendant column, where a member's child does not reach a queried row.
+
+**Round trips.** For every group built in these tests:
+`TimelineGroup.from_dict(g.to_dict()).to_dict() == g.to_dict()`, and the
+rebuilt group answers `get_timestamp_at` at `0`, a third, a half and the length
+of every member with stamps whose every coordinate is identical to the
+original's (value, Python type and unit). Equality of the
+dictionaries alone would not prove the rebuilt group *behaves* the same, so the
+queries are asserted as well.
+
+**Identity.** The default id is `group_1` (minted statelessly: the smallest
+free number, so two fresh groups in one process are both `group_1`). A
+newcomer whose given id, or any given descendant id, is held by another
+timeline of the group's trees is refused with `ValueError` and leaves the
+group unchanged; a minted id of the newcomer's tree that is held is minted
+again — the newcomer's own (`clt_2`) and a descendant's alike (a minted
+`clt_1` child of a newcomer with a given id becomes `clt_2` under its
+unchanged parent). A refused newcomer keeps its ids: the collision checks run
+before any id of its tree is minted again, so a newcomer whose minted child
+would be re-minted but whose given root id is refused still carries its
+child's original minted id afterwards. A timeline whose given id is the
+group's own given id is refused; a *minted* group id that a newcomer's given
+id takes is minted again instead (`group_1` becomes `group_2`), because only
+a given id is a commitment.
+
+**No nesting inside one group.** Members share their start and end, while a
+child sits at its offset inside its parent, so a parent and its child in one
+group would give one position two answers. Root R is a
+`DiscreteGraphicalTimeline` of 5000 px with a child K of 2000 px at offset
+1000: a group of R and K is refused with a `ValueError` naming both ids,
+whichever is added first, and `from_dict` refuses a group object naming both,
+leaving nothing built. A parent and its child in *different* groups of one
+bundle remain allowed (the bundle tests pin it): each group converts within
+itself, and the offset relates the two.
+
+`from_dict` refuses each malformed input with a `ValueError` naming the
+problem: an unknown or missing key, a member naming no timeline, a timeline id
+written twice, an order that is not a permutation of the members, a root
+holding no member, a member nested with another member, and a group id that
+equals a timeline id.
+
+Event aggregation tests assert `EventData` results because the group preserves
+Arrow schemas, null-fills fields that are absent from some member timelines,
+and adds a constant `timeline_id` provenance column. A member's own
+`timeline_id` is overwritten by authoritative group membership. Columns
+present in multiple members must retain the same Arrow type; incompatible
+types raise an exact `ValueError` naming the column and both types, while
+genuinely missing columns remain null-filled. DataFrame views are tested only
+through `EventData.to_dataframe()`.
 
 **A half-pixel query is not a half-pixel coordinate.** `4875` is odd, so its
 midpoint `2437.5` falls between two pixels — and a pixel axis is int-canonical,
 so that query names pixel `2438` and the group answers with *that pixel's*
-position, `2438/4875 × 150 = 75.01538461538462 s`. It is asserted against the
-same expression rather than against `75.0`. The `75.0` these cases used to
-expect was the group path reading the un-rounded query while simultaneously
-reporting `ts["dgt_1"] == 2438`: one stamp claiming two positions. Every
-projection of a stamp is now a projection of the one position its axis names,
-so the rounding is visible in the answer instead of only in the pixel column.
-The same correction applies to `test_thoresen_poc.py`, whose width `4835` puts
-its midpoint at pixel `2418`.
+position, `2438 · 150 / 4875 = 75.01538461538462 s`. Every projection of a
+stamp is a projection of the one position its axis names, so the rounding is
+visible in the answer instead of only in the pixel column. The same applies to
+`test_thoresen_poc.py`, whose width `4835` puts its midpoint at pixel `2418`.
 
-Two comparisons remain `pytest.approx` because they are genuinely
-floating-point: `test_three_timeline_group` interpolates onto a partial
-timeline where the score coordinate is `100 * 30/90 = 33.333…`, a
-non-terminating ratio; and `test_round_trip_conversion` closes an audio →
-discrete-pixel → audio loop whose integer quantization admits an error up to
-`abs=0.5 * 150/4875` seconds. Both retentions are load-bearing, not tolerance
-padding.
+**Group unfolding.** `apply_flow` cuts every member at the same section
+labels. The labels name the section children, never identify them: the test
+pins the eleven names on each member, requires every descendant id to be a
+minted `clt_N`, and requires the group's trees to hold as many distinct ids as
+they hold timelines.
+
+`test_three_timeline_group` places an image over audio seconds 0–150 and a
+score over audio seconds 45–135: each part is a child of the audio, grouped
+with the timeline spanning it, and the score's `100 · 30/90` is the float
+`33.333333333333336`, asserted exactly. `test_round_trip_conversion` closes an
+audio → pixel → audio loop: 67.5 s is pixel `2193.75`, which names `2194`,
+whose seconds are `67.50769230769231`.
 
 ## Test Files
 
@@ -762,7 +847,7 @@ need contents opt in.
 
 7. **Cross-Unit Child Addition via Conversion Map** (11 tests)
    - `use_conversion_map=True` auto-selects parent's C-Map (e.g., SamplesToSeconds)
-   - Converted child ID is `{original}[{parent_unit}]` (e.g., `notes[samples]`)
+   - Converted child is named `{original name} [{parent_unit}]` (e.g., `notes [samples]`); its id is minted in the parent's unit (`dpt_1`), because a label is no identity
    - Event coordinates correctly converted (seconds → samples via inverse C-Map)
    - Original child is NOT modified or locked (only the derived copy is locked)
    - Lookup by string target unit name (`use_conversion_map="seconds"`)
@@ -875,10 +960,44 @@ builders cannot disagree about which maps are columnar.
    - Dynamic classes inherit the APIs and restrictions of both `SegmentLine`
      and their timeline parameter
    - Invalid and repeated parameterization raises `TypeError`
-   - Nested class tags resolve recursively and preserve exact error messages
-   - Pickle reconstructs dynamic classes by module reference
-   - Captured 1.0.1 payloads deserialize to the same nested structure
+   - Pickle reconstructs dynamic classes by module reference (the dynamic
+     class names are a pickle concern only; the dictionary never writes them)
    - `to_typed()` recursively re-types children and retains exact classes
+
+   **The dictionary form of a SegmentLine** (`test_segment_line_dict.py`).
+   Every timeline at every depth carries the required boolean
+   `is_segment_line`, false on a plain timeline, exactly like `locked`. A
+   SegmentLine writes `class` as its segments' domain-and-modality class —
+   for `SegmentLine[SegmentLine[X]]` that is X's class too — and
+   `is_segment_line: true`; its children are its segments. What proves it:
+   - **Exact dictionaries.** A `SegmentLine[DiscreteGraphicalTimeline]` of
+     two segments (lengths 300 and 200 px, so the line is 500 px) is pinned
+     key for key: `class` `"DiscreteGraphicalTimeline"`, flag true, both
+     children with flag false at offsets 0 and 300. A nested, IEEE-shaped
+     line — a page line of two accolade lines (accolades 100+150 px and
+     120 px) — is pinned too: the outer and both page lines carry
+     `"DiscreteGraphicalTimeline"` and true, the accolades false. A plain
+     timeline writes its own class and false.
+   - **Round trips that rebuild the type.** `from_dict` returns
+     `SegmentLine[DiscreteGraphicalTimeline]` for the flat line and
+     `SegmentLine[SegmentLine[DiscreteGraphicalTimeline]]` for the nested
+     one (the segment type is the children's class, a SegmentLine itself
+     when the children carry the flag), and writing the result again gives
+     the same dictionary. Children given out of offset order are rebuilt in
+     offset order, so a reordered file reads as the same line.
+   - **Refusals.** `from_dict` raises `ValueError` for a flagged timeline
+     whose children have mixed classes, whose children disagree on the flag,
+     whose segments leave a gap or overlap, whose segments end short of its
+     length, whose `class` differs from its segments' class, for a missing or
+     non-boolean flag, and for the dynamic `SegmentLine[...]` class names,
+     which are no dictionary class.
+   - **What cannot be written.** A SegmentLine with no segments has a class
+     only when its segment type is a plain timeline class
+     (`SegmentLine[X]()` writes X's class and rebuilds as `SegmentLine[X]`).
+     A bare, never-typed `SegmentLine()` and an empty nested
+     `SegmentLine[SegmentLine[X]]()` cannot say what they are, so `to_dict`
+     refuses them with a `ValueError` naming the timeline; the test pins
+     both messages.
 
 **Validity Rationale:**
 
@@ -2060,7 +2179,7 @@ FlowMap approach with structural slicing in QB-space.
 | `TestSegmentLineAssembly` | Integration: slice + concatenate into a SegmentLine (this module's own manual helper) |
 | `TestCreateUnfoldedTimelineIdentity` | Explicit uid on the same-type unfolded timeline |
 | `TestUnfoldingGoldStandard` | End-to-end validation against 7 ms3 gold standard specimens |
-| `TestGroupUnfolding` | Cross-domain unfolding via typed GroupTimestamp coordinate retrieval |
+| `TestGroupUnfolding` | Cross-domain unfolding through the group's `TimeStamp`s, which convert linearly between members |
 
 **Testing Pyramid:**
 
@@ -2119,7 +2238,7 @@ FlowMap approach with structural slicing in QB-space.
 6. **Group Unfolding Tests** (10 tests)
    - Uses Beethoven Op.18 No.4 iv multimodal score group (CLT1 + DGT1 + OpenScore)
    - Validates that one FlowMap unfolds ALL timelines regardless of domain
-   - Resolves section boundaries through GroupTimestamps
+   - Resolves section boundaries through the group's `TimeStamp`s (members convert linearly between their common start and end)
    - Tests: segment counts (11), contiguity, type preservation, length consistency
 
 **Gold Standard Exact Values:**

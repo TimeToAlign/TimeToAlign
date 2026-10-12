@@ -8,14 +8,15 @@ The alignment module implements TimeToAlign's multi-level hierarchy:
 
 ```
 AlignmentAnchor (atomic) -> MatchClaim (low) -> MatchGraph (mid) -> MatchLine (high)
-        |                        |
-        v                        v
-   start/end params         TimelineGroup (timestamp table)
+                                 |
+                                 v
+                  TimelineGroup (members share one start and one end)
 ```
 
-**NOTE:** TimelineGroup uses a timestamp-based architecture where alignment is
-specified via `start`/`end` parameters to `add_timeline()`. Its tests live in
-`tests/timelines/test_groups.py`; alignment tests cover consumers of groups.
+**NOTE:** A TimelineGroup is an array of timelines sharing one start and one
+end; a part of a timeline takes part as a child of it. Its tests live in
+`tests/timelines/test_groups.py` and `tests/timelines/test_group_definition.py`;
+alignment tests cover consumers of groups.
 
 Each test validates a **specific claim** from the TimeToAlign model. Tests are not exploratory--they verify exact behaviors required by the model.
 
@@ -55,7 +56,7 @@ All Thoresen test data constants and shared fixtures are centralised in `tests/a
 
 ### ID Reset (`autouse=True`)
 
-The `reset_ids` fixture in `conftest.py` has `autouse=True` and resets **all** ID generators (anchor, claim, group, bundle) before every test. This ensures test isolation without individual test files needing their own reset fixtures.
+The `reset_ids` fixture in `conftest.py` has `autouse=True` and resets the anchor and claim ID generators before every test. Group and bundle ids are minted statelessly (`group_N`, `bundle_N`, N the smallest free number in the scope), so they need no reset.
 
 ### Migration Note
 
@@ -65,20 +66,20 @@ Previously, `dgt1_timeline`, `dgt2_timeline`, `audio_timeline`, `thoresen_segmen
 
 ## TimelineGroup Architecture
 
-### Timestamp Table Design
+### What a group is
 
-The group stores alignment data as a PyArrow table:
+Every member of a group spans the whole group: its 0 is every other member's
+0 and its length every other member's length, and a position converts
+linearly, `p · len_B / len_A`, exactly. A part of a timeline is a child of it:
 
 ```
-| dgt1_image | dgt1_holes | dlt1_raw |
-|------------|------------|----------|
-| 0.0        | null       | null     |  <- group start (image only)
-| 15343.0    | 0.0        | 0.0      |  <- musical region starts
-| 293119.0   | 277776.0   | 871800.0 |  <- musical region ends
-| 299400.0   | null       | null     |  <- group end (image only)
+dgt1_image (0 - 299,400 px)
+  └── dgt1_holes, child at offset 15,343 (0 - 277,776 px)
+        ═══ group ═══ dlt1_raw (0 - 871,800 ticks)
 ```
 
-Between any two adjacent rows, ALL non-null timelines have bijective linear mapping.
+The holes child and the MIDI timeline form the group; the image reaches both
+through the child's exact offset.
 
 ### Coordinate and Filter Canonicalisation
 
@@ -96,9 +97,9 @@ equivalent graph, group-extension, match-line, and stamp filtering results.
 
 | Before (deprecated) | After |
 |---------------------|-------------------|
-| `PerfectAlignment(source_start=0, source_end=277776, ref_start=15343, ref_end=293119)` | `group.add_timeline(holes, start=IdCoordinate(15343.0, TimeUnit.seconds, "dgt_1"), end=IdCoordinate(293119.0, TimeUnit.seconds, "dgt_1"))` |
-| Per-timeline alignment objects | Timestamp table with one field per timeline |
-| `group.reference_timeline_id` | Reference timeline is first field in table |
+| `PerfectAlignment(source_start=0, source_end=277776, ref_start=15343, ref_end=293119)` | `image.add_child(holes, offset=15343)`, then `TimelineGroup(timelines=[holes, midi])` |
+| Per-timeline alignment objects | Members sharing one start and one end |
+| `group.reference_timeline_id` | No reference: every member spans the group |
 
 ---
 
@@ -251,126 +252,39 @@ ordering expectations; no tolerance or approximate comparison is used.
 
 ## TimelineGroup Integration
 
-### What We're Validating
-
-Groups contain timelines with "perfect alignment"--any coordinate in one timeline maps to exactly one coordinate in every other timeline.
-
-### Key Test Classes
-
-| Class | Tests |
-|-------|-------|
-| `TestGroupTimestamp` | View object creation, coordinate access, `present_timelines` property, `_repr_html_` coordinate table + affordance `Try` footer (`ts[<tl_id>]` / `ts.get(<tl_id>)`) |
-| `TestTimelineGroupCreation` | Empty groups, groups with initial timelines, ID generation |
-| `TestTimelineGroupAddTimeline` | Linear alignment, partial alignment with `start`/`end`, duplicate detection |
-| `TestTimelineGroupTimestamps` | Timestamp count, boundary retrieval, table structure |
-| `TestTimelineGroupInterpolation` | `get_timestamp_at()` for exact matches and interior points |
-| `TestTimelineGroupConversion` | `convert()` method, same-timeline identity, cross-timeline mapping |
-| `TestTimelineGroupLocking` | Lock/unlock, `allow_extension` parameter |
-| `TestBackwardCompatibility` | Deprecated `from_reference()` and `iter_timelines()` methods |
-| `TestTimelineGroupUnifiedTimestamp` | Unified TimeStamp API, InterpolationMap-based coordinate resolution |
-| `TestTimestampAccess.test_row_timestamp_stamp_contract` | Group row views share the Stamp contract: exact Coordinate value/unit, unit-name subscript fallback, flat materialization, and group source metadata |
-| `TestTimestampAccess.test_old_timestamp_accessor_is_absent` | The row-index accessor is `get_timestamp_at_index()`; the coordinate-oriented `get_timestamp` name is not available on groups |
-
-### Key Evidence
-
-| Test | Validates |
-|------|-----------|
-| `test_add_with_partial_alignment` | Partial ranges work: `start=IdCoordinate(15343, TimeUnit.seconds, "dgt_1")` maps holes 0 -> image 15343 |
-| `test_interpolation_exact_boundary` | Exact boundary coordinates return stored values (no interpolation) |
-| `test_interpolation_interior_point` | Interior points are linearly interpolated |
-| `test_conversion_same_timeline` | Self-conversion returns input unchanged (reflexivity) |
-| `test_conversion_cross_timeline` | **Core functionality**: Coordinate conversion via timestamp lookup |
-| `test_floating_point_precision` | Boundary values are EXACT (no floating-point error from interpolation round-trip) |
-
-### The Floating-Point Precision Test
-
-```python
-def test_floating_point_precision(self):
-    # Partial alignment: holes [0, 277776] -> image [15343, 293119]
-    group.add_timeline(
-        holes,
-        start=IdCoordinate(15343.0, TimeUnit.seconds, "dgt_1"),
-        end=IdCoordinate(293119.0, TimeUnit.seconds, "dgt_1"),
-    )
-
-    # Boundary coordinates must be EXACT
-    result = group.convert(0.0, source="holes", target="dgt_1")
-    assert result == 15343.0  # EXACT, not pytest.approx()
-```
-
-This test validates that the source timeline's coordinate is stored exactly, not computed through interpolation (which would introduce floating-point error).
+Group behaviour — the definition, exact linear conversion, child members,
+stored rows, identity and the dictionary form — is validated in
+`tests/timelines/` (see "Timeline Groups" in `tests/timelines/README.md`).
+Alignment tests exercise groups only as parts of bundles.
 
 ---
 
-## Unified TimeStamp API Tests (`test_groups.py::TestTimelineGroupUnifiedTimestamp`)
+## Group TimeStamp Tests (`../timelines/test_groups.py::TestTimelineGroupTimestampAt`)
 
 ### What We're Validating
 
-The unified `TimeStamp` architecture has both `Timeline` (with children) and `TimelineGroup` (with member timelines) using the same coordinate resolution mechanism via `InterpolationMap`. This enables O(log n) coordinate conversion without table scans.
-
-### Key API
-
-```python
-from timetoalign.core import TimeStamp, TimeIntervalStamp
-
-# TimelineGroup unified API
-group = TimelineGroup(id="my_group", timelines=[audio, dgt])
-ts = group.get_unified_timestamp(75.0, "audio")
-ts["dgt"]                  # Converted coordinate via InterpolationMap
-ts.axis                    # 75.0 (source coordinate)
-ts.source_id               # "audio"
-
-# Interval stamps
-interval = group.get_unified_interval_stamp(0.0, 100.0, "audio")
-interval.duration          # 100.0
-interval["dgt"]            # (start, end) tuple on dgt timeline
-```
+`Timeline` (with children) and `TimelineGroup` (with members) answer one
+`TimeStamp` class through the `TimeStampSource` protocol. A timeline reaches
+its descendants by exact offset arithmetic; the members of a group share one
+start and one end, so a position on member A is `p · len_B / len_A` on member
+B, computed on exact ratios and written in B's declared number type. There is
+no group-specific stamp class and no interpolation map inside a group.
 
 ### Key Evidence
 
 | Test | Validates |
 |------|-----------|
-| `test_get_unified_timestamp_basic` | Creates valid `TimeStamp` object with correct axis and source_id |
-| `test_get_unified_timestamp_coordinate_conversion` | Converts coordinates between timelines via InterpolationMap |
-| `test_get_unified_timestamp_bidirectional` | Conversion works in both directions (audio->dgt and dgt->audio) |
-| `test_get_unified_timestamp_unknown_timeline_raises` | KeyError for unknown timeline IDs |
-| `test_get_unified_interval_stamp` | Creates `TimeIntervalStamp` with correct duration and interval conversion |
-| `test_unified_timestamp_with_three_timelines` | Coordinate conversion works with 3+ timelines |
-| `test_unified_timestamp_same_timeline_returns_axis` | Subscript with source ID returns axis value |
-| `test_interpolation_maps_built_on_add` | Maps are built automatically when timelines are added |
-| `test_interpolation_maps_updated_on_remove` | Maps are rebuilt when timelines are removed |
-| `test_implements_timestamp_source_protocol` | TimelineGroup implements `TimeStampSource` protocol |
-| `test_get_related_timeline_ids` | `_get_related_timeline_ids()` returns all timeline IDs |
-| `test_get_available_units_returns_empty` | Groups don't have C-Maps (empty list) |
-
-### InterpolationMap Management
-
-The TimelineGroup maintains a dictionary of pairwise `InterpolationMap` objects:
-
-```python
-group._interpolation_maps = {
-    "audio:dgt_1": InterpolationMap(...),  # audio -> dgt_1
-    "dgt_1:audio": InterpolationMap(...),  # dgt_1 -> audio
-    "audio:score": InterpolationMap(...), # audio -> score
-    ...
-}
-```
-
-Maps are:
-- **Built** when `add_timeline()` is called (for all pairwise combinations)
-- **Rebuilt** when `remove_timeline()` is called (removing invalidated maps)
-- **Used** by `get_unified_timestamp()` for O(log n) coordinate lookup
-
-### Relationship to Timeline TimeStamp
-
-The same `TimeStamp` class works for both:
-
-| Source | Method | Child/Member Access |
-|--------|--------|---------------------|
-| `Timeline` | `get_timestamp(coord)` | `ts["child:id"]` via offset subtraction |
-| `TimelineGroup` | `get_unified_timestamp(coord, source_id)` | `ts["other_id"]` via InterpolationMap |
-
-Both implement the `TimeStampSource` protocol, enabling code reuse.
+| `test_get_timestamp_at_basic` | The stamp's axis is the queried coordinate on the queried member |
+| `test_get_timestamp_at_coordinate_conversion` | A member's coordinate is the linear image of the axis |
+| `test_get_timestamp_at_bidirectional` | The conversion answers in both directions |
+| `test_get_timestamp_at_unknown_timeline_raises` | `KeyError` for an unknown timeline id |
+| `test_get_timestamp_at_empty_group_raises` | `KeyError` for a group without members |
+| `test_interval_stamp_from_get_timestamp_at` | A `TimeIntervalStamp` composes from two stamps |
+| `test_timestamp_with_three_timelines` | Every member of a three-member group is answered |
+| `test_timestamp_same_timeline_returns_axis` | The queried member's own coordinate is the axis |
+| `test_implements_timestamp_source_protocol` | `TimelineGroup` implements `TimeStampSource` |
+| `test_get_related_timeline_ids` | `_get_related_timeline_ids()` returns the member ids |
+| `test_get_available_units_returns_empty` | A group carries no C-Maps of its own |
 
 ---
 
@@ -676,15 +590,14 @@ only one store is a bug, and this suite is what catches it.
 Three timelines, one group each (so every claim is cross-group), spanning two
 domains so that domain/unit filters bite:
 
-| Bundle UID | Class | Unit | Domain |
+| Timeline ID | Class | Unit | Domain |
 |------------|-------|------|--------|
 | `score:clt_1` | `ContinuousLogicalTimeline` | `quarters` | logical |
 | `perf:cpt_1` | `ContinuousPhysicalTimeline` | `seconds` | physical |
 | `perf:cpt_2` | `ContinuousPhysicalTimeline` | `seconds` | physical |
 
-Bundle UIDs equal the actual timeline IDs, sidestepping the UID/actual-ID
-key-space split so that a parity failure is never confused with a key-space
-artefact.
+The claims name these timeline IDs, the ids the bundle registers the
+timelines under.
 
 The claim topology is **complete pairwise at three aligned instants** — every
 pair claims at every instant, 3 pairs × 3 instants = **9 synchronous instant
@@ -764,11 +677,72 @@ scales to the dense-alignment workload.
 
 ---
 
+## AlignmentBundle Dictionary Form and Identity (`test_bundle_dict.py`)
+
+### What We're Validating
+
+A bundle is its timelines and its groups. Its dictionary form writes every
+root timeline once (each exactly `Timeline.to_dict()`, sorted by id), the
+groups as `Group` objects naming their members by id (sorted by id), and every
+group's member order under `graphical.order`. MatchClaims are not part of the
+form and are excluded from every assertion here.
+
+### What proves it
+
+1. **Round trips that behave.** For every bundle built in the tests and the
+   bundle of every alignment loader with a specimen — Parangonada (Eroica,
+   five performers), Matchfile (all 22 Vienna performances), MPM (both
+   specimens), IEEE 1599 (`gymnopedie`), ListenHere (the synthetic canonical
+   specimen of `test_listen_here_loader.py`; the format has no corpus), TiLiA
+   (Bruckner 5 scherzo), PerformancePrecision (the Chopin nocturne) and
+   Rekordbox (the DJ-set specimen, skipped where absent) —
+   `AlignmentBundle.from_dict(b.to_dict()).to_dict() == b.to_dict()`. The
+   dictionary equality alone could hold for a reader that rebuilds the wrong
+   object, so the rebuilt bundle must also answer every group's
+   `get_timestamp_at` identically (value, type and unit of every cell) at the
+   member's 0, a third of its length, half its length and its length, from
+   every member. Claims are excluded: `cross_group_claims` is not consulted. The
+   rebuilt bundle must also hold exactly the same participants and the same
+   group membership.
+2. **Exact expected forms.** One direct construction pins the whole
+   dictionary: two groups and an ungrouped root, a group member that is a
+   child (its root is written, the child id is the member), the `group_N`
+   ids, `support_policy` as its string value, and the member order as added.
+3. **Identity.** A fresh bundle is `bundle_1`; `as_group` names the new group
+   and its id is minted `group_1`, `group_2`; a child added to a group brings
+   its root, ungrouped; a child added ungrouped registers only its root (an
+   ungrouped participant is always a root), and the round trip restores
+   exactly that participant set; three loader-minted `cpt_1` timelines join
+   one bundle as `cpt_1`, `cpt_2`, `cpt_3`; a timeline already in one group is refused by
+   another; a given timeline id held by another timeline (of any tree in the
+   bundle, descendants included) raises `ValueError` and leaves the bundle
+   unchanged; a minted id held there is minted again. A refused newcomer keeps
+   its ids: every collision check — the timeline ids and the group id —
+   runs before any id is minted again, so a minted `clt_1` that admission
+   would have re-minted is still `clt_1` after its group or its root was
+   refused. A given group id refuses a timeline that carries it; a *minted*
+   group id that a newcomer's given timeline id takes is minted again
+   (`group_1` → `group_3` beside an existing `group_2`), and the members keep
+   their membership under the new id.
+4. **Nesting.** A parent and its child may sit in *different* groups of one
+   bundle — each group converts within itself and the child's offset relates
+   them. In *one* group they are refused: `grouped_with` naming a member
+   nested with the newcomer raises `ValueError` naming both ids before
+   anything changes, and so does a `Group` object in `from_dict` naming both.
+5. **Refusals.** `from_dict` raises `ValueError` naming the problem for an
+   unknown or missing key, an unknown `support_policy`, an empty bundle id, a
+   timeline written twice, a group id written twice or equal to a timeline id,
+   a member naming no timeline, a timeline in two groups, a group naming a
+   parent and its child, and an order naming no group or not a permutation of
+   its group's members.
+
+---
+
 ## SUPRA Integration Tests (`test_supra_integration.py`)
 
 ### What We're Validating
 
-The SUPRA (Stanford University Piano Roll Archive) tests validate the **partial alignment** feature using real-world data from piano roll digitization. This is the canonical use case for the timestamp-table TimelineGroup API.
+The SUPRA (Stanford University Piano Roll Archive) tests validate **partial alignment** using real-world data from piano roll digitization: the musical region of the image is a child of the image at the first hole, and a bundle holding the child reaches the image through the child's exact offset.
 
 ### Data Source
 
@@ -789,7 +763,7 @@ The SUPRA (Stanford University Piano Roll Archive) tests validate the **partial 
 |-------|-------|
 | `TestSUPRADataLoading` | `IIIFManifestLoader` dimensions, `ATONLoader` metadata (EXACT values) |
 | `TestSUPRATimelineCreation` | Timeline lengths match loader data |
-| `TestSUPRAAlignmentBundle` | Partial alignment via `start`/`end` parameters, coordinate transfer |
+| `TestSUPRAAlignmentBundle` | Partial alignment as a child; the bundle registers the child and its root, and transfers through the offset |
 | `TestSUPRAOrderIndependence` | Same alignment specifications produce same results regardless of add order |
 | `TestSUPRASummary` | Bundle summary structure and determinism |
 
@@ -801,16 +775,16 @@ The SUPRA (Stanford University Piano Roll Archive) tests validate the **partial 
 | `test_aton_metadata_exact` | ATON loader returns EXACT counts from gold standard |
 | `test_transfer_holes_to_image` | Holes coord 0 -> Image pixel 15343 (EXACT, no tolerance) |
 | `test_transfer_image_to_holes` | Inverse transfer: Image 15343 -> Holes 0 (EXACT) |
-| `test_three_timeline_same_partial_alignment` | Three timelines with same partial alignment produce consistent transfers |
+| `test_three_timeline_same_partial_alignment` | The holes child grouped with MIDI transfers identically whichever is added first, and reaches the image through the offset |
 
 ### Alignment Diagram
 
 ```
 DGT1 (Full Image: 0 - 299,400 px)
   |
-  +-- [15,343 px] --- DGT1_holes (Musical Region: 0 - 277,776 px) --- [293,119 px]
+  +-- [15,343 px] --- DGT1_holes (child; Musical Region: 0 - 277,776 px) --- [293,119 px]
                             |
-                            | Partial alignment via start/end
+                            | group: both span the same start and end
                             v
                       DLT1 (MIDI: 0 - 871,800 ticks)
 ```
@@ -863,25 +837,24 @@ This test validates that MatchClaims can represent the segment-to-segment corres
 
 ### What We're Validating
 
-**Design:** Parent–child coordinate transfer uses exact offset arithmetic (`child_coord = parent_coord - offset`) instead of InterpolationMap. This eliminates floating-point drift that was conceptually wrong and numerically unnecessary.
+**Design:** Parent–child coordinate transfer uses exact offset arithmetic
+(`child_coord = parent_coord - offset`), so no floating-point drift enters a
+transfer and rational offsets compose exactly.
 
 ### Key Evidence
 
 | Test | Validates |
 |------|-----------|
-| `test_parent_to_child_basic` | `_get_child_coordinate()` returns exact result |
-| `test_parent_to_child_out_of_bounds` | Returns None for coordinates outside child span |
-| `test_child_to_parent_basic` | `_get_parent_coordinate_from_child()` returns exact result |
-| `test_roundtrip_exact` | parent→child→parent produces exact original coordinate |
-| `test_recursive_grandchild` | Offset arithmetic works through nested children |
-| `test_timestamp_uses_offset` | `TimeStamp.get()` resolves children via offset, not InterpolationMap |
-| `test_zero_offset_child` | Edge case: child at offset 0 |
-| `test_multiple_children` | Multiple children resolved independently |
-| `test_exact_boundary_coordinates` | Boundary values (0, length-epsilon) are handled correctly |
-
-### Design
-
-The `Timeline._get_interpolation_map()` method (part of the `TimeStampSource` protocol) now returns `None` for `Timeline` instances. `TimeStamp.get()` tries offset arithmetic first via duck-typing (`_get_child_coordinate`), falling back to InterpolationMap for `TimelineGroup`.
+| `test_exact_parent_to_child` | `_get_child_coordinate()` returns the exact result |
+| `test_exact_child_to_parent` | `_get_parent_coordinate_from_child()` returns the exact result |
+| `test_out_of_bounds_returns_none` | `None` for a coordinate outside the child span |
+| `test_unknown_child_returns_none` / `test_unknown_child_raises_keyerror` | Unknown ids keep their established return or exception |
+| `test_recursive_offset_exact` | Offsets compose through a grandchild |
+| `test_recursive_fraction_offset_exact` | Rational offsets compose without float coercion |
+| `test_timestamp_uses_offset_arithmetic` | A `TimeStamp` resolves a child through its offset |
+| `test_timestamp_out_of_bounds_returns_none` | A stamp outside the child span raises `KeyError` for the child |
+| `test_timestamp_boundary_values` | Start inclusive, end exclusive |
+| `test_no_interpolation_maps_attribute` | A timeline holds no interpolation maps |
 
 ---
 
@@ -1129,16 +1102,10 @@ named source endpoints of `transfer` and `transfer_interval`.
 
 These tests reuse the existing `_make_cross_group_bundle()` +
 `_make_linear_claims()` fixtures (no new corpus). The claims map
-`score_t → audio_t` linearly (`audio = score * 0.5`), so a query at score 100
+`score → audio` linearly (`audio = score * 0.5`), so a query at score 100
 resolves to audio 50 — an exact value with no interpolation rounding. Parity is
 asserted by comparing the whole result across all three call forms, plus a
 pinned concrete value.
-
-A key implementation detail documented in the helper docstring: the MatchGraph
-that backs `get_matchstamp_at` is keyed on the timeline ids carried by the
-claims (the *actual* timeline ids), whereas `transfer` and `get_timestamp_at`
-are keyed on the bundle *UIDs*. The tests pass the right key space to each
-method accordingly.
 
 | Test class | Validates |
 |------------|-----------|
@@ -1146,10 +1113,10 @@ method accordingly.
 | `TestGetTimestampAtCoordinateParity` | same three forms produce identical whole-dict results; error paths identical |
 | `TestTransferCoordinateParity` | `transfer`/`transfer_interval` resolve native-unit Coordinate/IdCoordinate inputs through the named source timeline; non-coordinate ⇒ `TypeError` |
 
-The same parity is validated for `TimelineGroup.convert()` in
-`test_groups.py::TestConvert` (`test_convert_accepts_coordinate_objects`,
-`test_convert_rejects_unsupported_type`): `convert(75 seconds → dgt_1)` returns
-the exact pixel value `2438` for all three coordinate forms.
+The same parity is validated for `TimelineGroup.get_coordinate_at` in
+`test_groups.py::TestCoordinateRetrieval` (`test_convert_accepts_coordinate_objects`,
+`test_convert_rejects_unsupported_type`): 75 seconds on `audio` resolves to the
+exact pixel `2438` on `dgt_1` for all three coordinate forms.
 
 ---
 
@@ -1300,7 +1267,8 @@ python -m pytest tests/alignment/ -v
 | File | Tests | Description |
 |------|-------|-------------|
 | `conftest.py` | — | Shared fixtures and constants: Thoresen timeline fixtures (`dgt1_timeline`, `dgt2_timeline`, `audio_timeline`, `thoresen_segment_claims`), DGT1/DGT2 coordinate constants, `autouse` ID reset fixture, graphical bundle fixtures |
-| `test_bundle.py` | 75 | AlignmentBundle: linear/partial alignment, cross-group transfer, timestamps, commensurability, caching, edge cases, coordinate-type parity (raw/Coordinate/IdCoordinate) |
+| `test_bundle.py` | 94 | AlignmentBundle: linear alignment, a child joining with its root, cross-group transfer, timestamps, commensurability, caching, edge cases, coordinate-type parity (raw/Coordinate/IdCoordinate) |
+| `test_bundle_dict.py` | — | AlignmentBundle dictionary form and identity: round trips of direct constructions and of every alignment loader's bundle, minted ids, collisions, a child bringing its root, refusals |
 | `test_anchors.py` | 62 | AlignmentAnchor, MatchClaim (incl. NOMATCH coordinate preservation + repr), MatchMetadata |
 | `test_graph.py` | 54 | MatchGraph operations (implicit claims, filtering, stamps); imports Thoresen fixtures from conftest |
 | Robustness coverage | — | Bundle graph stamp units/context, coordinate-bearing claim factories, Fraction serialization, inferred-edge completeness, and MatchStamp container isolation/axis handling |
@@ -1308,7 +1276,7 @@ python -m pytest tests/alignment/ -v
 | `test_warpmap.py` | 36 | WarpMap construction, forward/inverse, materialise (events, children, regions, type conversion), serialization, end-to-end pipeline |
 | `test_filters.py` | 27 | `ClaimFilter` dataclass: exact ID, set-of-IDs, regex, between, synchronous/nomatch, combined filters, timeline-level filtering |
 | `test_stamp_query_api.py` | 54 | Unified Stamp & Query API: `get_match_claims()`, `get_matchstamp_at()`, `MatchGraph.get_matchstamp()`/`split_components()`, `MatchClaim.get_matchstamp()`, MatchGraph cache, display methods (`__str__`/`_repr_html_` incl. the affordance `Try` footer on `MatchStamp`/`MatchClaim`), `transfer()` docstring fix, top-level exports |
-| `test_supra_integration.py` | 13 | SUPRA piano roll workflow (partial alignment) |
+| `test_supra_integration.py` | 13 | SUPRA piano roll workflow (partial alignment as a child) |
 | `test_thoresen_poc.py` | 35 | Thoresen graphical analysis workflow; imports Thoresen fixtures from conftest |
 | `../timelines/test_offset_arithmetic.py` | 11 | Parent–child offset arithmetic |
 
@@ -1347,15 +1315,6 @@ Tests for the Unified Stamp & Query API, using a star-topology bundle (1 score +
 | `TestMatchClaimDisplay` | 9 | `MatchClaim.__str__`/`_repr_html_`: instant, interval, NOMATCH, metadata, inferred, valid HTML, NOMATCH badge, affordance `Try` footer (`claim.get_matchstamp()`) appended after the table |
 | `TestTransferDocstring` | 1 | `transfer()` docstring no longer says "primary user-facing" |
 | `TestTopLevelExports` | 4 | `MatchGraph`, `MatchStamp`, `ClaimFilter` importable from top-level |
-
-### Deprecated Tests
-
-The following test methods use the deprecated `PerfectAlignment` class and will be removed in a future version:
-
-- `TestBackwardCompatibility.test_from_reference_still_works`
-- `TestBackwardCompatibility.test_iter_timelines_still_works`
-
-These tests verify backward compatibility during the migration period.
 
 ---
 

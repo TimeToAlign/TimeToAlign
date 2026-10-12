@@ -23,6 +23,7 @@ from timetoalign.core import (
     NumberType,
     TimeUnit,
 )
+from timetoalign.core.timestamp import _format_coordinate_value
 
 from .base import Timeline
 
@@ -273,8 +274,42 @@ class SegmentLineMixin:
         return 0
 
     def _finalize_from_dict(self, data: dict[str, Any]) -> None:
-        """Restore the serialized length after rebuilding the segments."""
-        self._length = self._make_coordinate(Timeline._from_dict_initial_length(data))
+        """Check that the rebuilt segments end exactly at the serialized length.
+
+        Raises:
+            ValueError: If the segments end short of, or beyond, the length.
+        """
+        length = Timeline._from_dict_initial_length(data)
+        if self._length.value != length:
+            raise ValueError(
+                f"Segment line {self.id!r} has segments ending at "
+                f"{_format_coordinate_value(float(self._length.value))}, but its "
+                f"length is {_format_coordinate_value(float(length))}"
+            )
+
+    def _manifest_class(self) -> str:
+        """The class the dictionary form writes: the segments' plain class.
+
+        A nested line names the class at the bottom of its nesting.
+
+        Raises:
+            ValueError: If the line has no segments and no plain segment type
+                (a bare, never-typed ``SegmentLine()`` or an empty nested
+                line), so that its dictionary form cannot say what it is.
+        """
+        if self._segment_order:
+            return self._children[self._segment_order[0]]._manifest_class()
+        segment_type = self._segment_type
+        if segment_type is not None and not issubclass(segment_type, SegmentLineMixin):
+            return segment_type.__name__
+        raise ValueError(
+            f"SegmentLine {self.id!r} has no segments and no plain segment "
+            "type, so its dictionary form cannot say what it is"
+        )
+
+    def _is_segment_line_instance(self) -> bool:
+        """Whether this timeline is a SegmentLine (the dictionary's flag)."""
+        return True
 
     @property
     def segment_type(self) -> type[Timeline] | None:

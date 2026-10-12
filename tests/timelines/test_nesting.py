@@ -719,12 +719,12 @@ class TestAddChildWithConversionMap:
         parent.add_child(child, offset=0, use_conversion_map=True)
 
         assert parent.n_children == 1
-        converted = parent.get_child("notes[samples]")
+        converted = parent.get_child("dpt_1")
         assert converted.unit == TimeUnit.samples
         assert converted.length.value == 441000.0
 
     def test_converted_child_has_correct_id_and_name(self):
-        """Converted child ID is '{original}[{parent_unit}]'."""
+        """A converted child's id is minted; its name links to the original."""
         from timetoalign.maps.convenience import SamplesToSeconds
 
         parent = Timeline(length=441000, unit=TimeUnit.samples, uid="audio")
@@ -736,9 +736,9 @@ class TestAddChildWithConversionMap:
 
         parent.add_child(child, offset=0, use_conversion_map=True)
 
-        converted = parent.get_child("my_notes[samples]")
-        assert converted.id == "my_notes[samples]"
-        assert "samples" in converted.name
+        converted = parent.get_child("dpt_1")
+        assert converted.id == "dpt_1"
+        assert converted.name == "my_notes [samples]"
 
     def test_converted_child_events_have_correct_coordinates(self):
         """Event coordinates are converted from child unit to parent unit."""
@@ -758,7 +758,7 @@ class TestAddChildWithConversionMap:
 
         parent.add_child(child, offset=0, use_conversion_map=True)
 
-        converted = parent.get_child("notes[samples]")
+        converted = parent.get_child("dpt_1")
         events = list(converted._events)
         assert len(events) == 1
         event = events[0]
@@ -805,7 +805,8 @@ class TestAddChildWithConversionMap:
         parent.add_child(child, offset=0, use_conversion_map="seconds")
 
         assert parent.n_children == 1
-        assert "notes[samples]" in parent
+        assert "dpt_1" in parent
+        assert parent.get_child("dpt_1").name == "notes [samples]"
 
     def test_use_conversion_map_by_cmap_object(self):
         """use_conversion_map accepts a ConversionMap object directly."""
@@ -890,7 +891,7 @@ class TestAddChildWithConversionMap:
 
         parent.add_child(child, offset=0, use_conversion_map=True)
 
-        converted = parent.get_child("notes[samples]")
+        converted = parent.get_child("dpt_1")
         assert converted.is_locked
         assert not child.is_locked
 

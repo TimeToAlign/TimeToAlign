@@ -389,7 +389,8 @@ class TestSerializedTypeParameters:
         data = original.to_dict(events=True)
         restored = Timeline.from_dict(data)
 
-        assert data["class"] == f"SegmentLine[{segment_class.__name__}]"
+        assert data["class"] == segment_class.__name__
+        assert data["is_segment_line"] is True
         assert isinstance(restored, SegmentLine)
         assert restored.segment_type is segment_class
         assert restored.n_segments == original.n_segments == 2
@@ -414,17 +415,16 @@ class TestSerializedTypeParameters:
             for _, _, segment in restored.iter_segments()
         ] == ["map_0", "map_1"]
 
-    def test_parameterized_segment_line_rejects_unregistered_inner_class(self):
-        """An unknown segment type identifies both the type and full tag."""
+    def test_segment_line_rejects_unregistered_segment_class(self):
+        """An unknown segment class is named in the refusal."""
         data = SegmentLine[DiscreteGraphicalTimeline](length=0).to_dict()
-        data["class"] = "SegmentLine[UnregisteredSegmentTimeline]"
+        data["class"] = "UnregisteredSegmentTimeline"
 
         with pytest.raises(ValueError) as error:
             Timeline.from_dict(data)
 
         assert str(error.value) == (
-            "Unknown serialized timeline class 'UnregisteredSegmentTimeline' "
-            "in parameterized tag 'SegmentLine[UnregisteredSegmentTimeline]'"
+            "Unknown serialized timeline class 'UnregisteredSegmentTimeline'"
         )
 
     def test_nested_parameterized_segment_line_round_trip(self):
@@ -512,53 +512,32 @@ class TestSerializedTypeParameters:
         assert restored.n_segments == 1
 
     def test_nested_payload_materializes_dynamic_classes(self):
-        """A hand-captured nested payload materializes both dynamic classes."""
+        """A hand-written nested payload materializes both dynamic classes."""
         zero = {"unit": "pixels", "number_type": "int", "value": 0}
         ten = {"unit": "pixels", "number_type": "int", "value": 10}
-        payload = {
-            "id": "systems",
-            "name": None,
-            "class": "SegmentLine[SegmentLine[DiscreteGraphicalTimeline]]",
-            "unit": "pixels",
-            "number_type": "int",
-            "length": ten,
-            "locked": False,
-            "meta": {},
-            "children": {
-                "system": {
-                    "offset": zero,
-                    "timeline": {
-                        "id": "system",
-                        "name": None,
-                        "class": "SegmentLine[DiscreteGraphicalTimeline]",
-                        "unit": "pixels",
-                        "number_type": "int",
-                        "length": ten,
-                        "locked": True,
-                        "meta": {},
-                        "children": {
-                            "staff": {
-                                "offset": zero,
-                                "timeline": {
-                                    "id": "staff",
-                                    "name": None,
-                                    "class": "DiscreteGraphicalTimeline",
-                                    "unit": "pixels",
-                                    "number_type": "int",
-                                    "length": ten,
-                                    "locked": True,
-                                    "meta": {},
-                                    "children": {},
-                                    "conversion_maps": [],
-                                },
-                            }
-                        },
-                        "conversion_maps": [],
-                    },
-                }
-            },
-            "conversion_maps": [],
-        }
+
+        def manifest(timeline_id, flag, children):
+            return {
+                "id": timeline_id,
+                "name": None,
+                "class": "DiscreteGraphicalTimeline",
+                "is_segment_line": flag,
+                "unit": "pixels",
+                "number_type": "int",
+                "length": ten,
+                "locked": False,
+                "meta": {},
+                "children": children,
+                "conversion_maps": [],
+            }
+
+        staff = manifest("staff", False, {})
+        system = manifest(
+            "system", True, {"staff": {"offset": zero, "timeline": staff}}
+        )
+        payload = manifest(
+            "systems", True, {"system": {"offset": zero, "timeline": system}}
+        )
 
         restored = Timeline.from_dict(payload)
         inner_class = SegmentLine[DiscreteGraphicalTimeline]

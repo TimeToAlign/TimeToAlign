@@ -67,6 +67,33 @@ MATCH_META = MatchMetadata(
 # region MatchfileLoader
 
 
+def _with_timeline_id(claim: MatchClaim, old_id: str, new_id: str) -> MatchClaim:
+    """Return *claim* naming *new_id* wherever it names *old_id*.
+
+    Only the timeline identities change; coordinates and events are kept.
+    """
+    if old_id == new_id or old_id not in claim.timelines:
+        return claim
+
+    def renamed(timeline_id: str) -> str:
+        return new_id if timeline_id == old_id else timeline_id
+
+    updates: dict[str, Any] = {
+        "timeline_a_id": renamed(claim.timeline_a_id),
+        "timeline_b_id": renamed(claim.timeline_b_id),
+    }
+    for name in ("start_anchor", "end_anchor"):
+        anchor = getattr(claim, name)
+        if anchor is not None:
+            updates[name] = anchor.model_copy(
+                update={
+                    "timeline_a_id": renamed(anchor.timeline_a_id),
+                    "timeline_b_id": renamed(anchor.timeline_b_id),
+                }
+            )
+    return claim.model_copy(update=updates)
+
+
 class MatchfileLoader(AlignmentLoader):
     """Load Vienna Match (.match) alignment files via partitura.
 
@@ -702,10 +729,9 @@ class MatchfileLoader(AlignmentLoader):
         Args:
             score_timeline: Optional pre-existing score timeline. When
                 supplied, the bundle uses this timeline instead of the
-                loader's internally built one. MatchClaims are NOT
-                rebound — they still reference the internally built
-                score timeline's uid. For correct cross-referencing,
-                the external timeline should have the same uid.
+                loader's internally built one, whatever its id: the
+                MatchClaims name the id of the score timeline the bundle
+                holds. The loader's own claim list is left unchanged.
             verify: If ``True`` (default) and *score_timeline* is not
                 ``None``, verify that internally built events are
                 compatible with the external timeline. Set to ``False``
@@ -754,12 +780,19 @@ class MatchfileLoader(AlignmentLoader):
                 )
 
         bundle = AlignmentBundle()
-        bundle.add_timeline(actual_score, uid="score:clt_1", as_group="score")
+        bundle.add_timeline(actual_score, as_group="score")
 
         for perf_tl in self._performance_timelines:
             bundle.add_timeline(perf_tl)
 
-        bundle.add_match_claims(self._claims)
+        # The claims were built against the loader's own score timeline; they
+        # name whichever score timeline the bundle actually holds.
+        bundle.add_match_claims(
+            [
+                _with_timeline_id(claim, self._score_timeline.id, actual_score.id)
+                for claim in self._claims
+            ]
+        )
 
         return bundle
 

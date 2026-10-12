@@ -120,8 +120,11 @@ def test_bundle_group_count(bundle) -> None:
 
 
 def test_bundle_group_ids(bundle) -> None:
-    expected = {"score"} | {f"perf:{key}" for key in PERFORMER_KEYS}
-    assert set(bundle.group_ids) == expected
+    """Group ids are minted in creation order; the labels are the group names."""
+    assert bundle.group_ids == [f"group_{n}" for n in range(1, 7)]
+    assert [group.name for group in bundle.groups.values()] == ["score"] + [
+        f"perf:{key}" for key in PERFORMER_KEYS
+    ]
 
 
 def test_discovers_five_performers(loader: ParangonadaLoader) -> None:

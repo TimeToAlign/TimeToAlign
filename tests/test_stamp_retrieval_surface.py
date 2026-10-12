@@ -63,8 +63,8 @@ def _ratio_bundle(*, columnar: bool) -> AlignmentBundle:
     score = ContinuousLogicalTimeline(length=Fraction(10), uid="clt_1")
     performance = ContinuousPhysicalTimeline(length=20.0, unit="seconds", uid="cpt_1")
     bundle = AlignmentBundle(id="ratios")
-    bundle.add_timeline(score, uid="clt_1", as_group="score_group")
-    bundle.add_timeline(performance, uid="cpt_1", as_group="perf_group")
+    bundle.add_timeline(score, as_group="score_group")
+    bundle.add_timeline(performance, as_group="perf_group")
 
     claims = [
         MatchClaim(
@@ -94,8 +94,8 @@ def _bundle() -> AlignmentBundle:
     performance = Timeline(length=200, uid="perf", unit=TimeUnit.number)
 
     bundle = AlignmentBundle(id="pair")
-    bundle.add_timeline(score, uid="score", as_group="score_group")
-    bundle.add_timeline(performance, uid="perf", as_group="perf_group")
+    bundle.add_timeline(score, as_group="score_group")
+    bundle.add_timeline(performance, as_group="perf_group")
     bundle.add_match_claims(
         [
             MatchClaim(
@@ -585,19 +585,12 @@ class TestStructCells:
                 == per_claim["clt_1 (quarters)"].tolist()
             )
 
-    def test_group_stored_boundary_rows_are_a_known_float_lane(self) -> None:
-        """Documented limitation: a group's STORED rows come from a float store.
+    def test_group_stored_boundary_rows_are_exact(self) -> None:
+        """A group's stored rows are its common start and end, written exactly.
 
-        A group's timestamp store is ``float64`` by design — interpolation
-        between members runs on doubles — so a boundary that was authored as
-        an exact ratio is recorded as the double nearest to it and reads back
-        as that double's dyadic. Everything the group computes from a query is
-        exact: the stamp lane, the coordinate lane, and ``at=``-queried table
-        rows all answer ``5/3``. Only the rows the store already holds are
-        affected.
-
-        Pinned rather than hidden, so that the day the store becomes typed
-        this test fails and says exactly what changed.
+        A member authored with an exact length stands at that length in the
+        stored end row, so the stored lane, the queried table lane, the stamp
+        lane and the coordinate lane all answer ``5/3``.
         """
         score = ContinuousLogicalTimeline(length=Fraction(5, 3), uid="clt_1")
         audio = ContinuousPhysicalTimeline(length=20.0, unit="seconds", uid="cpt_1")
@@ -608,15 +601,8 @@ class TestStructCells:
             [Fraction(5, 3)], "clt_1", format="dataframe"
         )
 
-        # The store itself is doubles, which is where the loss happens.
-        assert group._timestamp_table.column("clt_1").to_pylist() == [
-            0.0,
-            float(Fraction(5, 3)),
-        ]
-        assert stored["clt_1 (quarters)"].tolist()[1] == self.DYADIC_OF_FIVE_THIRDS
-
-        # Every lane that resolves a query rather than replaying a stored row
-        # is exact.
+        assert stored["clt_1 (quarters)"].tolist() == [Fraction(0), Fraction(5, 3)]
+        assert stored["cpt_1 (seconds)"].tolist() == [0.0, 20.0]
         assert queried["clt_1 (quarters)"].tolist() == [Fraction(5, 3)]
         assert group.get_timestamp_at(Fraction(5, 3), "clt_1").axis.value == Fraction(
             5, 3
@@ -743,17 +729,21 @@ class TestAtomicity:
         with pytest.raises(ValueError):
             group.get_timestamp_table([0.0, 99.0], "cpt_1", format="dataframe")
 
-    def test_a_null_cell_means_only_that_a_member_is_unreached(self) -> None:
-        """The surviving meaning of a null, pinned so it stays the only one."""
+    def test_a_null_cell_means_only_that_a_timeline_is_unreached(self) -> None:
+        """The surviving meaning of a null, pinned so it stays the only one.
+
+        Members span the whole group; a member's child covering part of it is
+        the timeline a valid query can leave unreached.
+        """
         pixels = DiscreteGraphicalTimeline(length=1000, unit="pixels", uid="dgt_1")
         partial = DiscreteGraphicalTimeline(length=400, unit="pixels", uid="dgt_2")
+        pixels.add_child(partial, offset=0)
         group = TimelineGroup(id="gapped", timelines=[pixels])
-        group.add_timeline(partial, start=0, end=500)
 
-        frame = group.get_timestamp_table(format="dataframe")
+        frame = group.get_timestamp_table([0, 200, 1000], "dgt_1", format="dataframe")
 
-        assert frame["dgt_2 (pixels)"].isna().any()
-        assert frame["dgt_2 (pixels)"].dropna().tolist() == [0, 400]
+        assert frame["dgt_2 (pixels)"].isna().tolist() == [False, False, True]
+        assert frame["dgt_2 (pixels)"].dropna().tolist() == [0, 200]
 
 
 # endregion

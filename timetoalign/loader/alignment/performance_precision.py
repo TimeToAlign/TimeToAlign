@@ -525,9 +525,9 @@ class PerformancePrecisionLoader(AlignmentLoader):
             )
 
         bundle = AlignmentBundle(name=self._name)
-        bundle.add_timeline(self._score_timeline, uid=_SCORE_TL_ID, as_group="score")
+        bundle.add_timeline(self._score_timeline, as_group="score")
         for perf_tl in self._performance_timelines.values():
-            bundle.add_timeline(perf_tl, uid=perf_tl.id)
+            bundle.add_timeline(perf_tl)
         bundle.add_match_claims(self._claims)
         return bundle
 

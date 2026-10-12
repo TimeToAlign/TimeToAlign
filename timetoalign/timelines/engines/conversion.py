@@ -31,7 +31,7 @@ from timetoalign.core.retrieval import (
     validate_key_collection,
 )
 from timetoalign.core.time import coordinate_numeric_value, exact_coordinate_value
-from timetoalign.maps import ConversionMap, InterpolationMap
+from timetoalign.maps import ConversionMap
 
 if TYPE_CHECKING:
     from ..base import Timeline
@@ -399,29 +399,6 @@ class ConversionMapsMixin:
                 else float(coordinate_numeric_value(parent_coord)) + float(offset.value)
             )
         return parent_coord
-
-    def _get_interpolation_map(
-        self, target_id: str, source_id: str | None = None
-    ) -> InterpolationMap | None:
-        """Get InterpolationMap for coordinate conversion to target.
-
-        This method is part of the `TimeStampSource` protocol.
-
-        For parent-child relationships, returns None: child coordinates are
-        resolved via exact offset arithmetic in ``_get_child_coordinate()``
-        instead. InterpolationMaps are only used by `TimelineGroup` for
-        inter-member conversions and, for unit-based conversions, by
-        ``_get_unit_map`` (which returns whichever ConversionMap type was
-        registered, not necessarily an InterpolationMap).
-
-        Args:
-            target_id: Target timeline ID.
-            source_id: Source timeline ID (ignored for Timeline, always self).
-
-        Returns:
-            None. Child conversion uses offset arithmetic.
-        """
-        return None
 
     def _get_unit_maps(self, unit: TimeUnit) -> list[ConversionMap[Any]]:
         """Get every map registered for a unit, in attachment order.

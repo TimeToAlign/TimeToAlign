@@ -46,19 +46,19 @@ from .helpers import make_match_stamp as MatchStamp
 @pytest.fixture
 def simple_timeline() -> Timeline:
     """A simple 100-unit timeline."""
-    return Timeline(length=100, uid="tl_simple", name="Simple Timeline")
+    return Timeline(length=100, uid="tl1", name="Simple Timeline")
 
 
 @pytest.fixture
 def second_timeline() -> Timeline:
     """A second 200-unit timeline."""
-    return Timeline(length=200, uid="tl_second", name="Second Timeline")
+    return Timeline(length=200, uid="tl2", name="Second Timeline")
 
 
 @pytest.fixture
 def third_timeline() -> Timeline:
     """A third 50-unit timeline."""
-    return Timeline(length=50, uid="tl_third", name="Third Timeline")
+    return Timeline(length=50, uid="tl3", name="Third Timeline")
 
 
 # endregion
@@ -76,7 +76,7 @@ class TestBundleCreation:
 
         assert bundle.n_timelines == 0
         assert bundle.n_groups == 0
-        assert bundle.id.startswith("bundle:")
+        assert bundle.id == "bundle_1"
 
     def test_create_bundle_with_name(self) -> None:
         """Bundle can be created with a name."""
@@ -104,7 +104,7 @@ class TestTimelineManagement:
     def test_add_timeline_simple(self, simple_timeline: Timeline) -> None:
         """Can add a simple timeline."""
         bundle = AlignmentBundle()
-        result = bundle.add_timeline(simple_timeline, uid="tl1")
+        result = bundle.add_timeline(simple_timeline)
 
         # Returns self for chaining
         assert result is bundle
@@ -114,24 +114,24 @@ class TestTimelineManagement:
         assert "tl1" in bundle.timeline_ids
 
     def test_add_timeline_uses_timeline_id(self, simple_timeline: Timeline) -> None:
-        """If no uid provided, uses timeline.id."""
+        """A timeline is registered under its own id."""
         bundle = AlignmentBundle()
         bundle.add_timeline(simple_timeline)
 
         assert simple_timeline.id in bundle.timeline_ids
 
-    def test_add_duplicate_uid_raises(self, simple_timeline: Timeline) -> None:
-        """Adding timeline with duplicate uid raises ValueError."""
+    def test_add_duplicate_timeline_raises(self, simple_timeline: Timeline) -> None:
+        """Adding the same timeline twice raises ValueError."""
         bundle = AlignmentBundle()
-        bundle.add_timeline(simple_timeline, uid="tl1")
+        bundle.add_timeline(simple_timeline)
 
         with pytest.raises(ValueError, match="already exists"):
-            bundle.add_timeline(simple_timeline, uid="tl1")
+            bundle.add_timeline(simple_timeline)
 
     def test_get_timeline(self, simple_timeline: Timeline) -> None:
         """Can retrieve timeline by ID."""
         bundle = AlignmentBundle()
-        bundle.add_timeline(simple_timeline, uid="tl1")
+        bundle.add_timeline(simple_timeline)
 
         retrieved = bundle.get_timeline("tl1")
         assert retrieved is simple_timeline
@@ -148,8 +148,8 @@ class TestTimelineManagement:
     ) -> None:
         """timeline_ids returns all timeline IDs."""
         bundle = AlignmentBundle()
-        bundle.add_timeline(simple_timeline, uid="tl1")
-        bundle.add_timeline(second_timeline, uid="tl2")
+        bundle.add_timeline(simple_timeline)
+        bundle.add_timeline(second_timeline)
 
         assert set(bundle.timeline_ids) == {"tl1", "tl2"}
 
@@ -168,8 +168,8 @@ class TestGroupManagement:
     ) -> None:
         """Adding timeline with grouped_with creates a group."""
         bundle = AlignmentBundle()
-        bundle.add_timeline(simple_timeline, uid="tl1")
-        bundle.add_timeline(second_timeline, uid="tl2", grouped_with="tl1")
+        bundle.add_timeline(simple_timeline)
+        bundle.add_timeline(second_timeline, grouped_with="tl1")
 
         assert bundle.n_groups == 1
         assert bundle.n_timelines == 2
@@ -179,12 +179,11 @@ class TestGroupManagement:
     ) -> None:
         """Group contains both source and grouped timeline."""
         bundle = AlignmentBundle()
-        bundle.add_timeline(simple_timeline, uid="tl1")
-        bundle.add_timeline(second_timeline, uid="tl2", grouped_with="tl1")
+        bundle.add_timeline(simple_timeline)
+        bundle.add_timeline(second_timeline, grouped_with="tl1")
 
         group = bundle.default_group
         assert group is not None
-        # Groups use actual timeline.id, not bundle UIDs
         assert simple_timeline.id in group
         assert second_timeline.id in group
 
@@ -193,12 +192,11 @@ class TestGroupManagement:
     ) -> None:
         """Group reference is the first timeline added."""
         bundle = AlignmentBundle()
-        bundle.add_timeline(simple_timeline, uid="tl1")
-        bundle.add_timeline(second_timeline, uid="tl2", grouped_with="tl1")
+        bundle.add_timeline(simple_timeline)
+        bundle.add_timeline(second_timeline, grouped_with="tl1")
 
         group = bundle.default_group
         assert group is not None
-        # Groups use actual timeline.id, not bundle UIDs
         assert simple_timeline.id in group.timeline_ids
 
     def test_add_timeline_to_nonexistent_raises(
@@ -208,16 +206,16 @@ class TestGroupManagement:
         bundle = AlignmentBundle()
 
         with pytest.raises(KeyError, match="not in bundle"):
-            bundle.add_timeline(simple_timeline, uid="tl1", grouped_with="nonexistent")
+            bundle.add_timeline(simple_timeline, grouped_with="nonexistent")
 
     def test_add_timeline_as_group(self, simple_timeline: Timeline) -> None:
         """Can create timeline as reference of a named group."""
         bundle = AlignmentBundle()
-        bundle.add_timeline(simple_timeline, uid="tl1", as_group="my_group")
+        bundle.add_timeline(simple_timeline, as_group="my_group")
 
-        assert "my_group" in bundle.group_ids
-        group = bundle.get_group("my_group")
-        # Groups use actual timeline.id, not bundle UIDs
+        assert bundle.group_ids == ["group_1"]
+        group = bundle.get_group("group_1")
+        assert group.name == "my_group"
         assert simple_timeline.id in group.timeline_ids
 
     def test_get_group_for_timeline(
@@ -225,76 +223,44 @@ class TestGroupManagement:
     ) -> None:
         """Can get the group containing a timeline."""
         bundle = AlignmentBundle()
-        bundle.add_timeline(simple_timeline, uid="tl1", as_group="grp1")
-        bundle.add_timeline(second_timeline, uid="tl2", grouped_with="tl1")
+        bundle.add_timeline(simple_timeline, as_group="grp1")
+        bundle.add_timeline(second_timeline, grouped_with="tl1")
 
         group = bundle.get_group_for_timeline("tl2")
         assert group is not None
-        assert group.id == "grp1"
+        assert group.id == "group_1"
+        assert group.name == "grp1"
 
     def test_standalone_timeline_has_no_group(self, simple_timeline: Timeline) -> None:
         """Standalone timeline returns None for get_group_for_timeline."""
         bundle = AlignmentBundle()
-        bundle.add_timeline(simple_timeline, uid="tl1")
+        bundle.add_timeline(simple_timeline)
 
         assert bundle.get_group_for_timeline("tl1") is None
 
-    def test_add_timeline_with_coordinate_boundaries(self) -> None:
-        """Coordinate boundary forms use the aligned bundle UID as context."""
-        reference = Timeline(
-            length=150.0,
-            unit=TimeUnit.seconds,
-            uid="actual-reference",
-        )
-        section = Timeline(
-            length=100.0,
-            unit=TimeUnit.seconds,
-            uid="actual-section",
-        )
+    def test_add_child_timeline_brings_its_root(self) -> None:
+        """A part of a timeline joins as a child, and its root joins with it.
+
+        The section covers ``[25, 125]`` seconds of the reference: it is the
+        reference's child at offset 25, so its 0 is the reference's 25 and its
+        length 100 the reference's 125.
+        """
+        reference = Timeline(length=150.0, unit=TimeUnit.seconds, uid="reference")
+        section = Timeline(length=100.0, unit=TimeUnit.seconds, uid="section")
+        reference.add_child(section, offset=25.0)
         bundle = AlignmentBundle()
-        bundle.add_timeline(reference, uid="reference")
+        bundle.add_timeline(section, as_group="part")
 
-        bundle.add_timeline(
-            section,
-            uid="section",
-            grouped_with="reference",
-            start=Coordinate(25.0, TimeUnit.seconds),
-            end=IdCoordinate(125.0, TimeUnit.seconds, "reference"),
-        )
-
-        group = bundle.default_group
-        assert group is not None
-        assert group.get_timestamp_at_index(1).coordinates == {
-            "actual-reference": Coordinate(25.0, TimeUnit.seconds),
-            "actual-section": Coordinate(0.0, TimeUnit.seconds),
+        assert bundle.timeline_ids == ["section", "reference"]
+        assert bundle.timeline_to_group == {"section": "group_1"}
+        assert bundle.get_matchstamp_at(0.0, "section").coordinates == {
+            "section": Coordinate(0.0, TimeUnit.seconds),
+            "reference": Coordinate(25.0, TimeUnit.seconds),
         }
-        assert group.get_timestamp_at_index(2).coordinates == {
-            "actual-reference": Coordinate(125.0, TimeUnit.seconds),
-            "actual-section": Coordinate(100.0, TimeUnit.seconds),
+        assert bundle.get_matchstamp_at(125.0, "reference").coordinates == {
+            "reference": Coordinate(125.0, TimeUnit.seconds),
+            "section": Coordinate(100.0, TimeUnit.seconds),
         }
-
-    def test_add_timeline_coordinate_boundary_rejects_wrong_unit(self) -> None:
-        """Bundle Coordinate boundaries validate against the aligned timeline."""
-        reference = Timeline(
-            length=150.0,
-            unit=TimeUnit.seconds,
-            uid="actual-reference",
-        )
-        section = Timeline(
-            length=100.0,
-            unit=TimeUnit.seconds,
-            uid="actual-section",
-        )
-        bundle = AlignmentBundle()
-        bundle.add_timeline(reference, uid="reference")
-
-        with pytest.raises(ValueError, match="No C-Map available"):
-            bundle.add_timeline(
-                section,
-                uid="section",
-                grouped_with="reference",
-                start=Coordinate(25.0, TimeUnit.pixels),
-            )
 
 
 # endregion
@@ -311,7 +277,7 @@ class TestCoordinateTransfer:
     ) -> None:
         """Transferring to same timeline returns input coordinate."""
         bundle = AlignmentBundle()
-        bundle.add_timeline(simple_timeline, uid="tl1", as_group="grp")
+        bundle.add_timeline(simple_timeline, as_group="grp")
 
         result = bundle.transfer(50.0, "tl1", "tl1")
         assert result == 50.0
@@ -321,10 +287,8 @@ class TestCoordinateTransfer:
     ) -> None:
         """Transfer within group uses linear interpolation."""
         bundle = AlignmentBundle()
-        bundle.add_timeline(simple_timeline, uid="tl1")  # length=100
-        bundle.add_timeline(
-            second_timeline, uid="tl2", grouped_with="tl1"
-        )  # length=200
+        bundle.add_timeline(simple_timeline)  # length=100
+        bundle.add_timeline(second_timeline, grouped_with="tl1")  # length=200
 
         # 50/100 = 0.5, so in tl2: 0.5 * 200 = 100
         result = bundle.transfer(50.0, "tl1", "tl2")
@@ -339,10 +303,8 @@ class TestCoordinateTransfer:
     ) -> None:
         """Transfer works correctly at boundaries."""
         bundle = AlignmentBundle()
-        bundle.add_timeline(simple_timeline, uid="tl1")  # length=100
-        bundle.add_timeline(
-            second_timeline, uid="tl2", grouped_with="tl1"
-        )  # length=200
+        bundle.add_timeline(simple_timeline)  # length=100
+        bundle.add_timeline(second_timeline, grouped_with="tl1")  # length=200
 
         # Start: 0 -> 0
         assert bundle.transfer(0.0, "tl1", "tl2") == 0.0
@@ -353,7 +315,7 @@ class TestCoordinateTransfer:
     def test_transfer_not_in_bundle_raises(self, simple_timeline: Timeline) -> None:
         """Transfer with non-existent timeline raises KeyError."""
         bundle = AlignmentBundle()
-        bundle.add_timeline(simple_timeline, uid="tl1")
+        bundle.add_timeline(simple_timeline)
 
         with pytest.raises(KeyError, match="not in bundle"):
             bundle.transfer(50.0, "nonexistent", "tl1")
@@ -366,8 +328,8 @@ class TestCoordinateTransfer:
     ) -> None:
         """Transfer between different groups returns None."""
         bundle = AlignmentBundle()
-        bundle.add_timeline(simple_timeline, uid="tl1", as_group="grp1")
-        bundle.add_timeline(second_timeline, uid="tl2", as_group="grp2")
+        bundle.add_timeline(simple_timeline, as_group="grp1")
+        bundle.add_timeline(second_timeline, as_group="grp2")
 
         result = bundle.transfer(50.0, "tl1", "tl2")
         assert result is None
@@ -377,14 +339,42 @@ class TestCoordinateTransfer:
     ) -> None:
         """Can transfer an interval."""
         bundle = AlignmentBundle()
-        bundle.add_timeline(simple_timeline, uid="tl1")  # length=100
-        bundle.add_timeline(
-            second_timeline, uid="tl2", grouped_with="tl1"
-        )  # length=200
+        bundle.add_timeline(simple_timeline)  # length=100
+        bundle.add_timeline(second_timeline, grouped_with="tl1")  # length=200
 
         result = bundle.transfer_interval(25.0, 75.0, "tl1", "tl2")
         assert result is not None
         assert result == (50.0, 150.0)
+
+
+# endregion
+
+
+# region Test: Exact within-group transfer
+
+
+def test_matchstamp_carries_group_members_exactly() -> None:
+    """A bundle stamp converts within a group on exact ratios, not floats.
+
+    Members of lengths 3 and 7 quarters: quarter 1/3 on the first is 7/9 on
+    the second. A float lane would answer the dyadic of 0.777….
+    """
+    from timetoalign.timelines.types import ContinuousLogicalTimeline
+
+    bundle = AlignmentBundle()
+    bundle.add_timeline(
+        ContinuousLogicalTimeline(length=Fraction(3), uid="a"), as_group="pair"
+    )
+    bundle.add_timeline(
+        ContinuousLogicalTimeline(length=Fraction(7), uid="b"), grouped_with="a"
+    )
+
+    stamp = bundle.get_matchstamp_at(Fraction(1, 3), "a")
+
+    assert stamp.get_coordinate_for("b", format="coordinate") == Coordinate(
+        Fraction(7, 9), TimeUnit.quarters
+    )
+    assert type(stamp.get_coordinate_for("b").value) is Fraction
 
 
 # endregion
@@ -396,32 +386,35 @@ class TestCoordinateTransfer:
 class TestCustomAlignment:
     """Tests for custom alignment specifications.
 
-    Partial alignment is specified via start/end parameters on
-    TimelineGroup.add_timeline(). The AlignmentBundle currently only
-    supports linear (full-extent) alignment.
+    A timeline that corresponds to part of another takes part as a child of
+    it: the child carries the exact offset, the group relates whole members.
     """
 
-    def test_partial_alignment_via_group(
+    def test_partial_alignment_via_child(
         self, simple_timeline: Timeline, second_timeline: Timeline
     ) -> None:
-        """Can specify partial alignment ranges via group API."""
-        # Create group directly with partial alignment
-        group = TimelineGroup(id="test_group")
-        group.add_timeline(simple_timeline)
-        # Map second_timeline's full extent (0-200) to simple_timeline's 0-50
-        group.add_timeline(
-            second_timeline,
-            end=IdCoordinate(50.0, simple_timeline.unit, simple_timeline.id),
-        )
+        """A part of a timeline is a child, and the child is the group member."""
+        # second_timeline's full extent (0-200) corresponds to simple_timeline's
+        # 0-50, which is the child covering that part.
+        part = Timeline(length=50.0, unit=simple_timeline.unit, uid="tl1_part")
+        simple_timeline.add_child(part, offset=0)
+        group = TimelineGroup(id="test_group", timelines=[part, second_timeline])
 
         # At tl2 coord 50: 25% through tl2's range (0-200)
-        # Should map to 25% through the mapped range (0-50) = 12.5 in tl1
-        result = group.get_coordinate_at(
-            IdCoordinate(50.0, second_timeline.unit, second_timeline.id),
-            timeline_id=simple_timeline.id,
-            format="coordinate",
+        # Should map to 25% through the part (0-50) = 12.5, which the part's
+        # offset 0 places at 12.5 on tl1
+        stamp = group.get_timestamp_at(
+            IdCoordinate(50.0, second_timeline.unit, second_timeline.id)
         )
-        assert result == Coordinate(12.5, simple_timeline.unit)
+        assert stamp.get_coordinate_for(part.id, format="coordinate") == Coordinate(
+            12.5, simple_timeline.unit
+        )
+        assert (
+            simple_timeline._get_parent_coordinate_from_child(
+                part.id, stamp.get_coordinate_for(part.id, format="float")
+            )
+            == 12.5
+        )
 
 
 # endregion
@@ -443,8 +436,8 @@ class TestOrderIndependence:
     ) -> None:
         """Adding tl1 first, then tl2 grouped with tl1."""
         bundle = AlignmentBundle(id="test_bundle")
-        bundle.add_timeline(simple_timeline, uid="tl1")
-        bundle.add_timeline(second_timeline, uid="tl2", grouped_with="tl1")
+        bundle.add_timeline(simple_timeline)
+        bundle.add_timeline(second_timeline, grouped_with="tl1")
 
         # Transfer should work
         result = bundle.transfer(50.0, "tl1", "tl2")
@@ -459,22 +452,22 @@ class TestOrderIndependence:
         """Three timelines added in different orders produce same transfer results."""
         # Order 1: tl1, tl2, tl3
         b1 = AlignmentBundle(id="b1")
-        tl1_1 = Timeline(length=100, uid="t1")
-        tl2_1 = Timeline(length=200, uid="t2")
-        tl3_1 = Timeline(length=50, uid="t3")
-        b1.add_timeline(tl1_1, uid="tl1")
-        b1.add_timeline(tl2_1, uid="tl2", grouped_with="tl1")
-        b1.add_timeline(tl3_1, uid="tl3", grouped_with="tl1")
+        tl1_1 = Timeline(length=100, uid="tl1")
+        tl2_1 = Timeline(length=200, uid="tl2")
+        tl3_1 = Timeline(length=50, uid="tl3")
+        b1.add_timeline(tl1_1)
+        b1.add_timeline(tl2_1, grouped_with="tl1")
+        b1.add_timeline(tl3_1, grouped_with="tl1")
 
         # Order 2: tl2, tl1, tl3 (tl2 first, then tl1 grouped with tl2)
         # Note: This changes the reference, so let's test with same reference
         b2 = AlignmentBundle(id="b2")
-        tl1_2 = Timeline(length=100, uid="t1")
-        tl2_2 = Timeline(length=200, uid="t2")
-        tl3_2 = Timeline(length=50, uid="t3")
-        b2.add_timeline(tl1_2, uid="tl1")
-        b2.add_timeline(tl3_2, uid="tl3", grouped_with="tl1")
-        b2.add_timeline(tl2_2, uid="tl2", grouped_with="tl1")
+        tl1_2 = Timeline(length=100, uid="tl1")
+        tl2_2 = Timeline(length=200, uid="tl2")
+        tl3_2 = Timeline(length=50, uid="tl3")
+        b2.add_timeline(tl1_2)
+        b2.add_timeline(tl3_2, grouped_with="tl1")
+        b2.add_timeline(tl2_2, grouped_with="tl1")
 
         # Both should give same transfer results
         # tl1 -> tl2: 50/100 * 200 = 100
@@ -497,8 +490,8 @@ class TestOrderIndependence:
     ) -> None:
         """Summary output is deterministic (sorted keys)."""
         bundle = AlignmentBundle(id="test_bundle", name="Test")
-        bundle.add_timeline(simple_timeline, uid="tl1")
-        bundle.add_timeline(second_timeline, uid="tl2", grouped_with="tl1")
+        bundle.add_timeline(simple_timeline)
+        bundle.add_timeline(second_timeline, grouped_with="tl1")
 
         summary = bundle.summary()
 
@@ -524,7 +517,7 @@ class TestCommensurability:
     def test_same_timeline_is_commensurable(self, simple_timeline: Timeline) -> None:
         """A timeline is commensurable with itself."""
         bundle = AlignmentBundle()
-        bundle.add_timeline(simple_timeline, uid="tl1")
+        bundle.add_timeline(simple_timeline)
 
         assert bundle.are_commensurable("tl1", "tl1") is True
 
@@ -533,8 +526,8 @@ class TestCommensurability:
     ) -> None:
         """Timelines in same group are commensurable."""
         bundle = AlignmentBundle()
-        bundle.add_timeline(simple_timeline, uid="tl1")
-        bundle.add_timeline(second_timeline, uid="tl2", grouped_with="tl1")
+        bundle.add_timeline(simple_timeline)
+        bundle.add_timeline(second_timeline, grouped_with="tl1")
 
         assert bundle.are_commensurable("tl1", "tl2") is True
 
@@ -543,8 +536,8 @@ class TestCommensurability:
     ) -> None:
         """Timelines in different groups are not commensurable."""
         bundle = AlignmentBundle()
-        bundle.add_timeline(simple_timeline, uid="tl1", as_group="grp1")
-        bundle.add_timeline(second_timeline, uid="tl2", as_group="grp2")
+        bundle.add_timeline(simple_timeline, as_group="grp1")
+        bundle.add_timeline(second_timeline, as_group="grp2")
 
         assert bundle.are_commensurable("tl1", "tl2") is False
 
@@ -562,15 +555,15 @@ class TestMethodChaining:
         self, simple_timeline: Timeline, second_timeline: Timeline
     ) -> None:
         """add_timeline returns self for chaining."""
-        tl1 = Timeline(length=100, uid="a")
-        tl2 = Timeline(length=200, uid="b")
-        tl3 = Timeline(length=50, uid="c")
+        tl1 = Timeline(length=100, uid="tl1")
+        tl2 = Timeline(length=200, uid="tl2")
+        tl3 = Timeline(length=50, uid="tl3")
 
         bundle = (
             AlignmentBundle()
-            .add_timeline(tl1, uid="tl1")
-            .add_timeline(tl2, uid="tl2", grouped_with="tl1")
-            .add_timeline(tl3, uid="tl3", grouped_with="tl1")
+            .add_timeline(tl1)
+            .add_timeline(tl2, grouped_with="tl1")
+            .add_timeline(tl3, grouped_with="tl1")
         )
 
         assert bundle.n_timelines == 3
@@ -589,26 +582,26 @@ def _make_cross_group_bundle() -> (
     """Build a 2-group bundle with 2 timelines per group.
 
     Group A ("score_group"):
-        - score_tl (length=200)   [bundle uid: "score"]
-        - image_tl (length=400)   [bundle uid: "image", grouped with "score"]
+        - score_tl (length=200)   [id: "score"]
+        - image_tl (length=400)   [id: "image", grouped with "score"]
 
     Group B ("recording_group"):
-        - audio_tl (length=100)   [bundle uid: "audio"]
-        - midi_tl  (length=100)   [bundle uid: "midi", grouped with "audio"]
+        - audio_tl (length=100)   [id: "audio"]
+        - midi_tl  (length=100)   [id: "midi", grouped with "audio"]
 
     Returns:
         (bundle, score_tl, image_tl, audio_tl, midi_tl)
     """
-    score_tl = Timeline(length=200, uid="score_t", name="Score")
-    image_tl = Timeline(length=400, uid="image_t", name="Image")
-    audio_tl = Timeline(length=100, uid="audio_t", name="Audio")
-    midi_tl = Timeline(length=100, uid="midi_t", name="MIDI")
+    score_tl = Timeline(length=200, uid="score", name="Score")
+    image_tl = Timeline(length=400, uid="image", name="Image")
+    audio_tl = Timeline(length=100, uid="audio", name="Audio")
+    midi_tl = Timeline(length=100, uid="midi", name="MIDI")
 
     bundle = AlignmentBundle(id="xgroup_test")
-    bundle.add_timeline(score_tl, uid="score", as_group="score_group")
-    bundle.add_timeline(image_tl, uid="image", grouped_with="score")
-    bundle.add_timeline(audio_tl, uid="audio", as_group="recording_group")
-    bundle.add_timeline(midi_tl, uid="midi", grouped_with="audio")
+    bundle.add_timeline(score_tl, as_group="score_group")
+    bundle.add_timeline(image_tl, grouped_with="score")
+    bundle.add_timeline(audio_tl, as_group="recording_group")
+    bundle.add_timeline(midi_tl, grouped_with="audio")
 
     return bundle, score_tl, image_tl, audio_tl, midi_tl
 
@@ -621,7 +614,7 @@ def _make_linear_claims(
     The mapping is: coord_b = coord_a * 0.5
     So tl_a range [0, n-1] maps to tl_b range [0, (n-1)*0.5].
 
-    Uses actual timeline IDs (not bundle UIDs).
+    Uses the timeline IDs.
     """
     claims = []
     for i in range(n_points):
@@ -642,30 +635,30 @@ def _make_linear_claims(
     return claims
 
 
-def _make_custom_uid_filter_bundle() -> tuple[
+def _make_claim_filter_bundle() -> tuple[
     AlignmentBundle,
     list[MatchClaim],
 ]:
-    """Build a bundle whose public UIDs differ from every claim timeline ID."""
+    """Build a three-group bundle with one claim between each pair of groups."""
     score = Timeline(
         length=100.0,
         unit=TimeUnit.quarters,
-        uid="timeline-001",
+        uid="score",
     )
     audio = Timeline(
         length=100.0,
         unit=TimeUnit.seconds,
-        uid="timeline-002",
+        uid="audio",
     )
     other = Timeline(
         length=100.0,
         unit=TimeUnit.seconds,
-        uid="timeline-003",
+        uid="other",
     )
-    bundle = AlignmentBundle(id="custom_uid_filters")
-    bundle.add_timeline(score, uid="score", as_group="score-group")
-    bundle.add_timeline(audio, uid="audio", as_group="audio-group")
-    bundle.add_timeline(other, uid="other", as_group="other-group")
+    bundle = AlignmentBundle(id="claim_filters")
+    bundle.add_timeline(score, as_group="score-group")
+    bundle.add_timeline(audio, as_group="audio-group")
+    bundle.add_timeline(other, as_group="other-group")
 
     def claim(timeline_a: Timeline, timeline_b: Timeline) -> MatchClaim:
         return MatchClaim(
@@ -687,15 +680,15 @@ def _make_custom_uid_filter_bundle() -> tuple[
 # endregion
 
 
-# region Test: Bundle UID claim filters
+# region Test: Claim filters
 
 
-class TestBundleUidClaimFilters:
-    """Canonical claim and stamp filters use the public bundle UID namespace."""
+class TestBundleClaimFilters:
+    """Claim and stamp filters select by the bundle's timeline IDs."""
 
-    def test_claim_selectors_translate_bundle_uids(self) -> None:
-        """Every ID selector returns the claims pinned by public bundle UIDs."""
-        bundle, claims = _make_custom_uid_filter_bundle()
+    def test_claim_selectors_select_by_timeline_id(self) -> None:
+        """Every ID selector returns the claims pinned by timeline IDs."""
+        bundle, claims = _make_claim_filter_bundle()
 
         assert bundle.get_match_claims(timeline_id="score") == claims[:2]
         assert bundle.get_match_claims(timeline_ids={"audio"}) == [
@@ -708,16 +701,16 @@ class TestBundleUidClaimFilters:
         ]
         assert bundle.get_match_claims(between=("score", "audio")) == [claims[0]]
 
-    def test_claim_unit_filter_uses_actual_id_metadata_lookup(self) -> None:
-        """Unit filters resolve actual claim IDs and reject impossible units."""
-        bundle, claims = _make_custom_uid_filter_bundle()
+    def test_claim_unit_filter_uses_timeline_metadata_lookup(self) -> None:
+        """Unit filters resolve claim timeline IDs and reject impossible units."""
+        bundle, claims = _make_claim_filter_bundle()
 
         assert bundle.get_match_claims(include_units={TimeUnit.seconds}) == [claims[2]]
         assert bundle.get_match_claims(include_units={TimeUnit.pixels}) == []
 
-    def test_matchstamp_timeline_ids_translate_bundle_uids(self) -> None:
-        """Post-hoc stamp filtering applies public UIDs to actual stamp keys."""
-        bundle, _ = _make_custom_uid_filter_bundle()
+    def test_matchstamp_timeline_ids_filter_stamp_keys(self) -> None:
+        """Post-hoc stamp filtering keeps exactly the selected timeline IDs."""
+        bundle, _ = _make_claim_filter_bundle()
 
         stamp = bundle.get_matchstamp_at(
             0.0,
@@ -790,7 +783,7 @@ class TestCrossGroupTransfer:
 
         with pytest.raises(
             ValueError,
-            match=r"source timeline 'score_t'.*get_matchstamp_at\(\)",
+            match=r"source timeline 'score'.*get_matchstamp_at\(\)",
         ):
             bundle.transfer(50.0, "score", "audio")
 
@@ -1002,10 +995,10 @@ class TestGetMatchstampAtCrossGroup:
 
         ts = bundle.get_matchstamp_at(100.0, "score").to_dict(format="nested")
 
-        # Must have source group
-        assert "score_group" in ts
-        assert "recording_group" in ts
-        recording_vals = ts["recording_group"]
+        # Must have source group; groups are keyed by their minted ids
+        assert "group_1" in ts
+        assert "group_2" in ts
+        recording_vals = ts["group_2"]
         audio_key = next(k for k in recording_vals if k.startswith("audio"))
         assert recording_vals[audio_key]["value"] == 50.0
 
@@ -1017,8 +1010,8 @@ class TestGetMatchstampAtCrossGroup:
 
         ts = bundle.get_matchstamp_at(100.0, "score").to_dict(format="prefix")
 
-        # Keys should be "group_id/timeline_uid" format
-        score_keys = [k for k in ts if k.startswith("score_group/")]
+        # Keys should be "group_id/timeline_id" format
+        score_keys = [k for k in ts if k.startswith("group_1/")]
         assert len(score_keys) >= 1  # at least "score"
 
     def test_timestamp_no_claims_source_only(self) -> None:
@@ -1027,8 +1020,8 @@ class TestGetMatchstampAtCrossGroup:
 
         ts = bundle.get_matchstamp_at(100.0, "score").to_dict(format="nested")
 
-        assert "score_group" in ts
-        assert "recording_group" not in ts
+        assert "group_1" in ts
+        assert "group_2" not in ts
 
 
 # endregion
@@ -1355,21 +1348,6 @@ class TestAddGroup:
         assert tl1.id in bundle.timeline_ids
         assert tl2.id in bundle.timeline_ids
 
-    def test_add_group_with_uid_map(self) -> None:
-        """Can add a group with custom UIDs via uid_map."""
-        tl1 = Timeline(length=100, uid="g1")
-        tl2 = Timeline(length=200, uid="g2")
-
-        group = TimelineGroup(id="my_group", timelines=[tl1, tl2])
-
-        bundle = AlignmentBundle(id="test")
-        bundle.add_group(group, uid_map={tl1.id: "custom1", tl2.id: "custom2"})
-
-        assert "custom1" in bundle.timeline_ids
-        assert "custom2" in bundle.timeline_ids
-        assert bundle.get_timeline("custom1") is tl1
-        assert bundle.get_timeline("custom2") is tl2
-
     def test_add_group_duplicate_id_raises(self) -> None:
         """Adding group with duplicate ID raises ValueError."""
         tl1 = Timeline(length=100, uid="g1")
@@ -1412,11 +1390,11 @@ def _make_xgroup_bundle_with_claims() -> tuple[AlignmentBundle, str, str]:
     """Cross-group bundle with linear claims; returns (bundle, score_id, audio_id).
 
     Reuses the module-level ``_make_cross_group_bundle`` + ``_make_linear_claims``
-    helpers. Claims map score_t -> audio_t linearly (audio = score * 0.5). The
+    helpers. Claims map score -> audio linearly (audio = score * 0.5). The
     score and audio timelines are seconds.
 
-    The returned ``score_id`` / ``audio_id`` are the actual timeline IDs
-    accepted as source selectors. Stamp result axes use public bundle UIDs.
+    The returned ``score_id`` / ``audio_id`` are the timeline IDs accepted as
+    source selectors and used as stamp result axes.
     """
     bundle, score_tl, _image_tl, audio_tl, _midi_tl = _make_cross_group_bundle()
     bundle.add_match_claims(_make_linear_claims(score_tl.id, audio_tl.id, n_points=5))
@@ -1431,8 +1409,8 @@ class TestGetMatchstampAtCoordinateParity:
         bundle, score_id, audio_id = _make_xgroup_bundle_with_claims()
         stamp = bundle.get_matchstamp_at(100.0, score_id)
         # The stamp is the transitive cross-group union: the exact anchor pair
-        # (score_t, audio_t) plus each reached group's cross-section
-        # (image_t in score_t's group, midi_t in audio_t's group).
+        # (score, audio) plus each reached group's cross-section
+        # (image in score's group, midi in audio's group).
         assert stamp.n_timelines == 4
         assert stamp.get_coordinate_for("score", format="float") == 100.0
         assert stamp.get_coordinate_for("audio", format="float") == 50.0
@@ -1498,8 +1476,8 @@ class TestGetMatchstampAtCoordinateParity:
             )
         )
         bundle = AlignmentBundle(id="cmap-query")
-        bundle.add_timeline(source, uid="source", as_group="source-group")
-        bundle.add_timeline(target, uid="target", as_group="target-group")
+        bundle.add_timeline(source, as_group="source-group")
+        bundle.add_timeline(target, as_group="target-group")
         bundle.add_match_claims(
             [
                 MatchClaim(
@@ -1534,8 +1512,8 @@ class TestGetMatchstampAtCoordinateParity:
 class TestGetMatchstampRenderingCoordinateParity:
     """get_matchstamp_at accepts raw value, Coordinate, and IdCoordinate.
 
-    ``get_matchstamp_at`` is keyed on the bundle UID (``"score"``), so these
-    tests pass UIDs and compare whole-dict results across the three forms.
+    ``get_matchstamp_at`` is keyed on the timeline ID (``"score"``), so these
+    tests pass IDs and compare whole-dict results across the three forms.
     """
 
     def test_raw_float_form(self) -> None:
@@ -1563,7 +1541,7 @@ class TestGetMatchstampRenderingCoordinateParity:
     def test_idcoordinate_alone_equals_raw(self) -> None:
         """An IdCoordinate alone (timeline_id omitted) matches the raw result.
 
-        The IdCoordinate carries the bundle UID ``"score"`` so the omitted
+        The IdCoordinate carries the timeline ID ``"score"`` so the omitted
         ``timeline_id`` is resolved from it.
         """
         bundle, _score_id, _audio_id = _make_xgroup_bundle_with_claims()
@@ -1594,7 +1572,7 @@ class TestGetMatchstampRenderingCoordinateParity:
 class TestTransferCoordinateParity:
     """transfer / transfer_interval accept raw value, Coordinate, IdCoordinate.
 
-    ``transfer`` is keyed on the bundle UIDs (``"score"`` / ``"audio"``).
+    ``transfer`` is keyed on the timeline IDs (``"score"`` / ``"audio"``).
     """
 
     def test_transfer_accepts_coordinate(self) -> None:
@@ -1673,7 +1651,7 @@ def _clock_bundle_with_maps() -> AlignmentBundle:
         )
     )
     bundle = AlignmentBundle(id="matchstamp-table-conversions")
-    bundle.add_timeline(timeline, uid="clock", as_group="clock-group")
+    bundle.add_timeline(timeline, as_group="clock-group")
     return bundle
 
 
@@ -1702,8 +1680,8 @@ def _cross_group_millisecond_bundle() -> AlignmentBundle:
         )
     )
     bundle = AlignmentBundle(id="matchstamp-table-collision")
-    bundle.add_timeline(tl_a, uid="clock_a", as_group="group-a")
-    bundle.add_timeline(tl_b, uid="clock_b", as_group="group-b")
+    bundle.add_timeline(tl_a, as_group="group-a")
+    bundle.add_timeline(tl_b, as_group="group-b")
     bundle.add_match_claims(
         [
             MatchClaim(

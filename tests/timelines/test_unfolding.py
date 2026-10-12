@@ -1231,9 +1231,9 @@ def _unfold_group(
 ) -> dict[str, SegmentLine]:
     """Unfold all timelines in the score group via one FlowMap.
 
-    For each PlaythroughSection, retrieves the start/end GroupTimestamp
-    from the score group (in CLT1's coordinate space) and uses the
-    interpolated coordinates for each timeline to ``get_slice()`` and
+    For each PlaythroughSection, retrieves the start/end TimeStamp
+    from the score group (in CLT1's coordinate space) and uses each
+    member's linearly converted coordinates to ``get_slice()`` and
     ``append_segment()``.
 
     Returns:
@@ -1291,7 +1291,7 @@ class TestGroupUnfolding:
 
     Demonstrates that a single FlowMap (derived from CLT1's score flow)
     can unfold ALL timelines in a group — regardless of their domain —
-    by resolving section boundaries through GroupTimestamps and slicing
+    by resolving section boundaries through the group's TimeStamps and slicing
     each timeline at the corresponding coordinates.
 
     The test uses the Beethoven Op.18 No.4 iv multimodal score group

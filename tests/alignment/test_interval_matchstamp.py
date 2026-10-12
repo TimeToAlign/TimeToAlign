@@ -43,7 +43,7 @@ def _bundle(*timeline_ids: str) -> AlignmentBundle:
     """Create a bundle whose timelines have no group membership."""
     bundle = AlignmentBundle(id="interval-retrieval")
     for timeline_id in timeline_ids:
-        bundle.add_timeline(_timeline(timeline_id), uid=timeline_id)
+        bundle.add_timeline(_timeline(timeline_id))
     return bundle
 
 
@@ -288,8 +288,8 @@ def test_fraction_mapping_is_exact() -> None:
         "target", unit=TimeUnit.quarters, number_type=NumberType.fraction
     )
     bundle = AlignmentBundle(id="fraction-affine")
-    bundle.add_timeline(source, uid="source")
-    bundle.add_timeline(target, uid="target")
+    bundle.add_timeline(source)
+    bundle.add_timeline(target)
     bundle.add_match_claims(
         [
             _interval_claim(
@@ -617,8 +617,8 @@ def test_fraction_axis_unit_conversion_compares_once_in_exact_domain() -> None:
         "target", unit=TimeUnit.quarters, number_type=NumberType.fraction
     )
     bundle = AlignmentBundle(id="fraction-conversion")
-    bundle.add_timeline(source, uid="source")
-    bundle.add_timeline(target, uid="target")
+    bundle.add_timeline(source)
+    bundle.add_timeline(target)
     claim = _interval_claim(
         "source",
         Fraction(1, 3),

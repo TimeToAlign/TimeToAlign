@@ -435,7 +435,7 @@ def _stamp_cases() -> list[tuple[str, dict[str, Any]]]:
     """``to_dict`` payloads of the stamp family, keyed by a readable id."""
     timeline = _float_timeline()
     bundle = AlignmentBundle(id="bundle")
-    bundle.add_timeline(timeline, uid="clock", as_group="clock-group")
+    bundle.add_timeline(timeline, as_group="clock-group")
     matchstamp = bundle.get_matchstamp_at(4.5, "clock")
     return [
         ("TimeStamp", timeline.get_timestamp(4.5).to_dict()),

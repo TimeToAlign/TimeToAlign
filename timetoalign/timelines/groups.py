@@ -1,49 +1,47 @@
-"""TimelineGroup: Container for commensurable timelines.
+"""TimelineGroup: an array of timelines sharing one start and one end.
 
-This module implements the timestamp-based group architecture:
-- Groups store timestamps in a PyArrow table (one row per boundary, one field per timeline)
-- GroupTimestamp is a lightweight view object, created on retrieval
-- Unified add_timeline() logic whether group is empty or has timelines
-- Coordinate conversion via linear interpolation between timestamps
-- Locking semantics like Timeline (is_locked, allow_extension)
+A group is defined by a single property: all of its member timelines share
+the same graphical start and end point. Every member's 0 coincides with every
+other member's 0, every member's length with every other member's length,
+and a position in between converts linearly — position ``p`` on member A is
+``p · len_B / len_A`` on member B, computed exactly. When only part of a
+timeline takes part, the participant is a child of that timeline, which
+carries its exact offset; a member is never placed partially.
 
 IMPORTANT CONCEPTUAL DISTINCTION:
 - Perfect Alignment: Bijective coordinate mapping (linear interpolation).
   Does NOT imply the alignment is musically/temporally correct.
 - Correct Alignment: A special case where mapping corresponds to reality.
 
-UNIFIED TIMESTAMP ARCHITECTURE:
-TimelineGroup implements the TimeStampSource protocol and uses the same
-TimeStamp/TimeIntervalStamp classes as Timeline. This enables:
-- Consistent API across Timeline and TimelineGroup
-- O(log n) coordinate conversion via InterpolationMaps
-- Unified traversal of hierarchies spanning both
+TimelineGroup implements the TimeStampSource protocol and answers with the
+same TimeStamp class as Timeline, so a stamp from a group has the identical
+structure and methods as a stamp from a timeline.
 """
 
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from fractions import Fraction
-from typing import TYPE_CHECKING, Any, Iterator, Literal
+from typing import TYPE_CHECKING, Any, Iterator
 
 import numpy as np
 import pandas as pd
 import pyarrow as pa
+from typing_extensions import Self
 
 from timetoalign.core import (
     Coordinate,
     CoordinateSpec,
     CoordinateValue,
     IdCoordinate,
-    IdGenerator,
     Interval,
     resolve_coordinate_spec,
     resolve_id,
 )
 from timetoalign.core.enums import NumberType, TimeUnit
-from timetoalign.core.fields import blob_metadata
-from timetoalign.core.ids import mint_id, timeline_id_prefix
+from timetoalign.core.ids import mint_id, timeline_id_prefix, validate_id
 from timetoalign.core.retrieval import (
     CoordinateCollection,
     CoordinateFormat,
@@ -55,7 +53,6 @@ from timetoalign.core.retrieval import (
     dispatch_retrieval,
     format_coordinates,
     is_key_input,
-    number_type_for_converted_unit,
     reject_dataframe_options,
     resolve_coordinate_collection,
     resolve_key_collection,
@@ -66,15 +63,12 @@ from timetoalign.core.retrieval import (
 from timetoalign.core.time import express_as, struct_to_coordinate
 from timetoalign.core.timestamp import (
     ConversionMapsSpec,
-    Stamp,
     TimeStamp,
     TimestampColumn,
     _format_coordinate_value,
     build_timestamp_table,
     timestamp_table_to_dataframe,
 )
-from timetoalign.maps.base import ConversionMap
-from timetoalign.maps.interpolation import InterpolationMap
 from timetoalign.storage import EventData
 
 if TYPE_CHECKING:
@@ -82,254 +76,151 @@ if TYPE_CHECKING:
 
     from timetoalign.core.enums import ColumnNaming
     from timetoalign.display.ascii import Diagram
+    from timetoalign.maps.base import ConversionMap
     from timetoalign.timelines import Timeline
     from timetoalign.timelines.flow import Flow, FlowControllerBase
 
 module_logger = logging.getLogger(__name__)
 
-# Module-level ID generator for groups
-_group_id_generator = IdGenerator(scope="group")
+
+# region Timeline trees
 
 
-def _reset_group_ids() -> None:
-    """Reset the module-level ID generator. For testing only."""
-    global _group_id_generator
-    _group_id_generator = IdGenerator(scope="group")
+def _root(timeline: "Timeline") -> "Timeline":
+    """Return the root of the manifest tree *timeline* belongs to."""
+    while timeline._parent is not None:
+        timeline = timeline._parent
+    return timeline
 
 
-# region GroupTimestamp
+def _tree(root: "Timeline") -> list["Timeline"]:
+    """Return *root* and every descendant of it."""
+    return [root, *(descendant for _, descendant in root._iter_descendants())]
 
 
-@dataclass(frozen=True)
-class GroupTimestamp(Stamp):
-    """A synchronized instant across all timelines in a group.
+def _held_ids(timelines: Iterable["Timeline"]) -> dict[str, "Timeline"]:
+    """Map every id in the manifest trees of *timelines* to its timeline.
 
-    This is a view object created from a row in the group's timestamp table.
-    Not stored directly - the table is the source of truth.
-
-    Attributes:
-        coordinates: Dictionary mapping timeline IDs to canonical coordinates.
-            Null table cells are omitted.
-        row_index: Index of this timestamp in the source table.
-            -1 indicates an interpolated timestamp (not from a table row).
-
-    Examples:
-        >>> ts = group.get_timestamp_at_index(0)
-        >>> ts.get_coordinate_for("dgt_1:1", format="float")
-        0.0
-        >>> ts.present_timelines  # Which timelines have values here
-        ['dgt_1:1', 'audio:1']
-
-    See Also:
-        TimeStamp: The unified timestamp class from ``timetoalign.core``.
+    A timeline's tree is the whole manifest it belongs to — its root and all
+    of that root's descendants — because that is what a file holding the
+    timeline writes.
     """
+    held: dict[str, Timeline] = {}
+    for timeline in timelines:
+        for member in _tree(_root(timeline)):
+            held[member.id] = member
+    return held
 
-    coordinates: dict[str, Coordinate]
-    source_id: str
-    row_index: int = -1
-    source: TimelineGroup | None = None
-    is_interpolated: bool = False
-    conversion_maps: ConversionMapsSpec = True
 
-    def __post_init__(self) -> None:
-        """Validate canonical typed row storage."""
-        if not isinstance(self.source_id, str) or not self.source_id:
-            raise ValueError("GroupTimestamp source_id must be a non-empty string")
-        if self.source_id not in self.coordinates:
+def _nested(first: "Timeline", second: "Timeline") -> bool:
+    """Whether one timeline is an ancestor of the other."""
+
+    def ancestors(timeline: "Timeline") -> Iterator["Timeline"]:
+        while timeline._parent is not None:
+            timeline = timeline._parent
+            yield timeline
+
+    return any(ancestor is second for ancestor in ancestors(first)) or any(
+        ancestor is first for ancestor in ancestors(second)
+    )
+
+
+def _admit_timeline_tree(
+    newcomer: "Timeline",
+    held: dict[str, "Timeline"],
+    scope: str,
+    *,
+    reserved: Iterable[str] = (),
+    check_only: bool = False,
+) -> None:
+    """Admit *newcomer*'s manifest tree into a scope of unique timeline ids.
+
+    An id may be held only once in the scope. A tree timeline whose id is
+    held by a *different* timeline, or is one of the *reserved* ids (given
+    ids of the scope that are no timeline's, such as a group's), is a
+    collision: a minted id is minted again, and a given id raises. Nothing
+    changes before every collision has been checked, so a raise leaves the
+    newcomer untouched.
+
+    Args:
+        newcomer: The timeline joining the scope.
+        held: Every timeline id of the scope, mapped to its timeline.
+        scope: A description of the scope, for the error.
+        reserved: Further ids the scope holds that no timeline may take.
+        check_only: Raise as admitting would, but mint nothing.
+
+    Raises:
+        ValueError: If a given id of the tree is held in the scope.
+    """
+    reserved = set(reserved)
+    tree = _tree(_root(newcomer))
+    clashes = [
+        timeline
+        for timeline in tree
+        if (timeline.id in held and held[timeline.id] is not timeline)
+        or timeline.id in reserved
+    ]
+    refused = [timeline for timeline in clashes if not timeline._id_minted]
+    if refused:
+        holder = "a group" if refused[0].id in reserved else "another timeline"
+        raise ValueError(
+            f"Timeline {refused[0].id!r} cannot join {scope}: its id is already "
+            f"held by {holder} there"
+        )
+    if check_only:
+        return
+    taken = set(held) | reserved | {timeline.id for timeline in tree}
+    for timeline in clashes:
+        minted = mint_id(timeline_id_prefix(timeline.unit), taken)
+        taken.add(minted)
+        timeline._set_id(minted, minted=True)
+
+
+def _require_keys(
+    data: Any, required: set[str], optional: set[str], what: str
+) -> dict[str, Any]:
+    """Return *data* if it is a mapping with exactly the allowed keys.
+
+    Raises:
+        ValueError: If *data* is not a dict, lacks a required key or carries
+            an unknown one.
+    """
+    if not isinstance(data, dict):
+        raise ValueError(f"{what} must be an object, got {type(data).__name__}")
+    missing = sorted(required - set(data))
+    if missing:
+        raise ValueError(f"{what} lacks the key(s) {missing}")
+    unknown = sorted(set(data) - required - optional)
+    if unknown:
+        raise ValueError(f"{what} has unknown key(s) {unknown}")
+    return data
+
+
+def _roots_from_dicts(items: Any) -> dict[str, "Timeline"]:
+    """Rebuild root manifests and index every timeline of their trees by id.
+
+    Raises:
+        ValueError: If *items* is not a list of manifests, or a timeline id
+            occurs twice across the trees.
+    """
+    from timetoalign.timelines import Timeline
+
+    if not isinstance(items, list):
+        raise ValueError(f"'timelines' must be an array, got {type(items).__name__}")
+    index: dict[str, Timeline] = {}
+    for item in items:
+        if not isinstance(item, dict):
             raise ValueError(
-                f"GroupTimestamp source_id {self.source_id!r} is absent from coordinates"
+                f"each entry of 'timelines' must be a timeline manifest, got "
+                f"{type(item).__name__}"
             )
-        normalized: dict[str, Coordinate] = {}
-        for timeline_id, coordinate in self.coordinates.items():
-            if not isinstance(timeline_id, str) or not timeline_id:
+        for timeline in _tree(Timeline.from_dict(item)):
+            if timeline.id in index:
                 raise ValueError(
-                    "GroupTimestamp coordinate keys must be non-empty strings"
+                    f"timeline id {timeline.id!r} occurs twice in 'timelines'"
                 )
-            if type(coordinate) is not Coordinate:
-                raise TypeError(
-                    "GroupTimestamp coordinates must be plain Coordinate values"
-                )
-            normalized[timeline_id] = Coordinate(
-                coordinate.value,
-                coordinate.unit,
-                number_type=coordinate.number_type,
-            )
-        object.__setattr__(self, "coordinates", normalized)
-
-    def get_unit(
-        self,
-        unit: TimeUnit,
-        *,
-        timeline_id: str | None = None,
-        format: CoordinateFormat = "id_coordinate",
-        rounding: Rounding = "round",
-    ) -> CoordinateResult | pd.Series:
-        """Get the row coordinate converted to a specific unit.
-
-        Args:
-            unit: The target unit for conversion.
-            timeline_id: Optional stored member to select explicitly.
-            format: Requested coordinate output format.
-            rounding: Integral projection mode.
-
-        Returns:
-            Converted coordinate projection.
-
-        Raises:
-            KeyError: If no selected coordinate or eligible map exists.
-        """
-        candidates = (
-            [timeline_id] if timeline_id is not None else list(self.coordinates)
-        )
-        for candidate in candidates:
-            coordinate = self.coordinates.get(candidate)
-            if coordinate is None:
-                if timeline_id is not None:
-                    raise KeyError(f"Unknown timeline ID {candidate!r} on group stamp")
-                continue
-            if coordinate.unit == unit:
-                converted = Coordinate(
-                    coordinate.value,
-                    unit,
-                    number_type=number_type_for_converted_unit(
-                        coordinate.number_type, unit
-                    ),
-                )
-            else:
-                if self.source is None or not self._unit_resolution_enabled(unit):
-                    continue
-                umap = self.source._get_unit_map_for_timeline(candidate, unit)
-                if umap is None:
-                    continue
-                converted = self._on_unit(umap._evaluate(coordinate.value), unit, umap)
-            return format_coordinates(
-                [IdCoordinate.from_coordinate(converted, candidate)],
-                format=format,
-                rounding=rounding,
-                scalar=True,
-                series_name=candidate,
-            )
-        raise KeyError(f"No eligible conversion to {unit.value!r} on group stamp")
-
-    def get_conversion_for(self, key: str) -> object:
-        """Return a conversion-map value by selector.
-
-        Args:
-            key: Conversion-map name, ID, selector, or target-unit name.
-
-        Returns:
-            The map result without numeric projection.
-
-        Raises:
-            KeyError: If no eligible conversion matches.
-        """
-        if self.source is None:
-            raise KeyError(f"Unknown conversion selector {key!r}")
-        for timeline_id, coordinate in self.coordinates.items():
-            for cmap in self.source._get_conversion_maps_for_timeline(timeline_id):
-                if not self._conversion_map_enabled(cmap):
-                    continue
-                matches = cmap.matches_selector(key) or cmap.name == key
-                if not matches and cmap.target_unit is not None:
-                    matches = cmap.target_unit.value == key
-                if matches:
-                    return cmap(coordinate.value)
-        raise KeyError(f"Unknown conversion selector {key!r}")
-
-    def _unit_for(self, timeline_id: str) -> TimeUnit | None:
-        """Get the unit associated with a timeline ID in this row."""
-        coordinate = self.coordinates.get(timeline_id)
-        return None if coordinate is None else coordinate.unit
-
-    def _unit_resolution_enabled(self, unit: TimeUnit) -> bool:
-        """Return whether the conversion-map specification permits a unit."""
-        if self.source is None:
-            return False
-
-        spec = self.conversion_maps
-        if spec is True:
-            return True
-        if spec is False or spec is None:
-            return False
-
-        requested = spec if isinstance(spec, list) else [spec]
-        maps = [
-            self.source._get_unit_map_for_timeline(timeline_id, unit)
-            for timeline_id in self.coordinates
-        ]
-        maps = [cmap for cmap in maps if cmap is not None]
-
-        for allowed in requested:
-            if isinstance(allowed, TimeUnit) and allowed == unit:
-                return True
-            if isinstance(allowed, str):
-                try:
-                    if TimeUnit(allowed) == unit:
-                        return True
-                except ValueError:
-                    pass
-                for cmap in maps:
-                    if cmap.matches_selector(allowed):
-                        return True
-            elif isinstance(allowed, ConversionMap):
-                if allowed.target_unit == unit:
-                    return True
-                if any(cmap.matches_selector(allowed.id) for cmap in maps):
-                    return True
-        return False
-
-    def __repr__(self) -> str:
-        present = self.present_timelines
-        interp = " (interpolated)" if self.is_interpolated else ""
-        return f"GroupTimestamp({len(present)} timelines{interp})"
-
-    def _repr_html_(self) -> str:
-        """Return HTML representation for Jupyter notebooks.
-
-        Displays the timestamp as an HTML table showing all coordinates with units.
-        """
-        import html
-
-        from timetoalign.display.html import affordance_line
-
-        rows = []
-        for tid, coordinate in self.coordinates.items():
-            formatted = _format_coordinate_value(
-                coordinate.value, coordinate.unit.value
-            )
-            rows.append(
-                f"<tr><td>{html.escape(tid)}</td>"
-                f"<td style='text-align: right;'>{formatted}</td></tr>"
-            )
-
-        interp_badge = (
-            " <span style='background: #ffeb3b; padding: 0 4px; "
-            "border-radius: 3px; font-size: 0.8em;'>interpolated</span>"
-            if self.is_interpolated
-            else ""
-        )
-
-        affordances = affordance_line(
-            [
-                "ts.get_coordinate_for(<tl_id>)",
-                "ts.get_unit(<unit>)",
-                "ts.get_conversion_for(<key>)",
-            ]
-        )
-        return (
-            f"<div style='font-family: monospace;'>"
-            f"<strong>GroupTimestamp</strong> ({len(self.present_timelines)} timelines)"
-            f"{interp_badge}"
-            f"<table style='border-collapse: collapse; margin-top: 4px;'>"
-            f"<thead><tr style='border-bottom: 1px solid #ccc;'>"
-            f"<th style='text-align: left; padding: 2px 8px;'>ID (unit)</th>"
-            f"<th style='text-align: right; padding: 2px 8px;'>Coordinate</th>"
-            f"</tr></thead>"
-            f"<tbody>{''.join(rows)}</tbody>"
-            f"</table>"
-            f"{affordances}"
-            f"</div>"
-        )
+            index[timeline.id] = timeline
+    return index
 
 
 # endregion
@@ -340,45 +231,43 @@ class GroupTimestamp(Stamp):
 
 @dataclass
 class TimelineGroup:
-    """Container for commensurable timelines.
+    """An array of timelines sharing one graphical start and end point.
 
-    A TimelineGroup holds timelines (or sections thereof) that are
-    commensurable - i.e., bijectively mapped to each other via linear
-    interpolation. The group is defined by a timestamp table where each
-    row is a boundary instant.
+    By definition every member's 0 coincides with every other member's 0 and
+    every member's length with every other member's length; a position in
+    between converts linearly. Position ``p`` on member A is
+    ``p · len_B / len_A`` on member B, computed exactly — a float enters as
+    its exact dyadic ``Fraction`` — and written in B's declared number type.
 
-    Between any two adjacent timestamps, all present timelines have
-    coordinates that can be converted via linear interpolation.
+    When only part of a timeline participates, the participant is a child of
+    that timeline: the child carries its exact offset, and the child is the
+    member. A member is never placed partially.
 
-    Like Timeline, a Group can be locked to prevent extension.
+    Members keep the order in which they were added.
 
     Attributes:
-        id: Unique identifier for this group.
+        id: Unique identifier for this group, ``group_N`` unless given.
         name: Optional human-readable name.
-        is_locked: Whether the group can be extended.
         meta: Additional metadata dictionary.
 
     Examples:
-        >>> # Create empty group
-        >>> group = TimelineGroup(id="my_group")
-
-        >>> # Or create with initial timelines
-        >>> group = TimelineGroup(id="my_group", timelines=[dgt_1, audio])
-
-        >>> # Add a timeline
-        >>> group.add_timeline(dgt_1)
-
-        >>> # Add with explicit boundaries
-        >>> from timetoalign import IdCoordinate, TimeUnit
-        >>> group.add_timeline(
-        ...     score_section,
-        ...     start=IdCoordinate(45.0, TimeUnit.seconds, "audio:1"),
-        ...     end=IdCoordinate(135.0, TimeUnit.seconds, "audio:1"),
+        >>> from fractions import Fraction
+        >>> from timetoalign.timelines import TimelineGroup
+        >>> from timetoalign.timelines.types import (
+        ...     ContinuousLogicalTimeline,
+        ...     DiscreteGraphicalTimeline,
         ... )
-
-        >>> # Convert coordinates via timestamp lookup
-        >>> ts = group.get_timestamp_at(75.0, "audio:1")
-        >>> ts.get_coordinate_for("dgt_1:1", format="float")  # -> 2437.5
+        >>> score = ContinuousLogicalTimeline(length=Fraction(16))
+        >>> image = DiscreteGraphicalTimeline(length=4800)
+        >>> group = TimelineGroup(timelines=[score, image])
+        >>> group.id, group.timeline_ids
+        ('group_1', ['clt_1', 'dgt_1'])
+        >>> group.get_coordinate_at(Fraction(1, 3), "clt_1", format="coordinate")
+        Coordinate(Fraction(1, 3), quarters)
+        >>> group.get_timestamp_at(Fraction(1, 3), "clt_1").get_coordinate_for(
+        ...     "dgt_1", format="int"
+        ... )
+        100
     """
 
     id: str = field(default="")
@@ -389,160 +278,250 @@ class TimelineGroup:
     _timelines: dict[str, "Timeline"] = field(
         default_factory=dict, init=False, repr=False
     )
-    _timestamp_table: pa.Table | None = field(default=None, init=False, repr=False)
-    _interpolation_maps: dict[str, InterpolationMap] = field(
-        default_factory=dict, init=False, repr=False
-    )
-    _is_locked: bool = field(default=False, init=False, repr=False)
+    _id_minted: bool = field(default=False, init=False, repr=False)
     _logger: logging.Logger = field(
         default_factory=lambda: module_logger, init=False, repr=False
     )
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Self:
+        """Rebuild a group from the dictionary :meth:`to_dict` writes.
+
+        Every entry of ``"timelines"`` is rebuilt with
+        :meth:`Timeline.from_dict <timetoalign.timelines.Timeline.from_dict>`;
+        each member id is resolved among those roots and all their
+        descendants, and the members are added in ``graphical.order`` (in
+        ``group.members`` order when ``"graphical"`` is absent). Feeding the
+        result back through :meth:`to_dict` with the same flags reproduces
+        the input dictionary. A ``"meta"`` key — the file's own metadata —
+        is accepted and ignored.
+
+        Args:
+            data: ``{"timelines": [...], "group": {...}, "graphical": {...}}``.
+
+        Returns:
+            The rebuilt group.
+
+        Raises:
+            ValueError: If *data* is malformed: a missing or unknown key, a
+                timeline id occurring twice, a member naming no timeline of
+                ``"timelines"``, a root containing no member, an order that is
+                no permutation of the members, a member that is an ancestor or
+                descendant of another member, or a group id equal to a
+                timeline id. The message names the problem.
+
+        Examples:
+            >>> from fractions import Fraction
+            >>> from timetoalign.timelines import TimelineGroup
+            >>> from timetoalign.timelines.types import ContinuousLogicalTimeline
+            >>> group = TimelineGroup(
+            ...     name="edition",
+            ...     timelines=[ContinuousLogicalTimeline(length=Fraction(8))],
+            ... )
+            >>> data = group.to_dict()
+            >>> TimelineGroup.from_dict(data).to_dict() == data
+            True
+        """
+        _require_keys(
+            data, {"timelines", "group"}, {"graphical", "meta"}, "a group dictionary"
+        )
+        timelines = _roots_from_dicts(data["timelines"])
+        order = None
+        if "graphical" in data:
+            graphical = _require_keys(
+                data["graphical"], {"order"}, set(), "'graphical'"
+            )
+            order = graphical["order"]
+        group = cls._from_group_object(data["group"], timelines, order)
+        members = list(group._timelines.values())
+        for timeline in timelines.values():
+            if timeline._parent is None and not any(
+                _root(member) is timeline for member in members
+            ):
+                raise ValueError(
+                    f"root timeline {timeline.id!r} contains no member of group "
+                    f"{group.id!r}"
+                )
+        return group
+
+    @classmethod
+    def _from_group_object(
+        cls,
+        data: Any,
+        timelines: dict[str, "Timeline"],
+        order: Any = None,
+    ) -> Self:
+        """Build a group from its ``Group`` object and the file's timelines.
+
+        The one reader of the ``Group`` object, shared by
+        :meth:`from_dict` and the bundle's dictionary reader.
+
+        Args:
+            data: ``{"id", "name", "meta", "members"}``.
+            timelines: Every timeline of the file, roots and descendants, by id.
+            order: The members' display order, or None for ``members`` order.
+
+        Raises:
+            ValueError: If the object or the order is malformed.
+        """
+        _require_keys(data, {"id", "name", "meta", "members"}, set(), "a group object")
+        group_id = data["id"]
+        if not isinstance(group_id, str):
+            raise ValueError(f"a group id must be a string, got {group_id!r}")
+        validate_id(group_id)
+        if group_id in timelines:
+            raise ValueError(f"group id {group_id!r} is also a timeline id")
+        if data["name"] is not None and not isinstance(data["name"], str):
+            raise ValueError(f"group {group_id!r} has a non-string name")
+        if not isinstance(data["meta"], dict):
+            raise ValueError(f"group {group_id!r} has a non-object meta")
+        members = data["members"]
+        if not isinstance(members, list) or not all(
+            isinstance(member, str) for member in members
+        ):
+            raise ValueError(f"group {group_id!r} members must be an array of ids")
+        if len(set(members)) != len(members):
+            raise ValueError(f"group {group_id!r} names a member twice")
+        for member in members:
+            if member not in timelines:
+                raise ValueError(
+                    f"group {group_id!r} names member {member!r}, which is no "
+                    "timeline of 'timelines'"
+                )
+        if order is None:
+            order = members
+        elif (
+            not isinstance(order, list)
+            or len(order) != len(members)
+            or set(order) != set(members)
+        ):
+            raise ValueError(
+                f"the order of group {group_id!r} is not a permutation of its members"
+            )
+        return cls(
+            id=group_id,
+            name=data["name"],
+            meta=data["meta"],
+            timelines=[timelines[member] for member in order],
+        )
 
     def __init__(
         self,
         id: str | None = None,
         name: str | None = None,
         timelines: list["Timeline"] | None = None,
-        is_locked: bool = False,
         meta: dict[str, Any] | None = None,
     ) -> None:
         """Create a TimelineGroup.
 
         Args:
-            id: Unique identifier. If None, auto-generated.
+            id: Unique identifier. If None, ``group_N`` is minted with N the
+                smallest number no timeline of *timelines* holds as an id.
             name: Optional human-readable name.
-            timelines: Initial timelines to add (optional).
-            is_locked: Whether to lock the group after creation.
+            timelines: Initial members, in order (optional).
             meta: Additional metadata dictionary.
-        """
-        if id is None:
-            self.id = _group_id_generator.create(type_hint="TimelineGroup")
-        else:
-            self.id = id
 
+        Raises:
+            ValueError: If a given id is invalid, or an initial member
+                cannot join (see :meth:`add_timeline`).
+        """
+        initial = list(timelines or [])
+        if id is None:
+            self.id = mint_id("group", _held_ids(initial))
+            self._id_minted = True
+        else:
+            self.id = validate_id(id)
+            self._id_minted = False
         self.name = name
         self.meta = dict(meta) if meta else {}
         self._timelines = {}
-        self._timestamp_table = None
-        self._interpolation_maps = {}
-        self._is_locked = False  # Temporarily unlocked during init
         self._logger = module_logger.getChild(self.id)
 
-        # Add initial timelines
-        if timelines:
-            for tl in timelines:
-                self.add_timeline(tl)
-
-        # Apply lock setting after adding timelines
-        self._is_locked = is_locked
+        for tl in initial:
+            self.add_timeline(tl)
 
     # region Timeline Management
 
-    def add_timeline(
-        self,
-        timeline: "Timeline",
-        *,
-        start: CoordinateSpec | GroupTimestamp | None = None,
-        end: CoordinateSpec | GroupTimestamp | None = None,
-        allow_extension: bool = False,
-    ) -> None:
-        """Add a timeline (or Child) to the group.
+    def add_timeline(self, timeline: "Timeline") -> None:
+        """Add a member; its whole extent ``[0, length]`` spans the group.
 
-        The timeline's full extent (0 to length) becomes commensurable with
-        the group between the specified start and end boundaries.
+        A member's 0 coincides with every other member's 0 and its length
+        with every other member's length. To let only part of a timeline
+        participate, add the child of that timeline covering the part.
 
-        This method works the same whether the group is empty or already
-        has timelines. For an empty group, start/end default to the
-        timeline's own boundaries (0 and length).
+        Every timeline id in the newcomer's manifest tree (its root and all
+        that root's descendants) must be free in the group's trees.
+
+        A newcomer that is an ancestor or a descendant of a member is
+        refused: a child sits at its offset inside its parent, so the two
+        cannot share one start and end. Every check runs before anything
+        changes, so a refused newcomer is left as it was.
 
         Args:
-            timeline: The timeline or Child to add. If a Child, its 0-origin
-                extent is used. If a Timeline, its full extent (0 to length).
-            start: Where this timeline's section STARTS in the group.
-                - CoordinateSpec: Coordinate in the alignment-reference timeline
-                - IdCoordinate: Coordinate with explicit timeline_id
-                - GroupTimestamp: Use this existing timestamp
-                - float: Coordinate (only if single timeline in group)
-                - None: Use group's current start, or 0 if empty
-            end: Where this timeline's section ENDS in the group.
-                - Same options as start
-                - None: Use group's current end, or timeline.length if empty
-            allow_extension: If True and end extends beyond current group end,
-                add a new end timestamp. If False (default) and group is locked,
-                raise an error.
+            timeline: The timeline or child to add.
 
         Raises:
-            ValueError: If the timeline is already a member, or its given ID
-                is held by a member (a minted ID held by a member is minted
-                again instead).
-            ValueError: If start/end specification is ambiguous.
-            RuntimeError: If group is locked and extension would be required.
+            ValueError: If the timeline is already a member; if it is nested
+                with a member; or if a given id of its tree — its own, its
+                root's or any descendant's — is held by another timeline of
+                the group's trees or is the group's given id (a minted id held
+                there is minted again instead, and a minted group id that a
+                newcomer's given id takes is minted again).
 
         Examples:
-            >>> # Add to empty group - defines initial extent
-            >>> group.add_timeline(dgt_1)
-
-            >>> # Add to existing group - maps to existing extent
-            >>> group.add_timeline(audio)
-
-            >>> # Add partial section with explicit boundaries (using IdCoordinate)
-            >>> from timetoalign import IdCoordinate, TimeUnit
-            >>> group.add_timeline(
-            ...     score_section,
-            ...     start=IdCoordinate(45.0, TimeUnit.seconds, "audio:1"),
-            ...     end=IdCoordinate(135.0, TimeUnit.seconds, "audio:1"),
+            >>> from timetoalign.timelines import TimelineGroup
+            >>> from timetoalign.timelines.types import (
+            ...     ContinuousPhysicalTimeline,
+            ...     DiscreteGraphicalTimeline,
             ... )
-
-            >>> # Extend group with new timeline
-            >>> group.add_timeline(
-            ...     extended_audio,
-            ...     end=IdCoordinate(200.0, TimeUnit.seconds, "extended_audio:1"),
-            ...     allow_extension=True,
-            ... )
+            >>> image = DiscreteGraphicalTimeline(length=5000)
+            >>> holes = DiscreteGraphicalTimeline(length=2000)
+            >>> image.add_child(holes, offset=1000)
+            >>> group = TimelineGroup(timelines=[ContinuousPhysicalTimeline(length=8.0)])
+            >>> group.add_timeline(holes)
+            >>> group.get_coordinate_at(2.0, "cpt_1")
+            IdCoordinate(2.0, seconds, 'cpt_1')
+            >>> group.get_timestamp_at(2.0, "cpt_1").get_coordinate_for("dgt_2", format="int")
+            500
         """
-        if timeline.id in self._timelines:
-            if not timeline._id_minted or any(
-                member is timeline for member in self._timelines.values()
-            ):
-                raise ValueError(
-                    f"Timeline '{timeline.id}' already in group '{self.id}'"
-                )
-            # A minted id that a member holds is minted again for the newcomer.
-            timeline._set_id(
-                mint_id(timeline_id_prefix(timeline.unit), self._timelines),
-                minted=True,
-            )
-
-        # Resolve start and end to timestamp specifications
-        start_spec = self._resolve_boundary(start, is_start=True, new_timeline=timeline)
-        end_spec = self._resolve_boundary(end, is_start=False, new_timeline=timeline)
-
-        # Check extension
-        if (
-            self._requires_extension(end_spec)
-            and self._is_locked
-            and not allow_extension
-        ):
-            raise RuntimeError(
-                f"Group '{self.id}' is locked. Use allow_extension=True to extend."
-            )
-
-        # Update timestamp table
-        self._insert_timeline(timeline, start_spec, end_spec)
-        self._timelines[timeline.id] = timeline
-
-        # Rebuild interpolation maps for O(log n) coordinate conversion
-        self._build_interpolation_maps()
-
-        self._logger.debug(
-            f"Added timeline '{timeline.id}' with {self.n_timestamps} timestamps"
+        if any(member is timeline for member in self._timelines.values()):
+            raise ValueError(f"Timeline '{timeline.id}' already in group '{self.id}'")
+        self._refuse_nested(timeline)
+        held = _held_ids(self._timelines.values())
+        _admit_timeline_tree(
+            timeline,
+            held,
+            f"group {self.id!r}",
+            reserved=() if self._id_minted else (self.id,),
         )
+        # A minted group id that a newcomer's given id now holds is minted
+        # again; a given group id was reserved above.
+        tree_ids = {member.id for member in _tree(_root(timeline))}
+        if self.id in tree_ids:
+            self.id = mint_id("group", set(held) | tree_ids)
+        self._timelines[timeline.id] = timeline
+        self._logger.debug(f"Added timeline '{timeline.id}'")
+
+    def _refuse_nested(self, timeline: "Timeline") -> None:
+        """Refuse a newcomer that is an ancestor or descendant of a member.
+
+        Members share one start and one end, while a child sits at its offset
+        inside its parent: both in one group would give one position two
+        answers.
+
+        Raises:
+            ValueError: Naming the newcomer and the member it is nested with.
+        """
+        for member in self._timelines.values():
+            if _nested(member, timeline):
+                raise ValueError(
+                    f"Timeline {timeline.id!r} cannot join group {self.id!r}: it "
+                    f"is nested with member {member.id!r}, and a parent and its "
+                    "child cannot share one start and end"
+                )
 
     def remove_timeline(self, timeline_id: str) -> "Timeline":
-        """Remove a timeline from the group.
-
-        Updates timestamp table to remove the timeline's field.
-        Rows where all remaining timelines have null are removed.
+        """Remove a member from the group.
 
         Args:
             timeline_id: ID of the timeline to remove.
@@ -560,13 +539,18 @@ class TimelineGroup:
             )
 
         timeline = self._timelines.pop(timeline_id)
-        self._remove_timeline_field(timeline_id)
-
-        # Rebuild interpolation maps
-        self._build_interpolation_maps()
-
         self._logger.debug(f"Removed timeline '{timeline_id}'")
         return timeline
+
+    def _rekey_members(self) -> None:
+        """Key the members by their current ids, keeping their order.
+
+        A member's id can change after it joined (a minted id is minted again
+        when its tree joins a wider scope); this restores the lookup.
+        """
+        self._timelines = {
+            timeline.id: timeline for timeline in self._timelines.values()
+        }
 
     def get_timeline(self, timeline_id: str) -> "Timeline":
         """Get a timeline by ID.
@@ -714,69 +698,51 @@ class TimelineGroup:
 
     # endregion
 
-    # region Locking
-
-    @property
-    def is_locked(self) -> bool:
-        """Whether the group is locked."""
-        return self._is_locked
-
-    def lock(self) -> None:
-        """Lock the group to prevent extension."""
-        self._is_locked = True
-
-    def unlock(self) -> None:
-        """Unlock the group to allow extension."""
-        self._is_locked = False
-
-    # endregion
-
     # region Timestamps
 
-    @property
-    def n_timestamps(self) -> int:
-        """Number of boundary timestamps."""
-        if self._timestamp_table is None:
-            return 0
-        return self._timestamp_table.num_rows
+    def _convert(
+        self, value: CoordinateValue, source_id: str, target_id: str
+    ) -> CoordinateValue:
+        """Carry a position from one member onto another, exactly.
 
-    @property
-    def timestamps(self) -> list[GroupTimestamp]:
-        """All boundary timestamps as view objects."""
-        if self._timestamp_table is None:
-            return []
-        return [self._row_to_timestamp(i) for i in range(self.n_timestamps)]
-
-    def get_timestamp_at_index(self, index: int) -> GroupTimestamp:
-        """Get a specific timestamp by index.
-
-        Args:
-            index: The row index in the timestamp table.
-
-        Returns:
-            The GroupTimestamp at that index.
+        Position ``p`` on member A is ``p · len_B / len_A`` on member B. The
+        arithmetic runs on exact ratios — a float enters as its exact dyadic —
+        and the result is written in B's declared number type, which rounds
+        half to even onto an integer axis.
 
         Raises:
-            IndexError: If index is out of range.
+            ValueError: If the source member has length zero and the target
+                does not, so that no position can be carried across.
         """
-        if self._timestamp_table is None or index >= self.n_timestamps:
-            raise IndexError(f"Timestamp index {index} out of range")
-        if index < 0:
-            index = self.n_timestamps + index
-        return self._row_to_timestamp(index)
+        source = self._timelines[source_id]
+        target = self._timelines[target_id]
+        source_length = Fraction(source.length.value)
+        target_length = Fraction(target.length.value)
+        if source_length == 0:
+            if target_length != 0:
+                raise ValueError(
+                    f"Timeline '{source_id}' has length 0; no position on it "
+                    f"converts to '{target_id}'"
+                )
+            return express_as(Fraction(0), target.number_type)
+        converted = Fraction(value) * target_length / source_length
+        return express_as(converted, target.number_type)
 
     def get_timestamp_at(
         self,
         at: CoordinateSpec,
         timeline_id: str | None = None,
         *,
-        relative_to: Literal["group", "original"] = "group",
         conversion_maps: ConversionMapsSpec = True,
     ) -> TimeStamp:
         """Get a TimeStamp at a specific coordinate.
 
         This is the primary coordinate resolution API for TimelineGroup.
         Returns a proper TimeStamp object (same as Timeline.get_timestamp_at).
+        The queried position is written the way the addressed member writes
+        numbers; every other member's coordinate is the exact linear image of
+        that position (see :class:`TimelineGroup`), and each member's
+        descendants are reached through their exact offsets.
 
         Args:
             at: The query coordinate. Can be:
@@ -785,12 +751,6 @@ class TimelineGroup:
                 - IdCoordinate: Value with unit AND timeline_id (timeline_id param optional)
             timeline_id: Which timeline the coordinate refers to.
                 Required unless coordinate is an IdCoordinate.
-            relative_to:
-                "group" - coordinate is relative to timeline's 0-origin IN THIS GROUP
-                         (default; e.g., "3 seconds into this group")
-                "original" - coordinate is relative to timeline's ORIGINAL origin
-                            (e.g., "50 seconds in the original timeline")
-                            NOTE: Currently not implemented, reserved for future use.
             conversion_maps: Whether to include C-Map values in timestamp.
                 - True (default): C-Maps accessible through typed getters.
                 - False/None: Only timeline coordinates
@@ -798,7 +758,9 @@ class TimelineGroup:
         Returns:
             TimeStamp with axis set to the input coordinate and source_id set to
             the timeline. Access other timelines via `get_coordinate_for()`.
-            Access C-Maps via `get_unit()` or `get_conversion_for()`.
+            Access C-Maps via `get_unit()` or `get_conversion_for()`. The
+            stamp is interpolated unless the position is the group's common
+            start or end.
 
         Raises:
             KeyError: If timeline_id is not in the group.
@@ -806,28 +768,26 @@ class TimelineGroup:
             ValueError: If timeline_id is None and coordinate is not IdCoordinate.
 
         Examples:
+            >>> from timetoalign.core import IdCoordinate, TimeUnit
             >>> from timetoalign.timelines import TimelineGroup
             >>> from timetoalign.timelines.types import (
             ...     ContinuousPhysicalTimeline,
             ...     DiscreteGraphicalTimeline,
             ... )
-            >>> dgt_1 = DiscreteGraphicalTimeline(length=4875, unit="pixels", uid="dgt_1:1")
-            >>> audio = ContinuousPhysicalTimeline(length=150.0, unit="seconds", uid="audio:1")
-            >>> group = TimelineGroup(id="my_group", timelines=[dgt_1, audio])
+            >>> dgt_1 = DiscreteGraphicalTimeline(length=4875, unit="pixels")
+            >>> audio = ContinuousPhysicalTimeline(length=150.0, unit="seconds")
+            >>> group = TimelineGroup(timelines=[dgt_1, audio])
 
-            >>> ts = group.get_timestamp_at(75.0, "audio:1")
+            >>> ts = group.get_timestamp_at(75.0, "cpt_1")
             >>> ts.axis
-            IdCoordinate(75.0, seconds, 'audio:1')
-            >>> ts.get_coordinate_for("dgt_1:1", format="float")
-            2438.0
-            >>> ts.get_unit(TimeUnit.seconds)  # C-Map conversion
-            IdCoordinate(75.0, seconds, 'audio:1')
+            IdCoordinate(75.0, seconds, 'cpt_1')
+            >>> ts.get_coordinate_for("dgt_1", format="int")
+            2438
 
             >>> # Using IdCoordinate (timeline_id extracted automatically)
-            >>> coord = IdCoordinate(75.0, TimeUnit.seconds, "audio:1")
-            >>> ts = group.get_timestamp_at(coord)
-            >>> ts.axis
-            IdCoordinate(75.0, seconds, 'audio:1')
+            >>> coord = IdCoordinate(75.0, TimeUnit.seconds, "cpt_1")
+            >>> group.get_timestamp_at(coord).axis
+            IdCoordinate(75.0, seconds, 'cpt_1')
         """
         resolved = resolve_coordinate_spec(at, timeline_id=timeline_id)
         timeline_id = resolved.timeline_id
@@ -842,9 +802,10 @@ class TimelineGroup:
                 f"Timeline '{timeline_id}' not in group. "
                 f"Available timelines: {self.timeline_ids}"
             )
+        source_timeline = self._timelines[timeline_id]
 
         if resolved.unit is not None:
-            native_coordinate = self.get_timeline(timeline_id).get_coordinate_at(
+            native_coordinate = source_timeline.get_coordinate_at(
                 Coordinate(resolved.value, resolved.unit), format="coordinate"
             )
             if not isinstance(native_coordinate, Coordinate):
@@ -854,101 +815,44 @@ class TimelineGroup:
             native_value = native_coordinate.value
         else:
             native_value = resolved.value
-        # The row lookup below runs against the table's float column, so the
-        # search value stays float; the axis the stamp reports is written the
-        # way the addressed timeline writes numbers, whatever Python type the
-        # caller happened to pass. A bare float query and the same value as a
-        # Fraction must land on the same axis.
-        axis_value = express_as(native_value, self._timelines[timeline_id].number_type)
-        coord_value = float(axis_value)
-        native_value = axis_value
+        # The stamp reports the position the way the addressed timeline writes
+        # numbers, whatever Python type the caller happened to pass, and every
+        # other member is a projection of that written position.
+        axis_value = express_as(native_value, source_timeline.number_type)
 
-        if self._timestamp_table is None:
-            raise ValueError(f"Group '{self.id}' has no timestamps")
-
-        # Adjust for original-relative mode (future extension)
-        if relative_to == "original":
-            # TODO: Implement offset tracking for original coordinates
-            # For now, treat as group-relative
-            pass
-
-        # Find the row index (exact match) or verify coordinate is in range
-        coords = self._timestamp_table.column(timeline_id).to_pylist()
-        coords = [
-            (
-                struct_to_coordinate(value, self._timelines[timeline_id].number_type)
-                if isinstance(value, dict)
-                else value
-            )
-            for value in coords
-        ]
-
-        # Find bounding rows
-        low_idx = None
-        high_idx = None
-        for i, val in enumerate(coords):
-            if val is not None:
-                if val <= coord_value:
-                    low_idx = i
-                if val >= coord_value and high_idx is None:
-                    high_idx = i
-                    break
-
-        if low_idx is None or high_idx is None:
+        length = source_timeline.length.value
+        if not 0 <= axis_value <= length:
             raise ValueError(
-                f"Coordinate {_format_coordinate_value(coord_value)} "
+                f"Coordinate {_format_coordinate_value(float(axis_value))} "
                 f"outside range for '{timeline_id}'"
             )
-
-        # Determine row_index: -1 for interpolated, actual index for exact match
-        row_index = -1  # Default: interpolated
-        if low_idx == high_idx:
-            # Exact match at a boundary
-            row_index = low_idx
+        # The common start and end are the stored rows; between them, the
+        # position is interpolated.
+        is_interpolated = not (axis_value == 0 or axis_value == length)
 
         stored: dict[str, Coordinate] = {}
-        source_timeline = self._timelines[timeline_id]
-        stored[timeline_id] = Coordinate(
-            axis_value,
-            source_timeline.unit,
-            number_type=source_timeline.number_type,
-        )
-        for target_id, target in self._timelines.items():
-            if target_id == timeline_id:
-                continue
-            value = self._get_exact_interpolated_coordinate(
-                target_id, timeline_id, native_value
+        for member_id, member in self._timelines.items():
+            value = (
+                axis_value
+                if member_id == timeline_id
+                else self._convert(axis_value, timeline_id, member_id)
             )
-            if value is None:
-                if not self._contains_coordinate(target_id, coord_value, timeline_id):
-                    continue
-                interpolation_map = self._get_interpolation_map(
-                    target_id, source_id=timeline_id
-                )
-                if interpolation_map is None:
-                    continue
-                value = express_as(interpolation_map(coord_value), target.number_type)
-            stored[target_id] = Coordinate(
-                value,
-                target.unit,
-                number_type=target.number_type,
+            stored[member_id] = Coordinate(
+                value, member.unit, number_type=member.number_type
             )
         for member_id, member in self._timelines.items():
-            member_coordinate = stored.get(member_id)
-            if member_coordinate is None:
-                continue
-            member_stamp = member.get_timestamp_at(member_coordinate)
+            member_stamp = member.get_timestamp_at(stored[member_id])
             for (
                 descendant_id,
                 descendant_coordinate,
             ) in member_stamp.coordinates.items():
                 stored.setdefault(descendant_id, descendant_coordinate)
+        ordered = {timeline_id: stored.pop(timeline_id), **stored}
         return TimeStamp(
-            coordinates=stored,
+            coordinates=ordered,
             source=self,
             source_id=timeline_id,
-            row_index=row_index,
-            is_interpolated=row_index == -1,
+            is_interpolated=is_interpolated,
             conversion_maps=conversion_maps,
         )
 
@@ -1019,8 +923,9 @@ class TimelineGroup:
 
         Args:
             at: Positions or event IDs to tabulate, one row each in input
-                order. If None, the group's stored boundary timestamps are
-                the rows.
+                order. If None, the rows are the group's two stored
+                timestamps: the common start and the common end, each member
+                at ``0`` and at its length, exact in its declared number type.
             timeline_id: Which timeline the positions refer to. Required for
                 entries without an embedded timeline ID.
             timeline_filter: Only include these timeline fields.
@@ -1040,36 +945,12 @@ class TimelineGroup:
         Returns:
             One row per timestamp and one field per timeline — coordinate
             structs carrying each number twice — plus C-Map fields when
-            ``conversion_maps`` is enabled. A group with no timestamps gives
-            an empty table.
+            ``conversion_maps`` is enabled. An empty group gives an empty
+            table.
 
-            A null cell means one thing only: that member does not reach that
-            position. An unresolvable *query* position is an error, not a
-            null, so the two can never be confused.
-
-        Note:
-            **Known limitation — stored rows are a float lane.** With
-            ``at=None`` the rows come from the group's stored timestamps,
-            which are ``float64`` because interpolation between members runs
-            on doubles. A boundary authored as an exact ratio is therefore
-            recorded as the nearest double and reads back as that double's
-            exact dyadic: a member whose length is ``5/3`` quarters shows
-            ``7505999378950827/4503599627370496`` in a stored row.
-
-            **The way out is to ask for the position instead of reading the
-            stored row.** Every queried lane is exact, so pass the positions
-            you want through ``at=``::
-
-                group.get_timestamp_table([Fraction(5, 3)], "clt_1")  # 5/3
-                group.get_timestamp_at(Fraction(5, 3), "clt_1")       # 5/3
-                group.get_coordinate_at(Fraction(5, 3), "clt_1")      # 5/3
-
-            against the stored-row reading::
-
-                group.get_timestamp_table()  # 7505999378950827/4503599627370496
-
-            Only the rows the store already holds are affected; a queried
-            position never is.
+            A null cell means one thing only: that timeline does not reach
+            that position. An unresolvable *query* position is an error, not
+            a null, so the two can never be confused.
 
         Raises:
             KeyError: If a named timeline is not in the group.
@@ -1079,20 +960,30 @@ class TimelineGroup:
                 completely or not at all, on this lane as on the stamp lane.
 
         Examples:
+            >>> from fractions import Fraction
             >>> from timetoalign.timelines import TimelineGroup
             >>> from timetoalign.timelines.types import (
+            ...     ContinuousLogicalTimeline,
             ...     ContinuousPhysicalTimeline,
             ...     DiscreteGraphicalTimeline,
             ... )
-            >>> pixels = DiscreteGraphicalTimeline(length=4000, unit="pixels", uid="dgt_1")
-            >>> audio = ContinuousPhysicalTimeline(length=10.0, unit="seconds", uid="cpt_1")
-            >>> group = TimelineGroup(id="pair", timelines=[pixels, audio])
+            >>> pixels = DiscreteGraphicalTimeline(length=4000, unit="pixels")
+            >>> audio = ContinuousPhysicalTimeline(length=10.0, unit="seconds")
+            >>> group = TimelineGroup(timelines=[pixels, audio])
             >>> group.get_timestamp_table().column_names
             ['dgt_1', 'cpt_1']
             >>> group.get_timestamp_table([0.0, 2.5], "cpt_1", format="dataframe")
                dgt_1 (pixels)  cpt_1 (seconds)
-            0              0             0.0
-            1           1000             2.5
+            0               0              0.0
+            1            1000              2.5
+
+            The stored rows are exact:
+
+            >>> score = ContinuousLogicalTimeline(length=Fraction(5, 3))
+            >>> TimelineGroup(timelines=[score]).get_timestamp_table(
+            ...     format="dataframe"
+            ... )["clt_1 (quarters)"].tolist()
+            [Fraction(0, 1), Fraction(5, 3)]
         """
         validate_table_format(format)
         reject_dataframe_options(format, fields=fields, units=units)
@@ -1116,35 +1007,26 @@ class TimelineGroup:
         timeline_filter: set[str] | None,
         conversion_maps: ConversionMapsSpec,
     ) -> pa.Table:
-        """Encode the stored boundary timestamps as coordinate-struct columns.
+        """Tabulate the two stored timestamps: the common start and end.
 
-        The stored table is float64 on purpose — interpolation runs on
-        doubles — so this is where each column is written in the
-        representation its member declares.
-
-        That re-expression cannot recover what the store never held: on a
-        fraction-canonical member an exact boundary was already rounded to a
-        double on the way in, so the cell here carries that double's exact
-        dyadic. It is a limitation of the store, not of this encoding, and it
-        applies to stored rows only — a queried position reaches
-        :meth:`_queried_timestamp_table` with its exact value intact.
+        Each member stands at ``0`` and at its length, both written in the
+        member's declared number type, so a stored row is as exact as the
+        member's own length.
         """
-        if self._timestamp_table is None:
+        if not self._timelines:
             return pa.table({})
-
-        table = self._timestamp_table
-        names = [
-            name
-            for name in table.column_names
-            if timeline_filter is None or name in timeline_filter
+        rows: list[dict[str, Coordinate]] = [
+            {
+                member_id: Coordinate(
+                    express_as(0, member.number_type),
+                    member.unit,
+                    number_type=member.number_type,
+                )
+                for member_id, member in self._timelines.items()
+            },
+            {member_id: member.length for member_id, member in self._timelines.items()},
         ]
-        values = {
-            name: table.column(name).to_numpy(zero_copy_only=False) for name in names
-        }
-        return build_timestamp_table(
-            self._member_columns(names, values)
-            + self._cmap_columns(names, values, conversion_maps)
-        )
+        return self._tabulate(rows, timeline_filter, conversion_maps)
 
     def _member_columns(
         self, names: list[str], values: dict[str, Any]
@@ -1249,7 +1131,19 @@ class TimelineGroup:
                 )
                 for value in queried
             ]
+        return self._tabulate(rows, timeline_filter, conversion_maps)
 
+    def _tabulate(
+        self,
+        rows: list[dict[str, Coordinate]],
+        timeline_filter: set[str] | None,
+        conversion_maps: ConversionMapsSpec,
+    ) -> pa.Table:
+        """Encode cross-sections as one coordinate column per timeline.
+
+        Members come first in member order, then any further timeline a row
+        names, each column in its timeline's declared number type.
+        """
         names = list(self._timelines)
         for row in rows:
             names.extend(name for name in row if name not in names)
@@ -1274,46 +1168,6 @@ class TimelineGroup:
         return build_timestamp_table(
             self._member_columns(names, cells)
             + self._cmap_columns(names, floats, conversion_maps)
-        )
-
-    def _row_to_timestamp(self, index: int) -> GroupTimestamp:
-        """Convert a table row to a GroupTimestamp view object.
-
-        Args:
-            index: Row index in the timestamp table.
-
-        Returns:
-            GroupTimestamp with coordinates and units from that row.
-        """
-        if self._timestamp_table is None:
-            raise ValueError("No timestamp table")
-
-        row = self._timestamp_table.slice(index, 1)
-        coords: dict[str, Coordinate] = {}
-
-        for data_field in self._timestamp_table.schema:
-            field_name = data_field.name
-            value = row.column(field_name)[0].as_py()
-            if value is None or field_name not in self._timelines:
-                continue
-            timeline = self._timelines[field_name]
-            if isinstance(value, dict):
-                value = struct_to_coordinate(value, timeline.number_type)
-            coords[field_name] = Coordinate(
-                value,
-                timeline.unit,
-                number_type=timeline.number_type,
-            )
-
-        if not coords:
-            raise KeyError(f"Group {self.id!r} row {index} has no coordinates")
-        axis_timeline_id = next(iter(coords))
-        return GroupTimestamp(
-            coordinates=coords,
-            row_index=index,
-            source=self,
-            source_id=axis_timeline_id,
-            is_interpolated=False,
         )
 
     # endregion
@@ -1563,43 +1417,30 @@ class TimelineGroup:
     # region Range Queries
 
     def get_interval_for(self, timeline_id: str) -> Interval:
-        """Return a member's stored coordinate extent as a typed interval.
+        """Return a member's extent in the group, ``[0, length]``.
+
+        Every member spans the whole group, so its interval is its own axis
+        from 0 to its length, in its unit and declared number type.
 
         Args:
-            timeline_id: The timeline to query.
+            timeline_id: The member to query.
 
         Returns:
-            The minimum-to-maximum stored interval on the member axis.
+            The member's interval ``[0, length]``.
+
+        Raises:
+            KeyError: If ``timeline_id`` is not a member.
         """
         if timeline_id not in self._timelines:
             raise KeyError(f"Unknown timeline ID {timeline_id!r} in group {self.id!r}")
-
-        if self._timestamp_table is None:
-            raise KeyError(f"Group {self.id!r} has no stored values")
-
-        coords = self._timestamp_table.column(timeline_id).to_pylist()
         timeline = self._timelines[timeline_id]
-        coords = [
-            (
-                struct_to_coordinate(value, timeline.number_type)
-                if isinstance(value, dict)
-                else value
-            )
-            for value in coords
-        ]
-
-        present = [value for value in coords if value is not None]
-        if not present:
-            raise KeyError(
-                f"Timeline {timeline_id!r} has no stored values in group {self.id!r}"
-            )
-        start_val = min(present)
-        end_val = max(present)
         return Interval(
             start=Coordinate(
-                start_val, timeline.unit, number_type=timeline.number_type
+                express_as(0, timeline.number_type),
+                timeline.unit,
+                number_type=timeline.number_type,
             ),
-            end=Coordinate(end_val, timeline.unit, number_type=timeline.number_type),
+            end=timeline.length,
         )
 
     # endregion
@@ -1735,10 +1576,6 @@ class TimelineGroup:
         Raises:
             TypeError: If ``at`` mixes keys and coordinates or is an
                 unsupported runtime form.
-
-        See Also:
-            get_timestamp_at_index: The row view of a stored timestamp, which
-                is a different operation addressed by row number.
         """
         return dispatch_retrieval(
             self,
@@ -1749,110 +1586,8 @@ class TimelineGroup:
             conversion_maps=conversion_maps,
         )
 
-    def _get_interpolation_map(
-        self, target_id: str, source_id: str | None = None
-    ) -> InterpolationMap | None:
-        """Get InterpolationMap for coordinate conversion to target.
-
-        This method is part of the TimeStampSource protocol.
-
-        For TimelineGroup, the map key is source_id:target_id since
-        groups have multiple member timelines.
-
-        Args:
-            target_id: Target timeline ID.
-            source_id: Source timeline ID (required for TimelineGroup).
-
-        Returns:
-            InterpolationMap for conversion, or None if not available.
-        """
-        if source_id is None:
-            return None
-        map_key = f"{source_id}:{target_id}"
-        return self._interpolation_maps.get(map_key)
-
-    def _get_exact_interpolated_coordinate(
-        self,
-        target_id: str,
-        source_id: str | None,
-        source_coordinate: Fraction,
-    ) -> CoordinateValue | None:
-        """Interpolate exactly when both bounding pairs are known rationals.
-
-        Group timestamp columns remain float arrays for fast lookup. Their
-        first and last present values, however, represent the exact zero and
-        length of each member timeline. This method uses those authoritative
-        values for rational scalar queries and declines exact interpolation
-        when an internal boundary has no exact representation.
-
-        Args:
-            target_id: Timeline to convert into.
-            source_id: Timeline containing ``source_coordinate``.
-            source_coordinate: Exact coordinate on the source timeline.
-
-        Returns:
-            The exact converted value when it can be proven, otherwise None.
-        """
-        if source_id is None or target_id not in self._timelines:
-            return None
-        if target_id == source_id:
-            return source_coordinate
-        if self._timestamp_table is None:
-            return None
-
-        source_values = self._timestamp_table.column(source_id).to_pylist()
-        source_float = float(source_coordinate)
-        low_idx: int | None = None
-        high_idx: int | None = None
-        for index, value in enumerate(source_values):
-            if value is None:
-                continue
-            if value <= source_float:
-                low_idx = index
-            if value >= source_float and high_idx is None:
-                high_idx = index
-                break
-        if low_idx is None or high_idx is None:
-            return None
-
-        def exact_boundary(timeline_id: str, index: int) -> Fraction | None:
-            values = self._timestamp_table.column(timeline_id).to_pylist()
-            present = [i for i, value in enumerate(values) if value is not None]
-            if not present:
-                return None
-            if index == present[0]:
-                return Fraction(0, 1)
-            if index == present[-1]:
-                length = self._timelines[timeline_id].length.value
-                if isinstance(length, int):
-                    return Fraction(length, 1)
-                if isinstance(length, Fraction):
-                    return length
-            return None
-
-        source_low = exact_boundary(source_id, low_idx)
-        source_high = exact_boundary(source_id, high_idx)
-        target_low = exact_boundary(target_id, low_idx)
-        target_high = exact_boundary(target_id, high_idx)
-        if None in (source_low, source_high, target_low, target_high):
-            return None
-        assert source_low is not None
-        assert source_high is not None
-        assert target_low is not None
-        assert target_high is not None
-        if source_low == source_high:
-            return target_low
-
-        ratio = (source_coordinate - source_low) / (source_high - source_low)
-        result = target_low + ratio * (target_high - target_low)
-        # Computed as exactly as the members' declared origins and lengths
-        # allow, then written the way the target axis writes numbers. Whether
-        # the position was interpolated is recorded on the stamp, not in the
-        # type of the number.
-        return express_as(result, self._timelines[target_id].number_type)
-
-    def _get_unit_map(self, unit: "TimeUnit") -> InterpolationMap | None:
-        """Get InterpolationMap for unit-based conversion.
+    def _get_unit_map(self, unit: "TimeUnit") -> None:
+        """Get a map for unit-based conversion.
 
         This method is part of the TimeStampSource protocol.
         For TimelineGroup, returns None as groups don't have their own C-Maps.
@@ -1868,7 +1603,7 @@ class TimelineGroup:
 
     def _get_unit_map_for_timeline(
         self, timeline_id: str, unit: "TimeUnit"
-    ) -> "InterpolationMap | Any | None":
+    ) -> "ConversionMap[Any] | None":
         """Get a C-Map for a specific member timeline.
 
         This method enables TimeStamp.get_unit() to access C-Maps from
@@ -1879,7 +1614,7 @@ class TimelineGroup:
             unit: The target unit.
 
         Returns:
-            The C-Map (InterpolationMap or ConversionMap), or None if not found.
+            The C-Map, or None if not found.
         """
         timeline = self._timelines.get(timeline_id)
         if timeline is not None:
@@ -1947,39 +1682,6 @@ class TimelineGroup:
             return []
         return list(timeline._conversion_maps.values())
 
-    def _descendant_coordinate(
-        self, timeline_id: str, axis: float, source_id: str
-    ) -> float | None:
-        """Resolve a coordinate on a member-descendant of this group.
-
-        The axis (on *source_id*) is transferred to the owning member via the
-        group's InterpolationMap, then into the descendant via the member's
-        exact offset arithmetic. Returns None if the owning member is not
-        reachable at *axis*, or the coordinate leaves the descendant's span.
-
-        Direct members are resolved by ``TimeStamp.get`` (with its own
-        reachability guard), so this method handles member-descendants only.
-        """
-        if timeline_id in self._timelines:
-            return None
-        for member_id, member in self._timelines.items():
-            if member._find_descendant(timeline_id) is None:
-                continue
-            if member_id == source_id:
-                member_coord: float = axis
-            else:
-                if not self._contains_coordinate(member_id, axis, source_id):
-                    return None
-                imap = self._get_interpolation_map(member_id, source_id=source_id)
-                if imap is None:
-                    return None
-                if imap.source_id == source_id:
-                    member_coord = float(imap(axis))
-                else:
-                    member_coord = float(imap.inverse()(axis))
-            return member._get_child_coordinate(timeline_id, member_coord)
-        return None
-
     def _get_available_units(self) -> list["TimeUnit"]:
         """Get all units available via C-Maps from member timelines.
 
@@ -2014,518 +1716,6 @@ class TimelineGroup:
                 return descendant._unit
         return None
 
-    def _contains_coordinate(
-        self, timeline_id: str, axis: float, source_id: str | None = None
-    ) -> bool:
-        """Check if a timeline has a valid coordinate at the given axis.
-
-        This method is part of the TimeStampSource protocol. For TimelineGroup,
-        we need to check if the target timeline has values at the given axis
-        coordinate on the source timeline.
-
-        Args:
-            timeline_id: The target timeline to check.
-            axis: The coordinate on the source timeline.
-            source_id: The source timeline ID (required for accurate checking).
-
-        Returns:
-            True if the target timeline is reachable at this axis coordinate.
-        """
-        if timeline_id not in self._timelines:
-            return False
-
-        # If no timestamp table, assume reachable (will fail later anyway)
-        if self._timestamp_table is None:
-            return True
-
-        # For the source timeline itself, always reachable
-        if source_id is not None and timeline_id == source_id:
-            return True
-
-        # If we don't know the source_id, we can't check properly
-        if source_id is None:
-            # Fall back to checking if the timeline has any values
-            target_vals = self._timestamp_table.column(timeline_id).to_pylist()
-            return any(v is not None for v in target_vals)
-
-        # Get the source field to find bounding rows
-        source_vals = self._timestamp_table.column(source_id).to_pylist()
-        target_vals = self._timestamp_table.column(timeline_id).to_pylist()
-
-        # Find bounding rows for the axis coordinate on source
-        low_idx = None
-        high_idx = None
-        for i, val in enumerate(source_vals):
-            if val is not None:
-                if val <= axis:
-                    low_idx = i
-                if val >= axis and high_idx is None:
-                    high_idx = i
-                    break
-
-        if low_idx is None or high_idx is None:
-            return False
-
-        # Check if target timeline has non-None values in the bounding rows
-        low_target = target_vals[low_idx] if low_idx < len(target_vals) else None
-        high_target = target_vals[high_idx] if high_idx < len(target_vals) else None
-
-        # Both bounds must have values for interpolation to work
-        return low_target is not None and high_target is not None
-
-    def _build_interpolation_maps(self) -> None:
-        """Build InterpolationMaps from the timestamp table.
-
-        Called after timeline additions/removals to update the
-        interpolation maps for O(log n) coordinate conversion.
-        """
-        if self._timestamp_table is None or self._timestamp_table.num_rows < 2:
-            self._interpolation_maps = {}
-            return
-
-        # Build pairwise maps between all timelines
-        timeline_ids = list(self._timelines.keys())
-        new_maps: dict[str, InterpolationMap] = {}
-
-        for i, source_id in enumerate(timeline_ids):
-            source_coords = self._timestamp_table.column(source_id).to_pylist()
-
-            for j, target_id in enumerate(timeline_ids):
-                if i == j:
-                    continue
-
-                target_coords = self._timestamp_table.column(target_id).to_pylist()
-
-                # Extract pairs where both have values
-                source_vals: list[float] = []
-                target_vals: list[float] = []
-
-                for s, t in zip(source_coords, target_coords):
-                    if s is not None and t is not None:
-                        source_vals.append(s)
-                        target_vals.append(t)
-
-                if len(source_vals) >= 2:
-                    # Create InterpolationMap: source -> target
-                    # Key is (source_id, target_id) combined
-                    map_key = f"{source_id}:{target_id}"
-                    new_maps[map_key] = InterpolationMap(
-                        source_coords=np.array(source_vals, dtype=np.float64),
-                        target_coords=np.array(target_vals, dtype=np.float64),
-                        source_id=source_id,
-                        target_id=target_id,
-                    )
-
-        self._interpolation_maps = new_maps
-
-    def _get_pairwise_map(
-        self, source_id: str, target_id: str
-    ) -> InterpolationMap | None:
-        """Get the InterpolationMap for converting between two timelines.
-
-        Args:
-            source_id: Source timeline ID.
-            target_id: Target timeline ID.
-
-        Returns:
-            InterpolationMap for the conversion, or None if not available.
-        """
-        map_key = f"{source_id}:{target_id}"
-        return self._interpolation_maps.get(map_key)
-
-    # endregion
-
-    # region Internal Methods - Boundary Resolution
-
-    def _resolve_boundary(
-        self,
-        spec: CoordinateSpec | GroupTimestamp | None,
-        is_start: bool,
-        new_timeline: "Timeline",
-    ) -> dict[str, Any]:
-        """Resolve a boundary specification to internal representation.
-
-        Args:
-            spec: The boundary specification (various forms).
-            is_start: True for start boundary, False for end.
-            new_timeline: The timeline being added.
-
-        Returns:
-            Dict with keys:
-                - "mode": "existing_timestamp" | "new_timestamp"
-                - "row_index": int (if existing)
-                - "coordinates": dict (if new timestamp needed)
-                - "new_timeline_coord": float (the new timeline's coordinate)
-        """
-        # Empty group: use timeline's own boundaries
-        if self._timestamp_table is None:
-            coord = 0.0 if is_start else float(new_timeline.length.value)
-            return {
-                "mode": "new_timestamp",
-                "coordinates": {new_timeline.id: coord},
-                "new_timeline_coord": coord,
-            }
-
-        # None: use current group start/end
-        if spec is None:
-            row_index = 0 if is_start else self.n_timestamps - 1
-            new_coord = 0.0 if is_start else float(new_timeline.length.value)
-            return {
-                "mode": "existing_timestamp",
-                "row_index": row_index,
-                "new_timeline_coord": new_coord,
-            }
-
-        # GroupTimestamp: direct reference
-        if isinstance(spec, GroupTimestamp):
-            new_coord = 0.0 if is_start else float(new_timeline.length.value)
-            return {
-                "mode": "existing_timestamp",
-                "row_index": spec.row_index,
-                "new_timeline_coord": new_coord,
-            }
-
-        # IdCoordinate: use timeline_id attribute directly
-        if isinstance(spec, IdCoordinate):
-            if spec.timeline_id not in self._timelines:
-                raise KeyError(
-                    f"Timeline '{spec.timeline_id}' not in group. "
-                    f"Available timelines: {self.timeline_ids}"
-                )
-            native_coord = self._timelines[spec.timeline_id].get_coordinate_at(
-                spec, format="coordinate"
-            )
-            return self._find_or_create_at(
-                float(native_coord.value), spec.timeline_id, new_timeline, is_start
-            )
-
-        # Unqualified CoordinateSpec: need an existing timeline for context
-        try:
-            resolved = resolve_coordinate_spec(spec)
-        except TypeError as error:
-            raise ValueError(f"Invalid boundary specification: {spec}") from error
-
-        if resolved.timeline_id is None:
-            # If only one timeline exists, use that for context
-            if len(self._timelines) == 1:
-                tl_id = next(iter(self._timelines.keys()))
-                native_coord = self._timelines[tl_id].get_coordinate_at(
-                    spec, format="coordinate"
-                )
-                return self._find_or_create_at(
-                    float(native_coord.value), tl_id, new_timeline, is_start
-                )
-            else:
-                raise ValueError(
-                    f"Ambiguous boundary specification: {spec}. "
-                    f"Multiple timelines exist. Use IdCoordinate."
-                )
-
-        raise ValueError(f"Invalid boundary specification: {spec}")
-
-    def _find_or_create_at(
-        self,
-        coord: float,
-        timeline_id: str,
-        new_timeline: "Timeline",
-        is_start: bool,
-    ) -> dict[str, Any]:
-        """Find existing timestamp or create spec for new one at coordinate.
-
-        Args:
-            coord: The coordinate in the specified timeline.
-            timeline_id: Which timeline the coordinate refers to.
-            new_timeline: The timeline being added.
-            is_start: True for start boundary, False for end.
-
-        Returns:
-            Boundary specification dict.
-        """
-        if timeline_id not in self._timelines:
-            raise KeyError(
-                f"Timeline '{timeline_id}' not in group. "
-                f"Available timelines: {self.timeline_ids}"
-            )
-
-        if self._timestamp_table is None:
-            raise ValueError("Cannot find timestamp in empty group")
-
-        # Check if coordinate matches an existing timestamp exactly
-        coords = self._timestamp_table.column(timeline_id).to_pylist()
-        for i, val in enumerate(coords):
-            if val is not None and abs(val - coord) < 1e-10:  # Exact match tolerance
-                new_coord = 0.0 if is_start else float(new_timeline.length.value)
-                return {
-                    "mode": "existing_timestamp",
-                    "row_index": i,
-                    "new_timeline_coord": new_coord,
-                }
-
-        # Need to create a new timestamp via interpolation
-        # Find bounding rows
-        low_idx = None
-        high_idx = None
-        for i, val in enumerate(coords):
-            if val is not None:
-                if val <= coord:
-                    low_idx = i
-                if val >= coord and high_idx is None:
-                    high_idx = i
-                    break
-
-        if low_idx is None or high_idx is None:
-            raise ValueError(
-                f"Coordinate {_format_coordinate_value(coord)} is outside range "
-                f"for timeline '{timeline_id}'"
-            )
-
-        # Interpolate to get coordinates for all existing timelines
-        ratio = (coord - coords[low_idx]) / (coords[high_idx] - coords[low_idx])
-
-        new_row_coords: dict[str, float | None] = {}
-        for field_name in self._timestamp_table.column_names:
-            field_vals = self._timestamp_table.column(field_name).to_pylist()
-            low_val = field_vals[low_idx]
-            high_val = field_vals[high_idx]
-
-            if low_val is not None and high_val is not None:
-                if field_name == timeline_id:
-                    # Use the exact specified coordinate for the source timeline
-                    # to avoid floating-point errors from interpolation round-trip
-                    new_row_coords[field_name] = coord
-                else:
-                    val = low_val + ratio * (high_val - low_val)
-                    # Round to integer for discrete timelines (samples, pixels, …)
-                    tl = self._timelines.get(field_name)
-                    if tl is not None and tl.number_type == NumberType.int:
-                        val = round(val)
-                    new_row_coords[field_name] = val
-            else:
-                new_row_coords[field_name] = None
-
-        new_coord = 0.0 if is_start else float(new_timeline.length.value)
-
-        return {
-            "mode": "new_timestamp",
-            "coordinates": new_row_coords,
-            "new_timeline_coord": new_coord,
-            "insert_after_idx": low_idx,  # Where to insert in sorted order
-        }
-
-    def _requires_extension(self, end_spec: dict[str, Any]) -> bool:
-        """Check if the end spec would require extending the group.
-
-        Args:
-            end_spec: The resolved end boundary specification.
-
-        Returns:
-            True if extension is required.
-        """
-        if end_spec["mode"] == "new_timestamp":
-            # If creating a new timestamp for the end, check if it's beyond current end
-            if self._timestamp_table is not None:
-                insert_idx = end_spec.get("insert_after_idx")
-                if insert_idx is not None and insert_idx == self.n_timestamps - 1:
-                    return True
-        return False
-
-    # endregion
-
-    # region Internal Methods - Table Manipulation
-
-    def _insert_timeline(
-        self,
-        timeline: "Timeline",
-        start_spec: dict[str, Any],
-        end_spec: dict[str, Any],
-    ) -> None:
-        """Insert a timeline into the timestamp table.
-
-        Args:
-            timeline: The timeline being added.
-            start_spec: Resolved start boundary specification.
-            end_spec: Resolved end boundary specification.
-        """
-        # Handle empty group
-        if self._timestamp_table is None:
-            # Create initial table with schema including unit metadata
-            schema = pa.schema(
-                [
-                    pa.field(
-                        timeline.id,
-                        pa.float64(),
-                        metadata=blob_metadata(
-                            unit=timeline.unit.value,
-                            timeline_id=timeline.id,
-                            number_type=timeline.number_type.name,
-                        ),
-                    )
-                ]
-            )
-            self._timestamp_table = pa.table(
-                {
-                    timeline.id: pa.array(
-                        [
-                            start_spec["new_timeline_coord"],
-                            end_spec["new_timeline_coord"],
-                        ],
-                        type=pa.float64(),
-                    )
-                },
-                schema=schema,
-            )
-            return
-
-        # Insert new timestamp rows if needed (in correct sorted order)
-        # We need to track row indices as we insert
-        rows_inserted = 0
-
-        if start_spec["mode"] == "new_timestamp":
-            insert_idx = start_spec.get("insert_after_idx", 0) + rows_inserted + 1
-            self._insert_timestamp_row(start_spec["coordinates"], insert_idx)
-            rows_inserted += 1
-            start_spec["row_index"] = insert_idx
-        else:
-            start_spec["row_index"] = start_spec.get("row_index", 0)
-
-        if end_spec["mode"] == "new_timestamp":
-            insert_idx = end_spec.get("insert_after_idx", self.n_timestamps - 1)
-            insert_idx += rows_inserted + 1
-            self._insert_timestamp_row(end_spec["coordinates"], insert_idx)
-            end_spec["row_index"] = insert_idx
-        else:
-            # Adjust for any rows inserted before this index
-            end_spec["row_index"] = (
-                end_spec.get("row_index", self.n_timestamps - 1) + rows_inserted
-            )
-
-        # Get final indices
-        start_idx = start_spec["row_index"]
-        end_idx = end_spec["row_index"]
-
-        # Build new field with interpolated values
-        n_rows = self.n_timestamps
-        new_values: list[float | None] = []
-
-        for i in range(n_rows):
-            if i < start_idx or i > end_idx:
-                new_values.append(None)
-            elif i == start_idx:
-                new_values.append(start_spec["new_timeline_coord"])
-            elif i == end_idx:
-                new_values.append(end_spec["new_timeline_coord"])
-            else:
-                # Interpolate
-                ratio = (i - start_idx) / (end_idx - start_idx)
-                coord = start_spec["new_timeline_coord"] + ratio * (
-                    end_spec["new_timeline_coord"] - start_spec["new_timeline_coord"]
-                )
-                new_values.append(coord)
-
-        # Add field with unit metadata
-        new_field = pa.field(
-            timeline.id,
-            pa.float64(),
-            metadata=blob_metadata(
-                unit=timeline.unit.value,
-                timeline_id=timeline.id,
-                number_type=timeline.number_type.name,
-            ),
-        )
-        self._timestamp_table = self._timestamp_table.append_column(
-            new_field, pa.array(new_values, type=pa.float64())
-        )
-
-    def _insert_timestamp_row(
-        self,
-        coordinates: dict[str, float | None],
-        insert_index: int,
-    ) -> None:
-        """Insert a new row into the timestamp table at the given index.
-
-        Args:
-            coordinates: Dict of timeline_id -> coordinate for the new row.
-            insert_index: Where to insert (rows at and after shift down).
-        """
-        if self._timestamp_table is None:
-            return
-
-        # Build a single-row table for the new timestamp
-        # Preserve the existing schema with metadata
-        new_row_data: dict[str, list[float | None]] = {}
-        for field_name in self._timestamp_table.column_names:
-            new_row_data[field_name] = [coordinates.get(field_name)]
-
-        # Create arrays and use existing schema to preserve metadata
-        arrays = [
-            pa.array([new_row_data[name][0]], type=pa.float64())
-            for name in self._timestamp_table.column_names
-        ]
-        new_row_table = pa.table(
-            dict(zip(self._timestamp_table.column_names, arrays)),
-            schema=self._timestamp_table.schema,
-        )
-
-        # Split existing table and concatenate
-        before = self._timestamp_table.slice(0, insert_index)
-        after = self._timestamp_table.slice(insert_index)
-
-        self._timestamp_table = pa.concat_tables([before, new_row_table, after])
-
-    def _remove_timeline_field(self, timeline_id: str) -> None:
-        """Remove a timeline's field from the timestamp table.
-
-        Also removes any rows that become all-null after removal.
-
-        Args:
-            timeline_id: The timeline ID (field name) to remove.
-        """
-        if self._timestamp_table is None:
-            return
-
-        # Get field names except the one to remove
-        remaining = [c for c in self._timestamp_table.column_names if c != timeline_id]
-
-        if not remaining:
-            # No fields left
-            self._timestamp_table = None
-            return
-
-        # Select remaining fields
-        self._timestamp_table = self._timestamp_table.select(remaining)
-
-        # Remove rows where all values are null
-        self._remove_all_null_rows()
-
-    def _remove_all_null_rows(self) -> None:
-        """Remove rows from timestamp table where all values are null."""
-        if self._timestamp_table is None or self._timestamp_table.num_rows == 0:
-            return
-
-        # Check each row
-        rows_to_keep: list[int] = []
-        for i in range(self._timestamp_table.num_rows):
-            row = self._timestamp_table.slice(i, 1)
-            has_value = False
-            for field_name in row.column_names:
-                val = row.column(field_name)[0].as_py()
-                if val is not None:
-                    has_value = True
-                    break
-            if has_value:
-                rows_to_keep.append(i)
-
-        if len(rows_to_keep) == self._timestamp_table.num_rows:
-            return  # No rows to remove
-
-        if not rows_to_keep:
-            self._timestamp_table = None
-            return
-
-        # Take only the rows we want to keep
-        indices = pa.array(rows_to_keep)
-        self._timestamp_table = self._timestamp_table.take(indices)
-
     # endregion
 
     # region Timeline-like API
@@ -2539,10 +1729,7 @@ class TimelineGroup:
         return iter(self._timelines.values())
 
     def __repr__(self) -> str:
-        return (
-            f"TimelineGroup(id={self.id!r}, n_timelines={self.n_timelines}, "
-            f"n_timestamps={self.n_timestamps}, locked={self._is_locked})"
-        )
+        return f"TimelineGroup(id={self.id!r}, n_timelines={self.n_timelines})"
 
     def __str__(self) -> str:
         """Return human-readable ASCII diagram of the group.
@@ -2562,6 +1749,8 @@ class TimelineGroup:
 
     # endregion
 
+    # region Summary and Serialization
+
     def summary(self) -> dict[str, Any]:
         """Get a summary of the group.
 
@@ -2572,10 +1761,81 @@ class TimelineGroup:
             "id": self.id,
             "name": self.name,
             "n_timelines": self.n_timelines,
-            "n_timestamps": self.n_timestamps,
             "timeline_ids": self.timeline_ids,
-            "is_locked": self._is_locked,
             "meta": self.meta,
+        }
+
+    def to_dict(
+        self,
+        *,
+        events: bool = False,
+        external_references: bool = False,
+    ) -> dict[str, Any]:
+        """Convert the group to a dictionary for serialization.
+
+        The group is written with every timeline it needs: ``"timelines"``
+        holds the root of each member's manifest tree — a member that is a
+        child contributes its root, which holds it — each exactly
+        :meth:`Timeline.to_dict <timetoalign.timelines.Timeline.to_dict>`,
+        sorted by id. ``"group"`` names the members by id, sorted, and
+        ``"graphical"`` keeps their display order, which is the order they
+        were added in. The file's own ``meta`` is the writer's concern.
+
+        Args:
+            events: Passed to every root's ``to_dict``.
+            external_references: Passed to every root's ``to_dict``.
+
+        Returns:
+            ``{"timelines": [...], "group": {"id", "name", "meta",
+            "members"}, "graphical": {"order": [...]}}``.
+
+        Examples:
+            >>> from fractions import Fraction
+            >>> from timetoalign.timelines import TimelineGroup
+            >>> from timetoalign.timelines.types import (
+            ...     ContinuousLogicalTimeline,
+            ...     DiscreteGraphicalTimeline,
+            ... )
+            >>> image = DiscreteGraphicalTimeline(length=5000)
+            >>> part = DiscreteGraphicalTimeline(length=2000)
+            >>> image.add_child(part, offset=1000)
+            >>> group = TimelineGroup(
+            ...     timelines=[part, ContinuousLogicalTimeline(length=Fraction(8))]
+            ... )
+            >>> data = group.to_dict()
+            >>> [timeline["id"] for timeline in data["timelines"]]
+            ['clt_1', 'dgt_1']
+            >>> data["group"]
+            {'id': 'group_1', 'name': None, 'meta': {}, 'members': ['clt_1', 'dgt_2']}
+            >>> data["graphical"]
+            {'order': ['dgt_2', 'clt_1']}
+        """
+        roots: dict[str, Timeline] = {}
+        for member in self._timelines.values():
+            root = _root(member)
+            roots.setdefault(root.id, root)
+        return {
+            "timelines": [
+                roots[root_id].to_dict(
+                    events=events, external_references=external_references
+                )
+                for root_id in sorted(roots)
+            ],
+            "group": self._to_group_object(),
+            "graphical": {"order": self.timeline_ids},
+        }
+
+    def _to_group_object(self) -> dict[str, Any]:
+        """Write the ``Group`` object: id, name, meta and the sorted member ids.
+
+        The one writer of the ``Group`` object, shared by :meth:`to_dict` and
+        the bundle's dictionary writer.
+        """
+        return {
+            "id": self.id,
+            "name": self.name,
+            "meta": dict(self.meta),
+            "members": sorted(self.timeline_ids),
         }
 
     # endregion
@@ -2596,7 +1856,7 @@ class TimelineGroup:
         Uses the flow controller's repeat structure to compute section
         boundaries in the reference timeline's coordinate space, then
         resolves those boundaries into every other timeline's coordinates
-        via the group's interpolation maps. Each member is unfolded along its
+        via the group's linear conversion. Each member is unfolded along its
         own resolved played spans: a new timeline of the member's **same
         concrete type** with one appended child (plus a matching named Region)
         per section, in unfolded coordinates.
@@ -2625,6 +1885,9 @@ class TimelineGroup:
             A new ``TimelineGroup`` containing the unfolded timelines. Each
             member keeps its original timeline ID, is the same concrete type as
             its source, and carries one appended child and Region per section.
+            A section child is named after its section; its id is minted
+            (``clt_2``, ...), so that timeline ids stay unique across the
+            group.
             The reference timeline additionally carries a reverse FlowMap
             (id ``"source"``) and a forward FlowMap (id ``f"forward_{flow.id}"``).
 
@@ -2664,8 +1927,8 @@ class TimelineGroup:
             tl_id: [] for tl_id in self._timelines
         }
         for i, (qb_start, qb_end) in enumerate(qb_sections):
-            start_ts = self.get_timestamp_at(float(qb_start), reference_timeline_id)
-            end_ts = self.get_timestamp_at(float(qb_end), reference_timeline_id)
+            start_ts = self.get_timestamp_at(qb_start, reference_timeline_id)
+            end_ts = self.get_timestamp_at(qb_end, reference_timeline_id)
 
             for tl_id in self._timelines:
                 try:
@@ -2694,11 +1957,18 @@ class TimelineGroup:
         for tl_id, tl in self._timelines.items():
             member_map = FlowMap(id=flow.id)
             member_map._build_from_intervals(member_spans[tl_id])
-            result_timelines.append(
-                unfold_via_flowmap(
-                    tl, member_map, uid=tl_id, include_children=include_children
-                )
+            unfolded = unfold_via_flowmap(
+                tl, member_map, uid=tl_id, include_children=include_children
             )
+            # A section label names a child; it is no id. Each descendant is
+            # given a minted id in the member's tree, so the new group can
+            # mint again whatever collides across members.
+            taken = {timeline.id for timeline in _tree(unfolded)}
+            for _, descendant in list(unfolded._iter_descendants()):
+                minted = mint_id(timeline_id_prefix(descendant.unit), taken)
+                taken.add(minted)
+                descendant._set_id(minted, minted=True)
+            result_timelines.append(unfolded)
 
         # 4. Assemble the new group.
         group_name = name if name is not None else f"{self.name} (unfolded)"
@@ -2740,14 +2010,13 @@ class TimelineGroup:
 
         Examples:
             >>> print(group.diagram())
-            TimelineGroup[my_group] (2 timelines, 2 timestamps)
+            TimelineGroup[my_group] (2 timelines)
             ┌────────────────────────────────────────────────────────────┐
             │ DiscreteGraphicalTimeline[dgt_1:1] (11 events, 5 children)  │
             │ 0 ∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶ 4835 pixels    │
             │   ├─ system_1     0   ∶∶∶∶∶∶∶                    967       │
             │   └─ ...                                                   │
             └────────────────────────────────────────────────────────────┘
-            Timestamps: 2
         """
         from timetoalign.display.ascii import group_diagram
 

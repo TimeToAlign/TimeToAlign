@@ -83,17 +83,14 @@ def _make_bundle(bundle_id: str) -> AlignmentBundle:
     bundle = AlignmentBundle(id=bundle_id)
     bundle.add_timeline(
         ContinuousLogicalTimeline(length=12, uid=SCORE, unit=TimeUnit.quarters),
-        uid=SCORE,
         as_group="score_group",
     )
     bundle.add_timeline(
         ContinuousPhysicalTimeline(length=12, uid=PERF_1, unit=TimeUnit.seconds),
-        uid=PERF_1,
         as_group="perf1_group",
     )
     bundle.add_timeline(
         ContinuousPhysicalTimeline(length=12, uid=PERF_2, unit=TimeUnit.seconds),
-        uid=PERF_2,
         as_group="perf2_group",
     )
     return bundle

@@ -16,7 +16,6 @@ from pathlib import Path
 import pytest
 
 from timetoalign.alignment import Agent, AlignmentAnchor, MatchClaim, MatchMetadata
-from timetoalign.alignment.bundle import _reset_bundle_ids
 from timetoalign.alignment.claims import _reset_anchor_ids, _reset_claim_ids
 from timetoalign.core import AgentType, Coordinate, TimeUnit
 from timetoalign.testdata import ensure_data
@@ -24,7 +23,6 @@ from timetoalign.timelines import (
     ContinuousPhysicalTimeline,
     DiscreteGraphicalTimeline,
 )
-from timetoalign.timelines.groups import _reset_group_ids
 
 ensure_data("thoresen", "supra", "vienna_1x22", "score")
 
@@ -150,12 +148,11 @@ def reset_ids() -> None:
     """Reset ID generators before each test.
 
     This ensures test isolation - each test starts with fresh IDs.
-    Resets all four generators: group, anchor, claim, and bundle.
+    Resets the anchor and claim generators; group and bundle ids are minted
+    statelessly and need no reset.
     """
-    _reset_group_ids()
     _reset_anchor_ids()
     _reset_claim_ids()
-    _reset_bundle_ids()
 
 
 # endregion

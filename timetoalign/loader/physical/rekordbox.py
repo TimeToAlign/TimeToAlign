@@ -156,7 +156,7 @@ class RekordboxLoader(Loader[list[RekordboxTrack]]):
 
         bundle = AlignmentBundle()
         for timeline in self.create_timelines():
-            bundle.add_timeline(timeline, uid=timeline.id)
+            bundle.add_timeline(timeline)
         return bundle
 
     @classmethod

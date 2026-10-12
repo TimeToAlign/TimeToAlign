@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+from pathlib import Path
 
 # Import ms3 in the controller process first: its packaging machinery may
 # (re)write a generated version module on import, and concurrent first
@@ -69,3 +70,18 @@ def pytest_collection_modifyitems(config, items):
     for item in items:
         if "slow" in item.keywords:
             item.add_marker(skip_slow)
+
+
+@pytest.fixture
+def rekordbox_specimen() -> Path:
+    """The Rekordbox collection specimen, skipping where it is absent.
+
+    The specimen is not part of a fetched corpus; it lives in a local
+    checkout of the test-data repository.
+    """
+    specimen = Path(
+        "/home/laser/git/tta/tta_test_data/data/audio/moriero_dj_set/rekordbox.xml"
+    )
+    if not specimen.exists():
+        pytest.skip(f"Test data file not found: {specimen}")
+    return specimen

@@ -1395,7 +1395,7 @@ class Ieee1599Loader(XmlLoader):
 
         bundle = AlignmentBundle(name=self._name)
         for timeline in self.create_timelines():
-            bundle.add_timeline(timeline, uid=timeline.id, as_group=timeline.id)
+            bundle.add_timeline(timeline, as_group=timeline.id)
         if self._claim_field is not None:
             bundle.add_match_claim_field(self._claim_field)
         return bundle
@@ -1523,14 +1523,14 @@ class Ieee1599Loader(XmlLoader):
             ]
             if not accolade_specs:
                 continue
-            page_uid = f"{spec.uid}_page{page_index}"
+            # Pages and accolades are named by position; their ids are
+            # minted in the edition's manifest.
             page: SegmentLine[DiscreteGraphicalTimeline] = SegmentLine[
                 DiscreteGraphicalTimeline
             ](
                 length=0,
                 unit=_GRAPHIC_UNIT,
                 number_type=NumberType.int,
-                uid=page_uid,
                 name=f"page_{page_index}",
                 meta={"page": page_spec.page},
             )
@@ -1539,7 +1539,6 @@ class Ieee1599Loader(XmlLoader):
                     length=max(row["end"] for row in segment_spec.rows),
                     unit=_GRAPHIC_UNIT,
                     number_type=NumberType.int,
-                    uid=f"{page_uid}_accolade{accolade_index}",
                     name=f"accolade_{accolade_index}",
                 )
                 accolade.add_events(segment_spec.rows)

@@ -131,9 +131,8 @@ class TabularExportMixin:
         access to all equivalent coordinates across children and C-Map units.
         The axis is written in this timeline's declared ``number_type``, so a
         query of ``9.5`` on a fraction-canonical timeline gives an axis of
-        ``Fraction(19, 2)``.
-
-        Uses InterpolationMaps for O(log n) coordinate conversion.
+        ``Fraction(19, 2)``. Descendants are reached by exact offset
+        arithmetic.
 
         Args:
             at: Coordinate value. Can be:

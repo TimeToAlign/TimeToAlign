@@ -21,6 +21,7 @@ from timetoalign.core import (
     TimeUnit,
 )
 from timetoalign.timelines.flow import Flow, PlaythroughSection
+from timetoalign.timelines.groups import _root
 from timetoalign.timelines.structure import MetricHierarchy, SectionHierarchy
 
 from .bundle import AlignmentBundle
@@ -56,7 +57,7 @@ class TimeSkeleton:
         self._metric_hierarchy = metric_hierarchy
         self._beat_grid = beat_grid
         self._bundle = AlignmentBundle()
-        self._participant_ids: set[str] = set()
+        self._participants: dict[str, Any] = {}
         self._timeline_flows: dict[str, str] = {}
         # Flow-keyed cache of materialized references; the ``None`` key is
         # reserved for the abstract no-flow reference (flow ids are never
@@ -111,16 +112,12 @@ class TimeSkeleton:
     @property
     def participants(self) -> tuple[Any, ...]:
         """Attached source and rendition timelines, excluding references."""
-        return tuple(
-            self._bundle.timelines[timeline_id]
-            for timeline_id in self._bundle.timelines
-            if timeline_id in self._participant_ids
-        )
+        return tuple(self._participants.values())
 
     @property
     def n_participants(self) -> int:
         """Number of attached participant timelines."""
-        return len(self._participant_ids)
+        return len(self._participants)
 
     def attach(
         self,
@@ -155,9 +152,13 @@ class TimeSkeleton:
             flow_id = flow
         if flow_id not in self._flows:
             raise KeyError(f"Unknown flow {flow_id!r}")
-        if timeline.id not in self._participant_ids:
-            self._bundle.add_timeline(timeline, uid=timeline.id)
-            self._participant_ids.add(timeline.id)
+        if timeline.id not in self._participants:
+            # The private bundle holds the manifest the participant belongs
+            # to: its root, which a sibling participant may have brought.
+            root = _root(timeline)
+            if self._bundle.timelines.get(root.id) is not root:
+                self._bundle.add_timeline(timeline)
+            self._participants[timeline.id] = timeline
             timeline._add_skeleton_attachment(self)
         self._timeline_flows[timeline.id] = flow_id
         if claims is not None:
@@ -167,18 +168,18 @@ class TimeSkeleton:
     def detach(self, timeline: Any) -> None:
         """Remove a participant and its claims from this structure."""
         timeline_id = timeline if isinstance(timeline, str) else timeline.id
-        if timeline_id not in self._participant_ids:
+        if timeline_id not in self._participants:
             raise KeyError(f"Timeline {timeline_id!r} is not attached")
-        participant = self._bundle.timelines.pop(timeline_id)
-        self._participant_ids.remove(timeline_id)
+        participant = self._participants.pop(timeline_id)
+        root = _root(participant)
+        if not any(_root(other) is root for other in self._participants.values()):
+            self._bundle.timelines.pop(root.id, None)
         self._timeline_flows.pop(timeline_id, None)
         self._bundle.cross_group_claims = [
             claim
             for claim in self._bundle.cross_group_claims
             if timeline_id not in claim.timelines
         ]
-        self._bundle._uid_to_timeline_id.pop(timeline_id, None)
-        self._bundle._timeline_id_to_uid.pop(participant.id, None)
         participant._remove_skeleton_attachment(self)
 
     def create_match_claim(
@@ -189,11 +190,11 @@ class TimeSkeleton:
         coordinate: Coordinate | IdCoordinate | int | float | Fraction,
     ) -> MatchClaim:
         """Anchor a participant coordinate to its structural reference axis."""
-        if timeline_id not in self._participant_ids:
+        if timeline_id not in self._participants:
             raise KeyError(f"Timeline {timeline_id!r} is not attached")
         flow_id = self._timeline_flows[timeline_id]
         reference = self.materialize(flow=flow_id)
-        participant = self._bundle.timelines[timeline_id]
+        participant = self._participants[timeline_id]
         participant_coordinate = self._coordinate_for_timeline(coordinate, participant)
         reference_coordinate = self._resolve_reference_position(at, flow_id)
         anchor = AlignmentAnchor(

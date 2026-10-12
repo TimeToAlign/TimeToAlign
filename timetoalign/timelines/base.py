@@ -167,8 +167,74 @@ class Timeline(
         Timeline._registry[tag] = cls
 
     @classmethod
+    def _serialized_class(cls, data: dict[str, Any]) -> type["Timeline"]:
+        """Return the class a timeline dictionary rebuilds as.
+
+        ``class`` names a registered plain timeline class; ``is_segment_line``
+        says whether the timeline is a SegmentLine of that class. A
+        SegmentLine's segment type is its children's class — a SegmentLine
+        itself when the children carry the flag — or, without children, the
+        named class.
+
+        Raises:
+            ValueError: If the class is unknown, the flag is missing or not a
+                boolean, or a SegmentLine's segments have mixed classes or a
+                class other than the one it names.
+        """
+        from .types import SegmentLine, SegmentLineMixin
+
+        class_tag = data.get("class")
+        if not isinstance(class_tag, str):
+            raise ValueError("Serialized timeline is missing a string 'class' tag")
+        flag = data.get("is_segment_line")
+        if not isinstance(flag, bool):
+            raise ValueError(
+                f"Serialized timeline {data.get('id')!r} is missing a boolean "
+                "'is_segment_line'"
+            )
+        registered = (
+            Timeline
+            if class_tag == Timeline.__name__
+            else Timeline._registry.get(class_tag)
+        )
+        if registered is None or issubclass(registered, SegmentLineMixin):
+            raise ValueError(f"Unknown serialized timeline class '{class_tag}'")
+        if not flag:
+            return registered
+
+        timeline_id = data.get("id")
+        children = data.get("children") or {}
+        if not children:
+            if registered is Timeline:
+                raise ValueError(f"Segment line {timeline_id!r} names no segment class")
+            return SegmentLine[registered]
+        segment_types = {
+            Timeline._serialized_class(child["timeline"]) for child in children.values()
+        }
+        if len(segment_types) != 1:
+            names = sorted(segment_type.__name__ for segment_type in segment_types)
+            raise ValueError(
+                f"Segment line {timeline_id!r} has segments of mixed classes: {names}"
+            )
+        (segment_type,) = segment_types
+        innermost = segment_type
+        while issubclass(innermost, SegmentLineMixin):
+            innermost = innermost._segment_type
+        if innermost is not registered:
+            raise ValueError(
+                f"Segment line {timeline_id!r} names class {class_tag!r} but its "
+                f"segments are {innermost.__name__!r}"
+            )
+        return SegmentLine[segment_type]
+
+    @classmethod
     def _resolve_serialized_class_hierarchy(cls, class_tag: str) -> type["Timeline"]:
-        """Resolve a serialized class tag, materializing parameters recursively."""
+        """Resolve a dynamic class name, materializing parameters recursively.
+
+        Pickle addresses a parameterized SegmentLine class by its name
+        (``SegmentLine[DiscreteGraphicalTimeline]``); the dictionary form
+        never writes such names.
+        """
         registered = (
             Timeline
             if class_tag == Timeline.__name__
@@ -547,6 +613,14 @@ class Timeline(
     def class_name(self) -> str:
         """The class name of this timeline."""
         return self.__class__.__name__
+
+    def _manifest_class(self) -> str:
+        """The class the dictionary form writes: this timeline's own."""
+        return type(self).__name__
+
+    def _is_segment_line_instance(self) -> bool:
+        """Whether this timeline is a SegmentLine (the dictionary's flag)."""
+        return False
 
     # endregion
 
@@ -1148,7 +1222,8 @@ class Timeline(
         data: dict[str, Any] = {
             "id": self._id,
             "name": self._name,
-            "class": self.class_name,
+            "class": self._manifest_class(),
+            "is_segment_line": self._is_segment_line_instance(),
             "unit": str(self._unit),
             "number_type": str(self._number_type),
             "length": coordinate_to_dict(self._length),
@@ -1222,18 +1297,14 @@ class Timeline(
         Returns:
             A new Timeline instance.
         """
-        class_tag = data.get("class")
-        if not isinstance(class_tag, str):
-            raise ValueError("Serialized timeline is missing a string 'class' tag")
-
-        timeline_class = Timeline._resolve_serialized_class_hierarchy(class_tag)
+        timeline_class = Timeline._serialized_class(data)
         if timeline_class is not cls and issubclass(timeline_class, cls):
             return timeline_class.from_dict(data)
 
         if timeline_class is not cls:
             raise ValueError(
-                f"Serialized timeline class '{class_tag}' does not match "
-                f"receiving subclass '{cls.__name__}'"
+                f"Serialized timeline class '{timeline_class.__name__}' does not "
+                f"match receiving subclass '{cls.__name__}'"
             )
 
         cls._validate_serialized_payload(data)
@@ -1295,8 +1366,10 @@ class Timeline(
         if references:
             timeline.add_external_references(references, validate=False)
 
-        # Add children
-        for child_id, child_data in data.get("children", {}).items():
+        # Add children (a segment line's in offset order, so that its segments
+        # append contiguously whatever order the dictionary lists them in)
+        placed: list[tuple[Coordinate, Timeline]] = []
+        for child_data in data.get("children", {}).values():
             child = Timeline.from_dict(child_data["timeline"])
             try:
                 offset = coordinate_from_dict(child_data["offset"])
@@ -1312,6 +1385,10 @@ class Timeline(
                     f"timeline {timeline_id!r} child offset axis does not match its "
                     "unit or number_type"
                 )
+            placed.append((offset, child))
+        if data["is_segment_line"]:
+            placed.sort(key=lambda item: item[0].value)
+        for offset, child in placed:
             timeline.add_child(child, offset=offset)
 
         # Add conversion maps

@@ -20,13 +20,12 @@ from pathlib import Path
 
 import pytest
 
-from timetoalign.alignment.bundle import AlignmentBundle, _reset_bundle_ids
+from timetoalign.alignment.bundle import AlignmentBundle
 from timetoalign.alignment.claims import _reset_anchor_ids, _reset_claim_ids
 from timetoalign.core import TimeUnit
 from timetoalign.loader.alignment.matchfile import MatchfileLoader
 from timetoalign.maps.linear import ScalarMap, ShiftMap
 from timetoalign.testdata import ensure_data
-from timetoalign.timelines.groups import _reset_group_ids
 from timetoalign.timelines.types import (
     ContinuousLogicalTimeline,
     DiscreteLogicalTimeline,
@@ -88,11 +87,9 @@ TOTAL_MATCHED = TOTAL_MATCH_FILES * SNOTE_COUNT - TOTAL_DELETIONS  # 9875
 
 @pytest.fixture(autouse=True)
 def reset_ids():
-    """Reset all ID generators before each test for isolation."""
-    _reset_group_ids()
+    """Reset the claim and anchor ID generators before each test for isolation."""
     _reset_anchor_ids()
     _reset_claim_ids()
-    _reset_bundle_ids()
 
 
 @pytest.fixture
@@ -478,10 +475,10 @@ class TestMatchfileLoaderCreateBundle:
             loader.create_bundle()
 
     def test_bundle_score_in_group(self, p01_loader: MatchfileLoader):
-        """Score timeline is in the 'score' group."""
+        """Score timeline is in the group named 'score'."""
         bundle = p01_loader.create_bundle()
-        assert "score:clt_1" in bundle.timeline_to_group
-        assert bundle.timeline_to_group["score:clt_1"] == "score"
+        assert bundle.timeline_to_group["score:clt_1"] == "group_1"
+        assert bundle.groups["group_1"].name == "score"
 
 
 # endregion
@@ -644,21 +641,40 @@ class TestMatchfileLoaderExternalScore:
         bundle = loader.create_bundle(score_timeline=external_score)
         assert bundle.timelines["score:clt_1"] is external_score
 
-    def test_claims_still_reference_internal_uid(self):
-        """MatchClaims are never rebound — they reference the internal
-        score timeline's uid, which must match the external one."""
+    def test_claims_name_the_external_score_id(self):
+        """The bundle's claims name the id of the score timeline it holds.
+
+        An external score with any id works; the loader's own claim list is
+        left unchanged.
+        """
         loader = MatchfileLoader()
         loader.load(P01_MATCH)
+        internal_claims = list(loader._claims)
 
         external_score = ContinuousLogicalTimeline(
-            length=100.0,
+            length=200.0,
             unit=TimeUnit.quarters,
-            uid="score:clt_1",
+            uid="my edition",
         )
 
-        bundle = loader.create_bundle(score_timeline=external_score)
+        bundle = loader.create_bundle(score_timeline=external_score, verify=False)
+
+        assert bundle.timelines["my edition"] is external_score
+        assert len(bundle.cross_group_claims) == len(internal_claims)
+        assert {claim.timeline_a_id for claim in bundle.cross_group_claims} == {
+            "my edition"
+        }
         for claim in bundle.cross_group_claims:
-            assert claim.timeline_a_id == "score:clt_1"
+            for anchor in (claim.start_anchor, claim.end_anchor):
+                if anchor is not None:
+                    assert anchor.timeline_a_id == "my edition"
+        assert {claim.timeline_a_id for claim in loader._claims} == {"score:clt_1"}
+        first = next(
+            claim for claim in bundle.cross_group_claims if claim.is_synchronous
+        )
+        position = first.start_anchor.coordinate_a.value
+        stamp = bundle.get_matchstamp_at(position, "my edition")
+        assert first.timeline_b_id in stamp.present_timelines
 
     def test_compatible_external_score_accepted(self, p01_loader: MatchfileLoader):
         """External score with matching events passes verification."""

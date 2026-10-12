@@ -42,6 +42,7 @@ STRUCTURAL_KEYS = {
     "unit",
     "number_type",
     "length",
+    "is_segment_line",
     "locked",
     "meta",
     "children",

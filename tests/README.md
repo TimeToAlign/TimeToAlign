@@ -50,6 +50,37 @@ package at runtime, so the two implementations are compared directly as well:
 every catalogue document, put through `timeskeleton.canonical_order`, must be
 the same JSON text as the library wrote it.
 
+From schema 0.7.0 on, the module proves the group and bundle files as well.
+A second catalogue builds `TimelineGroup` and `AlignmentBundle` objects
+directly and through the alignment loaders: a group of three timelines whose
+number types differ (quarters as fractions, seconds as floats, pixels as
+integers); a group whose member is a child of a timeline next to a whole
+timeline; a bundle with two groups, an ungrouped root, and a grouped child
+whose root is ungrouped; the bundles that `ParangonadaLoader`,
+`MatchfileLoader`, `MpmLoader`, `Ieee1599Loader`, `ListenHereLoader` (a
+two-recording export written to a temporary directory, since no corpus holds
+one) and `TiliaJsonLoader` create from the corpus specimens the fixture script
+uses, and the group `TiliaJsonLoader` creates. The IEEE 1599 bundle holds
+segment lines (its pages and accolades, a nested segment line): each is
+written with the class of its segments and `is_segment_line: true`, which
+`validate` checks for contiguity and homogeneity, and `from_dict` rebuilds
+the segment line from the flag and its children. Each result's `to_dict()` is
+wrapped as `{"meta": …, **to_dict()}` and must pass `validate`, which checks
+the file against the group or bundle document and then the identity rules
+(timeline ids unique across the file, members naming timelines of the file,
+the display order a permutation of the members), and putting it through
+`canonical_order` must change nothing: the library sorts `timelines`,
+`groups` and `members` exactly as the schema package does. MatchClaims are not
+part of either file and take no part in these tests.
+
+Every bundled 0.7.0 fixture of every kind round-trips through the library:
+the 23 timeline fixtures as above, and each group fixture through
+`TimelineGroup.from_dict` and each bundle fixture through
+`AlignmentBundle.from_dict`, whose `to_dict()` must equal the file without
+its `meta` as JSON text with object keys sorted, so `graphical.order` (the
+member display order) survives as well. The fixture counts are pinned: 23
+timeline, 3 group and 7 bundle files.
+
 Two row-level rules of the Measure Map lie beyond what JSON Schema can
 express, so they are pinned here rather than among the shared rejections: a
 document whose measure map has a `count` that does not increase, and one whose

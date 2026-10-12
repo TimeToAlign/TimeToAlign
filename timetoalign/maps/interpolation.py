@@ -4,12 +4,10 @@ This module provides InterpolationMap, a ConversionMap that performs
 O(log n) bidirectional coordinate conversion using numpy.interp between
 explicit source/target anchor points.
 
-InterpolationMap is the internal engine used by:
-- TimelineGroup coordinate conversion
-- WarpMap alignment warping
-
+InterpolationMap is the internal engine of WarpMap alignment warping.
 Parent-child coordinate conversion in Timeline uses exact offset arithmetic
-instead.
+instead, and the members of a TimelineGroup convert linearly and exactly
+between their common start and end.
 
 InterpolationMap is a full member of the ConversionMap family: it supports
 the shared __call__/convert_array interface, inverse(), composition, and
@@ -18,7 +16,7 @@ block optimized for performance. Its coordinate arrays (source_coords,
 target_coords) are read-only after construction, and inverse() caches the
 computed inverse map so repeated calls return the same instance.
 
-Design rationale (from unified_timestamp_architecture.md):
+Design rationale:
 - No table lookups for coordinate conversion - direct np.interp calls
 - Precomputed sorted arrays enable O(log n) binary search
 - Bidirectional: forward (source -> target) and inverse (target -> source)

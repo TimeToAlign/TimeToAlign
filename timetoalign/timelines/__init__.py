@@ -99,7 +99,7 @@ from .flow import (
     create_unfolded_timeline,
     load_valid_flows,
 )
-from .groups import GroupTimestamp, TimelineGroup
+from .groups import TimelineGroup
 from .regions import Region
 from .structure import (
     Expansion,
@@ -129,7 +129,6 @@ __all__ = [
     # Base
     "Timeline",
     "TimelineGroup",
-    "GroupTimestamp",
     # Factory
     "create_timeline",
     "get_timeline_class",

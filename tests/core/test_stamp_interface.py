@@ -42,7 +42,7 @@ def _matchstamp_with_maps(*, conversion_maps: bool = True) -> MatchStamp:
     """Build a bundle-backed MatchStamp with exact-value conversion maps."""
     timeline = _timeline_with_maps()
     bundle = AlignmentBundle(id="stamp-contract")
-    bundle.add_timeline(timeline, uid="clock", as_group="clock-group")
+    bundle.add_timeline(timeline, as_group="clock-group")
     return bundle.get_matchstamp_at(
         25.0,
         "clock",
@@ -165,26 +165,6 @@ def test_matchstamp_coordinate_and_precise_getter_contract() -> None:
         stamp.get_coordinate_for("not-a-timeline-or-unit")
 
 
-def test_matchstamp_unit_result_keeps_public_bundle_uid() -> None:
-    """Unit conversion identifies the selected public axis rather than its internal ID."""
-    timeline = Timeline(length=100, unit=TimeUnit.seconds, uid="internal-clock")
-    timeline.add_conversion_map(
-        TableMap(
-            x_values=[0.0, 100.0],
-            y_values=[0.0, 100000.0],
-            source_unit=TimeUnit.seconds,
-            target_unit=TimeUnit.milliseconds,
-        )
-    )
-    bundle = AlignmentBundle(id="public-axis")
-    bundle.add_timeline(timeline, uid="clock", as_group="clock-group")
-    stamp = bundle.get_matchstamp_at(25.0, "clock", conversion_maps=True)
-
-    assert stamp.get_unit(TimeUnit.milliseconds, timeline_id="clock") == IdCoordinate(
-        25000.0, TimeUnit.milliseconds, "clock"
-    )
-
-
 def test_matchstamp_to_dict_formats_are_exact() -> None:
     """MatchStamp materializes every supported format exactly."""
     stamp = _matchstamp_with_maps()
@@ -195,8 +175,8 @@ def test_matchstamp_to_dict_formats_are_exact() -> None:
         "value": 25.0,
     }
     assert stamp.to_dict(format="flat") == {"clock (seconds)": data}
-    assert stamp.to_dict(format="prefix") == {"clock-group/clock (seconds)": data}
-    assert stamp.to_dict(format="nested") == {"clock-group": {"clock (seconds)": data}}
+    assert stamp.to_dict(format="prefix") == {"group_1/clock (seconds)": data}
+    assert stamp.to_dict(format="nested") == {"group_1": {"clock (seconds)": data}}
     assert stamp.to_dict(format="graph") == {
         "coordinates": {"clock": data},
         "anchor_edges": [],

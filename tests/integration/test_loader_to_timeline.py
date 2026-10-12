@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from timetoalign.timelines import create_timeline
+from timetoalign.timelines import Timeline, create_timeline
 
 # Test data paths
 DATA_DIR = Path(__file__).parents[1] / "data" / "vienna_1x22"
@@ -37,6 +37,21 @@ MIDI_PERF_DIR = MIDI_DIR / "performance"
 # Source: tests/data/vienna_1x22/ms3/chopin_op10_no3.measures.tsv (23 lines - 1 header = 22)
 CHOPIN_GOLD_NOTES = 498
 CHOPIN_GOLD_MEASURES = 22
+
+
+def _child_names(timeline: Timeline) -> list[str]:
+    """The names of a timeline's children, in child order."""
+    return [timeline.get_child(child_id).name for child_id in timeline.list_children()]
+
+
+def _child_named(timeline: Timeline, name: str) -> Timeline:
+    """The one child of *timeline* named *name*; child ids are minted."""
+    (child,) = [
+        timeline.get_child(child_id)
+        for child_id in timeline.list_children()
+        if timeline.get_child(child_id).name == name
+    ]
+    return child
 
 
 class TestScoreLoaderToTimeline:
@@ -74,14 +89,16 @@ class TestScoreLoaderToTimeline:
         assert timeline.n_children == 4  # notes, measures, controls, annotations
 
         # Verify children exist
-        assert "notes" in timeline
-        assert "measures" in timeline
-        assert "controls" in timeline
-        assert "annotations" in timeline
+        assert "notes" in _child_names(timeline)
+        assert "measures" in _child_names(timeline)
+        assert "controls" in _child_names(timeline)
+        assert "annotations" in _child_names(timeline)
 
         # Verify offset 0
-        assert timeline.get_child_offset("notes").value == 0
-        assert timeline.get_child_offset("measures").value == 0
+        assert timeline.get_child_offset(_child_named(timeline, "notes").id).value == 0
+        assert (
+            timeline.get_child_offset(_child_named(timeline, "measures").id).value == 0
+        )
 
     def test_partitura_notes_count_exact(self, chopin_musicxml: Path):
         """Partitura loader note count matches gold standard EXACTLY.
@@ -94,7 +111,7 @@ class TestScoreLoaderToTimeline:
         loader.load(chopin_musicxml)
 
         timeline = loader.store.create_timeline()
-        notes_tl = timeline.get_child("notes")
+        notes_tl = _child_named(timeline, "notes")
 
         # EXACT count - no tolerance
         assert notes_tl.n_events == CHOPIN_GOLD_NOTES, (
@@ -113,7 +130,7 @@ class TestScoreLoaderToTimeline:
         loader.load(chopin_musicxml)
 
         timeline = loader.store.create_timeline()
-        measures_tl = timeline.get_child("measures")
+        measures_tl = _child_named(timeline, "measures")
 
         # EXACT count - no tolerance
         assert measures_tl.n_events == CHOPIN_GOLD_MEASURES, (
@@ -135,7 +152,7 @@ class TestScoreLoaderToTimeline:
         loader.load(chopin_musicxml)
 
         timeline = loader.store.create_timeline()
-        notes_tl = timeline.get_child("notes")
+        notes_tl = _child_named(timeline, "notes")
 
         # EXACT count - no tolerance
         assert notes_tl.n_events == CHOPIN_GOLD_NOTES, (
@@ -199,8 +216,8 @@ class TestScoreLoaderWithFilters:
         )
 
         # Should have notes and measures only
-        assert "notes" in timeline
-        assert "measures" in timeline
+        assert "notes" in _child_names(timeline)
+        assert "measures" in _child_names(timeline)
 
 
 class TestMidiLoaderToTimeline:
@@ -255,7 +272,7 @@ class TestMidiLoaderToTimeline:
         # If only notes exist (controls empty), events are directly on timeline
         # If both exist, they become children
         if timeline.n_children > 0:
-            assert "notes" in timeline
+            assert "notes" in _child_names(timeline)
         else:
             assert timeline.n_events > 0
 
@@ -271,8 +288,8 @@ class TestMidiLoaderToTimeline:
         assert timeline.id == "supra"
         # supra_raw.mid yields exactly two children: notes and controls.
         assert timeline.n_children == 2
-        assert "notes" in timeline
-        assert "controls" in timeline
+        assert "notes" in _child_names(timeline)
+        assert "controls" in _child_names(timeline)
 
     def test_performance_midi_notes_child_has_events(self, supra_midi: Path):
         """Performance MIDI notes child has events."""
@@ -282,7 +299,7 @@ class TestMidiLoaderToTimeline:
         loader.load(supra_midi)
 
         timeline = loader.store.create_timeline()
-        notes_tl = timeline.get_child("notes")
+        notes_tl = _child_named(timeline, "notes")
 
         # Supra raw has notes - verify non-zero
         # Exact count depends on the specimen
@@ -315,12 +332,12 @@ class TestCrossLoaderConsistency:
         pt_loader = PartituraLoader()
         pt_loader.load(chopin_musicxml)
         pt_timeline = pt_loader.store.create_timeline()
-        pt_notes = pt_timeline.get_child("notes").n_events
+        pt_notes = _child_named(pt_timeline, "notes").n_events
 
         m21_loader = Music21Loader()
         m21_loader.load(chopin_musicxml)
         m21_timeline = m21_loader.store.create_timeline()
-        m21_notes = m21_timeline.get_child("notes").n_events
+        m21_notes = _child_named(m21_timeline, "notes").n_events
 
         # Both must equal gold standard
         assert (
@@ -358,8 +375,8 @@ class TestCrossLoaderConsistency:
         # Core children must be present in both
         core_children = {"notes", "measures", "controls"}
 
-        pt_children = set(pt_timeline._children.keys())
-        m21_children = set(m21_timeline._children.keys())
+        pt_children = set(_child_names(pt_timeline))
+        m21_children = set(_child_names(m21_timeline))
 
         # Both must have all core children
         assert core_children.issubset(

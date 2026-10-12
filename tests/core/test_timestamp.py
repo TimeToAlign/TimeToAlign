@@ -434,7 +434,6 @@ class TestTimelineTimeStampSourceProtocol:
         tl = Timeline(length=100, unit=TimeUnit.seconds)
 
         # These methods are required by the protocol
-        assert hasattr(tl, "_get_interpolation_map")
         assert hasattr(tl, "_get_unit_map")
         assert hasattr(tl, "_get_related_timeline_ids")
         assert hasattr(tl, "_get_available_units")

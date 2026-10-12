@@ -223,20 +223,6 @@ class TestTimeStampOffsetArithmetic:
         with pytest.raises(KeyError):
             ts_end.get_coordinate_for("child")
 
-    def test_no_interpolation_map_for_children(
-        self,
-        parent: ContinuousPhysicalTimeline,
-        child: ContinuousPhysicalTimeline,
-    ) -> None:
-        """Verify that Timeline._get_interpolation_map returns None for children.
-
-        Children use offset arithmetic, not InterpolationMap.
-        """
-        parent.add_child(child, offset=10.0)
-
-        # _get_interpolation_map should return None (no more child maps)
-        assert parent._get_interpolation_map("child") is None
-
     def test_no_interpolation_maps_attribute(
         self,
         parent: ContinuousPhysicalTimeline,

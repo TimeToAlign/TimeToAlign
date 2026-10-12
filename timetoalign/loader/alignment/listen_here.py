@@ -452,7 +452,7 @@ class ListenHereLoader(AlignmentLoader):
         for key in self._keys:
             timeline = self._make_timeline(key)
             stem = self._stems[key]
-            bundle.add_timeline(timeline, uid=timeline.id, as_group=stem)
+            bundle.add_timeline(timeline, as_group=stem)
 
         bundle.add_match_claim_field(self._claim_field)
         return bundle

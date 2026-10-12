@@ -110,9 +110,14 @@ asserted to survive per page in `edition.meta["pages"]`.
 
 An edition nests two levels, because a page is the unit that owns a pixel
 origin: the edition line's segments are its pages (one per
-`<graphic_instance>`, uid `<edition>_page<n>`), and a page's segments are the
-accolades engraved on it (uid `<edition>_page<n>_accolade<k>`, numbered within
-their page).  Accolades are found by the half-span rule — within a page, a
+`<graphic_instance>`, named `page_<n>`), and a page's segments are the
+accolades engraved on it (named `accolade_<k>`, numbered within their page).
+Positions are names, not ids: page and accolade ids are minted in the
+edition's manifest, and the gymnopédie test pins both (pages `dgt_1`, `dgt_7`,
+`dgt_12`, `dgt_18`; the first page's accolades `dgt_2` … `dgt_5`). The order
+of minting follows the library's join rule — a page's subtree is planned as a
+whole when it joins the edition — which is why the numbers are not
+consecutive across pages.  Accolades are found by the half-span rule — within a page, a
 drop in `upper_left_x` greater than half that page's observed x-span starts a
 new accolade — and every page restarts the rule, so an accolade never straddles
 two images.  The nesting is asserted three ways: the page/accolade counts of

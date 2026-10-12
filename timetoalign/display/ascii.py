@@ -964,7 +964,7 @@ def group_diagram(
 
     Examples:
         >>> print(group_diagram(my_group))
-        TimelineGroup[my_group] (2 timelines, 2 timestamps)
+        TimelineGroup[my_group] (2 timelines)
         ┌────────────────────────────────────────────────────────────┐
         │ DiscreteGraphicalTimeline[dgt_1:1] (11 events, 5 children)  │
         │ 0 ∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶ 4835 pixels    │
@@ -974,17 +974,13 @@ def group_diagram(
         │ ContinuousPhysicalTimeline[audio:1] (0 events)             │
         │ 0 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 150.0 seconds  │
         └────────────────────────────────────────────────────────────┘
-        Timestamps: 2
     """
     box = BOX_CHARS if unicode else BOX_CHARS_ASCII
 
     lines: list[str] = []
 
     # Header
-    lines.append(
-        f"TimelineGroup[{group.id}] "
-        f"({group.n_timelines} timelines, {group.n_timestamps} timestamps)"
-    )
+    lines.append(f"TimelineGroup[{group.id}] ({group.n_timelines} timelines)")
 
     # Collect content lines for all timelines
     content_lines: list[str] = []
@@ -1028,9 +1024,6 @@ def group_diagram(
     lines.append(
         box["bottom_left"] + box["horizontal"] * (box_width - 2) + box["bottom_right"]
     )
-
-    # Footer
-    lines.append(f"Timestamps: {group.n_timestamps}")
 
     return Diagram("\n".join(lines))
 
@@ -1076,12 +1069,11 @@ def bundle_diagram(
         >>> print(bundle_diagram(my_bundle))
         AlignmentBundle[thoresen_alignment]
 
-          TimelineGroup[dgt1_group] (2 timelines, 2 timestamps)
+          TimelineGroup[dgt1_group] (2 timelines)
           ┌──────────────────────────────────────────────────────┐
           │ DiscreteGraphicalTimeline[dgt_1:1] (11 events)        │
           │ 0 ∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶ 4835 pixels    │
           └──────────────────────────────────────────────────────┘
-          Timestamps: 2
 
           MatchClaims: 5 segment-to-segment
     """

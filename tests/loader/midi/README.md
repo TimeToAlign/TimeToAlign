@@ -72,7 +72,8 @@ nullable fields and can be constructed from dictionaries.
 metadata. Empty stores have empty data and default metadata. Extension merges each category and
 updates metadata. Mapping keys, iteration, items, lookup, membership, and length use the canonical
 `notes`, `controls` order. Summary counts are exact. Timeline conversion creates the two expected
-children at offset zero with the original note/control counts.
+children at offset zero with the original note/control counts; each child is named after its store
+and carries a minted id, so the tests find it by name.
 
 All exact counts, ticks, schemas, IDs, and extents use equality; there are no `pytest.approx` calls
 in the MIDI-loader tests.

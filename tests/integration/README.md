@@ -81,6 +81,11 @@ loader they use. Any difference in core data indicates a bug.
 
 **Why this matters:** Custom timeline creation relies on filters working correctly.
 
+**Child identity.** A store-built timeline names each child after its store
+(`notes`, `measures`, …) and mints the child's id in its own manifest (`clt_2`,
+`dlt_2`, …): a store name is a label, not an id. These tests therefore look a
+child up by its name, and the event ids keep the store name as their prefix.
+
 ### 5. MIDI Timeline Structure (`TestMidiLoaderToTimeline`)
 
 **What we test:** MIDI loaders build the expected timeline structure.

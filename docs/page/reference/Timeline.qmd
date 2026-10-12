@@ -5,7 +5,6 @@ timelines.Timeline(
     length=0,
     unit=None,
     number_type=None,
-    id_prefix='tl',
     uid=None,
     name=None,
     locked=False,
@@ -85,18 +84,20 @@ subclass, use :meth:`to_typed`.
 | [add_events](#timetoalign.timelines.Timeline.add_events) | Add events to the timeline. |
 | [add_external_references](#timetoalign.timelines.Timeline.add_external_references) | Append incoming external references to this timeline. |
 | [add_flow_map](#timetoalign.timelines.Timeline.add_flow_map) | Add a FlowMap to this timeline. |
-| [add_region](#timetoalign.timelines.Timeline.add_region) | Add or create a named Region on this timeline. |
+| [add_measure_map](#timetoalign.timelines.Timeline.add_measure_map) | Attach the timeline's single authored measure map. |
+| [add_metric_hierarchy](#timetoalign.timelines.Timeline.add_metric_hierarchy) | Attach the timeline's single measure-anchored metric hierarchy. |
+| [add_region](#timetoalign.timelines.Timeline.add_region) | Attach a pre-existing Region object to this timeline. |
 | [append_child](#timetoalign.timelines.Timeline.append_child) | Append a child timeline at the current end of this timeline. |
 | [apply_flow](#timetoalign.timelines.Timeline.apply_flow) | Yield the unfolded timeline for an attached FlowMap. |
 | [as_segment_line](#timetoalign.timelines.Timeline.as_segment_line) | Cast a structurally contiguous hierarchy to a parameterized line. |
 | [attach](#timetoalign.timelines.Timeline.attach) | Refuse timeline-side enrollment. |
 | [convert_to](#timetoalign.timelines.Timeline.convert_to) | Convert coordinates to another unit using attached C-Maps. |
 | [create_child](#timetoalign.timelines.Timeline.create_child) | Create and embed a child selected by this timeline's spawn hook. |
-| [create_child_from_region](#timetoalign.timelines.Timeline.create_child_from_region) | Create a child timeline from a named region (partitioning). |
+| [create_child_from_region](#timetoalign.timelines.Timeline.create_child_from_region) | Create a child timeline from a region (partitioning). |
 | [create_children_from_boundaries](#timetoalign.timelines.Timeline.create_children_from_boundaries) | Create children spanning consecutive boundary coordinates. |
 | [create_children_from_regions](#timetoalign.timelines.Timeline.create_children_from_regions) | Create children from multiple regions (batch partitioning). |
 | [create_flow_map](#timetoalign.timelines.Timeline.create_flow_map) | Construct a FlowMap from interval-like descriptors, attach it, return it. |
-| [create_region](#timetoalign.timelines.Timeline.create_region) | Create a new named Region and attach it to this timeline. |
+| [create_region](#timetoalign.timelines.Timeline.create_region) | Create a new Region and attach it to this timeline. |
 | [create_regions_by_grouping](#timetoalign.timelines.Timeline.create_regions_by_grouping) | Create regions by grouping *adjacent* events on a field value. |
 | [create_regions_by_splitting](#timetoalign.timelines.Timeline.create_regions_by_splitting) | Create contiguous regions by splitting at events matching a predicate. |
 | [create_regions_from_boundaries](#timetoalign.timelines.Timeline.create_regions_from_boundaries) | Create contiguous regions from boundary coordinates. |
@@ -128,7 +129,7 @@ subclass, use :meth:`to_typed`.
 | [get_events_at](#timetoalign.timelines.Timeline.get_events_at) | Get all events active at a specific coordinate. |
 | [get_flow_map](#timetoalign.timelines.Timeline.get_flow_map) | Get an attached FlowMap by id. |
 | [get_interval_stamp](#timetoalign.timelines.Timeline.get_interval_stamp) | Get a TimeIntervalStamp for a coordinate range. |
-| [get_region](#timetoalign.timelines.Timeline.get_region) | Get a Region by name. |
+| [get_region](#timetoalign.timelines.Timeline.get_region) | Get a Region by id. |
 | [get_regions_at](#timetoalign.timelines.Timeline.get_regions_at) | Return all regions containing the given coordinate. |
 | [get_slice](#timetoalign.timelines.Timeline.get_slice) | Extract a portion of this timeline as a new, independent timeline. |
 | [get_timestamp](#timetoalign.timelines.Timeline.get_timestamp) | Dispatch a positional or event-key timestamp query. |
@@ -145,7 +146,7 @@ subclass, use :meth:`to_typed`.
 | [iter_regions](#timetoalign.timelines.Timeline.iter_regions) | Iterate over all regions in insertion order. |
 | [list_children](#timetoalign.timelines.Timeline.list_children) | List child timeline IDs. |
 | [list_flow_maps](#timetoalign.timelines.Timeline.list_flow_maps) | List all attached FlowMap ids. |
-| [list_regions](#timetoalign.timelines.Timeline.list_regions) | List all region names. |
+| [list_regions](#timetoalign.timelines.Timeline.list_regions) | List all region ids. |
 | [make_coordinate](#timetoalign.timelines.Timeline.make_coordinate) | Create a Coordinate in this timeline's unit. |
 | [resolve_subclass](#timetoalign.timelines.Timeline.resolve_subclass) | Return the most specific Timeline subclass for a unit/number_type pair. |
 | [summary](#timetoalign.timelines.Timeline.summary) | Get a summary of the timeline. |
@@ -170,6 +171,12 @@ Embed a child timeline at the specified offset.
 The child timeline will be locked after being added.
 Parent-child coordinate conversion uses exact offset arithmetic.
 
+The child's whole subtree joins this timeline's manifest, in which
+every id is unique across all element kinds: an element of the
+subtree whose minted id is already held here receives a freshly
+minted one, and an element whose given id is already held here makes
+the call raise without changing anything.
+
 A timeline can accommodate events and other timelines, called
 Children, as long as they use the same measuring unit.
 
@@ -180,7 +187,8 @@ parent's unit via a C-Map. The parent must have a C-Map whose
 the ``child_unit -> parent_unit`` conversion. The child's events are
 copied with converted coordinates; the original child is NOT modified.
 
-The converted child receives the ID ``{child.id}[{parent.unit}]``.
+The converted child is named ``"{child.name} [{parent.unit}]"`` and
+receives a minted id.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
@@ -193,11 +201,11 @@ The converted child receives the ID ``{child.id}[{parent.unit}]``.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                           | Description                                                                |
-|--------|--------------------------------|----------------------------------------------------------------------------|
-|        | [TypeError](`TypeError`)       | If child is not a Timeline.                                                |
-|        | [ValueError](`ValueError`)     | If units don't match (and no conversion map given) or would exceed bounds. |
-|        | [RuntimeError](`RuntimeError`) | If this timeline is locked.                                                |
+| Name   | Type                           | Description                                                                                                                                                |
+|--------|--------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [TypeError](`TypeError`)       | If child is not a Timeline.                                                                                                                                |
+|        | [ValueError](`ValueError`)     | If units don't match (and no conversion map given), the child would exceed bounds, or an id given in the child's subtree is already held in this manifest. |
+|        | [RuntimeError](`RuntimeError`) | If this timeline is locked.                                                                                                                                |
 
 ### add_conversion_map { #timetoalign.timelines.Timeline.add_conversion_map }
 
@@ -220,6 +228,10 @@ the unit registry holds a list, stamps and tables show every
 reading, and scalar lookup refuses to guess between them
 unless the caller names one.
 
+The map's id must be unique in this timeline's manifest: a minted id
+already held there is replaced by a freshly minted one (on the map
+itself), a given one raises.
+
 #### Parameters {.doc-section .doc-section-parameters}
 
 | Name   | Type                                                                     | Description               | Default    |
@@ -228,9 +240,9 @@ unless the caller names one.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                 |
-|--------|----------------------------|---------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If the map's source unit is incompatible, or if a map with the same id is already attached. |
+| Name   | Type                       | Description                                                                                                                         |
+|--------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the map's source unit is incompatible, the map is already attached, or its given id is already held in this timeline's manifest. |
 
 ### add_events { #timetoalign.timelines.Timeline.add_events }
 
@@ -352,60 +364,95 @@ FlowControllers are factories that produce FlowMaps.
 FlowMap(default: 5 sections)
 ```
 
-### add_region { #timetoalign.timelines.Timeline.add_region }
+### add_measure_map { #timetoalign.timelines.Timeline.add_measure_map }
 
 ```python
-timelines.Timeline.add_region(
-    region_or_name,
-    start=None,
-    end=None,
-    *,
-    meta=None,
-)
+timelines.Timeline.add_measure_map(measure_map)
 ```
 
-Add or create a named Region on this timeline.
-
-Overloaded for backward compatibility:
-- ``add_region(Region)`` — attach a pre-existing Region object.
-- ``add_region(name, start, end)`` — delegate to :meth:`create_region`.
-
-Under the unified verb×noun API, ``add`` means "attach an existing
-object" while ``create`` means "construct + attach + return".
+Attach the timeline's single authored measure map.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name           | Type                                                             | Description                                              | Default    |
-|----------------|------------------------------------------------------------------|----------------------------------------------------------|------------|
-| region_or_name | [Region](`timetoalign.timelines.regions.Region`) \| [str](`str`) | A Region object (new) or a string name (legacy).         | _required_ |
-| start          | [CoordinateSpec](`timetoalign.core.CoordinateSpec`) \| None      | Start coordinate (only when region_or_name is a string). | `None`     |
-| end            | [CoordinateSpec](`timetoalign.core.CoordinateSpec`) \| None      | End coordinate (only when region_or_name is a string).   | `None`     |
-| meta           | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] \| None      | Optional metadata dictionary.                            | `None`     |
+| Name        | Type                                                       | Description                            | Default    |
+|-------------|------------------------------------------------------------|----------------------------------------|------------|
+| measure_map | [MeasureMap](`timetoalign.timelines.structure.MeasureMap`) | Immutable measure structure to attach. | _required_ |
 
 #### Returns {.doc-section .doc-section-returns}
 
-| Name   | Type                                             | Description                                                            |
-|--------|--------------------------------------------------|------------------------------------------------------------------------|
-|        | [Region](`timetoalign.timelines.regions.Region`) | The Region object (either the one passed in or the newly created one). |
+| Name   | Type                             | Description                     |
+|--------|----------------------------------|---------------------------------|
+|        | [Self](`typing_extensions.Self`) | This timeline after attachment. |
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                |
-|--------|----------------------------|----------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If region name already exists, end < start, or arguments are inconsistent. |
+| Name   | Type                       | Description                                                                                                                |
+|--------|----------------------------|----------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the timeline is not on the quarter-note axis, on which every measure map is anchored, or already carries a measure map. |
+
+### add_metric_hierarchy { #timetoalign.timelines.Timeline.add_metric_hierarchy }
+
+```python
+timelines.Timeline.add_metric_hierarchy(metric_hierarchy)
+```
+
+Attach the timeline's single measure-anchored metric hierarchy.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name             | Type                                                                 | Description                                        | Default    |
+|------------------|----------------------------------------------------------------------|----------------------------------------------------|------------|
+| metric_hierarchy | [MetricHierarchy](`timetoalign.timelines.structure.MetricHierarchy`) | Hierarchy anchored on this timeline's measure map. | _required_ |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                             | Description                     |
+|--------|----------------------------------|---------------------------------|
+|        | [Self](`typing_extensions.Self`) | This timeline after attachment. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                   |
+|--------|----------------------------|---------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the timeline has no matching measure map, is not on the quarter-note axis, or already carries a hierarchy. |
+
+### add_region { #timetoalign.timelines.Timeline.add_region }
+
+```python
+timelines.Timeline.add_region(region)
+```
+
+Attach a pre-existing Region object to this timeline.
+
+The region's id must be unique in this timeline's manifest: a minted
+id already held there is replaced by a freshly minted one, a given
+one raises.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name   | Type                                             | Description           | Default    |
+|--------|--------------------------------------------------|-----------------------|------------|
+| region | [Region](`timetoalign.timelines.regions.Region`) | The Region to attach. | _required_ |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                             | Description                                                   |
+|--------|--------------------------------------------------|---------------------------------------------------------------|
+|        | [Region](`timetoalign.timelines.regions.Region`) | The stored Region: *region* itself, or a copy under the newly |
+|        | [Region](`timetoalign.timelines.regions.Region`) | minted id.                                                    |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                |
+|--------|----------------------------|------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the region's unit does not match the timeline's unit, or its given id is already held in this manifest. |
 
 #### Examples {.doc-section .doc-section-examples}
 
 ```python
->>> # New API — attach a pre-existing Region
->>> r = Region("Chorus", Coordinate(10, TimeUnit.seconds),
-...            Coordinate(30, TimeUnit.seconds))
+>>> r = Region(Coordinate(10, TimeUnit.seconds),
+...            Coordinate(30, TimeUnit.seconds), name="Chorus")
 >>> tl.add_region(r)
-```
-
-```python
->>> # Legacy API (delegates to create_region)
->>> tl.add_region("Verse", 30, 50, meta={"repeat": 2})
 ```
 
 ### append_child { #timetoalign.timelines.Timeline.append_child }
@@ -482,10 +529,11 @@ places its spans apart — a restored cut, or any FlowMap's
 :meth:`~timetoalign.timelines.flow.FlowMap.inverse` — leaves the
 result empty between them.
 
-Each appended child (and its Region) takes the source section's name —
-the region name a played span was built from. A span visited more than
-once (a repeat) is suffixed ``-rend2``, ``-rend3`` … so every child and
-Region has a unique name. Section events live in the appended children;
+Each appended child takes the source section's label as its id and
+name — the id of the region a played span was built from — and the
+Region marking it in the result takes that label as its name (its id
+is minted). A span visited more than once (a repeat) is suffixed
+``-rend2``, ``-rend3`` … so every child has a unique id. Section events live in the appended children;
 the flattened coordinates remain reachable via
 ``get_events(include_children=True)``.
 
@@ -649,27 +697,27 @@ True
 
 ```python
 timelines.Timeline.create_child_from_region(
-    region_name,
+    region_id,
     *,
     copy_events=True,
     uid=None,
 )
 ```
 
-Create a child timeline from a named region (partitioning).
+Create a child timeline from a region (partitioning).
 
 The child's length = region duration, offset = region start.
-The child's class matches the parent's concrete class.
-If copy_events, events in [start, end) are copied with adjusted
-coordinates.
+The child's class matches the parent's concrete class, and its name
+is the region's name. If copy_events, events in [start, end) are
+copied with adjusted coordinates.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name        | Type                 | Description                                 | Default    |
-|-------------|----------------------|---------------------------------------------|------------|
-| region_name | [str](`str`)         | Name of an existing region.                 | _required_ |
-| copy_events | [bool](`bool`)       | Copy events within the region to the child. | `True`     |
-| uid         | [str](`str`) \| None | Explicit child ID. Defaults to region name. | `None`     |
+| Name        | Type                 | Description                                  | Default    |
+|-------------|----------------------|----------------------------------------------|------------|
+| region_id   | [str](`str`)         | Id of an existing region.                    | _required_ |
+| copy_events | [bool](`bool`)       | Copy events within the region to the child.  | `True`     |
+| uid         | [str](`str`) \| None | Explicit child ID. When None, one is minted. | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -679,16 +727,18 @@ coordinates.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                           | Description               |
-|--------|--------------------------------|---------------------------|
-|        | [KeyError](`KeyError`)         | If region_name not found. |
-|        | [RuntimeError](`RuntimeError`) | If timeline is locked.    |
+| Name   | Type                           | Description             |
+|--------|--------------------------------|-------------------------|
+|        | [KeyError](`KeyError`)         | If region_id not found. |
+|        | [RuntimeError](`RuntimeError`) | If timeline is locked.  |
 
 #### Examples {.doc-section .doc-section-examples}
 
 ```python
 >>> tl.create_regions_by_splitting("breaks", prefix="movement")
->>> mov4 = tl.create_child_from_region("movement_4")
+>>> mov4 = tl.create_child_from_region("region_4")
+>>> mov4.name
+'movement_4'
 ```
 
 ### create_children_from_boundaries { #timetoalign.timelines.Timeline.create_children_from_boundaries }
@@ -734,7 +784,7 @@ Source events are not copied into the children.
 
 ```python
 timelines.Timeline.create_children_from_regions(
-    region_names=None,
+    region_ids=None,
     *,
     copy_events=True,
 )
@@ -747,10 +797,10 @@ are independent.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name         | Type                                                           | Description                                          | Default   |
-|--------------|----------------------------------------------------------------|------------------------------------------------------|-----------|
-| region_names | [Sequence](`collections.abc.Sequence`)\[[str](`str`)\] \| None | Region names. None = all regions in insertion order. | `None`    |
-| copy_events  | [bool](`bool`)                                                 | Copy events to children.                             | `True`    |
+| Name        | Type                                                           | Description                                        | Default   |
+|-------------|----------------------------------------------------------------|----------------------------------------------------|-----------|
+| region_ids  | [Sequence](`collections.abc.Sequence`)\[[str](`str`)\] \| None | Region ids. None = all regions in insertion order. | `None`    |
+| copy_events | [bool](`bool`)                                                 | Copy events to children.                           | `True`    |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -760,10 +810,10 @@ are independent.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                           | Description                   |
-|--------|--------------------------------|-------------------------------|
-|        | [KeyError](`KeyError`)         | If any region_name not found. |
-|        | [RuntimeError](`RuntimeError`) | If timeline is locked.        |
+| Name   | Type                           | Description                    |
+|--------|--------------------------------|--------------------------------|
+|        | [KeyError](`KeyError`)         | If any region id is not found. |
+|        | [RuntimeError](`RuntimeError`) | If timeline is locked.         |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -805,12 +855,12 @@ give each span its target coordinate in *at*, or pass *intervals* as a
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name          | Type                                                        | Description                                                                                                                                                                                                                                                                                                                                                         | Default     |
-|---------------|-------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------|
-| intervals     | [Any](`typing.Any`)                                         | One interval-like descriptor, a collection of them, or a ``{target coordinate -> span}`` mapping. Accepted descriptor forms are region names (``str``, resolved via :meth:`get_region`), ``Region`` objects, ``(start, end)`` coordinate pairs, ``Timeline`` objects, and interval events. ``Gap`` entries may be mixed into a collection to space the spans apart. | _required_  |
-| id            | [str](`str`)                                                | Identifier for the FlowMap. Defaults to ``"default"``.                                                                                                                                                                                                                                                                                                              | `'default'` |
-| at            | \'Sequence\[Any\] \| None\'                                 | Target coordinate for each played span, in the order given. One entry per span, or ``None`` for a span that should follow its predecessor. Cannot be combined with ``Gap`` entries.                                                                                                                                                                                 | `None`      |
-| target_length | [CoordinateSpec](`timetoalign.core.CoordinateSpec`) \| None | Total extent of the unfolded axis. Needed only when the flow ends in a gap, which no section would imply.                                                                                                                                                                                                                                                           | `None`      |
+| Name          | Type                                                        | Description                                                                                                                                                                                                                                                                                                                                                       | Default     |
+|---------------|-------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------|
+| intervals     | [Any](`typing.Any`)                                         | One interval-like descriptor, a collection of them, or a ``{target coordinate -> span}`` mapping. Accepted descriptor forms are region ids (``str``, resolved via :meth:`get_region`), ``Region`` objects, ``(start, end)`` coordinate pairs, ``Timeline`` objects, and interval events. ``Gap`` entries may be mixed into a collection to space the spans apart. | _required_  |
+| id            | [str](`str`)                                                | Identifier for the FlowMap. Defaults to ``"default"``.                                                                                                                                                                                                                                                                                                            | `'default'` |
+| at            | \'Sequence\[Any\] \| None\'                                 | Target coordinate for each played span, in the order given. One entry per span, or ``None`` for a span that should follow its predecessor. Cannot be combined with ``Gap`` entries.                                                                                                                                                                               | `None`      |
+| target_length | [CoordinateSpec](`timetoalign.core.CoordinateSpec`) \| None | Total extent of the unfolded axis. Needed only when the flow ends in a gap, which no section would imply.                                                                                                                                                                                                                                                         | `None`      |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -839,22 +889,23 @@ FlowMap(restored: 2 sections, 1 gap)
 ### create_region { #timetoalign.timelines.Timeline.create_region }
 
 ```python
-timelines.Timeline.create_region(name, start, end, *, meta=None)
+timelines.Timeline.create_region(start, end, *, id=None, name=None, meta=None)
 ```
 
-Create a new named Region and attach it to this timeline.
+Create a new Region and attach it to this timeline.
 
 Under the unified verb×noun API, ``create`` constructs a new object,
 attaches it, and returns it.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name   | Type                                                        | Description                        | Default    |
-|--------|-------------------------------------------------------------|------------------------------------|------------|
-| name   | [str](`str`)                                                | Unique name for this region.       | _required_ |
-| start  | [CoordinateSpec](`timetoalign.core.CoordinateSpec`)         | Start coordinate.                  | _required_ |
-| end    | [CoordinateSpec](`timetoalign.core.CoordinateSpec`)         | End coordinate (must be >= start). | _required_ |
-| meta   | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] \| None | Optional metadata dictionary.      | `None`     |
+| Name   | Type                                                        | Description                                                                                              | Default    |
+|--------|-------------------------------------------------------------|----------------------------------------------------------------------------------------------------------|------------|
+| start  | [CoordinateSpec](`timetoalign.core.CoordinateSpec`)         | Start coordinate.                                                                                        | _required_ |
+| end    | [CoordinateSpec](`timetoalign.core.CoordinateSpec`)         | End coordinate (must be >= start).                                                                       | _required_ |
+| id     | [str](`str`) \| None                                        | The region's id, kept verbatim. When None, ``region_{N}`` is minted, unique in this timeline's manifest. | `None`     |
+| name   | [str](`str`) \| None                                        | Optional display name; names may repeat.                                                                 | `None`     |
+| meta   | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] \| None | Optional metadata dictionary.                                                                            | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -864,15 +915,15 @@ attaches it, and returns it.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                            |
-|--------|----------------------------|----------------------------------------|
-|        | [ValueError](`ValueError`) | If name already exists or end < start. |
+| Name   | Type                       | Description                                                      |
+|--------|----------------------------|------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the given id is already held in this manifest or end < start. |
 
 #### Examples {.doc-section .doc-section-examples}
 
 ```python
->>> tl.create_region("Chorus", 10.0, 30.0)
->>> tl.create_region("Verse", 30.0, 50.0, meta={"repeat": 2})
+>>> tl.create_region(10.0, 30.0, name="Chorus")
+>>> tl.create_region(30.0, 50.0, id="verse", meta={"repeat": 2})
 ```
 
 ### create_regions_by_grouping { #timetoalign.timelines.Timeline.create_regions_by_grouping }
@@ -887,7 +938,7 @@ For each *run* of consecutive events that share the same value in the
 specified field, creates a region spanning the run's coordinate extent
 ``[min_start, max_end)``. Only adjacent events with the same value are
 grouped — non-adjacent occurrences of the same value produce separate
-regions.
+regions, which may share a name; their ids are minted.
 
 This "run-length" semantics is essential for musical data where, e.g.,
 the same time signature may recur after a change (4/4 → 3/4 → 4/4)
@@ -917,7 +968,9 @@ and each occurrence should be its own region.
 ```python
 >>> # Time-signature regions (adjacent grouping)
 >>> tl.create_regions_by_grouping("timesig")
-[Region('4/4', 0-64), Region('3/4', 64-88), Region('4/4', 88-120)]
+[Region('region_1', name='4/4', 0-64 quarters),
+ Region('region_2', name='3/4', 64-88 quarters),
+ Region('region_3', name='4/4', 88-120 quarters)]
 ```
 
 ### create_regions_by_splitting { #timetoalign.timelines.Timeline.create_regions_by_splitting }
@@ -996,7 +1049,8 @@ timelines.Timeline.create_regions_from_boundaries(
 Create contiguous regions from boundary coordinates.
 
 Given k+1 sorted boundary coordinates, creates k regions where
-region_i spans [boundaries[i], boundaries[i+1]).
+region_i spans [boundaries[i], boundaries[i+1]). The names label the
+regions; their ids are minted.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
@@ -1026,8 +1080,9 @@ region_i spans [boundaries[i], boundaries[i+1]).
 ...     [0, 30, 60, 90],
 ...     prefix="movement",
 ... )
-[Region('movement_1', 0-30), Region('movement_2', 30-60),
- Region('movement_3', 60-90)]
+[Region('region_1', name='movement_1', 0-30 quarters),
+ Region('region_2', name='movement_2', 30-60 quarters),
+ Region('region_3', name='movement_3', 60-90 quarters)]
 ```
 
 ### create_segment_line { #timetoalign.timelines.Timeline.create_segment_line }
@@ -1167,7 +1222,7 @@ The predicate follows the same semantics as
 
 ```python
 timelines.Timeline.create_segment_line_from_regions(
-    region_names=None,
+    region_ids=None,
     *,
     copy_events=True,
 )
@@ -1182,10 +1237,10 @@ Does NOT modify self.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name         | Type                                                           | Description                                                          | Default   |
-|--------------|----------------------------------------------------------------|----------------------------------------------------------------------|-----------|
-| region_names | [Sequence](`collections.abc.Sequence`)\[[str](`str`)\] \| None | Ordered region names. None = all regions sorted by start coordinate. | `None`    |
-| copy_events  | [bool](`bool`)                                                 | Copy events into segments.                                           | `True`    |
+| Name        | Type                                                           | Description                                                                                                | Default   |
+|-------------|----------------------------------------------------------------|------------------------------------------------------------------------------------------------------------|-----------|
+| region_ids  | [Sequence](`collections.abc.Sequence`)\[[str](`str`)\] \| None | Ordered region ids. None = all regions sorted by start coordinate. Each segment is named after its region. | `None`    |
+| copy_events | [bool](`bool`)                                                 | Copy events into segments.                                                                                 | `True`    |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -1317,7 +1372,7 @@ Generate ASCII diagram for this timeline.
 
 ```python
 >>> print(timeline.diagram())
-DiscreteGraphicalTimeline[dgt1:1] (11 events, 5 children)
+DiscreteGraphicalTimeline[dgt_1:1] (11 events, 5 children)
 0 ∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶ 4835 pixels
   ├─ system_1     0   ∶∶∶∶∶∶∶                        967
   ├─ system_2   967          ∶∶∶∶∶∶∶∶               1934
@@ -1400,7 +1455,7 @@ writes it to a CSV file. For more control over the output, use
 >>> from pathlib import Path
 >>> from timetoalign.core import TimeUnit
 >>> from timetoalign.timelines import Timeline
->>> timeline = Timeline(length=60, unit=TimeUnit.seconds, uid="tl:1")
+>>> timeline = Timeline(length=60, unit=TimeUnit.seconds, uid="cpt_1")
 >>> timeline.add_events(
 ...     [{"id": "beat:1", "instant": 0.0}, {"id": "beat:2", "instant": 55.0}]
 ... )
@@ -1452,9 +1507,9 @@ timelines.Timeline.from_dict(data)
 
 Create a Timeline from a dictionary.
 
-Every rational wire dict in *data* — ``length``, the child
+Every coordinate dictionary in *data* — ``length``, the child
 ``offset``s, and the event coordinate structs — is decoded by
-:func:`~timetoalign.core.wire_to_rational`, so an exact ratio
+:func:`~timetoalign.core.retrieval.coordinate_from_dict`, so an exact ratio
 comes back as a ``Fraction`` and an inexact one as a ``float``.
 Feeding the result back through :meth:`to_dict` with the same
 flags reproduces the input dictionary.
@@ -1555,11 +1610,11 @@ coordinates for this timeline and all children.
 ```python
 >>> from timetoalign.core import TimeUnit
 >>> from timetoalign.timelines import Timeline
->>> parent = Timeline(length=60, unit=TimeUnit.seconds, uid="tl:1")
->>> child = Timeline(length=10, unit=TimeUnit.seconds, uid="child:1")
+>>> parent = Timeline(length=60, unit=TimeUnit.seconds, uid="cpt_1")
+>>> child = Timeline(length=10, unit=TimeUnit.seconds, uid="cpt_2")
 >>> parent.add_child(child, offset=50)
 >>> parent.get_boundary_table().column_names
-['tl:1', 'child:1']
+['cpt_1', 'cpt_2']
 ```
 
 Cells are coordinate structs, so read them through the frame lane
@@ -1573,10 +1628,10 @@ cell:
 ...     format="dataframe",
 ...     units=False,
 ... )
-   tl:1  child:1
-0   0.0      NaN
-1  50.0      0.0
-2  60.0     10.0
+   cpt_1  cpt_2
+0    0.0    NaN
+1   50.0    0.0
+2   60.0   10.0
 ```
 
 ### get_child { #timetoalign.timelines.Timeline.get_child }
@@ -2043,28 +2098,28 @@ Get a TimeIntervalStamp for a coordinate range.
 ```python
 >>> from timetoalign.timelines import Timeline
 >>> parent = Timeline(length=20, unit=TimeUnit.seconds, uid="timeline:1")
->>> child = Timeline(length=15, unit=TimeUnit.seconds, uid="child:1")
+>>> child = Timeline(length=15, unit=TimeUnit.seconds, uid="cpt_2")
 >>> parent.add_child(child, offset=0)
 >>> interval = parent.get_interval_stamp(0.0, 10.0)
 >>> interval.duration
 Duration(10.0, seconds)
->>> interval.get_interval("child:1")
+>>> interval.get_interval("cpt_2")
 Interval(start=Coordinate(0.0, seconds), end=Coordinate(10.0, seconds))
 ```
 
 ### get_region { #timetoalign.timelines.Timeline.get_region }
 
 ```python
-timelines.Timeline.get_region(name)
+timelines.Timeline.get_region(region_id)
 ```
 
-Get a Region by name.
+Get a Region by id.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name   | Type         | Description      | Default    |
-|--------|--------------|------------------|------------|
-| name   | [str](`str`) | The region name. | _required_ |
+| Name      | Type         | Description      | Default    |
+|-----------|--------------|------------------|------------|
+| region_id | [str](`str`) | The region's id. | _required_ |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -2074,9 +2129,9 @@ Get a Region by name.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                   | Description                         |
-|--------|------------------------|-------------------------------------|
-|        | [KeyError](`KeyError`) | If no region with that name exists. |
+| Name   | Type                   | Description                       |
+|--------|------------------------|-----------------------------------|
+|        | [KeyError](`KeyError`) | If no region with that id exists. |
 
 ### get_regions_at { #timetoalign.timelines.Timeline.get_regions_at }
 
@@ -2106,7 +2161,8 @@ A region contains coord if region.start <= coord < region.end
 
 ```python
 >>> tl.get_regions_at(75.0)
-[Region('verse_1', 30-90), Region('chorus', 60-120)]
+[Region('region_1', name='verse', 30-90 quarters),
+ Region('region_2', name='chorus', 60-120 quarters)]
 ```
 
 ### get_slice { #timetoalign.timelines.Timeline.get_slice }
@@ -2220,9 +2276,8 @@ This is the primary coordinate resolution API. The TimeStamp provides
 access to all equivalent coordinates across children and C-Map units.
 The axis is written in this timeline's declared ``number_type``, so a
 query of ``9.5`` on a fraction-canonical timeline gives an axis of
-``Fraction(19, 2)``.
-
-Uses InterpolationMaps for O(log n) coordinate conversion.
+``Fraction(19, 2)``. Descendants are reached by exact offset
+arithmetic.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
@@ -2313,11 +2368,11 @@ is not found on this timeline directly.
 ```python
 >>> from timetoalign.timelines import Timeline
 >>> parent = Timeline(length=20, unit=TimeUnit.seconds, uid="timeline:1")
->>> child = Timeline(length=10, unit=TimeUnit.seconds, uid="clt1")
+>>> child = Timeline(length=10, unit=TimeUnit.seconds, uid="clt_1")
 >>> parent.add_child(child, offset=5)
 >>> parent.add_events([{"event_type": "Note", "instant": 5.0}])
 >>> child.add_events(
-...     [{"id": "clt1:note:000001", "event_type": "Note", "start": 0.0, "end": 2.5}]
+...     [{"id": "clt_1:note:000001", "event_type": "Note", "start": 0.0, "end": 2.5}]
 ... )
 >>> ts = parent.get_timestamp_for("note:000001")
 >>> ts.axis  # For instant events
@@ -2325,7 +2380,7 @@ IdCoordinate(5.0, seconds, 'timeline:1')
 ```
 
 ```python
->>> ts = parent.get_timestamp_for("clt1:note:000001")
+>>> ts = parent.get_timestamp_for("clt_1:note:000001")
 >>> ts.start.axis  # For interval events
 IdCoordinate(5.0, seconds, 'timeline:1')
 >>> ts.end.axis
@@ -2406,12 +2461,12 @@ child in the query places the position on the parent axis for you.
 ```python
 >>> from timetoalign.core import IdCoordinate, TimeUnit
 >>> from timetoalign.timelines import Timeline
->>> parent = Timeline(length=60, unit=TimeUnit.seconds, uid="tl:1")
->>> child = Timeline(length=10, unit=TimeUnit.seconds, uid="child:1")
+>>> parent = Timeline(length=60, unit=TimeUnit.seconds, uid="cpt_1")
+>>> child = Timeline(length=10, unit=TimeUnit.seconds, uid="cpt_2")
 >>> parent.add_child(child, offset=50)
 >>> parent.add_events([{"id": "beat:1", "instant": 0.0}])
 >>> parent.get_timestamp_table().column_names
-['tl:1', 'child:1']
+['cpt_1', 'cpt_2']
 ```
 
 Every column names the timeline it belongs to; metadata lives in
@@ -2419,18 +2474,18 @@ the versioned blob:
 
 ```python
 >>> from timetoalign.core.fields import field_metadata
->>> field_metadata(parent.get_timestamp_table().schema.field("tl:1"))["unit"]
+>>> field_metadata(parent.get_timestamp_table().schema.field("cpt_1"))["unit"]
 'seconds'
 ```
 
 A child position is placed on the parent axis automatically:
 
 ```python
->>> coords = [IdCoordinate(v, TimeUnit.seconds, "child:1") for v in (0.0, 5.0)]
+>>> coords = [IdCoordinate(v, TimeUnit.seconds, "cpt_2") for v in (0.0, 5.0)]
 >>> parent.get_timestamp_table(coords, format="dataframe", units=False)
-   tl:1  child:1
-0  50.0      0.0
-1  55.0      5.0
+   cpt_1  cpt_2
+0   50.0    0.0
+1   55.0    5.0
 ```
 
 ### get_timestamps_at { #timetoalign.timelines.Timeline.get_timestamps_at }
@@ -2508,12 +2563,12 @@ Get timestamps for a collection of event IDs, in input order.
 ```python
 >>> from timetoalign.core import TimeUnit
 >>> from timetoalign.timelines import Timeline
->>> timeline = Timeline(length=60, unit=TimeUnit.seconds, uid="tl:1")
+>>> timeline = Timeline(length=60, unit=TimeUnit.seconds, uid="cpt_1")
 >>> timeline.add_events(
 ...     [{"id": "beat:1", "instant": 0.0}, {"id": "beat:2", "instant": 55.0}]
 ... )
 >>> stamps = timeline.get_timestamps_for(["beat:1", "beat:2"])
->>> [stamp.get_coordinate_for("tl:1", format="float") for stamp in stamps]
+>>> [stamp.get_coordinate_for("cpt_1", format="float") for stamp in stamps]
 [0.0, 55.0]
 ```
 
@@ -2565,16 +2620,16 @@ Check if a FlowMap with the given id is attached.
 ### has_region { #timetoalign.timelines.Timeline.has_region }
 
 ```python
-timelines.Timeline.has_region(name)
+timelines.Timeline.has_region(region_id)
 ```
 
 Check if a region exists.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name   | Type         | Description         | Default    |
-|--------|--------------|---------------------|------------|
-| name   | [str](`str`) | Name of the region. | _required_ |
+| Name      | Type         | Description      | Default    |
+|-----------|--------------|------------------|------------|
+| region_id | [str](`str`) | The region's id. | _required_ |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -2664,13 +2719,13 @@ List all attached FlowMap ids.
 timelines.Timeline.list_regions()
 ```
 
-List all region names.
+List all region ids.
 
 #### Returns {.doc-section .doc-section-returns}
 
-| Name   | Type                           | Description                              |
-|--------|--------------------------------|------------------------------------------|
-|        | [list](`list`)\[[str](`str`)\] | List of region names in insertion order. |
+| Name   | Type                           | Description                            |
+|--------|--------------------------------|----------------------------------------|
+|        | [list](`list`)\[[str](`str`)\] | List of region ids in insertion order. |
 
 ### make_coordinate { #timetoalign.timelines.Timeline.make_coordinate }
 
@@ -2759,16 +2814,31 @@ timelines.Timeline.to_dict(events=False, external_references=False)
 
 Convert timeline to a dictionary for serialization.
 
-The default output describes the timeline's structure only: the
-``"events"`` and ``"external_references"`` keys are **absent**
-unless explicitly requested, which keeps the payload small for the
-common case of persisting a hierarchy rather than its contents.
+The default output is the timeline's complete structure: its axis,
+children, conversion maps, regions, measure map, metric hierarchy,
+and flow control. ``"events"`` and ``"external_references"`` are
+**absent** unless explicitly requested. This structural payload is
+called the eventless payload: it preserves authored structure without
+carrying event rows. Structure is not inferred for slices, children
+created from regions, or unfolded timelines.
 
 Coordinate-valued members — ``length`` and every child
-``offset`` — are emitted as the canonical rational wire dict
-(:func:`~timetoalign.core.rational_to_wire`), so the result is
+``offset`` — are emitted as canonical coordinate dictionaries
+(:func:`~timetoalign.core.retrieval.coordinate_to_dict`), so the result is
 JSON-serializable whatever the timeline's number type, and
 ``Fraction`` coordinates survive the round trip exactly.
+
+Collections are written in one canonical order, independent of the
+order in which their content was added, so equal timelines give equal
+JSON text: ``children`` by offset, then id; ``conversion_maps`` by id;
+``regions`` by start, then end, then id; and in ``flow_control``
+(:meth:`~timetoalign.timelines.flowcontrol.FlowControlRegistry.to_dict`)
+``breaks`` and ``markers`` by coordinate, ``jumps`` by from and then
+to coordinate, each then by id.
+Coordinates compare by exact numeric value and strings by Unicode code
+point (:func:`~timetoalign.core.retrieval.canonical_order`). Every
+other member keeps its order. The timeline's own storage is not
+reordered, and :meth:`from_dict` accepts any order.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
@@ -2891,7 +2961,7 @@ TimelineGroup instead of parent-child nesting.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                         |
-|--------|----------------------------|-----------------------------------------------------|
-|        | [TypeError](`TypeError`)   | If child is not a Timeline.                         |
-|        | [ValueError](`ValueError`) | If units don't match or child already has a parent. |
+| Name   | Type                       | Description                                                               |
+|--------|----------------------------|---------------------------------------------------------------------------|
+|        | [TypeError](`TypeError`)   | If child is not a Timeline.                                               |
+|        | [ValueError](`ValueError`) | If units don't match or the timeline already is a child of this timeline. |

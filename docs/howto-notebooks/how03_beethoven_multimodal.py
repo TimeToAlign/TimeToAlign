@@ -52,7 +52,6 @@ from timetoalign import (
     ContinuousPhysicalTimeline,
     Coordinate,
     DiscreteGraphicalTimeline,
-    IdCoordinate,
     Ms3Loader,
     NumberType,
     RepoVizzLoader,
@@ -130,10 +129,14 @@ def build_recording_group(xml_path, group_id, group_name, dpt_base):
     rv = RepoVizzLoader.from_file(xml_path)
     n = dpt_base
 
-    # 1. Audio (mono as parent, 6 sources as children)
+    # 1. Audio (mono as parent, 6 sources as children). A child's id is led by
+    # its parent's id: the three recordings share one bundle, and a timeline
+    # id names one timeline there. The source label stays its name.
     audio = rv.create_timeline("mono", uid=f"dpt_{n}", name="Audio")
     for src in AUDIO_SOURCES:
-        audio.add_child(rv.create_timeline(src, uid=src), offset=0)
+        audio.add_child(
+            rv.create_timeline(src, uid=f"{audio.id}:{src}", name=src), offset=0
+        )
 
     # 2-4. Essentia descriptors (tonal, lowlevel, rhythm)
     desc_cfgs = [
@@ -151,7 +154,9 @@ def build_recording_group(xml_path, group_id, group_name, dpt_base):
         for src in AUDIO_SOURCES:
             parent.add_child(
                 rv.create_timeline(
-                    f"{desc_type}.{desc_name}.{src}", uid=f"{src}_{desc_type}"
+                    f"{desc_type}.{desc_name}.{src}",
+                    uid=f"{parent.id}:{src}_{desc_type}",
+                    name=f"{src}_{desc_type}",
                 ),
                 offset=0,
             )
@@ -166,14 +171,15 @@ def build_recording_group(xml_path, group_id, group_name, dpt_base):
     for inst in INSTRUMENTS:
         child = rv.create_timeline(
             rv.find_descriptor("bb_angle", inst),
-            uid=f"{inst}_mocap",
+            uid=f"{mocap.id}:{inst}_mocap",
+            name=f"{inst}_mocap",
         )
         mocap.add_child(child, offset=0)
 
     # Add notes to pickup children
     for inst in INSTRUMENTS:
         notes = rv.store.notes_for_instrument(inst)
-        if notes and (pickup := audio.get_child(f"pickup_{inst}")):
+        if notes and (pickup := audio.get_child(f"{audio.id}:pickup_{inst}")):
             pickup.add_events(notes.to_dataframe().to_dict("records"))
 
     return TimelineGroup(
@@ -429,9 +435,9 @@ score_group
 #
 # The playthrough section boundaries (from §6.1) can now be mapped
 # through the score group to DGT1 pixel coordinates. This demonstrates
-# cross-domain coordinate transfer within a `TimelineGroup`: the
-# `InterpolationMap` between CLT1 (quarters) and DGT1 (pixels) uses
-# each system's pixel-to-quarter `TableMap` as its C-map anchor.
+# cross-domain coordinate transfer within a `TimelineGroup`: every member
+# spans the whole group, so a position on CLT1 (quarters) converts to DGT1
+# (pixels) linearly, by the ratio of the two lengths.
 
 # %%
 # Build a page-boundary lookup from DGT1's segment structure
@@ -477,7 +483,7 @@ section_boundary_table
 # The score has repeats and volta brackets. Rather than unfolding each
 # timeline individually, `TimelineGroup.apply_flow()` does it in one call:
 # the flow controller's section boundaries are resolved via the group's
-# interpolation maps, so every timeline — regardless of domain — is
+# linear conversion, so every timeline — regardless of domain — is
 # sliced and reassembled in playthrough order.
 
 # %%
@@ -763,18 +769,14 @@ len(emerson_claims)
 # timeline in both groups.
 
 # %%
-clt1_unfolded = score_group_unfolded.get_timeline("clt_1")
-score_group_unfolded.add_timeline(
-    clt2_unfolded,
-    start=IdCoordinate(0.0, TimeUnit.quarters, "clt_1"),
-    end=IdCoordinate(float(clt1_unfolded.length.value), TimeUnit.quarters, "clt_1"),
-)
+score_group_unfolded.add_timeline(clt2_unfolded)
 score_group_unfolded
 
 # %% [markdown]
 # CLT2\_unfolded now appears alongside CLT1, DGT1, and OpenScore in
-# the unfolded score group. The group's interpolation maps link all
-# four timelines pairwise, bridging quarter-beats and floating measures.
+# the unfolded score group. Every member spans the whole group, so the group
+# links all four timelines pairwise, bridging quarter-beats and floating
+# measures.
 
 # %% [markdown]
 # ### 12.2 The Emerson Group
@@ -902,7 +904,13 @@ transferred = emerson_warpmap.get_coordinate_at(first_fm)
 # ABC score:
 
 # %%
-annotations_df = clt1.get_child("annotations").get_events().to_dataframe()
+# Loader children are named after their category; their ids are minted.
+annotations_id = next(
+    child_id
+    for child_id in clt1.list_children()
+    if clt1.get_child(child_id).name == "annotations"
+)
+annotations_df = clt1.get_child(annotations_id).get_events().to_dataframe()
 annotations_df[["start", "name"]].head(15)
 
 # %% [markdown]
@@ -918,8 +926,8 @@ stamp = bundle.get_matchstamp_at(79.0, "clt_1")
 stamp
 
 # %% [markdown]
-# `MatchStamp` belongs to the same unified stamp family as `TimeStamp` and
-# `GroupTimestamp`: `get_coordinate()` returns a unit-bearing coordinate,
+# `MatchStamp` belongs to the same unified stamp family as `TimeStamp`:
+# `get_coordinate()` returns a unit-bearing coordinate,
 # while `is_interpolated` reports whether resolution used interpolation.
 # Those two are independent. This position was reached by interpolation and is
 # still an exact `Fraction`, because the number type follows the quarters axis

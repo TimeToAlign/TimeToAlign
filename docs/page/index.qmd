@@ -67,7 +67,8 @@ This documentation follows the
     [How to Build Beat Grids](howto/how01_beat_grids.ipynb)
 
     *TimelineGroups* ---
-    [How to Align a Piano Roll (SUPRA)](howto/how02_supra_piano_roll.ipynb)
+    [How to Align a Piano Roll (SUPRA)](howto/how02_supra_piano_roll.ipynb) ·
+    [How to Save and Load Groups and Bundles](howto/how02_group_and_bundle_files.ipynb)
 
     *AlignmentBundles* ---
     [How to Create a Note Alignment](howto/how03_create_note_alignment.ipynb) ·

@@ -339,8 +339,9 @@ timestamp_view
 # `IdCoordinate` carrying the exact `Fraction`, the unit, and the timeline the
 # value belongs to. Neither is more true than the other; asking for a bare
 # number is a request you make explicitly rather than a second lane the stamp
-# keeps open. This is the first of three point-stamp types introduced across
-# the series.
+# keeps open. This is the first of two point-stamp types introduced across
+# the series: a group of timelines answers with this same `TimeStamp`, and
+# bundles add the `MatchStamp`.
 
 # %% [markdown]
 # ## Reversing a conversion map

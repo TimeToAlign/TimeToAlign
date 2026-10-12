@@ -213,23 +213,25 @@ derived_types
 # ## The bundle
 #
 # A bundle organises commensurable timelines into {{< glossary TimelineGroup >}}s.
-# `as_group=` starts a group; `grouped_with=` joins the group of a timeline that
-# is already registered.
+# Every timeline is registered under its own id. `as_group=` starts a group and
+# gives it a name, while the group's id is minted (`group_1`, `group_2`, …);
+# `grouped_with=` joins the group of a timeline that is already registered.
 
 # %%
 score_ticks = DiscreteLogicalTimeline(
     length=5760, uid="edition_ticks", name="Edition MIDI grid"
 )
 bundle = AlignmentBundle(name="Edition and performance")
-bundle.add_timeline(score, uid=score.id, as_group="edition")
-bundle.add_timeline(score_ticks, uid=score_ticks.id, grouped_with=score.id)
-bundle.add_timeline(performance, uid=performance.id, as_group="performance")
+bundle.add_timeline(score, as_group="edition")
+bundle.add_timeline(score_ticks, grouped_with=score.id)
+bundle.add_timeline(performance, as_group="performance")
 bundle.add_match_claims(evidence_claims)
 
-edition_group = bundle.get_group("edition")
-performance_group = bundle.get_group("performance")
+edition_group = bundle.get_group_for_timeline(score.id)
+performance_group = bundle.get_group_for_timeline(performance.id)
 bundle_structure = {
     "group_ids": bundle.group_ids,
+    "group names": [edition_group.name, performance_group.name],
     "edition members": edition_group.timeline_ids,
     "performance members": performance_group.timeline_ids,
     "all timeline_ids": bundle.timeline_ids,
@@ -282,9 +284,9 @@ map_summary
 # ## Querying
 #
 # `bundle.get_matchstamp_at(coord, timeline_id)` returns a
-# {{< glossary MatchStamp >}}, the third and widest rung after
-# {{< glossary TimeStamp >}} and {{< glossary GroupTimestamp >}}. All three have
-# the same coordinate and unit accessors.
+# {{< glossary MatchStamp >}}, the second and wider rung after the
+# {{< glossary TimeStamp >}} that timelines and groups return. Both have the
+# same coordinate and unit accessors.
 
 # %%
 claimed_coordinate = Coordinate(Fraction(4), TimeUnit.quarters)
@@ -508,7 +510,7 @@ facsimile = ContinuousGraphicalTimeline(
     length=1200.0, unit=TimeUnit.points, uid="facsimile_points", name="Facsimile"
 )
 facsimile_bundle = AlignmentBundle(name="Facsimile only")
-facsimile_bundle.add_timeline(facsimile, uid=facsimile.id, as_group="facsimile")
+facsimile_bundle.add_timeline(facsimile, as_group="facsimile")
 merged_bundle = AlignmentBundle.from_bundles(
     [bundle, facsimile_bundle], name="Edition, performance, and facsimile"
 )

@@ -666,7 +666,7 @@ differing default is a per-context parameter setting, not a break in stamp
 uniformity: a MatchStamp exposes the identical `Stamp` interface ---
 `get_coordinate_for()`, `get_coordinates_for()`, the `get_coordinate()`
 dispatcher, `get_unit()`, `get_conversion_for()`, `present_timelines`,
-`is_interpolated`, `to_dict()` --- as a `TimeStamp` or `GroupTimestamp`, so a
+`is_interpolated`, `to_dict()` --- as a `TimeStamp`, so a
 stamp from any source keeps the same structure and behaviour regardless of
 which keyword defaults were used to produce it.
 :::
@@ -731,7 +731,8 @@ via offset arithmetic, interpolation, and {{< glossary WarpMap >}}s.
 The AlignmentBundle provides coordinate transfer at two levels:
 
 - **Within a group**: delegates to `TimelineGroup.get_timestamp_at()`,
-  which uses pairwise interpolation.
+  which converts linearly and exactly between members that share one start
+  and one end.
 - **Across groups**: constructs a {{< glossary MatchLine >}} from the
   cross-group claims, generates {{< glossary WarpMap >}}s on demand, and
   uses those WarpMaps for coordinate transfer.
@@ -764,9 +765,10 @@ The model implements three tiers of coordinate transfer:
 1. **Offset arithmetic** for parent--child relationships: a child's
    coordinate is the parent's coordinate minus the child's offset.
    Exact and lossless.
-2. **Interpolation** within {{< glossary TimelineGroup >}}s: timelines
-   of potentially different units (e.g., seconds and samples) are
-   connected via pairwise linear interpolation.
+2. **Interpolation** within {{< glossary TimelineGroup >}}s: members of
+   potentially different units (e.g., seconds and samples) share one start
+   and one end, so a position converts linearly and exactly, from each
+   member's 0 and length.
 3. **WarpMap** for cross-group alignment: derived from a
    {{< glossary MatchLine >}}, a WarpMap materialises a complete copy
    of a source timeline warped to a target timeline's coordinates.

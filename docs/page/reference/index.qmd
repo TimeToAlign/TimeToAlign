@@ -27,7 +27,6 @@ Fundamental types for coordinates, units, domains, and cross-section timestamps.
 | [IdGenerator](IdGenerator.qmd#timetoalign.IdGenerator) | Generates unique IDs within a given scope. |
 | [TimeStamp](TimeStamp.qmd#timetoalign.TimeStamp) | A synchronized instant across a timeline hierarchy. |
 | [TimeIntervalStamp](TimeIntervalStamp.qmd#timetoalign.TimeIntervalStamp) | A synchronized collection of canonical typed timeline intervals. |
-| [GroupTimestamp](GroupTimestamp.qmd#timetoalign.timelines.GroupTimestamp) | A synchronized instant across all timelines in a group. |
 
 ## Timelines
 

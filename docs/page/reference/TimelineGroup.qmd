@@ -1,163 +1,128 @@
 # TimelineGroup { #timetoalign.timelines.TimelineGroup }
 
 ```python
-timelines.TimelineGroup(
-    id=None,
-    name=None,
-    timelines=None,
-    is_locked=False,
-    meta=None,
-)
+timelines.TimelineGroup(id=None, name=None, timelines=None, meta=None)
 ```
 
-Container for commensurable timelines.
+An array of timelines sharing one graphical start and end point.
 
-A TimelineGroup holds timelines (or sections thereof) that are
-commensurable - i.e., bijectively mapped to each other via linear
-interpolation. The group is defined by a timestamp table where each
-row is a boundary instant.
+By definition every member's 0 coincides with every other member's 0 and
+every member's length with every other member's length; a position in
+between converts linearly. Position ``p`` on member A is
+``p · len_B / len_A`` on member B, computed exactly — a float enters as
+its exact dyadic ``Fraction`` — and written in B's declared number type.
 
-Between any two adjacent timestamps, all present timelines have
-coordinates that can be converted via linear interpolation.
+When only part of a timeline participates, the participant is a child of
+that timeline: the child carries its exact offset, and the child is the
+member. A member is never placed partially.
 
-Like Timeline, a Group can be locked to prevent extension.
+Members keep the order in which they were added.
 
 ## Attributes {.doc-section .doc-section-attributes}
 
-| Name      | Type                                                | Description                        |
-|-----------|-----------------------------------------------------|------------------------------------|
-| id        | [str](`str`)                                        | Unique identifier for this group.  |
-| name      | [str](`str`) \| None                                | Optional human-readable name.      |
-| is_locked | [bool](`bool`)                                      | Whether the group can be extended. |
-| meta      | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | Additional metadata dictionary.    |
+| Name   | Type                                                | Description                                                 |
+|--------|-----------------------------------------------------|-------------------------------------------------------------|
+| id     | [str](`str`)                                        | Unique identifier for this group, ``group_N`` unless given. |
+| name   | [str](`str`) \| None                                | Optional human-readable name.                               |
+| meta   | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | Additional metadata dictionary.                             |
 
 ## Examples {.doc-section .doc-section-examples}
 
 ```python
->>> # Create empty group
->>> group = TimelineGroup(id="my_group")
-```
-
-```python
->>> # Or create with initial timelines
->>> group = TimelineGroup(id="my_group", timelines=[dgt1, audio])
-```
-
-```python
->>> # Add a timeline
->>> group.add_timeline(dgt1)
-```
-
-```python
->>> # Add with explicit boundaries
->>> from timetoalign import IdCoordinate, TimeUnit
->>> group.add_timeline(
-...     score_section,
-...     start=IdCoordinate(45.0, TimeUnit.seconds, "audio:1"),
-...     end=IdCoordinate(135.0, TimeUnit.seconds, "audio:1"),
+>>> from fractions import Fraction
+>>> from timetoalign.timelines import TimelineGroup
+>>> from timetoalign.timelines.types import (
+...     ContinuousLogicalTimeline,
+...     DiscreteGraphicalTimeline,
 ... )
-```
-
-```python
->>> # Convert coordinates via timestamp lookup
->>> ts = group.get_timestamp_at(75.0, "audio:1")
->>> ts.get_coordinate_for("dgt1:1", format="float")  # -> 2437.5
+>>> score = ContinuousLogicalTimeline(length=Fraction(16))
+>>> image = DiscreteGraphicalTimeline(length=4800)
+>>> group = TimelineGroup(timelines=[score, image])
+>>> group.id, group.timeline_ids
+('group_1', ['clt_1', 'dgt_1'])
+>>> group.get_coordinate_at(Fraction(1, 3), "clt_1", format="coordinate")
+Coordinate(Fraction(1, 3), quarters)
+>>> group.get_timestamp_at(Fraction(1, 3), "clt_1").get_coordinate_for(
+...     "dgt_1", format="int"
+... )
+100
 ```
 
 ## Methods
 
 | Name | Description |
 | --- | --- |
-| [add_timeline](#timetoalign.timelines.TimelineGroup.add_timeline) | Add a timeline (or Child) to the group. |
+| [add_timeline](#timetoalign.timelines.TimelineGroup.add_timeline) | Add a member; its whole extent ``[0, length]`` spans the group. |
 | [apply_flow](#timetoalign.timelines.TimelineGroup.apply_flow) | Unfold ALL timelines in this group via a single flow. |
 | [diagram](#timetoalign.timelines.TimelineGroup.diagram) | Generate ASCII diagram for this group. |
+| [from_dict](#timetoalign.timelines.TimelineGroup.from_dict) | Rebuild a group from the dictionary :meth:`to_dict` writes. |
 | [get_coordinate](#timetoalign.timelines.TimelineGroup.get_coordinate) | Dispatch a positional or event-key group coordinate query. |
 | [get_coordinate_at](#timetoalign.timelines.TimelineGroup.get_coordinate_at) | Resolve one coordinate on a selected group member axis. |
 | [get_coordinate_for](#timetoalign.timelines.TimelineGroup.get_coordinate_for) | Return a uniquely owned event's start on a selected member axis. |
 | [get_coordinates_at](#timetoalign.timelines.TimelineGroup.get_coordinates_at) | Resolve a collection of coordinates on one group member axis. |
 | [get_coordinates_for](#timetoalign.timelines.TimelineGroup.get_coordinates_for) | Return event-start coordinates for a key collection. |
 | [get_events](#timetoalign.timelines.TimelineGroup.get_events) | Get events from all timelines in the group, concatenated. |
-| [get_interval_for](#timetoalign.timelines.TimelineGroup.get_interval_for) | Return a member's stored coordinate extent as a typed interval. |
+| [get_interval_for](#timetoalign.timelines.TimelineGroup.get_interval_for) | Return a member's extent in the group, ``[0, length]``. |
 | [get_timeline](#timetoalign.timelines.TimelineGroup.get_timeline) | Get a timeline by ID. |
 | [get_timestamp](#timetoalign.timelines.TimelineGroup.get_timestamp) | Dispatch a positional or event-key timestamp query. |
 | [get_timestamp_at](#timetoalign.timelines.TimelineGroup.get_timestamp_at) | Get a TimeStamp at a specific coordinate. |
-| [get_timestamp_at_index](#timetoalign.timelines.TimelineGroup.get_timestamp_at_index) | Get a specific timestamp by index. |
 | [get_timestamp_for](#timetoalign.timelines.TimelineGroup.get_timestamp_for) | Get the TimeStamp for a specific event by its ID. |
 | [get_timestamp_table](#timetoalign.timelines.TimelineGroup.get_timestamp_table) | Get the group's timestamps as a table, one row per cross-section. |
 | [get_timestamps_at](#timetoalign.timelines.TimelineGroup.get_timestamps_at) | Get TimeStamps at a collection of coordinates, in input order. |
 | [get_timestamps_for](#timetoalign.timelines.TimelineGroup.get_timestamps_for) | Get timestamps for a collection of event IDs, in input order. |
-| [lock](#timetoalign.timelines.TimelineGroup.lock) | Lock the group to prevent extension. |
-| [remove_timeline](#timetoalign.timelines.TimelineGroup.remove_timeline) | Remove a timeline from the group. |
+| [remove_timeline](#timetoalign.timelines.TimelineGroup.remove_timeline) | Remove a member from the group. |
 | [summary](#timetoalign.timelines.TimelineGroup.summary) | Get a summary of the group. |
-| [unlock](#timetoalign.timelines.TimelineGroup.unlock) | Unlock the group to allow extension. |
+| [to_dict](#timetoalign.timelines.TimelineGroup.to_dict) | Convert the group to a dictionary for serialization. |
 
 ### add_timeline { #timetoalign.timelines.TimelineGroup.add_timeline }
 
 ```python
-timelines.TimelineGroup.add_timeline(
-    timeline,
-    *,
-    start=None,
-    end=None,
-    allow_extension=False,
-)
+timelines.TimelineGroup.add_timeline(timeline)
 ```
 
-Add a timeline (or Child) to the group.
+Add a member; its whole extent ``[0, length]`` spans the group.
 
-The timeline's full extent (0 to length) becomes commensurable with
-the group between the specified start and end boundaries.
+A member's 0 coincides with every other member's 0 and its length
+with every other member's length. To let only part of a timeline
+participate, add the child of that timeline covering the part.
 
-This method works the same whether the group is empty or already
-has timelines. For an empty group, start/end default to the
-timeline's own boundaries (0 and length).
+Every timeline id in the newcomer's manifest tree (its root and all
+that root's descendants) must be free in the group's trees.
+
+A newcomer that is an ancestor or a descendant of a member is
+refused: a child sits at its offset inside its parent, so the two
+cannot share one start and end. Every check runs before anything
+changes, so a refused newcomer is left as it was.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name            | Type                                                                                                                           | Description                                                                                                                                                                                                                                                                                                                    | Default    |
-|-----------------|--------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
-| timeline        | \'Timeline\'                                                                                                                   | The timeline or Child to add. If a Child, its 0-origin extent is used. If a Timeline, its full extent (0 to length).                                                                                                                                                                                                           | _required_ |
-| start           | [CoordinateSpec](`timetoalign.core.CoordinateSpec`) \| [GroupTimestamp](`timetoalign.timelines.groups.GroupTimestamp`) \| None | Where this timeline's section STARTS in the group. - CoordinateSpec: Coordinate in the alignment-reference timeline - IdCoordinate: Coordinate with explicit timeline_id - GroupTimestamp: Use this existing timestamp - float: Coordinate (only if single timeline in group) - None: Use group's current start, or 0 if empty | `None`     |
-| end             | [CoordinateSpec](`timetoalign.core.CoordinateSpec`) \| [GroupTimestamp](`timetoalign.timelines.groups.GroupTimestamp`) \| None | Where this timeline's section ENDS in the group. - Same options as start - None: Use group's current end, or timeline.length if empty                                                                                                                                                                                          | `None`     |
-| allow_extension | [bool](`bool`)                                                                                                                 | If True and end extends beyond current group end, add a new end timestamp. If False (default) and group is locked, raise an error.                                                                                                                                                                                             | `False`    |
+| Name     | Type         | Description                   | Default    |
+|----------|--------------|-------------------------------|------------|
+| timeline | \'Timeline\' | The timeline or child to add. | _required_ |
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                           | Description                                         |
-|--------|--------------------------------|-----------------------------------------------------|
-|        | [ValueError](`ValueError`)     | If timeline ID already exists in group.             |
-|        | [ValueError](`ValueError`)     | If start/end specification is ambiguous.            |
-|        | [RuntimeError](`RuntimeError`) | If group is locked and extension would be required. |
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                        |
+|--------|----------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the timeline is already a member; if it is nested with a member; or if a given id of its tree — its own, its root's or any descendant's — is held by another timeline of the group's trees or is the group's given id (a minted id held there is minted again instead, and a minted group id that a newcomer's given id takes is minted again). |
 
 #### Examples {.doc-section .doc-section-examples}
 
 ```python
->>> # Add to empty group - defines initial extent
->>> group.add_timeline(dgt1)
-```
-
-```python
->>> # Add to existing group - maps to existing extent
->>> group.add_timeline(audio)
-```
-
-```python
->>> # Add partial section with explicit boundaries (using IdCoordinate)
->>> from timetoalign import IdCoordinate, TimeUnit
->>> group.add_timeline(
-...     score_section,
-...     start=IdCoordinate(45.0, TimeUnit.seconds, "audio:1"),
-...     end=IdCoordinate(135.0, TimeUnit.seconds, "audio:1"),
+>>> from timetoalign.timelines import TimelineGroup
+>>> from timetoalign.timelines.types import (
+...     ContinuousPhysicalTimeline,
+...     DiscreteGraphicalTimeline,
 ... )
-```
-
-```python
->>> # Extend group with new timeline
->>> group.add_timeline(
-...     extended_audio,
-...     end=IdCoordinate(200.0, TimeUnit.seconds, "extended_audio:1"),
-...     allow_extension=True,
-... )
+>>> image = DiscreteGraphicalTimeline(length=5000)
+>>> holes = DiscreteGraphicalTimeline(length=2000)
+>>> image.add_child(holes, offset=1000)
+>>> group = TimelineGroup(timelines=[ContinuousPhysicalTimeline(length=8.0)])
+>>> group.add_timeline(holes)
+>>> group.get_coordinate_at(2.0, "cpt_1")
+IdCoordinate(2.0, seconds, 'cpt_1')
+>>> group.get_timestamp_at(2.0, "cpt_1").get_coordinate_for("dgt_2", format="int")
+500
 ```
 
 ### apply_flow { #timetoalign.timelines.TimelineGroup.apply_flow }
@@ -178,7 +143,7 @@ Unfold ALL timelines in this group via a single flow.
 Uses the flow controller's repeat structure to compute section
 boundaries in the reference timeline's coordinate space, then
 resolves those boundaries into every other timeline's coordinates
-via the group's interpolation maps. Each member is unfolded along its
+via the group's linear conversion. Each member is unfolded along its
 own resolved played spans: a new timeline of the member's **same
 concrete type** with one appended child (plus a matching named Region)
 per section, in unfolded coordinates.
@@ -207,6 +172,9 @@ Regions carry the same per-section names as the single-timeline path
 |        | \'TimelineGroup\' | A new ``TimelineGroup`` containing the unfolded timelines. Each        |
 |        | \'TimelineGroup\' | member keeps its original timeline ID, is the same concrete type as    |
 |        | \'TimelineGroup\' | its source, and carries one appended child and Region per section.     |
+|        | \'TimelineGroup\' | A section child is named after its section; its id is minted           |
+|        | \'TimelineGroup\' | (``clt_2``, ...), so that timeline ids stay unique across the          |
+|        | \'TimelineGroup\' | group.                                                                 |
 |        | \'TimelineGroup\' | The reference timeline additionally carries a reverse FlowMap          |
 |        | \'TimelineGroup\' | (id ``"source"``) and a forward FlowMap (id ``f"forward_{flow.id}"``). |
 
@@ -224,9 +192,9 @@ Regions carry the same per-section names as the single-timeline path
 >>> controller = loader.create_flow_controller()
 >>> flow = controller.compute_flow(FlowMode.default)
 >>> score_group = TimelineGroup(
-...     id="score", timelines=[clt1, dgt1, openscore]
+...     id="score", timelines=[clt_1, dgt_1, openscore]
 ... )
->>> unfolded = score_group.apply_flow(flow, controller, "clt1")
+>>> unfolded = score_group.apply_flow(flow, controller, "clt_1")
 ```
 
 ### diagram { #timetoalign.timelines.TimelineGroup.diagram }
@@ -269,14 +237,63 @@ Generate ASCII diagram for this group.
 
 ```python
 >>> print(group.diagram())
-TimelineGroup[my_group] (2 timelines, 2 timestamps)
+TimelineGroup[my_group] (2 timelines)
 ┌────────────────────────────────────────────────────────────┐
-│ DiscreteGraphicalTimeline[dgt1:1] (11 events, 5 children)  │
+│ DiscreteGraphicalTimeline[dgt_1:1] (11 events, 5 children)  │
 │ 0 ∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶ 4835 pixels    │
 │   ├─ system_1     0   ∶∶∶∶∶∶∶                    967       │
 │   └─ ...                                                   │
 └────────────────────────────────────────────────────────────┘
-Timestamps: 2
+```
+
+### from_dict { #timetoalign.timelines.TimelineGroup.from_dict }
+
+```python
+timelines.TimelineGroup.from_dict(data)
+```
+
+Rebuild a group from the dictionary :meth:`to_dict` writes.
+
+Every entry of ``"timelines"`` is rebuilt with
+:meth:`Timeline.from_dict <timetoalign.timelines.Timeline.from_dict>`;
+each member id is resolved among those roots and all their
+descendants, and the members are added in ``graphical.order`` (in
+``group.members`` order when ``"graphical"`` is absent). Feeding the
+result back through :meth:`to_dict` with the same flags reproduces
+the input dictionary. A ``"meta"`` key — the file's own metadata —
+is accepted and ignored.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name   | Type                                                | Description                                                   | Default    |
+|--------|-----------------------------------------------------|---------------------------------------------------------------|------------|
+| data   | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | ``{"timelines": [...], "group": {...}, "graphical": {...}}``. | _required_ |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                             | Description        |
+|--------|----------------------------------|--------------------|
+|        | [Self](`typing_extensions.Self`) | The rebuilt group. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                      |
+|--------|----------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If *data* is malformed: a missing or unknown key, a timeline id occurring twice, a member naming no timeline of ``"timelines"``, a root containing no member, an order that is no permutation of the members, a member that is an ancestor or descendant of another member, or a group id equal to a timeline id. The message names the problem. |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> from fractions import Fraction
+>>> from timetoalign.timelines import TimelineGroup
+>>> from timetoalign.timelines.types import ContinuousLogicalTimeline
+>>> group = TimelineGroup(
+...     name="edition",
+...     timelines=[ContinuousLogicalTimeline(length=Fraction(8))],
+... )
+>>> data = group.to_dict()
+>>> TimelineGroup.from_dict(data).to_dict() == data
+True
 ```
 
 ### get_coordinate { #timetoalign.timelines.TimelineGroup.get_coordinate }
@@ -461,7 +478,7 @@ concatenates their Arrow tables into a single EventData. Each row includes a
 
 ```python
 >>> # Get events from a specific timeline
->>> df = group.get_events(timeline_id="clt1").to_dataframe()
+>>> df = group.get_events(timeline_id="clt_1").to_dataframe()
 ```
 
 ```python
@@ -477,19 +494,28 @@ concatenates their Arrow tables into a single EventData. Each row includes a
 timelines.TimelineGroup.get_interval_for(timeline_id)
 ```
 
-Return a member's stored coordinate extent as a typed interval.
+Return a member's extent in the group, ``[0, length]``.
+
+Every member spans the whole group, so its interval is its own axis
+from 0 to its length, in its unit and declared number type.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name        | Type         | Description            | Default    |
-|-------------|--------------|------------------------|------------|
-| timeline_id | [str](`str`) | The timeline to query. | _required_ |
+| Name        | Type         | Description          | Default    |
+|-------------|--------------|----------------------|------------|
+| timeline_id | [str](`str`) | The member to query. | _required_ |
 
 #### Returns {.doc-section .doc-section-returns}
 
-| Name   | Type                                    | Description                                                |
-|--------|-----------------------------------------|------------------------------------------------------------|
-|        | [Interval](`timetoalign.core.Interval`) | The minimum-to-maximum stored interval on the member axis. |
+| Name   | Type                                    | Description                            |
+|--------|-----------------------------------------|----------------------------------------|
+|        | [Interval](`timetoalign.core.Interval`) | The member's interval ``[0, length]``. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                   | Description                         |
+|--------|------------------------|-------------------------------------|
+|        | [KeyError](`KeyError`) | If ``timeline_id`` is not a member. |
 
 ### get_timeline { #timetoalign.timelines.TimelineGroup.get_timeline }
 
@@ -527,7 +553,7 @@ Supports partial string and regex matching:
 #### Examples {.doc-section .doc-section-examples}
 
 ```python
->>> group.get_timeline("clt1")           # Exact match
+>>> group.get_timeline("clt_1")           # Exact match
 >>> group.get_timeline("notes")          # Substring match
 >>> group.get_timeline(r"^score:")       # Regex match
 ```
@@ -565,11 +591,6 @@ Dispatch a positional or event-key timestamp query.
 |--------|--------------------------|-------------------------------------------------------------------------|
 |        | [TypeError](`TypeError`) | If ``at`` mixes keys and coordinates or is an unsupported runtime form. |
 
-#### See Also {.doc-section .doc-section-see-also}
-
-get_timestamp_at_index: The row view of a stored timestamp, which
-    is a different operation addressed by row number.
-
 ### get_timestamp_at { #timetoalign.timelines.TimelineGroup.get_timestamp_at }
 
 ```python
@@ -577,7 +598,6 @@ timelines.TimelineGroup.get_timestamp_at(
     at,
     timeline_id=None,
     *,
-    relative_to='group',
     conversion_maps=True,
 )
 ```
@@ -586,15 +606,18 @@ Get a TimeStamp at a specific coordinate.
 
 This is the primary coordinate resolution API for TimelineGroup.
 Returns a proper TimeStamp object (same as Timeline.get_timestamp_at).
+The queried position is written the way the addressed member writes
+numbers; every other member's coordinate is the exact linear image of
+that position (see :class:`TimelineGroup`), and each member's
+descendants are reached through their exact offsets.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name            | Type                                                                  | Description                                                                                                                                                                                                                                                                                                                   | Default    |
-|-----------------|-----------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
-| at              | [CoordinateSpec](`timetoalign.core.CoordinateSpec`)                   | The query coordinate. Can be: - int/float/Fraction: Raw value, timeline_id required - Coordinate: Value with unit, timeline_id required - IdCoordinate: Value with unit AND timeline_id (timeline_id param optional)                                                                                                          | _required_ |
-| timeline_id     | [str](`str`) \| None                                                  | Which timeline the coordinate refers to. Required unless coordinate is an IdCoordinate.                                                                                                                                                                                                                                       | `None`     |
-| relative_to     | [Literal](`typing.Literal`)\[\'group\', \'original\'\]                | "group" - coordinate is relative to timeline's 0-origin IN THIS GROUP          (default; e.g., "3 seconds into this group") "original" - coordinate is relative to timeline's ORIGINAL origin             (e.g., "50 seconds in the original timeline")             NOTE: Currently not implemented, reserved for future use. | `'group'`  |
-| conversion_maps | [ConversionMapsSpec](`timetoalign.core.timestamp.ConversionMapsSpec`) | Whether to include C-Map values in timestamp. - True (default): C-Maps accessible through typed getters. - False/None: Only timeline coordinates                                                                                                                                                                              | `True`     |
+| Name            | Type                                                                  | Description                                                                                                                                                                                                          | Default    |
+|-----------------|-----------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| at              | [CoordinateSpec](`timetoalign.core.CoordinateSpec`)                   | The query coordinate. Can be: - int/float/Fraction: Raw value, timeline_id required - Coordinate: Value with unit, timeline_id required - IdCoordinate: Value with unit AND timeline_id (timeline_id param optional) | _required_ |
+| timeline_id     | [str](`str`) \| None                                                  | Which timeline the coordinate refers to. Required unless coordinate is an IdCoordinate.                                                                                                                              | `None`     |
+| conversion_maps | [ConversionMapsSpec](`timetoalign.core.timestamp.ConversionMapsSpec`) | Whether to include C-Map values in timestamp. - True (default): C-Maps accessible through typed getters. - False/None: Only timeline coordinates                                                                     | `True`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -602,7 +625,9 @@ Returns a proper TimeStamp object (same as Timeline.get_timestamp_at).
 |--------|-----------------------------------------------------|----------------------------------------------------------------------|
 |        | [TimeStamp](`timetoalign.core.timestamp.TimeStamp`) | TimeStamp with axis set to the input coordinate and source_id set to |
 |        | [TimeStamp](`timetoalign.core.timestamp.TimeStamp`) | the timeline. Access other timelines via `get_coordinate_for()`.     |
-|        | [TimeStamp](`timetoalign.core.timestamp.TimeStamp`) | Access C-Maps via `get_unit()` or `get_conversion_for()`.            |
+|        | [TimeStamp](`timetoalign.core.timestamp.TimeStamp`) | Access C-Maps via `get_unit()` or `get_conversion_for()`. The        |
+|        | [TimeStamp](`timetoalign.core.timestamp.TimeStamp`) | stamp is interpolated unless the position is the group's common      |
+|        | [TimeStamp](`timetoalign.core.timestamp.TimeStamp`) | start or end.                                                        |
 
 #### Raises {.doc-section .doc-section-raises}
 
@@ -615,59 +640,31 @@ Returns a proper TimeStamp object (same as Timeline.get_timestamp_at).
 #### Examples {.doc-section .doc-section-examples}
 
 ```python
+>>> from timetoalign.core import IdCoordinate, TimeUnit
 >>> from timetoalign.timelines import TimelineGroup
 >>> from timetoalign.timelines.types import (
 ...     ContinuousPhysicalTimeline,
 ...     DiscreteGraphicalTimeline,
 ... )
->>> dgt1 = DiscreteGraphicalTimeline(length=4875, unit="pixels", uid="dgt1:1")
->>> audio = ContinuousPhysicalTimeline(length=150.0, unit="seconds", uid="audio:1")
->>> group = TimelineGroup(id="my_group", timelines=[dgt1, audio])
+>>> dgt_1 = DiscreteGraphicalTimeline(length=4875, unit="pixels")
+>>> audio = ContinuousPhysicalTimeline(length=150.0, unit="seconds")
+>>> group = TimelineGroup(timelines=[dgt_1, audio])
 ```
 
 ```python
->>> ts = group.get_timestamp_at(75.0, "audio:1")
+>>> ts = group.get_timestamp_at(75.0, "cpt_1")
 >>> ts.axis
-IdCoordinate(75.0, seconds, 'audio:1')
->>> ts.get_coordinate_for("dgt1:1", format="float")
-2438.0
->>> ts.get_unit(TimeUnit.seconds)  # C-Map conversion
-IdCoordinate(75.0, seconds, 'audio:1')
+IdCoordinate(75.0, seconds, 'cpt_1')
+>>> ts.get_coordinate_for("dgt_1", format="int")
+2438
 ```
 
 ```python
 >>> # Using IdCoordinate (timeline_id extracted automatically)
->>> coord = IdCoordinate(75.0, TimeUnit.seconds, "audio:1")
->>> ts = group.get_timestamp_at(coord)
->>> ts.axis
-IdCoordinate(75.0, seconds, 'audio:1')
+>>> coord = IdCoordinate(75.0, TimeUnit.seconds, "cpt_1")
+>>> group.get_timestamp_at(coord).axis
+IdCoordinate(75.0, seconds, 'cpt_1')
 ```
-
-### get_timestamp_at_index { #timetoalign.timelines.TimelineGroup.get_timestamp_at_index }
-
-```python
-timelines.TimelineGroup.get_timestamp_at_index(index)
-```
-
-Get a specific timestamp by index.
-
-#### Parameters {.doc-section .doc-section-parameters}
-
-| Name   | Type         | Description                           | Default    |
-|--------|--------------|---------------------------------------|------------|
-| index  | [int](`int`) | The row index in the timestamp table. | _required_ |
-
-#### Returns {.doc-section .doc-section-returns}
-
-| Name   | Type                                                            | Description                       |
-|--------|-----------------------------------------------------------------|-----------------------------------|
-|        | [GroupTimestamp](`timetoalign.timelines.groups.GroupTimestamp`) | The GroupTimestamp at that index. |
-
-#### Raises {.doc-section .doc-section-raises}
-
-| Name   | Type                       | Description               |
-|--------|----------------------------|---------------------------|
-|        | [IndexError](`IndexError`) | If index is out of range. |
 
 ### get_timestamp_for { #timetoalign.timelines.TimelineGroup.get_timestamp_for }
 
@@ -746,7 +743,7 @@ Get the group's timestamps as a table, one row per cross-section.
 
 | Name            | Type                                                                                                                                                                                                                                | Description                                                                                                                                                                                                                                                      | Default   |
 |-----------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------|
-| at              | [CoordinateInput](`timetoalign.core.retrieval.CoordinateInput`) \| [CoordinateCollection](`timetoalign.core.retrieval.CoordinateCollection`) \| [str](`str`) \| [KeyCollection](`timetoalign.core.retrieval.KeyCollection`) \| None | Positions or event IDs to tabulate, one row each in input order. If None, the group's stored boundary timestamps are the rows.                                                                                                                                   | `None`    |
+| at              | [CoordinateInput](`timetoalign.core.retrieval.CoordinateInput`) \| [CoordinateCollection](`timetoalign.core.retrieval.CoordinateCollection`) \| [str](`str`) \| [KeyCollection](`timetoalign.core.retrieval.KeyCollection`) \| None | Positions or event IDs to tabulate, one row each in input order. If None, the rows are the group's two stored timestamps: the common start and the common end, each member at ``0`` and at its length, exact in its declared number type.                        | `None`    |
 | timeline_id     | [str](`str`) \| None                                                                                                                                                                                                                | Which timeline the positions refer to. Required for entries without an embedded timeline ID.                                                                                                                                                                     | `None`    |
 | timeline_filter | [set](`set`)\[[str](`str`)\] \| None                                                                                                                                                                                                | Only include these timeline fields.                                                                                                                                                                                                                              | `None`    |
 | conversion_maps | [ConversionMapsSpec](`timetoalign.core.timestamp.ConversionMapsSpec`)                                                                                                                                                               | Whether to include C-Map fields from member timelines. - True (default): Include all attached C-Maps from all timelines - False/None: No C-Map fields                                                                                                            | `True`    |
@@ -756,40 +753,15 @@ Get the group's timestamps as a table, one row per cross-section.
 
 #### Returns {.doc-section .doc-section-returns}
 
-| Name   | Type                                                                                       | Description                                                       |
-|--------|--------------------------------------------------------------------------------------------|-------------------------------------------------------------------|
-|        | [pa](`pyarrow`).[Table](`pyarrow.Table`) \| [pd](`pandas`).[DataFrame](`pandas.DataFrame`) | One row per timestamp and one field per timeline — coordinate     |
-|        | [pa](`pyarrow`).[Table](`pyarrow.Table`) \| [pd](`pandas`).[DataFrame](`pandas.DataFrame`) | structs carrying each number twice — plus C-Map fields when       |
-|        | [pa](`pyarrow`).[Table](`pyarrow.Table`) \| [pd](`pandas`).[DataFrame](`pandas.DataFrame`) | ``conversion_maps`` is enabled. A group with no timestamps gives  |
-|        | [pa](`pyarrow`).[Table](`pyarrow.Table`) \| [pd](`pandas`).[DataFrame](`pandas.DataFrame`) | an empty table.                                                   |
-|        | [pa](`pyarrow`).[Table](`pyarrow.Table`) \| [pd](`pandas`).[DataFrame](`pandas.DataFrame`) | A null cell means one thing only: that member does not reach that |
-|        | [pa](`pyarrow`).[Table](`pyarrow.Table`) \| [pd](`pandas`).[DataFrame](`pandas.DataFrame`) | position. An unresolvable *query* position is an error, not a     |
-|        | [pa](`pyarrow`).[Table](`pyarrow.Table`) \| [pd](`pandas`).[DataFrame](`pandas.DataFrame`) | null, so the two can never be confused.                           |
-
-#### Note {.doc-section .doc-section-note}
-
-**Known limitation — stored rows are a float lane.** With
-``at=None`` the rows come from the group's stored timestamps,
-which are ``float64`` because interpolation between members runs
-on doubles. A boundary authored as an exact ratio is therefore
-recorded as the nearest double and reads back as that double's
-exact dyadic: a member whose length is ``5/3`` quarters shows
-``7505999378950827/4503599627370496`` in a stored row.
-
-**The way out is to ask for the position instead of reading the
-stored row.** Every queried lane is exact, so pass the positions
-you want through ``at=``::
-
-    group.get_timestamp_table([Fraction(5, 3)], "clt1")  # 5/3
-    group.get_timestamp_at(Fraction(5, 3), "clt1")       # 5/3
-    group.get_coordinate_at(Fraction(5, 3), "clt1")      # 5/3
-
-against the stored-row reading::
-
-    group.get_timestamp_table()  # 7505999378950827/4503599627370496
-
-Only the rows the store already holds are affected; a queried
-position never is.
+| Name   | Type                                                                                       | Description                                                      |
+|--------|--------------------------------------------------------------------------------------------|------------------------------------------------------------------|
+|        | [pa](`pyarrow`).[Table](`pyarrow.Table`) \| [pd](`pandas`).[DataFrame](`pandas.DataFrame`) | One row per timestamp and one field per timeline — coordinate    |
+|        | [pa](`pyarrow`).[Table](`pyarrow.Table`) \| [pd](`pandas`).[DataFrame](`pandas.DataFrame`) | structs carrying each number twice — plus C-Map fields when      |
+|        | [pa](`pyarrow`).[Table](`pyarrow.Table`) \| [pd](`pandas`).[DataFrame](`pandas.DataFrame`) | ``conversion_maps`` is enabled. An empty group gives an empty    |
+|        | [pa](`pyarrow`).[Table](`pyarrow.Table`) \| [pd](`pandas`).[DataFrame](`pandas.DataFrame`) | table.                                                           |
+|        | [pa](`pyarrow`).[Table](`pyarrow.Table`) \| [pd](`pandas`).[DataFrame](`pandas.DataFrame`) | A null cell means one thing only: that timeline does not reach   |
+|        | [pa](`pyarrow`).[Table](`pyarrow.Table`) \| [pd](`pandas`).[DataFrame](`pandas.DataFrame`) | that position. An unresolvable *query* position is an error, not |
+|        | [pa](`pyarrow`).[Table](`pyarrow.Table`) \| [pd](`pandas`).[DataFrame](`pandas.DataFrame`) | a null, so the two can never be confused.                        |
 
 #### Raises {.doc-section .doc-section-raises}
 
@@ -801,20 +773,32 @@ position never is.
 #### Examples {.doc-section .doc-section-examples}
 
 ```python
+>>> from fractions import Fraction
 >>> from timetoalign.timelines import TimelineGroup
 >>> from timetoalign.timelines.types import (
+...     ContinuousLogicalTimeline,
 ...     ContinuousPhysicalTimeline,
 ...     DiscreteGraphicalTimeline,
 ... )
->>> pixels = DiscreteGraphicalTimeline(length=4000, unit="pixels", uid="dgt1")
->>> audio = ContinuousPhysicalTimeline(length=10.0, unit="seconds", uid="cpt1")
->>> group = TimelineGroup(id="pair", timelines=[pixels, audio])
+>>> pixels = DiscreteGraphicalTimeline(length=4000, unit="pixels")
+>>> audio = ContinuousPhysicalTimeline(length=10.0, unit="seconds")
+>>> group = TimelineGroup(timelines=[pixels, audio])
 >>> group.get_timestamp_table().column_names
-['dgt1', 'cpt1']
->>> group.get_timestamp_table([0.0, 2.5], "cpt1", format="dataframe")
-   dgt1 (pixels)  cpt1 (seconds)
-0              0             0.0
-1           1000             2.5
+['dgt_1', 'cpt_1']
+>>> group.get_timestamp_table([0.0, 2.5], "cpt_1", format="dataframe")
+   dgt_1 (pixels)  cpt_1 (seconds)
+0               0              0.0
+1            1000              2.5
+```
+
+The stored rows are exact:
+
+```python
+>>> score = ContinuousLogicalTimeline(length=Fraction(5, 3))
+>>> TimelineGroup(timelines=[score]).get_timestamp_table(
+...     format="dataframe"
+... )["clt_1 (quarters)"].tolist()
+[Fraction(0, 1), Fraction(5, 3)]
 ```
 
 ### get_timestamps_at { #timetoalign.timelines.TimelineGroup.get_timestamps_at }
@@ -860,11 +844,11 @@ Get TimeStamps at a collection of coordinates, in input order.
 ...     ContinuousPhysicalTimeline,
 ...     DiscreteGraphicalTimeline,
 ... )
->>> pixels = DiscreteGraphicalTimeline(length=4000, unit="pixels", uid="dgt1")
->>> audio = ContinuousPhysicalTimeline(length=10.0, unit="seconds", uid="cpt1")
+>>> pixels = DiscreteGraphicalTimeline(length=4000, unit="pixels", uid="dgt_1")
+>>> audio = ContinuousPhysicalTimeline(length=10.0, unit="seconds", uid="cpt_1")
 >>> group = TimelineGroup(id="pair", timelines=[pixels, audio])
->>> stamps = group.get_timestamps_at([0.0, 2.5], "cpt1")
->>> [stamp.get_coordinate_for("dgt1", format="int") for stamp in stamps]
+>>> stamps = group.get_timestamps_at([0.0, 2.5], "cpt_1")
+>>> [stamp.get_coordinate_for("dgt_1", format="int") for stamp in stamps]
 [0, 1000]
 ```
 
@@ -918,24 +902,13 @@ Get timestamps for a collection of event IDs, in input order.
 45.5
 ```
 
-### lock { #timetoalign.timelines.TimelineGroup.lock }
-
-```python
-timelines.TimelineGroup.lock()
-```
-
-Lock the group to prevent extension.
-
 ### remove_timeline { #timetoalign.timelines.TimelineGroup.remove_timeline }
 
 ```python
 timelines.TimelineGroup.remove_timeline(timeline_id)
 ```
 
-Remove a timeline from the group.
-
-Updates timestamp table to remove the timeline's field.
-Rows where all remaining timelines have null are removed.
+Remove a member from the group.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
@@ -969,10 +942,56 @@ Get a summary of the group.
 |--------|-----------------------------------------------------|------------------------------------|
 |        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | Dictionary with group information. |
 
-### unlock { #timetoalign.timelines.TimelineGroup.unlock }
+### to_dict { #timetoalign.timelines.TimelineGroup.to_dict }
 
 ```python
-timelines.TimelineGroup.unlock()
+timelines.TimelineGroup.to_dict(events=False, external_references=False)
 ```
 
-Unlock the group to allow extension.
+Convert the group to a dictionary for serialization.
+
+The group is written with every timeline it needs: ``"timelines"``
+holds the root of each member's manifest tree — a member that is a
+child contributes its root, which holds it — each exactly
+:meth:`Timeline.to_dict <timetoalign.timelines.Timeline.to_dict>`,
+sorted by id. ``"group"`` names the members by id, sorted, and
+``"graphical"`` keeps their display order, which is the order they
+were added in. The file's own ``meta`` is the writer's concern.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name                | Type           | Description                         | Default   |
+|---------------------|----------------|-------------------------------------|-----------|
+| events              | [bool](`bool`) | Passed to every root's ``to_dict``. | `False`   |
+| external_references | [bool](`bool`) | Passed to every root's ``to_dict``. | `False`   |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                | Description                                            |
+|--------|-----------------------------------------------------|--------------------------------------------------------|
+|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | ``{"timelines": [...], "group": {"id", "name", "meta", |
+|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | "members"}, "graphical": {"order": [...]}}``.          |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> from fractions import Fraction
+>>> from timetoalign.timelines import TimelineGroup
+>>> from timetoalign.timelines.types import (
+...     ContinuousLogicalTimeline,
+...     DiscreteGraphicalTimeline,
+... )
+>>> image = DiscreteGraphicalTimeline(length=5000)
+>>> part = DiscreteGraphicalTimeline(length=2000)
+>>> image.add_child(part, offset=1000)
+>>> group = TimelineGroup(
+...     timelines=[part, ContinuousLogicalTimeline(length=Fraction(8))]
+... )
+>>> data = group.to_dict()
+>>> [timeline["id"] for timeline in data["timelines"]]
+['clt_1', 'dgt_1']
+>>> data["group"]
+{'id': 'group_1', 'name': None, 'meta': {}, 'members': ['clt_1', 'dgt_2']}
+>>> data["graphical"]
+{'order': ['dgt_2', 'clt_1']}
+```

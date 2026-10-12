@@ -129,13 +129,6 @@ FlowMap: |
   Timeline.create_flow_map(intervals) resolves region names against the
   timeline's own Regions, attaches the FlowMap, and returns it.
 
-GroupTimestamp: |
-  A cross-section through a TimelineGroup at a given coordinate. Contains
-  one coordinate per timeline in the group plus (optionally) C-map conversion
-  values. A MatchStamp is the union of GroupTimestamps from each participating
-  group. Produced by TimelineGroup.get_timestamp_at(). Exported from the
-  package root as timetoalign.GroupTimestamp.
-
 DictStore: |
   A generic EventStore subclass holding a dict[str, EventData] with arbitrary
   keys. Used internally by AlignmentLoaders to store one EventData table per
@@ -429,9 +422,18 @@ Synchrony: |
   Instants binned together based on a threshold (e.g., for quantisation).
 
 TimelineGroup: |
-  A container for timelines claimed to be commensurable; placing timelines in
-  a group asserts commensurability regardless of underlying units. Coordinates
-  transfer via interpolation.
+  An array of member timelines that share the same graphical start and end:
+  every member's 0 coincides with every other member's 0, and every member's
+  length with every other member's length. Placing timelines in a group
+  asserts commensurability regardless of their units. A position in between
+  converts linearly and exactly (p on member A is p · len_B / len_A on member
+  B) and is written in the target member's number type. When only part of a
+  timeline takes part, the member is a child of that timeline at its exact
+  offset; a member is never placed partially. No member is an ancestor or a
+  descendant of another member of the same group, since a child sits at its
+  offset inside its parent. A group answers with the same TimeStamp class as a
+  Timeline; to_dict() and from_dict() write and read it with every timeline it
+  needs.
 
 TimeInterval: |
   Defined by a StartInstant and EndInstant; left-inclusive and right-exclusive
@@ -458,8 +460,8 @@ TimeStamp: |
   A cross-section through a timeline or group at a given coordinate, capturing
   positions in all connected systems plus values converted by all attached
   C-maps. It stores one Coordinate per timeline ID, so each entry carries its
-  own unit and number type. TimeStamp implements the shared Stamp interface
-  used by GroupTimestamp and MatchStamp: a typed axis, get_coordinate_for()
+  own unit and number type. TimeStamp implements the Stamp interface
+  it shares with MatchStamp: a typed axis, get_coordinate_for()
   and get_coordinates_for() returning IdCoordinates by default, get_unit() for
   unit conversion, get_conversion_for() for label and structured map values,
   present_timelines, and is_interpolated. A bare number is an explicit

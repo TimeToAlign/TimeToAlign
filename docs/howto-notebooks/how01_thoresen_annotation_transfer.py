@@ -319,8 +319,8 @@ print(f"Number of children: {len(dgt1_children)}")
 
 # %%
 bundle = AlignmentBundle(name="Thoresen Annotation Transfer")
-bundle.add_timeline(dgt2, uid="dgt_2")
-bundle.add_timeline(dgt1, uid="dgt_1")
+bundle.add_timeline(dgt2)
+bundle.add_timeline(dgt1)
 print(bundle)
 
 # %% [markdown]

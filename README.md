@@ -220,7 +220,6 @@ tox -e lint
 | Event | Anything associated with a timeline via Instants. An InstantEvent has zero duration; a TimeIntervalEvent has duration defined by start and end coordinates. |
 | FlowControlElement | A taxonomy of control events distinguishing between structural markers (e.g., *repeat_start*, *double_barline*) and jump instructions (e.g., *dal_segno*, *to_coda*). |
 | FlowMap | A sequence of TimeIntervals representing a specific traversal path through a timeline, handling Jumps and repeats. |
-| GroupTimestamp | A view object representing a synchronized instant across all commensurable timelines within a *TimelineGroup*. |
 | IdCoordinate | A coordinate specification that explicitly includes the unique identifier of the timeline to which it belongs, preventing ambiguity in multi-timeline contexts. |
 | Instant | Associates a coordinate with a signification such as "start of event e". Instants sharing a coordinate are synchronous. |
 | InterpolationMap | A *ConversionMap* that performs coordinate conversion via linear interpolation between a set of known correspondence points. |
@@ -241,7 +240,7 @@ tox -e lint
 | Synchrony | Strict synchrony: Instants sharing identical coordinates. Pragmatic synchrony: Instants binned together based on a threshold (e.g., for quantisation). |
 | Time interval | Defined by a StartInstant and EndInstant; left-inclusive and right-exclusive [s, e). The EndInstant's coordinate must be >= the StartInstant's. |
 | Timeline | A positive coordinate axis minimally defined by its origin and measuring unit. Accommodates events and potentially Children. |
-| TimelineGroup | A container for a set of commensurable timelines that are bijectively mapped to each other (e.g., via linear interpolation) and share a common timestamp table. |
+| TimelineGroup | An array of commensurable timelines that share the same start and end: every member's 0 coincides with every other's, and so does every member's length; positions in between convert linearly and exactly. A part of a timeline takes part as its Child. |
 | TimeStamp | A cross-section through a timeline hierarchy, comprising the root coordinate, synchronous Child coordinates, and all ConversionMap results. |
 | WarpMap | A derived timeline where coordinates are re-adjusted based on AlignmentAnchors to align with another timeline. |
 

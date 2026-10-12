@@ -5,7 +5,6 @@ TimeStamp(
     coordinates,
     source_id,
     source=None,
-    row_index=None,
     is_interpolated=False,
     conversion_maps=True,
 )
@@ -13,7 +12,7 @@ TimeStamp(
 
 A synchronized instant across a timeline hierarchy.
 
-Lightweight object that computes coordinates on access via InterpolationMaps.
+Lightweight view object over typed coordinates.
 Works identically for Timeline (with children) and TimelineGroup (with members).
 
 The TimeStamp represents a cross-section through the timeline structure at
@@ -22,12 +21,11 @@ typed precise getters and dispatcher.
 
 ## Attributes {.doc-section .doc-section-attributes}
 
-| Name      | Type                                                                    | Description                                                                                                |
-|-----------|-------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------|
-| axis      | [IdCoordinate](`timetoalign.core.time.IdCoordinate`)                    | The root/reference coordinate value.                                                                       |
-| source    | [TimeStampSource](`timetoalign.core.timestamp.TimeStampSource`) \| None | The Timeline or TimelineGroup this timestamp belongs to.                                                   |
-| source_id | [str](`str`)                                                            | ID of the source (for serialization).                                                                      |
-| row_index | [int](`int`) \| None                                                    | If from a table row, the index. ``-1`` if interpolated and ``None`` for a direct query on the source axis. |
+| Name      | Type                                                                    | Description                                              |
+|-----------|-------------------------------------------------------------------------|----------------------------------------------------------|
+| axis      | [IdCoordinate](`timetoalign.core.time.IdCoordinate`)                    | The root/reference coordinate value.                     |
+| source    | [TimeStampSource](`timetoalign.core.timestamp.TimeStampSource`) \| None | The Timeline or TimelineGroup this timestamp belongs to. |
+| source_id | [str](`str`)                                                            | ID of the source (for serialization).                    |
 
 ## Examples {.doc-section .doc-section-examples}
 

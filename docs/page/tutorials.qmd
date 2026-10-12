@@ -45,7 +45,7 @@ from foundations through practical data work to the internals of the model:
 - [Loading Real Data](tutorials/tut04_loading_data.ipynb) ---
   The two-phase loader contract, EventStores, timeline ids, and what a loader builds for you.
 - [Timeline Groups](tutorials/tut05_timeline_groups.ipynb) ---
-  Commensurability, interpolation between peers, group timestamps, and partial alignment.
+  Commensurability, one shared start and end, exact linear conversion, timestamps from a group, and a child as a partial member.
 - [Alignment Bundles and MatchClaims](tutorials/tut06_alignment_bundles.ipynb) ---
   Claims, claim types, MatchLines and WarpMaps, MatchStamps, and support policies.
 - [Flow Control and Grids](tutorials/tut07_flow_and_grids.ipynb) ---

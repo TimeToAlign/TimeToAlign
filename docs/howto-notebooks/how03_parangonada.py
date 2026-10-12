@@ -333,7 +333,8 @@ szegedi_dynamics.head(8)
 
 # %%
 tempo_by_performer = {}
-for key in bundle.group_ids:
+for group in bundle.groups.values():
+    key = group.name
     if not key.startswith("perf:"):
         continue
     cpt = bundle.get_timeline(f"{key}:cpt_1")

@@ -125,8 +125,8 @@ flowing from a higher layer to a lower one.
 These invariants are tested at the unit level and enforced at review. If you
 find yourself wanting to break one, raise it as a discussion before coding.
 
-- **Coordinate resolution returns a shared stamp type.** `TimeStamp`,
-  `GroupTimestamp`, and `MatchStamp` implement the common `Stamp` interface;
+- **Coordinate resolution returns a shared stamp type.** `TimeStamp` and
+  `MatchStamp` implement the common `Stamp` interface;
   each exposes raw and unit-bearing coordinate access consistently.
 - **`Coordinate` and `IdCoordinate` are the canonical input types** for
   every method that takes a coordinate value. Raw numbers are accepted for
@@ -238,8 +238,8 @@ Do not use the word "Phase" to refer to these passes in shipped code
 or docs — say "Typing step" / "Grouping step".
 
 **Unified `TimeStamp` architecture.**
-`TimeStamp`, `GroupTimestamp`, and `MatchStamp` are the canonical results of
-coordinate resolution for timelines, groups, and bundles respectively. They
+`TimeStamp` is the canonical result of coordinate resolution for timelines
+and groups, `MatchStamp` for bundles. They
 share the same `Stamp` interface for timeline presence, raw coordinates, and
 unit-bearing coordinate access. `MatchGraph` remains on-demand (see §2.3).
 
@@ -594,11 +594,11 @@ A breaking change triggers a **major** version bump. Mark it both ways:
 2. Include a `BREAKING CHANGE:` footer describing the migration.
 
 ```
-refactor!: rename TimelineGroup.get_timestamp row lookup
+refactor!: make every TimelineGroup member span the whole group
 
-BREAKING CHANGE: row-index lookups now use get_timestamp_at_index(index).
-The coordinate-resolving get_timestamp_at(coordinate, timeline_id) method
-is unchanged and returns a GroupTimestamp.
+BREAKING CHANGE: TimelineGroup.add_timeline no longer takes start, end or
+allow_extension. To let only part of a timeline take part, add the child
+timeline covering that part.
 ```
 
 The `!` is what release-please reads to compute the bump; the

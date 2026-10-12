@@ -177,7 +177,7 @@ stored_note_view
 # %% [markdown]
 # This is the first raw note record: B3 begins at zero quarters and ends at one
 # half. Its local id is `note:000001`. The timeline will preserve these musical
-# fields while placing the record under a queryable `notes` child.
+# fields while placing the record under a queryable child named `notes`.
 
 # %% [markdown]
 # ## Making the timeline
@@ -208,14 +208,17 @@ timeline_identity
 # attached a quarters-to-ticks {{< glossary ConversionMap >}}.
 
 # %%
-child_ids = score_timeline.list_children()
+child_names = {
+    child_id: score_timeline.get_child(child_id).name
+    for child_id in score_timeline.list_children()
+}
 stored_categories = tuple(store_inventory["category"])
 quarters_to_ticks = score_timeline.get_conversion_map(TimeUnit.ticks)
 
 quarter_position = score_timeline.make_coordinate(Fraction(13, 2))
 tick_position = score_timeline.convert_to(quarter_position, TimeUnit.ticks)
 loader_payoff = {
-    "children": child_ids,
+    "children": child_names,
     "stored categories": stored_categories,
     "quarters-to-ticks map": quarters_to_ticks,
     "quarter position": quarter_position,
@@ -224,10 +227,12 @@ loader_payoff = {
 loader_payoff
 
 # %% [markdown]
-# The child ids match the four stored categories. The map converts the library's
+# Each child is named after one of the four stored categories; its id is minted
+# like any other timeline's (`clt_2`, …), because a category is a label, not an
+# identity. The map converts the library's
 # `Coordinate(Fraction(13, 2), quarters)` directly to `Coordinate(3120, ticks)`;
 # no rational value is reconstructed for display. Measures are available as the
-# `measures` child, but this score loader does not also materialize them as
+# child named `measures`, but this score loader does not also materialize them as
 # {{< glossary Region >}} objects.
 
 # %% [markdown]

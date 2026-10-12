@@ -457,9 +457,10 @@ group
 #
 # ## Part G: Group Timestamps - The Heart of Alignment
 #
-# **This is the key feature!** The TimelineGroup maintains a timestamp table
-# where each row represents a synchronized point across ALL timelines.
-# Coordinate transfer uses these timestamps via interpolation.
+# **This is the key feature!** Every member of a TimelineGroup spans the
+# whole group: the group stores two synchronized points across ALL timelines,
+# the shared start and the shared end. Coordinate transfer converts linearly
+# between them.
 
 # %%
 # Get the full timestamp table

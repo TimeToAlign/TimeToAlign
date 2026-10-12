@@ -151,7 +151,7 @@ audio_events
 # %%
 score_loader = PartituraLoader.from_file(vienna / "Chopin_op10_no3.musicxml")
 score = score_loader.create_timeline(uid="score")
-score_children = score.list_children()
+score_children = [score.get_child(child_id).name for child_id in score.list_children()]
 score_notes = score.get_events(event_type="Note")
 score_measures = score.get_events(event_type="Measure")
 note_frame = score_notes.to_dataframe(coordinates=True)

@@ -78,6 +78,8 @@ website:
           contents:
             - text: "How to Align a Piano Roll (SUPRA)"
               href: howto/how02_supra_piano_roll.ipynb
+            - text: "How to Save and Load Groups and Bundles"
+              href: howto/how02_group_and_bundle_files.ipynb
         - section: "AlignmentBundles"
           contents:
             - text: "How to Create a Note Alignment"
@@ -179,8 +181,6 @@ quartodoc:
         - IdGenerator
         - TimeStamp
         - TimeIntervalStamp
-        - name: GroupTimestamp
-          package: timetoalign.timelines
 
     - title: Timelines
       desc: Timeline classes for all six domain/modality combinations.

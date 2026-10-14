@@ -36,7 +36,7 @@ It also uses `ensure_data` at module level for the same `Ms3Loader`, MIDI,
 fixture corpus, proving loader output has the same structural contract without
 depending on a relative data path.
 
-Every one of the 23 bundled manifest fixtures from `fixture_paths()` must
+Every one of the 24 bundled manifest fixtures from `fixture_paths()` must
 round-trip as identical JSON text with object keys sorted (the schema's
 writer sorts keys by code point), `json.dumps(Timeline.from_dict(m).to_dict(),
 sort_keys=True) == json.dumps(m, sort_keys=True)`, for its timeline manifest,
@@ -74,12 +74,15 @@ the display order a permutation of the members), and putting it through
 part of either file and take no part in these tests.
 
 Every bundled 0.7.0 fixture of every kind round-trips through the library:
-the 23 timeline fixtures as above, and each group fixture through
+the 29 timeline fixtures as above (among them `segment_line`, a nested
+segment line, `segment_pages_locked`, a segment line locked once built, and
+`locked_root`, a root locked at construction), and each group fixture through
 `TimelineGroup.from_dict` and each bundle fixture through
 `AlignmentBundle.from_dict`, whose `to_dict()` must equal the file without
-its `meta` as JSON text with object keys sorted, so `graphical.order` (the
-member display order) survives as well. The fixture counts are pinned: 23
-timeline, 3 group and 7 bundle files.
+its `meta` as JSON text with object keys sorted, so the whole `graphical`
+block survives as well: `order` (the member display order) and, in
+`group_styled`, the `styles` and `statements` the library carries unread.
+The fixture counts are pinned: 29 timeline, 9 group and 9 bundle files.
 
 Two row-level rules of the Measure Map lie beyond what JSON Schema can
 express, so they are pinned here rather than among the shared rejections: a

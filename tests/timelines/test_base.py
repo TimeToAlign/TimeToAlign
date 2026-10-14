@@ -500,6 +500,98 @@ class TestLocking:
                 ]
             )
 
+    @staticmethod
+    def _quarters(length: int, uid: str | None = None) -> ContinuousLogicalTimeline:
+        return ContinuousLogicalTimeline(length=length, unit="quarters", uid=uid)
+
+    def test_lock_locks_a_root_built_unlocked(self) -> None:
+        """A root built unlocked is locked by lock()."""
+        root = self._quarters(8, "score")
+        assert root.is_locked is False
+
+        root.lock()
+
+        assert root.is_locked is True
+
+    def test_locked_root_refuses_growth(self) -> None:
+        """A root locked once built refuses to grow, but holds a child that fits."""
+        root = self._quarters(8, "score")
+        root.lock()
+
+        with pytest.raises(RuntimeError) as appended:
+            root.append_child(self._quarters(2, "tail"))
+        assert str(appended.value) == (
+            "Cannot append child on locked timeline 'score'. "
+            "A timeline is locked when embedded as a child, built with "
+            "locked=True, or locked with lock()."
+        )
+        with pytest.raises(ValueError) as added:
+            root.add_child(self._quarters(4, "late"), 6)
+        assert str(added.value) == (
+            "Adding content ending at 10 exceeds timeline length 8. "
+            "Timeline is locked. Use allow_expansion=True to override."
+        )
+
+        root.add_child(self._quarters(4, "fits"), 4)
+
+        assert root.list_children() == ["fits"]
+        assert root.length == Coordinate(8, TimeUnit.quarters)
+
+    def test_locked_root_round_trips_locked(self) -> None:
+        """The dict form of a root locked once built carries the lock."""
+        root = self._quarters(8, "score")
+        root.add_child(self._quarters(4, "coda"), 4)
+        root.lock()
+        data = root.to_dict()
+
+        rebuilt = Timeline.from_dict(data)
+
+        assert data["locked"] is True
+        assert rebuilt.is_locked is True
+        assert rebuilt.to_dict() == data
+
+    def test_segment_line_locked_once_built(self) -> None:
+        """A segment line locked after its segments keeps them and refuses more."""
+        line = SegmentLine[ContinuousLogicalTimeline](
+            length=0, unit="quarters", uid="form"
+        )
+        for uid, length in (("a", 4), ("b", 2), ("c", 6)):
+            line.append_segment(self._quarters(length, uid))
+
+        line.lock()
+
+        assert line.is_locked is True
+        assert line.list_segments() == ["a", "b", "c"]
+        assert line.length == Coordinate(12, TimeUnit.quarters)
+        assert line.is_segment_line() is True
+        with pytest.raises(RuntimeError) as appended:
+            line.append_segment(self._quarters(1, "d"))
+        assert str(appended.value) == (
+            "Cannot append child on locked timeline 'form'. "
+            "A timeline is locked when embedded as a child, built with "
+            "locked=True, or locked with lock()."
+        )
+        data = line.to_dict()
+        rebuilt = Timeline.from_dict(data)
+        assert type(rebuilt) is SegmentLine[ContinuousLogicalTimeline]
+        assert rebuilt.is_locked is True
+        assert rebuilt.list_segments() == ["a", "b", "c"]
+        assert rebuilt.to_dict() == data
+
+    def test_lock_is_idempotent(self) -> None:
+        """Locking a child, or a root twice, leaves it locked and raises nothing."""
+        root = self._quarters(8, "score")
+        child = self._quarters(4, "coda")
+        root.add_child(child, 4)
+        assert child.is_locked is True
+
+        child.lock()
+        root.lock()
+        root.lock()
+
+        assert child.is_locked is True
+        assert root.is_locked is True
+
 
 # endregion
 

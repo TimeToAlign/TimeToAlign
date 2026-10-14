@@ -397,7 +397,7 @@ def test_emitted_group_and_bundle_files_validate(
 
 @pytest.mark.parametrize(
     ("kind", "reader", "count"),
-    [("group", TimelineGroup, 3), ("bundle", AlignmentBundle, 7)],
+    [("group", TimelineGroup, 9), ("bundle", AlignmentBundle, 9)],
 )
 def test_bundled_group_and_bundle_fixtures_round_trip(
     kind: str, reader: type, count: int
@@ -422,7 +422,7 @@ def test_bundled_fixtures_round_trip() -> None:
     regions and flow control must match as well.
     """
     paths = fixture_paths()
-    assert len(paths) == 23
+    assert len(paths) == 29
     for path in paths:
         manifest = json.loads(path.read_text(encoding="utf-8"))["timeline"]
         expected = canonical_order({"timeline": manifest})["timeline"]

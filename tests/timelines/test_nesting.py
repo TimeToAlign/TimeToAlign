@@ -201,7 +201,8 @@ class TestAppendChild:
 
         assert str(error.value) == (
             "Cannot append child on locked timeline 'locked_parent'. "
-            "Timelines are locked when embedded as children."
+            "A timeline is locked when embedded as a child, built with "
+            "locked=True, or locked with lock()."
         )
         assert child.id == "original_id"
         assert child.name == "Original"
@@ -240,7 +241,8 @@ class TestAppendChild:
 
         assert str(error.value) == (
             "Cannot append child on locked timeline 'embedded_line'. "
-            "Timelines are locked when embedded as children."
+            "A timeline is locked when embedded as a child, built with "
+            "locked=True, or locked with lock()."
         )
 
 

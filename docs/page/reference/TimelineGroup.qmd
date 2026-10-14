@@ -1,7 +1,13 @@
 # TimelineGroup { #timetoalign.timelines.TimelineGroup }
 
 ```python
-timelines.TimelineGroup(id=None, name=None, timelines=None, meta=None)
+timelines.TimelineGroup(
+    id=None,
+    name=None,
+    timelines=None,
+    meta=None,
+    styling=None,
+)
 ```
 
 An array of timelines sharing one graphical start and end point.
@@ -20,11 +26,12 @@ Members keep the order in which they were added.
 
 ## Attributes {.doc-section .doc-section-attributes}
 
-| Name   | Type                                                | Description                                                 |
-|--------|-----------------------------------------------------|-------------------------------------------------------------|
-| id     | [str](`str`)                                        | Unique identifier for this group, ``group_N`` unless given. |
-| name   | [str](`str`) \| None                                | Optional human-readable name.                               |
-| meta   | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | Additional metadata dictionary.                             |
+| Name    | Type                                                | Description                                                                                               |
+|---------|-----------------------------------------------------|-----------------------------------------------------------------------------------------------------------|
+| id      | [str](`str`)                                        | Unique identifier for this group, ``group_N`` unless given.                                               |
+| name    | [str](`str`) \| None                                | Optional human-readable name.                                                                             |
+| meta    | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | Additional metadata dictionary.                                                                           |
+| styling | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | The ``styles`` and ``statements`` of the group file's ``graphical``, kept as given and never interpreted. |
 
 ## Examples {.doc-section .doc-section-examples}
 
@@ -258,10 +265,11 @@ Every entry of ``"timelines"`` is rebuilt with
 :meth:`Timeline.from_dict <timetoalign.timelines.Timeline.from_dict>`;
 each member id is resolved among those roots and all their
 descendants, and the members are added in ``graphical.order`` (in
-``group.members`` order when ``"graphical"`` is absent). Feeding the
-result back through :meth:`to_dict` with the same flags reproduces
-the input dictionary. A ``"meta"`` key — the file's own metadata —
-is accepted and ignored.
+``group.members`` order when the order is absent). ``graphical.styles``
+and ``graphical.statements`` are kept as :attr:`styling`, unread.
+Feeding the result back through :meth:`to_dict` with the same flags
+reproduces the input dictionary. A ``"meta"`` key — the file's own
+metadata — is accepted and ignored.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
@@ -956,7 +964,9 @@ child contributes its root, which holds it — each exactly
 :meth:`Timeline.to_dict <timetoalign.timelines.Timeline.to_dict>`,
 sorted by id. ``"group"`` names the members by id, sorted, and
 ``"graphical"`` keeps their display order, which is the order they
-were added in. The file's own ``meta`` is the writer's concern.
+were added in, followed by the ``styles`` and ``statements`` of
+:attr:`styling` that are present. The file's own ``meta`` is the
+writer's concern.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
@@ -970,7 +980,8 @@ were added in. The file's own ``meta`` is the writer's concern.
 | Name   | Type                                                | Description                                            |
 |--------|-----------------------------------------------------|--------------------------------------------------------|
 |        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | ``{"timelines": [...], "group": {"id", "name", "meta", |
-|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | "members"}, "graphical": {"order": [...]}}``.          |
+|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | "members"}, "graphical": {"order": [...], "styles"?,   |
+|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | "statements"?}}``.                                     |
 
 #### Examples {.doc-section .doc-section-examples}
 

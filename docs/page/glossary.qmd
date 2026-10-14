@@ -313,7 +313,9 @@ to the relevant section of the conceptual model.
     length cannot change. Locking governs the coordinate axis only ---
     non-structural annotations such as {{< glossary Region >}}s may still be
     added to a locked timeline. {{< glossary Child >}} timelines are
-    automatically locked when embedded in a parent.
+    automatically locked when embedded in a parent; a root timeline is locked
+    with `locked=True` or, after construction, with `lock()`. A lock cannot be
+    lifted.
     See [Nested timelines](concepts.qmd#nested-timelines).
 
 ## M

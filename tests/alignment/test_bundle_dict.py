@@ -7,6 +7,7 @@ and no assertion here consults them.
 
 from __future__ import annotations
 
+import copy
 from collections.abc import Callable
 from fractions import Fraction
 from pathlib import Path
@@ -35,7 +36,7 @@ from timetoalign.timelines.types import (
 )
 
 from ..loader.test_listen_here_loader import _CANONICAL_SPEC, _write_spec
-from ..timelines.test_group_definition import _answers
+from ..timelines.test_group_definition import STYLING, _answers
 
 # region Fixtures
 
@@ -241,6 +242,50 @@ def test_missing_graphical_reads_members_order() -> None:
 
     assert rebuilt.groups["group_1"].timeline_ids == ["audio", "score"]
     assert rebuilt.groups["group_2"].timeline_ids == ["holes", "midi"]
+
+
+def test_styling_round_trips_unchanged() -> None:
+    """The bundle's ``styles`` and ``statements`` survive beside every order."""
+    data = _direct_bundle().to_dict()
+    data["graphical"].update(copy.deepcopy(STYLING))
+
+    rebuilt = AlignmentBundle.from_dict(data)
+
+    assert rebuilt.styling == STYLING
+    assert rebuilt.to_dict() == data
+    assert rebuilt.to_dict()["graphical"] == {
+        "order": {"group_1": ["score", "audio"], "group_2": ["holes", "midi"]},
+        **STYLING,
+    }
+    assert all(group.styling == {} for group in rebuilt.groups.values())
+    assert rebuilt.styling["styles"] is not data["graphical"]["styles"]
+    assert rebuilt.styling["statements"] is not data["graphical"]["statements"]
+    data["graphical"]["statements"].clear()
+    assert rebuilt.styling == STYLING
+
+
+def test_styling_without_order_reads_members_order() -> None:
+    """A ``graphical`` holding only styling joins every group in ``members`` order."""
+    data = _direct_bundle().to_dict()
+    data["graphical"] = {"statements": STYLING["statements"]}
+
+    rebuilt = AlignmentBundle.from_dict(data)
+
+    assert rebuilt.groups["group_1"].timeline_ids == ["audio", "score"]
+    assert rebuilt.to_dict()["graphical"] == {
+        "order": {"group_1": ["audio", "score"], "group_2": ["holes", "midi"]},
+        "statements": STYLING["statements"],
+    }
+
+
+def test_unknown_graphical_key_is_refused() -> None:
+    """A ``graphical`` key other than order, styles and statements is refused."""
+    data = _direct_bundle().to_dict()
+    data["graphical"].update(STYLING, frame={})
+
+    with pytest.raises(ValueError) as refused:
+        AlignmentBundle.from_dict(data)
+    assert str(refused.value) == "'graphical' has unknown key(s) ['frame']"
 
 
 @pytest.mark.slow

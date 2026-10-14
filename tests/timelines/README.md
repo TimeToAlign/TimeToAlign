@@ -469,6 +469,22 @@ original's (value, Python type and unit). Equality of the
 dictionaries alone would not prove the rebuilt group *behaves* the same, so the
 queries are asserted as well.
 
+**Styling is carried, never read.** A group file's `graphical` may hold
+`styles` and `statements` beside `order`: presentation data the library keeps
+on `TimelineGroup.styling` without interpreting it. What proves it is carried
+unchanged is a styling block the library could not have produced itself — a
+named style, a statement setting that style by name and a statement setting a
+declaration directly, nested three levels deep — surviving `from_dict` →
+`to_dict` equal to the input dictionary, beside the unchanged `order`; and the
+rebuilt group's `styling` must not share an object with the input, so a later
+edit of the input dictionary cannot reach the group. Each member alone
+(`styles` only, `statements` only) round-trips alone, so neither is invented
+when absent; a group without styling writes `graphical` as `{"order": [...]}`
+and nothing else. A `graphical` holding styling but no `order` reads its
+members in `members` order, as an absent `graphical` does. Any other key of
+`graphical` is refused, with the exact message
+`'graphical' has unknown key(s) ['frame']`.
+
 **Identity.** The default id is `group_1` (minted statelessly: the smallest
 free number, so two fresh groups in one process are both `group_1`). A
 newcomer whose given id, or any given descendant id, is held by another
@@ -623,10 +639,24 @@ the axis's declared canonical number type.
    - Auto-expansion behavior
    - `allow_expansion` override for locked timelines
 
-5. **Locking Tests** (4 tests)
+5. **Locking Tests** (9 tests)
    - Default unlocked state
    - Children become locked
    - Locked timelines reject expansion
+   - `lock()` locks a timeline once built, so a root that grew by appending
+     (a segment line above all, whose segments cannot be placed into a line
+     locked at construction) can end locked. What proves it: a root built
+     unlocked reports `is_locked` False and True after `lock()`; the locked
+     root refuses growth — `append_child` raises `RuntimeError`, `add_child`
+     of a child ending beyond the length raises `ValueError` — while a child
+     that fits is still added; `to_dict()["locked"]` is True and
+     `Timeline.from_dict(to_dict())` is locked with an equal `to_dict()`; a
+     `SegmentLine[ContinuousLogicalTimeline]` of three segments (4, 2 and 6
+     quarters) locked after building keeps its segment order, its length 12
+     and `is_segment_line`, refuses `append_segment` with `RuntimeError` and
+     round-trips through its dict form, rebuilt locked; `lock()` on a child,
+     locked already, and a second `lock()` on a root leave it locked and
+     raise nothing. There is no `unlock`.
 
 6. **Serialization Tests** (5 tests)
    - `to_dict()` / `from_dict()` roundtrip; `to_dict()` omits events by

@@ -735,6 +735,19 @@ form and are excluded from every assertion here.
    a member naming no timeline, a timeline in two groups, a group naming a
    parent and its child, and an order naming no group or not a permutation of
    its group's members.
+6. **Styling is carried, never read.** A bundle file's `graphical` may hold
+   `styles` and `statements` beside `order`; they belong to the bundle, not
+   to any of its groups, and the library keeps them on
+   `AlignmentBundle.styling` without interpreting them. A styling block of a
+   named style, a statement setting it by name and one setting a declaration
+   directly survives `from_dict` → `to_dict` equal to the input, beside the
+   unchanged per-group `order`, and the rebuilt bundle's `styling` shares no
+   object with the input. The direct construction writes `graphical` as
+   `{"order": {...}}` alone (item 2), so absent styling is never invented.
+   Without `order`, every group joins in `members` order. Any other key of
+   `graphical` is refused with the exact message
+   `'graphical' has unknown key(s) ['frame']`, the same reader serving
+   groups and bundles.
 
 ---
 

@@ -168,6 +168,23 @@ for offset, child in parent.iter_children():
     print(f"  {child.id}: offset={offset.value}, length={child.length.value}")
 
 # %% [markdown]
+# A root timeline is unlocked unless it is built with `locked=True`, so it
+# grows to hold whatever you add. `lock()` locks it after construction, the
+# state `add_child` puts every child in: the timeline no longer grows, so
+# events and children must fit inside its length. A child that would overrun
+# it raises `ValueError`, and `append_child` refuses outright. A lock cannot
+# be lifted.
+
+# %%
+locked_before = parent.is_locked
+parent.lock()
+try:
+    parent.add_child(ContinuousPhysicalTimeline(length=40, uid="coda"), offset=80)
+except ValueError as e:
+    print(f"ValueError: {e}")
+{"locked before": locked_before, "locked after": parent.is_locked}
+
+# %% [markdown]
 # ### Nested Hierarchies
 
 # %%

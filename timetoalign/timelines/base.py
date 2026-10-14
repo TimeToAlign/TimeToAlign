@@ -984,6 +984,31 @@ class Timeline(
 
     # region Lock Management
 
+    def lock(self) -> None:
+        """Lock this timeline so that it can no longer expand.
+
+        The timeline enters the state ``locked=True`` gives at construction:
+        content and children must fit its length, and appending refuses. A
+        root that grows by appending, such as a segment line, is locked this
+        way once built. Locking a locked timeline (a child, for instance)
+        changes nothing. A lock cannot be lifted.
+
+        Examples:
+            >>> from timetoalign.timelines import (
+            ...     ContinuousLogicalTimeline,
+            ...     SegmentLine,
+            ... )
+            >>> line = SegmentLine[ContinuousLogicalTimeline](length=0, unit="quarters")
+            >>> line.append_segment(ContinuousLogicalTimeline(length=4, unit="quarters"))
+            >>> line.append_segment(ContinuousLogicalTimeline(length=2, unit="quarters"))
+            >>> line.is_locked
+            False
+            >>> line.lock()
+            >>> line.is_locked
+            True
+        """
+        self._locked = True
+
     def _check_not_locked(self, operation: str) -> None:
         """Raise RuntimeError if timeline is locked.
 
@@ -996,7 +1021,8 @@ class Timeline(
         if self._locked:
             raise RuntimeError(
                 f"Cannot {operation} on locked timeline '{self._id}'. "
-                "Timelines are locked when embedded as children."
+                "A timeline is locked when embedded as a child, built with "
+                "locked=True, or locked with lock()."
             )
 
     # endregion

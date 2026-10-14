@@ -253,9 +253,11 @@ class ChildrenMixin:
         Raises:
             TypeError: If child is not a Timeline.
             ValueError: If units don't match (and no conversion map given),
-                the child would exceed bounds, or an id given in the child's
-                subtree is already held in this manifest.
-            RuntimeError: If this timeline is locked.
+                the offset is negative, the child is already a child of this
+                timeline, an id given in the child's subtree is already held
+                in this manifest, or this timeline is locked and the child
+                would end beyond its length without ``allow_expansion``. An
+                unlocked timeline expands to fit the child instead.
         """
         # Convert child's unit if a conversion map is specified
         if use_conversion_map is not None and child.unit != self._unit:

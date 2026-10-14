@@ -11,6 +11,7 @@ alignment.AlignmentBundle(
     cross_group_claims=list(),
     cross_group_claim_fields=list(),
     support_policy=SupportPolicy.omit,
+    styling=dict(),
     _warp_map_cache=dict(),
     _matchline_cache=dict(),
     _matchgraph_cache=dict(),
@@ -47,6 +48,7 @@ coordinate transfer results.
 | timeline_to_group        | [dict](`dict`)\[[str](`str`), [str](`str`)\]                                           | Mapping from timeline ID to its containing group ID.                                                                                            |
 | cross_group_claims       | [list](`list`)\[[MatchClaim](`timetoalign.alignment.claims.MatchClaim`)\]              | MatchClaims connecting timelines across groups (the per-claim Python-list store).                                                               |
 | cross_group_claim_fields | [list](`list`)\[[MatchClaimField](`timetoalign.alignment.claims.MatchClaimField`)\]    | Columnar ``MatchClaimField`` stores of dense synchronous-instant pairwise claims, queried vectorized without materialising the full claim list. |
+| styling                  | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\]                                    | The ``styles`` and ``statements`` of the bundle file's ``graphical``, kept as given and never interpreted.                                      |
 
 ## Note {.doc-section .doc-section-note}
 
@@ -477,7 +479,9 @@ Every entry of ``"timelines"`` is rebuilt with
 each group is rebuilt from its ``Group`` object, its members resolved
 among those roots and all their descendants and ordered by
 ``graphical.order`` (``members`` order for a group without an entry).
-Every root no group names joins ungrouped. Feeding the result back
+``graphical.styles`` and ``graphical.statements`` are kept as
+:attr:`styling`, unread. Every root no group names joins ungrouped.
+Feeding the result back
 through :meth:`to_dict` with the same flags reproduces the input
 dictionary. A ``"meta"`` key — the file's own metadata — is accepted
 and ignored.
@@ -1359,9 +1363,10 @@ one that is — each exactly
 :meth:`Timeline.to_dict <timetoalign.timelines.Timeline.to_dict>`,
 sorted by id. ``"bundle"`` carries the groups as ``Group`` objects
 sorted by id, each naming its members by id; ``"graphical"`` keeps
-every group's member order. A root no group names is ungrouped.
-MatchClaims are not written. The file's own ``meta`` is the writer's
-concern.
+every group's member order, followed by the ``styles`` and
+``statements`` of :attr:`styling` that are present. A root no group
+names is ungrouped. MatchClaims are not written. The file's own
+``meta`` is the writer's concern.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
@@ -1372,10 +1377,11 @@ concern.
 
 #### Returns {.doc-section .doc-section-returns}
 
-| Name   | Type                                                | Description                                                    |
-|--------|-----------------------------------------------------|----------------------------------------------------------------|
-|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | ``{"timelines": [...], "bundle": {"id", "name", "meta",        |
-|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | "support_policy", "groups"}, "graphical": {"order": {...}}}``. |
+| Name   | Type                                                | Description                                                |
+|--------|-----------------------------------------------------|------------------------------------------------------------|
+|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | ``{"timelines": [...], "bundle": {"id", "name", "meta",    |
+|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | "support_policy", "groups"}, "graphical": {"order": {...}, |
+|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | "styles"?, "statements"?}}``.                              |
 
 #### Examples {.doc-section .doc-section-examples}
 

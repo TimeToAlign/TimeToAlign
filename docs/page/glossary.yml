@@ -229,7 +229,8 @@ Locked: |
   after the last time-point, so its length cannot change. Locking governs the
   coordinate axis only — non-structural annotations such as Regions may still be
   added to a locked timeline. Child timelines are automatically locked when
-  embedded in a parent.
+  embedded in a parent; a root timeline is locked with locked=True or, after
+  construction, with lock(). A lock cannot be lifted.
 
 Marker: |
   A named position in a timeline's flow control that a Jump can target, such

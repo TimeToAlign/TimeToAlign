@@ -22,9 +22,10 @@
 # them, checks that the rebuilt objects answer every query exactly as the
 # originals do, and saves both as JSON files.
 #
-# The dictionaries hold structure only: timelines, their children, the groups
-# and their members. MatchClaims are not part of a bundle's dictionary, and
-# events stay out unless you ask for them.
+# The dictionaries hold structure: timelines, their children, the groups and
+# their members, with the members' display order and any styling the file
+# carries. MatchClaims are not part of a bundle's dictionary, and events stay
+# out unless you ask for them.
 
 # %% [markdown]
 # ## Setup
@@ -134,7 +135,10 @@ before
 #   ids sorted.
 # - `graphical`: `order`, the members in the order they were added. This is
 #   the display order; `members` is sorted so that two equal groups write
-#   equal text.
+#   equal text. A file's `graphical` may also carry `styles` and
+#   `statements`, the TimeSkeleton styling. The library does not read them:
+#   `from_dict()` keeps them as the group's `styling` and `to_dict()` writes
+#   them back after `order`. This group has none, so `order` is the only key.
 
 # %%
 group_data = group.to_dict()
@@ -223,7 +227,9 @@ bundle_before
 # the bundle's `id`, `name`, `meta`, its `support_policy`, and its `groups`,
 # sorted by id, whose `members` point into that one array. The roots that no
 # group names, here the annotation layer and the long recording, are the
-# ungrouped timelines. `graphical.order` holds each group's display order.
+# ungrouped timelines. `graphical.order` holds each group's display order;
+# `styles` and `statements`, when present, travel unread as the bundle's
+# `styling`, just as a group's do.
 
 # %%
 bundle_data = bundle.to_dict()

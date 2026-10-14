@@ -147,6 +147,7 @@ subclass, use :meth:`to_typed`.
 | [list_children](#timetoalign.timelines.Timeline.list_children) | List child timeline IDs. |
 | [list_flow_maps](#timetoalign.timelines.Timeline.list_flow_maps) | List all attached FlowMap ids. |
 | [list_regions](#timetoalign.timelines.Timeline.list_regions) | List all region ids. |
+| [lock](#timetoalign.timelines.Timeline.lock) | Lock this timeline so that it can no longer expand. |
 | [make_coordinate](#timetoalign.timelines.Timeline.make_coordinate) | Create a Coordinate in this timeline's unit. |
 | [resolve_subclass](#timetoalign.timelines.Timeline.resolve_subclass) | Return the most specific Timeline subclass for a unit/number_type pair. |
 | [summary](#timetoalign.timelines.Timeline.summary) | Get a summary of the timeline. |
@@ -201,11 +202,10 @@ receives a minted id.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                           | Description                                                                                                                                                |
-|--------|--------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [TypeError](`TypeError`)       | If child is not a Timeline.                                                                                                                                |
-|        | [ValueError](`ValueError`)     | If units don't match (and no conversion map given), the child would exceed bounds, or an id given in the child's subtree is already held in this manifest. |
-|        | [RuntimeError](`RuntimeError`) | If this timeline is locked.                                                                                                                                |
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                              |
+|--------|----------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [TypeError](`TypeError`)   | If child is not a Timeline.                                                                                                                                                                                                                                                                                                                              |
+|        | [ValueError](`ValueError`) | If units don't match (and no conversion map given), the offset is negative, the child is already a child of this timeline, an id given in the child's subtree is already held in this manifest, or this timeline is locked and the child would end beyond its length without ``allow_expansion``. An unlocked timeline expands to fit the child instead. |
 
 ### add_conversion_map { #timetoalign.timelines.Timeline.add_conversion_map }
 
@@ -2726,6 +2726,37 @@ List all region ids.
 | Name   | Type                           | Description                            |
 |--------|--------------------------------|----------------------------------------|
 |        | [list](`list`)\[[str](`str`)\] | List of region ids in insertion order. |
+
+### lock { #timetoalign.timelines.Timeline.lock }
+
+```python
+timelines.Timeline.lock()
+```
+
+Lock this timeline so that it can no longer expand.
+
+The timeline enters the state ``locked=True`` gives at construction:
+content and children must fit its length, and appending refuses. A
+root that grows by appending, such as a segment line, is locked this
+way once built. Locking a locked timeline (a child, for instance)
+changes nothing. A lock cannot be lifted.
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> from timetoalign.timelines import (
+...     ContinuousLogicalTimeline,
+...     SegmentLine,
+... )
+>>> line = SegmentLine[ContinuousLogicalTimeline](length=0, unit="quarters")
+>>> line.append_segment(ContinuousLogicalTimeline(length=4, unit="quarters"))
+>>> line.append_segment(ContinuousLogicalTimeline(length=2, unit="quarters"))
+>>> line.is_locked
+False
+>>> line.lock()
+>>> line.is_locked
+True
+```
 
 ### make_coordinate { #timetoalign.timelines.Timeline.make_coordinate }
 

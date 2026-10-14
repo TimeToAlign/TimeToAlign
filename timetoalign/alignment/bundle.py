@@ -63,10 +63,12 @@ from timetoalign.timelines.groups import (
     _admit_timeline_tree,
     _held_ids,
     _nested,
+    _read_graphical,
     _require_keys,
     _root,
     _roots_from_dicts,
     _tree,
+    _write_graphical,
 )
 
 from .claims import AlignmentAnchor, MatchClaim, MatchClaimField
@@ -157,6 +159,8 @@ class AlignmentBundle:
         cross_group_claim_fields: Columnar ``MatchClaimField`` stores of dense
             synchronous-instant pairwise claims, queried vectorized without
             materialising the full claim list.
+        styling: The ``styles`` and ``statements`` of the bundle file's
+            ``graphical``, kept as given and never interpreted.
 
     Note:
         The two claim stores are interchangeable as far as queries are
@@ -202,6 +206,10 @@ class AlignmentBundle:
     # timeline; a per-call ``support_policy`` argument overrides it.
     support_policy: SupportPolicy = SupportPolicy.omit
 
+    # The ``styles`` and ``statements`` of the bundle file's ``graphical``,
+    # kept as given and never interpreted.
+    styling: dict[str, Any] = field(default_factory=dict)
+
     # Cached WarpMaps: (source_tl_id, target_tl_id) -> WarpMap | None
     # None values are cached as negative results to avoid repeated expensive
     # MatchLine construction for unreachable timeline pairs.
@@ -243,7 +251,9 @@ class AlignmentBundle:
         each group is rebuilt from its ``Group`` object, its members resolved
         among those roots and all their descendants and ordered by
         ``graphical.order`` (``members`` order for a group without an entry).
-        Every root no group names joins ungrouped. Feeding the result back
+        ``graphical.styles`` and ``graphical.statements`` are kept as
+        :attr:`styling`, unread. Every root no group names joins ungrouped.
+        Feeding the result back
         through :meth:`to_dict` with the same flags reproduces the input
         dictionary. A ``"meta"`` key — the file's own metadata — is accepted
         and ignored.
@@ -306,14 +316,11 @@ class AlignmentBundle:
         groups = bundle_data["groups"]
         if not isinstance(groups, list):
             raise ValueError("the bundle's 'groups' must be an array")
-        orders: Any = {}
-        if "graphical" in data:
-            graphical = _require_keys(
-                data["graphical"], {"order"}, set(), "'graphical'"
-            )
-            orders = graphical["order"]
-            if not isinstance(orders, dict):
-                raise ValueError("'graphical.order' must map group ids to orders")
+        orders, styling = _read_graphical(data)
+        if orders is None:
+            orders = {}
+        elif not isinstance(orders, dict):
+            raise ValueError("'graphical.order' must map group ids to orders")
         group_ids = [
             group.get("id") if isinstance(group, dict) else None for group in groups
         ]
@@ -326,6 +333,7 @@ class AlignmentBundle:
             name=bundle_data["name"],
             meta=dict(bundle_data["meta"]),
             support_policy=SupportPolicy(bundle_data["support_policy"]),
+            styling=styling,
         )
         for group_data, group_id in zip(groups, group_ids):
             order = orders.get(group_id) if isinstance(group_id, str) else None
@@ -3679,9 +3687,10 @@ class AlignmentBundle:
         :meth:`Timeline.to_dict <timetoalign.timelines.Timeline.to_dict>`,
         sorted by id. ``"bundle"`` carries the groups as ``Group`` objects
         sorted by id, each naming its members by id; ``"graphical"`` keeps
-        every group's member order. A root no group names is ungrouped.
-        MatchClaims are not written. The file's own ``meta`` is the writer's
-        concern.
+        every group's member order, followed by the ``styles`` and
+        ``statements`` of :attr:`styling` that are present. A root no group
+        names is ungrouped. MatchClaims are not written. The file's own
+        ``meta`` is the writer's concern.
 
         Args:
             events: Passed to every root's ``to_dict``.
@@ -3689,7 +3698,8 @@ class AlignmentBundle:
 
         Returns:
             ``{"timelines": [...], "bundle": {"id", "name", "meta",
-            "support_policy", "groups"}, "graphical": {"order": {...}}}``.
+            "support_policy", "groups"}, "graphical": {"order": {...},
+            "styles"?, "statements"?}}``.
 
         Examples:
             >>> from fractions import Fraction
@@ -3732,7 +3742,9 @@ class AlignmentBundle:
                 "support_policy": SupportPolicy(self.support_policy).value,
                 "groups": [group._to_group_object() for group in groups],
             },
-            "graphical": {"order": {group.id: group.timeline_ids for group in groups}},
+            "graphical": _write_graphical(
+                {group.id: group.timeline_ids for group in groups}, self.styling
+            ),
         }
 
     def __repr__(self) -> str:

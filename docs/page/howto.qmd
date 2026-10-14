@@ -57,7 +57,7 @@ documentation:
   End-to-end alignment: IIIF images, ATON, MIDI, Audio, and Score.
 - [How to Save and Load Groups and Bundles](howto/how02_group_and_bundle_files.ipynb) ---
   `to_dict` and `from_dict` for TimelineGroup and AlignmentBundle, child
-  members, display order, and JSON files with `meta`.
+  members, display order, styling kept unread, and JSON files with `meta`.
 
 ### AlignmentBundles
 

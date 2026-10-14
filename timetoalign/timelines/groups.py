@@ -20,6 +20,7 @@ structure and methods as a stamp from a timeline.
 
 from __future__ import annotations
 
+import copy
 import logging
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -196,6 +197,38 @@ def _require_keys(
     return data
 
 
+_STYLING_KEYS = ("styles", "statements")
+"""The members of a file's ``graphical`` that the library carries unread."""
+
+
+def _read_graphical(data: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
+    """Split a group or bundle dictionary's ``graphical`` into order and styling.
+
+    Returns:
+        The ``order`` as given (None when absent), and a copy of the
+        ``styles`` and ``statements`` present.
+
+    Raises:
+        ValueError: If ``graphical`` is not an object or carries a key other
+            than ``order``, ``styles`` and ``statements``.
+    """
+    if "graphical" not in data:
+        return None, {}
+    graphical = _require_keys(
+        data["graphical"], set(), {"order", *_STYLING_KEYS}, "'graphical'"
+    )
+    styling = {key: graphical[key] for key in _STYLING_KEYS if key in graphical}
+    return graphical.get("order"), copy.deepcopy(styling)
+
+
+def _write_graphical(order: Any, styling: dict[str, Any]) -> dict[str, Any]:
+    """Write ``graphical``: the order, then a copy of the styling present."""
+    return {
+        "order": order,
+        **{key: copy.deepcopy(styling[key]) for key in _STYLING_KEYS if key in styling},
+    }
+
+
 def _roots_from_dicts(items: Any) -> dict[str, "Timeline"]:
     """Rebuild root manifests and index every timeline of their trees by id.
 
@@ -249,6 +282,8 @@ class TimelineGroup:
         id: Unique identifier for this group, ``group_N`` unless given.
         name: Optional human-readable name.
         meta: Additional metadata dictionary.
+        styling: The ``styles`` and ``statements`` of the group file's
+            ``graphical``, kept as given and never interpreted.
 
     Examples:
         >>> from fractions import Fraction
@@ -273,6 +308,7 @@ class TimelineGroup:
     id: str = field(default="")
     name: str | None = field(default=None)
     meta: dict[str, Any] = field(default_factory=dict)
+    styling: dict[str, Any] = field(default_factory=dict)
 
     # Internal state (not part of dataclass signature)
     _timelines: dict[str, "Timeline"] = field(
@@ -291,10 +327,11 @@ class TimelineGroup:
         :meth:`Timeline.from_dict <timetoalign.timelines.Timeline.from_dict>`;
         each member id is resolved among those roots and all their
         descendants, and the members are added in ``graphical.order`` (in
-        ``group.members`` order when ``"graphical"`` is absent). Feeding the
-        result back through :meth:`to_dict` with the same flags reproduces
-        the input dictionary. A ``"meta"`` key — the file's own metadata —
-        is accepted and ignored.
+        ``group.members`` order when the order is absent). ``graphical.styles``
+        and ``graphical.statements`` are kept as :attr:`styling`, unread.
+        Feeding the result back through :meth:`to_dict` with the same flags
+        reproduces the input dictionary. A ``"meta"`` key — the file's own
+        metadata — is accepted and ignored.
 
         Args:
             data: ``{"timelines": [...], "group": {...}, "graphical": {...}}``.
@@ -326,13 +363,9 @@ class TimelineGroup:
             data, {"timelines", "group"}, {"graphical", "meta"}, "a group dictionary"
         )
         timelines = _roots_from_dicts(data["timelines"])
-        order = None
-        if "graphical" in data:
-            graphical = _require_keys(
-                data["graphical"], {"order"}, set(), "'graphical'"
-            )
-            order = graphical["order"]
+        order, styling = _read_graphical(data)
         group = cls._from_group_object(data["group"], timelines, order)
+        group.styling = styling
         members = list(group._timelines.values())
         for timeline in timelines.values():
             if timeline._parent is None and not any(
@@ -411,6 +444,7 @@ class TimelineGroup:
         name: str | None = None,
         timelines: list["Timeline"] | None = None,
         meta: dict[str, Any] | None = None,
+        styling: dict[str, Any] | None = None,
     ) -> None:
         """Create a TimelineGroup.
 
@@ -420,6 +454,8 @@ class TimelineGroup:
             name: Optional human-readable name.
             timelines: Initial members, in order (optional).
             meta: Additional metadata dictionary.
+            styling: The group file's ``styles`` and ``statements``
+                (optional), kept as given and never interpreted.
 
         Raises:
             ValueError: If a given id is invalid, or an initial member
@@ -434,6 +470,7 @@ class TimelineGroup:
             self._id_minted = False
         self.name = name
         self.meta = dict(meta) if meta else {}
+        self.styling = dict(styling) if styling else {}
         self._timelines = {}
         self._logger = module_logger.getChild(self.id)
 
@@ -1779,7 +1816,9 @@ class TimelineGroup:
         :meth:`Timeline.to_dict <timetoalign.timelines.Timeline.to_dict>`,
         sorted by id. ``"group"`` names the members by id, sorted, and
         ``"graphical"`` keeps their display order, which is the order they
-        were added in. The file's own ``meta`` is the writer's concern.
+        were added in, followed by the ``styles`` and ``statements`` of
+        :attr:`styling` that are present. The file's own ``meta`` is the
+        writer's concern.
 
         Args:
             events: Passed to every root's ``to_dict``.
@@ -1787,7 +1826,8 @@ class TimelineGroup:
 
         Returns:
             ``{"timelines": [...], "group": {"id", "name", "meta",
-            "members"}, "graphical": {"order": [...]}}``.
+            "members"}, "graphical": {"order": [...], "styles"?,
+            "statements"?}}``.
 
         Examples:
             >>> from fractions import Fraction
@@ -1822,7 +1862,7 @@ class TimelineGroup:
                 for root_id in sorted(roots)
             ],
             "group": self._to_group_object(),
-            "graphical": {"order": self.timeline_ids},
+            "graphical": _write_graphical(self.timeline_ids, self.styling),
         }
 
     def _to_group_object(self) -> dict[str, Any]:

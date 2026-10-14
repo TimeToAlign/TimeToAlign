@@ -5,6 +5,7 @@ The strategy is documented in ``tests/timelines/README.md`` ("Timeline Groups").
 
 from __future__ import annotations
 
+import copy
 from fractions import Fraction
 from typing import Any
 
@@ -263,6 +264,74 @@ def test_order_defaults_to_members_without_graphical() -> None:
     del data["graphical"]
 
     assert TimelineGroup.from_dict(data).timeline_ids == ["A", "B", "C"]
+
+
+STYLING: dict[str, Any] = {
+    "styles": {"frame-highlight": {"stroke": "#7F00FF", "stroke-width": 2}},
+    "statements": [
+        {"select": {"element": "group"}, "set": "frame-highlight"},
+        {
+            "select": {"element": "name", "ids": ["group_1/name"]},
+            "set": {"fill": "#7F00FF"},
+        },
+    ],
+}
+"""A styling block the library cannot produce itself, three levels deep."""
+
+
+@pytest.mark.parametrize(
+    "keys",
+    [("styles", "statements"), ("styles",), ("statements",)],
+    ids=["both", "styles", "statements"],
+)
+def test_styling_round_trips_unchanged(keys: tuple[str, ...]) -> None:
+    """``styles`` and ``statements`` survive the round trip beside ``order``."""
+    data = _three_types().to_dict()
+    data["graphical"].update(copy.deepcopy({key: STYLING[key] for key in keys}))
+    expected = {key: STYLING[key] for key in keys}
+
+    rebuilt = TimelineGroup.from_dict(data)
+
+    assert rebuilt.styling == expected
+    assert rebuilt.to_dict() == data
+    assert rebuilt.to_dict()["graphical"] == {"order": ["A", "B", "C"], **expected}
+    for key in keys:
+        assert rebuilt.styling[key] is not data["graphical"][key]
+    data["graphical"][keys[0]].clear()
+    assert rebuilt.styling == expected
+
+
+def test_absent_styling_stays_absent() -> None:
+    """A group without styling writes ``graphical`` as its order alone."""
+    rebuilt = TimelineGroup.from_dict(_three_types().to_dict())
+
+    assert rebuilt.styling == {}
+    assert rebuilt.to_dict()["graphical"] == {"order": ["A", "B", "C"]}
+
+
+def test_styling_without_order_reads_members_order() -> None:
+    """A ``graphical`` holding only styling joins the members in ``members`` order."""
+    data = _three_types().to_dict()
+    data["group"]["members"] = ["C", "A", "B"]
+    data["graphical"] = {"styles": STYLING["styles"]}
+
+    rebuilt = TimelineGroup.from_dict(data)
+
+    assert rebuilt.timeline_ids == ["C", "A", "B"]
+    assert rebuilt.to_dict()["graphical"] == {
+        "order": ["C", "A", "B"],
+        "styles": STYLING["styles"],
+    }
+
+
+def test_unknown_graphical_key_is_refused() -> None:
+    """A ``graphical`` key other than order, styles and statements is refused."""
+    data = _three_types().to_dict()
+    data["graphical"].update(STYLING, frame={})
+
+    with pytest.raises(ValueError) as refused:
+        TimelineGroup.from_dict(data)
+    assert str(refused.value) == "'graphical' has unknown key(s) ['frame']"
 
 
 def test_file_meta_is_accepted_and_ignored() -> None:

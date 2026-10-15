@@ -579,6 +579,8 @@ class TabularExportMixin:
     ) -> pa.StructArray:
         """Collect timeline boundary coordinates (start=0, end=length).
 
+        A timeline of unknown length contributes its start only.
+
         Recursively collects boundary coordinates from this timeline
         and all children, applying cumulative offsets.
 
@@ -594,8 +596,11 @@ class TabularExportMixin:
         declared = self._number_type if number_type is None else number_type
 
         # This timeline's boundaries, computed in Python so an exact length on
-        # an exact offset stays exact.
-        arrays = [_coordinate_column([offset, offset + self._length.value], declared)]
+        # an exact offset stays exact. An unknown length has no end boundary.
+        bounds = (
+            [offset] if self._length is None else [offset, offset + self._length.value]
+        )
+        arrays = [_coordinate_column(bounds, declared)]
 
         # Recurse into children
         if recursion_limit is None or recursion_limit > 0:
@@ -622,7 +627,8 @@ class TabularExportMixin:
         """Compute local coordinates from root coordinates.
 
         Offset subtraction with bounds checking. Coordinates outside
-        ``[0, length]`` are replaced with null.
+        ``[0, length]`` are replaced with null; a timeline of unknown length
+        is bounded below only.
 
         The subtraction runs in this timeline's declared representation, so a
         child of an exact parent reports exact local positions; only the
@@ -643,10 +649,10 @@ class TabularExportMixin:
         # kernel as a float: on a quarters/beats axis its value is a Fraction,
         # which the PyArrow compute kernel rejects.
         shifted = pc.subtract(root_coords.field("value"), float(offset))
-        within = pc.and_(
-            pc.greater_equal(shifted, 0.0),
-            pc.less_equal(shifted, float(self._length.value)),
-        )
+        within = pc.greater_equal(shifted, 0.0)
+        extent = self._extent
+        if extent is not None:
+            within = pc.and_(within, pc.less_equal(shifted, float(extent)))
 
         # At offset zero the local coordinate IS the root coordinate, so the
         # cells are reused rather than recomputed.

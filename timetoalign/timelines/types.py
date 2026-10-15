@@ -14,18 +14,16 @@ Additionally provides:
 
 from __future__ import annotations
 
-from fractions import Fraction
 from typing import Any, ClassVar, Iterator
 
 from timetoalign.core import (
     Coordinate,
     CoordinateSpec,
-    NumberType,
     TimeUnit,
 )
 from timetoalign.core.timestamp import _format_coordinate_value
 
-from .base import Timeline
+from .base import Timeline, UnknownLengthError
 
 # region Unit Sets by Domain
 
@@ -190,16 +188,6 @@ class ContinuousGraphicalTimeline(GraphicalTimeline):
     _allowed_units: ClassVar[frozenset[TimeUnit]] = CONTINUOUS_GRAPHICAL_UNITS
     _default_unit: ClassVar[TimeUnit] = TimeUnit.centimeters
 
-    @classmethod
-    def _validate_serialized_payload(cls, data: dict[str, Any]) -> None:
-        """Explain legacy graphical payloads that predate unit validation."""
-        if data.get("unit") == str(TimeUnit.pixels):
-            raise ValueError(
-                "Serialized ContinuousGraphicalTimeline payload uses unit 'pixels', "
-                "which is discrete-only. This payload predates unit enforcement; "
-                "use DiscreteGraphicalTimeline instead."
-            )
-
 
 # endregion
 
@@ -269,43 +257,41 @@ class SegmentLineMixin:
         self._segment_order: list[str] = []
 
     @classmethod
-    def _from_dict_initial_length(cls, data: dict[str, Any]) -> int:
+    def _from_dict_initial_length(cls, length: Coordinate | None) -> int:
         """Start empty so restored segments can be appended contiguously."""
         return 0
 
-    def _finalize_from_dict(self, data: dict[str, Any]) -> None:
+    def _finalize_from_dict(self, length: Coordinate | None) -> None:
         """Check that the rebuilt segments end exactly at the serialized length.
+
+        The check runs between known values: a serialized length of ``None``
+        is restored as unknown, and a last segment of unknown length ends at
+        the serialized length, which must not precede its offset.
 
         Raises:
             ValueError: If the segments end short of, or beyond, the length.
         """
-        length = Timeline._from_dict_initial_length(data)
-        if self._length.value != length:
+        if length is None:
+            self._length = None
+            return
+        end = length.value
+        last_id = self._segment_order[-1] if self._segment_order else None
+        if last_id is not None and self._children[last_id].length is None:
+            last_offset = self._child_offsets[last_id].value
+            if end < last_offset:
+                raise ValueError(
+                    f"Segment line {self.id!r} has a last segment starting at "
+                    f"{_format_coordinate_value(float(last_offset))}, beyond its "
+                    f"length {_format_coordinate_value(float(end))}"
+                )
+            self._length = self._make_coordinate(end)
+            return
+        if self._length.value != end:
             raise ValueError(
                 f"Segment line {self.id!r} has segments ending at "
                 f"{_format_coordinate_value(float(self._length.value))}, but its "
-                f"length is {_format_coordinate_value(float(length))}"
+                f"length is {_format_coordinate_value(float(end))}"
             )
-
-    def _manifest_class(self) -> str:
-        """The class the dictionary form writes: the segments' plain class.
-
-        A nested line names the class at the bottom of its nesting.
-
-        Raises:
-            ValueError: If the line has no segments and no plain segment type
-                (a bare, never-typed ``SegmentLine()`` or an empty nested
-                line), so that its dictionary form cannot say what it is.
-        """
-        if self._segment_order:
-            return self._children[self._segment_order[0]]._manifest_class()
-        segment_type = self._segment_type
-        if segment_type is not None and not issubclass(segment_type, SegmentLineMixin):
-            return segment_type.__name__
-        raise ValueError(
-            f"SegmentLine {self.id!r} has no segments and no plain segment "
-            "type, so its dictionary form cannot say what it is"
-        )
 
     def _is_segment_line_instance(self) -> bool:
         """Whether this timeline is a SegmentLine (the dictionary's flag)."""
@@ -322,6 +308,57 @@ class SegmentLineMixin:
         if type(self) is SegmentLine and self._segment_type is not None:
             return f"SegmentLine[{self._segment_type.__name__}]"
         return type(self).__name__
+
+    def _child_extent(self, child_id: str) -> Any:
+        """A segment of unknown length ends at its successor's offset.
+
+        The last one ends at the line's length, unbounded while that is
+        unknown too.
+        """
+        extent = super()._child_extent(child_id)
+        if extent is not None:
+            return extent
+        index = self._segment_order.index(child_id)
+        if index + 1 < len(self._segment_order):
+            end = self._child_offsets[self._segment_order[index + 1]].value
+        elif self._length is not None:
+            end = self._length.value
+        else:
+            return None
+        return end - self._child_offsets[child_id].value
+
+    def _check_child_length(self, child_id: str, length: Coordinate | None) -> None:
+        """Keep the segments contiguous and ending at the line's known length.
+
+        A segment with a successor must end at the successor's offset, or be
+        of unknown length and end there. The last segment must end at the
+        line's length, or be of unknown length and end there; a line of
+        unknown length has no end to keep. Successors never move, and the
+        line never changes its length because a segment did.
+
+        Raises:
+            ValueError: If the new length breaks contiguity, or would move the
+                last segment's end away from the line's known length.
+        """
+        index = self._segment_order.index(child_id)
+        if length is None:
+            return
+        end = self._child_offsets[child_id].value + length.value
+        if index + 1 < len(self._segment_order):
+            successor = self._segment_order[index + 1]
+            boundary = self._child_offsets[successor].value
+            where = f"its successor '{successor}' starts at"
+        elif self._length is not None:
+            boundary = self._length.value
+            where = f"the line '{self.id}' ends at"
+        else:
+            return
+        if end != boundary:
+            raise ValueError(
+                f"SegmentLine requires contiguous segments. Segment "
+                f"'{child_id}' cannot end at {_format_coordinate_value(end)}: "
+                f"{where} {_format_coordinate_value(boundary)}."
+            )
 
     def validate_child(
         self,
@@ -341,7 +378,22 @@ class SegmentLineMixin:
                 )
 
         offset_val = self._resolve_axis_value(offset)
-        expected_offset = self.length.value if self._segment_order else 0
+        if not self._segment_order:
+            expected_offset = 0
+        else:
+            last_id = self._segment_order[-1]
+            last_offset = self._child_offsets[last_id].value
+            last_length = self._children[last_id].length
+            if last_length is None:
+                # A segment of unknown length ends at its successor's offset.
+                if offset_val < last_offset:
+                    raise ValueError(
+                        f"SegmentLine requires contiguous segments. Segment "
+                        f"'{last_id}' of unknown length starts at {last_offset}, "
+                        f"so its successor cannot start at {offset_val}."
+                    )
+                return
+            expected_offset = last_offset + last_length.value
 
         if offset_val != expected_offset:
             raise ValueError(
@@ -355,13 +407,40 @@ class SegmentLineMixin:
         child: Timeline,
         offset: CoordinateSpec,
         allow_expansion: bool = False,
+        *,
+        locked: bool = True,
     ) -> None:
-        """Add a validated segment and record its insertion order."""
-        super().add_child(child, offset, allow_expansion)
+        """Add a validated segment and record its insertion order.
+
+        The line ends where its last segment ends, so a growing line whose
+        new last segment is of unknown length has an unknown length too.
+        """
+        super().add_child(child, offset, allow_expansion, locked=locked)
 
         if self._segment_type is None:
             self._segment_type = type(child)
         self._segment_order.append(child.id)
+        if child.length is None and (allow_expansion or not self._locked):
+            self._set_length(None)
+
+    def _append_offset(self) -> Coordinate:
+        """Append after the last segment, at 0 on an empty line.
+
+        The line's own length need not be known.
+
+        Raises:
+            UnknownLengthError: If the last segment's length is unknown, so
+                that nothing says where it ends.
+        """
+        if not self._segment_order:
+            return self._make_coordinate(0)
+        last_id = self._segment_order[-1]
+        last = self._children[last_id]
+        if last.length is None:
+            raise UnknownLengthError(last.id, f"append a segment to '{self.id}'")
+        return self._make_coordinate(
+            self._child_offsets[last_id].value + last.length.value
+        )
 
     def _rename_child(self, old_id: str, new_id: str) -> None:
         """Re-key a segment, keeping its place in the segment order."""
@@ -394,7 +473,7 @@ class SegmentLineMixin:
                 continue
             if seg_coord.value >= 0:
                 segment = self._children[seg_id]
-                if seg_coord.value <= segment.length.value:
+                if segment.length is None or seg_coord.value <= segment.length.value:
                     seg_ts = segment.get_timestamp_at(seg_coord.value)
                     return (i, segment, seg_ts)
 
@@ -446,31 +525,7 @@ class SegmentLineMixin:
         copy_cmaps: bool = True,
     ) -> "Timeline":
         """Extract a slice while preserving the parameterized line class."""
-        # Coerce to native number type
-        start_value = self._resolve_axis_value(start)
-        end_value = self._resolve_axis_value(end)
-        nt = self._number_type
-        if nt == NumberType.fraction:
-            s = Fraction(start_value)
-            e = Fraction(end_value)
-        elif nt == NumberType.int:
-            s = int(start_value)
-            e = int(end_value)
-        else:
-            s = float(start_value)
-            e = float(end_value)
-
-        # Validate
-        if s >= e:
-            raise ValueError(f"start ({s}) must be less than end ({e})")
-        if s < 0:
-            raise ValueError(
-                f"start ({s}) is outside timeline bounds " f"[0, {self._length.value})"
-            )
-        if e > self._length.value:
-            raise ValueError(
-                f"end ({e}) is outside timeline bounds " f"[0, {self._length.value}]"
-            )
+        s, e = self._slice_bounds(start, end)
 
         sliced = type(self)(
             length=0,
@@ -494,7 +549,7 @@ class SegmentLineMixin:
         # the caller gets a correctly-sized timeline.
         expected_length = e - s
         if sliced._length.value < expected_length:
-            sliced._length = Coordinate(expected_length, self._unit)
+            sliced._length = sliced._make_coordinate(expected_length)
 
         return sliced
 
@@ -509,48 +564,21 @@ class SegmentLineMixin:
         return Timeline.resolve_subclass(self.unit, self.number_type)
 
     def to_timeline(self) -> Timeline:
-        """Return the parameter timeline type without segment enforcement."""
+        """Return the parameter timeline type without segment enforcement.
+
+        The result is a copy holding copies of the segments, so a change to it
+        never reaches this line.
+        """
         target_class = self.segment_type
         if target_class is None:
             target_class = Timeline.resolve_subclass(self.unit, self.number_type)
-
-        initial_length = (
-            0 if issubclass(target_class, SegmentLineMixin) else self._length.value
+        return self._recast(
+            target_class,
+            [
+                (child_id, child._copy_tree())
+                for child_id, child in self._children.items()
+            ],
         )
-        timeline = target_class(
-            length=initial_length,
-            unit=self._unit,
-            number_type=self._number_type,
-            uid=self._id,
-            name=self._name,
-            locked=False,
-            meta=dict(self._meta) if self._meta else None,
-        )
-        events = [
-            dict(event)
-            for event in self._events
-            if event.get("event_type") != "Segment"
-        ]
-        if events:
-            timeline._add_events_unchecked(events)
-        timeline._external_references = self._external_references
-        for child_id, child in self._children.items():
-            timeline.add_child(
-                child,
-                offset=self._child_offsets[child_id],
-                allow_expansion=isinstance(timeline, SegmentLineMixin),
-            )
-        for cmap in self._conversion_maps.values():
-            timeline.add_conversion_map(cmap)
-        timeline._regions.update(self._regions)
-        timeline._flow_maps.update(self._flow_maps)
-        timeline._measure_map = self._measure_map
-        timeline._metric_hierarchy = self._metric_hierarchy
-        timeline._adopt_flow_control(self._flow_control.copy())
-        timeline._id_minted = self._id_minted
-        timeline._length = timeline._make_coordinate(self._length.value)
-        timeline._locked = self._locked
-        return timeline
 
 
 class SegmentLine(SegmentLineMixin, Timeline):
@@ -730,12 +758,40 @@ def get_timeline_class(
 
 
 def __getattr__(name: str) -> Any:
-    """Materialize a serialized dynamic class requested by pickle."""
+    """Materialize a parameterized SegmentLine class requested by pickle.
+
+    Pickle addresses a parameterized class by its name
+    (``SegmentLine[DiscreteGraphicalTimeline]``); the parameter is resolved
+    among the timeline classes by name, recursively for a nested line.
+    """
     if name.startswith("SegmentLine[") and name.endswith("]"):
         try:
-            resolved = Timeline._resolve_serialized_class_hierarchy(name)
-        except (TypeError, ValueError) as error:
+            return SegmentLine[
+                _timeline_class_named(name.removeprefix("SegmentLine[")[:-1])
+            ]
+        except (TypeError, LookupError) as error:
             raise AttributeError(name) from error
-        if resolved.__name__ == name:
-            return resolved
     raise AttributeError(name)
+
+
+def _timeline_class_named(name: str) -> type[Timeline]:
+    """Return the timeline class named *name*, a parameterized line included.
+
+    Raises:
+        LookupError: If no timeline class, or several, have the name.
+    """
+    if name.startswith("SegmentLine[") and name.endswith("]"):
+        return SegmentLine[
+            _timeline_class_named(name.removeprefix("SegmentLine[")[:-1])
+        ]
+
+    def descendants(base: type[Timeline]) -> list[type[Timeline]]:
+        return [
+            base,
+            *(cls for sub in base.__subclasses__() for cls in descendants(sub)),
+        ]
+
+    matches = {cls for cls in descendants(Timeline) if cls.__name__ == name}
+    if len(matches) != 1:
+        raise LookupError(name)
+    return matches.pop()

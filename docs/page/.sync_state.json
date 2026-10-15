@@ -2,7 +2,7 @@
   "how01_coordinate_math.py": "2152829284f8c05ce961bf5975db351e13022a76799b24de908ac86721910c33",
   "how01_advanced_cmaps.py": "00698add53468d2c8ca921032ec374b4b90f17dbe923c7c2d6aa19c37d0affd5",
   "how01_advanced_timestamps.py": "fdc425f83d5f1e334e38d36d4070ab3e14a66e811c9def2959700e1d1267c1df",
-  "how01_manual_timeline_construction.py": "b99713326d828de0874e21b813f74c21b154e4c30cf66854b1a2728b21c014ce",
+  "how01_manual_timeline_construction.py": "59998423c7d06470ca1b9be915228c5ebd213af349c5fc1cad00483cc7cbb7bc",
   "how01_graphical_timelines.py": "ec8cde968f4cb58afdaaf631f6854ac2468d122c22c9fdf3e2c667721804fcbe",
   "how01_loading_data.py": "a5d1b222764d205256b706eaf5b2ee5cb2b60d44d715a12baff4a5a379f0a8d9",
   "how01_tabular_loaders.py": "d60f2bdc0c1cbd1c84c631ac49032101ad8e05ce4681bf3d74cb3a0bc8844051",
@@ -33,5 +33,5 @@
   "tut08_data_model.py": "8faff22931435cb61c183c1465d208f2f131deffd8c7bbeff5816a1e717bbfbe",
   "tut09_pitch_and_harmony.py": "8aff86fbb8f45134d76549fb41d70b235c547d90375c05eee05640e9cbf9a08f",
   "how04_load_anything.py": "5c5ba80a39b3941cca854971707c338eb7124ed4b9755428b5e9ac1cb37ae876",
-  "how02_group_and_bundle_files.py": "124b67e9b7cb4354424cb7e86ab28e632fee9cdf9ebe0ad4b8ed178072ee7c94"
+  "how02_group_and_bundle_files.py": "cb8a2e3016950326b6833f8ff977624eb1eb71c2571b4df8e7fed805dc1d6359"
 }

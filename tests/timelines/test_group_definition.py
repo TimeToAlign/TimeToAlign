@@ -193,8 +193,12 @@ def test_child_member_writes_its_root() -> None:
     data = group.to_dict()
 
     assert [timeline["id"] for timeline in data["timelines"]] == ["A2", "R"]
-    assert data["group"]["members"] == ["A2", "K"]
-    assert data["graphical"] == {"order": ["A2", "K"]}
+    assert data["groups"][0]["members"] == ["A2", "K"]
+    assert data["graphical"] == {
+        "order": {"group_1": ["A2", "K"]},
+        "styles": {},
+        "statements": [],
+    }
 
 
 # endregion
@@ -212,14 +216,39 @@ def test_group_dict_is_exact() -> None:
     )
 
     assert group.to_dict() == {
-        "timelines": [image.to_dict(), score.to_dict()],
-        "group": {
-            "id": "group_1",
-            "name": "edition",
-            "meta": {"source": "test"},
-            "members": ["image", "score"],
+        "timeskeleton": "0.7.0",
+        "name": None,
+        "meta": {},
+        "timelines": [image.to_dict()["timelines"][0], score.to_dict()["timelines"][0]],
+        "groups": [
+            {
+                "id": "group_1",
+                "name": "edition",
+                "meta": {"source": "test"},
+                "members": ["image", "score"],
+            }
+        ],
+        "graphical": {
+            "order": {"group_1": ["score", "image"]},
+            "styles": {},
+            "statements": [],
         },
-        "graphical": {"order": ["score", "image"]},
+    }
+    assert group.to_dict(minimal=True) == {
+        "timeskeleton": "0.7.0",
+        "timelines": [
+            {"id": "image", "unit": "pixels", "length": 4800},
+            {"id": "score", "unit": "quarters", "length": [16, 1]},
+        ],
+        "groups": [
+            {
+                "id": "group_1",
+                "name": "edition",
+                "meta": {"source": "test"},
+                "members": ["image", "score"],
+            }
+        ],
+        "graphical": {"order": {"group_1": ["score", "image"]}},
     }
 
 
@@ -231,7 +260,10 @@ def test_flags_pass_through_to_every_root() -> None:
 
     data = group.to_dict(events=True, external_references=True)
 
-    assert data["timelines"] == [score.to_dict(events=True, external_references=True)]
+    assert (
+        data["timelines"]
+        == score.to_dict(events=True, external_references=True)["timelines"]
+    )
 
 
 @pytest.mark.parametrize(
@@ -294,7 +326,10 @@ def test_styling_round_trips_unchanged(keys: tuple[str, ...]) -> None:
 
     assert rebuilt.styling == expected
     assert rebuilt.to_dict() == data
-    assert rebuilt.to_dict()["graphical"] == {"order": ["A", "B", "C"], **expected}
+    assert rebuilt.to_dict(minimal=True)["graphical"] == {
+        "order": {"group_1": ["A", "B", "C"]},
+        **expected,
+    }
     for key in keys:
         assert rebuilt.styling[key] is not data["graphical"][key]
     data["graphical"][keys[0]].clear()
@@ -306,40 +341,45 @@ def test_absent_styling_stays_absent() -> None:
     rebuilt = TimelineGroup.from_dict(_three_types().to_dict())
 
     assert rebuilt.styling == {}
-    assert rebuilt.to_dict()["graphical"] == {"order": ["A", "B", "C"]}
+    assert rebuilt.to_dict(minimal=True)["graphical"] == {
+        "order": {"group_1": ["A", "B", "C"]}
+    }
 
 
 def test_styling_without_order_reads_members_order() -> None:
     """A ``graphical`` holding only styling joins the members in ``members`` order."""
     data = _three_types().to_dict()
-    data["group"]["members"] = ["C", "A", "B"]
+    data["groups"][0]["members"] = ["C", "A", "B"]
     data["graphical"] = {"styles": STYLING["styles"]}
 
     rebuilt = TimelineGroup.from_dict(data)
 
     assert rebuilt.timeline_ids == ["C", "A", "B"]
-    assert rebuilt.to_dict()["graphical"] == {
-        "order": ["C", "A", "B"],
+    assert rebuilt.to_dict(minimal=True)["graphical"] == {
+        "order": {"group_1": ["C", "A", "B"]},
         "styles": STYLING["styles"],
     }
 
 
-def test_unknown_graphical_key_is_refused() -> None:
-    """A ``graphical`` key other than order, styles and statements is refused."""
+def test_unknown_graphical_key_is_kept() -> None:
+    """A ``graphical`` key other than order, styles and statements is kept."""
     data = _three_types().to_dict()
-    data["graphical"].update(STYLING, frame={})
+    data["graphical"].update(STYLING, frame={"inset": 4})
 
-    with pytest.raises(ValueError) as refused:
-        TimelineGroup.from_dict(data)
-    assert str(refused.value) == "'graphical' has unknown key(s) ['frame']"
+    rebuilt = TimelineGroup.from_dict(data)
+
+    assert rebuilt.styling == {**STYLING, "frame": {"inset": 4}}
+    assert rebuilt.to_dict() == data
 
 
-def test_file_meta_is_accepted_and_ignored() -> None:
-    """A dictionary carrying the file's ``meta`` reads as the same group."""
+def test_manifest_meta_round_trips() -> None:
+    """The manifest's own ``meta`` belongs to the manifest, not to the group."""
     data = _three_types().to_dict()
+    data["meta"] = {"source": "an edition"}
 
-    rebuilt = TimelineGroup.from_dict({**data, "meta": {"schema_version": "0.7.0"}})
+    rebuilt = TimelineGroup.from_dict(data)
 
+    assert rebuilt.meta == {}
     assert rebuilt.to_dict() == data
 
 
@@ -353,38 +393,39 @@ def _malformed(change: Any) -> dict[str, Any]:
 @pytest.mark.parametrize(
     ("change", "message"),
     [
-        (lambda d: d.pop("group"), r"lacks the key\(s\) \['group'\]"),
-        (lambda d: d.update(extra=1), r"unknown key\(s\) \['extra'\]"),
-        (lambda d: d["group"].pop("meta"), r"lacks the key\(s\) \['meta'\]"),
-        (lambda d: d["group"]["members"].append("Z"), "names member 'Z'"),
-        (lambda d: d["group"]["members"].append("A"), "names a member twice"),
+        (lambda d: d.pop("timeskeleton"), "not a TimeSkeleton manifest"),
+        (lambda d: d["groups"][0].pop("members"), r"lacks the key\(s\) \['members'\]"),
+        (lambda d: d["groups"][0]["members"].append("Z"), "names member 'Z'"),
+        (lambda d: d["groups"][0]["members"].append("A"), "names a member twice"),
         (
             lambda d: d["timelines"].append(d["timelines"][0]),
             "timeline id 'A' occurs twice",
         ),
         (
-            lambda d: d["graphical"].update(order=["A", "B"]),
+            lambda d: d["graphical"]["order"].update(group_1=["A", "B"]),
             "not a permutation of its members",
         ),
         (
-            lambda d: (
-                d["group"]["members"].remove("C"),
-                d["graphical"]["order"].remove("C"),
-            ),
-            "root timeline 'C' contains no member",
+            lambda d: d["graphical"].update(order=["A", "B", "C"]),
+            "'graphical.order' must map group ids to orders",
         ),
-        (lambda d: d["group"].update(id="A"), "group id 'A' is also a timeline id"),
-        (lambda d: d["group"].update(id="a/b"), "Invalid id 'a/b'"),
+        (
+            lambda d: (d["groups"][0].update(id="A"), d["graphical"].pop("order")),
+            "group id 'A' is also a timeline id",
+        ),
+        (
+            lambda d: (d["groups"][0].update(id="a/b"), d["graphical"].pop("order")),
+            "Invalid id 'a/b'",
+        ),
     ],
     ids=[
-        "missing_group",
-        "unknown_key",
-        "missing_meta",
+        "missing_marker",
+        "missing_members",
         "unknown_member",
         "duplicate_member",
         "duplicate_timeline",
         "short_order",
-        "memberless_root",
+        "order_as_a_list",
         "group_id_is_timeline_id",
         "invalid_group_id",
     ],
@@ -401,8 +442,8 @@ def test_from_dict_refuses_a_parent_beside_its_child() -> None:
     """A group object naming a member's root is refused, naming both."""
     group, _ = _child_member()
     data = group.to_dict()
-    data["group"]["members"].append("R")
-    data["graphical"]["order"].append("R")
+    data["groups"][0]["members"].append("R")
+    data["graphical"]["order"]["group_1"].append("R")
 
     with pytest.raises(
         ValueError,

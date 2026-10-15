@@ -1,8 +1,9 @@
-"""Prove eventless manifests match the installed TimeSkeleton contract."""
+"""Prove the library's manifests against the installed TimeSkeleton package."""
 
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -14,11 +15,16 @@ from typing import Any
 import numpy as np
 import pytest
 from timeskeleton import (
-    SCHEMA_VERSION,
     SchemaValidationError,
     canonical_order,
+    complete,
+    dumps,
     fixture_paths,
+    minimal,
+    rejection_paths,
+    unknown_keys,
     validate,
+    warning_paths,
 )
 
 from timetoalign import (
@@ -82,14 +88,6 @@ VIENNA = ensure_data("vienna_1x22")
 MPM = ensure_data("mpm_toolbox")
 IEEE1599 = ensure_data("ieee1599")
 TILIA = SCORE / "bruckner5_scherzo/harnoncourt/Bruckner5_Scherzo.json"
-
-
-def _manifest(timeline: Timeline) -> dict[str, Any]:
-    """Wrap one timeline in the current manifest shape."""
-    return {
-        "meta": {"schema_version": SCHEMA_VERSION, "generator": "timetoalign tests"},
-        "timeline": timeline.to_dict(),
-    }
 
 
 def _with_structure(cls: type[Timeline], unit: str, length: Any) -> Timeline:
@@ -228,64 +226,6 @@ def _graphical() -> Timeline:
     )
 
 
-CATALOGUE: list[tuple[str, Callable[[], list[Timeline]]]] = [
-    (
-        "continuous_logical",
-        lambda: [_with_structure(ContinuousLogicalTimeline, "quarters", Fraction(12))],
-    ),
-    (
-        "discrete_logical",
-        lambda: [_with_structure(DiscreteLogicalTimeline, "ticks", Fraction(480))],
-    ),
-    (
-        "continuous_physical",
-        lambda: [_with_structure(ContinuousPhysicalTimeline, "seconds", 12.0)],
-    ),
-    (
-        "discrete_physical",
-        lambda: [_with_structure(DiscretePhysicalTimeline, "samples", Fraction(44100))],
-    ),
-    (
-        "continuous_graphical",
-        lambda: [_with_structure(ContinuousGraphicalTimeline, "points", 600.0)],
-    ),
-    (
-        "discrete_graphical",
-        lambda: [_with_structure(DiscreteGraphicalTimeline, "pixels", Fraction(1920))],
-    ),
-    ("conversion_maps", _conversion_map_timelines),
-    ("ms3", lambda: [_ms3()]),
-    ("midi", lambda: [_midi()]),
-    ("audio", lambda: [_audio()]),
-    ("parangonada", lambda: [_parangonada()]),
-    ("graphical", lambda: [_graphical()]),
-]
-
-
-@pytest.mark.parametrize(
-    ("name", "builder"), CATALOGUE, ids=[name for name, _ in CATALOGUE]
-)
-def test_emitted_manifests_validate(
-    name: str, builder: Callable[[], list[Timeline]]
-) -> None:
-    """Every direct and loader-produced eventless manifest satisfies the schema.
-
-    The library writes the canonical order the schema package defines: putting
-    the manifest in that order changes nothing.
-    """
-    del name
-    for timeline in builder():
-        manifest = _manifest(timeline)
-        validate(manifest)
-        assert json.dumps(canonical_order(manifest)) == json.dumps(manifest)
-
-
-def _file(content: dict[str, Any]) -> dict[str, Any]:
-    """Wrap the content of a group or bundle file in the current file shape."""
-    meta = {"schema_version": SCHEMA_VERSION, "generator": "timetoalign tests"}
-    return {"meta": meta, **content}
-
-
 def _direct_groups() -> list[TimelineGroup]:
     """A group across number types, and one whose member is a child."""
     score = ContinuousLogicalTimeline(length=Fraction(12), unit="quarters")
@@ -334,7 +274,37 @@ def _listen_here() -> AlignmentBundle:
         return ListenHereLoader.from_file(path).create_bundle()
 
 
-FILE_CATALOGUE: list[tuple[str, Callable[[], list[Any]]]] = [
+CATALOGUE: list[tuple[str, Callable[[], list[Any]]]] = [
+    (
+        "continuous_logical",
+        lambda: [_with_structure(ContinuousLogicalTimeline, "quarters", Fraction(12))],
+    ),
+    (
+        "discrete_logical",
+        lambda: [_with_structure(DiscreteLogicalTimeline, "ticks", Fraction(480))],
+    ),
+    (
+        "continuous_physical",
+        lambda: [_with_structure(ContinuousPhysicalTimeline, "seconds", 12.0)],
+    ),
+    (
+        "discrete_physical",
+        lambda: [_with_structure(DiscretePhysicalTimeline, "samples", Fraction(44100))],
+    ),
+    (
+        "continuous_graphical",
+        lambda: [_with_structure(ContinuousGraphicalTimeline, "points", 600.0)],
+    ),
+    (
+        "discrete_graphical",
+        lambda: [_with_structure(DiscreteGraphicalTimeline, "pixels", Fraction(1920))],
+    ),
+    ("conversion_maps", _conversion_map_timelines),
+    ("ms3", lambda: [_ms3()]),
+    ("midi", lambda: [_midi()]),
+    ("audio", lambda: [_audio()]),
+    ("parangonada_timeline", lambda: [_parangonada()]),
+    ("graphical", lambda: [_graphical()]),
     ("direct_groups", _direct_groups),
     ("direct_bundle", _direct_bundle),
     ("tilia_group", lambda: [TiliaJsonLoader.from_file(TILIA).create_group()]),
@@ -375,66 +345,189 @@ FILE_CATALOGUE: list[tuple[str, Callable[[], list[Any]]]] = [
     ("listen_here", lambda: [_listen_here()]),
     ("tilia_bundle", lambda: [TiliaJsonLoader.from_file(TILIA).create_bundle()]),
 ]
+"""Timelines, groups and bundles built directly and through the loaders."""
+
+
+def _as_written(value: dict[str, Any]) -> str:
+    """Return a manifest's JSON text with sorted keys and arrays as they stand."""
+    return json.dumps(value, sort_keys=True)
 
 
 @pytest.mark.parametrize(
-    ("name", "builder"), FILE_CATALOGUE, ids=[name for name, _ in FILE_CATALOGUE]
+    ("name", "builder"), CATALOGUE, ids=[name for name, _ in CATALOGUE]
 )
-def test_emitted_group_and_bundle_files_validate(
-    name: str, builder: Callable[[], list[Any]]
-) -> None:
-    """Every direct and loader-produced group and bundle file satisfies the schema.
+def test_built_manifests_conform(name: str, builder: Callable[[], list[Any]]) -> None:
+    """Every manifest the library builds conforms in both forms.
 
-    ``validate`` checks the file against its kind's document and the identity
-    rules; the library writes the canonical order the schema package defines.
+    Both forms validate without unknown keys, ``minimal`` and ``complete``
+    map each onto the other, and the library already writes the canonical
+    order the schema package defines.
     """
     del name
     for item in builder():
-        document = _file(item.to_dict())
-        validate(document)
-        assert json.dumps(canonical_order(document)) == json.dumps(document)
+        written, written_minimal = item.to_dict(), item.to_dict(minimal=True)
+        for value in (written, written_minimal):
+            validate(value)
+            assert unknown_keys(value) == []
+            assert _as_written(canonical_order(value)) == _as_written(value)
+        assert dumps(minimal(written)) == dumps(written_minimal)
+        assert dumps(complete(written_minimal)) == dumps(written)
 
 
-@pytest.mark.parametrize(
-    ("kind", "reader", "count"),
-    [("group", TimelineGroup, 9), ("bundle", AlignmentBundle, 9)],
+READERS: dict[str, type] = {
+    ".": Timeline,
+    "groups": TimelineGroup,
+    "bundles": AlignmentBundle,
+}
+"""The class reading a fixture directory's manifests as a whole."""
+
+FIXTURE_ROOT = Path(os.path.commonpath(fixture_paths()))
+"""The package's ``fixtures/<version>/`` directory, which holds manifests itself."""
+TWIN_SUFFIX = ".minimal.json"
+FIXTURES = sorted(
+    path.relative_to(FIXTURE_ROOT).as_posix()
+    for path in fixture_paths()
+    if not path.name.endswith(TWIN_SUFFIX)
 )
-def test_bundled_group_and_bundle_fixtures_round_trip(
-    kind: str, reader: type, count: int
-) -> None:
-    """Every bundled group and bundle fixture reconstructs to the same file."""
-    paths = fixture_paths(kind=kind)
-    assert len(paths) == count
-    for path in paths:
-        content = json.loads(path.read_text(encoding="utf-8"))
-        del content["meta"]
-        rebuilt = reader.from_dict(content).to_dict()
-        assert json.dumps(rebuilt, sort_keys=True) == json.dumps(
-            content, sort_keys=True
-        ), path.name
 
 
-def test_bundled_fixtures_round_trip() -> None:
-    """Bundled fixtures reconstruct without changing any timeline manifest.
+def _twin(fixture: str) -> str:
+    """Return the relative path of a fixture's minimal twin."""
+    return fixture.removesuffix(".json") + TWIN_SUFFIX
 
-    The comparison is by JSON text with object keys sorted, as the schema's
-    writer stores them, so the canonical order of children, conversion maps,
-    regions and flow control must match as well.
+
+def test_every_fixture_has_its_minimal_twin() -> None:
+    """Fixtures and twins pair exactly, and the counts per directory are pinned."""
+    listed = {path.relative_to(FIXTURE_ROOT).as_posix() for path in fixture_paths()}
+    twins = {path for path in listed if path.endswith(TWIN_SUFFIX)}
+    assert twins == {_twin(fixture) for fixture in FIXTURES}
+    counts = {
+        directory: sum(Path(f).parent.as_posix() == directory for f in FIXTURES)
+        for directory in READERS
+    }
+    assert counts == {".": 36, "groups": 10, "bundles": 9}
+    assert len(listed) == 110
+
+
+@pytest.mark.parametrize("fixture", FIXTURES)
+def test_fixture_and_twin_obey_the_laws(fixture: str) -> None:
+    """A fixture and its twin are the package's two forms of one library object.
+
+    Both validate without unknown keys; ``minimal`` of the fixture is the
+    twin and ``complete`` of the twin the fixture; the directory's reader
+    reads both to objects writing the same manifests, each written back byte
+    for byte, its arrays already in canonical order.
     """
-    paths = fixture_paths()
-    assert len(paths) == 29
-    for path in paths:
-        manifest = json.loads(path.read_text(encoding="utf-8"))["timeline"]
-        expected = canonical_order({"timeline": manifest})["timeline"]
-        assert json.dumps(
-            Timeline.from_dict(manifest).to_dict(), sort_keys=True
-        ) == json.dumps(expected, sort_keys=True)
+    text = (FIXTURE_ROOT / fixture).read_text(encoding="utf-8")
+    twin_text = (FIXTURE_ROOT / _twin(fixture)).read_text(encoding="utf-8")
+    value, twin = json.loads(text), json.loads(twin_text)
+    for manifest in (value, twin):
+        validate(manifest)
+        assert unknown_keys(manifest) == []
+    assert dumps(minimal(value)) == twin_text
+    assert dumps(complete(twin)) == text
+
+    reader = READERS[Path(fixture).parent.as_posix()]
+    from_fixture, from_twin = reader.from_dict(value), reader.from_dict(twin)
+    assert type(from_fixture) is type(from_twin)
+    for read in (from_fixture, from_twin):
+        written, written_minimal = read.to_dict(), read.to_dict(minimal=True)
+        assert dumps(written) == text
+        assert dumps(written_minimal) == twin_text
+        assert _as_written(written) == _as_written(value)
+        assert _as_written(written_minimal) == _as_written(twin)
+
+
+@pytest.mark.parametrize("fixture", FIXTURES)
+def test_a_bundle_reads_every_fixture(fixture: str) -> None:
+    """``AlignmentBundle.from_dict`` reads any manifest and writes it back."""
+    for path, form in ((fixture, False), (_twin(fixture), True)):
+        text = (FIXTURE_ROOT / path).read_text(encoding="utf-8")
+        bundle = AlignmentBundle.from_dict(json.loads(text))
+        assert dumps(bundle.to_dict(minimal=form)) == text
+
+
+STATEMENT_RULES = {
+    "statement_select_empty_ids",
+    "statement_select_inside_unknown_element",
+    "statement_select_projection",
+    "statement_select_unknown_element",
+    "statement_set_content_not_string",
+    "statement_set_dasharray_malformed",
+    "statement_set_max_width_zero",
+    "statement_set_neither_object_nor_string",
+    "statement_set_opacity_above_one",
+    "statement_set_shadow_lower_case",
+    "statement_set_stroke_lower_case",
+}
+"""Rejection cases about ``graphical.statements``, which the library keeps unread."""
+
+REJECTIONS = {path.stem: path for path in rejection_paths()}
+
+
+def _whole_reader(manifest: Any) -> Callable[[Any], Any]:
+    """The class that reads *manifest* as a whole; the bundle for anything else."""
+    if isinstance(manifest, dict) and isinstance(manifest.get("timelines"), list):
+        groups = manifest.get("groups", [])
+        if len(manifest["timelines"]) == 1 and not groups:
+            return Timeline.from_dict
+        if len(groups) == 1 and "id" not in manifest and "name" not in manifest:
+            return TimelineGroup.from_dict
+    return AlignmentBundle.from_dict
+
+
+@pytest.mark.parametrize("case", sorted(set(REJECTIONS) - STATEMENT_RULES))
+def test_the_library_refuses_every_rejection_case(case: str) -> None:
+    """Both the whole reader and the bundle reader refuse each case."""
+    manifest = json.loads(REJECTIONS[case].read_text(encoding="utf-8"))["manifest"]
+    for reader in {_whole_reader(manifest), AlignmentBundle.from_dict}:
+        with pytest.raises(ValueError):
+            reader(manifest)
+
+
+def test_statement_rules_are_the_only_cases_the_library_reads() -> None:
+    """The library keeps a drawing's statements unread, so it accepts these cases."""
+    assert STATEMENT_RULES <= set(REJECTIONS)
+    for case in sorted(STATEMENT_RULES):
+        manifest = json.loads(REJECTIONS[case].read_text(encoding="utf-8"))["manifest"]
+        AlignmentBundle.from_dict(manifest)
+
+
+SEVERAL_DEPTHS_ROW = {
+    "actual_length": [4, 1],
+    "count": 1,
+    "end_repeat": False,
+    "name": "1",
+    "nominal_length": [4, 1],
+    "number": 1,
+    "qstamp": [0, 1],
+    "start_repeat": False,
+    "tempo": 120,
+    "time_signature": "4/4",
+}
+"""The one measure-map row of ``several_depths.json`` as the library writes it."""
+
+
+@pytest.mark.parametrize("path", warning_paths(), ids=lambda path: path.stem)
+def test_the_library_writes_every_warning_case_back(path: Path) -> None:
+    """Each case reads, and writes back in its own form with the same unknown keys."""
+    case = json.loads(path.read_text(encoding="utf-8"))
+    manifest = case["manifest"]
+    is_minimal = dumps(manifest) == dumps(minimal(manifest))
+    expected = json.loads(json.dumps(manifest))
+    if path.stem == "several_depths":
+        expected["timelines"][0]["measure_map"] = [SEVERAL_DEPTHS_ROW]
+
+    written = AlignmentBundle.from_dict(manifest).to_dict(minimal=is_minimal)
+
+    assert dumps(written) == dumps(expected)
+    assert unknown_keys(written) == case["unknown_keys"]
 
 
 def _quarters_manifest(measure_map: list[dict[str, Any]]) -> dict[str, Any]:
-    """Return a valid manifest carrying the given row list."""
-    result = _manifest(ContinuousLogicalTimeline(length=Fraction(8), unit="quarters"))
-    result["timeline"]["measure_map"] = measure_map
+    """Return a valid manifest whose one root carries the given row list."""
+    result = ContinuousLogicalTimeline(length=Fraction(8), unit="quarters").to_dict()
+    result["timelines"][0]["measure_map"] = measure_map
     return result
 
 
@@ -457,35 +550,167 @@ def test_row_rules_beyond_the_schema_are_the_library_s(
     """The schema cannot express these rules; the library reader refuses them."""
     value = _quarters_manifest(rows)
     validate(value)
-    manifest = value["timeline"]
     with pytest.raises(ValueError, match=message):
-        Timeline.from_dict(manifest)
+        Timeline.from_dict(value)
+
+
+def _with_length(timeline: Timeline, length: Any) -> dict[str, Any]:
+    """Return the timeline's manifest with its length replaced by *length*."""
+    value = timeline.to_dict()
+    value["timelines"][0]["length"] = length
+    return value
+
+
+def _length_read(value: dict[str, Any]) -> Any:
+    """Return the length the library writes after reading *value*."""
+    return Timeline.from_dict(value).to_dict()["timelines"][0]["length"]
 
 
 def test_both_readers_agree_on_integral_json_numbers() -> None:
     """JSON writes 480.0 as 480; both readers take it as the integer it is."""
-    ticks = _manifest(DiscreteLogicalTimeline(length=960, unit="ticks"))
-    manifest = ticks["timeline"]
-    manifest["length"]["value"] = 480.0
-    validate(ticks)
-    restored = Timeline.from_dict(manifest).to_dict()["length"]
-    assert restored == {"unit": "ticks", "number_type": "int", "value": 480}
-    assert type(restored["value"]) is int
-    manifest["length"]["value"] = 480.5
-    with pytest.raises(SchemaValidationError):
-        validate(ticks)
-    with pytest.raises(ValueError, match="does not match declared number_type 'int'"):
-        Timeline.from_dict(manifest)
-    manifest["length"]["value"] = "480"
-    with pytest.raises(ValueError, match="invalid coordinate value for key 'value'"):
-        Timeline.from_dict(manifest)
-    seconds = _manifest(ContinuousPhysicalTimeline(length=4.0, unit="seconds"))
-    manifest = seconds["timeline"]
-    manifest["length"]["value"] = 2
-    validate(seconds)
-    restored = Timeline.from_dict(manifest).to_dict()["length"]
-    assert restored == {"unit": "seconds", "number_type": "float", "value": 2.0}
-    assert type(restored["value"]) is float
+    ticks = DiscreteLogicalTimeline(length=960, unit="ticks", uid="ticks")
+    value = _with_length(ticks, 480.0)
+    validate(value)
+    restored = _length_read(value)
+    assert restored == 480
+    assert type(restored) is int
+
+    seconds = ContinuousPhysicalTimeline(length=4.0, unit="seconds", uid="seconds")
+    value = _with_length(seconds, 2)
+    validate(value)
+    restored = _length_read(value)
+    assert restored == 2.0
+    assert type(restored) is float
+
+
+@pytest.mark.parametrize(
+    ("length", "message"),
+    [
+        (480.5, "length 480.5 of 'ticks' is a float on an int axis: write an int"),
+        (
+            [480, 1],
+            "length [480, 1] of 'ticks' is a fraction on an int axis: write 480",
+        ),
+    ],
+)
+def test_both_readers_refuse_a_representation_alike(length: Any, message: str) -> None:
+    """A value represented otherwise than its axis selects is refused by both alike."""
+    value = _with_length(
+        DiscreteLogicalTimeline(length=960, unit="ticks", uid="ticks"), length
+    )
+    with pytest.raises(SchemaValidationError) as refused:
+        validate(value)
+    assert refused.value.path == ("timelines", 0, "length")
+    assert refused.value.message == message
+    with pytest.raises(ValueError) as library:
+        Timeline.from_dict(value)
+    assert str(library.value) == message
+
+
+def test_both_readers_refuse_an_integer_no_double_holds() -> None:
+    """2**53 + 1 on a float axis is no float: both readers refuse it alike."""
+    value = _with_length(
+        ContinuousPhysicalTimeline(length=4.0, unit="seconds", uid="take"),
+        9007199254740993,
+    )
+    message = (
+        "length 9007199254740993 of 'take' is an int on a float axis: write a float"
+    )
+    with pytest.raises(SchemaValidationError) as refused:
+        validate(value)
+    assert refused.value.message == message
+    with pytest.raises(ValueError) as library:
+        Timeline.from_dict(value)
+    assert str(library.value) == message
+
+
+def _beyond(
+    unit: str, length: Any, children: list[dict[str, Any]], **keys: Any
+) -> dict[str, Any]:
+    """A manifest of one root holding *children*."""
+    return {
+        "timeskeleton": "0.7.0",
+        "timelines": [
+            {"id": "r", "unit": unit, "length": length, "children": children, **keys}
+        ],
+    }
+
+
+@pytest.mark.parametrize(
+    ("value", "path", "message"),
+    [
+        (
+            _beyond(
+                "ticks", 10, [{"id": "c", "unit": "ticks", "offset": 8, "length": 4}]
+            ),
+            ("timelines", 0, "children", 0, "length"),
+            "child 'c' ends at 12, beyond the length 10 of its parent 'r'",
+        ),
+        (
+            _beyond(
+                "seconds",
+                10,
+                [{"id": "c", "unit": "seconds", "offset": 8, "length": 4}],
+            ),
+            ("timelines", 0, "children", 0, "length"),
+            "child 'c' ends at 12.0, beyond the length 10 of its parent 'r'",
+        ),
+        (
+            _beyond(
+                "quarters",
+                [10, 3],
+                [{"id": "c", "unit": "quarters", "offset": [1, 3], "length": [10, 3]}],
+            ),
+            ("timelines", 0, "children", 0, "length"),
+            "child 'c' ends at [11, 3], beyond the length [10, 3] of its parent 'r'",
+        ),
+        (
+            _beyond(
+                "seconds",
+                60.0,
+                [{"id": "c", "unit": "seconds", "offset": 75.0, "length": None}],
+            ),
+            ("timelines", 0, "children", 0, "offset"),
+            "offset 75.0 of 'c' is beyond the length 60.0 of its parent 'r'",
+        ),
+        (
+            _beyond(
+                "seconds",
+                60.0,
+                [
+                    {"id": "a", "unit": "seconds", "offset": 0.0, "length": None},
+                    {"id": "b", "unit": "seconds", "offset": 61.0, "length": 1.0},
+                ],
+                is_segment_line=True,
+            ),
+            ("timelines", 0, "children", 0, "length"),
+            "child 'a' ends at 61.0, beyond the length 60.0 of its parent 'r'",
+        ),
+    ],
+    ids=["int", "int_on_float", "fraction", "offset", "unknown_segment"],
+)
+def test_both_readers_refuse_a_child_beyond_its_parent_alike(
+    value: dict[str, Any], path: tuple[Any, ...], message: str
+) -> None:
+    """A child beyond its parent's known length is refused in the same words."""
+    with pytest.raises(SchemaValidationError) as refused:
+        validate(value)
+    assert (refused.value.path, refused.value.message) == (path, message)
+    with pytest.raises(ValueError) as library:
+        Timeline.from_dict(value)
+    assert str(library.value) == message
+
+
+def test_both_readers_refuse_a_string_length() -> None:
+    """A length that is no number is refused by both readers."""
+    value = _with_length(
+        DiscreteLogicalTimeline(length=960, unit="ticks", uid="ticks"), "480"
+    )
+    with pytest.raises(SchemaValidationError) as refused:
+        validate(value)
+    assert refused.value.path == ("timelines", 0, "length")
+    with pytest.raises(ValueError, match="^length \"480\" of 'ticks' is not a number$"):
+        Timeline.from_dict(value)
 
 
 def test_int64_boundary() -> None:
@@ -495,12 +720,9 @@ def test_int64_boundary() -> None:
         number_to_json(2**63)
     assert number_from_json(9007199254740993) == 9007199254740993
     timeline = DiscreteLogicalTimeline(length=9007199254740993, unit="ticks")
-    assert timeline.to_dict()["length"] == {
-        "unit": "ticks",
-        "number_type": "int",
-        "value": 9007199254740993,
-    }
-    validate(_manifest(timeline))
+    value = timeline.to_dict()
+    assert value["timelines"][0]["length"] == 9007199254740993
+    validate(value)
 
 
 def test_library_never_imports_timeskeleton() -> None:

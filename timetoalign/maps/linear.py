@@ -156,9 +156,9 @@ class LinearMap(ConversionMap[CoordinateValue]):
             target_unit=other._target_unit,
         )
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
         """Serialize to dictionary."""
-        d = super().to_dict()
+        d = super().to_dict(minimal=minimal)
         d["scalar"] = number_to_json(self._scalar)
         d["offset"] = number_to_json(self._offset)
         return d
@@ -263,9 +263,9 @@ class ScalarMap(ConversionMap[CoordinateValue]):
             target_unit=self._source_unit,
         )
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
         """Serialize to dictionary."""
-        d = super().to_dict()
+        d = super().to_dict(minimal=minimal)
         d["scalar"] = number_to_json(self._scalar)
         return d
 
@@ -364,9 +364,9 @@ class ShiftMap(ConversionMap[CoordinateValue]):
             target_unit=self._source_unit,
         )
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
         """Serialize to dictionary."""
-        d = super().to_dict()
+        d = super().to_dict(minimal=minimal)
         d["offset"] = number_to_json(self._offset)
         return d
 

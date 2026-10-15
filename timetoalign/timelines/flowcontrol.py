@@ -30,7 +30,7 @@ Common music notation mappings:
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from fractions import Fraction
@@ -38,13 +38,18 @@ from typing import Any, ClassVar
 
 from timetoalign.core import Coordinate, IdCoordinate, NumberType, TimeUnit
 from timetoalign.core.enums import ActivationCondition, FlowControlElement
-from timetoalign.core.ids import _admit_id, _IdentifiedElement
-from timetoalign.core.retrieval import (
-    canonical_order,
-    coordinate_from_dict,
-    coordinate_to_dict,
-)
+from timetoalign.core.ids import _admit_id, _IdentifiedElement, _OpenObject
 from timetoalign.core.time import express_scalar_as
+
+from .manifest import (
+    axis_value_from_json,
+    axis_value_to_json,
+    read_id,
+    read_list,
+    read_meta,
+    read_name,
+    require_object,
+)
 
 module_logger = logging.getLogger(__name__)
 
@@ -101,6 +106,24 @@ class Break(_IdentifiedElement):
     """
 
     _id_prefix: ClassVar[str] = "break"
+    _dict_keys: ClassVar[tuple[str, ...]] = (
+        "id",
+        "coordinate",
+        "control_type",
+        "condition",
+        "repeat_count",
+        "label",
+        "name",
+        "meta",
+    )
+    _dict_defaults: ClassVar[Mapping[str, Any]] = {
+        "control_type": FlowControlElement.section_break.value,
+        "condition": ActivationCondition.always.value,
+        "repeat_count": 1,
+        "label": None,
+        "name": None,
+        "meta": {},
+    }
 
     coordinate: Coordinate
     control_type: FlowControlElement = FlowControlElement.section_break
@@ -111,18 +134,46 @@ class Break(_IdentifiedElement):
     meta: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> Break:
-        """Restore a break from its dictionary representation."""
-        return cls(
-            id=data["id"],
-            coordinate=coordinate_from_dict(data["coordinate"]),
-            control_type=FlowControlElement(data["control_type"]),
-            condition=ActivationCondition(data["condition"]),
-            repeat_count=data["repeat_count"],
-            label=data.get("label"),
-            name=data.get("name"),
-            meta=dict(data.get("meta", {})),
+    def from_dict(
+        cls,
+        data: dict[str, Any],
+        *,
+        unit: TimeUnit,
+        number_type: NumberType,
+    ) -> Break:
+        """Restore a break from its object, ``coordinate`` a bare axis value.
+
+        Every key but ``id`` and ``coordinate`` may be left out and reads as
+        its default; keys the library does not know are kept and written
+        back. *unit* and *number_type* describe the timeline's axis.
+
+        Raises:
+            ValueError: If the object is malformed or the coordinate is
+                represented otherwise than the axis selects.
+        """
+        require_object(data, "a break", ("id", "coordinate"))
+        break_id = read_id(data["id"], "a break")
+        what = f"break {break_id!r}"
+        brk = cls(
+            id=break_id,
+            coordinate=axis_value_from_json(
+                data["coordinate"],
+                key="coordinate",
+                owner=break_id,
+                unit=unit,
+                number_type=number_type,
+            ),
+            control_type=_read_enum(
+                data, "control_type", FlowControlElement, cls, what
+            ),
+            condition=_read_enum(data, "condition", ActivationCondition, cls, what),
+            repeat_count=_read_repeat_count(data, what),
+            label=_read_label(data, what),
+            name=read_name(data, what),
+            meta=read_meta(data, what),
         )
+        brk._keep_unknown_keys(data)
+        return brk
 
     def __post_init__(self) -> None:
         """Mint or validate the id, then validate the break configuration."""
@@ -163,18 +214,25 @@ class Break(_IdentifiedElement):
             return after_dc_ds
         return False
 
-    def to_dict(self) -> dict[str, Any]:
-        """Return this break as a JSON-safe dictionary."""
-        return {
-            "id": self.id,
-            "coordinate": coordinate_to_dict(self.coordinate),
-            "control_type": self.control_type.value,
-            "condition": self.condition.value,
-            "repeat_count": self.repeat_count,
-            "label": self.label,
-            "name": self.name,
-            "meta": self.meta,
-        }
+    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
+        """Return this break as its JSON object, the coordinate a bare value.
+
+        Args:
+            minimal: Leave out every key at its default.
+        """
+        return self._dict_form(
+            {
+                "id": self.id,
+                "coordinate": axis_value_to_json(self.coordinate),
+                "control_type": self.control_type.value,
+                "condition": self.condition.value,
+                "repeat_count": self.repeat_count,
+                "label": self.label,
+                "name": self.name,
+                "meta": deepcopy(self.meta),
+            },
+            minimal=minimal,
+        )
 
     def __repr__(self) -> str:
         type_str = self.control_type.name
@@ -242,6 +300,25 @@ class Jump(_IdentifiedElement):
     """
 
     _id_prefix: ClassVar[str] = "jump"
+    _dict_keys: ClassVar[tuple[str, ...]] = (
+        "id",
+        "from_coordinate",
+        "to_coordinate",
+        "control_type",
+        "condition",
+        "repeat_count",
+        "target",
+        "label",
+        "meta",
+    )
+    _dict_defaults: ClassVar[Mapping[str, Any]] = {
+        "control_type": FlowControlElement.repeat_end.value,
+        "condition": ActivationCondition.first_n.value,
+        "repeat_count": 1,
+        "target": None,
+        "label": None,
+        "meta": {},
+    }
 
     from_coordinate: Coordinate
     to_coordinate: Coordinate
@@ -253,19 +330,50 @@ class Jump(_IdentifiedElement):
     meta: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> Jump:
-        """Restore a jump from its dictionary representation."""
-        return cls(
-            id=data["id"],
-            from_coordinate=coordinate_from_dict(data["from_coordinate"]),
-            to_coordinate=coordinate_from_dict(data["to_coordinate"]),
-            control_type=FlowControlElement(data["control_type"]),
-            condition=ActivationCondition(data["condition"]),
-            repeat_count=data["repeat_count"],
-            target=data.get("target"),
-            label=data.get("label"),
-            meta=dict(data.get("meta", {})),
+    def from_dict(
+        cls,
+        data: dict[str, Any],
+        *,
+        unit: TimeUnit,
+        number_type: NumberType,
+    ) -> Jump:
+        """Restore a jump from its object, its coordinates bare axis values.
+
+        Every key but ``id``, ``from_coordinate`` and ``to_coordinate`` may
+        be left out and reads as its default; keys the library does not know
+        are kept and written back. *unit* and *number_type* describe the
+        timeline's axis.
+
+        Raises:
+            ValueError: If the object is malformed or a coordinate is
+                represented otherwise than the axis selects.
+        """
+        require_object(data, "a jump", ("id", "from_coordinate", "to_coordinate"))
+        jump_id = read_id(data["id"], "a jump")
+        what = f"jump {jump_id!r}"
+        coordinates = {
+            key: axis_value_from_json(
+                data[key], key=key, owner=jump_id, unit=unit, number_type=number_type
+            )
+            for key in ("from_coordinate", "to_coordinate")
+        }
+        target = data.get("target")
+        if target is not None and not isinstance(target, str):
+            raise ValueError(f"{what} has a non-string target {target!r}")
+        jump = cls(
+            id=jump_id,
+            control_type=_read_enum(
+                data, "control_type", FlowControlElement, cls, what
+            ),
+            condition=_read_enum(data, "condition", ActivationCondition, cls, what),
+            repeat_count=_read_repeat_count(data, what),
+            target=target,
+            label=_read_label(data, what),
+            meta=read_meta(data, what),
+            **coordinates,
         )
+        jump._keep_unknown_keys(data)
+        return jump
 
     def __post_init__(self) -> None:
         """Mint or validate the id, then validate the jump configuration."""
@@ -342,19 +450,26 @@ class Jump(_IdentifiedElement):
             return float("inf")  # type: ignore
         return 0
 
-    def to_dict(self) -> dict[str, Any]:
-        """Return this jump as a JSON-safe dictionary."""
-        return {
-            "id": self.id,
-            "from_coordinate": coordinate_to_dict(self.from_coordinate),
-            "to_coordinate": coordinate_to_dict(self.to_coordinate),
-            "control_type": self.control_type.value,
-            "condition": self.condition.value,
-            "repeat_count": self.repeat_count,
-            "target": self.target,
-            "label": self.label,
-            "meta": self.meta,
-        }
+    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
+        """Return this jump as its JSON object, the coordinates bare values.
+
+        Args:
+            minimal: Leave out every key at its default.
+        """
+        return self._dict_form(
+            {
+                "id": self.id,
+                "from_coordinate": axis_value_to_json(self.from_coordinate),
+                "to_coordinate": axis_value_to_json(self.to_coordinate),
+                "control_type": self.control_type.value,
+                "condition": self.condition.value,
+                "repeat_count": self.repeat_count,
+                "target": self.target,
+                "label": self.label,
+                "meta": deepcopy(self.meta),
+            },
+            minimal=minimal,
+        )
 
     def __repr__(self) -> str:
         type_str = self.control_type.name
@@ -388,31 +503,65 @@ class Marker(_IdentifiedElement):
     """
 
     _id_prefix: ClassVar[str] = "marker"
+    _dict_keys: ClassVar[tuple[str, ...]] = ("id", "name", "coordinate")
+    _dict_defaults: ClassVar[Mapping[str, Any]] = {"name": None}
 
     coordinate: Coordinate
     name: str | None = None
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> Marker:
-        """Restore a marker from its dictionary representation."""
-        return cls(
-            id=data["id"],
-            name=data.get("name"),
-            coordinate=coordinate_from_dict(data["coordinate"]),
+    def from_dict(
+        cls,
+        data: dict[str, Any],
+        *,
+        unit: TimeUnit,
+        number_type: NumberType,
+    ) -> Marker:
+        """Restore a marker from its object, ``coordinate`` a bare axis value.
+
+        ``name`` may be left out; keys the library does not know are kept
+        and written back. *unit* and *number_type* describe the timeline's
+        axis.
+
+        Raises:
+            ValueError: If the object is malformed or the coordinate is
+                represented otherwise than the axis selects.
+        """
+        require_object(data, "a marker", ("id", "coordinate"))
+        marker_id = read_id(data["id"], "a marker")
+        marker = cls(
+            id=marker_id,
+            name=read_name(data, f"marker {marker_id!r}"),
+            coordinate=axis_value_from_json(
+                data["coordinate"],
+                key="coordinate",
+                owner=marker_id,
+                unit=unit,
+                number_type=number_type,
+            ),
         )
+        marker._keep_unknown_keys(data)
+        return marker
 
     @property
     def position(self) -> float | Fraction:
         """The coordinate value of the marker."""
         return self.coordinate.value
 
-    def to_dict(self) -> dict[str, Any]:
-        """Return this marker as a JSON-safe dictionary."""
-        return {
-            "id": self.id,
-            "name": self.name,
-            "coordinate": coordinate_to_dict(self.coordinate),
-        }
+    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
+        """Return this marker as its JSON object, the coordinate a bare value.
+
+        Args:
+            minimal: Leave out ``name`` at its default.
+        """
+        return self._dict_form(
+            {
+                "id": self.id,
+                "name": self.name,
+                "coordinate": axis_value_to_json(self.coordinate),
+            },
+            minimal=minimal,
+        )
 
     def __repr__(self) -> str:
         label = (
@@ -426,13 +575,52 @@ class Marker(_IdentifiedElement):
 # region FlowControlRegistry
 
 
+def _read_enum(
+    data: Mapping[str, Any], key: str, enum: type[Any], element: type[Any], what: str
+) -> Any:
+    """Read an optional enum member by value, its default when absent.
+
+    Raises:
+        ValueError: If the value names no member.
+    """
+    value = data.get(key, element._dict_defaults[key])
+    try:
+        return enum(value)
+    except (TypeError, ValueError) as error:
+        raise ValueError(f"{what} has an unknown {key} {value!r}") from error
+
+
+def _read_repeat_count(data: Mapping[str, Any], what: str) -> int:
+    """Read an optional ``repeat_count``, 1 when absent.
+
+    Raises:
+        ValueError: If the value is not an integer.
+    """
+    value = data.get("repeat_count", 1)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{what} has a non-integer repeat_count {value!r}")
+    return value
+
+
+def _read_label(data: Mapping[str, Any], what: str) -> str | None:
+    """Read an optional ``label``, null when absent.
+
+    Raises:
+        ValueError: If the label is neither a string nor null.
+    """
+    label = data.get("label")
+    if label is not None and not isinstance(label, str):
+        raise ValueError(f"{what} has a non-string label {label!r}")
+    return label
+
+
 def _ordered(elements: list[Any]) -> list[Any]:
     """Sort flow-control elements by position, keeping insertion order on ties."""
     return sorted(elements, key=lambda element: element.position)
 
 
 @dataclass
-class FlowControlRegistry:
+class FlowControlRegistry(_OpenObject):
     """Registry of all flow control events for a timeline.
 
     This class manages the collection of Breaks, Jumps and Markers for a
@@ -458,6 +646,13 @@ class FlowControlRegistry:
         'marker_2'
     """
 
+    _dict_keys: ClassVar[tuple[str, ...]] = ("breaks", "jumps", "markers")
+    _dict_defaults: ClassVar[Mapping[str, Any]] = {
+        "breaks": [],
+        "jumps": [],
+        "markers": [],
+    }
+
     breaks: list[Break] = field(default_factory=list)
     jumps: list[Jump] = field(default_factory=list)
     markers: list[Marker] = field(default_factory=list)
@@ -473,21 +668,42 @@ class FlowControlRegistry:
         cls,
         data: dict[str, Any],
         *,
-        unit: TimeUnit | str | None = None,
+        unit: TimeUnit | str,
         number_type: NumberType | str | None = None,
     ) -> FlowControlRegistry:
-        """Restore a registry, validating through its public add methods."""
-        resolved_unit = TimeUnit(unit) if isinstance(unit, str) else unit
+        """Restore a registry bound to a timeline's axis from its object.
+
+        The coordinates are bare values on the axis that *unit* and
+        *number_type* (the unit's own when None) describe; ``breaks``,
+        ``jumps`` and ``markers`` may each be left out. Every element is
+        added through the public add methods, markers before jumps. Keys the
+        library does not know are kept and written back.
+
+        Args:
+            data: The ``flow_control`` object.
+            unit: The axis's unit.
+            number_type: The axis's number type, or None for the unit's own.
+
+        Raises:
+            ValueError: If the object is malformed or a coordinate is
+                represented otherwise than the axis selects.
+        """
+        resolved_unit = TimeUnit(unit)
         resolved_number_type = (
-            NumberType(number_type) if isinstance(number_type, str) else number_type
+            resolved_unit.default_number_type
+            if number_type is None
+            else NumberType(number_type)
         )
+        require_object(data, "a flow_control")
+        axis = {"unit": resolved_unit, "number_type": resolved_number_type}
         registry = cls(unit=resolved_unit, number_type=resolved_number_type)
-        for brk in data.get("breaks", []):
-            registry.add_break(Break.from_dict(brk))
-        for marker in data.get("markers", []):
-            registry.add_marker(Marker.from_dict(marker))
-        for jump in data.get("jumps", []):
-            registry.add_jump(Jump.from_dict(jump))
+        for brk in read_list(data, "breaks", "the flow_control"):
+            registry.add_break(Break.from_dict(brk, **axis))
+        for marker in read_list(data, "markers", "the flow_control"):
+            registry.add_marker(Marker.from_dict(marker, **axis))
+        for jump in read_list(data, "jumps", "the flow_control"):
+            registry.add_jump(Jump.from_dict(jump, **axis))
+        registry._keep_unknown_keys(data)
         return registry
 
     def __post_init__(self) -> None:
@@ -794,33 +1010,46 @@ class FlowControlRegistry:
         finally:
             self._admit = owner
 
-    def to_dict(self) -> dict[str, Any]:
-        """Return all control events as a JSON-safe dictionary.
+    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
+        """Return all control events as the ``flow_control`` object.
 
         The entries are written in canonical order, whatever order they were
         added in: ``breaks`` by coordinate, ``jumps`` by from coordinate and
-        then to coordinate, ``markers`` by coordinate, each then by id
-        (:func:`~timetoalign.core.retrieval.canonical_order`). The registry's
-        own lists are not reordered.
+        then to coordinate, ``markers`` by coordinate, each then by id,
+        values compared exactly and ids by Unicode code point. The
+        registry's own lists are not reordered.
+
+        Args:
+            minimal: Leave out every key at its default, in the elements too.
         """
-        return {
-            "breaks": canonical_order(
-                (brk.to_dict() for brk in self.breaks),
-                lambda entry: (entry["coordinate"], entry["id"]),
-            ),
-            "jumps": canonical_order(
-                (jump.to_dict() for jump in self.jumps),
-                lambda entry: (
-                    entry["from_coordinate"],
-                    entry["to_coordinate"],
-                    entry["id"],
-                ),
-            ),
-            "markers": canonical_order(
-                (marker.to_dict() for marker in self.markers),
-                lambda entry: (entry["coordinate"], entry["id"]),
-            ),
-        }
+        return self._dict_form(
+            {
+                "breaks": [
+                    brk.to_dict(minimal=minimal)
+                    for brk in sorted(
+                        self.breaks, key=lambda brk: (brk.position, brk.id)
+                    )
+                ],
+                "jumps": [
+                    jump.to_dict(minimal=minimal)
+                    for jump in sorted(
+                        self.jumps,
+                        key=lambda jump: (
+                            jump.from_position,
+                            jump.to_position,
+                            jump.id,
+                        ),
+                    )
+                ],
+                "markers": [
+                    marker.to_dict(minimal=minimal)
+                    for marker in sorted(
+                        self.markers, key=lambda marker: (marker.position, marker.id)
+                    )
+                ],
+            },
+            minimal=minimal,
+        )
 
     def __repr__(self) -> str:
         return (

@@ -56,7 +56,7 @@ AXES = {
 
 # Reference insertion order of every collection; none is canonical.
 CHILDREN = [("z", "lo"), ("m", "lo"), ("b", "mid"), ("a", "hi")]
-MAPS = ["shift", "scale", "label"]
+MAPS = ["shift", "scale", "constant"]
 REGIONS = [
     ("verse", "lo", "hi"),
     ("intro", "lo", "mid"),
@@ -87,7 +87,7 @@ COLLECTIONS = {
 
 # The canonical order, spelled out.
 CANONICAL_CHILDREN = ["m", "z", "b", "a"]  # lo (m before z), mid, hi
-CANONICAL_MAPS = ["label", "scale", "shift"]
+CANONICAL_MAPS = ["constant", "scale", "shift"]
 CANONICAL_REGIONS = ["intro", "alpha", "verse", "coda"]  # (lo,mid), (lo,hi)x2, (mid,hi)
 # Ties fall back to the id; each element's id is its kind and label.
 # Both breaks at mid: "break-fine" < "break-section".
@@ -146,6 +146,11 @@ def _text(payload: dict[str, Any]) -> str:
     return json.dumps(payload)
 
 
+def _root(payload: dict[str, Any]) -> dict[str, Any]:
+    """The timeline object of a one-root manifest."""
+    return payload["timelines"][0]
+
+
 def _insertion_orders() -> list[tuple[str, dict[str, list[Any]]]]:
     """Every permutation of each collection, the others in reference order."""
     cases = []
@@ -171,8 +176,8 @@ def test_to_dict_is_invariant_under_every_insertion_order(axis_name: str) -> Non
 
 @pytest.mark.parametrize("axis_name", AXES)
 def test_to_dict_writes_the_canonical_order(axis_name: str) -> None:
-    payload = _build(AXES[axis_name], COLLECTIONS).to_dict()
-    assert list(payload["children"]) == CANONICAL_CHILDREN
+    payload = _root(_build(AXES[axis_name], COLLECTIONS).to_dict())
+    assert [entry["id"] for entry in payload["children"]] == CANONICAL_CHILDREN
     assert [entry["id"] for entry in payload["conversion_maps"]] == CANONICAL_MAPS
     assert [entry["id"] for entry in payload["regions"]] == CANONICAL_REGIONS
     flow = payload["flow_control"]
@@ -184,8 +189,8 @@ def test_to_dict_writes_the_canonical_order(axis_name: str) -> None:
 def test_offsets_compare_by_value_not_by_their_json_spelling() -> None:
     offsets = {
         name: [
-            entry["offset"]["value"]
-            for entry in _build(axis, COLLECTIONS).to_dict()["children"].values()
+            entry["offset"]
+            for entry in _root(_build(axis, COLLECTIONS).to_dict())["children"]
         ]
         for name, axis in AXES.items()
     }
@@ -198,11 +203,11 @@ def test_offsets_compare_by_value_not_by_their_json_spelling() -> None:
 
 def _reordered(payload: dict[str, Any], name: str, order: tuple[int, ...]) -> dict:
     """Return a copy of *payload* with one collection rearranged by *order*."""
-    result = copy.deepcopy(payload)
+    manifest = copy.deepcopy(payload)
+    result = _root(manifest)
     flow = result["flow_control"]
     if name == "children":
-        items = list(result["children"].items())
-        result["children"] = dict(items[index] for index in order)
+        result["children"] = [result["children"][index] for index in order]
     elif name == "maps":
         maps = result["conversion_maps"]
         result["conversion_maps"] = [maps[index] for index in order]
@@ -210,7 +215,7 @@ def _reordered(payload: dict[str, Any], name: str, order: tuple[int, ...]) -> di
         result["regions"] = [result["regions"][index] for index in order]
     else:
         flow[name] = [flow[name][index] for index in order]
-    return result
+    return manifest
 
 
 @pytest.mark.parametrize("axis_name", AXES)

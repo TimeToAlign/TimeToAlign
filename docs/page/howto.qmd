@@ -55,9 +55,10 @@ documentation:
 
 - [How to Align a Piano Roll (SUPRA)](howto/how02_supra_piano_roll.ipynb) ---
   End-to-end alignment: IIIF images, ATON, MIDI, Audio, and Score.
-- [How to Save and Load Groups and Bundles](howto/how02_group_and_bundle_files.ipynb) ---
-  `to_dict` and `from_dict` for TimelineGroup and AlignmentBundle, child
-  members, display order, styling kept unread, and JSON files with `meta`.
+- [How to Save and Load Timelines, Groups and Bundles](howto/how02_group_and_bundle_files.ipynb) ---
+  TimeSkeleton manifests with `to_dict` and `from_dict`: complete and minimal
+  form, selecting one timeline or group, unknown keys kept, and a timeline of
+  unknown length.
 
 ### AlignmentBundles
 

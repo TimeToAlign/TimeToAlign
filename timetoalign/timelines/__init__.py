@@ -71,7 +71,7 @@ Public API:
 
 from __future__ import annotations
 
-from .base import Timeline
+from .base import Timeline, UnknownLengthError
 from .beatgrid import BeatGrid, BeatGridSegment, GridBeat
 from .factory import create_timeline
 from .flow import (
@@ -129,6 +129,7 @@ __all__ = [
     # Base
     "Timeline",
     "TimelineGroup",
+    "UnknownLengthError",
     # Factory
     "create_timeline",
     "get_timeline_class",

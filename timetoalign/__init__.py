@@ -219,6 +219,7 @@ _DEFERRED_EXPORTS = {
     "SegmentNameGenerator": ("timetoalign.timelines", "SegmentNameGenerator"),
     "Timeline": ("timetoalign.timelines", "Timeline"),
     "TimelineGroup": ("timetoalign.timelines", "TimelineGroup"),
+    "UnknownLengthError": ("timetoalign.timelines", "UnknownLengthError"),
     # Alignment layer
     "Agent": ("timetoalign.alignment", "Agent"),
     "AlignmentAnchor": ("timetoalign.alignment", "AlignmentAnchor"),

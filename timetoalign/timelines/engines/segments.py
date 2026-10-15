@@ -321,11 +321,20 @@ class SegmentsMixin:
         Returns:
             A new SegmentLine.
 
+        Raises:
+            UnknownLengthError: If ``include_after_last`` is set and the
+                length is unknown, so that the last segment has no end.
+
         Examples:
             >>> sl = tl.create_segment_line_by_splitting(
             ...     {"breaks": "section"}, prefix="movement"
             ... )
         """
+        end = (
+            float(self._require_length("split up to the end").value)
+            if include_after_last
+            else None
+        )
         match_fn = self._resolve_predicate(predicate)
 
         split_coords: list[float] = []
@@ -345,8 +354,8 @@ class SegmentsMixin:
         if include_before_first:
             boundaries.append(float(self.origin.value))
         boundaries.extend(split_coords)
-        if include_after_last:
-            boundaries.append(float(self.length.value))
+        if end is not None:
+            boundaries.append(end)
 
         boundaries = sorted(set(boundaries))
 
@@ -438,7 +447,7 @@ class SegmentsMixin:
             id=id,
             resolve=self.get_region,
             at=at,
-            source_length=self.length.value,
+            source_length=None if self.length is None else self.length.value,
             target_length=(
                 None
                 if target_length is None

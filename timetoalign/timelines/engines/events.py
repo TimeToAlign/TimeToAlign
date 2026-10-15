@@ -51,16 +51,35 @@ class EventsMixin:
     ) -> None:
         """Ensure timeline is long enough, expanding if permitted.
 
+        A timeline of unknown length has no length to enforce: positions on it
+        are not bounded above, and adding content leaves the length unknown,
+        except that a segment of unknown length ends at its successor's
+        offset (the last one at the line's length). A timeline that expands
+        must still fit its parent, which never grows with it.
+
         Args:
             required_end: The coordinate that must be within bounds.
             allow_expansion: If True, override lock to expand.
 
         Raises:
-            ValueError: If expansion is needed but not permitted.
+            ValueError: If expansion is needed but not permitted, the content
+                would pass where its parent ends a segment of unknown length,
+                or the parent cannot contain the new end.
         """
         required = (
             required_end.value if isinstance(required_end, Coordinate) else required_end
         )
+
+        if self._length is None:
+            bound = self._extent
+            if bound is not None and required > bound:
+                raise ValueError(
+                    f"Adding content ending at {_format_coordinate_value(required)} "
+                    f"to timeline '{self._id}' passes "
+                    f"{_format_coordinate_value(bound)}, where its parent "
+                    f"'{self._parent.id}' ends it while its length is unknown"
+                )
+            return
 
         if required <= self._length.value:
             return
@@ -74,11 +93,7 @@ class EventsMixin:
                 "Use allow_expansion=True to override."
             )
 
-        # Expand (temporarily unlock if needed)
-        was_locked = self._locked
-        self._locked = False
-        self._length = self._make_coordinate(required)
-        self._locked = was_locked
+        self._set_length(self._make_coordinate(required))
 
     def add_events(
         self,
@@ -456,7 +471,8 @@ class EventsMixin:
                     continue
                 if child_coord.value >= 0:
                     child = self._children[child_id]
-                    if child_coord.value <= child.length.value:
+                    extent = child._extent
+                    if extent is None or child_coord.value <= extent:
                         # Recursively get events in child
                         child_result = child.get_events_at(
                             child_coord.value,

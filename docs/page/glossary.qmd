@@ -78,8 +78,10 @@ to the relevant section of the conceptual model.
 
 **Child**
 :   A {{< glossary Timeline >}} nested within a parent, sharing its
-    measuring unit but defining its own origin. Children are locked upon
-    insertion to prevent side effects from modifications.
+    measuring unit but defining its own origin. `add_child()` locks a child
+    by default, which prevents side effects from modifications. An unlocked
+    child's length may change only within its parent's known length: a
+    parent never grows because a child grew.
     See [Nested timelines](concepts.qmd#nested-timelines).
 
 **ClaimType**
@@ -112,6 +114,16 @@ to the relevant section of the conceptual model.
 
 **Commensurable**
 :   See {{< glossary Commensurability >}}.
+
+**Complete form**
+:   The form in which `to_dict()` writes a
+    {{< glossary "TimeSkeleton manifest" >}} by default: every key the format
+    defines is written, those holding their default value included (`null`,
+    `{}`, `[]`). A key whose default is its absence, such as a manifest's `id`
+    or a root timeline's `offset`, is written only when it has a value. The
+    complete and the {{< glossary "Minimal form" >}} of one object read back to
+    equal objects, and each writes back to itself.
+    See [How to Save and Load Timelines, Groups and Bundles](howto/how02_group_and_bundle_files.ipynb).
 
 **ConcatenationMap**
 :   A {{< glossary MultiMap >}} combining bounded
@@ -304,7 +316,8 @@ to the relevant section of the conceptual model.
 
 **Length**
 :   The distance between a {{< glossary Timeline >}}'s origin and its last
-    {{< glossary Instant >}}.
+    {{< glossary Instant >}}, or `None` when it is not known (see
+    {{< glossary "Unknown length" >}}).
     See [Foundations](concepts.qmd#foundations).
 
 **Locked**
@@ -312,10 +325,14 @@ to the relevant section of the conceptual model.
     {{< glossary Instant >}}s may be added after the last time-point, so its
     length cannot change. Locking governs the coordinate axis only ---
     non-structural annotations such as {{< glossary Region >}}s may still be
-    added to a locked timeline. {{< glossary Child >}} timelines are
-    automatically locked when embedded in a parent; a root timeline is locked
-    with `locked=True` or, after construction, with `lock()`. A lock cannot be
-    lifted.
+    added to a locked timeline. A timeline is locked with `locked=True`, when
+    `add_child()` embeds it as a {{< glossary Child >}} with its default
+    `locked=True`, or after construction with `lock()`; a child read from a
+    manifest keeps the manifest's `locked`. A lock cannot be lifted. A locked
+    timeline's length may still be unknown. Containment does not depend on
+    the lock: a child, locked or not, ends within its parent's known length,
+    and content or a child added into an unlocked timeline grows that
+    timeline only.
     See [Nested timelines](concepts.qmd#nested-timelines).
 
 ## M
@@ -444,6 +461,15 @@ to the relevant section of the conceptual model.
     never the derived maps themselves.
     See [Conversion maps](concepts.qmd#conversion-maps).
 
+**Minimal form**
+:   The form in which `to_dict(minimal=True)` writes a
+    {{< glossary "TimeSkeleton manifest" >}}: every key holding its default
+    value is left out, except a timeline's `length`, which both forms write.
+    Readers supply every default left out, so a minimal manifest can be written
+    by hand; the smallest names the version and one timeline with its `id`,
+    `unit` and `length`.
+    See [How to Save and Load Timelines, Groups and Bundles](howto/how02_group_and_bundle_files.ipynb).
+
 **MpmLoader**
 :   Loader for an MPM-Toolbox project: a sibling `.msm` score, `.mpm` modelled
     performance, and `.mpr` project file (carrying an observed audio-to-score
@@ -527,6 +553,17 @@ to the relevant section of the conceptual model.
     and `PartituraLoader` so downstream code can detect and apply the same
     shift when comparing coordinates across loaders.
 
+**Reach**
+:   The farthest coordinate on a {{< glossary Timeline >}}'s own axis that its
+    content reaches: the ends of its children (a {{< glossary Child >}} of
+    {{< glossary "Unknown length" >}} contributing its offset plus its own
+    reach), {{< glossary Region >}} ends, {{< glossary Break >}} and
+    {{< glossary Marker >}} coordinates, both ends of every
+    {{< glossary Jump >}}, and the end of the measure map. Events are not part
+    of it. A timeline without such content reaches 0. The reach is independent
+    of the length; displays use it as the extent of a timeline of unknown
+    length. Read it as `Timeline.reach`.
+
 **Region**
 :   A part of a {{< glossary Timeline >}} defined by a
     {{< glossary TimeInterval >}}, identified by its
@@ -537,8 +574,8 @@ to the relevant section of the conceptual model.
 
 **Root**
 :   The top-level {{< glossary Timeline >}} in a hierarchy of nested
-    timelines. Only the root timeline can be extended; all descendants are
-    locked.
+    timelines. No parent bounds its length; an unlocked descendant grows
+    only within its parent's known length, never pushing its parent.
     See [Nested timelines](concepts.qmd#nested-timelines).
 
 **RotationMap**
@@ -560,10 +597,14 @@ to the relevant section of the conceptual model.
     {{< glossary Segment >}}s tile its full length. A line is also an instance
     of that segment class. Any timeline can check the structure with
     `is_segment_line()` and adopt enforcement with `as_segment_line()`; a line
-    returns to an unenforced timeline with `to_timeline()`. Use
-    `create_children_from_boundaries()` for boundary-driven tiling. Appending
-    extends an unlocked line, while appending to an embedded, length-locked
-    line raises `RuntimeError`.
+    returns to an unenforced timeline with `to_timeline()`; both return a
+    copy. Use `create_children_from_boundaries()` for boundary-driven tiling.
+    Appending extends an unlocked line, while appending to a locked line
+    raises `RuntimeError`. The segments of a line of known length keep
+    ending at its length: a segment with a successor ends at the successor's
+    offset, the last one at the line's end, and changing a segment's length
+    never moves the line's end. A segment of unknown length ends at its
+    successor's offset, or, the last one, at the line's known length.
     See [Nested timelines](concepts.qmd#nested-timelines).
 
 **StartInstant**
@@ -639,6 +680,21 @@ to the relevant section of the conceptual model.
     needs.
     See [Alignment](concepts.qmd#alignment).
 
+**TimeSkeleton manifest**
+:   The JSON file format in which timelines, groups and bundles are exchanged,
+    one shape for all: the version marker `"timeskeleton"`, an array of root
+    `timelines`, and optionally the manifest's `id`, `name` and `meta`, its
+    `groups` and its `graphical` (display order and styling). A single
+    timeline is a manifest of one root, a group a manifest with one group; a
+    manifest with an `id` or a `name` is named. A value on a timeline's own
+    axis (`length`, a child's `offset`, region bounds, flow-control
+    coordinates) is written bare, in the axis's number type.
+    {{< glossary Timeline >}}, {{< glossary TimelineGroup >}} and
+    {{< glossary AlignmentBundle >}} write one with `to_dict()` and read one
+    with `from_dict()`. The library class `TimeSkeleton` is a different
+    thing: a temporal structure shared by the timelines of one work.
+    See [How to Save and Load Timelines, Groups and Bundles](howto/how02_group_and_bundle_files.ipynb).
+
 **TimeStamp**
 :   A cross-section through a timeline or group at a given coordinate,
     capturing positions in all connected systems plus values converted by
@@ -653,6 +709,31 @@ to the relevant section of the conceptual model.
     `is_interpolated`. A bare number is an explicit
     `format="float"/"int"/"fraction"` request; there is no ambient float view.
     See [Nested timelines](concepts.qmd#nested-timelines).
+
+## U
+
+**Unknown key**
+:   A key of a {{< glossary "TimeSkeleton manifest" >}} that the format does
+    not define, written by another application for its own use. The library
+    keeps every unknown key on the object read from the JSON object it was
+    found in and writes it back in place.
+
+**Unknown length**
+:   A timeline length of `None` (`null` in a manifest), stating that the
+    length is not known. It is a fact, never inferred from content, and any
+    timeline may have it: root, {{< glossary Child >}},
+    {{< glossary Locked >}}, group member or {{< glossary Segment >}}.
+    Positions on such a timeline are not bounded above, unless its parent
+    ends it, as a segment line ends a {{< glossary Segment >}}; an operation
+    that needs the end raises {{< glossary UnknownLengthError >}}. Setting a length
+    to or from `None` is an ordinary edit; `Timeline.is_length_known` tells
+    which case holds, and displays use the {{< glossary Reach >}}.
+
+**UnknownLengthError**
+:   The `ValueError` raised by an operation that needs the end of a timeline
+    whose length is unknown, before it changes anything. Its message names the
+    operation and the timeline; group conversion to or from such a member and
+    appending a child at such a parent's end are examples.
 
 ## W
 

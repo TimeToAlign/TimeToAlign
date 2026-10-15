@@ -45,6 +45,7 @@ Timeline classes for all six domain/modality combinations.
 | [PhysicalTimeline](PhysicalTimeline.qmd#timetoalign.timelines.PhysicalTimeline) | A timeline representing physical/acoustic time. |
 | [GraphicalTimeline](GraphicalTimeline.qmd#timetoalign.timelines.GraphicalTimeline) | A timeline representing graphical/spatial coordinates. |
 | [SegmentLine](SegmentLine.qmd#timetoalign.timelines.SegmentLine) | A timeline whose cached parameterized classes inherit the segment API. |
+| [UnknownLengthError](UnknownLengthError.qmd#timetoalign.timelines.UnknownLengthError) | An operation needs the end of a timeline whose length is unknown. |
 
 ## Beat Grids
 

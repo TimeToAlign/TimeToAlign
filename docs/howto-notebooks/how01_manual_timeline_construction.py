@@ -201,6 +201,12 @@ piece
 
 # %% [markdown]
 # ## Serialisation
+#
+# `to_dict()` writes a TimeSkeleton manifest holding the timeline as its one
+# root. With `events=True`, the timeline's object in `timelines` also carries
+# its event rows under `events`, a key the library reads back but the
+# TimeSkeleton format does not define. Manifests themselves are the subject of
+# [How to Save and Load Timelines, Groups and Bundles](how02_group_and_bundle_files.ipynb).
 
 # %%
 tl = ContinuousPhysicalTimeline(length=10, uid="test")
@@ -212,7 +218,7 @@ tl.add_events(
 )
 
 data = tl.to_dict(events=True)
-{"keys": list(data.keys()), "events": len(data["events"])}
+{"keys": list(data), "events": len(data["timelines"][0]["events"])}
 
 # %%
 restored = ContinuousPhysicalTimeline.from_dict(data)

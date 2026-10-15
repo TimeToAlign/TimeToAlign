@@ -65,9 +65,9 @@ class TicksToQuarters(ScalarMap):
         """Return the inverse map (QuartersToTicks)."""
         return QuartersToTicks(ppq=self._ppq)
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
         """Serialize to dictionary."""
-        d = super().to_dict()
+        d = super().to_dict(minimal=minimal)
         d["ppq"] = self._ppq
         return d
 
@@ -130,9 +130,9 @@ class QuartersToTicks(ScalarMap):
         """Return the inverse map (TicksToQuarters)."""
         return TicksToQuarters(ppq=self._ppq)
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
         """Serialize to dictionary."""
-        d = super().to_dict()
+        d = super().to_dict(minimal=minimal)
         d["ppq"] = self._ppq
         return d
 
@@ -202,9 +202,9 @@ class SamplesToSeconds(ScalarMap):
         """Return the inverse map (SecondsToSamples)."""
         return SecondsToSamples(sample_rate=self._sample_rate)
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
         """Serialize to dictionary."""
-        d = super().to_dict()
+        d = super().to_dict(minimal=minimal)
         d["sample_rate"] = self._sample_rate
         return d
 
@@ -267,9 +267,9 @@ class SecondsToSamples(ScalarMap):
         """Return the inverse map (SamplesToSeconds)."""
         return SamplesToSeconds(sample_rate=self._sample_rate)
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
         """Serialize to dictionary."""
-        d = super().to_dict()
+        d = super().to_dict(minimal=minimal)
         d["sample_rate"] = self._sample_rate
         return d
 

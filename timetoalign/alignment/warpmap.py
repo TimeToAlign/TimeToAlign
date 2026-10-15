@@ -637,12 +637,17 @@ class WarpMap:
         Raises:
             ValueError: If ``source_timeline.id`` does not match
                 ``self.source_timeline_id``.
+            UnknownLengthError: If the length of the source timeline or of
+                any of its descendants is unknown: its extent can be neither
+                checked against the support nor warped.
         """
         if source_timeline.id != self.source_timeline_id:
             raise ValueError(
                 f"source_timeline.id '{source_timeline.id}' does not match "
                 f"WarpMap source '{self.source_timeline_id}'"
             )
+        for _, timeline in source_timeline.iter_children(include_self=True):
+            timeline._require_length("materialise a warped copy")
         source_start = float(source_timeline.origin.value)
         source_end = float(source_timeline.length.value)
         if (

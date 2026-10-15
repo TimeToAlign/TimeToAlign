@@ -1,4 +1,4 @@
-"""The dictionary form of a SegmentLine: plain class plus ``is_segment_line``.
+"""The dictionary form of a SegmentLine: the unit plus ``is_segment_line``.
 
 The strategy is documented in ``tests/timelines/README.md`` ("The dictionary
 form of a SegmentLine").
@@ -16,11 +16,6 @@ from timetoalign.timelines.types import (
     ContinuousLogicalTimeline,
     DiscreteGraphicalTimeline,
 )
-
-
-def _px(value: int) -> dict[str, Any]:
-    """A pixel coordinate dictionary."""
-    return {"unit": "pixels", "number_type": "int", "value": value}
 
 
 def _segment(uid: str, length: int) -> DiscreteGraphicalTimeline:
@@ -49,24 +44,29 @@ def _nested() -> SegmentLine:
     return edition
 
 
-def _manifest(
+def _object(
     timeline_id: str,
     length: int,
     flag: bool,
-    children: dict[str, Any],
+    children: list[dict[str, Any]],
     *,
     locked: bool,
+    offset: int | None = None,
 ) -> dict[str, Any]:
-    """The expected dictionary of one pixel timeline."""
-    return {
+    """The expected timeline object of one pixel timeline."""
+    data: dict[str, Any] = {
         "id": timeline_id,
         "name": None,
-        "class": "DiscreteGraphicalTimeline",
-        "is_segment_line": flag,
         "unit": "pixels",
         "number_type": "int",
-        "length": _px(length),
+    }
+    if offset is not None:
+        data["offset"] = offset
+    return {
+        **data,
+        "length": length,
         "locked": locked,
+        "is_segment_line": flag,
         "meta": {},
         "children": children,
         "conversion_maps": [],
@@ -77,64 +77,68 @@ def _manifest(
     }
 
 
-def _child(offset: int, manifest: dict[str, Any]) -> dict[str, Any]:
-    return {"offset": _px(offset), "timeline": manifest}
+def _manifest(timeline: dict[str, Any]) -> dict[str, Any]:
+    """The complete manifest of one root timeline object."""
+    return {
+        "timeskeleton": "0.7.0",
+        "name": None,
+        "meta": {},
+        "timelines": [timeline],
+        "groups": [],
+    }
+
+
+def _root(data: dict[str, Any]) -> dict[str, Any]:
+    """The root timeline object of a one-root manifest."""
+    return data["timelines"][0]
 
 
 # region Exact dictionaries
 
 
-def test_plain_timeline_writes_its_class_and_false() -> None:
-    """A plain timeline names its own class; the flag is false."""
-    data = ContinuousLogicalTimeline(length=4, uid="score").to_dict()
+def test_plain_timeline_writes_false_and_no_class() -> None:
+    """A plain timeline writes the flag false; no timeline object has a class."""
+    data = _root(ContinuousLogicalTimeline(length=4, uid="score").to_dict())
 
-    assert data["class"] == "ContinuousLogicalTimeline"
+    assert "class" not in data
     assert data["is_segment_line"] is False
 
 
 def test_flat_segment_line_dict_is_exact() -> None:
-    """The segments' class, the flag, and the segments as children."""
+    """The flag, and the segments as children."""
     assert _flat().to_dict() == _manifest(
-        "line",
-        500,
-        True,
-        {
-            "first": _child(0, _manifest("first", 300, False, {}, locked=True)),
-            "second": _child(300, _manifest("second", 200, False, {}, locked=True)),
-        },
-        locked=False,
+        _object(
+            "line",
+            500,
+            True,
+            [
+                _object("first", 300, False, [], locked=True, offset=0),
+                _object("second", 200, False, [], locked=True, offset=300),
+            ],
+            locked=False,
+        )
     )
 
 
 def test_nested_segment_line_dict_is_exact() -> None:
-    """Every line of the nesting names the bottom class and carries the flag."""
-    accolade = lambda uid, length: _manifest(  # noqa: E731
-        uid, length, False, {}, locked=True
+    """Every line of the nesting carries the flag."""
+    accolade = lambda uid, length, offset: _object(  # noqa: E731
+        uid, length, False, [], locked=True, offset=offset
     )
-    page_1 = _manifest(
+    page_1 = _object(
         "page_1",
         250,
         True,
-        {
-            "accolade_1": _child(0, accolade("accolade_1", 100)),
-            "accolade_2": _child(100, accolade("accolade_2", 150)),
-        },
+        [accolade("accolade_1", 100, 0), accolade("accolade_2", 150, 100)],
         locked=True,
+        offset=0,
     )
-    page_2 = _manifest(
-        "page_2",
-        120,
-        True,
-        {"accolade_3": _child(0, accolade("accolade_3", 120))},
-        locked=True,
+    page_2 = _object(
+        "page_2", 120, True, [accolade("accolade_3", 120, 0)], locked=True, offset=250
     )
 
     assert _nested().to_dict() == _manifest(
-        "edition",
-        370,
-        True,
-        {"page_1": _child(0, page_1), "page_2": _child(250, page_2)},
-        locked=False,
+        _object("edition", 370, True, [page_1, page_2], locked=False)
     )
 
 
@@ -165,7 +169,7 @@ def test_round_trip_rebuilds_the_line_type(build: Any, expected_type: type) -> N
 def test_children_out_of_order_rebuild_in_offset_order() -> None:
     """A dictionary listing segments out of order reads as the same line."""
     data = _flat().to_dict()
-    data["children"] = dict(reversed(list(data["children"].items())))
+    _root(data)["children"].reverse()
 
     restored = Timeline.from_dict(data)
 
@@ -184,8 +188,13 @@ def test_segments_rebuild_in_offset_order_not_key_order() -> None:
     for _ in range(11):
         line.append_segment(DiscreteGraphicalTimeline(length=10))
     data = line.to_dict()
-    data["children"] = dict(sorted(data["children"].items()))
-    assert list(data["children"])[:4] == ["dgt_1", "dgt_10", "dgt_11", "dgt_2"]
+    _root(data)["children"].sort(key=lambda child: child["id"])
+    assert [child["id"] for child in _root(data)["children"]][:4] == [
+        "dgt_1",
+        "dgt_10",
+        "dgt_11",
+        "dgt_2",
+    ]
 
     restored = Timeline.from_dict(data)
 
@@ -194,12 +203,11 @@ def test_segments_rebuild_in_offset_order_not_key_order() -> None:
 
 
 def test_empty_parameterized_line_round_trips() -> None:
-    """A line with no segments but a plain segment type names that type."""
+    """A line with no segments rebuilds as a line of its unit's class."""
     line = SegmentLine[ContinuousLogicalTimeline](length=0, uid="empty")
     data = line.to_dict()
 
-    assert data["class"] == "ContinuousLogicalTimeline"
-    assert data["is_segment_line"] is True
+    assert _root(data)["is_segment_line"] is True
     assert type(Timeline.from_dict(data)) is SegmentLine[ContinuousLogicalTimeline]
 
 
@@ -211,54 +219,43 @@ def test_empty_parameterized_line_round_trips() -> None:
 
 def _refused(change: Any) -> dict[str, Any]:
     data = copy.deepcopy(_flat().to_dict())
-    change(data)
+    change(_root(data))
     return data
 
 
+def _second(data: dict[str, Any]) -> dict[str, Any]:
+    return data["children"][1]
+
+
 def _mixed_classes(data: dict[str, Any]) -> None:
-    data["children"]["second"]["timeline"]["class"] = "ContinuousGraphicalTimeline"
-    data["children"]["second"]["timeline"]["unit"] = "points"
+    _second(data).update(unit="points", number_type="float", length=200.0)
 
 
 @pytest.mark.parametrize(
     ("change", "message"),
     [
-        (_mixed_classes, r"Segment line 'line' has segments of mixed classes"),
+        (_mixed_classes, r"Segment line timeline 'line' has segments of mixed classes"),
         (
-            lambda d: d["children"]["second"]["timeline"].update(is_segment_line=True),
-            r"Segment line 'line' has segments of mixed classes",
+            lambda d: _second(d).update(is_segment_line=True, length=0),
+            r"Segment line timeline 'line' has segments of mixed classes",
         ),
         (
-            lambda d: d["children"]["second"].update(offset=_px(250)),
+            lambda d: _second(d).update(offset=250),
             r"SegmentLine requires contiguous segments\. Expected offset 300, "
             r"got 250\.",
         ),
         (
-            lambda d: d["children"]["second"].update(offset=_px(350)),
-            r"SegmentLine requires contiguous segments\. Expected offset 300, "
-            r"got 350\.",
+            lambda d: _second(d).update(offset=350),
+            r"^child 'second' ends at 550, beyond the length 500 of its parent "
+            r"'line'$",
         ),
         (
-            lambda d: d.update(length=_px(600)),
+            lambda d: d.update(length=600),
             r"Segment line 'line' has segments ending at 500, but its length is 600",
         ),
         (
-            lambda d: d.update({"class": "ContinuousLogicalTimeline"}),
-            r"Segment line 'line' names class 'ContinuousLogicalTimeline' but its "
-            r"segments are 'DiscreteGraphicalTimeline'",
-        ),
-        (
-            lambda d: d.pop("is_segment_line"),
-            r"Serialized timeline 'line' is missing a boolean 'is_segment_line'",
-        ),
-        (
             lambda d: d.update(is_segment_line="yes"),
-            r"Serialized timeline 'line' is missing a boolean 'is_segment_line'",
-        ),
-        (
-            lambda d: d.update({"class": "SegmentLine[DiscreteGraphicalTimeline]"}),
-            r"Unknown serialized timeline class "
-            r"'SegmentLine\[DiscreteGraphicalTimeline\]'",
+            r"timeline 'line' has a non-boolean 'is_segment_line'",
         ),
     ],
     ids=[
@@ -267,10 +264,7 @@ def _mixed_classes(data: dict[str, Any]) -> None:
         "gap",
         "overlap",
         "short_of_length",
-        "class_mismatch",
-        "missing_flag",
         "non_boolean_flag",
-        "dynamic_class_name",
     ],
 )
 def test_from_dict_refuses(change: Any, message: str) -> None:
@@ -279,36 +273,46 @@ def test_from_dict_refuses(change: Any, message: str) -> None:
         Timeline.from_dict(_refused(change))
 
 
+def test_a_stale_class_key_is_not_read() -> None:
+    """A ``class`` key names nothing: the unit and the flag decide the type."""
+    data = _flat().to_dict()
+    _root(data)["class"] = "ContinuousLogicalTimeline"
+
+    restored = Timeline.from_dict(data)
+
+    assert type(restored) is SegmentLine[DiscreteGraphicalTimeline]
+    assert restored.to_dict() == data
+
+
 # endregion
 
 
-# region What cannot be written
+# region Every line can be written
 
 
-def test_bare_untyped_segment_line_cannot_be_written() -> None:
-    """A never-typed SegmentLine() cannot say what it is."""
-    with pytest.raises(ValueError) as error:
-        SegmentLine(length=0, unit="pixels", uid="bare").to_dict()
+def test_bare_untyped_segment_line_reads_as_a_line_of_its_unit() -> None:
+    """A never-typed SegmentLine() writes its unit and reads as a typed line."""
+    data = SegmentLine(length=0, unit="pixels", uid="bare").to_dict(minimal=True)
 
-    assert str(error.value) == (
-        "SegmentLine 'bare' has no segments and no plain segment type, so its "
-        "dictionary form cannot say what it is"
-    )
+    assert data == {
+        "timeskeleton": "0.7.0",
+        "timelines": [
+            {"id": "bare", "unit": "pixels", "length": 0, "is_segment_line": True}
+        ],
+    }
+    assert type(Timeline.from_dict(data)) is SegmentLine[DiscreteGraphicalTimeline]
 
 
-def test_empty_nested_segment_line_cannot_be_written() -> None:
-    """An empty nested line would read back one level shallower, so it refuses."""
+def test_empty_nested_segment_line_reads_one_level_shallower() -> None:
+    """No key carries the depth of an empty nested line, so it is not restored."""
     line = SegmentLine[SegmentLine[DiscreteGraphicalTimeline]](
         length=0, uid="empty_edition"
     )
 
-    with pytest.raises(ValueError) as error:
-        line.to_dict()
+    restored = Timeline.from_dict(line.to_dict())
 
-    assert str(error.value) == (
-        "SegmentLine 'empty_edition' has no segments and no plain segment type, "
-        "so its dictionary form cannot say what it is"
-    )
+    assert type(restored) is SegmentLine[DiscreteGraphicalTimeline]
+    assert restored.to_dict() == line.to_dict()
 
 
 # endregion

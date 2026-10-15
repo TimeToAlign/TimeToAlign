@@ -59,7 +59,7 @@ Return the inverse map (SamplesToSeconds).
 ### to_dict { #timetoalign.SecondsToSamples.to_dict }
 
 ```python
-SecondsToSamples.to_dict()
+SecondsToSamples.to_dict(minimal=False)
 ```
 
 Serialize to dictionary.

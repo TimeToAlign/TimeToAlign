@@ -200,9 +200,7 @@ class TestAppendChild:
             parent.append_child(child, uid="replacement_id", name="Replacement")
 
         assert str(error.value) == (
-            "Cannot append child on locked timeline 'locked_parent'. "
-            "A timeline is locked when embedded as a child, built with "
-            "locked=True, or locked with lock()."
+            "Cannot append child on locked timeline 'locked_parent': its length is fixed."
         )
         assert child.id == "original_id"
         assert child.name == "Original"
@@ -240,9 +238,7 @@ class TestAppendChild:
             segment_line.append_segment(ContinuousLogicalTimeline(length=4))
 
         assert str(error.value) == (
-            "Cannot append child on locked timeline 'embedded_line'. "
-            "A timeline is locked when embedded as a child, built with "
-            "locked=True, or locked with lock()."
+            "Cannot append child on locked timeline 'embedded_line': its length is fixed."
         )
 
 
@@ -264,7 +260,7 @@ class TestAddChildDurationExactness:
         )
         parent.add_child(child, offset=Fraction(0, 1))
 
-        duration = parent.to_dict(events=True)["events"][0]["duration"]
+        duration = parent.to_dict(events=True)["timelines"][0]["events"][0]["duration"]
         assert duration == number_to_json(Fraction(2, 1))
 
     def test_non_integral_fraction_length_duration_is_exact(self):
@@ -282,7 +278,7 @@ class TestAddChildDurationExactness:
         )
         parent.add_child(child, offset=Fraction(0, 1))
 
-        duration = parent.to_dict(events=True)["events"][0]["duration"]
+        duration = parent.to_dict(events=True)["timelines"][0]["events"][0]["duration"]
         assert duration == number_to_json(Fraction(7, 3))
 
 

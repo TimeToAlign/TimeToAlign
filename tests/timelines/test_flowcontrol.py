@@ -205,14 +205,18 @@ class TestFlowControlJson:
     def test_break_round_trip(self) -> None:
         brk = _break()
         payload = json.loads(json.dumps(brk.to_dict()))
-        restored = Break.from_dict(payload)
+        restored = Break.from_dict(
+            payload, unit=TimeUnit.quarters, number_type=NumberType.fraction
+        )
         assert restored == brk
         assert restored.to_dict() == payload
 
     def test_jump_round_trip(self) -> None:
         jump = _jump()
         payload = json.loads(json.dumps(jump.to_dict()))
-        restored = Jump.from_dict(payload)
+        restored = Jump.from_dict(
+            payload, unit=TimeUnit.quarters, number_type=NumberType.fraction
+        )
         assert restored == jump
         assert restored.to_dict() == payload
 

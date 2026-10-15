@@ -150,35 +150,52 @@ def test_bundle_dict_is_exact() -> None:
     bundle = _direct_bundle()
     timelines = {timeline.id: timeline for timeline in bundle.timelines.values()}
 
+    assert bundle.id == "bundle_1"
     assert bundle.to_dict() == {
+        "timeskeleton": "0.7.0",
+        "name": "study",
+        "meta": {"corpus": "test"},
         "timelines": [
-            timelines[timeline_id].to_dict()
+            timelines[timeline_id].to_dict()["timelines"][0]
             for timeline_id in ["audio", "image", "midi", "notes", "score"]
         ],
-        "bundle": {
-            "id": "bundle_1",
-            "name": "study",
-            "meta": {"corpus": "test"},
-            "support_policy": "clamp",
-            "groups": [
-                {
-                    "id": "group_1",
-                    "name": "edition",
-                    "meta": {},
-                    "members": ["audio", "score"],
-                },
-                {
-                    "id": "group_2",
-                    "name": "roll",
-                    "meta": {},
-                    "members": ["holes", "midi"],
-                },
-            ],
-        },
+        "groups": [
+            {
+                "id": "group_1",
+                "name": "edition",
+                "meta": {},
+                "members": ["audio", "score"],
+            },
+            {
+                "id": "group_2",
+                "name": "roll",
+                "meta": {},
+                "members": ["holes", "midi"],
+            },
+        ],
         "graphical": {
-            "order": {"group_1": ["score", "audio"], "group_2": ["holes", "midi"]}
+            "order": {"group_1": ["score", "audio"], "group_2": ["holes", "midi"]},
+            "styles": {},
+            "statements": [],
         },
     }
+    assert bundle.to_dict(minimal=True)["graphical"] == {
+        "order": {"group_1": ["score", "audio"], "group_2": ["holes", "midi"]}
+    }
+
+
+def test_given_bundle_id_is_written() -> None:
+    """A given id is the manifest's; a minted one is never written."""
+    bundle = AlignmentBundle(id="op35")
+
+    assert bundle.to_dict(minimal=True) == {
+        "timeskeleton": "0.7.0",
+        "id": "op35",
+        "timelines": [],
+    }
+    rebuilt = AlignmentBundle.from_dict(_direct_bundle().to_dict())
+    assert rebuilt.id == "bundle_1"
+    assert "id" not in rebuilt.to_dict()
 
 
 def test_direct_bundle_round_trip() -> None:
@@ -186,7 +203,8 @@ def test_direct_bundle_round_trip() -> None:
     rebuilt = _assert_round_trip(_direct_bundle())
     _assert_round_trip(_direct_bundle(), events=True, external_references=True)
 
-    assert rebuilt.support_policy is SupportPolicy.clamp
+    # The support policy is a setting of the bundle, not part of the manifest.
+    assert rebuilt.support_policy is SupportPolicy.omit
     assert rebuilt.timeline_to_group == {
         "score": "group_1",
         "audio": "group_1",
@@ -219,7 +237,7 @@ def test_child_in_one_group_and_root_in_another() -> None:
     _assert_round_trip(bundle)
 
     assert [timeline["id"] for timeline in data["timelines"]] == ["audio", "image"]
-    assert [group["members"] for group in data["bundle"]["groups"]] == [
+    assert [group["members"] for group in data["groups"]] == [
         ["holes"],
         ["audio", "image"],
     ]
@@ -229,8 +247,14 @@ def test_no_claims_are_written() -> None:
     """The dictionary has no claim key, whatever claims the bundle holds."""
     data = _direct_bundle().to_dict()
 
-    assert set(data) == {"timelines", "bundle", "graphical"}
-    assert set(data["bundle"]) == {"id", "name", "meta", "support_policy", "groups"}
+    assert set(data) == {
+        "timeskeleton",
+        "name",
+        "meta",
+        "timelines",
+        "groups",
+        "graphical",
+    }
 
 
 def test_missing_graphical_reads_members_order() -> None:
@@ -272,20 +296,21 @@ def test_styling_without_order_reads_members_order() -> None:
     rebuilt = AlignmentBundle.from_dict(data)
 
     assert rebuilt.groups["group_1"].timeline_ids == ["audio", "score"]
-    assert rebuilt.to_dict()["graphical"] == {
+    assert rebuilt.to_dict(minimal=True)["graphical"] == {
         "order": {"group_1": ["audio", "score"], "group_2": ["holes", "midi"]},
         "statements": STYLING["statements"],
     }
 
 
-def test_unknown_graphical_key_is_refused() -> None:
-    """A ``graphical`` key other than order, styles and statements is refused."""
+def test_unknown_graphical_key_is_kept() -> None:
+    """A ``graphical`` key other than order, styles and statements is kept."""
     data = _direct_bundle().to_dict()
-    data["graphical"].update(STYLING, frame={})
+    data["graphical"].update(STYLING, frame={"inset": 4})
 
-    with pytest.raises(ValueError) as refused:
-        AlignmentBundle.from_dict(data)
-    assert str(refused.value) == "'graphical' has unknown key(s) ['frame']"
+    rebuilt = AlignmentBundle.from_dict(data)
+
+    assert rebuilt.styling == {**STYLING, "frame": {"inset": 4}}
+    assert rebuilt.to_dict() == data
 
 
 @pytest.mark.slow
@@ -325,7 +350,7 @@ def _malformed(change: Callable[[dict[str, Any]], Any]) -> dict[str, Any]:
 
 def _second_group(data: dict[str, Any], members: list[str]) -> None:
     """Append a group named ``group_9`` holding *members*."""
-    data["bundle"]["groups"].append(
+    data["groups"].append(
         {"id": "group_9", "name": None, "meta": {}, "members": members}
     )
 
@@ -333,25 +358,20 @@ def _second_group(data: dict[str, Any], members: list[str]) -> None:
 @pytest.mark.parametrize(
     ("change", "message"),
     [
-        (lambda d: d.pop("bundle"), r"lacks the key\(s\) \['bundle'\]"),
-        (lambda d: d.update(claims=[]), r"unknown key\(s\) \['claims'\]"),
-        (lambda d: d["bundle"].pop("groups"), r"lacks the key\(s\) \['groups'\]"),
-        (lambda d: d["bundle"].update(id=""), "Invalid id ''"),
-        (
-            lambda d: d["bundle"].update(support_policy="never"),
-            "unknown support_policy 'never'",
-        ),
+        (lambda d: d.pop("timeskeleton"), "not a TimeSkeleton manifest"),
+        (lambda d: d.pop("timelines"), r"lacks the key\(s\) \['timelines'\]"),
+        (lambda d: d.update(id=""), "Invalid id ''"),
         (
             lambda d: d["timelines"].append(d["timelines"][0]),
             "timeline id 'audio' occurs twice",
         ),
         (
-            lambda d: d["bundle"]["groups"].append(d["bundle"]["groups"][0]),
+            lambda d: d["groups"].append(d["groups"][0]),
             "group id 'group_1' occurs twice",
         ),
         (
             lambda d: (
-                d["bundle"]["groups"][0].update(id="notes"),
+                d["groups"][0].update(id="notes"),
                 d["graphical"]["order"].update(
                     notes=d["graphical"]["order"].pop("group_1")
                 ),
@@ -359,7 +379,7 @@ def _second_group(data: dict[str, Any], members: list[str]) -> None:
             "group id 'notes' is also a timeline id",
         ),
         (
-            lambda d: d["bundle"]["groups"][0]["members"].append("ghost"),
+            lambda d: d["groups"][0]["members"].append("ghost"),
             "names member 'ghost'",
         ),
         (
@@ -368,7 +388,7 @@ def _second_group(data: dict[str, Any], members: list[str]) -> None:
         ),
         (
             lambda d: (
-                d["bundle"]["groups"][1]["members"].append("image"),
+                d["groups"][1]["members"].append("image"),
                 d["graphical"]["order"]["group_2"].append("image"),
             ),
             "Timeline 'image' cannot join group 'group_2': it is nested with "
@@ -384,11 +404,9 @@ def _second_group(data: dict[str, Any], members: list[str]) -> None:
         ),
     ],
     ids=[
-        "missing_bundle",
-        "claims_key",
-        "missing_groups",
+        "missing_marker",
+        "missing_timelines",
         "empty_bundle_id",
-        "unknown_policy",
         "duplicate_timeline",
         "duplicate_group",
         "group_id_is_timeline_id",

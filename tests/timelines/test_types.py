@@ -389,8 +389,7 @@ class TestSerializedTypeParameters:
         data = original.to_dict(events=True)
         restored = Timeline.from_dict(data)
 
-        assert data["class"] == segment_class.__name__
-        assert data["is_segment_line"] is True
+        assert data["timelines"][0]["is_segment_line"] is True
         assert isinstance(restored, SegmentLine)
         assert restored.segment_type is segment_class
         assert restored.n_segments == original.n_segments == 2
@@ -403,29 +402,17 @@ class TestSerializedTypeParameters:
             1,
         ]
         assert [
-            segment.to_dict(events=True)["events"][0]["id"]
+            segment.to_dict(events=True)["timelines"][0]["events"][0]["id"]
             for _, _, segment in restored.iter_segments()
         ] == ["event_0", "event_1"]
         assert [
-            segment.to_dict(events=True)["events"][0]["start"]
+            segment.to_dict(events=True)["timelines"][0]["events"][0]["start"]
             for _, _, segment in restored.iter_segments()
         ] == [number_to_json(event_instant), number_to_json(event_instant)]
         assert [
             segment.get_conversion_map(target_unit).id
             for _, _, segment in restored.iter_segments()
         ] == ["map_0", "map_1"]
-
-    def test_segment_line_rejects_unregistered_segment_class(self):
-        """An unknown segment class is named in the refusal."""
-        data = SegmentLine[DiscreteGraphicalTimeline](length=0).to_dict()
-        data["class"] = "UnregisteredSegmentTimeline"
-
-        with pytest.raises(ValueError) as error:
-            Timeline.from_dict(data)
-
-        assert str(error.value) == (
-            "Unknown serialized timeline class 'UnregisteredSegmentTimeline'"
-        )
 
     def test_nested_parameterized_segment_line_round_trip(self):
         """Nested SegmentLine tags restore both levels of segment type."""
@@ -512,52 +499,28 @@ class TestSerializedTypeParameters:
         assert restored.n_segments == 1
 
     def test_nested_payload_materializes_dynamic_classes(self):
-        """A hand-written nested payload materializes both dynamic classes."""
-        zero = {"unit": "pixels", "number_type": "int", "value": 0}
-        ten = {"unit": "pixels", "number_type": "int", "value": 10}
+        """A hand-written nested manifest materializes both dynamic classes."""
 
-        def manifest(timeline_id, flag, children):
+        def timeline(timeline_id, flag, children):
             return {
                 "id": timeline_id,
-                "name": None,
-                "class": "DiscreteGraphicalTimeline",
-                "is_segment_line": flag,
                 "unit": "pixels",
-                "number_type": "int",
-                "length": ten,
-                "locked": False,
-                "meta": {},
+                "offset": 0,
+                "length": 10,
+                "is_segment_line": flag,
                 "children": children,
-                "conversion_maps": [],
             }
 
-        staff = manifest("staff", False, {})
-        system = manifest(
-            "system", True, {"staff": {"offset": zero, "timeline": staff}}
+        systems = timeline(
+            "systems", True, [timeline("system", True, [timeline("staff", False, [])])]
         )
-        payload = manifest(
-            "systems", True, {"system": {"offset": zero, "timeline": system}}
-        )
+        del systems["offset"]
 
-        restored = Timeline.from_dict(payload)
+        restored = Timeline.from_dict({"timeskeleton": "0.7.0", "timelines": [systems]})
         inner_class = SegmentLine[DiscreteGraphicalTimeline]
 
         assert type(restored) is SegmentLine[inner_class]
         assert type(restored.get_segment_by_index(0)[1]) is inner_class
-
-    def test_continuous_graphical_pixels_legacy_payload_error(self):
-        """Legacy continuous graphical pixel payloads name their valid replacement."""
-        data = DiscreteGraphicalTimeline(length=16, uid="legacy").to_dict()
-        data["class"] = "ContinuousGraphicalTimeline"
-
-        with pytest.raises(ValueError) as error:
-            Timeline.from_dict(data)
-
-        assert str(error.value) == (
-            "Serialized ContinuousGraphicalTimeline payload uses unit 'pixels', "
-            "which is discrete-only. This payload predates unit enforcement; "
-            "use DiscreteGraphicalTimeline instead."
-        )
 
 
 # endregion

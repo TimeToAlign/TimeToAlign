@@ -38,7 +38,7 @@ from timetoalign.core import (
     resolve_id,
 )
 from timetoalign.core.enums import NumberType
-from timetoalign.core.ids import mint_id, validate_id
+from timetoalign.core.ids import _OpenObject, mint_id, validate_id
 from timetoalign.core.retrieval import (
     CoordinateCollection,
     CoordinateFormat,
@@ -58,18 +58,15 @@ from timetoalign.core.retrieval import (
     validate_table_format,
 )
 from timetoalign.core.timestamp import TimestampColumn, build_timestamp_table
-from timetoalign.timelines import TimelineGroup
+from timetoalign.timelines import TimelineGroup, UnknownLengthError
 from timetoalign.timelines.groups import (
     _admit_timeline_tree,
     _held_ids,
     _nested,
-    _read_graphical,
-    _require_keys,
     _root,
-    _roots_from_dicts,
     _tree,
-    _write_graphical,
 )
+from timetoalign.timelines.manifest import Manifest, write_roots
 
 from .claims import AlignmentAnchor, MatchClaim, MatchClaimField
 from .filters import ClaimFilter
@@ -128,7 +125,7 @@ def _resolve_coordinate_and_timeline(
 
 
 @dataclass
-class AlignmentBundle:
+class AlignmentBundle(_OpenObject):
     """The primary entry point for all alignment workflows.
 
     An AlignmentBundle manages timelines and their alignment relationships.
@@ -159,8 +156,9 @@ class AlignmentBundle:
         cross_group_claim_fields: Columnar ``MatchClaimField`` stores of dense
             synchronous-instant pairwise claims, queried vectorized without
             materialising the full claim list.
-        styling: The ``styles`` and ``statements`` of the bundle file's
-            ``graphical``, kept as given and never interpreted.
+        styling: The members of the manifest's ``graphical`` other than
+            ``order`` (``styles``, ``statements`` and any other), kept as
+            given and never interpreted.
 
     Note:
         The two claim stores are interchangeable as far as queries are
@@ -206,7 +204,7 @@ class AlignmentBundle:
     # timeline; a per-call ``support_policy`` argument overrides it.
     support_policy: SupportPolicy = SupportPolicy.omit
 
-    # The ``styles`` and ``statements`` of the bundle file's ``graphical``,
+    # The members of the manifest's ``graphical`` other than ``order``,
     # kept as given and never interpreted.
     styling: dict[str, Any] = field(default_factory=dict)
 
@@ -228,6 +226,12 @@ class AlignmentBundle:
     # Hash of cross_group_claims list at time of last cache build
     _cache_claims_hash: int = field(default=0, repr=False)
 
+    # Whether the id was minted rather than given.
+    _id_minted: bool = field(default=False, init=False, repr=False, compare=False)
+    # Whether the manifest read held a ``graphical`` object, written back
+    # even with every member at its default.
+    _has_graphical: bool = field(default=False, init=False, repr=False, compare=False)
+
     # Internal logger
     _logger: logging.Logger = field(
         default_factory=lambda: module_logger, init=False, repr=False
@@ -235,6 +239,8 @@ class AlignmentBundle:
 
     def __post_init__(self) -> None:
         """Mint or validate the ID and set up the logger."""
+        # A minted id is never written to a manifest.
+        self._id_minted = not self.id
         if not self.id:
             self.id = mint_id("bundle", ())
         else:
@@ -244,33 +250,32 @@ class AlignmentBundle:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "AlignmentBundle":
-        """Rebuild a bundle from the dictionary :meth:`to_dict` writes.
+        """Read a bundle from any TimeSkeleton manifest.
 
-        Every entry of ``"timelines"`` is rebuilt with
-        :meth:`Timeline.from_dict <timetoalign.timelines.Timeline.from_dict>`;
+        The manifest's ``id`` becomes the bundle's (an anonymous manifest
+        gives a bundle whose minted id :meth:`to_dict` never writes), its
+        ``name`` and ``meta`` the bundle's. Every root timeline is rebuilt;
         each group is rebuilt from its ``Group`` object, its members resolved
-        among those roots and all their descendants and ordered by
-        ``graphical.order`` (``members`` order for a group without an entry).
-        ``graphical.styles`` and ``graphical.statements`` are kept as
-        :attr:`styling`, unread. Every root no group names joins ungrouped.
-        Feeding the result back
-        through :meth:`to_dict` with the same flags reproduces the input
-        dictionary. A ``"meta"`` key — the file's own metadata — is accepted
-        and ignored.
+        among the roots and all their descendants and ordered by its
+        ``graphical.order`` entry (``members`` order without one).
+        ``graphical``'s other keys are kept as :attr:`styling`, unread. Every
+        root no group names joins ungrouped. Keys the library does not know
+        are kept on the object read from the JSON object they were found in,
+        and written back.
 
         Args:
-            data: ``{"timelines": [...], "bundle": {...}, "graphical": {...}}``.
+            data: A TimeSkeleton manifest.
 
         Returns:
             The rebuilt bundle, without MatchClaims.
 
         Raises:
-            ValueError: If *data* is malformed: a missing or unknown key, an
-                unknown ``support_policy``, a timeline id occurring twice, a
-                group id occurring twice or equal to a timeline id, a member
-                naming no timeline of ``"timelines"``, a timeline named by two
+            ValueError: If *data* is no TimeSkeleton manifest of version
+                0.7.0 or is malformed: a timeline id occurring twice, a group
+                id occurring twice or equal to a timeline id, a member naming
+                no timeline of ``"timelines"``, a timeline named by two
                 groups, a member that is an ancestor or descendant of another
-                member of its group, or an order that is no permutation of its
+                member of its group, an order that is no permutation of its
                 group's members or names no group. The message names the
                 problem.
 
@@ -290,63 +295,28 @@ class AlignmentBundle:
             >>> AlignmentBundle.from_dict(data).to_dict() == data
             True
         """
-        _require_keys(
-            data, {"timelines", "bundle"}, {"graphical", "meta"}, "a bundle dictionary"
-        )
-        timelines = _roots_from_dicts(data["timelines"])
-        bundle_data = _require_keys(
-            data["bundle"],
-            {"id", "name", "meta", "support_policy", "groups"},
-            set(),
-            "'bundle'",
-        )
-        if not isinstance(bundle_data["id"], str):
-            raise ValueError(f"a bundle id must be a string, got {bundle_data['id']!r}")
-        validate_id(bundle_data["id"])
-        if bundle_data["name"] is not None and not isinstance(bundle_data["name"], str):
-            raise ValueError("the bundle has a non-string name")
-        if not isinstance(bundle_data["meta"], dict):
-            raise ValueError("the bundle has a non-object meta")
-        policies = [policy.value for policy in SupportPolicy]
-        if bundle_data["support_policy"] not in policies:
-            raise ValueError(
-                f"unknown support_policy {bundle_data['support_policy']!r}; "
-                f"expected one of {policies}"
-            )
-        groups = bundle_data["groups"]
-        if not isinstance(groups, list):
-            raise ValueError("the bundle's 'groups' must be an array")
-        orders, styling = _read_graphical(data)
-        if orders is None:
-            orders = {}
-        elif not isinstance(orders, dict):
-            raise ValueError("'graphical.order' must map group ids to orders")
-        group_ids = [
-            group.get("id") if isinstance(group, dict) else None for group in groups
-        ]
-        unknown = sorted(str(key) for key in orders if key not in group_ids)
-        if unknown:
-            raise ValueError(f"'graphical.order' names no group: {unknown}")
-
+        manifest, content = Manifest.read(data)
         bundle = cls(
-            id=bundle_data["id"],
-            name=bundle_data["name"],
-            meta=dict(bundle_data["meta"]),
-            support_policy=SupportPolicy(bundle_data["support_policy"]),
-            styling=styling,
+            id=manifest.id or "",
+            name=manifest.name,
+            meta=manifest.meta,
+            styling=manifest.styling,
         )
-        for group_data, group_id in zip(groups, group_ids):
-            order = orders.get(group_id) if isinstance(group_id, str) else None
-            group = TimelineGroup._from_group_object(group_data, timelines, order)
+        bundle._unknown_keys = manifest._unknown_keys
+        bundle._has_graphical = manifest.has_graphical
+        for group_data in content.groups:
+            group_id = group_data.get("id") if isinstance(group_data, dict) else None
+            group = TimelineGroup._from_group_object(
+                group_data,
+                content.timelines,
+                content.order.get(group_id) if isinstance(group_id, str) else None,
+            )
             if group.id in bundle.groups:
                 raise ValueError(f"group id {group.id!r} occurs twice")
             bundle.add_group(group)
-        for timeline in timelines.values():
-            if (
-                timeline._parent is None
-                and bundle.timelines.get(timeline.id) is not timeline
-            ):
-                bundle.add_timeline(timeline)
+        for root in content.roots:
+            if bundle.timelines.get(root.id) is not root:
+                bundle.add_timeline(root)
         return bundle
 
     @classmethod
@@ -3397,6 +3367,10 @@ class AlignmentBundle:
                     continue
                 assert isinstance(coord, Coordinate)
                 result[tl_id] = coord.value
+        except UnknownLengthError:
+            # Converting between members needs both lengths; that is not a
+            # position outside the source member, so it is not swallowed.
+            raise
         except Exception as e:
             self._logger.debug(
                 f"Failed to get group timestamp at {coordinate} on {timeline_id}: {e}"
@@ -3445,7 +3419,9 @@ class AlignmentBundle:
                 else root._get_parent_coordinate_from_child(relative.id, 0)
             )
             value = root_coordinate - origin
-            if 0 <= value <= relative.length.value:
+            if 0 <= value and (
+                relative.length is None or value <= relative.length.value
+            ):
                 reached[relative.id] = express_as(value, relative.number_type)
         return reached
 
@@ -3489,7 +3465,7 @@ class AlignmentBundle:
         """Clip a coordinate into ``[0, length]`` for a target timeline.
 
         A clipped coordinate is the timeline's own exact bound, never a float
-        rendering of it.
+        rendering of it. A timeline of unknown length is bounded below only.
         """
         if coordinate < 0:
             return 0
@@ -3675,31 +3651,31 @@ class AlignmentBundle:
     def to_dict(
         self,
         *,
+        minimal: bool = False,
         events: bool = False,
         external_references: bool = False,
     ) -> dict[str, Any]:
-        """Convert the bundle to a dictionary for serialization.
+        """Write the bundle as a TimeSkeleton manifest.
 
-        The bundle is written as its timelines and its groups.
-        ``"timelines"`` holds every root timeline of the bundle — every
-        registered timeline that is no child, which includes the root of each
-        one that is — each exactly
-        :meth:`Timeline.to_dict <timetoalign.timelines.Timeline.to_dict>`,
-        sorted by id. ``"bundle"`` carries the groups as ``Group`` objects
-        sorted by id, each naming its members by id; ``"graphical"`` keeps
-        every group's member order, followed by the ``styles`` and
-        ``statements`` of :attr:`styling` that are present. A root no group
-        names is ungrouped. MatchClaims are not written. The file's own
-        ``meta`` is the writer's concern.
+        The manifest carries the bundle's ``id`` only when one was given
+        (a minted id is never written), its ``name`` and ``meta``, every
+        root timeline of the bundle — every registered timeline that is no
+        child, which includes the root of each one that is — as
+        :meth:`Timeline.to_dict <timetoalign.timelines.Timeline.to_dict>`
+        writes it, sorted by id, and the groups sorted by id, each naming its
+        members by id. ``graphical.order`` keeps every group's member order
+        under its id, beside the members of :attr:`styling`. A root no group
+        names is ungrouped. MatchClaims are not written; the support policy
+        is a setting of the bundle, not part of the manifest.
 
         Args:
-            events: Passed to every root's ``to_dict``.
-            external_references: Passed to every root's ``to_dict``.
+            minimal: If True, leave out every key at its default value.
+            events: Write every timeline's event rows.
+            external_references: Write every timeline's external references.
 
         Returns:
-            ``{"timelines": [...], "bundle": {"id", "name", "meta",
-            "support_policy", "groups"}, "graphical": {"order": {...},
-            "styles"?, "statements"?}}``.
+            ``{"timeskeleton": "0.7.0", "id"?, "name", "meta", "timelines":
+            [...], "groups": [...], "graphical"?: {"order": {...}, ...}}``.
 
         Examples:
             >>> from fractions import Fraction
@@ -3716,36 +3692,37 @@ class AlignmentBundle:
             ...     ContinuousPhysicalTimeline(length=40.0), grouped_with="clt_1"
             ... )
             >>> data = bundle.to_dict()
-            >>> [timeline["id"] for timeline in data["timelines"]]
-            ['clt_1', 'cpt_1']
-            >>> data["bundle"]["groups"]
+            >>> "id" in data, [timeline["id"] for timeline in data["timelines"]]
+            (False, ['clt_1', 'cpt_1'])
+            >>> data["groups"]
             [{'id': 'group_1', 'name': 'score', 'meta': {}, 'members': ['clt_1', 'cpt_1']}]
-            >>> data["graphical"]
-            {'order': {'group_1': ['clt_1', 'cpt_1']}}
+            >>> data["graphical"]["order"]
+            {'group_1': ['clt_1', 'cpt_1']}
         """
         roots: dict[str, Timeline] = {}
         for timeline in self.timelines.values():
             root = _root(timeline)
             roots.setdefault(root.id, root)
         groups = [self.groups[group_id] for group_id in sorted(self.groups)]
-        return {
-            "timelines": [
-                roots[root_id].to_dict(
-                    events=events, external_references=external_references
-                )
-                for root_id in sorted(roots)
-            ],
-            "bundle": {
-                "id": self.id,
-                "name": self.name,
-                "meta": dict(self.meta),
-                "support_policy": SupportPolicy(self.support_policy).value,
-                "groups": [group._to_group_object() for group in groups],
-            },
-            "graphical": _write_graphical(
-                {group.id: group.timeline_ids for group in groups}, self.styling
+        manifest = Manifest(
+            id=None if self._id_minted else self.id,
+            name=self.name,
+            meta=self.meta,
+            styling=self.styling,
+            has_graphical=self._has_graphical,
+        )
+        manifest._unknown_keys = self._unknown_keys
+        return manifest.write(
+            write_roots(
+                list(roots.values()),
+                minimal=minimal,
+                events=events,
+                external_references=external_references,
             ),
-        }
+            groups=[group._to_group_object(minimal=minimal) for group in groups],
+            order={group.id: group.timeline_ids for group in groups},
+            minimal=minimal,
+        )
 
     def __repr__(self) -> str:
         name_str = f", name={self.name!r}" if self.name else ""

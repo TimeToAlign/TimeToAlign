@@ -348,6 +348,10 @@ class RegionsMixin:
         Returns:
             List of contiguous Region objects in coordinate order.
 
+        Raises:
+            UnknownLengthError: If ``include_after_last`` is set and the
+                length is unknown, so that the last region has no end.
+
         Examples:
             >>> # Split at section breaks
             >>> tl.create_regions_by_splitting("breaks", prefix="movement")
@@ -357,6 +361,12 @@ class RegionsMixin:
             ...     {"breaks": "section"}, prefix="movement"
             ... )
         """
+        end = (
+            self._require_length("split up to the end").value
+            if include_after_last
+            else None
+        )
+
         # Resolve predicate to a callable
         match_fn = self._resolve_predicate(predicate)
 
@@ -381,8 +391,8 @@ class RegionsMixin:
         if include_before_first:
             boundaries.append(self.origin.value)
         boundaries.extend(split_coords)
-        if include_after_last:
-            boundaries.append(self.length.value)
+        if end is not None:
+            boundaries.append(end)
 
         # Deduplicate again (split point might coincide with origin/end)
         boundaries = sorted(set(boundaries))

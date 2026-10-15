@@ -57,7 +57,7 @@ This reverses the order of maps and inverts each one.
 ### to_dict { #timetoalign.ChainMap.to_dict }
 
 ```python
-ChainMap.to_dict()
+ChainMap.to_dict(minimal=False)
 ```
 
 Serialize to dictionary.

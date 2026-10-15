@@ -138,6 +138,8 @@ class MetricMap(ConversionMap[int]):
             uid=uid,
             name=name or "measure_counts",
         )
+        # The default name is derived for display; only a given one is written.
+        self._name_given = name is not None
 
         if not (len(starts) == len(mcs) == len(mns) == len(lengths)):
             raise ValueError("All arrays must have the same length")
@@ -303,9 +305,9 @@ class MetricMap(ConversionMap[int]):
         # Assuming quarter = 1 beat for now; could be generalized with beat_unit
         return offset + Fraction(1, 1)
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
         """Serialize to dictionary."""
-        d = super().to_dict()
+        d = super().to_dict(minimal=minimal)
         d["starts"] = [number_to_json(s) for s in self._starts_frac]
         d["mcs"] = [int(mc) for mc in self._mcs]
         d["mns"] = self._mns
@@ -539,6 +541,20 @@ class MetricMap(ConversionMap[int]):
 # region BeatInMeasureMap
 
 
+def _read_meter_map(data: dict[str, Any]) -> MetricMap:
+    """Read a nested ``meter_map``, keeping its unknown keys like any map's.
+
+    Raises:
+        ValueError: If the nested map is no MetricMap.
+    """
+    meter_map = ConversionMap.from_dict(data)
+    if not isinstance(meter_map, MetricMap):
+        raise ValueError(
+            f"a meter_map must be a MetricMap, got a {type(meter_map).__name__}"
+        )
+    return meter_map
+
+
 class BeatInMeasureMap(ConversionMap[Fraction]):
     """Map from quarters to beat-in-measure as Fraction.
 
@@ -584,6 +600,8 @@ class BeatInMeasureMap(ConversionMap[Fraction]):
             uid=uid,
             name=name or "beat_in_measure",
         )
+        # The default name is derived for display; only a given one is written.
+        self._name_given = name is not None
         self._meter_map = meter_map
 
     @property
@@ -621,16 +639,16 @@ class BeatInMeasureMap(ConversionMap[Fraction]):
         """
         raise NotImplementedError("BeatInMeasureMap is not invertible: cyclic pattern")
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
         """Serialize to dictionary."""
-        d = super().to_dict()
-        d["meter_map"] = self._meter_map.to_dict()
+        d = super().to_dict(minimal=minimal)
+        d["meter_map"] = self._meter_map.to_dict(minimal=minimal)
         return d
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> BeatInMeasureMap:
         """Deserialize from dictionary."""
-        meter_map = MetricMap.from_dict(data["meter_map"])
+        meter_map = _read_meter_map(data["meter_map"])
         return cls(
             meter_map,
             source_unit=data.get("source_unit", TimeUnit.quarters),
@@ -736,7 +754,7 @@ class MetricalPositionMap(CombinationMap):
         mc = self._meter_map(float(quarters))
         return self._meter_map.get_mn(mc)
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
         """Serialize to dictionary.
 
         Both outputs derive from the meter map, so the dictionary holds the
@@ -747,8 +765,8 @@ class MetricalPositionMap(CombinationMap):
             The map's common fields, ``meter_map`` and ``beat_map_id``.
         """
         return {
-            **ConversionMap.to_dict(self),
-            "meter_map": self._meter_map.to_dict(),
+            **ConversionMap.to_dict(self, minimal=minimal),
+            "meter_map": self._meter_map.to_dict(minimal=minimal),
             "beat_map_id": self._maps["beat"].id,
         }
 
@@ -756,9 +774,9 @@ class MetricalPositionMap(CombinationMap):
     def from_dict(cls, data: dict[str, Any]) -> MetricalPositionMap:
         """Deserialize from dictionary, restoring the derived map's identifier."""
         return cls(
-            MetricMap.from_dict(data["meter_map"]),
+            _read_meter_map(data["meter_map"]),
             uid=data["id"],
-            name=data["name"],
+            name=data.get("name"),
             beat_map_id=data["beat_map_id"],
         )
 

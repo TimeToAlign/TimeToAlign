@@ -146,10 +146,10 @@ class ChainMap(ConversionMap[CoordinateValue]):
         inv_maps = [m.inverse() for m in reversed(self._maps)]
         return self.__class__(inv_maps, uid=f"inv_{self.id}")
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
         """Serialize to dictionary."""
-        d = super().to_dict()
-        d["maps"] = [m.to_dict() for m in self._maps]
+        d = super().to_dict(minimal=minimal)
+        d["maps"] = [m.to_dict(minimal=minimal) for m in self._maps]
         return d
 
     @classmethod
@@ -363,11 +363,11 @@ class PiecewiseMap(ConversionMap[CoordinateValue]):
             uid=f"inv_{self.id}",
         )
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
         """Serialize to dictionary."""
-        d = super().to_dict()
+        d = super().to_dict(minimal=minimal)
         d["breaks"] = [number_to_json(b) for b in self._breaks_orig]
-        d["maps"] = [m.to_dict() for m in self._maps]
+        d["maps"] = [m.to_dict(minimal=minimal) for m in self._maps]
         return d
 
     @classmethod

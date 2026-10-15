@@ -57,7 +57,7 @@ Convert breaks using forward maps to get new breaks, invert maps.
 ### to_dict { #timetoalign.PiecewiseMap.to_dict }
 
 ```python
-PiecewiseMap.to_dict()
+PiecewiseMap.to_dict(minimal=False)
 ```
 
 Serialize to dictionary.

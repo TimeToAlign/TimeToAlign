@@ -192,10 +192,10 @@ class CombinationMap(ConversionMap[dict[str, Any]]):
         """
         return self._maps[name]
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
         """Serialize to dictionary."""
-        d = super().to_dict()
-        d["maps"] = {name: m.to_dict() for name, m in self._maps.items()}
+        d = super().to_dict(minimal=minimal)
+        d["maps"] = {name: m.to_dict(minimal=minimal) for name, m in self._maps.items()}
         d["names"] = self._names  # Preserve order
         return d
 

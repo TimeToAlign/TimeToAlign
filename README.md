@@ -207,7 +207,7 @@ tox -e lint
 | BeatGrid | An ordered set of tempo segments and the beats they generate on a seconds axis. Each BeatGridSegment states an anchor instant, a tempo, a BeatPolicy and the anchor's beat-in-bar index, and generates beats without end; the grid bounds each segment by its successor and labels the beats with measure and beat numbers. Not a Timeline: nothing is stored per beat. |
 | Break | A control event that voids contiguity at its Instant. TimeIntervals cannot span a Break, and Breaks cannot be inserted into existing TimeIntervals. |
 | ChainMap | A composed ConversionMap that applies multiple ConversionMaps in sequence, creating a conversion path from source to target unit. |
-| Child | A timeline nested within a parent timeline, sharing the same measuring unit. Children are locked upon insertion to prevent side effects from modifications. |
+| Child | A timeline nested within a parent timeline, sharing the same measuring unit. `add_child()` locks a child by default to prevent side effects from modifications; an unlocked child may grow, contained by its parent. |
 | CombinationMap | A ConversionMap that yields outputs from multiple ConversionMaps simultaneously, such as (x, y) coordinate pairs. |
 | Commensurable | Two timelines are commensurable when connected by a match path or ConversionMap chain, enabling coordinate translation between them. |
 | Composite map | An umbrella concept for ConversionMaps composed from other maps, including ChainMap, CombinationMap, and PiecewiseMap. |

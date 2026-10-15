@@ -16,7 +16,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from ..core.enums import NumberType, TimeUnit
-from ..core.ids import mint_id, validate_id
+from ..core.ids import _OpenObject, mint_id, validate_id
 from ..core.time import Coordinate, CoordinateValue, express_as
 
 if TYPE_CHECKING:
@@ -33,7 +33,7 @@ MapInput = Union[CoordinateValue, Coordinate, NDArray[np.floating[Any]]]
 # region ConversionMap
 
 
-class ConversionMap(ABC, Generic[T]):
+class ConversionMap(_OpenObject, ABC, Generic[T]):
     """Abstract base class for coordinate conversion maps.
 
     A ConversionMap transforms coordinates from one representation to another.
@@ -67,6 +67,9 @@ class ConversionMap(ABC, Generic[T]):
     # Prefix of a minted id (``cmap_1``); subclasses inherit their nearest
     # ancestor's.
     _id_prefix: ClassVar[str] = "cmap"
+
+    # The one optional key every map's dictionary form shares.
+    _dict_defaults: ClassVar[dict[str, Any]] = {"name": None}
 
     # Class-level attributes that subclasses may override
     _default_source_unit: TimeUnit | None = None
@@ -128,7 +131,9 @@ class ConversionMap(ABC, Generic[T]):
         else:
             self._target_unit = self._default_target_unit
 
-        # Set name: explicit > "source_to_target" > id
+        # Set name: explicit > "source_to_target" > id. Only a given name is
+        # written by to_dict(); the others are derived for display.
+        self._name_given = name is not None
         if name is not None:
             self._name = name
         elif self._source_unit and self._target_unit:
@@ -372,28 +377,35 @@ class ConversionMap(ABC, Generic[T]):
 
     # region Serialization
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
         """Serialize the map to a dictionary.
 
-        Subclasses should call super().to_dict() and add their parameters;
-        rational parameters go through
+        Subclasses should call ``super().to_dict(minimal=minimal)`` and add
+        their parameters; rational parameters go through
         :func:`~timetoalign.core.number_to_json` so that the whole
         dictionary stays JSON-serializable.
 
-        The map's ``name`` is always emitted, and every subclass
-        ``from_dict`` passes it back to the constructor, so a custom name
-        survives the round trip.
+        ``name`` is the name given at construction, or None when the map
+        displays a derived one; every subclass ``from_dict`` passes it back
+        to the constructor. Keys the library does not know, kept when the map
+        was read, are written back.
+
+        Args:
+            minimal: Leave out ``name`` when it is None, in nested maps too.
 
         Returns:
             Dictionary representation of the map.
         """
-        return {
-            "type": self.__class__.__name__,
-            "id": self._id,
-            "name": self._name,
-            "source_unit": self._source_unit.name if self._source_unit else None,
-            "target_unit": self._target_unit.name if self._target_unit else None,
-        }
+        return self._dict_form(
+            {
+                "type": self.__class__.__name__,
+                "id": self._id,
+                "name": self._name if self._name_given else None,
+                "source_unit": self._source_unit.name if self._source_unit else None,
+                "target_unit": self._target_unit.name if self._target_unit else None,
+            },
+            minimal=minimal,
+        )
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ConversionMap[Any]:
@@ -401,7 +413,9 @@ class ConversionMap(ABC, Generic[T]):
 
         Dispatches to the concrete subclass named by ``data["type"]`` using
         the self-registering class registry populated by
-        ``__init_subclass__``.
+        ``__init_subclass__``. ``name`` may be left out; every other key the
+        map's own dictionary form writes is required. Every key that form
+        does not write is kept and written back.
 
         Args:
             data: Dictionary representation.
@@ -410,10 +424,15 @@ class ConversionMap(ABC, Generic[T]):
             A ConversionMap instance.
 
         Raises:
-            ValueError: If the type is missing or unknown.
+            ValueError: If the type is missing or unknown, or a key other
+                than ``name`` is missing.
             TypeError: If the registered class does not override from_dict,
                 which would otherwise recurse indefinitely.
         """
+        if not isinstance(data, dict):
+            raise ValueError(
+                f"a conversion map must be an object, got {type(data).__name__}"
+            )
         map_type = data.get("type")
         if map_type is None:
             raise ValueError("Map dictionary must include 'type'")
@@ -428,7 +447,13 @@ class ConversionMap(ABC, Generic[T]):
                 f"{map_cls.__name__} must override from_dict() to deserialize itself"
             )
 
-        return map_cls.from_dict(data)
+        cmap = map_cls.from_dict(data)
+        known = cmap.to_dict()
+        missing = [key for key in known if key != "name" and key not in data]
+        if missing:
+            raise ValueError(f"a {map_type} lacks the key(s) {missing}")
+        cmap._keep_unknown_keys(data, known=set(known))
+        return cmap
 
     # endregion
 

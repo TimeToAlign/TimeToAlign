@@ -36,6 +36,12 @@ _skeleton_id_generator = IdGenerator(scope="skeleton")
 class TimeSkeleton:
     """One authored temporal structure shared by participating timelines.
 
+    This class is not the TimeSkeleton file format: a TimeSkeleton manifest
+    is what ``to_dict`` writes and ``from_dict`` reads on
+    :class:`~timetoalign.timelines.Timeline`,
+    :class:`~timetoalign.timelines.TimelineGroup` and
+    :class:`~timetoalign.alignment.AlignmentBundle`.
+
     Equality is structural: two skeletons compare equal when their section
     hierarchy, metric hierarchy, beat grid, and authored flows (flow ids
     and step content) agree. Identity (``id``), participants, claims, and

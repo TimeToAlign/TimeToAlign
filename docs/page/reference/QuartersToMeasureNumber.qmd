@@ -107,7 +107,7 @@ Create from a MetricMap.
 ### to_dict { #timetoalign.QuartersToMeasureNumber.to_dict }
 
 ```python
-QuartersToMeasureNumber.to_dict()
+QuartersToMeasureNumber.to_dict(minimal=False)
 ```
 
 Serialize to dictionary.

@@ -79,11 +79,11 @@ ConstantMap cannot be inverted.
 ### to_dict { #timetoalign.ConstantMap.to_dict }
 
 ```python
-ConstantMap.to_dict()
+ConstantMap.to_dict(minimal=False)
 ```
 
 Serialize to dictionary.
 
-A ``Fraction`` constant is encoded as the canonical rational wire
-dict; every other constant (the common case is a string label)
+A numeric constant is encoded with the canonical JSON number form;
+every other constant (the common case is a string label)
 is emitted as-is and must therefore already be JSON-native.

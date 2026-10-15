@@ -182,26 +182,194 @@ A region answers containment for raw numbers by value on its own axis. A
 coordinate object in another unit is rejected with both units named instead of
 comparing values that measure different quantities.
 
-Breaks, jumps, markers, and regions serialize every coordinate as a typed entry
-containing the exact rational components, unit, and declared number type. Their
-round trips pin every enum value, label/name field, repeat count, and metadata
-dictionary. The registry payload has exactly ``breaks``, ``jumps``, and
-``markers``; a JSON encode/decode cycle cannot change it.
+Breaks, jumps, markers, and regions write every coordinate as a bare value on
+the timeline's own axis, represented as its number type selects, and read it
+back against that axis. Their round trips pin every enum value, label/name
+field, repeat count, and metadata dictionary. The registry payload has exactly
+``breaks``, ``jumps``, and ``markers``; a JSON encode/decode cycle cannot
+change it.
 
 A structure-bearing timeline combines a measure map containing regular,
 irregular, and constituent measures, each with the number and nominal length
 its class requires (the constituent at offset ``1/3``, so a codec dropping the
 offset fails strict map equality); a metric hierarchy; a region; one break;
-one jump; one marker; one child; and one conversion map. Its default payload has
-exactly ``id``, ``name``, ``class``, ``unit``, ``number_type``, ``length``,
-``locked``, ``meta``, ``children``, ``conversion_maps``, ``regions``,
-``flow_control``, ``measure_map``, and ``metric_hierarchy``; ``events`` remains
-absent. JSON must be a fixpoint, and restoration must reproduce each constituent
+one jump; one marker; one child; and one conversion map. Its default timeline
+object has exactly ``id``, ``name``, ``unit``, ``number_type``, ``length``,
+``locked``, ``is_segment_line``, ``meta``, ``children``, ``conversion_maps``,
+``regions``, ``flow_control``, ``measure_map``, and ``metric_hierarchy``;
+``events`` remains absent. JSON must be a fixpoint, and restoration must reproduce each constituent
 by exact equality. Same-extent retyping and conversions to and from a segment
 line preserve both structure slots and copy the registry into a distinct object.
 A slice carries none of those three objects, pinning the current derivation
 boundary: slicing, child derivation, and unfolding do not infer how authored
 structure should be partitioned.
+
+### Manifests (`test_manifest.py`)
+
+`Timeline`, `TimelineGroup` and `AlignmentBundle` write and read one shape of
+TimeSkeleton manifest: `{"timeskeleton": "0.7.0", "timelines": [...]}` with an
+optional `id`, `name`, `meta`, `groups` and `graphical`. A reader that only
+reads what its own writer produced proves nothing about the format, so the
+tests read manifests written by hand from the format's rules, and compare what
+the library writes back against the same literal text.
+
+- **The version marker.** Without `timeskeleton` each reader raises exactly
+  `not a TimeSkeleton manifest`; `"timeskeleton": "0.6.0"` raises a message
+  naming both `'0.6.0'` and `0.7.0`. Nothing else is read first, so the
+  refusal cannot depend on the rest of the content.
+- **Defaults are supplied.** A minimal manifest (only `id`, `unit` and
+  `length` per timeline, only `id` and `coordinate` per marker, and so on)
+  and its complete twin, both literal, read to objects whose complete and
+  minimal forms are identical; the complete form written back equals the
+  complete literal and the minimal form the minimal literal. For each of the
+  sixteen units a minimal timeline reads with the unit's own number type —
+  `int` for ticks, samples, frames and pixels, `fraction` for quarters and
+  whole_note, `float` otherwise — asserted per unit, so a reader that
+  assumed one default for all would fail on two of the three groups.
+- **The class comes from the unit.** A timeline object carrying a stale
+  `"class": "ContinuousGraphicalTimeline"` beside `"unit": "seconds"` reads as
+  a `ContinuousPhysicalTimeline`; the `class` key is not read, and is kept and
+  written back as an unknown key.
+- **Representation is checked, never coerced.** One mismatch per bare key —
+  `length`, a root's `offset`, a child's `offset`, region `start` and `end`,
+  break and marker `coordinate`, jump `from_coordinate` and `to_coordinate` —
+  each raises the exact message naming the key, the value, the id of the
+  object holding the key (the timeline for `length` and `offset`, a child's
+  own id for its offset, the region, break, marker or jump for its keys) and
+  what to write instead, e.g. `length 32 of 'score' is an int on a fraction
+  axis: write [32, 1]`. The rewritten value is named only when the rewriting
+  is exact, otherwise the axis's number type: `[5, 2]` on a float axis says
+  `write 2.5`, `[1, 3]` says `write a float`, `[1, 2]` on an int axis says
+  `write an int`, and `0.1` on a fraction axis names its exact pair
+  `[3602879701896397, 36028797018963968]`. These are the messages of the
+  TimeSkeleton validators, word for word. An integral JSON number on an int axis and an integer
+  on a float axis are accepted, because JavaScript cannot tell `2.0` from
+  `2`.
+- **Unknown keys are kept where they were found.** One literal manifest
+  carries an `x-note` key on the manifest, a root and a child timeline, a
+  region, a break, a jump, a marker, a conversion map and a map nested in it,
+  the `flow_control` object, a group and `graphical`, each with a different
+  value. `AlignmentBundle.from_dict` followed by `to_dict` equals the literal,
+  and `Timeline.from_dict` and `TimelineGroup.from_dict` keep the keys of the
+  parts they read. Distinct values at every depth catch a reader that moves a
+  key to the wrong object.
+- **Measure-map rows and nested maps keep unknown keys too.** A quarters
+  root's `measure_map` is `[{"count": 1, "time_signature": "4/4"},
+  {"count": 2, "x-row": "kept"}, {"count": 3, "tempo": 96}]`. Row 2 is the
+  default successor of row 1, so without its unknown key the writer would
+  leave it out; with it, the row is written, all three rows in full, `x-row`
+  on row 2 and `tempo` on row 3. A JSON `tempo` is a key the row form does
+  not define (a document cannot hold a tempo object), so it is kept, not
+  read. Reading the written form writes it again unchanged, and the map
+  equals the one read from the same rows without the unknown keys: they
+  take no part in equality. An `x-deep` key added to the `meter_map` nested
+  in a `MetricalPositionMap` is written back in the nested map.
+- **Measure-map rows a manifest refuses.** The rows of a manifest follow the
+  schema: an empty `measure_map`, a row with neither `count` nor `ID`, a
+  negative `qstamp` and an `actual_length` of `-1` each raise the exact
+  message naming the row's position. A conversion map lacking a key its type
+  writes (a `LinearMap` without `scalar`) raises naming the key; `name` is
+  the one map key that may be left out.
+- **Reading never changes a length.** A root `score` (quarters, length
+  `[10, 1]`) holding a child `coda` at offset 8 with length 4 is refused,
+  locked or not, with the TimeSkeleton validators' words: `child 'coda'
+  ends at [12, 1], beyond the length [10, 1] of its parent 'score'`; a child
+  `late` of unknown length at offset 12 is refused with `offset [12, 1] of
+  'late' is beyond the length [10, 1] of its parent 'score'`. A child ending
+  exactly at 10 is read, and the parent writes `[10, 1]` back in both forms.
+  The library used to grow the parent to 12 instead, which is what these
+  pin. On a seconds root of length `60.0`, an end of `62.5`, an offset of
+  `75.0` and a segment of unknown length whose successor starts at `61.0`
+  are refused with the values spelled as written (`ends at 62.5`, `offset
+  75.0`, `ends at 61.0`). The setters keep the library's own message, since
+  no JSON spelling exists there.
+- **Ids and lengths the format reserves.** The part words `start`, `end`,
+  `name`, `label` and `card` follow an address as its parts and are no id:
+  `start` as a root id, `end` as a region id, `card` as the manifest id,
+  `name` as a group id and `label` as a conversion-map id are each refused
+  with `Invalid id '<word>': it is reserved for the parts of an address`,
+  and so are the overrides `Timeline.from_dict(..., timeline_id="start")`
+  and `TimelineGroup.from_dict(..., group_id="end")`. A negative length is
+  refused on reading (`[-12, 1]` on quarters, `-8.0` on seconds:
+  `length -12 of 'x' is negative`) and on construction.
+- **A group made from one timeline keeps the manifest's keys.** A one-root
+  manifest with `id`, `name`, `meta`, `graphical.styles` and an unknown
+  top-level key, read by `TimelineGroup.from_dict(..., group_id="g")`,
+  writes the anonymous manifest of its group with the same `meta`,
+  `styles` and unknown key: only `id` and `name` are gone, because a group
+  writes an anonymous manifest.
+- **A `graphical` object read is written back.** `"graphical": {}` on a
+  one-root manifest is written back as `{}` in the minimal form and as
+  `{"order": {}, "statements": [], "styles": {}}` in the complete form,
+  through `Timeline` and `AlignmentBundle` alike; a manifest read without
+  `graphical` is written without it. Presence is part of the round trip.
+- **A root's offset.** A seconds root with `"offset": -5.5` and a child at
+  offset 2 round-trips with `root_offset == Coordinate(-5.5, seconds)`, and
+  its timestamps and child positions equal those of the same root without
+  the offset, so the offset is stored and changes nothing computed.
+- **Selection.** A literal manifest with roots `score` (named `Score`, child
+  `part` also named `Score`) and `perf` (named `Performance`), and groups
+  `g1` (named `pair`) and `g2` (named `pair`):
+  `Timeline.from_dict` selects `part` by `timeline_id`, `perf` by name, and
+  raises for the name `Score` (two matches) and for the id `nope` (none) with
+  the exact message listing the manifest's timelines; without an argument it
+  raises. `TimelineGroup.from_dict` selects `g1` by id, raises for the name
+  `pair` (two) and the id `nope` (none), each listing the groups; a manifest
+  of one timeline and no group makes a group only when `group_id` or `name`
+  is given; an anonymous one-group manifest is read with arguments naming
+  nothing overriding its id and name; a named one-group manifest needs a
+  selection.
+- **A match selects before anything is overridden.** `Timeline.from_dict`
+  reads a manifest of one root and no group as a whole when no argument is
+  given; an argument that matches a timeline of the manifest, root or
+  descendant, selects it; only an argument that matches none overrides the
+  root's id or name, and only in a manifest of one root and no group. The
+  failure this guards against is the override taken where a selection was
+  meant: the root renamed to its own child's id, so that the tree holds the
+  id twice. The literal is one root `ex` (named `Example`) with two
+  children, `ex_child` (named `Child`, holding the region `intro`) and
+  `ex_coda` (named `Example`). Each assertion separates the two readings:
+  - `timeline_id="ex_child"`, `name="Child"`, and both together return the
+    child — length 8, parent `ex` — and the root keeps the id `ex`, so the
+    tree's timeline ids are `ex`, `ex_child`, `ex_coda`, each once. An
+    override would have answered a root of length 16.
+  - `timeline_id="edition"` and `name="Edition"`, matching nothing, rename
+    the root and leave both children as they were; the minimal form written
+    back is the literal with the root's id (or name) replaced, and nothing
+    else.
+  - An override is refused, with the exact message naming the holder,
+    before the root is renamed, when the new id is already held in the
+    manifest: by the child's region `intro`, or by the manifest's own id.
+  - `name="Example"` matches the root and `ex_coda`: it raises listing the
+    manifest's timelines, rather than renaming anything.
+    `timeline_id="ex_child"` with `name="Edition"` matches the child by id
+    and nothing by name: both must name the same timeline, so it raises.
+  - An unmatched id raises in a manifest of two roots and no group, and in
+    a manifest of one root and one group, each listing the timelines: the
+    override is bound to both conditions, one at a time. Without an
+    argument, a manifest that cannot be read as a whole raises listing its
+    timelines.
+  - `TimelineGroup.from_dict` overrides a group's id only in a manifest of
+    one timeline and no group, or of one anonymous group. In both, a
+    `group_id` held by a descendant timeline (`part`) raises naming it, so
+    the group cannot take an id the manifest's tree already holds; a
+    `group_id` equal to the group's own id reads the group unchanged.
+  - Mixed arguments raise in both readers. As for timelines, a group's
+    arguments must agree: `group_id="g"` naming the one group with
+    `name="Other"` naming nothing raises `the manifest holds no group with
+    id 'g', name 'Other'` listing the groups, instead of renaming a group
+    that was selected.
+- **Identity of the manifest.** An `AlignmentBundle()` writes no `id`; read
+  from an anonymous manifest it holds a minted `bundle_1` that it never
+  writes, and a manifest with a `name` and no `id` writes back exactly that.
+  A given bundle id is written. A legacy `"support_policy": "clamp"` beside
+  the groups is an unknown key: kept and written back, never read, so the
+  bundle's `support_policy` stays `omit`.
+- **`graphical.order`** is the object keyed by group id; the list form is
+  refused, and an order naming no group raises naming it.
+- **An unknown length.** `"length": null` reads as `length is None` and is
+  written back as `null` in both forms: `length` is the one key the minimal
+  form never leaves out.
 
 ### Manifest identity (`test_manifest_ids.py`)
 
@@ -317,9 +485,9 @@ What proves it:
   from and to coordinates, and two markers at one coordinate fall back to
   their id, whose expected order is spelled out from the literal entries.
 - **Reading accepts any order.** For every permutation of each collection in
-  the canonical payload (the `children` and `markers` objects rebuilt in that
-  key order, the lists reordered), `Timeline.from_dict` must restore a
-  timeline whose `to_dict` is the canonical payload, text-identical.
+  the canonical payload (the lists reordered), `Timeline.from_dict` must
+  restore a timeline whose `to_dict` is the canonical payload,
+  text-identical.
 - **Storage is untouched.** The order is a property of the serialized form
   only: a registry's `breaks` keep their stored sequence (sorted by position,
   ties in insertion order) and `children` keep their insertion order after
@@ -447,9 +615,9 @@ correct number in the wrong representation fails.
 child K of 2000 px at offset 1000; the group holds A′ (`Fraction(8)` quarters)
 and K. A′ `2` is a quarter of the way, so K `500`. R is no member, so the group
 stamp holds A′ and K only; R's own stamp at `1500` holds K at `500`, which is
-what places the part inside its root. The dictionary form writes the roots A′
-and R (sorted by id) and names the members A′ and K (sorted by id); the member
-order is the order of addition.
+what places the part inside its root. The manifest writes the roots A′ and R
+(sorted by id) and names the members A′ and K (sorted by id); the member order,
+kept in `graphical.order` under the group's id, is the order of addition.
 
 **Stored rows and intervals.** The stored rows are the common start and end:
 each member at `0` and at its own length, exact in its declared number type.
@@ -469,7 +637,7 @@ original's (value, Python type and unit). Equality of the
 dictionaries alone would not prove the rebuilt group *behaves* the same, so the
 queries are asserted as well.
 
-**Styling is carried, never read.** A group file's `graphical` may hold
+**Styling is carried, never read.** A manifest's `graphical` may hold
 `styles` and `statements` beside `order`: presentation data the library keeps
 on `TimelineGroup.styling` without interpreting it. What proves it is carried
 unchanged is a styling block the library could not have produced itself — a
@@ -478,12 +646,12 @@ declaration directly, nested three levels deep — surviving `from_dict` →
 `to_dict` equal to the input dictionary, beside the unchanged `order`; and the
 rebuilt group's `styling` must not share an object with the input, so a later
 edit of the input dictionary cannot reach the group. Each member alone
-(`styles` only, `statements` only) round-trips alone, so neither is invented
-when absent; a group without styling writes `graphical` as `{"order": [...]}`
-and nothing else. A `graphical` holding styling but no `order` reads its
-members in `members` order, as an absent `graphical` does. Any other key of
-`graphical` is refused, with the exact message
-`'graphical' has unknown key(s) ['frame']`.
+(`styles` only, `statements` only) round-trips alone in the minimal form, so
+neither is invented when absent; a group without styling writes `graphical`
+as `{"order": {...}}` in the minimal form and adds `styles: {}` and
+`statements: []` in the complete one. A `graphical` holding styling but no
+`order` reads its members in `members` order, as an absent `graphical` does.
+Any other key of `graphical` (`frame`) is kept and written back, never read.
 
 **Identity.** The default id is `group_1` (minted statelessly: the smallest
 free number, so two fresh groups in one process are both `group_1`). A
@@ -511,10 +679,11 @@ bundle remain allowed (the bundle tests pin it): each group converts within
 itself, and the offset relates the two.
 
 `from_dict` refuses each malformed input with a `ValueError` naming the
-problem: an unknown or missing key, a member naming no timeline, a timeline id
-written twice, an order that is not a permutation of the members, a root
-holding no member, a member nested with another member, and a group id that
-equals a timeline id.
+problem: a missing required key, a member naming no timeline, a timeline id
+written twice, an order that is not a permutation of the members, a member
+nested with another member, and a group id that equals a timeline id. A root
+that holds no member is not refused: a group is read with the timelines its
+members need, and such a root is left out.
 
 Event aggregation tests assert `EventData` results because the group preserves
 Arrow schemas, null-fills fields that are absent from some member timelines,
@@ -545,6 +714,188 @@ with the timeline spanning it, and the score's `100 · 30/90` is the float
 `33.333333333333336`, asserted exactly. `test_round_trip_conversion` closes an
 audio → pixel → audio loop: 67.5 s is pixel `2193.75`, which names `2194`,
 whose seconds are `67.50769230769231`.
+
+### `test_unknown_length.py` - Timelines of Unknown Length
+
+A length of `None` states that a timeline's length is not known. It is a
+fact about the timeline, not a defect: it is never inferred, never refused,
+and any timeline may have it (root, child, locked, group member, segment).
+The tests prove one rule and its consequences: **an operation that needs the
+end raises `UnknownLengthError` before it changes anything; an operation
+that does not need it works, and positions on the timeline are not bounded
+above.**
+
+**What proves it.** Every raising operation is pinned with its exact message
+(the message names the operation and the timeline whose length is unknown)
+and with the state checked after the raise, which must be what it was
+before: an unchanged length, child list, segment order, region count or
+flow-map list, whichever the operation would have touched. Each
+end-independent operation is pinned by the exact value it returns on a
+timeline of unknown length, so a test cannot pass by raising early or by
+quietly treating the unknown end as some number. In particular, a position
+far beyond all content (for example `100` on a timeline whose content ends at
+`8`) must resolve, and an unknown length must still read as `None` after
+content is added. That last check is what rules out an implementation that
+infers a length from content.
+
+| Operation | Needs the end? | Expected |
+|---|---|---|
+| constructor, `create_child(length=None)`, `locked=True` | no | `length is None`, `end is None`, `is_length_known is False` |
+| `length = None`, `length = 8` from `None` | no | ordinary edits; locked raises `RuntimeError`; a value below the content raises `ValueError` |
+| adding events or children | no | the length stays `None` |
+| child containment | partly | `0 ≤ offset` always; `offset ≤ parent length` when the parent's is known; `offset + length ≤ parent length` when both are |
+| position queries, slicing to an explicit end | no | resolve past all content |
+| timestamp table, boundary table | no | an unknown member is bounded below only; it has a start row but no end row |
+| group conversion between members | yes | raises, naming the member whose length is unknown |
+| group position check | no | the member bounds its positions below only: a group of one unknown member answers `1000` and refuses `-1` |
+| group stored table, `get_interval_for` | yes | raises |
+| matchstamp through a group with an unknown member | yes | raises (not swallowed) |
+| `TimelineGroup.apply_flow` with an unknown member | yes | raises at the first boundary converted, before anything is built |
+| `append_child` on an unknown parent, `append_segment` after an unknown segment | yes | raises |
+| `append_segment` on a line of unknown length, empty or after a known segment | no | appends at `0`, then at the known segment's end; the line stays unknown |
+| splitting with `include_after_last=True` | yes | raises; with `False` it works |
+| a timeline of unknown length used as a flow interval | yes | raises |
+| `WarpMap.materialise` on an unknown source or descendant | yes | raises |
+| WarpMap queries | no | the support ends at the last anchor whatever the timeline's length |
+
+**Segments.** Contiguity is checked between known values. A segment of
+unknown length ends at its successor's offset, so its successor may start
+anywhere at or after its own offset, and a query between the two reaches
+only the earlier segment. Built from `[0, 4)`, an unknown segment at `4` and
+`[10, 12)`: position `7` reaches the unknown segment at `3`, position `11`
+reaches only the last segment, at `1`. The line itself has an unknown length
+until one is set (`12`). A growing line whose new last segment is of unknown
+length becomes of unknown length too, because a line ends where its last
+segment ends.
+
+A segment of unknown length ends where its parent ends it, so content added
+into it may not pass that point. Segment `x` (unknown, at `0`) with its
+successor at `5`: a Note `[1, 5]` is accepted and leaves `x` unknown, a Note
+`[8, 9]` raises `Adding content ending at 9 to timeline 'x' passes 5, where
+its parent 'line' ends it while its length is unknown`, and `x` still holds
+one event. The last segment ends at the line's known length: in a line of
+length `9` whose last segment `b` (unknown) starts at `4`, `[0, 5]` is
+accepted and `[0, 6]` raises (`passes 5`). The bound is the length's absence
+read through the parent, so it cannot come from anything the segment itself
+holds.
+
+**Reach.** A display needs an extent even when the length is unknown. The
+reach is the farthest own-axis coordinate the content reaches: children's
+ends (a child of unknown length contributing its offset plus its own reach),
+region ends, break and marker coordinates, both ends of each jump, and the
+end of the measure map. Events are not part of it. The nested example is
+computed by hand:
+
+| Timeline | Content | Reach |
+|---|---|---|
+| `V` (unknown) | marker at `7` | `7` |
+| `U` (unknown) | region `[1, 3]`, `V` at offset `5` → `5 + 7 = 12` | `12` |
+| `R` (unknown) | child `A` `[2, 6)`; `U` at `10` → `10 + 12 = 22`; region `[0, 15]`; break at `18`; jump `20 → 4` | `22` |
+
+Each content kind also wins once on its own: a lone measure map of five
+3/4 bars reaches `15`, a jump `9 → 30` reaches `30`, and a timeline without
+content reaches `0`. The diagram of `R` scales to `22`, labels each unknown
+end `?`, and never prints `0` or `nan` for it. `repr()` says `length=unknown`.
+
+**The retired sentinel.** A length of `0` used to mean "unbounded" when
+deciding whether a parent position reaches a child. A zero-length child at
+offset `3` in a parent of length `10` must now be absent from the parent's
+stamp at `5`; the old reading would have reported it at `2`. A zero extent in
+the diagram puts every bar at the origin rather than filling the width.
+
+### `test_unlocked_child.py` - Unlocked Children
+
+`locked` states whether a timeline's length is fixed. It defaults to `false`
+on every timeline, a child included, and a child's `locked` is read and
+written as it stands. Embedding means boundary containment only: an unlocked
+child behaves like any unlocked timeline whose boundaries its parent must
+contain. `add_child` still locks the child by default (programmatic use and
+the loaders rely on it); `add_child(..., locked=False)` leaves the child's
+own state as it is, so an unlocked child stays unlocked and a locked one
+stays locked (a lock is never lifted).
+
+The tests prove one rule: **a change of a timeline's length must stay within
+its parent's known length, and a parent never grows because a child grew.**
+Content or a child added into an unlocked timeline grows that timeline only,
+and the addition raises when that growth would leave the timeline's own
+parent. Every refusal is a `ValueError` raised before anything changes,
+naming the child, the end it would have and the parent's end:
+`Timeline 'C' cannot end at 12 on its parent 'P', which ends at 10`. A parent
+of unknown length checks nothing; a segment of unknown length ends at its
+successor's offset, and the last segment of a line at the line's length.
+
+**What proves it.** Every value is computed by hand from offsets and lengths,
+so a test cannot pass by restating the implementation:
+
+- **Round trip.** A manifest root `rec` (seconds, length 30) with children
+  `a` (offset 0, length 4, `locked` absent), `b` (offset 4, length 4,
+  `locked: false`) and `c` (offset 8, length 4, `locked: true`) reads to
+  `is_locked` = `False`, `False`, `True`. The complete form writes `locked`
+  = `false`, `false`, `true`; the minimal form omits it on `a` and `b` and
+  writes `true` on `c`. Reading the written form again writes the same form
+  back. A library that forced every child locked would write `true` three
+  times, which is the defect this pins. `to_typed` keeps an unlocked child
+  unlocked.
+- **`add_child`.** Embedded with the default, a child is locked; with
+  `locked=False` an unlocked child stays unlocked (its length can then be
+  set: 3 at offset 2 writes the row end 5, duration 3) and a child built
+  locked stays locked.
+- **Growth inside the parent.** `G` (length 15, a root) holds `P` (length 10)
+  at offset 5, which holds `C` (length 4) at offset 3, both embedded
+  unlocked. An event `[0, 6]` added to `C` makes `C` 6 long, ending at
+  `3 + 6 = 9` within `P`'s 10: `P` and `G` keep 10 and 15, and `C`'s
+  `Segment` row in `P` reads start 3, end 9, duration 6. Setting `C`'s
+  length to 7 ends it exactly at 10, which is still inside.
+- **Growth beyond the parent, atomically.** The event `[0, 9]` would end `C`
+  at 12 on `P` (length 10) and raises the message above; setting `C`'s
+  length to 8 raises with `cannot end at 11`. It makes no difference whether
+  `P` is locked: `P` unlocked and `P` locked give the same message. After
+  each raise every length (`C` 4, `P` 10, `G` 15), `C`'s event count (0) and
+  both rows are what they were before, which rules out an implementation
+  that checks after mutating or grows the parent.
+- **Growth of the parent itself.** Content added into the unlocked `P`
+  grows `P` only. With `G` of length 20, an event `[0, 12]` added to `P`
+  makes `P` 12 long, ending at `5 + 12 = 17`: `G` keeps 20, and `P`'s row in
+  `G` reads start 5, end 17, duration 12. With `G` of length 15 the same
+  event raises `Timeline 'P' cannot end at 17 on its parent 'G', which ends
+  at 15`, and a child of length 4 added to `P` at offset 8 raises the same
+  way; afterwards `P` is 10 long, holds no event and no new child, and both
+  rows are unchanged.
+- **Unknown length.** `C` (offset 2, length 4) in a root `P` of length 20:
+  setting `C`'s length to `None` leaves `P` at 20 and writes end and duration
+  `None` in `C`'s row; setting it back to 6 writes end 8, duration 6;
+  setting it to 25 raises (`cannot end at 27`, `P` ends at 20). A parent of
+  unknown length checks nothing: `C` set to 100 in such a parent leaves the
+  parent's length `None` and writes the row end 102.
+- **Segments keep their boundaries.** A segment line read from a manifest
+  (length 6, unlocked segments `A` = `[0, 4)` and `B` = `[4, 6)`) never moves
+  a successor or its own end. Setting `A` to 5 raises (its successor starts
+  at 4) with every length and row unchanged; setting `A` to `None` is
+  contiguous (a segment of unknown length ends at its successor's offset)
+  and `A` back to 4 is contiguous again. Setting `B` to 3 or to 1 raises,
+  because the line ends at 6:
+  `SegmentLine requires contiguous segments. Segment 'B' cannot end at 7:
+  the line 'line' ends at 6.` Lengths and rows stay as they were. Setting
+  `B` to `None` leaves the line at 6, and `B` back to 2 ends it at 6 again.
+  The lock of the line makes no difference to any of this.
+- **Copies share no timeline with their source.** `to_typed`,
+  `as_segment_line` and `SegmentLine.to_timeline` return copies holding
+  copies of the children. The source `P` (4 s) holds the unlocked children
+  `A` `[0, 2)` and `B` `[2, 4)` (base `Timeline`s for `to_typed`, which
+  returns an already typed tree itself). For each cast, the result's `A` is
+  not the source's `A`, each has its own timeline as parent, and setting the
+  result's `A` to an unknown length leaves the source's `A` at 2 with its
+  `Segment` row at start 0, end 2, duration 2, while the result's row reads
+  end and duration `None`. Before, the child object was shared, so its
+  parent pointer moved to the copy and a change on one side reached the
+  other.
+- **Casts keep what a read timeline holds.** A root read with
+  `"offset": -2.5` and an unknown key `x-root` keeps `root_offset` and the
+  key through `as_segment_line` and back through `to_timeline`, and both
+  casts write the manifest's `meta` back, because the root was read whole.
+- **Slices keep each child's lock.** Slicing a parent whose children are one
+  unlocked and one locked keeps `is_locked` `False` and `True` on the
+  slices of the two.
 
 ## Test Files
 
@@ -664,18 +1015,16 @@ the axis's declared canonical number type.
      (see `test_external_references.py` for the full flag matrix)
    - Children serialized recursively
    - Segment events regenerated on deserialization
-   - Base-class deserialization dispatches the serialized ``class`` tag through
-     the timeline-type registry, preserving each concrete timeline type and
-     rejecting calls through a mismatched concrete subclass
-   - Duplicate serialized class tags reject registration by a different class;
-     registering the already-recorded class remains idempotent
-    - `length` and every child `offset` are emitted as coordinate dictionaries
-     (`{unit, number_type, value}`), whose value uses the selected JSON number
-     representation; the same pattern carries event coordinates, so a
-     `Fraction` timeline serializes to JSON and comes back exact. The format
-     and its fixpoint guarantee are specified in `tests/core/README.md`
-     (`test_number_json.py`), which also holds the
-     exact-value tests for timeline lengths and offsets.
+   - The class is read from the unit: `Timeline.from_dict` returns each
+     concrete timeline type for its unit, and a call through a concrete
+     subclass the unit does not name is refused
+   - `length` and every child `offset` are written as bare values on the
+     timeline's own axis, represented as its number type selects; the same
+     JSON number representation carries event coordinates, so a `Fraction`
+     timeline serializes to JSON and comes back exact. The format and its
+     fixpoint guarantee are specified in `tests/core/README.md`
+     (`test_number_json.py`), which also holds the exact-value tests for
+     timeline lengths and offsets.
 
 7. **Magic Methods Tests** (5 tests)
    - `__len__`, `__repr__`, `__str__`, `__contains__`
@@ -763,8 +1112,9 @@ accepts ids that name no event — the escape hatch deserialization uses.
 
 #### `to_dict()` flag matrix
 
-`to_dict(*, events: bool = False, external_references: bool = False)`. Both
-keys are **absent** unless requested; requesting `external_references` emits
+`to_dict(*, minimal: bool = False, events: bool = False, external_references:
+bool = False)` writes a manifest whose one timeline object carries the flags'
+keys. Both keys are **absent** unless requested; requesting `external_references` emits
 the key even when the table is empty. The four combinations are asserted
 exactly:
 
@@ -775,10 +1125,10 @@ exactly:
 | `False` | `True` | absent | present (may be `[]`) |
 | `True` | `True` | present | present |
 
-The remaining keys are identical in all four cases: `id`, `name`, `class`,
-`unit`, `number_type`, `length`, `locked`, `meta`, `children`,
-`conversion_maps`, `regions`, `flow_control`, `measure_map`, and
-`metric_hierarchy`. The tests assert that exact key set for the default call.
+The remaining keys of the timeline object are identical in all four cases:
+`id`, `name`, `unit`, `number_type`, `length`, `locked`, `is_segment_line`,
+`meta`, `children`, `conversion_maps`, `regions`, `flow_control`,
+`measure_map`, and `metric_hierarchy`. The tests assert that exact key set for the default call.
 
 Reference rows serialize as plain dicts with `access_points` a nested list of
 `{"uri": ..., "kind": ...}` dicts, so the payload is JSON-safe; JSON safety of
@@ -995,39 +1345,37 @@ builders cannot disagree about which maps are columnar.
    - `to_typed()` recursively re-types children and retains exact classes
 
    **The dictionary form of a SegmentLine** (`test_segment_line_dict.py`).
-   Every timeline at every depth carries the required boolean
-   `is_segment_line`, false on a plain timeline, exactly like `locked`. A
-   SegmentLine writes `class` as its segments' domain-and-modality class —
-   for `SegmentLine[SegmentLine[X]]` that is X's class too — and
-   `is_segment_line: true`; its children are its segments. What proves it:
+   Every timeline object at every depth carries the boolean
+   `is_segment_line` in the complete form, false on a plain timeline,
+   exactly like `locked`; a timeline object writes no class, because the
+   unit decides it. A SegmentLine writes `is_segment_line: true`; its
+   children are its segments. What proves it:
    - **Exact dictionaries.** A `SegmentLine[DiscreteGraphicalTimeline]` of
      two segments (lengths 300 and 200 px, so the line is 500 px) is pinned
-     key for key: `class` `"DiscreteGraphicalTimeline"`, flag true, both
-     children with flag false at offsets 0 and 300. A nested, IEEE-shaped
-     line — a page line of two accolade lines (accolades 100+150 px and
-     120 px) — is pinned too: the outer and both page lines carry
-     `"DiscreteGraphicalTimeline"` and true, the accolades false. A plain
-     timeline writes its own class and false.
+     key for key: flag true, both children with flag false at offsets 0 and
+     300, no `class` anywhere. A nested, IEEE-shaped line — a page line of
+     two accolade lines (accolades 100+150 px and 120 px) — is pinned too:
+     the outer and both page lines carry true, the accolades false. A plain
+     timeline writes false.
    - **Round trips that rebuild the type.** `from_dict` returns
      `SegmentLine[DiscreteGraphicalTimeline]` for the flat line and
      `SegmentLine[SegmentLine[DiscreteGraphicalTimeline]]` for the nested
      one (the segment type is the children's class, a SegmentLine itself
-     when the children carry the flag), and writing the result again gives
-     the same dictionary. Children given out of offset order are rebuilt in
-     offset order, so a reordered file reads as the same line.
+     when the children carry the flag, and the class of the unit for a line
+     without segments), and writing the result again gives the same
+     dictionary. Children given out of offset order are rebuilt in offset
+     order, so a reordered file reads as the same line.
    - **Refusals.** `from_dict` raises `ValueError` for a flagged timeline
-     whose children have mixed classes, whose children disagree on the flag,
-     whose segments leave a gap or overlap, whose segments end short of its
-     length, whose `class` differs from its segments' class, for a missing or
-     non-boolean flag, and for the dynamic `SegmentLine[...]` class names,
-     which are no dictionary class.
-   - **What cannot be written.** A SegmentLine with no segments has a class
-     only when its segment type is a plain timeline class
-     (`SegmentLine[X]()` writes X's class and rebuilds as `SegmentLine[X]`).
-     A bare, never-typed `SegmentLine()` and an empty nested
-     `SegmentLine[SegmentLine[X]]()` cannot say what they are, so `to_dict`
-     refuses them with a `ValueError` naming the timeline; the test pins
-     both messages.
+     whose children disagree on the flag (mixed classes), whose segments
+     leave a gap or overlap, whose segments end short of its length, whose
+     last segment ends beyond it (refused as any child ending beyond its
+     parent, before the segments are placed), and for a non-boolean flag.
+   - **Every line can be written.** A SegmentLine with no segments writes
+     its unit and the flag, and rebuilds as `SegmentLine[X]` for X the
+     class of its unit; a bare, never-typed `SegmentLine()` on pixels
+     therefore reads back as `SegmentLine[DiscreteGraphicalTimeline]`. The
+     test pins that type, since an identity carried by no key cannot be
+     restored.
 
 **Validity Rationale:**
 
@@ -1494,8 +1842,10 @@ measures.
     - `is_segment_line()` uses exact structural coverage, including
       zero-length children, and rejects an empty child collection
     - `as_segment_line()` preserves content while enforcing contiguity and a
-      homogeneous child class
-    - `to_timeline()` removes segment enforcement without losing content
+      homogeneous child class; its segments are copies of the children,
+      never the children themselves
+    - `to_timeline()` removes segment enforcement without losing content,
+      holding copies of the segments
     - Boundary-created children make the parent structurally segmentable;
       casting returns the parent's concrete dynamic SegmentLine class with the
       exact child count, names, and offsets

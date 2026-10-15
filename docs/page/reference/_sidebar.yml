@@ -37,6 +37,7 @@ website:
       - reference/PhysicalTimeline.qmd
       - reference/GraphicalTimeline.qmd
       - reference/SegmentLine.qmd
+      - reference/UnknownLengthError.qmd
       section: Timelines
     - contents:
       - reference/BeatGrid.qmd

@@ -245,8 +245,9 @@ class TestStructuralDelivery:
         """The default serialization stays slim; the flag renders every row."""
         spine = ieee1599_loader("gymnopedie").create_timeline("spine:dlt_1")
 
-        assert "external_references" not in spine.to_dict()
-        rendered = spine.to_dict(external_references=True)["external_references"]
+        assert "external_references" not in spine.to_dict()["timelines"][0]
+        (data,) = spine.to_dict(external_references=True)["timelines"]
+        rendered = data["external_references"]
         assert len(rendered) == GYMNOPEDIE_ROWS
         assert rendered[0] == {
             "event_id": "part_1_voice0_measure1_ev0",

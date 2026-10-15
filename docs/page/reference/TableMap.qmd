@@ -139,7 +139,7 @@ Return the inverse map (swap x and y).
 ### to_dict { #timetoalign.TableMap.to_dict }
 
 ```python
-TableMap.to_dict()
+TableMap.to_dict(minimal=False)
 ```
 
 Serialize to dictionary.

@@ -154,9 +154,9 @@ class RotationMap(ConversionMap[float]):
             "RotationMap is not invertible: multiple inputs map to the same output"
         )
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
         """Serialize to dictionary."""
-        d = super().to_dict()
+        d = super().to_dict(minimal=minimal)
         d["period"] = self._period
         d["scale"] = self._scale
         d["base"] = self._base
@@ -315,9 +315,9 @@ class FloorMap(ConversionMap[int]):
             "FloorMap is not invertible: multiple inputs map to the same output"
         )
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
         """Serialize to dictionary."""
-        d = super().to_dict()
+        d = super().to_dict(minimal=minimal)
         d["divisor"] = self._divisor
         d["base"] = self._base
         d["offset"] = self._offset

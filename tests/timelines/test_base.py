@@ -175,22 +175,6 @@ class TestTimelineConstruction:
         tl = Timeline(locked=True)
         assert tl.is_locked
 
-    def test_duplicate_subclass_tag_is_rejected(self) -> None:
-        """A different class cannot replace an existing serialized tag."""
-
-        class RegistryCollision(Timeline):
-            pass
-
-        expected = (
-            "Timeline tag 'RegistryCollision' is already registered to "
-            f"{RegistryCollision!r}; cannot register "
-            "<class 'tests.timelines.test_base.RegistryCollision'>."
-        )
-        with pytest.raises(ValueError) as exc_info:
-            type("RegistryCollision", (Timeline,), {})
-
-        assert str(exc_info.value) == expected
-
     def test_timeline_with_metadata(self):
         """Timeline stores metadata."""
         meta = {"source": "test", "version": 1}
@@ -521,9 +505,7 @@ class TestLocking:
         with pytest.raises(RuntimeError) as appended:
             root.append_child(self._quarters(2, "tail"))
         assert str(appended.value) == (
-            "Cannot append child on locked timeline 'score'. "
-            "A timeline is locked when embedded as a child, built with "
-            "locked=True, or locked with lock()."
+            "Cannot append child on locked timeline 'score': its length is fixed."
         )
         with pytest.raises(ValueError) as added:
             root.add_child(self._quarters(4, "late"), 6)
@@ -546,7 +528,7 @@ class TestLocking:
 
         rebuilt = Timeline.from_dict(data)
 
-        assert data["locked"] is True
+        assert data["timelines"][0]["locked"] is True
         assert rebuilt.is_locked is True
         assert rebuilt.to_dict() == data
 
@@ -567,9 +549,7 @@ class TestLocking:
         with pytest.raises(RuntimeError) as appended:
             line.append_segment(self._quarters(1, "d"))
         assert str(appended.value) == (
-            "Cannot append child on locked timeline 'form'. "
-            "A timeline is locked when embedded as a child, built with "
-            "locked=True, or locked with lock()."
+            "Cannot append child on locked timeline 'form': its length is fixed."
         )
         data = line.to_dict()
         rebuilt = Timeline.from_dict(data)
@@ -605,22 +585,16 @@ class TestSerialization:
     def test_to_dict_basic(self):
         """to_dict includes all timeline properties."""
         tl = Timeline(length=10.0, unit=TimeUnit.seconds, uid="test_tl")
-        data = tl.to_dict()
+        (data,) = tl.to_dict()["timelines"]
 
         assert data["id"] == "test_tl"
-        assert data["class"] == "Timeline"
         assert data["unit"] == "seconds"
-        assert data["length"] == {
-            "unit": "seconds",
-            "number_type": "float",
-            "value": 10.0,
-        }
+        assert data["length"] == 10.0
         assert data["locked"] is False
         assert data["is_segment_line"] is False
         assert set(data) == {
             "id",
             "name",
-            "class",
             "is_segment_line",
             "unit",
             "number_type",
@@ -640,7 +614,7 @@ class TestSerialization:
         """to_dict(events=True) includes events."""
         tl = Timeline(length=10.0)
         tl.add_events(mixed_event_rows)
-        data = tl.to_dict(events=True)
+        (data,) = tl.to_dict(events=True)["timelines"]
 
         assert len(data["events"]) == 7
 
@@ -650,14 +624,10 @@ class TestSerialization:
         child = Timeline(length=5.0, uid="child")
         parent.add_child(child, offset=10.0)
 
-        data = parent.to_dict()
-        assert "child" in data["children"]
-        assert data["children"]["child"]["offset"] == {
-            "unit": "seconds",
-            "number_type": "float",
-            "value": 10.0,
-        }
-        assert data["children"]["child"]["timeline"]["id"] == "child"
+        (data,) = parent.to_dict()["timelines"]
+        (child_data,) = data["children"]
+        assert child_data["id"] == "child"
+        assert child_data["offset"] == 10.0
 
     def test_from_dict_roundtrip(self, mixed_event_rows: list[dict[str, Any]]):
         """from_dict reconstructs timeline from to_dict output."""
@@ -685,16 +655,23 @@ class TestSerialization:
         restored_child = restored.get_child("child")
         assert restored_child.length.value == 5.0
 
-    def test_concrete_subclass_rejects_mismatched_class_tag(self):
-        """A concrete receiver cannot deserialize another timeline class."""
-        from timetoalign.timelines import ContinuousPhysicalTimeline
+    def test_the_unit_decides_the_class(self):
+        """The base class reads a seconds timeline as continuous physical."""
+        restored = Timeline.from_dict(Timeline(length=10.0, uid="source").to_dict())
+
+        assert type(restored) is ContinuousPhysicalTimeline
+
+    def test_concrete_subclass_rejects_another_unit_class(self):
+        """A concrete receiver cannot read a timeline its unit puts in another class."""
+        from timetoalign.timelines import ContinuousLogicalTimeline
 
         data = Timeline(length=10.0, uid="source").to_dict()
-        with pytest.raises(
-            ValueError,
-            match="Timeline.*ContinuousPhysicalTimeline",
-        ):
-            ContinuousPhysicalTimeline.from_dict(data)
+        with pytest.raises(ValueError) as refused:
+            ContinuousLogicalTimeline.from_dict(data)
+        assert str(refused.value) == (
+            "timeline 'source' of the manifest is a ContinuousPhysicalTimeline, "
+            "not a ContinuousLogicalTimeline"
+        )
 
     def test_structure_bearing_timeline_json_round_trip(self) -> None:
         original = _structure_bearing_timeline()

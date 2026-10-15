@@ -303,20 +303,26 @@ class TestNumberJson:
         assert coordinate_to_dict(restored) == data
         assert type(restored.value) is Fraction
 
-    def test_timeline_length_axis_mismatch_is_refused(self) -> None:
-        payload = ContinuousLogicalTimeline(length=12, unit="quarters").to_dict()
-        payload["length"]["unit"] = "seconds"
-        with pytest.raises(ValueError, match="length axis"):
+    def test_timeline_length_representation_mismatch_is_refused(self) -> None:
+        payload = ContinuousLogicalTimeline(length=12, uid="score").to_dict()
+        payload["timelines"][0]["length"] = 12
+        with pytest.raises(ValueError) as error:
             ContinuousLogicalTimeline.from_dict(payload)
+        assert str(error.value) == (
+            "length 12 of 'score' is an int on a fraction axis: write [12, 1]"
+        )
 
-    def test_timeline_offset_axis_mismatch_is_refused(self) -> None:
+    def test_timeline_offset_representation_mismatch_is_refused(self) -> None:
         parent = ContinuousLogicalTimeline(length=12, unit="quarters")
         child = ContinuousLogicalTimeline(length=4, unit="quarters", uid="child")
         parent.add_child(child, offset=Fraction(1, 3))
         payload = parent.to_dict()
-        payload["children"]["child"]["offset"]["number_type"] = "int"
-        with pytest.raises(ValueError, match="timeline .*child offset"):
+        payload["timelines"][0]["children"][0]["offset"] = 0.5
+        with pytest.raises(ValueError) as error:
             ContinuousLogicalTimeline.from_dict(payload)
+        assert str(error.value) == (
+            "offset 0.5 of 'child' is a float on a fraction axis: write [1, 2]"
+        )
 
 
 # endregion
@@ -325,32 +331,19 @@ class TestNumberJson:
 
 
 class TestTimelineDictForm:
-    """``length``, child ``offset``s, and event coordinates share one shape."""
+    """``length`` and child ``offset``s are bare values on the timeline's axis."""
 
-    def test_fraction_length_is_a_coordinate(self) -> None:
+    def test_fraction_length_is_a_pair(self) -> None:
         data = _fraction_timeline().to_dict()
-        assert data["length"] == {
-            "unit": "quarters",
-            "number_type": "fraction",
-            "value": [10, 3],
-        }
+        assert data["timelines"][0]["length"] == [10, 3]
 
-    def test_fraction_offset_is_a_coordinate(self) -> None:
+    def test_fraction_offset_is_a_pair(self) -> None:
         data = _fraction_timeline().to_dict()
-        offset = data["children"]["child"]["offset"]
-        assert offset == {
-            "unit": "quarters",
-            "number_type": "fraction",
-            "value": [5, 3],
-        }
+        assert data["timelines"][0]["children"][0]["offset"] == [5, 3]
 
-    def test_float_length_is_a_coordinate(self) -> None:
+    def test_float_length_is_a_json_number(self) -> None:
         data = _float_timeline().to_dict()
-        assert data["length"] == {
-            "unit": "seconds",
-            "number_type": "float",
-            "value": 10.0,
-        }
+        assert data["timelines"][0]["length"] == 10.0
 
     def test_event_coordinate_survives_json_exactly(self) -> None:
         restored = Timeline.from_dict(
@@ -392,8 +385,10 @@ class TestMapDictForm:
         assert ConversionMap.from_dict(json.loads(json.dumps(data))).name == "my-map"
 
     @pytest.mark.parametrize("cmap", _conversion_maps(), ids=lambda m: type(m).__name__)
-    def test_name_is_always_emitted(self, cmap: ConversionMap[Any]) -> None:
-        assert cmap.to_dict()["name"] == cmap.name
+    def test_only_a_given_name_is_emitted(self, cmap: ConversionMap[Any]) -> None:
+        assert cmap.to_dict()["name"] is None
+        named = ConversionMap.from_dict(dict(cmap.to_dict(), name="my-map"))
+        assert named.to_dict()["name"] == "my-map"
 
     def test_linear_map_keeps_exact_fractions(self) -> None:
         data = LinearMap(scalar=Fraction(1, 3), offset=Fraction(5, 3)).to_dict()

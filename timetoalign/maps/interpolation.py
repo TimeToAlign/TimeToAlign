@@ -328,13 +328,13 @@ class InterpolationMap(ConversionMap[float]):
 
     # region Serialization
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
         """Serialize the map to a dictionary.
 
         Returns:
             Dictionary representation of the map.
         """
-        d = super().to_dict()
+        d = super().to_dict(minimal=minimal)
         d["source_coords"] = [float(v) for v in self.source_coords]
         d["target_coords"] = [float(v) for v in self.target_coords]
         d["source_id"] = self.source_id

@@ -78,7 +78,7 @@ website:
           contents:
             - text: "How to Align a Piano Roll (SUPRA)"
               href: howto/how02_supra_piano_roll.ipynb
-            - text: "How to Save and Load Groups and Bundles"
+            - text: "How to Save and Load Timelines, Groups and Bundles"
               href: howto/how02_group_and_bundle_files.ipynb
         - section: "AlignmentBundles"
           contents:
@@ -207,6 +207,8 @@ quartodoc:
         - name: GraphicalTimeline
           package: timetoalign.timelines
         - name: SegmentLine
+          package: timetoalign.timelines
+        - name: UnknownLengthError
           package: timetoalign.timelines
 
     - title: Beat Grids

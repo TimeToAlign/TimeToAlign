@@ -118,7 +118,7 @@ def test_pickup_grid_change_and_trailing_measure_are_exact(tmp_path: Path) -> No
         "POSITION_MARK": [{"Name": "cue", "Type": "0", "Start": "1.25", "Num": "0"}],
     }
     payload = timeline.to_dict()
-    assert payload["measure_map"] is None
+    assert payload["timelines"][0]["measure_map"] is None
     restored = Timeline.from_dict(json.loads(json.dumps(payload)))
     assert restored.to_dict() == payload
 

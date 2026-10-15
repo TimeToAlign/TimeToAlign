@@ -94,7 +94,7 @@ consecutive ordinals — and never resets.
 
 | Name        | Type                                                       | Description                                                 | Default    |
 |-------------|------------------------------------------------------------|-------------------------------------------------------------|------------|
-| measure_map | [MeasureMap](`timetoalign.alignment.structure.MeasureMap`) | Measures whose exact starts and lengths define the lattice. | _required_ |
+| measure_map | [MeasureMap](`timetoalign.timelines.structure.MeasureMap`) | Measures whose exact starts and lengths define the lattice. | _required_ |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -131,7 +131,7 @@ Return the inverse map (measures -> quarters).
 ### to_dict { #timetoalign.QuartersToFloatingMeasures.to_dict }
 
 ```python
-QuartersToFloatingMeasures.to_dict()
+QuartersToFloatingMeasures.to_dict(minimal=False)
 ```
 
 Serialize to dictionary.

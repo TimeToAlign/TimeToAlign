@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence, Set
+from collections.abc import Callable, Iterator, Mapping, Sequence, Set
 from fractions import Fraction
 from typing import Any, Literal, TypeAlias, TypeVar
 
@@ -39,7 +39,6 @@ ROUNDING_MODES: tuple[str, ...] = ("round", "floor", "ceil", "truncate")
 TABLE_FORMATS: tuple[str, ...] = ("table", "dataframe")
 
 ResultT = TypeVar("ResultT")
-EntryT = TypeVar("EntryT")
 
 
 def number_type_for_converted_unit(preferred: NumberType, unit: TimeUnit) -> NumberType:
@@ -505,32 +504,3 @@ def coordinate_from_dict(entry: Mapping[str, Any]) -> Coordinate:
             f"{number_type.name!r}: {entry['value']!r}"
         ) from error
     return Coordinate(value, unit, number_type=number_type)
-
-
-def canonical_order(
-    entries: Iterable[EntryT],
-    key: Callable[[EntryT], Sequence[str | Mapping[str, Any]]],
-) -> list[EntryT]:
-    """Return serialized entries in the canonical order of a timeline dictionary.
-
-    *key* names the members an entry is ordered by, most significant first.
-    A coordinate dictionary compares by its exact numeric value, never by its
-    JSON spelling (``9`` before ``10``, ``[5, 8]`` before ``[2, 3]``), and a
-    string by Unicode code point. The sort is stable, so entries that remain
-    equal keep their given order.
-
-    Args:
-        entries: Serialized entries, as written by a ``to_dict`` method.
-        key: Returns the ordering members of one entry.
-
-    Returns:
-        The entries in canonical order.
-    """
-
-    def sort_key(entry: EntryT) -> tuple[Any, ...]:
-        return tuple(
-            number_from_json(part["value"]) if isinstance(part, Mapping) else part
-            for part in key(entry)
-        )
-
-    return sorted(entries, key=sort_key)

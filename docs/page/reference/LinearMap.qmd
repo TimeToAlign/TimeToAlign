@@ -98,7 +98,7 @@ Return the inverse map: y = (x - b) / a.
 ### to_dict { #timetoalign.LinearMap.to_dict }
 
 ```python
-LinearMap.to_dict()
+LinearMap.to_dict(minimal=False)
 ```
 
 Serialize to dictionary.

@@ -1381,11 +1381,15 @@ number exactly: an `int` is a JSON integer, a `float` is a JSON number, and a
 The tests reject booleans, zero and negative denominators, and pairs of the
 wrong length. `is_fraction_json` accepts only valid two-item integer pairs.
 
-Coordinates are `{ "unit", "number_type", "value" }`; their number type
-selects the value representation. The tests prove that a decoded coordinate
-restores its declared Python type and that timeline lengths and child offsets
-reject unit or number-type mismatches. Arrow storage remains a separate,
-three-member column representation and is not serialized as JSON.
+Coordinates on another timeline's axis are `{ "unit", "number_type", "value"
+}`; their number type selects the value representation, and a decoded
+coordinate restores its declared Python type. A timeline's length and its
+children's offsets lie on its own axis and are written as the bare value: the
+tests prove that a written timeline is a JSON fixpoint whatever its number
+type, that a length and an offset come back exactly in the axis's type, and
+that a bare value represented otherwise than the axis selects is refused with
+a message naming what to write. Arrow storage remains a separate, three-member
+column representation and is not serialized as JSON.
 
 ### Coordinate cell rendering
 

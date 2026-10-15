@@ -393,10 +393,11 @@ same measuring unit. Constraints mirror those for TimeIntervalEvents:
 
 - A Child cannot span an existing {{< glossary Break >}} in the parent
   (unless explicitly adopted).
-- A Child may only extend the parent's length when the parent is not
-  locked.
-- Once added, a Child's length is **locked** to prevent side effects.
-- Only the top-level ("root") timeline can be extended.
+- Adding a Child may extend the parent's length only when the parent is not
+  locked, and only within the parent's own parent's known length.
+- Once added, a Child's length is **locked** by default to prevent side
+  effects. An unlocked Child's length may change only within its parent's
+  known length: a parent never grows because a Child grew.
 
 Children introduce **relative coordinate systems** within a parent. A Child's
 local origin is mapped to a specific coordinate of the parent; its local
@@ -454,9 +455,9 @@ Four operations are associated with Children:
   spanning the full parent produce the structure accepted by
   `as_segment_line()`.
 - **Concatenation**: `append_child(child, name=..., uid=...)` adds a Child at
-  an unlocked parent's EndInstant and extends that parent. Embedded timelines
-  are length-locked, so appending to one raises `RuntimeError`; nested
-  structures are assembled from the inside out.
+  an unlocked parent's EndInstant and extends that parent. `add_child()`
+  locks the timelines it embeds by default, so appending to one raises
+  `RuntimeError`; nested structures are assembled from the inside out.
 
 | Property | Region | Child | Segment |
 |----------|--------|-------|---------|

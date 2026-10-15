@@ -191,9 +191,9 @@ class IntervalToConstantMap(ConversionMap[T], Generic[T]):
             "IntervalToConstantMap is not invertible: many coordinates map to same value"
         )
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
         """Serialize to dictionary."""
-        d = super().to_dict()
+        d = super().to_dict(minimal=minimal)
         d["boundaries"] = [number_to_json(v) for v in self._boundaries_original]
         d["values"] = list(self._values)
         return d
@@ -320,6 +320,8 @@ class QuartersToMeasureNumber(IntervalToConstantMap[str]):
             uid=uid,
             name=name or "quarters_to_mn",
         )
+        # The default name is derived for display; only a given one is written.
+        self._name_given = name is not None
 
     @property
     def mns(self) -> list[str]:
@@ -382,9 +384,9 @@ class QuartersToMeasureNumber(IntervalToConstantMap[str]):
 
         return cls(boundaries=boundaries, mns=mns)
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
         """Serialize to dictionary."""
-        d = super().to_dict()
+        d = super().to_dict(minimal=minimal)
         d["type"] = "QuartersToMeasureNumber"
         return d
 
@@ -482,6 +484,7 @@ class QuartersToFloatingMeasures(TableMap):
             uid=uid,
         )
         self._name = name or "quarters_to_measures"
+        self._name_given = name is not None
         self._x_exact = [_as_exact(v) for v in self._x_original]
         self._y_exact = [_as_exact(v) for v in self._y_original]
 
@@ -672,9 +675,9 @@ class QuartersToFloatingMeasures(TableMap):
             source_unit=self._source_unit,
         )
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
         """Serialize to dictionary."""
-        d = super().to_dict()
+        d = super().to_dict(minimal=minimal)
         d["type"] = "QuartersToFloatingMeasures"
         return d
 

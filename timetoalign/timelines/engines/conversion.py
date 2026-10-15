@@ -268,7 +268,7 @@ class ConversionMapsMixin:
             )
 
         # Convert length
-        derived_length = cmap(self._length.value)
+        derived_length = None if self._length is None else cmap(self._length.value)
 
         # Determine appropriate Timeline class for target domain
         from ..types import get_timeline_class
@@ -342,7 +342,8 @@ class ConversionMapsMixin:
         ``child_coord = parent_coord - offset``
 
         Returns None if *parent_coord* falls outside the child's
-        ``[offset, offset + length)`` span.
+        ``[offset, offset + length)`` span; a child of unknown length spans
+        everything from its offset on.
 
         Args:
             child_id: The child timeline ID.
@@ -364,8 +365,8 @@ class ConversionMapsMixin:
                 if child_exact is not None and offset_exact is not None
                 else float(coordinate_numeric_value(child_coord)) - float(offset.value)
             )
-        child_length = child.length.value
-        if child_coord < 0 or (child_length > 0 and child_coord >= child_length):
+        extent = child._extent
+        if child_coord < 0 or (extent is not None and child_coord >= extent):
             return None
         return child_coord
 

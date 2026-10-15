@@ -319,9 +319,9 @@ class TableMap(ConversionMap[CoordinateValue]):
                 target_unit=self._source_unit,
             )
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
         """Serialize to dictionary."""
-        d = super().to_dict()
+        d = super().to_dict(minimal=minimal)
         d["x_values"] = [number_to_json(v) for v in self._x_original]
         d["y_values"] = [number_to_json(v) for v in self._y_original]
         d["kind"] = self._kind.name

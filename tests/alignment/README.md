@@ -681,11 +681,14 @@ scales to the dense-alignment workload.
 
 ### What We're Validating
 
-A bundle is its timelines and its groups. Its dictionary form writes every
-root timeline once (each exactly `Timeline.to_dict()`, sorted by id), the
-groups as `Group` objects naming their members by id (sorted by id), and every
-group's member order under `graphical.order`. MatchClaims are not part of the
-form and are excluded from every assertion here.
+A bundle is its timelines and its groups. Its dictionary form is a
+TimeSkeleton manifest: the bundle's `id` only when one was given, its `name`
+and `meta`, every root timeline once (each the timeline object
+`Timeline.to_dict()` writes, sorted by id), the groups as `Group` objects
+naming their members by id (sorted by id), and every group's member order
+under `graphical.order`. MatchClaims and the support policy (a setting of the
+bundle, not of the manifest) are not part of the form; claims are excluded
+from every assertion here.
 
 ### What proves it
 
@@ -705,9 +708,11 @@ form and are excluded from every assertion here.
    rebuilt bundle must also hold exactly the same participants and the same
    group membership.
 2. **Exact expected forms.** One direct construction pins the whole
-   dictionary: two groups and an ungrouped root, a group member that is a
+   manifest: two groups and an ungrouped root, a group member that is a
    child (its root is written, the child id is the member), the `group_N`
-   ids, `support_policy` as its string value, and the member order as added.
+   ids, no `id` (the bundle's `bundle_1` is minted), no `support_policy`,
+   and the member order as added. A bundle with a given id writes it; an
+   anonymous manifest read back writes no id again.
 3. **Identity.** A fresh bundle is `bundle_1`; `as_group` names the new group
    and its id is minted `group_1`, `group_2`; a child added to a group brings
    its root, ungrouped; a child added ungrouped registers only its root (an
@@ -729,12 +734,13 @@ form and are excluded from every assertion here.
    them. In *one* group they are refused: `grouped_with` naming a member
    nested with the newcomer raises `ValueError` naming both ids before
    anything changes, and so does a `Group` object in `from_dict` naming both.
-5. **Refusals.** `from_dict` raises `ValueError` naming the problem for an
-   unknown or missing key, an unknown `support_policy`, an empty bundle id, a
-   timeline written twice, a group id written twice or equal to a timeline id,
-   a member naming no timeline, a timeline in two groups, a group naming a
-   parent and its child, and an order naming no group or not a permutation of
-   its group's members.
+5. **Refusals.** `from_dict` raises `ValueError` naming the problem for a
+   missing marker or required key, an empty manifest id, a timeline written
+   twice, a group id written twice or equal to a timeline id, a member naming
+   no timeline, a timeline in two groups, a group naming a parent and its
+   child, and an order naming no group or not a permutation of its group's
+   members. A key the library does not know is not refused: it is kept and
+   written back.
 6. **Styling is carried, never read.** A bundle file's `graphical` may hold
    `styles` and `statements` beside `order`; they belong to the bundle, not
    to any of its groups, and the library keeps them on
@@ -743,11 +749,10 @@ form and are excluded from every assertion here.
    directly survives `from_dict` → `to_dict` equal to the input, beside the
    unchanged per-group `order`, and the rebuilt bundle's `styling` shares no
    object with the input. The direct construction writes `graphical` as
-   `{"order": {...}}` alone (item 2), so absent styling is never invented.
-   Without `order`, every group joins in `members` order. Any other key of
-   `graphical` is refused with the exact message
-   `'graphical' has unknown key(s) ['frame']`, the same reader serving
-   groups and bundles.
+   `{"order": {...}}` alone in the minimal form (item 2), so absent styling
+   is never invented. Without `order`, every group joins in `members` order.
+   Any other key of `graphical` (`frame`) is kept and written back, never
+   read, by the one reader serving groups and bundles.
 
 ---
 

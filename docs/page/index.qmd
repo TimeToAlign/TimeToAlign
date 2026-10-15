@@ -68,7 +68,7 @@ This documentation follows the
 
     *TimelineGroups* ---
     [How to Align a Piano Roll (SUPRA)](howto/how02_supra_piano_roll.ipynb) ·
-    [How to Save and Load Groups and Bundles](howto/how02_group_and_bundle_files.ipynb)
+    [How to Save and Load Timelines, Groups and Bundles](howto/how02_group_and_bundle_files.ipynb)
 
     *AlignmentBundles* ---
     [How to Create a Note Alignment](howto/how03_create_note_alignment.ipynb) ·

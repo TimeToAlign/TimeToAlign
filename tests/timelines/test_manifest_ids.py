@@ -123,11 +123,12 @@ REFERENCE_IDS = {
 }
 
 
-def _ids(payload: dict[str, Any]) -> dict[str, Any]:
+def _ids(manifest: dict[str, Any]) -> dict[str, Any]:
+    (payload,) = manifest["timelines"]
     flow = payload["flow_control"]
     return {
         "timeline": payload["id"],
-        "children": set(payload["children"]),
+        "children": {child["id"] for child in payload["children"]},
         "regions": {entry["id"] for entry in payload["regions"]},
         "breaks": {entry["id"] for entry in flow["breaks"]},
         "markers": [entry["id"] for entry in flow["markers"]],
@@ -401,9 +402,8 @@ def _elements(payload: dict[str, Any]) -> Iterator[str]:
     for kind in ("breaks", "markers", "jumps"):
         for entry in payload["flow_control"][kind]:
             yield entry["id"]
-    for child_id, child in payload["children"].items():
-        assert child["timeline"]["id"] == child_id
-        yield from _elements(child["timeline"])
+    for child in payload["children"]:
+        yield from _elements(child)
 
 
 LOADERS: list[tuple[str, Callable[[], Timeline]]] = [
@@ -462,7 +462,7 @@ class TestLoaderParity:
     def test_every_element_has_a_unique_valid_id(
         self, load: Callable[[], Timeline]
     ) -> None:
-        ids = list(_elements(load().to_dict()))
+        ids = list(_elements(load().to_dict()["timelines"][0]))
         assert ids
         assert len(ids) == len(set(ids))
         for element_id in ids:

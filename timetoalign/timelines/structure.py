@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import warnings
 from collections.abc import Iterable, Iterator, Mapping
+from copy import deepcopy
 from dataclasses import dataclass, field
 from fractions import Fraction
 from math import gcd, isfinite, lcm
@@ -124,7 +125,13 @@ class MeasureMap:
     map states every successor explicitly: a measure built without ``next``
     is followed by the next measure in printed order, and the last one by
     none.
+
+    A map read from a manifest keeps the keys of each row that the row form
+    does not define, by measure, and writes them back in that measure's row;
+    they take no part in equality.
     """
+
+    _unknown_row_keys: Mapping[str, Mapping[str, Any]] = MappingProxyType({})
 
     @classmethod
     def from_measure_data(cls, data: MeasureData) -> MeasureMap:
@@ -190,6 +197,13 @@ class MeasureMap:
     def from_dict(cls, data: list[dict[str, Any]]) -> MeasureMap:
         """Restore a map from compressed Measure Map rows.
 
+        This is a manifest's ``measure_map``: a non-empty list of rows, each
+        carrying ``count`` or ``ID``, with a non-negative ``qstamp`` and a
+        strictly positive ``actual_length`` and ``nominal_length`` where it
+        states them. A row's keys outside the row form (a ``tempo`` among
+        them, which a document cannot hold as a :class:`Tempo`) are kept and
+        written back in that measure's row.
+
         Args:
             data: JSON-safe list of compressed Measure Map rows.
 
@@ -197,16 +211,40 @@ class MeasureMap:
             The restored immutable measure map.
 
         Raises:
-            ValueError: If *data* is not a row list.
+            ValueError: If *data* is not a non-empty row list, a row carries
+                neither ``count`` nor ``ID``, states a negative ``qstamp`` or
+                a length that is not positive, or breaks a rule of
+                :meth:`expand_rows`.
         """
-        if not isinstance(data, list):
+        if not isinstance(data, list) or not data:
             raise ValueError(
-                "MeasureMap document form must be a list of Measure Map rows"
+                "MeasureMap document form must be a non-empty list of Measure Map rows"
             )
-        return cls.from_rows(data)
+        for position, row in enumerate(data, start=1):
+            if not isinstance(row, dict):
+                raise ValueError(f"Measure Map row {position} is not an object")
+            if "count" not in row and "ID" not in row:
+                raise ValueError(
+                    f"Measure Map row {position} carries neither count nor ID"
+                )
+            qstamp = _row_quarters(row, "qstamp")
+            if qstamp is not None and qstamp < 0:
+                raise ValueError(
+                    f"Measure Map row {position} states a negative qstamp {qstamp}"
+                )
+            for key in ("actual_length", "nominal_length"):
+                length = _row_quarters(row, key)
+                if length is not None and length <= 0:
+                    raise ValueError(
+                        f"Measure Map row {position} states {key} {length}, which "
+                        "is not positive"
+                    )
+        return cls.from_rows(data, keep_unknown_keys=True)
 
     @classmethod
-    def expand_rows(cls, rows: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    def expand_rows(
+        cls, rows: Iterable[Mapping[str, Any]], *, keep_unknown_keys: bool = False
+    ) -> list[dict[str, Any]]:
         """Expand compressed Measure Map rows into canonical full rows.
 
         Rows are in their document form: quarter-note values are JSON numbers
@@ -220,13 +258,16 @@ class MeasureMap:
         Args:
             rows: Compressed or full rows in Measure Map order, optionally
                 carrying the in-memory ``tempo`` extension.
+            keep_unknown_keys: Keep every key outside the row form, ``tempo``
+                included, on its expanded row under ``"unknown_keys"``
+                instead of refusing it: the document form of a manifest.
 
         Returns:
             Full rows with exact quarter-note values, ``ID`` strings and
             ``next`` as row counts (``[]`` for the last row by default).
 
         Raises:
-            ValueError: If a row uses an unknown key, a number in another
+            ValueError: If a row uses an unknown key (unless kept), a number in another
                 form, a count that does not increase, an ``ID`` stated twice,
                 a ``next`` naming no row, a non-positive offset, or contradicts
                 derived signatures.
@@ -235,13 +276,17 @@ class MeasureMap:
             UserWarning: If a stated qstamp disagrees with the derived one;
                 the derived qstamp is kept.
         """
-        allowed = {*_ROW_KEYS, "tempo"}
+        allowed = set(_ROW_KEYS) if keep_unknown_keys else {*_ROW_KEYS, "tempo"}
         source = [dict(row) for row in rows]
         for row in source:
             unknown = sorted(set(row) - allowed)
-            if unknown:
+            if unknown and not keep_unknown_keys:
                 raise ValueError(f"Unknown Measure Map row key {unknown[0]!r}")
-            if "tempo" in row and not isinstance(row["tempo"], Tempo):
+            if (
+                "tempo" in allowed
+                and "tempo" in row
+                and not isinstance(row["tempo"], Tempo)
+            ):
                 raise ValueError("Measure Map tempo must be a Tempo instance")
             if "ID" in row and not isinstance(row["ID"], str):
                 raise ValueError(f"Measure Map ID {row['ID']!r} is not a string")
@@ -384,8 +429,15 @@ class MeasureMap:
                 "volta": stated.get("volta"),
                 "offset_within_measure": offset or Fraction(0),
             }
-            if "tempo" in stated:
+            if "tempo" in allowed and "tempo" in stated:
                 row["tempo"] = stated["tempo"]
+            unknown_keys = {
+                key: deepcopy(value)
+                for key, value in stated.items()
+                if key not in allowed
+            }
+            if unknown_keys:
+                row["unknown_keys"] = unknown_keys
             expanded.append(row)
             qstamp = None if qstamp is None or actual is None else qstamp + actual
 
@@ -422,12 +474,16 @@ class MeasureMap:
         return expanded
 
     @classmethod
-    def from_rows(cls, rows: Iterable[Mapping[str, Any]]) -> MeasureMap:
+    def from_rows(
+        cls, rows: Iterable[Mapping[str, Any]], *, keep_unknown_keys: bool = False
+    ) -> MeasureMap:
         """Build a measure map from Measure Map authoring rows.
 
         Args:
             rows: Compressed or full rows in their document form, without
                 tempo extensions.
+            keep_unknown_keys: Keep each row's keys outside the row form,
+                written back in that measure's row, instead of refusing them.
 
         Returns:
             The exact immutable measure map represented by the rows.
@@ -436,7 +492,7 @@ class MeasureMap:
             ValueError: If rows are invalid or contain tempo extensions, which
                 require :meth:`MetricHierarchy.from_rows`.
         """
-        expanded = cls.expand_rows(rows)
+        expanded = cls.expand_rows(rows, keep_unknown_keys=keep_unknown_keys)
         if any("tempo" in row for row in expanded):
             raise ValueError(
                 "Rows with tempo must be read by MetricHierarchy.from_rows"
@@ -450,7 +506,8 @@ class MeasureMap:
         Every lane ends here: rows from :meth:`expand_rows`, which a loader
         may complete first, and rows read from a score loader's measure
         table. Each measure is classified by :meth:`Measure.from_values`;
-        ``next`` counts become row IDs.
+        ``next`` counts become row IDs. A row's ``"unknown_keys"`` are kept
+        for that measure's row.
 
         Args:
             rows: Full rows with the keys :meth:`expand_rows` returns.
@@ -491,7 +548,11 @@ class MeasureMap:
                     offset_within_measure=row["offset_within_measure"],
                 )
             )
-        return cls(measures)
+        measure_map = cls(measures)
+        measure_map._unknown_row_keys = {
+            row["ID"]: row["unknown_keys"] for row in source if row.get("unknown_keys")
+        }
+        return measure_map
 
     @classmethod
     def _from_normalized(cls, measures: Iterable[Measure]) -> MeasureMap:
@@ -634,9 +695,11 @@ class MeasureMap:
         falling back to the count where a measure states none: ``ID`` only when
         it is not ``str(count)``, ``next`` as row IDs (on the last row only when it names
         a successor), ``volta`` when set, and ``offset_within_measure`` only
-        when it is non-zero. The first and the last rows are always retained.
-        Every other row is omitted when it equals the default successor of the
-        preceding measure: count increments, the ID is ``str(count)``, qstamp
+        when it is non-zero; then the keys outside the row form that the
+        measure's row was read with. The first and the last rows are always
+        retained, and so is every row read with such keys. Every other row is
+        omitted when it equals the default successor of the preceding
+        measure: count increments, the ID is ``str(count)``, qstamp
         advances by actual_length, actual_length becomes nominal_length, number
         increments, name becomes that number, signatures and nominal lengths
         persist, repeats clear, ``volta`` and ``offset_within_measure`` are
@@ -719,11 +782,13 @@ class MeasureMap:
             successor["next"] = [measures[index + 2].id]
             return successor
 
+        unknown = self._unknown_row_keys
         return [
-            row_for(index)
+            {**row_for(index), **deepcopy(dict(unknown.get(measures[index].id, {})))}
             for index in range(len(measures))
             if not compress
             or index in (0, last)
+            or measures[index].id in unknown
             or row_for(index) != default_successor(index - 1)
         ]
 

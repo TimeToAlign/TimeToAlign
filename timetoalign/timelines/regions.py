@@ -11,17 +11,24 @@ from a Region.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from copy import deepcopy
 from dataclasses import dataclass, field
 from fractions import Fraction
 from typing import Any, ClassVar
 
-from timetoalign.core import Coordinate, IdCoordinate, TimeUnit
+from timetoalign.core import Coordinate, IdCoordinate, NumberType, TimeUnit
 from timetoalign.core.ids import _IdentifiedElement
-from timetoalign.core.retrieval import (
-    coordinate_from_dict,
-    coordinate_to_dict,
-)
 from timetoalign.core.time import Duration, Interval
+
+from .manifest import (
+    axis_value_from_json,
+    axis_value_to_json,
+    read_id,
+    read_meta,
+    read_name,
+    require_object,
+)
 
 # region Region
 
@@ -67,6 +74,8 @@ end=Coordinate(Fraction(32, 1), quarters))
     """
 
     _id_prefix: ClassVar[str] = "region"
+    _dict_keys: ClassVar[tuple[str, ...]] = ("id", "name", "start", "end", "meta")
+    _dict_defaults: ClassVar[Mapping[str, Any]] = {"name": None, "meta": {}}
 
     start: Coordinate
     end: Coordinate
@@ -74,15 +83,44 @@ end=Coordinate(Fraction(32, 1), quarters))
     meta: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> Region:
-        """Restore a region from its typed coordinate dictionary representation."""
-        return cls(
-            id=data["id"],
-            name=data.get("name"),
-            start=coordinate_from_dict(data["start"]),
-            end=coordinate_from_dict(data["end"]),
-            meta=dict(data.get("meta", {})),
+    def from_dict(
+        cls,
+        data: dict[str, Any],
+        *,
+        unit: TimeUnit,
+        number_type: NumberType,
+    ) -> Region:
+        """Restore a region from its object in a timeline's ``regions``.
+
+        ``start`` and ``end`` are bare values on the timeline's axis, which
+        *unit* and *number_type* describe; ``name`` and ``meta`` may be left
+        out. Keys the library does not know are kept and written back.
+
+        Args:
+            data: The region object.
+            unit: The unit of the timeline holding the region.
+            number_type: The number type of that timeline.
+
+        Raises:
+            ValueError: If the object is malformed or a value is represented
+                otherwise than the axis selects.
+        """
+        require_object(data, "a region", ("id", "start", "end"))
+        region_id = read_id(data["id"], "a region")
+        bounds = {
+            key: axis_value_from_json(
+                data[key], key=key, owner=region_id, unit=unit, number_type=number_type
+            )
+            for key in ("start", "end")
+        }
+        region = cls(
+            id=region_id,
+            name=read_name(data, f"region {region_id!r}"),
+            meta=read_meta(data, f"region {region_id!r}"),
+            **bounds,
         )
+        region._keep_unknown_keys(data)
+        return region
 
     def __post_init__(self) -> None:
         """Mint or validate the id, then validate region bounds and units."""
@@ -152,15 +190,22 @@ end=Coordinate(Fraction(32, 1), quarters))
         """
         return self.start.value < other.end.value and other.start.value < self.end.value
 
-    def to_dict(self) -> dict[str, Any]:
-        """Return this region as a JSON-safe dictionary."""
-        return {
-            "id": self.id,
-            "name": self.name,
-            "start": coordinate_to_dict(self.start),
-            "end": coordinate_to_dict(self.end),
-            "meta": self.meta,
-        }
+    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
+        """Return this region as its JSON object, bounds as bare values.
+
+        Args:
+            minimal: Leave out ``name`` and ``meta`` at their defaults.
+        """
+        return self._dict_form(
+            {
+                "id": self.id,
+                "name": self.name,
+                "start": axis_value_to_json(self.start),
+                "end": axis_value_to_json(self.end),
+                "meta": deepcopy(self.meta),
+            },
+            minimal=minimal,
+        )
 
     def __repr__(self) -> str:
         label = (

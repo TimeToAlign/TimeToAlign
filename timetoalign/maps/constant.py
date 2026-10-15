@@ -114,14 +114,14 @@ class ConstantMap(ConversionMap[Any]):
             "is many-to-one and has no unique inverse"
         )
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
         """Serialize to dictionary.
 
         A numeric constant is encoded with the canonical JSON number form;
         every other constant (the common case is a string label)
         is emitted as-is and must therefore already be JSON-native.
         """
-        d = super().to_dict()
+        d = super().to_dict(minimal=minimal)
         d["value"] = (
             number_to_json(self._value)
             if isinstance(self._value, (int, float, Fraction))

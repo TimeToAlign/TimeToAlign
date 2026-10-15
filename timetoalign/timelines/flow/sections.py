@@ -890,6 +890,7 @@ def _as_interval(
         ValueError: If *obj* is a ``str`` and no *resolve* is given, or if a
             sequence does not hold exactly two elements.
         TypeError: If *obj* matches none of the recognised descriptor shapes.
+        UnknownLengthError: If *obj* is a timeline of unknown length.
     """
     if isinstance(obj, str):
         if resolve is None:
@@ -898,6 +899,10 @@ def _as_interval(
         return (start, end, obj)
     if hasattr(obj, "start") and hasattr(obj, "end"):
         label = getattr(obj, "id", None) or getattr(obj, "name", None)
+        from ..base import Timeline
+
+        if isinstance(obj, Timeline):
+            obj._require_length("read the timeline as an interval")
         return (_interval_value(obj.start), _interval_value(obj.end), label)
     if hasattr(obj, "origin") and hasattr(obj, "length"):
         label = getattr(obj, "id", None) or getattr(obj, "name", None)

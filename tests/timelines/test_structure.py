@@ -1084,15 +1084,17 @@ def test_abstract_measure_map_is_refused() -> None:
 
 
 def test_timeline_payload_without_measure_map_is_refused() -> None:
-    payload = Timeline(length=F(4), unit=TimeUnit.quarters).to_dict()
-    payload["measure_map"] = None
-    payload["metric_hierarchy"] = {
+    payload = Timeline(length=F(4), unit=TimeUnit.quarters, uid="score").to_dict()
+    payload["timelines"][0]["metric_hierarchy"] = {
         "authored_readings": [],
         "authored_forest": [],
         "tempo_maps": [],
     }
-    with pytest.raises(ValueError, match="requires measure_map"):
+    with pytest.raises(ValueError) as refused:
         Timeline.from_dict(payload)
+    assert str(refused.value) == (
+        "timeline 'score' has a metric_hierarchy but no measure_map"
+    )
 
 
 def test_default_reading_is_never_serialized() -> None:

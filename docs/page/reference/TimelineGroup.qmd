@@ -22,16 +22,21 @@ When only part of a timeline participates, the participant is a child of
 that timeline: the child carries its exact offset, and the child is the
 member. A member is never placed partially.
 
+A member may be of unknown length: membership states that it shares the
+group's start and end, wherever that end lies. Carrying a position
+between two members needs both lengths, so such a conversion raises
+``UnknownLengthError``; one member's length is never carried to another.
+
 Members keep the order in which they were added.
 
 ## Attributes {.doc-section .doc-section-attributes}
 
-| Name    | Type                                                | Description                                                                                               |
-|---------|-----------------------------------------------------|-----------------------------------------------------------------------------------------------------------|
-| id      | [str](`str`)                                        | Unique identifier for this group, ``group_N`` unless given.                                               |
-| name    | [str](`str`) \| None                                | Optional human-readable name.                                                                             |
-| meta    | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | Additional metadata dictionary.                                                                           |
-| styling | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | The ``styles`` and ``statements`` of the group file's ``graphical``, kept as given and never interpreted. |
+| Name    | Type                                                | Description                                                                                                                                       |
+|---------|-----------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------|
+| id      | [str](`str`)                                        | Unique identifier for this group, ``group_N`` unless given.                                                                                       |
+| name    | [str](`str`) \| None                                | Optional human-readable name.                                                                                                                     |
+| meta    | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | Additional metadata dictionary.                                                                                                                   |
+| styling | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | The members of the manifest's ``graphical`` other than ``order`` (``styles``, ``statements`` and any other), kept as given and never interpreted. |
 
 ## Examples {.doc-section .doc-section-examples}
 
@@ -62,7 +67,7 @@ Coordinate(Fraction(1, 3), quarters)
 | [add_timeline](#timetoalign.timelines.TimelineGroup.add_timeline) | Add a member; its whole extent ``[0, length]`` spans the group. |
 | [apply_flow](#timetoalign.timelines.TimelineGroup.apply_flow) | Unfold ALL timelines in this group via a single flow. |
 | [diagram](#timetoalign.timelines.TimelineGroup.diagram) | Generate ASCII diagram for this group. |
-| [from_dict](#timetoalign.timelines.TimelineGroup.from_dict) | Rebuild a group from the dictionary :meth:`to_dict` writes. |
+| [from_dict](#timetoalign.timelines.TimelineGroup.from_dict) | Read a group from a TimeSkeleton manifest. |
 | [get_coordinate](#timetoalign.timelines.TimelineGroup.get_coordinate) | Dispatch a positional or event-key group coordinate query. |
 | [get_coordinate_at](#timetoalign.timelines.TimelineGroup.get_coordinate_at) | Resolve one coordinate on a selected group member axis. |
 | [get_coordinate_for](#timetoalign.timelines.TimelineGroup.get_coordinate_for) | Return a uniquely owned event's start on a selected member axis. |
@@ -79,7 +84,7 @@ Coordinate(Fraction(1, 3), quarters)
 | [get_timestamps_for](#timetoalign.timelines.TimelineGroup.get_timestamps_for) | Get timestamps for a collection of event IDs, in input order. |
 | [remove_timeline](#timetoalign.timelines.TimelineGroup.remove_timeline) | Remove a member from the group. |
 | [summary](#timetoalign.timelines.TimelineGroup.summary) | Get a summary of the group. |
-| [to_dict](#timetoalign.timelines.TimelineGroup.to_dict) | Convert the group to a dictionary for serialization. |
+| [to_dict](#timetoalign.timelines.TimelineGroup.to_dict) | Write an anonymous TimeSkeleton manifest holding this group. |
 
 ### add_timeline { #timetoalign.timelines.TimelineGroup.add_timeline }
 
@@ -256,38 +261,52 @@ TimelineGroup[my_group] (2 timelines)
 ### from_dict { #timetoalign.timelines.TimelineGroup.from_dict }
 
 ```python
-timelines.TimelineGroup.from_dict(data)
+timelines.TimelineGroup.from_dict(data, *, group_id=None, name=None)
 ```
 
-Rebuild a group from the dictionary :meth:`to_dict` writes.
+Read a group from a TimeSkeleton manifest.
 
-Every entry of ``"timelines"`` is rebuilt with
-:meth:`Timeline.from_dict <timetoalign.timelines.Timeline.from_dict>`;
-each member id is resolved among those roots and all their
-descendants, and the members are added in ``graphical.order`` (in
-``group.members`` order when the order is absent). ``graphical.styles``
-and ``graphical.statements`` are kept as :attr:`styling`, unread.
-Feeding the result back through :meth:`to_dict` with the same flags
-reproduces the input dictionary. A ``"meta"`` key — the file's own
-metadata — is accepted and ignored.
+- A manifest of one root timeline and no group makes a group of that
+  timeline; *group_id* or *name* (or both) must be given.
+- An anonymous manifest with one group reads that group. Arguments
+  naming it select it; arguments naming nothing override its id and
+  name; given both, they must agree, both naming the group or
+  neither.
+
+In these two cases the manifest is read as a whole: its ``meta``,
+``graphical`` and unknown keys are kept so that :meth:`to_dict`
+writes them back, around the anonymous manifest a group writes.
+- From a manifest with several groups, or a named one, *group_id* or
+  *name* (or both) must be given and select the one group whose id
+  and name match them.
+
+A group is read with the timelines its members need: each member id
+is resolved among the manifest's roots and all their descendants, and
+the members are added in the group's ``graphical.order`` entry (in
+``members`` order without one). ``graphical``'s other keys are kept as
+:attr:`styling`, unread, when the manifest is read as a whole. Keys
+the library does not know are kept on the object read from the JSON
+object they were found in, and written back.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name   | Type                                                | Description                                                   | Default    |
-|--------|-----------------------------------------------------|---------------------------------------------------------------|------------|
-| data   | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | ``{"timelines": [...], "group": {...}, "graphical": {...}}``. | _required_ |
+| Name     | Type                                                | Description                                            | Default    |
+|----------|-----------------------------------------------------|--------------------------------------------------------|------------|
+| data     | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | A TimeSkeleton manifest.                               | _required_ |
+| group_id | [str](`str`) \| None                                | The group id to select, or the id the group takes.     | `None`     |
+| name     | [str](`str`) \| None                                | The group name to select, or the name the group takes. | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
-| Name   | Type                             | Description        |
-|--------|----------------------------------|--------------------|
-|        | [Self](`typing_extensions.Self`) | The rebuilt group. |
+| Name   | Type                             | Description     |
+|--------|----------------------------------|-----------------|
+|        | [Self](`typing_extensions.Self`) | The group read. |
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                      |
-|--------|----------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If *data* is malformed: a missing or unknown key, a timeline id occurring twice, a member naming no timeline of ``"timelines"``, a root containing no member, an order that is no permutation of the members, a member that is an ancestor or descendant of another member, or a group id equal to a timeline id. The message names the problem. |
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                               |
+|--------|----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If *data* is no TimeSkeleton manifest of version 0.7.0 or is malformed — a member naming no timeline of the manifest, an order that is no permutation of its group's members, a member that is an ancestor or descendant of another member, a group id held by a timeline or by another group — or if the selection matches no group or several; the message names the problem, or the manifest's groups. |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -521,9 +540,10 @@ from 0 to its length, in its unit and declared number type.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                   | Description                         |
-|--------|------------------------|-------------------------------------|
-|        | [KeyError](`KeyError`) | If ``timeline_id`` is not a member. |
+| Name   | Type                                                                  | Description                         |
+|--------|-----------------------------------------------------------------------|-------------------------------------|
+|        | [KeyError](`KeyError`)                                                | If ``timeline_id`` is not a member. |
+|        | [UnknownLengthError](`timetoalign.timelines.base.UnknownLengthError`) | If the member's length is unknown.  |
 
 ### get_timeline { #timetoalign.timelines.TimelineGroup.get_timeline }
 
@@ -639,11 +659,12 @@ descendants are reached through their exact offsets.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                 |
-|--------|----------------------------|-------------------------------------------------------------|
-|        | [KeyError](`KeyError`)     | If timeline_id is not in the group.                         |
-|        | [ValueError](`ValueError`) | If coordinate is outside the timeline's range in the group. |
-|        | [ValueError](`ValueError`) | If timeline_id is None and coordinate is not IdCoordinate.  |
+| Name   | Type                                                                  | Description                                                                                                                                                                                                     |
+|--------|-----------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [KeyError](`KeyError`)                                                | If timeline_id is not in the group.                                                                                                                                                                             |
+|        | [UnknownLengthError](`timetoalign.timelines.base.UnknownLengthError`) | If a position must be converted between two members and either length is unknown. A member of unknown length bounds its positions below only, so a group of that member alone answers every position from 0 on. |
+|        | [ValueError](`ValueError`)                                            | If coordinate is outside the timeline's range in the group.                                                                                                                                                     |
+|        | [ValueError](`ValueError`)                                            | If timeline_id is None and coordinate is not IdCoordinate.                                                                                                                                                      |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -953,35 +974,40 @@ Get a summary of the group.
 ### to_dict { #timetoalign.timelines.TimelineGroup.to_dict }
 
 ```python
-timelines.TimelineGroup.to_dict(events=False, external_references=False)
+timelines.TimelineGroup.to_dict(
+    minimal=False,
+    events=False,
+    external_references=False,
+)
 ```
 
-Convert the group to a dictionary for serialization.
+Write an anonymous TimeSkeleton manifest holding this group.
 
 The group is written with every timeline it needs: ``"timelines"``
-holds the root of each member's manifest tree — a member that is a
-child contributes its root, which holds it — each exactly
-:meth:`Timeline.to_dict <timetoalign.timelines.Timeline.to_dict>`,
-sorted by id. ``"group"`` names the members by id, sorted, and
-``"graphical"`` keeps their display order, which is the order they
-were added in, followed by the ``styles`` and ``statements`` of
-:attr:`styling` that are present. The file's own ``meta`` is the
-writer's concern.
+holds the root of each member's tree — a member that is a child
+contributes its root, which holds it — each a timeline object as
+:meth:`Timeline.to_dict <timetoalign.timelines.Timeline.to_dict>`
+writes it, sorted by id. ``"groups"`` holds the group, naming its
+members by id, sorted; ``graphical.order`` keeps their display
+order, which is the order they were added in, under the group's id,
+beside the members of :attr:`styling`. A group read from a manifest
+as a whole writes that manifest's ``meta`` and unknown keys back.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name                | Type           | Description                         | Default   |
-|---------------------|----------------|-------------------------------------|-----------|
-| events              | [bool](`bool`) | Passed to every root's ``to_dict``. | `False`   |
-| external_references | [bool](`bool`) | Passed to every root's ``to_dict``. | `False`   |
+| Name                | Type           | Description                                        | Default   |
+|---------------------|----------------|----------------------------------------------------|-----------|
+| minimal             | [bool](`bool`) | If True, leave out every key at its default value. | `False`   |
+| events              | [bool](`bool`) | Write every timeline's event rows.                 | `False`   |
+| external_references | [bool](`bool`) | Write every timeline's external references.        | `False`   |
 
 #### Returns {.doc-section .doc-section-returns}
 
-| Name   | Type                                                | Description                                            |
-|--------|-----------------------------------------------------|--------------------------------------------------------|
-|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | ``{"timelines": [...], "group": {"id", "name", "meta", |
-|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | "members"}, "graphical": {"order": [...], "styles"?,   |
-|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | "statements"?}}``.                                     |
+| Name   | Type                                                | Description                                                    |
+|--------|-----------------------------------------------------|----------------------------------------------------------------|
+|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | ``{"timeskeleton": "0.7.0", ..., "timelines": [...], "groups": |
+|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | [{"id", "name", "meta", "members"}], "graphical": {"order":    |
+|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | {group id: [...]}, ...}}``.                                    |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -998,11 +1024,11 @@ writer's concern.
 >>> group = TimelineGroup(
 ...     timelines=[part, ContinuousLogicalTimeline(length=Fraction(8))]
 ... )
->>> data = group.to_dict()
+>>> data = group.to_dict(minimal=True)
 >>> [timeline["id"] for timeline in data["timelines"]]
 ['clt_1', 'dgt_1']
->>> data["group"]
-{'id': 'group_1', 'name': None, 'meta': {}, 'members': ['clt_1', 'dgt_2']}
+>>> data["groups"]
+[{'id': 'group_1', 'members': ['clt_1', 'dgt_2']}]
 >>> data["graphical"]
-{'order': ['dgt_2', 'clt_1']}
+{'order': {'group_1': ['dgt_2', 'clt_1']}}
 ```

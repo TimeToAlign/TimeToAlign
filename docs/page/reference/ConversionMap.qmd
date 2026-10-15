@@ -106,7 +106,9 @@ Deserialize a map from a dictionary.
 
 Dispatches to the concrete subclass named by ``data["type"]`` using
 the self-registering class registry populated by
-``__init_subclass__``.
+``__init_subclass__``. ``name`` may be left out; every other key the
+map's own dictionary form writes is required. Every key that form
+does not write is kept and written back.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
@@ -124,7 +126,7 @@ the self-registering class registry populated by
 
 | Name   | Type                       | Description                                                                                      |
 |--------|----------------------------|--------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If the type is missing or unknown.                                                               |
+|        | [ValueError](`ValueError`) | If the type is missing or unknown, or a key other than ``name`` is missing.                      |
 |        | [TypeError](`TypeError`)   | If the registered class does not override from_dict, which would otherwise recurse indefinitely. |
 
 ### inverse { #timetoalign.ConversionMap.inverse }
@@ -194,19 +196,26 @@ Compose this map with another (this first, then other).
 ### to_dict { #timetoalign.ConversionMap.to_dict }
 
 ```python
-ConversionMap.to_dict()
+ConversionMap.to_dict(minimal=False)
 ```
 
 Serialize the map to a dictionary.
 
-Subclasses should call super().to_dict() and add their parameters;
-rational parameters go through
-:func:`~timetoalign.core.rational_to_wire` so that the whole
+Subclasses should call ``super().to_dict(minimal=minimal)`` and add
+their parameters; rational parameters go through
+:func:`~timetoalign.core.number_to_json` so that the whole
 dictionary stays JSON-serializable.
 
-The map's ``name`` is always emitted, and every subclass
-``from_dict`` passes it back to the constructor, so a custom name
-survives the round trip.
+``name`` is the name given at construction, or None when the map
+displays a derived one; every subclass ``from_dict`` passes it back
+to the constructor. Keys the library does not know, kept when the map
+was read, are written back.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name    | Type           | Description                                             | Default   |
+|---------|----------------|---------------------------------------------------------|-----------|
+| minimal | [bool](`bool`) | Leave out ``name`` when it is None, in nested maps too. | `False`   |
 
 #### Returns {.doc-section .doc-section-returns}
 

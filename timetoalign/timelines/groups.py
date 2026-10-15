@@ -22,10 +22,10 @@ from __future__ import annotations
 
 import copy
 import logging
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from fractions import Fraction
-from typing import TYPE_CHECKING, Any, Iterator
+from typing import TYPE_CHECKING, Any, ClassVar, Iterator
 
 import numpy as np
 import pandas as pd
@@ -42,7 +42,7 @@ from timetoalign.core import (
     resolve_id,
 )
 from timetoalign.core.enums import NumberType, TimeUnit
-from timetoalign.core.ids import mint_id, timeline_id_prefix, validate_id
+from timetoalign.core.ids import _OpenObject, mint_id, timeline_id_prefix, validate_id
 from timetoalign.core.retrieval import (
     CoordinateCollection,
     CoordinateFormat,
@@ -71,6 +71,17 @@ from timetoalign.core.timestamp import (
     timestamp_table_to_dataframe,
 )
 from timetoalign.storage import EventData
+
+from .manifest import (
+    Manifest,
+    matches_any,
+    read_id,
+    read_meta,
+    read_name,
+    require_object,
+    select,
+    write_roots,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -177,85 +188,6 @@ def _admit_timeline_tree(
         timeline._set_id(minted, minted=True)
 
 
-def _require_keys(
-    data: Any, required: set[str], optional: set[str], what: str
-) -> dict[str, Any]:
-    """Return *data* if it is a mapping with exactly the allowed keys.
-
-    Raises:
-        ValueError: If *data* is not a dict, lacks a required key or carries
-            an unknown one.
-    """
-    if not isinstance(data, dict):
-        raise ValueError(f"{what} must be an object, got {type(data).__name__}")
-    missing = sorted(required - set(data))
-    if missing:
-        raise ValueError(f"{what} lacks the key(s) {missing}")
-    unknown = sorted(set(data) - required - optional)
-    if unknown:
-        raise ValueError(f"{what} has unknown key(s) {unknown}")
-    return data
-
-
-_STYLING_KEYS = ("styles", "statements")
-"""The members of a file's ``graphical`` that the library carries unread."""
-
-
-def _read_graphical(data: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
-    """Split a group or bundle dictionary's ``graphical`` into order and styling.
-
-    Returns:
-        The ``order`` as given (None when absent), and a copy of the
-        ``styles`` and ``statements`` present.
-
-    Raises:
-        ValueError: If ``graphical`` is not an object or carries a key other
-            than ``order``, ``styles`` and ``statements``.
-    """
-    if "graphical" not in data:
-        return None, {}
-    graphical = _require_keys(
-        data["graphical"], set(), {"order", *_STYLING_KEYS}, "'graphical'"
-    )
-    styling = {key: graphical[key] for key in _STYLING_KEYS if key in graphical}
-    return graphical.get("order"), copy.deepcopy(styling)
-
-
-def _write_graphical(order: Any, styling: dict[str, Any]) -> dict[str, Any]:
-    """Write ``graphical``: the order, then a copy of the styling present."""
-    return {
-        "order": order,
-        **{key: copy.deepcopy(styling[key]) for key in _STYLING_KEYS if key in styling},
-    }
-
-
-def _roots_from_dicts(items: Any) -> dict[str, "Timeline"]:
-    """Rebuild root manifests and index every timeline of their trees by id.
-
-    Raises:
-        ValueError: If *items* is not a list of manifests, or a timeline id
-            occurs twice across the trees.
-    """
-    from timetoalign.timelines import Timeline
-
-    if not isinstance(items, list):
-        raise ValueError(f"'timelines' must be an array, got {type(items).__name__}")
-    index: dict[str, Timeline] = {}
-    for item in items:
-        if not isinstance(item, dict):
-            raise ValueError(
-                f"each entry of 'timelines' must be a timeline manifest, got "
-                f"{type(item).__name__}"
-            )
-        for timeline in _tree(Timeline.from_dict(item)):
-            if timeline.id in index:
-                raise ValueError(
-                    f"timeline id {timeline.id!r} occurs twice in 'timelines'"
-                )
-            index[timeline.id] = timeline
-    return index
-
-
 # endregion
 
 
@@ -263,7 +195,7 @@ def _roots_from_dicts(items: Any) -> dict[str, "Timeline"]:
 
 
 @dataclass
-class TimelineGroup:
+class TimelineGroup(_OpenObject):
     """An array of timelines sharing one graphical start and end point.
 
     By definition every member's 0 coincides with every other member's 0 and
@@ -276,14 +208,20 @@ class TimelineGroup:
     that timeline: the child carries its exact offset, and the child is the
     member. A member is never placed partially.
 
+    A member may be of unknown length: membership states that it shares the
+    group's start and end, wherever that end lies. Carrying a position
+    between two members needs both lengths, so such a conversion raises
+    ``UnknownLengthError``; one member's length is never carried to another.
+
     Members keep the order in which they were added.
 
     Attributes:
         id: Unique identifier for this group, ``group_N`` unless given.
         name: Optional human-readable name.
         meta: Additional metadata dictionary.
-        styling: The ``styles`` and ``statements`` of the group file's
-            ``graphical``, kept as given and never interpreted.
+        styling: The members of the manifest's ``graphical`` other than
+            ``order`` (``styles``, ``statements`` and any other), kept as
+            given and never interpreted.
 
     Examples:
         >>> from fractions import Fraction
@@ -305,6 +243,9 @@ class TimelineGroup:
         100
     """
 
+    _dict_keys: ClassVar[tuple[str, ...]] = ("id", "name", "meta", "members")
+    _dict_defaults: ClassVar[Mapping[str, Any]] = {"name": None, "meta": {}}
+
     id: str = field(default="")
     name: str | None = field(default=None)
     meta: dict[str, Any] = field(default_factory=dict)
@@ -315,37 +256,63 @@ class TimelineGroup:
         default_factory=dict, init=False, repr=False
     )
     _id_minted: bool = field(default=False, init=False, repr=False)
+    # The manifest the group was read from as a whole (its meta and unknown
+    # keys), written back around it.
+    _manifest: Manifest | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
     _logger: logging.Logger = field(
         default_factory=lambda: module_logger, init=False, repr=False
     )
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> Self:
-        """Rebuild a group from the dictionary :meth:`to_dict` writes.
+    def from_dict(
+        cls,
+        data: dict[str, Any],
+        *,
+        group_id: str | None = None,
+        name: str | None = None,
+    ) -> Self:
+        """Read a group from a TimeSkeleton manifest.
 
-        Every entry of ``"timelines"`` is rebuilt with
-        :meth:`Timeline.from_dict <timetoalign.timelines.Timeline.from_dict>`;
-        each member id is resolved among those roots and all their
-        descendants, and the members are added in ``graphical.order`` (in
-        ``group.members`` order when the order is absent). ``graphical.styles``
-        and ``graphical.statements`` are kept as :attr:`styling`, unread.
-        Feeding the result back through :meth:`to_dict` with the same flags
-        reproduces the input dictionary. A ``"meta"`` key — the file's own
-        metadata — is accepted and ignored.
+        - A manifest of one root timeline and no group makes a group of that
+          timeline; *group_id* or *name* (or both) must be given.
+        - An anonymous manifest with one group reads that group. Arguments
+          naming it select it; arguments naming nothing override its id and
+          name; given both, they must agree, both naming the group or
+          neither.
+
+        In these two cases the manifest is read as a whole: its ``meta``,
+        ``graphical`` and unknown keys are kept so that :meth:`to_dict`
+        writes them back, around the anonymous manifest a group writes.
+        - From a manifest with several groups, or a named one, *group_id* or
+          *name* (or both) must be given and select the one group whose id
+          and name match them.
+
+        A group is read with the timelines its members need: each member id
+        is resolved among the manifest's roots and all their descendants, and
+        the members are added in the group's ``graphical.order`` entry (in
+        ``members`` order without one). ``graphical``'s other keys are kept as
+        :attr:`styling`, unread, when the manifest is read as a whole. Keys
+        the library does not know are kept on the object read from the JSON
+        object they were found in, and written back.
 
         Args:
-            data: ``{"timelines": [...], "group": {...}, "graphical": {...}}``.
+            data: A TimeSkeleton manifest.
+            group_id: The group id to select, or the id the group takes.
+            name: The group name to select, or the name the group takes.
 
         Returns:
-            The rebuilt group.
+            The group read.
 
         Raises:
-            ValueError: If *data* is malformed: a missing or unknown key, a
-                timeline id occurring twice, a member naming no timeline of
-                ``"timelines"``, a root containing no member, an order that is
-                no permutation of the members, a member that is an ancestor or
-                descendant of another member, or a group id equal to a
-                timeline id. The message names the problem.
+            ValueError: If *data* is no TimeSkeleton manifest of version
+                0.7.0 or is malformed — a member naming no timeline of the
+                manifest, an order that is no permutation of its group's
+                members, a member that is an ancestor or descendant of
+                another member, a group id held by a timeline or by another
+                group — or if the selection matches no group or several; the
+                message names the problem, or the manifest's groups.
 
         Examples:
             >>> from fractions import Fraction
@@ -359,23 +326,72 @@ class TimelineGroup:
             >>> TimelineGroup.from_dict(data).to_dict() == data
             True
         """
-        _require_keys(
-            data, {"timelines", "group"}, {"graphical", "meta"}, "a group dictionary"
-        )
-        timelines = _roots_from_dicts(data["timelines"])
-        order, styling = _read_graphical(data)
-        group = cls._from_group_object(data["group"], timelines, order)
-        group.styling = styling
-        members = list(group._timelines.values())
-        for timeline in timelines.values():
-            if timeline._parent is None and not any(
-                _root(member) is timeline for member in members
-            ):
+        manifest, content = Manifest.read(data)
+        if not content.groups:
+            if len(content.roots) != 1:
                 raise ValueError(
-                    f"root timeline {timeline.id!r} contains no member of group "
-                    f"{group.id!r}"
+                    f"the manifest holds no group and {len(content.roots)} timelines: "
+                    "only a manifest of one timeline makes a group"
                 )
-        return group
+            if group_id is None and name is None:
+                raise ValueError(
+                    "the manifest holds one timeline and no group: give group_id or "
+                    "name to make a group of it"
+                )
+            if group_id is not None and group_id in content.timelines:
+                raise ValueError(f"group id {group_id!r} is also a timeline id")
+            # A group writes an anonymous manifest.
+            manifest.id = manifest.name = None
+            group = cls(id=group_id, name=name, timelines=content.roots)
+            return group._keep_manifest(manifest)
+
+        groups = [
+            cls._from_group_object(
+                group_data,
+                content.timelines,
+                (
+                    content.order.get(group_data.get("id"))
+                    if isinstance(group_data, dict)
+                    else None
+                ),
+            )
+            for group_data in content.groups
+        ]
+        ids = [group.id for group in groups]
+        repeated = sorted({group_id for group_id in ids if ids.count(group_id) > 1})
+        if repeated:
+            raise ValueError(f"group id {repeated[0]!r} occurs twice")
+        if len(groups) == 1 and manifest.id is None and manifest.name is None:
+            (group,) = groups
+            if matches_any(groups, id=group_id, name=name):
+                select(
+                    groups,
+                    id=group_id,
+                    name=name,
+                    what="group",
+                    names=[(group.id, group.name)],
+                )
+                return group._keep_manifest(manifest)
+            if group_id is not None:
+                if group_id in content.timelines:
+                    raise ValueError(f"group id {group_id!r} is also a timeline id")
+                group.id = validate_id(group_id)
+                group._id_minted = False
+            if name is not None:
+                group.name = name
+            return group._keep_manifest(manifest)
+        if group_id is None and name is None:
+            raise ValueError(
+                "the manifest holds several groups or is named: give group_id or name "
+                "to select a group"
+            )
+        return select(
+            groups,
+            id=group_id,
+            name=name,
+            what="group",
+            names=[(group.id, group.name) for group in groups],
+        )
 
     @classmethod
     def _from_group_object(
@@ -384,42 +400,38 @@ class TimelineGroup:
         timelines: dict[str, "Timeline"],
         order: Any = None,
     ) -> Self:
-        """Build a group from its ``Group`` object and the file's timelines.
+        """Build a group from its ``Group`` object and the manifest's timelines.
 
-        The one reader of the ``Group`` object, shared by
-        :meth:`from_dict` and the bundle's dictionary reader.
+        The one reader of the ``Group`` object, shared by :meth:`from_dict`
+        and the bundle's reader. ``name`` and ``meta`` may be left out; keys
+        the library does not know are kept and written back.
 
         Args:
-            data: ``{"id", "name", "meta", "members"}``.
-            timelines: Every timeline of the file, roots and descendants, by id.
+            data: ``{"id", "name"?, "meta"?, "members"}``.
+            timelines: Every timeline of the manifest, roots and descendants,
+                by id.
             order: The members' display order, or None for ``members`` order.
 
         Raises:
             ValueError: If the object or the order is malformed.
         """
-        _require_keys(data, {"id", "name", "meta", "members"}, set(), "a group object")
-        group_id = data["id"]
-        if not isinstance(group_id, str):
-            raise ValueError(f"a group id must be a string, got {group_id!r}")
-        validate_id(group_id)
+        require_object(data, "a group object", ("id", "members"))
+        group_id = read_id(data["id"], "a group")
         if group_id in timelines:
             raise ValueError(f"group id {group_id!r} is also a timeline id")
-        if data["name"] is not None and not isinstance(data["name"], str):
-            raise ValueError(f"group {group_id!r} has a non-string name")
-        if not isinstance(data["meta"], dict):
-            raise ValueError(f"group {group_id!r} has a non-object meta")
+        what = f"group {group_id!r}"
         members = data["members"]
         if not isinstance(members, list) or not all(
             isinstance(member, str) for member in members
         ):
-            raise ValueError(f"group {group_id!r} members must be an array of ids")
+            raise ValueError(f"{what} members must be an array of ids")
         if len(set(members)) != len(members):
-            raise ValueError(f"group {group_id!r} names a member twice")
+            raise ValueError(f"{what} names a member twice")
         for member in members:
             if member not in timelines:
                 raise ValueError(
-                    f"group {group_id!r} names member {member!r}, which is no "
-                    "timeline of 'timelines'"
+                    f"{what} names member {member!r}, which is no timeline of "
+                    "'timelines'"
                 )
         if order is None:
             order = members
@@ -428,15 +440,15 @@ class TimelineGroup:
             or len(order) != len(members)
             or set(order) != set(members)
         ):
-            raise ValueError(
-                f"the order of group {group_id!r} is not a permutation of its members"
-            )
-        return cls(
+            raise ValueError(f"the order of {what} is not a permutation of its members")
+        group = cls(
             id=group_id,
-            name=data["name"],
-            meta=data["meta"],
+            name=read_name(data, what),
+            meta=read_meta(data, what),
             timelines=[timelines[member] for member in order],
         )
+        group._keep_unknown_keys(data)
+        return group
 
     def __init__(
         self,
@@ -748,13 +760,16 @@ class TimelineGroup:
         half to even onto an integer axis.
 
         Raises:
+            UnknownLengthError: If either member's length is unknown; one
+                member's length is never carried to another.
             ValueError: If the source member has length zero and the target
                 does not, so that no position can be carried across.
         """
         source = self._timelines[source_id]
         target = self._timelines[target_id]
-        source_length = Fraction(source.length.value)
-        target_length = Fraction(target.length.value)
+        operation = f"convert a position from '{source_id}' to '{target_id}'"
+        source_length = Fraction(source._require_length(operation).value)
+        target_length = Fraction(target._require_length(operation).value)
         if source_length == 0:
             if target_length != 0:
                 raise ValueError(
@@ -801,6 +816,10 @@ class TimelineGroup:
 
         Raises:
             KeyError: If timeline_id is not in the group.
+            UnknownLengthError: If a position must be converted between two
+                members and either length is unknown. A member of unknown
+                length bounds its positions below only, so a group of that
+                member alone answers every position from 0 on.
             ValueError: If coordinate is outside the timeline's range in the group.
             ValueError: If timeline_id is None and coordinate is not IdCoordinate.
 
@@ -857,8 +876,11 @@ class TimelineGroup:
         # other member is a projection of that written position.
         axis_value = express_as(native_value, source_timeline.number_type)
 
-        length = source_timeline.length.value
-        if not 0 <= axis_value <= length:
+        # A member of unknown length bounds its positions below only.
+        length = (
+            None if source_timeline.length is None else source_timeline.length.value
+        )
+        if axis_value < 0 or (length is not None and axis_value > length):
             raise ValueError(
                 f"Coordinate {_format_coordinate_value(float(axis_value))} "
                 f"outside range for '{timeline_id}'"
@@ -1049,9 +1071,17 @@ class TimelineGroup:
         Each member stands at ``0`` and at its length, both written in the
         member's declared number type, so a stored row is as exact as the
         member's own length.
+
+        Raises:
+            UnknownLengthError: If a member's length is unknown, so that the
+                common end has no position on it.
         """
         if not self._timelines:
             return pa.table({})
+        ends = {
+            member_id: member._require_length("tabulate the group's common end")
+            for member_id, member in self._timelines.items()
+        }
         rows: list[dict[str, Coordinate]] = [
             {
                 member_id: Coordinate(
@@ -1061,7 +1091,7 @@ class TimelineGroup:
                 )
                 for member_id, member in self._timelines.items()
             },
-            {member_id: member.length for member_id, member in self._timelines.items()},
+            ends,
         ]
         return self._tabulate(rows, timeline_filter, conversion_maps)
 
@@ -1467,17 +1497,19 @@ class TimelineGroup:
 
         Raises:
             KeyError: If ``timeline_id`` is not a member.
+            UnknownLengthError: If the member's length is unknown.
         """
         if timeline_id not in self._timelines:
             raise KeyError(f"Unknown timeline ID {timeline_id!r} in group {self.id!r}")
         timeline = self._timelines[timeline_id]
+        end = timeline._require_length("give the interval of a group member")
         return Interval(
             start=Coordinate(
                 express_as(0, timeline.number_type),
                 timeline.unit,
                 number_type=timeline.number_type,
             ),
-            end=timeline.length,
+            end=end,
         )
 
     # endregion
@@ -1805,29 +1837,31 @@ class TimelineGroup:
     def to_dict(
         self,
         *,
+        minimal: bool = False,
         events: bool = False,
         external_references: bool = False,
     ) -> dict[str, Any]:
-        """Convert the group to a dictionary for serialization.
+        """Write an anonymous TimeSkeleton manifest holding this group.
 
         The group is written with every timeline it needs: ``"timelines"``
-        holds the root of each member's manifest tree — a member that is a
-        child contributes its root, which holds it — each exactly
-        :meth:`Timeline.to_dict <timetoalign.timelines.Timeline.to_dict>`,
-        sorted by id. ``"group"`` names the members by id, sorted, and
-        ``"graphical"`` keeps their display order, which is the order they
-        were added in, followed by the ``styles`` and ``statements`` of
-        :attr:`styling` that are present. The file's own ``meta`` is the
-        writer's concern.
+        holds the root of each member's tree — a member that is a child
+        contributes its root, which holds it — each a timeline object as
+        :meth:`Timeline.to_dict <timetoalign.timelines.Timeline.to_dict>`
+        writes it, sorted by id. ``"groups"`` holds the group, naming its
+        members by id, sorted; ``graphical.order`` keeps their display
+        order, which is the order they were added in, under the group's id,
+        beside the members of :attr:`styling`. A group read from a manifest
+        as a whole writes that manifest's ``meta`` and unknown keys back.
 
         Args:
-            events: Passed to every root's ``to_dict``.
-            external_references: Passed to every root's ``to_dict``.
+            minimal: If True, leave out every key at its default value.
+            events: Write every timeline's event rows.
+            external_references: Write every timeline's external references.
 
         Returns:
-            ``{"timelines": [...], "group": {"id", "name", "meta",
-            "members"}, "graphical": {"order": [...], "styles"?,
-            "statements"?}}``.
+            ``{"timeskeleton": "0.7.0", ..., "timelines": [...], "groups":
+            [{"id", "name", "meta", "members"}], "graphical": {"order":
+            {group id: [...]}, ...}}``.
 
         Examples:
             >>> from fractions import Fraction
@@ -1842,41 +1876,59 @@ class TimelineGroup:
             >>> group = TimelineGroup(
             ...     timelines=[part, ContinuousLogicalTimeline(length=Fraction(8))]
             ... )
-            >>> data = group.to_dict()
+            >>> data = group.to_dict(minimal=True)
             >>> [timeline["id"] for timeline in data["timelines"]]
             ['clt_1', 'dgt_1']
-            >>> data["group"]
-            {'id': 'group_1', 'name': None, 'meta': {}, 'members': ['clt_1', 'dgt_2']}
+            >>> data["groups"]
+            [{'id': 'group_1', 'members': ['clt_1', 'dgt_2']}]
             >>> data["graphical"]
-            {'order': ['dgt_2', 'clt_1']}
+            {'order': {'group_1': ['dgt_2', 'clt_1']}}
         """
         roots: dict[str, Timeline] = {}
         for member in self._timelines.values():
             root = _root(member)
             roots.setdefault(root.id, root)
-        return {
-            "timelines": [
-                roots[root_id].to_dict(
-                    events=events, external_references=external_references
-                )
-                for root_id in sorted(roots)
-            ],
-            "group": self._to_group_object(),
-            "graphical": _write_graphical(self.timeline_ids, self.styling),
-        }
+        manifest = (
+            copy.copy(self._manifest) if self._manifest is not None else Manifest()
+        )
+        manifest.styling = self.styling
+        return manifest.write(
+            write_roots(
+                list(roots.values()),
+                minimal=minimal,
+                events=events,
+                external_references=external_references,
+            ),
+            groups=[self._to_group_object(minimal=minimal)],
+            order={self.id: self.timeline_ids},
+            minimal=minimal,
+        )
 
-    def _to_group_object(self) -> dict[str, Any]:
+    def _keep_manifest(self, manifest: Manifest) -> Self:
+        """Keep the manifest this group was read from as a whole, and return it.
+
+        Its ``graphical`` styling becomes this group's :attr:`styling`; its
+        ``meta`` and unknown keys are written back around the group.
+        """
+        self.styling, manifest.styling = manifest.styling, {}
+        self._manifest = manifest
+        return self
+
+    def _to_group_object(self, *, minimal: bool) -> dict[str, Any]:
         """Write the ``Group`` object: id, name, meta and the sorted member ids.
 
         The one writer of the ``Group`` object, shared by :meth:`to_dict` and
-        the bundle's dictionary writer.
+        the bundle's writer.
         """
-        return {
-            "id": self.id,
-            "name": self.name,
-            "meta": dict(self.meta),
-            "members": sorted(self.timeline_ids),
-        }
+        return self._dict_form(
+            {
+                "id": self.id,
+                "name": self.name,
+                "meta": copy.deepcopy(self.meta),
+                "members": sorted(self.timeline_ids),
+            },
+            minimal=minimal,
+        )
 
     # endregion
 

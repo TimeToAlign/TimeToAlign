@@ -1,0 +1,18 @@
+# UnknownLengthError { #timetoalign.timelines.UnknownLengthError }
+
+```python
+timelines.UnknownLengthError(timeline_id, operation)
+```
+
+An operation needs the end of a timeline whose length is unknown.
+
+A length of ``None`` states that the length is not known. Operations that
+do not need the end work on such a timeline; an operation that needs it
+raises this error before it changes anything.
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name        | Type   | Description                                     |
+|-------------|--------|-------------------------------------------------|
+| timeline_id |        | The id of the timeline whose length is unknown. |
+| operation   |        | What could not be done without the end.         |

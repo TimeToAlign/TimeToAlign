@@ -953,7 +953,7 @@ class TestSegmentLineCasting:
         )
         assert exact.is_segment_line() is True
 
-    def test_as_segment_line_preserves_content_and_child_identity(self):
+    def test_as_segment_line_preserves_content_and_copies_the_children(self):
         """A valid homogeneous hierarchy casts to its dynamic line class."""
         parent = Timeline(
             length=4.0,
@@ -985,8 +985,13 @@ class TestSegmentLineCasting:
         assert cast.id == "parent"
         assert cast.name == "Parent"
         assert cast.meta == {"source": "fixture"}
-        assert cast.get_segment_by_index(0)[1] is first
-        assert cast.get_segment_by_index(1)[1] is second
+        segments = [cast.get_segment_by_index(i)[1] for i in range(2)]
+        assert [(s.id, s.length.value) for s in segments] == [
+            ("first", 1.5),
+            ("second", 2.5),
+        ]
+        assert segments[0] is not first and segments[1] is not second
+        assert first._parent is parent and second._parent is parent
         assert len(cast.get_events(include_children=False)) == 1
         assert cast.get_conversion_map(TimeUnit.milliseconds) is cmap
         assert cast.get_region("whole").end.value == 4.0
@@ -1100,7 +1105,10 @@ class TestSegmentLineCasting:
         assert not isinstance(timeline, SegmentLine)
         assert timeline.id == "line"
         assert timeline.meta == {"kind": "sections"}
-        assert timeline.get_child("section") is child
+        copied = timeline.get_child("section")
+        assert (copied.id, copied.length.value) == ("section", 2.0)
+        assert copied is not child
+        assert child._parent is line
 
     def test_parameterized_from_segmentation_rejects_source_type_mismatch(self):
         """A bound factory accepts only its exact parameter class."""

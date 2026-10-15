@@ -18,8 +18,10 @@ from __future__ import annotations
 
 import re
 from collections.abc import Container, Mapping
+from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import ClassVar
+from types import MappingProxyType
+from typing import Any, ClassVar
 
 from .enums import TimeUnit
 
@@ -231,6 +233,8 @@ class IdGenerator:
 # region Manifest element ids
 
 _REFUSED_ID_CHARACTERS = re.compile(r"[/\x00-\x1f]")
+_PART_WORDS = ("start", "end", "name", "label", "card")
+"""The words that follow an element's address as its parts, and so are no id."""
 
 
 def validate_id(element_id: str) -> str:
@@ -238,7 +242,9 @@ def validate_id(element_id: str) -> str:
 
     Any non-empty string is a valid id except one containing ``/`` (the path
     separator of composed addresses) or a control character
-    (U+0000 to U+001F). Whitespace, colons, dots and unicode are permitted.
+    (U+0000 to U+001F), and the part words ``start``, ``end``, ``name``,
+    ``label`` and ``card``, which follow an address as its parts.
+    Whitespace, colons, dots and unicode are permitted.
 
     Args:
         element_id: The id to check.
@@ -247,7 +253,8 @@ def validate_id(element_id: str) -> str:
         The same id.
 
     Raises:
-        ValueError: If the id is empty or contains a refused character.
+        ValueError: If the id is empty, contains a refused character or is a
+            part word.
 
     Examples:
         >>> validate_id("Bass Kick")
@@ -265,6 +272,10 @@ def validate_id(element_id: str) -> str:
         raise ValueError(
             f"Invalid id {element_id!r}: an id must be non-empty and contain "
             "neither '/' nor a control character"
+        )
+    if element_id in _PART_WORDS:
+        raise ValueError(
+            f"Invalid id {element_id!r}: it is reserved for the parts of an address"
         )
     return element_id
 
@@ -346,8 +357,63 @@ def _admit_id(
     )
 
 
+class _OpenObject:
+    """An object with a dictionary form that keeps the keys it does not read.
+
+    A TimeSkeleton object may carry keys its reader does not know. The
+    reader keeps them on the object read from the JSON object they were
+    found in (:meth:`_keep_unknown_keys`), and the writer writes them back
+    after its own keys (:meth:`_dict_form`). A subclass lists its known keys
+    in ``_dict_keys`` and the value each optional key has when absent in
+    ``_dict_defaults``: the complete form writes every known key, the
+    minimal form leaves out each key whose value is its default.
+    """
+
+    _dict_keys: ClassVar[tuple[str, ...]] = ()
+    _dict_defaults: ClassVar[Mapping[str, Any]] = {}
+    _unknown_keys: Mapping[str, Any] = MappingProxyType({})
+
+    def _keep_unknown_keys(
+        self, data: Mapping[str, Any], known: Container[str] | None = None
+    ) -> None:
+        """Keep a copy of every key of *data* outside *known* (``_dict_keys``)."""
+        known = self._dict_keys if known is None else known
+        unknown = {
+            key: deepcopy(value) for key, value in data.items() if key not in known
+        }
+        object.__setattr__(self, "_unknown_keys", unknown)
+
+    def _dict_form(
+        self,
+        fields: Mapping[str, Any],
+        *,
+        minimal: bool,
+        defaults: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Return *fields*, then the unknown keys kept.
+
+        With *minimal*, a field whose value equals its default (in
+        *defaults*, else ``_dict_defaults``) is left out.
+        """
+        defaults = self._dict_defaults if defaults is None else defaults
+        written = {
+            key: value
+            for key, value in fields.items()
+            if not (minimal and key in defaults and _same_json(value, defaults[key]))
+        }
+        written.update(deepcopy(dict(self._unknown_keys)))
+        return written
+
+
+def _same_json(value: Any, default: Any) -> bool:
+    """Whether two JSON values are equal, a boolean never equal to a number."""
+    if isinstance(value, bool) or isinstance(default, bool):
+        return type(value) is type(default) and value == default
+    return value == default
+
+
 @dataclass(frozen=True)
-class _IdentifiedElement:
+class _IdentifiedElement(_OpenObject):
     """Identity shared by the frozen elements of a timeline manifest.
 
     A subclass names its kind in ``_id_prefix``. Constructed without an
@@ -361,6 +427,10 @@ class _IdentifiedElement:
 
     id: str = field(default=None, kw_only=True)  # type: ignore[assignment]
     _minted: bool = field(default=False, kw_only=True, repr=False, compare=False)
+    # A field, so that a copy made with ``dataclasses.replace`` keeps it.
+    _unknown_keys: Mapping[str, Any] = field(
+        default_factory=dict, kw_only=True, repr=False, compare=False
+    )
 
     def __post_init__(self) -> None:
         if self.id is None:

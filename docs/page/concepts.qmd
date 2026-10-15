@@ -5,7 +5,7 @@ toc-depth: 4
 ---
 
 This page presents the complete conceptual model underlying TimeToAlign!.
-The accompanying [TISMIR manuscript](https://anonymous.example.com) introduces
+The accompanying [TISMIR article](https://transactions.ismir.net/articles/10.5334/tismir.296) introduces
 these concepts through five worked examples; this page serves as the
 authoritative reference for formal definitions and visual conventions.
 
@@ -787,7 +787,7 @@ the model.
 
 ## Five Demonstration Scenarios
 
-The TISMIR manuscript demonstrates the model through five worked examples
+The TISMIR article demonstrates the model through five worked examples
 of increasing complexity. Each is accompanied by real-world data in the
 specimen collection and (where applicable) a tutorial notebook.
 
@@ -799,7 +799,7 @@ specimen collection and (where applicable) a tutorial notebook.
 | 4 | **Beethoven**: Multimodal alignment across 23 timelines | FlowMap (unfolding at scale), AlignmentBundle, AlignmentAnchor, WarpMap, MatchLine | `specimens/beethoven_op18-4_iv/` |
 | 5 | **Hendrix**: Studying the genesis of a rock song across three versions | MatchClaim (conceptual/synchronous), MatchGraph, NOMATCH, MatchStamp, certainty metadata | `specimens/hendrix/` |
 
-: The five demonstration scenarios from the TISMIR manuscript. {#tbl-scenarios}
+: The five demonstration scenarios from the TISMIR article. {#tbl-scenarios}
 
-For details, see the manuscript and the tutorial notebooks (links to be
-added when the tutorials are integrated into this site).
+For details, see the [TISMIR article](https://transactions.ismir.net/articles/10.5334/tismir.296) and the
+[how-to guides](howto.qmd).

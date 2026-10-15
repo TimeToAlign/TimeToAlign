@@ -316,6 +316,289 @@ def test_the_last_segment_keeps_ending_at_the_lines_length(
 
 # endregion
 
+# region Segments are never locked
+
+LINE = SegmentLine[ContinuousPhysicalTimeline]
+REFUSED_LOCK = "A segment is never locked: lock its segment line '{}' instead."
+
+
+def _appended(append: str) -> SegmentLine:
+    line = LINE(length=0, uid="line")
+    getattr(line, append)(_s(4.0, "A"))
+    getattr(line, append)(_s(2.0, "B"))
+    return line
+
+
+SEGMENT_LINE_BUILDS = {
+    "append_segment": lambda: _appended("append_segment"),
+    "append_child": lambda: _appended("append_child"),
+    "create_segment_line": lambda: _s(6.0, "src").create_segment_line([0.0, 4.0, 6.0]),
+    "from_segmentation": lambda: SegmentLine.from_segmentation(
+        _s(6.0, "src"), [0.0, 4.0, 6.0]
+    ),
+}
+
+
+def _segments(line: Timeline) -> list[Timeline]:
+    return [line.get_child(segment_id) for segment_id in line.list_segments()]
+
+
+def _written_children(line: Timeline, *, minimal: bool) -> list[dict[str, Any]]:
+    return line.to_dict(minimal=minimal)["timelines"][0]["children"]
+
+
+@pytest.mark.parametrize(
+    "build", list(SEGMENT_LINE_BUILDS), ids=list(SEGMENT_LINE_BUILDS)
+)
+def test_every_construction_path_gives_unlocked_segments(build: str) -> None:
+    line = SEGMENT_LINE_BUILDS[build]()
+
+    assert _lengths(*_segments(line), line) == [4.0, 2.0, 6.0]
+    assert [segment.is_locked for segment in _segments(line)] == [False, False]
+    assert [child["locked"] for child in _written_children(line, minimal=False)] == [
+        False,
+        False,
+    ]
+    assert ["locked" in child for child in _written_children(line, minimal=True)] == [
+        False,
+        False,
+    ]
+
+
+def test_a_segment_built_locked_is_unlocked_once_appended() -> None:
+    line = LINE(length=0, uid="line")
+    segment = _s(4.0, "A", locked=True)
+
+    line.append_segment(segment)
+    line.lock()
+
+    assert (segment.is_locked, line.is_locked) == (False, True)
+
+
+def _edition() -> SegmentLine:
+    """An edition line of two page lines, each a line of plain segments."""
+    edition = SegmentLine[LINE](length=0, uid="edition")
+    for page_id, lengths in (("page_1", (1.0, 2.0)), ("page_2", (3.0,))):
+        page = LINE(length=0, uid=page_id)
+        for index, length in enumerate(lengths):
+            page.append_segment(_s(length, f"{page_id}_s{index + 1}"))
+        edition.append_segment(page)
+    return edition
+
+
+def test_a_segment_that_is_a_segment_line_is_locked() -> None:
+    edition = _edition()
+    pages = _segments(edition)
+
+    assert [page.is_locked for page in pages] == [True, True]
+    assert [[s.is_locked for s in _segments(page)] for page in pages] == [
+        [False, False],
+        [False],
+    ]
+    written = _written_children(edition, minimal=True)
+    assert [page.get("locked") for page in written] == [True, True]
+    assert ["locked" in s for page in written for s in page["children"]] == [
+        False,
+        False,
+        False,
+    ]
+
+
+def test_asking_to_lock_a_plain_segment_is_refused() -> None:
+    line = LINE(length=0, uid="line")
+    segment = _s(4.0, "A")
+
+    with pytest.raises(ValueError) as error:
+        line.add_child(segment, 0.0, allow_expansion=True, locked=True)
+
+    assert str(error.value) == REFUSED_LOCK.format("line")
+    assert (line.list_segments(), segment.is_locked) == ([], False)
+
+    line.add_child(segment, 0.0, allow_expansion=True, locked=False)
+    with pytest.raises(ValueError) as error:
+        segment.lock()
+
+    assert str(error.value) == REFUSED_LOCK.format("line")
+    assert segment.is_locked is False
+
+    page = _segments(_edition())[0]
+    page.lock()
+    assert page.is_locked is True
+
+
+REFUSED_UNLOCK = (
+    "Unlocking a segment line that is a child, a segment or a group member is "
+    "not supported yet."
+)
+
+
+def _parents() -> dict[str, Timeline]:
+    """A plain parent and an empty edition line, each to receive ``line``."""
+    return {
+        "child": _s(20.0, "P"),
+        "segment": SegmentLine[LINE](length=0, uid="edition"),
+    }
+
+
+@pytest.mark.parametrize("place", ["child", "segment"])
+def test_unlocking_a_segment_line_is_refused(place: str) -> None:
+    parent = _parents()[place]
+    line = _appended("append_segment")
+
+    with pytest.raises(ValueError) as error:
+        parent.add_child(line, 0.0, allow_expansion=True, locked=False)
+
+    assert str(error.value) == REFUSED_UNLOCK
+    assert (parent.list_children(), line.is_locked, line._parent) == ([], False, None)
+    assert _lengths(parent) == [20.0 if place == "child" else 0]
+
+    line.lock()
+    parent.add_child(line, 0.0, allow_expansion=True, locked=False)
+
+    assert (parent.list_children(), line.is_locked) == (["line"], True)
+
+
+def _read_lines(*, page_locked: bool) -> tuple[Timeline, Timeline]:
+    """A line whose plain segments state ``locked: true``, and an edition of pages."""
+
+    def page(uid: str, offset: float) -> dict[str, Any]:
+        return _child(
+            uid,
+            offset,
+            2.0,
+            locked=page_locked,
+            is_segment_line=True,
+            children=[_child(f"{uid}_s1", 0.0, 2.0, locked=True)],
+        )
+
+    plain = {
+        "id": "line",
+        "unit": "seconds",
+        "length": 6.0,
+        "is_segment_line": True,
+        "children": [
+            _child("A", 0.0, 4.0, locked=True),
+            _child("B", 4.0, 2.0, locked=True),
+        ],
+    }
+    edition = {
+        "id": "edition",
+        "unit": "seconds",
+        "length": 4.0,
+        "is_segment_line": True,
+        "children": [page("page_1", 0.0), page("page_2", 2.0)],
+    }
+    return Timeline.from_dict(_manifest(plain)), Timeline.from_dict(_manifest(edition))
+
+
+@pytest.mark.parametrize(
+    "page_locked", [False, True], ids=["page_unlocked", "page_locked"]
+)
+def test_reading_unlocks_a_plain_segment_and_keeps_a_lines_lock(
+    page_locked: bool,
+) -> None:
+    line, pages = _read_lines(page_locked=page_locked)
+    plain, edition = (timeline.to_dict()["timelines"][0] for timeline in (line, pages))
+    plain_minimal, edition_minimal = (
+        timeline.to_dict(minimal=True)["timelines"][0] for timeline in (line, pages)
+    )
+
+    assert [segment.is_locked for segment in _segments(line)] == [False, False]
+    assert [page.is_locked for page in _segments(pages)] == [page_locked] * 2
+    assert [child["locked"] for child in plain["children"]] == [False, False]
+    assert ["locked" in child for child in plain_minimal["children"]] == [False, False]
+    assert [page["locked"] for page in edition["children"]] == [page_locked] * 2
+    assert [page.get("locked", False) for page in edition_minimal["children"]] == [
+        page_locked
+    ] * 2
+    assert [
+        segment["locked"]
+        for page in edition["children"]
+        for segment in page["children"]
+    ] == [False, False]
+
+
+# endregion
+
+
+# region An unlocked segment keeps its line contiguous
+
+
+def _contiguity(segment: str, end: int, where: str, bound: int) -> str:
+    return (
+        f"SegmentLine requires contiguous segments. Segment '{segment}' cannot end "
+        f"at {end}: {where} {bound}."
+    )
+
+
+def _event(end: float) -> dict[str, Any]:
+    return {"event_type": "Note", "start": 0.0, "end": end}
+
+
+@pytest.mark.parametrize("locked", [False, True], ids=["unlocked", "locked"])
+@pytest.mark.parametrize(
+    ("segment", "add", "message"),
+    [
+        (
+            "A",
+            lambda seg: seg.add_events([_event(5.0)]),
+            _contiguity("A", 5, "its successor 'B' starts at", 4),
+        ),
+        (
+            "B",
+            lambda seg: seg.add_events([_event(3.0)]),
+            _contiguity("B", 7, "the line 'line' ends at", 6),
+        ),
+        (
+            "A",
+            lambda seg: seg.append_child(_s(1.0, "x")),
+            _contiguity("A", 5, "its successor 'B' starts at", 4),
+        ),
+    ],
+    ids=["event_past_successor", "event_past_line", "child_past_successor"],
+)
+def test_growing_a_segment_past_its_boundary_is_refused(
+    locked: bool, segment: str, add: Any, message: str
+) -> None:
+    line = _appended("append_segment")
+    if locked:
+        line.lock()
+    target = line.get_child(segment)
+
+    with pytest.raises(ValueError) as error:
+        add(target)
+
+    assert str(error.value) == message
+    assert _lengths(*_segments(line), line) == [4.0, 2.0, 6.0]
+    assert (target.n_events, target.n_children) == (0, 0)
+
+
+def test_content_inside_a_segment_changes_no_length() -> None:
+    line = _appended("append_segment")
+
+    line.get_child("A").add_events([_event(4.0)])
+    line.get_child("B").add_events([_event(2.0)])
+
+    assert _lengths(*_segments(line), line) == [4.0, 2.0, 6.0]
+
+
+def test_the_last_segment_of_a_line_of_unknown_length_grows() -> None:
+    line = _appended("append_segment")
+    line.length = None
+    first, last = _segments(line)
+
+    last.add_events([_event(7.0)])
+
+    assert _lengths(first, last, line) == [4.0, 7.0, None]
+    assert _segment_row(line, "B") == (4.0, 11.0, 7.0)
+    with pytest.raises(ValueError) as error:
+        first.add_events([_event(5.0)])
+    assert str(error.value) == _contiguity("A", 5, "its successor 'B' starts at", 4)
+
+
+# endregion
+
+
 # region Copies, casts and slices
 
 

@@ -176,8 +176,11 @@ def test_a_child_of_unknown_length_needs_only_its_offset_to_fit() -> None:
     with pytest.raises(ValueError, match="exceeds timeline length 8"):
         parent.add_child(_q(uid="outside"), 9)
     assert parent.list_children() == ["inside"]
-    with pytest.raises(ValueError, match="Offset cannot be negative"):
+    with pytest.raises(ValueError) as error:
         _q(uid="any").add_child(_q(uid="neg"), -1)
+    assert str(error.value) == (
+        "A negative child offset is not supported yet: child 'neg' has offset [-1, 1]."
+    )
 
 
 def test_an_unlocked_parent_grows_to_an_unknown_childs_offset() -> None:

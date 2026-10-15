@@ -277,14 +277,14 @@ class TimelineGroup(_OpenObject):
 
         - A manifest of one root timeline and no group makes a group of that
           timeline; *group_id* or *name* (or both) must be given.
-        - An anonymous manifest with one group reads that group. Arguments
+        - An anonymous bundle with one group reads that group. Arguments
           naming it select it; arguments naming nothing override its id and
           name; given both, they must agree, both naming the group or
           neither.
 
         In these two cases the manifest is read as a whole: its ``meta``,
         ``graphical`` and unknown keys are kept so that :meth:`to_dict`
-        writes them back, around the anonymous manifest a group writes.
+        writes them back, around the anonymous bundle a group writes.
         - From a manifest with several groups, or a named one, *group_id* or
           *name* (or both) must be given and select the one group whose id
           and name match them.
@@ -340,9 +340,11 @@ class TimelineGroup(_OpenObject):
                 )
             if group_id is not None and group_id in content.timelines:
                 raise ValueError(f"group id {group_id!r} is also a timeline id")
-            # A group writes an anonymous manifest.
+            # A group writes an anonymous bundle.
             manifest.id = manifest.name = None
-            group = cls(id=group_id, name=name, timelines=content.roots)
+            group = cls(id=group_id, name=name)
+            # The member keeps the lock the manifest states.
+            group._admit_member(content.roots[0])
             return group._keep_manifest(manifest)
 
         groups = [
@@ -441,12 +443,10 @@ class TimelineGroup(_OpenObject):
             or set(order) != set(members)
         ):
             raise ValueError(f"the order of {what} is not a permutation of its members")
-        group = cls(
-            id=group_id,
-            name=read_name(data, what),
-            meta=read_meta(data, what),
-            timelines=[timelines[member] for member in order],
-        )
+        group = cls(id=group_id, name=read_name(data, what), meta=read_meta(data, what))
+        # Members keep the lock the manifest states.
+        for member in order:
+            group._admit_member(timelines[member])
         group._keep_unknown_keys(data)
         return group
 
@@ -506,6 +506,8 @@ class TimelineGroup(_OpenObject):
         cannot share one start and end. Every check runs before anything
         changes, so a refused newcomer is left as it was.
 
+        A segment line is locked when it joins, as when it becomes a child.
+
         Args:
             timeline: The timeline or child to add.
 
@@ -532,6 +534,16 @@ class TimelineGroup(_OpenObject):
             IdCoordinate(2.0, seconds, 'cpt_1')
             >>> group.get_timestamp_at(2.0, "cpt_1").get_coordinate_for("dgt_2", format="int")
             500
+        """
+        self._admit_member(timeline)
+        if timeline._is_segment_line_instance():
+            timeline.lock()
+
+    def _admit_member(self, timeline: "Timeline") -> None:
+        """Add a member as :meth:`add_timeline` does, leaving its lock as it is.
+
+        Raises:
+            ValueError: As :meth:`add_timeline`.
         """
         if any(member is timeline for member in self._timelines.values()):
             raise ValueError(f"Timeline '{timeline.id}' already in group '{self.id}'")
@@ -1841,7 +1853,7 @@ class TimelineGroup(_OpenObject):
         events: bool = False,
         external_references: bool = False,
     ) -> dict[str, Any]:
-        """Write an anonymous TimeSkeleton manifest holding this group.
+        """Write this group as a TimeSkeleton manifest, an anonymous bundle.
 
         The group is written with every timeline it needs: ``"timelines"``
         holds the root of each member's tree — a member that is a child

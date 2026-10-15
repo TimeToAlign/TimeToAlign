@@ -105,15 +105,15 @@ def test_plain_timeline_writes_false_and_no_class() -> None:
 
 
 def test_flat_segment_line_dict_is_exact() -> None:
-    """The flag, and the segments as children."""
+    """The flag, and the segments as children, which are never locked."""
     assert _flat().to_dict() == _manifest(
         _object(
             "line",
             500,
             True,
             [
-                _object("first", 300, False, [], locked=True, offset=0),
-                _object("second", 200, False, [], locked=True, offset=300),
+                _object("first", 300, False, [], locked=False, offset=0),
+                _object("second", 200, False, [], locked=False, offset=300),
             ],
             locked=False,
         )
@@ -121,9 +121,9 @@ def test_flat_segment_line_dict_is_exact() -> None:
 
 
 def test_nested_segment_line_dict_is_exact() -> None:
-    """Every line of the nesting carries the flag."""
+    """Every line of the nesting carries the flag; only the pages are locked."""
     accolade = lambda uid, length, offset: _object(  # noqa: E731
-        uid, length, False, [], locked=True, offset=offset
+        uid, length, False, [], locked=False, offset=offset
     )
     page_1 = _object(
         "page_1",

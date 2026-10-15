@@ -18,12 +18,15 @@
 #
 # A `Timeline`, a `TimelineGroup` and an `AlignmentBundle` each write one
 # TimeSkeleton manifest with `to_dict()` and read one with `from_dict()`.
-# Every manifest has the same shape, whatever it holds:
+# Every manifest has the same shape, whatever it holds, and every manifest
+# is an alignment bundle:
 #
-# - a single timeline is a manifest of one root timeline;
-# - a group is a manifest with one group;
-# - a bundle is a manifest with any number of timelines and groups, named
-#   when it carries an `id` or a `name`.
+# - a single timeline writes a bundle of one root timeline;
+# - a group writes a bundle of one group;
+# - a bundle writes any number of timelines and groups.
+#
+# A manifest that carries an `id` or a `name` is a named bundle; one with
+# neither is an anonymous bundle.
 #
 # This guide writes each of the three, reads them back, checks that the
 # rebuilt objects answer every query exactly as the originals do, selects one
@@ -220,7 +223,7 @@ before = answers(group.get_timestamps_at(positions, second_half.id))
 before
 
 # %% [markdown]
-# A group writes an anonymous manifest holding its group:
+# A group writes an anonymous bundle holding its group:
 #
 # - `timelines`: the root of every member's tree, sorted by id. The child
 #   member arrives inside its root, the score, among the score's
@@ -326,7 +329,7 @@ bundle_before
 # group's display order. The roots that no group names, here the annotation
 # layer and the long recording, are the ungrouped timelines.
 #
-# This bundle has a `name`, so its manifest is named. It has no `id`: the
+# This bundle has a `name`, so it writes a named bundle. It has no `id`: the
 # bundle was given none, and the id it minted for itself is never written.
 # `id` and `name` are independent; a manifest may carry either, both or
 # neither.

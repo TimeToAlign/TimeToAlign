@@ -490,7 +490,9 @@ TimeSkeleton manifest: |
   timelines, and optionally the manifest's id, name and meta, its groups and
   its graphical (display order and styling). A single timeline is a manifest
   of one root, a group a manifest with one group; a manifest with an id or a
-  name is named. A value on a timeline's own axis (length, a child's offset,
+  name is named. Every manifest is an alignment bundle, also one holding one
+  timeline or one group, and a manifest with neither an id nor a name is an
+  anonymous bundle. A value on a timeline's own axis (length, a child's offset,
   region bounds, flow-control coordinates) is written bare, in the axis's
   number type. Timeline, TimelineGroup and AlignmentBundle write one with
   to_dict() and read one with from_dict(). The library class TimeSkeleton is

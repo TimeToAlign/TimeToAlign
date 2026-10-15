@@ -36,7 +36,7 @@ from timetoalign.timelines.types import (
 )
 
 from ..loader.test_listen_here_loader import _CANONICAL_SPEC, _write_spec
-from ..timelines.test_group_definition import STYLING, _answers
+from ..timelines.test_group_definition import STYLING, _answers, _group_manifest
 
 # region Fixtures
 
@@ -669,6 +669,31 @@ def test_from_bundles_re_mints_minted_group_ids() -> None:
     assert merged.group_ids == ["group_1", "group_2"]
     assert [group.name for group in merged.groups.values()] == ["x", "y"]
     assert merged.timeline_to_group == {"a": "group_1", "b": "group_2"}
+
+
+@pytest.mark.parametrize("locked", [False, True], ids=["unlocked", "locked"])
+def test_from_bundles_keeps_each_members_lock(locked: bool) -> None:
+    """Merging locks no member and leaves its source bundles as they were."""
+    source = AlignmentBundle.from_dict(_group_manifest(locked))
+    other = AlignmentBundle()
+    other.add_timeline(ContinuousLogicalTimeline(length=4, uid="c"), as_group="y")
+    before = source.to_dict()
+
+    merged = AlignmentBundle.from_bundles([source, other])
+
+    assert merged.timeline_to_group == {"line": "g", "plain": "g", "c": "group_1"}
+    assert [merged.get_timeline(uid).is_locked for uid in ("line", "plain", "c")] == [
+        locked,
+        False,
+        False,
+    ]
+    assert {root["id"]: root["locked"] for root in merged.to_dict()["timelines"]} == {
+        "line": locked,
+        "plain": False,
+        "c": False,
+    }
+    assert source.get_timeline("line").is_locked is locked
+    assert source.to_dict() == before
 
 
 # endregion

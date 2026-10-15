@@ -252,9 +252,9 @@ class AlignmentBundle(_OpenObject):
     def from_dict(cls, data: dict[str, Any]) -> "AlignmentBundle":
         """Read a bundle from any TimeSkeleton manifest.
 
-        The manifest's ``id`` becomes the bundle's (an anonymous manifest
-        gives a bundle whose minted id :meth:`to_dict` never writes), its
-        ``name`` and ``meta`` the bundle's. Every root timeline is rebuilt;
+        The manifest's ``id`` becomes the bundle's (a manifest without ``id``,
+        named or anonymous, gives a bundle whose minted id :meth:`to_dict`
+        never writes), its ``name`` and ``meta`` the bundle's. Every root timeline is rebuilt;
         each group is rebuilt from its ``Group`` object, its members resolved
         among the roots and all their descendants and ordered by its
         ``graphical.order`` entry (``members`` order without one).
@@ -333,8 +333,9 @@ class AlignmentBundle(_OpenObject):
         bundle into a new bundle, and carries over every cross-group
         ``MatchClaim`` (both the per-claim list and any columnar
         ``MatchClaimField`` stores) unchanged. Each source group is entered as
-        a new group with the same members, name and meta; a minted group id
-        is minted again in the merged bundle, a given one is kept. Groups from
+        a new group with the same members, name and meta, each member keeping
+        its own lock; a minted group id is minted again in the merged bundle,
+        a given one is kept. Groups from
         different source bundles remain distinct — merging does not itself
         align timelines across bundles. Add cross-group MatchClaims (e.g. via
         :meth:`create_match_claims`) afterwards to align them.
@@ -360,14 +361,15 @@ class AlignmentBundle(_OpenObject):
         merged = cls(id=id, name=name)
         for bundle in bundles:
             for group in bundle.groups.values():
-                merged.add_group(
-                    TimelineGroup(
-                        id=None if group._id_minted else group.id,
-                        name=group.name,
-                        meta=group.meta,
-                        timelines=list(group),
-                    )
+                rebuilt = TimelineGroup(
+                    id=None if group._id_minted else group.id,
+                    name=group.name,
+                    meta=group.meta,
                 )
+                # A member keeps its own lock: merging locks nothing.
+                for member in group:
+                    rebuilt._admit_member(member)
+                merged.add_group(rebuilt)
             for timeline_id, timeline in bundle.timelines.items():
                 if timeline_id in bundle.timeline_to_group:
                     continue

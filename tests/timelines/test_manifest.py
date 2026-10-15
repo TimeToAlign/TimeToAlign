@@ -1388,6 +1388,39 @@ def test_a_negative_length_is_refused(timeline: dict[str, Any], message: str) ->
     assert str(refused.value) == "length -12 of 'x' is negative"
 
 
+@pytest.mark.parametrize("reader", list(READERS), ids=list(READERS))
+@pytest.mark.parametrize(
+    ("unit", "length", "offset", "spelled"),
+    [
+        ("quarters", [10, 1], [-5, 2], "[-5, 2]"),
+        ("samples", 10, -1, "-1"),
+        ("seconds", 10.0, -2.5, "-2.5"),
+    ],
+    ids=["fraction", "int", "float"],
+)
+def test_a_negative_child_offset_is_not_supported_yet(
+    reader: str, unit: str, length: Any, offset: Any, spelled: str
+) -> None:
+    data = {
+        "timeskeleton": "0.7.0",
+        "timelines": [
+            {
+                "id": "root",
+                "unit": unit,
+                "length": length,
+                "children": [
+                    {"id": "neg", "unit": unit, "length": length, "offset": offset}
+                ],
+            }
+        ],
+    }
+    with pytest.raises(ValueError) as refused:
+        READERS[reader](data)
+    assert str(refused.value) == (
+        f"A negative child offset is not supported yet: child 'neg' has offset {spelled}."
+    )
+
+
 # endregion
 
 

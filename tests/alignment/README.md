@@ -712,7 +712,7 @@ from every assertion here.
    child (its root is written, the child id is the member), the `group_N`
    ids, no `id` (the bundle's `bundle_1` is minted), no `support_policy`,
    and the member order as added. A bundle with a given id writes it; an
-   anonymous manifest read back writes no id again.
+   anonymous bundle read back writes no id again.
 3. **Identity.** A fresh bundle is `bundle_1`; `as_group` names the new group
    and its id is minted `group_1`, `group_2`; a child added to a group brings
    its root, ungrouped; a child added ungrouped registers only its root (an
@@ -728,7 +728,15 @@ from every assertion here.
    refused. A given group id refuses a timeline that carries it; a *minted*
    group id that a newcomer's given timeline id takes is minted again
    (`group_1` → `group_3` beside an existing `group_2`), and the members keep
-   their membership under the new id.
+   their membership under the new id. `from_bundles` merges two bundles'
+   minted groups as `group_1` and `group_2`. A merge locks nothing and
+   changes no source: a bundle read from a manifest whose group `g` holds a
+   segment line `line` (segments 4 and 2 quarters) stating `locked: false`
+   and a plain `plain`, merged with a bundle of one group of `c`, gives `line`
+   `False`, `plain` and `c` `False`, written `false`; stated `true`, `line`
+   stays `True` and is written `true`. Either way the source bundle's `line`
+   keeps its lock and the source writes exactly the manifest it wrote before
+   the merge.
 4. **Nesting.** A parent and its child may sit in *different* groups of one
    bundle — each group converts within itself and the child's offset relates
    them. In *one* group they are refused: `grouped_with` naming a member

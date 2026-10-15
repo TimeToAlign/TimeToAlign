@@ -408,14 +408,30 @@ class SegmentLineMixin:
         offset: CoordinateSpec,
         allow_expansion: bool = False,
         *,
-        locked: bool = True,
+        locked: bool | None = None,
     ) -> None:
         """Add a validated segment and record its insertion order.
+
+        A segment is never locked, unless it is itself a segment line, which
+        is locked like any child: ``locked=True`` is refused for a plain
+        segment, and ``locked=False`` for a segment that is an unlocked
+        segment line, since unlocking one is not supported yet.
 
         The line ends where its last segment ends, so a growing line whose
         new last segment is of unknown length has an unknown length too.
         """
         super().add_child(child, offset, allow_expansion, locked=locked)
+
+    def _embed_child(
+        self,
+        child: Timeline,
+        offset: CoordinateSpec,
+        allow_expansion: bool = False,
+        *,
+        locked: bool,
+    ) -> None:
+        """Embed a segment as :meth:`add_child` does, taking the lock as given."""
+        super()._embed_child(child, offset, allow_expansion, locked=locked)
 
         if self._segment_type is None:
             self._segment_type = type(child)
@@ -567,7 +583,8 @@ class SegmentLineMixin:
         """Return the parameter timeline type without segment enforcement.
 
         The result is a copy holding copies of the segments, so a change to it
-        never reaches this line.
+        never reaches this line. The plain segments it holds as children are
+        unlocked, as they were on the line.
         """
         target_class = self.segment_type
         if target_class is None:

@@ -1055,7 +1055,12 @@ class Timeline(
         content and children must fit its length, and appending refuses. A
         root that grows by appending, such as a segment line, is locked this
         way once built. Locking a locked timeline changes nothing. A lock
-        cannot be lifted.
+        cannot be lifted. A segment of a segment line is never locked: its
+        line's lock governs it.
+
+        Raises:
+            ValueError: If this timeline is a segment that is no segment line
+                itself.
 
         Examples:
             >>> from timetoalign.timelines import (
@@ -1071,6 +1076,8 @@ class Timeline(
             >>> line.is_locked
             True
         """
+        if self._parent is not None:
+            self._parent._refuse_segment_lock(self)
         self._locked = True
 
     def _check_not_locked(self, operation: str) -> None:
@@ -1634,7 +1641,7 @@ class Timeline(
         if is_segment_line:
             placed.sort(key=lambda item: item[0].value)
         for offset, child in placed:
-            timeline.add_child(child, offset=offset, locked=child.is_locked)
+            timeline._embed_child(child, offset, locked=timeline._kept_lock(child))
 
         for map_data in read_list(data, "conversion_maps", what):
             timeline.add_conversion_map(ConversionMap.from_dict(map_data))
@@ -1792,11 +1799,11 @@ class Timeline(
         # Arrow tables are immutable, so the table object can be shared.
         copied._external_references = self._external_references
         for child_id, child in children:
-            copied.add_child(
+            copied._embed_child(
                 child,
                 self._child_offsets[child_id],
                 allow_expansion=is_line,
-                locked=child.is_locked,
+                locked=copied._kept_lock(child),
             )
         for cmap in self._conversion_maps.values():
             copied.add_conversion_map(cmap)

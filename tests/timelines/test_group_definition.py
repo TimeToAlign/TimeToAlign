@@ -11,9 +11,10 @@ from typing import Any
 
 import pytest
 
+from timetoalign.alignment import AlignmentBundle
 from timetoalign.core import Coordinate, IdCoordinate, TimeUnit
 from timetoalign.core.time import express_as
-from timetoalign.timelines import TimelineGroup
+from timetoalign.timelines import SegmentLine, TimelineGroup
 from timetoalign.timelines.types import (
     ContinuousLogicalTimeline,
     ContinuousPhysicalTimeline,
@@ -589,6 +590,109 @@ def test_get_coordinate_at_matches_the_stamp() -> None:
     assert group.get_coordinate_at(
         IdCoordinate(Fraction(1, 3), TimeUnit.quarters, "A"), "C"
     ) == IdCoordinate(100, TimeUnit.pixels, "C")
+
+
+# endregion
+
+
+# region Segment-line members
+
+
+def _line(uid: str = "line") -> SegmentLine:
+    """An unlocked segment line of two segments, 4 and 2 quarters."""
+    line = SegmentLine[ContinuousLogicalTimeline](length=0, uid=uid)
+    line.append_segment(ContinuousLogicalTimeline(length=Fraction(4), uid=f"{uid}_a"))
+    line.append_segment(ContinuousLogicalTimeline(length=Fraction(2), uid=f"{uid}_b"))
+    return line
+
+
+def _join_by_construction(line: SegmentLine, plain: ContinuousPhysicalTimeline) -> Any:
+    return TimelineGroup(timelines=[line, plain])
+
+
+def _join_by_add_timeline(line: SegmentLine, plain: ContinuousPhysicalTimeline) -> Any:
+    group = TimelineGroup(timelines=[plain])
+    group.add_timeline(line)
+    return group
+
+
+def _join_by_bundle(line: SegmentLine, plain: ContinuousPhysicalTimeline) -> Any:
+    bundle = AlignmentBundle()
+    bundle.add_timeline(plain, as_group="g")
+    bundle.add_timeline(line, grouped_with=plain.id)
+    return bundle
+
+
+JOINS = {
+    "constructor": _join_by_construction,
+    "add_timeline": _join_by_add_timeline,
+    "bundle": _join_by_bundle,
+}
+
+
+def _written_locks(holder: Any, *, minimal: bool) -> dict[str, Any]:
+    """Each written root's ``locked`` (None where the key is left out)."""
+    return {
+        root["id"]: root.get("locked")
+        for root in holder.to_dict(minimal=minimal)["timelines"]
+    }
+
+
+@pytest.mark.parametrize("join", list(JOINS), ids=list(JOINS))
+def test_a_segment_line_member_is_locked_by_construction(join: str) -> None:
+    """Joining locks a segment line, never a plain member or the segments."""
+    line = _line()
+    plain = ContinuousPhysicalTimeline(length=6.0, uid="plain")
+    assert line.is_locked is False
+
+    holder = JOINS[join](line, plain)
+
+    assert (line.is_locked, plain.is_locked) == (True, False)
+    assert [line.get_child(uid).is_locked for uid in line.list_segments()] == [
+        False,
+        False,
+    ]
+    assert _written_locks(holder, minimal=False) == {"line": True, "plain": False}
+    assert _written_locks(holder, minimal=True) == {"line": True, "plain": None}
+
+
+def _group_manifest(locked: bool) -> dict[str, Any]:
+    """A manifest whose group holds a segment line stating *locked*."""
+    data = _line().to_dict(minimal=True)
+    data["timelines"][0]["locked"] = locked
+    data["timelines"].append({"id": "plain", "unit": "seconds", "length": 6.0})
+    data["groups"] = [{"id": "g", "members": ["line", "plain"]}]
+    return data
+
+
+@pytest.mark.parametrize(
+    "read",
+    [TimelineGroup.from_dict, AlignmentBundle.from_dict],
+    ids=["group", "bundle"],
+)
+@pytest.mark.parametrize("locked", [False, True], ids=["unlocked", "locked"])
+def test_reading_keeps_the_lock_a_member_line_states(read: Any, locked: bool) -> None:
+    """Reading is not construction: the file decides a member line's lock."""
+    holder = read(_group_manifest(locked))
+
+    assert holder.get_timeline("line").is_locked is locked
+    assert _written_locks(holder, minimal=False) == {"line": locked, "plain": False}
+
+
+@pytest.mark.parametrize("locked", [False, True], ids=["unlocked", "locked"])
+def test_a_group_made_from_one_line_keeps_the_lock_it_states(locked: bool) -> None:
+    """A group of the one root of a manifest without groups reads its lock too."""
+    data = _line().to_dict(minimal=True)
+    data["timelines"][0]["locked"] = locked
+
+    group = TimelineGroup.from_dict(data, group_id="g")
+
+    assert (group.timeline_ids, group.get_timeline("line").is_locked) == (
+        ["line"],
+        locked,
+    )
+    assert _written_locks(group, minimal=False) == {"line": locked}
+    assert _written_locks(group, minimal=True) == {"line": True if locked else None}
 
 
 # endregion

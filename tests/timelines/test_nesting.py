@@ -77,12 +77,16 @@ class TestChildValidation:
             parent.validate_child(child, offset=10.0)
 
     def test_validate_child_rejects_negative_offset(self):
-        """Negative offsets are rejected."""
+        """A negative offset is refused as not supported yet."""
         parent = Timeline(length=20.0)
-        child = Timeline(length=5.0)
+        child = Timeline(length=5.0, uid="neg")
 
-        with pytest.raises(ValueError, match="negative"):
+        with pytest.raises(ValueError) as error:
             parent.validate_child(child, offset=-1.0)
+
+        assert str(error.value) == (
+            "A negative child offset is not supported yet: child 'neg' has offset -1.0."
+        )
 
 
 # endregion

@@ -13,12 +13,14 @@ from timetoalign.core import Coordinate, CoordinateSpec, CoordinateValue, Number
 from timetoalign.core.ids import mint_id, timeline_id_prefix
 from timetoalign.core.time import (
     coordinate_numeric_value,
+    number_to_json,
     shift_coordinate,
     subtract_coordinates,
 )
 from timetoalign.core.timestamp import ConversionMapsSpec, _format_coordinate_value
 from timetoalign.maps import ConversionMap
 
+from ..manifest import spell
 from ..regions import Region
 from .regions import _resolve_boundary_names
 
@@ -40,6 +42,34 @@ class ChildrenMixin:
     def n_children(self) -> int:
         """Number of direct child timelines."""
         return len(self._children)
+
+    def _is_plain_segment(self, child: "Timeline") -> bool:
+        """Whether *child* is a plain segment here: no segment line itself.
+
+        Segments are never locked: the segment line's lock governs them. A
+        segment that is itself a segment line is locked like any child.
+        """
+        return (
+            self._is_segment_line_instance() and not child._is_segment_line_instance()
+        )
+
+    def _kept_lock(self, child: "Timeline") -> bool:
+        """The lock a child read or copied into this timeline keeps.
+
+        Its own, except a plain segment's, which is lifted.
+        """
+        return child.is_locked and not self._is_plain_segment(child)
+
+    def _refuse_segment_lock(self, child: "Timeline") -> None:
+        """Refuse to lock *child* where it is a plain segment of this line.
+
+        Raises:
+            ValueError: If *child* is a plain segment here.
+        """
+        if self._is_plain_segment(child):
+            raise ValueError(
+                f"A segment is never locked: lock its segment line '{self._id}' instead."
+            )
 
     def _child_extent(self, child_id: str) -> CoordinateValue | None:
         """Return how far a child extends on its own axis, or None if unbounded.
@@ -158,8 +188,9 @@ class ChildrenMixin:
 
         Raises:
             TypeError: If child is not a Timeline.
-            ValueError: If units don't match or the timeline already is a child
-                of this timeline.
+            ValueError: If units don't match, the timeline already is a child
+                of this timeline, or the offset is negative, which is not
+                supported yet.
         """
         if not isinstance(child, Timeline):
             raise TypeError(f"Child must be a Timeline, got {type(child).__name__}")
@@ -175,12 +206,11 @@ class ChildrenMixin:
         if any(existing is child for existing in self._children.values()):
             raise ValueError(f"Child '{child.id}' is already a child of this timeline")
 
-        # Validate offset
         offset_coord = self.get_coordinate_at(offset, format="coordinate")
         if offset_coord.value < 0:
             raise ValueError(
-                f"Offset cannot be negative: "
-                f"{_format_coordinate_value(float(offset_coord.value))}"
+                f"A negative child offset is not supported yet: child '{child.id}' "
+                f"has offset {spell(number_to_json(offset_coord.value))}."
             )
 
     def _convert_child_to_parent_unit(
@@ -294,14 +324,19 @@ class ChildrenMixin:
         allow_expansion: bool = False,
         use_conversion_map: ConversionMapsSpec = None,
         *,
-        locked: bool = True,
+        locked: bool | None = None,
     ) -> None:
         """Embed a child timeline at the specified offset.
 
         The child timeline is locked once added unless ``locked=False``, which
         leaves its own state as it is. An unlocked child may change its
         length, but only within this timeline's known end: this timeline
-        never grows because a child grew.
+        never grows because a child grew. A segment of a segment line is
+        never locked: the line's lock governs it, and the segment's own lock
+        is lifted when it joins. A segment line is locked like any child,
+        whether it becomes a child or a segment; unlocking it is not
+        supported yet, so ``locked=False`` is refused for a segment line that
+        is unlocked, and accepted (asking for nothing) for one already locked.
         Parent-child coordinate conversion uses exact offset arithmetic.
 
         The child's whole subtree joins this timeline's manifest, in which
@@ -338,16 +373,20 @@ class ChildrenMixin:
                 - ``str``: Look up by C-Map ID or target unit name.
                 - ``TimeUnit``: Find by target unit.
                 - ``ConversionMap``: Use directly.
-            locked: Whether to lock the child (the default). ``False`` keeps
-                the child's own state: an unlocked child stays unlocked, a
-                locked one stays locked.
+            locked: Whether to lock the child. ``None`` (the default) locks
+                every child but a plain segment, which is never locked.
+                ``False`` keeps the child's own state: an unlocked child stays
+                unlocked, a locked one stays locked; it is refused for an
+                unlocked segment line.
 
         Raises:
             TypeError: If child is not a Timeline.
             ValueError: If units don't match (and no conversion map given),
-                the offset is negative, the child is already a child of this
-                timeline, an id given in the child's subtree is already held
-                in this manifest, or this timeline is locked and the child
+                the offset is negative (not supported yet), the child is
+                already a child of this timeline, ``locked=True`` asks to lock
+                a plain segment, ``locked=False`` asks to leave a segment line
+                unlocked, an id given in the child's subtree is already
+                held in this manifest, or this timeline is locked and the child
                 would end beyond its length without ``allow_expansion``. An
                 unlocked timeline expands to fit the child instead, provided
                 its own parent contains its new end. A child of unknown
@@ -358,6 +397,40 @@ class ChildrenMixin:
         # Convert child's unit if a conversion map is specified
         if use_conversion_map is not None and child.unit != self._unit:
             child = self._convert_child_to_parent_unit(child, use_conversion_map)
+
+        if locked:
+            self._refuse_segment_lock(child)
+        elif (
+            locked is False
+            and child._is_segment_line_instance()
+            and not child.is_locked
+        ):
+            raise ValueError(
+                "Unlocking a segment line that is a child, a segment or a group "
+                "member is not supported yet."
+            )
+        self._embed_child(child, offset, allow_expansion, locked=locked is not False)
+
+    def _embed_child(
+        self,
+        child: Timeline,
+        offset: CoordinateSpec,
+        allow_expansion: bool = False,
+        *,
+        locked: bool,
+    ) -> None:
+        """Embed *child* as :meth:`add_child` does, taking the lock as given.
+
+        ``locked=True`` locks the child, ``False`` keeps its own state; a
+        plain segment is always left unlocked. Reading and copying embed
+        through here with the lock the child keeps (:meth:`_kept_lock`), so
+        a segment line keeps whatever lock the file or the source states.
+
+        Raises:
+            TypeError: As :meth:`add_child`.
+            ValueError: As :meth:`add_child`, but for the lock requests.
+        """
+        plain_segment = self._is_plain_segment(child)
 
         self.validate_child(child, offset)
 
@@ -381,7 +454,9 @@ class ChildrenMixin:
         self._child_offsets[child.id] = offset_coord
         child._parent = self
 
-        if locked:
+        if plain_segment:
+            child._locked = False
+        elif locked:
             child._locked = True
 
         self._add_events_unchecked([self._segment_row(child.id)])
@@ -499,7 +574,8 @@ class ChildrenMixin:
         is a fresh, unlocked timeline, its identity may be set here: *uid*
         becomes the child's ID (the key under which it is stored and
         retrieved) and *name* its human-readable name — both applied before
-        the child is locked by :meth:`add_child`.
+        :meth:`add_child` embeds it (locking it unless it is a plain segment
+        of a segment line).
 
         Args:
             child: The timeline to append. Must be fresh (parentless) and
@@ -1114,11 +1190,11 @@ class ChildrenMixin:
 
             # Offset in the target timeline
             target_offset = overlap_start - start
-            target.add_child(
+            target._embed_child(
                 sliced_child,
-                offset=target_offset,
+                target_offset,
                 allow_expansion=True,
-                locked=child.is_locked,
+                locked=target._kept_lock(child),
             )
 
     def _copy_cmaps_to_slice(

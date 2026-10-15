@@ -285,13 +285,14 @@ def read_list(data: Mapping[str, Any], key: str, what: str) -> list[Any]:
 class Manifest(_OpenObject):
     """What a manifest holds beside its timelines and groups.
 
-    The manifest's ``id`` (absent when anonymous), ``name`` and ``meta``, the
+    The manifest's ``id`` (absent when it has none), ``name`` and ``meta``, the
     members of its ``graphical`` other than ``order`` (``styling``, kept as
     given and never interpreted), whether it holds ``graphical`` at all, and
     every key the library does not read.
 
     Attributes:
-        id: The manifest id, or None for an anonymous manifest.
+        id: The manifest id, or None when it has none (an anonymous bundle,
+            or one named by ``name`` alone).
         name: The manifest name, or None.
         meta: The manifest's free metadata.
         styling: ``graphical`` without ``order``: ``styles``,

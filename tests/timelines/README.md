@@ -292,12 +292,20 @@ the library writes back against the same literal text.
   and `TimelineGroup.from_dict(..., group_id="end")`. A negative length is
   refused on reading (`[-12, 1]` on quarters, `-8.0` on seconds:
   `length -12 of 'x' is negative`) and on construction.
+- **A negative child offset is not supported yet.** The format admits a
+  child at a negative offset; the library does not place one yet. A child
+  `neg` at `[-5, 2]` on a quarters root, at `-1` on a samples root and at
+  `-2.5` on a seconds root is refused by every reader (timeline, group,
+  bundle) with `A negative child offset is not supported yet: child 'neg'
+  has offset [-5, 2].` (`-1` on samples, `-2.5` on seconds), the value
+  spelled as the TimeSkeleton writer writes it and its validators quote it.
+  A root's own negative `offset` stays readable.
 - **A group made from one timeline keeps the manifest's keys.** A one-root
   manifest with `id`, `name`, `meta`, `graphical.styles` and an unknown
   top-level key, read by `TimelineGroup.from_dict(..., group_id="g")`,
-  writes the anonymous manifest of its group with the same `meta`,
+  writes the anonymous bundle of its group with the same `meta`,
   `styles` and unknown key: only `id` and `name` are gone, because a group
-  writes an anonymous manifest.
+  writes an anonymous bundle.
 - **A `graphical` object read is written back.** `"graphical": {}` on a
   one-root manifest is written back as `{}` in the minimal form and as
   `{"order": {}, "statements": [], "styles": {}}` in the complete form,
@@ -360,7 +368,7 @@ the library writes back against the same literal text.
     id 'g', name 'Other'` listing the groups, instead of renaming a group
     that was selected.
 - **Identity of the manifest.** An `AlignmentBundle()` writes no `id`; read
-  from an anonymous manifest it holds a minted `bundle_1` that it never
+  from an anonymous bundle it holds a minted `bundle_1` that it never
   writes, and a manifest with a `name` and no `id` writes back exactly that.
   A given bundle id is written. A legacy `"support_policy": "clamp"` beside
   the groups is an unknown key: kept and written back, never read, so the
@@ -678,6 +686,23 @@ leaving nothing built. A parent and its child in *different* groups of one
 bundle remain allowed (the bundle tests pin it): each group converts within
 itself, and the offset relates the two.
 
+**A segment-line member is locked.** A segment line that becomes a member is
+locked by default, as it is when it becomes a child; lifting that lock is
+not supported yet. A plain member is left as it is. What proves it: a
+`SegmentLine[ContinuousLogicalTimeline]` of two segments (4 and 2 quarters),
+built unlocked, is locked after `TimelineGroup(timelines=[line, plain])`, after
+`group.add_timeline(line)` and after `AlignmentBundle.add_timeline(line,
+grouped_with=...)`, while the unlocked plain member stays unlocked and the
+line's segments stay unlocked; the group writes `locked: true` on the line in
+both forms. Reading is not construction: `TimelineGroup.from_dict` and
+`AlignmentBundle.from_dict` of a manifest whose member line states
+`locked: false` keep it unlocked and write `false` back, and one stating
+`true` keeps it locked. So does `TimelineGroup.from_dict(data, group_id="g")`
+of a manifest without groups whose one root is that line: the group holds
+`line` alone, unlocked when the file states `false` (written `false`, left
+out of the minimal form) and locked when it states `true` (written `true`
+in both forms).
+
 `from_dict` refuses each malformed input with a `ValueError` naming the
 problem: a missing required key, a member naming no timeline, a timeline id
 written twice, an order that is not a permutation of the members, a member
@@ -812,7 +837,24 @@ child behaves like any unlocked timeline whose boundaries its parent must
 contain. `add_child` still locks the child by default (programmatic use and
 the loaders rely on it); `add_child(..., locked=False)` leaves the child's
 own state as it is, so an unlocked child stays unlocked and a locked one
-stays locked (a lock is never lifted).
+stays locked (a lock is never lifted by a call). A segment line is the
+exception: it is locked as a child, see below.
+
+**Segments are never locked.** A plain segment, a segment of a segment line
+that is no segment line itself, has no lock of its own: the segment line's
+lock governs it. Its own `locked` means nothing, so it is `false` however
+the segment came to be — appended, read, cast or copied — and a lock the
+segment carried before it joined is lifted. Asking for it is refused: an
+explicit `add_child(..., locked=True)` or `lock()` on a plain segment raises
+`ValueError("A segment is never locked: lock its segment line '<line>'
+instead.")`. A segment line that becomes a child, a segment or a group member
+is locked, like any child; lifting that lock is not supported yet. So
+`add_child(line, ..., locked=False)` on a segment line that is unlocked is
+refused before anything changes with `ValueError("Unlocking a segment line
+that is a child, a segment or a group member is not supported yet.")`; on a
+segment line already locked it asks for nothing and is accepted. Reading and
+copying are not construction: a file's own `locked` on such a segment line
+is read as it stands, `false` included.
 
 The tests prove one rule: **a change of a timeline's length must stay within
 its parent's known length, and a parent never grows because a child grew.**
@@ -840,6 +882,51 @@ so a test cannot pass by restating the implementation:
   `locked=False` an unlocked child stays unlocked (its length can then be
   set: 3 at offset 2 writes the row end 5, duration 3) and a child built
   locked stays locked.
+- **Unlocking a segment line is refused.** An unlocked segment line `line`
+  (segments 4 s and 2 s) given `locked=False` is refused with the exact
+  message above twice: as a child of a plain 20 s parent `P`, and as a
+  segment of an empty edition line `edition`. Each time the parent is left
+  without children (and the edition at length 0) and `line` still unlocked.
+  The same line locked first is accepted with `locked=False` and stays
+  locked; the parent then holds it. A child line read from a file stating
+  `false` keeps `False` (pinned under "Reading normalises a plain segment").
+- **Plain segments are unlocked on every construction path.** Each of the
+  four ways a segment line is built — `append_segment` on a
+  `SegmentLine[ContinuousPhysicalTimeline]` (segments 4 s and 2 s),
+  `append_child` on the same line, `create_segment_line([0, 4, 6])` and
+  `SegmentLine.from_segmentation(source, [0, 4, 6])` on a 6 s timeline —
+  gives two segments with `is_locked` `False`, and the complete form writes
+  `locked: false` on both while the minimal form leaves the key out. A
+  segment built `locked=True` before it is appended is unlocked once
+  appended. A `lock()` on the line afterwards locks the line only.
+- **A segment that is a segment line is locked.** An edition line of two
+  page lines (each a line of plain segments) holds both pages with
+  `is_locked` `True` and their plain segments with `False`; the minimal form
+  writes `locked: true` on each page and nothing on the plain segments.
+- **Asking to lock a plain segment is refused.** `add_child(segment, 0,
+  locked=True)` on an empty line raises the exact message above naming the
+  line, and leaves the line without segments and the segment unlocked;
+  `lock()` on an appended plain segment raises the same message and
+  leaves it unlocked. `locked=False` on a plain segment is accepted (it asks
+  for nothing). `lock()` on a nested page line, a segment line itself,
+  succeeds.
+- **Reading normalises a plain segment.** A manifest stating `locked: true`
+  on both segments of a line reads them unlocked, writes `locked: false` in
+  the complete form and leaves the key out of the minimal form. A nested
+  page line stated `locked: false` keeps `False`, and one stated `true`
+  keeps `True`: the file decides for a segment line.
+- **An unlocked segment still keeps the line contiguous.** The line `line`
+  (4 s `A`, 2 s `B`, so 6 s), locked or not: an event `[0, 5]` added to `A`
+  raises `SegmentLine requires contiguous segments. Segment 'A' cannot end
+  at 5: its successor 'B' starts at 4.`, an event `[0, 3]` added to `B`
+  raises `... Segment 'B' cannot end at 7: the line 'line' ends at 6.`, and
+  `append_child` of a 1 s child to `A` raises the first message; after each
+  raise the lengths are 4, 2 and 6 and the segment holds no new event or
+  child. Events that end inside the segment (`[0, 4]` on `A`, `[0, 2]` on
+  `B`) are added and change no length. The last segment of a line of
+  unknown length has no end to keep: an event `[0, 7]` added to `B` makes
+  `B` 7 long and the line stays of unknown length, since growth never
+  pushes the parent; `A` in that line is still refused at 5.
 - **Growth inside the parent.** `G` (length 15, a root) holds `P` (length 10)
   at offset 5, which holds `C` (length 4) at offset 3, both embedded
   unlocked. An event `[0, 6]` added to `C` makes `C` 6 long, ending at
@@ -1187,12 +1274,16 @@ need contents opt in.
    - Mismatched units rejected
    - Non-Timeline objects rejected
    - Duplicate children rejected
-   - Negative offsets rejected
+   - A negative offset is refused as not supported yet, with the exact
+     message `A negative child offset is not supported yet: child '<id>' has
+     offset -1.0.` on a seconds parent, the offset spelled in its JSON form
+     (a root's own offset may be negative; see "Manifests")
 
 2. **Adding and Appending Children Tests** (13 tests)
    - Basic child addition
    - Offset storage and retrieval
-   - Child locking upon embedding
+   - Child locking upon embedding (a plain segment of a segment line
+     excepted; see `test_unlocked_child.py`)
    - Segment event creation in parent's EventStore
    - Auto-expansion of parent
    - Multiple children
@@ -1262,7 +1353,8 @@ need contents opt in.
 The TTA model specifies that timelines can contain nested "children" (segments)
 that share the same coordinate type. These tests verify:
 - Children must have matching units (type safety)
-- Children are locked upon embedding (immutability)
+- Children are locked upon embedding (immutability), except a plain segment,
+  whose segment line's lock governs it
 - Children appear as interval events in the parent's EventStore
 - Traversal orders work correctly for hierarchical access
 - Cross-unit nesting works via C-Map inversion (e.g., EEP notes in seconds
@@ -1356,7 +1448,10 @@ builders cannot disagree about which maps are columnar.
      300, no `class` anywhere. A nested, IEEE-shaped line — a page line of
      two accolade lines (accolades 100+150 px and 120 px) — is pinned too:
      the outer and both page lines carry true, the accolades false. A plain
-     timeline writes false.
+     timeline writes false. `locked` is pinned on every object: a plain
+     segment (both flat segments, every accolade) writes `false`, because a
+     segment is never locked; a segment that is itself a segment line (both
+     pages) writes `true`; the root lines write `false`.
    - **Round trips that rebuild the type.** `from_dict` returns
      `SegmentLine[DiscreteGraphicalTimeline]` for the flat line and
      `SegmentLine[SegmentLine[DiscreteGraphicalTimeline]]` for the nested

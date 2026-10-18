@@ -1077,22 +1077,212 @@ def test_the_manifest_id_is_unique_with_the_timeline_ids() -> None:
 # region graphical.order
 
 
-def test_the_order_is_keyed_by_group_id() -> None:
+def test_the_order_is_an_object() -> None:
     data = copy.deepcopy(SELECTION)
     data["graphical"] = {"order": [["score"], ["perf"]]}
 
     with pytest.raises(ValueError) as refused:
         AlignmentBundle.from_dict(data)
-    assert str(refused.value) == "'graphical.order' must map group ids to orders"
+    assert str(refused.value) == (
+        "'graphical.order' must map group or timeline ids to orders"
+    )
 
 
-def test_an_order_naming_no_group_is_refused() -> None:
+def test_an_order_naming_no_group_or_timeline_is_refused() -> None:
     data = copy.deepcopy(SELECTION)
     data["graphical"] = {"order": {"g3": ["perf"]}}
 
     with pytest.raises(ValueError) as refused:
         AlignmentBundle.from_dict(data)
-    assert str(refused.value) == "'graphical.order' names no group: ['g3']"
+    assert str(refused.value) == "'graphical.order' names no group or timeline: ['g3']"
+
+
+SCORE_BANDS = [
+    "score/children_1",
+    "score/markers_1",
+    "score",
+    "score/conversion_maps_1",
+    "score/regions_1",
+    "score/flow_control_1",
+]
+"""Markers above the line, children beyond them, the rest below."""
+
+PART_BANDS = [
+    "part/flow_control_1",
+    "part/regions_1",
+    "part/markers_1",
+    "part/conversion_maps_1",
+    "part/children_1",
+    "part",
+]
+"""Every band above the line, in reverse default order."""
+
+PERF_BANDS = [
+    "perf",
+    "perf/flow_control_1",
+    "perf/regions_1",
+    "perf/markers_1",
+    "perf/conversion_maps_1",
+    "perf/children_1",
+]
+"""Every band below the line, in reverse default order."""
+
+SCORE_MINIMAL: dict[str, Any] = {
+    "id": "score",
+    "unit": "quarters",
+    "length": [8, 1],
+    "children": [
+        {"id": "part", "unit": "quarters", "offset": [2, 1], "length": [4, 1]}
+    ],
+}
+PERF_MINIMAL: dict[str, Any] = {"id": "perf", "unit": "seconds", "length": 20.0}
+
+
+def _empty_complete(
+    timeline_id: str, unit: str, number_type: str, **keys: Any
+) -> dict[str, Any]:
+    """A timeline object holding nothing, every default of the format written."""
+    return {
+        "id": timeline_id,
+        "name": None,
+        "unit": unit,
+        "number_type": number_type,
+        "locked": False,
+        "is_segment_line": False,
+        "meta": {},
+        "children": [],
+        "conversion_maps": [],
+        "regions": [],
+        "flow_control": {"breaks": [], "jumps": [], "markers": []},
+        "measure_map": None,
+        "metric_hierarchy": None,
+        **keys,
+    }
+
+
+SCORE_COMPLETE = _empty_complete(
+    "score",
+    "quarters",
+    "fraction",
+    length=[8, 1],
+    children=[
+        _empty_complete("part", "quarters", "fraction", offset=[2, 1], length=[4, 1])
+    ],
+)
+PERF_COMPLETE = _empty_complete("perf", "seconds", "float", length=20.0)
+
+ONE_ROOT_BANDS = {"part": PART_BANDS, "score": SCORE_BANDS}
+GROUPED_BANDS = {
+    "g": ["perf", "part"],
+    "part": PART_BANDS,
+    "perf": PERF_BANDS,
+    "score": SCORE_BANDS,
+}
+
+ONE_ROOT = {
+    "minimal": {
+        "timeskeleton": "0.7.0",
+        "timelines": [SCORE_MINIMAL],
+        "graphical": {"order": ONE_ROOT_BANDS},
+    },
+    "complete": {
+        "timeskeleton": "0.7.0",
+        "name": None,
+        "meta": {},
+        "timelines": [SCORE_COMPLETE],
+        "groups": [],
+        "graphical": {"order": ONE_ROOT_BANDS, "styles": {}, "statements": []},
+    },
+}
+GROUPED = {
+    "minimal": {
+        "timeskeleton": "0.7.0",
+        "timelines": [PERF_MINIMAL, SCORE_MINIMAL],
+        "groups": [{"id": "g", "members": ["part", "perf"]}],
+        "graphical": {"order": GROUPED_BANDS},
+    },
+    "complete": {
+        "timeskeleton": "0.7.0",
+        "name": None,
+        "meta": {},
+        "timelines": [PERF_COMPLETE, SCORE_COMPLETE],
+        "groups": [{"id": "g", "name": None, "meta": {}, "members": ["part", "perf"]}],
+        "graphical": {"order": GROUPED_BANDS, "styles": {}, "statements": []},
+    },
+}
+WHOLE_READS = {
+    "timeline": (Timeline.from_dict, ONE_ROOT),
+    "group": (TimelineGroup.from_dict, GROUPED),
+    "bundle_one_root": (AlignmentBundle.from_dict, ONE_ROOT),
+    "bundle_grouped": (AlignmentBundle.from_dict, GROUPED),
+}
+
+
+@pytest.mark.parametrize("form", ["complete", "minimal"])
+@pytest.mark.parametrize("case", list(WHOLE_READS), ids=list(WHOLE_READS))
+def test_band_orders_survive_a_round_trip(case: str, form: str) -> None:
+    reader, literals = WHOLE_READS[case]
+    other = "minimal" if form == "complete" else "complete"
+
+    read = reader(copy.deepcopy(literals[form]))
+
+    assert _text(read.to_dict(minimal=form == "minimal")) == _text(literals[form])
+    assert _text(read.to_dict(minimal=other == "minimal")) == _text(literals[other])
+
+
+@pytest.mark.parametrize("case", list(WHOLE_READS), ids=list(WHOLE_READS))
+def test_band_orders_are_copied_on_reading(case: str) -> None:
+    reader, literals = WHOLE_READS[case]
+    data = copy.deepcopy(literals["minimal"])
+
+    read = reader(data)
+    for entry in data["graphical"]["order"].values():
+        entry.reverse()
+
+    assert _text(read.to_dict(minimal=True)) == _text(literals["minimal"])
+
+
+def test_a_band_order_is_never_checked() -> None:
+    data = copy.deepcopy(ONE_ROOT["minimal"])
+    data["graphical"]["order"]["part"] = ["part", "part/markers_1"]
+
+    assert Timeline.from_dict(copy.deepcopy(data)).to_dict(minimal=True) == data
+
+
+def test_a_removed_timeline_takes_its_band_order_along() -> None:
+    group = TimelineGroup.from_dict(copy.deepcopy(GROUPED["minimal"]))
+
+    group.remove_timeline("perf")
+
+    assert group.to_dict(minimal=True) == {
+        "timeskeleton": "0.7.0",
+        "timelines": [SCORE_MINIMAL],
+        "groups": [{"id": "g", "members": ["part"]}],
+        "graphical": {
+            "order": {"g": ["part"], "part": PART_BANDS, "score": SCORE_BANDS}
+        },
+    }
+
+
+def test_a_new_id_on_load_leaves_the_old_band_order_out() -> None:
+    timeline = Timeline.from_dict(
+        copy.deepcopy(ONE_ROOT["minimal"]), timeline_id="edition"
+    )
+
+    assert timeline.to_dict(minimal=True) == {
+        "timeskeleton": "0.7.0",
+        "timelines": [SCORE_MINIMAL | {"id": "edition"}],
+        "graphical": {"order": {"part": PART_BANDS}},
+    }
+
+
+def test_a_selected_timeline_keeps_no_graphical() -> None:
+    perf = Timeline.from_dict(copy.deepcopy(GROUPED["minimal"]), timeline_id="perf")
+
+    assert perf.to_dict(minimal=True) == {
+        "timeskeleton": "0.7.0",
+        "timelines": [PERF_MINIMAL],
+    }
 
 
 # endregion
@@ -1363,6 +1553,81 @@ def test_a_part_word_is_no_override() -> None:
         with pytest.raises(ValueError) as refused:
             TimelineGroup.from_dict(copy.deepcopy(data), group_id="end")
         assert str(refused.value) == _reserved("end")
+
+
+def _band(band_id: str) -> str:
+    return f"Invalid id '{band_id}': it is reserved for the bands of a timeline"
+
+
+@pytest.mark.parametrize(
+    ("data", "band_id"),
+    [
+        (
+            _quarters_root()
+            | {
+                "timelines": [{"id": "markers_1", "unit": "quarters", "length": [4, 1]}]
+            },
+            "markers_1",
+        ),
+        (
+            _quarters_root(
+                children=[
+                    {
+                        "id": "children_1",
+                        "unit": "quarters",
+                        "offset": [0, 1],
+                        "length": [4, 1],
+                    }
+                ]
+            ),
+            "children_1",
+        ),
+        (
+            _quarters_root(
+                regions=[{"id": "regions_2", "start": [0, 1], "end": [4, 1]}]
+            ),
+            "regions_2",
+        ),
+        (
+            _quarters_root(
+                conversion_maps=[
+                    {
+                        "type": "ShiftMap",
+                        "id": "conversion_maps_3",
+                        "source_unit": None,
+                        "target_unit": None,
+                        "offset": 1,
+                    }
+                ]
+            ),
+            "conversion_maps_3",
+        ),
+        (
+            _quarters_root()
+            | {"groups": [{"id": "flow_control_1", "members": ["score"]}]},
+            "flow_control_1",
+        ),
+        (_quarters_root() | {"id": "markers_10"}, "markers_10"),
+    ],
+    ids=["root", "child", "region", "map", "group", "manifest"],
+)
+def test_a_band_id_is_no_id(data: dict[str, Any], band_id: str) -> None:
+    with pytest.raises(ValueError) as refused:
+        AlignmentBundle.from_dict(copy.deepcopy(data))
+    assert str(refused.value) == _band(band_id)
+
+
+def test_a_band_id_is_no_override() -> None:
+    with pytest.raises(ValueError) as refused:
+        Timeline.from_dict(_quarters_root(), timeline_id="children_1")
+    assert str(refused.value) == _band("children_1")
+    for data in (
+        _quarters_root(),
+        _quarters_root() | {"groups": [{"id": "g", "members": ["score"]}]},
+    ):
+        with pytest.raises(ValueError) as refused:
+            TimelineGroup.from_dict(copy.deepcopy(data), group_id="regions_1")
+        assert str(refused.value) == _band("regions_1")
 
 
 @pytest.mark.parametrize(

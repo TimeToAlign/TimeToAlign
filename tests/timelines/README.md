@@ -289,7 +289,17 @@ the library writes back against the same literal text.
   `name` as a group id and `label` as a conversion-map id are each refused
   with `Invalid id '<word>': it is reserved for the parts of an address`,
   and so are the overrides `Timeline.from_dict(..., timeline_id="start")`
-  and `TimelineGroup.from_dict(..., group_id="end")`. A negative length is
+  and `TimelineGroup.from_dict(..., group_id="end")`. The ids of a
+  timeline's five bands follow its address too, so every id of the form
+  `<kind>_<N>`, a kind among `markers`, `conversion_maps`, `children`,
+  `regions` and `flow_control` and N a number from 1 without a leading zero, is
+  no id either: `markers_1` as a root id, `children_1` as a child id,
+  `regions_2` as a region id, `conversion_maps_3` as a map id,
+  `flow_control_1` as a group id and `markers_10` as the manifest id are
+  each refused with `Invalid id '<id>': it is reserved for the bands of a
+  timeline`, one place per kind so that no kind word is left unchecked, and
+  so are the overrides `Timeline.from_dict(..., timeline_id="children_1")`
+  and `TimelineGroup.from_dict(..., group_id="regions_1")`. A negative length is
   refused on reading (`[-12, 1]` on quarters, `-8.0` on seconds:
   `length -12 of 'x' is negative`) and on construction.
 - **A negative child offset is not supported yet.** The format admits a
@@ -373,8 +383,56 @@ the library writes back against the same literal text.
   A given bundle id is written. A legacy `"support_policy": "clamp"` beside
   the groups is an unknown key: kept and written back, never read, so the
   bundle's `support_policy` stays `omit`.
-- **`graphical.order`** is the object keyed by group id; the list form is
-  refused, and an order naming no group raises naming it.
+- **`graphical.order`** is the object keyed by a group's id or by a
+  timeline's id, of a root or a descendant. The list form is refused with
+  `'graphical.order' must map group or timeline ids to orders`, and a key
+  naming neither with `'graphical.order' names no group or timeline:
+  ['g3']`. The keys `score` (a root) and `part` (a child) of the band-order
+  manifests below are read, so a reader that looked among the roots alone
+  would fail.
+- **Band orders are kept, never read.** A timeline's entry of
+  `graphical.order` is its band order, graphical data the library keeps as
+  given: it does not check, reorder or interpret it, since both TimeSkeleton
+  packages check it. It is kept where the manifest's styling is kept, with
+  the manifest read as a whole — `Timeline.from_dict` of one root and no
+  group, `TimelineGroup.from_dict` of one root or of one anonymous group,
+  `AlignmentBundle.from_dict` of any manifest — and written back, unchanged,
+  whenever its timeline is written, beside the group orders the writer
+  computes from its groups. The literals: a root `score` (quarters, length
+  `[8, 1]`) with a child `part` (offset `[2, 1]`, length `[4, 1]`), alone in
+  a one-root manifest, and beside a root `perf` (seconds, `20.0`) in a
+  manifest with one anonymous group `g` of `part` and `perf` displayed
+  `["perf", "part"]`. Each timeline's band order is a permutation no
+  default produces and no sort reproduces: `score` the README's example
+  (`score/children_1`, `score/markers_1`, `score`, `score/conversion_maps_1`,
+  `score/regions_1`, `score/flow_control_1`), `part` every band above its
+  line, in reverse default order, and `perf` every band below it, in
+  reverse default order. A root's band order (`score`, `perf`) and a
+  descendant's (`part`), and a member's beside a non-member's, are each
+  exercised. Every reader that reads a literal as a whole (timeline and
+  bundle on the one-root manifest, group and bundle on the grouped one)
+  reads each literal in each form, complete and minimal, and writes it back
+  in the same form equal to the literal, with the lists compared in order,
+  and in the other form equal to the other literal. Mutating the input's
+  lists after reading changes nothing written, so the library holds its own
+  copy. A band order that is no permutation of the bands (`["part",
+  "part/markers_1"]`) is read and written back unchanged, which is what
+  leaving the check to the validators means.
+- **A band order without its timeline is left out.** An entry is written
+  when a timeline of its key's id is written, and left out otherwise. An
+  entry names the bands by its timeline's id (`score/markers_1`), so it
+  cannot follow a timeline to a new id unchanged, and a key naming no
+  written timeline makes the manifest invalid; leaving such an entry out
+  keeps the written manifest valid and changes nothing else. A group read
+  from the grouped literal that removes its member `perf` writes neither
+  `perf` nor its band order, and keeps `score`'s and `part`'s beside the
+  order `["part"]` of `g`. `Timeline.from_dict(..., timeline_id="edition")`
+  of the one-root literal gives its root a new id on load: the manifest
+  written holds `part`'s band order alone, neither the entry of `score` nor
+  one of `edition`. A timeline selected out of a larger manifest keeps none
+  of its `graphical`, styling and band orders alike:
+  `Timeline.from_dict(..., timeline_id="perf")` of the grouped literal
+  writes no `graphical`.
 - **An unknown length.** `"length": null` reads as `length is None` and is
   written back as `null` in both forms: `length` is the one key the minimal
   form never leaves out.
@@ -660,6 +718,8 @@ as `{"order": {...}}` in the minimal form and adds `styles: {}` and
 `statements: []` in the complete one. A `graphical` holding styling but no
 `order` reads its members in `members` order, as an absent `graphical` does.
 Any other key of `graphical` (`frame`) is kept and written back, never read.
+The band orders of `graphical.order`, keyed by a timeline's id, are carried
+beside the styling; their tests are those of "Manifests" above.
 
 **Identity.** The default id is `group_1` (minted statelessly: the smallest
 free number, so two fresh groups in one process are both `group_1`). A

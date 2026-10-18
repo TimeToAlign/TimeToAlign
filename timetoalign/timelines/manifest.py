@@ -286,9 +286,10 @@ class Manifest(_OpenObject):
     """What a manifest holds beside its timelines and groups.
 
     The manifest's ``id`` (absent when it has none), ``name`` and ``meta``, the
-    members of its ``graphical`` other than ``order`` (``styling``, kept as
-    given and never interpreted), whether it holds ``graphical`` at all, and
-    every key the library does not read.
+    members of its ``graphical`` other than ``order`` (``styling``) and the
+    band orders of its timelines (``band_orders``), both kept as given and
+    never interpreted, whether it holds ``graphical`` at all, and every key
+    the library does not read.
 
     Attributes:
         id: The manifest id, or None when it has none (an anonymous bundle,
@@ -297,6 +298,8 @@ class Manifest(_OpenObject):
         meta: The manifest's free metadata.
         styling: ``graphical`` without ``order``: ``styles``,
             ``statements`` and any other key, kept as given.
+        band_orders: The entries of ``graphical.order`` keyed by a
+            timeline's id, each that timeline's band order, kept as given.
         has_graphical: Whether the manifest holds a ``graphical`` object,
             which is then written back even with every member at its
             default.
@@ -321,6 +324,7 @@ class Manifest(_OpenObject):
     name: str | None = None
     meta: dict[str, Any] = field(default_factory=dict)
     styling: dict[str, Any] = field(default_factory=dict)
+    band_orders: dict[str, Any] = field(default_factory=dict)
     has_graphical: bool = False
 
     @classmethod
@@ -329,7 +333,9 @@ class Manifest(_OpenObject):
 
         Every root timeline is rebuilt, and every timeline of the roots'
         trees is indexed by id. Groups are left as JSON for the class
-        reading them.
+        reading them. ``graphical.order`` is split by its keys: a group's
+        display order goes to the content, a timeline's band order to the
+        envelope, unchecked.
 
         Returns:
             The envelope, and the manifest's content.
@@ -339,7 +345,7 @@ class Manifest(_OpenObject):
                 TimeSkeleton manifest"``), names another version, or is
                 malformed: a timeline id occurring twice, the manifest id
                 equal to a timeline or group id, a ``graphical.order``
-                naming no group.
+                that is no object or names no group or timeline.
         """
         if not isinstance(data, dict) or "timeskeleton" not in data:
             raise ValueError("not a TimeSkeleton manifest")
@@ -370,10 +376,24 @@ class Manifest(_OpenObject):
             manifest.has_graphical = True
             order = graphical.get("order", {})
             if not isinstance(order, dict):
-                raise ValueError("'graphical.order' must map group ids to orders")
-            unknown = sorted(str(key) for key in order if key not in group_ids)
+                raise ValueError(
+                    "'graphical.order' must map group or timeline ids to orders"
+                )
+            unknown = sorted(
+                str(key)
+                for key in order
+                if key not in group_ids and key not in timelines
+            )
             if unknown:
-                raise ValueError(f"'graphical.order' names no group: {unknown}")
+                raise ValueError(
+                    f"'graphical.order' names no group or timeline: {unknown}"
+                )
+            manifest.band_orders = {
+                key: copy.deepcopy(entry)
+                for key, entry in order.items()
+                if key not in group_ids
+            }
+            order = {key: entry for key, entry in order.items() if key in group_ids}
             # A styling member at its default is left out, so that the complete
             # and the minimal form read to the same styling.
             manifest.styling = {
@@ -400,7 +420,11 @@ class Manifest(_OpenObject):
     ) -> dict[str, Any]:
         """Write the manifest around written timelines and groups.
 
-        ``graphical`` is written when there is an order to keep (a group),
+        ``graphical.order`` holds the groups' member orders and, unchanged,
+        the band order of every written timeline that has one; the band
+        order of a timeline not written, removed or given another id, is
+        left out, so that every key names a timeline or group of the
+        manifest. ``graphical`` is written when there is an order to keep,
         styling, or a ``graphical`` read with the manifest; ``id`` only when
         the manifest has one.
 
@@ -419,7 +443,13 @@ class Manifest(_OpenObject):
             timelines=timelines,
             groups=list(groups),
         )
-        order = order or {}
+        written = _timeline_ids(timelines)
+        band_orders = {
+            key: copy.deepcopy(entry)
+            for key, entry in self.band_orders.items()
+            if key in written
+        }
+        order = dict(sorted({**band_orders, **(order or {})}.items()))
         if order or self.styling or self.has_graphical:
             graphical: dict[str, Any] = {"order": order}
             for key, default in _STYLING_DEFAULTS.items():
@@ -447,7 +477,8 @@ class ManifestContent:
         roots: The root timelines, rebuilt, in the manifest's order.
         timelines: Every timeline of the roots' trees, by id.
         groups: The manifest's groups, as JSON.
-        order: ``graphical.order``: member orders keyed by group id.
+        order: The display orders of ``graphical.order``: member orders
+            keyed by group id.
     """
 
     roots: list[Timeline]
@@ -481,6 +512,17 @@ def write_roots(
         )
         for root in sorted(roots, key=lambda root: root.id)
     ]
+
+
+def _timeline_ids(timelines: list[dict[str, Any]]) -> set[str]:
+    """The ids of written timeline objects and of all their children."""
+    ids: set[str] = set()
+    pending = list(timelines)
+    while pending:
+        timeline = pending.pop()
+        ids.add(timeline["id"])
+        pending.extend(timeline.get("children", []))
+    return ids
 
 
 def _read_roots(items: Any) -> tuple[list[Timeline], dict[str, Timeline]]:

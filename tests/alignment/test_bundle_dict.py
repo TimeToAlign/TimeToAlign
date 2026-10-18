@@ -396,7 +396,7 @@ def _second_group(data: dict[str, Any], members: list[str]) -> None:
         ),
         (
             lambda d: d["graphical"]["order"].update(group_7=["score"]),
-            r"'graphical.order' names no group: \['group_7'\]",
+            r"'graphical.order' names no group or timeline: \['group_7'\]",
         ),
         (
             lambda d: d["graphical"]["order"].update(group_1=["score"]),

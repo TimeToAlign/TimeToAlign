@@ -405,8 +405,8 @@ def test_every_fixture_has_its_minimal_twin() -> None:
         directory: sum(Path(f).parent.as_posix() == directory for f in FIXTURES)
         for directory in READERS
     }
-    assert counts == {".": 36, "groups": 10, "bundles": 9}
-    assert len(listed) == 110
+    assert counts == {".": 41, "groups": 10, "bundles": 9}
+    assert len(listed) == 120
 
 
 @pytest.mark.parametrize("fixture", FIXTURES)
@@ -462,6 +462,9 @@ STATEMENT_RULES = {
 }
 """Rejection cases about ``graphical.statements``, which the library keeps unread."""
 
+BAND_ORDER_RULES = {"band_order_missing_band", "band_order_unknown_entry"}
+"""Rejection cases about a band order's entries, which the library keeps unchecked."""
+
 REJECTIONS = {path.stem: path for path in rejection_paths()}
 
 
@@ -476,7 +479,9 @@ def _whole_reader(manifest: Any) -> Callable[[Any], Any]:
     return AlignmentBundle.from_dict
 
 
-@pytest.mark.parametrize("case", sorted(set(REJECTIONS) - STATEMENT_RULES))
+@pytest.mark.parametrize(
+    "case", sorted(set(REJECTIONS) - STATEMENT_RULES - BAND_ORDER_RULES)
+)
 def test_the_library_refuses_every_rejection_case(case: str) -> None:
     """Both the whole reader and the bundle reader refuse each case."""
     manifest = json.loads(REJECTIONS[case].read_text(encoding="utf-8"))["manifest"]
@@ -485,12 +490,17 @@ def test_the_library_refuses_every_rejection_case(case: str) -> None:
             reader(manifest)
 
 
-def test_statement_rules_are_the_only_cases_the_library_reads() -> None:
-    """The library keeps a drawing's statements unread, so it accepts these cases."""
-    assert STATEMENT_RULES <= set(REJECTIONS)
-    for case in sorted(STATEMENT_RULES):
+def test_statement_and_band_order_rules_are_the_only_cases_the_library_reads() -> None:
+    """The library keeps statements and band orders unchecked, so it accepts these cases.
+
+    A band order is written back unchanged with its timeline.
+    """
+    assert STATEMENT_RULES | BAND_ORDER_RULES <= set(REJECTIONS)
+    for case in sorted(STATEMENT_RULES | BAND_ORDER_RULES):
         manifest = json.loads(REJECTIONS[case].read_text(encoding="utf-8"))["manifest"]
-        AlignmentBundle.from_dict(manifest)
+        written = AlignmentBundle.from_dict(manifest).to_dict()
+        if case in BAND_ORDER_RULES:
+            assert written["graphical"]["order"] == manifest["graphical"]["order"]
 
 
 SEVERAL_DEPTHS_ROW = {

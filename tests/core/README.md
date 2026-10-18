@@ -1009,6 +1009,28 @@ stateless generator of manifest element ids.
    - `validate_id` returns `"performance"`, `"a"`, `"Bass Kick"`,
      `"score:clt_7"` unchanged and raises `ValueError` for `""`, `"a/b"`,
      `"a\tb"`, `"a\nb"` and `"\x00"`.
+   - The ids of a timeline's bands are no id: an id matching
+     `^(markers|conversion_maps|children|regions|flow_control)_[1-9][0-9]*$`
+     raises exactly `Invalid id '<id>': it is reserved for the bands of a
+     timeline`. Each of the five kinds is refused at `_1`, and `regions_12`
+     and `flow_control_90` show that the number is any number, not one
+     spelling. The pattern's edges stay valid, each a short step from a
+     refused id: the bare kind word (`markers`), the number 0
+     (`children_0`), a leading zero (`regions_01`), the singular kinds the
+     library mints for its own elements (`marker_1`, `region_1`), a role
+     before the id (`score:children_1`), a suffix after it
+     (`markers_1a`), and another case (`Markers_1`). The part words keep
+     their own message, `Invalid id 'start': it is reserved for the parts
+     of an address`.
+   - No id the library mints is reserved. Every prefix it mints with is
+     collected from the code rather than listed: the timeline prefix of
+     every unit, alone and led by a role (`score:`), the `_id_prefix` of
+     every subclass of the frozen manifest elements (region, break, jump,
+     marker) and of `ConversionMap`, and the prefix of the ids minted by a
+     fresh `TimelineGroup` and `AlignmentBundle`. Each minted first id
+     passes `validate_id`; since the pattern needs the whole id to be a
+     kind word, `_` and a number, a prefix that is no kind word cannot
+     produce a refused id at any number.
    - `timeline_id_prefix` maps one unit of each kind to its prefix:
      quarters `clt`, ticks `dlt`, seconds `cpt`, samples `dpt`, centimeters
      `cgt`, pixels `dgt`.

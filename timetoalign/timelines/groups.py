@@ -292,10 +292,12 @@ class TimelineGroup(_OpenObject):
         A group is read with the timelines its members need: each member id
         is resolved among the manifest's roots and all their descendants, and
         the members are added in the group's ``graphical.order`` entry (in
-        ``members`` order without one). ``graphical``'s other keys are kept as
-        :attr:`styling`, unread, when the manifest is read as a whole. Keys
-        the library does not know are kept on the object read from the JSON
-        object they were found in, and written back.
+        ``members`` order without one). When the manifest is read as a whole,
+        ``graphical``'s other keys are kept as :attr:`styling`, and the
+        entries of ``graphical.order`` keyed by a timeline, its band orders,
+        are kept too, both unread. Keys the library does not know are kept
+        on the object read from the JSON object they were found in, and
+        written back.
 
         Args:
             data: A TimeSkeleton manifest.
@@ -309,10 +311,11 @@ class TimelineGroup(_OpenObject):
             ValueError: If *data* is no TimeSkeleton manifest of version
                 0.7.0 or is malformed — a member naming no timeline of the
                 manifest, an order that is no permutation of its group's
-                members, a member that is an ancestor or descendant of
-                another member, a group id held by a timeline or by another
-                group — or if the selection matches no group or several; the
-                message names the problem, or the manifest's groups.
+                members or names no group or timeline, a member that is an
+                ancestor or descendant of another member, a group id held by
+                a timeline or by another group — or if the selection matches
+                no group or several; the message names the problem, or the
+                manifest's groups.
 
         Examples:
             >>> from fractions import Fraction
@@ -1863,7 +1866,8 @@ class TimelineGroup(_OpenObject):
         members by id, sorted; ``graphical.order`` keeps their display
         order, which is the order they were added in, under the group's id,
         beside the members of :attr:`styling`. A group read from a manifest
-        as a whole writes that manifest's ``meta`` and unknown keys back.
+        as a whole writes that manifest's ``meta`` and unknown keys back,
+        and the band order it held of every timeline written, unchanged.
 
         Args:
             minimal: If True, leave out every key at its default value.
@@ -1920,7 +1924,8 @@ class TimelineGroup(_OpenObject):
         """Keep the manifest this group was read from as a whole, and return it.
 
         Its ``graphical`` styling becomes this group's :attr:`styling`; its
-        ``meta`` and unknown keys are written back around the group.
+        ``meta``, unknown keys and band orders are written back around the
+        group.
         """
         self.styling, manifest.styling = manifest.styling, {}
         self._manifest = manifest

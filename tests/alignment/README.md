@@ -746,9 +746,10 @@ from every assertion here.
    missing marker or required key, an empty manifest id, a timeline written
    twice, a group id written twice or equal to a timeline id, a member naming
    no timeline, a timeline in two groups, a group naming a parent and its
-   child, and an order naming no group or not a permutation of its group's
-   members. A key the library does not know is not refused: it is kept and
-   written back.
+   child, a key of `graphical.order` naming no group or timeline (`'graphical.order'
+   names no group or timeline: ['group_7']`), and a group's order that is not a
+   permutation of its members. A key the library does not know is not
+   refused: it is kept and written back.
 6. **Styling is carried, never read.** A bundle file's `graphical` may hold
    `styles` and `statements` beside `order`; they belong to the bundle, not
    to any of its groups, and the library keeps them on
@@ -760,7 +761,10 @@ from every assertion here.
    `{"order": {...}}` alone in the minimal form (item 2), so absent styling
    is never invented. Without `order`, every group joins in `members` order.
    Any other key of `graphical` (`frame`) is kept and written back, never
-   read, by the one reader serving groups and bundles.
+   read, by the one reader serving groups and bundles. The band orders of
+   `graphical.order`, keyed by a timeline's id, are carried beside the
+   styling; their tests, the bundle's included, are those of "Manifests" in
+   `tests/timelines/README.md`.
 
 ---
 

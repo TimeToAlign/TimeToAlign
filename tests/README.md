@@ -33,7 +33,7 @@ passes cannot be the library agreeing with itself.
 the package's `fixtures/0.7.0/` (drawings excluded): each fixture in the
 complete form and its minimal twin `<name>.minimal.json` beside it. The
 pairing is exact, every fixture has its twin and every twin its fixture,
-and the counts are pinned: 36 manifests of one root directly in the
+and the counts are pinned: 41 manifests of one root directly in the
 directory, 10 in `groups/`, 9 in `bundles/`, each with its twin. For every
 pair:
 
@@ -69,12 +69,16 @@ and no group, `TimelineGroup.from_dict` for one anonymous group, otherwise
 every manifest, and each must raise `ValueError`. A reader that accepted a
 manifest the validators refuse would let an invalid document through one of
 two doors. The cases are listed from the package, not copied, so a case
-added there is covered here without an edit. The one exception is the
-rules about `graphical.statements` (selectors and declarations): the
-library keeps the drawing's statements as given and never interprets them,
-so it has nothing to check them against. Those cases are listed by name in
-the test with that reason, and the test fails if a listed case is refused
-by the library or no longer exists, so the list cannot outgrow the truth.
+added there is covered here without an edit. The two exceptions are the
+rules the library leaves to the validators because it keeps what they
+check as given: the rules about `graphical.statements` (selectors and
+declarations), which the library never interprets, and the rules about
+the entries of a band order (a `graphical.order` entry keyed by a
+timeline), which the library writes back with its timeline unchecked.
+Those cases are listed by name in the test with that reason, and the test
+fails if a listed case is refused by the library or no longer exists, so
+the list cannot outgrow the truth; each band-order case is also written
+back by `AlignmentBundle.from_dict` with its `graphical.order` unchanged.
 
 **The shared warning cases.** `warning_paths()` lists manifests carrying
 unknown keys at many depths, each with the `unknown_keys` the validators

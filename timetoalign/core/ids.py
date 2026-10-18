@@ -235,6 +235,10 @@ class IdGenerator:
 _REFUSED_ID_CHARACTERS = re.compile(r"[/\x00-\x1f]")
 _PART_WORDS = ("start", "end", "name", "label", "card")
 """The words that follow an element's address as its parts, and so are no id."""
+_BAND_ID = re.compile(
+    r"(markers|conversion_maps|children|regions|flow_control)_[1-9][0-9]*"
+)
+"""The ids of a timeline's bands, which follow its address, and so are no id."""
 
 
 def validate_id(element_id: str) -> str:
@@ -242,9 +246,13 @@ def validate_id(element_id: str) -> str:
 
     Any non-empty string is a valid id except one containing ``/`` (the path
     separator of composed addresses) or a control character
-    (U+0000 to U+001F), and the part words ``start``, ``end``, ``name``,
-    ``label`` and ``card``, which follow an address as its parts.
-    Whitespace, colons, dots and unicode are permitted.
+    (U+0000 to U+001F), the part words ``start``, ``end``, ``name``,
+    ``label`` and ``card``, which follow an address as its parts, and the
+    ids of a timeline's bands, which follow its address: a kind among
+    ``markers``, ``conversion_maps``, ``children``, ``regions`` and
+    ``flow_control``, ``_`` and a number from 1 without a leading zero
+    (``markers_1``, ``regions_12``). Whitespace, colons, dots and unicode
+    are permitted.
 
     Args:
         element_id: The id to check.
@@ -253,8 +261,8 @@ def validate_id(element_id: str) -> str:
         The same id.
 
     Raises:
-        ValueError: If the id is empty, contains a refused character or is a
-            part word.
+        ValueError: If the id is empty, contains a refused character, is a
+            part word or is the id of a band.
 
     Examples:
         >>> validate_id("Bass Kick")
@@ -276,6 +284,10 @@ def validate_id(element_id: str) -> str:
     if element_id in _PART_WORDS:
         raise ValueError(
             f"Invalid id {element_id!r}: it is reserved for the parts of an address"
+        )
+    if _BAND_ID.fullmatch(element_id):
+        raise ValueError(
+            f"Invalid id {element_id!r}: it is reserved for the bands of a timeline"
         )
     return element_id
 

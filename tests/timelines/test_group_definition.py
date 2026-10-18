@@ -408,7 +408,7 @@ def _malformed(change: Any) -> dict[str, Any]:
         ),
         (
             lambda d: d["graphical"].update(order=["A", "B", "C"]),
-            "'graphical.order' must map group ids to orders",
+            "'graphical.order' must map group or timeline ids to orders",
         ),
         (
             lambda d: (d["groups"][0].update(id="A"), d["graphical"].pop("order")),

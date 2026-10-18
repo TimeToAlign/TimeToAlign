@@ -231,6 +231,11 @@ class AlignmentBundle(_OpenObject):
     # Whether the manifest read held a ``graphical`` object, written back
     # even with every member at its default.
     _has_graphical: bool = field(default=False, init=False, repr=False, compare=False)
+    # The band orders of the manifest read, keyed by timeline id, kept as
+    # given beside the styling and written back with their timelines.
+    _band_orders: dict[str, Any] = field(
+        default_factory=dict, init=False, repr=False, compare=False
+    )
 
     # Internal logger
     _logger: logging.Logger = field(
@@ -258,10 +263,11 @@ class AlignmentBundle(_OpenObject):
         each group is rebuilt from its ``Group`` object, its members resolved
         among the roots and all their descendants and ordered by its
         ``graphical.order`` entry (``members`` order without one).
-        ``graphical``'s other keys are kept as :attr:`styling`, unread. Every
-        root no group names joins ungrouped. Keys the library does not know
-        are kept on the object read from the JSON object they were found in,
-        and written back.
+        ``graphical``'s other keys are kept as :attr:`styling`, and the
+        entries of ``graphical.order`` keyed by a timeline, its band orders,
+        are kept too, both unread. Every root no group names joins
+        ungrouped. Keys the library does not know are kept on the object
+        read from the JSON object they were found in, and written back.
 
         Args:
             data: A TimeSkeleton manifest.
@@ -276,8 +282,8 @@ class AlignmentBundle(_OpenObject):
                 no timeline of ``"timelines"``, a timeline named by two
                 groups, a member that is an ancestor or descendant of another
                 member of its group, an order that is no permutation of its
-                group's members or names no group. The message names the
-                problem.
+                group's members or names no group or timeline. The message
+                names the problem.
 
         Examples:
             >>> from fractions import Fraction
@@ -304,6 +310,7 @@ class AlignmentBundle(_OpenObject):
         )
         bundle._unknown_keys = manifest._unknown_keys
         bundle._has_graphical = manifest.has_graphical
+        bundle._band_orders = manifest.band_orders
         for group_data in content.groups:
             group_id = group_data.get("id") if isinstance(group_data, dict) else None
             group = TimelineGroup._from_group_object(
@@ -3666,9 +3673,10 @@ class AlignmentBundle(_OpenObject):
         :meth:`Timeline.to_dict <timetoalign.timelines.Timeline.to_dict>`
         writes it, sorted by id, and the groups sorted by id, each naming its
         members by id. ``graphical.order`` keeps every group's member order
-        under its id, beside the members of :attr:`styling`. A root no group
-        names is ungrouped. MatchClaims are not written; the support policy
-        is a setting of the bundle, not part of the manifest.
+        under its id and, unchanged, the band order read with the manifest
+        of every timeline written, beside the members of :attr:`styling`. A
+        root no group names is ungrouped. MatchClaims are not written; the
+        support policy is a setting of the bundle, not part of the manifest.
 
         Args:
             minimal: If True, leave out every key at its default value.
@@ -3711,6 +3719,7 @@ class AlignmentBundle(_OpenObject):
             name=self.name,
             meta=self.meta,
             styling=self.styling,
+            band_orders=self._band_orders,
             has_graphical=self._has_graphical,
         )
         manifest._unknown_keys = self._unknown_keys

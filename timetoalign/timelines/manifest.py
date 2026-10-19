@@ -15,8 +15,11 @@ A value on a timeline's own axis (``length``, ``offset``, region ``start``
 and ``end``, break and marker ``coordinate``, jump ``from_coordinate`` and
 ``to_coordinate``) is written bare, represented as the axis's number type
 selects: a JSON integer for ``int``, a JSON number for ``float``, a
-``[numerator, denominator]`` pair for ``fraction``. Reading checks the
-representation and never coerces it.
+``[numerator, denominator]`` pair for ``fraction``. Reading follows the
+number type, never the lexical form: an integral JSON number on an ``int``
+axis is that integer, an integer on a ``float`` axis that float, and a pair
+with integral float members (``[1, 8.0]``) that Fraction. A value no reading
+of the number type admits is refused.
 """
 
 from __future__ import annotations
@@ -77,7 +80,7 @@ def _suggestion(data: Any, number_type: NumberType) -> str:
     The rewritten value when the rewriting is exact, otherwise the axis's
     number type with its article.
     """
-    value = Fraction(data[0], data[1]) if isinstance(data, list) else Fraction(data)
+    value = Fraction(number_from_json(data))
     if number_type is NumberType.fraction:
         return json.dumps(number_to_json(value))
     if number_type is NumberType.float:
@@ -98,10 +101,12 @@ def axis_value_from_json(
 ) -> Coordinate:
     """Read a bare value on a timeline's own axis.
 
-    The representation must be the one the axis's number type selects. As
-    for every TimeSkeleton number, an integral JSON number is accepted on an
-    ``int`` axis and an integer on a ``float`` axis, since JavaScript does
-    not tell ``2.0`` from ``2``.
+    The axis's number type decides how the value is read
+    (:func:`~timetoalign.core.time.number_from_json`): an integral JSON
+    number is read on an ``int`` axis, an integer on a ``float`` axis, a pair
+    with integral float members on a ``fraction`` axis. A non-integral value
+    on an ``int`` axis, a pair on an ``int`` or ``float`` axis and a bare
+    number on a ``fraction`` axis are refused.
 
     Args:
         data: The JSON value.
@@ -114,8 +119,8 @@ def axis_value_from_json(
         The coordinate on the axis.
 
     Raises:
-        ValueError: If *data* is no number, or is represented otherwise than
-            the axis's number type selects, for example ``length 32 of
+        ValueError: If *data* is no number, or no reading of the axis's
+            number type admits it, for example ``length 32 of
             'score' is an int on a fraction axis: write [32, 1]``; the
             rewritten value is named only when the rewriting is exact,
             otherwise the axis's number type (``write a float``).

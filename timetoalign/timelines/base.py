@@ -1441,8 +1441,9 @@ class Timeline(
         and reads as its default; a ``number_type`` left out is the unit's
         own (``int`` for ticks, samples, frames and pixels, ``fraction`` for
         quarters and whole_notes, ``float`` otherwise). A value on the
-        timeline's own axis must be represented as its number type selects;
-        a ``length`` of ``null`` reads as None. A root's ``offset`` is kept
+        timeline's own axis is read as its number type decides, whatever its
+        lexical form (``2.0`` on an ``int`` axis is 2, ``[1, 8.0]`` on a
+        ``fraction`` axis is 1/8); a ``length`` of ``null`` reads as None. A root's ``offset`` is kept
         as :attr:`root_offset`. Keys the library does not know are kept on
         the object read from the JSON object they were found in, and written
         back.

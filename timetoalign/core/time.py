@@ -530,17 +530,36 @@ def number_to_json(value: int | float | Fraction) -> int | float | list[int]:
     ]
 
 
+def _integral_member(component: object) -> int | None:
+    """The integer a Fraction member denotes, or None if it denotes none.
+
+    A member is an integer, or a float with no fractional part: a JSON round
+    trip through JavaScript may respell ``8`` as ``8.0``, which still denotes
+    the integer 8. A boolean denotes no integer.
+    """
+    if isinstance(component, bool):
+        return None
+    if isinstance(component, int):
+        return component
+    if (
+        isinstance(component, float)
+        and math.isfinite(component)
+        and component.is_integer()
+    ):
+        return int(component)
+    return None
+
+
 def is_fraction_json(value: object) -> bool:
-    """Return whether *value* is a valid JSON Fraction pair."""
-    return (
-        isinstance(value, list)
-        and len(value) == 2
-        and all(
-            isinstance(component, int) and not isinstance(component, bool)
-            for component in value
-        )
-        and value[1] > 0
-    )
+    """Return whether *value* is a valid JSON Fraction pair.
+
+    Both members denote integers (an integral float such as ``8.0`` counts),
+    and the denominator is strictly positive.
+    """
+    if not isinstance(value, list) or len(value) != 2:
+        return False
+    members = [_integral_member(component) for component in value]
+    return None not in members and members[1] > 0
 
 
 def number_from_json(
@@ -550,18 +569,20 @@ def number_from_json(
 
     Without *number_type* the JSON form decides: an integer is an ``int``, a
     number with a fractional part or exponent is a ``float``, a pair is a
-    ``Fraction``. A declared *number_type* selects the representation
-    instead. JavaScript numbers do not distinguish ``480.0`` from ``480``, so
-    a document written by JavaScript cannot keep that difference: under
-    ``int`` an integral JSON number reads as that integer and a fractional
-    one is refused, and under ``float`` an
-    integer reads as the float it equals exactly. Under ``fraction`` only a
-    pair is accepted.
+    ``Fraction``. A declared *number_type* decides how the value is read,
+    never its lexical form, because a JSON round trip (JavaScript does not
+    tell ``2.0`` from ``2``) may respell any number: under ``int`` an
+    integral JSON number reads as that integer, under ``float`` an integer
+    reads as the float it equals exactly, and under ``fraction`` a pair is
+    read. A Fraction member may be an integral float (``[1, 8.0]`` is 1/8)
+    whatever the number type. Still refused: a non-integral value under
+    ``int``, a non-integral Fraction member, a denominator below 1, a pair
+    under ``int`` or ``float``, and a bare number under ``fraction``.
 
     Args:
         data: JSON scalar or Fraction pair to decode.
-        number_type: The number type that selects the representation, or
-            ``None`` to let the JSON form decide.
+        number_type: The number type that decides the reading, or ``None``
+            to let the JSON form decide.
 
     Returns:
         The corresponding Python ``int``, ``float``, or ``Fraction``.
@@ -582,13 +603,8 @@ def number_from_json(
     elif isinstance(data, list):
         if len(data) != 2:
             raise ValueError(f"invalid JSON Fraction {data!r}: expected two items")
-        numerator, denominator = data
-        if (
-            isinstance(numerator, bool)
-            or isinstance(denominator, bool)
-            or not isinstance(numerator, int)
-            or not isinstance(denominator, int)
-        ):
+        numerator, denominator = (_integral_member(component) for component in data)
+        if numerator is None or denominator is None:
             raise ValueError(
                 f"invalid JSON Fraction {data!r}: components must be integers"
             )

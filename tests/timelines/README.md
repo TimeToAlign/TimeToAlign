@@ -230,7 +230,7 @@ the library writes back against the same literal text.
   `"class": "ContinuousGraphicalTimeline"` beside `"unit": "seconds"` reads as
   a `ContinuousPhysicalTimeline`; the `class` key is not read, and is kept and
   written back as an unknown key.
-- **Representation is checked, never coerced.** One mismatch per bare key —
+- **The number type governs, the lexical form never.** One refused value per bare key —
   `length`, a root's `offset`, a child's `offset`, region `start` and `end`,
   break and marker `coordinate`, jump `from_coordinate` and `to_coordinate` —
   each raises the exact message naming the key, the value, the id of the
@@ -242,9 +242,14 @@ the library writes back against the same literal text.
   `write 2.5`, `[1, 3]` says `write a float`, `[1, 2]` on an int axis says
   `write an int`, and `0.1` on a fraction axis names its exact pair
   `[3602879701896397, 36028797018963968]`. These are the messages of the
-  TimeSkeleton validators, word for word. An integral JSON number on an int axis and an integer
-  on a float axis are accepted, because JavaScript cannot tell `2.0` from
-  `2`.
+  TimeSkeleton validators, word for word. What a JSON round trip may
+  respell is read as the number type decides, each case asserting the value
+  AND its Python type: `480.0` on an int axis is the int `480`, `8` on a
+  float axis the float `8.0`, `[1, 8.0]` on a fraction axis the Fraction
+  `1/8` (a JavaScript writer may respell any member). The respelling never
+  admits a value that no reading of the axis allows: `[1, 8.5]` (a
+  non-integral member) is refused as no number, and `[480, 1.0]` on an int
+  axis is still a fraction on an int axis (`write 480`).
 - **Unknown keys are kept where they were found.** One literal manifest
   carries an `x-note` key on the manifest, a root and a child timeline, a
   region, a break, a jump, a marker, a conversion map and a map nested in it,

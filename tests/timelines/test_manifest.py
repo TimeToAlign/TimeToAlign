@@ -414,6 +414,12 @@ def test_each_bare_key_checks_its_representation(
             "length 480.5 of 't' is a float on an int axis: write an int",
         ),
         ("seconds", "8", "length \"8\" of 't' is not a number"),
+        ("quarters", [1, 8.5], "length [1, 8.5] of 't' is not a number"),
+        (
+            "ticks",
+            [480, 1.0],
+            "length [480, 1.0] of 't' is a fraction on an int axis: write 480",
+        ),
     ],
     ids=[
         "fraction_on_float",
@@ -423,6 +429,8 @@ def test_each_bare_key_checks_its_representation(
         "pair_on_int",
         "float_on_int",
         "string",
+        "non_integral_member",
+        "respelled_pair_on_int",
     ],
 )
 def test_every_axis_kind_checks_its_representation(
@@ -439,8 +447,12 @@ def test_every_axis_kind_checks_its_representation(
 
 @pytest.mark.parametrize(
     ("unit", "length", "expected"),
-    [("ticks", 480.0, 480), ("seconds", 8, 8.0)],
-    ids=["integral_number_on_int", "integer_on_float"],
+    [
+        ("ticks", 480.0, 480),
+        ("seconds", 8, 8.0),
+        ("quarters", [1, 8.0], Fraction(1, 8)),
+    ],
+    ids=["integral_number_on_int", "integer_on_float", "integral_float_member"],
 )
 def test_numbers_javascript_cannot_tell_apart_are_accepted(
     unit: str, length: Any, expected: Any

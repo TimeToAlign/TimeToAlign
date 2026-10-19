@@ -54,7 +54,12 @@ membership.
 The JSON number forms are validated before their behavior is pinned. Integers
 remain JSON integers, floats remain JSON numbers, and `Fraction` values become
 `[numerator, denominator]`. Boolean values and invalid Fraction pairs are
-refused. The tests name one case for each rule.
+refused. A declared number type decides the reading, never the lexical form:
+a Fraction member written as an integral float (`[1, 8.0]`, as a JavaScript
+writer may respell it) is read as that integer whatever the number type, and
+`is_fraction_json` recognises such a pair, while a non-integral member
+(`[1, 8.5]`), a boolean member and a denominator below 1 stay refused. The
+tests name one case for each rule, asserting the value and its Python type.
 
 ### `test_fraction_field_arithmetic.py` - Exact Coordinate Arithmetic
 

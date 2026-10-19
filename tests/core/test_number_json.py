@@ -36,6 +36,7 @@ from timetoalign.core import (
     FlowControlElement,
     IdCoordinate,
     Measure,
+    NumberType,
     Tempo,
     TimeUnit,
 )
@@ -273,9 +274,37 @@ class TestNumberJson:
 
     def test_is_fraction_json_recognises_the_shape(self) -> None:
         assert is_fraction_json([1, 2])
+        assert is_fraction_json([1, 8.0])
+        assert not is_fraction_json([1, 8.5])
         assert not is_fraction_json([1, 0])
+        assert not is_fraction_json([1, 0.0])
         assert not is_fraction_json([1, 2, 3])
         assert not is_fraction_json([True, 1])
+
+    @pytest.mark.parametrize("number_type", [None, NumberType.fraction])
+    def test_integral_float_members_read_as_integers(
+        self, number_type: NumberType | None
+    ) -> None:
+        decoded = number_from_json([1, 8.0], number_type)
+        assert decoded == Fraction(1, 8)
+        assert type(decoded) is Fraction
+        assert number_from_json([-6.0, 4], number_type) == Fraction(-3, 2)
+
+    @pytest.mark.parametrize("pair", [[1, 8.5], [0.5, 2], [1, float("inf")]])
+    def test_non_integral_members_are_refused(self, pair: list[float]) -> None:
+        with pytest.raises(ValueError, match="components must be integers"):
+            number_from_json(pair, NumberType.fraction)
+
+    def test_integral_float_denominator_below_one_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="denominator must be strictly positive"):
+            number_from_json([1, 0.0])
+
+    @pytest.mark.parametrize("number_type", [NumberType.int, NumberType.float])
+    def test_a_respelled_pair_stays_refused_off_fraction_axes(
+        self, number_type: NumberType
+    ) -> None:
+        with pytest.raises(ValueError, match="is not a"):
+            number_from_json([480, 1.0], number_type)
 
     def test_non_numeric_input_is_rejected(self) -> None:
         with pytest.raises(TypeError):

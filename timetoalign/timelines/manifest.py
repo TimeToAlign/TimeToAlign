@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from fractions import Fraction
@@ -122,6 +123,8 @@ def axis_value_from_json(
     kind = _json_kind(data)
     if kind is None:
         raise ValueError(f"{key} {json.dumps(data)} of '{owner}' is not a number")
+    if isinstance(data, float) and not math.isfinite(data):
+        raise ValueError(f"{key} {data!r} of '{owner}' is not finite")
     try:
         value = number_from_json(data, number_type)
     except ValueError as error:

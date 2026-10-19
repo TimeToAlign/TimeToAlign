@@ -21,6 +21,7 @@ from timeskeleton import (
     dumps,
     fixture_paths,
     minimal,
+    rejection_case,
     rejection_paths,
     unknown_keys,
     validate,
@@ -484,7 +485,7 @@ def _whole_reader(manifest: Any) -> Callable[[Any], Any]:
 )
 def test_the_library_refuses_every_rejection_case(case: str) -> None:
     """Both the whole reader and the bundle reader refuse each case."""
-    manifest = json.loads(REJECTIONS[case].read_text(encoding="utf-8"))["manifest"]
+    manifest = rejection_case(REJECTIONS[case]).manifest
     for reader in {_whole_reader(manifest), AlignmentBundle.from_dict}:
         with pytest.raises(ValueError):
             reader(manifest)
@@ -497,7 +498,7 @@ def test_statement_and_band_order_rules_are_the_only_cases_the_library_reads() -
     """
     assert STATEMENT_RULES | BAND_ORDER_RULES <= set(REJECTIONS)
     for case in sorted(STATEMENT_RULES | BAND_ORDER_RULES):
-        manifest = json.loads(REJECTIONS[case].read_text(encoding="utf-8"))["manifest"]
+        manifest = rejection_case(REJECTIONS[case]).manifest
         written = AlignmentBundle.from_dict(manifest).to_dict()
         if case in BAND_ORDER_RULES:
             assert written["graphical"]["order"] == manifest["graphical"]["order"]

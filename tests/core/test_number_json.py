@@ -30,7 +30,6 @@ from timetoalign.alignment.graph import MatchGraph
 from timetoalign.alignment.matchline import MatchLine
 from timetoalign.alignment.warpmap import WarpMap
 from timetoalign.core import (
-    ActivationCondition,
     AgentType,
     Coordinate,
     FlowControlElement,
@@ -52,12 +51,14 @@ from timetoalign.maps import (
     CombinationMap,
     ConstantMap,
     ConversionMap,
-    FloorMap,
+    FloatingMeasureMap,
     InterpolationMap,
     LinearMap,
+    MeasureBeatMap,
+    MeasureNumberMap,
+    MeasureRecordMap,
     PiecewiseMap,
     QuartersToTicks,
-    RotationMap,
     SamplesToSeconds,
     ScalarMap,
     SecondsToSamples,
@@ -147,7 +148,6 @@ def _structured_timeline() -> Timeline:
         Break(
             Coordinate(Fraction(2, 3), TimeUnit.quarters),
             control_type=FlowControlElement.section_break,
-            condition=ActivationCondition.always,
         )
     )
     timeline.flow_control.add_jump(
@@ -155,11 +155,14 @@ def _structured_timeline() -> Timeline:
             Coordinate(Fraction(4), TimeUnit.quarters),
             Coordinate(Fraction(1, 3), TimeUnit.quarters),
             control_type=FlowControlElement.repeat_end,
-            condition=ActivationCondition.first_n,
         )
     )
     timeline.flow_control.add_marker(
-        Marker(Coordinate(Fraction(1, 3), TimeUnit.quarters), name="segno")
+        Marker(
+            Coordinate(Fraction(1, 3), TimeUnit.quarters),
+            name="segno",
+            control_type=FlowControlElement.segno,
+        )
     )
     return timeline
 
@@ -168,8 +171,22 @@ def _meter_map() -> MetricMap:
     return MetricMap.from_uniform(4, Fraction(4, 1))
 
 
+def _bars() -> MeasureMap:
+    """Two 4/4 bars, the measure map the views read."""
+    return MeasureMap.from_rows([{"count": 1, "time_signature": "4/4"}, {"count": 2}])
+
+
+def _read(data: dict[str, Any]) -> ConversionMap[Any]:
+    """Read a map, a view given a two-bar measure map under the id it names."""
+    named = {data["measure_map"]: _bars()} if "measure_map" in data else {}
+    for nested in data.get("maps", []):
+        if isinstance(nested, dict) and "measure_map" in nested:
+            named[nested["measure_map"]] = _bars()
+    return ConversionMap.from_dict(data, measure_maps=named)
+
+
 def _conversion_maps() -> list[ConversionMap[Any]]:
-    """One live instance of every registered ConversionMap subclass."""
+    """One live instance of every ConversionMap class with a manifest form."""
     meter = _meter_map()
     return [
         LinearMap(scalar=Fraction(1, 3), offset=Fraction(5, 3)),
@@ -178,7 +195,7 @@ def _conversion_maps() -> list[ConversionMap[Any]]:
         ConstantMap(value=Fraction(3, 4)),
         TableMap(x_values=[Fraction(0), Fraction(1, 3)], y_values=[0.0, 1.0]),
         IntervalToConstantMap(
-            boundaries=[Fraction(0), Fraction(1, 3)], values=["a", "b"]
+            boundaries=[Fraction(0), Fraction(1, 3)], values=["a", "b"], end=1
         ),
         QuartersToMeasureNumber(boundaries=[Fraction(0), Fraction(4)], mns=["1", "2"]),
         QuartersToFloatingMeasures(
@@ -193,8 +210,10 @@ def _conversion_maps() -> list[ConversionMap[Any]]:
             maps=[ScalarMap(scalar=1.0), ScalarMap(scalar=2.0)],
         ),
         CombinationMap([("a", ScalarMap(scalar=1.0))]),
-        RotationMap(period=4.0),
-        FloorMap(divisor=4.0),
+        MeasureRecordMap(_bars()),
+        MeasureNumberMap(_bars()),
+        FloatingMeasureMap(_bars()),
+        MeasureBeatMap(_bars()),
         TicksToQuarters(),
         QuartersToTicks(),
         SamplesToSeconds(),
@@ -411,12 +430,12 @@ class TestMapDictForm:
     @pytest.mark.parametrize("cmap", _conversion_maps(), ids=lambda m: type(m).__name__)
     def test_custom_name_round_trips(self, cmap: ConversionMap[Any]) -> None:
         data = dict(cmap.to_dict(), name="my-map")
-        assert ConversionMap.from_dict(json.loads(json.dumps(data))).name == "my-map"
+        assert _read(json.loads(json.dumps(data))).name == "my-map"
 
     @pytest.mark.parametrize("cmap", _conversion_maps(), ids=lambda m: type(m).__name__)
     def test_only_a_given_name_is_emitted(self, cmap: ConversionMap[Any]) -> None:
         assert cmap.to_dict()["name"] is None
-        named = ConversionMap.from_dict(dict(cmap.to_dict(), name="my-map"))
+        named = _read(dict(cmap.to_dict(), name="my-map"))
         assert named.to_dict()["name"] == "my-map"
 
     def test_linear_map_keeps_exact_fractions(self) -> None:
@@ -444,9 +463,11 @@ class TestMapDictForm:
         restored = TableMap.from_dict(json.loads(json.dumps(table.to_dict())))
         assert restored.to_dict()["x_values"][1] == [1, 3]
 
-    def test_metric_map_keeps_exact_fractions(self) -> None:
-        data = json.loads(json.dumps(_meter_map().to_dict()))
-        restored = MetricMap.from_dict(data)
+    def test_measure_views_name_their_measure_map(self) -> None:
+        bars = _bars()
+        data = json.loads(json.dumps(MeasureNumberMap(bars).to_dict()))
+        restored = ConversionMap.from_dict(data, measure_maps={bars.id: bars})
+        assert restored.measure_map is bars
         assert restored.to_dict() == data
 
 

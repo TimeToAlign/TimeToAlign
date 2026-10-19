@@ -101,30 +101,6 @@ class TestRotationMap:
         with pytest.raises(NotImplementedError, match="not invertible"):
             rot.inverse()
 
-    def test_serialization(self):
-        """Test to_dict/from_dict round-trip."""
-        rot = RotationMap(
-            period=4.0,
-            scale=1.0,
-            base=1.0,
-            offset=0.5,
-            source_unit="quarters",
-            target_unit="number",
-        )
-
-        d = rot.to_dict()
-        assert d["type"] == "RotationMap"
-        assert d["period"] == 4.0
-        assert d["scale"] == 1.0
-        assert d["base"] == 1.0
-        assert d["offset"] == 0.5
-
-        restored = RotationMap.from_dict(d)
-        assert restored.period == rot.period
-        assert restored.scale == rot.scale
-        assert restored.base == rot.base
-        assert restored.offset == rot.offset
-
     def test_angle_normalization(self):
         """Test angle normalization (0-360) as a general use case."""
         angle_map = RotationMap(period=360.0)
@@ -213,27 +189,6 @@ class TestFloorMap:
         fm = FloorMap(divisor=4.0)
         with pytest.raises(NotImplementedError, match="not invertible"):
             fm.inverse()
-
-    def test_serialization(self):
-        """Test to_dict/from_dict round-trip."""
-        fm = FloorMap(
-            divisor=4.0,
-            base=1,
-            offset=0.5,
-            source_unit="quarters",
-            target_unit="number",
-        )
-
-        d = fm.to_dict()
-        assert d["type"] == "FloorMap"
-        assert d["divisor"] == 4.0
-        assert d["base"] == 1
-        assert d["offset"] == 0.5
-
-        restored = FloorMap.from_dict(d)
-        assert restored.divisor == fm.divisor
-        assert restored.base == fm.base
-        assert restored.offset == fm.offset
 
     def test_page_numbers(self):
         """Test page numbering as a general use case."""

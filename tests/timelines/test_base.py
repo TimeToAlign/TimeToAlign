@@ -26,7 +26,6 @@ from typing import Any
 import pytest
 
 from timetoalign.core import (
-    ActivationCondition,
     Coordinate,
     FlowControlElement,
     IrregularMeasure,
@@ -99,8 +98,14 @@ def _structure_bearing_timeline() -> Timeline:
         Break(
             Coordinate(Fraction(4, 3), TimeUnit.quarters),
             control_type=FlowControlElement.section_break,
-            condition=ActivationCondition.always,
             label="boundary",
+        )
+    )
+    segno = timeline.flow_control.add_marker(
+        Marker(
+            Coordinate(Fraction(1, 3), TimeUnit.quarters),
+            name="segno",
+            control_type=FlowControlElement.segno,
         )
     )
     timeline.flow_control.add_jump(
@@ -108,13 +113,10 @@ def _structure_bearing_timeline() -> Timeline:
             Coordinate(Fraction(10, 3), TimeUnit.quarters),
             Coordinate(Fraction(1, 3), TimeUnit.quarters),
             control_type=FlowControlElement.repeat_end,
-            condition=ActivationCondition.first_n,
             repeat_count=2,
+            target=segno.id,
             label="repeat",
         )
-    )
-    timeline.flow_control.add_marker(
-        Marker(Coordinate(Fraction(1, 3), TimeUnit.quarters), name="segno")
     )
     timeline.add_child(
         ContinuousLogicalTimeline(length=Fraction(4), uid="whole"), offset=0
@@ -605,8 +607,6 @@ class TestSerialization:
             "conversion_maps",
             "regions",
             "flow_control",
-            "measure_map",
-            "metric_hierarchy",
         }
         assert "events" not in data
 
@@ -680,7 +680,8 @@ class TestSerialization:
         assert restored.to_dict() == payload
         assert restored.measure_map == original.measure_map
         assert restored.measure_map[2].offset_within_measure == Fraction(1, 3)
-        assert restored.metric_hierarchy == original.metric_hierarchy
+        assert original.metric_hierarchy is not None
+        assert restored.metric_hierarchy is None
         assert restored.get_region("opening") == original.get_region("opening")
         assert restored.flow_control.breaks == original.flow_control.breaks
         assert restored.flow_control.jumps == original.flow_control.jumps
@@ -725,7 +726,7 @@ class TestSerialization:
 
         other_unit = Timeline(length=4.0, unit=TimeUnit.seconds)
         with pytest.raises(
-            ValueError, match="'seconds' does not match measure map unit 'quarters'"
+            ValueError, match="Timeline unit 'seconds' does not reach the quarter notes"
         ):
             other_unit.add_measure_map(owned)
 
@@ -750,18 +751,14 @@ class TestSerialization:
         sliced = source.get_slice(Fraction(1, 3), Fraction(4, 3))
         assert sliced.measure_map is None
         assert sliced.metric_hierarchy is None
-        assert sliced.flow_control.to_dict() == {
-            "breaks": [],
-            "jumps": [],
-            "markers": [],
-        }
+        assert sliced.flow_control.to_dict() == []
 
     def test_segment_line_finalization_preserves_restored_structure(self) -> None:
         segment_line = _structure_bearing_timeline().as_segment_line()
         restored = Timeline.from_dict(json.loads(json.dumps(segment_line.to_dict())))
         assert isinstance(restored, SegmentLine)
         assert restored.measure_map == segment_line.measure_map
-        assert restored.metric_hierarchy == segment_line.metric_hierarchy
+        assert restored.metric_hierarchy is None
         assert restored.flow_control.to_dict() == segment_line.flow_control.to_dict()
 
 

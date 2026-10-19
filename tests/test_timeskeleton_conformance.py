@@ -40,7 +40,7 @@ from timetoalign import (
     Timeline,
     TimelineGroup,
 )
-from timetoalign.core import ActivationCondition, FlowControlElement
+from timetoalign.core import FlowControlElement
 from timetoalign.core.time import number_from_json, number_to_json
 from timetoalign.loader.alignment import (
     Ieee1599Loader,
@@ -58,17 +58,18 @@ from timetoalign.maps import (
     ChainMap,
     CombinationMap,
     ConstantMap,
-    FloorMap,
+    FloatingMeasureMap,
     InterpolationMap,
     IntervalToConstantMap,
     LinearMap,
+    MeasureBeatMap,
+    MeasureNumberMap,
     MetricalPositionMap,
     MetricMap,
     PiecewiseMap,
     QuartersToFloatingMeasures,
     QuartersToMeasureNumber,
     QuartersToTicks,
-    RotationMap,
     SamplesToSeconds,
     ScalarMap,
     SecondsToSamples,
@@ -101,19 +102,20 @@ def _with_structure(cls: type[Timeline], unit: str, length: Any) -> Timeline:
         Break(
             coordinate=timeline.make_coordinate(length / 2),
             control_type=FlowControlElement.fine,
-            condition=ActivationCondition.always,
         )
+    )
+    start = timeline.flow_control.add_marker(
+        Marker(length / 6, name="start", control_type=FlowControlElement.repeat_start)
     )
     timeline.flow_control.add_jump(
         Jump(
             from_coordinate=timeline.make_coordinate(length / 2),
             to_coordinate=timeline.make_coordinate(length / 6),
             control_type=FlowControlElement.repeat_end,
-            condition=ActivationCondition.first_n,
             repeat_count=2,
+            target=start.id,
         )
     )
-    timeline.flow_control.add_marker(Marker(length / 6, name="start"))
     if unit != "quarters":
         return timeline
     timeline.add_measure_map(
@@ -160,16 +162,17 @@ def _conversion_map_timelines() -> list[Timeline]:
         MetricalPositionMap(meter_for_position),
         BeatInMeasureMap(meter_for_beat),
         ChainMap([ScalarMap(Fraction(1, 2)), ScalarMap(60)]),
-        CombinationMap({"label": ConstantMap(value="verse"), "beat": RotationMap(4)}),
+        CombinationMap({"label": ConstantMap(value="verse"), "x": LinearMap(scalar=2)}),
         ConstantMap(value="section-a"),
-        FloorMap(4, base=1),
         InterpolationMap(
             source_coords=np.array([0.0, 8.0, 16.0]),
             target_coords=np.array([0.0, 4.25, 9.0]),
             source_id=timeline.id,
             target_id="seconds",
         ),
-        IntervalToConstantMap(boundaries=[Fraction(0), Fraction(8)], values=["a", "b"]),
+        IntervalToConstantMap(
+            boundaries=[Fraction(0), Fraction(8)], values=["a", "b"], end=Fraction(16)
+        ),
         LinearMap(scalar=Fraction(3, 2), offset=Fraction(1, 3)),
         MetricMap(starts=[Fraction(0)], mcs=[1], mns=["1"], lengths=[Fraction(4)]),
         PiecewiseMap(breaks=[Fraction(0), Fraction(8)], maps=[ShiftMap(offset=1)]),
@@ -178,13 +181,14 @@ def _conversion_map_timelines() -> list[Timeline]:
         ),
         QuartersToMeasureNumber(boundaries=[Fraction(0)], mns=["1"]),
         QuartersToTicks(ppq=480),
-        RotationMap(4, scale=0.5, base=1, offset=0.25),
         ScalarMap(Fraction(2, 3)),
         ShiftMap(offset=Fraction(1, 2)),
         TableMap(x_values=[Fraction(0), Fraction(4)], y_values=[0.0, 2.5]),
     ]
     for conversion_map in maps:
         timeline.add_conversion_map(conversion_map)
+    for view in (MeasureNumberMap, FloatingMeasureMap, MeasureBeatMap):
+        timeline.add_conversion_map(view(timeline.measure_map))
     ticks = DiscreteLogicalTimeline(length=960, unit="ticks")
     ticks.add_conversion_map(TicksToQuarters(ppq=480))
     samples = DiscretePhysicalTimeline(length=96000, unit="samples")
@@ -527,7 +531,7 @@ def test_the_library_writes_every_warning_case_back(path: Path) -> None:
     is_minimal = dumps(manifest) == dumps(minimal(manifest))
     expected = json.loads(json.dumps(manifest))
     if path.stem == "several_depths":
-        expected["timelines"][0]["measure_map"] = [SEVERAL_DEPTHS_ROW]
+        expected["measure_maps"][0]["rows"] = [SEVERAL_DEPTHS_ROW]
 
     written = AlignmentBundle.from_dict(manifest).to_dict(minimal=is_minimal)
 
@@ -535,10 +539,19 @@ def test_the_library_writes_every_warning_case_back(path: Path) -> None:
     assert unknown_keys(written) == case["unknown_keys"]
 
 
-def _quarters_manifest(measure_map: list[dict[str, Any]]) -> dict[str, Any]:
-    """Return a valid manifest whose one root carries the given row list."""
+def _quarters_manifest(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Return a valid manifest whose one root reads the measure map of *rows*."""
     result = ContinuousLogicalTimeline(length=Fraction(8), unit="quarters").to_dict()
-    result["timelines"][0]["measure_map"] = measure_map
+    result["timelines"][0]["conversion_maps"] = [
+        {
+            "type": "MeasureRecordMap",
+            "id": "record",
+            "source_unit": "quarters",
+            "target_unit": None,
+            "measure_map": "bars",
+        }
+    ]
+    result["measure_maps"] = [{"id": "bars", "rows": rows}]
     return result
 
 

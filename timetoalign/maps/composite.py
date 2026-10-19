@@ -8,6 +8,7 @@ This module provides maps that are composed of other maps:
 from __future__ import annotations
 
 import bisect
+from collections.abc import Iterator, Mapping
 from typing import TYPE_CHECKING, Any, ClassVar, Sequence
 
 import numpy as np
@@ -19,10 +20,39 @@ from ..core.time import (
     number_from_json,
     number_to_json,
 )
-from .base import ConversionMap
+from .base import ConversionMap, MeasureMapIds
 
 if TYPE_CHECKING:
     from typing_extensions import Self
+
+
+def _read_maps(
+    data: Mapping[str, Any], key: str, measure_maps: Mapping[str, Any]
+) -> list[ConversionMap[Any]]:
+    """Read the array of maps under *key*.
+
+    Raises:
+        ValueError: If the value is not an array, or a map is malformed.
+    """
+    items = data.get(key)
+    if not isinstance(items, list):
+        raise ValueError(f"a {data.get('type')}'s {key!r} must be an array")
+    return [ConversionMap.from_dict(item, measure_maps=measure_maps) for item in items]
+
+
+def _piecewise_form(
+    cmap: ConversionMap[Any],
+    breaks: Sequence[CoordinateValue],
+    maps: list[dict[str, Any]],
+    *,
+    minimal: bool,
+) -> dict[str, Any]:
+    """Write *cmap* as the format's ``PiecewiseMap`` of *breaks* and written *maps*."""
+    return cmap._map_object(
+        "PiecewiseMap",
+        {"breaks": [number_to_json(b) for b in breaks], "maps": maps},
+        minimal=minimal,
+    )
 
 
 # region ChainMap
@@ -35,6 +65,8 @@ class ChainMap(ConversionMap[CoordinateValue]):
     The output unit of one map must match the input unit of the next
     (if specified).
 
+    The format's ``ChainMap`` type: ``maps`` in the order they apply.
+
     Attributes:
         maps: The sequence of maps to apply.
 
@@ -46,6 +78,8 @@ class ChainMap(ConversionMap[CoordinateValue]):
         >>> chain(480)
         1000.0
     """
+
+    _manifest_type: ClassVar[str | None] = "ChainMap"
 
     def __init__(
         self,
@@ -146,25 +180,32 @@ class ChainMap(ConversionMap[CoordinateValue]):
         inv_maps = [m.inverse() for m in reversed(self._maps)]
         return self.__class__(inv_maps, uid=f"inv_{self.id}")
 
-    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
-        """Serialize to dictionary."""
-        d = super().to_dict(minimal=minimal)
-        d["maps"] = [m.to_dict(minimal=minimal) for m in self._maps]
-        return d
+    def _to_manifest(self, *, minimal: bool, entries: MeasureMapIds) -> dict[str, Any]:
+        """Write the ``ChainMap`` with each member's own form."""
+        return self._map_object(
+            "ChainMap",
+            {
+                "maps": [
+                    m._to_manifest(minimal=minimal, entries=entries) for m in self._maps
+                ]
+            },
+            minimal=minimal,
+        )
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> ChainMap:
-        """Deserialize from dictionary."""
-        from .base import ConversionMap
-
-        maps_data = data.get("maps", [])
-        maps = [ConversionMap.from_dict(m_data) for m_data in maps_data]
-
+    def _from_manifest(
+        cls, data: dict[str, Any], measure_maps: Mapping[str, Any]
+    ) -> ChainMap:
+        """Read a ``ChainMap``, its members in the order they apply."""
         return cls(
-            maps=maps,
+            maps=_read_maps(data, "maps", measure_maps),
             uid=data.get("id"),
             name=data.get("name"),
         )
+
+    def _measure_maps(self) -> Iterator[Any]:
+        for m in self._maps:
+            yield from m._measure_maps()
 
     def __repr__(self) -> str:
         return f"ChainMap(steps={len(self._maps)})"
@@ -192,6 +233,7 @@ class PiecewiseMap(ConversionMap[CoordinateValue]):
     """
 
     _id_prefix: ClassVar[str] = "pmap"
+    _manifest_type: ClassVar[str | None] = "PiecewiseMap"
 
     def __init__(
         self,
@@ -363,29 +405,38 @@ class PiecewiseMap(ConversionMap[CoordinateValue]):
             uid=f"inv_{self.id}",
         )
 
-    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
-        """Serialize to dictionary."""
-        d = super().to_dict(minimal=minimal)
-        d["breaks"] = [number_to_json(b) for b in self._breaks_orig]
-        d["maps"] = [m.to_dict(minimal=minimal) for m in self._maps]
-        return d
+    def _to_manifest(self, *, minimal: bool, entries: MeasureMapIds) -> dict[str, Any]:
+        """Write the ``PiecewiseMap``: its breaks and each interval's map."""
+        return _piecewise_form(
+            self,
+            self._breaks_orig,
+            [m._to_manifest(minimal=minimal, entries=entries) for m in self._maps],
+            minimal=minimal,
+        )
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> PiecewiseMap:
-        """Deserialize from dictionary."""
-        from .base import ConversionMap
+    def _from_manifest(
+        cls, data: dict[str, Any], measure_maps: Mapping[str, Any]
+    ) -> PiecewiseMap:
+        """Read a ``PiecewiseMap``, one map per interval between its breaks.
 
-        maps_data = data.get("maps", [])
-        maps = [ConversionMap.from_dict(m_data) for m_data in maps_data]
-
+        Raises:
+            ValueError: If ``breaks`` or ``maps`` is not an array.
+        """
+        if not isinstance(data.get("breaks"), list):
+            raise ValueError("a PiecewiseMap's 'breaks' must be an array")
         return cls(
-            breaks=[number_from_json(b) for b in data.get("breaks", [])],
-            maps=maps,
+            breaks=[number_from_json(b) for b in data["breaks"]],
+            maps=_read_maps(data, "maps", measure_maps),
             source_unit=data.get("source_unit"),
             target_unit=data.get("target_unit"),
             uid=data.get("id"),
             name=data.get("name"),
         )
+
+    def _measure_maps(self) -> Iterator[Any]:
+        for m in self._maps:
+            yield from m._measure_maps()
 
     def __repr__(self) -> str:
         return f"PiecewiseMap(regions={len(self._maps)})"

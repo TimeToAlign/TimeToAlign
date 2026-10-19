@@ -830,7 +830,10 @@ class SupportPolicy(FancyStrEnum):
 class ActivationCondition(FancyStrEnum):
     """When a flow control event becomes active.
 
-    This determines on which traversal pass the event takes effect.
+    This determines on which traversal pass the event takes effect. An
+    element's manifestation decides its condition: a ``repeat_end`` acts on
+    its first N passes, a ``to_coda`` after a D.C. or D.S., every other
+    element always.
     """
 
     always = auto()
@@ -838,9 +841,6 @@ class ActivationCondition(FancyStrEnum):
 
     first_n = auto()
     """Active on first N passes (e.g., repeat 2x)."""
-
-    after_first = auto()
-    """Active after first pass (e.g., second ending)."""
 
     after_dc_ds = auto()
     """Active after Da Capo or Dal Segno."""

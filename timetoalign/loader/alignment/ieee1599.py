@@ -1500,7 +1500,8 @@ class Ieee1599Loader(XmlLoader):
         file and pixel origin, its child accolade coordinates resolve back to
         that image without consulting any sibling page. A page-file interval
         map on the edition resolves an edition coordinate to the page image
-        that contains it.
+        that contains it; it ends where the edition ends, so a coordinate at
+        or beyond the edition's length names no page.
         """
         timeline: SegmentLine[SegmentLine[DiscreteGraphicalTimeline]] = SegmentLine[
             SegmentLine[DiscreteGraphicalTimeline]
@@ -1547,10 +1548,16 @@ class Ieee1599Loader(XmlLoader):
             file_names.append(page_spec.page["file_name"])
             timeline.append_segment(page)
         if boundaries:
+            end = timeline.length
             timeline.add_conversion_map(
                 IntervalToConstantMap(
                     boundaries=boundaries,
                     values=file_names,
+                    end=(
+                        end.value
+                        if end is not None and end.value > boundaries[-1]
+                        else None
+                    ),
                     source_unit=_GRAPHIC_UNIT,
                     name="file_name",
                 )

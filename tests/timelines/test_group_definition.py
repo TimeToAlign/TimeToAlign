@@ -229,6 +229,7 @@ def test_group_dict_is_exact() -> None:
                 "members": ["image", "score"],
             }
         ],
+        "measure_maps": [],
         "graphical": {
             "order": {"group_1": ["score", "image"]},
             "styles": {},

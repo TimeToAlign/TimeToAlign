@@ -12,9 +12,10 @@ from its TEMPO grid. The measure map belongs to the track's quarter-anchored
 structure, not to the seconds axis: the attached skeleton's section hierarchy
 holds the one ``MeasureMap`` of exactly that count, with row IDs ``"1"`` to
 ``"4"``, while the seconds timeline carries none (``measure_map`` is ``None``)
-and its document carries no measure map (the member is ``null``). Rekordbox TEMPO data states no score repeat,
-jump, break, or target marker, so the bound flow-control registry must have
-exactly zero breaks, zero jumps, and an empty marker mapping. A JSON round trip
+and its manifest names no measure map (no ``MeasureRecordMap``, an empty
+``measure_maps``). Rekordbox TEMPO data states no score repeat, jump, break,
+or target marker, so the bound flow-control registry must have exactly zero
+breaks, zero jumps and zero markers, written as an empty ``flow_control``. A JSON round trip
 of the seconds timeline must reproduce its payload exactly.
 
 ## Ground-truth data files

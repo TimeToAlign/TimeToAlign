@@ -1003,7 +1003,7 @@ class ScoreFlowController(FlowControllerBase):
             by coordinate.
         """
         from timetoalign.core import Coordinate, TimeUnit
-        from timetoalign.core.enums import ActivationCondition, FlowControlElement
+        from timetoalign.core.enums import FlowControlElement
 
         from ..flowcontrol import Break
 
@@ -1016,7 +1016,6 @@ class ScoreFlowController(FlowControllerBase):
                             self._qb_at_mc_end(unit.mc), TimeUnit.quarters
                         ),
                         control_type=FlowControlElement.section_break,
-                        condition=ActivationCondition.always,
                         label=f"section break after MC {unit.mc}",
                     )
                 )
@@ -1027,7 +1026,6 @@ class ScoreFlowController(FlowControllerBase):
                             self._qb_at_mc_end(unit.mc), TimeUnit.quarters
                         ),
                         control_type=FlowControlElement.fine,
-                        condition=ActivationCondition.after_dc_ds,
                         name="fine",
                         label=f"fine at MC {unit.mc}",
                     )
@@ -1047,7 +1045,7 @@ class ScoreFlowController(FlowControllerBase):
             by their from-coordinate.
         """
         from timetoalign.core import Coordinate, TimeUnit
-        from timetoalign.core.enums import ActivationCondition, FlowControlElement
+        from timetoalign.core.enums import FlowControlElement
 
         from ..flowcontrol import Jump
 
@@ -1055,15 +1053,13 @@ class ScoreFlowController(FlowControllerBase):
         sorted_mcs = sorted(self._measure_lookup)
 
         # Find the MC and the marker id of any named target marker (segno,
-        # coda, codab, fine); the first marker of a name is the target.
+        # coda, codab); the first marker of a name is the target.
         marker_mc: dict[str, int] = {}
         for unit in self._units:
             if unit.segno:
                 marker_mc.setdefault(unit.segno, unit.mc)
             if unit.coda:
                 marker_mc.setdefault(unit.coda, unit.mc)
-            if unit.fine:
-                marker_mc.setdefault("fine", unit.mc)
         marker_ids: dict[str, str] = {}
         for marker in self.get_markers():
             marker_ids.setdefault(marker.name, marker.id)
@@ -1089,13 +1085,12 @@ class ScoreFlowController(FlowControllerBase):
                                 self._qb_at_mc(target_mc), TimeUnit.quarters
                             ),
                             control_type=FlowControlElement.repeat_end,
-                            condition=ActivationCondition.first_n,
                             repeat_count=1,
                             label=f"MC {unit.mc} → MC {target_mc}",
                         )
                     )
 
-            # D.S./D.C. (and -al-coda/-al-fine) — fire after the first pass.
+            # D.S./D.C. (and -al-coda/-al-fine) and To Coda.
             fct = unit.flow_control_types
             jump_type: FlowControlElement | None = None
             target_name: str
@@ -1139,7 +1134,6 @@ class ScoreFlowController(FlowControllerBase):
                     from_coordinate=from_coord,
                     to_coordinate=Coordinate(self._qb_at_mc(to_mc), TimeUnit.quarters),
                     control_type=jump_type,
-                    condition=ActivationCondition.after_first,
                     target=marker_ids.get(target_name),
                     label=f"MC {unit.mc} → {target_name} (MC {to_mc})",
                 )
@@ -1148,24 +1142,34 @@ class ScoreFlowController(FlowControllerBase):
         return jumps
 
     def get_markers(self) -> list["Marker"]:
-        """Return all named target markers (segno / coda / fine instances).
+        """Return all named target markers (segno and coda instances).
+
+        A Fine is no jump target: it is a :class:`Break` (see
+        :meth:`get_breaks`).
 
         Returns:
             List of `timetoalign.timelines.flowcontrol.Marker` objects in MC
             order, with minted ids ``marker_1``, ``marker_2``, ... ``name``
             is the marker instance name (e.g., ``"segno"``, ``"coda"``,
-            ``"codab"``, ``"fine"``); ``coordinate`` is the start of the MC.
+            ``"codab"``) and ``control_type`` ``segno`` or ``coda``;
+            ``coordinate`` is the start of the MC.
         """
         from timetoalign.core import Coordinate, TimeUnit
+        from timetoalign.core.enums import FlowControlElement
 
         from ..flowcontrol import FlowControlRegistry, Marker
 
         registry = FlowControlRegistry()
         for unit in self._units:
             coord = Coordinate(self._qb_at_mc(unit.mc), TimeUnit.quarters)
-            for name in (unit.segno, unit.coda, "fine" if unit.fine else None):
+            for name, control_type in (
+                (unit.segno, FlowControlElement.segno),
+                (unit.coda, FlowControlElement.coda),
+            ):
                 if name:
-                    registry.add_marker(Marker(coord, name=name))
+                    registry.add_marker(
+                        Marker(coord, name=name, control_type=control_type)
+                    )
         return registry.markers
 
     def get_flow_control_registry(self) -> "FlowControlRegistry":

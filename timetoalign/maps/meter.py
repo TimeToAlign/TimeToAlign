@@ -26,12 +26,8 @@ import numpy as np
 from numpy.typing import NDArray
 
 from timetoalign.core.enums import NumberType, TimeUnit
-from timetoalign.core.time import (
-    CoordinateValue,
-    number_from_json,
-    number_to_json,
-)
-from timetoalign.maps.base import ConversionMap
+from timetoalign.core.time import CoordinateValue, number_to_json
+from timetoalign.maps.base import ConversionMap, MeasureMapIds
 from timetoalign.maps.combination import CombinationMap
 
 if TYPE_CHECKING:
@@ -305,27 +301,81 @@ class MetricMap(ConversionMap[int]):
         # Assuming quarter = 1 beat for now; could be generalized with beat_unit
         return offset + Fraction(1, 1)
 
-    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
-        """Serialize to dictionary."""
-        d = super().to_dict(minimal=minimal)
-        d["starts"] = [number_to_json(s) for s in self._starts_frac]
-        d["mcs"] = [int(mc) for mc in self._mcs]
-        d["mns"] = self._mns
-        d["lengths"] = [number_to_json(ln) for ln in self._lengths_frac]
-        return d
+    def _to_manifest(self, *, minimal: bool, entries: MeasureMapIds) -> dict[str, Any]:
+        """Write the ``MeasureNumberMap`` answering this map's measure counts.
 
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> MetricMap:
-        """Deserialize from dictionary."""
-        return cls(
-            starts=[Fraction(number_from_json(s)) for s in data["starts"]],
-            mcs=data["mcs"],
-            mns=data["mns"],
-            lengths=[Fraction(number_from_json(ln)) for ln in data["lengths"]],
-            source_unit=data.get("source_unit", TimeUnit.quarters),
-            target_unit=data.get("target_unit"),
-            uid=data.get("id"),
-            name=data.get("name"),
+        The view answers a measure's ``number``; the measures this map
+        describes are written with their count as number, so the view
+        answers what this map answers (see :meth:`_measure_map_id`).
+
+        Raises:
+            ValueError: As :meth:`_measure_map_id`.
+        """
+        return self._map_object(
+            "MeasureNumberMap",
+            {"measure_map": self._measure_map_id(entries, self)},
+            minimal=minimal,
+        )
+
+    def _measure_map_id(
+        self, entries: MeasureMapIds, writer: ConversionMap[Any]
+    ) -> str:
+        """Return the id of the measure map whose measures this map describes.
+
+        The timeline's measure map when its measures start where these do,
+        last as long and carry the counts as numbers; otherwise a measure
+        map of its own, one measure per start with ``count`` its position,
+        ``number`` its count, ``name`` its label and ``actual_length`` its
+        length.
+
+        Args:
+            entries: The ids of the measure maps being written.
+            writer: The map written, named by a refusal.
+
+        Raises:
+            ValueError: If the map does not read quarters, names a target
+                unit, or its measures do not start at 0 and abut.
+        """
+        if self._source_unit is not TimeUnit.quarters or (
+            writer._target_unit is not None
+        ):
+            raise writer._no_form(
+                "a measure view reads quarters and names no target unit"
+            )
+        own = entries.own
+        if own is not None and self._describes(own):
+            return entries.id_of(own)
+        position = Fraction(0)
+        rows: list[dict[str, Any]] = []
+        for index, (start, mc, mn, length) in enumerate(
+            zip(self._starts_frac, self._mcs, self._mns, self._lengths_frac), start=1
+        ):
+            if Fraction(start) != position:
+                raise writer._no_form(
+                    f"its measure {index} starts at {start}, not at {position}"
+                )
+            rows.append(
+                {
+                    "count": index,
+                    "qstamp": number_to_json(Fraction(start)),
+                    "number": int(mc),
+                    "name": str(mn),
+                    "actual_length": number_to_json(Fraction(length)),
+                }
+            )
+            position += Fraction(length)
+        return entries.id_of_rows(rows)
+
+    def _describes(self, measure_map: Any) -> bool:
+        """Whether *measure_map*'s measures start, last and count as this map's."""
+        records = measure_map.measures
+        return len(records) == len(self._starts_frac) and all(
+            record.qstamp == Fraction(start)
+            and record.actual_length == Fraction(length)
+            and (record.number if record.number is not None else record.count) == mc
+            for record, start, length, mc in zip(
+                records, self._starts_frac, self._lengths_frac, self._mcs
+            )
         )
 
     @classmethod
@@ -541,20 +591,6 @@ class MetricMap(ConversionMap[int]):
 # region BeatInMeasureMap
 
 
-def _read_meter_map(data: dict[str, Any]) -> MetricMap:
-    """Read a nested ``meter_map``, keeping its unknown keys like any map's.
-
-    Raises:
-        ValueError: If the nested map is no MetricMap.
-    """
-    meter_map = ConversionMap.from_dict(data)
-    if not isinstance(meter_map, MetricMap):
-        raise ValueError(
-            f"a meter_map must be a MetricMap, got a {type(meter_map).__name__}"
-        )
-    return meter_map
-
-
 class BeatInMeasureMap(ConversionMap[Fraction]):
     """Map from quarters to beat-in-measure as Fraction.
 
@@ -639,22 +675,18 @@ class BeatInMeasureMap(ConversionMap[Fraction]):
         """
         raise NotImplementedError("BeatInMeasureMap is not invertible: cyclic pattern")
 
-    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
-        """Serialize to dictionary."""
-        d = super().to_dict(minimal=minimal)
-        d["meter_map"] = self._meter_map.to_dict(minimal=minimal)
-        return d
+    def _to_manifest(self, *, minimal: bool, entries: MeasureMapIds) -> dict[str, Any]:
+        """Write the ``MeasureBeatMap`` whose ``beat`` this map answers.
 
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> BeatInMeasureMap:
-        """Deserialize from dictionary."""
-        meter_map = _read_meter_map(data["meter_map"])
-        return cls(
-            meter_map,
-            source_unit=data.get("source_unit", TimeUnit.quarters),
-            target_unit=data.get("target_unit"),
-            uid=data.get("id"),
-            name=data.get("name"),
+        Raises:
+            ValueError: As :meth:`MetricMap._measure_map_id`.
+        """
+        if self._source_unit is not TimeUnit.quarters:
+            raise self._no_form("a measure view reads quarters")
+        return self._map_object(
+            "MeasureBeatMap",
+            {"measure_map": self._meter_map._measure_map_id(entries, self)},
+            minimal=minimal,
         )
 
     def __repr__(self) -> str:
@@ -754,30 +786,16 @@ class MetricalPositionMap(CombinationMap):
         mc = self._meter_map(float(quarters))
         return self._meter_map.get_mn(mc)
 
-    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
-        """Serialize to dictionary.
+    def _to_manifest(self, *, minimal: bool, entries: MeasureMapIds) -> dict[str, Any]:
+        """Write the ``MeasureBeatMap``: the measure count as ``number``, and the beat.
 
-        Both outputs derive from the meter map, so the dictionary holds the
-        meter map once and the identifier of the derived
-        :class:`BeatInMeasureMap` beside it, never the derived maps.
-
-        Returns:
-            The map's common fields, ``meter_map`` and ``beat_map_id``.
+        Raises:
+            ValueError: As :meth:`MetricMap._measure_map_id`.
         """
-        return {
-            **ConversionMap.to_dict(self, minimal=minimal),
-            "meter_map": self._meter_map.to_dict(minimal=minimal),
-            "beat_map_id": self._maps["beat"].id,
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> MetricalPositionMap:
-        """Deserialize from dictionary, restoring the derived map's identifier."""
-        return cls(
-            _read_meter_map(data["meter_map"]),
-            uid=data["id"],
-            name=data.get("name"),
-            beat_map_id=data["beat_map_id"],
+        return self._map_object(
+            "MeasureBeatMap",
+            {"measure_map": self._meter_map._measure_map_id(entries, self)},
+            minimal=minimal,
         )
 
     def __repr__(self) -> str:

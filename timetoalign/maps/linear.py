@@ -8,6 +8,7 @@ This module provides maps that perform affine transformations:
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, ClassVar
 
@@ -19,7 +20,7 @@ from ..core.time import (
     number_from_json,
     number_to_json,
 )
-from .base import ConversionMap
+from .base import ConversionMap, MeasureMapIds
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -32,6 +33,22 @@ def _reciprocal(value: CoordinateValue) -> CoordinateValue:
     return 1 / value
 
 
+def _linear_form(
+    cmap: ConversionMap[Any],
+    scalar: CoordinateValue,
+    offset: CoordinateValue,
+    *,
+    minimal: bool,
+) -> dict[str, Any]:
+    """Write *cmap* as the format's ``LinearMap`` of *scalar* and *offset*."""
+    return cmap._map_object(
+        "LinearMap",
+        {"scalar": number_to_json(scalar), "offset": number_to_json(offset)},
+        minimal=minimal,
+        defaults=LinearMap._dict_defaults,
+    )
+
+
 # region LinearMap
 
 
@@ -40,9 +57,12 @@ class LinearMap(ConversionMap[CoordinateValue]):
 
     This is the most general linear map, combining scaling and offset.
 
+    The format's ``LinearMap`` type, which every affine map of the library
+    is written as.
+
     Attributes:
-        scalar: The multiplicative factor (default 1.0).
-        offset: The additive offset (default 0.0).
+        scalar: The multiplicative factor (default 1).
+        offset: The additive offset (default 0).
 
     Examples:
         >>> # Convert ticks to quarters: y = x / 480
@@ -64,11 +84,14 @@ class LinearMap(ConversionMap[CoordinateValue]):
     """
 
     _id_prefix: ClassVar[str] = "lmap"
+    _manifest_type: ClassVar[str | None] = "LinearMap"
+    # The integer defaults leave an exact input exact: 1.0 * x is a float.
+    _dict_defaults: ClassVar[dict[str, Any]] = {"scalar": 1, "offset": 0}
 
     def __init__(
         self,
         *,
-        scalar: CoordinateValue = 1.0,
+        scalar: CoordinateValue = 1,
         offset: CoordinateValue = 0,
         source_unit: TimeUnit | str | None = None,
         target_unit: TimeUnit | str | None = None,
@@ -156,19 +179,18 @@ class LinearMap(ConversionMap[CoordinateValue]):
             target_unit=other._target_unit,
         )
 
-    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
-        """Serialize to dictionary."""
-        d = super().to_dict(minimal=minimal)
-        d["scalar"] = number_to_json(self._scalar)
-        d["offset"] = number_to_json(self._offset)
-        return d
+    def _to_manifest(self, *, minimal: bool, entries: MeasureMapIds) -> dict[str, Any]:
+        """Write the ``LinearMap`` with this map's scalar and offset."""
+        return _linear_form(self, self._scalar, self._offset, minimal=minimal)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> LinearMap:
-        """Deserialize from dictionary."""
+    def _from_manifest(
+        cls, data: dict[str, Any], measure_maps: Mapping[str, Any]
+    ) -> LinearMap:
+        """Read a ``LinearMap``, ``scalar`` 1 and ``offset`` 0 when left out."""
         return cls(
-            scalar=number_from_json(data["scalar"]) if "scalar" in data else 1.0,
-            offset=number_from_json(data["offset"]) if "offset" in data else 0,
+            scalar=number_from_json(data.get("scalar", 1)),
+            offset=number_from_json(data.get("offset", 0)),
             source_unit=data.get("source_unit"),
             target_unit=data.get("target_unit"),
             uid=data.get("id"),
@@ -263,22 +285,9 @@ class ScalarMap(ConversionMap[CoordinateValue]):
             target_unit=self._source_unit,
         )
 
-    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
-        """Serialize to dictionary."""
-        d = super().to_dict(minimal=minimal)
-        d["scalar"] = number_to_json(self._scalar)
-        return d
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> ScalarMap:
-        """Deserialize from dictionary."""
-        return cls(
-            scalar=number_from_json(data["scalar"]) if "scalar" in data else 1.0,
-            source_unit=data.get("source_unit"),
-            target_unit=data.get("target_unit"),
-            uid=data.get("id"),
-            name=data.get("name"),
-        )
+    def _to_manifest(self, *, minimal: bool, entries: MeasureMapIds) -> dict[str, Any]:
+        """Write the ``LinearMap`` with this map's scalar and offset 0."""
+        return _linear_form(self, self._scalar, 0, minimal=minimal)
 
     def __repr__(self) -> str:
         parts = [f"scalar={self._scalar!r}"]
@@ -364,22 +373,9 @@ class ShiftMap(ConversionMap[CoordinateValue]):
             target_unit=self._source_unit,
         )
 
-    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
-        """Serialize to dictionary."""
-        d = super().to_dict(minimal=minimal)
-        d["offset"] = number_to_json(self._offset)
-        return d
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> ShiftMap:
-        """Deserialize from dictionary."""
-        return cls(
-            offset=number_from_json(data["offset"]) if "offset" in data else 0,
-            source_unit=data.get("source_unit"),
-            target_unit=data.get("target_unit"),
-            uid=data.get("id"),
-            name=data.get("name"),
-        )
+    def _to_manifest(self, *, minimal: bool, entries: MeasureMapIds) -> dict[str, Any]:
+        """Write the ``LinearMap`` with scalar 1 and this map's offset."""
+        return _linear_form(self, 1, self._offset, minimal=minimal)
 
     def __repr__(self) -> str:
         parts = [f"offset={self._offset!r}"]

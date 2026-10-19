@@ -49,7 +49,7 @@ from pathlib import Path
 import pandas as pd
 
 from timetoalign import Coordinate, Ms3Loader, SegmentNameGenerator, TimeUnit
-from timetoalign.core.enums import ActivationCondition, FlowControlElement, FlowMode
+from timetoalign.core.enums import FlowControlElement, FlowMode
 from timetoalign.timelines.flow import FlowMap, compute_qb_sections
 from timetoalign.timelines.flowcontrol import Break, Jump
 
@@ -100,7 +100,6 @@ controller
 section_end = Break(
     coordinate=Coordinate(Fraction(20), TimeUnit.quarters),
     control_type=FlowControlElement.section_break,
-    condition=ActivationCondition.always,
     label="||",
 )
 section_end
@@ -116,8 +115,10 @@ section_end
 # %% [markdown]
 # ### Jump types
 #
-# A {{< glossary Jump >}} carries a `from_coordinate`, a `to_coordinate`, and an
-# `ActivationCondition` that determines on which playthrough pass the jump fires.
+# A {{< glossary Jump >}} carries a `from_coordinate`, a `to_coordinate` and a
+# `control_type`. The control type decides on which playthrough pass the jump
+# fires (its `condition`): a `repeat_end` on its first `repeat_count` passes, a
+# `to_coda` only after a D.C. or D.S., every other jump always.
 
 # %%
 # Standard repeat: jump from QB 20 back to QB 8 on the first pass only
@@ -125,10 +126,10 @@ repeat = Jump(
     from_coordinate=Coordinate(Fraction(20), TimeUnit.quarters),
     to_coordinate=Coordinate(Fraction(8), TimeUnit.quarters),
     control_type=FlowControlElement.repeat_end,
-    condition=ActivationCondition.first_n,
     repeat_count=1,
 )
 {
+    "condition": repeat.condition.value,
     "from": float(repeat.from_position),
     "to": float(repeat.to_position),
     "is_backward": repeat.is_backward,
@@ -138,15 +139,15 @@ repeat = Jump(
 }
 
 # %%
-# Da Capo: jump to the beginning, but only after the first pass
+# Da Capo: jump to the beginning whenever the traversal reaches it
 dc = Jump(
     from_coordinate=Coordinate(Fraction(100), TimeUnit.quarters),
     to_coordinate=Coordinate(Fraction(0), TimeUnit.quarters),
     control_type=FlowControlElement.da_capo,
-    condition=ActivationCondition.after_first,
 )
 {
     "type": dc.control_type.value,
+    "condition": dc.condition.value,
     "is_jump": FlowControlElement.da_capo.is_jump,
     "is_target": FlowControlElement.da_capo.is_target,
 }

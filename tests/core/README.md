@@ -1406,7 +1406,8 @@ storage cells. `number_to_json` and `number_from_json` round-trip each native
 number exactly: an `int` is a JSON integer, a `float` is a JSON number, and a
 `Fraction` is `[numerator, denominator]` with a strictly positive denominator.
 The tests reject booleans, zero and negative denominators, and pairs of the
-wrong length. `is_fraction_json` accepts only valid two-item integer pairs.
+wrong length. `is_fraction_json` accepts only valid two-item pairs of
+integral members.
 
 Coordinates on another timeline's axis are `{ "unit", "number_type", "value"
 }`; their number type selects the value representation, and a decoded
@@ -1417,6 +1418,14 @@ type, that a length and an offset come back exactly in the axis's type, and
 that a bare value represented otherwise than the axis selects is refused with
 a message naming what to write. Arrow storage remains a separate, three-member
 column representation and is not serialized as JSON.
+
+Every conversion-map class that has a manifest form — all but the two
+periodic maps, whose refusal `tests/maps/README.md` pins — contributes one
+live instance (an `IntervalToConstantMap` of labels given its `end`, the
+four measure views over one two-bar measure map): its `to_dict()` is
+JSON-safe and keeps exact Fractions, its name is written only when given,
+and a custom name round-trips through `ConversionMap.from_dict`, a view
+given the measure map it names.
 
 ### Coordinate cell rendering
 

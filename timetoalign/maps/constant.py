@@ -7,18 +7,26 @@ to every coordinate on a timeline, typically inside a CombinationMap.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from fractions import Fraction
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import numpy as np
 from numpy.typing import NDArray
 
 from ..core.enums import TimeUnit
 from ..core.time import CoordinateValue, number_from_json, number_to_json
-from .base import ConversionMap
+from .base import ConversionMap, MeasureMapIds
 
 if TYPE_CHECKING:
     from typing_extensions import Self
+
+
+def _constant_to_json(value: Any) -> Any:
+    """Write a constant: a number in its JSON form, anything else as it is."""
+    if isinstance(value, (int, float, Fraction)) and not isinstance(value, bool):
+        return number_to_json(value)
+    return value
 
 
 # region ConstantMap
@@ -33,7 +41,9 @@ class ConstantMap(ConversionMap[Any]):
     (source image filename).
 
     The constant value can be of any type, though strings are the most
-    common use case. The map has no source or target unit by default.
+    common use case; a manifest holds a number or a string. The map has no
+    source or target unit by default; a numeric constant on a target unit is
+    written as that unit writes numbers.
 
     Attributes:
         value: The constant value returned for every input.
@@ -49,11 +59,14 @@ class ConstantMap(ConversionMap[Any]):
         timetoalign.CombinationMap
     """
 
+    _manifest_type: ClassVar[str | None] = "ConstantMap"
+
     def __init__(
         self,
         *,
         value: Any,
         source_unit: TimeUnit | str | None = None,
+        target_unit: TimeUnit | str | None = None,
         uid: str | None = None,
         name: str | None = None,
     ) -> None:
@@ -64,12 +77,13 @@ class ConstantMap(ConversionMap[Any]):
             source_unit: The unit of input coordinates (optional). Typically
                 left as None so that CombinationMap validation does not
                 conflict with sibling maps.
+            target_unit: The unit of a numeric constant (optional).
             uid: Optional explicit ID.
             name: Human-readable name for this map. Defaults to the map's ID.
         """
         super().__init__(
             source_unit=source_unit,
-            target_unit=None,
+            target_unit=target_unit,
             uid=uid,
             name=name,
         )
@@ -114,32 +128,17 @@ class ConstantMap(ConversionMap[Any]):
             "is many-to-one and has no unique inverse"
         )
 
-    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
-        """Serialize to dictionary.
-
-        A numeric constant is encoded with the canonical JSON number form;
-        every other constant (the common case is a string label)
-        is emitted as-is and must therefore already be JSON-native.
-        """
-        d = super().to_dict(minimal=minimal)
-        d["value"] = (
-            number_to_json(self._value)
-            if isinstance(self._value, (int, float, Fraction))
-            and not isinstance(self._value, bool)
-            else self._value
+    def _to_manifest(self, *, minimal: bool, entries: MeasureMapIds) -> dict[str, Any]:
+        """Write the ``ConstantMap``, a numeric constant as a JSON number."""
+        return self._map_object(
+            "ConstantMap", {"value": _constant_to_json(self._value)}, minimal=minimal
         )
-        return d
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> ConstantMap:
-        """Deserialize from dictionary.
-
-        Args:
-            data: Dictionary representation with at least a 'value' key.
-
-        Returns:
-            A ConstantMap instance.
-        """
+    def _from_manifest(
+        cls, data: dict[str, Any], measure_maps: Mapping[str, Any]
+    ) -> ConstantMap:
+        """Read a ``ConstantMap``: a number, or a string kept as given."""
         raw = data["value"]
         return cls(
             value=(
@@ -148,6 +147,7 @@ class ConstantMap(ConversionMap[Any]):
                 else raw
             ),
             source_unit=data.get("source_unit"),
+            target_unit=data.get("target_unit"),
             uid=data.get("id"),
             name=data.get("name"),
         )

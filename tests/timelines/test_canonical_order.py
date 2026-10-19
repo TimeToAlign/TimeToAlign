@@ -74,7 +74,12 @@ JUMPS = [
     ("segno", FlowControlElement.dal_segno, "hi", "lo"),
     ("first", FlowControlElement.repeat_end, "mid", "lo"),
 ]
-MARKERS = [("segno", "lo"), ("coda", "mid"), ("Fine", "hi"), ("Coda", "mid")]
+MARKERS = [
+    ("segno", FlowControlElement.segno, "lo"),
+    ("coda", FlowControlElement.coda, "mid"),
+    ("Repeat", FlowControlElement.repeat_start, "hi"),
+    ("Coda", FlowControlElement.coda, "mid"),
+]
 
 COLLECTIONS = {
     "children": CHILDREN,
@@ -89,13 +94,23 @@ COLLECTIONS = {
 CANONICAL_CHILDREN = ["m", "z", "b", "a"]  # lo (m before z), mid, hi
 CANONICAL_MAPS = ["constant", "scale", "shift"]
 CANONICAL_REGIONS = ["intro", "alpha", "verse", "coda"]  # (lo,mid), (lo,hi)x2, (mid,hi)
-# Ties fall back to the id; each element's id is its kind and label.
-# Both breaks at mid: "break-fine" < "break-section".
-CANONICAL_BREAKS = ["early", "fine", "section"]
-# hi->lo twice: "jump-repeat" < "jump-segno"; hi->mid follows.
-CANONICAL_JUMPS = ["first", "repeat", "segno", "inner"]
-# Two markers at mid: code point "marker-Coda" < "marker-coda" ("C" < "c").
-CANONICAL_MARKERS = ["segno", "Coda", "coda", "Fine"]
+# Flow-control elements by coordinate (a jump's from coordinate), ties by id;
+# each element's id is its kind and label. Code point: "marker-Coda" <
+# "marker-coda" ("C" < "c").
+CANONICAL_FLOW = [
+    "break-early",
+    "marker-segno",
+    "break-fine",
+    "break-section",
+    "jump-first",
+    "marker-Coda",
+    "marker-coda",
+    "jump-inner",
+    "jump-repeat",
+    "jump-segno",
+    "marker-Repeat",
+]
+FLOW_TYPES = {"breaks": "flow_marker", "jumps": "jump_from", "markers": "jump_to"}
 
 
 def _map(map_id: str) -> Any:
@@ -118,6 +133,12 @@ def _build(axis: Axis, orders: dict[str, list[Any]]) -> Timeline:
     for name, start, end in orders["regions"]:
         timeline.create_region(position[start], position[end], id=name, name=name)
     registry = timeline.flow_control
+    for name, control_type, at in orders["markers"]:
+        registry.add_marker(
+            Marker(
+                position[at], name=name, control_type=control_type, id=f"marker-{name}"
+            )
+        )
     for label, control_type, at in orders["breaks"]:
         registry.add_break(
             Break(
@@ -137,8 +158,6 @@ def _build(axis: Axis, orders: dict[str, list[Any]]) -> Timeline:
                 id=f"jump-{label}",
             )
         )
-    for name, at in orders["markers"]:
-        registry.add_marker(Marker(position[at], name=name, id=f"marker-{name}"))
     return timeline
 
 
@@ -180,10 +199,17 @@ def test_to_dict_writes_the_canonical_order(axis_name: str) -> None:
     assert [entry["id"] for entry in payload["children"]] == CANONICAL_CHILDREN
     assert [entry["id"] for entry in payload["conversion_maps"]] == CANONICAL_MAPS
     assert [entry["id"] for entry in payload["regions"]] == CANONICAL_REGIONS
-    flow = payload["flow_control"]
-    assert [entry["label"] for entry in flow["breaks"]] == CANONICAL_BREAKS
-    assert [entry["label"] for entry in flow["jumps"]] == CANONICAL_JUMPS
-    assert [entry["name"] for entry in flow["markers"]] == CANONICAL_MARKERS
+    assert [entry["id"] for entry in payload["flow_control"]] == CANONICAL_FLOW
+    assert {
+        entry["id"]: entry.get("target")
+        for entry in payload["flow_control"]
+        if entry["type"] == "jump_from"
+    } == {
+        "jump-first": "marker-segno",
+        "jump-repeat": "marker-segno",
+        "jump-segno": "marker-segno",
+        "jump-inner": "marker-Coda",
+    }
 
 
 def test_offsets_compare_by_value_not_by_their_json_spelling() -> None:
@@ -205,7 +231,6 @@ def _reordered(payload: dict[str, Any], name: str, order: tuple[int, ...]) -> di
     """Return a copy of *payload* with one collection rearranged by *order*."""
     manifest = copy.deepcopy(payload)
     result = _root(manifest)
-    flow = result["flow_control"]
     if name == "children":
         result["children"] = [result["children"][index] for index in order]
     elif name == "maps":
@@ -214,7 +239,10 @@ def _reordered(payload: dict[str, Any], name: str, order: tuple[int, ...]) -> di
     elif name == "regions":
         result["regions"] = [result["regions"][index] for index in order]
     else:
-        flow[name] = [flow[name][index] for index in order]
+        flow = result["flow_control"]
+        kind = [entry for entry in flow if entry["type"] == FLOW_TYPES[name]]
+        rest = [entry for entry in flow if entry["type"] != FLOW_TYPES[name]]
+        result["flow_control"] = [kind[index] for index in order] + rest
     return manifest
 
 
@@ -246,7 +274,7 @@ def test_storage_keeps_its_own_order() -> None:
         "segno",
         "coda",
         "Coda",
-        "Fine",
+        "Repeat",
     ]
     copied = timeline.flow_control.copy()
     assert [brk.label for brk in copied.breaks] == ["early", "section", "fine"]

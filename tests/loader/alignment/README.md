@@ -130,7 +130,8 @@ is `page_offset + accolade_offset + upper_left_x`; page-local x coordinates
 overlap between pages and are disambiguated by that offset, never by the raw
 box.  Claims therefore carry edition coordinates, and the edition's
 `IntervalToConstantMap` named `file_name` maps any edition coordinate back to
-the page image containing it.
+the page image containing it; it ends at the edition's length, so that a
+manifest can hold it (a `PiecewiseMap` of `ConstantMap`s).
 
 Graphic events are interval events from `upper_left_x` to `lower_right_x`, with
 the integer `bbox` struct, the page `file_name` and `position_in_group` as

@@ -418,8 +418,13 @@ class _OpenObject:
 
 
 def _same_json(value: Any, default: Any) -> bool:
-    """Whether two JSON values are equal, a boolean never equal to a number."""
-    if isinstance(value, bool) or isinstance(default, bool):
+    """Whether two JSON values are equal in type and value.
+
+    A boolean is never equal to a number, nor an integer to a float: the
+    default ``1`` of a key is not ``1.0``, which a reader would read as a
+    float and compute with as one.
+    """
+    if isinstance(value, (bool, int, float)) or isinstance(default, (bool, int, float)):
         return type(value) is type(default) and value == default
     return value == default
 

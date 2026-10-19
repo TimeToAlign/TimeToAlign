@@ -6,11 +6,11 @@ map implementations must inherit from.
 
 from __future__ import annotations
 
-import inspect
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import Iterator, Mapping
 from fractions import Fraction
-from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar, Union
+from typing import TYPE_CHECKING, Any, ClassVar, Generic, Protocol, TypeVar, Union
 
 import numpy as np
 from numpy.typing import NDArray
@@ -81,21 +81,19 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
     # coordinates.
     _declared_output_number_type: NumberType | None = None
 
-    # Registry of concrete map types, keyed by class name, populated
-    # automatically as subclasses are defined. Used by from_dict() to
-    # dispatch deserialization without a hand-maintained lookup table.
+    # The TimeSkeleton map type a class reads and writes as itself. Only the
+    # classes of the format's ten abstract types declare one; every other
+    # class writes one of them and is never read back as itself.
+    _manifest_type: ClassVar[str | None] = None
+
+    # The classes reading each manifest type, filled as they are defined.
     _registry: ClassVar[dict[str, type["ConversionMap[Any]"]]] = {}
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
-        """Register every concrete subclass under its class name.
-
-        Abstract subclasses (those still carrying unimplemented abstract
-        methods) are not registered, since they cannot be instantiated by
-        from_dict().
-        """
+        """Register a class that declares its own manifest type."""
         super().__init_subclass__(**kwargs)
-        if not inspect.isabstract(cls):
-            ConversionMap._registry[cls.__name__] = cls
+        if "_manifest_type" in cls.__dict__ and cls._manifest_type is not None:
+            ConversionMap._registry[cls._manifest_type] = cls
 
     def __init__(
         self,
@@ -378,56 +376,114 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
     # region Serialization
 
     def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
-        """Serialize the map to a dictionary.
+        """Return the map's TimeSkeleton form: one of the format's map types.
 
-        Subclasses should call ``super().to_dict(minimal=minimal)`` and add
-        their parameters; rational parameters go through
-        :func:`~timetoalign.core.number_to_json` so that the whole
-        dictionary stays JSON-serializable.
+        Every map is written as one of ten abstract types (``LinearMap``,
+        ``TableMap``, ``ConstantMap``, ``PiecewiseMap``, ``ChainMap``,
+        ``CombinationMap`` and the measure views ``MeasureRecordMap``,
+        ``MeasureNumberMap``, ``FloatingMeasureMap``, ``MeasureBeatMap``),
+        with that type's fields only; the map read back from it converts
+        every coordinate as this map does. Numbers are written in the
+        representation they have: an integer, a float, or an exact Fraction
+        pair. ``name`` is the name given at construction, or None when the
+        map displays a derived one. Keys the library does not know, kept
+        when the map was read, are written back.
 
-        ``name`` is the name given at construction, or None when the map
-        displays a derived one; every subclass ``from_dict`` passes it back
-        to the constructor. Keys the library does not know, kept when the map
-        was read, are written back.
+        A measure view names its measure map by id. Written on its own, it
+        names the measure map's own id; written with a timeline, the
+        manifest's ``measure_maps`` entry it names (see
+        :meth:`Timeline.to_dict <timetoalign.timelines.Timeline.to_dict>`).
 
         Args:
-            minimal: Leave out ``name`` when it is None, in nested maps too.
+            minimal: Leave out every key at its default, in nested maps too.
 
         Returns:
-            Dictionary representation of the map.
+            The map's TimeSkeleton form.
+
+        Raises:
+            ValueError: If the map has no TimeSkeleton form (a periodic map,
+                a table interpolating to the nearest or the next anchor) or
+                cannot be written losslessly; the message names the map and
+                the reason.
+        """
+        return self._to_manifest(minimal=minimal, entries=STANDALONE_MEASURE_MAPS)
+
+    def _to_manifest(self, *, minimal: bool, entries: MeasureMapIds) -> dict[str, Any]:
+        """Write the map's TimeSkeleton form, measure views naming ids of *entries*.
+
+        Raises:
+            ValueError: Always, for a map without a TimeSkeleton form.
+        """
+        raise self._no_form("its type has no TimeSkeleton form")
+
+    def _no_form(self, reason: str) -> ValueError:
+        """The error refusing to write this map, naming it and *reason*."""
+        return ValueError(
+            f"{type(self).__name__} {self._id!r} cannot be written to a "
+            f"TimeSkeleton manifest: {reason}"
+        )
+
+    def _map_object(
+        self,
+        manifest_type: str,
+        fields: Mapping[str, Any],
+        *,
+        minimal: bool,
+        defaults: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Write the fields every map shares, then *fields*, then unknown keys.
+
+        Args:
+            manifest_type: The TimeSkeleton type written.
+            fields: The type's own fields.
+            minimal: Leave out every key at its default.
+            defaults: The type's own optional fields and their defaults.
         """
         return self._dict_form(
             {
-                "type": self.__class__.__name__,
+                "type": manifest_type,
                 "id": self._id,
                 "name": self._name if self._name_given else None,
                 "source_unit": self._source_unit.name if self._source_unit else None,
                 "target_unit": self._target_unit.name if self._target_unit else None,
+                **fields,
             },
             minimal=minimal,
+            defaults={**ConversionMap._dict_defaults, **(defaults or {})},
         )
 
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> ConversionMap[Any]:
-        """Deserialize a map from a dictionary.
+    def _measure_maps(self) -> Iterator[Any]:
+        """Yield every measure map this map, or a map nested in it, reads."""
+        return iter(())
 
-        Dispatches to the concrete subclass named by ``data["type"]`` using
-        the self-registering class registry populated by
-        ``__init_subclass__``. ``name`` may be left out; every other key the
-        map's own dictionary form writes is required. Every key that form
-        does not write is kept and written back.
+    @classmethod
+    def from_dict(
+        cls,
+        data: dict[str, Any],
+        *,
+        measure_maps: Mapping[str, Any] | None = None,
+    ) -> ConversionMap[Any]:
+        """Read a map from its TimeSkeleton form.
+
+        Dispatches on ``data["type"]``, one of the format's ten map types,
+        and builds that type's class: a manifest states the abstract type
+        only, so a ``LinearMap`` from ticks to quarters reads as a
+        :class:`LinearMap`, never as the ``TicksToQuarters`` it may have
+        been written from. A key the type writes is required unless it has
+        a default; every key it does not write is kept and written back.
 
         Args:
-            data: Dictionary representation.
+            data: The map's TimeSkeleton form.
+            measure_maps: The manifest's measure maps by id, which the
+                measure views name.
 
         Returns:
-            A ConversionMap instance.
+            The map read.
 
         Raises:
-            ValueError: If the type is missing or unknown, or a key other
-                than ``name`` is missing.
-            TypeError: If the registered class does not override from_dict,
-                which would otherwise recurse indefinitely.
+            ValueError: If the type is missing or is none of the ten, a
+                required key is missing, a value is malformed, or a measure
+                view names a measure map *measure_maps* does not hold.
         """
         if not isinstance(data, dict):
             raise ValueError(
@@ -436,24 +492,30 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
         map_type = data.get("type")
         if map_type is None:
             raise ValueError("Map dictionary must include 'type'")
-
         map_cls = cls._registry.get(map_type)
         if map_cls is None:
             known = ", ".join(sorted(cls._registry))
             raise ValueError(f"Unknown map type: {map_type!r}. Known types: {known}")
-
-        if map_cls.from_dict.__func__ is ConversionMap.from_dict.__func__:
-            raise TypeError(
-                f"{map_cls.__name__} must override from_dict() to deserialize itself"
-            )
-
-        cmap = map_cls.from_dict(data)
-        known = cmap.to_dict()
-        missing = [key for key in known if key != "name" and key not in data]
+        try:
+            cmap = map_cls._from_manifest(data, measure_maps or {})
+        except KeyError as error:
+            raise ValueError(
+                f"a {map_type} lacks the key(s) [{error.args[0]!r}]"
+            ) from error
+        written = cmap.to_dict()
+        optional = {**ConversionMap._dict_defaults, **map_cls._dict_defaults}
+        missing = [key for key in written if key not in optional and key not in data]
         if missing:
             raise ValueError(f"a {map_type} lacks the key(s) {missing}")
-        cmap._keep_unknown_keys(data, known=set(known))
+        cmap._keep_unknown_keys(data, known=set(written) | set(optional))
         return cmap
+
+    @classmethod
+    def _from_manifest(
+        cls, data: dict[str, Any], measure_maps: Mapping[str, Any]
+    ) -> ConversionMap[Any]:
+        """Build this manifest type's map from its form."""
+        raise NotImplementedError(f"{cls.__name__} is read as no manifest type")
 
     # endregion
 
@@ -479,16 +541,108 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
     # region Equality
 
     def __eq__(self, other: object) -> bool:
-        """Two maps are equal if they have the same type and parameters."""
+        """Two maps are equal if they are of one class and hold equal state.
+
+        The id counts, whether it was minted does not; a cached inverse and
+        the logger take no part. A map and the abstract type it writes
+        convert alike but are not equal: they are of two classes.
+        """
         if not isinstance(other, ConversionMap):
             return NotImplemented
-        return self.to_dict() == other.to_dict()
+        if type(self) is not type(other):
+            return False
+        mine, theirs = _state(self), _state(other)
+        return mine.keys() == theirs.keys() and all(
+            _same_value(mine[key], theirs[key]) for key in mine
+        )
 
     def __hash__(self) -> int:
         """Hash based on the map's ID."""
         return hash(self._id)
 
     # endregion
+
+
+# endregion
+
+
+# region Measure-map ids
+
+
+MEASURE_MAP_ID_PREFIX = "measuremap"
+"""The prefix of a minted measure-map id (``measuremap_1``)."""
+
+
+class MeasureMapIds(Protocol):
+    """Where a map being written finds the ids of the measure maps it names.
+
+    A timeline writing its manifest supplies the manifest's measure maps:
+    ``own`` is the timeline's measure map, ``id_of`` the id under which a
+    measure map is written in the manifest's ``measure_maps``, and
+    ``id_of_rows`` that of the measure map compressed Measure Map rows
+    describe, added to them.
+    """
+
+    own: Any
+
+    def id_of(self, measure_map: Any) -> str:
+        """Return the id under which *measure_map* is written."""
+        ...
+
+    def id_of_rows(self, rows: list[dict[str, Any]]) -> str:
+        """Return the id of the measure map *rows* describe."""
+        ...
+
+
+class _StandaloneMeasureMaps:
+    """The ids a map written on its own names: each measure map's own id."""
+
+    own: Any = None
+
+    def id_of(self, measure_map: Any) -> str:
+        return measure_map.id
+
+    def id_of_rows(self, rows: list[dict[str, Any]]) -> str:
+        return mint_id(MEASURE_MAP_ID_PREFIX, ())
+
+
+STANDALONE_MEASURE_MAPS: MeasureMapIds = _StandaloneMeasureMaps()
+"""The ids of measure maps written outside a manifest."""
+
+
+# endregion
+
+
+# region Equality
+
+
+_STATELESS = frozenset({"_logger", "_inverse", "_id_minted"})
+"""Attributes that take no part in a map's equality."""
+
+
+def _state(cmap: ConversionMap[Any]) -> dict[str, Any]:
+    """The attributes of *cmap* its equality compares, unknown keys included."""
+    state = {key: value for key, value in vars(cmap).items() if key not in _STATELESS}
+    state["_unknown_keys"] = dict(cmap._unknown_keys)
+    return state
+
+
+def _same_value(left: Any, right: Any) -> bool:
+    """Whether two attribute values are equal, arrays compared element-wise."""
+    if isinstance(left, np.ndarray) or isinstance(right, np.ndarray):
+        return (
+            isinstance(left, np.ndarray)
+            and isinstance(right, np.ndarray)
+            and left.shape == right.shape
+            and bool(np.array_equal(left, right))
+        )
+    if isinstance(left, (list, tuple)) and isinstance(right, (list, tuple)):
+        return (
+            type(left) is type(right)
+            and len(left) == len(right)
+            and all(_same_value(a, b) for a, b in zip(left, right))
+        )
+    return bool(left == right)
 
 
 # endregion

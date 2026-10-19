@@ -15,7 +15,7 @@ import pytest
 
 import timetoalign
 from timetoalign.alignment import AlignmentAnchor, AlignmentBundle, MatchClaim, WarpMap
-from timetoalign.core import Coordinate, IdCoordinate, TimeUnit
+from timetoalign.core import Coordinate, FlowControlElement, IdCoordinate, TimeUnit
 from timetoalign.core.enums import FlowMode
 from timetoalign.storage import EventData
 from timetoalign.timelines import (
@@ -59,7 +59,9 @@ def _nested_example() -> ContinuousLogicalTimeline:
     inner = _q(uid="U")
     inner.create_region(1, 3)
     innermost = _q(uid="V")
-    innermost.flow_control.add_marker(Marker(coordinate=Coordinate(7, Q)))
+    innermost.flow_control.add_marker(
+        Marker(coordinate=Coordinate(7, Q), control_type=FlowControlElement.segno)
+    )
     inner.add_child(innermost, 5)
     root.add_child(inner, 10)
     root.create_region(0, 15)

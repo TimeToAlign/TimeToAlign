@@ -358,45 +358,6 @@ class TestInterpolationMapProperties:
         assert "2" in r  # n_anchors
 
 
-class TestInterpolationMapSerialization:
-    """Tests for to_dict / from_dict round-tripping."""
-
-    def test_round_trip(self):
-        """to_dict/from_dict preserves arrays, ids, and units."""
-        imap = InterpolationMap(
-            source_coords=np.array([0.0, 480.0, 960.0]),
-            target_coords=np.array([0.0, 0.5, 1.5]),
-            source_id="ticks",
-            target_id="seconds",
-            source_unit=TimeUnit.ticks,
-            target_unit=TimeUnit.seconds,
-            uid="imap1",
-        )
-        data = imap.to_dict()
-        restored = InterpolationMap.from_dict(data)
-
-        assert restored.id == "imap1"
-        assert restored.source_id == "ticks"
-        assert restored.target_id == "seconds"
-        assert restored.source_unit == TimeUnit.ticks
-        assert restored.target_unit == TimeUnit.seconds
-        np.testing.assert_array_equal(restored.source_coords, imap.source_coords)
-        np.testing.assert_array_equal(restored.target_coords, imap.target_coords)
-        assert restored(240.0) == 0.25
-
-    def test_registry_dispatch(self):
-        """ConversionMap.from_dict dispatches to InterpolationMap."""
-        imap = InterpolationMap(
-            source_coords=np.array([0.0, 100.0]),
-            target_coords=np.array([10.0, 110.0]),
-            source_id="child",
-            target_id="parent",
-        )
-        restored = ConversionMap.from_dict(imap.to_dict())
-        assert isinstance(restored, InterpolationMap)
-        assert restored(50.0) == 60.0
-
-
 class TestInterpolationMapReadOnlyArrays:
     """Tests for read-only coordinate arrays and inverse cache integrity."""
 

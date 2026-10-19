@@ -128,21 +128,6 @@ class TestIntervalToConstantMap:
         with pytest.raises(TypeError, match="numeric values"):
             m.to_table_map()
 
-    def test_serialization(self):
-        """to_dict and from_dict roundtrip."""
-        m = IntervalToConstantMap(
-            boundaries=[0, 4, 8],
-            values=["A", "B", "C"],
-            source_unit="quarters",
-            # No target_unit - this map returns labels, not coordinates
-        )
-
-        d = m.to_dict()
-        m2 = IntervalToConstantMap.from_dict(d)
-
-        assert list(m2.boundaries) == [0, 4, 8]
-        assert m2.values == ["A", "B", "C"]
-
     def test_inverse_raises(self):
         """inverse() raises NotImplementedError."""
         m = IntervalToConstantMap(
@@ -236,19 +221,6 @@ class TestQuartersToMeasureNumber:
         assert m(0) == "0"
         assert m(1) == "1"
         assert m(5) == "2"
-
-    def test_serialization(self):
-        """to_dict and from_dict roundtrip."""
-        m = QuartersToMeasureNumber(
-            boundaries=[0, 4, 8],
-            mns=["1", "2", "3"],
-        )
-
-        d = m.to_dict()
-        assert d["type"] == "QuartersToMeasureNumber"
-
-        m2 = QuartersToMeasureNumber.from_dict(d)
-        assert m2.mns == ["1", "2", "3"]
 
 
 class TestQuartersToFloatingMeasures:
@@ -417,22 +389,6 @@ class TestQuartersToFloatingMeasures:
         result = m.convert_array(values)
 
         np.testing.assert_array_equal(result, [1.0, 1.5, 2.0, 2.5, 3.0])
-
-    def test_serialization(self):
-        """to_dict and from_dict roundtrip."""
-        m = QuartersToFloatingMeasures(
-            x_values=[0, 4, 8, 12],
-            y_values=[1.0, 2.0, 3.0, 4.0],
-        )
-
-        d = m.to_dict()
-        assert d["type"] == "QuartersToFloatingMeasures"
-
-        m2 = QuartersToFloatingMeasures.from_dict(d)
-
-        # Verify roundtrip
-        assert m2(2) == 1.5
-        assert m2(6) == 2.5
 
 
 class TestScoreStoreIntegration:

@@ -94,11 +94,12 @@ spelled out in the test, unknown `tempo` included.
 **Manifests the library builds.** A catalogue builds manifests directly and
 through the loaders, so the check covers the emitted representation rather
 than assumptions made by a reader: all six timeline classes, each with two
-children, a region, one break, one jump, one marker, and on the quarter-note
-timeline a Measure Map built from rows (a measure map is anchored in quarter
-notes; the schema refuses one on any other unit and so does
-`add_measure_map`); every registered conversion-map class attached across
-four timelines; the timelines of `Ms3Loader`, `ScoreMidiLoader`,
+children, a region, one break, one repeat start and one repeat end landing
+on it, and on the quarter-note timeline a Measure Map built from rows;
+every conversion-map class with a manifest form attached across four
+timelines, and the three measure views over the quarter-note timeline's
+measure map (the periodic maps have none, and a label step function is
+given its end); the timelines of `Ms3Loader`, `ScoreMidiLoader`,
 `AudioLoader`, `ParangonadaLoader` and `IIIFManifestLoader`; a group of
 three timelines whose number types differ; a group whose member is a child;
 a bundle of two groups, an ungrouped root and a grouped child whose root is

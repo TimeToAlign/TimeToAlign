@@ -6,6 +6,7 @@ with interpolation for values between them.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, ClassVar, Sequence
 
 import numpy as np
@@ -17,10 +18,53 @@ from ..core.time import (
     number_from_json,
     number_to_json,
 )
-from .base import ConversionMap
+from .base import ConversionMap, MeasureMapIds
 
 if TYPE_CHECKING:
     from typing_extensions import Self
+
+
+_KINDS = (InterpolationKind.linear, InterpolationKind.previous)
+"""The interpolation kinds the format defines."""
+
+_EXTRAPOLATION_WRITTEN = {
+    ExtrapolationPolicy.error: "none",
+    ExtrapolationPolicy.nan: "none",
+    ExtrapolationPolicy.constant: "constant",
+    ExtrapolationPolicy.extrapolate: "linear",
+}
+"""How each extrapolation policy is written: outside the anchors, an error
+and a NaN are both undefined values."""
+
+_EXTRAPOLATION_READ = {
+    "none": ExtrapolationPolicy.error,
+    "constant": ExtrapolationPolicy.constant,
+    "linear": ExtrapolationPolicy.extrapolate,
+}
+"""The extrapolation policy each written value reads as."""
+
+
+def _table_form(
+    cmap: ConversionMap[Any],
+    x_values: Sequence[Any],
+    y_values: Sequence[Any],
+    *,
+    kind: InterpolationKind,
+    extrapolate: ExtrapolationPolicy,
+    minimal: bool,
+) -> dict[str, Any]:
+    """Write *cmap* as the format's ``TableMap`` over the given anchors."""
+    return cmap._map_object(
+        "TableMap",
+        {
+            "x_values": [number_to_json(v) for v in x_values],
+            "y_values": [number_to_json(v) for v in y_values],
+            "kind": kind.value,
+            "extrapolate": _EXTRAPOLATION_WRITTEN[extrapolate],
+        },
+        minimal=minimal,
+        defaults=TableMap._dict_defaults,
+    )
 
 
 class TableMap(ConversionMap[CoordinateValue]):
@@ -60,6 +104,8 @@ class TableMap(ConversionMap[CoordinateValue]):
     """
 
     _id_prefix: ClassVar[str] = "tmap"
+    _manifest_type: ClassVar[str | None] = "TableMap"
+    _dict_defaults: ClassVar[dict[str, Any]] = {"kind": "linear", "extrapolate": "none"}
 
     def __init__(
         self,
@@ -192,10 +238,11 @@ class TableMap(ConversionMap[CoordinateValue]):
             return float(np.interp(x, self._x, self._y))
 
         if self._kind == InterpolationKind.previous:
-            # index of rightmost value <= x
+            # index of rightmost value <= x; no arithmetic is involved, so the
+            # anchor value is answered as stored.
             idx = np.searchsorted(self._x, x, side="right") - 1
             idx = max(0, min(idx, len(self._x) - 1))
-            return float(self._y[idx])
+            return self._y_original[idx]
 
         if self._kind == InterpolationKind.next:
             # index of leftmost value >= x
@@ -272,8 +319,8 @@ class TableMap(ConversionMap[CoordinateValue]):
             )
         elif self._extrapolate == ExtrapolationPolicy.constant:
             if x < self._x[0]:
-                return float(self._y[0])
-            return float(self._y[-1])
+                return self._y_original[0]
+            return self._y_original[-1]
         elif self._extrapolate == ExtrapolationPolicy.nan:
             return float("nan")
         else:
@@ -319,23 +366,47 @@ class TableMap(ConversionMap[CoordinateValue]):
                 target_unit=self._source_unit,
             )
 
-    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
-        """Serialize to dictionary."""
-        d = super().to_dict(minimal=minimal)
-        d["x_values"] = [number_to_json(v) for v in self._x_original]
-        d["y_values"] = [number_to_json(v) for v in self._y_original]
-        d["kind"] = self._kind.name
-        d["extrapolate"] = self._extrapolate.name
-        return d
+    def _to_manifest(self, *, minimal: bool, entries: MeasureMapIds) -> dict[str, Any]:
+        """Write the ``TableMap``; ``error`` and ``nan`` both write ``none``.
+
+        Raises:
+            ValueError: If the kind is ``nearest`` or ``next``, which the
+                format does not define.
+        """
+        if self._kind not in _KINDS:
+            raise self._no_form(
+                f"the format defines no TableMap of kind {self._kind.value!r}"
+            )
+        return _table_form(
+            self,
+            self._x_original,
+            self._y_original,
+            kind=self._kind,
+            extrapolate=self._extrapolate,
+            minimal=minimal,
+        )
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> TableMap:
-        """Deserialize from dictionary."""
+    def _from_manifest(
+        cls, data: dict[str, Any], measure_maps: Mapping[str, Any]
+    ) -> TableMap:
+        """Read a ``TableMap``: kind ``linear`` and extrapolation ``none`` by default.
+
+        Raises:
+            ValueError: If ``kind`` or ``extrapolate`` names no value the
+                format defines.
+        """
+        kind = data.get("kind", "linear")
+        if kind not in {member.value for member in _KINDS}:
+            raise ValueError(f"a TableMap has an unknown kind {kind!r}")
+        extrapolate = data.get("extrapolate", "none")
+        if extrapolate not in _EXTRAPOLATION_READ:
+            raise ValueError(f"a TableMap has an unknown extrapolate {extrapolate!r}")
         return cls(
             x_values=[number_from_json(v) for v in data["x_values"]],
             y_values=[number_from_json(v) for v in data["y_values"]],
-            kind=data.get("kind", "linear"),
-            extrapolate=data.get("extrapolate", "extrapolate"),
+            kind=kind,
+            extrapolate=_EXTRAPOLATION_READ[extrapolate],
             source_unit=data.get("source_unit"),
             target_unit=data.get("target_unit"),
             uid=data.get("id"),

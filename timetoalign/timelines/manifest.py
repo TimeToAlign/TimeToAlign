@@ -2,14 +2,14 @@
 
 A TimeSkeleton manifest is one JSON object: the version marker
 ``timeskeleton``, an array of root ``timelines`` and, optionally, the
-manifest's ``id``, ``name`` and ``meta``, its ``groups`` and its
-``graphical``. :class:`~timetoalign.timelines.Timeline`,
+manifest's ``id``, ``name`` and ``meta``, its ``groups``, its
+``measure_maps`` and its ``graphical``. :class:`~timetoalign.timelines.Timeline`,
 :class:`~timetoalign.timelines.TimelineGroup` and
 :class:`~timetoalign.alignment.AlignmentBundle` each write one with
 ``to_dict`` and read one with ``from_dict``. This module holds what they
 share: the version marker, the reading of the manifest around its timelines
-and groups, the writing of that envelope, and the codec of a bare value on a
-timeline's own axis.
+and groups, the writing of that envelope and of the measure maps its
+timelines name, and the codec of a bare value on a timeline's own axis.
 
 A value on a timeline's own axis (``length``, ``offset``, region ``start``
 and ``end``, break and marker ``coordinate``, jump ``from_coordinate`` and
@@ -33,11 +33,13 @@ from fractions import Fraction
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from timetoalign.core import Coordinate, NumberType, TimeUnit
-from timetoalign.core.ids import _OpenObject, validate_id
+from timetoalign.core.ids import _OpenObject, mint_id, validate_id
 from timetoalign.core.time import is_fraction_json, number_from_json, number_to_json
+from timetoalign.maps.base import MEASURE_MAP_ID_PREFIX
 
 if TYPE_CHECKING:
     from .base import Timeline
+    from .structure import MeasureMap
 
 TIMESKELETON_VERSION = "0.7.0"
 """The TimeSkeleton version the library reads and writes."""
@@ -296,8 +298,8 @@ class Manifest(_OpenObject):
     The manifest's ``id`` (absent when it has none), ``name`` and ``meta``, the
     members of its ``graphical`` other than ``order`` (``styling``) and the
     band orders of its timelines (``band_orders``), both kept as given and
-    never interpreted, whether it holds ``graphical`` at all, and every key
-    the library does not read.
+    never interpreted, whether it holds ``graphical`` at all, the measure
+    maps no timeline names, and every key the library does not read.
 
     Attributes:
         id: The manifest id, or None when it has none (an anonymous bundle,
@@ -311,6 +313,8 @@ class Manifest(_OpenObject):
         has_graphical: Whether the manifest holds a ``graphical`` object,
             which is then written back even with every member at its
             default.
+        measure_maps: The entries of ``measure_maps`` no timeline names,
+            written back with the measure maps the timelines name.
     """
 
     _dict_keys: ClassVar[tuple[str, ...]] = (
@@ -320,12 +324,14 @@ class Manifest(_OpenObject):
         "meta",
         "timelines",
         "groups",
+        "measure_maps",
         "graphical",
     )
     _dict_defaults: ClassVar[Mapping[str, Any]] = {
         "name": None,
         "meta": {},
         "groups": [],
+        "measure_maps": [],
     }
 
     id: str | None = None
@@ -334,16 +340,19 @@ class Manifest(_OpenObject):
     styling: dict[str, Any] = field(default_factory=dict)
     band_orders: dict[str, Any] = field(default_factory=dict)
     has_graphical: bool = False
+    measure_maps: list[MeasureMap] = field(default_factory=list)
 
     @classmethod
     def read(cls, data: Any) -> tuple[Manifest, ManifestContent]:
         """Read a manifest: its envelope, its timelines and its raw groups.
 
-        Every root timeline is rebuilt, and every timeline of the roots'
-        trees is indexed by id. Groups are left as JSON for the class
-        reading them. ``graphical.order`` is split by its keys: a group's
-        display order goes to the content, a timeline's band order to the
-        envelope, unchecked.
+        The measure maps are read first, then every root timeline is
+        rebuilt, its conversion maps reading the measure maps they name, and
+        every timeline of the roots' trees is indexed by id. Groups are left
+        as JSON for the class reading them. ``graphical.order`` is split by
+        its keys: a group's display order goes to the content, a timeline's
+        band order to the envelope, unchecked. The measure maps no timeline
+        names are kept on the envelope.
 
         Returns:
             The envelope, and the manifest's content.
@@ -351,9 +360,11 @@ class Manifest(_OpenObject):
         Raises:
             ValueError: If *data* is no TimeSkeleton manifest (``"not a
                 TimeSkeleton manifest"``), names another version, or is
-                malformed: a timeline id occurring twice, the manifest id
-                equal to a timeline or group id, a ``graphical.order``
-                that is no object or names no group or timeline.
+                malformed: a timeline or measure-map id occurring twice, the
+                manifest id equal to a timeline or group id, a measure-map id
+                equal to a timeline, group or manifest id, a
+                ``graphical.order`` that is no object or names no group or
+                timeline.
         """
         if not isinstance(data, dict) or "timeskeleton" not in data:
             raise ValueError("not a TimeSkeleton manifest")
@@ -372,10 +383,34 @@ class Manifest(_OpenObject):
         )
         manifest._keep_unknown_keys(data)
 
-        roots, timelines = _read_roots(data["timelines"])
+        measure_maps = _read_measure_maps(
+            read_list(data, "measure_maps", "the manifest")
+        )
+        roots, timelines = _read_roots(data["timelines"], measure_maps)
         groups = read_list(data, "groups", "the manifest")
         group_ids = [
             group.get("id") if isinstance(group, dict) else None for group in groups
+        ]
+        for measure_map_id in measure_maps:
+            if (
+                measure_map_id in timelines
+                or measure_map_id in group_ids
+                or measure_map_id == manifest_id
+            ):
+                raise ValueError(
+                    f"measure map id {measure_map_id!r} is also a timeline, group or "
+                    "manifest id"
+                )
+        named = {
+            id(measure_map)
+            for timeline in timelines.values()
+            for cmap in timeline._all_conversion_maps()
+            for measure_map in cmap._measure_maps()
+        }
+        manifest.measure_maps = [
+            measure_map
+            for measure_map in measure_maps.values()
+            if id(measure_map) not in named
         ]
 
         order: dict[str, Any] = {}
@@ -420,28 +455,75 @@ class Manifest(_OpenObject):
 
     def write(
         self,
-        timelines: list[dict[str, Any]],
+        roots: list[Timeline],
         *,
         groups: list[dict[str, Any]] = (),  # type: ignore[assignment]
         order: dict[str, list[str]] | None = None,
         minimal: bool = False,
+        events: bool = False,
+        external_references: bool = False,
     ) -> dict[str, Any]:
-        """Write the manifest around written timelines and groups.
+        """Write the manifest around root timelines and written groups.
 
-        ``graphical.order`` holds the groups' member orders and, unchanged,
-        the band order of every written timeline that has one; the band
-        order of a timeline not written, removed or given another id, is
-        left out, so that every key names a timeline or group of the
-        manifest. ``graphical`` is written when there is an order to keep,
-        styling, or a ``graphical`` read with the manifest; ``id`` only when
-        the manifest has one.
+        The roots are written sorted by id, each with its
+        :attr:`~timetoalign.timelines.Timeline.root_offset` as its
+        ``offset`` when it has one. ``measure_maps`` holds every measure map
+        the timelines name and every one the manifest kept, sorted by id
+        (see :class:`MeasureMapEntries`). ``graphical.order`` holds the
+        groups' member orders and, unchanged, the band order of every
+        written timeline that has one; the band order of a timeline not
+        written, removed or given another id, is left out, so that every
+        key names a timeline or group of the manifest. ``graphical`` is
+        written when there is an order to keep, styling, or a ``graphical``
+        read with the manifest; ``id`` only when the manifest has one.
 
         Args:
-            timelines: The written root timelines.
+            roots: The root timelines.
             groups: The written groups.
             order: Every group's member order, keyed by group id.
             minimal: Leave out every key at its default.
+            events: Write each timeline's event rows.
+            external_references: Write each timeline's external reference
+                table.
+
+        Raises:
+            ValueError: If a measure map cannot be written: two different
+                ones carry one given id, or one's given id is a timeline's,
+                a group's or the manifest's.
         """
+        trees = [
+            timeline
+            for root in roots
+            for timeline in (root, *(child for _, child in root._iter_descendants()))
+        ]
+        reserved = {timeline.id for timeline in trees}
+        reserved.update(group["id"] for group in groups)
+        if self.id is not None:
+            reserved.add(self.id)
+        entries = MeasureMapEntries(
+            reserved,
+            [
+                *self.measure_maps,
+                *(
+                    measure_map
+                    for timeline in trees
+                    for cmap in timeline._all_conversion_maps()
+                    for measure_map in cmap._measure_maps()
+                ),
+            ],
+        )
+        timelines = [
+            root._to_timeline_object(
+                minimal=minimal,
+                events=events,
+                external_references=external_references,
+                offset=root._root_offset,
+                entries=entries,
+            )
+            for root in sorted(roots, key=lambda root: root.id)
+        ]
+        for measure_map in self.measure_maps:
+            entries.id_of(measure_map)
         fields: dict[str, Any] = {"timeskeleton": TIMESKELETON_VERSION}
         if self.id is not None:
             fields["id"] = self.id
@@ -450,6 +532,7 @@ class Manifest(_OpenObject):
             meta=copy.deepcopy(self.meta),
             timelines=timelines,
             groups=list(groups),
+            measure_maps=entries.write(minimal=minimal),
         )
         written = _timeline_ids(timelines)
         band_orders = {
@@ -477,6 +560,107 @@ class Manifest(_OpenObject):
         return self._dict_form(fields, minimal=minimal)
 
 
+class MeasureMapEntries:
+    """The measure maps a manifest being written holds, each under one id.
+
+    A measure map's id is unique together with the manifest's timeline,
+    group and manifest ids. A given id is kept: two different measure maps
+    carrying one, or one carrying a timeline's, group's or manifest's id,
+    are refused. A minted id is minted again around every id the manifest
+    holds, the given ones taken first. Equal measure maps of equal name and
+    meta share one entry, so two timelines holding the same measure map, or
+    equal ones, name one entry.
+
+    While a timeline's conversion maps are written, :attr:`own` is that
+    timeline's measure map, which a measure-derived map names when it
+    derives from it.
+
+    Args:
+        reserved: The timeline, group and manifest ids of the manifest.
+        measure_maps: The measure maps the manifest names, whose given ids
+            are taken before any is minted.
+
+    Raises:
+        ValueError: If a given id is refused.
+    """
+
+    def __init__(
+        self, reserved: set[str], measure_maps: list[MeasureMap] = ()  # type: ignore[assignment]
+    ) -> None:
+        self.own: MeasureMap | None = None
+        self._reserved = reserved
+        self._entries: dict[str, MeasureMap] = {}
+        # By object identity: the id each measure map met is written under,
+        # with the map kept alive so that its identity is not reused.
+        self._written: dict[int, tuple[MeasureMap, str]] = {}
+        for measure_map in measure_maps:
+            if not measure_map._id_minted:
+                self._admit_given(measure_map)
+
+    def id_of(self, measure_map: MeasureMap) -> str:
+        """Return the id under which *measure_map* is written, adding it.
+
+        Raises:
+            ValueError: If its given id is refused.
+        """
+        known = self._written.get(id(measure_map))
+        if known is not None:
+            return known[1]
+        if not measure_map._id_minted:
+            return self._admit_given(measure_map)
+        for entry_id, entry in self._entries.items():
+            if _same_entry(entry, measure_map):
+                self._written[id(measure_map)] = (measure_map, entry_id)
+                return entry_id
+        entry_id = mint_id(MEASURE_MAP_ID_PREFIX, {*self._entries, *self._reserved})
+        self._entries[entry_id] = measure_map
+        self._written[id(measure_map)] = (measure_map, entry_id)
+        return entry_id
+
+    def id_of_rows(self, rows: list[dict[str, Any]]) -> str:
+        """Return the id of the measure map compressed *rows* describe, adding it."""
+        from .structure import MeasureMap
+
+        return self.id_of(MeasureMap.from_rows(rows))
+
+    def write(self, *, minimal: bool) -> list[dict[str, Any]]:
+        """Return the ``measure_maps`` entries, sorted by id."""
+        return [
+            {**self._entries[entry_id].to_dict(minimal=minimal), "id": entry_id}
+            for entry_id in sorted(self._entries)
+        ]
+
+    def _admit_given(self, measure_map: MeasureMap) -> str:
+        """Add a measure map under its given id, and return the id.
+
+        Raises:
+            ValueError: If the id is a timeline's, group's or manifest's, or
+                another measure map carries it.
+        """
+        entry_id = measure_map.id
+        if entry_id in self._reserved:
+            raise ValueError(
+                f"measure map id {entry_id!r} is also a timeline, group or manifest id"
+            )
+        held = self._entries.get(entry_id)
+        if held is not None and not _same_entry(held, measure_map):
+            raise ValueError(f"two different measure maps carry the id {entry_id!r}")
+        self._entries.setdefault(entry_id, measure_map)
+        self._written[id(measure_map)] = (measure_map, entry_id)
+        return entry_id
+
+
+def _same_entry(left: MeasureMap, right: MeasureMap) -> bool:
+    """Whether two measure maps write the same entry but for its id."""
+    return (
+        left == right
+        and left.name == right.name
+        and left.meta == right.meta
+        and dict(left._unknown_keys) == dict(right._unknown_keys)
+        and dict(left._unknown_row_keys) == dict(right._unknown_row_keys)
+    )
+
+
 @dataclass
 class ManifestContent:
     """The timelines and groups a manifest holds.
@@ -499,29 +683,6 @@ class ManifestContent:
         return [(timeline.id, timeline._name) for timeline in self.timelines.values()]
 
 
-def write_roots(
-    roots: list[Timeline],
-    *,
-    minimal: bool,
-    events: bool = False,
-    external_references: bool = False,
-) -> list[dict[str, Any]]:
-    """Write root timelines as their timeline objects, sorted by id.
-
-    Each root writes its :attr:`~timetoalign.timelines.Timeline.root_offset`
-    as its ``offset`` when it has one.
-    """
-    return [
-        root._to_timeline_object(
-            minimal=minimal,
-            events=events,
-            external_references=external_references,
-            offset=root._root_offset,
-        )
-        for root in sorted(roots, key=lambda root: root.id)
-    ]
-
-
 def _timeline_ids(timelines: list[dict[str, Any]]) -> set[str]:
     """The ids of written timeline objects and of all their children."""
     ids: set[str] = set()
@@ -533,7 +694,28 @@ def _timeline_ids(timelines: list[dict[str, Any]]) -> set[str]:
     return ids
 
 
-def _read_roots(items: Any) -> tuple[list[Timeline], dict[str, Timeline]]:
+def _read_measure_maps(items: list[Any]) -> dict[str, MeasureMap]:
+    """Read the ``measure_maps`` entries, by id.
+
+    Raises:
+        ValueError: If an entry is malformed or an id occurs twice.
+    """
+    from .structure import MeasureMap
+
+    measure_maps: dict[str, MeasureMap] = {}
+    for item in items:
+        measure_map = MeasureMap.from_dict(item)
+        if measure_map.id in measure_maps:
+            raise ValueError(
+                f"measure map id {measure_map.id!r} occurs twice in 'measure_maps'"
+            )
+        measure_maps[measure_map.id] = measure_map
+    return measure_maps
+
+
+def _read_roots(
+    items: Any, measure_maps: Mapping[str, MeasureMap]
+) -> tuple[list[Timeline], dict[str, Timeline]]:
     """Rebuild the root timelines and index every timeline of their trees by id.
 
     Raises:
@@ -552,7 +734,7 @@ def _read_roots(items: Any) -> tuple[list[Timeline], dict[str, Timeline]]:
                 f"each entry of 'timelines' must be a timeline object, got "
                 f"{type(item).__name__}"
             )
-        root = Timeline._from_timeline_object(item)
+        root = Timeline._from_timeline_object(item, measure_maps=measure_maps)
         roots.append(root)
         for timeline in [
             root,

@@ -80,7 +80,6 @@ from .manifest import (
     read_name,
     require_object,
     select,
-    write_roots,
 )
 
 if TYPE_CHECKING:
@@ -1909,15 +1908,12 @@ class TimelineGroup(_OpenObject):
         )
         manifest.styling = self.styling
         return manifest.write(
-            write_roots(
-                list(roots.values()),
-                minimal=minimal,
-                events=events,
-                external_references=external_references,
-            ),
+            list(roots.values()),
             groups=[self._to_group_object(minimal=minimal)],
             order={self.id: self.timeline_ids},
             minimal=minimal,
+            events=events,
+            external_references=external_references,
         )
 
     def _keep_manifest(self, manifest: Manifest) -> Self:

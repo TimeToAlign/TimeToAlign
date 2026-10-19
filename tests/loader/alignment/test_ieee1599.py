@@ -617,6 +617,8 @@ class TestNotationalLayer:
         cmap = edition.get_conversion_map("file_name")
 
         assert isinstance(cmap, IntervalToConstantMap)
+        assert cmap.end == edition.length.value
+        assert cmap.to_dict()["type"] == "PiecewiseMap"
         assert [(start, cmap(start)) for start in page_starts] == [
             (50.0, "score/Montreal/IMSLP01599-Satie_Gymnopedies-1.png"),
             (1749.0, "score/Montreal/IMSLP01599-Satie_Gymnopedies-2.png"),

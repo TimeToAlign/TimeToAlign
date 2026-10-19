@@ -105,10 +105,11 @@ one ``UserWarning`` naming both values and the derived position is kept; the
 same message is emitted by ``MeasureMap`` construction from measures, because
 both go through one helper.
 
-**Axis.** A measure map is anchored in quarter notes: ``add_measure_map`` on a
-timeline of any other unit raises with the same message shape as
-``add_metric_hierarchy``, and the conformance catalogue attaches measure maps
-to quarter timelines only.
+**Axis.** A measure map is anchored in quarter notes: a quarters timeline
+holds it as it is, a ``whole_notes`` or ticks timeline through a
+``LinearMap`` to quarters (see *Measure maps in a manifest*), and
+``add_measure_map`` on any other unit raises; ``add_metric_hierarchy`` stays
+bound to a quarters timeline holding its measure map as it is.
 
 **Corpus measure classes.** Every folded corpus specimen was probed before
 and after the classifier was unified; the only differences are the ones the
@@ -182,12 +183,12 @@ A region answers containment for raw numbers by value on its own axis. A
 coordinate object in another unit is rejected with both units named instead of
 comparing values that measure different quantities.
 
-Breaks, jumps, markers, and regions write every coordinate as a bare value on
+Flow-control elements and regions write every coordinate as a bare value on
 the timeline's own axis, represented as its number type selects, and read it
-back against that axis. Their round trips pin every enum value, label/name
-field, repeat count, and metadata dictionary. The registry payload has exactly
-``breaks``, ``jumps``, and ``markers``; a JSON encode/decode cycle cannot
-change it.
+back against that axis. Their round trips pin every manifestation, label/name
+field, repeat count, and metadata dictionary. The registry is written as one
+array of elements (see *Flow control in a manifest*); a JSON encode/decode
+cycle cannot change it.
 
 A structure-bearing timeline combines a measure map containing regular,
 irregular, and constituent measures, each with the number and nominal length
@@ -196,9 +197,11 @@ offset fails strict map equality); a metric hierarchy; a region; one break;
 one jump; one marker; one child; and one conversion map. Its default timeline
 object has exactly ``id``, ``name``, ``unit``, ``number_type``, ``length``,
 ``locked``, ``is_segment_line``, ``meta``, ``children``, ``conversion_maps``,
-``regions``, ``flow_control``, ``measure_map``, and ``metric_hierarchy``;
-``events`` remains absent. JSON must be a fixpoint, and restoration must reproduce each constituent
-by exact equality. Same-extent retyping and conversions to and from a segment
+``regions`` and ``flow_control``; ``events`` remains absent, and the measure
+map is a ``MeasureRecordMap`` among the conversion maps naming the manifest's
+one ``measure_maps`` entry. The metric hierarchy has no manifest form: it is
+not written, and the timeline read back has none. JSON must be a fixpoint,
+and restoration must reproduce each written constituent by exact equality. Same-extent retyping and conversions to and from a segment
 line preserve both structure slots and copy the registry into a distinct object.
 A slice carries none of those three objects, pinning the current derivation
 boundary: slicing, child derivation, and unfolding do not infer how authored
@@ -232,10 +235,10 @@ the library writes back against the same literal text.
   written back as an unknown key.
 - **The number type governs, the lexical form never.** One refused value per bare key —
   `length`, a root's `offset`, a child's `offset`, region `start` and `end`,
-  break and marker `coordinate`, jump `from_coordinate` and `to_coordinate` —
+  the `coordinate` of a flow-control element —
   each raises the exact message naming the key, the value, the id of the
   object holding the key (the timeline for `length` and `offset`, a child's
-  own id for its offset, the region, break, marker or jump for its keys) and
+  own id for its offset, the region or flow-control element for its keys) and
   what to write instead, e.g. `length 32 of 'score' is an int on a fraction
   axis: write [32, 1]`. The rewritten value is named only when the rewriting
   is exact, otherwise the axis's number type: `[5, 2]` on a float axis says
@@ -252,14 +255,14 @@ the library writes back against the same literal text.
   axis is still a fraction on an int axis (`write 480`).
 - **Unknown keys are kept where they were found.** One literal manifest
   carries an `x-note` key on the manifest, a root and a child timeline, a
-  region, a break, a jump, a marker, a conversion map and a map nested in it,
-  the `flow_control` object, a group and `graphical`, each with a different
-  value. `AlignmentBundle.from_dict` followed by `to_dict` equals the literal,
+  region, a `flow_marker`, a `jump_from`, a `jump_to`, a conversion map and a
+  map nested in it, a `measure_maps` entry, a group and `graphical`, each
+  with a different value. `AlignmentBundle.from_dict` followed by `to_dict` equals the literal,
   and `Timeline.from_dict` and `TimelineGroup.from_dict` keep the keys of the
   parts they read. Distinct values at every depth catch a reader that moves a
   key to the wrong object.
-- **Measure-map rows and nested maps keep unknown keys too.** A quarters
-  root's `measure_map` is `[{"count": 1, "time_signature": "4/4"},
+- **Measure-map rows keep unknown keys too.** A `measure_maps` entry's
+  `rows` are `[{"count": 1, "time_signature": "4/4"},
   {"count": 2, "x-row": "kept"}, {"count": 3, "tempo": 96}]`. Row 2 is the
   default successor of row 1, so without its unknown key the writer would
   leave it out; with it, the row is written, all three rows in full, `x-row`
@@ -267,14 +270,12 @@ the library writes back against the same literal text.
   not define (a document cannot hold a tempo object), so it is kept, not
   read. Reading the written form writes it again unchanged, and the map
   equals the one read from the same rows without the unknown keys: they
-  take no part in equality. An `x-deep` key added to the `meter_map` nested
-  in a `MetricalPositionMap` is written back in the nested map.
+  take no part in equality.
 - **Measure-map rows a manifest refuses.** The rows of a manifest follow the
-  schema: an empty `measure_map`, a row with neither `count` nor `ID`, a
-  negative `qstamp` and an `actual_length` of `-1` each raise the exact
-  message naming the row's position. A conversion map lacking a key its type
-  writes (a `LinearMap` without `scalar`) raises naming the key; `name` is
-  the one map key that may be left out.
+  schema: empty `rows`, a row with neither `count` nor `ID`, a negative
+  `qstamp` and an `actual_length` of `-1` each raise the exact message naming
+  the row's position. A conversion map lacking a key its type writes and has
+  no default for (a `TableMap` without `x_values`) raises naming the key.
 - **Reading never changes a length.** A root `score` (quarters, length
   `[10, 1]`) holding a child `coda` at offset 8 with length 4 is refused,
   locked or not, with the TimeSkeleton validators' words: `child 'coda'
@@ -442,6 +443,121 @@ the library writes back against the same literal text.
   written back as `null` in both forms: `length` is the one key the minimal
   form never leaves out.
 
+### Measure maps in a manifest (`test_manifest_measure_maps.py`)
+
+A manifest holds its measure maps in the top-level `measure_maps` array, each
+`{id, name?, meta?, rows}`, written sorted by id; a timeline reaches one
+through a `MeasureRecordMap` among its conversion maps, and every measure
+view names one by id. The library keeps one measure map per timeline; the
+tests prove that the writer lifts it into `measure_maps`, that the reader
+puts it back, and that every legacy measure-derived map names the right
+entry, with literal manifests written from the format's rules.
+
+- **Writing lifts the timeline's measure map.** A quarters timeline holding
+  a measure map writes one entry `measuremap_1` and a `MeasureRecordMap`
+  `{"type": "MeasureRecordMap", "id": <minted cmap id>, "source_unit":
+  "quarters", "target_unit": null, "measure_map": "measuremap_1"}` in its
+  `conversion_maps`, sorted with the others by id; the timeline object has
+  no `measure_map` and no `metric_hierarchy` key. A `whole_notes` timeline
+  writes its record map inside a `ChainMap` after `LinearMap(scalar=4)` from
+  `whole_notes` to `quarters`, and a ticks timeline after the `LinearMap` it
+  was given (`scalar` `[1, 480]`); `add_measure_map` refuses a ticks timeline
+  without one, and any unit but quarters, whole_notes and ticks, with the
+  exact message.
+- **Reading puts it back.** The literal manifests of both forms read to
+  timelines whose `measure_map` equals the map built from the same rows,
+  each written back equal to its literal. A record map given its own id
+  (`bars`) and an entry given an id, a name and meta keep all of them; a
+  chained record map keeps the chain's and the `LinearMap`'s ids, so a
+  manifest written by hand is a fixpoint, not only one the library wrote.
+- **One measure map per timeline.** A timeline holding two
+  `MeasureRecordMap`s (two direct, or one direct and one as the last member
+  of a chain from the timeline's unit to quarters) is refused by every
+  reader with `timeline 'score' holds 2 MeasureRecordMaps ['bars',
+  'bars2']: the library keeps one measure map per timeline`. A record map
+  nested elsewhere (in a `CombinationMap`) is a view like any other and is
+  kept as a conversion map.
+- **Several timelines may share one entry.** Two roots holding the same
+  `MeasureMap` object, and two holding equal maps with minted ids, write one
+  entry both record maps name; two holding unequal maps write
+  `measuremap_1` and `measuremap_2`. Read back, two timelines naming one
+  entry hold the same `MeasureMap` object. An entry no timeline names is
+  kept and written back where the manifest is read as a whole.
+- **Ids are the manifest's.** A measure map's id is unique together with
+  the timeline, group and manifest ids: an entry whose id is a timeline's,
+  a group's or the manifest's, and two entries of one id, are refused with
+  the exact message; a minted id is minted again around them
+  (`measuremap_1` held by a timeline makes the entry `measuremap_2`). A view
+  naming an id no entry has is refused naming it.
+- **Measure-derived maps name the measure map they derive from.** On a score
+  timeline, the floating-measure map the loader attaches (a
+  `FloatingMeasureMap` over an equal, separately built map) names the
+  timeline's own entry, so the manifest holds one entry. A
+  `QuartersToFloatingMeasures`, `QuartersToMeasureNumber` and `MetricMap`
+  built from the timeline's measures name the own entry too; ones built from
+  other data each write an entry of their own built from their data, which
+  reads back to a view converting every probe exactly as the written map
+  (`MetricMap`: rows with `number` the measure count, `name` the label,
+  `qstamp` the start and `actual_length` the length). What is not lossless is
+  refused (see `tests/maps/README.md`).
+- **The views read the measure maps they name.** Read back, every view of
+  the literal manifest is rebuilt over the entry it names, the same object
+  as the timeline's measure map where it names that entry, and answers the
+  exact values `tests/maps/README.md` pins.
+- **Unknown keys of an entry are kept.** An entry's unknown key and a row's
+  unknown key are written back where they were found.
+
+### Flow control in a manifest (`test_manifest_flow_control.py`)
+
+`flow_control` is one array of elements `{id, type, manifestation,
+coordinate, target?, repeat_count?, name?, label?, meta?}`, written in
+canonical order by coordinate and then id. A `Break` writes a `flow_marker`
+(`fine`, `section_break`, `double_barline`, `final_barline`), a `Jump` a
+`jump_from` (`repeat_end`, the six D.C./D.S. manifestations, `to_coda`) and
+a `Marker` a `jump_to` (`repeat_start`, `segno`, `coda`); the element's
+manifestation is the library element's `control_type`, which each class
+restricts to its own set (constructing a `Break` of `segno` raises).
+`Marker.control_type` is required: the library states whether a marker is a
+segno, a coda or a repeat start rather than guessing it from a name.
+
+- **The literal round-trips.** A quarters timeline with a section break, a
+  fine, a segno, a coda, a repeat start, a repeat end (`repeat_count` 2)
+  targeting the repeat start, a D.S. al Coda targeting the segno and a
+  `to_coda` targeting the coda reads from its complete and minimal literal
+  and writes each back equal to the literal; every element's id, name,
+  label, meta and unknown key survives.
+- **The target is a `jump_to`, and the jump's destination its coordinate.**
+  Reading sets a jump's `to_coordinate` to its target's coordinate, or 0 for
+  a `da_capo*` or `repeat_end` without target. Writing a jump whose target
+  marker lies elsewhere than its `to_coordinate` is refused naming both.
+- **A destination without a marker gets one.** A `repeat_end` to 8, a
+  `dal_segno` to 4, a `to_coda` to 12 and a `da_capo_al_coda` to 10, none
+  with a marker, write a `jump_to` at each destination whose manifestation
+  follows from the jump (`repeat_start`, `segno`, `coda`, `coda`), with ids
+  minted in the timeline's tree (`marker_1`, ... around the ids it holds);
+  two jumps to one destination of one manifestation share one. A
+  `repeat_end` and a `da_capo` to 0 write no target. A `da_capo` to another
+  position than 0 is refused.
+- **When an element acts follows from its manifestation.** The library's
+  `condition` is derived, not stored: `repeat_end` acts on its first
+  `repeat_count` passes (`first_n`), `to_coda` only after a D.C. or D.S.
+  (`after_dc_ds`), every other element always. `repeat_count` is written on
+  `repeat_end` only; a `Jump` of another manifestation with a
+  `repeat_count` other than 1 is refused at construction, and reading a
+  `repeat_count` elsewhere, a target on a `jump_to` or `flow_marker`, a
+  target naming no `jump_to`, a missing target on a `dal_segno`, an unknown
+  `type` and a manifestation of another type are each refused with the
+  exact message.
+- **Score loaders keep their traversal.** The flow tests (`test_flow.py`)
+  are the oracle and stay green: the traversal reads the controller, not
+  the registry. The registry of the ms3 measures of Couperin's
+  `c05n05_musete` (repeats and two D.S. al Fine) writes and reads back to
+  the same breaks and the same jumps (id, manifestation, from, to,
+  `repeat_count`, condition) with exact values; the two repeat ends landing
+  at 42 and 84, where no marker lies, gain the `repeat_start` markers
+  `marker_2` and `marker_3` written there, and the read registry is a
+  fixpoint of writing.
+
 ### Manifest identity (`test_manifest_ids.py`)
 
 Every element of a manifest (a timeline, a conversion map, a region, a break,
@@ -503,10 +619,10 @@ display. The tests prove four properties, each against literal expected ids.
   never reusing the region's id. `add_jump` refuses a `target` that names no
   marker of the registry. A score loader resolves D.S. targets to marker
   ids: the ms3 measures of Couperin's `c05n05_musete` (corpus `score`,
-  `couperin_concerts`) load two markers, `marker_1` named `segno` at
-  quarter 12 and `marker_2` named `fine` at 81/2, and both D.S. al Fine
-  jumps target `marker_1`; the da capo and repeat jumps of the Rondeau
-  `c11n08_Rondeau` target `None`.
+  `couperin_concerts`) load one marker, `marker_1`, a `segno` named `segno`
+  at quarter 12 (its Fine is a break at the end of its bar, 42, and no jump
+  target), and both D.S. al Fine jumps target `marker_1`; the da capo and
+  repeat jumps of the Rondeau `c11n08_Rondeau` target `None`.
 
 Loader parity (`test_manifest_ids.py::TestLoaderParity`): for one specimen
 each of the ms3 (with and without D.S. jumps), score-MIDI, lab, audio,
@@ -520,11 +636,10 @@ all ids within one manifest to be distinct, and no id to start with `tl:`.
 `Timeline.to_dict` writes every unordered collection in one canonical order,
 so that two timelines with the same content serialize to the same text however
 their content was added: `children` by offset, then id; `conversion_maps` by
-id; `regions` by start, then end, then id; flow-control `breaks` by
-coordinate, then id; `jumps` by from coordinate, then to coordinate, then id;
-`markers` (a list of `{id, name, coordinate}`) by coordinate, then id. Ids
-are unique within a manifest, so no two entries of one list tie on every
-member. Coordinates compare by their exact numeric value, never by their JSON
+id; `regions` by start, then end, then id; the `flow_control` elements
+(breaks, jumps and markers in one array) by coordinate, a jump's being its
+from coordinate, then id. Ids are unique within a manifest, so no two
+entries of one list tie on every member. Coordinates compare by their exact numeric value, never by their JSON
 spelling, and strings by Unicode code point.
 
 What proves it:
@@ -533,8 +648,8 @@ What proves it:
   (`int`), `quarters` (`fraction`) and `seconds` (`float`): four children,
   two of them at the same offset; three conversion maps; four regions, three
   sharing a start and two of those sharing start and end; three breaks, two
-  at one coordinate; three jumps, two sharing a from coordinate and two of
-  those also sharing a to coordinate; four markers, two at one coordinate.
+  at one coordinate; four jumps, three sharing a from coordinate; four
+  markers, two at one coordinate, each jump landing on a marker.
   Every element carries a given id (its kind and label, e.g. `break-fine`),
   because minted ids follow insertion order. For every permutation of
   the insertion order of each collection, the payload must equal the payload
@@ -543,22 +658,23 @@ What proves it:
   what catches a differing `children` or `markers` order. A serializer that
   kept insertion order fails on the first non-identity permutation.
 - **The order itself.** Invariance alone would also hold for an arbitrary but
-  fixed order, so the expected sequence of child ids, map ids, region ids,
-  break ids, jump ids and marker ids is spelled out literally per
-  axis. The values are chosen so that numeric order and JSON-text order
+  fixed order, so the expected sequence of child ids, map ids, region ids
+  and flow-control element ids is spelled out literally per axis. The values are chosen so that numeric order and JSON-text order
   disagree: on the `ticks` axis `9` precedes `10`, on the `quarters` axis
   `5/8` precedes `2/3` although `[2, 3]` sorts first as text, and on the
   `seconds` axis `9.25` precedes `10.5`. The two markers at one coordinate,
   `marker-Coda` and `marker-coda`, pin code-point order of the id tie-break
   (an uppercase letter precedes every lowercase one).
 - **Ties.** Children at one offset fall back to id; regions at one start fall
-  back to end, then id; two breaks at one coordinate, two jumps with equal
-  from and to coordinates, and two markers at one coordinate fall back to
-  their id, whose expected order is spelled out from the literal entries.
+  back to end, then id; flow-control elements at one coordinate (two breaks,
+  a jump and two markers at one position) fall back to their id, whose
+  expected order is spelled out from the literal entries.
 - **Reading accepts any order.** For every permutation of each collection in
-  the canonical payload (the lists reordered), `Timeline.from_dict` must
-  restore a timeline whose `to_dict` is the canonical payload,
-  text-identical.
+  the canonical payload (the lists reordered; for breaks, jumps and markers,
+  the elements of that type moved to the front of the `flow_control` array in
+  the permuted order, so that jumps come before the markers they name),
+  `Timeline.from_dict` must restore a timeline whose `to_dict` is the
+  canonical payload, text-identical.
 - **Storage is untouched.** The order is a property of the serialized form
   only: a registry's `breaks` keep their stored sequence (sorted by position,
   ties in insertion order) and `children` keep their insertion order after
@@ -599,8 +715,10 @@ attributed expansions are rejected.
 Tempo observations retain their four source states, but every tempo entry has
 a logical position. Typed coordinates and exact spans survive JSON as a
 fixpoint; derived readings and the owning measure map do not enter the hierarchy
-payload. Timeline restoration supplies that map and rejects a hierarchy payload
-without one or one anchored on a different map. These checks rule out detached
+payload. ``MetricHierarchy.from_dict`` is given that map, and a timeline
+rejects a hierarchy without one or anchored on a different map. A manifest
+carries no hierarchy: ``to_dict`` writes none, and a ``metric_hierarchy`` key
+on a timeline object is an unknown key, kept and written back, never read. These checks rule out detached
 forests, positionless tempo facts, ambiguous simultaneous pulse units, and
 accidental mixing of symbolic and physical axes.
 
@@ -1279,8 +1397,8 @@ exactly:
 
 The remaining keys of the timeline object are identical in all four cases:
 `id`, `name`, `unit`, `number_type`, `length`, `locked`, `is_segment_line`,
-`meta`, `children`, `conversion_maps`, `regions`, `flow_control`,
-`measure_map`, and `metric_hierarchy`. The tests assert that exact key set for the default call.
+`meta`, `children`, `conversion_maps`, `regions` and `flow_control`. The
+tests assert that exact key set for the default call.
 
 Reference rows serialize as plain dicts with `access_points` a nested list of
 `{"uri": ..., "kind": ...}` dicts, so the payload is JSON-safe; JSON safety of

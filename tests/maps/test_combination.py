@@ -141,29 +141,6 @@ class TestCombinationMap:
         combo = CombinationMap(maps={"a": m1, "b": m2})
         assert combo.source_unit == TimeUnit.quarters
 
-    def test_serialization(self):
-        """Test to_dict/from_dict round-trip."""
-        measure_map = FloorMap(divisor=4.0, base=1)
-        beat_map = RotationMap(period=4.0, scale=1.0, base=1.0)
-
-        combo = CombinationMap(
-            maps={"measure": measure_map, "beat": beat_map},
-            source_unit="quarters",
-        )
-
-        d = combo.to_dict()
-        assert d["type"] == "CombinationMap"
-        assert "maps" in d
-        assert "names" in d
-        assert d["names"] == ["measure", "beat"]
-
-        # Note: Full round-trip requires from_dict to reconstruct sub-maps
-        # This tests the structure is correct
-        assert "measure" in d["maps"]
-        assert d["maps"]["measure"]["type"] == "FloorMap"
-        assert "beat" in d["maps"]
-        assert d["maps"]["beat"]["type"] == "RotationMap"
-
     def test_supra_metrical_positions(self):
         """Test metrical position calculation for SUPRA data.
 

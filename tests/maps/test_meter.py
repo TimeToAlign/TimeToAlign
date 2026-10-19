@@ -17,8 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from timetoalign.maps.base import ConversionMap
-from timetoalign.maps.meter import BeatInMeasureMap, MetricalPositionMap, MetricMap
+from timetoalign.maps.meter import MetricalPositionMap, MetricMap
 from timetoalign.testdata import ensure_data
 
 SPECIMEN_DIR = ensure_data("performance_precision")
@@ -138,58 +137,6 @@ class TestMetricalPositionMap:
 
 
 # region ConversionMap.from_dict registry dispatch
-
-
-class TestRegistryDispatch:
-    """Validate that meter maps round-trip through the shared registry."""
-
-    def test_metric_map_round_trip(self) -> None:
-        mm = MetricMap.from_uniform(4, Fraction(4, 1))
-        restored = ConversionMap.from_dict(mm.to_dict())
-        assert isinstance(restored, MetricMap)
-        assert restored(0.0) == 1
-        assert restored(4.0) == 2
-        assert restored.n_measures == 4
-
-    def test_beat_in_measure_map_round_trip(self) -> None:
-        mm = MetricMap.from_uniform(4, Fraction(4, 1))
-        beat_map = BeatInMeasureMap(mm)
-        restored = ConversionMap.from_dict(beat_map.to_dict())
-        assert isinstance(restored, BeatInMeasureMap)
-        assert restored(0) == Fraction(1, 1)
-        assert restored(Fraction(3, 2)) == Fraction(5, 2)
-
-    def test_metrical_position_map_round_trip(self) -> None:
-        mm = MetricMap.from_uniform(10, Fraction(4, 1))
-        pos = MetricalPositionMap(mm)
-        restored = ConversionMap.from_dict(pos.to_dict())
-        assert isinstance(restored, MetricalPositionMap)
-        assert restored(7.5) == {"mc": 2, "beat": Fraction(9, 2)}
-        assert restored.quarters_at(2, beat=Fraction(9, 2)) == Fraction(15, 2)
-
-    def test_metrical_position_map_dictionary_round_trip_is_exact(self) -> None:
-        position_map = MetricalPositionMap(MetricMap.from_uniform(2, Fraction(4, 1)))
-        source = position_map.to_dict()
-        assert list(source) == [
-            "type",
-            "id",
-            "name",
-            "source_unit",
-            "target_unit",
-            "meter_map",
-            "beat_map_id",
-        ]
-        assert source["beat_map_id"] == position_map.maps["beat"].id
-        restored = MetricalPositionMap.from_dict(source)
-        assert restored.to_dict() == source
-        assert restored.maps["beat"].id == source["beat_map_id"]
-        assert restored.maps["mc"] is restored.meter_map
-
-    def test_metrical_position_map_to_dict_has_no_map_type_key(self) -> None:
-        mm = MetricMap.from_uniform(4, Fraction(4, 1))
-        pos = MetricalPositionMap(mm)
-        assert "map_type" not in pos.to_dict()
-        assert pos.to_dict()["type"] == "MetricalPositionMap"
 
 
 # endregion

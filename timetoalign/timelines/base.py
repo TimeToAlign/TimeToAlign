@@ -18,6 +18,8 @@ import copy
 import logging
 from collections.abc import Mapping
 from dataclasses import replace
+from fractions import Fraction
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, ClassVar, Iterator, Literal
 
 from typing_extensions import Self
@@ -45,7 +47,13 @@ from timetoalign.core.time import (
     struct_to_rational,
 )
 from timetoalign.core.timestamp import _format_coordinate_value
-from timetoalign.maps import ConversionMap
+from timetoalign.maps import (
+    ChainMap,
+    ConversionMap,
+    LinearMap,
+    MeasureRecordMap,
+    ScalarMap,
+)
 from timetoalign.storage import EventData
 
 from .engines import (
@@ -77,13 +85,14 @@ from .manifest import (
     read_name,
     require_object,
     select,
-    write_roots,
 )
 from .regions import Region
 from .structure import MeasureMap, MetricHierarchy
 
 if TYPE_CHECKING:
     from timetoalign.display.ascii import Diagram
+
+    from .manifest import MeasureMapEntries
 
 module_logger = logging.getLogger(__name__)
 
@@ -96,6 +105,26 @@ SEGMENT_EVENT_TYPE = "Segment"
 TraversalOrder = Literal["sorted", "depth_first", "breadth_first"]
 
 # endregion
+
+
+def _is_record_map_on(cmap: ConversionMap[Any], unit: TimeUnit) -> bool:
+    """Whether *cmap* reads a timeline's measure map on an axis of *unit*.
+
+    It does as a ``MeasureRecordMap`` on a quarters axis, or as a
+    ``ChainMap`` of a ``LinearMap`` from *unit* to quarters and a
+    ``MeasureRecordMap``.
+    """
+    if isinstance(cmap, MeasureRecordMap):
+        return unit is TimeUnit.quarters
+    if not isinstance(cmap, ChainMap) or len(cmap.maps) != 2:
+        return False
+    first, last = cmap.maps
+    return (
+        isinstance(last, MeasureRecordMap)
+        and isinstance(first, (LinearMap, ScalarMap))
+        and first.source_unit is unit
+        and first.target_unit is TimeUnit.quarters
+    )
 
 
 def _refuse_negative_length(length: Coordinate, timeline_id: str) -> Coordinate:
@@ -229,8 +258,6 @@ class Timeline(
         "conversion_maps",
         "regions",
         "flow_control",
-        "measure_map",
-        "metric_hierarchy",
         "events",
         "external_references",
     )
@@ -244,9 +271,7 @@ class Timeline(
         "children": [],
         "conversion_maps": [],
         "regions": [],
-        "flow_control": {"breaks": [], "jumps": [], "markers": []},
-        "measure_map": None,
-        "metric_hierarchy": None,
+        "flow_control": [],
     }
 
     # Where a root's origin lies on its unit's absolute axis (a manifest
@@ -353,7 +378,10 @@ class Timeline(
         self._regions: dict[str, Region] = {}
 
         # Authored structure and control events belong to this exact extent.
-        self._measure_map: MeasureMap | None = None
+        # The measure map is held by the conversion map reading it on this
+        # axis: a MeasureRecordMap, or a ChainMap of a LinearMap to quarters
+        # and a MeasureRecordMap.
+        self._measure_record_map: ConversionMap[Any] | None = None
         self._metric_hierarchy: MetricHierarchy | None = None
         self._adopt_flow_control(
             FlowControlRegistry(unit=self._unit, number_type=self._number_type)
@@ -745,14 +773,17 @@ class Timeline(
         candidates.extend(item.coordinate.value for item in registry.markers)
         for jump in registry.jumps:
             candidates.extend((jump.from_coordinate.value, jump.to_coordinate.value))
-        if self._measure_map is not None:
-            for measure in self._measure_map:
+        measure_map = self.measure_map
+        if measure_map is not None:
+            for measure in measure_map:
                 if measure.qstamp is None:
                     continue
                 candidates.append(
-                    measure.qstamp
-                    if measure.actual_length is None
-                    else measure.qstamp + measure.actual_length
+                    self._from_quarters(
+                        measure.qstamp
+                        if measure.actual_length is None
+                        else measure.qstamp + measure.actual_length
+                    )
                 )
         return self._make_coordinate(express_as(max(candidates), self._number_type))
 
@@ -783,8 +814,18 @@ class Timeline(
 
     @property
     def measure_map(self) -> MeasureMap | None:
-        """Authored measure structure, absent on fresh and derived slices."""
-        return self._measure_map
+        """Authored measure structure, absent on fresh and derived slices.
+
+        A measure map's positions are quarters; on an axis in other units
+        the timeline reaches it through a ``LinearMap`` to quarters (see
+        :meth:`add_measure_map`).
+        """
+        record = self._measure_record_map
+        if record is None:
+            return None
+        if isinstance(record, ChainMap):
+            record = record.maps[-1]
+        return record.measure_map
 
     @property
     def metric_hierarchy(self) -> MetricHierarchy | None:
@@ -832,7 +873,7 @@ class Timeline(
                     cmap._id_prefix,
                     f"conversion map {cmap.id!r} {owner}",
                 )
-                for cmap in self._conversion_maps.values()
+                for cmap in self._all_conversion_maps()
             ),
             *(
                 (
@@ -852,6 +893,11 @@ class Timeline(
         """Store the element of this timeline with *old_id* under a minted id."""
         if old_id == self._id:
             self._set_id(new_id, minted=True)
+        elif (
+            self._measure_record_map is not None
+            and old_id == self._measure_record_map.id
+        ):
+            self._measure_record_map._id = new_id
         elif old_id in self._conversion_maps:
             self._rename_conversion_map(old_id, new_id)
         elif old_id in self._regions:
@@ -928,25 +974,103 @@ class Timeline(
 
     # region Authored Structure
 
-    def add_measure_map(self, measure_map: MeasureMap) -> Self:
+    def add_measure_map(
+        self, measure_map: MeasureMap, *, to_quarters: LinearMap | None = None
+    ) -> Self:
         """Attach the timeline's single authored measure map.
+
+        A measure map's positions are quarters. On a quarters axis the map is
+        read as it is; on a ``whole_notes`` axis through the ``LinearMap``
+        that multiplies by 4, unless *to_quarters* gives another; on a ticks
+        axis through *to_quarters*, which says how many ticks a quarter
+        holds. The timeline holds the map in a :class:`MeasureRecordMap`,
+        chained after that ``LinearMap`` on an axis other than quarters,
+        which its manifest writes among the conversion maps.
 
         Args:
             measure_map: Immutable measure structure to attach.
+            to_quarters: The ``LinearMap`` from this timeline's unit to
+                quarters, on an axis in whole notes or ticks.
 
         Returns:
             This timeline after attachment.
 
         Raises:
-            ValueError: If the timeline is not on the quarter-note axis, on
-                which every measure map is anchored, or already carries a
-                measure map.
+            ValueError: If the timeline already carries a measure map, its
+                unit is none of quarters, whole notes and ticks, a ticks
+                timeline is given no *to_quarters*, or *to_quarters* is given
+                on a quarters axis or does not lead from this unit to
+                quarters.
         """
-        if self._measure_map is not None:
+        if self._measure_record_map is not None:
             raise ValueError(f"Timeline {self._id!r} already has a measure map")
-        self._require_quarters_axis("measure map")
-        self._measure_map = measure_map
+        record = MeasureRecordMap(measure_map)
+        if self._unit is TimeUnit.quarters:
+            if to_quarters is not None:
+                raise ValueError(
+                    f"Timeline {self._id!r} is on the quarter-note axis: its measure "
+                    "map needs no LinearMap to quarters"
+                )
+            self._set_measure_record_map(record)
+            return self
+        if to_quarters is None and self._unit is TimeUnit.whole_notes:
+            to_quarters = LinearMap(
+                scalar=4,
+                source_unit=TimeUnit.whole_notes,
+                target_unit=TimeUnit.quarters,
+            )
+        if self._unit not in (TimeUnit.whole_notes, TimeUnit.ticks):
+            raise ValueError(
+                f"Timeline unit {self._unit.value!r} does not reach the quarter notes "
+                "a measure map is anchored on: give it a quarters, whole_notes or "
+                "ticks timeline"
+            )
+        if to_quarters is None:
+            raise ValueError(
+                f"Timeline {self._id!r} is in ticks: give the LinearMap from ticks to "
+                "quarters (to_quarters=) its measure map is read through"
+            )
+        self._set_measure_record_map(ChainMap([to_quarters, record]))
         return self
+
+    def _set_measure_record_map(self, cmap: ConversionMap[Any]) -> None:
+        """Hold *cmap* as the map reading this timeline's measure map.
+
+        Raises:
+            ValueError: If *cmap* is neither a ``MeasureRecordMap`` on a
+                quarters axis nor a ``ChainMap`` of a ``LinearMap`` from this
+                timeline's unit to quarters and a ``MeasureRecordMap``, or its
+                given id is already held in the manifest.
+        """
+        if not _is_record_map_on(cmap, self._unit):
+            raise ValueError(
+                f"Timeline {self._id!r} reads a measure map through a "
+                "MeasureRecordMap on quarters, or a ChainMap of a LinearMap from "
+                f"{self._unit.value!r} to quarters and a MeasureRecordMap"
+            )
+        cmap._id = self._admit_element_id(
+            cmap.id,
+            minted=cmap._id_minted,
+            prefix=cmap._id_prefix,
+            element=f"conversion map {cmap.id!r}",
+        )
+        self._measure_record_map = cmap
+
+    def _from_quarters(self, value: CoordinateValue) -> CoordinateValue:
+        """Return a position of the measure map, in quarters, on this axis."""
+        record = self._measure_record_map
+        if not isinstance(record, ChainMap):
+            return value
+        to_quarters = record.maps[0]
+        offset = getattr(to_quarters, "offset", 0)
+        return (Fraction(value) - offset) / Fraction(to_quarters.scalar)
+
+    def _all_conversion_maps(self) -> list[ConversionMap[Any]]:
+        """Every conversion map this timeline holds, its measure map's included."""
+        maps = list(self._conversion_maps.values())
+        if self._measure_record_map is not None:
+            maps.append(self._measure_record_map)
+        return maps
 
     def add_metric_hierarchy(self, metric_hierarchy: MetricHierarchy) -> Self:
         """Attach the timeline's single measure-anchored metric hierarchy.
@@ -963,13 +1087,18 @@ class Timeline(
         """
         if self._metric_hierarchy is not None:
             raise ValueError(f"Timeline {self._id!r} already has a metric hierarchy")
-        if self._measure_map is None:
+        if self.measure_map is None:
             raise ValueError("A metric hierarchy requires the timeline's measure map")
-        if metric_hierarchy.measure_map != self._measure_map:
+        if metric_hierarchy.measure_map != self.measure_map:
             raise ValueError(
                 "The metric hierarchy is anchored on a different measure map"
             )
         self._require_quarters_axis("metric hierarchy")
+        if isinstance(self._measure_record_map, ChainMap):
+            raise ValueError(
+                f"Timeline {self._id!r} reads its measure map through a LinearMap: "
+                "a metric hierarchy is anchored on a measure map read as it is"
+            )
         self._metric_hierarchy = metric_hierarchy
         return self
 
@@ -1245,12 +1374,18 @@ class Timeline(
     ) -> dict[str, Any]:
         """Write a TimeSkeleton manifest holding this timeline as its one root.
 
-        The timeline object is the timeline's complete structure: its axis,
-        children, conversion maps, regions, measure map, metric hierarchy
-        and flow control. The library's class is not written: the unit
-        decides it. A value on the timeline's own axis — ``length``, a
-        child's ``offset``, region ``start``/``end``, break and marker
-        ``coordinate``, jump ``from_coordinate``/``to_coordinate`` — is
+        The timeline object is the timeline's structure: its axis, children,
+        conversion maps, regions and flow control. Its measure map is a
+        ``MeasureRecordMap`` among the conversion maps (chained after a
+        ``LinearMap`` to quarters on an axis in whole notes or ticks) naming
+        an entry of the manifest's ``measure_maps``, which also holds every
+        measure map a measure view names; equal measure maps share one entry.
+        The metric hierarchy has no manifest form and is not written. Every
+        conversion map is written as one of the format's map types (see
+        :meth:`ConversionMap.to_dict <timetoalign.maps.ConversionMap.to_dict>`).
+        The library's class is not written: the unit decides it. A value on
+        the timeline's own axis — ``length``, a child's ``offset``, region
+        ``start``/``end``, a flow-control element's ``coordinate`` — is
         written bare, represented as the axis's number type selects (``8``,
         ``8.0``, ``[8, 1]``); a ``length`` of None is written ``null``.
         ``"events"`` and ``"external_references"`` are written only on
@@ -1266,9 +1401,11 @@ class Timeline(
         Collections are written in one canonical order, independent of the
         order in which their content was added, so equal timelines give equal
         JSON text: ``children`` by offset, then id; ``conversion_maps`` by id;
-        ``regions`` by start, then end, then id; and in ``flow_control``
-        ``breaks`` and ``markers`` by coordinate, ``jumps`` by from and then
-        to coordinate, each then by id. Values compare exactly and ids by
+        ``regions`` by start, then end, then id; ``flow_control`` (breaks,
+        markers and jumps in one array, see
+        :meth:`FlowControlRegistry.to_dict
+        <timetoalign.timelines.flowcontrol.FlowControlRegistry.to_dict>`) by
+        coordinate, then id; ``measure_maps`` by id. Values compare exactly and ids by
         Unicode code point. The timeline's own storage is not reordered, and
         :meth:`from_dict` accepts any order.
 
@@ -1285,6 +1422,12 @@ class Timeline(
             A JSON-serializable manifest ``{"timeskeleton": "0.7.0", ...,
             "timelines": [timeline]}``.
 
+        Raises:
+            ValueError: If a conversion map has no TimeSkeleton form or
+                cannot be written losslessly, a jump cannot name the marker
+                it lands on, or a measure map's given id is held by another
+                measure map or by a timeline, group or the manifest.
+
         Examples:
             >>> from fractions import Fraction
             >>> from timetoalign.timelines import ContinuousLogicalTimeline
@@ -1295,13 +1438,10 @@ class Timeline(
         """
         manifest = self._manifest if self._manifest is not None else Manifest()
         return manifest.write(
-            write_roots(
-                [self],
-                minimal=minimal,
-                events=events,
-                external_references=external_references,
-            ),
+            [self],
             minimal=minimal,
+            events=events,
+            external_references=external_references,
         )
 
     def _to_timeline_object(
@@ -1311,6 +1451,7 @@ class Timeline(
         events: bool,
         external_references: bool,
         offset: Coordinate | None,
+        entries: MeasureMapEntries,
     ) -> dict[str, Any]:
         """Write the timeline object: the timeline's own JSON object.
 
@@ -1320,6 +1461,8 @@ class Timeline(
             external_references: Write the external reference table.
             offset: The ``offset`` to write (a child's placement on its
                 parent, a root's origin), or None to write none.
+            entries: The measure maps of the manifest written, whose ids
+                the measure views name.
         """
         children = [
             child._to_timeline_object(
@@ -1327,13 +1470,18 @@ class Timeline(
                 events=events,
                 external_references=external_references,
                 offset=self._child_offsets[child_id],
+                entries=entries,
             )
             for child_id, child in sorted(
                 self._children.items(),
                 key=lambda item: (self._child_offsets[item[0]].value, item[0]),
             )
         ]
-        flow_control = self._flow_control.to_dict()
+        entries.own = self.measure_map
+        conversion_maps = [
+            cmap._to_manifest(minimal=minimal, entries=entries)
+            for cmap in sorted(self._all_conversion_maps(), key=lambda cmap: cmap.id)
+        ]
         fields: dict[str, Any] = {
             "id": self._id,
             "name": self._name,
@@ -1351,10 +1499,7 @@ class Timeline(
                 "is_segment_line": self._is_segment_line_instance(),
                 "meta": copy.deepcopy(self._meta),
                 "children": children,
-                "conversion_maps": [
-                    self._conversion_maps[map_id].to_dict(minimal=minimal)
-                    for map_id in sorted(self._conversion_maps)
-                ],
+                "conversion_maps": conversion_maps,
                 "regions": [
                     replace(
                         region,
@@ -1370,25 +1515,11 @@ class Timeline(
                         ),
                     )
                 ],
-                "flow_control": (
-                    self._flow_control.to_dict(minimal=True)
-                    if minimal
-                    else flow_control
-                ),
-                "measure_map": (
-                    self._measure_map.to_dict()
-                    if self._measure_map is not None
-                    else None
-                ),
-                "metric_hierarchy": (
-                    self._metric_hierarchy.to_dict()
-                    if self._metric_hierarchy is not None
-                    else None
+                "flow_control": self._flow_control.to_dict(
+                    minimal=minimal, taken=self._manifest_ids()
                 ),
             }
         )
-        if minimal and flow_control == self._dict_defaults["flow_control"]:
-            del fields["flow_control"]
         if events:
             fields["events"] = self._event_rows_to_json()
         if external_references:
@@ -1495,6 +1626,17 @@ class Timeline(
                 held = timeline._manifest_ids()
                 if manifest.id is not None:
                     held[manifest.id] = "the manifest"
+                named = [
+                    measure_map
+                    for member in (
+                        timeline,
+                        *(child for _, child in timeline._iter_descendants()),
+                    )
+                    for cmap in member._all_conversion_maps()
+                    for measure_map in cmap._measure_maps()
+                ]
+                for measure_map in (*named, *manifest.measure_maps):
+                    held[measure_map.id] = f"measure map {measure_map.id!r}"
                 if timeline_id in held:
                     raise ValueError(
                         f"root timeline {timeline.id!r} cannot take the id "
@@ -1522,18 +1664,30 @@ class Timeline(
 
     @classmethod
     def _from_timeline_object(
-        cls, data: dict[str, Any], *, is_root: bool = True
+        cls,
+        data: dict[str, Any],
+        *,
+        is_root: bool = True,
+        measure_maps: Mapping[str, MeasureMap] = MappingProxyType({}),
     ) -> Timeline:
         """Rebuild a timeline from its timeline object.
+
+        A ``MeasureRecordMap`` among its conversion maps, or a ``ChainMap``
+        of a ``LinearMap`` from the timeline's unit to quarters and a
+        ``MeasureRecordMap``, holds the timeline's measure map; the library
+        keeps one measure map per timeline.
 
         Args:
             data: The timeline object.
             is_root: Whether the timeline is a root: a root reads its
                 ``offset`` as :attr:`root_offset`, a child's ``offset`` is
                 read by its parent.
+            measure_maps: The manifest's measure maps by id, which its
+                measure views name.
 
         Raises:
-            ValueError: If the object is malformed.
+            ValueError: If the object is malformed, or holds more than one
+                map reading a measure map as the timeline's.
         """
         from .types import SegmentLine, SegmentLineMixin, get_timeline_class
 
@@ -1575,7 +1729,9 @@ class Timeline(
         placed: list[tuple[Coordinate, Timeline]] = []
         for child_data in read_list(data, "children", what):
             require_object(child_data, f"a child of {what}", ("offset",))
-            child = Timeline._from_timeline_object(child_data, is_root=False)
+            child = Timeline._from_timeline_object(
+                child_data, is_root=False, measure_maps=measure_maps
+            )
             offset = axis_value_from_json(
                 child_data["offset"],
                 key="offset",
@@ -1644,33 +1800,32 @@ class Timeline(
         for offset, child in placed:
             timeline._embed_child(child, offset, locked=timeline._kept_lock(child))
 
+        records = []
         for map_data in read_list(data, "conversion_maps", what):
-            timeline.add_conversion_map(ConversionMap.from_dict(map_data))
+            cmap = ConversionMap.from_dict(map_data, measure_maps=measure_maps)
+            if _is_record_map_on(cmap, unit):
+                records.append(cmap)
+            else:
+                timeline.add_conversion_map(cmap)
+        if len(records) > 1:
+            raise ValueError(
+                f"{what} holds {len(records)} MeasureRecordMaps "
+                f"{[record.id for record in records]}: the library keeps one measure "
+                "map per timeline"
+            )
+        if records:
+            timeline._set_measure_record_map(records[0])
         for region_data in read_list(data, "regions", what):
             timeline.add_region(
                 Region.from_dict(region_data, unit=unit, number_type=number_type)
             )
-        flow_control_data = require_object(
-            data.get("flow_control", {}), f"the flow_control of {what}"
-        )
         timeline.flow_control._absorb(
             FlowControlRegistry.from_dict(
-                flow_control_data, unit=unit, number_type=number_type
+                read_list(data, "flow_control", what),
+                unit=unit,
+                number_type=number_type,
             )
         )
-        timeline.flow_control._keep_unknown_keys(flow_control_data)
-        measure_map_data = data.get("measure_map")
-        if measure_map_data is not None:
-            timeline.add_measure_map(MeasureMap.from_dict(measure_map_data))
-        metric_hierarchy_data = data.get("metric_hierarchy")
-        if metric_hierarchy_data is not None:
-            if timeline.measure_map is None:
-                raise ValueError(f"{what} has a metric_hierarchy but no measure_map")
-            timeline.add_metric_hierarchy(
-                MetricHierarchy.from_dict(
-                    metric_hierarchy_data, measure_map=timeline.measure_map
-                )
-            )
 
         timeline._finalize_from_dict(length)
         timeline._locked = locked
@@ -1810,7 +1965,7 @@ class Timeline(
             copied.add_conversion_map(cmap)
         copied._regions.update(self._regions)
         copied._flow_maps.update(self._flow_maps)
-        copied._measure_map = self._measure_map
+        copied._measure_record_map = self._measure_record_map
         copied._metric_hierarchy = self._metric_hierarchy
         copied._adopt_flow_control(self._flow_control.copy())
         copied._id_minted = self._id_minted

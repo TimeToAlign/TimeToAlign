@@ -2,20 +2,103 @@
 
 This directory contains tests for the `timetoalign.maps` module, which implements coordinate conversion maps.
 
-## Serialized metrical positions
+## Manifest forms (`test_manifest_forms.py`)
 
-A `MetricalPositionMap` derives both of its outputs from one meter map: the
-measure count is the meter map itself and the beat is a `BeatInMeasureMap`
-built over it. Its dictionary therefore holds the meter map once and the
-identifier of the derived beat map (`beat_map_id`), never the derived maps or
-their names, which would state the same meter map three times. The keys are
-exactly `type`, `id`, `name`, `source_unit`, `target_unit`, `meter_map` and
-`beat_map_id`. Restoring the dictionary must reproduce it exactly, including
-the nested identifiers: the restored derived beat map carries the stated
-`beat_map_id`, and its `meter_map` is the restored meter map, so a reader never
-changes a document while keeping equivalent numerical behaviour. The meter test
-serializes a populated map whose identifiers come from a counter, restores it,
-and compares the whole JSON-safe dictionary.
+A conversion map is written in a TimeSkeleton manifest as one of ten
+abstract types — `LinearMap`, `TableMap`, `ConstantMap`, `PiecewiseMap`,
+`ChainMap`, `CombinationMap` and the four measure views `MeasureRecordMap`,
+`MeasureNumberMap`, `FloatingMeasureMap`, `MeasureBeatMap` — and every
+library class lowers to one of them in `to_dict()`. A reader that only reads
+what its own writer produced proves nothing about the format, so each
+abstract type's form is pinned as a literal dictionary, and the proof that a
+lowering is faithful is functional: the map read back from the written form
+must convert every probe coordinate to exactly the result the written map
+gives, value and Python type alike (`Fraction(5, 2)` is not `2.5`). Probes
+lie inside every interval, on every anchor or boundary, and outside both ends
+wherever the written map is defined there; a lowering that only agreed
+inside its anchors, or only in value, fails.
+
+- **Each abstract type is itself.** For the six general types and the four
+  views, `ConversionMap.from_dict(m.to_dict())` (views given the measure maps
+  they name) is of the same class, writes the same dictionary in both forms,
+  and converts every probe identically.
+- **Every library class lowers to one type, with exactly that type's
+  fields.** `ScalarMap`, `ShiftMap`, `TicksToQuarters`, `QuartersToTicks`,
+  `SamplesToSeconds` and `SecondsToSamples` write a `LinearMap` (the
+  convenience keys `ppq` and `sample_rate` are gone); the minimal form drops
+  `scalar` only when it is the integer 1 and `offset` only when it is the
+  integer 0, because a float `1.0` multiplies an exact input into a float
+  and is therefore not the default. `InterpolationMap` writes a `TableMap`
+  (`kind` linear, `extrapolate` linear), its `source_id` and `target_id`
+  gone. A `TableMap` writes `extrapolate` `none` for the library's `error`
+  and `nan`, `linear` for `extrapolate`, `constant` for `constant`; reading
+  `none` gives `error`, so a probe outside the anchors raises after the
+  round trip where `nan` answered NaN before it — the one difference the
+  format rules, pinned as such. A `TableMap` of kind `previous` answers the
+  stored anchor value itself (an exact `Fraction(1, 3)` stays exact), since
+  no arithmetic is involved. An `IntervalToConstantMap` of numbers writes a
+  `TableMap` of kind `previous` with `extrapolate` `constant` — exactly its
+  clamping at both ends — or a `ConstantMap` when it has one boundary; one
+  given an `end` writes a `PiecewiseMap` of `ConstantMap`s over its
+  intervals, labels or numbers, and is then undefined outside
+  `[first boundary, end)` before and after writing alike. A `CombinationMap`
+  writes `maps` as an object keyed by output name and no `names`.
+- **Measure-derived maps write a view over a measure map.**
+  `QuartersToFloatingMeasures` writes a `FloatingMeasureMap`;
+  `QuartersToMeasureNumber` and `MetricMap` write a `MeasureNumberMap`;
+  `BeatInMeasureMap` and `MetricalPositionMap` write a `MeasureBeatMap`.
+  Built outside a timeline, the view names the measure map built from the
+  map's own data by its minted id `measuremap_1`; within a timeline it names
+  the timeline's measure map when the map derives from it, and otherwise a
+  measure map of its own (the timeline tests pin which). Where the view's
+  answer has another shape than the legacy map's, the test states the
+  projection and pins it exactly: a `MetricMap` answers the measure count,
+  which is the `number` of the rows it writes (`count` positional, `number`
+  the count, `name` the label); a `QuartersToMeasureNumber` label `"3"`
+  reads back as the number `3`; a `BeatInMeasureMap` answer is the `beat` of
+  the read map's pair, and a `MetricalPositionMap`'s `{"mc": n, "beat": b}`
+  is `{"number": n, "beat": b}`.
+- **No lifting.** Reading builds the abstract type's class: a written
+  `TicksToQuarters` reads back as a `LinearMap`, a `MetricMap` as a
+  `MeasureNumberMap`. A manifest never says "ticks to quarters at 480 ppq",
+  so restoring the specific class would infer what the file does not state.
+  Equality is therefore that of class and state: a `ScalarMap` and the
+  `LinearMap` it writes are not equal, though they write one dictionary and
+  convert alike, and the round-trip tests compare dictionaries and
+  conversions, never the two objects.
+- **What has no form is refused, naming the map and the reason.** A
+  `TableMap` of kind `nearest` or `next`, a `FloorMap`, a `RotationMap`, an
+  `IntervalToConstantMap` of labels with more than one boundary and no
+  `end`, a `QuartersToMeasureNumber` label that is no decimal integer
+  (`"19a"`), a `MetricMap` whose measures do not start at 0 or leave a gap,
+  and a `QuartersToFloatingMeasures` whose knots are no measure lattice
+  (ordinals not consecutive from 0 or 1, a first knot that neither an
+  anacrusis nor a downbeat at 0 explains) each raise `ValueError` with the
+  exact message. Never an approximation: a lowering that is not lossless
+  does not happen.
+- **Reading refuses what the format does not define.** A former type name
+  (`ScalarMap`, `InterpolationMap`, `MetricMap`, ...) is an unknown type,
+  the message listing the ten; `kind` `nearest` and `extrapolate` `nan` are
+  refused; a view naming a measure map the manifest does not hold is
+  refused naming the id; a key the type writes is required unless it has a
+  default (`name`, `scalar`, `offset`, `kind`, `extrapolate`).
+
+### The measure views
+
+The four views read a measure map's rows; their semantics are those of the
+library's former measure maps, pinned with exact values on a measure map with
+an anacrusis (offset 3 in a 4/4 bar), a regular bar, a 3/4 bar and an
+irregular bar: the record lookup takes the last measure whose `qstamp` lies
+at or before the position, clamped to the first and the last measure as
+`MetricMap` clamps; `MeasureNumberMap` answers that record's `number` (the
+count when a measure states none); `FloatingMeasureMap` answers what
+`QuartersToFloatingMeasures.from_measure_map` answers, anchored on the
+nominal bar and truncated to three decimals; `MeasureBeatMap` answers
+`{"number": <number>, "beat": <position - qstamp + 1>}`, the beat of
+`MetricMap.beat_in_measure`. `QuartersToFloatingMeasures.from_measure_map`
+returns a `FloatingMeasureMap`, which remembers the measure map it reads, so
+the score loaders' floating-measure map writes as a view without being
+matched against anything.
 
 ## Test Coverage Summary
 
@@ -73,9 +156,7 @@ shared interface rather than a bespoke value-passing API.
   ConversionMap)`; a `Coordinate` input is checked against the map's
   `source_unit` by the inherited `__call__`, so a mismatched unit raises
   `ValueError` without any InterpolationMap-specific code.
-- **Serialization**: `to_dict()`/`from_dict()` round-trips arrays, ids, and
-  units exactly; `ConversionMap.from_dict()` dispatches to
-  `InterpolationMap` via the self-registering type registry.
+- **Serialization**: written as the `TableMap` it is (see *Manifest forms*).
 - **Read-only coordinate arrays**: `source_coords`/`target_coords` are
   copied and frozen (`setflags(write=False)`) on construction, so mutating
   either raises `ValueError`; this also protects the cached inverse from
@@ -124,7 +205,7 @@ shared interface rather than a bespoke value-passing API.
 - **Beat Rotation 6/8**: Compound meter with eighth-note beats.
 - **Offset**: Handles non-zero starting positions (e.g., anacrusis).
 - **Not Invertible**: Correctly reports `is_invertible = False` (many-to-one).
-- **Serialization**: `to_dict()` / `from_dict()` roundtrip preserves all parameters.
+- **No manifest form**: writing a periodic map is refused (see *Manifest forms*).
 - **Angle Normalization**: Handles negative inputs via modulo.
 
 #### FloorMap
@@ -166,7 +247,7 @@ Both are explicitly NOT invertible because they are many-to-one mappings.
 - **Get Map**: Can retrieve individual sub-maps by name.
 - **Source Unit Validation**: All sub-maps must have compatible source units.
 - **Source Unit Inheritance**: CombinationMap inherits source_unit from sub-maps.
-- **Serialization**: `to_dict()` / `from_dict()` roundtrip.
+- **Serialization**: see *Manifest forms*.
 - **SUPRA Metrical Positions**: Validates against SUPRA reference (measure 222, beat 4 at quarter 887).
 
 **Validity Rationale:**
@@ -229,17 +310,6 @@ bound for the final measure.  A `.meter` file encodes only meter *changes*
 (this specimen lists 4 rows across 38 measures), so the timemap's terminal
 `qstamp` is required to close the last bar.  Exact-value assertions pin the
 boundary arithmetic.
-
-#### `ConversionMap.from_dict` registry dispatch
-
-`MetricMap`, `BeatInMeasureMap`, and `MetricalPositionMap` round-trip
-through `ConversionMap.from_dict()` using the self-registering class
-registry (`__init_subclass__`), the same mechanism every other map type in
-this package uses — there is no hand-written type-name table to keep in
-sync as new map classes are added. `MetricalPositionMap.to_dict()` no
-longer emits a redundant `map_type` key: the base `ConversionMap.to_dict()`
-already writes `type` as the class name, which is exactly what the
-registry dispatches on.
 
 ---
 
@@ -421,11 +491,11 @@ exact `Fraction` equality (`result == expected`).
 
 ## Serialization
 
-Every map's `to_dict()` is JSON-serializable: rational parameters (scalars,
-offsets, boundaries, measure starts and lengths, table anchors) are emitted as
-exact Fraction pairs rather than as `Fraction` objects or `"n/d"` strings, and
-`from_dict()` reads that shape and nothing else. `to_dict()` also always emits `name`, and every subclass
-`from_dict()` passes it to the constructor, so a custom map name round-trips.
+Every map's `to_dict()` is its manifest form (see *Manifest forms*):
+rational parameters are exact Fraction pairs, integers JSON integers, floats
+JSON numbers, and `from_dict()` reads that shape and nothing else. `name` is
+written only when given, and every reader passes it to the constructor, so a
+custom map name round-trips.
 
 The format, the fixpoint guarantee, and the cross-package JSON-safety sweep
 are specified in `tests/core/README.md` (`test_number_json.py`), which holds
@@ -441,5 +511,6 @@ These tests verify the core mapping capabilities required by the TTA model:
 - **Accuracy**: Mathematical transformations must be precise (using Fractions where possible).
 - **Invertibility**: All maps must support inversion for bi-directional alignment.
 - **Non-Invertibility**: Some maps (RotationMap, FloorMap, CombinationMap) are explicitly many-to-one.
+- **Manifest fidelity**: A written map converts exactly as the map it was written from; what cannot be written losslessly is refused.
 - **Composition**: Maps must be composable to form complex chains.
 - **Performance**: Array operations should use vectorized numpy implementations.

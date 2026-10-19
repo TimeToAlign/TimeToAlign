@@ -92,17 +92,29 @@ MINIMAL: dict[str, Any] = {
                     "source_unit": "quarters",
                     "target_unit": "seconds",
                     "scalar": [1, 2],
-                    "offset": 0,
                 }
             ],
             "regions": [{"id": "theme", "start": [0, 1], "end": [8, 1]}],
-            "flow_control": {
-                "breaks": [{"id": "fine", "coordinate": [32, 1]}],
-                "jumps": [
-                    {"id": "back", "from_coordinate": [16, 1], "to_coordinate": [0, 1]}
-                ],
-                "markers": [{"id": "segno", "coordinate": [4, 1]}],
-            },
+            "flow_control": [
+                {
+                    "id": "segno",
+                    "type": "jump_to",
+                    "manifestation": "segno",
+                    "coordinate": [4, 1],
+                },
+                {
+                    "id": "back",
+                    "type": "jump_from",
+                    "manifestation": "repeat_end",
+                    "coordinate": [16, 1],
+                },
+                {
+                    "id": "fine",
+                    "type": "flow_marker",
+                    "manifestation": "section_break",
+                    "coordinate": [32, 1],
+                },
+            ],
         }
     ],
 }
@@ -135,9 +147,7 @@ COMPLETE: dict[str, Any] = {
                     "children": [],
                     "conversion_maps": [],
                     "regions": [],
-                    "flow_control": {"breaks": [], "jumps": [], "markers": []},
-                    "measure_map": None,
-                    "metric_hierarchy": None,
+                    "flow_control": [],
                 }
             ],
             "conversion_maps": [
@@ -160,39 +170,40 @@ COMPLETE: dict[str, Any] = {
                     "meta": {},
                 }
             ],
-            "flow_control": {
-                "breaks": [
-                    {
-                        "id": "fine",
-                        "coordinate": [32, 1],
-                        "control_type": "section_break",
-                        "condition": "always",
-                        "repeat_count": 1,
-                        "label": None,
-                        "name": None,
-                        "meta": {},
-                    }
-                ],
-                "jumps": [
-                    {
-                        "id": "back",
-                        "from_coordinate": [16, 1],
-                        "to_coordinate": [0, 1],
-                        "control_type": "repeat_end",
-                        "condition": "first_n",
-                        "repeat_count": 1,
-                        "target": None,
-                        "label": None,
-                        "meta": {},
-                    }
-                ],
-                "markers": [{"id": "segno", "name": None, "coordinate": [4, 1]}],
-            },
-            "measure_map": None,
-            "metric_hierarchy": None,
+            "flow_control": [
+                {
+                    "id": "segno",
+                    "type": "jump_to",
+                    "manifestation": "segno",
+                    "coordinate": [4, 1],
+                    "name": None,
+                    "label": None,
+                    "meta": {},
+                },
+                {
+                    "id": "back",
+                    "type": "jump_from",
+                    "manifestation": "repeat_end",
+                    "coordinate": [16, 1],
+                    "repeat_count": 1,
+                    "name": None,
+                    "label": None,
+                    "meta": {},
+                },
+                {
+                    "id": "fine",
+                    "type": "flow_marker",
+                    "manifestation": "section_break",
+                    "coordinate": [32, 1],
+                    "name": None,
+                    "label": None,
+                    "meta": {},
+                },
+            ],
         }
     ],
     "groups": [],
+    "measure_maps": [],
 }
 
 
@@ -221,18 +232,15 @@ def test_a_reader_supplies_every_default() -> None:
     assert (timeline.name, timeline.meta, timeline.is_locked) == ("score", {}, False)
     assert timeline.number_type is NumberType.fraction
     assert timeline.measure_map is None and timeline.metric_hierarchy is None
-    assert (brk.control_type.value, brk.condition.value, brk.repeat_count) == (
-        "section_break",
-        "always",
-        1,
-    )
+    assert (brk.control_type.value, brk.condition.value) == ("section_break", "always")
     assert (brk.label, brk.name, brk.meta) == (None, None, {})
     assert (jump.control_type.value, jump.condition.value, jump.repeat_count) == (
         "repeat_end",
         "first_n",
         1,
     )
-    assert (jump.target, jump.label, jump.meta) == (None, None, {})
+    assert jump.to_coordinate == Coordinate(0, TimeUnit.quarters)
+    assert (jump.target, jump.name, jump.label, jump.meta) == (None, None, None, {})
     assert timeline.get_conversion_map("tempo").to_dict()["name"] is None
 
 
@@ -339,24 +347,19 @@ def _with_value(path: tuple[Any, ...], value: Any) -> dict[str, Any]:
             "end 8.0 of 'theme' is a float on a fraction axis: write [8, 1]",
         ),
         (
-            ("flow_control", "breaks", 0, "coordinate"),
+            ("flow_control", 2, "coordinate"),
             32,
             "coordinate 32 of 'fine' is an int on a fraction axis: write [32, 1]",
         ),
         (
-            ("flow_control", "markers", 0, "coordinate"),
+            ("flow_control", 0, "coordinate"),
             4,
             "coordinate 4 of 'segno' is an int on a fraction axis: write [4, 1]",
         ),
         (
-            ("flow_control", "jumps", 0, "from_coordinate"),
-            16,
-            "from_coordinate 16 of 'back' is an int on a fraction axis: write [16, 1]",
-        ),
-        (
-            ("flow_control", "jumps", 0, "to_coordinate"),
+            ("flow_control", 1, "coordinate"),
             0.25,
-            "to_coordinate 0.25 of 'back' is a float on a fraction axis: write [1, 4]",
+            "coordinate 0.25 of 'back' is a float on a fraction axis: write [1, 4]",
         ),
     ],
     ids=[
@@ -365,10 +368,9 @@ def _with_value(path: tuple[Any, ...], value: Any) -> dict[str, Any]:
         "child_offset",
         "region_start",
         "region_end",
-        "break",
-        "marker",
-        "jump_from",
+        "flow_marker",
         "jump_to",
+        "jump_from",
     ],
 )
 def test_each_bare_key_checks_its_representation(
@@ -496,6 +498,14 @@ UNKNOWN: dict[str, Any] = {
             ],
             "conversion_maps": [
                 {
+                    "type": "MeasureRecordMap",
+                    "id": "bars",
+                    "source_unit": "quarters",
+                    "target_unit": None,
+                    "measure_map": "score_bars",
+                    "x-note": "record map",
+                },
+                {
                     "type": "ChainMap",
                     "id": "chain",
                     "source_unit": None,
@@ -503,7 +513,7 @@ UNKNOWN: dict[str, Any] = {
                     "x-note": "map",
                     "maps": [
                         {
-                            "type": "ShiftMap",
+                            "type": "LinearMap",
                             "id": "shift",
                             "source_unit": None,
                             "target_unit": None,
@@ -511,27 +521,56 @@ UNKNOWN: dict[str, Any] = {
                             "x-note": "nested map",
                         }
                     ],
-                }
+                },
             ],
             "regions": [
                 {"id": "theme", "start": [0, 1], "end": [8, 1], "x-note": "region"}
             ],
-            "flow_control": {
-                "x-note": "flow control",
-                "breaks": [{"id": "fine", "coordinate": [32, 1], "x-note": "break"}],
-                "jumps": [
-                    {
-                        "id": "back",
-                        "from_coordinate": [16, 1],
-                        "to_coordinate": [0, 1],
-                        "x-note": "jump",
-                    }
-                ],
-                "markers": [{"id": "segno", "coordinate": [4, 1], "x-note": "marker"}],
-            },
+            "flow_control": [
+                {
+                    "id": "segno",
+                    "type": "jump_to",
+                    "manifestation": "segno",
+                    "coordinate": [4, 1],
+                    "x-note": "jump_to",
+                },
+                {
+                    "id": "back",
+                    "type": "jump_from",
+                    "manifestation": "repeat_end",
+                    "coordinate": [16, 1],
+                    "x-note": "jump_from",
+                },
+                {
+                    "id": "fine",
+                    "type": "flow_marker",
+                    "manifestation": "section_break",
+                    "coordinate": [32, 1],
+                    "x-note": "flow_marker",
+                },
+            ],
         },
     ],
     "groups": [{"id": "g", "members": ["coda", "perf"], "x-note": "group"}],
+    "measure_maps": [
+        {
+            "id": "score_bars",
+            "x-note": "measure map",
+            "rows": [
+                {
+                    "count": 1,
+                    "qstamp": [0, 1],
+                    "number": 1,
+                    "name": "1",
+                    "time_signature": "4/4",
+                    "nominal_length": [4, 1],
+                    "actual_length": [4, 1],
+                    "start_repeat": False,
+                    "end_repeat": False,
+                }
+            ],
+        }
+    ],
     "graphical": {"order": {"g": ["perf", "coda"]}, "x-note": "graphical"},
 }
 
@@ -555,6 +594,7 @@ def test_the_timeline_reader_keeps_the_unknown_keys_of_what_it_reads() -> None:
     assert score.to_dict(minimal=True) == {
         "timeskeleton": "0.7.0",
         "timelines": [UNKNOWN["timelines"][1]],
+        "measure_maps": UNKNOWN["measure_maps"],
     }
 
 
@@ -1165,9 +1205,7 @@ def _empty_complete(
         "children": [],
         "conversion_maps": [],
         "regions": [],
-        "flow_control": {"breaks": [], "jumps": [], "markers": []},
-        "measure_map": None,
-        "metric_hierarchy": None,
+        "flow_control": [],
         **keys,
     }
 
@@ -1203,6 +1241,7 @@ ONE_ROOT = {
         "meta": {},
         "timelines": [SCORE_COMPLETE],
         "groups": [],
+        "measure_maps": [],
         "graphical": {"order": ONE_ROOT_BANDS, "styles": {}, "statements": []},
     },
 }
@@ -1219,6 +1258,7 @@ GROUPED = {
         "meta": {},
         "timelines": [PERF_COMPLETE, SCORE_COMPLETE],
         "groups": [{"id": "g", "name": None, "meta": {}, "members": ["part", "perf"]}],
+        "measure_maps": [],
         "graphical": {"order": GROUPED_BANDS, "styles": {}, "statements": []},
     },
 }
@@ -1320,14 +1360,30 @@ def test_a_length_of_null_reads_as_unknown_and_is_always_written() -> None:
     assert timeline.to_dict()["timelines"][0]["length"] is None
 
 
-# region Measure-map rows and nested maps
+# region Measure-map rows
 
 
-def _quarters_root(**keys: Any) -> dict[str, Any]:
-    return {
+RECORD_MAP = {
+    "type": "MeasureRecordMap",
+    "id": "record",
+    "source_unit": "quarters",
+    "target_unit": None,
+    "measure_map": "bars",
+}
+
+
+def _quarters_root(
+    rows: list[dict[str, Any]] | None = None, **keys: Any
+) -> dict[str, Any]:
+    """A quarters root of length 12, reading the measure map of *rows* if given."""
+    manifest: dict[str, Any] = {
         "timeskeleton": "0.7.0",
         "timelines": [{"id": "score", "unit": "quarters", "length": [12, 1], **keys}],
     }
+    if rows is not None:
+        manifest["timelines"][0]["conversion_maps"] = [RECORD_MAP]
+        manifest["measure_maps"] = [{"id": "bars", "rows": rows}]
+    return manifest
 
 
 def _full_row(count: int, **keys: Any) -> dict[str, Any]:
@@ -1352,94 +1408,69 @@ def test_unknown_row_keys_are_kept_and_force_their_row() -> None:
         {"count": 2, "x-row": "kept"},
         {"count": 3, "tempo": 96},
     ]
-    score = Timeline.from_dict(_quarters_root(measure_map=copy.deepcopy(rows)))
+    score = Timeline.from_dict(_quarters_root(copy.deepcopy(rows)))
 
     written = score.to_dict(minimal=True)
 
-    assert written["timelines"][0]["measure_map"] == [
+    assert written["measure_maps"][0]["rows"] == [
         _full_row(1, next=["2"]),
         _full_row(2, next=["3"], **{"x-row": "kept"}),
         _full_row(3, tempo=96),
     ]
     assert Timeline.from_dict(copy.deepcopy(written)).to_dict(minimal=True) == written
     plain = Timeline.from_dict(
-        _quarters_root(
-            measure_map=[{"count": 1, "time_signature": "4/4"}, {"count": 3}]
-        )
+        _quarters_root([{"count": 1, "time_signature": "4/4"}, {"count": 3}])
     )
     assert score.measure_map == plain.measure_map
-    assert plain.to_dict(minimal=True)["timelines"][0]["measure_map"] == [
+    assert plain.to_dict(minimal=True)["measure_maps"][0]["rows"] == [
         _full_row(1, next=["2"]),
         _full_row(3),
     ]
 
 
-def test_a_nested_meter_map_keeps_its_unknown_keys() -> None:
-    from timetoalign.maps import MetricalPositionMap, MetricMap
-
-    score = ContinuousLogicalTimeline(length=Fraction(8), uid="score")
-    score.add_conversion_map(
-        MetricalPositionMap(
-            MetricMap(
-                starts=[Fraction(0), Fraction(4)],
-                mcs=[1, 2],
-                mns=["1", "2"],
-                lengths=[Fraction(4), Fraction(4)],
-            )
-        )
-    )
-    data = score.to_dict(minimal=True)
-    data["timelines"][0]["conversion_maps"][0]["meter_map"]["x-deep"] = 7
-
-    written = Timeline.from_dict(copy.deepcopy(data)).to_dict(minimal=True)
-
-    assert written["timelines"][0]["conversion_maps"][0]["meter_map"]["x-deep"] == 7
-    assert written == data
-
-
 @pytest.mark.parametrize(
-    ("change", "message"),
+    ("manifest", "message"),
     [
         (
-            {"measure_map": []},
-            "MeasureMap document form must be a non-empty list of Measure Map rows",
+            _quarters_root([]),
+            "the rows of measure map 'bars' must be a non-empty list of Measure Map rows",
         ),
         (
-            {"measure_map": [{"time_signature": "4/4"}]},
+            _quarters_root([{"time_signature": "4/4"}]),
             "Measure Map row 1 carries neither count nor ID",
         ),
         (
-            {"measure_map": [{"count": 1, "time_signature": "4/4", "qstamp": -1}]},
+            _quarters_root([{"count": 1, "time_signature": "4/4", "qstamp": -1}]),
             "Measure Map row 1 states a negative qstamp -1",
         ),
         (
-            {
-                "measure_map": [
-                    {"count": 1, "time_signature": "4/4", "actual_length": -1}
-                ]
-            },
+            _quarters_root(
+                [{"count": 1, "time_signature": "4/4", "actual_length": -1}]
+            ),
             "Measure Map row 1 states actual_length -1, which is not positive",
         ),
         (
-            {
-                "conversion_maps": [
+            _quarters_root(
+                conversion_maps=[
                     {
-                        "type": "LinearMap",
-                        "id": "lmap_1",
+                        "type": "TableMap",
+                        "id": "tmap_1",
                         "source_unit": "quarters",
                         "target_unit": "seconds",
-                        "offset": 0,
+                        "y_values": [0.0, 1.0],
                     }
                 ]
-            },
-            "a LinearMap lacks the key(s) ['scalar']",
+            ),
+            "a TableMap lacks the key(s) ['x_values']",
         ),
     ],
     ids=["empty", "no_count_or_id", "negative_qstamp", "negative_length", "map_key"],
 )
-def test_rows_and_maps_a_manifest_refuses(change: dict[str, Any], message: str) -> None:
+def test_rows_and_maps_a_manifest_refuses(
+    manifest: dict[str, Any], message: str
+) -> None:
     with pytest.raises(ValueError) as refused:
-        Timeline.from_dict(_quarters_root(**change))
+        Timeline.from_dict(manifest)
     assert str(refused.value) == message
 
 
@@ -1535,7 +1566,7 @@ def _reserved(word: str) -> str:
             _quarters_root(
                 conversion_maps=[
                     {
-                        "type": "ShiftMap",
+                        "type": "LinearMap",
                         "id": "label",
                         "source_unit": None,
                         "target_unit": None,
@@ -1604,7 +1635,7 @@ def _band(band_id: str) -> str:
             _quarters_root(
                 conversion_maps=[
                     {
-                        "type": "ShiftMap",
+                        "type": "LinearMap",
                         "id": "conversion_maps_3",
                         "source_unit": None,
                         "target_unit": None,

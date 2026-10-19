@@ -268,7 +268,9 @@ def test_standard_example_expands_and_compresses() -> None:
 def test_document_form_is_the_compressed_row_list() -> None:
     """The document list excludes derived ids and rejects the former wrapper."""
     measure_map = MeasureMap.from_rows([{"time_signature": "2/2"}, {"number": 563}])
-    payload = measure_map.to_dict()
+    entry = measure_map.to_dict()
+    assert set(entry) == {"id", "name", "meta", "rows"}
+    payload = entry["rows"]
     assert isinstance(payload, list)
     assert {
         "count",
@@ -281,8 +283,8 @@ def test_document_form_is_the_compressed_row_list() -> None:
     } <= set(payload[0])
     assert "ID" not in payload[0]
     assert all(value is not None for row in payload for value in row.values())
-    with pytest.raises(ValueError, match="list of Measure Map rows"):
-        MeasureMap.from_dict({"measures": payload})  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match=r"lacks the key\(s\) \['id', 'rows'\]"):
+        MeasureMap.from_dict({"measures": payload})
     timeline = Timeline(length=F(2252), unit=TimeUnit.quarters, uid="row_document")
     timeline.add_measure_map(measure_map)
     assert Timeline.from_dict(timeline.to_dict()).to_dict() == timeline.to_dict()
@@ -923,17 +925,17 @@ class TestBeatPolicyAndMetricHierarchyJson:
         timeline = Timeline(length=F(1), unit=TimeUnit.quarters, uid="metric_json")
         timeline.add_measure_map(hierarchy.measure_map)
         timeline.add_metric_hierarchy(hierarchy)
-        payload = json.loads(json.dumps(timeline.to_dict(events=False)))
-        restored = Timeline.from_dict(payload)
+        payload = json.loads(json.dumps(hierarchy.to_dict()))
+        restored = MetricHierarchy.from_dict(payload, measure_map=timeline.measure_map)
 
-        assert restored.metric_hierarchy == hierarchy
-        assert restored.metric_hierarchy.to_dict() == hierarchy.to_dict()
-        assert restored.metric_hierarchy.authored_forest[0].expansions[0].children[
-            0
-        ].span == _span(0, F(1, 3))
-        assert restored.metric_hierarchy.tempo_maps == hierarchy.tempo_maps
-        assert restored.to_dict(events=False) == payload
-        assert "events" not in payload
+        assert restored == hierarchy
+        assert restored.to_dict() == hierarchy.to_dict()
+        assert restored.authored_forest[0].expansions[0].children[0].span == _span(
+            0, F(1, 3)
+        )
+        assert restored.tempo_maps == hierarchy.tempo_maps
+        assert "metric_hierarchy" not in timeline.to_dict()["timelines"][0]
+        assert Timeline.from_dict(timeline.to_dict()).metric_hierarchy is None
 
 
 class TestMeasureScalar:
@@ -1083,18 +1085,16 @@ def test_abstract_measure_map_is_refused() -> None:
         MetricHierarchy(measure_map=MeasureMap([Measure(), Measure()]))
 
 
-def test_timeline_payload_without_measure_map_is_refused() -> None:
+def test_a_metric_hierarchy_key_in_a_manifest_is_kept_and_never_read() -> None:
     payload = Timeline(length=F(4), unit=TimeUnit.quarters, uid="score").to_dict()
     payload["timelines"][0]["metric_hierarchy"] = {
         "authored_readings": [],
         "authored_forest": [],
         "tempo_maps": [],
     }
-    with pytest.raises(ValueError) as refused:
-        Timeline.from_dict(payload)
-    assert str(refused.value) == (
-        "timeline 'score' has a metric_hierarchy but no measure_map"
-    )
+    restored = Timeline.from_dict(payload)
+    assert restored.metric_hierarchy is None
+    assert restored.to_dict() == payload
 
 
 def test_default_reading_is_never_serialized() -> None:
@@ -1777,13 +1777,14 @@ class TestRowRules:
         assert measure_map[1].qstamp == F(4)
 
 
-@pytest.mark.parametrize("unit", ["seconds", "ticks", "pixels"])
-def test_a_measure_map_needs_the_quarter_note_axis(unit: str) -> None:
+@pytest.mark.parametrize("unit", ["seconds", "pixels"])
+def test_a_measure_map_needs_a_unit_reaching_quarter_notes(unit: str) -> None:
     timeline = Timeline(length=F(8), unit=unit)
-    with pytest.raises(
-        ValueError,
-        match=f"Timeline unit '{unit}' does not match measure map unit 'quarters'",
-    ):
+    with pytest.raises(ValueError) as refused:
         timeline.add_measure_map(
             MeasureMap.from_rows([{"count": 1, "time_signature": "4/4"}])
         )
+    assert str(refused.value) == (
+        f"Timeline unit '{unit}' does not reach the quarter notes a measure map is "
+        "anchored on: give it a quarters, whole_notes or ticks timeline"
+    )

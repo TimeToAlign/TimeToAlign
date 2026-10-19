@@ -11,7 +11,7 @@ between their common start and end.
 
 InterpolationMap is a full member of the ConversionMap family: it supports
 the shared __call__/convert_array interface, inverse(), composition, and
-to_dict/from_dict serialization, while remaining a lightweight building
+to_dict serialization (as the TableMap it is), while remaining a lightweight building
 block optimized for performance. Its coordinate arrays (source_coords,
 target_coords) are read-only after construction, and inverse() caches the
 computed inverse map so repeated calls return the same instance.
@@ -32,8 +32,9 @@ import numpy as np
 from numpy.typing import NDArray
 from typing_extensions import Self
 
-from ..core.enums import TimeUnit
-from .base import ConversionMap
+from ..core.enums import ExtrapolationPolicy, InterpolationKind, TimeUnit
+from .base import ConversionMap, MeasureMapIds
+from .table import _table_form
 
 module_logger = logging.getLogger(__name__)
 
@@ -328,38 +329,19 @@ class InterpolationMap(ConversionMap[float]):
 
     # region Serialization
 
-    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
-        """Serialize the map to a dictionary.
+    def _to_manifest(self, *, minimal: bool, entries: MeasureMapIds) -> dict[str, Any]:
+        """Write the ``TableMap`` this map is: linear between its anchors and beyond.
 
-        Returns:
-            Dictionary representation of the map.
+        The source and target timeline ids are not written: a map belongs
+        to the one timeline holding it.
         """
-        d = super().to_dict(minimal=minimal)
-        d["source_coords"] = [float(v) for v in self.source_coords]
-        d["target_coords"] = [float(v) for v in self.target_coords]
-        d["source_id"] = self.source_id
-        d["target_id"] = self.target_id
-        return d
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> InterpolationMap:
-        """Deserialize from dictionary.
-
-        Args:
-            data: Dictionary representation.
-
-        Returns:
-            A new InterpolationMap instance.
-        """
-        return cls(
-            source_coords=np.array(data["source_coords"], dtype=np.float64),
-            target_coords=np.array(data["target_coords"], dtype=np.float64),
-            source_id=data["source_id"],
-            target_id=data["target_id"],
-            source_unit=data.get("source_unit"),
-            target_unit=data.get("target_unit"),
-            uid=data.get("id"),
-            name=data.get("name"),
+        return _table_form(
+            self,
+            [float(v) for v in self.source_coords],
+            [float(v) for v in self.target_coords],
+            kind=InterpolationKind.linear,
+            extrapolate=ExtrapolationPolicy.extrapolate,
+            minimal=minimal,
         )
 
     # endregion

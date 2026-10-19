@@ -5,6 +5,8 @@ This module provides maps for periodic/cyclic patterns and integer division:
 - FloorMap: Integer floor division (measure numbers, page numbers)
 
 These are reusable building blocks for metrical grids and other cyclic patterns.
+They have no TimeSkeleton form: a timeline holding one cannot be written to a
+manifest.
 """
 
 from __future__ import annotations
@@ -154,29 +156,6 @@ class RotationMap(ConversionMap[float]):
             "RotationMap is not invertible: multiple inputs map to the same output"
         )
 
-    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
-        """Serialize to dictionary."""
-        d = super().to_dict(minimal=minimal)
-        d["period"] = self._period
-        d["scale"] = self._scale
-        d["base"] = self._base
-        d["offset"] = self._offset
-        return d
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> RotationMap:
-        """Deserialize from dictionary."""
-        return cls(
-            period=data["period"],
-            scale=data.get("scale", 1.0),
-            base=data.get("base", 0.0),
-            offset=data.get("offset", 0.0),
-            source_unit=data.get("source_unit"),
-            target_unit=data.get("target_unit"),
-            uid=data.get("id"),
-            name=data.get("name"),
-        )
-
     def __repr__(self) -> str:
         parts = [f"period={self._period}"]
         if self._scale != 1.0:
@@ -313,27 +292,6 @@ class FloorMap(ConversionMap[int]):
         """
         raise NotImplementedError(
             "FloorMap is not invertible: multiple inputs map to the same output"
-        )
-
-    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
-        """Serialize to dictionary."""
-        d = super().to_dict(minimal=minimal)
-        d["divisor"] = self._divisor
-        d["base"] = self._base
-        d["offset"] = self._offset
-        return d
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> FloorMap:
-        """Deserialize from dictionary."""
-        return cls(
-            divisor=data["divisor"],
-            base=data.get("base", 0),
-            offset=data.get("offset", 0.0),
-            source_unit=data.get("source_unit"),
-            target_unit=data.get("target_unit"),
-            uid=data.get("id"),
-            name=data.get("name"),
         )
 
     def __repr__(self) -> str:

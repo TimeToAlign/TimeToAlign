@@ -1,36 +1,42 @@
-"""Flow Control Events: Break and Jump for timeline traversal.
+"""Flow Control Events: Break, Jump and Marker for timeline traversal.
 
-This module provides the Break and Jump classes that control the flow of
-time through a timeline.
+This module provides the three kinds of flow-control element a timeline
+holds, each written in a TimeSkeleton manifest as one element of the
+timeline's ``flow_control`` array:
 
-**Break**: A break is a control event that voids the contiguity at the
-Instant where it is located.
-- Prevents TimeIntervals from spanning its coordinate
-- Cannot be inserted at coordinates already spanned by a TimeInterval
-  (unless the spanning element "adopts" the break)
+**Break** (a ``flow_marker``): a control event that voids the contiguity at
+the Instant where it is located: a Fine, a section break, a double or a
+final barline.
 
-**Jump**: A jump is a control event defined by two Instants: a JumpFrom
-and a JumpTo Instant. When active, it makes any event located or starting
-at JumpTo contiguous with any event ending at JumpFrom.
-- Creates contiguity between non-adjacent coordinates
-- Has activation conditions (e.g., "on Nth pass")
+**Jump** (a ``jump_from``): a control event defined by two Instants, a
+JumpFrom and a JumpTo Instant. When active, it makes any event located or
+starting at JumpTo contiguous with any event ending at JumpFrom: a repeat
+end, a D.C. or D.S. (al Fine, al Coda) or a To Coda. It names the marker it
+lands on, or none when it lands at the timeline's start.
+
+**Marker** (a ``jump_to``): a position a jump lands on: a repeat start, a
+segno or a coda.
+
+Each element's ``control_type`` is its manifestation, which decides when it
+acts (:attr:`Jump.condition`): a repeat end on its first ``repeat_count``
+passes, a To Coda only after a D.C. or D.S., every other element always.
 
 Common music notation mappings:
-| Notation        | Break?  | Jump?  | Notes                           |
-|-----------------|---------|--------|----------------------------------|
-| Repeat End (:∥) | Maybe   | Yes    | Jump back; may be break if at section end |
-| Repeat Start    | No      | -      | Structural marker, target for repeat_end |
-| First Ending    | -       | -      | Volta info is measure attribute, not break |
-| Fine            | Yes     | No     | End of piece (conditional)      |
-| Da Capo         | No      | Yes    | Jump to coordinate 0            |
-| Dal Segno       | No      | Yes    | Jump to a Segno marker by id    |
-| Section Break   | Yes     | No     | Single instant voiding contiguity |
+| Notation        | Element | Notes                                    |
+|-----------------|---------|-------------------------------------------|
+| Repeat End (:∥) | Jump    | Jump back to its repeat start, or 0       |
+| Repeat Start    | Marker  | Target of a repeat end                    |
+| First Ending    | -       | Volta info is a measure attribute         |
+| Fine            | Break   | End of piece after an al-Fine jump        |
+| Da Capo         | Jump    | Jump to coordinate 0                      |
+| Dal Segno       | Jump    | Jump to a Segno marker by id              |
+| Section Break   | Break   | Single instant voiding contiguity         |
 """
 
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from fractions import Fraction
@@ -38,14 +44,13 @@ from typing import Any, ClassVar
 
 from timetoalign.core import Coordinate, IdCoordinate, NumberType, TimeUnit
 from timetoalign.core.enums import ActivationCondition, FlowControlElement
-from timetoalign.core.ids import _admit_id, _IdentifiedElement, _OpenObject
+from timetoalign.core.ids import _admit_id, _IdentifiedElement, mint_id
 from timetoalign.core.time import express_scalar_as
 
 from .manifest import (
     axis_value_from_json,
     axis_value_to_json,
     read_id,
-    read_list,
     read_meta,
     read_name,
     require_object,
@@ -53,7 +58,163 @@ from .manifest import (
 
 module_logger = logging.getLogger(__name__)
 
-# region Enums
+# region Manifestations
+
+_FLOW_MARKERS = frozenset(
+    {
+        FlowControlElement.fine,
+        FlowControlElement.section_break,
+        FlowControlElement.double_barline,
+        FlowControlElement.final_barline,
+    }
+)
+"""The manifestations of a ``flow_marker``: a :class:`Break`'s control types."""
+
+_JUMP_ORIGINS = frozenset(
+    {
+        FlowControlElement.repeat_end,
+        FlowControlElement.da_capo,
+        FlowControlElement.da_capo_al_fine,
+        FlowControlElement.da_capo_al_coda,
+        FlowControlElement.dal_segno,
+        FlowControlElement.dal_segno_al_fine,
+        FlowControlElement.dal_segno_al_coda,
+        FlowControlElement.to_coda,
+    }
+)
+"""The manifestations of a ``jump_from``: a :class:`Jump`'s control types."""
+
+_JUMP_TARGETS = frozenset(
+    {FlowControlElement.repeat_start, FlowControlElement.segno, FlowControlElement.coda}
+)
+"""The manifestations of a ``jump_to``: a :class:`Marker`'s control types."""
+
+_TO_START = frozenset(
+    {
+        FlowControlElement.repeat_end,
+        FlowControlElement.da_capo,
+        FlowControlElement.da_capo_al_fine,
+        FlowControlElement.da_capo_al_coda,
+    }
+)
+"""The jumps that may name no target, landing at the timeline's start."""
+
+_LANDING = {
+    FlowControlElement.repeat_end: FlowControlElement.repeat_start,
+    FlowControlElement.dal_segno: FlowControlElement.segno,
+    FlowControlElement.dal_segno_al_fine: FlowControlElement.segno,
+    FlowControlElement.dal_segno_al_coda: FlowControlElement.segno,
+    FlowControlElement.to_coda: FlowControlElement.coda,
+    FlowControlElement.da_capo_al_coda: FlowControlElement.coda,
+}
+"""The marker a jump lands on, by the jump's manifestation."""
+
+
+def _condition(control_type: FlowControlElement) -> ActivationCondition:
+    """When an element of *control_type* acts."""
+    if control_type is FlowControlElement.repeat_end:
+        return ActivationCondition.first_n
+    if control_type is FlowControlElement.to_coda:
+        return ActivationCondition.after_dc_ds
+    return ActivationCondition.always
+
+
+def _is_active(
+    condition: ActivationCondition,
+    repeat_count: int,
+    pass_number: int,
+    after_dc_ds: bool,
+) -> bool:
+    """Whether an element acting under *condition* acts on this pass."""
+    if condition is ActivationCondition.first_n:
+        return pass_number <= repeat_count
+    if condition is ActivationCondition.after_dc_ds:
+        return after_dc_ds
+    return True
+
+
+def _check_control_type(
+    element: str, control_type: FlowControlElement, allowed: frozenset[Any]
+) -> None:
+    """Refuse a control type that is not among an element's manifestations.
+
+    Raises:
+        ValueError: If *control_type* is not in *allowed*.
+    """
+    if control_type not in allowed:
+        raise ValueError(
+            f"A {element} is one of {sorted(member.value for member in allowed)}, "
+            f"not {control_type.value!r}"
+        )
+
+
+# endregion
+
+# region Reading elements
+
+
+def _read_element(
+    data: Any, element_type: str, allowed: frozenset[Any]
+) -> tuple[str, str, FlowControlElement]:
+    """Read an element's id and manifestation.
+
+    Returns:
+        The element's id, its description for messages and its
+        manifestation.
+
+    Raises:
+        ValueError: If the element lacks a required key or its manifestation
+            is none of *element_type*'s.
+    """
+    require_object(
+        data, "a flow-control element", ("id", "type", "manifestation", "coordinate")
+    )
+    element_id = read_id(data["id"], "a flow-control element")
+    what = f"{element_type} {element_id!r}"
+    manifestation = data["manifestation"]
+    allowed_values = {member.value for member in allowed}
+    if manifestation not in allowed_values:
+        raise ValueError(
+            f"{what} has the manifestation {manifestation!r}; a {element_type} is "
+            f"one of {sorted(allowed_values)}"
+        )
+    return element_id, what, FlowControlElement(manifestation)
+
+
+def _refuse_keys(data: Mapping[str, Any], what: str, keys: tuple[str, ...]) -> None:
+    """Refuse keys another manifestation or element type holds.
+
+    Raises:
+        ValueError: If *data* holds one of *keys*.
+    """
+    held = [key for key in keys if key in data]
+    if held:
+        raise ValueError(f"{what} holds {held}, which only a repeat end or a jump has")
+
+
+def _read_label(data: Mapping[str, Any], what: str) -> str | None:
+    """Read an optional ``label``, null when absent.
+
+    Raises:
+        ValueError: If the label is neither a string nor null.
+    """
+    label = data.get("label")
+    if label is not None and not isinstance(label, str):
+        raise ValueError(f"{what} has a non-string label {label!r}")
+    return label
+
+
+def _read_coordinate(
+    data: Mapping[str, Any], element_id: str, unit: TimeUnit, number_type: NumberType
+) -> Coordinate:
+    """Read an element's ``coordinate``, a bare value on the timeline's axis."""
+    return axis_value_from_json(
+        data["coordinate"],
+        key="coordinate",
+        owner=element_id,
+        unit=unit,
+        number_type=number_type,
+    )
 
 
 # endregion
@@ -65,7 +226,9 @@ module_logger = logging.getLogger(__name__)
 class Break(_IdentifiedElement):
     """A control event that voids contiguity at a specific coordinate.
 
-    A break voids contiguity at the Instant where it is located.
+    A break voids contiguity at the Instant where it is located: a Fine, a
+    section break, a double or a final barline. A manifest writes it as a
+    ``flow_marker`` element whose manifestation is its control type.
 
     Constraints:
     - A Break cannot be added at coordinates already spanned by a
@@ -80,9 +243,8 @@ class Break(_IdentifiedElement):
 
     Attributes:
         coordinate: The coordinate where contiguity is voided.
-        control_type: The type of break (section_break, fine).
-        condition: When the break becomes active.
-        repeat_count: For FINE, how many DC/DS must occur before active.
+        control_type: The type of break (``section_break``, ``fine``,
+            ``double_barline``, ``final_barline``).
         label: Optional human-readable label (e.g., "End of Var. XI").
         name: For target markers, the instance name (e.g., "fine", "fine2").
         meta: Additional metadata.
@@ -96,39 +258,32 @@ class Break(_IdentifiedElement):
         ...     control_type=FlowControlElement.section_break,
         ... )
 
-        >>> # Fine marker (conditional break after DC/DS)
+        >>> # Fine
         >>> fine = Break(
         ...     coordinate=Coordinate(200.0, TimeUnit.quarters),
         ...     control_type=FlowControlElement.fine,
-        ...     condition=ActivationCondition.after_dc_ds,
-        ...     name="fine",  # Default name, can be customized
+        ...     name="fine",
         ... )
     """
 
     _id_prefix: ClassVar[str] = "break"
     _dict_keys: ClassVar[tuple[str, ...]] = (
         "id",
+        "type",
+        "manifestation",
         "coordinate",
-        "control_type",
-        "condition",
-        "repeat_count",
-        "label",
         "name",
+        "label",
         "meta",
     )
     _dict_defaults: ClassVar[Mapping[str, Any]] = {
-        "control_type": FlowControlElement.section_break.value,
-        "condition": ActivationCondition.always.value,
-        "repeat_count": 1,
-        "label": None,
         "name": None,
+        "label": None,
         "meta": {},
     }
 
     coordinate: Coordinate
     control_type: FlowControlElement = FlowControlElement.section_break
-    condition: ActivationCondition = ActivationCondition.always
-    repeat_count: int = 1
     label: str | None = None
     name: str | None = None  # Instance name for target markers
     meta: dict[str, Any] = field(default_factory=dict)
@@ -141,33 +296,25 @@ class Break(_IdentifiedElement):
         unit: TimeUnit,
         number_type: NumberType,
     ) -> Break:
-        """Restore a break from its object, ``coordinate`` a bare axis value.
+        """Restore a break from its ``flow_marker`` element.
 
-        Every key but ``id`` and ``coordinate`` may be left out and reads as
-        its default; keys the library does not know are kept and written
-        back. *unit* and *number_type* describe the timeline's axis.
+        ``name``, ``label`` and ``meta`` may be left out; keys the library
+        does not know are kept and written back. *unit* and *number_type*
+        describe the timeline's axis.
 
         Raises:
-            ValueError: If the object is malformed or the coordinate is
-                represented otherwise than the axis selects.
+            ValueError: If the element is malformed, its manifestation is no
+                ``flow_marker``'s, it holds a ``target`` or ``repeat_count``,
+                or its coordinate is no value of the axis.
         """
-        require_object(data, "a break", ("id", "coordinate"))
-        break_id = read_id(data["id"], "a break")
-        what = f"break {break_id!r}"
+        break_id, what, manifestation = _read_element(
+            data, "flow_marker", _FLOW_MARKERS
+        )
+        _refuse_keys(data, what, ("target", "repeat_count"))
         brk = cls(
             id=break_id,
-            coordinate=axis_value_from_json(
-                data["coordinate"],
-                key="coordinate",
-                owner=break_id,
-                unit=unit,
-                number_type=number_type,
-            ),
-            control_type=_read_enum(
-                data, "control_type", FlowControlElement, cls, what
-            ),
-            condition=_read_enum(data, "condition", ActivationCondition, cls, what),
-            repeat_count=_read_repeat_count(data, what),
+            coordinate=_read_coordinate(data, break_id, unit, number_type),
+            control_type=manifestation,
             label=_read_label(data, what),
             name=read_name(data, what),
             meta=read_meta(data, what),
@@ -176,13 +323,14 @@ class Break(_IdentifiedElement):
         return brk
 
     def __post_init__(self) -> None:
-        """Mint or validate the id, then validate the break configuration."""
+        """Mint or validate the id, then refuse a control type no break has."""
         super().__post_init__()
-        # Validate that control_type is actually a break type
-        if not self.control_type.is_break:
-            module_logger.warning(
-                f"Break created with non-break type: {self.control_type}"
-            )
+        _check_control_type("Break", self.control_type, _FLOW_MARKERS)
+
+    @property
+    def condition(self) -> ActivationCondition:
+        """When the break acts: always."""
+        return _condition(self.control_type)
 
     @property
     def position(self) -> float | Fraction:
@@ -204,18 +352,10 @@ class Break(_IdentifiedElement):
         Returns:
             True if the break should void contiguity on this pass.
         """
-        if self.condition == ActivationCondition.always:
-            return True
-        elif self.condition == ActivationCondition.first_n:
-            return pass_number <= self.repeat_count
-        elif self.condition == ActivationCondition.after_first:
-            return pass_number > 1
-        elif self.condition == ActivationCondition.after_dc_ds:
-            return after_dc_ds
-        return False
+        return _is_active(self.condition, 1, pass_number, after_dc_ds)
 
     def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
-        """Return this break as its JSON object, the coordinate a bare value.
+        """Return this break as its ``flow_marker`` element.
 
         Args:
             minimal: Leave out every key at its default.
@@ -223,12 +363,11 @@ class Break(_IdentifiedElement):
         return self._dict_form(
             {
                 "id": self.id,
+                "type": "flow_marker",
+                "manifestation": self.control_type.value,
                 "coordinate": axis_value_to_json(self.coordinate),
-                "control_type": self.control_type.value,
-                "condition": self.condition.value,
-                "repeat_count": self.repeat_count,
-                "label": self.label,
                 "name": self.name,
+                "label": self.label,
                 "meta": deepcopy(self.meta),
             },
             minimal=minimal,
@@ -253,7 +392,8 @@ class Jump(_IdentifiedElement):
 
     A jump is defined by two Instants: a JumpFrom and a JumpTo Instant. When
     active, it makes any event located or starting at JumpTo contiguous with
-    any event ending at JumpFrom.
+    any event ending at JumpFrom. A manifest writes it as a ``jump_from``
+    element at its from coordinate, naming the ``jump_to`` it lands on.
 
     Target Resolution:
         A jump to a marker references it by the marker's ID (``target``),
@@ -265,10 +405,13 @@ class Jump(_IdentifiedElement):
     Attributes:
         from_coordinate: The coordinate where the jump originates.
         to_coordinate: The coordinate where the jump lands.
-        control_type: The type of jump (repeat_end, da_capo, dal_segno, to_coda).
-        condition: When the jump becomes active.
-        repeat_count: For repeat_end, how many times to take the jump.
+        control_type: The type of jump (``repeat_end``, ``da_capo``,
+            ``dal_segno``, ``to_coda``, and the al-Fine and al-Coda forms of
+            a D.C. or D.S.).
+        repeat_count: For a ``repeat_end``, how many times to take the
+            jump; 1 for every other jump.
         target: The id of the target marker of the same timeline, or None.
+        name: Optional display name.
         label: Optional human-readable label.
         meta: Additional metadata.
         id: The jump's id; minted as ``jump_{N}`` when not given.
@@ -302,20 +445,18 @@ class Jump(_IdentifiedElement):
     _id_prefix: ClassVar[str] = "jump"
     _dict_keys: ClassVar[tuple[str, ...]] = (
         "id",
-        "from_coordinate",
-        "to_coordinate",
-        "control_type",
-        "condition",
-        "repeat_count",
+        "type",
+        "manifestation",
+        "coordinate",
         "target",
+        "repeat_count",
+        "name",
         "label",
         "meta",
     )
     _dict_defaults: ClassVar[Mapping[str, Any]] = {
-        "control_type": FlowControlElement.repeat_end.value,
-        "condition": ActivationCondition.first_n.value,
         "repeat_count": 1,
-        "target": None,
+        "name": None,
         "label": None,
         "meta": {},
     }
@@ -323,11 +464,11 @@ class Jump(_IdentifiedElement):
     from_coordinate: Coordinate
     to_coordinate: Coordinate
     control_type: FlowControlElement = FlowControlElement.repeat_end
-    condition: ActivationCondition = ActivationCondition.first_n
     repeat_count: int = 1
     target: str | None = None
     label: str | None = None
     meta: dict[str, Any] = field(default_factory=dict)
+    name: str | None = None
 
     @classmethod
     def from_dict(
@@ -336,41 +477,66 @@ class Jump(_IdentifiedElement):
         *,
         unit: TimeUnit,
         number_type: NumberType,
+        markers: Mapping[str, Marker],
     ) -> Jump:
-        """Restore a jump from its object, its coordinates bare axis values.
+        """Restore a jump from its ``jump_from`` element.
 
-        Every key but ``id``, ``from_coordinate`` and ``to_coordinate`` may
-        be left out and reads as its default; keys the library does not know
-        are kept and written back. *unit* and *number_type* describe the
-        timeline's axis.
+        The jump lands on its target's coordinate, or at 0 when a
+        ``repeat_end`` or a D.C. names no target. ``repeat_count`` (only on
+        a ``repeat_end``), ``name``, ``label`` and ``meta`` may be left out;
+        keys the library does not know are kept and written back.
+
+        Args:
+            data: The ``jump_from`` element.
+            unit: The axis's unit.
+            number_type: The axis's number type.
+            markers: The timeline's markers by id, which a target names.
 
         Raises:
-            ValueError: If the object is malformed or a coordinate is
-                represented otherwise than the axis selects.
+            ValueError: If the element is malformed, its manifestation is no
+                ``jump_from``'s, its target names no ``jump_to`` of the
+                timeline or is missing where one is required, it holds a
+                ``repeat_count`` though no ``repeat_end``, or its coordinate
+                is no value of the axis.
         """
-        require_object(data, "a jump", ("id", "from_coordinate", "to_coordinate"))
-        jump_id = read_id(data["id"], "a jump")
-        what = f"jump {jump_id!r}"
-        coordinates = {
-            key: axis_value_from_json(
-                data[key], key=key, owner=jump_id, unit=unit, number_type=number_type
+        jump_id, what, manifestation = _read_element(data, "jump_from", _JUMP_ORIGINS)
+        if manifestation is not FlowControlElement.repeat_end:
+            _refuse_keys(data, what, ("repeat_count",))
+        repeat_count = data.get("repeat_count", 1)
+        if (
+            isinstance(repeat_count, bool)
+            or not isinstance(repeat_count, int)
+            or repeat_count < 1
+        ):
+            raise ValueError(
+                f"{what} has a repeat_count {repeat_count!r}, which is no integer of "
+                "at least 1"
             )
-            for key in ("from_coordinate", "to_coordinate")
-        }
         target = data.get("target")
-        if target is not None and not isinstance(target, str):
-            raise ValueError(f"{what} has a non-string target {target!r}")
+        if target is None:
+            if manifestation not in _TO_START:
+                raise ValueError(
+                    f"{what} ({manifestation.value}) names no target: only a repeat "
+                    "end or a D.C. lands at the timeline's start"
+                )
+            to_coordinate = Coordinate(0, unit, number_type=number_type)
+        elif not isinstance(target, str) or target not in markers:
+            raise ValueError(
+                f"{what} targets {target!r}, which names no jump_to of this "
+                f"timeline. Available jump_to elements: {list(markers)}"
+            )
+        else:
+            to_coordinate = markers[target].coordinate
         jump = cls(
             id=jump_id,
-            control_type=_read_enum(
-                data, "control_type", FlowControlElement, cls, what
-            ),
-            condition=_read_enum(data, "condition", ActivationCondition, cls, what),
-            repeat_count=_read_repeat_count(data, what),
+            from_coordinate=_read_coordinate(data, jump_id, unit, number_type),
+            to_coordinate=to_coordinate,
+            control_type=manifestation,
+            repeat_count=repeat_count,
             target=target,
             label=_read_label(data, what),
             meta=read_meta(data, what),
-            **coordinates,
+            name=read_name(data, what),
         )
         jump._keep_unknown_keys(data)
         return jump
@@ -378,11 +544,31 @@ class Jump(_IdentifiedElement):
     def __post_init__(self) -> None:
         """Mint or validate the id, then validate the jump configuration."""
         super().__post_init__()
+        _check_control_type("Jump", self.control_type, _JUMP_ORIGINS)
         if self.from_coordinate.unit != self.to_coordinate.unit:
             raise ValueError(
                 f"Jump coordinates must have same unit: "
                 f"{self.from_coordinate.unit} != {self.to_coordinate.unit}"
             )
+        if (
+            self.repeat_count != 1
+            and self.control_type is not FlowControlElement.repeat_end
+        ):
+            raise ValueError(
+                f"A {self.control_type.value} jump has no repeat_count: only a "
+                "repeat_end is taken several times"
+            )
+        if self.repeat_count < 1:
+            raise ValueError(f"A jump's repeat_count {self.repeat_count} is below 1")
+
+    @property
+    def condition(self) -> ActivationCondition:
+        """When the jump acts, which its control type decides.
+
+        A ``repeat_end`` on its first ``repeat_count`` passes, a ``to_coda``
+        only after a D.C. or D.S., every other jump always.
+        """
+        return _condition(self.control_type)
 
     @property
     def from_position(self) -> float | Fraction:
@@ -425,15 +611,7 @@ class Jump(_IdentifiedElement):
         Returns:
             True if the jump should be taken on this pass.
         """
-        if self.condition == ActivationCondition.always:
-            return True
-        elif self.condition == ActivationCondition.first_n:
-            return pass_number <= self.repeat_count
-        elif self.condition == ActivationCondition.after_first:
-            return pass_number > 1
-        elif self.condition == ActivationCondition.after_dc_ds:
-            return after_dc_ds
-        return False
+        return _is_active(self.condition, self.repeat_count, pass_number, after_dc_ds)
 
     def remaining_activations(self, pass_number: int) -> int:
         """How many more times this jump can be taken.
@@ -444,32 +622,34 @@ class Jump(_IdentifiedElement):
         Returns:
             Number of remaining activations (0 if no longer active).
         """
-        if self.condition == ActivationCondition.first_n:
+        if self.condition is ActivationCondition.first_n:
             return max(0, self.repeat_count - pass_number + 1)
-        elif self.condition == ActivationCondition.always:
+        elif self.condition is ActivationCondition.always:
             return float("inf")  # type: ignore
         return 0
 
     def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
-        """Return this jump as its JSON object, the coordinates bare values.
+        """Return this jump as its ``jump_from`` element.
+
+        ``target`` is written when the jump names one, ``repeat_count`` on a
+        ``repeat_end`` only. A jump to a position no marker of its timeline
+        lies on is written by its registry, which names a ``jump_to`` there.
 
         Args:
             minimal: Leave out every key at its default.
         """
-        return self._dict_form(
-            {
-                "id": self.id,
-                "from_coordinate": axis_value_to_json(self.from_coordinate),
-                "to_coordinate": axis_value_to_json(self.to_coordinate),
-                "control_type": self.control_type.value,
-                "condition": self.condition.value,
-                "repeat_count": self.repeat_count,
-                "target": self.target,
-                "label": self.label,
-                "meta": deepcopy(self.meta),
-            },
-            minimal=minimal,
-        )
+        fields: dict[str, Any] = {
+            "id": self.id,
+            "type": "jump_from",
+            "manifestation": self.control_type.value,
+            "coordinate": axis_value_to_json(self.from_coordinate),
+        }
+        if self.target is not None:
+            fields["target"] = self.target
+        if self.control_type is FlowControlElement.repeat_end:
+            fields["repeat_count"] = self.repeat_count
+        fields.update(name=self.name, label=self.label, meta=deepcopy(self.meta))
+        return self._dict_form(fields, minimal=minimal)
 
     def __repr__(self) -> str:
         type_str = self.control_type.name
@@ -486,28 +666,53 @@ class Jump(_IdentifiedElement):
 
 @dataclass(frozen=True)
 class Marker(_IdentifiedElement):
-    """A named target position of a timeline (Segno, Coda, ...).
+    """A position a jump lands on: a repeat start, a segno or a coda.
 
     Jumps reference a marker by its ``id``; ``name`` is the display name
-    and the source's marker instance name (``"segno"``, ``"codab"``).
+    and the source's marker instance name (``"segno"``, ``"codab"``). What
+    the marker is, ``control_type``, is stated, never guessed from the name.
+    A manifest writes it as a ``jump_to`` element whose manifestation is its
+    control type.
 
     Attributes:
         coordinate: The marker's position.
         name: Optional display name.
+        control_type: ``repeat_start``, ``segno`` or ``coda``.
+        label: Optional human-readable label.
+        meta: Additional metadata.
         id: The marker's id; minted as ``marker_{N}`` when not given.
 
     Examples:
         >>> from timetoalign.core import Coordinate, TimeUnit
-        >>> Marker(Coordinate(16, TimeUnit.quarters), name="segno").id
+        >>> Marker(
+        ...     Coordinate(16, TimeUnit.quarters),
+        ...     name="segno",
+        ...     control_type=FlowControlElement.segno,
+        ... ).id
         'marker_1'
     """
 
     _id_prefix: ClassVar[str] = "marker"
-    _dict_keys: ClassVar[tuple[str, ...]] = ("id", "name", "coordinate")
-    _dict_defaults: ClassVar[Mapping[str, Any]] = {"name": None}
+    _dict_keys: ClassVar[tuple[str, ...]] = (
+        "id",
+        "type",
+        "manifestation",
+        "coordinate",
+        "name",
+        "label",
+        "meta",
+    )
+    _dict_defaults: ClassVar[Mapping[str, Any]] = {
+        "name": None,
+        "label": None,
+        "meta": {},
+    }
 
     coordinate: Coordinate
     name: str | None = None
+    control_type: FlowControlElement = field(kw_only=True)
+    label: str | None = field(default=None, kw_only=True)
+    meta: dict[str, Any] = field(default_factory=dict, kw_only=True)
 
     @classmethod
     def from_dict(
@@ -517,31 +722,34 @@ class Marker(_IdentifiedElement):
         unit: TimeUnit,
         number_type: NumberType,
     ) -> Marker:
-        """Restore a marker from its object, ``coordinate`` a bare axis value.
+        """Restore a marker from its ``jump_to`` element.
 
-        ``name`` may be left out; keys the library does not know are kept
-        and written back. *unit* and *number_type* describe the timeline's
-        axis.
+        ``name``, ``label`` and ``meta`` may be left out; keys the library
+        does not know are kept and written back. *unit* and *number_type*
+        describe the timeline's axis.
 
         Raises:
-            ValueError: If the object is malformed or the coordinate is
-                represented otherwise than the axis selects.
+            ValueError: If the element is malformed, its manifestation is no
+                ``jump_to``'s, it holds a ``target`` or ``repeat_count``, or
+                its coordinate is no value of the axis.
         """
-        require_object(data, "a marker", ("id", "coordinate"))
-        marker_id = read_id(data["id"], "a marker")
+        marker_id, what, manifestation = _read_element(data, "jump_to", _JUMP_TARGETS)
+        _refuse_keys(data, what, ("target", "repeat_count"))
         marker = cls(
             id=marker_id,
-            name=read_name(data, f"marker {marker_id!r}"),
-            coordinate=axis_value_from_json(
-                data["coordinate"],
-                key="coordinate",
-                owner=marker_id,
-                unit=unit,
-                number_type=number_type,
-            ),
+            name=read_name(data, what),
+            control_type=manifestation,
+            label=_read_label(data, what),
+            meta=read_meta(data, what),
+            coordinate=_read_coordinate(data, marker_id, unit, number_type),
         )
         marker._keep_unknown_keys(data)
         return marker
+
+    def __post_init__(self) -> None:
+        """Mint or validate the id, then refuse a control type no marker has."""
+        super().__post_init__()
+        _check_control_type("Marker", self.control_type, _JUMP_TARGETS)
 
     @property
     def position(self) -> float | Fraction:
@@ -549,16 +757,20 @@ class Marker(_IdentifiedElement):
         return self.coordinate.value
 
     def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
-        """Return this marker as its JSON object, the coordinate a bare value.
+        """Return this marker as its ``jump_to`` element.
 
         Args:
-            minimal: Leave out ``name`` at its default.
+            minimal: Leave out every key at its default.
         """
         return self._dict_form(
             {
                 "id": self.id,
-                "name": self.name,
+                "type": "jump_to",
+                "manifestation": self.control_type.value,
                 "coordinate": axis_value_to_json(self.coordinate),
+                "name": self.name,
+                "label": self.label,
+                "meta": deepcopy(self.meta),
             },
             minimal=minimal,
         )
@@ -575,52 +787,13 @@ class Marker(_IdentifiedElement):
 # region FlowControlRegistry
 
 
-def _read_enum(
-    data: Mapping[str, Any], key: str, enum: type[Any], element: type[Any], what: str
-) -> Any:
-    """Read an optional enum member by value, its default when absent.
-
-    Raises:
-        ValueError: If the value names no member.
-    """
-    value = data.get(key, element._dict_defaults[key])
-    try:
-        return enum(value)
-    except (TypeError, ValueError) as error:
-        raise ValueError(f"{what} has an unknown {key} {value!r}") from error
-
-
-def _read_repeat_count(data: Mapping[str, Any], what: str) -> int:
-    """Read an optional ``repeat_count``, 1 when absent.
-
-    Raises:
-        ValueError: If the value is not an integer.
-    """
-    value = data.get("repeat_count", 1)
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ValueError(f"{what} has a non-integer repeat_count {value!r}")
-    return value
-
-
-def _read_label(data: Mapping[str, Any], what: str) -> str | None:
-    """Read an optional ``label``, null when absent.
-
-    Raises:
-        ValueError: If the label is neither a string nor null.
-    """
-    label = data.get("label")
-    if label is not None and not isinstance(label, str):
-        raise ValueError(f"{what} has a non-string label {label!r}")
-    return label
-
-
 def _ordered(elements: list[Any]) -> list[Any]:
     """Sort flow-control elements by position, keeping insertion order on ties."""
     return sorted(elements, key=lambda element: element.position)
 
 
 @dataclass
-class FlowControlRegistry(_OpenObject):
+class FlowControlRegistry:
     """Registry of all flow control events for a timeline.
 
     This class manages the collection of Breaks, Jumps and Markers for a
@@ -628,7 +801,8 @@ class FlowControlRegistry(_OpenObject):
     element carries an id unique within the registry and, once the registry
     belongs to a timeline, within that timeline's whole manifest: an element
     whose minted id is taken is stored under a freshly minted id, and one
-    whose given id is taken is refused.
+    whose given id is taken is refused. A manifest writes the registry as
+    the timeline's ``flow_control`` array.
 
     Attributes:
         breaks: List of Break events, ordered by coordinate.
@@ -640,18 +814,17 @@ class FlowControlRegistry(_OpenObject):
         >>> registry = FlowControlRegistry(unit=TimeUnit.quarters)
         >>> registry.add_break(Break(Coordinate(64, TimeUnit.quarters)))
         Break(section_break @ 64)
-        >>> registry.add_marker(Marker(Coordinate(16, TimeUnit.quarters), name="segno"))
+        >>> segno = FlowControlElement.segno
+        >>> registry.add_marker(
+        ...     Marker(Coordinate(16, TimeUnit.quarters), name="segno", control_type=segno)
+        ... )
         Marker('marker_1', name='segno' @ 16)
-        >>> registry.add_marker(Marker(Coordinate(32, TimeUnit.quarters), name="coda")).id
+        >>> coda = FlowControlElement.coda
+        >>> registry.add_marker(
+        ...     Marker(Coordinate(32, TimeUnit.quarters), name="coda", control_type=coda)
+        ... ).id
         'marker_2'
     """
-
-    _dict_keys: ClassVar[tuple[str, ...]] = ("breaks", "jumps", "markers")
-    _dict_defaults: ClassVar[Mapping[str, Any]] = {
-        "breaks": [],
-        "jumps": [],
-        "markers": [],
-    }
 
     breaks: list[Break] = field(default_factory=list)
     jumps: list[Jump] = field(default_factory=list)
@@ -666,27 +839,29 @@ class FlowControlRegistry(_OpenObject):
     @classmethod
     def from_dict(
         cls,
-        data: dict[str, Any],
+        data: list[dict[str, Any]],
         *,
         unit: TimeUnit | str,
         number_type: NumberType | str | None = None,
     ) -> FlowControlRegistry:
-        """Restore a registry bound to a timeline's axis from its object.
+        """Restore a registry bound to a timeline's axis from its ``flow_control``.
 
-        The coordinates are bare values on the axis that *unit* and
-        *number_type* (the unit's own when None) describe; ``breaks``,
-        ``jumps`` and ``markers`` may each be left out. Every element is
-        added through the public add methods, markers before jumps. Keys the
-        library does not know are kept and written back.
+        Each element of the array is a ``flow_marker`` (a :class:`Break`),
+        a ``jump_from`` (a :class:`Jump`) or a ``jump_to`` (a
+        :class:`Marker`), its coordinate a bare value on the axis that
+        *unit* and *number_type* (the unit's own when None) describe.
+        Elements are added through the public add methods, markers before
+        jumps, in any order the array lists them. Keys the library does not
+        know are kept on each element and written back.
 
         Args:
-            data: The ``flow_control`` object.
+            data: The ``flow_control`` array.
             unit: The axis's unit.
             number_type: The axis's number type, or None for the unit's own.
 
         Raises:
-            ValueError: If the object is malformed or a coordinate is
-                represented otherwise than the axis selects.
+            ValueError: If the array or an element is malformed, an element's
+                type is unknown, or a jump's target names no ``jump_to``.
         """
         resolved_unit = TimeUnit(unit)
         resolved_number_type = (
@@ -694,16 +869,30 @@ class FlowControlRegistry(_OpenObject):
             if number_type is None
             else NumberType(number_type)
         )
-        require_object(data, "a flow_control")
+        if not isinstance(data, list):
+            raise ValueError("the flow_control must be an array")
         axis = {"unit": resolved_unit, "number_type": resolved_number_type}
+        by_type: dict[str, list[dict[str, Any]]] = {
+            "flow_marker": [],
+            "jump_to": [],
+            "jump_from": [],
+        }
+        for item in data:
+            require_object(item, "a flow-control element", ("type",))
+            if item["type"] not in by_type:
+                raise ValueError(
+                    f"a flow-control element has the unknown type {item['type']!r}; "
+                    f"an element is one of {sorted(by_type)}"
+                )
+            by_type[item["type"]].append(item)
         registry = cls(unit=resolved_unit, number_type=resolved_number_type)
-        for brk in read_list(data, "breaks", "the flow_control"):
-            registry.add_break(Break.from_dict(brk, **axis))
-        for marker in read_list(data, "markers", "the flow_control"):
-            registry.add_marker(Marker.from_dict(marker, **axis))
-        for jump in read_list(data, "jumps", "the flow_control"):
-            registry.add_jump(Jump.from_dict(jump, **axis))
-        registry._keep_unknown_keys(data)
+        for item in by_type["flow_marker"]:
+            registry.add_break(Break.from_dict(item, **axis))
+        for item in by_type["jump_to"]:
+            registry.add_marker(Marker.from_dict(item, **axis))
+        markers = {marker.id: marker for marker in registry.markers}
+        for item in by_type["jump_from"]:
+            registry.add_jump(Jump.from_dict(item, **axis, markers=markers))
         return registry
 
     def __post_init__(self) -> None:
@@ -1010,46 +1199,93 @@ class FlowControlRegistry(_OpenObject):
         finally:
             self._admit = owner
 
-    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
-        """Return all control events as the ``flow_control`` object.
+    def to_dict(
+        self, *, minimal: bool = False, taken: Collection[str] = ()
+    ) -> list[dict[str, Any]]:
+        """Return all control events as the ``flow_control`` array.
 
-        The entries are written in canonical order, whatever order they were
-        added in: ``breaks`` by coordinate, ``jumps`` by from coordinate and
-        then to coordinate, ``markers`` by coordinate, each then by id,
-        values compared exactly and ids by Unicode code point. The
-        registry's own lists are not reordered.
+        Breaks are written as ``flow_marker``, markers as ``jump_to`` and
+        jumps as ``jump_from`` elements, in canonical order whatever order
+        they were added in: by coordinate, then by id, values compared
+        exactly and ids by Unicode code point. A jump names its target; a
+        jump without one names the marker at its destination, or, where
+        none lies, a ``jump_to`` written there whose manifestation follows
+        from the jump (a repeat end lands on a repeat start, a D.S. on a
+        segno, a To Coda and a D.C. al Coda on a coda), with an id minted
+        around *taken* and the registry's own ids; a repeat end or a D.C.
+        landing at 0 names none. The registry's own lists are not changed.
 
         Args:
-            minimal: Leave out every key at its default, in the elements too.
+            minimal: Leave out every key at its default.
+            taken: Ids held beside the registry's own (its timeline's
+                manifest), which a minted ``jump_to`` avoids.
+
+        Raises:
+            ValueError: If a jump's target lies elsewhere than the jump
+                lands, or a D.C. or D.C. al Fine lands elsewhere than 0.
         """
-        return self._dict_form(
-            {
-                "breaks": [
-                    brk.to_dict(minimal=minimal)
-                    for brk in sorted(
-                        self.breaks, key=lambda brk: (brk.position, brk.id)
-                    )
-                ],
-                "jumps": [
-                    jump.to_dict(minimal=minimal)
-                    for jump in sorted(
-                        self.jumps,
-                        key=lambda jump: (
-                            jump.from_position,
-                            jump.to_position,
-                            jump.id,
-                        ),
-                    )
-                ],
-                "markers": [
-                    marker.to_dict(minimal=minimal)
-                    for marker in sorted(
-                        self.markers, key=lambda marker: (marker.position, marker.id)
-                    )
-                ],
-            },
-            minimal=minimal,
+        occupied = {*taken, *(element.id for element in self._elements())}
+        landings: dict[tuple[Any, FlowControlElement], dict[str, Any]] = {}
+        elements: list[tuple[Any, str, dict[str, Any]]] = [
+            (element.position, element.id, element.to_dict(minimal=minimal))
+            for element in (*self.breaks, *self.markers)
+        ]
+        for jump in self.jumps:
+            target = self._target_of(jump, landings, occupied, minimal=minimal)
+            if target != jump.target:
+                jump = replace(jump, target=target)
+            elements.append(
+                (jump.from_position, jump.id, jump.to_dict(minimal=minimal))
+            )
+        elements.extend(
+            (landing_key[0], landing["id"], landing)
+            for landing_key, landing in landings.items()
         )
+        return [written for _, _, written in sorted(elements, key=lambda e: e[:2])]
+
+    def _target_of(
+        self,
+        jump: Jump,
+        landings: dict[tuple[Any, FlowControlElement], dict[str, Any]],
+        occupied: set[str],
+        *,
+        minimal: bool,
+    ) -> str | None:
+        """Return the id of the ``jump_to`` *jump* lands on, writing one if needed.
+
+        Raises:
+            ValueError: As :meth:`to_dict`.
+        """
+        if jump.target is not None:
+            marker = next(m for m in self.markers if m.id == jump.target)
+            if marker.position != jump.to_position:
+                raise ValueError(
+                    f"jump {jump.id!r} lands at {jump.to_position}, but its target "
+                    f"{marker.id!r} lies at {marker.position}"
+                )
+            return jump.target
+        if jump.to_position == 0 and jump.control_type in _TO_START:
+            return None
+        landing = _LANDING.get(jump.control_type)
+        if landing is None:
+            raise ValueError(
+                f"jump {jump.id!r} ({jump.control_type.value}) lands at "
+                f"{jump.to_position}, not at the timeline's start"
+            )
+        here = sorted(
+            (m for m in self.markers if m.position == jump.to_position),
+            key=lambda m: (m.control_type is not landing, m.id),
+        )
+        if here:
+            return here[0].id
+        key = (jump.to_position, landing)
+        if key not in landings:
+            marker_id = mint_id(Marker._id_prefix, occupied)
+            occupied.add(marker_id)
+            landings[key] = Marker(
+                jump.to_coordinate, control_type=landing, id=marker_id
+            ).to_dict(minimal=minimal)
+        return landings[key]["id"]
 
     def __repr__(self) -> str:
         return (

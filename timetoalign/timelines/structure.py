@@ -30,9 +30,12 @@ from timetoalign.core import (
     Tempo,
     TimeUnit,
 )
+from timetoalign.core.ids import _OpenObject, mint_id, validate_id
 from timetoalign.core.retrieval import coordinate_from_dict, coordinate_to_dict
 from timetoalign.core.time import number_from_json, number_to_json, struct_to_rational
+from timetoalign.maps.base import MEASURE_MAP_ID_PREFIX
 from timetoalign.timelines.flow import AtomicSection
+from timetoalign.timelines.manifest import read_id, read_meta, read_name, require_object
 
 if TYPE_CHECKING:
     from timetoalign.loader.score.stores.measures import MeasureData
@@ -117,7 +120,7 @@ def _table_successors(value: Any) -> list[int] | None:
     return [part for part in parts if part != -1]
 
 
-class MeasureMap:
+class MeasureMap(_OpenObject):
     """An immutable sequence of measures in printed order.
 
     A measure's ``id`` is its Measure Map row ``ID``: ``str(count)`` unless a
@@ -126,12 +129,25 @@ class MeasureMap:
     is followed by the next measure in printed order, and the last one by
     none.
 
-    A map read from a manifest keeps the keys of each row that the row form
-    does not define, by measure, and writes them back in that measure's row;
-    they take no part in equality.
+    In a manifest a measure map is an entry of ``measure_maps``: an ``id``,
+    an optional ``name`` and ``meta``, and its compressed ``rows``. A map
+    built without an id mints ``measuremap_1``, which a manifest's writer
+    mints again should it collide. Identity takes no part in equality, nor
+    do the keys of each row that the row form does not define, which a map
+    read from a manifest keeps by measure and writes back in that measure's
+    row: two maps are equal when their measures are.
     """
 
+    _dict_keys: ClassVar[tuple[str, ...]] = ("id", "name", "meta", "rows")
+    _dict_defaults: ClassVar[Mapping[str, Any]] = {"name": None, "meta": {}}
+
     _unknown_row_keys: Mapping[str, Mapping[str, Any]] = MappingProxyType({})
+    # The identity of a map that never went through __init__ (a section's
+    # slice of its parent map): minted, unnamed.
+    _id: str = mint_id(MEASURE_MAP_ID_PREFIX, ())
+    _id_minted: bool = True
+    _name: str | None = None
+    _meta: Mapping[str, Any] = MappingProxyType({})
 
     @classmethod
     def from_measure_data(cls, data: MeasureData) -> MeasureMap:
@@ -194,33 +210,40 @@ class MeasureMap:
         return cls.from_expanded_rows(expanded)
 
     @classmethod
-    def from_dict(cls, data: list[dict[str, Any]]) -> MeasureMap:
-        """Restore a map from compressed Measure Map rows.
+    def from_dict(cls, data: dict[str, Any]) -> MeasureMap:
+        """Restore a map from its ``measure_maps`` entry.
 
-        This is a manifest's ``measure_map``: a non-empty list of rows, each
-        carrying ``count`` or ``ID``, with a non-negative ``qstamp`` and a
-        strictly positive ``actual_length`` and ``nominal_length`` where it
+        The entry holds the map's ``id``, an optional ``name`` and ``meta``
+        and its ``rows``: a non-empty list of compressed Measure Map rows,
+        each carrying ``count`` or ``ID``, with a non-negative ``qstamp`` and
+        a strictly positive ``actual_length`` and ``nominal_length`` where it
         states them. A row's keys outside the row form (a ``tempo`` among
         them, which a document cannot hold as a :class:`Tempo`) are kept and
-        written back in that measure's row.
+        written back in that measure's row, and the entry's own unknown keys
+        with the entry.
 
         Args:
-            data: JSON-safe list of compressed Measure Map rows.
+            data: A ``measure_maps`` entry.
 
         Returns:
             The restored immutable measure map.
 
         Raises:
-            ValueError: If *data* is not a non-empty row list, a row carries
-                neither ``count`` nor ``ID``, states a negative ``qstamp`` or
-                a length that is not positive, or breaks a rule of
-                :meth:`expand_rows`.
+            ValueError: If *data* is no object holding ``id`` and ``rows``,
+                the id is invalid, ``rows`` is not a non-empty row list, a row
+                carries neither ``count`` nor ``ID``, states a negative
+                ``qstamp`` or a length that is not positive, or breaks a rule
+                of :meth:`expand_rows`.
         """
-        if not isinstance(data, list) or not data:
+        require_object(data, "a measure map", ("id", "rows"))
+        measure_map_id = read_id(data["id"], "a measure map")
+        what = f"measure map {measure_map_id!r}"
+        rows = data["rows"]
+        if not isinstance(rows, list) or not rows:
             raise ValueError(
-                "MeasureMap document form must be a non-empty list of Measure Map rows"
+                f"the rows of {what} must be a non-empty list of Measure Map rows"
             )
-        for position, row in enumerate(data, start=1):
+        for position, row in enumerate(rows, start=1):
             if not isinstance(row, dict):
                 raise ValueError(f"Measure Map row {position} is not an object")
             if "count" not in row and "ID" not in row:
@@ -239,7 +262,13 @@ class MeasureMap:
                         f"Measure Map row {position} states {key} {length}, which "
                         "is not positive"
                     )
-        return cls.from_rows(data, keep_unknown_keys=True)
+        measure_map = cls.from_rows(rows, keep_unknown_keys=True)
+        measure_map._id = measure_map_id
+        measure_map._id_minted = False
+        measure_map._name = read_name(data, what)
+        measure_map._meta = read_meta(data, what)
+        measure_map._keep_unknown_keys(data)
+        return measure_map
 
     @classmethod
     def expand_rows(
@@ -561,15 +590,26 @@ class MeasureMap:
         instance._measures = tuple(measures)
         return instance
 
-    def __init__(self, measures: Iterable[Measure]) -> None:
+    def __init__(
+        self,
+        measures: Iterable[Measure],
+        *,
+        id: str | None = None,  # noqa: A002 - the manifest's key
+        name: str | None = None,
+        meta: Mapping[str, Any] | None = None,
+    ) -> None:
         """Normalize an immutable sequence of measures.
 
         Args:
             measures: Measures in printed order.
+            id: The map's id in a manifest, kept verbatim; minted
+                ``measuremap_1`` when None.
+            name: The map's display name.
+            meta: The map's free metadata.
 
         Raises:
-            ValueError: If measure identifiers are not unique, or a ``next``
-                names no measure of the map.
+            ValueError: If measure identifiers are not unique, a ``next``
+                names no measure of the map, or *id* is not a valid id.
 
         Warns:
             UserWarning: If a stated count or qstamp disagrees with the value
@@ -619,6 +659,10 @@ class MeasureMap:
                     else None
                 )
         self._measures = tuple(normalized)
+        self._id_minted = id is None
+        self._id = mint_id(MEASURE_MAP_ID_PREFIX, ()) if id is None else validate_id(id)
+        self._name = name
+        self._meta = dict(meta) if meta else {}
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, MeasureMap):
@@ -656,6 +700,21 @@ class MeasureMap:
     def measures(self) -> tuple[Measure, ...]:
         """Measures in printed order."""
         return self._measures
+
+    @property
+    def id(self) -> str:  # noqa: A003 - the manifest's key
+        """The map's id in a manifest."""
+        return self._id
+
+    @property
+    def name(self) -> str | None:
+        """The map's display name, or None."""
+        return self._name
+
+    @property
+    def meta(self) -> dict[str, Any]:
+        """The map's free metadata."""
+        return dict(self._meta)
 
     @property
     def total_actual_length(self) -> Fraction | None:
@@ -792,13 +851,25 @@ class MeasureMap:
             or row_for(index) != default_successor(index - 1)
         ]
 
-    def to_dict(self) -> list[dict[str, Any]]:
-        """Return this map as compressed JSON-safe Measure Map rows.
+    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
+        """Return this map as its ``measure_maps`` entry.
+
+        Args:
+            minimal: Leave out ``name`` and ``meta`` at their defaults.
 
         Returns:
-            The compressed Measure Map row list.
+            ``{"id", "name", "meta", "rows"}``, the rows compressed, then the
+            entry's unknown keys kept when it was read.
         """
-        return self.to_rows()
+        return self._dict_form(
+            {
+                "id": self._id,
+                "name": self._name,
+                "meta": deepcopy(dict(self._meta)),
+                "rows": self.to_rows(),
+            },
+            minimal=minimal,
+        )
 
 
 class SectionHierarchy:

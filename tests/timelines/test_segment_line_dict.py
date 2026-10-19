@@ -71,9 +71,7 @@ def _object(
         "children": children,
         "conversion_maps": [],
         "regions": [],
-        "flow_control": {"breaks": [], "jumps": [], "markers": []},
-        "measure_map": None,
-        "metric_hierarchy": None,
+        "flow_control": [],
     }
 
 
@@ -85,6 +83,7 @@ def _manifest(timeline: dict[str, Any]) -> dict[str, Any]:
         "meta": {},
         "timelines": [timeline],
         "groups": [],
+        "measure_maps": [],
     }
 
 

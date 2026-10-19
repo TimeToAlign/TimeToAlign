@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Iterator
-from fractions import Fraction
 from typing import Any
 
 import pytest
 
-from timetoalign.core import Coordinate, TimeUnit
+from timetoalign.core import Coordinate, FlowControlElement, TimeUnit
 from timetoalign.loader.alignment import ParangonadaLoader
 from timetoalign.loader.graphical.iiif import IIIFManifestLoader
 from timetoalign.loader.midi.score import ScoreMidiLoader
@@ -37,6 +36,8 @@ from timetoalign.timelines import (
 )
 from timetoalign.timelines.flowcontrol import Break, Jump, Marker
 from timetoalign.timelines.regions import Region
+
+SEGNO = FlowControlElement.segno
 
 SCORE = ensure_data("score")
 MIDI = ensure_data("midi")
@@ -82,7 +83,7 @@ def _q(value: Any) -> Coordinate:
         (lambda: Region(_q(0), _q(4)), "region_1"),
         (lambda: Break(_q(4)), "break_1"),
         (lambda: Jump(_q(4), _q(0)), "jump_1"),
-        (lambda: Marker(_q(0)), "marker_1"),
+        (lambda: Marker(_q(0), control_type=SEGNO), "marker_1"),
     ],
 )
 def test_standalone_elements_mint_their_first_id(
@@ -107,7 +108,9 @@ def _reference(*, reverse: bool = False) -> Timeline:
     ]
     for step in reversed(steps) if reverse else steps:
         step()
-    marker = root.flow_control.add_marker(Marker(_q(8), name="segno"))
+    marker = root.flow_control.add_marker(
+        Marker(_q(8), name="segno", control_type=SEGNO)
+    )
     root.flow_control.add_jump(Jump(_q(24), _q(8), target=marker.id))
     return root
 
@@ -130,9 +133,13 @@ def _ids(manifest: dict[str, Any]) -> dict[str, Any]:
         "timeline": payload["id"],
         "children": {child["id"] for child in payload["children"]},
         "regions": {entry["id"] for entry in payload["regions"]},
-        "breaks": {entry["id"] for entry in flow["breaks"]},
-        "markers": [entry["id"] for entry in flow["markers"]],
-        "jumps": [(entry["id"], entry["target"]) for entry in flow["jumps"]],
+        "breaks": {entry["id"] for entry in flow if entry["type"] == "flow_marker"},
+        "markers": [entry["id"] for entry in flow if entry["type"] == "jump_to"],
+        "jumps": [
+            (entry["id"], entry.get("target"))
+            for entry in flow
+            if entry["type"] == "jump_from"
+        ],
         "maps": [entry["id"] for entry in payload["conversion_maps"]],
     }
 
@@ -190,7 +197,9 @@ def _given_manifest() -> Timeline:
     root.create_region(0, 8, id="a", name="A")
     root.add_conversion_map(ScalarMap(2, uid="raw"))
     root.flow_control.add_break(Break(_q(8), id="b1"))
-    root.flow_control.add_marker(Marker(_q(8), id="segno", name="segno"))
+    root.flow_control.add_marker(
+        Marker(_q(8), id="segno", name="segno", control_type=SEGNO)
+    )
     root.flow_control.add_jump(Jump(_q(24), _q(8), id="ds", target="segno"))
     return root
 
@@ -225,7 +234,7 @@ class TestGivenIds:
             lambda uid: Region(_q(0), _q(4), id=uid),
             lambda uid: Break(_q(4), id=uid),
             lambda uid: Jump(_q(4), _q(0), id=uid),
-            lambda uid: Marker(_q(0), id=uid),
+            lambda uid: Marker(_q(0), id=uid, control_type=SEGNO),
         ],
         ids=["timeline", "map", "region", "break", "jump", "marker"],
     )
@@ -279,9 +288,11 @@ class TestCollisions:
 
     def test_a_marker_minted_again_takes_its_jumps_along(self) -> None:
         root = ContinuousLogicalTimeline(length=16)
-        root.flow_control.add_marker(Marker(_q(0)))
+        root.flow_control.add_marker(Marker(_q(0), control_type=SEGNO))
         child = ContinuousLogicalTimeline(length=8)
-        marker = child.flow_control.add_marker(Marker(_q(2), name="segno"))
+        marker = child.flow_control.add_marker(
+            Marker(_q(2), name="segno", control_type=SEGNO)
+        )
         child.flow_control.add_jump(Jump(_q(6), _q(2), target=marker.id))
         root.add_child(child, 0)
         assert [m.id for m in child.flow_control.markers] == ["marker_2"]
@@ -368,9 +379,11 @@ class TestKeyedById:
             .create_timeline()
         )
         flow = timeline.flow_control
-        assert [(m.id, m.name, m.coordinate) for m in flow.markers] == [
-            ("marker_1", "segno", _q(12)),
-            ("marker_2", "fine", _q(Fraction(81, 2))),
+        assert [(m.id, m.control_type, m.name, m.coordinate) for m in flow.markers] == [
+            ("marker_1", SEGNO, "segno", _q(12)),
+        ]
+        assert [(b.control_type, b.coordinate) for b in flow.breaks] == [
+            (FlowControlElement.fine, _q(42))
         ]
         dal_segno = [j for j in flow.jumps if j.target is not None]
         assert [(j.control_type.value, j.target) for j in dal_segno] == [
@@ -399,9 +412,8 @@ def _elements(payload: dict[str, Any]) -> Iterator[str]:
         yield entry["id"]
     for entry in payload["regions"]:
         yield entry["id"]
-    for kind in ("breaks", "markers", "jumps"):
-        for entry in payload["flow_control"][kind]:
-            yield entry["id"]
+    for entry in payload["flow_control"]:
+        yield entry["id"]
     for child in payload["children"]:
         yield from _elements(child)
 

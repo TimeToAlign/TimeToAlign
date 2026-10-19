@@ -12,6 +12,8 @@ The key abstractions are:
 - ChainMap: Composition of multiple maps
 - PiecewiseMap: Region-based mapping with different maps for different intervals
 - CombinationMap: Multi-output mapping (e.g., (x, y) or (measure, beat))
+- MeasureRecordMap, MeasureNumberMap, FloatingMeasureMap, MeasureBeatMap:
+  views reading a measure map
 - RotationMap: Periodic/cyclic patterns via modular arithmetic
 - FloorMap: Integer floor division (e.g., measure numbers)
 
@@ -39,6 +41,12 @@ from .interval import (
     QuartersToMeasureNumber,
 )
 from .linear import LinearMap, ScalarMap, ShiftMap
+from .measures import (
+    FloatingMeasureMap,
+    MeasureBeatMap,
+    MeasureNumberMap,
+    MeasureRecordMap,
+)
 from .meter import BeatInMeasureMap, MetricalPositionMap, MetricMap
 from .periodic import FloorMap, RotationMap
 from .table import TableMap
@@ -68,6 +76,11 @@ __all__ = [
     # Periodic/floor maps
     "RotationMap",
     "FloorMap",
+    # Measure views
+    "MeasureRecordMap",
+    "MeasureNumberMap",
+    "FloatingMeasureMap",
+    "MeasureBeatMap",
     # Meter maps
     "MetricMap",
     "BeatInMeasureMap",

@@ -85,11 +85,7 @@ def test_pickup_grid_change_and_trailing_measure_are_exact(tmp_path: Path) -> No
     assert (first_tempo.numerator, first_tempo.denominator) == (4, 4)
     assert [measure.id for measure in measures] == ["1", "2", "3", "4"]
     assert len(measure_map) == 4
-    assert timeline.flow_control.to_dict() == {
-        "breaks": [],
-        "jumps": [],
-        "markers": [],
-    }
+    assert timeline.flow_control.to_dict() == []
     assert [measure.number for measure in measures] == [0, 1, 2, 3]
     assert isinstance(measures[0], MeasureConstituent)
     assert measures[0].offset_within_measure == Fraction(3)
@@ -118,7 +114,11 @@ def test_pickup_grid_change_and_trailing_measure_are_exact(tmp_path: Path) -> No
         "POSITION_MARK": [{"Name": "cue", "Type": "0", "Start": "1.25", "Num": "0"}],
     }
     payload = timeline.to_dict()
-    assert payload["timelines"][0]["measure_map"] is None
+    assert payload["measure_maps"] == []
+    assert [cmap["type"] for cmap in payload["timelines"][0]["conversion_maps"]] == [
+        "LinearMap",
+        "TableMap",
+    ]
     restored = Timeline.from_dict(json.loads(json.dumps(payload)))
     assert restored.to_dict() == payload
 

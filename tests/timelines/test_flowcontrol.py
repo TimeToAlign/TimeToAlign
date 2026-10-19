@@ -8,7 +8,6 @@ from fractions import Fraction
 import pytest
 
 from timetoalign.core import (
-    ActivationCondition,
     Coordinate,
     FlowControlElement,
     IdCoordinate,
@@ -32,8 +31,6 @@ def _break(unit: TimeUnit = TimeUnit.quarters) -> Break:
     return Break(
         Coordinate(Fraction(3, 2), unit),
         control_type=FlowControlElement.fine,
-        condition=ActivationCondition.after_dc_ds,
-        repeat_count=2,
         label="fine label",
         name="fine2",
         meta={"source": "fixture"},
@@ -45,12 +42,18 @@ def _jump(unit: TimeUnit = TimeUnit.quarters, target: str | None = None) -> Jump
         Coordinate(Fraction(7, 3), unit),
         Coordinate(Fraction(1, 3), unit),
         control_type=FlowControlElement.dal_segno_al_coda,
-        condition=ActivationCondition.after_first,
-        repeat_count=3,
         target=target,
+        name="ds",
         label="D.S. al Coda",
         meta={"source": "fixture"},
     )
+
+
+SEGNO = FlowControlElement.segno
+
+
+def _segno(unit: TimeUnit = TimeUnit.quarters) -> Marker:
+    return Marker(Coordinate(Fraction(1, 3), unit), id="segno2", control_type=SEGNO)
 
 
 class TestBoundRegistry:
@@ -71,7 +74,11 @@ class TestBoundRegistry:
                 registry.add_jump(_jump())
             else:
                 registry.add_marker(
-                    Marker(Coordinate(1, TimeUnit.quarters), name="segno")
+                    Marker(
+                        Coordinate(1, TimeUnit.quarters),
+                        name="segno",
+                        control_type=FlowControlElement.segno,
+                    )
                 )
 
     def test_fraction_axis_reexpresses_float_coordinate_exactly(self) -> None:
@@ -82,6 +89,7 @@ class TestBoundRegistry:
             Marker(
                 Coordinate(1.5, TimeUnit.quarters, number_type=NumberType.float),
                 name="segno",
+                control_type=SEGNO,
             )
         )
         assert registry.markers[0].coordinate == Coordinate(
@@ -94,7 +102,11 @@ class TestBoundRegistry:
             unit=TimeUnit.seconds, number_type=NumberType.float
         )
         registry.add_marker(
-            Marker(Coordinate(Fraction(1, 3), TimeUnit.seconds), name="coda")
+            Marker(
+                Coordinate(Fraction(1, 3), TimeUnit.seconds),
+                name="coda",
+                control_type=FlowControlElement.coda,
+            )
         )
         assert registry.markers[0].coordinate.value == 0.3333333333333333
         assert registry.markers[0].coordinate.number_type is NumberType.float
@@ -155,7 +167,11 @@ class TestBoundRegistry:
         registry = FlowControlRegistry()
         brk = _break()
         jump = _jump()
-        marker = Marker(Coordinate(Fraction(5, 3), TimeUnit.quarters), name="segno")
+        marker = Marker(
+            Coordinate(Fraction(5, 3), TimeUnit.quarters),
+            name="segno",
+            control_type=SEGNO,
+        )
         registry.add_break(brk)
         registry.add_jump(jump)
         registry.add_marker(marker)
@@ -167,13 +183,19 @@ class TestBoundRegistry:
     def test_unbound_marker_keeps_an_id_coordinate_identical(self) -> None:
         registry = FlowControlRegistry()
         marker = IdCoordinate(Fraction(5, 3), TimeUnit.quarters, timeline_id="score")
-        registry.add_marker(Marker(marker, name="segno"))
+        registry.add_marker(
+            Marker(marker, name="segno", control_type=FlowControlElement.segno)
+        )
         assert registry.markers[0].coordinate is marker
         assert type(registry.markers[0].coordinate) is IdCoordinate
         with pytest.raises(
             ValueError, match="A raw marker coordinate requires a bound registry unit"
         ):
-            registry.add_marker(Marker(Fraction(5, 3), name="coda"))
+            registry.add_marker(
+                Marker(
+                    Fraction(5, 3), name="coda", control_type=FlowControlElement.coda
+                )
+            )
 
     def test_constructor_content_does_not_alias_or_reorder_caller_containers(
         self,
@@ -182,7 +204,7 @@ class TestBoundRegistry:
         early = Break(Coordinate(1, TimeUnit.quarters))
         given_breaks = [late, early]
         given_jumps = [_jump()]
-        given_markers = [Marker(Coordinate(Fraction(1, 3), TimeUnit.quarters))]
+        given_markers = [_segno()]
         registry = FlowControlRegistry(
             breaks=given_breaks, jumps=given_jumps, markers=given_markers
         )
@@ -212,10 +234,14 @@ class TestFlowControlJson:
         assert restored.to_dict() == payload
 
     def test_jump_round_trip(self) -> None:
-        jump = _jump()
+        segno = _segno()
+        jump = _jump(target=segno.id)
         payload = json.loads(json.dumps(jump.to_dict()))
         restored = Jump.from_dict(
-            payload, unit=TimeUnit.quarters, number_type=NumberType.fraction
+            payload,
+            unit=TimeUnit.quarters,
+            number_type=NumberType.fraction,
+            markers={segno.id: segno},
         )
         assert restored == jump
         assert restored.to_dict() == payload
@@ -225,9 +251,7 @@ class TestFlowControlJson:
             unit=TimeUnit.quarters, number_type=NumberType.fraction
         )
         registry.add_break(_break())
-        registry.add_marker(
-            Marker(Coordinate(Fraction(1, 3), TimeUnit.quarters), id="segno2")
-        )
+        registry.add_marker(_segno())
         registry.add_jump(_jump(target="segno2"))
         payload = json.loads(json.dumps(registry.to_dict()))
         restored = FlowControlRegistry.from_dict(
@@ -245,15 +269,21 @@ class TestFlowControlJson:
         registry.add_break(_break())
         copied = registry.copy()
         copied.add_marker(
-            Marker(Coordinate(Fraction(1, 3), TimeUnit.quarters), name="segno")
+            Marker(
+                Coordinate(Fraction(1, 3), TimeUnit.quarters),
+                name="segno",
+                control_type=SEGNO,
+            )
         )
-        registry.add_jump(_jump())
+        registry.add_marker(_segno())
+        registry.add_jump(_jump(target="segno2"))
         assert copied is not registry
         assert copied.unit is TimeUnit.quarters
         assert copied.number_type is NumberType.fraction
         assert copied.breaks == registry.breaks
         assert copied.jumps == []
-        assert registry.markers == []
+        assert [marker.name for marker in copied.markers] == ["segno"]
+        assert [marker.id for marker in registry.markers] == ["segno2"]
 
 
 @pytest.mark.parametrize(

@@ -1,7 +1,8 @@
 """Named convenience classes for common unit conversions.
 
 These classes wrap ScalarMap with preset source/target units and
-provide a more ergonomic API for common conversions.
+provide a more ergonomic API for common conversions. A manifest writes each
+as the ``LinearMap`` it is.
 """
 
 from __future__ import annotations
@@ -65,21 +66,6 @@ class TicksToQuarters(ScalarMap):
         """Return the inverse map (QuartersToTicks)."""
         return QuartersToTicks(ppq=self._ppq)
 
-    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
-        """Serialize to dictionary."""
-        d = super().to_dict(minimal=minimal)
-        d["ppq"] = self._ppq
-        return d
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> TicksToQuarters:
-        """Deserialize from dictionary."""
-        return cls(
-            ppq=data.get("ppq", 480),
-            uid=data.get("id"),
-            name=data.get("name"),
-        )
-
     def __repr__(self) -> str:
         return f"TicksToQuarters(ppq={self._ppq})"
 
@@ -129,21 +115,6 @@ class QuartersToTicks(ScalarMap):
     def inverse(self) -> TicksToQuarters:
         """Return the inverse map (TicksToQuarters)."""
         return TicksToQuarters(ppq=self._ppq)
-
-    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
-        """Serialize to dictionary."""
-        d = super().to_dict(minimal=minimal)
-        d["ppq"] = self._ppq
-        return d
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> QuartersToTicks:
-        """Deserialize from dictionary."""
-        return cls(
-            ppq=data.get("ppq", 480),
-            uid=data.get("id"),
-            name=data.get("name"),
-        )
 
     def __repr__(self) -> str:
         return f"QuartersToTicks(ppq={self._ppq})"
@@ -202,21 +173,6 @@ class SamplesToSeconds(ScalarMap):
         """Return the inverse map (SecondsToSamples)."""
         return SecondsToSamples(sample_rate=self._sample_rate)
 
-    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
-        """Serialize to dictionary."""
-        d = super().to_dict(minimal=minimal)
-        d["sample_rate"] = self._sample_rate
-        return d
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> SamplesToSeconds:
-        """Deserialize from dictionary."""
-        return cls(
-            sample_rate=data.get("sample_rate", 44100),
-            uid=data.get("id"),
-            name=data.get("name"),
-        )
-
     def __repr__(self) -> str:
         return f"SamplesToSeconds(sample_rate={self._sample_rate})"
 
@@ -266,21 +222,6 @@ class SecondsToSamples(ScalarMap):
     def inverse(self) -> SamplesToSeconds:
         """Return the inverse map (SamplesToSeconds)."""
         return SamplesToSeconds(sample_rate=self._sample_rate)
-
-    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
-        """Serialize to dictionary."""
-        d = super().to_dict(minimal=minimal)
-        d["sample_rate"] = self._sample_rate
-        return d
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> SecondsToSamples:
-        """Deserialize from dictionary."""
-        return cls(
-            sample_rate=data.get("sample_rate", 44100),
-            uid=data.get("id"),
-            name=data.get("name"),
-        )
 
     def __repr__(self) -> str:
         return f"SecondsToSamples(sample_rate={self._sample_rate})"

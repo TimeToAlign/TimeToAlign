@@ -66,7 +66,7 @@ from timetoalign.timelines.groups import (
     _root,
     _tree,
 )
-from timetoalign.timelines.manifest import Manifest, write_roots
+from timetoalign.timelines.manifest import Manifest
 
 from .claims import AlignmentAnchor, MatchClaim, MatchClaimField
 from .filters import ClaimFilter
@@ -236,6 +236,11 @@ class AlignmentBundle(_OpenObject):
     _band_orders: dict[str, Any] = field(
         default_factory=dict, init=False, repr=False, compare=False
     )
+    # The measure maps of the manifest read that no timeline names, written
+    # back with the ones the timelines name.
+    _measure_maps: list[Any] = field(
+        default_factory=list, init=False, repr=False, compare=False
+    )
 
     # Internal logger
     _logger: logging.Logger = field(
@@ -311,6 +316,7 @@ class AlignmentBundle(_OpenObject):
         bundle._unknown_keys = manifest._unknown_keys
         bundle._has_graphical = manifest.has_graphical
         bundle._band_orders = manifest.band_orders
+        bundle._measure_maps = manifest.measure_maps
         for group_data in content.groups:
             group_id = group_data.get("id") if isinstance(group_data, dict) else None
             group = TimelineGroup._from_group_object(
@@ -3721,18 +3727,16 @@ class AlignmentBundle(_OpenObject):
             styling=self.styling,
             band_orders=self._band_orders,
             has_graphical=self._has_graphical,
+            measure_maps=self._measure_maps,
         )
         manifest._unknown_keys = self._unknown_keys
         return manifest.write(
-            write_roots(
-                list(roots.values()),
-                minimal=minimal,
-                events=events,
-                external_references=external_references,
-            ),
+            list(roots.values()),
             groups=[group._to_group_object(minimal=minimal) for group in groups],
             order={group.id: group.timeline_ids for group in groups},
             minimal=minimal,
+            events=events,
+            external_references=external_references,
         )
 
     def __repr__(self) -> str:

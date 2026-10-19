@@ -119,11 +119,11 @@ def _abstract(count: int) -> list[Measure]:
 def _tempi() -> tuple[Tempo, ...]:
     """Return the five exact sonata tempo facts."""
     return (
-        Tempo(bpm=F(138), beat=D(F(1, 2), "whole_note"), text="Allegro"),
-        Tempo(bpm=F(80), beat=D(F(3, 4), "whole_note"), text="Assai vivace"),
-        Tempo(bpm=F(92), beat=D(F(1, 8), "whole_note"), text="Adagio sostenuto"),
-        Tempo(bpm=F(76), beat=D(F(1, 16), "whole_note"), text="Largo"),
-        Tempo(bpm=F(144), beat=D(F(1, 4), "whole_note"), text="Allegro risoluto"),
+        Tempo(bpm=F(138), beat=D(F(1, 2), "whole_notes"), text="Allegro"),
+        Tempo(bpm=F(80), beat=D(F(3, 4), "whole_notes"), text="Assai vivace"),
+        Tempo(bpm=F(92), beat=D(F(1, 8), "whole_notes"), text="Adagio sostenuto"),
+        Tempo(bpm=F(76), beat=D(F(1, 16), "whole_notes"), text="Largo"),
+        Tempo(bpm=F(144), beat=D(F(1, 4), "whole_notes"), text="Allegro risoluto"),
     )
 
 
@@ -427,7 +427,7 @@ def test_forest_equality_includes_only_structural_beat_effects() -> None:
     changed[2] = {
         **changed[2],
         "tempo": changed[2]["tempo"].model_copy(
-            update={"beat": D(F(1, 4), "whole_note")}
+            update={"beat": D(F(1, 4), "whole_notes")}
         ),
     }
     assert base != MetricHierarchy.from_rows(changed)
@@ -435,7 +435,7 @@ def test_forest_equality_includes_only_structural_beat_effects() -> None:
 
 
 def test_generated_readings_tile_complete_groups() -> None:
-    tempo = Tempo(bpm=F(60), beat=D(F(1, 2), "whole_note"))
+    tempo = Tempo(bpm=F(60), beat=D(F(1, 2), "whole_notes"))
     hierarchy = MetricHierarchy.from_rows(
         [{"number": 1, "time_signature": "3/4", "tempo": tempo}, {"number": 4}]
     )
@@ -454,7 +454,7 @@ def test_generated_readings_tile_complete_groups() -> None:
             [{"number": 1, "time_signature": "3/4", "tempo": tempo}, {"number": 3}]
         )
 
-    dotted = Tempo(bpm=F(60), beat=D(F(3, 8), "whole_note"))
+    dotted = Tempo(bpm=F(60), beat=D(F(3, 8), "whole_notes"))
     packed = MetricHierarchy.from_rows(
         [{"number": 1, "time_signature": "3/4", "tempo": dotted}, {"number": 4}]
     )
@@ -848,7 +848,7 @@ class TestBeatPolicyAndMetricHierarchyJson:
         [
             BeatPolicy(
                 grouping=(1, 2),
-                beat_size=D(F(1, 3), TimeUnit.whole_note),
+                beat_size=D(F(1, 3), TimeUnit.whole_notes),
                 name="whole-note spelling",
             ),
             BeatPolicy(

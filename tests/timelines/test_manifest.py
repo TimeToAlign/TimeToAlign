@@ -242,7 +242,7 @@ UNIT_DEFAULTS = {
     "frames": ("int", 4),
     "pixels": ("int", 4),
     "quarters": ("fraction", [4, 1]),
-    "whole_note": ("fraction", [4, 1]),
+    "whole_notes": ("fraction", [4, 1]),
     "number": ("float", 4.5),
     "floating_measures": ("float", 4.5),
     "milliseconds": ("float", 4.5),

@@ -155,7 +155,7 @@ class NumberType(Enum):
 
 # Domain mappings for TimeUnit (module-level for efficiency)
 _LOGICAL_UNITS: frozenset[str] = frozenset(
-    {"floating_measures", "whole_note", "quarters", "ticks", "number"}
+    {"floating_measures", "whole_notes", "quarters", "ticks", "number"}
 )
 _PHYSICAL_UNITS: frozenset[str] = frozenset(
     {"milliseconds", "seconds", "minutes", "samples", "frames"}
@@ -174,7 +174,7 @@ _DISCRETE_UNITS: frozenset[str] = frozenset({"ticks", "samples", "frames", "pixe
 # Continuous units whose values are most faithfully written as exact
 # ratios: notated rhythm is rational by construction (a triplet eighth is
 # 1/3 of a quarter, not 0.333...).
-_RATIONAL_DEFAULT_UNITS: frozenset[str] = frozenset({"whole_note", "quarters"})
+_RATIONAL_DEFAULT_UNITS: frozenset[str] = frozenset({"whole_notes", "quarters"})
 
 
 class TimeUnit(FancyStrEnum):
@@ -193,9 +193,9 @@ class TimeUnit(FancyStrEnum):
     fm = floating_measures
     """measures"""
 
-    whole_note = auto()
+    whole_notes = auto()
     """whole notes"""
-    w = whole_note
+    w = whole_notes
     """whole notes"""
 
     quarters = auto()

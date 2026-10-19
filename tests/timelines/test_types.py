@@ -88,10 +88,10 @@ class TestAllTimelineTypes:
     @pytest.mark.parametrize(
         ("timeline_class", "unit", "number_type", "length"),
         [
-            (ContinuousLogicalTimeline, TimeUnit.whole_note, NumberType.float, 4.0),
+            (ContinuousLogicalTimeline, TimeUnit.whole_notes, NumberType.float, 4.0),
             (
                 ContinuousLogicalTimeline,
-                TimeUnit.whole_note,
+                TimeUnit.whole_notes,
                 NumberType.fraction,
                 Fraction(4, 1),
             ),
@@ -346,7 +346,7 @@ class TestSerializedTypeParameters:
                 ContinuousLogicalTimeline,
                 Fraction(4, 1),
                 Fraction(1, 1),
-                TimeUnit.whole_note,
+                TimeUnit.whole_notes,
             ),
         ],
     )
@@ -536,7 +536,7 @@ class TestLogicalTimeline:
         """LogicalTimeline accepts musical units only."""
         # Should work
         LogicalTimeline(length=4.0, unit=TimeUnit.quarters)
-        LogicalTimeline(length=4.0, unit=TimeUnit.whole_note)
+        LogicalTimeline(length=4.0, unit=TimeUnit.whole_notes)
         LogicalTimeline(length=4.0, unit=TimeUnit.floating_measures)
         LogicalTimeline(length=480, unit=TimeUnit.ticks)
 

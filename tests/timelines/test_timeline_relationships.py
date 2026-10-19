@@ -884,10 +884,10 @@ class TestSegmentLineParameterized:
     def test_explicit_unit_overrides_segment_type_default(self):
         """An explicitly passed unit is never overridden by the segment type."""
         sl = SegmentLine[ContinuousLogicalTimeline](
-            unit=TimeUnit.whole_note,
+            unit=TimeUnit.whole_notes,
         )
 
-        assert sl.unit == TimeUnit.whole_note
+        assert sl.unit == TimeUnit.whole_notes
 
     def test_unparameterized_segment_line_keeps_base_defaults(self):
         """Without segment_type, the base Timeline defaults still apply."""

@@ -2613,20 +2613,24 @@ class BeatPolicy(BaseModel):
             raise ValueError("BeatPolicy requires beat_size or division")
         if division is None:
             assert beat_size is not None
-            if beat_size.unit is TimeUnit.whole_note:
+            if beat_size.unit is TimeUnit.whole_notes:
                 division = Fraction(beat_size.value) * 4
             elif beat_size.unit is TimeUnit.quarters:
                 division = Fraction(beat_size.value)
             else:
-                raise ValueError("BeatPolicy beat_size must use whole_note or quarters")
+                raise ValueError(
+                    "BeatPolicy beat_size must use whole_notes or quarters"
+                )
             object.__setattr__(self, "division", division)
         elif beat_size is not None:
-            if beat_size.unit is TimeUnit.whole_note:
+            if beat_size.unit is TimeUnit.whole_notes:
                 stated_division = Fraction(beat_size.value) * 4
             elif beat_size.unit is TimeUnit.quarters:
                 stated_division = Fraction(beat_size.value)
             else:
-                raise ValueError("BeatPolicy beat_size must use whole_note or quarters")
+                raise ValueError(
+                    "BeatPolicy beat_size must use whole_notes or quarters"
+                )
             if stated_division != division:
                 raise ValueError(
                     "BeatPolicy division and beat_size disagree: "
@@ -2636,7 +2640,7 @@ class BeatPolicy(BaseModel):
             object.__setattr__(
                 self,
                 "beat_size",
-                Duration(Fraction(division, 4), TimeUnit.whole_note),
+                Duration(Fraction(division, 4), TimeUnit.whole_notes),
             )
         return self
 

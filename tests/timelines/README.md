@@ -224,7 +224,7 @@ the library writes back against the same literal text.
   complete literal and the minimal form the minimal literal. For each of the
   sixteen units a minimal timeline reads with the unit's own number type —
   `int` for ticks, samples, frames and pixels, `fraction` for quarters and
-  whole_note, `float` otherwise — asserted per unit, so a reader that
+  whole_notes, `float` otherwise — asserted per unit, so a reader that
   assumed one default for all would fail on two of the three groups.
 - **The class comes from the unit.** A timeline object carrying a stale
   `"class": "ContinuousGraphicalTimeline"` beside `"unit": "seconds"` reads as

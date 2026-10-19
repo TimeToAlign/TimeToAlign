@@ -30,7 +30,7 @@ from .base import Timeline, UnknownLengthError
 # Logical domain units (symbolic/musical time)
 LOGICAL_UNITS: frozenset[TimeUnit] = frozenset(
     {
-        TimeUnit.whole_note,
+        TimeUnit.whole_notes,
         TimeUnit.quarters,
         TimeUnit.floating_measures,
         TimeUnit.ticks,
@@ -64,7 +64,7 @@ GRAPHICAL_UNITS: frozenset[TimeUnit] = frozenset(
 # Continuous vs discrete unit categorization
 CONTINUOUS_LOGICAL_UNITS: frozenset[TimeUnit] = frozenset(
     {
-        TimeUnit.whole_note,
+        TimeUnit.whole_notes,
         TimeUnit.quarters,
         TimeUnit.floating_measures,
         TimeUnit.number,

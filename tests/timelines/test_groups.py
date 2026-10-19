@@ -949,7 +949,7 @@ class TestTimelineGroupTimestampAt:
                 x_values=[0.0, 4875.0],
                 y_values=[0.0, 100.0],
                 source_unit=TimeUnit.pixels,
-                target_unit=TimeUnit.whole_note,
+                target_unit=TimeUnit.whole_notes,
                 uid="pixels-to-beats",
             )
         )
@@ -958,7 +958,7 @@ class TestTimelineGroupTimestampAt:
         ts = group.get_timestamp_at(4875.0, "dgt_1", conversion_maps=False)
 
         with pytest.raises(KeyError):
-            ts.get_unit(TimeUnit.whole_note)
+            ts.get_unit(TimeUnit.whole_notes)
         assert ts.get_coordinate_for("dgt_1", format="int") == 4875
 
     def test_get_timestamp_at_with_restricted_conversion_maps(
@@ -972,7 +972,7 @@ class TestTimelineGroupTimestampAt:
                 x_values=[0.0, 4875.0],
                 y_values=[0.0, 100.0],
                 source_unit=TimeUnit.pixels,
-                target_unit=TimeUnit.whole_note,
+                target_unit=TimeUnit.whole_notes,
                 uid="pixels-to-beats",
             )
         )
@@ -990,10 +990,10 @@ class TestTimelineGroupTimestampAt:
         ts = group.get_timestamp_at(
             4875.0,
             "dgt_1",
-            conversion_maps=[TimeUnit.whole_note],
+            conversion_maps=[TimeUnit.whole_notes],
         )
 
-        assert ts.get_unit(TimeUnit.whole_note, format="float") == 100.0
+        assert ts.get_unit(TimeUnit.whole_notes, format="float") == 100.0
         with pytest.raises(KeyError):
             ts.get_unit(TimeUnit.frames)
 

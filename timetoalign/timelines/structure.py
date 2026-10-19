@@ -1564,11 +1564,11 @@ def _beat_quarters(tempo: Tempo | None) -> Fraction | None:
     """Return a tempo beat unit in quarters, when the tempo states one."""
     if tempo is None or tempo.beat is None:
         return None
-    if tempo.beat.unit is TimeUnit.whole_note:
+    if tempo.beat.unit is TimeUnit.whole_notes:
         return Fraction(tempo.beat.value) * 4
     if tempo.beat.unit is TimeUnit.quarters:
         return Fraction(tempo.beat.value)
-    raise ValueError("A tempo indication beat must use whole_note or quarters")
+    raise ValueError("A tempo indication beat must use whole_notes or quarters")
 
 
 def _generated_reading_id(beat: Fraction) -> str:

@@ -222,8 +222,6 @@ quartodoc:
           package: timetoalign.timelines
         - name: BeatPolicy
           package: timetoalign.core
-        - name: policy_for_metro
-          package: timetoalign.timelines
 
     - title: Flow Control
       desc: Score flow-graph traversal, atomic-section labelling, and structural diagnostics.
@@ -305,7 +303,6 @@ quartodoc:
           package: timetoalign.alignment
         - name: SnoteRecord
           package: timetoalign.alignment
-        - TimelineIdGenerator
 
     - title: Loaders
       desc: Data ingestion from various file formats.

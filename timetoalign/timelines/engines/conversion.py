@@ -85,12 +85,7 @@ class ConversionMapsMixin:
                 f"Conversion map '{cmap.id}' is already attached to timeline "
                 f"'{self._id}'. Attached map ids: {list(self._conversion_maps)}"
             )
-        cmap._id = self._admit_element_id(
-            cmap.id,
-            minted=cmap._id_minted,
-            prefix=cmap._id_prefix,
-            element=f"conversion map {cmap.id!r}",
-        )
+        self._admit_map(cmap)
         self._conversion_maps[cmap.id] = cmap
 
         # Register in the unified timestamp system for unit-based lookup

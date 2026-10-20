@@ -17,7 +17,7 @@ Includes:
 from __future__ import annotations
 
 import re
-from collections.abc import Container, Mapping
+from collections.abc import Container, Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass, field
 from types import MappingProxyType
@@ -367,6 +367,45 @@ def _admit_id(
         f"{element} cannot join: its id {element_id!r} is already held by "
         f"{taken[element_id]}"
     )
+
+
+def _plan_admissions(
+    entries: Sequence[tuple[str, bool, str, str]], taken: Mapping[str, str]
+) -> dict[int, str]:
+    """Plan the ids under which several elements join a scope together.
+
+    A given id is kept; it must be held neither in the scope nor by another
+    joining element. A minted id held in the scope, given to a joining
+    element or kept by a joining element before it is minted again. Nothing
+    is changed: every check precedes the plan, which maps the index of each
+    element to mint again to its new id.
+
+    Args:
+        entries: ``(id, minted, prefix, description)`` of each joining
+            element, in the order they claim their ids.
+        taken: Every id of the scope, mapped to a description of its holder.
+
+    Raises:
+        ValueError: If a given id is already held, in the scope or by
+            another joining element.
+    """
+    claimed = dict(taken)
+    for element_id, minted, prefix, element in entries:
+        if not minted:
+            _admit_id(
+                element_id, minted=False, prefix=prefix, taken=claimed, element=element
+            )
+            claimed[element_id] = element
+    occupied = set(claimed) | {entry[0] for entry in entries}
+    plan: dict[int, str] = {}
+    for index, (element_id, minted, prefix, element) in enumerate(entries):
+        if not minted:
+            continue
+        if element_id in claimed:
+            element_id = plan[index] = mint_id(prefix, occupied)
+            occupied.add(element_id)
+        claimed[element_id] = element
+    return plan
 
 
 class _OpenObject:

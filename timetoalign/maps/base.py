@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator, Mapping, Sequence
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, Protocol, TypeVar, Union
 
@@ -16,7 +16,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from ..core.enums import NumberType, TimeUnit
-from ..core.ids import _OpenObject, mint_id, validate_id
+from ..core.ids import _OpenObject, _plan_admissions, mint_id, validate_id
 from ..core.time import Coordinate, CoordinateValue, express_as
 
 if TYPE_CHECKING:
@@ -110,7 +110,8 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
             target_unit: The unit of output coordinates. Defaults to class default.
             uid: Optional explicit ID, kept verbatim. If None, an id
                 ``{prefix}_1`` is minted, which a timeline re-mints should it
-                collide in the timeline's manifest.
+                collide in the timeline's manifest, and a map nesting this
+                one should it collide in that map's tree.
             name: Human-readable name for this map. Used as field header in
                 timestamp tables. Defaults to "source_to_target" if units are
                 provided, otherwise uses the map's ID.
@@ -371,6 +372,69 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
         """Compose maps using >> operator (self >> other)."""
         return self.then(other)
 
+    def _nested_maps(self) -> Sequence[ConversionMap[Any]]:
+        """The maps this map's TimeSkeleton form nests, in the order written."""
+        return ()
+
+    def _map_tree(self) -> Iterator[ConversionMap[Any]]:
+        """Yield this map, then every map nested in it at any depth, as written."""
+        yield self
+        for nested in self._nested_maps():
+            yield from nested._map_tree()
+
+    def _measure_maps(self) -> Iterator[Any]:
+        """Yield every measure map this map, or a map nested in it, reads."""
+        for nested in self._nested_maps():
+            yield from nested._measure_maps()
+
+    def _identity_entries(self, owner: str = "") -> list[tuple[str, bool, str, str]]:
+        """Return ``(id, minted, prefix, description)`` for this map and every
+        map nested in it, in the order of :meth:`_map_tree`.
+
+        Args:
+            owner: Who holds this map, ending each description
+                (``" of timeline 'clt_1'"``).
+        """
+        return [
+            (
+                cmap._id,
+                cmap._id_minted,
+                cmap._id_prefix,
+                f"conversion map {cmap._id!r}"
+                + ("" if cmap is self else f" nested in conversion map {self._id!r}")
+                + owner,
+            )
+            for cmap in self._map_tree()
+        ]
+
+    def _admit_ids(self, taken: Mapping[str, str], owner: str = "") -> None:
+        """Admit this map and every map nested in it into a scope of ids.
+
+        A given id is kept; a minted id the scope holds, or another map of
+        this tree is given or keeps before it, is minted again. A composite
+        admits its tree into an empty scope when it is built, so that its
+        own form repeats no id; a timeline admits a map into its manifest.
+
+        Args:
+            taken: Every id of the scope, mapped to a description of its holder.
+            owner: Who holds this map, ending each description.
+
+        Raises:
+            ValueError: If this tree nests one map in two places, or a given
+                id is already held, in the scope or in this tree. Nothing is
+                changed then.
+        """
+        tree = list(self._map_tree())
+        if len({id(cmap) for cmap in tree}) < len(tree):
+            raise ValueError(
+                f"conversion map {self._id!r}{owner} nests one map in two places: "
+                "give each place a map of its own, since each is written with its "
+                "own id"
+            )
+        plan = _plan_admissions(self._identity_entries(owner), taken)
+        for index, new_id in plan.items():
+            tree[index]._id = new_id
+
     # endregion
 
     # region Serialization
@@ -451,10 +515,6 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
             minimal=minimal,
             defaults={**ConversionMap._dict_defaults, **(defaults or {})},
         )
-
-    def _measure_maps(self) -> Iterator[Any]:
-        """Yield every measure map this map, or a map nested in it, reads."""
-        return iter(())
 
     @classmethod
     def from_dict(

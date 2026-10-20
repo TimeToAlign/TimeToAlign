@@ -9,7 +9,6 @@ A CombinationMap yields outputs from multiple C-maps at once, such as
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any, ClassVar, Mapping, Sequence
 
 from numpy.typing import NDArray
@@ -135,6 +134,7 @@ class CombinationMap(ConversionMap[dict[str, Any]]):
             uid=uid,
             name=name,
         )
+        self._admit_ids({})
 
     @property
     def maps(self) -> dict[str, ConversionMap[Any]]:
@@ -237,9 +237,8 @@ class CombinationMap(ConversionMap[dict[str, Any]]):
             name=data.get("name"),
         )
 
-    def _measure_maps(self) -> Iterator[Any]:
-        for name in self._names:
-            yield from self._maps[name]._measure_maps()
+    def _nested_maps(self) -> list[ConversionMap[Any]]:
+        return [self._maps[name] for name in self._names]
 
     def __repr__(self) -> str:
         return f"CombinationMap(outputs={self._names})"

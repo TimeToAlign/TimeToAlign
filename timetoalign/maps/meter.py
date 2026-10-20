@@ -798,6 +798,10 @@ class MetricalPositionMap(CombinationMap):
             minimal=minimal,
         )
 
+    def _nested_maps(self) -> tuple[()]:
+        """None: the ``MeasureBeatMap`` this map writes nests no map."""
+        return ()
+
     def __repr__(self) -> str:
         return f"MetricalPositionMap(n_measures={self._meter_map.n_measures})"
 

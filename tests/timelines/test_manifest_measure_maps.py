@@ -123,7 +123,7 @@ def test_a_whole_notes_timeline_reads_its_measure_map_through_times_four() -> No
                     "target_unit": "quarters",
                     "scalar": 4,
                 },
-                _record(),
+                _record(map_id="cmap_2"),
             ],
         }
     ]

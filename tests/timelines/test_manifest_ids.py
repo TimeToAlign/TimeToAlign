@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Iterator
+from fractions import Fraction as F
 from typing import Any
 
 import pytest
@@ -16,7 +17,12 @@ from timetoalign.loader.physical.audio import AudioLoader
 from timetoalign.loader.score import Ms3Loader
 from timetoalign.loader.tabular import LabLoader
 from timetoalign.maps import (
+    ChainMap,
+    CombinationMap,
+    ConstantMap,
+    IntervalToConstantMap,
     LinearMap,
+    MeasureRecordMap,
     PiecewiseMap,
     QuartersToFloatingMeasures,
     ScalarMap,
@@ -31,6 +37,7 @@ from timetoalign.timelines import (
     DiscreteGraphicalTimeline,
     DiscreteLogicalTimeline,
     DiscretePhysicalTimeline,
+    MeasureMap,
     SegmentLine,
     Timeline,
 )
@@ -336,6 +343,154 @@ class TestCollisions:
         ):
             root.add_conversion_map(ScalarMap(3, uid="tempo"))
         assert root.n_conversion_maps == 0
+
+
+QUARTERS_TO_SECONDS = {"source_unit": "quarters", "target_unit": "seconds", "scalar": 2}
+SECONDS_TO_MINUTES = {
+    "source_unit": "seconds",
+    "target_unit": "minutes",
+    "scalar": [1, 60],
+}
+
+
+def _seconds_to_minutes() -> ChainMap:
+    return ChainMap(
+        [
+            LinearMap(scalar=2, source_unit="quarters", target_unit="seconds"),
+            LinearMap(scalar=F(1, 60), source_unit="seconds", target_unit="minutes"),
+        ]
+    )
+
+
+def _measure_and_section() -> CombinationMap:
+    record = ChainMap(
+        [
+            LinearMap(scalar=4, source_unit="whole_notes", target_unit="quarters"),
+            MeasureRecordMap(
+                MeasureMap.from_rows([{"count": 1, "time_signature": "4/4"}])
+            ),
+        ]
+    )
+    section = ConstantMap(value="verse", source_unit="whole_notes")
+    return CombinationMap({"measure": record, "section": section})
+
+
+def _map_ids(cmap: dict[str, Any]) -> Any:
+    """The ids of a written map, each nested map's under its own."""
+    nested = cmap.get("maps")
+    if nested is None:
+        return cmap["id"]
+    items = nested.values() if isinstance(nested, dict) else nested
+    return (cmap["id"], [_map_ids(item) for item in items])
+
+
+class TestNestedMaps:
+    """Maps nested in maps hold ids of their own, unique in the manifest."""
+
+    def test_a_chain_of_two_unnamed_maps_writes_two_ids(self) -> None:
+        assert _map_ids(_seconds_to_minutes().to_dict()) == (
+            "cmap_1",
+            ["lmap_1", "lmap_2"],
+        )
+
+    def test_a_nested_minted_id_taken_in_the_manifest_is_minted_again(self) -> None:
+        timeline = ContinuousLogicalTimeline(length=16)
+        timeline.add_conversion_map(
+            LinearMap(scalar=3, source_unit="quarters", target_unit="seconds")
+        )
+        timeline.add_conversion_map(_seconds_to_minutes())
+        written = timeline.to_dict()["timelines"][0]["conversion_maps"]
+        assert [_map_ids(cmap) for cmap in written] == [
+            ("cmap_1", ["lmap_3", "lmap_2"]),
+            "lmap_1",
+        ]
+
+    def test_a_record_map_in_a_chain_in_a_combination(self) -> None:
+        combination = _measure_and_section()
+        assert _map_ids(combination.to_dict()) == (
+            "cmap_1",
+            [("cmap_3", ["lmap_1", "cmap_2"]), "cmap_4"],
+        )
+        timeline = ContinuousLogicalTimeline(length=4, unit="whole_notes")
+        timeline.add_conversion_map(ConstantMap(value="a", source_unit="whole_notes"))
+        timeline.add_conversion_map(combination)
+        payload = timeline.to_dict()
+        assert [
+            _map_ids(cmap) for cmap in payload["timelines"][0]["conversion_maps"]
+        ] == [
+            "cmap_1",
+            ("cmap_5", [("cmap_3", ["lmap_1", "cmap_2"]), "cmap_4"]),
+        ]
+        text = json.dumps(payload)
+        assert json.dumps(Timeline.from_dict(json.loads(text)).to_dict()) == text
+
+    def test_the_constant_maps_of_an_interval_map_with_an_end(self) -> None:
+        cmap = IntervalToConstantMap(
+            boundaries=[0, 4], values=["a", "b"], end=8, source_unit="quarters"
+        )
+        assert _map_ids(cmap.to_dict()) == ("cmap_1", ["cmap_2", "cmap_3"])
+
+    def test_a_joining_child_s_nested_map_is_minted_again(self) -> None:
+        root = ContinuousLogicalTimeline(length=16)
+        root.add_conversion_map(
+            LinearMap(scalar=3, source_unit="quarters", target_unit="seconds")
+        )
+        child = ContinuousLogicalTimeline(length=8)
+        chain = _seconds_to_minutes()
+        child.add_conversion_map(chain)
+        root.add_child(child, 0)
+        assert [cmap.id for cmap in chain.maps] == ["lmap_3", "lmap_2"]
+        assert list(child._conversion_maps) == ["cmap_1"]
+
+    def test_two_nested_maps_given_one_id_raise(self) -> None:
+        with pytest.raises(
+            ValueError,
+            match=(
+                "conversion map 'a' nested in conversion map 'cmap_1' cannot join: "
+                "its id 'a' is already held by conversion map 'a' nested in "
+                "conversion map 'cmap_1'"
+            ),
+        ):
+            ChainMap([LinearMap(scalar=2, uid="a"), LinearMap(scalar=3, uid="a")])
+
+    def test_a_nested_given_id_held_in_the_manifest_raises(self) -> None:
+        timeline = ContinuousLogicalTimeline(length=16)
+        timeline.add_conversion_map(ScalarMap(2, uid="tempo"))
+        chain = ChainMap([LinearMap(scalar=2), LinearMap(scalar=3, uid="tempo")])
+        with pytest.raises(
+            ValueError,
+            match="already held by conversion map 'tempo' of timeline 'clt_1'",
+        ):
+            timeline.add_conversion_map(chain)
+        assert list(timeline._conversion_maps) == ["tempo"]
+        assert (chain.id, [cmap.id for cmap in chain.maps]) == (
+            "cmap_1",
+            ["lmap_1", "tempo"],
+        )
+
+    def test_one_map_nested_in_two_places_raises(self) -> None:
+        twice = LinearMap(scalar=2)
+        with pytest.raises(ValueError, match="nests one map in two places"):
+            ChainMap([twice, twice])
+        assert twice.id == "lmap_1"
+
+    def test_reading_refuses_a_nested_id_repeated(self) -> None:
+        payload = ContinuousLogicalTimeline(length=16, uid="piece").to_dict()
+        payload["timelines"][0]["conversion_maps"] = [
+            {
+                "type": "ChainMap",
+                "id": "cmap_1",
+                "maps": [
+                    {"type": "LinearMap", "id": "lmap_1", **QUARTERS_TO_SECONDS},
+                    {"type": "LinearMap", "id": "lmap_1", **SECONDS_TO_MINUTES},
+                ],
+            }
+        ]
+        with pytest.raises(
+            ValueError,
+            match="its id 'lmap_1' is already held by conversion map 'lmap_1'",
+        ):
+            Timeline.from_dict(payload)
 
 
 # endregion

@@ -35,6 +35,7 @@ from timetoalign.core import (
 from timetoalign.core.ids import (
     _admit_id,
     _OpenObject,
+    _plan_admissions,
     mint_id,
     timeline_id_prefix,
     validate_id,
@@ -857,7 +858,8 @@ class Timeline(
     def _identity_entries(self) -> list[tuple[str, bool, str, str]]:
         """Return ``(id, minted, prefix, description)`` for this timeline and
         every element it holds itself (its children excluded), in the order
-        timeline, conversion maps, regions, breaks, markers, jumps."""
+        timeline, conversion maps (each followed by the maps nested in it),
+        regions, breaks, markers, jumps."""
         owner = f"of timeline {self._id!r}"
         return [
             (
@@ -867,13 +869,9 @@ class Timeline(
                 f"timeline {self._id!r}",
             ),
             *(
-                (
-                    cmap.id,
-                    cmap._id_minted,
-                    cmap._id_prefix,
-                    f"conversion map {cmap.id!r} {owner}",
-                )
+                entry
                 for cmap in self._all_conversion_maps()
+                for entry in cmap._identity_entries(f" {owner}")
             ),
             *(
                 (
@@ -891,15 +889,21 @@ class Timeline(
 
     def _reassign_element_id(self, old_id: str, new_id: str) -> None:
         """Store the element of this timeline with *old_id* under a minted id."""
+        held_map = next(
+            (
+                nested
+                for cmap in self._all_conversion_maps()
+                for nested in cmap._map_tree()
+                if nested.id == old_id
+            ),
+            None,
+        )
         if old_id == self._id:
             self._set_id(new_id, minted=True)
-        elif (
-            self._measure_record_map is not None
-            and old_id == self._measure_record_map.id
-        ):
-            self._measure_record_map._id = new_id
         elif old_id in self._conversion_maps:
             self._rename_conversion_map(old_id, new_id)
+        elif held_map is not None:
+            held_map._id = new_id
         elif old_id in self._regions:
             self._rename_region(old_id, new_id)
         else:
@@ -936,6 +940,15 @@ class Timeline(
             element=f"{element} of timeline {self._id!r}",
         )
 
+    def _admit_map(self, cmap: ConversionMap[Any]) -> None:
+        """Admit *cmap* and every map nested in it into this timeline's manifest.
+
+        Raises:
+            ValueError: If a given id of the map's tree is already held in the
+                manifest or in the tree, or the tree nests one map twice.
+        """
+        cmap._admit_ids(self._manifest_ids(), owner=f" of timeline {self._id!r}")
+
     def _manifest_join_plan(self, child: Timeline) -> list[tuple[Timeline, str, str]]:
         """Plan how *child*'s whole subtree joins this timeline's manifest.
 
@@ -946,29 +959,16 @@ class Timeline(
             ValueError: If an id given to an element of the subtree is
                 already held in this manifest, naming both elements.
         """
-        taken = self._manifest_ids()
         joining = [
             (timeline, entry)
             for timeline in (child, *(t for _, t in child._iter_descendants()))
             for entry in timeline._identity_entries()
         ]
-        for _timeline, (element_id, minted, prefix, description) in joining:
-            if not minted:
-                _admit_id(
-                    element_id,
-                    minted=False,
-                    prefix=prefix,
-                    taken=taken,
-                    element=description,
-                )
-        occupied = set(taken) | {entry[0] for _, entry in joining}
-        plan: list[tuple[Timeline, str, str]] = []
-        for timeline, (element_id, _minted, prefix, _description) in joining:
-            if element_id in taken:
-                new_id = mint_id(prefix, occupied)
-                occupied.add(new_id)
-                plan.append((timeline, element_id, new_id))
-        return plan
+        plan = _plan_admissions([entry for _, entry in joining], self._manifest_ids())
+        return [
+            (joining[index][0], joining[index][1][0], new_id)
+            for index, new_id in plan.items()
+        ]
 
     # endregion
 
@@ -1048,12 +1048,7 @@ class Timeline(
                 "MeasureRecordMap on quarters, or a ChainMap of a LinearMap from "
                 f"{self._unit.value!r} to quarters and a MeasureRecordMap"
             )
-        cmap._id = self._admit_element_id(
-            cmap.id,
-            minted=cmap._id_minted,
-            prefix=cmap._id_prefix,
-            element=f"conversion map {cmap.id!r}",
-        )
+        self._admit_map(cmap)
         self._measure_record_map = cmap
 
     def _from_quarters(self, value: CoordinateValue) -> CoordinateValue:

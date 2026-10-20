@@ -8,7 +8,7 @@ This module provides maps that are composed of other maps:
 from __future__ import annotations
 
 import bisect
-from collections.abc import Iterator, Mapping
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, ClassVar, Sequence
 
 import numpy as np
@@ -124,6 +124,7 @@ class ChainMap(ConversionMap[CoordinateValue]):
             name=name,
         )
         self._maps = list(maps)
+        self._admit_ids({})
 
     @property
     def maps(self) -> list[ConversionMap[Any]]:
@@ -203,9 +204,8 @@ class ChainMap(ConversionMap[CoordinateValue]):
             name=data.get("name"),
         )
 
-    def _measure_maps(self) -> Iterator[Any]:
-        for m in self._maps:
-            yield from m._measure_maps()
+    def _nested_maps(self) -> list[ConversionMap[Any]]:
+        return self._maps
 
     def __repr__(self) -> str:
         return f"ChainMap(steps={len(self._maps)})"
@@ -280,6 +280,7 @@ class PiecewiseMap(ConversionMap[CoordinateValue]):
         self._breaks = np.array(breaks_float, dtype=np.float64)
         self._breaks_orig = list(breaks)
         self._maps = list(maps)
+        self._admit_ids({})
 
     @property
     def breaks(self) -> NDArray[np.floating[Any]]:
@@ -434,9 +435,8 @@ class PiecewiseMap(ConversionMap[CoordinateValue]):
             name=data.get("name"),
         )
 
-    def _measure_maps(self) -> Iterator[Any]:
-        for m in self._maps:
-            yield from m._measure_maps()
+    def _nested_maps(self) -> list[ConversionMap[Any]]:
+        return self._maps
 
     def __repr__(self) -> str:
         return f"PiecewiseMap(regions={len(self._maps)})"

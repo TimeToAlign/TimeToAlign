@@ -460,7 +460,8 @@ entry, with literal manifests written from the format's rules.
   `conversion_maps`, sorted with the others by id; the timeline object has
   no `measure_map` and no `metric_hierarchy` key. A `whole_notes` timeline
   writes its record map inside a `ChainMap` after `LinearMap(scalar=4)` from
-  `whole_notes` to `quarters`, and a ticks timeline after the `LinearMap` it
+  `whole_notes` to `quarters`, the chain `cmap_1` and the record map
+  `cmap_2` (a nested map holds an id of its own), and a ticks timeline after the `LinearMap` it
   was given (`scalar` `[1, 480]`); `add_measure_map` refuses a ticks timeline
   without one, and any unit but quarters, whole_notes and ticks, with the
   exact message.
@@ -610,6 +611,36 @@ display. The tests prove four properties, each against literal expected ids.
   region `intro` added beside a child `intro` raises; adding a given map id
   already held by a child's map raises. Each raise is atomic: the parent
   keeps its children, regions and maps, and the joining child keeps its id.
+- **Maps nested in maps share the scope.** A `ChainMap`, `PiecewiseMap`,
+  `CombinationMap` (and an `IntervalToConstantMap` with an end, whose form
+  nests a `ConstantMap` per interval) writes its nested maps with ids of
+  their own, so a nested id is held like any other: within the composite's
+  own tree when it is built, within the manifest when it joins. The ids
+  claim in written order (the composite, then its nested maps depth first);
+  a minted id another holds is minted again, a given one is kept or
+  refused. What the tests prove, each against literal ids:
+  - a `ChainMap` of two unnamed `LinearMap`s writes `cmap_1` holding
+    `lmap_1`, `lmap_2`; added to a timeline already holding a `LinearMap`
+    `lmap_1`, its members become `lmap_3`, `lmap_2` (the first was taken,
+    the second was not), and the manifest writes each id once;
+  - a `CombinationMap` of a `ChainMap` (a whole-notes-to-quarters
+    `LinearMap`, then a `MeasureRecordMap`) under `measure` and a
+    `ConstantMap` under `section`: built, the record map is `cmap_2` (the
+    chain holds `cmap_1`), the chain `cmap_3` and the constant `cmap_4` (the
+    combination holds `cmap_1`); added to a whole-notes timeline already
+    holding a `ConstantMap` `cmap_1`, the combination becomes `cmap_5` and
+    the nested maps keep theirs. Its manifest round-trips text-identically
+    through JSON, so the reader keeps every nested id it reads;
+  - an `IntervalToConstantMap` `cmap_1` with an end writes its two
+    intervals' `ConstantMap`s as `cmap_2`, `cmap_3`;
+  - a child whose `ChainMap` holds `lmap_1`, `lmap_2` joins a root holding
+    `lmap_1`: the nested `lmap_1` is re-minted `lmap_3` in the child;
+  - refusals, each atomic (the timeline's maps and the joining map's ids
+    unchanged): two nested maps given one id; a nested given id that a top
+    map of the manifest holds; one map object nested in two places (its one
+    id would be written twice); and a manifest whose `ChainMap` nests two
+    maps `lmap_1`, which `Timeline.from_dict` refuses as the TimeSkeleton
+    validators do.
 - **Regions and markers are keyed by id; jumps target marker ids.** Two
   regions named `Chorus` coexist as `region_1` and `region_2`; `get_region`,
   `has_region`, `list_regions`, `create_child_from_region` and

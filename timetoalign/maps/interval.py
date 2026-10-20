@@ -20,7 +20,6 @@ import numpy as np
 from numpy.typing import NDArray
 
 from timetoalign.core.enums import ExtrapolationPolicy, InterpolationKind, TimeUnit
-from timetoalign.core.ids import mint_id
 from timetoalign.core.time import CoordinateValue, number_to_json
 from timetoalign.maps.base import ConversionMap, MeasureMapIds
 from timetoalign.maps.composite import _piecewise_form
@@ -153,6 +152,12 @@ class IntervalToConstantMap(ConversionMap[T], Generic[T]):
                 f"end {end} must lie after the last boundary {self._boundaries_original[-1]}"
             )
         self._end = end
+        # With an end, the ConstantMap of each interval its form nests.
+        self._pieces = [
+            ConstantMap(value=value, source_unit=source_unit, target_unit=target_unit)
+            for value in (self._values if end is not None else ())
+        ]
+        self._admit_ids({})
 
     @property
     def end(self) -> CoordinateValue | None:
@@ -230,6 +235,9 @@ class IntervalToConstantMap(ConversionMap[T], Generic[T]):
             "IntervalToConstantMap is not invertible: many coordinates map to same value"
         )
 
+    def _nested_maps(self) -> list[ConversionMap[Any]]:
+        return self._pieces
+
     def _to_manifest(self, *, minimal: bool, entries: MeasureMapIds) -> dict[str, Any]:
         """Write the step function in the form converting exactly as it does.
 
@@ -242,19 +250,14 @@ class IntervalToConstantMap(ConversionMap[T], Generic[T]):
                 ``end``: its last interval has no end a manifest can state.
         """
         if self._end is not None:
-            taken = {self._id}
-            pieces = []
-            for value in self._values:
-                piece = ConstantMap(
-                    value=value,
-                    source_unit=self._source_unit,
-                    target_unit=self._target_unit,
-                    uid=mint_id(ConstantMap._id_prefix, taken),
-                )
-                taken.add(piece.id)
-                pieces.append(piece._to_manifest(minimal=minimal, entries=entries))
             return _piecewise_form(
-                self, [*self._boundaries_original, self._end], pieces, minimal=minimal
+                self,
+                [*self._boundaries_original, self._end],
+                [
+                    p._to_manifest(minimal=minimal, entries=entries)
+                    for p in self._pieces
+                ],
+                minimal=minimal,
             )
         if len(self._values) == 1:
             return self._map_object(

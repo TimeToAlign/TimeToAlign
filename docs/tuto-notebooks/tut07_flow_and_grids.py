@@ -249,12 +249,10 @@ repeat_events
 #
 # Every element of a timeline (a region, a break, a jump, a marker) has an `id`
 # that identifies it, unique across the timeline and its children, and a name
-# or label for display. A loader gives ids where the source has none, minting
-# one prefix per element type of a TimeSkeleton manifest: `flow_marker_1` for a
-# break, `jump_from_1` for a jump and `jump_to_1` for the marker a jump lands
-# on, and so on. A manifest's coordinate markers are not flow control and keep
-# `marker_1`. A short score with a *Fine*, a segno and a coda shows all three
-# kinds of flow-control element.
+# or label for display. A loader gives ids where the source has none, with one
+# prefix per kind of flow-control element: `flow_marker_1` for a break,
+# `jump_from_1` for a jump and `jump_to_1` for a marker a jump lands on. A short
+# score with a *Fine*, a segno and a coda shows all three kinds.
 
 # %%
 flow_dir = score_data / "flow_control" / "flow_only"

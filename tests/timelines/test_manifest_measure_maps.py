@@ -350,6 +350,17 @@ def test_two_maps_reading_a_measure_map_are_refused(
         )
 
 
+def test_a_record_map_directly_on_a_ticks_timeline_is_refused() -> None:
+    manifest = _one_root([_record("bars_map", "bars")])
+    manifest["timelines"][0].update(unit="ticks", length=3840)
+    for reader in (Timeline.from_dict, AlignmentBundle.from_dict):
+        with pytest.raises(ValueError) as refused:
+            reader(copy.deepcopy(manifest))
+        assert str(refused.value) == (
+            "Map source unit 'quarters' does not match timeline unit 'ticks'"
+        )
+
+
 def test_a_record_map_nested_elsewhere_is_a_view() -> None:
     nested = {
         "type": "CombinationMap",

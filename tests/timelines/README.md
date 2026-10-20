@@ -478,6 +478,12 @@ entry, with literal manifests written from the format's rules.
   'bars2']: the library keeps one measure map per timeline`. A record map
   nested elsewhere (in a `CombinationMap`) is a view like any other and is
   kept as a conversion map.
+- **A map converts from its timeline's unit.** A `MeasureRecordMap`
+  (source `quarters`) placed directly among the conversion maps of a ticks
+  timeline is refused by every reader with `Map source unit 'quarters' does
+  not match timeline unit 'ticks'`, the message `add_conversion_map` gives,
+  since the reader attaches every map through it; a ticks timeline reaches
+  its measure map only through the chain above.
 - **Several timelines may share one entry.** Two roots holding the same
   `MeasureMap` object, and two holding equal maps with minted ids, write one
   entry both record maps name; two holding unequal maps write
@@ -1903,6 +1909,14 @@ different tempi are not equal.
 ---
 
 ### `test_maps_integration.py` - Conversion Maps on Timelines
+
+**Source unit (`TestMapIntegration`):** a map is a function from a position
+on its timeline's axis, so `add_conversion_map` refuses a map whose
+non-null source unit differs from the timeline's unit, with the exact
+message `Map source unit 'ticks' does not match timeline unit 'seconds'`,
+and leaves the timeline without the map; a map whose source unit is null
+(`ScalarMap(scalar=2)`) attaches to a timeline of any unit. This one check
+is the attach path of every map, the readers' included.
 
 **TableMap honesty (`TestTableMapHonesty`):** `add_conversion_map` used to
 wrap every `TableMap` in an `InterpolationMap`, silently converting its

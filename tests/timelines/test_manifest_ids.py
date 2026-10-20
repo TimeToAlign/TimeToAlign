@@ -88,9 +88,9 @@ def _q(value: Any) -> Coordinate:
         ),
         (lambda: ScalarMap(2), "cmap_1"),
         (lambda: Region(_q(0), _q(4)), "region_1"),
-        (lambda: Break(_q(4)), "break_1"),
-        (lambda: Jump(_q(4), _q(0)), "jump_1"),
-        (lambda: Marker(_q(0), control_type=SEGNO), "marker_1"),
+        (lambda: Break(_q(4)), "flow_marker_1"),
+        (lambda: Jump(_q(4), _q(0)), "jump_from_1"),
+        (lambda: Marker(_q(0), control_type=SEGNO), "jump_to_1"),
     ],
 )
 def test_standalone_elements_mint_their_first_id(
@@ -126,9 +126,9 @@ REFERENCE_IDS = {
     "timeline": "clt_1",
     "children": {"clt_2", "clt_3"},
     "regions": {"region_1", "region_2"},
-    "breaks": {"break_1", "break_2"},
-    "markers": ["marker_1"],
-    "jumps": [("jump_1", "marker_1")],
+    "breaks": {"flow_marker_1", "flow_marker_2"},
+    "markers": ["jump_to_1"],
+    "jumps": [("jump_from_1", "jump_to_1")],
     "maps": ["lmap_1"],
 }
 
@@ -302,8 +302,8 @@ class TestCollisions:
         )
         child.flow_control.add_jump(Jump(_q(6), _q(2), target=marker.id))
         root.add_child(child, 0)
-        assert [m.id for m in child.flow_control.markers] == ["marker_2"]
-        assert [j.target for j in child.flow_control.jumps] == ["marker_2"]
+        assert [m.id for m in child.flow_control.markers] == ["jump_to_2"]
+        assert [j.target for j in child.flow_control.jumps] == ["jump_to_2"]
 
     def test_given_timeline_id_collision_raises(self) -> None:
         root = ContinuousLogicalTimeline(length=16, uid="score")
@@ -535,15 +535,15 @@ class TestKeyedById:
         )
         flow = timeline.flow_control
         assert [(m.id, m.control_type, m.name, m.coordinate) for m in flow.markers] == [
-            ("marker_1", SEGNO, "segno", _q(12)),
+            ("jump_to_1", SEGNO, "segno", _q(12)),
         ]
         assert [(b.control_type, b.coordinate) for b in flow.breaks] == [
             (FlowControlElement.fine, _q(42))
         ]
         dal_segno = [j for j in flow.jumps if j.target is not None]
         assert [(j.control_type.value, j.target) for j in dal_segno] == [
-            ("dal_segno_al_fine", "marker_1"),
-            ("dal_segno_al_fine", "marker_1"),
+            ("dal_segno_al_fine", "jump_to_1"),
+            ("dal_segno_al_fine", "jump_to_1"),
         ]
 
     def test_jumps_without_a_marker_target_hold_none(self) -> None:

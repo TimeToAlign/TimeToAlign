@@ -387,6 +387,9 @@ class TestValidateId:
             "regions_01",
             "marker_1",
             "region_1",
+            "flow_marker_1",
+            "jump_from_1",
+            "jump_to_1",
             "score:children_1",
             "markers_1a",
             "Markers_1",
@@ -428,9 +431,9 @@ def test_no_minted_id_is_reserved() -> None:
 
     assert element_prefixes >= {
         "region",
-        "break",
-        "jump",
-        "marker",
+        "flow_marker",
+        "jump_from",
+        "jump_to",
         "cmap",
         "lmap",
         "tmap",

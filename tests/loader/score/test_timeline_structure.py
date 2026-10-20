@@ -94,7 +94,7 @@ def test_break_and_marker_facts_are_derived_from_the_tsv_columns() -> None:
     assert [
         (marker.id, marker.name, marker.coordinate)
         for marker in timeline.flow_control.markers
-    ] == [("marker_1", "segno", Coordinate(Fraction(11), TimeUnit.quarters))]
+    ] == [("jump_to_1", "segno", Coordinate(Fraction(11), TimeUnit.quarters))]
 
 
 def test_flatten_keeps_source_structure_without_attaching_a_skeleton() -> None:

@@ -324,7 +324,9 @@ class TestTimelineIdentity:
         assert bundle.group_ids == group_ids
         assert [group.name for group in bundle.groups.values()] == loader.timeline_uids
         assert all(group.n_timelines == 1 for group in bundle.groups.values())
-        assert bundle.timeline_to_group == dict(zip(loader.timeline_uids, group_ids))
+        assert bundle.timeline_to_groups == {
+            uid: (group_id,) for uid, group_id in zip(loader.timeline_uids, group_ids)
+        }
         assert loader.create_group() is None
 
 

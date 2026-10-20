@@ -477,7 +477,7 @@ class TestMatchfileLoaderCreateBundle:
     def test_bundle_score_in_group(self, p01_loader: MatchfileLoader):
         """Score timeline is in the group named 'score'."""
         bundle = p01_loader.create_bundle()
-        assert bundle.timeline_to_group["score:clt_1"] == "group_1"
+        assert bundle.timeline_to_groups["score:clt_1"] == ("group_1",)
         assert bundle.groups["group_1"].name == "score"
 
 

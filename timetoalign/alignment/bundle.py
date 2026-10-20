@@ -61,6 +61,7 @@ from timetoalign.core.timestamp import TimestampColumn, build_timestamp_table
 from timetoalign.timelines import TimelineGroup, UnknownLengthError
 from timetoalign.timelines.groups import (
     _admit_timeline_tree,
+    _groups_by_timeline,
     _held_ids,
     _nested,
     _root,
@@ -149,8 +150,9 @@ class AlignmentBundle(_OpenObject):
         name: Optional human-readable name.
         timelines: Dictionary mapping timeline IDs to Timeline objects: every
             timeline added, and the root of every one that is a child.
-        groups: Dictionary mapping group IDs to TimelineGroup objects.
-        timeline_to_group: Mapping from timeline ID to its containing group ID.
+        groups: Dictionary mapping group IDs to TimelineGroup objects. The
+            groups are the one statement of membership; a timeline may be a
+            member of several (see :attr:`timeline_to_groups`).
         cross_group_claims: MatchClaims connecting timelines across groups
             (the per-claim Python-list store).
         cross_group_claim_fields: Columnar ``MatchClaimField`` stores of dense
@@ -188,7 +190,6 @@ class AlignmentBundle(_OpenObject):
     name: str | None = None
     timelines: dict[str, "Timeline"] = field(default_factory=dict)
     groups: dict[str, TimelineGroup] = field(default_factory=dict)
-    timeline_to_group: dict[str, str] = field(default_factory=dict)
     meta: dict[str, Any] = field(default_factory=dict)
     cross_group_claims: list[MatchClaim] = field(default_factory=list)
     # Columnar claim stores added additively (e.g. by ListenHereLoader). Each
@@ -271,8 +272,9 @@ class AlignmentBundle(_OpenObject):
         ``graphical``'s other keys are kept as :attr:`styling`, and the
         entries of ``graphical.order`` keyed by a timeline, its band orders,
         are kept too, both unread. Every root no group names joins
-        ungrouped. Keys the library does not know are kept on the object
-        read from the JSON object they were found in, and written back.
+        ungrouped. A timeline several groups name is a member of each, one
+        object shared by them. Keys the library does not know are kept on the
+        object read from the JSON object they were found in, and written back.
 
         Args:
             data: A TimeSkeleton manifest.
@@ -284,8 +286,8 @@ class AlignmentBundle(_OpenObject):
             ValueError: If *data* is no TimeSkeleton manifest of version
                 0.7.0 or is malformed: a timeline id occurring twice, a group
                 id occurring twice or equal to a timeline id, a member naming
-                no timeline of ``"timelines"``, a timeline named by two
-                groups, a member that is an ancestor or descendant of another
+                no timeline of ``"timelines"``, a group naming one member
+                twice, a member that is an ancestor or descendant of another
                 member of its group, an order that is no permutation of its
                 group's members or names no group or timeline. The message
                 names the problem.
@@ -383,8 +385,9 @@ class AlignmentBundle(_OpenObject):
                 for member in group:
                     rebuilt._admit_member(member)
                 merged.add_group(rebuilt)
+            grouped = bundle.timeline_to_groups
             for timeline_id, timeline in bundle.timelines.items():
-                if timeline_id in bundle.timeline_to_group:
+                if timeline_id in grouped:
                     continue
                 if merged.timelines.get(timeline.id) is timeline:
                     continue
@@ -420,12 +423,18 @@ class AlignmentBundle(_OpenObject):
         child added to a group joins it, and its root joins the bundle as
         well, ungrouped unless it is grouped itself.
 
+        A timeline may be a member of several groups: one already in the
+        bundle, grouped or not, joins a further group through
+        ``grouped_with`` or ``as_group``.
+
         Args:
             timeline: The Timeline to add.
             grouped_with: ID of an existing timeline to share a group with.
                 If provided, both timelines become part of the same group.
                 If the target timeline is not yet in a group, a new group
-                is created with the target as its first member.
+                is created with the target as its first member. A target in
+                several groups is refused, since the group to join would be a
+                guess.
             as_group: Name of the group if a new one is created. The new
                 group's id is minted, ``group_N``.
 
@@ -433,8 +442,9 @@ class AlignmentBundle(_OpenObject):
             self (for method chaining)
 
         Raises:
-            ValueError: If the timeline is already a grouped member of the
-                bundle, or already in it while no group is requested; if a
+            ValueError: If the timeline is already in the bundle while no
+                group is requested, or already in the group it would join; if
+                ``grouped_with`` names a timeline of several groups; if a
                 given id of its manifest tree — its own, its root's or any
                 descendant's — is held by another timeline of the bundle (a
                 minted id held there is minted again instead) or by a group.
@@ -466,8 +476,8 @@ class AlignmentBundle(_OpenObject):
                 >>> bundle = AlignmentBundle()
                 >>> _ = bundle.add_timeline(audio, as_group="roll")
                 >>> _ = bundle.add_timeline(holes, grouped_with="cpt_1")
-                >>> sorted(bundle.timelines), bundle.timeline_to_group
-                (['cpt_1', 'dgt_1', 'dgt_2'], {'cpt_1': 'group_1', 'dgt_2': 'group_1'})
+                >>> sorted(bundle.timelines), bundle.timeline_to_groups
+                (['cpt_1', 'dgt_1', 'dgt_2'], {'cpt_1': ('group_1',), 'dgt_2': ('group_1',)})
         """
         if grouped_with is None and as_group is None:
             # An ungrouped participant is a root: a child joins through its
@@ -478,27 +488,38 @@ class AlignmentBundle(_OpenObject):
                 f"Cannot group with '{grouped_with}': not in bundle. "
                 f"Available timelines: {list(self.timelines.keys())}"
             )
-        if self.timelines.get(timeline.id) is timeline:
-            if timeline.id in self.timeline_to_group or (
-                grouped_with is None and as_group is None
-            ):
-                raise ValueError(f"Timeline '{timeline.id}' already exists in bundle")
-        # The group refuses nesting; ask before anything changes.
+        registered = self.timelines.get(timeline.id) is timeline
+        if registered and grouped_with is None and as_group is None:
+            raise ValueError(f"Timeline '{timeline.id}' already exists in bundle")
+        # The group to join, if one exists; it refuses a member it holds
+        # already and nesting. Ask before anything changes.
+        joined: TimelineGroup | None = None
         if grouped_with is not None:
-            group_id = self.timeline_to_group.get(grouped_with)
-            if group_id is not None:
-                self.groups[group_id]._refuse_nested(timeline)
+            target_groups = self.get_groups_for_timeline(grouped_with)
+            if len(target_groups) > 1:
+                raise ValueError(
+                    f"Cannot group with {grouped_with!r}: it is a member of several "
+                    f"groups {[group.id for group in target_groups]}, so the group "
+                    "to join is ambiguous"
+                )
+            if target_groups:
+                (joined,) = target_groups
+                if any(member is timeline for member in joined):
+                    raise ValueError(
+                        f"Timeline '{timeline.id}' already in group '{joined.id}'"
+                    )
+                joined._refuse_nested(timeline)
             elif _nested(self.timelines[grouped_with], timeline):
                 raise ValueError(
                     f"Timeline {timeline.id!r} cannot be grouped with "
                     f"{grouped_with!r}: one is nested in the other, and a parent "
                     "and its child cannot share one start and end"
                 )
-        if self.timelines.get(timeline.id) is not timeline:
+        if not registered:
             self._admit(timeline)
 
-        if grouped_with is not None and grouped_with in self.timeline_to_group:
-            group = self.groups[self.timeline_to_group[grouped_with]]
+        if joined is not None:
+            group = joined
             group.add_timeline(timeline)
         elif grouped_with is not None or as_group is not None:
             founders = [timeline]
@@ -507,14 +528,11 @@ class AlignmentBundle(_OpenObject):
             group = TimelineGroup(name=as_group, timelines=founders)
             group.id = self._free_group_id(group)
             self.groups[group.id] = group
-            for founder in founders:
-                self.timeline_to_group[founder.id] = group.id
         else:
             group = None
 
         self._register(timeline)
         if group is not None:
-            self.timeline_to_group[timeline.id] = group.id
             self._logger.debug(f"Added timeline '{timeline.id}' to group '{group.id}'")
         else:
             self._logger.debug(f"Added standalone timeline '{timeline.id}'")
@@ -526,7 +544,9 @@ class AlignmentBundle(_OpenObject):
         This is the bulk-registration counterpart of ``add_timeline(..., as_group=...)``.
         It registers the group and every timeline it contains — each under
         its own ``id``, with the root of every member that is a child — into
-        the bundle's timeline and group registries.
+        the bundle's timeline and group registries. A member may already be a
+        member of another group of the bundle: a timeline may belong to
+        several groups.
 
         Args:
             group: A ``TimelineGroup`` that already contains timelines.
@@ -536,8 +556,7 @@ class AlignmentBundle(_OpenObject):
 
         Raises:
             ValueError: If the group's given ID is already held in the bundle
-                (a minted one is minted again instead); if a member is
-                already a member of another group; or if a given id of a
+                (a minted one is minted again instead), or if a given id of a
                 member's manifest tree is held by another timeline of the
                 bundle (a minted id held there is minted again instead) or by
                 a group.
@@ -551,14 +570,6 @@ class AlignmentBundle(_OpenObject):
         if any(held is group for held in self.groups.values()):
             raise ValueError(f"Group '{group.id}' already exists in bundle")
         members = list(group)
-        for member in members:
-            if self.timelines.get(member.id) is member and (
-                member.id in self.timeline_to_group
-            ):
-                raise ValueError(
-                    f"Timeline '{member.id}' is already a member of group "
-                    f"'{self.timeline_to_group[member.id]}'"
-                )
         # Check every member and the group id before anything changes.
         for member in members:
             if self.timelines.get(member.id) is not member:
@@ -573,7 +584,6 @@ class AlignmentBundle(_OpenObject):
         self.groups[group.id] = group
         for member in members:
             self._register(member)
-            self.timeline_to_group[member.id] = group.id
 
         self._logger.debug(f"Added group '{group.id}' with {len(members)} timelines")
 
@@ -613,9 +623,6 @@ class AlignmentBundle(_OpenObject):
             group = self.groups.pop(group_id)
             group.id = mint_id("group", set(self.groups) | set(held) | tree_ids)
             self.groups[group.id] = group
-            for member_id, owner in self.timeline_to_group.items():
-                if owner == group_id:
-                    self.timeline_to_group[member_id] = group.id
 
     def _register(self, timeline: "Timeline") -> None:
         """Register a timeline, and its root when it is a child."""
@@ -693,18 +700,69 @@ class AlignmentBundle(_OpenObject):
         return self.groups[resolved_id]
 
     def get_group_for_timeline(self, timeline_id: str) -> TimelineGroup | None:
-        """Get the group containing a timeline.
+        """Get the one group containing a timeline.
 
         Args:
             timeline_id: The timeline's unique identifier.
 
         Returns:
             The TimelineGroup containing the timeline, or None if standalone.
+
+        Raises:
+            ValueError: If the timeline is a member of several groups; use
+                :meth:`get_groups_for_timeline` for all of them.
         """
-        group_id = self.timeline_to_group.get(timeline_id)
-        if group_id is None:
-            return None
-        return self.groups.get(group_id)
+        groups = self.get_groups_for_timeline(timeline_id)
+        if len(groups) > 1:
+            raise ValueError(
+                f"Timeline {timeline_id!r} is a member of several groups "
+                f"{[group.id for group in groups]}; use get_groups_for_timeline"
+            )
+        return groups[0] if groups else None
+
+    def get_groups_for_timeline(self, timeline_id: str) -> tuple[TimelineGroup, ...]:
+        """Get every group containing a timeline, sorted by group id.
+
+        Args:
+            timeline_id: The timeline's unique identifier.
+
+        Returns:
+            The groups holding the timeline; empty if it is standalone.
+        """
+        return tuple(
+            self.groups[group_id]
+            for group_id in self.timeline_to_groups.get(timeline_id, ())
+        )
+
+    def _shared_group(self, timeline_a: str, timeline_b: str) -> TimelineGroup | None:
+        """Return the first group, by sorted id, holding both timelines.
+
+        Members of one group share one start and one end, so every group two
+        timelines share converts between them alike; the first stands for all.
+        """
+        membership = self.timeline_to_groups
+        shared = set(membership.get(timeline_a, ())) & set(
+            membership.get(timeline_b, ())
+        )
+        return self.groups[min(shared)] if shared else None
+
+    def _group_component(self, timeline_id: str) -> set[str]:
+        """Return the timelines reached from one through shared groups.
+
+        A timeline of several groups joins them: every member of a group it
+        belongs to is reached, and so on through those members' groups. The
+        timeline itself is included.
+        """
+        membership = self.timeline_to_groups
+        reached = {timeline_id}
+        pending = [timeline_id]
+        while pending:
+            for group_id in membership.get(pending.pop(), ()):
+                for member_id in self.groups[group_id].timeline_ids:
+                    if member_id not in reached:
+                        reached.add(member_id)
+                        pending.append(member_id)
+        return reached
 
     def get_timelines(self, ids: list[str]) -> list["Timeline"]:
         """Get multiple timelines by their IDs.
@@ -754,6 +812,32 @@ class AlignmentBundle(_OpenObject):
     def timeline_ids(self) -> list[str]:
         """List of all timeline IDs in the bundle."""
         return list(self.timelines.keys())
+
+    @property
+    def timeline_to_groups(self) -> dict[str, tuple[str, ...]]:
+        """Every grouped timeline's id, mapped to the ids of its groups.
+
+        Read from :attr:`groups`, the one statement of membership. A
+        timeline may be a member of several groups; its group ids are
+        sorted. A standalone timeline is absent.
+
+        Examples:
+            >>> from timetoalign.alignment import AlignmentBundle
+            >>> from timetoalign.timelines import TimelineGroup
+            >>> from timetoalign.timelines.types import (
+            ...     ContinuousLogicalTimeline,
+            ...     ContinuousPhysicalTimeline,
+            ... )
+            >>> score = ContinuousLogicalTimeline(length=16, uid="score")
+            >>> audio = ContinuousPhysicalTimeline(length=40.0, uid="audio")
+            >>> video = ContinuousPhysicalTimeline(length=40.0, uid="video")
+            >>> bundle = AlignmentBundle()
+            >>> _ = bundle.add_group(TimelineGroup(id="g1", timelines=[score, audio]))
+            >>> _ = bundle.add_group(TimelineGroup(id="g2", timelines=[score, video]))
+            >>> bundle.timeline_to_groups
+            {'score': ('g1', 'g2'), 'audio': ('g1',), 'video': ('g2',)}
+        """
+        return _groups_by_timeline(self.groups)
 
     @property
     def group_ids(self) -> list[str]:
@@ -831,13 +915,10 @@ class AlignmentBundle(_OpenObject):
         if from_timeline == to_timeline:
             return coord
 
-        # Check if both are in the same group
-        from_group_id = self.timeline_to_group.get(from_timeline)
-        to_group_id = self.timeline_to_group.get(to_timeline)
-
-        if from_group_id is not None and from_group_id == to_group_id:
-            # Same group: direct conversion via group
-            group = self.groups[from_group_id]
+        # Within a group: direct conversion. Every group the two share
+        # converts alike, so the first by id serves.
+        group = self._shared_group(from_timeline, to_timeline)
+        if group is not None:
             converted = group.get_coordinate_at(
                 IdCoordinate(
                     coord,
@@ -864,9 +945,8 @@ class AlignmentBundle(_OpenObject):
                 )
                 return None
 
-        # Try indirect via SOURCE group: convert within source, then warp
-        if from_group_id is not None:
-            source_group = self.groups[from_group_id]
+        # Try indirect via a SOURCE group: convert within it, then warp
+        for source_group in self.get_groups_for_timeline(from_timeline):
             for src_other_tl_id in source_group.timeline_ids:
                 if src_other_tl_id == from_timeline:
                     continue
@@ -888,10 +968,9 @@ class AlignmentBundle(_OpenObject):
                 except Exception:
                     continue
 
-        # Try indirect via TARGET group: warp to reachable group member,
-        # then convert within the target group.
-        if to_group_id is not None:
-            target_group = self.groups[to_group_id]
+        # Try indirect via a TARGET group: warp to a reachable group member,
+        # then convert within that group.
+        for target_group in self.get_groups_for_timeline(to_timeline):
             for tgt_other_tl_id in target_group.timeline_ids:
                 if tgt_other_tl_id == to_timeline:
                     continue
@@ -977,8 +1056,10 @@ class AlignmentBundle(_OpenObject):
     def are_commensurable(self, timeline_a: str, timeline_b: str) -> bool:
         """Check if two timelines can be connected via transfer.
 
-        Two timelines are commensurable if they share the same group
-        or if a cross-group path exists via MatchClaims.
+        Two timelines are commensurable if groups connect them — they share
+        a group, or a chain of groups sharing members leads from one to the
+        other — or if a synchronous MatchClaim connects the timelines so
+        connected to each.
 
         Args:
             timeline_a: First timeline ID.
@@ -990,24 +1071,16 @@ class AlignmentBundle(_OpenObject):
         if timeline_a == timeline_b:
             return True
 
-        group_a = self.timeline_to_group.get(timeline_a)
-        group_b = self.timeline_to_group.get(timeline_b)
-
-        # Same group: commensurable
-        if group_a is not None and group_a == group_b:
+        group_a_tl_ids = self._group_component(timeline_a)
+        if timeline_b in group_a_tl_ids:
             return True
 
         # Check for cross-group path via claims
         if self.n_cross_group_claims == 0:
             return False
 
-        # Check if any synchronous claim connects groups containing a and b
-        group_a_tl_ids = (
-            set(self.groups[group_a].timeline_ids) if group_a else {timeline_a}
-        )
-        group_b_tl_ids = (
-            set(self.groups[group_b].timeline_ids) if group_b else {timeline_b}
-        )
+        # Check if any synchronous claim connects the groups reaching a and b
+        group_b_tl_ids = self._group_component(timeline_b)
 
         for claim in self.cross_group_claims:
             if not claim.is_synchronous or claim.start_anchor is None:
@@ -2552,6 +2625,7 @@ class AlignmentBundle(_OpenObject):
         # 2. Transitive closure across groups (BFS worklist).
         worklist: list[str] = list(coordinates.keys())
         processed: set[str] = set()
+        membership = self.timeline_to_groups
 
         while worklist:
             node_id = worklist.pop()
@@ -2601,53 +2675,52 @@ class AlignmentBundle(_OpenObject):
                 add_inferred_edge(node_id, relative_id)
                 worklist.append(relative_id)
 
-            group_id = self.timeline_to_group.get(node_id)
-            if group_id is None:
-                continue
-            source_group = self.groups.get(group_id)
-            if source_group is None:
-                continue
+            node_group_ids = membership.get(node_id, ())
+            for group_id in node_group_ids:
+                source_group = self.groups[group_id]
 
-            # 2a. Within-group conversion to the node's own group members:
-            # exact, and always within each member, since members share one
-            # start and one end.
-            if len(source_group.timeline_ids) > 1:
-                grouped = self._get_group_timestamp(
-                    source_group,
-                    node_coordinate,
-                    node_id,
-                    conversion_maps=conversion_maps,
-                )
-                for member_id, member_coordinate in grouped.items():
-                    if member_id in coordinates or member_coordinate is None:
+                # 2a. Within-group conversion to the members of each group of
+                # the node: exact, and always within each member, since
+                # members share one start and one end.
+                if len(source_group.timeline_ids) > 1:
+                    grouped = self._get_group_timestamp(
+                        source_group,
+                        node_coordinate,
+                        node_id,
+                        conversion_maps=conversion_maps,
+                    )
+                    for member_id, member_coordinate in grouped.items():
+                        if member_id in coordinates or member_coordinate is None:
+                            continue
+                        coordinates[member_id] = member_coordinate
+                        add_inferred_edge(node_id, member_id)
+                        worklist.append(member_id)
+
+                # 2b. Cross-group warp into every not-yet-reached group the
+                # node is no member of.
+                for other_group_id, other_group in self.groups.items():
+                    if other_group_id in node_group_ids:
                         continue
-                    coordinates[member_id] = member_coordinate
-                    add_inferred_edge(node_id, member_id)
-                    worklist.append(member_id)
-
-            # 2b. Cross-group warp into every not-yet-reached group.
-            for other_group_id, other_group in self.groups.items():
-                if other_group_id == group_id:
-                    continue
-                if all(
-                    member_id in coordinates for member_id in other_group.timeline_ids
-                ):
-                    continue
-                transferred = self._transfer_to_group(
-                    float(node_coordinate),
-                    node_id,
-                    source_group,
-                    other_group,
-                    support_policy,
-                )
-                if transferred is None:
-                    continue
-                target_id, target_coordinate = transferred
-                if target_id in coordinates:
-                    continue
-                coordinates[target_id] = target_coordinate
-                add_inferred_edge(node_id, target_id)
-                worklist.append(target_id)
+                    if all(
+                        member_id in coordinates
+                        for member_id in other_group.timeline_ids
+                    ):
+                        continue
+                    transferred = self._transfer_to_group(
+                        float(node_coordinate),
+                        node_id,
+                        source_group,
+                        other_group,
+                        support_policy,
+                    )
+                    if transferred is None:
+                        continue
+                    target_id, target_coordinate = transferred
+                    if target_id in coordinates:
+                        continue
+                    coordinates[target_id] = target_coordinate
+                    add_inferred_edge(node_id, target_id)
+                    worklist.append(target_id)
 
         return coordinates, anchor_edges, inferred_edges, query_has_anchor
 
@@ -3632,16 +3705,16 @@ class AlignmentBundle(_OpenObject):
             Dictionary with bundle information.
         """
         timeline_info = {}
+        membership = self.timeline_to_groups
         for tl_id in sorted(self.timelines.keys()):
             tl = self.timelines[tl_id]
-            group_id = self.timeline_to_group.get(tl_id)
             timeline_info[tl_id] = {
                 "name": tl.name,
                 "length": (
                     float(tl.length.value) if hasattr(tl.length, "value") else tl.length
                 ),
                 "unit": str(tl.unit) if hasattr(tl, "unit") else None,
-                "group": group_id,
+                "groups": list(membership.get(tl_id, ())),
             }
 
         group_info = {}

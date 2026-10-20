@@ -187,6 +187,28 @@ def _admit_timeline_tree(
         timeline._set_id(minted, minted=True)
 
 
+def _groups_by_timeline(
+    groups: Mapping[str, "TimelineGroup"],
+) -> dict[str, tuple[str, ...]]:
+    """Map every member id of *groups* to the ids of the groups holding it.
+
+    Membership is stated by the groups alone; this is its per-timeline view.
+    A timeline may be a member of several groups. Its group ids are sorted,
+    and a timeline no group holds is absent.
+
+    Args:
+        groups: Groups keyed by their ids.
+
+    Returns:
+        ``{timeline_id: (group_id, ...)}``.
+    """
+    membership: dict[str, list[str]] = {}
+    for group_id in sorted(groups):
+        for member_id in groups[group_id].timeline_ids:
+            membership.setdefault(member_id, []).append(group_id)
+    return {member_id: tuple(ids) for member_id, ids in membership.items()}
+
+
 # endregion
 
 

@@ -1149,7 +1149,7 @@ class ScoreFlowController(FlowControllerBase):
 
         Returns:
             List of `timetoalign.timelines.flowcontrol.Marker` objects in MC
-            order, with minted ids ``marker_1``, ``marker_2``, ... ``name``
+            order, with minted ids ``jump_to_1``, ``jump_to_2``, ... ``name``
             is the marker instance name (e.g., ``"segno"``, ``"coda"``,
             ``"codab"``) and ``control_type`` ``segno`` or ``coda``;
             ``coordinate`` is the start of the MC.

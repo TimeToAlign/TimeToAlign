@@ -454,6 +454,33 @@ def test_from_dict_refuses_a_parent_beside_its_child() -> None:
         TimelineGroup.from_dict(data)
 
 
+def test_groups_sharing_a_member_read_each_group() -> None:
+    """Either group of a manifest whose two groups share a member reads alone."""
+    shared = ContinuousLogicalTimeline(length=Fraction(12), uid="t")
+    bundle = AlignmentBundle()
+    bundle.add_group(
+        TimelineGroup(
+            id="g1",
+            timelines=[shared, ContinuousLogicalTimeline(length=Fraction(8), uid="a")],
+        )
+    )
+    bundle.add_group(
+        TimelineGroup(
+            id="g2",
+            timelines=[shared, ContinuousLogicalTimeline(length=Fraction(9), uid="b")],
+        )
+    )
+    data = bundle.to_dict()
+
+    first = TimelineGroup.from_dict(data, group_id="g1")
+    second = TimelineGroup.from_dict(data, group_id="g2")
+
+    assert first.timeline_ids == ["t", "a"]
+    assert second.timeline_ids == ["t", "b"]
+    assert _converted(first, Fraction(3), "t", "a") == Fraction(2)
+    assert _converted(second, Fraction(3), "t", "b") == Fraction(9, 4)
+
+
 # endregion
 
 

@@ -215,8 +215,8 @@ class TestBoundRegistry:
         assert given_breaks[0] is late
         assert given_breaks[1] is early
         assert len(registry.breaks) == 2
-        # Both breaks minted break_1; the second one added is minted again.
-        assert registry.breaks[0].id == "break_2"
+        # Both breaks minted flow_marker_1; the second one added is minted again.
+        assert registry.breaks[0].id == "flow_marker_2"
         assert registry.breaks[0].coordinate is early.coordinate
         assert registry.breaks[1] is late
 

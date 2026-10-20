@@ -266,7 +266,7 @@ class Break(_IdentifiedElement):
         ... )
     """
 
-    _id_prefix: ClassVar[str] = "break"
+    _id_prefix: ClassVar[str] = "flow_marker"
     _dict_keys: ClassVar[tuple[str, ...]] = (
         "id",
         "type",
@@ -442,7 +442,7 @@ class Jump(_IdentifiedElement):
         ... )
     """
 
-    _id_prefix: ClassVar[str] = "jump"
+    _id_prefix: ClassVar[str] = "jump_from"
     _dict_keys: ClassVar[tuple[str, ...]] = (
         "id",
         "type",
@@ -689,10 +689,10 @@ class Marker(_IdentifiedElement):
         ...     name="segno",
         ...     control_type=FlowControlElement.segno,
         ... ).id
-        'marker_1'
+        'jump_to_1'
     """
 
-    _id_prefix: ClassVar[str] = "marker"
+    _id_prefix: ClassVar[str] = "jump_to"
     _dict_keys: ClassVar[tuple[str, ...]] = (
         "id",
         "type",
@@ -818,12 +818,12 @@ class FlowControlRegistry:
         >>> registry.add_marker(
         ...     Marker(Coordinate(16, TimeUnit.quarters), name="segno", control_type=segno)
         ... )
-        Marker('marker_1', name='segno' @ 16)
+        Marker('jump_to_1', name='segno' @ 16)
         >>> coda = FlowControlElement.coda
         >>> registry.add_marker(
         ...     Marker(Coordinate(32, TimeUnit.quarters), name="coda", control_type=coda)
         ... ).id
-        'marker_2'
+        'jump_to_2'
     """
 
     breaks: list[Break] = field(default_factory=list)

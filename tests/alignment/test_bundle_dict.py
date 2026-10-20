@@ -206,11 +206,11 @@ def test_direct_bundle_round_trip() -> None:
 
     # The support policy is a setting of the bundle, not part of the manifest.
     assert rebuilt.support_policy is SupportPolicy.omit
-    assert rebuilt.timeline_to_group == {
-        "score": "group_1",
-        "audio": "group_1",
-        "holes": "group_2",
-        "midi": "group_2",
+    assert rebuilt.timeline_to_groups == {
+        "score": ("group_1",),
+        "audio": ("group_1",),
+        "holes": ("group_2",),
+        "midi": ("group_2",),
     }
     assert sorted(rebuilt.timelines) == [
         "audio",
@@ -331,7 +331,7 @@ def test_loader_bundle_round_trip(loader: str, request: pytest.FixtureRequest) -
 
     assert rebuilt.group_ids == sorted(bundle.group_ids)
     assert sorted(rebuilt.timelines) == sorted(bundle.timelines)
-    assert rebuilt.timeline_to_group == bundle.timeline_to_group
+    assert rebuilt.timeline_to_groups == bundle.timeline_to_groups
 
 
 def test_listen_here_bundle_round_trip(tmp_path: Path) -> None:
@@ -348,13 +348,6 @@ def _malformed(change: Callable[[dict[str, Any]], Any]) -> dict[str, Any]:
     data = _direct_bundle().to_dict()
     change(data)
     return data
-
-
-def _second_group(data: dict[str, Any], members: list[str]) -> None:
-    """Append a group named ``group_9`` holding *members*."""
-    data["groups"].append(
-        {"id": "group_9", "name": None, "meta": {}, "members": members}
-    )
 
 
 @pytest.mark.parametrize(
@@ -385,8 +378,8 @@ def _second_group(data: dict[str, Any], members: list[str]) -> None:
             "names member 'ghost'",
         ),
         (
-            lambda d: _second_group(d, ["score"]),
-            "Timeline 'score' is already a member of group 'group_1'",
+            lambda d: d["groups"][0]["members"].append("score"),
+            "names a member twice",
         ),
         (
             lambda d: (
@@ -413,7 +406,7 @@ def _second_group(data: dict[str, Any], members: list[str]) -> None:
         "duplicate_group",
         "group_id_is_timeline_id",
         "unknown_member",
-        "member_of_two_groups",
+        "member_named_twice",
         "parent_beside_its_child",
         "order_names_no_group",
         "order_not_a_permutation",
@@ -457,7 +450,7 @@ def test_child_brings_its_root_ungrouped() -> None:
     bundle.add_timeline(holes, as_group="roll")
 
     assert bundle.timeline_ids == ["holes", "image"]
-    assert bundle.timeline_to_group == {"holes": "group_1"}
+    assert bundle.timeline_to_groups == {"holes": ("group_1",)}
     assert bundle.get_timeline("image") is image
 
 
@@ -474,7 +467,7 @@ def test_ungrouped_child_registers_its_root() -> None:
     bundle.add_timeline(holes)
 
     assert bundle.timeline_ids == ["image"]
-    assert bundle.timeline_to_group == {}
+    assert bundle.timeline_to_groups == {}
     rebuilt = AlignmentBundle.from_dict(bundle.to_dict())
     assert sorted(rebuilt.timelines) == sorted(bundle.timelines) == ["image"]
     assert rebuilt.get_timeline("image").get_child("holes").length.value == 2000
@@ -508,20 +501,65 @@ def test_root_brought_along_can_be_grouped_later() -> None:
 
     bundle.add_timeline(image, as_group="page")
 
-    assert bundle.timeline_to_group == {"holes": "group_1", "image": "group_2"}
+    assert bundle.timeline_to_groups == {"holes": ("group_1",), "image": ("group_2",)}
     with pytest.raises(ValueError, match="already exists in bundle"):
-        bundle.add_timeline(image, as_group="again")
+        bundle.add_timeline(image)
+
+    # A grouped timeline joins a further group.
+    bundle.add_timeline(image, as_group="again")
+
+    assert bundle.timeline_to_groups == {
+        "holes": ("group_1",),
+        "image": ("group_2", "group_3"),
+    }
 
 
-def test_member_of_two_groups_is_refused() -> None:
-    """A grouped timeline cannot join another group."""
+def test_member_of_another_group_is_admitted() -> None:
+    """A pre-built group may hold a timeline already grouped in the bundle."""
     score = ContinuousLogicalTimeline(length=Fraction(4), uid="score")
     bundle = AlignmentBundle()
     bundle.add_timeline(score, as_group="one")
 
-    with pytest.raises(ValueError, match="already a member of group 'group_1'"):
-        bundle.add_group(TimelineGroup(timelines=[score]))
-    assert bundle.group_ids == ["group_1"]
+    bundle.add_group(TimelineGroup(timelines=[score]))
+
+    assert bundle.group_ids == ["group_1", "group_2"]
+    assert bundle.timeline_to_groups == {"score": ("group_1", "group_2")}
+    assert bundle.timeline_ids == ["score"]
+
+
+def _shared_member_bundle() -> AlignmentBundle:
+    """Groups ``g1`` (``t``, ``a``, ``u``) and ``g2`` (``t``, ``u``, ``b``)."""
+    t = ContinuousLogicalTimeline(length=Fraction(12), uid="t")
+    u = ContinuousLogicalTimeline(length=Fraction(6), uid="u")
+    a = ContinuousLogicalTimeline(length=Fraction(8), uid="a")
+    b = ContinuousLogicalTimeline(length=Fraction(9), uid="b")
+    bundle = AlignmentBundle()
+    bundle.add_group(TimelineGroup(id="g1", timelines=[t, a, u]))
+    bundle.add_group(TimelineGroup(id="g2", timelines=[t, u, b]))
+    return bundle
+
+
+@pytest.mark.parametrize("minimal", [False, True], ids=["complete", "minimal"])
+def test_groups_sharing_a_member_round_trip(minimal: bool) -> None:
+    """A member of two groups is written in both and read back as one object."""
+    bundle = _shared_member_bundle()
+    data = bundle.to_dict(minimal=minimal)
+
+    assert [timeline["id"] for timeline in data["timelines"]] == ["a", "b", "t", "u"]
+    assert [(group["id"], group["members"]) for group in data["groups"]] == [
+        ("g1", ["a", "t", "u"]),
+        ("g2", ["b", "t", "u"]),
+    ]
+    assert data["graphical"]["order"] == {"g1": ["t", "a", "u"], "g2": ["t", "u", "b"]}
+    rebuilt = _assert_round_trip(bundle, minimal=minimal)
+    assert rebuilt.timeline_to_groups == {
+        "t": ("g1", "g2"),
+        "a": ("g1",),
+        "u": ("g1", "g2"),
+        "b": ("g2",),
+    }
+    assert rebuilt.groups["g1"].get_timeline("t") is rebuilt.get_timeline("t")
+    assert rebuilt.groups["g2"].get_timeline("t") is rebuilt.get_timeline("t")
 
 
 def test_given_id_collision_raises_and_leaves_the_bundle() -> None:
@@ -598,11 +636,11 @@ def test_minted_group_id_taken_by_a_timeline_is_minted_again() -> None:
 
     assert bundle.group_ids == ["group_2", "group_3"]
     assert bundle.groups["group_3"].timeline_ids == ["score", "audio"]
-    assert bundle.timeline_to_group == {
-        "score": "group_3",
-        "audio": "group_3",
-        "holes": "group_2",
-        "midi": "group_2",
+    assert bundle.timeline_to_groups == {
+        "score": ("group_3",),
+        "audio": ("group_3",),
+        "holes": ("group_2",),
+        "midi": ("group_2",),
     }
     assert "group_1" in bundle.timelines
     _assert_round_trip(bundle)
@@ -670,7 +708,7 @@ def test_from_bundles_re_mints_minted_group_ids() -> None:
 
     assert merged.group_ids == ["group_1", "group_2"]
     assert [group.name for group in merged.groups.values()] == ["x", "y"]
-    assert merged.timeline_to_group == {"a": "group_1", "b": "group_2"}
+    assert merged.timeline_to_groups == {"a": ("group_1",), "b": ("group_2",)}
 
 
 @pytest.mark.parametrize("locked", [False, True], ids=["unlocked", "locked"])
@@ -683,7 +721,11 @@ def test_from_bundles_keeps_each_members_lock(locked: bool) -> None:
 
     merged = AlignmentBundle.from_bundles([source, other])
 
-    assert merged.timeline_to_group == {"line": "g", "plain": "g", "c": "group_1"}
+    assert merged.timeline_to_groups == {
+        "line": ("g",),
+        "plain": ("g",),
+        "c": ("group_1",),
+    }
     assert [merged.get_timeline(uid).is_locked for uid in ("line", "plain", "c")] == [
         locked,
         False,

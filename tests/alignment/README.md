@@ -718,8 +718,11 @@ from every assertion here.
    its root, ungrouped; a child added ungrouped registers only its root (an
    ungrouped participant is always a root), and the round trip restores
    exactly that participant set; three loader-minted `cpt_1` timelines join
-   one bundle as `cpt_1`, `cpt_2`, `cpt_3`; a timeline already in one group is refused by
-   another; a given timeline id held by another timeline (of any tree in the
+   one bundle as `cpt_1`, `cpt_2`, `cpt_3`; a timeline already in one group
+   may join another (see "A Timeline in Several Groups" below: the root
+   brought along with its child and grouped later joins a third group by
+   `as_group`, and a pre-built group holding a grouped member is admitted);
+   a given timeline id held by another timeline (of any tree in the
    bundle, descendants included) raises `ValueError` and leaves the bundle
    unchanged; a minted id held there is minted again. A refused newcomer keeps
    its ids: every collision check — the timeline ids and the group id —
@@ -745,7 +748,8 @@ from every assertion here.
 5. **Refusals.** `from_dict` raises `ValueError` naming the problem for a
    missing marker or required key, an empty manifest id, a timeline written
    twice, a group id written twice or equal to a timeline id, a member naming
-   no timeline, a timeline in two groups, a group naming a parent and its
+   no timeline, a group naming one member twice (`names a member twice`; two
+   groups sharing a member are no error), a group naming a parent and its
    child, a key of `graphical.order` naming no group or timeline (`'graphical.order'
    names no group or timeline: ['group_7']`), and a group's order that is not a
    permutation of its members. A key the library does not know is not
@@ -952,6 +956,7 @@ deterministic order was chosen, so "stable but wrong" also fails.
 | `TestMatchGraphNonSynchronousClaims` | 4 | Non-synchronous claims stored as metadata, no edges created |
 | `TestMatchGraphGetStamps` | 4 | `get_stamps()` returns one stamp per connected component |
 | `TestMatchGraphExtendToGroupsImplicitClaims` | 5 | Implicit claims created with correct coordinates and traceability |
+| `TestExtendToSeveralGroups` | 1 | A shared member carries group extension into its other group |
 | `TestMatchGraphExtendToGroupsFilters` | 4 | `include_timelines`, `exclude_timelines`, `include_domains`, `include_units` |
 | `TestMatchGraphFilter` | 3 | `filter()` preserves non-synchronous claims for remaining timelines |
 | `TestMatchStampGroupRetrieval` | 2 | Retrieves group members with the plural key getter and `timeline_ids` |
@@ -1039,6 +1044,99 @@ This validates the Hendrix M6-M9 use case from the conceptual model: multiple Ma
 
 ---
 
+## A Timeline in Several Groups (`test_bundle.py::TestSeveralGroups`, `test_bundle_dict.py`, `test_graph.py::TestExtendToSeveralGroups`)
+
+### What We're Validating
+
+Group membership is a directed acyclic graph, not a partition: one timeline
+object may be a member of several groups of a bundle. The groups are the only
+statement of membership; `AlignmentBundle.timeline_to_groups` is read from
+them, so no second record can disagree with them. Every consumer of
+membership — transfer, the matchstamp closure, commensurability, group
+extension of a `MatchGraph`, the grouped forms of `MatchStamp.to_dict`, the
+diagram and the manifest — must treat a shared member as a member of each of
+its groups.
+
+### Specimen
+
+Four quarters timelines with exact lengths, so every expected value is a
+ratio: `t` (12), `a` (8), `u` (6), `b` (9). Group `g1` holds `t`, `a`, `u`;
+group `g2` holds `t`, `u`, `b`. `t` and `u` share both groups; `a` lies in
+`g1` only and `b` in `g2` only. The query position on `u` and on `a` is
+`1/3`, chosen so that every converted coordinate is a non-integer ratio and a
+float detour would show.
+
+### What proves it
+
+1. **One membership, read from the groups.** `timeline_to_groups` is exactly
+   `{"t": ("g1", "g2"), "a": ("g1",), "u": ("g1", "g2"), "b": ("g2",)}`
+   (group ids sorted); `get_groups_for_timeline("t")` returns the two group
+   objects `g1`, `g2` in that order; the singular `get_group_for_timeline`
+   answers `g1` for `a` and refuses `t` with the exact message
+   `Timeline 't' is a member of several groups ['g1', 'g2']; use
+   get_groups_for_timeline` rather than picking one. Removing `t` from `g1`
+   (`TimelineGroup.remove_timeline`) leaves `("g2",)`, and from `g2` too
+   leaves `t` out of the lookup while it stays registered — and the diagram
+   then lists it as standalone. No stale record is possible because there is
+   no record to go stale; these assertions are what would catch one.
+2. **Within a group, any shared group answers alike, and the first by id is
+   used.** From `u` at `1/3`, the matchstamp holds `t` at exactly `2/3`, `a`
+   at `4/9` and `b` at `1/2`; the `t` value equals `g1.get_coordinate_at`
+   from `u` at `1/3` alone, and `transfer` returns its float, `2/3` as a
+   float. Two co-extensive groups cannot disagree, so the choice of group is
+   unobservable through results; it is pinned on the private lookup instead:
+   the group `u` and `t` share is `g1`, also when `g2` was added to the
+   bundle first.
+3. **A shared member carries a position from one group to the other.** From
+   `a` at `1/3` the matchstamp holds `t` at `1/2`, `u` at `1/4` and `b` at
+   `3/8` (`1/3 · 9/8`, through `t` or `u`, both exact); `transfer` from `a`
+   to `b` returns `0.375`; `are_commensurable("a", "b")` is true. The control
+   is the same topology without a shared member (`g1` = `a`, `x`; `g2` =
+   `b`, `y`): the stamp from `a` holds only `a` and `x`, `transfer` returns
+   `None` and `are_commensurable` is false — so it is the shared member, not
+   group membership as such, that connects the groups.
+4. **`grouped_with` never guesses.** Grouping a newcomer with `t` raises
+   `ValueError` with exactly `Cannot group with 't': it is a member of several
+   groups ['g1', 'g2'], so the group to join is ambiguous` and leaves the
+   bundle's manifest and timelines unchanged; grouping it with `a` joins `g1`
+   only. A grouped timeline joins a further group: `a` with
+   `as_group="solo"` becomes `("g1", "group_1")`. A member is still refused
+   a second place in one group: grouping `t` with `a` (both in `g1`) raises
+   `Timeline 't' already in group 'g1'`.
+5. **Grouped stamp forms list a shared member under each group.**
+   `MatchStamp.to_dict(format="nested")` of the stamp from `u` has exactly
+   the keys `g1` and `g2`, with `t (quarters)` and `u (quarters)` under both,
+   `a (quarters)` under `g1` only and `b (quarters)` under `g2` only;
+   `format="prefix"` writes `g1/t (quarters)` and `g2/t (quarters)`.
+6. **The diagram lists a shared member under each group** (its rendered
+   name occurs once per group) and lists no standalone section while every
+   timeline is grouped. `summary()` writes each timeline's `"groups"`, the
+   sorted list of its group ids: `["g1", "g2"]` for `t` and `u`, `["g1"]`
+   for `a`, `["g2"]` for `b`, and `[]` for a standalone `s`; no singular
+   `"group"` key remains.
+7. **Manifest round trip** (`test_bundle_dict.py`). The bundle writes the
+   groups `g1` with members `["a", "t", "u"]` and `g2` with
+   `["b", "t", "u"]` (members are written sorted), their orders
+   `["t", "a", "u"]` and `["t", "u", "b"]` under `graphical.order`, and
+   every root once; read back, complete and `minimal=True` alike, it writes
+   the identical dictionary, answers every group's cross-sections identically,
+   has the same `timeline_to_groups`, and holds ONE object for `t`: the
+   bundle's `t`, `g1`'s `t` and `g2`'s `t` are the same object, so the
+   reader restores a shared member, not two copies of it.
+8. **Group extension of a `MatchGraph` follows a shared member**
+   (`test_graph.py`). The same topology in pixels (`t` 1200, `a` 800, `u`
+   600, `b` 900) and one explicit claim `a@400 ↔ e@100` (`e` in no group),
+   extended through `{g1, g2}`, yield one stamp over exactly `a`, `e`, `t`,
+   `u`, `b`, with `t` at `600.0`, `u` at `300.0` and `b` at `450.0` — `b` is
+   only reachable by extending the coordinates `g1` gave `t` and `u` through
+   their second group — and exactly five implicit claims (`a`–`t`, `a`–`u`
+   through `g1`; `t`–`u`, `t`–`b` and `u`–`b` through `g2`). A node reached
+   through a group is not extended through that same group again, so the
+   single-group expectations of the existing extension tests (node, edge and
+   implicit-claim counts) are unchanged.
+
+---
+
 ## AlignmentBundle Tests (`test_bundle.py`)
 
 ### What We're Validating
@@ -1058,6 +1156,7 @@ This validates the Hendrix M6-M9 use case from the conceptual model: multiple Ma
 | `TestEdgeCases` | 6 | No claims, non-synchronous claims, single claim insufficient for WarpMap |
 | `TestAddMatchClaimsAPI` | 3 | Chaining, accumulation, no-arg validation |
 | `TestAddGroupWithCrossGroupTransfer` | 4 | `add_group()` + cross-group claims + transfer end-to-end |
+| `TestSeveralGroups` | 11 | A timeline in several groups: membership lookup, transfer within and across shared groups, `grouped_with` refusal, stamp forms, diagram, summary (see "A Timeline in Several Groups") |
 
 ### Key Evidence
 

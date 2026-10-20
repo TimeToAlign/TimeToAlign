@@ -404,7 +404,6 @@ class TestFromClaims:
             claims,
             source_timeline_id="dgt_1",
             groups={"g1": group},
-            timeline_to_group={"dgt_1": "g1", "audio": "g1"},
         )
 
         # Should have 3 stamps, each containing dgt1, external, and audio
@@ -835,7 +834,6 @@ class TestMatchLineIntegration:
             claims,
             source_timeline_id="dgt_1",
             groups={"g1": group},
-            timeline_to_group={"dgt_1": "g1", "audio": "g1"},
         )
 
         # Audio should be available as a target

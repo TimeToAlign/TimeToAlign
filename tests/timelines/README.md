@@ -175,7 +175,7 @@ so an unbound registry rejects it. Constructor content passes through the same
 add methods, but the registry copies the given containers first. The caller's
 list therefore remains a distinct object in its original order, even though the
 registry sorts its own copy by coordinate; of two breaks constructed without an
-id (both minted ``break_1``), the one added second is stored as ``break_2``. Copying a registry must reproduce its
+id (both minted ``flow_marker_1``), the one added second is stored as ``flow_marker_2``. Copying a registry must reproduce its
 binding and exact content while subsequent mutation of either registry leaves the
 other unchanged.
 
@@ -541,7 +541,9 @@ segno, a coda or a repeat start rather than guessing it from a name.
   `dal_segno` to 4, a `to_coda` to 12 and a `da_capo_al_coda` to 10, none
   with a marker, write a `jump_to` at each destination whose manifestation
   follows from the jump (`repeat_start`, `segno`, `coda`, `coda`), with ids
-  minted in the timeline's tree (`marker_1`, ... around the ids it holds);
+  minted in the timeline's tree (`jump_to_1`, ... around the ids it holds,
+  among them a break given the id `jump_to_1`, which the minting steps
+  around);
   two jumps to one destination of one manifestation share one. A
   `repeat_end` and a `da_capo` to 0 write no target. A `da_capo` to another
   position than 0 is refused.
@@ -562,7 +564,7 @@ segno, a coda or a repeat start rather than guessing it from a name.
   the same breaks and the same jumps (id, manifestation, from, to,
   `repeat_count`, condition) with exact values; the two repeat ends landing
   at 42 and 84, where no marker lies, gain the `repeat_start` markers
-  `marker_2` and `marker_3` written there, and the read registry is a
+  `jump_to_2` and `jump_to_3` written there, and the read registry is a
   fixpoint of writing.
 
 ### Manifest identity (`test_manifest_ids.py`)
@@ -578,16 +580,19 @@ display. The tests prove four properties, each against literal expected ids.
   `dpt_1`, `cgt_1`, `dgt_1`; the base `Timeline` and a segment line by their
   unit (`Timeline(unit="seconds")` is `cpt_1`, ticks `dlt_1`, pixels `dgt_1`);
   `LinearMap` `lmap_1`, `TableMap` and its subclasses `tmap_1`, `PiecewiseMap`
-  `pmap_1`, every other map `cmap_1`; `region_1`, `break_1`, `jump_1`,
-  `marker_1`. Determinism is proved by building one reference manifest
+  `pmap_1`, every other map `cmap_1`; `region_1`; and a flow-control
+  element by its manifest `type`: a `Break` (a `flow_marker`)
+  `flow_marker_1`, a `Jump` (a `jump_from`) `jump_from_1`, a `Marker` (a
+  `jump_to`) `jump_to_1`. Determinism is proved by building one reference manifest
   (a quarters root, two children made by `create_child`, two regions, two
   breaks, a marker and a jump targeting it, a `LinearMap`) twice, the second
   time after constructing five unrelated timelines and four maps, and once
   more with its collections added in the reverse order. The first two must
   serialize to identical `to_dict` payloads, and all three must carry
   exactly the ids spelled out literally (`clt_1`; children `clt_2`,
-  `clt_3`; `region_1`, `region_2`; `break_1`, `break_2`; `marker_1`;
-  `jump_1` targeting `marker_1`; `lmap_1`). A process-global counter gives
+  `clt_3`; `region_1`, `region_2`; `flow_marker_1`, `flow_marker_2`;
+  `jump_to_1`; `jump_from_1` targeting `jump_to_1`; `lmap_1`). A
+  process-global counter gives
   different ids in the second build; insertion order may decide which
   element holds which id, never which ids exist. Smallest-free
   is pinned by a given child id `clt_3` on a `clt_1` root: the next two
@@ -610,8 +615,8 @@ display. The tests prove four properties, each against literal expected ids.
   `region_2`, while the root keeps `clt_1` and `region_1`. A grandchild is
   renamed under its own parent's key as well (the nested specimen: the child
   carries a minted child `clt_2` of its own, which becomes `clt_3`). A child
-  whose marker `marker_1` collides is re-minted `marker_2` and its jump's
-  `target` follows to `marker_2`. Given ids: a child `score` under a root
+  whose marker `jump_to_1` collides is re-minted `jump_to_2` and its jump's
+  `target` follows to `jump_to_2`. Given ids: a child `score` under a root
   `score` raises naming `timeline 'score'` twice; a child timeline `intro`
   under a root holding a region `intro` raises naming `region 'intro'`; a
   region `intro` added beside a child `intro` raises; adding a given map id
@@ -656,9 +661,9 @@ display. The tests prove four properties, each against literal expected ids.
   never reusing the region's id. `add_jump` refuses a `target` that names no
   marker of the registry. A score loader resolves D.S. targets to marker
   ids: the ms3 measures of Couperin's `c05n05_musete` (corpus `score`,
-  `couperin_concerts`) load one marker, `marker_1`, a `segno` named `segno`
+  `couperin_concerts`) load one marker, `jump_to_1`, a `segno` named `segno`
   at quarter 12 (its Fine is a break at the end of its bar, 42, and no jump
-  target), and both D.S. al Fine jumps target `marker_1`; the da capo and
+  target), and both D.S. al Fine jumps target `jump_to_1`; the da capo and
   repeat jumps of the Rondeau `c11n08_Rondeau` target `None`.
 
 Loader parity (`test_manifest_ids.py::TestLoaderParity`): for one specimen
@@ -905,6 +910,15 @@ whichever is added first, and `from_dict` refuses a group object naming both,
 leaving nothing built. A parent and its child in *different* groups of one
 bundle remain allowed (the bundle tests pin it): each group converts within
 itself, and the offset relates the two.
+
+**One timeline, several groups** (`test_group_definition.py`). Membership is
+no partition: one timeline object may be a member of several groups at once.
+From a manifest whose groups `g1` (`t`, `a`) and `g2` (`t`, `b`) share `t`,
+`TimelineGroup.from_dict` selecting `g1` reads the members `t`, `a` and
+selecting `g2` reads `t`, `b`, each in that order, and each group converts
+`t`'s position by its own members' lengths. The bundle's handling of a shared
+member is tested in `tests/alignment/README.md`, "A Timeline in Several
+Groups".
 
 **A segment-line member is locked.** A segment line that becomes a member is
 locked by default, as it is when it becomes a child; lifting that lock is

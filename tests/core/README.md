@@ -1021,8 +1021,10 @@ stateless generator of manifest element ids.
      and `flow_control_90` show that the number is any number, not one
      spelling. The pattern's edges stay valid, each a short step from a
      refused id: the bare kind word (`markers`), the number 0
-     (`children_0`), a leading zero (`regions_01`), the singular kinds the
-     library mints for its own elements (`marker_1`, `region_1`), a role
+     (`children_0`), a leading zero (`regions_01`), the singular kinds
+     `marker_1` and `region_1`, the first ids the library mints for its
+     flow-control elements (`flow_marker_1` — one word away from the band
+     `flow_control_1` — `jump_from_1`, `jump_to_1`), a role
      before the id (`score:children_1`), a suffix after it
      (`markers_1a`), and another case (`Markers_1`). The part words keep
      their own message, `Invalid id 'start': it is reserved for the parts
@@ -1030,8 +1032,10 @@ stateless generator of manifest element ids.
    - No id the library mints is reserved. Every prefix it mints with is
      collected from the code rather than listed: the timeline prefix of
      every unit, alone and led by a role (`score:`), the `_id_prefix` of
-     every subclass of the frozen manifest elements (region, break, jump,
-     marker) and of `ConversionMap`, and the prefix of the ids minted by a
+     every subclass of the frozen manifest elements (`region`, and the
+     flow-control prefixes `flow_marker`, `jump_from` and `jump_to`, one
+     per manifest `type`, asserted by name) and of `ConversionMap`, and the
+     prefix of the ids minted by a
      fresh `TimelineGroup` and `AlignmentBundle`. Each minted first id
      passes `validate_id`; since the pattern needs the whole id to be a
      kind word, `_` and a number, a prefix that is no kind word cannot

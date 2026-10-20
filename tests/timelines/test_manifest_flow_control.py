@@ -162,7 +162,7 @@ def test_a_jump_landing_elsewhere_than_its_target_is_refused() -> None:
 
 def test_a_destination_without_a_marker_gets_one() -> None:
     timeline = ContinuousLogicalTimeline(length=F(32), uid="score")
-    timeline.flow_control.add_break(Break(_q(2), id="marker_1"))
+    timeline.flow_control.add_break(Break(_q(2), id="jump_to_1"))
     for jump_id, control_type, at, to in [
         ("rep", E.repeat_end, 16, 8),
         ("rep2", E.repeat_end, 18, 8),
@@ -183,23 +183,23 @@ def test_a_destination_without_a_marker_gets_one() -> None:
         if element["type"] == "jump_to"
     ]
     # Minted in the order the jumps are written (by from coordinate), around
-    # the break holding marker_1.
+    # the break holding jump_to_1.
     assert landings == [
-        ("marker_4", "segno", [4, 1]),
-        ("marker_3", "repeat_start", [8, 1]),
-        ("marker_5", "coda", [10, 1]),
-        ("marker_2", "coda", [12, 1]),
+        ("jump_to_4", "segno", [4, 1]),
+        ("jump_to_3", "repeat_start", [8, 1]),
+        ("jump_to_5", "coda", [10, 1]),
+        ("jump_to_2", "coda", [12, 1]),
     ]
     assert {
         element["id"]: element.get("target")
         for element in flow
         if element["type"] == "jump_from"
     } == {
-        "rep": "marker_3",
-        "rep2": "marker_3",
-        "ds": "marker_4",
-        "tc": "marker_2",
-        "dcc": "marker_5",
+        "rep": "jump_to_3",
+        "rep2": "jump_to_3",
+        "ds": "jump_to_4",
+        "tc": "jump_to_2",
+        "dcc": "jump_to_5",
         "rep0": None,
         "dc0": None,
     }
@@ -355,17 +355,24 @@ def test_a_score_s_registry_writes_and_reads_back() -> None:
         jumps(restored)
         == jumps(source)
         == [
-            ("jump_1", E.repeat_end, 42, 0, 1, ActivationCondition.first_n),
-            ("jump_2", E.repeat_end, 84, 42, 1, ActivationCondition.first_n),
-            ("jump_3", E.dal_segno_al_fine, 84, 12, 1, ActivationCondition.always),
-            ("jump_4", E.repeat_end, 162, 84, 1, ActivationCondition.first_n),
-            ("jump_5", E.dal_segno_al_fine, 162, 12, 1, ActivationCondition.always),
+            ("jump_from_1", E.repeat_end, 42, 0, 1, ActivationCondition.first_n),
+            ("jump_from_2", E.repeat_end, 84, 42, 1, ActivationCondition.first_n),
+            ("jump_from_3", E.dal_segno_al_fine, 84, 12, 1, ActivationCondition.always),
+            ("jump_from_4", E.repeat_end, 162, 84, 1, ActivationCondition.first_n),
+            (
+                "jump_from_5",
+                E.dal_segno_al_fine,
+                162,
+                12,
+                1,
+                ActivationCondition.always,
+            ),
         ]
     )
     assert [(m.id, m.control_type, m.position) for m in restored.markers] == [
-        ("marker_1", E.segno, 12),
-        ("marker_2", E.repeat_start, 42),
-        ("marker_3", E.repeat_start, 84),
+        ("jump_to_1", E.segno, 12),
+        ("jump_to_2", E.repeat_start, 42),
+        ("jump_to_3", E.repeat_start, 84),
     ]
     assert read.to_dict() == written
 

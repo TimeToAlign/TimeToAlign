@@ -543,9 +543,8 @@ class TestMatchGraphGroupExtension:
 
         # Set up group mapping
         groups = {"group1": dgt1_group}
-        timeline_to_group = {"dgt_1": "group1", "audio": "group1"}
 
-        extended = graph.extend_to_groups(groups, timeline_to_group)
+        extended = graph.extend_to_groups(groups)
 
         # Original graph: 2 nodes, 1 edge
         # Extended graph should have 3 nodes (dgt1, external, audio)
@@ -571,9 +570,8 @@ class TestMatchGraphGroupExtension:
         graph = MatchGraph([claim])
 
         groups = {"group1": dgt1_group}
-        timeline_to_group = {"dgt_1": "group1", "audio": "group1"}
 
-        extended = graph.extend_to_groups(groups, timeline_to_group)
+        extended = graph.extend_to_groups(groups)
 
         # Get stamp and check audio coordinate
         # 500px in dgt1 (0-1000) should be 50s in audio (0-100)
@@ -600,9 +598,8 @@ class TestMatchGraphGroupExtension:
         graph = MatchGraph([claim])
 
         groups = {"group1": dgt1_group}
-        timeline_to_group = {"dgt_1": "group1", "audio": "group1"}
 
-        extended = graph.extend_to_groups(groups, timeline_to_group)
+        extended = graph.extend_to_groups(groups)
         stamps = extended.get_stamps()
         assert len(stamps) == 1
         stamp = stamps[0]
@@ -630,11 +627,8 @@ class TestMatchGraphGroupExtension:
         graph = MatchGraph([claim])
 
         groups = {"group1": dgt1_group}
-        timeline_to_group = {"dgt_1": "group1", "audio": "group1"}
 
-        extended = graph.extend_to_groups(
-            groups, timeline_to_group, include_inferred=False
-        )
+        extended = graph.extend_to_groups(groups, include_inferred=False)
 
         # Should be same as original
         assert extended.n_nodes == 2
@@ -766,9 +760,8 @@ class TestMatchGraphFilter:
         graph = MatchGraph([claim])
 
         groups = {"group1": dgt1_group}
-        timeline_to_group = {"dgt_1": "group1", "audio": "group1"}
 
-        extended = graph.extend_to_groups(groups, timeline_to_group)
+        extended = graph.extend_to_groups(groups)
         filtered = extended.filter(explicit_only=True)
 
         # Should only have the explicit edge
@@ -1067,9 +1060,8 @@ class TestMatchGraphExtendToGroupsImplicitClaims:
         graph = MatchGraph([claim])
 
         groups = {"group1": dgt1_group}
-        timeline_to_group = {"dgt_1": "group1", "audio": "group1"}
 
-        extended = graph.extend_to_groups(groups, timeline_to_group)
+        extended = graph.extend_to_groups(groups)
 
         # Original had 1 claim, extended should have 1 original + 1 implicit
         assert extended.n_claims == 2
@@ -1102,9 +1094,8 @@ class TestMatchGraphExtendToGroupsImplicitClaims:
         graph = MatchGraph([claim])
 
         groups = {"group1": dgt1_group}
-        timeline_to_group = {"dgt_1": "group1", "audio": "group1"}
 
-        extended = graph.extend_to_groups(groups, timeline_to_group)
+        extended = graph.extend_to_groups(groups)
 
         implicit = [c for c in extended.claims if not c.is_explicit]
         assert len(implicit) == 1
@@ -1156,15 +1147,8 @@ class TestMatchGraphExtendToGroupsImplicitClaims:
         graph = MatchGraph([claim])
 
         groups = {"group_a": group_a, "group_b": group_b}
-        timeline_to_group = {
-            "tl1": "group_a",
-            "tl4": "group_a",
-            "tl5": "group_a",
-            "tl2": "group_b",
-            "tl6": "group_b",
-        }
 
-        extended = graph.extend_to_groups(groups, timeline_to_group)
+        extended = graph.extend_to_groups(groups)
 
         # All 5 timelines should be present
         assert extended.timeline_ids == {"tl1", "tl2", "tl4", "tl5", "tl6"}
@@ -1188,6 +1172,50 @@ class TestMatchGraphExtendToGroupsImplicitClaims:
         implicit = [c for c in extended.claims if not c.is_explicit]
         # Exactly 3: tl1->tl4, tl1->tl5, tl2->tl6
         assert len(implicit) == 3
+
+
+class TestExtendToSeveralGroups:
+    """A timeline of several groups carries extension from one to the other."""
+
+    def test_extension_follows_a_shared_member_into_its_other_group(self) -> None:
+        """One claim on ``a`` reaches ``b`` only through ``t`` and ``u``.
+
+        - Group g1: t (1200px), a (800px), u (600px)
+        - Group g2: t, u, b (900px)
+        - Explicit claim: a@400 <-> e@100, ``e`` in no group
+        - g1 gives t@600 and u@300; their second group g2 gives b@450.
+        """
+        t = DiscreteGraphicalTimeline(length=1200, unit="pixels", uid="t")
+        a = DiscreteGraphicalTimeline(length=800, unit="pixels", uid="a")
+        u = DiscreteGraphicalTimeline(length=600, unit="pixels", uid="u")
+        b = DiscreteGraphicalTimeline(length=900, unit="pixels", uid="b")
+        groups = {
+            "g1": TimelineGroup(id="g1", timelines=[t, a, u]),
+            "g2": TimelineGroup(id="g2", timelines=[t, u, b]),
+        }
+        claim = MatchClaim(
+            timeline_a_id="a",
+            timeline_b_id="e",
+            start_anchor=AlignmentAnchor(
+                timeline_a_id="a",
+                coordinate_a=Coordinate(400.0, TimeUnit.number),
+                timeline_b_id="e",
+                coordinate_b=Coordinate(100.0, TimeUnit.number),
+            ),
+        )
+
+        extended = MatchGraph([claim]).extend_to_groups(groups)
+
+        assert extended.timeline_ids == {"a", "e", "t", "u", "b"}
+        (stamp,) = extended.get_stamps()
+        assert stamp.get_coordinate_for("t", format="float") == 600.0
+        assert stamp.get_coordinate_for("u", format="float") == 300.0
+        assert stamp.get_coordinate_for("b", format="float") == 450.0
+        # a->t and a->u through g1; t->u and t->b through g2 from t; u->b
+        # through g2 from u (u->t exists already). A node is never extended
+        # again through the group that reached it.
+        implicit = [c for c in extended.claims if not c.is_explicit]
+        assert len(implicit) == 5
 
 
 class TestMatchGraphExtendToGroupsFilters:
@@ -1226,23 +1254,21 @@ class TestMatchGraphExtendToGroupsFilters:
         )
 
         groups = {"group_a": group_a}
-        timeline_to_group = {"dgt_1": "group_a", "audio": "group_a"}
         timelines = {"dgt_1": dgt1, "audio": audio}
 
-        return claim, groups, timeline_to_group, timelines
+        return claim, groups, timelines
 
     def test_timeline_ids_filter(
         self,
         multi_group_setup: tuple,
     ) -> None:
         """timeline_ids restricts which timelines get implicit claims."""
-        claim, groups, timeline_to_group, timelines = multi_group_setup
+        claim, groups, timelines = multi_group_setup
         graph = MatchGraph([claim])
 
         # Only extend to dgt1 (should NOT add audio)
         extended = graph.extend_to_groups(
             groups,
-            timeline_to_group,
             timeline_ids={"dgt_1", "external"},
         )
 
@@ -1256,13 +1282,12 @@ class TestMatchGraphExtendToGroupsFilters:
         multi_group_setup: tuple,
     ) -> None:
         """id_pattern prevents specific timelines from extension."""
-        claim, groups, timeline_to_group, timelines = multi_group_setup
+        claim, groups, timelines = multi_group_setup
         graph = MatchGraph([claim])
 
         # Exclude audio
         extended = graph.extend_to_groups(
             groups,
-            timeline_to_group,
             id_pattern=r"^(?!audio$).*",
         )
 
@@ -1273,11 +1298,10 @@ class TestMatchGraphExtendToGroupsFilters:
         multi_group_setup: tuple,
     ) -> None:
         """Canonical ID filters reproduce the unextended graph count."""
-        claim, groups, timeline_to_group, _timelines = multi_group_setup
+        claim, groups, _timelines = multi_group_setup
 
         extended = MatchGraph([claim]).extend_to_groups(
             groups,
-            timeline_to_group,
             timeline_ids={"dgt_1", "external"},
             id_pattern=r"^(dgt_1|external)$",
         )
@@ -1290,13 +1314,12 @@ class TestMatchGraphExtendToGroupsFilters:
         multi_group_setup: tuple,
     ) -> None:
         """MatchLine forwards canonical filters to group extension."""
-        claim, groups, timeline_to_group, _timelines = multi_group_setup
+        claim, groups, _timelines = multi_group_setup
 
         line = MatchLine.from_claims(
             [claim],
             source_timeline_id="dgt_1",
             groups=groups,
-            timeline_to_group=timeline_to_group,
             timeline_ids={"dgt_1", "external"},
             id_pattern=r"^(dgt_1|external)$",
         )
@@ -1312,13 +1335,12 @@ class TestMatchGraphExtendToGroupsFilters:
         multi_group_setup: tuple,
     ) -> None:
         """include_domains restricts extension by timeline domain."""
-        claim, groups, timeline_to_group, timelines = multi_group_setup
+        claim, groups, timelines = multi_group_setup
         graph = MatchGraph([claim])
 
         # Only extend to graphical domain (should NOT add audio)
         extended = graph.extend_to_groups(
             groups,
-            timeline_to_group,
             include_domains={Domain.graphical},
         )
 
@@ -1330,13 +1352,12 @@ class TestMatchGraphExtendToGroupsFilters:
         multi_group_setup: tuple,
     ) -> None:
         """include_units restricts extension by timeline unit."""
-        claim, groups, timeline_to_group, timelines = multi_group_setup
+        claim, groups, timelines = multi_group_setup
         graph = MatchGraph([claim])
 
         # Only extend to pixels (should NOT add audio/seconds)
         extended = graph.extend_to_groups(
             groups,
-            timeline_to_group,
             include_units={TimeUnit.pixels},
         )
 

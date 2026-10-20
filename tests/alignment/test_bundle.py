@@ -37,6 +37,7 @@ from timetoalign.core import (
 )
 from timetoalign.maps import ScalarMap, TableMap
 from timetoalign.timelines import Timeline, TimelineGroup
+from timetoalign.timelines.types import ContinuousLogicalTimeline
 
 from .helpers import make_match_stamp as MatchStamp
 
@@ -252,7 +253,7 @@ class TestGroupManagement:
         bundle.add_timeline(section, as_group="part")
 
         assert bundle.timeline_ids == ["section", "reference"]
-        assert bundle.timeline_to_group == {"section": "group_1"}
+        assert bundle.timeline_to_groups == {"section": ("group_1",)}
         assert bundle.get_matchstamp_at(0.0, "section").coordinates == {
             "section": Coordinate(0.0, TimeUnit.seconds),
             "reference": Coordinate(25.0, TimeUnit.seconds),
@@ -1328,6 +1329,206 @@ class TestAddMatchClaimField:
 
 
 # region Test: add_group API
+
+
+def _shared_member_bundle(*, g2_first: bool = False) -> AlignmentBundle:
+    """Groups ``g1`` (``t``, ``a``, ``u``) and ``g2`` (``t``, ``u``, ``b``).
+
+    ``t`` and ``u`` are members of both groups; ``a`` of ``g1`` only and ``b``
+    of ``g2`` only. All four are quarters timelines of exact length.
+    """
+    t = ContinuousLogicalTimeline(length=Fraction(12), uid="t")
+    u = ContinuousLogicalTimeline(length=Fraction(6), uid="u")
+    a = ContinuousLogicalTimeline(length=Fraction(8), uid="a")
+    b = ContinuousLogicalTimeline(length=Fraction(9), uid="b")
+    groups = [
+        TimelineGroup(id="g1", timelines=[t, a, u]),
+        TimelineGroup(id="g2", timelines=[t, u, b]),
+    ]
+    bundle = AlignmentBundle()
+    for group in reversed(groups) if g2_first else groups:
+        bundle.add_group(group)
+    return bundle
+
+
+def _q(value: Fraction) -> Coordinate:
+    return Coordinate(value, TimeUnit.quarters)
+
+
+class TestSeveralGroups:
+    """A timeline may be a member of several groups of one bundle."""
+
+    def test_membership_is_read_from_the_groups(self) -> None:
+        bundle = _shared_member_bundle()
+
+        assert bundle.timeline_to_groups == {
+            "t": ("g1", "g2"),
+            "a": ("g1",),
+            "u": ("g1", "g2"),
+            "b": ("g2",),
+        }
+        assert bundle.get_groups_for_timeline("t") == (
+            bundle.groups["g1"],
+            bundle.groups["g2"],
+        )
+        assert bundle.get_groups_for_timeline("a") == (bundle.groups["g1"],)
+        assert bundle.get_group_for_timeline("a") is bundle.groups["g1"]
+        with pytest.raises(ValueError) as refused:
+            bundle.get_group_for_timeline("t")
+        assert str(refused.value) == (
+            "Timeline 't' is a member of several groups ['g1', 'g2']; use "
+            "get_groups_for_timeline"
+        )
+
+    def test_removal_from_each_group_leaves_no_stale_membership(self) -> None:
+        bundle = _shared_member_bundle()
+
+        bundle.groups["g1"].remove_timeline("t")
+        assert bundle.timeline_to_groups["t"] == ("g2",)
+
+        bundle.groups["g2"].remove_timeline("t")
+        assert "t" not in bundle.timeline_to_groups
+        assert "t" in bundle.timelines
+        assert "Standalone timelines (1):" in str(bundle.diagram())
+
+    def test_shared_groups_answer_alike_and_the_first_by_id_serves(self) -> None:
+        bundle = _shared_member_bundle()
+
+        stamp = bundle.get_matchstamp_at(Fraction(1, 3), "u")
+
+        assert stamp.coordinates == {
+            "u": _q(Fraction(1, 3)),
+            "t": _q(Fraction(2, 3)),
+            "a": _q(Fraction(4, 9)),
+            "b": _q(Fraction(1, 2)),
+        }
+        through_g1 = bundle.groups["g1"].get_coordinate_at(
+            IdCoordinate(Fraction(1, 3), TimeUnit.quarters, "u"), timeline_id="t"
+        )
+        assert through_g1.value == stamp.coordinates["t"].value == Fraction(2, 3)
+        assert bundle.transfer(Fraction(1, 3), "u", "t") == float(Fraction(2, 3))
+        # Co-extensive groups cannot disagree, so which one serves is pinned
+        # on the lookup itself: the first by id, whatever the insertion order.
+        assert bundle._shared_group("u", "t").id == "g1"
+        assert _shared_member_bundle(g2_first=True)._shared_group("u", "t").id == "g1"
+
+    def test_shared_member_carries_a_position_across_its_groups(self) -> None:
+        bundle = _shared_member_bundle()
+
+        stamp = bundle.get_matchstamp_at(Fraction(1, 3), "a")
+
+        assert stamp.coordinates == {
+            "a": _q(Fraction(1, 3)),
+            "t": _q(Fraction(1, 2)),
+            "u": _q(Fraction(1, 4)),
+            "b": _q(Fraction(3, 8)),
+        }
+        assert bundle.transfer(Fraction(1, 3), "a", "b") == 0.375
+        assert bundle.are_commensurable("a", "b") is True
+
+    def test_groups_without_a_shared_member_stay_apart(self) -> None:
+        """The control: the same topology without a shared member."""
+        bundle = AlignmentBundle()
+        bundle.add_group(
+            TimelineGroup(
+                id="g1",
+                timelines=[
+                    ContinuousLogicalTimeline(length=Fraction(8), uid="a"),
+                    ContinuousLogicalTimeline(length=Fraction(12), uid="x"),
+                ],
+            )
+        )
+        bundle.add_group(
+            TimelineGroup(
+                id="g2",
+                timelines=[
+                    ContinuousLogicalTimeline(length=Fraction(9), uid="b"),
+                    ContinuousLogicalTimeline(length=Fraction(6), uid="y"),
+                ],
+            )
+        )
+
+        stamp = bundle.get_matchstamp_at(Fraction(1, 3), "a")
+
+        assert stamp.coordinates == {"a": _q(Fraction(1, 3)), "x": _q(Fraction(1, 2))}
+        assert bundle.transfer(Fraction(1, 3), "a", "b") is None
+        assert bundle.are_commensurable("a", "b") is False
+
+    def test_grouped_with_a_member_of_several_groups_is_refused(self) -> None:
+        bundle = _shared_member_bundle()
+        before = bundle.to_dict()
+        newcomer = ContinuousLogicalTimeline(length=Fraction(4), uid="n")
+
+        with pytest.raises(ValueError) as refused:
+            bundle.add_timeline(newcomer, grouped_with="t")
+
+        assert str(refused.value) == (
+            "Cannot group with 't': it is a member of several groups ['g1', 'g2'], "
+            "so the group to join is ambiguous"
+        )
+        assert bundle.to_dict() == before
+        assert "n" not in bundle.timelines
+
+        bundle.add_timeline(newcomer, grouped_with="a")
+        assert bundle.timeline_to_groups["n"] == ("g1",)
+
+    def test_a_grouped_timeline_joins_a_further_group(self) -> None:
+        bundle = _shared_member_bundle()
+
+        bundle.add_timeline(bundle.get_timeline("a"), as_group="solo")
+
+        assert bundle.timeline_to_groups["a"] == ("g1", "group_1")
+        assert bundle.groups["group_1"].name == "solo"
+
+    def test_a_member_is_refused_a_second_place_in_one_group(self) -> None:
+        bundle = _shared_member_bundle()
+        before = bundle.to_dict()
+
+        with pytest.raises(ValueError) as refused:
+            bundle.add_timeline(bundle.get_timeline("t"), grouped_with="a")
+
+        assert str(refused.value) == "Timeline 't' already in group 'g1'"
+        assert bundle.to_dict() == before
+
+    def test_grouped_stamp_forms_list_a_shared_member_under_each_group(self) -> None:
+        stamp = _shared_member_bundle().get_matchstamp_at(Fraction(1, 3), "u")
+
+        nested = stamp.to_dict(format="nested")
+
+        assert {group_id: set(entries) for group_id, entries in nested.items()} == {
+            "g1": {"u (quarters)", "t (quarters)", "a (quarters)"},
+            "g2": {"u (quarters)", "t (quarters)", "b (quarters)"},
+        }
+        assert nested["g1"]["t (quarters)"] == nested["g2"]["t (quarters)"]
+        assert set(stamp.to_dict(format="prefix")) == {
+            "g1/u (quarters)",
+            "g1/t (quarters)",
+            "g1/a (quarters)",
+            "g2/u (quarters)",
+            "g2/t (quarters)",
+            "g2/b (quarters)",
+        }
+
+    def test_diagram_lists_a_shared_member_under_each_group(self) -> None:
+        diagram = str(_shared_member_bundle().diagram())
+
+        assert diagram.count("ContinuousLogicalTimeline[t]") == 2
+        assert diagram.count("ContinuousLogicalTimeline[u]") == 2
+        assert diagram.count("ContinuousLogicalTimeline[a]") == 1
+        assert diagram.count("ContinuousLogicalTimeline[b]") == 1
+        assert "Standalone" not in diagram
+
+    def test_summary_lists_every_group_of_a_timeline(self) -> None:
+        bundle = _shared_member_bundle()
+        bundle.add_timeline(ContinuousLogicalTimeline(length=Fraction(2), uid="s"))
+
+        summary = bundle.summary()
+
+        assert {
+            timeline_id: info["groups"]
+            for timeline_id, info in summary["timelines"].items()
+        } == {"a": ["g1"], "b": ["g2"], "s": [], "t": ["g1", "g2"], "u": ["g1", "g2"]}
+        assert "group" not in summary["timelines"]["t"]
 
 
 class TestAddGroup:

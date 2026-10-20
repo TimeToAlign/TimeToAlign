@@ -1121,10 +1121,10 @@ def bundle_diagram(
             lines.append("  " + line)
         lines.append("")
 
-    # Collect standalone timelines (not in any group)
-    standalone_ids = [
-        uid for uid in bundle.timelines if bundle.timeline_to_group.get(uid) is None
-    ]
+    # Collect standalone timelines (not in any group); a timeline of several
+    # groups is rendered under each of them above.
+    grouped = bundle.timeline_to_groups
+    standalone_ids = [uid for uid in bundle.timelines if uid not in grouped]
 
     if standalone_ids:
         standalone_tls = [bundle.timelines[uid] for uid in standalone_ids]

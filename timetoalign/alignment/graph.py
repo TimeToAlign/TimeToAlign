@@ -63,6 +63,7 @@ from timetoalign.core.timestamp import (
     Stamp,
     _format_stamp_value,
 )
+from timetoalign.timelines.groups import _groups_by_timeline
 
 if TYPE_CHECKING:
     from timetoalign.alignment.bundle import AlignmentBundle
@@ -497,15 +498,14 @@ class MatchStamp(Stamp):
                 "to resolve timeline groups"
             )
 
+        # A timeline of several groups is listed under each of them; a
+        # standalone one under its own id.
+        membership = {} if self.source is None else self.source.timeline_to_groups
         grouped: dict[str, dict[str, dict[str, object]]] = {}
         for timeline_id, coordinate in self.coordinates.items():
             coordinate_data = coordinate_to_dict(coordinate)
-            if self.source is None:
-                grouped.setdefault(timeline_id, {})[timeline_id] = coordinate_data
-                continue
-
-            group_id = self.source.timeline_to_group.get(timeline_id, timeline_id)
-            grouped.setdefault(group_id, {})[timeline_id] = coordinate_data
+            for group_id in membership.get(timeline_id, (timeline_id,)):
+                grouped.setdefault(group_id, {})[timeline_id] = coordinate_data
 
         if format == "flat":
             return {
@@ -950,7 +950,7 @@ class MatchGraph:
         >>> graph = MatchGraph(claims=[claim1, claim2])
 
         >>> # Extend via group membership
-        >>> extended = graph.extend_to_groups(groups, timeline_to_group)
+        >>> extended = graph.extend_to_groups(groups)
 
         >>> # Get synchronized timestamps
         >>> stamps = graph.get_stamps()
@@ -1379,9 +1379,8 @@ class MatchGraph:
     def extend_to_groups(
         self,
         groups: dict[str, "TimelineGroup"],
-        timeline_to_group: dict[str, str],
-        include_inferred: bool = True,
         *,
+        include_inferred: bool = True,
         timeline_ids: set[str] | None = None,
         id_pattern: str | None = None,
         include_domains: set[Domain] | None = None,
@@ -1389,15 +1388,19 @@ class MatchGraph:
     ) -> "MatchGraph":
         """Extend anchors to full group timestamps via implicit claims.
 
-        For each coordinate in the graph, if it belongs to a Group,
-        computes the equivalent coordinate for every other member of that
-        Group and adds an implicit ``MatchClaim`` (case d) plus the
-        corresponding edge. Filters control which timelines receive
-        implicit claims.
+        For each coordinate in the graph, computes the equivalent coordinate
+        for every other member of every group its timeline belongs to and
+        adds an implicit ``MatchClaim`` (case d) plus the corresponding edge.
+        Membership is read from *groups* alone, and a timeline may belong to
+        several. A coordinate reached this way is extended in turn through
+        the other groups of its timeline, so a timeline shared by two groups
+        carries a coordinate from the members of one to the members of the
+        other. Filters control which timelines receive implicit claims; a
+        timeline they exclude receives no coordinate, so no extension passes
+        through it.
 
         Args:
             groups: Dict of group_id -> TimelineGroup.
-            timeline_to_group: Dict of timeline_id -> group_id.
             include_inferred: Whether to add inferred edges.
             timeline_ids: Only extend to these timeline IDs.
             id_pattern: Regex filter for timeline IDs.
@@ -1413,84 +1416,40 @@ class MatchGraph:
         # Create a copy of the graph
         extended = nx.Graph(self._graph)
         implicit_claims: list[MatchClaim] = []
+        membership = _groups_by_timeline(groups)
 
-        for node in list(self._graph.nodes()):
-            timeline_id, coord = node
-
-            # Check if timeline belongs to a group
-            group_id = timeline_to_group.get(timeline_id)
-            if not group_id:
-                continue
-
-            group = groups.get(group_id)
-            if not group:
-                continue
-
-            # Find the source claim for traceability
-            source_claim = self._find_source_claim_for_node(node)
-
-            # Add inferred edges to all other timelines in group
-            for other_tl_id in group.timeline_ids:
-                if other_tl_id == timeline_id:
-                    continue
-
-                # Apply filters
-                if not self._passes_filters(
-                    other_tl_id,
-                    timelines={
-                        member_id: group.get_timeline(member_id)
-                        for member_id in group.timeline_ids
-                    },
+        # Every graph node, then every node the extension adds, each with the
+        # group it was reached through (whose members it has already reached)
+        # and the explicit claim it traces back to (looked up when a graph
+        # node is extended).
+        pending: list[tuple[_GraphNode, str | None, MatchClaim | None]] = [
+            (node, None, None) for node in self._graph.nodes()
+        ]
+        position = 0
+        while position < len(pending):
+            node, reached_through, source_claim = pending[position]
+            position += 1
+            group_ids = [
+                group_id
+                for group_id in membership.get(node[0], ())
+                if group_id != reached_through
+            ]
+            if group_ids and reached_through is None:
+                source_claim = self._find_source_claim_for_node(node)
+            for group_id in group_ids:
+                self._extend_through_group(
+                    extended,
+                    implicit_claims,
+                    pending,
+                    node,
+                    group_id,
+                    groups[group_id],
+                    source_claim,
                     timeline_ids=timeline_ids,
                     id_pattern=id_pattern,
                     include_domains=include_domains,
                     include_units=include_units,
-                ):
-                    continue
-
-                # Convert coordinate to other timeline
-                try:
-                    source_timeline = group.get_timeline(timeline_id)
-                    other_coord = group.get_coordinate_at(
-                        IdCoordinate(
-                            coord,
-                            source_timeline.unit,
-                            timeline_id,
-                            number_type=source_timeline.number_type,
-                        ),
-                        timeline_id=other_tl_id,
-                        format="coordinate",
-                    )
-                except (KeyError, ValueError):
-                    continue
-                assert isinstance(other_coord, Coordinate)
-
-                other_value = float(other_coord.value)
-                other_node: _GraphNode = (other_tl_id, other_value)
-
-                # Add implicit edge if not already connected
-                if not extended.has_edge(node, other_node):
-                    # Create an implicit MatchClaim (case d)
-                    implicit_claim = MatchClaim.implicit(
-                        tl_a_id=timeline_id,
-                        coord_a=coord,
-                        tl_b_id=other_tl_id,
-                        coord_b=other_value,
-                        unit_a=group.get_timeline(timeline_id).unit,
-                        unit_b=group.get_timeline(other_tl_id).unit,
-                        source_claim=source_claim,
-                    )
-                    implicit_claims.append(implicit_claim)
-
-                    extended.add_edge(
-                        node,
-                        other_node,
-                        explicit=False,
-                        synchronous=True,
-                        inferred_via="group",
-                        group_id=group_id,
-                        claim_id=implicit_claim.id,
-                    )
+                )
 
         all_claims = list(self._claims) + implicit_claims
         return MatchGraph._from_graph(
@@ -1501,6 +1460,92 @@ class MatchGraph:
             source=self._source,
             source_id=self._source_id,
         )
+
+    def _extend_through_group(
+        self,
+        extended: nx.Graph,
+        implicit_claims: list[MatchClaim],
+        pending: list[tuple[_GraphNode, str | None, MatchClaim | None]],
+        node: _GraphNode,
+        group_id: str,
+        group: "TimelineGroup",
+        source_claim: MatchClaim | None,
+        *,
+        timeline_ids: set[str] | None,
+        id_pattern: str | None,
+        include_domains: set[Domain] | None,
+        include_units: set[TimeUnit] | None,
+    ) -> None:
+        """Link one node to the other members of one of its groups.
+
+        Adds an implicit claim and an edge per member the filters admit, and
+        queues every node it creates for extension through its own other
+        groups.
+        """
+        timeline_id, coord = node
+        for other_tl_id in group.timeline_ids:
+            if other_tl_id == timeline_id:
+                continue
+
+            # Apply filters
+            if not self._passes_filters(
+                other_tl_id,
+                timelines={
+                    member_id: group.get_timeline(member_id)
+                    for member_id in group.timeline_ids
+                },
+                timeline_ids=timeline_ids,
+                id_pattern=id_pattern,
+                include_domains=include_domains,
+                include_units=include_units,
+            ):
+                continue
+
+            # Convert coordinate to other timeline
+            try:
+                source_timeline = group.get_timeline(timeline_id)
+                other_coord = group.get_coordinate_at(
+                    IdCoordinate(
+                        coord,
+                        source_timeline.unit,
+                        timeline_id,
+                        number_type=source_timeline.number_type,
+                    ),
+                    timeline_id=other_tl_id,
+                    format="coordinate",
+                )
+            except (KeyError, ValueError):
+                continue
+            assert isinstance(other_coord, Coordinate)
+
+            other_value = float(other_coord.value)
+            other_node: _GraphNode = (other_tl_id, other_value)
+            if other_node not in extended:
+                pending.append((other_node, group_id, source_claim))
+
+            # Add implicit edge if not already connected
+            if not extended.has_edge(node, other_node):
+                # Create an implicit MatchClaim (case d)
+                implicit_claim = MatchClaim.implicit(
+                    tl_a_id=timeline_id,
+                    coord_a=coord,
+                    tl_b_id=other_tl_id,
+                    coord_b=other_value,
+                    unit_a=group.get_timeline(timeline_id).unit,
+                    unit_b=group.get_timeline(other_tl_id).unit,
+                    source_claim=source_claim,
+                )
+                implicit_claims.append(implicit_claim)
+
+                extended.add_edge(
+                    node,
+                    other_node,
+                    explicit=False,
+                    synchronous=True,
+                    inferred_via="group",
+                    group_id=group_id,
+                    claim_id=implicit_claim.id,
+                )
 
     def _find_source_claim_for_node(self, node: _GraphNode) -> MatchClaim | None:
         """Find the first explicit synchronous claim that contains this node.

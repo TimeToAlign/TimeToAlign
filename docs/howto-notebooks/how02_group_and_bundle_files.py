@@ -34,10 +34,10 @@
 # files. It ends with a timeline whose length is not known.
 #
 # A manifest holds structure: timelines, their children, conversion maps,
-# regions and flow control, the groups and their members, with the members'
-# display order. MatchClaims are not part of it, nor is a bundle's support
-# policy, which is a setting of the bundle. Events stay out unless you ask
-# for them.
+# regions and flow control, the measure maps the conversion maps read, and
+# the groups and their members, with the members' display order. MatchClaims
+# are not part of it, nor is a bundle's support policy, which is a setting of
+# the bundle. Events stay out unless you ask for them.
 
 # %% [markdown]
 # ## Setup

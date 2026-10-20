@@ -402,16 +402,12 @@ def _twin(fixture: str) -> str:
 
 
 def test_every_fixture_has_its_minimal_twin() -> None:
-    """Fixtures and twins pair exactly, and the counts per directory are pinned."""
+    """Fixtures and twins pair exactly, in the directories a reader is named for."""
     listed = {path.relative_to(FIXTURE_ROOT).as_posix() for path in fixture_paths()}
     twins = {path for path in listed if path.endswith(TWIN_SUFFIX)}
     assert twins == {_twin(fixture) for fixture in FIXTURES}
-    counts = {
-        directory: sum(Path(f).parent.as_posix() == directory for f in FIXTURES)
-        for directory in READERS
-    }
-    assert counts == {".": 41, "groups": 10, "bundles": 9}
-    assert len(listed) == 120
+    assert len(listed) == 2 * len(FIXTURES)
+    assert {Path(fixture).parent.as_posix() for fixture in FIXTURES} == set(READERS)
 
 
 @pytest.mark.parametrize("fixture", FIXTURES)

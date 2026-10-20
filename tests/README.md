@@ -33,9 +33,11 @@ passes cannot be the library agreeing with itself.
 the package's `fixtures/0.7.0/` (drawings excluded): each fixture in the
 complete form and its minimal twin `<name>.minimal.json` beside it. The
 pairing is exact, every fixture has its twin and every twin its fixture,
-and the counts are pinned: 41 manifests of one root directly in the
-directory, 10 in `groups/`, 9 in `bundles/`, each with its twin. For every
-pair:
+and the fixtures lie in exactly the three directories a reader is named
+for (directly in the directory, `groups/`, `bundles/`), none of them
+empty. How many fixtures each holds is the package's catalogue to decide,
+so no count is pinned here: a fixture added there is proved here without a
+change. For every pair:
 
 - both validate, and `unknown_keys` returns `[]` for both: the library
   writes no key the schema does not declare;

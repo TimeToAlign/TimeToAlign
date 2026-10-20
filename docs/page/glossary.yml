@@ -320,8 +320,9 @@ MetricalPositionMap: |
   A CombinationMap pairing a MetricMap with a beat-in-measure map to return a
   metrical position {mc, beat} from a quarter coordinate. Adds a reverse lookup
   quarters_at(mc, beat) (metrical position → quarters) and mn_at(quarters)
-  (quarters → measure-number label). Its dictionary form holds meter_map once
-  and names the derived beat map by beat_map_id.
+  (quarters → measure-number label). A TimeSkeleton manifest writes it as a
+  MeasureBeatMap over the measure map its meter map describes, each measure's
+  count standing as its number.
 
 Minimal form: |
   The form in which to_dict(minimal=True) writes a TimeSkeleton manifest:

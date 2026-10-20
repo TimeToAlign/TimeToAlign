@@ -118,7 +118,7 @@ section_end
 # A {{< glossary Jump >}} carries a `from_coordinate`, a `to_coordinate` and a
 # `control_type`. The control type decides on which playthrough pass the jump
 # fires (its `condition`): a `repeat_end` on its first `repeat_count` passes, a
-# `to_coda` only after a D.C. or D.S., every other jump always.
+# `to_coda` only after a D.C. or D.S. al Coda, every other jump always.
 
 # %%
 # Standard repeat: jump from QB 20 back to QB 8 on the first pass only

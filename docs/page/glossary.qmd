@@ -456,9 +456,9 @@ to the relevant section of the conceptual model.
     a beat-in-measure map to return a metrical position `{mc, beat}` from a
     quarter coordinate. Adds a reverse lookup `quarters_at(mc, beat)` (metrical
     position to quarters) and `mn_at(quarters)` (quarters to measure-number
-    label). Both outputs derive from the meter map, so its dictionary form
-    holds `meter_map` once and names the derived beat map by `beat_map_id`,
-    never the derived maps themselves.
+    label). A TimeSkeleton manifest writes it as a `MeasureBeatMap` over the
+    measure map its meter map describes, each measure's count standing as its
+    number; reading the manifest returns that `MeasureBeatMap`.
     See [Conversion maps](concepts.qmd#conversion-maps).
 
 **Minimal form**

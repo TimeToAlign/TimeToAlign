@@ -6,7 +6,6 @@ alignment.AlignmentBundle(
     name=None,
     timelines=dict(),
     groups=dict(),
-    timeline_to_group=dict(),
     meta=dict(),
     cross_group_claims=list(),
     cross_group_claim_fields=list(),
@@ -39,16 +38,15 @@ coordinate transfer results.
 
 ## Attributes {.doc-section .doc-section-attributes}
 
-| Name                     | Type                                                                                   | Description                                                                                                                                       |
-|--------------------------|----------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------|
-| id                       | [str](`str`)                                                                           | Unique identifier for this bundle, ``bundle_N`` unless given.                                                                                     |
-| name                     | [str](`str`) \| None                                                                   | Optional human-readable name.                                                                                                                     |
-| timelines                | [dict](`dict`)\[[str](`str`), \'Timeline\'\]                                           | Dictionary mapping timeline IDs to Timeline objects: every timeline added, and the root of every one that is a child.                             |
-| groups                   | [dict](`dict`)\[[str](`str`), [TimelineGroup](`timetoalign.timelines.TimelineGroup`)\] | Dictionary mapping group IDs to TimelineGroup objects.                                                                                            |
-| timeline_to_group        | [dict](`dict`)\[[str](`str`), [str](`str`)\]                                           | Mapping from timeline ID to its containing group ID.                                                                                              |
-| cross_group_claims       | [list](`list`)\[[MatchClaim](`timetoalign.alignment.claims.MatchClaim`)\]              | MatchClaims connecting timelines across groups (the per-claim Python-list store).                                                                 |
-| cross_group_claim_fields | [list](`list`)\[[MatchClaimField](`timetoalign.alignment.claims.MatchClaimField`)\]    | Columnar ``MatchClaimField`` stores of dense synchronous-instant pairwise claims, queried vectorized without materialising the full claim list.   |
-| styling                  | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\]                                    | The members of the manifest's ``graphical`` other than ``order`` (``styles``, ``statements`` and any other), kept as given and never interpreted. |
+| Name                     | Type                                                                                   | Description                                                                                                                                                                    |
+|--------------------------|----------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| id                       | [str](`str`)                                                                           | Unique identifier for this bundle, ``bundle_N`` unless given.                                                                                                                  |
+| name                     | [str](`str`) \| None                                                                   | Optional human-readable name.                                                                                                                                                  |
+| timelines                | [dict](`dict`)\[[str](`str`), \'Timeline\'\]                                           | Dictionary mapping timeline IDs to Timeline objects: every timeline added, and the root of every one that is a child.                                                          |
+| groups                   | [dict](`dict`)\[[str](`str`), [TimelineGroup](`timetoalign.timelines.TimelineGroup`)\] | Dictionary mapping group IDs to TimelineGroup objects. The groups are the one statement of membership; a timeline may be a member of several (see :attr:`timeline_to_groups`). |
+| cross_group_claims       | [list](`list`)\[[MatchClaim](`timetoalign.alignment.claims.MatchClaim`)\]              | MatchClaims connecting timelines across groups (the per-claim Python-list store).                                                                                              |
+| cross_group_claim_fields | [list](`list`)\[[MatchClaimField](`timetoalign.alignment.claims.MatchClaimField`)\]    | Columnar ``MatchClaimField`` stores of dense synchronous-instant pairwise claims, queried vectorized without materialising the full claim list.                                |
+| styling                  | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\]                                    | The members of the manifest's ``graphical`` other than ``order`` (``styles``, ``statements`` and any other), kept as given and never interpreted.                              |
 
 ## Note {.doc-section .doc-section-note}
 
@@ -97,7 +95,8 @@ that keeps them that way.
 | [get_coordinates_at](#timetoalign.alignment.AlignmentBundle.get_coordinates_at) | Resolve a coordinate collection onto one timeline axis. |
 | [get_coordinates_for](#timetoalign.alignment.AlignmentBundle.get_coordinates_for) | Return event-start coordinates for a key collection. |
 | [get_group](#timetoalign.alignment.AlignmentBundle.get_group) | Get a group by ID. |
-| [get_group_for_timeline](#timetoalign.alignment.AlignmentBundle.get_group_for_timeline) | Get the group containing a timeline. |
+| [get_group_for_timeline](#timetoalign.alignment.AlignmentBundle.get_group_for_timeline) | Get the one group containing a timeline. |
+| [get_groups_for_timeline](#timetoalign.alignment.AlignmentBundle.get_groups_for_timeline) | Get every group containing a timeline, sorted by group id. |
 | [get_match_claims](#timetoalign.alignment.AlignmentBundle.get_match_claims) | Query MatchClaims connecting timelines across groups. |
 | [get_matchstamp](#timetoalign.alignment.AlignmentBundle.get_matchstamp) | Dispatch a positional or event-key match-stamp query. |
 | [get_matchstamp_at](#timetoalign.alignment.AlignmentBundle.get_matchstamp_at) | Get a cross-group match stamp for a position on a timeline. |
@@ -124,7 +123,9 @@ Add a pre-built TimelineGroup with all its timelines at once.
 This is the bulk-registration counterpart of ``add_timeline(..., as_group=...)``.
 It registers the group and every timeline it contains — each under
 its own ``id``, with the root of every member that is a child — into
-the bundle's timeline and group registries.
+the bundle's timeline and group registries. A member may already be a
+member of another group of the bundle: a timeline may belong to
+several groups.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
@@ -140,9 +141,9 @@ the bundle's timeline and group registries.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                                                                                                                                                            |
-|--------|----------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If the group's given ID is already held in the bundle (a minted one is minted again instead); if a member is already a member of another group; or if a given id of a member's manifest tree is held by another timeline of the bundle (a minted id held there is minted again instead) or by a group. |
+| Name   | Type                       | Description                                                                                                                                                                                                                                          |
+|--------|----------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the group's given ID is already held in the bundle (a minted one is minted again instead), or if a given id of a member's manifest tree is held by another timeline of the bundle (a minted id held there is minted again instead) or by a group. |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -239,13 +240,17 @@ the root's descendant (exactly what the dictionary form restores). A
 child added to a group joins it, and its root joins the bundle as
 well, ungrouped unless it is grouped itself.
 
+A timeline may be a member of several groups: one already in the
+bundle, grouped or not, joins a further group through
+``grouped_with`` or ``as_group``.
+
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name         | Type                 | Description                                                                                                                                                                                                            | Default    |
-|--------------|----------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
-| timeline     | \'Timeline\'         | The Timeline to add.                                                                                                                                                                                                   | _required_ |
-| grouped_with | [str](`str`) \| None | ID of an existing timeline to share a group with. If provided, both timelines become part of the same group. If the target timeline is not yet in a group, a new group is created with the target as its first member. | `None`     |
-| as_group     | [str](`str`) \| None | Name of the group if a new one is created. The new group's id is minted, ``group_N``.                                                                                                                                  | `None`     |
+| Name         | Type                 | Description                                                                                                                                                                                                                                                                                             | Default    |
+|--------------|----------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| timeline     | \'Timeline\'         | The Timeline to add.                                                                                                                                                                                                                                                                                    | _required_ |
+| grouped_with | [str](`str`) \| None | ID of an existing timeline to share a group with. If provided, both timelines become part of the same group. If the target timeline is not yet in a group, a new group is created with the target as its first member. A target in several groups is refused, since the group to join would be a guess. | `None`     |
+| as_group     | [str](`str`) \| None | Name of the group if a new one is created. The new group's id is minted, ``group_N``.                                                                                                                                                                                                                   | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -255,10 +260,10 @@ well, ungrouped unless it is grouped itself.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                                                                                                                                                       |
-|--------|----------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If the timeline is already a grouped member of the bundle, or already in it while no group is requested; if a given id of its manifest tree — its own, its root's or any descendant's — is held by another timeline of the bundle (a minted id held there is minted again instead) or by a group. |
-|        | [KeyError](`KeyError`)     | If grouped_with references a non-existent timeline.                                                                                                                                                                                                                                               |
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                   |
+|--------|----------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the timeline is already in the bundle while no group is requested, or already in the group it would join; if ``grouped_with`` names a timeline of several groups; if a given id of its manifest tree — its own, its root's or any descendant's — is held by another timeline of the bundle (a minted id held there is minted again instead) or by a group. |
+|        | [KeyError](`KeyError`)     | If grouped_with references a non-existent timeline.                                                                                                                                                                                                                                                                                                           |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -287,8 +292,8 @@ Partial alignment: the participating part is a child.
     >>> bundle = AlignmentBundle()
     >>> _ = bundle.add_timeline(audio, as_group="roll")
     >>> _ = bundle.add_timeline(holes, grouped_with="cpt_1")
-    >>> sorted(bundle.timelines), bundle.timeline_to_group
-    (['cpt_1', 'dgt_1', 'dgt_2'], {'cpt_1': 'group_1', 'dgt_2': 'group_1'})
+    >>> sorted(bundle.timelines), bundle.timeline_to_groups
+    (['cpt_1', 'dgt_1', 'dgt_2'], {'cpt_1': ('group_1',), 'dgt_2': ('group_1',)})
 
 ### are_commensurable { #timetoalign.alignment.AlignmentBundle.are_commensurable }
 
@@ -298,8 +303,10 @@ alignment.AlignmentBundle.are_commensurable(timeline_a, timeline_b)
 
 Check if two timelines can be connected via transfer.
 
-Two timelines are commensurable if they share the same group
-or if a cross-group path exists via MatchClaims.
+Two timelines are commensurable if groups connect them — they share
+a group, or a chain of groups sharing members leads from one to the
+other — or if a synchronous MatchClaim connects the timelines so
+connected to each.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
@@ -431,8 +438,9 @@ Registers every group and standalone timeline from each source
 bundle into a new bundle, and carries over every cross-group
 ``MatchClaim`` (both the per-claim list and any columnar
 ``MatchClaimField`` stores) unchanged. Each source group is entered as
-a new group with the same members, name and meta; a minted group id
-is minted again in the merged bundle, a given one is kept. Groups from
+a new group with the same members, name and meta, each member keeping
+its own lock; a minted group id is minted again in the merged bundle,
+a given one is kept. Groups from
 different source bundles remain distinct — merging does not itself
 align timelines across bundles. Add cross-group MatchClaims (e.g. via
 :meth:`create_match_claims`) afterwards to align them.
@@ -474,16 +482,18 @@ alignment.AlignmentBundle.from_dict(data)
 
 Read a bundle from any TimeSkeleton manifest.
 
-The manifest's ``id`` becomes the bundle's (an anonymous manifest
-gives a bundle whose minted id :meth:`to_dict` never writes), its
-``name`` and ``meta`` the bundle's. Every root timeline is rebuilt;
+The manifest's ``id`` becomes the bundle's (a manifest without ``id``,
+named or anonymous, gives a bundle whose minted id :meth:`to_dict`
+never writes), its ``name`` and ``meta`` the bundle's. Every root timeline is rebuilt;
 each group is rebuilt from its ``Group`` object, its members resolved
 among the roots and all their descendants and ordered by its
 ``graphical.order`` entry (``members`` order without one).
-``graphical``'s other keys are kept as :attr:`styling`, unread. Every
-root no group names joins ungrouped. Keys the library does not know
-are kept on the object read from the JSON object they were found in,
-and written back.
+``graphical``'s other keys are kept as :attr:`styling`, and the
+entries of ``graphical.order`` keyed by a timeline, its band orders,
+are kept too, both unread. Every root no group names joins
+ungrouped. A timeline several groups name is a member of each, one
+object shared by them. Keys the library does not know are kept on the
+object read from the JSON object they were found in, and written back.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
@@ -499,9 +509,9 @@ and written back.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                      |
-|--------|----------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If *data* is no TimeSkeleton manifest of version 0.7.0 or is malformed: a timeline id occurring twice, a group id occurring twice or equal to a timeline id, a member naming no timeline of ``"timelines"``, a timeline named by two groups, a member that is an ancestor or descendant of another member of its group, an order that is no permutation of its group's members or names no group. The message names the problem. |
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+|--------|----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If *data* is no TimeSkeleton manifest of version 0.7.0 or is malformed: a timeline id occurring twice, a group id occurring twice or equal to a timeline id, a member naming no timeline of ``"timelines"``, a group naming one member twice, a member that is an ancestor or descendant of another member of its group, an order that is no permutation of its group's members or names no group or timeline. The message names the problem. |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -770,7 +780,7 @@ Supports partial string and regex matching:
 alignment.AlignmentBundle.get_group_for_timeline(timeline_id)
 ```
 
-Get the group containing a timeline.
+Get the one group containing a timeline.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
@@ -783,6 +793,32 @@ Get the group containing a timeline.
 | Name   | Type                                                           | Description                                                       |
 |--------|----------------------------------------------------------------|-------------------------------------------------------------------|
 |        | [TimelineGroup](`timetoalign.timelines.TimelineGroup`) \| None | The TimelineGroup containing the timeline, or None if standalone. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                         |
+|--------|----------------------------|-----------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the timeline is a member of several groups; use :meth:`get_groups_for_timeline` for all of them. |
+
+### get_groups_for_timeline { #timetoalign.alignment.AlignmentBundle.get_groups_for_timeline }
+
+```python
+alignment.AlignmentBundle.get_groups_for_timeline(timeline_id)
+```
+
+Get every group containing a timeline, sorted by group id.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name        | Type         | Description                       | Default    |
+|-------------|--------------|-----------------------------------|------------|
+| timeline_id | [str](`str`) | The timeline's unique identifier. | _required_ |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                                            | Description                                                 |
+|--------|---------------------------------------------------------------------------------|-------------------------------------------------------------|
+|        | [tuple](`tuple`)\[[TimelineGroup](`timetoalign.timelines.TimelineGroup`), ...\] | The groups holding the timeline; empty if it is standalone. |
 
 ### get_match_claims { #timetoalign.alignment.AlignmentBundle.get_match_claims }
 
@@ -1366,9 +1402,10 @@ child, which includes the root of each one that is — as
 :meth:`Timeline.to_dict <timetoalign.timelines.Timeline.to_dict>`
 writes it, sorted by id, and the groups sorted by id, each naming its
 members by id. ``graphical.order`` keeps every group's member order
-under its id, beside the members of :attr:`styling`. A root no group
-names is ungrouped. MatchClaims are not written; the support policy
-is a setting of the bundle, not part of the manifest.
+under its id and, unchanged, the band order read with the manifest
+of every timeline written, beside the members of :attr:`styling`. A
+root no group names is ungrouped. MatchClaims are not written; the
+support policy is a setting of the bundle, not part of the manifest.
 
 #### Parameters {.doc-section .doc-section-parameters}
 

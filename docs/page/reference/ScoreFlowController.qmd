@@ -74,7 +74,7 @@ the ms3 unfolding algorithm.
 | [get_breaks](#timetoalign.timelines.ScoreFlowController.get_breaks) | Return all `Break` events derived from the score's flow control. |
 | [get_flow_control_registry](#timetoalign.timelines.ScoreFlowController.get_flow_control_registry) | Return a `FlowControlRegistry` populated from this controller. |
 | [get_jumps](#timetoalign.timelines.ScoreFlowController.get_jumps) | Return all `Jump` events derived from the score's flow control. |
-| [get_markers](#timetoalign.timelines.ScoreFlowController.get_markers) | Return all named target markers (segno / coda / fine instances). |
+| [get_markers](#timetoalign.timelines.ScoreFlowController.get_markers) | Return all named target markers (segno and coda instances). |
 | [get_section_boundary_coordinates](#timetoalign.timelines.ScoreFlowController.get_section_boundary_coordinates) | Return quarterbeat coordinates where section breaks occur. |
 | [get_sections](#timetoalign.timelines.ScoreFlowController.get_sections) | Get list of sections. |
 | [iter_atomic_sections](#timetoalign.timelines.ScoreFlowController.iter_atomic_sections) | Iterate over atomic (indivisible) sections. |
@@ -332,7 +332,7 @@ timelines.ScoreFlowController.get_breaks()
 Return all `Break` events derived from the score's flow control.
 
 Currently emits one `Break` per measure flagged as a section break.
-Each `Break` is positioned at the START coordinate of its MC and
+Each `Break` is positioned at the END coordinate of its MC and
 carries a label indicating the source MC.
 
 #### Returns {.doc-section .doc-section-returns}
@@ -379,15 +379,20 @@ its `to_coordinate` is the START of the destination MC.
 timelines.ScoreFlowController.get_markers()
 ```
 
-Return all named target markers (segno / coda / fine instances).
+Return all named target markers (segno and coda instances).
+
+A Fine is no jump target: it is a :class:`Break` (see
+:meth:`get_breaks`).
 
 #### Returns {.doc-section .doc-section-returns}
 
-| Name   | Type                                                                             | Description                                                      |
-|--------|----------------------------------------------------------------------------------|------------------------------------------------------------------|
-|        | [list](`list`)\[[tuple](`tuple`)\[[str](`str`), [int](`int`), \'Coordinate\'\]\] | List of ``(name, mc, coordinate)`` tuples, in MC order. ``name`` |
-|        | [list](`list`)\[[tuple](`tuple`)\[[str](`str`), [int](`int`), \'Coordinate\'\]\] | is the marker instance name (e.g., ``"segno"``, ``"coda"``,      |
-|        | [list](`list`)\[[tuple](`tuple`)\[[str](`str`), [int](`int`), \'Coordinate\'\]\] | ``"codab"``, ``"fine"``); ``coordinate`` is the start of the MC. |
+| Name   | Type                         | Description                                                       |
+|--------|------------------------------|-------------------------------------------------------------------|
+|        | [list](`list`)\[\'Marker\'\] | List of `timetoalign.timelines.flowcontrol.Marker` objects in MC  |
+|        | [list](`list`)\[\'Marker\'\] | order, with minted ids ``jump_to_1``, ``jump_to_2``, ... ``name`` |
+|        | [list](`list`)\[\'Marker\'\] | is the marker instance name (e.g., ``"segno"``, ``"coda"``,       |
+|        | [list](`list`)\[\'Marker\'\] | ``"codab"``) and ``control_type`` ``segno`` or ``coda``;          |
+|        | [list](`list`)\[\'Marker\'\] | ``coordinate`` is the start of the MC.                            |
 
 ### get_section_boundary_coordinates { #timetoalign.timelines.ScoreFlowController.get_section_boundary_coordinates }
 

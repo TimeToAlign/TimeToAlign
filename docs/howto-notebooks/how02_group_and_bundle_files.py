@@ -17,7 +17,7 @@
 # # How to Save and Load Timelines, Groups and Bundles
 #
 # A `Timeline`, a `TimelineGroup` and an `AlignmentBundle` each write one
-# TimeSkeleton manifest with `to_dict()` and read one with `from_dict()`.
+# TimeToShare manifest with `to_dict()` and read one with `from_dict()`.
 # Every manifest has the same shape, whatever it holds, and every manifest
 # is an alignment bundle:
 #
@@ -114,7 +114,7 @@ score
 # %% [markdown]
 # `to_dict()` writes the **complete form**: every key the format defines,
 # each written even when it holds its default (`null`, `{}`, `[]`). The
-# manifest opens with the version marker `"timeskeleton": "0.7.0"`; its
+# manifest opens with the version marker `"timetoshare": "0.1.0"`; its
 # `timelines` array holds the score as its one root.
 #
 # A value on the timeline's own axis (its `length`, a region's `start` and
@@ -163,7 +163,7 @@ from_minimal = Timeline.from_dict(score_minimal)
 
 # %%
 smallest = {
-    "timeskeleton": "0.7.0",
+    "timetoshare": "0.1.0",
     "timelines": [{"id": "piece", "unit": "quarters", "length": [32, 1]}],
 }
 piece = Timeline.from_dict(smallest, name="Full score")
@@ -178,7 +178,7 @@ piece.id, piece.name, piece.length
 try:
     Timeline.from_dict(
         {
-            "timeskeleton": "0.7.0",
+            "timetoshare": "0.1.0",
             "timelines": [{"id": "piece", "unit": "quarters", "length": 32}],
         }
     )
@@ -250,7 +250,7 @@ show(group.to_dict(minimal=True))
 group_data["timelines"][0]["children"][0]["offset"]
 
 # %% [markdown]
-# `graphical` may also carry `styles` and `statements`, the TimeSkeleton
+# `graphical` may also carry `styles` and `statements`, the TimeToShare
 # styling. The library does not interpret them: `from_dict()` keeps them as
 # the group's `styling` and `to_dict()` writes them back. In the complete
 # form they appear at their defaults.
@@ -407,7 +407,7 @@ TimelineGroup.from_dict(smallest, name="Piece alone").timeline_ids
 
 # %%
 annotated = {
-    "timeskeleton": "0.7.0",
+    "timetoshare": "0.1.0",
     "editor": {"zoom": 2.5},
     "timelines": [
         {

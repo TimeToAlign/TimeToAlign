@@ -267,7 +267,7 @@ formatter/linter tooling. See `pyproject.toml` for the full extras hierarchy
 `scores`, `loaders`, `tutorial`, `docs`, `testing`, `all`, `dev`).
 
 The conformance tests also need two test oracles that no extra installs:
-`timeskeleton` (the TimeSkeleton schema) and `pymeasuremap` (the Measure Map
+`timetoshare` (the TimeToShare schema) and `pymeasuremap` (the Measure Map
 reference implementation). `pymeasuremap` is installed from a git reference,
 so both live in the `conformance` dependency group (PEP 735), which is not part
 of the published distribution metadata. Install it beside the extras (pip 25.1 or later):

@@ -87,7 +87,7 @@ that keeps them that way.
 | [create_match_claims](#timetoalign.alignment.AlignmentBundle.create_match_claims) | Create MatchClaims from a list of event pairs. |
 | [diagram](#timetoalign.alignment.AlignmentBundle.diagram) | Generate ASCII diagram for this bundle. |
 | [from_bundles](#timetoalign.alignment.AlignmentBundle.from_bundles) | Merge multiple bundles' groups, standalone timelines, and claims. |
-| [from_dict](#timetoalign.alignment.AlignmentBundle.from_dict) | Read a bundle from any TimeSkeleton manifest. |
+| [from_dict](#timetoalign.alignment.AlignmentBundle.from_dict) | Read a bundle from any TimeToShare manifest. |
 | [get_claim_fields](#timetoalign.alignment.AlignmentBundle.get_claim_fields) | Query the columnar claim stores, materialising nothing. |
 | [get_coordinate](#timetoalign.alignment.AlignmentBundle.get_coordinate) | Dispatch a positional or event-key bundle coordinate query. |
 | [get_coordinate_at](#timetoalign.alignment.AlignmentBundle.get_coordinate_at) | Resolve one coordinate onto a requested timeline axis. |
@@ -108,7 +108,7 @@ that keeps them that way.
 | [get_timeline](#timetoalign.alignment.AlignmentBundle.get_timeline) | Get a timeline by ID. |
 | [get_timelines](#timetoalign.alignment.AlignmentBundle.get_timelines) | Get multiple timelines by their IDs. |
 | [summary](#timetoalign.alignment.AlignmentBundle.summary) | Get a summary of the bundle contents. |
-| [to_dict](#timetoalign.alignment.AlignmentBundle.to_dict) | Write the bundle as a TimeSkeleton manifest. |
+| [to_dict](#timetoalign.alignment.AlignmentBundle.to_dict) | Write the bundle as a TimeToShare manifest. |
 | [transfer](#timetoalign.alignment.AlignmentBundle.transfer) | Transfer a coordinate from one timeline to another. |
 | [transfer_interval](#timetoalign.alignment.AlignmentBundle.transfer_interval) | Transfer an interval from one timeline to another. |
 
@@ -480,7 +480,7 @@ True
 alignment.AlignmentBundle.from_dict(data)
 ```
 
-Read a bundle from any TimeSkeleton manifest.
+Read a bundle from any TimeToShare manifest.
 
 The manifest's ``id`` becomes the bundle's (a manifest without ``id``,
 named or anonymous, gives a bundle whose minted id :meth:`to_dict`
@@ -499,7 +499,7 @@ object read from the JSON object they were found in, and written back.
 
 | Name   | Type                                                | Description              | Default    |
 |--------|-----------------------------------------------------|--------------------------|------------|
-| data   | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | A TimeSkeleton manifest. | _required_ |
+| data   | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | A TimeToShare manifest. | _required_ |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -511,7 +511,7 @@ object read from the JSON object they were found in, and written back.
 
 | Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 |--------|----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If *data* is no TimeSkeleton manifest of version 0.7.0 or is malformed: a timeline id occurring twice, a group id occurring twice or equal to a timeline id, a member naming no timeline of ``"timelines"``, a group naming one member twice, a member that is an ancestor or descendant of another member of its group, an order that is no permutation of its group's members or names no group or timeline. The message names the problem. |
+|        | [ValueError](`ValueError`) | If *data* is no TimeToShare manifest of version 0.1.0 or is malformed: a timeline id occurring twice, a group id occurring twice or equal to a timeline id, a member naming no timeline of ``"timelines"``, a group naming one member twice, a member that is an ancestor or descendant of another member of its group, an order that is no permutation of its group's members or names no group or timeline. The message names the problem. |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -1393,7 +1393,7 @@ alignment.AlignmentBundle.to_dict(
 )
 ```
 
-Write the bundle as a TimeSkeleton manifest.
+Write the bundle as a TimeToShare manifest.
 
 The manifest carries the bundle's ``id`` only when one was given
 (a minted id is never written), its ``name`` and ``meta``, every
@@ -1419,7 +1419,7 @@ support policy is a setting of the bundle, not part of the manifest.
 
 | Name   | Type                                                | Description                                                     |
 |--------|-----------------------------------------------------|-----------------------------------------------------------------|
-|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | ``{"timeskeleton": "0.7.0", "id"?, "name", "meta", "timelines": |
+|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | ``{"timetoshare": "0.1.0", "id"?, "name", "meta", "timelines": |
 |        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | [...], "groups": [...], "graphical"?: {"order": {...}, ...}}``. |
 
 #### Examples {.doc-section .doc-section-examples}

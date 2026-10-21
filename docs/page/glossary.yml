@@ -83,7 +83,7 @@ Commensurable: |
   See Commensurability.
 
 Complete form: |
-  The form in which to_dict() writes a TimeSkeleton manifest by default: every
+  The form in which to_dict() writes a TimeToShare manifest by default: every
   key the format defines is written, those holding their default value
   included (null, {}, []). A key whose default is its absence, such as a
   manifest's id or a root timeline's offset, is written only when it has a
@@ -320,12 +320,12 @@ MetricalPositionMap: |
   A CombinationMap pairing a MetricMap with a beat-in-measure map to return a
   metrical position {mc, beat} from a quarter coordinate. Adds a reverse lookup
   quarters_at(mc, beat) (metrical position → quarters) and mn_at(quarters)
-  (quarters → measure-number label). A TimeSkeleton manifest writes it as a
+  (quarters → measure-number label). A TimeToShare manifest writes it as a
   MeasureBeatMap over the measure map its meter map describes, each measure's
   count standing as its number.
 
 Minimal form: |
-  The form in which to_dict(minimal=True) writes a TimeSkeleton manifest:
+  The form in which to_dict(minimal=True) writes a TimeToShare manifest:
   every key holding its default value is left out, except a timeline's
   length, which both forms write. Readers supply every default left out, so a
   minimal manifest can be written by hand; the smallest names the version and
@@ -485,20 +485,6 @@ Timeline: |
   continuous (real) or discrete (integer). Accommodates events and potentially
   Child timelines.
 
-TimeSkeleton manifest: |
-  The JSON file format in which timelines, groups and bundles are exchanged,
-  one shape for all: the version marker "timeskeleton", an array of root
-  timelines, and optionally the manifest's id, name and meta, its groups, its
-  measure maps and its graphical (display order and styling). A single timeline is a manifest
-  of one root, a group a manifest with one group; a manifest with an id or a
-  name is named. Every manifest is an alignment bundle, also one holding one
-  timeline or one group, and a manifest with neither an id nor a name is an
-  anonymous bundle. A value on a timeline's own axis (length, a child's offset,
-  region bounds, flow-control coordinates) is written bare, in the axis's
-  number type. Timeline, TimelineGroup and AlignmentBundle write one with
-  to_dict() and read one with from_dict(). The library class TimeSkeleton is
-  a different thing: a temporal structure shared by the timelines of one work.
-
 TimeStamp: |
   A cross-section through a timeline or group at a given coordinate, capturing
   positions in all connected systems plus values converted by all attached
@@ -510,8 +496,22 @@ TimeStamp: |
   present_timelines, and is_interpolated. A bare number is an explicit
   format="float"/"int"/"fraction" request; there is no ambient float view.
 
+TimeToShare manifest: |
+  The JSON file format in which timelines, groups and bundles are exchanged,
+  one shape for all: the version marker "timetoshare", an array of root
+  timelines, and optionally the manifest's id, name and meta, its groups, its
+  measure maps and its graphical (display order and styling). A single timeline is a manifest
+  of one root, a group a manifest with one group; a manifest with an id or a
+  name is named. Every manifest is an alignment bundle, also one holding one
+  timeline or one group, and a manifest with neither an id nor a name is an
+  anonymous bundle. A value on a timeline's own axis (length, a child's offset,
+  region bounds, flow-control coordinates) is written bare, in the axis's
+  number type. Timeline, TimelineGroup and AlignmentBundle write one with
+  to_dict() and read one with from_dict(). The library class TimeSkeleton is
+  a different thing: a temporal structure shared by the timelines of one work.
+
 Unknown key: |
-  A key of a TimeSkeleton manifest that the format does not define, written
+  A key of a TimeToShare manifest that the format does not define, written
   by another application for its own use. The library keeps every unknown key
   on the object read from the JSON object it was found in and writes it back
   in place.

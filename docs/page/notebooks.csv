@@ -19,7 +19,7 @@ howto,how01_graphical_timelines.py,how01_graphical_timelines,How to Work with Gr
 howto,how01_thoresen_annotation_transfer.py,how01_thoresen_annotation_transfer,How to Transfer Annotations Between Graphical Analyses,"SegmentLine, ConstantMap, MatchClaim.from_projection, y-coordinate transfer"
 howto,how01_beat_grids.py,how01_beat_grids,How to Build Beat Grids,"BeatGrid, tempo segments, beat tables, measure/beat queries, and annotation-tool export"
 howto,how02_supra_piano_roll.py,how02_supra_piano_roll,How to Align a Piano Roll (SUPRA),"End-to-end alignment: IIIF images, ATON, MIDI, Audio, and Score"
-howto,how02_group_and_bundle_files.py,how02_group_and_bundle_files,"How to Save and Load Timelines, Groups and Bundles","TimeSkeleton manifests with Timeline, TimelineGroup and AlignmentBundle to_dict/from_dict: complete and minimal form, selection, unknown keys kept, exact answers after the round trip, unknown length"
+howto,how02_group_and_bundle_files.py,how02_group_and_bundle_files,"How to Save and Load Timelines, Groups and Bundles","TimeToShare manifests with Timeline, TimelineGroup and AlignmentBundle to_dict/from_dict: complete and minimal form, selection, unknown keys kept, exact answers after the round trip, unknown length"
 howto,how03_create_note_alignment.py,how03_create_note_alignment,How to Create a Note Alignment,"MatchClaims, AlignmentBundle, MatchLines, cross-group MatchStamps"
 howto,how03_beethoven_multimodal.py,how03_beethoven_multimodal,How to Align Multimodal Data (Beethoven),"AlignmentBundle, FlowMap, OMR, 16+ timelines across 3 domains"
 howto,how03_loading_vienna_corpus.py,how03_loading_vienna_corpus,How to Load the Vienna 4x22 Corpus,"MatchfileLoader, 22 performances, AlignmentBundle"

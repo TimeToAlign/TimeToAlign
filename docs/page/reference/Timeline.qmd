@@ -111,7 +111,7 @@ subclass, use :meth:`to_typed`.
 | [empty](#timetoalign.timelines.Timeline.empty) | Create an empty Timeline with length 0. |
 | [export_to_csv](#timetoalign.timelines.Timeline.export_to_csv) | Export timeline data to a CSV file. |
 | [fold](#timetoalign.timelines.Timeline.fold) | Convert an unfolded coordinate to a folded coordinate. |
-| [from_dict](#timetoalign.timelines.Timeline.from_dict) | Read a timeline from a TimeSkeleton manifest. |
+| [from_dict](#timetoalign.timelines.Timeline.from_dict) | Read a timeline from a TimeToShare manifest. |
 | [from_event_data](#timetoalign.timelines.Timeline.from_event_data) | Create a Timeline from an existing EventData. |
 | [from_events](#timetoalign.timelines.Timeline.from_events) | Create a Timeline from event dictionaries. |
 | [get_boundary_table](#timetoalign.timelines.Timeline.get_boundary_table) | Get timestamps for timeline boundaries only. |
@@ -151,7 +151,7 @@ subclass, use :meth:`to_typed`.
 | [make_coordinate](#timetoalign.timelines.Timeline.make_coordinate) | Create a Coordinate in this timeline's unit. |
 | [resolve_subclass](#timetoalign.timelines.Timeline.resolve_subclass) | Return the most specific Timeline subclass for a unit/number_type pair. |
 | [summary](#timetoalign.timelines.Timeline.summary) | Get a summary of the timeline. |
-| [to_dict](#timetoalign.timelines.Timeline.to_dict) | Write a TimeSkeleton manifest holding this timeline as its one root. |
+| [to_dict](#timetoalign.timelines.Timeline.to_dict) | Write a TimeToShare manifest holding this timeline as its one root. |
 | [to_typed](#timetoalign.timelines.Timeline.to_typed) | Return this timeline re-instantiated as the appropriate typed subclass. |
 | [unfold_coordinate](#timetoalign.timelines.Timeline.unfold_coordinate) | Convert a folded coordinate to unfolded coordinates. |
 | [validate_child](#timetoalign.timelines.Timeline.validate_child) | Validate that a timeline can be added as a child. |
@@ -1529,7 +1529,7 @@ Convenience method that delegates to the attached FlowMap.
 timelines.Timeline.from_dict(data, *, timeline_id=None, name=None)
 ```
 
-Read a timeline from a TimeSkeleton manifest.
+Read a timeline from a TimeToShare manifest.
 
 Without *timeline_id* and *name*, a manifest holding one root
 timeline and no group is read as a whole: its root is returned, and
@@ -1555,7 +1555,7 @@ back.
 
 | Name        | Type                                                | Description                                                                                                            | Default    |
 |-------------|-----------------------------------------------------|------------------------------------------------------------------------------------------------------------------------|------------|
-| data        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | A TimeSkeleton manifest.                                                                                               | _required_ |
+| data        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | A TimeToShare manifest.                                                                                               | _required_ |
 | timeline_id | [str](`str`) \| None                                | The id to select, or, when no timeline has it and the manifest holds one root and no group, the id the root takes.     | `None`     |
 | name        | [str](`str`) \| None                                | The name to select, or, when no timeline has it and the manifest holds one root and no group, the name the root takes. | `None`     |
 
@@ -1569,7 +1569,7 @@ back.
 
 | Name   | Type                       | Description                                                                                                                                                                                                                                                                                                     |
 |--------|----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If *data* is no TimeSkeleton manifest of version 0.7.0, is malformed, holds a value represented otherwise than its axis selects, if the selection matches no timeline or several, or if the id the root would take is already held in the manifest; the message names the problem, or the manifest's timelines. |
+|        | [ValueError](`ValueError`) | If *data* is no TimeToShare manifest of version 0.1.0, is malformed, holds a value represented otherwise than its axis selects, if the selection matches no timeline or several, or if the id the root would take is already held in the manifest; the message names the problem, or the manifest's timelines. |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -1577,7 +1577,7 @@ back.
 >>> from timetoalign.timelines import Timeline
 >>> piece = Timeline.from_dict(
 ...     {
-...         "timeskeleton": "0.7.0",
+...         "timetoshare": "0.1.0",
 ...         "timelines": [{"id": "piece", "unit": "quarters", "length": [32, 1]}],
 ...     }
 ... )
@@ -2902,7 +2902,7 @@ timelines.Timeline.to_dict(
 )
 ```
 
-Write a TimeSkeleton manifest holding this timeline as its one root.
+Write a TimeToShare manifest holding this timeline as its one root.
 
 The timeline object is the timeline's complete structure: its axis,
 children, conversion maps, regions, measure map, metric hierarchy
@@ -2943,7 +2943,7 @@ Unicode code point. The timeline's own storage is not reordered, and
 
 | Name   | Type                                                | Description                                                   |
 |--------|-----------------------------------------------------|---------------------------------------------------------------|
-|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | A JSON-serializable manifest ``{"timeskeleton": "0.7.0", ..., |
+|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | A JSON-serializable manifest ``{"timetoshare": "0.1.0", ..., |
 |        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | "timelines": [timeline]}``.                                   |
 
 #### Examples {.doc-section .doc-section-examples}
@@ -2953,7 +2953,7 @@ Unicode code point. The timeline's own storage is not reordered, and
 >>> from timetoalign.timelines import ContinuousLogicalTimeline
 >>> score = ContinuousLogicalTimeline(length=Fraction(32), uid="piece")
 >>> score.to_dict(minimal=True)
-{'timeskeleton': '0.7.0', 'timelines': [{'id': 'piece', 'unit': 'quarters', 'length': [32, 1]}]}
+{'timetoshare': '0.1.0', 'timelines': [{'id': 'piece', 'unit': 'quarters', 'length': [32, 1]}]}
 ```
 
 ### to_typed { #timetoalign.timelines.Timeline.to_typed }

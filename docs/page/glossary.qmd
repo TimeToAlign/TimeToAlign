@@ -117,7 +117,7 @@ to the relevant section of the conceptual model.
 
 **Complete form**
 :   The form in which `to_dict()` writes a
-    {{< glossary "TimeSkeleton manifest" >}} by default: every key the format
+    {{< glossary "TimeToShare manifest" >}} by default: every key the format
     defines is written, those holding their default value included (`null`,
     `{}`, `[]`). A key whose default is its absence, such as a manifest's `id`
     or a root timeline's `offset`, is written only when it has a value. The
@@ -456,14 +456,14 @@ to the relevant section of the conceptual model.
     a beat-in-measure map to return a metrical position `{mc, beat}` from a
     quarter coordinate. Adds a reverse lookup `quarters_at(mc, beat)` (metrical
     position to quarters) and `mn_at(quarters)` (quarters to measure-number
-    label). A TimeSkeleton manifest writes it as a `MeasureBeatMap` over the
+    label). A TimeToShare manifest writes it as a `MeasureBeatMap` over the
     measure map its meter map describes, each measure's count standing as its
     number; reading the manifest returns that `MeasureBeatMap`.
     See [Conversion maps](concepts.qmd#conversion-maps).
 
 **Minimal form**
 :   The form in which `to_dict(minimal=True)` writes a
-    {{< glossary "TimeSkeleton manifest" >}}: every key holding its default
+    {{< glossary "TimeToShare manifest" >}}: every key holding its default
     value is left out, except a timeline's `length`, which both forms write.
     Readers supply every default left out, so a minimal manifest can be written
     by hand; the smallest names the version and one timeline with its `id`,
@@ -680,9 +680,24 @@ to the relevant section of the conceptual model.
     needs.
     See [Alignment](concepts.qmd#alignment).
 
-**TimeSkeleton manifest**
+**TimeStamp**
+:   A cross-section through a timeline or group at a given coordinate,
+    capturing positions in all connected systems plus values converted by
+    all attached {{< glossary ConversionMap >}}s. It stores one
+    {{< glossary Coordinate >}} per timeline ID, so each entry carries its own
+    unit and number type. TimeStamp implements the `Stamp` interface it
+    shares with {{< glossary MatchStamp >}}: a typed `axis`,
+    `get_coordinate_for()` and
+    `get_coordinates_for()` returning {{< glossary IdCoordinate >}}s by
+    default, `get_unit()` for unit conversion, `get_conversion_for()` for
+    label and structured map values, `present_timelines`, and
+    `is_interpolated`. A bare number is an explicit
+    `format="float"/"int"/"fraction"` request; there is no ambient float view.
+    See [Nested timelines](concepts.qmd#nested-timelines).
+
+**TimeToShare manifest**
 :   The JSON file format in which timelines, groups and bundles are exchanged,
-    one shape for all: the version marker `"timeskeleton"`, an array of root
+    one shape for all: the version marker `"timetoshare"`, an array of root
     `timelines`, and optionally the manifest's `id`, `name` and `meta`, its
     `groups`, its `measure_maps` and its `graphical` (display order and
     styling). A single
@@ -699,25 +714,10 @@ to the relevant section of the conceptual model.
     thing: a temporal structure shared by the timelines of one work.
     See [How to Save and Load Timelines, Groups and Bundles](howto/how02_group_and_bundle_files.ipynb).
 
-**TimeStamp**
-:   A cross-section through a timeline or group at a given coordinate,
-    capturing positions in all connected systems plus values converted by
-    all attached {{< glossary ConversionMap >}}s. It stores one
-    {{< glossary Coordinate >}} per timeline ID, so each entry carries its own
-    unit and number type. TimeStamp implements the `Stamp` interface it
-    shares with {{< glossary MatchStamp >}}: a typed `axis`,
-    `get_coordinate_for()` and
-    `get_coordinates_for()` returning {{< glossary IdCoordinate >}}s by
-    default, `get_unit()` for unit conversion, `get_conversion_for()` for
-    label and structured map values, `present_timelines`, and
-    `is_interpolated`. A bare number is an explicit
-    `format="float"/"int"/"fraction"` request; there is no ambient float view.
-    See [Nested timelines](concepts.qmd#nested-timelines).
-
 ## U
 
 **Unknown key**
-:   A key of a {{< glossary "TimeSkeleton manifest" >}} that the format does
+:   A key of a {{< glossary "TimeToShare manifest" >}} that the format does
     not define, written by another application for its own use. The library
     keeps every unknown key on the object read from the JSON object it was
     found in and writes it back in place.

@@ -7,7 +7,7 @@ The full **Developers' Reference** lives on the documentation site at
   layered import-direction rules).
 - Environment setup, `pip install -e ".[dev]"`, pre-commit registration.
 - The test oracles live in the `conformance` dependency group (PEP 735), not in
-  an extra: `timeskeleton` (the TimeSkeleton schema the conformance tests
+  an extra: `timetoshare` (the TimeToShare schema the conformance tests
   validate against) and `pymeasuremap` (the Measure Map reference
   implementation, the oracle for compressed measure-map rows). A dependency
   group is not part of the published distribution metadata, so the git
@@ -15,7 +15,7 @@ The full **Developers' Reference** lives on the documentation site at
   `pip install -e ".[dev]"` does not install it; run
   `pip install --group conformance` (pip 25.1 or later) as well, or use `tox`,
   which installs the group in every test environment. From a checkout
-  with the sibling repositories, `pip install -e ../timeskeleton/python
+  with the sibling repositories, `pip install -e ../TimeToShare/python
   -e ../pyMeasureMap` works too.
 - The canonical build/test/publish flow via `tox` (envs: default, `lint`,
   `build`, `clean`, `publish`).

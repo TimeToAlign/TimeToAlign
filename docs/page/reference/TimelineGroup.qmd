@@ -67,7 +67,7 @@ Coordinate(Fraction(1, 3), quarters)
 | [add_timeline](#timetoalign.timelines.TimelineGroup.add_timeline) | Add a member; its whole extent ``[0, length]`` spans the group. |
 | [apply_flow](#timetoalign.timelines.TimelineGroup.apply_flow) | Unfold ALL timelines in this group via a single flow. |
 | [diagram](#timetoalign.timelines.TimelineGroup.diagram) | Generate ASCII diagram for this group. |
-| [from_dict](#timetoalign.timelines.TimelineGroup.from_dict) | Read a group from a TimeSkeleton manifest. |
+| [from_dict](#timetoalign.timelines.TimelineGroup.from_dict) | Read a group from a TimeToShare manifest. |
 | [get_coordinate](#timetoalign.timelines.TimelineGroup.get_coordinate) | Dispatch a positional or event-key group coordinate query. |
 | [get_coordinate_at](#timetoalign.timelines.TimelineGroup.get_coordinate_at) | Resolve one coordinate on a selected group member axis. |
 | [get_coordinate_for](#timetoalign.timelines.TimelineGroup.get_coordinate_for) | Return a uniquely owned event's start on a selected member axis. |
@@ -84,7 +84,7 @@ Coordinate(Fraction(1, 3), quarters)
 | [get_timestamps_for](#timetoalign.timelines.TimelineGroup.get_timestamps_for) | Get timestamps for a collection of event IDs, in input order. |
 | [remove_timeline](#timetoalign.timelines.TimelineGroup.remove_timeline) | Remove a member from the group. |
 | [summary](#timetoalign.timelines.TimelineGroup.summary) | Get a summary of the group. |
-| [to_dict](#timetoalign.timelines.TimelineGroup.to_dict) | Write an anonymous TimeSkeleton manifest holding this group. |
+| [to_dict](#timetoalign.timelines.TimelineGroup.to_dict) | Write this group as a TimeToShare manifest, an anonymous bundle. |
 
 ### add_timeline { #timetoalign.timelines.TimelineGroup.add_timeline }
 
@@ -264,18 +264,18 @@ TimelineGroup[my_group] (2 timelines)
 timelines.TimelineGroup.from_dict(data, *, group_id=None, name=None)
 ```
 
-Read a group from a TimeSkeleton manifest.
+Read a group from a TimeToShare manifest.
 
 - A manifest of one root timeline and no group makes a group of that
   timeline; *group_id* or *name* (or both) must be given.
-- An anonymous manifest with one group reads that group. Arguments
+- An anonymous bundle with one group reads that group. Arguments
   naming it select it; arguments naming nothing override its id and
   name; given both, they must agree, both naming the group or
   neither.
 
 In these two cases the manifest is read as a whole: its ``meta``,
 ``graphical`` and unknown keys are kept so that :meth:`to_dict`
-writes them back, around the anonymous manifest a group writes.
+writes them back, around the anonymous bundle a group writes.
 - From a manifest with several groups, or a named one, *group_id* or
   *name* (or both) must be given and select the one group whose id
   and name match them.
@@ -283,16 +283,18 @@ writes them back, around the anonymous manifest a group writes.
 A group is read with the timelines its members need: each member id
 is resolved among the manifest's roots and all their descendants, and
 the members are added in the group's ``graphical.order`` entry (in
-``members`` order without one). ``graphical``'s other keys are kept as
-:attr:`styling`, unread, when the manifest is read as a whole. Keys
-the library does not know are kept on the object read from the JSON
-object they were found in, and written back.
+``members`` order without one). When the manifest is read as a whole,
+``graphical``'s other keys are kept as :attr:`styling`, and the
+entries of ``graphical.order`` keyed by a timeline, its band orders,
+are kept too, both unread. Keys the library does not know are kept
+on the object read from the JSON object they were found in, and
+written back.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
 | Name     | Type                                                | Description                                            | Default    |
 |----------|-----------------------------------------------------|--------------------------------------------------------|------------|
-| data     | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | A TimeSkeleton manifest.                               | _required_ |
+| data     | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | A TimeToShare manifest.                               | _required_ |
 | group_id | [str](`str`) \| None                                | The group id to select, or the id the group takes.     | `None`     |
 | name     | [str](`str`) \| None                                | The group name to select, or the name the group takes. | `None`     |
 
@@ -306,7 +308,7 @@ object they were found in, and written back.
 
 | Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                               |
 |--------|----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If *data* is no TimeSkeleton manifest of version 0.7.0 or is malformed — a member naming no timeline of the manifest, an order that is no permutation of its group's members, a member that is an ancestor or descendant of another member, a group id held by a timeline or by another group — or if the selection matches no group or several; the message names the problem, or the manifest's groups. |
+|        | [ValueError](`ValueError`) | If *data* is no TimeToShare manifest of version 0.1.0 or is malformed — a member naming no timeline of the manifest, an order that is no permutation of its group's members or names no group or timeline, a member that is an ancestor or descendant of another member, a group id held by a timeline or by another group — or if the selection matches no group or several; the message names the problem, or the manifest's groups. |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -981,7 +983,7 @@ timelines.TimelineGroup.to_dict(
 )
 ```
 
-Write an anonymous TimeSkeleton manifest holding this group.
+Write this group as a TimeToShare manifest, an anonymous bundle.
 
 The group is written with every timeline it needs: ``"timelines"``
 holds the root of each member's tree — a member that is a child
@@ -991,7 +993,8 @@ writes it, sorted by id. ``"groups"`` holds the group, naming its
 members by id, sorted; ``graphical.order`` keeps their display
 order, which is the order they were added in, under the group's id,
 beside the members of :attr:`styling`. A group read from a manifest
-as a whole writes that manifest's ``meta`` and unknown keys back.
+as a whole writes that manifest's ``meta`` and unknown keys back,
+and the band order it held of every timeline written, unchanged.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
@@ -1005,7 +1008,7 @@ as a whole writes that manifest's ``meta`` and unknown keys back.
 
 | Name   | Type                                                | Description                                                    |
 |--------|-----------------------------------------------------|----------------------------------------------------------------|
-|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | ``{"timeskeleton": "0.7.0", ..., "timelines": [...], "groups": |
+|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | ``{"timetoshare": "0.1.0", ..., "timelines": [...], "groups": |
 |        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | [{"id", "name", "meta", "members"}], "graphical": {"order":    |
 |        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | {group id: [...]}, ...}}``.                                    |
 

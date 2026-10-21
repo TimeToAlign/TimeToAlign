@@ -44,7 +44,7 @@ from typing import Any, ClassVar
 
 from timetoalign.core import Coordinate, IdCoordinate, NumberType, TimeUnit
 from timetoalign.core.enums import ActivationCondition, FlowControlElement
-from timetoalign.core.ids import _admit_id, _IdentifiedElement, mint_id
+from timetoalign.core.ids import _admit_id, _IdentifiedElement, mint_id, quote_id
 from timetoalign.core.time import express_scalar_as
 
 from .manifest import (
@@ -170,7 +170,7 @@ def _read_element(
         data, "a flow-control element", ("id", "type", "manifestation", "coordinate")
     )
     element_id = read_id(data["id"], "a flow-control element")
-    what = f"{element_type} {element_id!r}"
+    what = f"{element_type} {quote_id(element_id)}"
     manifestation = data["manifestation"]
     allowed_values = {member.value for member in allowed}
     if manifestation not in allowed_values:
@@ -979,14 +979,15 @@ class FlowControlRegistry:
             ValueError: If the element's given id is already taken.
         """
         prefix = element._id_prefix
-        description = f"{prefix} {element.id!r}"
+        description = f"{prefix} {quote_id(element.id)}"
         if self._admit is not None:
             new_id = self._admit(
                 element.id, minted=element._minted, prefix=prefix, element=description
             )
         else:
             taken = {
-                held.id: f"{held._id_prefix} {held.id!r}" for held in self._elements()
+                held.id: f"{held._id_prefix} {quote_id(held.id)}"
+                for held in self._elements()
             }
             new_id = _admit_id(
                 element.id,
@@ -1064,7 +1065,7 @@ class FlowControlRegistry:
             marker.id for marker in self.markers
         }:
             raise ValueError(
-                f"Jump target {jump.target!r} names no marker of this registry. "
+                f"Jump target {quote_id(jump.target)} names no marker of this registry. "
                 f"Available markers: {[marker.id for marker in self.markers]}"
             )
         stored = (
@@ -1260,8 +1261,8 @@ class FlowControlRegistry:
             marker = next(m for m in self.markers if m.id == jump.target)
             if marker.position != jump.to_position:
                 raise ValueError(
-                    f"jump {jump.id!r} lands at {jump.to_position}, but its target "
-                    f"{marker.id!r} lies at {marker.position}"
+                    f"jump {quote_id(jump.id)} lands at {jump.to_position}, but its "
+                    f"target {quote_id(marker.id)} lies at {marker.position}"
                 )
             return jump.target
         if jump.to_position == 0 and jump.control_type in _TO_START:
@@ -1269,7 +1270,7 @@ class FlowControlRegistry:
         landing = _LANDING.get(jump.control_type)
         if landing is None:
             raise ValueError(
-                f"jump {jump.id!r} ({jump.control_type.value}) lands at "
+                f"jump {quote_id(jump.id)} ({jump.control_type.value}) lands at "
                 f"{jump.to_position}, not at the timeline's start"
             )
         here = sorted(

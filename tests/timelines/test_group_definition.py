@@ -303,9 +303,12 @@ def test_order_defaults_to_members_without_graphical() -> None:
 STYLING: dict[str, Any] = {
     "styles": {"frame-highlight": {"stroke": "#7F00FF", "stroke-width": 2}},
     "statements": [
-        {"select": {"element": "group"}, "set": "frame-highlight"},
+        {"select": {"element": "frame"}, "set": "frame-highlight"},
         {
-            "select": {"element": "name", "ids": ["group_1/name"]},
+            "select": {
+                "element": "name",
+                "addresses": [{"id": "group_1", "part": ["name"]}],
+            },
             "set": {"fill": "#7F00FF"},
         },
     ],
@@ -401,7 +404,8 @@ def _malformed(change: Any) -> dict[str, Any]:
         (lambda d: d["groups"][0]["members"].append("A"), "names a member twice"),
         (
             lambda d: d["timelines"].append(d["timelines"][0]),
-            "timeline id 'A' occurs twice",
+            "the id 'A' is held twice in the manifest: by timeline 'A' and by "
+            "timeline 'A'",
         ),
         (
             lambda d: d["graphical"]["order"].update(group_1=["A", "B"]),
@@ -413,11 +417,12 @@ def _malformed(change: Any) -> dict[str, Any]:
         ),
         (
             lambda d: (d["groups"][0].update(id="A"), d["graphical"].pop("order")),
-            "group id 'A' is also a timeline id",
+            "the id 'A' is held twice in the manifest: by timeline 'A' and by "
+            "group 'A'",
         ),
         (
-            lambda d: (d["groups"][0].update(id="a/b"), d["graphical"].pop("order")),
-            "Invalid id 'a/b'",
+            lambda d: (d["groups"][0].update(id="a\tb"), d["graphical"].pop("order")),
+            r"Invalid id 'a\\tb'",
         ),
     ],
     ids=[
@@ -498,8 +503,12 @@ def test_given_id_collision_raises_and_leaves_the_group() -> None:
     group = _three_types()
     before = group.to_dict()
 
-    with pytest.raises(ValueError, match="Timeline 'B' cannot join group"):
+    with pytest.raises(ValueError) as refused:
         group.add_timeline(ContinuousPhysicalTimeline(length=1.0, uid="B"))
+    assert str(refused.value) == (
+        "timeline 'B' cannot join group 'group_1': its id 'B' is already held by "
+        "timeline 'B'"
+    )
     assert group.to_dict() == before
 
 
@@ -509,7 +518,7 @@ def test_descendant_id_collision_raises() -> None:
     newcomer = ContinuousLogicalTimeline(length=Fraction(4), uid="other")
     newcomer.add_child(ContinuousLogicalTimeline(length=Fraction(1), uid="R"), offset=0)
 
-    with pytest.raises(ValueError, match="Timeline 'R' cannot join group"):
+    with pytest.raises(ValueError, match="timeline 'R' cannot join group"):
         group.add_timeline(newcomer)
     assert newcomer.id == "other"
 
@@ -557,7 +566,7 @@ def test_refused_newcomer_keeps_its_ids() -> None:
     child = ContinuousPhysicalTimeline(length=1.0)
     newcomer.add_child(child, offset=0.0)
 
-    with pytest.raises(ValueError, match="Timeline 'B' cannot join group"):
+    with pytest.raises(ValueError, match="timeline 'B' cannot join group"):
         group.add_timeline(newcomer)
     assert (newcomer.id, child.id) == ("B", "cpt_1")
     assert group.timeline_ids == ["cpt_1", "B"]
@@ -567,8 +576,12 @@ def test_group_id_may_not_be_a_timeline_id() -> None:
     """A timeline whose id is the group's own given id cannot join."""
     group = TimelineGroup(id="shared")
 
-    with pytest.raises(ValueError, match="already held by a group there"):
+    with pytest.raises(ValueError) as refused:
         group.add_timeline(ContinuousLogicalTimeline(length=Fraction(1), uid="shared"))
+    assert str(refused.value) == (
+        "timeline 'shared' cannot join group 'shared': its id 'shared' is already "
+        "held by group 'shared'"
+    )
     assert group.timeline_ids == []
 
 

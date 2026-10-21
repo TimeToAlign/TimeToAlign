@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import gc
 import json
+import pickle
 from collections.abc import Callable, Iterator
 from fractions import Fraction as F
 from typing import Any
 
 import pytest
+from timetoshare import validate
 
+from timetoalign.alignment import AlignmentBundle
 from timetoalign.core import Coordinate, FlowControlElement, TimeUnit
 from timetoalign.loader.alignment import ParangonadaLoader
 from timetoalign.loader.graphical.iiif import IIIFManifestLoader
@@ -40,11 +44,13 @@ from timetoalign.timelines import (
     MeasureMap,
     SegmentLine,
     Timeline,
+    TimelineGroup,
 )
 from timetoalign.timelines.flowcontrol import Break, Jump, Marker
 from timetoalign.timelines.regions import Region
 
 SEGNO = FlowControlElement.segno
+DAL_SEGNO = FlowControlElement.dal_segno
 
 SCORE = ensure_data("score")
 MIDI = ensure_data("midi")
@@ -194,7 +200,15 @@ class TestDeterminism:
 # region Given ids
 
 
-GIVEN = ["performance", "a", "Bass Kick", "score:clt_7"]
+GIVEN = [
+    "performance",
+    "a",
+    "Bass Kick",
+    "score:clt_7",
+    "score/1",
+    "part 2",
+    "https://example.org/op35#m1",
+]
 
 
 def _given_manifest() -> Timeline:
@@ -232,7 +246,7 @@ class TestGivenIds:
         restored = Timeline.from_dict(json.loads(text))
         assert json.dumps(restored.to_dict()) == text
 
-    @pytest.mark.parametrize("refused", ["", "a/b", "a\tb", "a\nb"])
+    @pytest.mark.parametrize("refused", ["", "a\tb", "a\nb"])
     @pytest.mark.parametrize(
         "build",
         [
@@ -343,6 +357,566 @@ class TestCollisions:
         ):
             root.add_conversion_map(ScalarMap(3, uid="tempo"))
         assert root.n_conversion_maps == 0
+
+
+def _free_bundle() -> AlignmentBundle:
+    """A manifest whose every kind of element carries a free id."""
+    score = ContinuousLogicalTimeline(length=16, uid="score/1")
+    score.add_child(ContinuousLogicalTimeline(length=8, uid="part 2"), 0)
+    score.create_region(0, 4, id="intro: A/B")
+    score.add_conversion_map(ScalarMap(2, uid="urn:tempo"))
+    score.add_measure_map(
+        MeasureMap(_bars().measures, id="https://example.org/op35/bars")
+    )
+    score.flow_control.add_break(Break(_q(8), id="fine / end"))
+    score.flow_control.add_marker(Marker(_q(4), id="segno 1", control_type=SEGNO))
+    score.flow_control.add_jump(Jump(_q(12), _q(4), id="D.S./1", target="segno 1"))
+    perf = ContinuousPhysicalTimeline(length=20.0, uid="https://example.org/take#1")
+    bundle = AlignmentBundle(id="https://example.org/op35")
+    bundle.add_timeline(score)
+    bundle.add_timeline(perf, as_group="score and take")
+    return bundle
+
+
+def _bars() -> MeasureMap:
+    return MeasureMap.from_rows([{"count": 1, "time_signature": "4/4"}])
+
+
+class TestFreeIds:
+    """Slashes, spaces, colons and URIs are ids, through a manifest round trip."""
+
+    def test_every_kind_keeps_its_free_id(self) -> None:
+        payload = _free_bundle().to_dict()
+        text = json.dumps(payload)
+        read = AlignmentBundle.from_dict(json.loads(text))
+
+        assert read.id == "https://example.org/op35"
+        score = read.timelines["score/1"]
+        assert score.list_children() == ["part 2"]
+        assert score.list_regions() == ["intro: A/B"]
+        assert sorted(cmap.id for cmap in score._all_conversion_maps()) == [
+            "cmap_1",
+            "urn:tempo",
+        ]
+        assert score.measure_map.id == "https://example.org/op35/bars"
+        assert [e.id for e in score.flow_control.breaks] == ["fine / end"]
+        assert [m.id for m in score.flow_control.markers] == ["segno 1"]
+        assert [(j.id, j.target) for j in score.flow_control.jumps] == [
+            ("D.S./1", "segno 1")
+        ]
+        assert sorted(read.timelines) == [
+            "https://example.org/take#1",
+            "score/1",
+        ]
+        assert payload["measure_maps"][0]["id"] == "https://example.org/op35/bars"
+        assert read.to_dict() == payload
+        assert json.dumps(read.to_dict()) == text
+
+
+def _root_pair(
+    score: dict[str, Any], perf: dict[str, Any], **keys: Any
+) -> dict[str, Any]:
+    """A manifest of two quarters roots ``score`` and ``perf`` of length 16."""
+    return {
+        "timetoshare": "0.1.0",
+        **keys,
+        "timelines": [
+            {"id": "score", "unit": "quarters", "length": [16, 1], **score},
+            {"id": "perf", "unit": "quarters", "length": [16, 1], **perf},
+        ],
+    }
+
+
+def _region(region_id: str) -> dict[str, Any]:
+    return {"id": region_id, "start": [0, 1], "end": [4, 1]}
+
+
+def _scalar(map_id: str) -> dict[str, Any]:
+    return {
+        "type": "LinearMap",
+        "id": map_id,
+        "source_unit": "quarters",
+        "target_unit": "seconds",
+        "scalar": 2,
+    }
+
+
+@pytest.mark.parametrize(
+    ("data", "holders"),
+    [
+        (
+            _root_pair(
+                {"regions": [_region("intro")]}, {"regions": [_region("intro")]}
+            ),
+            (
+                "intro",
+                "region 'intro' of timeline 'score'",
+                "region 'intro' of timeline 'perf'",
+            ),
+        ),
+        (
+            _root_pair(
+                {"conversion_maps": [_scalar("m")]},
+                {
+                    "flow_control": [
+                        {
+                            "id": "m",
+                            "type": "flow_marker",
+                            "manifestation": "fine",
+                            "coordinate": [4, 1],
+                        }
+                    ]
+                },
+            ),
+            (
+                "m",
+                "conversion map 'm' of timeline 'score'",
+                "flow_marker 'm' of timeline 'perf'",
+            ),
+        ),
+        (
+            _root_pair(
+                {
+                    "children": [
+                        {
+                            "id": "perf",
+                            "unit": "quarters",
+                            "offset": [0, 1],
+                            "length": [4, 1],
+                        }
+                    ]
+                },
+                {},
+            ),
+            ("perf", "timeline 'perf'", "timeline 'perf'"),
+        ),
+        (
+            _root_pair(
+                {},
+                {"regions": [_region("g")]},
+                groups=[{"id": "g", "members": ["score"]}],
+            ),
+            ("g", "region 'g' of timeline 'perf'", "group 'g'"),
+        ),
+        (
+            _root_pair(
+                {},
+                {
+                    "flow_control": [
+                        {
+                            "id": "bars",
+                            "type": "jump_to",
+                            "manifestation": "segno",
+                            "coordinate": [4, 1],
+                        }
+                    ]
+                },
+                measure_maps=[
+                    {"id": "bars", "rows": [{"count": 1, "time_signature": "4/4"}]}
+                ],
+            ),
+            ("bars", "measure map 'bars'", "jump_to 'bars' of timeline 'perf'"),
+        ),
+        (
+            _root_pair(
+                {
+                    "conversion_maps": [
+                        {
+                            "type": "ChainMap",
+                            "id": "chain",
+                            "source_unit": "quarters",
+                            "target_unit": "minutes",
+                            "maps": [
+                                _scalar("op35"),
+                                {
+                                    "type": "LinearMap",
+                                    "id": "minutes",
+                                    "source_unit": "seconds",
+                                    "target_unit": "minutes",
+                                    "scalar": [1, 60],
+                                },
+                            ],
+                        }
+                    ]
+                },
+                {},
+                id="op35",
+            ),
+            (
+                "op35",
+                "the manifest",
+                "conversion map 'op35' nested in conversion map 'chain' of timeline 'score'",
+            ),
+        ),
+    ],
+    ids=[
+        "regions",
+        "map_and_break",
+        "child_and_root",
+        "group",
+        "measure_map",
+        "manifest",
+    ],
+)
+def test_an_id_held_twice_in_a_manifest_is_refused(
+    data: dict[str, Any], holders: tuple[str, str, str]
+) -> None:
+    element_id, first, second = holders
+    for root in data["timelines"]:
+        alone = {"timetoshare": "0.1.0", "timelines": [root]}
+        assert Timeline.from_dict(alone).id == root["id"]
+    with pytest.raises(ValueError) as refused:
+        AlignmentBundle.from_dict(data)
+    assert str(refused.value) == (
+        f"the id '{element_id}' is held twice in the manifest: by {first} and by "
+        f"{second}"
+    )
+
+
+def _joining(uid: str) -> ContinuousLogicalTimeline:
+    """A root of given id holding a minted region, map and marker, and a jump."""
+    timeline = ContinuousLogicalTimeline(length=16, uid=uid)
+    timeline.create_region(0, 4)
+    timeline.add_conversion_map(LinearMap(scalar=2))
+    marker = timeline.flow_control.add_marker(Marker(_q(2), control_type=SEGNO))
+    timeline.flow_control.add_jump(Jump(_q(6), _q(2), id=f"ds-{uid}", target=marker.id))
+    return timeline
+
+
+def _held(timeline: Timeline) -> tuple[list[str], list[str], list[str], list[Any]]:
+    return (
+        timeline.list_regions(),
+        [cmap.id for cmap in timeline._all_conversion_maps()],
+        [marker.id for marker in timeline.flow_control.markers],
+        [jump.target for jump in timeline.flow_control.jumps],
+    )
+
+
+def _group_of(*timelines: Timeline) -> TimelineGroup:
+    return TimelineGroup(timelines=list(timelines))
+
+
+def _bundle_of(*timelines: Timeline) -> AlignmentBundle:
+    bundle = AlignmentBundle()
+    for timeline in timelines:
+        bundle.add_timeline(timeline)
+    return bundle
+
+
+SCOPES = pytest.mark.parametrize(
+    ("join", "scope"),
+    [(_group_of, "group 'group_1'"), (_bundle_of, "bundle 'bundle_1'")],
+    ids=["group", "bundle"],
+)
+
+
+class TestJoiningScopes:
+    """Trees joining a group or a bundle share one scope, every kind of element."""
+
+    @SCOPES
+    def test_minted_ids_of_every_kind_are_minted_again(
+        self, join: Callable[..., Any], scope: str
+    ) -> None:
+        first, second = _joining("a"), _joining("b")
+        join(first, second)
+
+        assert _held(first) == (["region_1"], ["lmap_1"], ["jump_to_1"], ["jump_to_1"])
+        assert _held(second) == (["region_2"], ["lmap_2"], ["jump_to_2"], ["jump_to_2"])
+
+    @SCOPES
+    def test_a_given_id_held_in_the_scope_is_refused_atomically(
+        self, join: Callable[..., Any], scope: str
+    ) -> None:
+        first, second = _joining("a"), _joining("b")
+        first.add_conversion_map(ScalarMap(3, uid="intro"))
+        second.create_region(4, 8, id="intro")
+        container = join(first)
+
+        with pytest.raises(ValueError) as refused:
+            (container.add_timeline)(second)
+        assert str(refused.value) == (
+            f"region 'intro' of timeline 'b' cannot join {scope}: its id 'intro' is "
+            "already held by conversion map 'intro' of timeline 'a'"
+        )
+        assert second.list_regions() == ["region_1", "intro"]
+        assert _held(second)[1:] == (["lmap_1"], ["jump_to_1"], ["jump_to_1"])
+        members = (
+            container.timeline_ids
+            if isinstance(container, TimelineGroup)
+            else sorted(container.timelines)
+        )
+        assert members == ["a"]
+
+    def test_a_given_bundle_id_is_the_manifest_s(self) -> None:
+        bundle = AlignmentBundle(id="study")
+        with pytest.raises(ValueError) as refused:
+            bundle.add_timeline(ContinuousLogicalTimeline(length=4, uid="study"))
+        assert str(refused.value) == (
+            "timeline 'study' cannot join bundle 'study': its id 'study' is already "
+            "held by bundle 'study'"
+        )
+        assert bundle.timelines == {}
+
+
+def test_a_given_group_id_held_by_a_region_is_refused() -> None:
+    bundle = AlignmentBundle()
+    bundle.add_timeline(_joining("a"))
+    bundle.timelines["a"].create_region(4, 8, id="g")
+    group = TimelineGroup(id="g", timelines=[ContinuousLogicalTimeline(length=4)])
+
+    with pytest.raises(ValueError) as refused:
+        bundle.add_group(group)
+    assert str(refused.value) == (
+        "group 'g' cannot join bundle 'bundle_1': its id 'g' is already held by "
+        "region 'g' of timeline 'a'"
+    )
+    assert bundle.groups == {}
+
+
+class TestLivingScopes:
+    """While a group or a bundle holds trees, their elements take ids together."""
+
+    @pytest.mark.parametrize("join", [_group_of, _bundle_of], ids=["group", "bundle"])
+    @pytest.mark.parametrize(
+        ("add", "element"),
+        [
+            (
+                lambda timeline: timeline.add_region(Region(_q(0), _q(4), id="intro")),
+                "region",
+            ),
+            (
+                lambda timeline: timeline.add_conversion_map(ScalarMap(2, uid="intro")),
+                "conversion map",
+            ),
+            (
+                lambda timeline: timeline.flow_control.add_break(
+                    Break(_q(4), id="intro")
+                ),
+                "flow_marker",
+            ),
+        ],
+        ids=["region", "map", "break"],
+    )
+    def test_an_element_added_later_takes_its_id_in_the_scope(
+        self,
+        join: Callable[..., Any],
+        add: Callable[[Timeline], Any],
+        element: str,
+    ) -> None:
+        first, second = _joining("a"), ContinuousLogicalTimeline(length=16, uid="b")
+        first.create_region(4, 8, id="intro")
+        container = join(first, second)
+
+        assert second.create_region(0, 4).id == "region_2"
+        with pytest.raises(ValueError) as refused:
+            add(second)
+        assert str(refused.value) == (
+            f"{element} 'intro' of timeline 'b' cannot join: its id 'intro' is "
+            "already held by region 'intro' of timeline 'a'"
+        )
+        assert second.list_regions() == ["region_2"]
+        assert second.n_conversion_maps == 0
+        assert second.flow_control.breaks == []
+        assert container is not None
+
+    def test_a_removed_member_leaves_the_scope(self) -> None:
+        first, second = _joining("a"), ContinuousLogicalTimeline(length=16, uid="b")
+        group = _group_of(first, second)
+        group.remove_timeline("b")
+
+        assert second.create_region(0, 4).id == "region_1"
+
+    def test_a_dropped_group_leaves_no_scope(self) -> None:
+        first, second = _joining("a"), ContinuousLogicalTimeline(length=16, uid="b")
+        group = _group_of(first, second)
+        del group
+        gc.collect()
+
+        assert second.create_region(0, 4).id == "region_1"
+
+    def test_a_pickled_group_keeps_its_scope(self) -> None:
+        group = _group_of(_joining("a"), ContinuousLogicalTimeline(length=16, uid="b"))
+        restored = pickle.loads(pickle.dumps(group))
+
+        assert restored.get_timeline("b").create_region(0, 4).id == "region_2"
+
+    def test_a_given_id_mints_a_minted_group_id_again(self) -> None:
+        first, second = _joining("a"), ContinuousLogicalTimeline(length=16, uid="b")
+        group = _group_of(first, second)
+        bundle = AlignmentBundle()
+        bundle.add_group(group)
+
+        assert second.create_region(0, 4, id="group_1").id == "group_1"
+        assert group.id == "group_2"
+        assert list(bundle.groups) == ["group_2"]
+
+
+def _holding_region(uid: str, region_id: str | None) -> ContinuousLogicalTimeline:
+    timeline = ContinuousLogicalTimeline(length=16, uid=uid)
+    timeline.create_region(0, 4, id=region_id)
+    return timeline
+
+
+def _group_behind_a_bundle(
+    region_id: str | None,
+) -> tuple[AlignmentBundle, TimelineGroup, ContinuousLogicalTimeline]:
+    """A bundle holding ``d``, then a group of ``a``, ``b``, and the newcomer ``c``."""
+    bundle = AlignmentBundle()
+    bundle.add_timeline(_holding_region("d", region_id))
+    group = TimelineGroup(
+        timelines=[
+            ContinuousLogicalTimeline(length=16, uid="a"),
+            ContinuousLogicalTimeline(length=16, uid="b"),
+        ]
+    )
+    bundle.add_group(group)
+    return bundle, group, _holding_region("c", region_id)
+
+
+def _empty_group_behind_a_bundle(
+    region_id: str | None,
+) -> tuple[AlignmentBundle, TimelineGroup, ContinuousLogicalTimeline]:
+    """A bundle holding ``d`` and an empty group, and the newcomer ``c``."""
+    bundle = AlignmentBundle()
+    bundle.add_timeline(_holding_region("d", region_id))
+    group = TimelineGroup()
+    bundle.add_group(group)
+    return bundle, group, _holding_region("c", region_id)
+
+
+_REFUSED_C = (
+    "region 'r' of timeline 'c' cannot join group 'group_1': its id 'r' is "
+    "already held by region 'r' of timeline 'd'"
+)
+
+
+class TestGroupBehindABundle:
+    """A timeline added to a group joins every bundle holding the group."""
+
+    def test_a_given_id_held_in_the_bundle_is_refused_atomically(self) -> None:
+        bundle, group, newcomer = _group_behind_a_bundle("r")
+
+        with pytest.raises(ValueError) as refused:
+            group.add_timeline(newcomer)
+        assert str(refused.value) == _REFUSED_C
+        assert group.timeline_ids == ["a", "b"]
+        assert list(bundle.timelines) == ["d", "a", "b"]
+        assert newcomer.list_regions() == ["r"]
+        assert newcomer.create_region(4, 8, id="d").id == "d"
+
+    def test_a_minted_id_is_minted_again_and_the_bundle_writes_the_newcomer(
+        self,
+    ) -> None:
+        bundle, group, newcomer = _group_behind_a_bundle(None)
+        group.add_timeline(newcomer)
+
+        assert newcomer.list_regions() == ["region_2"]
+        assert bundle.timelines["d"].list_regions() == ["region_1"]
+        assert bundle.timelines["c"] is newcomer
+        data = bundle.to_dict()
+        assert [timeline["id"] for timeline in data["timelines"]] == [
+            "a",
+            "b",
+            "c",
+            "d",
+        ]
+        assert data["groups"] == [
+            {"id": "group_1", "name": None, "meta": {}, "members": ["a", "b", "c"]}
+        ]
+        validate(data)
+
+    def test_an_empty_group_refuses_a_given_id_held_in_the_bundle_atomically(
+        self,
+    ) -> None:
+        bundle, group, newcomer = _empty_group_behind_a_bundle("r")
+
+        with pytest.raises(ValueError) as refused:
+            group.add_timeline(newcomer)
+        assert str(refused.value) == _REFUSED_C
+        assert group.timeline_ids == []
+        assert list(bundle.timelines) == ["d"]
+        assert bundle.groups == {"group_1": group}
+        assert newcomer.list_regions() == ["r"]
+
+    def test_an_empty_group_mints_again_and_the_bundle_writes_the_newcomer(
+        self,
+    ) -> None:
+        bundle, group, newcomer = _empty_group_behind_a_bundle(None)
+        group.add_timeline(newcomer)
+
+        assert newcomer.list_regions() == ["region_2"]
+        assert bundle.timelines["d"].list_regions() == ["region_1"]
+        assert bundle.timelines["c"] is newcomer
+        data = bundle.to_dict()
+        assert [timeline["id"] for timeline in data["timelines"]] == ["c", "d"]
+        assert data["groups"] == [
+            {"id": "group_1", "name": None, "meta": {}, "members": ["c"]}
+        ]
+        validate(data)
+
+    def test_an_unpickled_bundle_holds_its_empty_group_again(self) -> None:
+        bundle, _group, newcomer = _empty_group_behind_a_bundle("r")
+        restored = pickle.loads(pickle.dumps(bundle))
+
+        with pytest.raises(ValueError) as refused:
+            restored.groups["group_1"].add_timeline(newcomer)
+        assert str(refused.value) == _REFUSED_C
+        assert restored.groups["group_1"].timeline_ids == []
+        assert list(restored.timelines) == ["d"]
+
+    def test_a_group_the_bundle_no_longer_holds_does_not_consult_it(self) -> None:
+        bundle, group, newcomer = _empty_group_behind_a_bundle("r")
+        bundle.groups.pop("group_1")
+        group.add_timeline(newcomer)
+
+        assert group.timeline_ids == ["c"]
+        assert newcomer.list_regions() == ["r"]
+        assert list(bundle.timelines) == ["d"]
+
+    def test_a_collected_bundle_is_not_consulted(self) -> None:
+        bundle, group, newcomer = _empty_group_behind_a_bundle("r")
+        del bundle
+        gc.collect()
+        group.add_timeline(newcomer)
+
+        assert group.timeline_ids == ["c"]
+        assert newcomer.list_regions() == ["r"]
+
+
+def test_an_id_is_named_in_single_quotes() -> None:
+    timeline = _holding_region("t", "Bach's")
+
+    with pytest.raises(ValueError) as refused:
+        timeline.create_region(4, 8, id="Bach's")
+    assert str(refused.value) == (
+        "region 'Bach's' of timeline 't' cannot join: its id 'Bach's' is already "
+        "held by region 'Bach's' of timeline 't'"
+    )
+
+
+def test_a_written_jump_to_takes_an_id_of_the_whole_manifest() -> None:
+    bundle = AlignmentBundle()
+    for uid in ("score", "perf"):
+        timeline = ContinuousLogicalTimeline(length=16, uid=uid)
+        timeline.flow_control.add_jump(
+            Jump(_q(12), _q(4), id=f"ds-{uid}", control_type=DAL_SEGNO)
+        )
+        bundle.add_timeline(timeline)
+
+    written = {
+        timeline["id"]: [
+            (element["id"], element.get("target"))
+            for element in timeline["flow_control"]
+        ]
+        for timeline in bundle.to_dict()["timelines"]
+    }
+    assert written == {
+        "perf": [("jump_to_1", None), ("ds-perf", "jump_to_1")],
+        "score": [("jump_to_2", None), ("ds-score", "jump_to_2")],
+    }
+    assert [jump.target for jump in bundle.timelines["score"].flow_control.jumps] == [
+        None
+    ]
 
 
 QUARTERS_TO_SECONDS = {"source_unit": "quarters", "target_unit": "seconds", "scalar": 2}
@@ -634,7 +1208,6 @@ class TestLoaderParity:
         assert len(ids) == len(set(ids))
         for element_id in ids:
             assert isinstance(element_id, str) and element_id
-            assert "/" not in element_id
             assert not any(ord(character) < 0x20 for character in element_id)
             assert not element_id.startswith("tl:")
 

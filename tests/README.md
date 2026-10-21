@@ -73,8 +73,9 @@ manifest the validators refuse would let an invalid document through one of
 two doors. The cases are listed from the package, not copied, so a case
 added there is covered here without an edit. The two exceptions are the
 rules the library leaves to the validators because it keeps what they
-check as given: the rules about `graphical.statements` (selectors and
-declarations), which the library never interprets, and the rules about
+check as given: the rules about `graphical.statements` (selectors with
+their addresses, and declarations), which the library never interprets,
+and the rules about
 the entries of a band order (a `graphical.order` entry keyed by a
 timeline), which the library writes back with its timeline unchecked.
 Those cases are listed by name in the test with that reason, and the test

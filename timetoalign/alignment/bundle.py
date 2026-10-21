@@ -10,7 +10,8 @@ the ``MatchClaim`` -> ``MatchLine`` -> ``WarpMap`` pipeline.
 WarpMaps are built lazily and cached for repeated queries.
 
 A bundle is its timelines and its groups. Every timeline is registered
-under its own ``id``, which is unique across the bundle's manifest trees.
+under its own ``id``. The bundle's trees, groups and given id make one
+manifest, in which every id is unique whatever element holds it.
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from fractions import Fraction
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pandas as pd
 
@@ -38,7 +39,7 @@ from timetoalign.core import (
     resolve_id,
 )
 from timetoalign.core.enums import NumberType
-from timetoalign.core.ids import _OpenObject, mint_id, validate_id
+from timetoalign.core.ids import _OpenObject, mint_id, quote_id, validate_id
 from timetoalign.core.retrieval import (
     CoordinateCollection,
     CoordinateFormat,
@@ -60,12 +61,11 @@ from timetoalign.core.retrieval import (
 from timetoalign.core.timestamp import TimestampColumn, build_timestamp_table
 from timetoalign.timelines import TimelineGroup, UnknownLengthError
 from timetoalign.timelines.groups import (
-    _admit_timeline_tree,
     _groups_by_timeline,
     _held_ids,
+    _IdScope,
     _nested,
     _root,
-    _tree,
 )
 from timetoalign.timelines.manifest import Manifest
 
@@ -126,7 +126,7 @@ def _resolve_coordinate_and_timeline(
 
 
 @dataclass
-class AlignmentBundle(_OpenObject):
+class AlignmentBundle(_IdScope, _OpenObject):
     """The primary entry point for all alignment workflows.
 
     An AlignmentBundle manages timelines and their alignment relationships.
@@ -185,6 +185,9 @@ class AlignmentBundle(_OpenObject):
         >>> stamp.get_coordinate_for("cpt_1", format="float")
         45.5
     """
+
+    _scope_kind: ClassVar[str] = "bundle"
+    _writes_minted_id: ClassVar[bool] = False
 
     id: str = field(default="")
     name: str | None = None
@@ -326,8 +329,6 @@ class AlignmentBundle(_OpenObject):
                 content.timelines,
                 content.order.get(group_id) if isinstance(group_id, str) else None,
             )
-            if group.id in bundle.groups:
-                raise ValueError(f"group id {group.id!r} occurs twice")
             bundle.add_group(group)
         for root in content.roots:
             if bundle.timelines.get(root.id) is not root:
@@ -445,9 +446,10 @@ class AlignmentBundle(_OpenObject):
             ValueError: If the timeline is already in the bundle while no
                 group is requested, or already in the group it would join; if
                 ``grouped_with`` names a timeline of several groups; if a
-                given id of its manifest tree — its own, its root's or any
-                descendant's — is held by another timeline of the bundle (a
-                minted id held there is minted again instead) or by a group.
+                given id of its manifest tree — of any timeline, conversion
+                map, region or flow-control element of it — is held by
+                another element of the bundle's trees (a minted id held there
+                is minted again instead), by a group or by the bundle.
             KeyError: If grouped_with references a non-existent timeline.
 
         Examples:
@@ -491,45 +493,42 @@ class AlignmentBundle(_OpenObject):
         registered = self.timelines.get(timeline.id) is timeline
         if registered and grouped_with is None and as_group is None:
             raise ValueError(f"Timeline '{timeline.id}' already exists in bundle")
-        # The group to join, if one exists; it refuses a member it holds
-        # already and nesting. Ask before anything changes.
-        joined: TimelineGroup | None = None
-        if grouped_with is not None:
-            target_groups = self.get_groups_for_timeline(grouped_with)
-            if len(target_groups) > 1:
+        target_groups = (
+            self.get_groups_for_timeline(grouped_with)
+            if grouped_with is not None
+            else ()
+        )
+        if len(target_groups) > 1:
+            raise ValueError(
+                f"Cannot group with {quote_id(grouped_with)}: it is a member of "
+                f"several groups {[group.id for group in target_groups]}, so the group "
+                "to join is ambiguous"
+            )
+        group: TimelineGroup | None = None
+        if target_groups:
+            # The group refuses a member it holds already and nesting, and
+            # admits the newcomer into every bundle holding it, this one
+            # included, before anything changes.
+            (group,) = target_groups
+            group.add_timeline(timeline)
+        else:
+            if grouped_with is not None and _nested(
+                self.timelines[grouped_with], timeline
+            ):
                 raise ValueError(
-                    f"Cannot group with {grouped_with!r}: it is a member of several "
-                    f"groups {[group.id for group in target_groups]}, so the group "
-                    "to join is ambiguous"
-                )
-            if target_groups:
-                (joined,) = target_groups
-                if any(member is timeline for member in joined):
-                    raise ValueError(
-                        f"Timeline '{timeline.id}' already in group '{joined.id}'"
-                    )
-                joined._refuse_nested(timeline)
-            elif _nested(self.timelines[grouped_with], timeline):
-                raise ValueError(
-                    f"Timeline {timeline.id!r} cannot be grouped with "
-                    f"{grouped_with!r}: one is nested in the other, and a parent "
+                    f"Timeline {quote_id(timeline.id)} cannot be grouped with "
+                    f"{quote_id(grouped_with)}: one is nested in the other, and a parent "
                     "and its child cannot share one start and end"
                 )
-        if not registered:
-            self._admit(timeline)
-
-        if joined is not None:
-            group = joined
-            group.add_timeline(timeline)
-        elif grouped_with is not None or as_group is not None:
-            founders = [timeline]
-            if grouped_with is not None:
-                founders.insert(0, self.timelines[grouped_with])
-            group = TimelineGroup(name=as_group, timelines=founders)
-            group.id = self._free_group_id(group)
-            self.groups[group.id] = group
-        else:
-            group = None
+            if not registered:
+                self._admit(timeline)
+            if grouped_with is not None or as_group is not None:
+                founders = [timeline]
+                if grouped_with is not None:
+                    founders.insert(0, self.timelines[grouped_with])
+                group = TimelineGroup(name=as_group, timelines=founders)
+                group.id = self._free_group_id(group)
+                self._hold_group(group)
 
         self._register(timeline)
         if group is not None:
@@ -557,9 +556,9 @@ class AlignmentBundle(_OpenObject):
         Raises:
             ValueError: If the group's given ID is already held in the bundle
                 (a minted one is minted again instead), or if a given id of a
-                member's manifest tree is held by another timeline of the
-                bundle (a minted id held there is minted again instead) or by
-                a group.
+                member's manifest tree is held by another element of the
+                bundle's trees (a minted id held there is minted again
+                instead), by a group or by the bundle.
 
         Examples:
             Add a recording group with three DPTs:
@@ -568,7 +567,7 @@ class AlignmentBundle(_OpenObject):
                 >>> bundle.add_group(grp)
         """
         if any(held is group for held in self.groups.values()):
-            raise ValueError(f"Group '{group.id}' already exists in bundle")
+            raise ValueError(f"Group {quote_id(group.id)} already exists in bundle")
         members = list(group)
         # Check every member and the group id before anything changes.
         for member in members:
@@ -581,7 +580,7 @@ class AlignmentBundle(_OpenObject):
                 self._admit(member)
         group._rekey_members()
 
-        self.groups[group.id] = group
+        self._hold_group(group)
         for member in members:
             self._register(member)
 
@@ -592,59 +591,62 @@ class AlignmentBundle(_OpenObject):
     def _admit(self, timeline: "Timeline", *, check_only: bool = False) -> None:
         """Admit a timeline's manifest tree into the bundle's id scope.
 
-        A given group id is reserved for its group; a minted group id that a
-        newcomer's given id takes is minted again for the group.
+        Every id is unique in the bundle, whatever element holds it. A given
+        group id and the bundle's given id are reserved; a minted group id
+        that a newcomer's given id takes is minted again for the group.
 
         Args:
             timeline: The timeline joining the bundle.
             check_only: Raise as admitting would, but change nothing.
 
         Raises:
-            ValueError: If a given id of the tree is held by another timeline
-                or a group with a given id (minted timeline ids held there are
-                minted again instead).
+            ValueError: If a given id of the tree is held by another element
+                of the bundle's trees, a group with a given id or the bundle
+                (minted ids held there are minted again instead).
         """
-        held = _held_ids(self.timelines.values())
-        _admit_timeline_tree(
-            timeline,
-            held,
-            f"bundle {self.id!r}",
-            reserved=(
-                group_id
-                for group_id, group in self.groups.items()
-                if not group._id_minted
-            ),
-            check_only=check_only,
-        )
-        if check_only:
-            return
-        tree_ids = {member.id for member in _tree(_root(timeline))}
-        for group_id in [group_id for group_id in self.groups if group_id in tree_ids]:
-            group = self.groups.pop(group_id)
-            group.id = mint_id("group", set(self.groups) | set(held) | tree_ids)
-            self.groups[group.id] = group
+        self._admit_tree(timeline, check_only=check_only)
+
+    def _scope_members(self) -> list["Timeline"]:
+        """Return the registered timelines."""
+        return list(self.timelines.values())
+
+    def _sub_scopes(self) -> dict[str, TimelineGroup]:
+        """Return the groups, keyed by id."""
+        return self.groups
 
     def _register(self, timeline: "Timeline") -> None:
         """Register a timeline, and its root when it is a child."""
         self.timelines[timeline.id] = timeline
+        timeline._join_scope(self)
         root = _root(timeline)
         if self.timelines.get(root.id) is not root:
             self.timelines[root.id] = root
+            root._join_scope(self)
+
+    def _hold_group(self, group: TimelineGroup) -> None:
+        """Hold *group* under its id and record the bundle on it."""
+        self.groups[group.id] = group
+        group._hold_in(self)
 
     def _free_group_id(self, group: TimelineGroup) -> str:
-        """Return an id for *group* that no group or timeline of the bundle holds.
+        """Return an id for *group* that no element of the bundle holds.
 
         A free id is kept and a minted one that is held is minted again.
 
         Raises:
             ValueError: If the group's given id is held in the bundle.
         """
-        taken = set(self.groups) | set(_held_ids(self.timelines.values()))
-        if group.id not in taken:
+        held = self._scope_ids()
+        if group.id not in held and group.id not in self.groups:
             return group.id
         if not group._id_minted:
-            raise ValueError(f"Group '{group.id}' already exists in bundle")
-        return mint_id("group", taken | set(_held_ids(group)))
+            if group.id in self.groups:
+                raise ValueError(f"Group {quote_id(group.id)} already exists in bundle")
+            raise ValueError(
+                f"group {quote_id(group.id)} cannot join bundle {quote_id(self.id)}: "
+                f"its id {quote_id(group.id)} is already held by {held[group.id]}"
+            )
+        return mint_id("group", set(held) | set(self.groups) | set(_held_ids(group)))
 
     def get_timeline(self, timeline_id: str) -> "Timeline":
         """Get a timeline by ID.

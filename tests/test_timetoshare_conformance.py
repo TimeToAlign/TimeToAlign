@@ -449,7 +449,9 @@ def test_a_bundle_reads_every_fixture(fixture: str) -> None:
 
 
 STATEMENT_RULES = {
-    "statement_select_empty_ids",
+    "address_facet_with_part",
+    "address_facet_without_id",
+    "statement_select_empty_addresses",
     "statement_select_inside_unknown_element",
     "statement_select_projection",
     "statement_select_unknown_element",
@@ -463,7 +465,11 @@ STATEMENT_RULES = {
 }
 """Rejection cases about ``graphical.statements``, which the library keeps unread."""
 
-BAND_ORDER_RULES = {"band_order_missing_band", "band_order_unknown_entry"}
+BAND_ORDER_RULES = {
+    "band_order_missing_band",
+    "band_order_old_form",
+    "band_order_unknown_entry",
+}
 """Rejection cases about a band order's entries, which the library keeps unchecked."""
 
 REJECTIONS = {path.stem: path for path in rejection_paths()}

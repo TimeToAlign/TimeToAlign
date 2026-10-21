@@ -445,18 +445,21 @@ def test_an_entry_no_timeline_names_is_kept() -> None:
     [
         (
             {"measure_maps": [{"id": "score", "rows": ROWS}]},
-            "measure map id 'score' is also a timeline, group or manifest id",
+            "the id 'score' is held twice in the manifest: by measure map 'score' "
+            "and by timeline 'score'",
         ),
         (
             {
                 "measure_maps": [{"id": "g", "rows": ROWS}],
                 "groups": [{"id": "g", "members": ["score"]}],
             },
-            "measure map id 'g' is also a timeline, group or manifest id",
+            "the id 'g' is held twice in the manifest: by measure map 'g' and by "
+            "group 'g'",
         ),
         (
             {"id": "op35", "measure_maps": [{"id": "op35", "rows": ROWS}]},
-            "measure map id 'op35' is also a timeline, group or manifest id",
+            "the id 'op35' is held twice in the manifest: by the manifest and by "
+            "measure map 'op35'",
         ),
         (
             {
@@ -465,10 +468,26 @@ def test_an_entry_no_timeline_names_is_kept() -> None:
                     {"id": "bars", "rows": ROWS},
                 ]
             },
-            "measure map id 'bars' occurs twice in 'measure_maps'",
+            "the id 'bars' is held twice in the manifest: by measure map 'bars' "
+            "and by measure map 'bars'",
+        ),
+        (
+            {
+                "measure_maps": [{"id": "bars", "rows": ROWS}],
+                "timelines": [
+                    {
+                        "id": "score",
+                        "unit": "quarters",
+                        "length": [8, 1],
+                        "regions": [{"id": "bars", "start": [0, 1], "end": [4, 1]}],
+                    }
+                ],
+            },
+            "the id 'bars' is held twice in the manifest: by measure map 'bars' "
+            "and by region 'bars' of timeline 'score'",
         ),
     ],
-    ids=["timeline", "group", "manifest", "twice"],
+    ids=["timeline", "group", "manifest", "twice", "region"],
 )
 def test_a_measure_map_id_is_unique_with_the_manifest_s_ids(
     change: dict[str, Any], message: str
@@ -495,7 +514,8 @@ def test_a_given_measure_map_id_held_by_a_timeline_is_refused_on_writing() -> No
     with pytest.raises(ValueError) as refused:
         score.to_dict()
     assert str(refused.value) == (
-        "measure map id 'score' is also a timeline, group or manifest id"
+        "measure map 'score' cannot be written: its id is already held by "
+        "timeline 'score'"
     )
 
 

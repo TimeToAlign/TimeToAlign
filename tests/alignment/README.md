@@ -722,13 +722,20 @@ from every assertion here.
    may join another (see "A Timeline in Several Groups" below: the root
    brought along with its child and grouped later joins a third group by
    `as_group`, and a pre-built group holding a grouped member is admitted);
-   a given timeline id held by another timeline (of any tree in the
-   bundle, descendants included) raises `ValueError` and leaves the bundle
-   unchanged; a minted id held there is minted again. A refused newcomer keeps
+   the registered trees share one manifest, in which every id is unique
+   whatever element holds it (timelines, conversion maps, regions and
+   flow-control elements alike; the other kinds are proved in
+   `tests/timelines/test_manifest_ids.py`); a given timeline id held by
+   another timeline (of any tree in the bundle, descendants included)
+   raises `ValueError` (`timeline 'holes' cannot join bundle 'bundle_1':
+   its id 'holes' is already held by timeline 'holes'`) and leaves the
+   bundle unchanged; a minted id held there is minted again. A refused newcomer keeps
    its ids: every collision check — the timeline ids and the group id —
    runs before any id is minted again, so a minted `clt_1` that admission
    would have re-minted is still `clt_1` after its group or its root was
-   refused. A given group id refuses a timeline that carries it; a *minted*
+   refused. A given group id refuses a timeline that carries it (`timeline
+   'g' cannot join bundle 'bundle_1': its id 'g' is already held by group
+   'g'`); a *minted*
    group id that a newcomer's given timeline id takes is minted again
    (`group_1` → `group_3` beside an existing `group_2`), and the members keep
    their membership under the new id. `from_bundles` merges two bundles'

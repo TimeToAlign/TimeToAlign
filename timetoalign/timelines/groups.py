@@ -22,7 +22,8 @@ from __future__ import annotations
 
 import copy
 import logging
-from collections.abc import Iterable, Mapping
+import weakref
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, ClassVar, Iterator
@@ -42,7 +43,14 @@ from timetoalign.core import (
     resolve_id,
 )
 from timetoalign.core.enums import NumberType, TimeUnit
-from timetoalign.core.ids import _OpenObject, mint_id, timeline_id_prefix, validate_id
+from timetoalign.core.ids import (
+    _OpenObject,
+    _plan_admissions,
+    mint_id,
+    quote_id,
+    timeline_id_prefix,
+    validate_id,
+)
 from timetoalign.core.retrieval import (
     CoordinateCollection,
     CoordinateFormat,
@@ -109,17 +117,20 @@ def _tree(root: "Timeline") -> list["Timeline"]:
     return [root, *(descendant for _, descendant in root._iter_descendants())]
 
 
-def _held_ids(timelines: Iterable["Timeline"]) -> dict[str, "Timeline"]:
-    """Map every id in the manifest trees of *timelines* to its timeline.
+def _held_ids(timelines: Iterable["Timeline"]) -> dict[str, str]:
+    """Map every id in the manifest trees of *timelines* to its holder.
 
     A timeline's tree is the whole manifest it belongs to — its root and all
-    of that root's descendants — because that is what a file holding the
-    timeline writes.
+    of that root's descendants, each with its maps, regions and flow-control
+    elements — because that is what a file holding the timeline writes.
     """
-    held: dict[str, Timeline] = {}
+    held: dict[str, str] = {}
+    roots: list[Timeline] = []
     for timeline in timelines:
-        for member in _tree(_root(timeline)):
-            held[member.id] = member
+        root = _root(timeline)
+        if not any(seen is root for seen in roots):
+            roots.append(root)
+            held.update(root._tree_ids())
     return held
 
 
@@ -134,57 +145,6 @@ def _nested(first: "Timeline", second: "Timeline") -> bool:
     return any(ancestor is second for ancestor in ancestors(first)) or any(
         ancestor is first for ancestor in ancestors(second)
     )
-
-
-def _admit_timeline_tree(
-    newcomer: "Timeline",
-    held: dict[str, "Timeline"],
-    scope: str,
-    *,
-    reserved: Iterable[str] = (),
-    check_only: bool = False,
-) -> None:
-    """Admit *newcomer*'s manifest tree into a scope of unique timeline ids.
-
-    An id may be held only once in the scope. A tree timeline whose id is
-    held by a *different* timeline, or is one of the *reserved* ids (given
-    ids of the scope that are no timeline's, such as a group's), is a
-    collision: a minted id is minted again, and a given id raises. Nothing
-    changes before every collision has been checked, so a raise leaves the
-    newcomer untouched.
-
-    Args:
-        newcomer: The timeline joining the scope.
-        held: Every timeline id of the scope, mapped to its timeline.
-        scope: A description of the scope, for the error.
-        reserved: Further ids the scope holds that no timeline may take.
-        check_only: Raise as admitting would, but mint nothing.
-
-    Raises:
-        ValueError: If a given id of the tree is held in the scope.
-    """
-    reserved = set(reserved)
-    tree = _tree(_root(newcomer))
-    clashes = [
-        timeline
-        for timeline in tree
-        if (timeline.id in held and held[timeline.id] is not timeline)
-        or timeline.id in reserved
-    ]
-    refused = [timeline for timeline in clashes if not timeline._id_minted]
-    if refused:
-        holder = "a group" if refused[0].id in reserved else "another timeline"
-        raise ValueError(
-            f"Timeline {refused[0].id!r} cannot join {scope}: its id is already "
-            f"held by {holder} there"
-        )
-    if check_only:
-        return
-    taken = set(held) | reserved | {timeline.id for timeline in tree}
-    for timeline in clashes:
-        minted = mint_id(timeline_id_prefix(timeline.unit), taken)
-        taken.add(minted)
-        timeline._set_id(minted, minted=True)
 
 
 def _groups_by_timeline(
@@ -212,11 +172,165 @@ def _groups_by_timeline(
 # endregion
 
 
+# region Id scopes
+
+
+class _IdScope:
+    """A group or a bundle: the one manifest of the trees it holds.
+
+    The manifest trees of a scope's members, its given id and the given ids
+    of the scopes it holds (a bundle's groups) make one manifest, in which
+    every id is unique, whatever element holds it. A newcomer's tree joins
+    the scope and every scope holding it together (:meth:`_admit_tree`);
+    while the scope lives, an element added later to a member's tree takes
+    its id in the scope too (``Timeline._admit_entries``). A minted id that
+    is written (a group's) gives way to a given id that takes it
+    (:meth:`_yield_minted_ids`); a minted bundle id is never written.
+
+    A subclass is a dataclass with an ``id`` and ``_id_minted``; it lists
+    its members (:meth:`_scope_members`), registers a newcomer
+    (:meth:`_register`) and, holding scopes, supplies them
+    (:meth:`_sub_scopes`); a scope that can be held names the scopes
+    holding it (:meth:`_holders`).
+    """
+
+    _scope_kind: ClassVar[str]
+    """The kind a message names and a minted id carries: ``group``, ``bundle``."""
+    _writes_minted_id: ClassVar[bool]
+    """Whether a minted id of the kind is written, and so gives way."""
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        """Restore a pickled scope, recording it on its members and the
+        scopes it holds again."""
+        self.__dict__.update(state)
+        for timeline in self._scope_members():
+            timeline._join_scope(self)
+        for scope in self._sub_scopes().values():
+            scope._hold_in(self)
+
+    def _scope_members(self) -> list["Timeline"]:
+        """Return the timelines whose trees make the scope."""
+        raise NotImplementedError
+
+    def _register(self, timeline: "Timeline") -> None:
+        """Hold *timeline*, admitted already, and record the scope on it."""
+        raise NotImplementedError
+
+    def _sub_scopes(self) -> dict[str, "TimelineGroup"]:
+        """Return the scopes this scope holds, keyed by id: none."""
+        return {}
+
+    def _holders(self) -> list["_IdScope"]:
+        """Return the live scopes holding this one among their sub-scopes: none."""
+        return []
+
+    def _scope_ids(self, *, trees: bool = True) -> dict[str, str]:
+        """Map every id the scope's manifest holds to its holder.
+
+        The ids of every member's tree, and the given ids of the scopes it
+        holds and its own. A minted id is left out: a group's gives way to a
+        given id that takes it (:meth:`_yield_minted_ids`), and a bundle's
+        is never written.
+
+        Args:
+            trees: Include the ids of the members' trees.
+        """
+        held = _held_ids(self._scope_members()) if trees else {}
+        for scope in (*self._sub_scopes().values(), self):
+            if not scope._id_minted:
+                held.setdefault(scope.id, f"{scope._scope_kind} {quote_id(scope.id)}")
+        return held
+
+    def _admit_tree(
+        self, timeline: "Timeline", *, check_only: bool = False
+    ) -> list["_IdScope"]:
+        """Admit *timeline*'s manifest tree into this scope and its holders.
+
+        Every id is unique in the scopes, whatever kind of element holds
+        it. A tree they hold already joins as it is. An element of another
+        tree whose id they hold is a collision: a minted id is minted again,
+        also around the ids of every other scope the tree belongs to, and a
+        given id raises. Nothing changes before every collision has been
+        checked, so a raise leaves the newcomer untouched. Then every minted
+        group id that a given id of the tree takes is minted again. The
+        caller registers the tree in the scope and the holders returned.
+
+        Args:
+            timeline: The timeline joining the scope.
+            check_only: Raise as admitting would, but change nothing.
+
+        Returns:
+            The scopes holding this one (:meth:`_holders`).
+
+        Raises:
+            ValueError: If a given id of the tree is held in a scope.
+        """
+        root = _root(timeline)
+        holders = self._holders()
+        scopes = [self, *holders]
+        members = [member for scope in scopes for member in scope._scope_members()]
+        if any(_root(member) is root for member in members):
+            return holders
+        taken = _held_ids(members)
+        for scope in scopes:
+            taken.update(scope._scope_ids(trees=False))
+        entries, rename = root._subtree_entries()
+        plan = _plan_admissions(
+            entries,
+            taken,
+            scope=f"{self._scope_kind} {quote_id(self.id)}",
+            avoid=root._manifest_ids(),
+        )
+        if not check_only:
+            for index, new_id in plan.items():
+                rename(index, new_id)
+            root._settle_scope(
+                {
+                    element_id
+                    for element_id, minted, _prefix, _desc in entries
+                    if not minted
+                },
+                joining=scopes,
+            )
+        return holders
+
+    def _yield_minted_ids(
+        self, given: set[str], containers: Sequence["_IdScope"]
+    ) -> None:
+        """Mint again each written minted id of this scope or its sub-scopes
+        that *given* holds.
+
+        The new id avoids every id of the *containers*, the scopes the given
+        ids belong to, and every scope they hold; each scope holding the
+        scope minted again keys it by the new id.
+
+        Args:
+            given: Given ids now held in the scope's manifest.
+            containers: The scopes the given ids belong to.
+        """
+        for scope in [self, *self._sub_scopes().values()]:
+            if not (scope._writes_minted_id and scope._id_minted and scope.id in given):
+                continue
+            taken = set(given) | set(scope._scope_ids())
+            for container in containers:
+                taken.update(container._scope_ids())
+                taken.update(container._sub_scopes())
+            old_id = scope.id
+            scope.id = mint_id(scope._scope_kind, taken)
+            for container in (self, *containers):
+                held = container._sub_scopes()
+                if held.get(old_id) is scope:
+                    held[scope.id] = held.pop(old_id)
+
+
+# endregion
+
+
 # region TimelineGroup
 
 
 @dataclass
-class TimelineGroup(_OpenObject):
+class TimelineGroup(_IdScope, _OpenObject):
     """An array of timelines sharing one graphical start and end point.
 
     By definition every member's 0 coincides with every other member's 0 and
@@ -266,6 +380,8 @@ class TimelineGroup(_OpenObject):
 
     _dict_keys: ClassVar[tuple[str, ...]] = ("id", "name", "meta", "members")
     _dict_defaults: ClassVar[Mapping[str, Any]] = {"name": None, "meta": {}}
+    _scope_kind: ClassVar[str] = "group"
+    _writes_minted_id: ClassVar[bool] = True
 
     id: str = field(default="")
     name: str | None = field(default=None)
@@ -277,6 +393,10 @@ class TimelineGroup(_OpenObject):
         default_factory=dict, init=False, repr=False
     )
     _id_minted: bool = field(default=False, init=False, repr=False)
+    # The bundles holding the group, held weakly: a newcomer joins them too.
+    _holder_refs: list[weakref.ref[_IdScope]] = field(
+        default_factory=list, init=False, repr=False, compare=False
+    )
     # The manifest the group was read from as a whole (its meta and unknown
     # keys), written back around it.
     _manifest: Manifest | None = field(
@@ -333,10 +453,11 @@ class TimelineGroup(_OpenObject):
                 0.1.0 or is malformed — a member naming no timeline of the
                 manifest, an order that is no permutation of its group's
                 members or names no group or timeline, a member that is an
-                ancestor or descendant of another member, a group id held by
-                a timeline or by another group — or if the selection matches
-                no group or several; the message names the problem, or the
-                manifest's groups.
+                ancestor or descendant of another member, an id held twice
+                anywhere in the manifest —, if a *group_id* the group would
+                take is already held in the manifest, or if the selection
+                matches no group or several; the message names the problem,
+                or the manifest's groups.
 
         Examples:
             >>> from fractions import Fraction
@@ -362,8 +483,11 @@ class TimelineGroup(_OpenObject):
                     "the manifest holds one timeline and no group: give group_id or "
                     "name to make a group of it"
                 )
-            if group_id is not None and group_id in content.timelines:
-                raise ValueError(f"group id {group_id!r} is also a timeline id")
+            if group_id is not None and group_id in content.ids:
+                raise ValueError(
+                    f"group id {quote_id(group_id)} is already held by "
+                    f"{content.ids[group_id]}"
+                )
             # A group writes an anonymous bundle.
             manifest.id = manifest.name = None
             group = cls(id=group_id, name=name)
@@ -383,10 +507,6 @@ class TimelineGroup(_OpenObject):
             )
             for group_data in content.groups
         ]
-        ids = [group.id for group in groups]
-        repeated = sorted({group_id for group_id in ids if ids.count(group_id) > 1})
-        if repeated:
-            raise ValueError(f"group id {repeated[0]!r} occurs twice")
         if len(groups) == 1 and manifest.id is None and manifest.name is None:
             (group,) = groups
             if matches_any(groups, id=group_id, name=name):
@@ -399,8 +519,11 @@ class TimelineGroup(_OpenObject):
                 )
                 return group._keep_manifest(manifest)
             if group_id is not None:
-                if group_id in content.timelines:
-                    raise ValueError(f"group id {group_id!r} is also a timeline id")
+                if group_id in content.ids:
+                    raise ValueError(
+                        f"group id {quote_id(group_id)} is already held by "
+                        f"{content.ids[group_id]}"
+                    )
                 group.id = validate_id(group_id)
                 group._id_minted = False
             if name is not None:
@@ -443,9 +566,7 @@ class TimelineGroup(_OpenObject):
         """
         require_object(data, "a group object", ("id", "members"))
         group_id = read_id(data["id"], "a group")
-        if group_id in timelines:
-            raise ValueError(f"group id {group_id!r} is also a timeline id")
-        what = f"group {group_id!r}"
+        what = f"group {quote_id(group_id)}"
         members = data["members"]
         if not isinstance(members, list) or not all(
             isinstance(member, str) for member in members
@@ -456,7 +577,7 @@ class TimelineGroup(_OpenObject):
         for member in members:
             if member not in timelines:
                 raise ValueError(
-                    f"{what} names member {member!r}, which is no timeline of "
+                    f"{what} names member {quote_id(member)}, which is no timeline of "
                     "'timelines'"
                 )
         if order is None:
@@ -508,10 +629,21 @@ class TimelineGroup(_OpenObject):
         self.meta = dict(meta) if meta else {}
         self.styling = dict(styling) if styling else {}
         self._timelines = {}
+        self._holder_refs = []
         self._logger = module_logger.getChild(self.id)
 
         for tl in initial:
             self.add_timeline(tl)
+
+    def __getstate__(self) -> dict[str, Any]:
+        """Return the state to pickle, without the weak references to holders.
+
+        A bundle pickled with this group records itself again when it is
+        unpickled.
+        """
+        state = self.__dict__.copy()
+        state["_holder_refs"] = []
+        return state
 
     # region Timeline Management
 
@@ -522,8 +654,14 @@ class TimelineGroup(_OpenObject):
         with every other member's length. To let only part of a timeline
         participate, add the child of that timeline covering the part.
 
-        Every timeline id in the newcomer's manifest tree (its root and all
-        that root's descendants) must be free in the group's trees.
+        Every id in the newcomer's manifest tree (its root and all that
+        root's descendants, with their maps, regions and flow-control
+        elements) must be free in the group's trees: the group's members
+        share one manifest, in which every id is unique. While the group
+        lives, an element added to a member's tree takes its id in that
+        manifest too. A bundle holding the group holds every member, so the
+        newcomer joins each bundle holding the group as well, its ids free
+        in the bundle's manifest too.
 
         A newcomer that is an ancestor or a descendant of a member is
         refused: a child sits at its offset inside its parent, so the two
@@ -537,9 +675,10 @@ class TimelineGroup(_OpenObject):
 
         Raises:
             ValueError: If the timeline is already a member; if it is nested
-                with a member; or if a given id of its tree — its own, its
-                root's or any descendant's — is held by another timeline of
-                the group's trees or is the group's given id (a minted id held
+                with a member; or if a given id of its tree — of any timeline,
+                conversion map, region or flow-control element of it — is
+                held by an element of the group's trees, is the group's given
+                id or is held in a bundle holding the group (a minted id held
                 there is minted again instead, and a minted group id that a
                 newcomer's given id takes is minted again).
 
@@ -566,26 +705,55 @@ class TimelineGroup(_OpenObject):
     def _admit_member(self, timeline: "Timeline") -> None:
         """Add a member as :meth:`add_timeline` does, leaving its lock as it is.
 
+        A bundle holding the group holds every member: the newcomer joins
+        each such bundle too, its tree admitted into the group and those
+        bundles together before anything changes.
+
         Raises:
             ValueError: As :meth:`add_timeline`.
         """
         if any(member is timeline for member in self._timelines.values()):
-            raise ValueError(f"Timeline '{timeline.id}' already in group '{self.id}'")
+            raise ValueError(
+                f"Timeline {quote_id(timeline.id)} already in group {quote_id(self.id)}"
+            )
         self._refuse_nested(timeline)
-        held = _held_ids(self._timelines.values())
-        _admit_timeline_tree(
-            timeline,
-            held,
-            f"group {self.id!r}",
-            reserved=() if self._id_minted else (self.id,),
-        )
-        # A minted group id that a newcomer's given id now holds is minted
-        # again; a given group id was reserved above.
-        tree_ids = {member.id for member in _tree(_root(timeline))}
-        if self.id in tree_ids:
-            self.id = mint_id("group", set(held) | tree_ids)
-        self._timelines[timeline.id] = timeline
+        holders = self._admit_tree(timeline)
+        for scope in (self, *holders):
+            scope._register(timeline)
         self._logger.debug(f"Added timeline '{timeline.id}'")
+
+    def _scope_members(self) -> list["Timeline"]:
+        """Return the members."""
+        return list(self._timelines.values())
+
+    def _register(self, timeline: "Timeline") -> None:
+        """Hold *timeline* as the last member and record the group on it."""
+        self._timelines[timeline.id] = timeline
+        timeline._join_scope(self)
+
+    def _hold_in(self, holder: _IdScope) -> None:
+        """Record that *holder*, a bundle, holds the group among its sub-scopes."""
+        if not any(ref() is holder for ref in self._holder_refs):
+            self._holder_refs.append(weakref.ref(holder))
+
+    def _holders(self) -> list[_IdScope]:
+        """Return the live bundles holding the group.
+
+        Each recorded itself on the group when it took the group in
+        (:meth:`_hold_in`); one collected, or no longer holding the group,
+        is forgotten.
+        """
+        holders: list[_IdScope] = []
+        kept: list[weakref.ref[_IdScope]] = []
+        for ref in self._holder_refs:
+            holder = ref()
+            if holder is not None and any(
+                held is self for held in holder._sub_scopes().values()
+            ):
+                holders.append(holder)
+                kept.append(ref)
+        self._holder_refs = kept
+        return holders
 
     def _refuse_nested(self, timeline: "Timeline") -> None:
         """Refuse a newcomer that is an ancestor or descendant of a member.
@@ -600,8 +768,9 @@ class TimelineGroup(_OpenObject):
         for member in self._timelines.values():
             if _nested(member, timeline):
                 raise ValueError(
-                    f"Timeline {timeline.id!r} cannot join group {self.id!r}: it "
-                    f"is nested with member {member.id!r}, and a parent and its "
+                    f"Timeline {quote_id(timeline.id)} cannot join group "
+                    f"{quote_id(self.id)}: it is nested with member "
+                    f"{quote_id(member.id)}, and a parent and its "
                     "child cannot share one start and end"
                 )
 
@@ -624,6 +793,7 @@ class TimelineGroup(_OpenObject):
             )
 
         timeline = self._timelines.pop(timeline_id)
+        timeline._leave_scope(self)
         self._logger.debug(f"Removed timeline '{timeline_id}'")
         return timeline
 

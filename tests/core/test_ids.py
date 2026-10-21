@@ -1,19 +1,17 @@
 """Tests for core/ids.py."""
 
+from typing import Any
+
 import pytest
 
-from timetoalign.alignment import AlignmentBundle
 from timetoalign.core import TimeUnit
 from timetoalign.core.ids import (
     IdGenerator,
     ScopedId,
-    _IdentifiedElement,
     mint_id,
     timeline_id_prefix,
     validate_id,
 )
-from timetoalign.maps import ConversionMap
-from timetoalign.timelines import TimelineGroup
 
 
 class TestScopedIdCreation:
@@ -349,100 +347,35 @@ class TestMintId:
 
 
 class TestValidateId:
-    """Only empty ids, '/' and control characters are refused."""
+    """An id is any non-empty string without a control character."""
 
-    @pytest.mark.parametrize("given", ["performance", "a", "Bass Kick", "score:clt_7"])
+    @pytest.mark.parametrize(
+        "given",
+        [
+            "performance",
+            "a",
+            "Bass Kick",
+            "score:clt_7",
+            "a/b",
+            "intro to part 2",
+            "https://example.org/op35#m1",
+            "start",
+            "card",
+            "markers_1",
+            "regions_12",
+        ],
+    )
     def test_accepted(self, given: str) -> None:
         assert validate_id(given) == given
 
-    @pytest.mark.parametrize("given", ["", "a/b", "a\tb", "a\nb", "\x00"])
-    def test_refused(self, given: str) -> None:
-        with pytest.raises(ValueError, match="Invalid id"):
-            validate_id(given)
-
-    @pytest.mark.parametrize(
-        "given",
-        [
-            "markers_1",
-            "conversion_maps_1",
-            "children_1",
-            "regions_1",
-            "flow_control_1",
-            "regions_12",
-            "flow_control_90",
-        ],
-    )
-    def test_a_band_id_is_refused(self, given: str) -> None:
+    @pytest.mark.parametrize("given", ["", "a\tb", "a\nb", "\x00", "\x1f", 3])
+    def test_refused(self, given: Any) -> None:
         with pytest.raises(ValueError) as refused:
             validate_id(given)
         assert str(refused.value) == (
-            f"Invalid id '{given}': it is reserved for the bands of a timeline"
+            f"Invalid id {given!r}: an id must be non-empty and contain no "
+            "control character"
         )
-
-    @pytest.mark.parametrize(
-        "given",
-        [
-            "markers",
-            "children_0",
-            "regions_01",
-            "marker_1",
-            "region_1",
-            "flow_marker_1",
-            "jump_from_1",
-            "jump_to_1",
-            "score:children_1",
-            "markers_1a",
-            "Markers_1",
-        ],
-    )
-    def test_the_edges_of_the_band_pattern_are_valid(self, given: str) -> None:
-        assert validate_id(given) == given
-
-    def test_a_part_word_keeps_its_own_message(self) -> None:
-        with pytest.raises(ValueError) as refused:
-            validate_id("start")
-        assert str(refused.value) == (
-            "Invalid id 'start': it is reserved for the parts of an address"
-        )
-
-
-def _subclasses(cls: type) -> list[type]:
-    """Every subclass of *cls*, at any depth."""
-    return [
-        sub for direct in cls.__subclasses__() for sub in [direct, *_subclasses(direct)]
-    ]
-
-
-def test_no_minted_id_is_reserved() -> None:
-    """Every prefix the library mints with gives a valid id."""
-    timeline_prefixes = {timeline_id_prefix(unit) for unit in TimeUnit}
-    element_prefixes = {
-        sub.__dict__["_id_prefix"]
-        for sub in _subclasses(_IdentifiedElement) + _subclasses(ConversionMap)
-        if "_id_prefix" in sub.__dict__
-    } | {ConversionMap._id_prefix}
-    minted = {TimelineGroup().id, AlignmentBundle().id}
-    prefixes = (
-        timeline_prefixes
-        | {f"score:{prefix}" for prefix in timeline_prefixes}
-        | element_prefixes
-        | {minted_id.rsplit("_", 1)[0] for minted_id in minted}
-    )
-
-    assert element_prefixes >= {
-        "region",
-        "flow_marker",
-        "jump_from",
-        "jump_to",
-        "cmap",
-        "lmap",
-        "tmap",
-        "pmap",
-    }
-    assert minted == {"group_1", "bundle_1"}
-    for prefix in sorted(prefixes):
-        first = mint_id(prefix, ())
-        assert validate_id(first) == first
 
 
 @pytest.mark.parametrize(

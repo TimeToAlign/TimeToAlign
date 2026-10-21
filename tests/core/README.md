@@ -1011,35 +1011,16 @@ stateless generator of manifest element ids.
      `clt_1`; with a role, `("score:clt", {"score:clt_1"})` →
      `score:clt_2`. Called twice with the same arguments it answers the same
      id, because it keeps no state.
-   - `validate_id` returns `"performance"`, `"a"`, `"Bass Kick"`,
-     `"score:clt_7"` unchanged and raises `ValueError` for `""`, `"a/b"`,
-     `"a\tb"`, `"a\nb"` and `"\x00"`.
-   - The ids of a timeline's bands are no id: an id matching
-     `^(markers|conversion_maps|children|regions|flow_control)_[1-9][0-9]*$`
-     raises exactly `Invalid id '<id>': it is reserved for the bands of a
-     timeline`. Each of the five kinds is refused at `_1`, and `regions_12`
-     and `flow_control_90` show that the number is any number, not one
-     spelling. The pattern's edges stay valid, each a short step from a
-     refused id: the bare kind word (`markers`), the number 0
-     (`children_0`), a leading zero (`regions_01`), the singular kinds
-     `marker_1` and `region_1`, the first ids the library mints for its
-     flow-control elements (`flow_marker_1` — one word away from the band
-     `flow_control_1` — `jump_from_1`, `jump_to_1`), a role
-     before the id (`score:children_1`), a suffix after it
-     (`markers_1a`), and another case (`Markers_1`). The part words keep
-     their own message, `Invalid id 'start': it is reserved for the parts
-     of an address`.
-   - No id the library mints is reserved. Every prefix it mints with is
-     collected from the code rather than listed: the timeline prefix of
-     every unit, alone and led by a role (`score:`), the `_id_prefix` of
-     every subclass of the frozen manifest elements (`region`, and the
-     flow-control prefixes `flow_marker`, `jump_from` and `jump_to`, one
-     per manifest `type`, asserted by name) and of `ConversionMap`, and the
-     prefix of the ids minted by a
-     fresh `TimelineGroup` and `AlignmentBundle`. Each minted first id
-     passes `validate_id`; since the pattern needs the whole id to be a
-     kind word, `_` and a number, a prefix that is no kind word cannot
-     produce a refused id at any number.
+   - An id is free: any non-empty string without a control character.
+     `validate_id` returns unchanged `"performance"`, `"a"`, `"Bass Kick"`,
+     `"score:clt_7"`, `"a/b"` (a slash), `"intro to part 2"` (spaces), the
+     URI `"https://example.org/op35#m1"`, and words that name the parts
+     and facets of a drawn timeline (`"start"`, `"card"`, `"markers_1"`,
+     `"regions_12"`), since an address is an object naming its id, facet
+     and part apart, never a string composed of ids. It raises exactly `Invalid id '<id>': an id
+     must be non-empty and contain no control character` (the id spelled by
+     `repr`) for `""`, `"a\tb"`, `"a\nb"`, `"\x00"` and `"\x1f"`, the last
+     control character, and the same message for a non-string (`3`).
    - `timeline_id_prefix` maps one unit of each kind to its prefix:
      quarters `clt`, ticks `dlt`, seconds `cpt`, samples `dpt`, centimeters
      `cgt`, pixels `dgt`.

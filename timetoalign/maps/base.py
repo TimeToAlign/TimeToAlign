@@ -16,7 +16,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from ..core.enums import NumberType, TimeUnit
-from ..core.ids import _OpenObject, _plan_admissions, mint_id, validate_id
+from ..core.ids import _OpenObject, _plan_admissions, mint_id, quote_id, validate_id
 from ..core.time import Coordinate, CoordinateValue, express_as
 
 if TYPE_CHECKING:
@@ -400,39 +400,50 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
                 cmap._id,
                 cmap._id_minted,
                 cmap._id_prefix,
-                f"conversion map {cmap._id!r}"
-                + ("" if cmap is self else f" nested in conversion map {self._id!r}")
+                f"conversion map {quote_id(cmap._id)}"
+                + (
+                    ""
+                    if cmap is self
+                    else f" nested in conversion map {quote_id(self._id)}"
+                )
                 + owner,
             )
             for cmap in self._map_tree()
         ]
 
-    def _admit_ids(self, taken: Mapping[str, str], owner: str = "") -> None:
-        """Admit this map and every map nested in it into a scope of ids.
-
-        A given id is kept; a minted id the scope holds, or another map of
-        this tree is given or keeps before it, is minted again. A composite
-        admits its tree into an empty scope when it is built, so that its
-        own form repeats no id; a timeline admits a map into its manifest.
+    def _unique_map_tree(self, owner: str = "") -> list[ConversionMap[Any]]:
+        """Return :meth:`_map_tree` as a list, refusing a map held twice in it.
 
         Args:
-            taken: Every id of the scope, mapped to a description of its holder.
-            owner: Who holds this map, ending each description.
+            owner: Who holds this map, ending the description in the error.
 
         Raises:
-            ValueError: If this tree nests one map in two places, or a given
-                id is already held, in the scope or in this tree. Nothing is
-                changed then.
+            ValueError: If this tree nests one map in two places, since each
+                place is written with an id of its own.
         """
         tree = list(self._map_tree())
         if len({id(cmap) for cmap in tree}) < len(tree):
             raise ValueError(
-                f"conversion map {self._id!r}{owner} nests one map in two places: "
-                "give each place a map of its own, since each is written with its "
-                "own id"
+                f"conversion map {quote_id(self._id)}{owner} nests one map in two "
+                "places: give each place a map of its own, since each is written "
+                "with its own id"
             )
-        plan = _plan_admissions(self._identity_entries(owner), taken)
-        for index, new_id in plan.items():
+        return tree
+
+    def _admit_ids(self) -> None:
+        """Give this map and every map nested in it ids unique in its tree.
+
+        A composite admits its tree when it is built, so that its own form
+        repeats no id: a given id is kept, a minted id another map of the
+        tree is given or keeps before it is minted again. A timeline admits
+        a map into its manifest (``Timeline._admit_map``).
+
+        Raises:
+            ValueError: If this tree nests one map in two places, or two maps
+                of it are given one id. Nothing is changed then.
+        """
+        tree = self._unique_map_tree()
+        for index, new_id in _plan_admissions(self._identity_entries(), {}).items():
             tree[index]._id = new_id
 
     # endregion
@@ -483,7 +494,7 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
     def _no_form(self, reason: str) -> ValueError:
         """The error refusing to write this map, naming it and *reason*."""
         return ValueError(
-            f"{type(self).__name__} {self._id!r} cannot be written to a "
+            f"{type(self).__name__} {quote_id(self._id)} cannot be written to a "
             f"TimeToShare manifest: {reason}"
         )
 

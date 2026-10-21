@@ -124,7 +124,7 @@ class ChainMap(ConversionMap[CoordinateValue]):
             name=name,
         )
         self._maps = list(maps)
-        self._admit_ids({})
+        self._admit_ids()
 
     @property
     def maps(self) -> list[ConversionMap[Any]]:
@@ -280,7 +280,7 @@ class PiecewiseMap(ConversionMap[CoordinateValue]):
         self._breaks = np.array(breaks_float, dtype=np.float64)
         self._breaks_orig = list(breaks)
         self._maps = list(maps)
-        self._admit_ids({})
+        self._admit_ids()
 
     @property
     def breaks(self) -> NDArray[np.floating[Any]]:

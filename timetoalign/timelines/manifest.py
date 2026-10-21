@@ -27,13 +27,13 @@ from __future__ import annotations
 import copy
 import json
 import math
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from timetoalign.core import Coordinate, NumberType, TimeUnit
-from timetoalign.core.ids import _OpenObject, mint_id, validate_id
+from timetoalign.core.ids import _OpenObject, mint_id, quote_id, validate_id
 from timetoalign.core.time import is_fraction_json, number_from_json, number_to_json
 from timetoalign.maps.base import MEASURE_MAP_ID_PREFIX
 
@@ -348,7 +348,10 @@ class Manifest(_OpenObject):
 
         The measure maps are read first, then every root timeline is
         rebuilt, its conversion maps reading the measure maps they name, and
-        every timeline of the roots' trees is indexed by id. Groups are left
+        every timeline of the roots' trees is indexed by id. Every id is
+        unique across the manifest: the manifest's own, every timeline, root
+        or descendant, group, measure map, conversion map at any depth,
+        region and flow-control element. Groups are left
         as JSON for the class reading them. ``graphical.order`` is split by
         its keys: a group's display order goes to the content, a timeline's
         band order to the envelope, unchecked. The measure maps no timeline
@@ -360,11 +363,9 @@ class Manifest(_OpenObject):
         Raises:
             ValueError: If *data* is no TimeToShare manifest (``"not a
                 TimeToShare manifest"``), names another version, or is
-                malformed: a timeline or measure-map id occurring twice, the
-                manifest id equal to a timeline or group id, a measure-map id
-                equal to a timeline, group or manifest id, a
-                ``graphical.order`` that is no object or names no group or
-                timeline.
+                malformed: an id held twice anywhere in the manifest (see
+                :func:`unique_ids`), a ``graphical.order`` that is no object
+                or names no group or timeline.
         """
         if not isinstance(data, dict) or "timetoshare" not in data:
             raise ValueError("not a TimeToShare manifest")
@@ -383,24 +384,32 @@ class Manifest(_OpenObject):
         )
         manifest._keep_unknown_keys(data)
 
-        measure_maps = _read_measure_maps(
-            read_list(data, "measure_maps", "the manifest")
+        holders: list[tuple[str, str]] = []
+        if manifest_id is not None:
+            holders.append((manifest_id, "the manifest"))
+        read_maps = _read_measure_maps(read_list(data, "measure_maps", "the manifest"))
+        holders.extend(
+            (measure_map.id, f"measure map {quote_id(measure_map.id)}")
+            for measure_map in read_maps
         )
+        unique_ids(holders)
+        measure_maps = {measure_map.id: measure_map for measure_map in read_maps}
         roots, timelines = _read_roots(data["timelines"], measure_maps)
+        holders.extend(
+            (element_id, description)
+            for root in roots
+            for element_id, description in root._tree_ids().items()
+        )
         groups = read_list(data, "groups", "the manifest")
         group_ids = [
             group.get("id") if isinstance(group, dict) else None for group in groups
         ]
-        for measure_map_id in measure_maps:
-            if (
-                measure_map_id in timelines
-                or measure_map_id in group_ids
-                or measure_map_id == manifest_id
-            ):
-                raise ValueError(
-                    f"measure map id {measure_map_id!r} is also a timeline, group or "
-                    "manifest id"
-                )
+        holders.extend(
+            (group_id, f"group {quote_id(group_id)}")
+            for group_id in group_ids
+            if isinstance(group_id, str)
+        )
+        ids = unique_ids(holders)
         named = {
             id(measure_map)
             for timeline in timelines.values()
@@ -445,13 +454,7 @@ class Manifest(_OpenObject):
                 if key != "order" and _STYLING_DEFAULTS.get(key, object()) != value
             }
 
-        if manifest_id is not None and (
-            manifest_id in timelines or manifest_id in group_ids
-        ):
-            raise ValueError(
-                f"manifest id {manifest_id!r} is also a timeline or group id"
-            )
-        return manifest, ManifestContent(roots, timelines, groups, order)
+        return manifest, ManifestContent(roots, timelines, groups, order, ids)
 
     def write(
         self,
@@ -487,21 +490,29 @@ class Manifest(_OpenObject):
                 table.
 
         Raises:
-            ValueError: If a measure map cannot be written: two different
-                ones carry one given id, or one's given id is a timeline's,
-                a group's or the manifest's.
+            ValueError: If an id is held twice among the manifest, its
+                timelines' trees and its groups (:func:`unique_ids`), or a
+                measure map cannot be written: two different ones carry one
+                given id, or one's given id is held by another element.
         """
         trees = [
             timeline
             for root in roots
             for timeline in (root, *(child for _, child in root._iter_descendants()))
         ]
-        reserved = {timeline.id for timeline in trees}
-        reserved.update(group["id"] for group in groups)
+        holders: list[tuple[str, str]] = []
         if self.id is not None:
-            reserved.add(self.id)
+            holders.append((self.id, "the manifest"))
+        holders.extend(
+            (element_id, description)
+            for root in roots
+            for element_id, description in root._tree_ids().items()
+        )
+        holders.extend(
+            (group["id"], f"group {quote_id(group['id'])}") for group in groups
+        )
         entries = MeasureMapEntries(
-            reserved,
+            unique_ids(holders),
             [
                 *self.measure_maps,
                 *(
@@ -563,20 +574,25 @@ class Manifest(_OpenObject):
 class MeasureMapEntries:
     """The measure maps a manifest being written holds, each under one id.
 
-    A measure map's id is unique together with the manifest's timeline,
-    group and manifest ids. A given id is kept: two different measure maps
-    carrying one, or one carrying a timeline's, group's or manifest's id,
-    are refused. A minted id is minted again around every id the manifest
-    holds, the given ones taken first. Equal measure maps of equal name and
-    meta share one entry, so two timelines holding the same measure map, or
-    equal ones, name one entry.
+    Every id of the manifest is unique: :attr:`taken` holds every id the
+    manifest written holds besides its measure maps, mapped to its holder,
+    and grows with every id minted while it is written (a ``jump_to`` a
+    jump needs, see
+    :meth:`~timetoalign.timelines.flowcontrol.FlowControlRegistry.to_dict`).
+    A given measure map id is kept: two different measure maps carrying
+    one, or one carrying an id another element holds, are refused. A minted
+    id is minted again around every id the manifest holds, the given ones
+    taken first. Equal measure maps of equal name and meta share one entry,
+    so two timelines holding the same measure map, or equal ones, name one
+    entry.
 
     While a timeline's conversion maps are written, :attr:`own` is that
     timeline's measure map, which a measure-derived map names when it
     derives from it.
 
     Args:
-        reserved: The timeline, group and manifest ids of the manifest.
+        taken: Every id of the manifest but its measure maps', mapped to its
+            holder.
         measure_maps: The measure maps the manifest names, whose given ids
             are taken before any is minted.
 
@@ -585,10 +601,10 @@ class MeasureMapEntries:
     """
 
     def __init__(
-        self, reserved: set[str], measure_maps: list[MeasureMap] = ()  # type: ignore[assignment]
+        self, taken: dict[str, str], measure_maps: list[MeasureMap] = ()  # type: ignore[assignment]
     ) -> None:
         self.own: MeasureMap | None = None
-        self._reserved = reserved
+        self.taken = taken
         self._entries: dict[str, MeasureMap] = {}
         # By object identity: the id each measure map met is written under,
         # with the map kept alive so that its identity is not reused.
@@ -612,7 +628,7 @@ class MeasureMapEntries:
             if _same_entry(entry, measure_map):
                 self._written[id(measure_map)] = (measure_map, entry_id)
                 return entry_id
-        entry_id = mint_id(MEASURE_MAP_ID_PREFIX, {*self._entries, *self._reserved})
+        entry_id = mint_id(MEASURE_MAP_ID_PREFIX, {*self._entries, *self.taken})
         self._entries[entry_id] = measure_map
         self._written[id(measure_map)] = (measure_map, entry_id)
         return entry_id
@@ -634,17 +650,20 @@ class MeasureMapEntries:
         """Add a measure map under its given id, and return the id.
 
         Raises:
-            ValueError: If the id is a timeline's, group's or manifest's, or
-                another measure map carries it.
+            ValueError: If another element of the manifest, or another
+                measure map, carries the id.
         """
         entry_id = measure_map.id
-        if entry_id in self._reserved:
+        if entry_id in self.taken:
             raise ValueError(
-                f"measure map id {entry_id!r} is also a timeline, group or manifest id"
+                f"measure map {quote_id(entry_id)} cannot be written: its id is already "
+                f"held by {self.taken[entry_id]}"
             )
         held = self._entries.get(entry_id)
         if held is not None and not _same_entry(held, measure_map):
-            raise ValueError(f"two different measure maps carry the id {entry_id!r}")
+            raise ValueError(
+                f"two different measure maps carry the id {quote_id(entry_id)}"
+            )
         self._entries.setdefault(entry_id, measure_map)
         self._written[id(measure_map)] = (measure_map, entry_id)
         return entry_id
@@ -671,12 +690,15 @@ class ManifestContent:
         groups: The manifest's groups, as JSON.
         order: The display orders of ``graphical.order``: member orders
             keyed by group id.
+        ids: Every id of the manifest, mapped to a description of its
+            holder.
     """
 
     roots: list[Timeline]
     timelines: dict[str, Timeline]
     groups: list[Any]
     order: dict[str, Any]
+    ids: dict[str, str]
 
     def candidates(self) -> list[tuple[str, str | None]]:
         """Every timeline of the manifest as ``(id, name)``, for an error."""
@@ -694,23 +716,15 @@ def _timeline_ids(timelines: list[dict[str, Any]]) -> set[str]:
     return ids
 
 
-def _read_measure_maps(items: list[Any]) -> dict[str, MeasureMap]:
-    """Read the ``measure_maps`` entries, by id.
+def _read_measure_maps(items: list[Any]) -> list[MeasureMap]:
+    """Read the ``measure_maps`` entries, in order.
 
     Raises:
-        ValueError: If an entry is malformed or an id occurs twice.
+        ValueError: If an entry is malformed.
     """
     from .structure import MeasureMap
 
-    measure_maps: dict[str, MeasureMap] = {}
-    for item in items:
-        measure_map = MeasureMap.from_dict(item)
-        if measure_map.id in measure_maps:
-            raise ValueError(
-                f"measure map id {measure_map.id!r} occurs twice in 'measure_maps'"
-            )
-        measure_maps[measure_map.id] = measure_map
-    return measure_maps
+    return [MeasureMap.from_dict(item) for item in items]
 
 
 def _read_roots(
@@ -719,8 +733,7 @@ def _read_roots(
     """Rebuild the root timelines and index every timeline of their trees by id.
 
     Raises:
-        ValueError: If *items* is not an array of timeline objects, or a
-            timeline id occurs twice across the trees.
+        ValueError: If *items* is not an array of timeline objects.
     """
     from .base import Timeline
 
@@ -740,12 +753,29 @@ def _read_roots(
             root,
             *(descendant for _, descendant in root._iter_descendants()),
         ]:
-            if timeline.id in index:
-                raise ValueError(
-                    f"timeline id {timeline.id!r} occurs twice in 'timelines'"
-                )
-            index[timeline.id] = timeline
+            index.setdefault(timeline.id, timeline)
     return roots, index
+
+
+def unique_ids(holders: Iterable[tuple[str, str]]) -> dict[str, str]:
+    """Map each id to its holder, refusing an id held twice.
+
+    Args:
+        holders: ``(id, description)`` of every element of a manifest.
+
+    Raises:
+        ValueError: ``the id 'intro' is held twice in the manifest: by
+            region 'intro' of timeline 'score' and by timeline 'intro'``.
+    """
+    ids: dict[str, str] = {}
+    for element_id, holder in holders:
+        if element_id in ids:
+            raise ValueError(
+                f"the id {quote_id(element_id)} is held twice in the manifest: by "
+                f"{ids[element_id]} and by {holder}"
+            )
+        ids[element_id] = holder
+    return ids
 
 
 def select(
@@ -778,7 +808,7 @@ def select(
     if len(matches) == 1:
         return matches[0]
     wanted = ", ".join(
-        f"{key} {value!r}"
+        f"{key} {quote_id(value) if key == 'id' else repr(value)}"
         for key, value in (("id", id), ("name", name))
         if value is not None
     )
@@ -804,7 +834,9 @@ def matches_any(candidates: list[Any], *, id: str | None, name: str | None) -> b
 
 def listed(names: list[tuple[str, str | None]]) -> str:
     """Spell candidates given as ``(id, name)`` for an error message."""
-    return ", ".join(f"{cid!r} (name {cname!r})" for cid, cname in names) or "none"
+    return (
+        ", ".join(f"{quote_id(cid)} (name {cname!r})" for cid, cname in names) or "none"
+    )
 
 
 def _name_of(candidate: Any) -> str | None:

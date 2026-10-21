@@ -134,7 +134,7 @@ class CombinationMap(ConversionMap[dict[str, Any]]):
             uid=uid,
             name=name,
         )
-        self._admit_ids({})
+        self._admit_ids()
 
     @property
     def maps(self) -> dict[str, ConversionMap[Any]]:

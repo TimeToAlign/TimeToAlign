@@ -1441,14 +1441,18 @@ class TestTimelineGroupUnfold:
 
         labels = ["A", "A+B", "B+C", "C+D+D1", "D", "D2+E", "E+F+F1", "F"]
         labels += ["F2+G+G1", "G", "G2"]
-        tree_sizes = 0
+        timelines = []
         for member in unfolded_group:
             names = [member.get_child(i).name for i in member.list_children()]
             assert names == labels
             for _, descendant in member._iter_descendants():
                 assert re.fullmatch(r"clt_\d+", descendant.id)
-            tree_sizes += len(_tree(member))
-        assert len(_held_ids(unfolded_group)) == tree_sizes
+            timelines += _tree(member)
+        assert len({timeline.id for timeline in timelines}) == len(timelines)
+        ids = [
+            entry[0] for timeline in timelines for entry in timeline._identity_entries()
+        ]
+        assert len(_held_ids(unfolded_group)) == len(ids)
 
     def test_unfold_members_keep_concrete_type(self, score_data, unfolded_group):
         """Each unfolded member is the same concrete type as its source."""

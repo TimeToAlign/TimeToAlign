@@ -289,23 +289,16 @@ the library writes back against the same literal text.
   are refused with the values spelled as written (`ends at 62.5`, `offset
   75.0`, `ends at 61.0`). The setters keep the library's own message, since
   no JSON spelling exists there.
-- **Ids and lengths the format reserves.** The part words `start`, `end`,
-  `name`, `label` and `card` follow an address as its parts and are no id:
-  `start` as a root id, `end` as a region id, `card` as the manifest id,
-  `name` as a group id and `label` as a conversion-map id are each refused
-  with `Invalid id '<word>': it is reserved for the parts of an address`,
-  and so are the overrides `Timeline.from_dict(..., timeline_id="start")`
-  and `TimelineGroup.from_dict(..., group_id="end")`. The ids of a
-  timeline's five bands follow its address too, so every id of the form
-  `<kind>_<N>`, a kind among `markers`, `conversion_maps`, `children`,
-  `regions` and `flow_control` and N a number from 1 without a leading zero, is
-  no id either: `markers_1` as a root id, `children_1` as a child id,
-  `regions_2` as a region id, `conversion_maps_3` as a map id,
-  `flow_control_1` as a group id and `markers_10` as the manifest id are
-  each refused with `Invalid id '<id>': it is reserved for the bands of a
-  timeline`, one place per kind so that no kind word is left unchecked, and
-  so are the overrides `Timeline.from_dict(..., timeline_id="children_1")`
-  and `TimelineGroup.from_dict(..., group_id="regions_1")`. A negative length is
+- **Ids are free; a length is not negative.** An id is any non-empty
+  string without a control character, so the words that name the parts and
+  facets of a drawn timeline are ids like any other: `start` as a root id,
+  `end` as a region id, `card` as the manifest id, `regions_1` as a group id,
+  `label` as a conversion-map id and `markers_10` as a child id are read,
+  and the manifest writes back equal to what was read; so are the
+  overrides `Timeline.from_dict(..., timeline_id="start")` and
+  `TimelineGroup.from_dict(..., group_id="regions_1")`, which give the root
+  and the group these ids. (Free ids with slashes, spaces and URIs are
+  proved under "Manifest identity" below.) A negative length is
   refused on reading (`[-12, 1]` on quarters, `-8.0` on seconds:
   `length -12 of 'x' is negative`) and on construction.
 - **A negative child offset is not supported yet.** The format admits a
@@ -408,11 +401,11 @@ the library writes back against the same literal text.
   `[8, 1]`) with a child `part` (offset `[2, 1]`, length `[4, 1]`), alone in
   a one-root manifest, and beside a root `perf` (seconds, `20.0`) in a
   manifest with one anonymous group `g` of `part` and `perf` displayed
-  `["perf", "part"]`. Each timeline's band order is a permutation no
-  default produces and no sort reproduces: `score` the README's example
-  (`score/children_1`, `score/markers_1`, `score`, `score/conversion_maps_1`,
-  `score/regions_1`, `score/flow_control_1`), `part` every band above its
-  line, in reverse default order, and `perf` every band below it, in
+  `["perf", "part"]`. Each timeline's band order is a permutation of `line`
+  and the five facets that no default produces and no sort reproduces:
+  `score` the format README's example (`children`, `markers`, `line`,
+  `conversion_maps`, `regions`, `flow_control`), `part` every band above
+  its line, in reverse default order, and `perf` every band below it, in
   reverse default order. A root's band order (`score`, `perf`) and a
   descendant's (`part`), and a member's beside a non-member's, are each
   exercised. Every reader that reads a literal as a whole (timeline and
@@ -421,15 +414,14 @@ the library writes back against the same literal text.
   in the same form equal to the literal, with the lists compared in order,
   and in the other form equal to the other literal. Mutating the input's
   lists after reading changes nothing written, so the library holds its own
-  copy. A band order that is no permutation of the bands (`["part",
-  "part/markers_1"]`) is read and written back unchanged, which is what
+  copy. A band order that is no permutation of the bands (`["line",
+  "markers"]`) is read and written back unchanged, which is what
   leaving the check to the validators means.
 - **A band order without its timeline is left out.** An entry is written
-  when a timeline of its key's id is written, and left out otherwise. An
-  entry names the bands by its timeline's id (`score/markers_1`), so it
-  cannot follow a timeline to a new id unchanged, and a key naming no
-  written timeline makes the manifest invalid; leaving such an entry out
-  keeps the written manifest valid and changes nothing else. A group read
+  when a timeline of its key's id is written, and left out otherwise. A
+  key naming no written timeline makes the manifest invalid, and the
+  library never rewrites an entry it keeps unread; leaving such an entry
+  out keeps the written manifest valid and changes nothing else. A group read
   from the grouped literal that removes its member `perf` writes neither
   `perf` nor its band order, and keeps `score`'s and `part`'s beside the
   order `["part"]` of `g`. `Timeline.from_dict(..., timeline_id="edition")`
@@ -491,11 +483,15 @@ entry, with literal manifests written from the format's rules.
   entry hold the same `MeasureMap` object. An entry no timeline names is
   kept and written back where the manifest is read as a whole.
 - **Ids are the manifest's.** A measure map's id is unique together with
-  the timeline, group and manifest ids: an entry whose id is a timeline's,
-  a group's or the manifest's, and two entries of one id, are refused with
-  the exact message; a minted id is minted again around them
-  (`measuremap_1` held by a timeline makes the entry `measuremap_2`). A view
-  naming an id no entry has is refused naming it.
+  every other id of the manifest: an entry whose id is a timeline's, a
+  group's, the manifest's or a region's, and two entries of one id, are
+  refused on reading with `the id '<id>' is held twice in the manifest: by
+  <first> and by <second>` (the manifest first, then the measure maps, the
+  trees, the groups); writing a measure map whose given id a timeline holds
+  is refused with `measure map 'score' cannot be written: its id is already
+  held by timeline 'score'`; a minted id is minted again around every id of
+  the manifest (`measuremap_1` held by a timeline makes the entry
+  `measuremap_2`). A view naming an id no entry has is refused naming it.
 - **Measure-derived maps name the measure map they derive from.** On a score
   timeline, the floating-measure map the loader attaches (a
   `FloatingMeasureMap` over an equal, separately built map) names the
@@ -599,12 +595,18 @@ display. The tests prove four properties, each against literal expected ids.
   `create_child` calls mint `clt_2`, then `clt_4`. No minted timeline id
   starts with `tl:` and none lacks the `_` separator.
 - **Whatever is given is the id.** Hand-chosen ids (`performance`, `a`,
-  `Bass Kick`, `score:clt_7`) are kept verbatim on timelines, maps, regions,
-  breaks, jumps and markers, and survive `to_dict` → JSON → `from_dict` →
-  `to_dict` text-identically; a minted manifest round-trips its minted ids
-  verbatim too. Refused ids raise `ValueError` on every kind: the empty
-  string, any id containing `/`, and any containing a control character
-  (`"a\tb"`, `"a\nb"`); `Bass Kick` (a space) is accepted.
+  `Bass Kick`, `score:clt_7`, `score/1`, `part 2`,
+  `https://example.org/op35#m1`) are kept verbatim on timelines, maps,
+  regions, breaks, jumps and markers, and survive `to_dict` → JSON →
+  `from_dict` → `to_dict` text-identically; a minted manifest round-trips
+  its minted ids verbatim too. A manifest whose own id, roots, child,
+  group, measure map, conversion map, region and three flow-control
+  elements carry ids with slashes, spaces, colons and URIs is read by
+  `AlignmentBundle.from_dict`, every element answers its id, and the
+  manifest is written back equal to what was read and text-identically
+  through JSON. Refused ids raise `ValueError` on every kind: the empty
+  string and any containing a control character (`"a\tb"`, `"a\nb"`);
+  `a/b` and `Bass Kick` are accepted.
 - **Collisions within one manifest, across all kinds.** A manifest is a root
   timeline and all its descendants. When an element joins it, a minted id
   that is taken is re-minted in the manifest's scope, and a given id that is
@@ -622,6 +624,105 @@ display. The tests prove four properties, each against literal expected ids.
   region `intro` added beside a child `intro` raises; adding a given map id
   already held by a child's map raises. Each raise is atomic: the parent
   keeps its children, regions and maps, and the joining child keeps its id.
+- **Every id of a manifest read is unique across the manifest.** Within one
+  tree the joins above refuse a repeated id while the tree is read; across
+  trees, groups, measure maps and the manifest's own id, `Manifest.read`
+  refuses the second holder of an id with exactly `the id '<id>' is held
+  twice in the manifest: by <first> and by <second>`, holders in reading
+  order (the manifest, the measure maps, each root's tree, the groups).
+  One specimen per pair of kinds, in two roots `score` and `perf` each of
+  which `Timeline.from_dict` reads on its own, so that only the pair is
+  refused:
+  - a region `intro` in each root: `by region 'intro' of timeline 'score'
+    and by region 'intro' of timeline 'perf'`;
+  - a conversion map `m` on `score` and a break `m` on `perf`: `by
+    conversion map 'm' of timeline 'score' and by flow_marker 'm' of
+    timeline 'perf'`;
+  - a root `perf` and a child `perf` of `score`: `by timeline 'perf' and by
+    timeline 'perf'`;
+  - a group `g` and a region `g` of `perf`: `by region 'g' of timeline
+    'perf' and by group 'g'`;
+  - a measure map `bars` and a marker `bars` of `perf`: `by measure map
+    'bars' and by jump_to 'bars' of timeline 'perf'`;
+  - the manifest id `op35` and a map `op35` nested in a `ChainMap` `chain`
+    of `score`: `by the manifest and by conversion map 'op35' nested in
+    conversion map 'chain' of timeline 'score'`.
+- **Trees joining a group or a bundle, every element kind.** Two trees
+  built alike — a root of given id (`a`, `b`) holding a minted region
+  `region_1`, a minted `LinearMap` `lmap_1`, a minted marker `jump_to_1`
+  and a given jump targeting it — join one scope: in
+  `TimelineGroup(timelines=[a, b])` and in an `AlignmentBundle` holding
+  both ungrouped, `a` keeps every id and `b`'s become `region_2`, `lmap_2`
+  and `jump_to_2`, its jump's target following to `jump_to_2`. A given id
+  refuses: `b` holding a region `intro` where `a` holds a map `intro` is
+  refused with `region 'intro' of timeline 'b' cannot join group
+  'group_1': its id 'intro' is already held by conversion map 'intro' of
+  timeline 'a'` (`bundle 'bundle_1'` in a bundle), and atomically — `b`'s
+  minted `region_1`, which would have been minted again, is still
+  `region_1`, and the group or bundle still holds `a` alone. A bundle's
+  given id is the manifest's: a timeline `study` joining the bundle
+  `study` is refused with `timeline 'study' cannot join bundle 'study':
+  its id 'study' is already held by bundle 'study'`, and a group of given
+  id `g` joining a bundle where a region `g` lies is refused with `group
+  'g' cannot join bundle 'bundle_1': its id 'g' is already held by region
+  'g' of timeline 'a'`.
+- **The scope holds while the group or bundle lives.** In a group of `a`
+  (holding `region_1`) and `b`, `b.create_region(...)` mints `region_2`;
+  `b.add_region(Region(..., id="intro"))` where `a` holds a region `intro`
+  is refused with `region 'intro' of timeline 'b' cannot join: its id
+  'intro' is already held by region 'intro' of timeline 'a'`, a given map
+  `intro` with `conversion map 'intro' of timeline 'b' cannot join: …` and
+  a given break `intro` with `flow_marker 'intro' of timeline 'b' cannot
+  join: …`, each message compared whole; `b` holds no region, map or break
+  `intro` afterwards. The same holds in a bundle holding `a` and `b`
+  ungrouped. Once `b` is removed from the group (`remove_timeline`), or
+  the group is dropped and collected, `b.create_region(...)` mints
+  `region_1` again: the group no longer joins the two trees. A group
+  pickled and unpickled keeps the scope (`b.create_region` on the
+  restored members mints `region_2`). A given id that takes a minted group
+  id mints the group again: in a group `group_1` of `a` and `b`,
+  `b.create_region(..., id="group_1")` keeps the region's id and the group
+  becomes `group_2`; in a bundle holding that group it is re-keyed
+  (`list(bundle.groups) == ["group_2"]`).
+- **A group joined to a bundle admits its newcomers into the bundle.** A
+  bundle holds every member of its groups, so a timeline added to a group
+  afterwards (`TimelineGroup.add_timeline`) joins the bundle as well, its
+  tree admitted into the group and the bundle together. Specimen: a bundle
+  holding `d` ungrouped, then a group of `a` and `b` (`add_group`), then
+  `c` added to the group, where `c` and `d` each hold a region. With both
+  regions given `r`, the add is refused with `region 'r' of timeline 'c'
+  cannot join group 'group_1': its id 'r' is already held by region 'r' of
+  timeline 'd'`, and atomically: the group still holds `a`, `b`, the
+  bundle `a`, `b`, `d`, and `c` keeps its region `r` and joins no scope:
+  a region of id `d`, the id of the bundle's timeline, is created on `c`
+  afterwards without refusal. With both regions minted (`region_1`), `c`'s is minted again
+  `region_2`, `d` keeps `region_1`, the bundle registers `c`, and
+  `bundle.to_dict()` writes the roots `a`, `b`, `c`, `d` and the group
+  with members `a`, `b`, `c`, which the TimeToShare validator accepts.
+  Without the bundle's admission the manifest would name `c` as a member
+  of no root and hold `region_1` twice. The bundle is found from the
+  group itself, not from its members, so an **empty** group behaves
+  alike: a bundle holding `d` (region `r`) and the empty group `group_1`
+  refuses `c` (region `r`) with the same message, the group staying empty
+  and the bundle holding `d` alone; with minted regions `c`'s becomes
+  `region_2` and `bundle.to_dict()` writes the roots `c`, `d` and the
+  group with member `c`, valid. A bundle pickled and unpickled holds its
+  group again: the restored group refuses the restored `c` alike. Once the
+  bundle no longer holds the group (removed from `bundle.groups`) or is
+  deleted and collected, the group consults it no more: `c` with region
+  `r` joins the group and keeps `r`, and the bundle does not register it.
+- **Messages name an element by its id in single quotes.** An id is
+  quoted as it is, never as its `repr`: a region `Bach's` given twice on
+  one timeline `t` is refused with `region 'Bach's' of timeline 't' cannot
+  join: its id 'Bach's' is already held by region 'Bach's' of timeline
+  't'` (a `repr` would write `"Bach's"`).
+- **Writing never changes an id.** A `jump_to` written where a jump lands
+  on no marker takes an id minted around every id of the manifest
+  written, those minted before it included: in a bundle of two roots
+  `score` and `perf`, each with a given D.S. jump landing on no marker,
+  the roots are written sorted by id, so `perf` writes `jump_to_1` and its
+  jump targets it, `score` writes `jump_to_2` and its jump targets that;
+  the jumps held keep their target `None`.
 - **Maps nested in maps share the scope.** A `ChainMap`, `PiecewiseMap`,
   `CombinationMap` (and an `IntervalToConstantMap` with an end, whose form
   nests a `ConstantMap` per interval) writes its nested maps with ids of
@@ -670,7 +771,7 @@ Loader parity (`test_manifest_ids.py::TestLoaderParity`): for one specimen
 each of the ms3 (with and without D.S. jumps), score-MIDI, lab, audio,
 Parangonada and IIIF loaders the test walks the whole
 `to_dict` tree and requires every timeline, child, map, region, break, jump
-and marker to carry a valid id (non-empty, no `/`, no control character),
+and marker to carry a valid id (non-empty, no control character),
 all ids within one manifest to be distinct, and no id to start with `tl:`.
 
 ### Canonical order of a serialized timeline (`test_canonical_order.py`)
@@ -887,17 +988,22 @@ The band orders of `graphical.order`, keyed by a timeline's id, are carried
 beside the styling; their tests are those of "Manifests" above.
 
 **Identity.** The default id is `group_1` (minted statelessly: the smallest
-free number, so two fresh groups in one process are both `group_1`). A
+free number, so two fresh groups in one process are both `group_1`). The
+members' trees share one manifest, in which every id is unique whatever
+element holds it (the other kinds are proved under "Manifest identity"). A
 newcomer whose given id, or any given descendant id, is held by another
-timeline of the group's trees is refused with `ValueError` and leaves the
-group unchanged; a minted id of the newcomer's tree that is held is minted
+timeline of the group's trees is refused with `ValueError` (`timeline 'B'
+cannot join group 'group_1': its id 'B' is already held by timeline 'B'`)
+and leaves the group unchanged; a minted id of the newcomer's tree that is held is minted
 again — the newcomer's own (`clt_2`) and a descendant's alike (a minted
 `clt_1` child of a newcomer with a given id becomes `clt_2` under its
 unchanged parent). A refused newcomer keeps its ids: the collision checks run
 before any id of its tree is minted again, so a newcomer whose minted child
 would be re-minted but whose given root id is refused still carries its
 child's original minted id afterwards. A timeline whose given id is the
-group's own given id is refused; a *minted* group id that a newcomer's given
+group's own given id is refused (`timeline 'shared' cannot join group
+'shared': its id 'shared' is already held by group 'shared'`); a *minted*
+group id that a newcomer's given
 id takes is minted again instead (`group_1` becomes `group_2`), because only
 a given id is a commitment.
 
@@ -964,8 +1070,9 @@ visible in the answer instead of only in the pixel column. The same applies to
 **Group unfolding.** `apply_flow` cuts every member at the same section
 labels. The labels name the section children, never identify them: the test
 pins the eleven names on each member, requires every descendant id to be a
-minted `clt_N`, and requires the group's trees to hold as many distinct ids as
-they hold timelines.
+minted `clt_N`, and requires the group's trees to hold as many distinct
+timeline ids as they hold timelines and no id twice among all their elements
+(the regions each unfolded member mints are minted again across members).
 
 `test_three_timeline_group` places an image over audio seconds 0–150 and a
 score over audio seconds 45–135: each part is a child of the audio, grouped

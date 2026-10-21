@@ -439,15 +439,18 @@ class ChildrenMixin:
         child_end = (
             None if child.length is None else offset_coord.value + child.length.value
         )
-        id_plan = self._manifest_join_plan(child)
+        # The whole subtree joins this manifest: a minted id held here is
+        # minted again, a given one raises before anything changes.
+        entries, rename = child._subtree_entries()
+        avoid = child._manifest_ids()
+        self._admit_entries(entries, avoid=avoid, check_only=True)
 
         # Ensure capacity
         self._ensure_capacity(
             offset_coord.value if child_end is None else child_end, allow_expansion
         )
 
-        for owner, old_id, new_id in id_plan:
-            owner._reassign_element_id(old_id, new_id)
+        self._admit_entries(entries, rename, avoid=avoid)
 
         # Store child reference
         self._children[child.id] = child

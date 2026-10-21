@@ -7,6 +7,7 @@ from dataclasses import replace
 from typing import Any
 
 from timetoalign.core import CoordinateSpec, CoordinateValue
+from timetoalign.core.ids import quote_id
 from timetoalign.core.time import coordinate_numeric_value
 from timetoalign.core.timestamp import _format_coordinate_value
 
@@ -82,7 +83,7 @@ class RegionsMixin:
             region.id,
             minted=region._minted,
             prefix="region",
-            element=f"region {region.id!r}",
+            element=f"region {quote_id(region.id)}",
         )
         if region_id != region.id:
             region = replace(region, id=region_id, _minted=True)

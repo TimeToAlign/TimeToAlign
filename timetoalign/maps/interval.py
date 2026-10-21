@@ -157,7 +157,7 @@ class IntervalToConstantMap(ConversionMap[T], Generic[T]):
             ConstantMap(value=value, source_unit=source_unit, target_unit=target_unit)
             for value in (self._values if end is not None else ())
         ]
-        self._admit_ids({})
+        self._admit_ids()
 
     @property
     def end(self) -> CoordinateValue | None:

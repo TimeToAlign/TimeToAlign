@@ -477,7 +477,7 @@ def test_numbers_javascript_cannot_tell_apart_are_accepted(
 
 UNKNOWN: dict[str, Any] = {
     "timetoshare": "0.1.0",
-    "$schema": "https://timetoalign.github.io/TimeToShare/0.1.0/timetoshare.schema.json",
+    "$schema": "https://timetoalign.github.io/timetoshare/0.1.0/timetoshare.schema.json",
     "x-note": "manifest",
     "timelines": [
         {"id": "perf", "unit": "seconds", "length": 12.5},
@@ -1037,7 +1037,9 @@ def test_a_group_never_takes_the_id_of_a_descendant_timeline(
 ) -> None:
     with pytest.raises(ValueError) as refused:
         TimelineGroup.from_dict(copy.deepcopy(data), group_id="ex_child")
-    assert str(refused.value) == "group id 'ex_child' is also a timeline id"
+    assert str(refused.value) == (
+        "group id 'ex_child' is already held by timeline 'ex_child'"
+    )
 
 
 def test_a_group_id_matching_the_one_group_reads_it_unchanged() -> None:
@@ -1120,7 +1122,10 @@ def test_the_manifest_id_is_unique_with_the_timeline_ids() -> None:
 
     with pytest.raises(ValueError) as refused:
         AlignmentBundle.from_dict(data)
-    assert str(refused.value) == "manifest id 'score' is also a timeline or group id"
+    assert str(refused.value) == (
+        "the id 'score' is held twice in the manifest: by the manifest and by "
+        "timeline 'score'"
+    )
 
 
 # endregion
@@ -1150,32 +1155,32 @@ def test_an_order_naming_no_group_or_timeline_is_refused() -> None:
 
 
 SCORE_BANDS = [
-    "score/children_1",
-    "score/markers_1",
-    "score",
-    "score/conversion_maps_1",
-    "score/regions_1",
-    "score/flow_control_1",
+    "children",
+    "markers",
+    "line",
+    "conversion_maps",
+    "regions",
+    "flow_control",
 ]
 """Markers above the line, children beyond them, the rest below."""
 
 PART_BANDS = [
-    "part/flow_control_1",
-    "part/regions_1",
-    "part/markers_1",
-    "part/conversion_maps_1",
-    "part/children_1",
-    "part",
+    "flow_control",
+    "regions",
+    "markers",
+    "conversion_maps",
+    "children",
+    "line",
 ]
 """Every band above the line, in reverse default order."""
 
 PERF_BANDS = [
-    "perf",
-    "perf/flow_control_1",
-    "perf/regions_1",
-    "perf/markers_1",
-    "perf/conversion_maps_1",
-    "perf/children_1",
+    "line",
+    "flow_control",
+    "regions",
+    "markers",
+    "conversion_maps",
+    "children",
 ]
 """Every band below the line, in reverse default order."""
 
@@ -1296,7 +1301,7 @@ def test_band_orders_are_copied_on_reading(case: str) -> None:
 
 def test_a_band_order_is_never_checked() -> None:
     data = copy.deepcopy(ONE_ROOT["minimal"])
-    data["graphical"]["order"]["part"] = ["part", "part/markers_1"]
+    data["graphical"]["order"]["part"] = ["line", "markers"]
 
     assert Timeline.from_dict(copy.deepcopy(data)).to_dict(minimal=True) == data
 
@@ -1544,133 +1549,59 @@ def test_a_child_beyond_its_parent_is_refused_in_the_validators_words(
     assert str(refused.value) == message
 
 
-def _reserved(word: str) -> str:
-    return f"Invalid id '{word}': it is reserved for the parts of an address"
-
-
-@pytest.mark.parametrize(
-    ("data", "word"),
-    [
-        (
-            _quarters_root()
-            | {"timelines": [{"id": "start", "unit": "quarters", "length": [4, 1]}]},
-            "start",
-        ),
-        (
-            _quarters_root(regions=[{"id": "end", "start": [0, 1], "end": [4, 1]}]),
-            "end",
-        ),
-        (_quarters_root() | {"id": "card"}, "card"),
-        (_quarters_root() | {"groups": [{"id": "name", "members": ["score"]}]}, "name"),
-        (
-            _quarters_root(
-                conversion_maps=[
-                    {
-                        "type": "LinearMap",
-                        "id": "label",
-                        "source_unit": None,
-                        "target_unit": None,
-                        "offset": 1,
-                    }
-                ]
-            ),
-            "label",
-        ),
+WORDS: dict[str, Any] = {
+    "timetoshare": "0.1.0",
+    "id": "card",
+    "timelines": [
+        {
+            "id": "start",
+            "unit": "quarters",
+            "length": [12, 1],
+            "children": [
+                {
+                    "id": "markers_10",
+                    "unit": "quarters",
+                    "offset": [0, 1],
+                    "length": [4, 1],
+                }
+            ],
+            "conversion_maps": [
+                {
+                    "type": "LinearMap",
+                    "id": "label",
+                    "source_unit": "quarters",
+                    "target_unit": "seconds",
+                    "scalar": 2,
+                }
+            ],
+            "regions": [{"id": "end", "start": [0, 1], "end": [4, 1]}],
+        }
     ],
-    ids=["root", "region", "manifest", "group", "map"],
-)
-def test_a_part_word_is_no_id(data: dict[str, Any], word: str) -> None:
-    with pytest.raises(ValueError) as refused:
-        AlignmentBundle.from_dict(copy.deepcopy(data))
-    assert str(refused.value) == _reserved(word)
+    "groups": [{"id": "regions_1", "members": ["start"]}],
+    "graphical": {"order": {"regions_1": ["start"]}},
+}
+"""Words naming the parts and facets of a drawn timeline, each an id."""
 
 
-def test_a_part_word_is_no_override() -> None:
-    with pytest.raises(ValueError) as refused:
-        Timeline.from_dict(_quarters_root(), timeline_id="start")
-    assert str(refused.value) == _reserved("start")
-    for data in (
-        _quarters_root(),
-        _quarters_root() | {"groups": [{"id": "g", "members": ["score"]}]},
-    ):
-        with pytest.raises(ValueError) as refused:
-            TimelineGroup.from_dict(copy.deepcopy(data), group_id="end")
-        assert str(refused.value) == _reserved("end")
+def test_words_naming_parts_and_facets_are_ids() -> None:
+    bundle = AlignmentBundle.from_dict(copy.deepcopy(WORDS))
+
+    assert bundle.id == "card"
+    assert list(bundle.groups) == ["regions_1"]
+    root = bundle.timelines["start"]
+    assert root.list_children() == ["markers_10"]
+    assert root.list_regions() == ["end"]
+    assert root.get_conversion_map("label").id == "label"
+    assert bundle.to_dict(minimal=True) == WORDS
 
 
-def _band(band_id: str) -> str:
-    return f"Invalid id '{band_id}': it is reserved for the bands of a timeline"
+def test_words_naming_parts_and_facets_are_overrides() -> None:
+    timeline = Timeline.from_dict(_quarters_root(), timeline_id="start")
+    group = TimelineGroup.from_dict(_quarters_root(), group_id="regions_1")
 
-
-@pytest.mark.parametrize(
-    ("data", "band_id"),
-    [
-        (
-            _quarters_root()
-            | {
-                "timelines": [{"id": "markers_1", "unit": "quarters", "length": [4, 1]}]
-            },
-            "markers_1",
-        ),
-        (
-            _quarters_root(
-                children=[
-                    {
-                        "id": "children_1",
-                        "unit": "quarters",
-                        "offset": [0, 1],
-                        "length": [4, 1],
-                    }
-                ]
-            ),
-            "children_1",
-        ),
-        (
-            _quarters_root(
-                regions=[{"id": "regions_2", "start": [0, 1], "end": [4, 1]}]
-            ),
-            "regions_2",
-        ),
-        (
-            _quarters_root(
-                conversion_maps=[
-                    {
-                        "type": "LinearMap",
-                        "id": "conversion_maps_3",
-                        "source_unit": None,
-                        "target_unit": None,
-                        "offset": 1,
-                    }
-                ]
-            ),
-            "conversion_maps_3",
-        ),
-        (
-            _quarters_root()
-            | {"groups": [{"id": "flow_control_1", "members": ["score"]}]},
-            "flow_control_1",
-        ),
-        (_quarters_root() | {"id": "markers_10"}, "markers_10"),
-    ],
-    ids=["root", "child", "region", "map", "group", "manifest"],
-)
-def test_a_band_id_is_no_id(data: dict[str, Any], band_id: str) -> None:
-    with pytest.raises(ValueError) as refused:
-        AlignmentBundle.from_dict(copy.deepcopy(data))
-    assert str(refused.value) == _band(band_id)
-
-
-def test_a_band_id_is_no_override() -> None:
-    with pytest.raises(ValueError) as refused:
-        Timeline.from_dict(_quarters_root(), timeline_id="children_1")
-    assert str(refused.value) == _band("children_1")
-    for data in (
-        _quarters_root(),
-        _quarters_root() | {"groups": [{"id": "g", "members": ["score"]}]},
-    ):
-        with pytest.raises(ValueError) as refused:
-            TimelineGroup.from_dict(copy.deepcopy(data), group_id="regions_1")
-        assert str(refused.value) == _band("regions_1")
+    assert timeline.id == "start"
+    assert group.id == "regions_1"
+    assert group.timeline_ids == ["score"]
 
 
 @pytest.mark.parametrize(

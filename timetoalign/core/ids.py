@@ -17,7 +17,7 @@ Includes:
 from __future__ import annotations
 
 import re
-from collections.abc import Container, Mapping, Sequence
+from collections.abc import Container, Iterable, Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass, field
 from types import MappingProxyType
@@ -232,27 +232,15 @@ class IdGenerator:
 
 # region Manifest element ids
 
-_REFUSED_ID_CHARACTERS = re.compile(r"[/\x00-\x1f]")
-_PART_WORDS = ("start", "end", "name", "label", "card")
-"""The words that follow an element's address as its parts, and so are no id."""
-_BAND_ID = re.compile(
-    r"(markers|conversion_maps|children|regions|flow_control)_[1-9][0-9]*"
-)
-"""The ids of a timeline's bands, which follow its address, and so are no id."""
+_REFUSED_ID_CHARACTERS = re.compile(r"[\x00-\x1f]")
 
 
 def validate_id(element_id: str) -> str:
     """Return *element_id* if it is a valid given id, else raise.
 
-    Any non-empty string is a valid id except one containing ``/`` (the path
-    separator of composed addresses) or a control character
-    (U+0000 to U+001F), the part words ``start``, ``end``, ``name``,
-    ``label`` and ``card``, which follow an address as its parts, and the
-    ids of a timeline's bands, which follow its address: a kind among
-    ``markers``, ``conversion_maps``, ``children``, ``regions`` and
-    ``flow_control``, ``_`` and a number from 1 without a leading zero
-    (``markers_1``, ``regions_12``). Whitespace, colons, dots and unicode
-    are permitted.
+    An id is any non-empty string without a control character (U+0000 to
+    U+001F, which an XML attribute cannot carry). Whitespace, slashes,
+    colons, dots, URIs and unicode are permitted.
 
     Args:
         element_id: The id to check.
@@ -261,16 +249,18 @@ def validate_id(element_id: str) -> str:
         The same id.
 
     Raises:
-        ValueError: If the id is empty, contains a refused character, is a
-            part word or is the id of a band.
+        ValueError: If the id is no string, is empty or contains a control
+            character.
 
     Examples:
         >>> validate_id("Bass Kick")
         'Bass Kick'
         >>> validate_id("a/b")
+        'a/b'
+        >>> validate_id("a\\tb")
         Traceback (most recent call last):
         ...
-        ValueError: Invalid id 'a/b': an id must be non-empty and contain neither '/' nor a control character
+        ValueError: Invalid id 'a\\tb': an id must be non-empty and contain no control character
     """
     if (
         not isinstance(element_id, str)
@@ -278,18 +268,24 @@ def validate_id(element_id: str) -> str:
         or (_REFUSED_ID_CHARACTERS.search(element_id))
     ):
         raise ValueError(
-            f"Invalid id {element_id!r}: an id must be non-empty and contain "
-            "neither '/' nor a control character"
-        )
-    if element_id in _PART_WORDS:
-        raise ValueError(
-            f"Invalid id {element_id!r}: it is reserved for the parts of an address"
-        )
-    if _BAND_ID.fullmatch(element_id):
-        raise ValueError(
-            f"Invalid id {element_id!r}: it is reserved for the bands of a timeline"
+            f"Invalid id {element_id!r}: an id must be non-empty and contain no "
+            "control character"
         )
     return element_id
+
+
+def quote_id(element_id: str) -> str:
+    """Return *element_id* in single quotes, as a message names an element.
+
+    An id is quoted as it is, an apostrophe included, so that every message
+    names an element alike (:func:`validate_id` alone shows the ``repr``,
+    which makes a refused control character visible).
+
+    Examples:
+        >>> quote_id("Bach's")
+        "'Bach's'"
+    """
+    return f"'{element_id}'"
 
 
 def mint_id(prefix: str, taken: Container[str]) -> str:
@@ -343,6 +339,7 @@ def _admit_id(
     prefix: str,
     taken: Mapping[str, str],
     element: str,
+    scope: str = "",
 ) -> str:
     """Return the id under which an element joins a scope.
 
@@ -355,6 +352,8 @@ def _admit_id(
         prefix: The prefix to mint with.
         taken: Every id of the scope, mapped to a description of its holder.
         element: A description of the joining element, for the error.
+        scope: A description of the scope (``"group 'g'"``), for the error,
+            or empty for the manifest of a timeline.
 
     Raises:
         ValueError: If a given id is already taken.
@@ -364,13 +363,17 @@ def _admit_id(
     if minted:
         return mint_id(prefix, taken)
     raise ValueError(
-        f"{element} cannot join: its id {element_id!r} is already held by "
-        f"{taken[element_id]}"
+        f"{element} cannot join{' ' + scope if scope else ''}: its id "
+        f"{quote_id(element_id)} is already held by {taken[element_id]}"
     )
 
 
 def _plan_admissions(
-    entries: Sequence[tuple[str, bool, str, str]], taken: Mapping[str, str]
+    entries: Sequence[tuple[str, bool, str, str]],
+    taken: Mapping[str, str],
+    *,
+    scope: str = "",
+    avoid: Iterable[str] = (),
 ) -> dict[int, str]:
     """Plan the ids under which several elements join a scope together.
 
@@ -384,6 +387,9 @@ def _plan_admissions(
         entries: ``(id, minted, prefix, description)`` of each joining
             element, in the order they claim their ids.
         taken: Every id of the scope, mapped to a description of its holder.
+        scope: A description of the scope, for the error.
+        avoid: Further ids no id minted again may take: those of the other
+            scopes the elements belong to already.
 
     Raises:
         ValueError: If a given id is already held, in the scope or by
@@ -393,10 +399,15 @@ def _plan_admissions(
     for element_id, minted, prefix, element in entries:
         if not minted:
             _admit_id(
-                element_id, minted=False, prefix=prefix, taken=claimed, element=element
+                element_id,
+                minted=False,
+                prefix=prefix,
+                taken=claimed,
+                element=element,
+                scope=scope,
             )
             claimed[element_id] = element
-    occupied = set(claimed) | {entry[0] for entry in entries}
+    occupied = set(claimed) | set(avoid) | {entry[0] for entry in entries}
     plan: dict[int, str] = {}
     for index, (element_id, minted, prefix, element) in enumerate(entries):
         if not minted:

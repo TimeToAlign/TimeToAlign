@@ -358,11 +358,13 @@ def _malformed(change: Callable[[dict[str, Any]], Any]) -> dict[str, Any]:
         (lambda d: d.update(id=""), "Invalid id ''"),
         (
             lambda d: d["timelines"].append(d["timelines"][0]),
-            "timeline id 'audio' occurs twice",
+            "the id 'audio' is held twice in the manifest: by timeline 'audio' and "
+            "by timeline 'audio'",
         ),
         (
             lambda d: d["groups"].append(d["groups"][0]),
-            "group id 'group_1' occurs twice",
+            "the id 'group_1' is held twice in the manifest: by group 'group_1' "
+            "and by group 'group_1'",
         ),
         (
             lambda d: (
@@ -371,7 +373,8 @@ def _malformed(change: Callable[[dict[str, Any]], Any]) -> dict[str, Any]:
                     notes=d["graphical"]["order"].pop("group_1")
                 ),
             ),
-            "group id 'notes' is also a timeline id",
+            "the id 'notes' is held twice in the manifest: by timeline 'notes' and "
+            "by group 'notes'",
         ),
         (
             lambda d: d["groups"][0]["members"].append("ghost"),
@@ -567,8 +570,12 @@ def test_given_id_collision_raises_and_leaves_the_bundle() -> None:
     bundle = _direct_bundle()
     before = bundle.to_dict()
 
-    with pytest.raises(ValueError, match="Timeline 'holes' cannot join bundle"):
+    with pytest.raises(ValueError) as refused:
         bundle.add_timeline(DiscreteGraphicalTimeline(length=10, uid="holes"))
+    assert str(refused.value) == (
+        "timeline 'holes' cannot join bundle 'bundle_1': its id 'holes' is already "
+        "held by timeline 'holes'"
+    )
     assert bundle.to_dict() == before
 
 
@@ -578,7 +585,7 @@ def test_descendant_id_collision_raises() -> None:
     newcomer = ContinuousPhysicalTimeline(length=10.0, uid="fresh")
     newcomer.add_child(ContinuousPhysicalTimeline(length=1.0, uid="midi"), offset=0.0)
 
-    with pytest.raises(ValueError, match="Timeline 'midi' cannot join bundle"):
+    with pytest.raises(ValueError, match="timeline 'midi' cannot join bundle"):
         bundle.add_timeline(newcomer)
     assert "fresh" not in bundle.timelines
 
@@ -623,8 +630,12 @@ def test_timeline_id_equal_to_a_given_group_id_is_refused() -> None:
     )
     before = bundle.to_dict()
 
-    with pytest.raises(ValueError, match="already held by a group there"):
+    with pytest.raises(ValueError) as refused:
         bundle.add_timeline(ContinuousPhysicalTimeline(length=1.0, uid="g"))
+    assert str(refused.value) == (
+        "timeline 'g' cannot join bundle 'bundle_1': its id 'g' is already held by "
+        "group 'g'"
+    )
     assert bundle.to_dict() == before
 
 
@@ -655,7 +666,7 @@ def test_refused_newcomer_keeps_its_ids() -> None:
     child = ContinuousPhysicalTimeline(length=1.0)
     newcomer.add_child(child, offset=0.0)
 
-    with pytest.raises(ValueError, match="Timeline 'B' cannot join bundle"):
+    with pytest.raises(ValueError, match="timeline 'B' cannot join bundle"):
         bundle.add_timeline(newcomer)
     assert (newcomer.id, child.id) == ("B", "cpt_1")
     assert bundle.timeline_ids == ["cpt_1", "B"]

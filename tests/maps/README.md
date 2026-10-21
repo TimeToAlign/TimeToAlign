@@ -4,7 +4,7 @@ This directory contains tests for the `timetoalign.maps` module, which implement
 
 ## Manifest forms (`test_manifest_forms.py`)
 
-A conversion map is written in a TimeSkeleton manifest as one of ten
+A conversion map is written in a TimeToShare manifest as one of ten
 abstract types — `LinearMap`, `TableMap`, `ConstantMap`, `PiecewiseMap`,
 `ChainMap`, `CombinationMap` and the four measure views `MeasureRecordMap`,
 `MeasureNumberMap`, `FloatingMeasureMap`, `MeasureBeatMap` — and every

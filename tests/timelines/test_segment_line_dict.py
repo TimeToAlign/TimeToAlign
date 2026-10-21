@@ -78,7 +78,7 @@ def _object(
 def _manifest(timeline: dict[str, Any]) -> dict[str, Any]:
     """The complete manifest of one root timeline object."""
     return {
-        "timeskeleton": "0.7.0",
+        "timetoshare": "0.1.0",
         "name": None,
         "meta": {},
         "timelines": [timeline],
@@ -294,7 +294,7 @@ def test_bare_untyped_segment_line_reads_as_a_line_of_its_unit() -> None:
     data = SegmentLine(length=0, unit="pixels", uid="bare").to_dict(minimal=True)
 
     assert data == {
-        "timeskeleton": "0.7.0",
+        "timetoshare": "0.1.0",
         "timelines": [
             {"id": "bare", "unit": "pixels", "length": 0, "is_segment_line": True}
         ],

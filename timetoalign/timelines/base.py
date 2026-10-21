@@ -1367,7 +1367,7 @@ class Timeline(
         events: bool = False,
         external_references: bool = False,
     ) -> dict[str, Any]:
-        """Write a TimeSkeleton manifest holding this timeline as its one root.
+        """Write a TimeToShare manifest holding this timeline as its one root.
 
         The timeline object is the timeline's structure: its axis, children,
         conversion maps, regions and flow control. Its measure map is a
@@ -1414,11 +1414,11 @@ class Timeline(
                 ``{"uri": ..., "kind": ...}`` dicts), even when it is empty.
 
         Returns:
-            A JSON-serializable manifest ``{"timeskeleton": "0.7.0", ...,
+            A JSON-serializable manifest ``{"timetoshare": "0.1.0", ...,
             "timelines": [timeline]}``.
 
         Raises:
-            ValueError: If a conversion map has no TimeSkeleton form or
+            ValueError: If a conversion map has no TimeToShare form or
                 cannot be written losslessly, a jump cannot name the marker
                 it lands on, or a measure map's given id is held by another
                 measure map or by a timeline, group or the manifest.
@@ -1428,7 +1428,7 @@ class Timeline(
             >>> from timetoalign.timelines import ContinuousLogicalTimeline
             >>> score = ContinuousLogicalTimeline(length=Fraction(32), uid="piece")
             >>> score.to_dict(minimal=True)
-            {'timeskeleton': '0.7.0', 'timelines': [{'id': 'piece', 'unit': 'quarters', \
+            {'timetoshare': '0.1.0', 'timelines': [{'id': 'piece', 'unit': 'quarters', \
 'length': [32, 1]}]}
         """
         manifest = self._manifest if self._manifest is not None else Manifest()
@@ -1551,7 +1551,7 @@ class Timeline(
         timeline_id: str | None = None,
         name: str | None = None,
     ) -> Timeline:
-        """Read a timeline from a TimeSkeleton manifest.
+        """Read a timeline from a TimeToShare manifest.
 
         Without *timeline_id* and *name*, a manifest holding one root
         timeline and no group is read as a whole: its root is returned, and
@@ -1575,7 +1575,7 @@ class Timeline(
         back.
 
         Args:
-            data: A TimeSkeleton manifest.
+            data: A TimeToShare manifest.
             timeline_id: The id to select, or, when no timeline has it and
                 the manifest holds one root and no group, the id the root
                 takes.
@@ -1587,8 +1587,8 @@ class Timeline(
             The timeline read.
 
         Raises:
-            ValueError: If *data* is no TimeSkeleton manifest of version
-                0.7.0, is malformed, holds a value represented otherwise than
+            ValueError: If *data* is no TimeToShare manifest of version
+                0.1.0, is malformed, holds a value represented otherwise than
                 its axis selects, if the selection matches no timeline or
                 several, or if the id the root would take is already held in
                 the manifest; the message names the problem, or the
@@ -1598,7 +1598,7 @@ class Timeline(
             >>> from timetoalign.timelines import Timeline
             >>> piece = Timeline.from_dict(
             ...     {
-            ...         "timeskeleton": "0.7.0",
+            ...         "timetoshare": "0.1.0",
             ...         "timelines": [{"id": "piece", "unit": "quarters", "length": [32, 1]}],
             ...     }
             ... )

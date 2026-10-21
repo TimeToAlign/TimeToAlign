@@ -1,7 +1,7 @@
-"""Reading and writing TimeSkeleton manifests.
+"""Reading and writing TimeToShare manifests.
 
-A TimeSkeleton manifest is one JSON object: the version marker
-``timeskeleton``, an array of root ``timelines`` and, optionally, the
+A TimeToShare manifest is one JSON object: the version marker
+``timetoshare``, an array of root ``timelines`` and, optionally, the
 manifest's ``id``, ``name`` and ``meta``, its ``groups``, its
 ``measure_maps`` and its ``graphical``. :class:`~timetoalign.timelines.Timeline`,
 :class:`~timetoalign.timelines.TimelineGroup` and
@@ -41,8 +41,8 @@ if TYPE_CHECKING:
     from .base import Timeline
     from .structure import MeasureMap
 
-TIMESKELETON_VERSION = "0.7.0"
-"""The TimeSkeleton version the library reads and writes."""
+TIMETOSHARE_VERSION = "0.1.0"
+"""The TimeToShare version the library reads and writes."""
 
 _STYLING_DEFAULTS: dict[str, Any] = {"styles": {}, "statements": []}
 """The members of ``graphical`` other than ``order``, with their defaults."""
@@ -149,7 +149,7 @@ def spell(value: Any) -> str:
 
     A number as JSON writes it, an array as its items separated by ``, ``
     within brackets (``[32, 1]``), anything else as compact JSON: the
-    spelling of the TimeSkeleton validators.
+    spelling of the TimeToShare validators.
     """
     if isinstance(value, list):
         return "[" + ", ".join(spell(item) for item in value) + "]"
@@ -174,7 +174,7 @@ def check_children_fit(data: Mapping[str, Any], number_type: NumberType) -> None
     end beyond it where the end is known (offset plus length, or, in a
     segment line, a segment of unknown length's successor's offset). A child
     of another unit is left to the reader, which refuses it. The messages
-    are the TimeSkeleton validators', values spelled as written.
+    are the TimeToShare validators', values spelled as written.
 
     Raises:
         ValueError: ``offset 75.0 of 'take' is beyond the length 60.0 of its
@@ -318,7 +318,7 @@ class Manifest(_OpenObject):
     """
 
     _dict_keys: ClassVar[tuple[str, ...]] = (
-        "timeskeleton",
+        "timetoshare",
         "id",
         "name",
         "meta",
@@ -358,23 +358,23 @@ class Manifest(_OpenObject):
             The envelope, and the manifest's content.
 
         Raises:
-            ValueError: If *data* is no TimeSkeleton manifest (``"not a
-                TimeSkeleton manifest"``), names another version, or is
+            ValueError: If *data* is no TimeToShare manifest (``"not a
+                TimeToShare manifest"``), names another version, or is
                 malformed: a timeline or measure-map id occurring twice, the
                 manifest id equal to a timeline or group id, a measure-map id
                 equal to a timeline, group or manifest id, a
                 ``graphical.order`` that is no object or names no group or
                 timeline.
         """
-        if not isinstance(data, dict) or "timeskeleton" not in data:
-            raise ValueError("not a TimeSkeleton manifest")
-        version = data["timeskeleton"]
-        if version != TIMESKELETON_VERSION:
+        if not isinstance(data, dict) or "timetoshare" not in data:
+            raise ValueError("not a TimeToShare manifest")
+        version = data["timetoshare"]
+        if version != TIMETOSHARE_VERSION:
             raise ValueError(
-                f"unsupported TimeSkeleton version {version!r}: this library reads "
-                f"TimeSkeleton {TIMESKELETON_VERSION} only"
+                f"unsupported TimeToShare version {version!r}: this library reads "
+                f"TimeToShare {TIMETOSHARE_VERSION} only"
             )
-        require_object(data, "a TimeSkeleton manifest", ("timelines",))
+        require_object(data, "a TimeToShare manifest", ("timelines",))
         manifest_id = read_id(data["id"], "the manifest") if "id" in data else None
         manifest = cls(
             id=manifest_id,
@@ -524,7 +524,7 @@ class Manifest(_OpenObject):
         ]
         for measure_map in self.measure_maps:
             entries.id_of(measure_map)
-        fields: dict[str, Any] = {"timeskeleton": TIMESKELETON_VERSION}
+        fields: dict[str, Any] = {"timetoshare": TIMETOSHARE_VERSION}
         if self.id is not None:
             fields["id"] = self.id
         fields.update(

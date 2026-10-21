@@ -210,15 +210,15 @@ structure should be partitioned.
 ### Manifests (`test_manifest.py`)
 
 `Timeline`, `TimelineGroup` and `AlignmentBundle` write and read one shape of
-TimeSkeleton manifest: `{"timeskeleton": "0.7.0", "timelines": [...]}` with an
+TimeToShare manifest: `{"timetoshare": "0.1.0", "timelines": [...]}` with an
 optional `id`, `name`, `meta`, `groups` and `graphical`. A reader that only
 reads what its own writer produced proves nothing about the format, so the
 tests read manifests written by hand from the format's rules, and compare what
 the library writes back against the same literal text.
 
-- **The version marker.** Without `timeskeleton` each reader raises exactly
-  `not a TimeSkeleton manifest`; `"timeskeleton": "0.6.0"` raises a message
-  naming both `'0.6.0'` and `0.7.0`. Nothing else is read first, so the
+- **The version marker.** Without `timetoshare` each reader raises exactly
+  `not a TimeToShare manifest`; `"timetoshare": "0.2.0"` raises a message
+  naming both `'0.2.0'` and `0.1.0`. Nothing else is read first, so the
   refusal cannot depend on the rest of the content.
 - **Defaults are supplied.** A minimal manifest (only `id`, `unit` and
   `length` per timeline, only `id` and `coordinate` per marker, and so on)
@@ -245,7 +245,7 @@ the library writes back against the same literal text.
   `write 2.5`, `[1, 3]` says `write a float`, `[1, 2]` on an int axis says
   `write an int`, and `0.1` on a fraction axis names its exact pair
   `[3602879701896397, 36028797018963968]`. These are the messages of the
-  TimeSkeleton validators, word for word. What a JSON round trip may
+  TimeToShare validators, word for word. What a JSON round trip may
   respell is read as the number type decides, each case asserting the value
   AND its Python type: `480.0` on an int axis is the int `480`, `8` on a
   float axis the float `8.0`, `[1, 8.0]` on a fraction axis the Fraction
@@ -278,7 +278,7 @@ the library writes back against the same literal text.
   no default for (a `TableMap` without `x_values`) raises naming the key.
 - **Reading never changes a length.** A root `score` (quarters, length
   `[10, 1]`) holding a child `coda` at offset 8 with length 4 is refused,
-  locked or not, with the TimeSkeleton validators' words: `child 'coda'
+  locked or not, with the TimeToShare validators' words: `child 'coda'
   ends at [12, 1], beyond the length [10, 1] of its parent 'score'`; a child
   `late` of unknown length at offset 12 is refused with `offset [12, 1] of
   'late' is beyond the length [10, 1] of its parent 'score'`. A child ending
@@ -314,7 +314,7 @@ the library writes back against the same literal text.
   `-2.5` on a seconds root is refused by every reader (timeline, group,
   bundle) with `A negative child offset is not supported yet: child 'neg'
   has offset [-5, 2].` (`-1` on samples, `-2.5` on seconds), the value
-  spelled as the TimeSkeleton writer writes it and its validators quote it.
+  spelled as the TimeToShare writer writes it and its validators quote it.
   A root's own negative `offset` stays readable.
 - **A group made from one timeline keeps the manifest's keys.** A one-root
   manifest with `id`, `name`, `meta`, `graphical.styles` and an unknown
@@ -398,7 +398,7 @@ the library writes back against the same literal text.
   would fail.
 - **Band orders are kept, never read.** A timeline's entry of
   `graphical.order` is its band order, graphical data the library keeps as
-  given: it does not check, reorder or interpret it, since both TimeSkeleton
+  given: it does not check, reorder or interpret it, since both TimeToShare
   packages check it. It is kept where the manifest's styling is kept, with
   the manifest read as a whole — `Timeline.from_dict` of one root and no
   group, `TimelineGroup.from_dict` of one root or of one anonymous group,
@@ -650,7 +650,7 @@ display. The tests prove four properties, each against literal expected ids.
     unchanged): two nested maps given one id; a nested given id that a top
     map of the manifest holds; one map object nested in two places (its one
     id would be written twice); and a manifest whose `ChainMap` nests two
-    maps `lmap_1`, which `Timeline.from_dict` refuses as the TimeSkeleton
+    maps `lmap_1`, which `Timeline.from_dict` refuses as the TimeToShare
     validators do.
 - **Regions and markers are keyed by id; jumps target marker ids.** Two
   regions named `Chorus` coexist as `region_1` and `region_2`; `get_region`,

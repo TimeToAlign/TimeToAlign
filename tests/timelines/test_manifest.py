@@ -1,4 +1,4 @@
-"""TimeSkeleton manifests: the one shape every reader and writer shares.
+"""TimeToShare manifests: the one shape every reader and writer shares.
 
 The strategy is documented in ``tests/timelines/README.md`` ("Manifests").
 Manifests are written by hand from the format's rules, never taken from the
@@ -18,7 +18,7 @@ import pytest
 from timetoalign.alignment import AlignmentBundle
 from timetoalign.core import Coordinate, NumberType, SupportPolicy, TimeUnit
 from timetoalign.timelines import Timeline, TimelineGroup
-from timetoalign.timelines.manifest import TIMESKELETON_VERSION
+from timetoalign.timelines.manifest import TIMETOSHARE_VERSION
 from timetoalign.timelines.types import (
     ContinuousLogicalTimeline,
     ContinuousPhysicalTimeline,
@@ -42,23 +42,23 @@ def _text(data: dict[str, Any]) -> str:
 def test_a_manifest_without_the_marker_is_refused(reader: str) -> None:
     with pytest.raises(ValueError) as refused:
         READERS[reader]({"timelines": []})
-    assert str(refused.value) == "not a TimeSkeleton manifest"
+    assert str(refused.value) == "not a TimeToShare manifest"
 
 
 @pytest.mark.parametrize("reader", list(READERS), ids=list(READERS))
 def test_another_version_is_refused_naming_the_current_one(reader: str) -> None:
     with pytest.raises(ValueError) as refused:
-        READERS[reader]({"timeskeleton": "0.6.0", "timelines": []})
+        READERS[reader]({"timetoshare": "0.2.0", "timelines": []})
     assert str(refused.value) == (
-        "unsupported TimeSkeleton version '0.6.0': this library reads "
-        "TimeSkeleton 0.7.0 only"
+        "unsupported TimeToShare version '0.2.0': this library reads "
+        "TimeToShare 0.1.0 only"
     )
 
 
 def test_the_marker_is_written_from_one_constant() -> None:
-    assert TIMESKELETON_VERSION == "0.7.0"
+    assert TIMETOSHARE_VERSION == "0.1.0"
     assert AlignmentBundle().to_dict(minimal=True) == {
-        "timeskeleton": "0.7.0",
+        "timetoshare": "0.1.0",
         "timelines": [],
     }
 
@@ -70,7 +70,7 @@ def test_the_marker_is_written_from_one_constant() -> None:
 
 
 MINIMAL: dict[str, Any] = {
-    "timeskeleton": "0.7.0",
+    "timetoshare": "0.1.0",
     "timelines": [
         {
             "id": "score",
@@ -120,7 +120,7 @@ MINIMAL: dict[str, Any] = {
 }
 
 COMPLETE: dict[str, Any] = {
-    "timeskeleton": "0.7.0",
+    "timetoshare": "0.1.0",
     "name": None,
     "meta": {},
     "timelines": [
@@ -272,7 +272,7 @@ def test_the_unit_defaults_cover_every_unit() -> None:
 def test_a_number_type_left_out_is_the_units_own(unit: str) -> None:
     number_type, length = UNIT_DEFAULTS[unit]
     data = {
-        "timeskeleton": "0.7.0",
+        "timetoshare": "0.1.0",
         "timelines": [{"id": "t", "unit": unit, "length": length}],
     }
 
@@ -285,7 +285,7 @@ def test_a_number_type_left_out_is_the_units_own(unit: str) -> None:
 
 def test_the_class_comes_from_the_unit_and_a_class_key_is_kept() -> None:
     data = {
-        "timeskeleton": "0.7.0",
+        "timetoshare": "0.1.0",
         "timelines": [
             {
                 "id": "perf",
@@ -439,7 +439,7 @@ def test_every_axis_kind_checks_its_representation(
     unit: str, length: Any, message: str
 ) -> None:
     data = {
-        "timeskeleton": "0.7.0",
+        "timetoshare": "0.1.0",
         "timelines": [{"id": "t", "unit": unit, "length": length}],
     }
     with pytest.raises(ValueError) as refused:
@@ -460,7 +460,7 @@ def test_numbers_javascript_cannot_tell_apart_are_accepted(
     unit: str, length: Any, expected: Any
 ) -> None:
     data = {
-        "timeskeleton": "0.7.0",
+        "timetoshare": "0.1.0",
         "timelines": [{"id": "t", "unit": unit, "length": length}],
     }
 
@@ -476,8 +476,8 @@ def test_numbers_javascript_cannot_tell_apart_are_accepted(
 
 
 UNKNOWN: dict[str, Any] = {
-    "timeskeleton": "0.7.0",
-    "$schema": "https://timetoalign.github.io/timeskeleton/0.7.0/timeskeleton.schema.json",
+    "timetoshare": "0.1.0",
+    "$schema": "https://timetoalign.github.io/TimeToShare/0.1.0/timetoshare.schema.json",
     "x-note": "manifest",
     "timelines": [
         {"id": "perf", "unit": "seconds", "length": 12.5},
@@ -592,7 +592,7 @@ def test_the_timeline_reader_keeps_the_unknown_keys_of_what_it_reads() -> None:
     score = Timeline.from_dict(copy.deepcopy(UNKNOWN), timeline_id="score")
 
     assert score.to_dict(minimal=True) == {
-        "timeskeleton": "0.7.0",
+        "timetoshare": "0.1.0",
         "timelines": [UNKNOWN["timelines"][1]],
         "measure_maps": UNKNOWN["measure_maps"],
     }
@@ -600,7 +600,7 @@ def test_the_timeline_reader_keeps_the_unknown_keys_of_what_it_reads() -> None:
 
 def test_a_one_root_manifest_keeps_its_envelope() -> None:
     data = {
-        "timeskeleton": "0.7.0",
+        "timetoshare": "0.1.0",
         "id": "op35",
         "name": "Eroica Variations",
         "meta": {"opus": 35},
@@ -635,7 +635,7 @@ def _offset_manifest(offset: float | None) -> dict[str, Any]:
     }
     if offset is not None:
         root["offset"] = offset
-    return {"timeskeleton": "0.7.0", "timelines": [root]}
+    return {"timetoshare": "0.1.0", "timelines": [root]}
 
 
 def test_a_negative_root_offset_round_trips() -> None:
@@ -667,7 +667,7 @@ def test_a_root_offset_changes_nothing_computed() -> None:
 
 
 SELECTION: dict[str, Any] = {
-    "timeskeleton": "0.7.0",
+    "timetoshare": "0.1.0",
     "timelines": [
         {
             "id": "score",
@@ -750,7 +750,7 @@ def test_a_timeline_selection_must_match_once(
 
 def test_a_one_root_manifest_is_read_whole_with_overrides() -> None:
     data = {
-        "timeskeleton": "0.7.0",
+        "timetoshare": "0.1.0",
         "timelines": [{"id": "score", "unit": "quarters", "length": [8, 1]}],
     }
 
@@ -760,7 +760,7 @@ def test_a_one_root_manifest_is_read_whole_with_overrides() -> None:
 
 
 FAMILY: dict[str, Any] = {
-    "timeskeleton": "0.7.0",
+    "timetoshare": "0.1.0",
     "timelines": [
         {
             "id": "ex",
@@ -844,7 +844,7 @@ def test_arguments_matching_no_timeline_override_the_one_root(
 
     assert timeline._parent is None
     assert timeline.to_dict(minimal=True) == {
-        "timeskeleton": "0.7.0",
+        "timetoshare": "0.1.0",
         "timelines": [{**FAMILY["timelines"][0], **root}],
     }
 
@@ -875,7 +875,7 @@ def test_an_override_never_takes_an_id_held_in_the_manifest(
 
 
 TWO_ROOTS: dict[str, Any] = {
-    "timeskeleton": "0.7.0",
+    "timetoshare": "0.1.0",
     "timelines": [
         {"id": "score", "unit": "quarters", "length": [8, 1]},
         {"id": "perf", "unit": "seconds", "length": 60.0},
@@ -883,7 +883,7 @@ TWO_ROOTS: dict[str, Any] = {
 }
 
 ONE_ROOT_ONE_GROUP: dict[str, Any] = {
-    "timeskeleton": "0.7.0",
+    "timetoshare": "0.1.0",
     "timelines": [{"id": "score", "unit": "quarters", "length": [8, 1]}],
     "groups": [{"id": "g", "members": ["score"]}],
 }
@@ -944,7 +944,7 @@ def test_a_group_is_selected_by_id() -> None:
 
     assert (group.id, group.name, group.timeline_ids) == ("g1", "pair", ["score"])
     assert group.to_dict(minimal=True) == {
-        "timeskeleton": "0.7.0",
+        "timetoshare": "0.1.0",
         "timelines": [SELECTION["timelines"][0]],
         "groups": [SELECTION["groups"][0]],
         "graphical": {"order": {"g1": ["score"]}},
@@ -978,7 +978,7 @@ def test_a_group_selection_must_match_once(
 
 
 ONE_TIMELINE = {
-    "timeskeleton": "0.7.0",
+    "timetoshare": "0.1.0",
     "timelines": [{"id": "score", "unit": "quarters", "length": [8, 1]}],
 }
 
@@ -1002,7 +1002,7 @@ def test_a_manifest_of_one_timeline_makes_a_group_when_asked() -> None:
 
 def test_a_one_group_manifest_is_read_whole_with_overrides() -> None:
     data = {
-        "timeskeleton": "0.7.0",
+        "timetoshare": "0.1.0",
         "meta": {"source": "an edition"},
         "timelines": [{"id": "score", "unit": "quarters", "length": [8, 1]}],
         "groups": [{"id": "g", "name": "old", "members": ["score"]}],
@@ -1053,7 +1053,7 @@ def test_a_group_id_matching_the_one_group_reads_it_unchanged() -> None:
 
 def test_a_named_one_group_manifest_needs_a_selection() -> None:
     data = {
-        "timeskeleton": "0.7.0",
+        "timetoshare": "0.1.0",
         "name": "Study",
         "timelines": [{"id": "score", "unit": "quarters", "length": [8, 1]}],
         "groups": [{"id": "g", "members": ["score"]}],
@@ -1075,7 +1075,7 @@ def test_a_named_one_group_manifest_needs_a_selection() -> None:
 
 def test_an_anonymous_bundle_writes_no_id() -> None:
     data = {
-        "timeskeleton": "0.7.0",
+        "timetoshare": "0.1.0",
         "timelines": [{"id": "score", "unit": "quarters", "length": [8, 1]}],
     }
 
@@ -1087,7 +1087,7 @@ def test_an_anonymous_bundle_writes_no_id() -> None:
 
 def test_a_manifest_with_a_name_and_no_id() -> None:
     data = {
-        "timeskeleton": "0.7.0",
+        "timetoshare": "0.1.0",
         "name": "Eroica Variations",
         "timelines": [{"id": "score", "unit": "quarters", "length": [8, 1]}],
     }
@@ -1100,7 +1100,7 @@ def test_a_manifest_with_a_name_and_no_id() -> None:
 
 def test_a_support_policy_key_is_not_read() -> None:
     data = {
-        "timeskeleton": "0.7.0",
+        "timetoshare": "0.1.0",
         "support_policy": "clamp",
         "timelines": [{"id": "score", "unit": "quarters", "length": [8, 1]}],
     }
@@ -1113,7 +1113,7 @@ def test_a_support_policy_key_is_not_read() -> None:
 
 def test_the_manifest_id_is_unique_with_the_timeline_ids() -> None:
     data = {
-        "timeskeleton": "0.7.0",
+        "timetoshare": "0.1.0",
         "id": "score",
         "timelines": [{"id": "score", "unit": "quarters", "length": [8, 1]}],
     }
@@ -1231,12 +1231,12 @@ GROUPED_BANDS = {
 
 ONE_ROOT = {
     "minimal": {
-        "timeskeleton": "0.7.0",
+        "timetoshare": "0.1.0",
         "timelines": [SCORE_MINIMAL],
         "graphical": {"order": ONE_ROOT_BANDS},
     },
     "complete": {
-        "timeskeleton": "0.7.0",
+        "timetoshare": "0.1.0",
         "name": None,
         "meta": {},
         "timelines": [SCORE_COMPLETE],
@@ -1247,13 +1247,13 @@ ONE_ROOT = {
 }
 GROUPED = {
     "minimal": {
-        "timeskeleton": "0.7.0",
+        "timetoshare": "0.1.0",
         "timelines": [PERF_MINIMAL, SCORE_MINIMAL],
         "groups": [{"id": "g", "members": ["part", "perf"]}],
         "graphical": {"order": GROUPED_BANDS},
     },
     "complete": {
-        "timeskeleton": "0.7.0",
+        "timetoshare": "0.1.0",
         "name": None,
         "meta": {},
         "timelines": [PERF_COMPLETE, SCORE_COMPLETE],
@@ -1307,7 +1307,7 @@ def test_a_removed_timeline_takes_its_band_order_along() -> None:
     group.remove_timeline("perf")
 
     assert group.to_dict(minimal=True) == {
-        "timeskeleton": "0.7.0",
+        "timetoshare": "0.1.0",
         "timelines": [SCORE_MINIMAL],
         "groups": [{"id": "g", "members": ["part"]}],
         "graphical": {
@@ -1322,7 +1322,7 @@ def test_a_new_id_on_load_leaves_the_old_band_order_out() -> None:
     )
 
     assert timeline.to_dict(minimal=True) == {
-        "timeskeleton": "0.7.0",
+        "timetoshare": "0.1.0",
         "timelines": [SCORE_MINIMAL | {"id": "edition"}],
         "graphical": {"order": {"part": PART_BANDS}},
     }
@@ -1332,7 +1332,7 @@ def test_a_selected_timeline_keeps_no_graphical() -> None:
     perf = Timeline.from_dict(copy.deepcopy(GROUPED["minimal"]), timeline_id="perf")
 
     assert perf.to_dict(minimal=True) == {
-        "timeskeleton": "0.7.0",
+        "timetoshare": "0.1.0",
         "timelines": [PERF_MINIMAL],
     }
 
@@ -1349,7 +1349,7 @@ def test_a_written_manifest_is_a_json_fixpoint() -> None:
 
 def test_a_length_of_null_reads_as_unknown_and_is_always_written() -> None:
     data = {
-        "timeskeleton": "0.7.0",
+        "timetoshare": "0.1.0",
         "timelines": [{"id": "stream", "unit": "seconds", "length": None}],
     }
 
@@ -1377,7 +1377,7 @@ def _quarters_root(
 ) -> dict[str, Any]:
     """A quarters root of length 12, reading the measure map of *rows* if given."""
     manifest: dict[str, Any] = {
-        "timeskeleton": "0.7.0",
+        "timetoshare": "0.1.0",
         "timelines": [{"id": "score", "unit": "quarters", "length": [12, 1], **keys}],
     }
     if rows is not None:
@@ -1540,7 +1540,7 @@ def test_a_child_beyond_its_parent_is_refused_in_the_validators_words(
     if len(children) == 2:
         root["is_segment_line"] = True
     with pytest.raises(ValueError) as refused:
-        Timeline.from_dict({"timeskeleton": "0.7.0", "timelines": [root]})
+        Timeline.from_dict({"timetoshare": "0.1.0", "timelines": [root]})
     assert str(refused.value) == message
 
 
@@ -1689,7 +1689,7 @@ def test_a_band_id_is_no_override() -> None:
 )
 def test_a_negative_length_is_refused(timeline: dict[str, Any], message: str) -> None:
     with pytest.raises(ValueError) as refused:
-        Timeline.from_dict({"timeskeleton": "0.7.0", "timelines": [timeline]})
+        Timeline.from_dict({"timetoshare": "0.1.0", "timelines": [timeline]})
     assert str(refused.value) == message
     with pytest.raises(ValueError) as refused:
         ContinuousLogicalTimeline(length=Fraction(-12), uid="x")
@@ -1710,7 +1710,7 @@ def test_a_negative_child_offset_is_not_supported_yet(
     reader: str, unit: str, length: Any, offset: Any, spelled: str
 ) -> None:
     data = {
-        "timeskeleton": "0.7.0",
+        "timetoshare": "0.1.0",
         "timelines": [
             {
                 "id": "root",
@@ -1737,7 +1737,7 @@ def test_a_negative_child_offset_is_not_supported_yet(
 
 def test_a_group_made_from_one_timeline_keeps_the_manifests_keys() -> None:
     data = {
-        "timeskeleton": "0.7.0",
+        "timetoshare": "0.1.0",
         "id": "op",
         "name": "Op",
         "meta": {"k": 1},
@@ -1749,7 +1749,7 @@ def test_a_group_made_from_one_timeline_keeps_the_manifests_keys() -> None:
     group = TimelineGroup.from_dict(copy.deepcopy(data), group_id="g")
 
     assert group.to_dict(minimal=True) == {
-        "timeskeleton": "0.7.0",
+        "timetoshare": "0.1.0",
         "meta": {"k": 1},
         "x-top": 1,
         "timelines": [{"id": "r", "unit": "quarters", "length": [4, 1]}],
@@ -1765,7 +1765,7 @@ def test_a_group_made_from_one_timeline_keeps_the_manifests_keys() -> None:
 )
 def test_a_graphical_object_read_is_written_back(reader: Any) -> None:
     data = {
-        "timeskeleton": "0.7.0",
+        "timetoshare": "0.1.0",
         "timelines": [{"id": "r", "unit": "quarters", "length": [4, 1]}],
     }
 
@@ -1778,7 +1778,7 @@ def test_a_graphical_object_read_is_written_back(reader: Any) -> None:
 
 def test_mixed_group_arguments_raise() -> None:
     data = {
-        "timeskeleton": "0.7.0",
+        "timetoshare": "0.1.0",
         "timelines": [{"id": "score", "unit": "quarters", "length": [8, 1]}],
         "groups": [{"id": "g", "name": "G", "members": ["score"]}],
     }

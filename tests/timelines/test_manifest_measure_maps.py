@@ -90,7 +90,7 @@ def test_writing_lifts_a_quarters_timeline_s_measure_map() -> None:
     score.add_measure_map(_bars())
 
     assert score.to_dict(minimal=True) == {
-        "timeskeleton": "0.7.0",
+        "timetoshare": "0.1.0",
         "timelines": [
             {
                 "id": "score",
@@ -189,7 +189,7 @@ def test_add_measure_map_refuses_what_reaches_no_quarters(
 # region Reading
 
 READ_MINIMAL: dict[str, Any] = {
-    "timeskeleton": "0.7.0",
+    "timetoshare": "0.1.0",
     "timelines": [
         {
             "id": "midi",
@@ -256,7 +256,7 @@ def _complete_timeline(
 
 
 READ_COMPLETE: dict[str, Any] = {
-    "timeskeleton": "0.7.0",
+    "timetoshare": "0.1.0",
     "name": None,
     "meta": {},
     "timelines": [
@@ -299,7 +299,7 @@ def test_reading_puts_the_measure_map_back_and_keeps_every_id(form: str) -> None
 
 def _one_root(conversion_maps: list[dict[str, Any]]) -> dict[str, Any]:
     return {
-        "timeskeleton": "0.7.0",
+        "timetoshare": "0.1.0",
         "timelines": [
             {
                 "id": "score",
@@ -432,7 +432,7 @@ def test_timelines_share_an_entry_when_their_measure_maps_are_equal(
 
 def test_an_entry_no_timeline_names_is_kept() -> None:
     manifest = {
-        "timeskeleton": "0.7.0",
+        "timetoshare": "0.1.0",
         "timelines": [{"id": "score", "unit": "quarters", "length": [8, 1]}],
         "measure_maps": [{"id": "spare", "rows": ROWS}],
     }
@@ -474,7 +474,7 @@ def test_a_measure_map_id_is_unique_with_the_manifest_s_ids(
     change: dict[str, Any], message: str
 ) -> None:
     manifest = {
-        "timeskeleton": "0.7.0",
+        "timetoshare": "0.1.0",
         "timelines": [{"id": "score", "unit": "quarters", "length": [8, 1]}],
         **change,
     }

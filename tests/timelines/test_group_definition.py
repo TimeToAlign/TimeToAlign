@@ -217,7 +217,7 @@ def test_group_dict_is_exact() -> None:
     )
 
     assert group.to_dict() == {
-        "timeskeleton": "0.7.0",
+        "timetoshare": "0.1.0",
         "name": None,
         "meta": {},
         "timelines": [image.to_dict()["timelines"][0], score.to_dict()["timelines"][0]],
@@ -237,7 +237,7 @@ def test_group_dict_is_exact() -> None:
         },
     }
     assert group.to_dict(minimal=True) == {
-        "timeskeleton": "0.7.0",
+        "timetoshare": "0.1.0",
         "timelines": [
             {"id": "image", "unit": "pixels", "length": 4800},
             {"id": "score", "unit": "quarters", "length": [16, 1]},
@@ -395,7 +395,7 @@ def _malformed(change: Any) -> dict[str, Any]:
 @pytest.mark.parametrize(
     ("change", "message"),
     [
-        (lambda d: d.pop("timeskeleton"), "not a TimeSkeleton manifest"),
+        (lambda d: d.pop("timetoshare"), "not a TimeToShare manifest"),
         (lambda d: d["groups"][0].pop("members"), r"lacks the key\(s\) \['members'\]"),
         (lambda d: d["groups"][0]["members"].append("Z"), "names member 'Z'"),
         (lambda d: d["groups"][0]["members"].append("A"), "names a member twice"),

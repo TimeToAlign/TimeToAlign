@@ -1,7 +1,7 @@
 """Flow Control Events: Break, Jump and Marker for timeline traversal.
 
 This module provides the three kinds of flow-control element a timeline
-holds, each written in a TimeSkeleton manifest as one element of the
+holds, each written in a TimeToShare manifest as one element of the
 timeline's ``flow_control`` array:
 
 **Break** (a ``flow_marker``): a control event that voids the contiguity at

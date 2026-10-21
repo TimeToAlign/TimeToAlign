@@ -81,7 +81,7 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
     # coordinates.
     _declared_output_number_type: NumberType | None = None
 
-    # The TimeSkeleton map type a class reads and writes as itself. Only the
+    # The TimeToShare map type a class reads and writes as itself. Only the
     # classes of the format's ten abstract types declare one; every other
     # class writes one of them and is never read back as itself.
     _manifest_type: ClassVar[str | None] = None
@@ -373,7 +373,7 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
         return self.then(other)
 
     def _nested_maps(self) -> Sequence[ConversionMap[Any]]:
-        """The maps this map's TimeSkeleton form nests, in the order written."""
+        """The maps this map's TimeToShare form nests, in the order written."""
         return ()
 
     def _map_tree(self) -> Iterator[ConversionMap[Any]]:
@@ -440,7 +440,7 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
     # region Serialization
 
     def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
-        """Return the map's TimeSkeleton form: one of the format's map types.
+        """Return the map's TimeToShare form: one of the format's map types.
 
         Every map is written as one of ten abstract types (``LinearMap``,
         ``TableMap``, ``ConstantMap``, ``PiecewiseMap``, ``ChainMap``,
@@ -462,10 +462,10 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
             minimal: Leave out every key at its default, in nested maps too.
 
         Returns:
-            The map's TimeSkeleton form.
+            The map's TimeToShare form.
 
         Raises:
-            ValueError: If the map has no TimeSkeleton form (a periodic map,
+            ValueError: If the map has no TimeToShare form (a periodic map,
                 a table interpolating to the nearest or the next anchor) or
                 cannot be written losslessly; the message names the map and
                 the reason.
@@ -473,18 +473,18 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
         return self._to_manifest(minimal=minimal, entries=STANDALONE_MEASURE_MAPS)
 
     def _to_manifest(self, *, minimal: bool, entries: MeasureMapIds) -> dict[str, Any]:
-        """Write the map's TimeSkeleton form, measure views naming ids of *entries*.
+        """Write the map's TimeToShare form, measure views naming ids of *entries*.
 
         Raises:
-            ValueError: Always, for a map without a TimeSkeleton form.
+            ValueError: Always, for a map without a TimeToShare form.
         """
-        raise self._no_form("its type has no TimeSkeleton form")
+        raise self._no_form("its type has no TimeToShare form")
 
     def _no_form(self, reason: str) -> ValueError:
         """The error refusing to write this map, naming it and *reason*."""
         return ValueError(
             f"{type(self).__name__} {self._id!r} cannot be written to a "
-            f"TimeSkeleton manifest: {reason}"
+            f"TimeToShare manifest: {reason}"
         )
 
     def _map_object(
@@ -498,7 +498,7 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
         """Write the fields every map shares, then *fields*, then unknown keys.
 
         Args:
-            manifest_type: The TimeSkeleton type written.
+            manifest_type: The TimeToShare type written.
             fields: The type's own fields.
             minimal: Leave out every key at its default.
             defaults: The type's own optional fields and their defaults.
@@ -523,7 +523,7 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
         *,
         measure_maps: Mapping[str, Any] | None = None,
     ) -> ConversionMap[Any]:
-        """Read a map from its TimeSkeleton form.
+        """Read a map from its TimeToShare form.
 
         Dispatches on ``data["type"]``, one of the format's ten map types,
         and builds that type's class: a manifest states the abstract type
@@ -533,7 +533,7 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
         a default; every key it does not write is kept and written back.
 
         Args:
-            data: The map's TimeSkeleton form.
+            data: The map's TimeToShare form.
             measure_maps: The manifest's measure maps by id, which the
                 measure views name.
 

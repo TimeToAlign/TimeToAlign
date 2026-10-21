@@ -261,7 +261,7 @@ class AlignmentBundle(_OpenObject):
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "AlignmentBundle":
-        """Read a bundle from any TimeSkeleton manifest.
+        """Read a bundle from any TimeToShare manifest.
 
         The manifest's ``id`` becomes the bundle's (a manifest without ``id``,
         named or anonymous, gives a bundle whose minted id :meth:`to_dict`
@@ -277,14 +277,14 @@ class AlignmentBundle(_OpenObject):
         object read from the JSON object they were found in, and written back.
 
         Args:
-            data: A TimeSkeleton manifest.
+            data: A TimeToShare manifest.
 
         Returns:
             The rebuilt bundle, without MatchClaims.
 
         Raises:
-            ValueError: If *data* is no TimeSkeleton manifest of version
-                0.7.0 or is malformed: a timeline id occurring twice, a group
+            ValueError: If *data* is no TimeToShare manifest of version
+                0.1.0 or is malformed: a timeline id occurring twice, a group
                 id occurring twice or equal to a timeline id, a member naming
                 no timeline of ``"timelines"``, a group naming one member
                 twice, a member that is an ancestor or descendant of another
@@ -3743,7 +3743,7 @@ class AlignmentBundle(_OpenObject):
         events: bool = False,
         external_references: bool = False,
     ) -> dict[str, Any]:
-        """Write the bundle as a TimeSkeleton manifest.
+        """Write the bundle as a TimeToShare manifest.
 
         The manifest carries the bundle's ``id`` only when one was given
         (a minted id is never written), its ``name`` and ``meta``, every
@@ -3763,7 +3763,7 @@ class AlignmentBundle(_OpenObject):
             external_references: Write every timeline's external references.
 
         Returns:
-            ``{"timeskeleton": "0.7.0", "id"?, "name", "meta", "timelines":
+            ``{"timetoshare": "0.1.0", "id"?, "name", "meta", "timelines":
             [...], "groups": [...], "graphical"?: {"order": {...}, ...}}``.
 
         Examples:

@@ -9,7 +9,7 @@ views read one:
 - FloatingMeasureMap: quarters -> floating measures
 - MeasureBeatMap: quarters -> {measure number, beat}
 
-They are the TimeSkeleton format's measure views, and every measure-derived
+They are the TimeToShare format's measure views, and every measure-derived
 map of the library is written as one of them. The measure holding a position
 is the last measure whose ``qstamp`` lies at or before it; a position before
 the first measure is held by the first, one after the last by the last.

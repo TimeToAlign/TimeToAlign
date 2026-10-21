@@ -37,7 +37,7 @@ def _q(value: Any) -> Coordinate:
 
 def _manifest(flow_control: list[dict[str, Any]], **timeline: Any) -> dict[str, Any]:
     return {
-        "timeskeleton": "0.7.0",
+        "timetoshare": "0.1.0",
         "timelines": [
             {
                 "id": "score",

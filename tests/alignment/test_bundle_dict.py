@@ -152,7 +152,7 @@ def test_bundle_dict_is_exact() -> None:
 
     assert bundle.id == "bundle_1"
     assert bundle.to_dict() == {
-        "timeskeleton": "0.7.0",
+        "timetoshare": "0.1.0",
         "name": "study",
         "meta": {"corpus": "test"},
         "timelines": [
@@ -190,7 +190,7 @@ def test_given_bundle_id_is_written() -> None:
     bundle = AlignmentBundle(id="op35")
 
     assert bundle.to_dict(minimal=True) == {
-        "timeskeleton": "0.7.0",
+        "timetoshare": "0.1.0",
         "id": "op35",
         "timelines": [],
     }
@@ -249,7 +249,7 @@ def test_no_claims_are_written() -> None:
     data = _direct_bundle().to_dict()
 
     assert set(data) == {
-        "timeskeleton",
+        "timetoshare",
         "name",
         "meta",
         "timelines",
@@ -353,7 +353,7 @@ def _malformed(change: Callable[[dict[str, Any]], Any]) -> dict[str, Any]:
 @pytest.mark.parametrize(
     ("change", "message"),
     [
-        (lambda d: d.pop("timeskeleton"), "not a TimeSkeleton manifest"),
+        (lambda d: d.pop("timetoshare"), "not a TimeToShare manifest"),
         (lambda d: d.pop("timelines"), r"lacks the key\(s\) \['timelines'\]"),
         (lambda d: d.update(id=""), "Invalid id ''"),
         (

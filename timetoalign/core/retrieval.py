@@ -449,7 +449,7 @@ def format_coordinates(
 
 
 def coordinate_to_dict(coordinate: Coordinate) -> dict[str, object]:
-    """Serialize one coordinate using the TimeSkeleton representation.
+    """Serialize one coordinate using the TimeToShare representation.
 
     Args:
         coordinate: Coordinate to serialize.
@@ -465,7 +465,7 @@ def coordinate_to_dict(coordinate: Coordinate) -> dict[str, object]:
 
 
 def coordinate_from_dict(entry: Mapping[str, Any]) -> Coordinate:
-    """Restore one coordinate from the TimeSkeleton representation.
+    """Restore one coordinate from the TimeToShare representation.
 
     Args:
         entry: Typed coordinate dictionary.

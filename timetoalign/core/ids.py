@@ -411,7 +411,7 @@ def _plan_admissions(
 class _OpenObject:
     """An object with a dictionary form that keeps the keys it does not read.
 
-    A TimeSkeleton object may carry keys its reader does not know. The
+    A TimeToShare object may carry keys its reader does not know. The
     reader keeps them on the object read from the JSON object they were
     found in (:meth:`_keep_unknown_keys`), and the writer writes them back
     after its own keys (:meth:`_dict_form`). A subclass lists its known keys

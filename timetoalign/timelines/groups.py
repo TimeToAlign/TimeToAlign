@@ -294,7 +294,7 @@ class TimelineGroup(_OpenObject):
         group_id: str | None = None,
         name: str | None = None,
     ) -> Self:
-        """Read a group from a TimeSkeleton manifest.
+        """Read a group from a TimeToShare manifest.
 
         - A manifest of one root timeline and no group makes a group of that
           timeline; *group_id* or *name* (or both) must be given.
@@ -321,7 +321,7 @@ class TimelineGroup(_OpenObject):
         written back.
 
         Args:
-            data: A TimeSkeleton manifest.
+            data: A TimeToShare manifest.
             group_id: The group id to select, or the id the group takes.
             name: The group name to select, or the name the group takes.
 
@@ -329,8 +329,8 @@ class TimelineGroup(_OpenObject):
             The group read.
 
         Raises:
-            ValueError: If *data* is no TimeSkeleton manifest of version
-                0.7.0 or is malformed — a member naming no timeline of the
+            ValueError: If *data* is no TimeToShare manifest of version
+                0.1.0 or is malformed — a member naming no timeline of the
                 manifest, an order that is no permutation of its group's
                 members or names no group or timeline, a member that is an
                 ancestor or descendant of another member, a group id held by
@@ -1877,7 +1877,7 @@ class TimelineGroup(_OpenObject):
         events: bool = False,
         external_references: bool = False,
     ) -> dict[str, Any]:
-        """Write this group as a TimeSkeleton manifest, an anonymous bundle.
+        """Write this group as a TimeToShare manifest, an anonymous bundle.
 
         The group is written with every timeline it needs: ``"timelines"``
         holds the root of each member's tree — a member that is a child
@@ -1896,7 +1896,7 @@ class TimelineGroup(_OpenObject):
             external_references: Write every timeline's external references.
 
         Returns:
-            ``{"timeskeleton": "0.7.0", ..., "timelines": [...], "groups":
+            ``{"timetoshare": "0.1.0", ..., "timelines": [...], "groups":
             [{"id", "name", "meta", "members"}], "graphical": {"order":
             {group id: [...]}, ...}}``.
 

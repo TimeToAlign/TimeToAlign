@@ -516,7 +516,7 @@ class TestSerializedTypeParameters:
         )
         del systems["offset"]
 
-        restored = Timeline.from_dict({"timeskeleton": "0.7.0", "timelines": [systems]})
+        restored = Timeline.from_dict({"timetoshare": "0.1.0", "timelines": [systems]})
         inner_class = SegmentLine[DiscreteGraphicalTimeline]
 
         assert type(restored) is SegmentLine[inner_class]

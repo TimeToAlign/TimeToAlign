@@ -36,7 +36,7 @@ _skeleton_id_generator = IdGenerator(scope="skeleton")
 class TimeSkeleton:
     """One authored temporal structure shared by participating timelines.
 
-    This class is not the TimeSkeleton file format: a TimeSkeleton manifest
+    This class is not the TimeToShare format: a TimeToShare manifest
     is what ``to_dict`` writes and ``from_dict`` reads on
     :class:`~timetoalign.timelines.Timeline`,
     :class:`~timetoalign.timelines.TimelineGroup` and

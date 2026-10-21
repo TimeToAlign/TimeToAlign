@@ -5,7 +5,7 @@ This module provides maps for periodic/cyclic patterns and integer division:
 - FloorMap: Integer floor division (measure numbers, page numbers)
 
 These are reusable building blocks for metrical grids and other cyclic patterns.
-They have no TimeSkeleton form: a timeline holding one cannot be written to a
+They have no TimeToShare form: a timeline holding one cannot be written to a
 manifest.
 """
 

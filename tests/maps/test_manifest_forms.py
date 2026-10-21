@@ -1,4 +1,4 @@
-"""The TimeSkeleton forms of conversion maps (see README, *Manifest forms*).
+"""The TimeToShare forms of conversion maps (see README, *Manifest forms*).
 
 Every library map is written as one of the format's ten abstract types. A
 written map is proved faithful functionally: the map read back converts every
@@ -644,8 +644,8 @@ def test_the_views_answer_as_the_former_measure_maps() -> None:
             TableMap(x_values=[0, 4], y_values=[0, 1], kind="next", uid="m"),
             "the format defines no TableMap of kind 'next'",
         ),
-        (FloorMap(divisor=4, uid="m"), "its type has no TimeSkeleton form"),
-        (RotationMap(period=4, uid="m"), "its type has no TimeSkeleton form"),
+        (FloorMap(divisor=4, uid="m"), "its type has no TimeToShare form"),
+        (RotationMap(period=4, uid="m"), "its type has no TimeToShare form"),
         (
             IntervalToConstantMap(boundaries=[0, 4], values=["a", "b"], uid="m"),
             "a step function of labels needs an end for its last interval (give end=)",
@@ -712,7 +712,7 @@ def test_the_views_answer_as_the_former_measure_maps() -> None:
     ],
 )
 def test_what_has_no_form_is_refused(cmap: ConversionMap[Any], reason: str) -> None:
-    message = f"{type(cmap).__name__} 'm' cannot be written to a TimeSkeleton manifest: {reason}"
+    message = f"{type(cmap).__name__} 'm' cannot be written to a TimeToShare manifest: {reason}"
     with pytest.raises(ValueError) as refused:
         cmap.to_dict()
     assert str(refused.value) == message

@@ -1405,7 +1405,7 @@ between two key spellings to recover an exact ratio.
 
 ### `test_number_json.py` - JSON numbers and coordinates
 
-**Purpose:** Pins the TimeSkeleton JSON forms and their boundary with Arrow
+**Purpose:** Pins the TimeToShare JSON forms and their boundary with Arrow
 storage cells. `number_to_json` and `number_from_json` round-trip each native
 number exactly: an `int` is a JSON integer, a `float` is a JSON number, and a
 `Fraction` is `[numerator, denominator]` with a strictly positive denominator.

@@ -501,7 +501,7 @@ def rational_to_struct(value: Any) -> dict[str, Any]:
 
 
 def number_to_json(value: int | float | Fraction) -> int | float | list[int]:
-    """Encode a Python number using the TimeSkeleton JSON representation.
+    """Encode a Python number using the TimeToShare JSON representation.
 
     Integers and floats retain their JSON scalar forms. Exact fractions use
     their numerator and strictly positive denominator as a two-item list.
@@ -565,7 +565,7 @@ def is_fraction_json(value: object) -> bool:
 def number_from_json(
     data: Any, number_type: NumberType | None = None
 ) -> int | float | Fraction:
-    """Decode one TimeSkeleton JSON number.
+    """Decode one TimeToShare JSON number.
 
     Without *number_type* the JSON form decides: an integer is an ``int``, a
     number with a fractional part or exponent is a ``float``, a pair is a

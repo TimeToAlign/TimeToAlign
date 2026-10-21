@@ -35,7 +35,7 @@ def _lengths(*timelines: Timeline) -> list[Any]:
 
 
 def _manifest(*roots: dict[str, Any]) -> dict[str, Any]:
-    return {"timeskeleton": "0.7.0", "timelines": list(roots)}
+    return {"timetoshare": "0.1.0", "timelines": list(roots)}
 
 
 def _child(

@@ -69,7 +69,7 @@ _QUARTER_KEYS = frozenset(
 def _row_quarters(row: Mapping[str, Any], key: str) -> Fraction | None:
     """Read one quarter-note value of a document row exactly.
 
-    Rows carry the TimeSkeleton JSON number forms only, read by
+    Rows carry the TimeToShare JSON number forms only, read by
     :func:`~timetoalign.core.time.number_from_json`; a JSON float becomes
     its exact binary fraction, never a guessed ratio.
     """

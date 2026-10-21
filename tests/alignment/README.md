@@ -682,7 +682,7 @@ scales to the dense-alignment workload.
 ### What We're Validating
 
 A bundle is its timelines and its groups. Its dictionary form is a
-TimeSkeleton manifest: the bundle's `id` only when one was given, its `name`
+TimeToShare manifest: the bundle's `id` only when one was given, its `name`
 and `meta`, every root timeline once (each the timeline object
 `Timeline.to_dict()` writes, sorted by id), the groups as `Group` objects
 naming their members by id (sorted by id), and every group's member order

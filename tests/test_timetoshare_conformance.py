@@ -1,4 +1,4 @@
-"""Prove the library's manifests against the installed TimeSkeleton package."""
+"""Prove the library's manifests against the installed TimeToShare package."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from typing import Any
 
 import numpy as np
 import pytest
-from timeskeleton import (
+from timetoshare import (
     SchemaValidationError,
     canonical_order,
     complete,
@@ -649,7 +649,7 @@ def _beyond(
 ) -> dict[str, Any]:
     """A manifest of one root holding *children*."""
     return {
-        "timeskeleton": "0.7.0",
+        "timetoshare": "0.1.0",
         "timelines": [
             {"id": "r", "unit": unit, "length": length, "children": children, **keys}
         ],
@@ -745,13 +745,13 @@ def test_int64_boundary() -> None:
     validate(value)
 
 
-def test_library_never_imports_timeskeleton() -> None:
+def test_library_never_imports_timetoshare() -> None:
     """The runtime package remains independent of its test-only schema validator."""
     result = subprocess.run(
         [
             sys.executable,
             "-c",
-            "import sys, timetoalign; print('timeskeleton' in sys.modules)",
+            "import sys, timetoalign; print('timetoshare' in sys.modules)",
         ],
         check=True,
         capture_output=True,

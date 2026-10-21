@@ -190,22 +190,26 @@ to the relevant section of the conceptual model.
 ## E
 
 **element id**
-:   The id that identifies a {{< glossary Timeline >}},
-    {{< glossary ConversionMap >}}, {{< glossary Region >}}, Break,
-    {{< glossary Jump >}} or {{< glossary Marker >}}. It is unique within one
-    timeline tree (a root timeline and all its descendants) across every kind,
-    so the id alone names the element. An id is whatever was given and is kept
-    verbatim: any non-empty string without `/` and without a control
-    character; spaces, colons and dots are allowed. Only an element given no
-    id gets a minted one, `{prefix}_{N}` with `N` the smallest positive
-    integer not yet taken in the tree. The prefix names the kind: `clt`,
-    `dlt`, `cpt`, `dpt`, `cgt` or `dgt` for a timeline (continuous or
-    discrete, logical, physical or graphical), `cmap`, `lmap`, `tmap` or
-    `pmap` for a conversion map, and `region`, `break`, `jump` or `marker`;
-    a loader role leads it (`score:clt_1`). A minted id that
-    collides when its element joins a tree is re-minted; a given id that
-    collides raises. The id identifies, the `name` displays: a name may be
-    absent or repeat, and an id is never derived from it.
+:   The id that identifies an element of a manifest: the manifest's own, a
+    {{< glossary Timeline >}} (root or descendant),
+    {{< glossary TimelineGroup >}}, MeasureMap,
+    {{< glossary ConversionMap >}} at any nesting depth,
+    {{< glossary Region >}}, Break, {{< glossary Jump >}} or
+    {{< glossary Marker >}}. It is unique across the whole manifest and every
+    kind, so the id alone names the element. An id is whatever was given and
+    is kept verbatim: any non-empty string without a control character;
+    spaces, colons, slashes and URIs are allowed. Only an element given no id
+    gets a minted one, `{prefix}_{N}` with `N` the smallest positive integer
+    the manifest does not yet hold. The prefix names the kind: `clt`, `dlt`,
+    `cpt`, `dpt`, `cgt` or `dgt` for a timeline (continuous or discrete,
+    logical, physical or graphical), `group` for a group, `measuremap` for
+    a MeasureMap, `cmap`, `lmap`, `tmap` or `pmap` for a conversion map,
+    `region` for a Region, and `flow_marker` (a Break), `jump_from` (a Jump)
+    or `jump_to` (a Marker); a loader role leads
+    it (`score:clt_1`). When trees are joined into a group or bundle, a
+    minted id that collides is re-minted and a given id that collides raises,
+    for every kind of element. The id identifies, the `name` displays: a name
+    may be absent or repeat, and an id is never derived from it.
 
 **EndInstant**
 :   An {{< glossary Instant >}} marking the end of a

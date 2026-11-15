@@ -133,6 +133,36 @@ matched against anything.
 - **Extrapolation**: Extrapolate (linear), Constant (clamp), Error, NaN.
 - **Inverse**: Inversion by swapping axes (requires monotonicity).
 - **Factory Methods**: `from_tempo_changes` correctly builds maps from MIDI tempo data.
+- **Exact interpolation** (`TestTableMapExact`): when the input and every
+  anchor are exact (`int` or `Fraction`), `linear` interpolation and linear
+  extrapolation compute `y0 + (x - x0)·(y1 - y0)/(x1 - x0)` in `Fraction`
+  arithmetic; any float among them keeps the float path.
+
+**Why these values prove exactness.** A float path can only be told apart
+from an exact one by a result that no binary float represents, so every
+exact probe lands on a non-dyadic ratio, and the assertion checks the type
+as well as the value (`Fraction(5, 4) == 1.25` holds, so value equality
+alone would pass a float path wherever the result happens to be dyadic).
+On anchors `[0, 4] → [0, 2]` given as `Fraction`s, `1/3` must give exactly
+`Fraction(1, 6)` (a float path gives `0.16666666666666666`, which is not
+equal to it), and `5` with `extrapolate="linear"` exactly `Fraction(5, 2)`.
+On three anchors `[0, 3, 7] → [0, 1, 2]` (plain `int`s) the segment chosen
+is checked as well: `1` gives `Fraction(1, 3)` from the first segment, `6`
+gives `Fraction(7, 4)` from the second, `-3` extrapolates the first segment
+to `Fraction(-1)` and `10` the last to `Fraction(11, 4)`; an anchor itself
+answers its ordinate, `3` giving `Fraction(1)`. The map is built without
+units, so the call returns the map's own result; on a `quarters` target the
+public call keeps `Fraction(1, 6)`, since that axis writes fractions.
+
+**Why the float path is pinned as well.** Exactness is a property of the
+operands, never imposed on them: float anchors `[0.0, 4.0] → [0.0, 2.0]` at
+`Fraction(1, 3)` give the float `0.16666666666666666`, exact anchors at the
+float input `0.5` give the float `0.25`, and one float anchor among exact
+ones (`[0, 4] → [0, 2.0]`) keeps the whole map on the float path. The array
+lane is float64 by contract whatever the anchors: `convert_array` on the
+`Fraction` anchors over `[0, 1, 2, 4]` gives a float64 array
+`[0.0, 0.5, 1.0, 2.0]`. The step kinds (`previous`, `next`, `nearest`)
+involve no arithmetic and keep their behaviour, which the tests above pin.
 
 ### `test_interpolation.py` - InterpolationMap
 

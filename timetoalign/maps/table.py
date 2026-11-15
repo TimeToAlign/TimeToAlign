@@ -6,7 +6,10 @@ with interpolation for values between them.
 
 from __future__ import annotations
 
+from bisect import bisect_right
 from collections.abc import Mapping
+from fractions import Fraction
+from numbers import Rational
 from typing import TYPE_CHECKING, Any, ClassVar, Sequence
 
 import numpy as np
@@ -67,6 +70,11 @@ def _table_form(
     )
 
 
+def _is_exact(value: Any) -> bool:
+    """Whether *value* is an exact number: an ``int`` or a ``Fraction``."""
+    return isinstance(value, Rational)
+
+
 class TableMap(ConversionMap[CoordinateValue]):
     """Lookup table with interpolation between anchor points.
 
@@ -97,10 +105,10 @@ class TableMap(ConversionMap[CoordinateValue]):
         >>> tempo_map(720)  # Interpolate: 1.0 sec
         1.0
 
-        >>> # Inverse map
+        >>> # Inverse map, landing on the ticks axis, which writes whole ticks
         >>> inverse = tempo_map.inverse()
         >>> inverse(1.0)
-        720.0
+        720
     """
 
     _id_prefix: ClassVar[str] = "tmap"
@@ -166,6 +174,15 @@ class TableMap(ConversionMap[CoordinateValue]):
         self._x_original = list(x_values)
         self._y_original = list(y_values)
 
+        # Exact anchors (every one an int or a Fraction) interpolate exactly
+        # for an exact input; one float among them keeps the float path.
+        self._exact: tuple[list[Fraction], list[Fraction]] | None = None
+        if all(_is_exact(v) for v in (*self._x_original, *self._y_original)):
+            self._exact = (
+                [Fraction(v) for v in self._x_original],
+                [Fraction(v) for v in self._y_original],
+            )
+
         # Parse enum values
         self._kind = InterpolationKind(kind) if isinstance(kind, str) else kind
         self._extrapolate = (
@@ -226,7 +243,17 @@ class TableMap(ConversionMap[CoordinateValue]):
         return float(np.max(self._y))
 
     def _convert_scalar(self, value: CoordinateValue, **kwargs: Any) -> CoordinateValue:
-        """Convert a single value using interpolation."""
+        """Convert a single value using interpolation.
+
+        Linear interpolation and linear extrapolation are exact when the input
+        and every anchor are exact (``int`` or ``Fraction``): the result is the
+        ``Fraction`` ``y0 + (x - x0) * (y1 - y0) / (x1 - x0)``. A float input
+        or a float anchor computes in floats.
+        """
+        if self._exact is not None and _is_exact(value):
+            exact = self._interpolate_exactly(Fraction(value), *self._exact)
+            if exact is not None:
+                return exact
         x = float(value)
 
         # Handle out of bounds
@@ -266,6 +293,26 @@ class TableMap(ConversionMap[CoordinateValue]):
 
         # Fallback (should not be reached)
         return float(np.interp(x, self._x, self._y))
+
+    def _interpolate_exactly(
+        self, x: Fraction, xs: list[Fraction], ys: list[Fraction]
+    ) -> Fraction | None:
+        """The exact linear result at *x*, or ``None`` where no arithmetic applies.
+
+        ``None`` leaves the step kinds and the policies other than linear
+        extrapolation outside the anchors to the float path, which answers
+        them without arithmetic on the anchors.
+        """
+        inside = xs[0] <= x <= xs[-1]
+        if self._kind != InterpolationKind.linear or (
+            not inside and self._extrapolate != ExtrapolationPolicy.extrapolate
+        ):
+            return None
+        # the segment [xs[i], xs[i + 1]] holding x; outside the anchors, the
+        # first or the last segment
+        i = min(max(bisect_right(xs, x) - 1, 0), len(xs) - 2)
+        x0, x1, y0, y1 = xs[i], xs[i + 1], ys[i], ys[i + 1]
+        return y0 + (x - x0) * (y1 - y0) / (x1 - x0)
 
     def _convert_array(self, values: NDArray[Any], **kwargs: Any) -> NDArray[Any]:
         """Convert an array using vectorized interpolation."""

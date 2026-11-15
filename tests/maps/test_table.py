@@ -1,5 +1,7 @@
 """Tests for table-based maps."""
 
+from fractions import Fraction
+
 import numpy as np
 import pytest
 
@@ -167,3 +169,61 @@ class TestTableMapConvertArray:
         result = m.convert_array(values)
 
         np.testing.assert_array_equal(result, [0.0, 0.0, 10.0, 20.0, 20.0])
+
+
+class TestTableMapExact:
+    """Exact operands interpolate and extrapolate exactly; any float keeps the float path."""
+
+    @staticmethod
+    def _exact_map(**kwargs) -> TableMap:
+        return TableMap(
+            x_values=[Fraction(0), Fraction(4)],
+            y_values=[Fraction(0), Fraction(2)],
+            **kwargs,
+        )
+
+    @staticmethod
+    def _assert_fraction(result, expected: Fraction) -> None:
+        assert type(result) is Fraction
+        assert result == expected
+
+    def test_linear_interpolation_is_exact(self):
+        self._assert_fraction(self._exact_map()(Fraction(1, 3)), Fraction(1, 6))
+
+    def test_linear_extrapolation_is_exact(self):
+        m = self._exact_map(extrapolate="extrapolate")
+        self._assert_fraction(m(5), Fraction(5, 2))
+
+    def test_segments_and_both_ends(self):
+        m = TableMap(x_values=[0, 3, 7], y_values=[0, 1, 2])
+        self._assert_fraction(m(1), Fraction(1, 3))
+        self._assert_fraction(m(6), Fraction(7, 4))
+        self._assert_fraction(m(-3), Fraction(-1))
+        self._assert_fraction(m(10), Fraction(11, 4))
+        self._assert_fraction(m(3), Fraction(1))
+
+    def test_fraction_axis_keeps_the_exact_result(self):
+        m = self._exact_map(source_unit="quarters", target_unit="quarters")
+        self._assert_fraction(m(Fraction(1, 3)), Fraction(1, 6))
+
+    def test_float_anchors_stay_float(self):
+        m = TableMap(x_values=[0.0, 4.0], y_values=[0.0, 2.0])
+        result = m(Fraction(1, 3))
+        assert type(result) is float
+        assert result == 0.16666666666666666
+
+    def test_float_input_stays_float(self):
+        result = self._exact_map()(0.5)
+        assert type(result) is float
+        assert result == 0.25
+
+    def test_one_float_anchor_keeps_the_float_path(self):
+        m = TableMap(x_values=[0, 4], y_values=[0, 2.0])
+        result = m(Fraction(1, 3))
+        assert type(result) is float
+        assert result == 0.16666666666666666
+
+    def test_array_lane_stays_float64(self):
+        result = self._exact_map().convert_array(np.array([0, 1, 2, 4]))
+        assert result.dtype == np.float64
+        np.testing.assert_array_equal(result, [0.0, 0.5, 1.0, 2.0])

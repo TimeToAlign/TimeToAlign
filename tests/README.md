@@ -30,7 +30,7 @@ independently of the library, in Python and JavaScript, so a test that
 passes cannot be the library agreeing with itself.
 
 **The fixtures, both ways.** `fixture_paths()` lists every manifest under
-the package's `fixtures/0.1.0/` (drawings excluded): each fixture in the
+the package's `fixtures/0.2.0/` (drawings excluded): each fixture in the
 complete form and its minimal twin `<name>.minimal.json` beside it. The
 pairing is exact, every fixture has its twin and every twin its fixture,
 and the fixtures lie in exactly the three directories a reader is named

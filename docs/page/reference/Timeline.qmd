@@ -165,7 +165,7 @@ timelines.Timeline.add_child(
     allow_expansion=False,
     use_conversion_map=None,
     *,
-    locked=True,
+    locked=None,
 )
 ```
 
@@ -174,7 +174,12 @@ Embed a child timeline at the specified offset.
 The child timeline is locked once added unless ``locked=False``, which
 leaves its own state as it is. An unlocked child may change its
 length, but only within this timeline's known end: this timeline
-never grows because a child grew.
+never grows because a child grew. A segment of a segment line is
+never locked: the line's lock governs it, and the segment's own lock
+is lifted when it joins. A segment line is locked like any child,
+whether it becomes a child or a segment; unlocking it is not
+supported yet, so ``locked=False`` is refused for a segment line that
+is unlocked, and accepted (asking for nothing) for one already locked.
 Parent-child coordinate conversion uses exact offset arithmetic.
 
 The child's whole subtree joins this timeline's manifest, in which
@@ -204,14 +209,14 @@ receives a minted id.
 | offset             | [CoordinateSpec](`timetoalign.core.CoordinateSpec`)                   | The start coordinate on this timeline, in the **parent's** unit. When ``use_conversion_map`` is set, the offset must already be expressed in the parent's unit (e.g. samples).                                                                                                                                                                                                                                  | _required_ |
 | allow_expansion    | [bool](`bool`)                                                        | If True, expand this timeline if needed.                                                                                                                                                                                                                                                                                                                                                                        | `False`    |
 | use_conversion_map | [ConversionMapsSpec](`timetoalign.core.timestamp.ConversionMapsSpec`) | Conversion map specification for unit conversion. Accepts the same formats as the ``conversion_maps`` parameter in timestamp functions: - ``None`` (default): No conversion; units must match. - ``True``: Auto-select a parent C-Map whose target unit   matches the child's unit. - ``str``: Look up by C-Map ID or target unit name. - ``TimeUnit``: Find by target unit. - ``ConversionMap``: Use directly. | `None`     |
-| locked             | [bool](`bool`)                                                        | Whether to lock the child (the default). ``False`` keeps the child's own state: an unlocked child stays unlocked, a locked one stays locked.                                                                                                                                                                                                                                                                    | `True`     |
+| locked             | [bool](`bool`) \| None                                                | Whether to lock the child. ``None`` (the default) locks every child but a plain segment, which is never locked. ``False`` keeps the child's own state: an unlocked child stays unlocked, a locked one stays locked; it is refused for an unlocked segment line.                                                                                                                                                 | `None`     |
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-|--------|----------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [TypeError](`TypeError`)   | If child is not a Timeline.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-|        | [ValueError](`ValueError`) | If units don't match (and no conversion map given), the offset is negative, the child is already a child of this timeline, an id given in the child's subtree is already held in this manifest, or this timeline is locked and the child would end beyond its length without ``allow_expansion``. An unlocked timeline expands to fit the child instead, provided its own parent contains its new end. A child of unknown length has no end, so only its offset must fit; a parent of unknown length has no end to exceed, unless it is a segment, which ends at its successor's offset. |
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+|--------|----------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [TypeError](`TypeError`)   | If child is not a Timeline.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+|        | [ValueError](`ValueError`) | If units don't match (and no conversion map given), the offset is negative (not supported yet), the child is already a child of this timeline, ``locked=True`` asks to lock a plain segment, ``locked=False`` asks to leave a segment line unlocked, an id given in the child's subtree is already held in this manifest, or this timeline is locked and the child would end beyond its length without ``allow_expansion``. An unlocked timeline expands to fit the child instead, provided its own parent contains its new end. A child of unknown length has no end, so only its offset must fit; a parent of unknown length has no end to exceed, unless it is a segment, which ends at its successor's offset. |
 
 ### add_conversion_map { #timetoalign.timelines.Timeline.add_conversion_map }
 
@@ -373,16 +378,25 @@ FlowMap(default: 5 sections)
 ### add_measure_map { #timetoalign.timelines.Timeline.add_measure_map }
 
 ```python
-timelines.Timeline.add_measure_map(measure_map)
+timelines.Timeline.add_measure_map(measure_map, *, to_quarters=None)
 ```
 
 Attach the timeline's single authored measure map.
 
+A measure map's positions are quarters. On a quarters axis the map is
+read as it is; on a ``whole_notes`` axis through the ``LinearMap``
+that multiplies by 4, unless *to_quarters* gives another; on a ticks
+axis through *to_quarters*, which says how many ticks a quarter
+holds. The timeline holds the map in a :class:`MeasureRecordMap`,
+chained after that ``LinearMap`` on an axis other than quarters,
+which its manifest writes among the conversion maps.
+
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name        | Type                                                       | Description                            | Default    |
-|-------------|------------------------------------------------------------|----------------------------------------|------------|
-| measure_map | [MeasureMap](`timetoalign.timelines.structure.MeasureMap`) | Immutable measure structure to attach. | _required_ |
+| Name        | Type                                                       | Description                                                                                  | Default    |
+|-------------|------------------------------------------------------------|----------------------------------------------------------------------------------------------|------------|
+| measure_map | [MeasureMap](`timetoalign.timelines.structure.MeasureMap`) | Immutable measure structure to attach.                                                       | _required_ |
+| to_quarters | [LinearMap](`timetoalign.maps.LinearMap`) \| None          | The ``LinearMap`` from this timeline's unit to quarters, on an axis in whole notes or ticks. | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -392,9 +406,9 @@ Attach the timeline's single authored measure map.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                |
-|--------|----------------------------|----------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If the timeline is not on the quarter-note axis, on which every measure map is anchored, or already carries a measure map. |
+| Name   | Type                       | Description                                                                                                                                                                                                                               |
+|--------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the timeline already carries a measure map, its unit is none of quarters, whole notes and ticks, a ticks timeline is given no *to_quarters*, or *to_quarters* is given on a quarters axis or does not lead from this unit to quarters. |
 
 ### add_metric_hierarchy { #timetoalign.timelines.Timeline.add_metric_hierarchy }
 
@@ -475,7 +489,8 @@ end-to-end and expand this timeline. Because the child
 is a fresh, unlocked timeline, its identity may be set here: *uid*
 becomes the child's ID (the key under which it is stored and
 retrieved) and *name* its human-readable name — both applied before
-the child is locked by :meth:`add_child`.
+:meth:`add_child` embeds it (locking it unless it is a plain segment
+of a segment line).
 
 #### Parameters {.doc-section .doc-section-parameters}
 
@@ -1544,9 +1559,10 @@ The class comes from the unit (each unit belongs to exactly one
 class) and ``is_segment_line``. Every optional key may be left out
 and reads as its default; a ``number_type`` left out is the unit's
 own (``int`` for ticks, samples, frames and pixels, ``fraction`` for
-quarters and whole_note, ``float`` otherwise). A value on the
-timeline's own axis must be represented as its number type selects;
-a ``length`` of ``null`` reads as None. A root's ``offset`` is kept
+quarters and whole_notes, ``float`` otherwise). A value on the
+timeline's own axis is read as its number type decides, whatever its
+lexical form (``2.0`` on an ``int`` axis is 2, ``[1, 8.0]`` on a
+``fraction`` axis is 1/8); a ``length`` of ``null`` reads as None. A root's ``offset`` is kept
 as :attr:`root_offset`. Keys the library does not know are kept on
 the object read from the JSON object they were found in, and written
 back.
@@ -1555,7 +1571,7 @@ back.
 
 | Name        | Type                                                | Description                                                                                                            | Default    |
 |-------------|-----------------------------------------------------|------------------------------------------------------------------------------------------------------------------------|------------|
-| data        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | A TimeToShare manifest.                                                                                               | _required_ |
+| data        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | A TimeToShare manifest.                                                                                                | _required_ |
 | timeline_id | [str](`str`) \| None                                | The id to select, or, when no timeline has it and the manifest holds one root and no group, the id the root takes.     | `None`     |
 | name        | [str](`str`) \| None                                | The name to select, or, when no timeline has it and the manifest holds one root and no group, the name the root takes. | `None`     |
 
@@ -1567,9 +1583,9 @@ back.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                     |
-|--------|----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If *data* is no TimeToShare manifest of version 0.1.0, is malformed, holds a value represented otherwise than its axis selects, if the selection matches no timeline or several, or if the id the root would take is already held in the manifest; the message names the problem, or the manifest's timelines. |
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                    |
+|--------|----------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If *data* is no TimeToShare manifest of version 0.2.0, is malformed, holds a value represented otherwise than its axis selects, if the selection matches no timeline or several, or if the id the root would take is already held in the manifest; the message names the problem, or the manifest's timelines. |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -1577,7 +1593,7 @@ back.
 >>> from timetoalign.timelines import Timeline
 >>> piece = Timeline.from_dict(
 ...     {
-...         "timetoshare": "0.1.0",
+...         "timetoshare": "0.2.0",
 ...         "timelines": [{"id": "piece", "unit": "quarters", "length": [32, 1]}],
 ...     }
 ... )
@@ -2794,7 +2810,14 @@ The timeline enters the state ``locked=True`` gives at construction:
 content and children must fit its length, and appending refuses. A
 root that grows by appending, such as a segment line, is locked this
 way once built. Locking a locked timeline changes nothing. A lock
-cannot be lifted.
+cannot be lifted. A segment of a segment line is never locked: its
+line's lock governs it.
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                   |
+|--------|----------------------------|---------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If this timeline is a segment that is no segment line itself. |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -2904,12 +2927,18 @@ timelines.Timeline.to_dict(
 
 Write a TimeToShare manifest holding this timeline as its one root.
 
-The timeline object is the timeline's complete structure: its axis,
-children, conversion maps, regions, measure map, metric hierarchy
-and flow control. The library's class is not written: the unit
-decides it. A value on the timeline's own axis — ``length``, a
-child's ``offset``, region ``start``/``end``, break and marker
-``coordinate``, jump ``from_coordinate``/``to_coordinate`` — is
+The timeline object is the timeline's structure: its axis, children,
+conversion maps, regions and flow control. Its measure map is a
+``MeasureRecordMap`` among the conversion maps (chained after a
+``LinearMap`` to quarters on an axis in whole notes or ticks) naming
+an entry of the manifest's ``measure_maps``, which also holds every
+measure map a measure view names; equal measure maps share one entry.
+The metric hierarchy has no manifest form and is not written. Every
+conversion map is written as one of the format's map types (see
+:meth:`ConversionMap.to_dict <timetoalign.maps.ConversionMap.to_dict>`).
+The library's class is not written: the unit decides it. A value on
+the timeline's own axis — ``length``, a child's ``offset``, region
+``start``/``end``, a flow-control element's ``coordinate`` — is
 written bare, represented as the axis's number type selects (``8``,
 ``8.0``, ``[8, 1]``); a ``length`` of None is written ``null``.
 ``"events"`` and ``"external_references"`` are written only on
@@ -2925,9 +2954,11 @@ read from a manifest as a whole writes that manifest's ``id``,
 Collections are written in one canonical order, independent of the
 order in which their content was added, so equal timelines give equal
 JSON text: ``children`` by offset, then id; ``conversion_maps`` by id;
-``regions`` by start, then end, then id; and in ``flow_control``
-``breaks`` and ``markers`` by coordinate, ``jumps`` by from and then
-to coordinate, each then by id. Values compare exactly and ids by
+``regions`` by start, then end, then id; ``flow_control`` (breaks,
+markers and jumps in one array, see
+:meth:`FlowControlRegistry.to_dict
+<timetoalign.timelines.flowcontrol.FlowControlRegistry.to_dict>`) by
+coordinate, then id; ``measure_maps`` by id. Values compare exactly and ids by
 Unicode code point. The timeline's own storage is not reordered, and
 :meth:`from_dict` accepts any order.
 
@@ -2941,10 +2972,16 @@ Unicode code point. The timeline's own storage is not reordered, and
 
 #### Returns {.doc-section .doc-section-returns}
 
-| Name   | Type                                                | Description                                                   |
-|--------|-----------------------------------------------------|---------------------------------------------------------------|
-|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | A JSON-serializable manifest ``{"timetoshare": "0.1.0", ..., |
-|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | "timelines": [timeline]}``.                                   |
+| Name   | Type                                                | Description                                                  |
+|--------|-----------------------------------------------------|--------------------------------------------------------------|
+|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | A JSON-serializable manifest ``{"timetoshare": "0.2.0", ..., |
+|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | "timelines": [timeline]}``.                                  |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                                                                                                                                 |
+|--------|----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If a conversion map has no TimeToShare form or cannot be written losslessly, a jump cannot name the marker it lands on, or a measure map's given id is held by another measure map or by a timeline, group or the manifest. |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -2953,7 +2990,7 @@ Unicode code point. The timeline's own storage is not reordered, and
 >>> from timetoalign.timelines import ContinuousLogicalTimeline
 >>> score = ContinuousLogicalTimeline(length=Fraction(32), uid="piece")
 >>> score.to_dict(minimal=True)
-{'timetoshare': '0.1.0', 'timelines': [{'id': 'piece', 'unit': 'quarters', 'length': [32, 1]}]}
+{'timetoshare': '0.2.0', 'timelines': [{'id': 'piece', 'unit': 'quarters', 'length': [32, 1]}]}
 ```
 
 ### to_typed { #timetoalign.timelines.Timeline.to_typed }
@@ -3057,7 +3094,7 @@ TimelineGroup instead of parent-child nesting.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                               |
-|--------|----------------------------|---------------------------------------------------------------------------|
-|        | [TypeError](`TypeError`)   | If child is not a Timeline.                                               |
-|        | [ValueError](`ValueError`) | If units don't match or the timeline already is a child of this timeline. |
+| Name   | Type                       | Description                                                                                                                    |
+|--------|----------------------------|--------------------------------------------------------------------------------------------------------------------------------|
+|        | [TypeError](`TypeError`)   | If child is not a Timeline.                                                                                                    |
+|        | [ValueError](`ValueError`) | If units don't match, the timeline already is a child of this timeline, or the offset is negative, which is not supported yet. |

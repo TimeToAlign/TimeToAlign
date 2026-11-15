@@ -450,7 +450,7 @@ class TimelineGroup(_IdScope, _OpenObject):
 
         Raises:
             ValueError: If *data* is no TimeToShare manifest of version
-                0.1.0 or is malformed — a member naming no timeline of the
+                0.2.0 or is malformed — a member naming no timeline of the
                 manifest, an order that is no permutation of its group's
                 members or names no group or timeline, a member that is an
                 ancestor or descendant of another member, an id held twice
@@ -2066,7 +2066,7 @@ class TimelineGroup(_IdScope, _OpenObject):
             external_references: Write every timeline's external references.
 
         Returns:
-            ``{"timetoshare": "0.1.0", ..., "timelines": [...], "groups":
+            ``{"timetoshare": "0.2.0", ..., "timelines": [...], "groups":
             [{"id", "name", "meta", "members"}], "graphical": {"order":
             {group id: [...]}, ...}}``.
 

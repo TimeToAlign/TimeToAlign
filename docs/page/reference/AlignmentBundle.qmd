@@ -141,9 +141,9 @@ several groups.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                                                                                                          |
-|--------|----------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If the group's given ID is already held in the bundle (a minted one is minted again instead), or if a given id of a member's manifest tree is held by another timeline of the bundle (a minted id held there is minted again instead) or by a group. |
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                |
+|--------|----------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the group's given ID is already held in the bundle (a minted one is minted again instead), or if a given id of a member's manifest tree is held by another element of the bundle's trees (a minted id held there is minted again instead), by a group or by the bundle. |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -260,10 +260,10 @@ bundle, grouped or not, joins a further group through
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                   |
-|--------|----------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If the timeline is already in the bundle while no group is requested, or already in the group it would join; if ``grouped_with`` names a timeline of several groups; if a given id of its manifest tree — its own, its root's or any descendant's — is held by another timeline of the bundle (a minted id held there is minted again instead) or by a group. |
-|        | [KeyError](`KeyError`)     | If grouped_with references a non-existent timeline.                                                                                                                                                                                                                                                                                                           |
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                       |
+|--------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the timeline is already in the bundle while no group is requested, or already in the group it would join; if ``grouped_with`` names a timeline of several groups; if a given id of its manifest tree — of any timeline, conversion map, region or flow-control element of it — is held by another element of the bundle's trees (a minted id held there is minted again instead), by a group or by the bundle. |
+|        | [KeyError](`KeyError`)     | If grouped_with references a non-existent timeline.                                                                                                                                                                                                                                                                                                                                                               |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -497,8 +497,8 @@ object read from the JSON object they were found in, and written back.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name   | Type                                                | Description              | Default    |
-|--------|-----------------------------------------------------|--------------------------|------------|
+| Name   | Type                                                | Description             | Default    |
+|--------|-----------------------------------------------------|-------------------------|------------|
 | data   | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | A TimeToShare manifest. | _required_ |
 
 #### Returns {.doc-section .doc-section-returns}
@@ -509,9 +509,9 @@ object read from the JSON object they were found in, and written back.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-|--------|----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If *data* is no TimeToShare manifest of version 0.1.0 or is malformed: a timeline id occurring twice, a group id occurring twice or equal to a timeline id, a member naming no timeline of ``"timelines"``, a group naming one member twice, a member that is an ancestor or descendant of another member of its group, an order that is no permutation of its group's members or names no group or timeline. The message names the problem. |
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+|--------|----------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If *data* is no TimeToShare manifest of version 0.2.0 or is malformed: a timeline id occurring twice, a group id occurring twice or equal to a timeline id, a member naming no timeline of ``"timelines"``, a group naming one member twice, a member that is an ancestor or descendant of another member of its group, an order that is no permutation of its group's members or names no group or timeline. The message names the problem. |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -1419,7 +1419,7 @@ support policy is a setting of the bundle, not part of the manifest.
 
 | Name   | Type                                                | Description                                                     |
 |--------|-----------------------------------------------------|-----------------------------------------------------------------|
-|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | ``{"timetoshare": "0.1.0", "id"?, "name", "meta", "timelines": |
+|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | ``{"timetoshare": "0.2.0", "id"?, "name", "meta", "timelines":  |
 |        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | [...], "groups": [...], "graphical"?: {"order": {...}, ...}}``. |
 
 #### Examples {.doc-section .doc-section-examples}

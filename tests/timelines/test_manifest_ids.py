@@ -418,7 +418,7 @@ def _root_pair(
 ) -> dict[str, Any]:
     """A manifest of two quarters roots ``score`` and ``perf`` of length 16."""
     return {
-        "timetoshare": "0.1.0",
+        "timetoshare": "0.2.0",
         **keys,
         "timelines": [
             {"id": "score", "unit": "quarters", "length": [16, 1], **score},
@@ -563,7 +563,7 @@ def test_an_id_held_twice_in_a_manifest_is_refused(
 ) -> None:
     element_id, first, second = holders
     for root in data["timelines"]:
-        alone = {"timetoshare": "0.1.0", "timelines": [root]}
+        alone = {"timetoshare": "0.2.0", "timelines": [root]}
         assert Timeline.from_dict(alone).id == root["id"]
     with pytest.raises(ValueError) as refused:
         AlignmentBundle.from_dict(data)

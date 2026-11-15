@@ -152,7 +152,7 @@ def test_bundle_dict_is_exact() -> None:
 
     assert bundle.id == "bundle_1"
     assert bundle.to_dict() == {
-        "timetoshare": "0.1.0",
+        "timetoshare": "0.2.0",
         "name": "study",
         "meta": {"corpus": "test"},
         "timelines": [
@@ -190,7 +190,7 @@ def test_given_bundle_id_is_written() -> None:
     bundle = AlignmentBundle(id="op35")
 
     assert bundle.to_dict(minimal=True) == {
-        "timetoshare": "0.1.0",
+        "timetoshare": "0.2.0",
         "id": "op35",
         "timelines": [],
     }

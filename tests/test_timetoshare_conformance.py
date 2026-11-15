@@ -655,7 +655,7 @@ def _beyond(
 ) -> dict[str, Any]:
     """A manifest of one root holding *children*."""
     return {
-        "timetoshare": "0.1.0",
+        "timetoshare": "0.2.0",
         "timelines": [
             {"id": "r", "unit": unit, "length": length, "children": children, **keys}
         ],

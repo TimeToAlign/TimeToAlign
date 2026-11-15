@@ -1537,7 +1537,7 @@ class Timeline(
                 ``{"uri": ..., "kind": ...}`` dicts), even when it is empty.
 
         Returns:
-            A JSON-serializable manifest ``{"timetoshare": "0.1.0", ...,
+            A JSON-serializable manifest ``{"timetoshare": "0.2.0", ...,
             "timelines": [timeline]}``.
 
         Raises:
@@ -1551,7 +1551,7 @@ class Timeline(
             >>> from timetoalign.timelines import ContinuousLogicalTimeline
             >>> score = ContinuousLogicalTimeline(length=Fraction(32), uid="piece")
             >>> score.to_dict(minimal=True)
-            {'timetoshare': '0.1.0', 'timelines': [{'id': 'piece', 'unit': 'quarters', \
+            {'timetoshare': '0.2.0', 'timelines': [{'id': 'piece', 'unit': 'quarters', \
 'length': [32, 1]}]}
         """
         manifest = self._manifest if self._manifest is not None else Manifest()
@@ -1718,7 +1718,7 @@ class Timeline(
 
         Raises:
             ValueError: If *data* is no TimeToShare manifest of version
-                0.1.0, is malformed, holds a value represented otherwise than
+                0.2.0, is malformed, holds a value represented otherwise than
                 its axis selects, if the selection matches no timeline or
                 several, or if the id the root would take is already held in
                 the manifest; the message names the problem, or the
@@ -1728,7 +1728,7 @@ class Timeline(
             >>> from timetoalign.timelines import Timeline
             >>> piece = Timeline.from_dict(
             ...     {
-            ...         "timetoshare": "0.1.0",
+            ...         "timetoshare": "0.2.0",
             ...         "timelines": [{"id": "piece", "unit": "quarters", "length": [32, 1]}],
             ...     }
             ... )

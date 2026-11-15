@@ -287,7 +287,7 @@ class AlignmentBundle(_IdScope, _OpenObject):
 
         Raises:
             ValueError: If *data* is no TimeToShare manifest of version
-                0.1.0 or is malformed: a timeline id occurring twice, a group
+                0.2.0 or is malformed: a timeline id occurring twice, a group
                 id occurring twice or equal to a timeline id, a member naming
                 no timeline of ``"timelines"``, a group naming one member
                 twice, a member that is an ancestor or descendant of another
@@ -3765,7 +3765,7 @@ class AlignmentBundle(_IdScope, _OpenObject):
             external_references: Write every timeline's external references.
 
         Returns:
-            ``{"timetoshare": "0.1.0", "id"?, "name", "meta", "timelines":
+            ``{"timetoshare": "0.2.0", "id"?, "name", "meta", "timelines":
             [...], "groups": [...], "graphical"?: {"order": {...}, ...}}``.
 
         Examples:

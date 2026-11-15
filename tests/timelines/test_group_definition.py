@@ -217,7 +217,7 @@ def test_group_dict_is_exact() -> None:
     )
 
     assert group.to_dict() == {
-        "timetoshare": "0.1.0",
+        "timetoshare": "0.2.0",
         "name": None,
         "meta": {},
         "timelines": [image.to_dict()["timelines"][0], score.to_dict()["timelines"][0]],
@@ -237,7 +237,7 @@ def test_group_dict_is_exact() -> None:
         },
     }
     assert group.to_dict(minimal=True) == {
-        "timetoshare": "0.1.0",
+        "timetoshare": "0.2.0",
         "timelines": [
             {"id": "image", "unit": "pixels", "length": 4800},
             {"id": "score", "unit": "quarters", "length": [16, 1]},

@@ -41,7 +41,7 @@ if TYPE_CHECKING:
     from .base import Timeline
     from .structure import MeasureMap
 
-TIMETOSHARE_VERSION = "0.1.0"
+TIMETOSHARE_VERSION = "0.2.0"
 """The TimeToShare version the library reads and writes."""
 
 _STYLING_DEFAULTS: dict[str, Any] = {"styles": {}, "statements": []}

@@ -210,15 +210,15 @@ structure should be partitioned.
 ### Manifests (`test_manifest.py`)
 
 `Timeline`, `TimelineGroup` and `AlignmentBundle` write and read one shape of
-TimeToShare manifest: `{"timetoshare": "0.1.0", "timelines": [...]}` with an
+TimeToShare manifest: `{"timetoshare": "0.2.0", "timelines": [...]}` with an
 optional `id`, `name`, `meta`, `groups` and `graphical`. A reader that only
 reads what its own writer produced proves nothing about the format, so the
 tests read manifests written by hand from the format's rules, and compare what
 the library writes back against the same literal text.
 
 - **The version marker.** Without `timetoshare` each reader raises exactly
-  `not a TimeToShare manifest`; `"timetoshare": "0.2.0"` raises a message
-  naming both `'0.2.0'` and `0.1.0`. Nothing else is read first, so the
+  `not a TimeToShare manifest`; `"timetoshare": "0.1.0"` raises a message
+  naming both `'0.1.0'` and `0.2.0`. Nothing else is read first, so the
   refusal cannot depend on the rest of the content.
 - **Defaults are supplied.** A minimal manifest (only `id`, `unit` and
   `length` per timeline, only `id` and `coordinate` per marker, and so on)

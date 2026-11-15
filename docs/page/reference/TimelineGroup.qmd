@@ -98,13 +98,21 @@ A member's 0 coincides with every other member's 0 and its length
 with every other member's length. To let only part of a timeline
 participate, add the child of that timeline covering the part.
 
-Every timeline id in the newcomer's manifest tree (its root and all
-that root's descendants) must be free in the group's trees.
+Every id in the newcomer's manifest tree (its root and all that
+root's descendants, with their maps, regions and flow-control
+elements) must be free in the group's trees: the group's members
+share one manifest, in which every id is unique. While the group
+lives, an element added to a member's tree takes its id in that
+manifest too. A bundle holding the group holds every member, so the
+newcomer joins each bundle holding the group as well, its ids free
+in the bundle's manifest too.
 
 A newcomer that is an ancestor or a descendant of a member is
 refused: a child sits at its offset inside its parent, so the two
 cannot share one start and end. Every check runs before anything
 changes, so a refused newcomer is left as it was.
+
+A segment line is locked when it joins, as when it becomes a child.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
@@ -114,9 +122,9 @@ changes, so a refused newcomer is left as it was.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                        |
-|--------|----------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If the timeline is already a member; if it is nested with a member; or if a given id of its tree — its own, its root's or any descendant's — is held by another timeline of the group's trees or is the group's given id (a minted id held there is minted again instead, and a minted group id that a newcomer's given id takes is minted again). |
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                       |
+|--------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the timeline is already a member; if it is nested with a member; or if a given id of its tree — of any timeline, conversion map, region or flow-control element of it — is held by an element of the group's trees, is the group's given id or is held in a bundle holding the group (a minted id held there is minted again instead, and a minted group id that a newcomer's given id takes is minted again). |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -294,7 +302,7 @@ written back.
 
 | Name     | Type                                                | Description                                            | Default    |
 |----------|-----------------------------------------------------|--------------------------------------------------------|------------|
-| data     | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | A TimeToShare manifest.                               | _required_ |
+| data     | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | A TimeToShare manifest.                                | _required_ |
 | group_id | [str](`str`) \| None                                | The group id to select, or the id the group takes.     | `None`     |
 | name     | [str](`str`) \| None                                | The group name to select, or the name the group takes. | `None`     |
 
@@ -306,9 +314,9 @@ written back.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                               |
-|--------|----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If *data* is no TimeToShare manifest of version 0.1.0 or is malformed — a member naming no timeline of the manifest, an order that is no permutation of its group's members or names no group or timeline, a member that is an ancestor or descendant of another member, a group id held by a timeline or by another group — or if the selection matches no group or several; the message names the problem, or the manifest's groups. |
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+|--------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If *data* is no TimeToShare manifest of version 0.2.0 or is malformed — a member naming no timeline of the manifest, an order that is no permutation of its group's members or names no group or timeline, a member that is an ancestor or descendant of another member, an id held twice anywhere in the manifest —, if a *group_id* the group would take is already held in the manifest, or if the selection matches no group or several; the message names the problem, or the manifest's groups. |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -1006,11 +1014,11 @@ and the band order it held of every timeline written, unchanged.
 
 #### Returns {.doc-section .doc-section-returns}
 
-| Name   | Type                                                | Description                                                    |
-|--------|-----------------------------------------------------|----------------------------------------------------------------|
-|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | ``{"timetoshare": "0.1.0", ..., "timelines": [...], "groups": |
-|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | [{"id", "name", "meta", "members"}], "graphical": {"order":    |
-|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | {group id: [...]}, ...}}``.                                    |
+| Name   | Type                                                | Description                                                   |
+|--------|-----------------------------------------------------|---------------------------------------------------------------|
+|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | ``{"timetoshare": "0.2.0", ..., "timelines": [...], "groups": |
+|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | [{"id", "name", "meta", "members"}], "graphical": {"order":   |
+|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | {group id: [...]}, ...}}``.                                   |
 
 #### Examples {.doc-section .doc-section-examples}
 

@@ -114,7 +114,7 @@ score
 # %% [markdown]
 # `to_dict()` writes the **complete form**: every key the format defines,
 # each written even when it holds its default (`null`, `{}`, `[]`). The
-# manifest opens with the version marker `"timetoshare": "0.1.0"`; its
+# manifest opens with the version marker `"timetoshare": "0.2.0"`; its
 # `timelines` array holds the score as its one root.
 #
 # A value on the timeline's own axis (its `length`, a region's `start` and
@@ -163,7 +163,7 @@ from_minimal = Timeline.from_dict(score_minimal)
 
 # %%
 smallest = {
-    "timetoshare": "0.1.0",
+    "timetoshare": "0.2.0",
     "timelines": [{"id": "piece", "unit": "quarters", "length": [32, 1]}],
 }
 piece = Timeline.from_dict(smallest, name="Full score")
@@ -178,7 +178,7 @@ piece.id, piece.name, piece.length
 try:
     Timeline.from_dict(
         {
-            "timetoshare": "0.1.0",
+            "timetoshare": "0.2.0",
             "timelines": [{"id": "piece", "unit": "quarters", "length": 32}],
         }
     )
@@ -407,7 +407,7 @@ TimelineGroup.from_dict(smallest, name="Piece alone").timeline_ids
 
 # %%
 annotated = {
-    "timetoshare": "0.1.0",
+    "timetoshare": "0.2.0",
     "editor": {"zoom": 2.5},
     "timelines": [
         {

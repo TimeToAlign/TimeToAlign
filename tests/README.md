@@ -71,17 +71,21 @@ and no group, `TimelineGroup.from_dict` for one anonymous group, otherwise
 every manifest, and each must raise `ValueError`. A reader that accepted a
 manifest the validators refuse would let an invalid document through one of
 two doors. The cases are listed from the package, not copied, so a case
-added there is covered here without an edit. The two exceptions are the
+added there is covered here without an edit. The three exceptions are the
 rules the library leaves to the validators because it keeps what they
 check as given: the rules about `graphical.statements` (selectors with
 their addresses, and declarations), which the library never interprets,
-and the rules about
+the rules about
 the entries of a band order (a `graphical.order` entry keyed by a
-timeline), which the library writes back with its timeline unchecked.
-Those cases are listed by name in the test with that reason, and the test
-fails if a listed case is refused by the library or no longer exists, so
-the list cannot outgrow the truth; each band-order case is also written
-back by `AlignmentBundle.from_dict` with its `graphical.order` unchanged.
+timeline), which the library writes back with its timeline unchecked,
+and the rules about the named timestamps of `graphical.timestamps` (the
+timeline each names, its coordinate and its ID), which the library keeps
+unread. Those cases are listed by name in the test with that reason, and
+the test fails if a listed case is refused by the library or no longer
+exists, so the list cannot outgrow the truth; each band-order case is also
+written back by `AlignmentBundle.from_dict` with its `graphical.order`
+unchanged, and each named-timestamp case with its `graphical.timestamps`
+unchanged.
 
 **The shared warning cases.** `warning_paths()` lists manifests carrying
 unknown keys at many depths, each with the `unknown_keys` the validators

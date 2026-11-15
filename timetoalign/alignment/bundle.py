@@ -159,8 +159,8 @@ class AlignmentBundle(_IdScope, _OpenObject):
             synchronous-instant pairwise claims, queried vectorized without
             materialising the full claim list.
         styling: The members of the manifest's ``graphical`` other than
-            ``order`` (``styles``, ``statements`` and any other), kept as
-            given and never interpreted.
+            ``order`` (``styles``, ``statements``, ``timestamps`` and any
+            other), kept as given and never interpreted.
 
     Note:
         The two claim stores are interchangeable as far as queries are

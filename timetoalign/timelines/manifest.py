@@ -44,7 +44,7 @@ if TYPE_CHECKING:
 TIMETOSHARE_VERSION = "0.2.0"
 """The TimeToShare version the library reads and writes."""
 
-_STYLING_DEFAULTS: dict[str, Any] = {"styles": {}, "statements": []}
+_STYLING_DEFAULTS: dict[str, Any] = {"styles": {}, "statements": [], "timestamps": []}
 """The members of ``graphical`` other than ``order``, with their defaults."""
 
 
@@ -307,7 +307,7 @@ class Manifest(_OpenObject):
         name: The manifest name, or None.
         meta: The manifest's free metadata.
         styling: ``graphical`` without ``order``: ``styles``,
-            ``statements`` and any other key, kept as given.
+            ``statements``, ``timestamps`` and any other key, kept as given.
         band_orders: The entries of ``graphical.order`` keyed by a
             timeline's id, each that timeline's band order, kept as given.
         has_graphical: Whether the manifest holds a ``graphical`` object,

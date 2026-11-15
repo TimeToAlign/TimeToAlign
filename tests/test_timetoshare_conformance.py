@@ -472,6 +472,15 @@ BAND_ORDER_RULES = {
 }
 """Rejection cases about a band order's entries, which the library keeps unchecked."""
 
+TIMESTAMP_RULES = {
+    "timestamp_coordinate_beyond_length",
+    "timestamp_coordinate_negative",
+    "timestamp_id_is_timeline_id",
+    "timestamp_id_malformed",
+    "timestamp_timeline_unknown",
+}
+"""Rejection cases about ``graphical.timestamps``, which the library keeps unread."""
+
 REJECTIONS = {path.stem: path for path in rejection_paths()}
 
 
@@ -487,7 +496,8 @@ def _whole_reader(manifest: Any) -> Callable[[Any], Any]:
 
 
 @pytest.mark.parametrize(
-    "case", sorted(set(REJECTIONS) - STATEMENT_RULES - BAND_ORDER_RULES)
+    "case",
+    sorted(set(REJECTIONS) - STATEMENT_RULES - BAND_ORDER_RULES - TIMESTAMP_RULES),
 )
 def test_the_library_refuses_every_rejection_case(case: str) -> None:
     """Both the whole reader and the bundle reader refuse each case."""
@@ -497,17 +507,22 @@ def test_the_library_refuses_every_rejection_case(case: str) -> None:
             reader(manifest)
 
 
-def test_statement_and_band_order_rules_are_the_only_cases_the_library_reads() -> None:
-    """The library keeps statements and band orders unchecked, so it accepts these cases.
+def test_statement_band_order_and_timestamp_rules_are_the_only_unread_cases() -> None:
+    """The library keeps statements, band orders and named timestamps unchecked.
 
-    A band order is written back unchanged with its timeline.
+    So it accepts these cases. A band order is written back unchanged with its
+    timeline, the named timestamps unchanged.
     """
-    assert STATEMENT_RULES | BAND_ORDER_RULES <= set(REJECTIONS)
-    for case in sorted(STATEMENT_RULES | BAND_ORDER_RULES):
+    unread = STATEMENT_RULES | BAND_ORDER_RULES | TIMESTAMP_RULES
+    assert unread <= set(REJECTIONS)
+    for case in sorted(unread):
         manifest = rejection_case(REJECTIONS[case]).manifest
         written = AlignmentBundle.from_dict(manifest).to_dict()
         if case in BAND_ORDER_RULES:
             assert written["graphical"]["order"] == manifest["graphical"]["order"]
+        if case in TIMESTAMP_RULES:
+            timestamps = manifest["graphical"]["timestamps"]
+            assert written["graphical"]["timestamps"] == timestamps
 
 
 SEVERAL_DEPTHS_ROW = {

@@ -178,6 +178,7 @@ def test_bundle_dict_is_exact() -> None:
             "order": {"group_1": ["score", "audio"], "group_2": ["holes", "midi"]},
             "styles": {},
             "statements": [],
+            "timestamps": [],
         },
     }
     assert bundle.to_dict(minimal=True)["graphical"] == {
@@ -282,6 +283,7 @@ def test_styling_round_trips_unchanged() -> None:
     assert rebuilt.to_dict()["graphical"] == {
         "order": {"group_1": ["score", "audio"], "group_2": ["holes", "midi"]},
         **STYLING,
+        "timestamps": [],
     }
     assert all(group.styling == {} for group in rebuilt.groups.values())
     assert rebuilt.styling["styles"] is not data["graphical"]["styles"]

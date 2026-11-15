@@ -355,8 +355,8 @@ class TimelineGroup(_IdScope, _OpenObject):
         name: Optional human-readable name.
         meta: Additional metadata dictionary.
         styling: The members of the manifest's ``graphical`` other than
-            ``order`` (``styles``, ``statements`` and any other), kept as
-            given and never interpreted.
+            ``order`` (``styles``, ``statements``, ``timestamps`` and any
+            other), kept as given and never interpreted.
 
     Examples:
         >>> from fractions import Fraction

@@ -1247,7 +1247,12 @@ ONE_ROOT = {
         "timelines": [SCORE_COMPLETE],
         "groups": [],
         "measure_maps": [],
-        "graphical": {"order": ONE_ROOT_BANDS, "styles": {}, "statements": []},
+        "graphical": {
+            "order": ONE_ROOT_BANDS,
+            "styles": {},
+            "statements": [],
+            "timestamps": [],
+        },
     },
 }
 GROUPED = {
@@ -1264,7 +1269,12 @@ GROUPED = {
         "timelines": [PERF_COMPLETE, SCORE_COMPLETE],
         "groups": [{"id": "g", "name": None, "meta": {}, "members": ["part", "perf"]}],
         "measure_maps": [],
-        "graphical": {"order": GROUPED_BANDS, "styles": {}, "statements": []},
+        "graphical": {
+            "order": GROUPED_BANDS,
+            "styles": {},
+            "statements": [],
+            "timestamps": [],
+        },
     },
 }
 WHOLE_READS = {
@@ -1703,7 +1713,12 @@ def test_a_graphical_object_read_is_written_back(reader: Any) -> None:
     read = reader(copy.deepcopy({**data, "graphical": {}}))
 
     assert read.to_dict(minimal=True) == {**data, "graphical": {}}
-    assert read.to_dict()["graphical"] == {"order": {}, "statements": [], "styles": {}}
+    assert read.to_dict()["graphical"] == {
+        "order": {},
+        "statements": [],
+        "styles": {},
+        "timestamps": [],
+    }
     assert "graphical" not in reader(copy.deepcopy(data)).to_dict()
 
 

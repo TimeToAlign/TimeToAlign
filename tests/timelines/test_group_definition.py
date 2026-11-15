@@ -199,6 +199,7 @@ def test_child_member_writes_its_root() -> None:
         "order": {"group_1": ["A2", "K"]},
         "styles": {},
         "statements": [],
+        "timestamps": [],
     }
 
 
@@ -234,6 +235,7 @@ def test_group_dict_is_exact() -> None:
             "order": {"group_1": ["score", "image"]},
             "styles": {},
             "statements": [],
+            "timestamps": [],
         },
     }
     assert group.to_dict(minimal=True) == {

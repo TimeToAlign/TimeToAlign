@@ -47,6 +47,12 @@ TIMETOSHARE_VERSION = "0.2.0"
 _STYLING_DEFAULTS: dict[str, Any] = {"styles": {}, "statements": [], "timestamps": []}
 """The members of ``graphical`` other than ``order``, with their defaults."""
 
+_TIMESTAMP_DISPLAY = ("wedge", "name", "id", "coordinate", "cross_section")
+"""The words of a named timestamp's ``display``, in canonical order."""
+
+_DEFAULT_DISPLAY = ["wedge", "name", "cross_section"]
+"""The ``display`` of a named timestamp that states none."""
+
 
 # region Bare values on a timeline's own axis
 
@@ -307,7 +313,9 @@ class Manifest(_OpenObject):
         name: The manifest name, or None.
         meta: The manifest's free metadata.
         styling: ``graphical`` without ``order``: ``styles``,
-            ``statements``, ``timestamps`` and any other key, kept as given.
+            ``statements``, ``timestamps`` and any other key, kept as given;
+            a named timestamp's ``display`` is written in canonical order,
+            its default stated in the complete form only.
         band_orders: The entries of ``graphical.order`` keyed by a
             timeline's id, each that timeline's band order, kept as given.
         has_graphical: Whether the manifest holds a ``graphical`` object,
@@ -556,6 +564,10 @@ class Manifest(_OpenObject):
             graphical: dict[str, Any] = {"order": order}
             for key, default in _STYLING_DEFAULTS.items():
                 value = self.styling.get(key, default)
+                if key == "timestamps" and isinstance(value, list):
+                    value = [
+                        _written_timestamp(entry, minimal=minimal) for entry in value
+                    ]
                 if not (minimal and value == default):
                     graphical[key] = copy.deepcopy(value)
             if minimal and not order:
@@ -667,6 +679,39 @@ class MeasureMapEntries:
         self._entries.setdefault(entry_id, measure_map)
         self._written[id(measure_map)] = (measure_map, entry_id)
         return entry_id
+
+
+def _display_key(word: Any) -> tuple[int, int, str]:
+    """Order the words of ``display``: the known ones canonically, then others.
+
+    A string the format does not know follows them by code point, and any
+    other value follows last in its given order.
+    """
+    if word in _TIMESTAMP_DISPLAY:
+        return (0, _TIMESTAMP_DISPLAY.index(word), "")
+    if isinstance(word, str):
+        return (1, 0, word)
+    return (2, 0, "")
+
+
+def _written_timestamp(entry: Any, *, minimal: bool) -> Any:
+    """Return a named timestamp as written: its ``display`` in canonical order.
+
+    The complete form states the default ``display`` where the timestamp
+    states none, and the minimal form leaves the default out. Every other
+    member is copied as given; the library reads none of them.
+    """
+    if not isinstance(entry, dict):
+        return copy.deepcopy(entry)
+    written = copy.deepcopy(entry)
+    display = written.get("display", _DEFAULT_DISPLAY)
+    if isinstance(display, list):
+        display = sorted(display, key=_display_key)
+    if minimal and display == _DEFAULT_DISPLAY:
+        written.pop("display", None)
+    else:
+        written["display"] = copy.deepcopy(display)
+    return written
 
 
 def _same_entry(left: MeasureMap, right: MeasureMap) -> bool:

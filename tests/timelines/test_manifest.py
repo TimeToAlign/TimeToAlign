@@ -1722,6 +1722,56 @@ def test_a_graphical_object_read_is_written_back(reader: Any) -> None:
     assert "graphical" not in reader(copy.deepcopy(data)).to_dict()
 
 
+def _stamp(number: int, **members: Any) -> dict[str, Any]:
+    """A named timestamp on ``r`` at 1 with the given further members."""
+    return {
+        "id": f"timestamp_{number}",
+        "timeline": "r",
+        "coordinate": [1, 1],
+        "name": f"T{number}",
+        **members,
+    }
+
+
+@pytest.mark.parametrize(
+    "reader",
+    [Timeline.from_dict, AlignmentBundle.from_dict],
+    ids=["timeline", "bundle"],
+)
+def test_a_timestamp_display_is_written_in_canonical_order_with_its_default(
+    reader: Any,
+) -> None:
+    given = [
+        _stamp(1),
+        _stamp(2, display=["cross_section", "wedge", "name"]),
+        _stamp(3, display=["name", "wedge"]),
+        _stamp(4, display=["flag", "coordinate", "wedge"], note={"x": 1}),
+    ]
+    data = {
+        "timetoshare": "0.2.0",
+        "timelines": [{"id": "r", "unit": "quarters", "length": [4, 1]}],
+        "graphical": {"timestamps": given},
+    }
+    kept = copy.deepcopy(data)
+
+    read = reader(data)
+
+    default = ["wedge", "name", "cross_section"]
+    assert read.to_dict()["graphical"]["timestamps"] == [
+        _stamp(1, display=default),
+        _stamp(2, display=default),
+        _stamp(3, display=["wedge", "name"]),
+        _stamp(4, display=["wedge", "coordinate", "flag"], note={"x": 1}),
+    ]
+    assert read.to_dict(minimal=True)["graphical"]["timestamps"] == [
+        _stamp(1),
+        _stamp(2),
+        _stamp(3, display=["wedge", "name"]),
+        _stamp(4, display=["wedge", "coordinate", "flag"], note={"x": 1}),
+    ]
+    assert data == kept
+
+
 def test_mixed_group_arguments_raise() -> None:
     data = {
         "timetoshare": "0.2.0",

@@ -15,6 +15,8 @@ from typing import Any
 import numpy as np
 import pytest
 from timetoshare import (
+    DEFAULTS,
+    TIMESTAMP_DISPLAY,
     SchemaValidationError,
     canonical_order,
     complete,
@@ -80,6 +82,7 @@ from timetoalign.maps import (
 from timetoalign.testdata import ensure_data
 from timetoalign.timelines import MeasureMap
 from timetoalign.timelines.flowcontrol import Break, Jump, Marker
+from timetoalign.timelines.manifest import _DEFAULT_DISPLAY, _TIMESTAMP_DISPLAY
 
 SCORE = ensure_data("score")
 MIDI = ensure_data("midi")
@@ -475,6 +478,8 @@ BAND_ORDER_RULES = {
 TIMESTAMP_RULES = {
     "timestamp_coordinate_beyond_length",
     "timestamp_coordinate_negative",
+    "timestamp_display_repeated",
+    "timestamp_display_unknown",
     "timestamp_id_is_timeline_id",
     "timestamp_id_malformed",
     "timestamp_timeline_unknown",
@@ -764,6 +769,12 @@ def test_int64_boundary() -> None:
     value = timeline.to_dict()
     assert value["timelines"][0]["length"] == 9007199254740993
     validate(value)
+
+
+def test_the_display_words_and_default_are_the_package_s() -> None:
+    """The library's own copy of the display words and default is the package's."""
+    assert _TIMESTAMP_DISPLAY == TIMESTAMP_DISPLAY
+    assert _DEFAULT_DISPLAY == DEFAULTS["timestamp"]["display"]
 
 
 def test_library_never_imports_timetoshare() -> None:

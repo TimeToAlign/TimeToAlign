@@ -320,6 +320,21 @@ the library writes back against the same literal text.
   `{"order": {}, "statements": [], "styles": {}}` in the complete form,
   through `Timeline` and `AlignmentBundle` alike; a manifest read without
   `graphical` is written without it. Presence is part of the round trip.
+- **A named timestamp's `display` has the format's default.** The library
+  keeps `graphical.timestamps` unread but for `display`, the parts drawn of
+  a timestamp, whose default `["wedge", "name", "cross_section"]` the
+  complete form states and the minimal form leaves out, and whose words are
+  written in the canonical order `wedge`, `name`, `id`, `coordinate`,
+  `cross_section`, an unknown word after them by code point. Read from a
+  one-root manifest through `Timeline` and `AlignmentBundle` alike: a
+  timestamp without `display` is written with the default in the complete
+  form and without it in the minimal one; one stating the default as
+  `["cross_section", "wedge", "name"]` is written exactly as the first in
+  both forms; one stating `["name", "wedge"]` is written `["wedge",
+  "name"]` in both; one stating `["flag", "coordinate", "wedge"]` is
+  written `["wedge", "coordinate", "flag"]`; every other member of a
+  timestamp, an unknown one included, is written as given, and the input
+  is never changed.
 - **A root's offset.** A seconds root with `"offset": -5.5` and a child at
   offset 2 round-trips with `root_offset == Coordinate(-5.5, seconds)`, and
   its timestamps and child positions equal those of the same root without

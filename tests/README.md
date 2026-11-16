@@ -79,13 +79,14 @@ the rules about
 the entries of a band order (a `graphical.order` entry keyed by a
 timeline), which the library writes back with its timeline unchecked,
 and the rules about the named timestamps of `graphical.timestamps` (the
-timeline each names, its coordinate and its ID), which the library keeps
-unread. Those cases are listed by name in the test with that reason, and
+timeline each names, its coordinate, its ID and the words of its
+`display`), which the library keeps unread but for the order and default
+of `display`. Those cases are listed by name in the test with that reason, and
 the test fails if a listed case is refused by the library or no longer
 exists, so the list cannot outgrow the truth; each band-order case is also
 written back by `AlignmentBundle.from_dict` with its `graphical.order`
-unchanged, and each named-timestamp case with its `graphical.timestamps`
-unchanged.
+unchanged, and each named-timestamp case, written in the complete form,
+with its `graphical.timestamps` unchanged.
 
 **The shared warning cases.** `warning_paths()` lists manifests carrying
 unknown keys at many depths, each with the `unknown_keys` the validators
@@ -160,6 +161,15 @@ followed by `b` at 61 in a line of length 60 is refused at `a`, `ends at
 timeline of length 9007199254740993 writes `"length": 9007199254740993` in
 a manifest `validate` accepts, so integers above the floating-point safe
 range survive.
+
+**The display words, restated.** The library writes a named timestamp's
+`display` in canonical order and states the default `display` in the
+complete form, so it keeps its own copy of the display words and of that
+default, since it never imports `timetoshare` at run time. Its display
+words, in canonical order, equal the package's `TIMESTAMP_DISPLAY`, and its
+default equals the package's `DEFAULTS["timestamp"]["display"]`, both
+compared whole and in order: a word added to the format, an order changed
+or a new default fails here before the library writes a stale form.
 
 **Test-only dependency.** A fresh interpreter imports `timetoalign` and
 checks `sys.modules`; the absence of `timetoshare` proves schema

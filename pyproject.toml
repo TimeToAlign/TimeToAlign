@@ -89,16 +89,16 @@ dev = [                                       # Testing + docs + lint/format too
 ]
 
 [dependency-groups]
-# Test oracles the suite needs beside the `testing` extra. A dependency group
-# (PEP 735) is not part of the distribution metadata, so the git reference of
-# `pymeasuremap` never reaches a published Requires-Dist. Install with
+# Test oracles the suite needs beside the `testing` extra. Both are git
+# references; a dependency group (PEP 735) is not part of the distribution
+# metadata, so neither reaches a published Requires-Dist. Install with
 # `pip install --group conformance` (pip >= 25.1); tox installs it for every
 # test environment.
 conformance = [
     "pymeasuremap @ git+https://github.com/measure-map/pyMeasureMap.git@ddcfec3",
     # Measure Map reference implementation, the test oracle for compressed rows; registry pin once a release carries compress
-    "timetoshare>=0.2.0,<1",
-    # TimeToShare schema conformance of the eventless manifest (one manifest per file and its fixtures)
+    "timetoshare @ git+https://github.com/TimeToAlign/TimeToShare.git@main#subdirectory=python",
+    # TimeToShare schema and fixtures, the test oracle for manifests; development branch until a release carries schema 0.2.0, then a registry range
 ]
 
 [project.urls]

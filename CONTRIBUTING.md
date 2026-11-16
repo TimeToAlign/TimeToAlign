@@ -9,9 +9,10 @@ The full **Developers' Reference** lives on the documentation site at
 - The test oracles live in the `conformance` dependency group (PEP 735), not in
   an extra: `timetoshare` (the TimeToShare schema the conformance tests
   validate against) and `pymeasuremap` (the Measure Map reference
-  implementation, the oracle for compressed measure-map rows). A dependency
-  group is not part of the published distribution metadata, so the git
-  reference pymeasuremap is installed from never reaches PyPI.
+  implementation, the oracle for compressed measure-map rows). Both are git
+  references: `timetoshare` comes from TimeToShare's development branch,
+  `pymeasuremap` from a fixed commit. A dependency group is not part of the
+  published distribution metadata, so neither reference reaches PyPI.
   `pip install -e ".[dev]"` does not install it; run
   `pip install --group conformance` (pip 25.1 or later) as well, or use `tox`,
   which installs the group in every test environment. From a checkout

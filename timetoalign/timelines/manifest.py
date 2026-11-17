@@ -681,7 +681,7 @@ class Manifest(_OpenObject):
         *,
         groups: list[dict[str, Any]] = (),  # type: ignore[assignment]
         order: dict[str, list[str]] | None = None,
-        minimal: bool = False,
+        minimal: bool = True,
         events: bool = False,
         external_references: bool = False,
     ) -> dict[str, Any]:
@@ -709,7 +709,8 @@ class Manifest(_OpenObject):
             roots: The root timelines.
             groups: The written groups.
             order: Every group's member order, keyed by group id.
-            minimal: Leave out every key at its default.
+            minimal: Write the minimal form (the default): every key at its
+                default value left out. With False, the complete form.
             events: Write each timeline's event rows.
             external_references: Write each timeline's external reference
                 table.

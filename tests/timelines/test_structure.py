@@ -268,7 +268,7 @@ def test_standard_example_expands_and_compresses() -> None:
 def test_document_form_is_the_compressed_row_list() -> None:
     """The document list excludes derived ids and rejects the former wrapper."""
     measure_map = MeasureMap.from_rows([{"time_signature": "2/2"}, {"number": 563}])
-    entry = measure_map.to_dict()
+    entry = measure_map.to_dict(minimal=False)
     assert set(entry) == {"id", "name", "meta", "rows"}
     payload = entry["rows"]
     assert isinstance(payload, list)

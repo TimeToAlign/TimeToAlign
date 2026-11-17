@@ -85,6 +85,18 @@ def _record(
 # region Writing
 
 
+def test_a_measure_map_writes_its_minimal_entry_by_default() -> None:
+    bars = _bars()
+
+    assert bars.to_dict() == {"id": "measuremap_1", "rows": ROWS}
+    assert bars.to_dict(minimal=False) == {
+        "id": "measuremap_1",
+        "name": None,
+        "meta": {},
+        "rows": ROWS,
+    }
+
+
 def test_writing_lifts_a_quarters_timeline_s_measure_map() -> None:
     score = ContinuousLogicalTimeline(length=F(8), uid="score")
     score.add_measure_map(_bars())

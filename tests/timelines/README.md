@@ -450,9 +450,13 @@ the library writes back against the same literal text.
 - **An unknown length.** `"length": null` reads as `length is None` and is
   written back as `null` in both forms: `length` is the one key the minimal
   form never leaves out.
-- **Minimal by default.** `to_dict()` of each of the three classes writes the
-  minimal form; `to_dict(minimal=False)` the complete form. The tests that
-  pin a complete literal ask for it explicitly.
+- **Minimal by default.** Every writer writes the minimal form unless asked
+  for the complete one: `to_dict()` of each of the three classes, and of each
+  element of the one-root literal read in its complete form — the region,
+  the conversion map, the marker, the jump, the break and the flow-control
+  registry — equals that element in the minimal literal, and
+  `to_dict(minimal=False)` equals it in the complete literal. The tests that
+  pin a complete form ask for it explicitly.
 
 ### Manifest files (`test_manifest_files.py`)
 
@@ -514,6 +518,9 @@ tests prove that the writer lifts it into `measure_maps`, that the reader
 puts it back, and that every legacy measure-derived map names the right
 entry, with literal manifests written from the format's rules.
 
+- **A measure map writes its minimal entry by default.** The two-bar map
+  written on its own is `{"id": "measuremap_1", "rows": [...]}`; with
+  `minimal=False` it states `"name": null` and `"meta": {}` as well.
 - **Writing lifts the timeline's measure map.** A quarters timeline holding
   a measure map writes one entry `measuremap_1` and a `MeasureRecordMap`
   `{"type": "MeasureRecordMap", "id": <minted cmap id>, "source_unit":

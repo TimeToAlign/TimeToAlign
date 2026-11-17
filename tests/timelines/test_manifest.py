@@ -242,6 +242,30 @@ def test_to_dict_writes_the_minimal_form_by_default(reader: str) -> None:
         assert read.to_dict() == MINIMAL
 
 
+ELEMENTS: dict[str, tuple[Any, str, int | None]] = {
+    # element kind: (the element of the timeline read, its key, its index)
+    "region": (lambda t: t.get_region("theme"), "regions", 0),
+    "conversion map": (lambda t: t.get_conversion_map("tempo"), "conversion_maps", 0),
+    "marker": (lambda t: t.flow_control.markers[0], "flow_control", 0),
+    "jump": (lambda t: t.flow_control.jumps[0], "flow_control", 1),
+    "break": (lambda t: t.flow_control.breaks[0], "flow_control", 2),
+    "flow control registry": (lambda t: t.flow_control, "flow_control", None),
+}
+
+
+@pytest.mark.parametrize("kind", list(ELEMENTS))
+def test_every_element_writer_writes_the_minimal_form_by_default(kind: str) -> None:
+    element_of, key, index = ELEMENTS[kind]
+    element = element_of(Timeline.from_dict(copy.deepcopy(COMPLETE)))
+    minimal = MINIMAL["timelines"][0][key]
+    complete = COMPLETE["timelines"][0][key]
+    if index is not None:
+        minimal, complete = minimal[index], complete[index]
+
+    assert element.to_dict() == minimal
+    assert element.to_dict(minimal=False) == complete
+
+
 def test_a_reader_supplies_every_default() -> None:
     timeline = Timeline.from_dict(copy.deepcopy(MINIMAL))
     (brk,) = timeline.flow_control.breaks
@@ -259,7 +283,7 @@ def test_a_reader_supplies_every_default() -> None:
     )
     assert jump.to_coordinate == Coordinate(0, TimeUnit.quarters)
     assert (jump.target, jump.name, jump.label, jump.meta) == (None, None, None, {})
-    assert timeline.get_conversion_map("tempo").to_dict()["name"] is None
+    assert timeline.get_conversion_map("tempo").to_dict(minimal=False)["name"] is None
 
 
 UNIT_DEFAULTS = {

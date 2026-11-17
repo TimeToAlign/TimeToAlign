@@ -38,6 +38,8 @@ def create_wav_file(
     sample_rate: int = 44100,
     channels: int = 1,
     bits_per_sample: int = 16,
+    format_tag: int = 1,
+    fact: bool = False,
 ) -> Path:
     """Create a minimal WAV file for testing.
 
@@ -47,24 +49,27 @@ def create_wav_file(
         sample_rate: Sample rate in Hz.
         channels: Number of channels.
         bits_per_sample: Bit depth.
+        format_tag: Audio format (1 = PCM, 3 = IEEE float).
+        fact: Whether to write a ``fact`` chunk stating ``n_samples``.
 
     Returns:
         Path to the created file.
     """
     bytes_per_sample = bits_per_sample // 8
     data_size = n_samples * channels * bytes_per_sample
+    fact_size = 12 if fact else 0
 
     # WAV file structure
     with open(path, "wb") as f:
         # RIFF header
         f.write(b"RIFF")
-        f.write(struct.pack("<I", 36 + data_size))  # File size - 8
+        f.write(struct.pack("<I", 36 + fact_size + data_size))  # File size - 8
         f.write(b"WAVE")
 
         # fmt chunk
         f.write(b"fmt ")
         f.write(struct.pack("<I", 16))  # Chunk size
-        f.write(struct.pack("<H", 1))  # Audio format (1 = PCM)
+        f.write(struct.pack("<H", format_tag))  # Audio format
         f.write(struct.pack("<H", channels))
         f.write(struct.pack("<I", sample_rate))
         f.write(
@@ -72,6 +77,11 @@ def create_wav_file(
         )  # Byte rate
         f.write(struct.pack("<H", channels * bytes_per_sample))  # Block align
         f.write(struct.pack("<H", bits_per_sample))
+
+        if fact:
+            f.write(b"fact")
+            f.write(struct.pack("<I", 4))
+            f.write(struct.pack("<I", n_samples))
 
         # data chunk
         f.write(b"data")
@@ -383,6 +393,7 @@ class TestAudioLoaderTimeline:
         assert timeline._metadata["sample_rate"] == 44100
         assert timeline._metadata["channels"] == 1
         assert timeline._metadata["format"] == "WAV"
+        assert timeline._metadata["backend"] == "soundfile"
 
     def test_create_samples_to_seconds_map(self, wav_file: Path):
         """Test creating a standalone C-map."""
@@ -478,6 +489,95 @@ class TestAudioLoaderSampleCount:
 # endregion
 
 
+# region Backend Chain
+
+
+class TestAudioLoaderBackendChain:
+    """Every backend refuses what it cannot read, and the error names each reason."""
+
+    def test_zero_rate_names_every_backend(self, tmp_path: Path):
+        """A header stating rate 0 is unreadable, not a division by zero."""
+        wav_path = create_wav_file(tmp_path / "zero.wav", n_samples=15, sample_rate=0)
+
+        with pytest.raises(ValueError) as excinfo:
+            AudioLoader().load(wav_path)
+        assert str(excinfo.value) == (
+            f"Cannot read audio file '{wav_path}':\n"
+            f"  soundfile: Error opening '{wav_path}': "
+            "Internal error : SF_INFO struct incomplete.\n"
+            "  wave: the file states sample rate 0\n"
+            "  riff: the file states sample rate 0\n"
+            "  mutagen: the file states sample rate 0"
+        )
+
+    def test_missing_package_names_the_extra(self, tmp_path: Path, no_soundfile: None):
+        wav_path = create_wav_file(tmp_path / "zero.wav", n_samples=15, sample_rate=0)
+
+        with pytest.raises(ValueError) as excinfo:
+            AudioLoader().load(wav_path)
+        assert str(excinfo.value) == (
+            f"Cannot read audio file '{wav_path}':\n"
+            "  soundfile: not installed\n"
+            "  wave: the file states sample rate 0\n"
+            "  riff: the file states sample rate 0\n"
+            "  mutagen: the file states sample rate 0\n"
+            'Install the missing packages with pip install "timetoalign[audio]".'
+        )
+
+    def test_zero_channels(self, tmp_path: Path, no_soundfile: None):
+        wav_path = create_wav_file(tmp_path / "silent.wav", n_samples=15, channels=0)
+
+        with pytest.raises(ValueError) as excinfo:
+            AudioLoader().load(wav_path)
+        assert str(excinfo.value) == (
+            f"Cannot read audio file '{wav_path}':\n"
+            "  soundfile: not installed\n"
+            "  wave: bad # of channels\n"
+            "  riff: the file states 0 channels\n"
+            "  mutagen: the file states 0 channels\n"
+            'Install the missing packages with pip install "timetoalign[audio]".'
+        )
+
+    @pytest.mark.parametrize("fact", [True, False], ids=["fact", "no_fact"])
+    def test_float_wav_through_riff(
+        self, tmp_path: Path, no_soundfile: None, fact: bool
+    ):
+        """The RIFF parser reads the IEEE-float WAV that ``wave`` refuses."""
+        wav_path = create_wav_file(
+            tmp_path / "float.wav",
+            n_samples=15,
+            channels=2,
+            bits_per_sample=32,
+            format_tag=3,
+            fact=fact,
+        )
+        loader = AudioLoader()
+        with pytest.raises(audio_module._CannotRead, match="^unknown format: 3$"):
+            loader._load_with_wave(wav_path)
+
+        loader.load(wav_path)
+        assert loader.audio_info.backend == "riff"
+        assert loader.n_samples == 15
+        assert loader.channels == 2
+        assert loader.duration_seconds == 15 / 44100
+
+    def test_other_exceptions_propagate(
+        self, wav_file: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """A reader's defect surfaces as itself, not as an unreadable file."""
+
+        def broken_reader(self: AudioLoader, path: Path) -> AudioInfo:
+            raise TypeError("broken reader")
+
+        monkeypatch.setattr(AudioLoader, "_load_with_soundfile", broken_reader)
+
+        with pytest.raises(TypeError, match="^broken reader$"):
+            AudioLoader().load(wav_file)
+
+
+# endregion
+
+
 # region Specimen
 
 
@@ -502,6 +602,8 @@ class TestAudioLoaderSpecimen:
         assert loader.audio_info.backend == "mutagen"
         assert loader.n_samples == 10190592
         assert loader.duration_seconds == 231.0791836734694
+        assert loader.create_timeline()._metadata["backend"] == "mutagen"
+        assert loader.create_continuous_timeline()._metadata["backend"] == "mutagen"
 
     def test_samples_timeline(self, loader: AudioLoader):
         timeline = loader.create_timeline()

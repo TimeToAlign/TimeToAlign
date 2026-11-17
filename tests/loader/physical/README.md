@@ -4,7 +4,7 @@ Tests for the physical-domain loaders in `timetoalign.loader.physical`.
 
 ## Test Files
 
-### `test_audio.py` (45 tests)
+### `test_audio.py` (51 tests)
 
 Tests for `AudioLoader` against minimal in-memory WAV files and one MP3 specimen.
 
@@ -24,7 +24,47 @@ fixed order, exact counts first, and records the one that answered in
 A backend that is not installed or cannot read the file hands it on to the
 next; any other exception propagates. On the three exact paths
 `duration_seconds` is `n_samples / sample_rate`; on the mutagen path it is the
-duration mutagen states, and `n_samples` is derived from it.
+duration mutagen states, and `n_samples` is derived from it. "Exact" means the
+count the decoder produces: for an MP3 without a LAME/Xing header, libsndfile's
+count is a whole number of MPEG frames and includes the encoder delay and
+padding — the `supra` corpus's `fd660zf8362.mp3` decodes to 19715328 =
+17114 × 1152 samples.
+
+**The backend chain** (`TestAudioLoaderBackendChain`). Each backend that
+declines a file gives a reason, and a reader may decline only through that
+channel: a header that states sample rate 0 or 0 channels describes no audio,
+and every reader must refuse it as unreadable before it divides by the rate or
+hands the loader a timeline whose C-Map would. What must hold:
+
+- a hand-built WAV whose `fmt` chunk states sample rate 0 raises `ValueError`,
+  never `ZeroDivisionError` (the `wave` reader reads such a header without
+  complaint, and mutagen states the rate 0 without complaint). The message
+  names the file and then every backend's reason, one line each in the order
+  tried: soundfile `Error opening '<path>': Internal error : SF_INFO struct
+  incomplete.` (libsndfile 1.2.2's text, like the specimen pins below), and
+  `the file states sample rate 0` from `wave`, `riff` and `mutagen`. With every
+  package installed the message must **not** tell the user to install one;
+- the same file with soundfile reported as not installed gives
+  `soundfile: not installed` as the first reason and, as the last line, the
+  extra that provides it: `pip install "timetoalign[audio]"`;
+- a WAV whose `fmt` chunk states 0 channels (soundfile not installed) is
+  refused by `wave` with its own `bad # of channels` and by `riff` and
+  `mutagen` with `the file states 0 channels`;
+- the RIFF parser reads what `wave` refuses: a 15-frame, 32-bit IEEE-float
+  (format tag 3) stereo WAV, with soundfile reported as not installed, loads
+  with `backend == "riff"` and `n_samples == 15`, both with a `fact` chunk
+  stating the count and without one (120 data bytes over 8-byte blocks). `wave`
+  refuses it with `unknown format: 3`: the standard library reads PCM only;
+- a reader that fails with anything other than "cannot read" is a defect, not
+  an unreadable file: a reader patched to raise `TypeError` surfaces as
+  `TypeError` from `load()`, not as the final `ValueError`.
+
+**The backend travels with the timeline.** Both timelines carry the backend
+that read the file as `_metadata["backend"]`, so a timeline built from
+mutagen's estimate is recognisable as such: `"soundfile"` for the 1-second WAV
+fixture, `"mutagen"` for the Bass Kick specimen with soundfile reported as not
+installed. `_metadata` is not serialised, so manifests are unchanged
+(`tests/test_timetoshare_conformance.py` holds).
 
 Durations are asserted **exactly**, with zero tolerance: on the exact paths
 `duration_seconds` and `SamplesToSeconds` perform the same division, so every
@@ -68,6 +108,18 @@ produces. (The second case, observed but not pinned here: the `supra` corpus's
 `fd660zf8362.mp3` has no VBR header, and mutagen's duration gives
 19670083 samples where libsndfile decodes 19715328.) The test exists so that
 the estimate stays documented and visible; it is not the count to rely on.
+
+Further known issues, documented and not pinned:
+
+- the RIFF parser derives a WAV's block size as `bits_per_sample // 8 ×
+  channels` instead of reading the header's block align, so without a `fact`
+  chunk it miscounts samples not packed in whole bytes (12-bit in 2-byte
+  containers counts double);
+- mutagen does not state the channel count for every format; the loader then
+  assumes 2;
+- a WAV truncated below the size its `data` chunk states loads with a
+  backend-dependent count: soundfile counts the frames present, while `wave`,
+  `riff` and `mutagen` answer the header's count.
 
 **Two timelines per file.** A file's native axis is its sample count, so
 `create_timeline()` must give a `DiscretePhysicalTimeline` in `samples`, `int`,
@@ -184,7 +236,7 @@ Each recording directory has an XML manifest cataloguing all 332+ data files.
 | Test File | Tests | Status |
 |-----------|-------|--------|
 | `test_repovizz_loader.py` | 27 | All pass |
-| `test_audio.py` | 45 | All pass |
-| **Total** | **72** | **All pass** |
+| `test_audio.py` | 51 | All pass |
+| **Total** | **78** | **All pass** |
 
 All tests pass in parallel mode (`pytest-xdist -n auto`).

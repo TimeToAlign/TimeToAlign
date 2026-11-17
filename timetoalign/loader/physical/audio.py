@@ -30,7 +30,7 @@ import sys
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Iterator, TypeVar
+from typing import TYPE_CHECKING, Any, Iterator, Literal, TypeVar
 
 from timetoalign.loader.base import Loader
 
@@ -55,6 +55,22 @@ _WAV_SUFFIXES = frozenset({".wav", ".wave"})
 
 class _CannotRead(Exception):
     """A backend is not installed or cannot read the file; the next one tries."""
+
+
+class _NotInstalled(_CannotRead):
+    """A backend's package is not installed."""
+
+
+def _require_rate_and_channels(sample_rate: int, channels: int) -> None:
+    """Refuse a header whose sample rate or channel count describes no audio.
+
+    Raises:
+        _CannotRead: If the sample rate or the channel count is not positive.
+    """
+    if sample_rate <= 0:
+        raise _CannotRead(f"the file states sample rate {sample_rate}")
+    if channels <= 0:
+        raise _CannotRead(f"the file states {channels} channels")
 
 
 def _get_soundfile():
@@ -158,7 +174,7 @@ class AudioInfo:
     bits_per_sample: int | None = None
     source_path: Path | None = None
     extra: dict[str, Any] = field(default_factory=dict)
-    backend: str | None = None
+    backend: Literal["soundfile", "wave", "riff", "mutagen"] | None = None
 
     @property
     def length_in_samples(self) -> int:
@@ -209,7 +225,18 @@ class AudioLoader(Loader[AudioInfo]):
         header, is guessed from the file size and bitrate, so the estimate can
         miss the decoded count in either direction. It is used only when
         soundfile is not installed or cannot read the file;
-        ``audio_info.backend`` names the backend that answered.
+        ``audio_info.backend`` names the backend that answered, and the
+        timeline's metadata carries it.
+
+        The RIFF header parser derives the block size from the bit depth and
+        channel count rather than reading the header's block align, so without
+        a ``fact`` chunk it miscounts samples not packed in whole bytes.
+
+        Where mutagen states no channel count, the loader assumes 2.
+
+        A WAV truncated below the size its ``data`` chunk states gets a
+        backend-dependent count: soundfile counts the frames present, the other
+        backends answer the header's count.
 
     Examples:
         >>> loader = AudioLoader()
@@ -246,6 +273,7 @@ class AudioLoader(Loader[AudioInfo]):
         then for a WAV file the wave module and the RIFF header parser, then
         mutagen. A backend that is not installed or cannot read the file hands
         it on to the next; any other exception is a defect and propagates.
+        When no backend reads the file, the error names every backend's reason.
 
         Args:
             source: Path to the audio file.
@@ -260,16 +288,23 @@ class AudioLoader(Loader[AudioInfo]):
         if not source.exists():
             raise FileNotFoundError(f"Audio file not found: {source}")
 
-        readers = [self._load_with_soundfile]
+        readers = [("soundfile", self._load_with_soundfile)]
         if source.suffix.lower() in _WAV_SUFFIXES:
-            readers += [self._load_with_wave, self._load_with_riff_parser]
-        readers.append(self._load_with_mutagen)
+            readers += [
+                ("wave", self._load_with_wave),
+                ("riff", self._load_with_riff_parser),
+            ]
+        readers.append(("mutagen", self._load_with_mutagen))
 
-        for read in readers:
+        reasons = []
+        missing_package = False
+        for backend, read in readers:
             try:
                 info = read(source)
             except _CannotRead as e:
-                self._logger.debug(f"{read.__name__} cannot read {source}: {e}")
+                self._logger.debug(f"{backend} cannot read {source}: {e}")
+                reasons.append(f"  {backend}: {e}")
+                missing_package = missing_package or isinstance(e, _NotInstalled)
                 continue
             self._logger.debug(
                 f"Read audio metadata from {source} using {info.backend}: "
@@ -277,11 +312,12 @@ class AudioLoader(Loader[AudioInfo]):
             )
             return info
 
-        raise ValueError(
-            f"Cannot read audio file '{source}'. "
-            "Install soundfile (pip install soundfile) for broad format support, "
-            "or mutagen (pip install mutagen) for MP3/M4A support."
-        )
+        message = f"Cannot read audio file '{source}':\n" + "\n".join(reasons)
+        if missing_package:
+            message += (
+                '\nInstall the missing packages with pip install "timetoalign[audio]".'
+            )
+        raise ValueError(message)
 
     def _accept_source(
         self,
@@ -310,7 +346,7 @@ class AudioLoader(Loader[AudioInfo]):
         """
         sf = _get_soundfile()
         if sf is None:
-            raise _CannotRead("soundfile is not installed")
+            raise _NotInstalled("not installed")
         try:
             with _muted_native_stderr():
                 info = sf.info(str(path))
@@ -341,12 +377,13 @@ class AudioLoader(Loader[AudioInfo]):
         decoded count in either direction.
 
         Raises:
-            _CannotRead: If mutagen is not installed, cannot parse the file, or
-                states no sample rate or duration for it.
+            _CannotRead: If mutagen is not installed, cannot parse the file,
+                states no sample rate or duration for it, or states a sample
+                rate or channel count that is not positive.
         """
         mutagen = _get_mutagen()
         if mutagen is None:
-            raise _CannotRead("mutagen is not installed")
+            raise _NotInstalled("not installed")
         try:
             audio = mutagen.File(str(path))
         except mutagen.MutagenError as e:
@@ -372,6 +409,7 @@ class AudioLoader(Loader[AudioInfo]):
 
         # Channels
         channels = getattr(info, "channels", 2)
+        _require_rate_and_channels(sample_rate, channels)
 
         # Bits per sample (if available)
         bits = getattr(info, "bits_per_sample", None)
@@ -408,7 +446,8 @@ class AudioLoader(Loader[AudioInfo]):
         """Load metadata using Python's built-in wave module (PCM WAV only).
 
         Raises:
-            _CannotRead: If the wave module cannot read the file.
+            _CannotRead: If the wave module cannot read the file, or the header
+                states a sample rate or channel count that is not positive.
         """
         wave = _get_wave()
 
@@ -420,6 +459,7 @@ class AudioLoader(Loader[AudioInfo]):
                 bits_per_sample = wf.getsampwidth() * 8
         except (wave.Error, EOFError) as e:
             raise _CannotRead(e) from e
+        _require_rate_and_channels(sample_rate, channels)
 
         return AudioInfo(
             n_samples=n_samples,
@@ -449,7 +489,8 @@ class AudioLoader(Loader[AudioInfo]):
             AudioInfo with metadata extracted from the RIFF header.
 
         Raises:
-            _CannotRead: If the file is not a valid RIFF/WAV file.
+            _CannotRead: If the file is not a valid RIFF/WAV file, or its header
+                states a sample rate or channel count that is not positive.
         """
         import struct
 
@@ -473,6 +514,7 @@ class AudioLoader(Loader[AudioInfo]):
                     raise _CannotRead("not a WAVE file")
 
                 # Parse chunks
+                has_fmt = False
                 channels = 0
                 sample_rate = 0
                 bits_per_sample = 0
@@ -488,6 +530,7 @@ class AudioLoader(Loader[AudioInfo]):
                     chunk_size = struct.unpack("<I", chunk_header[4:])[0]
 
                     if chunk_id == b"fmt ":
+                        has_fmt = True
                         fmt_data = f.read(chunk_size)
                         format_tag = struct.unpack("<H", fmt_data[:2])[0]
                         channels = struct.unpack("<H", fmt_data[2:4])[0]
@@ -505,8 +548,9 @@ class AudioLoader(Loader[AudioInfo]):
         except struct.error as e:
             raise _CannotRead(f"truncated RIFF chunk: {e}") from e
 
-        if sample_rate == 0:
+        if not has_fmt:
             raise _CannotRead("no fmt chunk")
+        _require_rate_and_channels(sample_rate, channels)
 
         # Compute n_samples from data chunk if fact chunk was absent
         if n_samples is None:
@@ -514,7 +558,7 @@ class AudioLoader(Loader[AudioInfo]):
             block_align = bytes_per_sample * max(channels, 1)
             n_samples = data_size // block_align if block_align > 0 else 0
 
-        duration_seconds = n_samples / sample_rate if sample_rate > 0 else 0.0
+        duration_seconds = n_samples / sample_rate
         fmt_name = format_names.get(format_tag, f"UNKNOWN_{format_tag}")
         subtype = f"{fmt_name}_{bits_per_sample}" if bits_per_sample else fmt_name
 
@@ -743,6 +787,7 @@ class AudioLoader(Loader[AudioInfo]):
             "format": info.format,
             "subtype": info.subtype,
             "bits_per_sample": info.bits_per_sample,
+            "backend": info.backend,
         }
         return timeline
 

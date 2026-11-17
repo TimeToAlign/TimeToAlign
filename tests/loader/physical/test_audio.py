@@ -2,8 +2,8 @@
 
 These tests verify that AudioLoader correctly:
 1. Extracts metadata from audio files
-2. Creates DiscretePhysicalTimelines with correct dimensions
-3. Attaches appropriate SamplesToSeconds C-maps
+2. Creates DiscretePhysicalTimelines in samples with a SamplesToSeconds C-map
+3. Creates ContinuousPhysicalTimelines in seconds with a SecondsToSamples C-map
 4. Handles various audio formats and backends
 """
 
@@ -11,14 +11,22 @@ from __future__ import annotations
 
 import os
 import struct
+from fractions import Fraction
 from pathlib import Path
 
 import pytest
 
-from timetoalign.core import NumberType, TimeUnit
+from timetoalign.core import IdCoordinate, NumberType, TimeUnit
 from timetoalign.loader.physical import AudioInfo, AudioLoader
-from timetoalign.maps import SamplesToSeconds
-from timetoalign.timelines import ContinuousPhysicalTimeline
+from timetoalign.maps import LinearMap, SamplesToSeconds, SecondsToSamples
+from timetoalign.testdata import ensure_data
+from timetoalign.timelines import (
+    ContinuousPhysicalTimeline,
+    DiscretePhysicalTimeline,
+    Timeline,
+)
+
+BASS_KICK = ensure_data("audio") / "hard_techno" / "Bass Kick.mp3"
 
 # region Test Fixtures
 
@@ -279,14 +287,15 @@ class TestAudioLoaderTimeline:
     """Tests for creating timelines from AudioLoader."""
 
     def test_create_timeline_basic(self, wav_file: Path):
-        """Test basic timeline creation."""
+        """The timeline is in samples, its length the sample count."""
         loader = AudioLoader().load(wav_file)
         timeline = loader.create_timeline()
 
-        assert isinstance(timeline, ContinuousPhysicalTimeline)
-        assert timeline.unit == TimeUnit.seconds
-        assert timeline.number_type == NumberType.float
-        assert timeline.length.value == 1.0
+        assert type(timeline) is DiscretePhysicalTimeline
+        assert timeline.unit == TimeUnit.samples
+        assert timeline.number_type == NumberType.int
+        assert timeline.length.value == 44100
+        assert type(timeline.length.value) is int
 
     def test_create_timeline_with_uid(self, wav_file: Path):
         """Test timeline creation with custom uid."""
@@ -305,21 +314,58 @@ class TestAudioLoaderTimeline:
         assert timeline.name == "test.wav"
 
     def test_create_timeline_with_cmap(self, wav_file: Path):
-        """A seconds-native timeline needs no samples conversion map."""
+        """The default attaches a SamplesToSeconds map at the file's rate."""
         loader = AudioLoader().load(wav_file)
-        timeline = loader.create_timeline(attach_cmap=True)
+        timeline = loader.create_timeline()
 
         cmap = timeline.get_conversion_map(TimeUnit.seconds)
-        assert cmap is None
+        assert isinstance(cmap, SamplesToSeconds)
+        assert cmap.sample_rate == 44100
+        assert cmap(44100) == 1.0
+        assert timeline.n_conversion_maps == 1
 
     def test_create_timeline_without_cmap(self, wav_file: Path):
         """Test timeline creation without C-map attachment."""
         loader = AudioLoader().load(wav_file)
         timeline = loader.create_timeline(attach_cmap=False)
 
-        # Should NOT have a C-map to seconds
-        cmap = timeline.get_conversion_map(TimeUnit.seconds)
-        assert cmap is None
+        assert timeline.get_conversion_map(TimeUnit.seconds) is None
+        assert timeline.n_conversion_maps == 0
+
+    def test_create_continuous_timeline(self, stereo_wav_file: Path):
+        """The continuous twin is in seconds, its length the duration."""
+        loader = AudioLoader().load(stereo_wav_file)
+        timeline = loader.create_continuous_timeline()
+
+        assert type(timeline) is ContinuousPhysicalTimeline
+        assert timeline.unit == TimeUnit.seconds
+        assert timeline.number_type == NumberType.float
+        assert timeline.length.value == 2.0
+        assert timeline.id == "stereo"
+        assert timeline.name == "stereo.wav"
+
+    def test_create_continuous_timeline_with_cmap(self, stereo_wav_file: Path):
+        """The default attaches a SecondsToSamples map at the file's rate."""
+        loader = AudioLoader().load(stereo_wav_file)
+        timeline = loader.create_continuous_timeline()
+
+        cmap = timeline.get_conversion_map(TimeUnit.samples)
+        assert isinstance(cmap, SecondsToSamples)
+        assert cmap.sample_rate == 48000
+        assert cmap(2.0) == 96000
+        assert timeline.n_conversion_maps == 1
+
+    def test_create_continuous_timeline_without_cmap(self, stereo_wav_file: Path):
+        """``attach_cmap=False`` attaches nothing to the continuous twin."""
+        loader = AudioLoader().load(stereo_wav_file)
+        timeline = loader.create_continuous_timeline(
+            uid="take", name="Take", attach_cmap=False
+        )
+
+        assert timeline.get_conversion_map(TimeUnit.samples) is None
+        assert timeline.n_conversion_maps == 0
+        assert timeline.id == "take"
+        assert timeline.name == "Take"
 
     def test_create_timeline_metadata(self, wav_file: Path):
         """Test that timeline has metadata attached."""
@@ -351,28 +397,129 @@ class TestAudioLoaderIntegration:
     """Integration tests for AudioLoader with the TTA framework."""
 
     def test_timeline_coordinate_conversion(self, wav_file: Path):
-        """The audio axis is already expressed in seconds."""
+        """A timestamp on the samples axis carries its seconds through the C-map."""
         loader = AudioLoader().load(wav_file)
         timeline = loader.create_timeline()
 
-        assert timeline.unit is TimeUnit.seconds
-        assert timeline.length.value == 1.0
-
-    def test_timeline_used_with_metrical_grid(self, stereo_wav_file: Path):
-        """Test that audio timeline works with ContinuousPhysicalTimeline workflow."""
-        loader = AudioLoader().load(stereo_wav_file)
-        audio_tl = loader.create_timeline(uid="audio")
-
-        # Create a continuous timeline representing the same duration
-        continuous_tl = ContinuousPhysicalTimeline(
-            length=loader.duration_seconds,
-            unit=TimeUnit.seconds,
-            uid="audio_seconds",
+        stamp = timeline.get_timestamp_at(22050)
+        assert stamp.get_unit(TimeUnit.seconds) == IdCoordinate(
+            0.5, TimeUnit.seconds, "test"
         )
 
-        # Both should represent the same duration
-        assert audio_tl.length.value == 2.0
-        assert continuous_tl.length.value == 2.0  # seconds
+    def test_both_timelines_span_the_same_file(self, stereo_wav_file: Path):
+        """Each timeline's map takes its own end to the other's end."""
+        loader = AudioLoader().load(stereo_wav_file)
+        samples_tl = loader.create_timeline(uid="audio")
+        seconds_tl = loader.create_continuous_timeline(uid="audio_seconds")
+
+        assert samples_tl.length.value == 96000
+        assert seconds_tl.length.value == 2.0
+        to_seconds = samples_tl.get_conversion_map(TimeUnit.seconds)
+        to_samples = seconds_tl.get_conversion_map(TimeUnit.samples)
+        assert to_seconds(samples_tl.length.value) == seconds_tl.length.value
+        assert to_samples(seconds_tl.length.value) == samples_tl.length.value
+
+
+# endregion
+
+
+# region Specimen
+
+
+class TestAudioLoaderSpecimen:
+    """Both timelines of a real MP3, read by a third-party backend."""
+
+    @pytest.fixture(scope="class")
+    def loader(self) -> AudioLoader:
+        return AudioLoader().load(BASS_KICK)
+
+    def test_audio_info(self, loader: AudioLoader):
+        assert loader.n_samples == 10190592
+        assert loader.sample_rate == 44100
+        assert loader.channels == 2
+        assert loader.duration_seconds == 231.0791836734694
+
+    def test_samples_timeline(self, loader: AudioLoader):
+        timeline = loader.create_timeline()
+
+        assert type(timeline) is DiscretePhysicalTimeline
+        assert timeline.unit == TimeUnit.samples
+        assert timeline.number_type == NumberType.int
+        assert timeline.length.value == 10190592
+        assert timeline.id == "Bass Kick"
+        assert timeline.name == "Bass Kick.mp3"
+        end = timeline.get_conversion_map(TimeUnit.seconds)(10190592)
+        assert end == 231.0791836734694
+        assert type(end) is float
+
+    def test_seconds_timeline(self, loader: AudioLoader):
+        timeline = loader.create_continuous_timeline()
+
+        assert type(timeline) is ContinuousPhysicalTimeline
+        assert timeline.unit == TimeUnit.seconds
+        assert timeline.number_type == NumberType.float
+        assert timeline.length.value == 231.0791836734694
+        end = timeline.get_conversion_map(TimeUnit.samples)(231.0791836734694)
+        assert end == 10190592
+        assert type(end) is int
+
+    def test_no_cmap(self, loader: AudioLoader):
+        samples_tl = loader.create_timeline(attach_cmap=False)
+        seconds_tl = loader.create_continuous_timeline(attach_cmap=False)
+
+        assert samples_tl.n_conversion_maps == 0
+        assert seconds_tl.n_conversion_maps == 0
+
+    @pytest.mark.parametrize(
+        ("create", "cls", "unit", "length", "target", "scalar", "converted"),
+        [
+            (
+                "create_timeline",
+                DiscretePhysicalTimeline,
+                TimeUnit.samples,
+                10190592,
+                TimeUnit.seconds,
+                Fraction(1, 44100),
+                231.0791836734694,
+            ),
+            (
+                "create_continuous_timeline",
+                ContinuousPhysicalTimeline,
+                TimeUnit.seconds,
+                231.0791836734694,
+                TimeUnit.samples,
+                44100,
+                10190592,
+            ),
+        ],
+        ids=["samples", "seconds"],
+    )
+    def test_manifest_round_trip(
+        self,
+        loader: AudioLoader,
+        create: str,
+        cls: type,
+        unit: TimeUnit,
+        length: int | float,
+        target: TimeUnit,
+        scalar: int | Fraction,
+        converted: int | float,
+    ):
+        timeline = getattr(loader, create)()
+        restored = Timeline.from_dict(timeline.to_dict())
+
+        assert type(restored) is cls
+        assert restored.unit == unit
+        assert restored.length.value == length
+        assert restored.n_conversion_maps == 1
+        cmap = restored.get_conversion_map(target)
+        assert isinstance(cmap, LinearMap)
+        assert cmap.source_unit == unit
+        assert cmap.target_unit == target
+        assert cmap.scalar == scalar
+        assert cmap(length) == converted
+        assert type(cmap(length)) is type(converted)
+        assert restored.to_dict() == timeline.to_dict()
 
 
 # endregion
@@ -414,7 +561,7 @@ class TestAudioLoaderEdgeCases:
     def test_method_chaining(self, wav_file: Path):
         """Test that load() returns self for method chaining."""
         timeline = AudioLoader().load(wav_file).create_timeline()
-        assert isinstance(timeline, ContinuousPhysicalTimeline)
+        assert isinstance(timeline, DiscretePhysicalTimeline)
 
 
 # endregion

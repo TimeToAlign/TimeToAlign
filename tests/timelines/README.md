@@ -784,8 +784,8 @@ display. The tests prove four properties, each against literal expected ids.
   repeat jumps of the Rondeau `c11n08_Rondeau` target `None`.
 
 Loader parity (`test_manifest_ids.py::TestLoaderParity`): for one specimen
-each of the ms3 (with and without D.S. jumps), score-MIDI, lab, audio,
-Parangonada and IIIF loaders the test walks the whole
+each of the ms3 (with and without D.S. jumps), score-MIDI, lab, audio (its
+samples timeline and its seconds twin), Parangonada and IIIF loaders the test walks the whole
 `to_dict` tree and requires every timeline, child, map, region, break, jump
 and marker to carry a valid id (non-empty, no control character),
 all ids within one manifest to be distinct, and no id to start with `tl:`.

@@ -67,7 +67,7 @@
 
 # %%
 
-from timetoalign import IdCoordinate, Ms3Loader, TimelineGroup, TimeUnit
+from timetoalign import Coordinate, IdCoordinate, Ms3Loader, TimelineGroup, TimeUnit
 from timetoalign.loader.graphical.aton import ATONLoader
 from timetoalign.loader.midi import PerformanceMidiLoader
 from timetoalign.loader.physical import AudioLoader
@@ -435,7 +435,7 @@ else:
 #     |
 #     +-- dlt2_exp (MIDI ticks)
 #     |
-#     +-- dpt1_audio (seconds)
+#     +-- dpt1_audio (samples)
 #     |
 #     +-- clt1_score (quarterbeats)
 # ```
@@ -469,7 +469,7 @@ group_timestamps
 
 # %% [markdown]
 # Each row shows the **same musical moment** in all coordinate systems.
-# Column names include units (e.g., "dgt_holes (pixels)", "dpt1_audio (seconds)").
+# Column names include units (e.g., "dgt_holes (pixels)", "dpt1_audio (samples)").
 
 # %% [markdown]
 # ---
@@ -580,8 +580,9 @@ parent_df
 # We can query the group from ANY member timeline. Just display the timestamp!
 
 # %%
-# Query at 100 seconds in the audio - timestamp shows ALL peer timelines
-audio_100s = group.get_timestamp_at(100.0, "dpt1_audio")
+# Query at 100 seconds in the audio - its SamplesToSeconds C-Map carries the
+# seconds coordinate onto the samples axis; the timestamp shows ALL peer timelines
+audio_100s = group.get_timestamp_at(Coordinate(100.0, TimeUnit.seconds), "dpt1_audio")
 audio_100s
 
 # %%
@@ -679,7 +680,7 @@ print(f"  Score diff: {abs(via_score - test_coord)} pixels")
 #                           |
 #                           +-- dlt2_exp (MIDI expressive: ticks)
 #                           |
-#                           +-- dpt1_audio (Audio: seconds)
+#                           +-- dpt1_audio (Audio: samples)
 #                           |
 #                           +-- clt1_score (Score: quarterbeats)
 #                                 |-- notes (5,577 events)

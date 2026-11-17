@@ -625,7 +625,8 @@ from timetoalign.loader.physical.audio import AudioLoader
 # ## 8. AudioLoader
 #
 # Reads audio file metadata (sample rate, channels, duration) without loading
-# the full waveform.  Produces a `DiscretePhysicalTimeline`.
+# the full waveform.  Produces a `DiscretePhysicalTimeline` in samples with a
+# `SamplesToSeconds` C-Map.
 
 # %%
 audio_file = DATA_DIR / "supra" / "midi" / "fd660zf8362.mp3"
@@ -648,6 +649,13 @@ print(f"Samples: {audio_loader.n_samples}")
 # %%
 audio_tl = audio_loader.create_timeline()
 audio_tl
+
+# %% [markdown]
+# `create_continuous_timeline()` gives the same file as a
+# `ContinuousPhysicalTimeline` in seconds with a `SecondsToSamples` C-Map.
+
+# %%
+audio_loader.create_continuous_timeline()
 
 
 # %% [markdown]

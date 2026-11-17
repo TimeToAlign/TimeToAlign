@@ -2,15 +2,16 @@
 
 This module provides a manifest-style loader that extracts metadata from audio
 files (WAV, FLAC, OGG, MP3, etc.) without loading the actual sample data.
-The resulting information can be used to create continuous physical timelines
-whose public coordinate axis is seconds.
+The resulting information creates a DiscretePhysicalTimeline in samples with a
+SamplesToSeconds conversion map, or, on request, a ContinuousPhysicalTimeline in
+seconds with a SecondsToSamples conversion map.
 
 Design Philosophy:
     AudioLoader follows the same pattern as IIIFManifestLoader: it extracts
     dimensions and metadata from files without loading the heavy content.
     This allows users to:
     1. Create timelines representing audio files
-    2. Use seconds directly for physical coordinates
+    2. Attach conversion maps for coordinate transformations
     3. Add events from other loaders (annotations, beat markers, etc.)
 
 Backend Support:
@@ -27,15 +28,21 @@ import sys
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Iterator
+from typing import TYPE_CHECKING, Any, Iterator, TypeVar
 
 from timetoalign.loader.base import Loader
 
 if TYPE_CHECKING:
     from timetoalign.maps import SamplesToSeconds
-    from timetoalign.timelines import ContinuousPhysicalTimeline
+    from timetoalign.timelines import (
+        ContinuousPhysicalTimeline,
+        DiscretePhysicalTimeline,
+        PhysicalTimeline,
+    )
 
 module_logger = logging.getLogger(__name__)
+
+_PhysicalTimelineT = TypeVar("_PhysicalTimelineT", bound="PhysicalTimeline")
 
 
 # region Backend Detection
@@ -113,7 +120,7 @@ class AudioInfo:
     """Metadata for an audio file.
 
     This dataclass holds all relevant information about an audio file
-    that is needed to create a continuous physical timeline.
+    that is needed to create a physical timeline.
 
     Attributes:
         n_samples: Total number of samples in the file (frames).
@@ -163,13 +170,15 @@ class AudioLoader(Loader[AudioInfo]):
     """Load audio file metadata for creating physical timelines.
 
     AudioLoader extracts metadata from audio files without loading the actual
-    sample data. This is efficient for creating seconds-based physical
-    timelines that represent audio files in the TimeToAlign! framework.
+    sample data. This is efficient for creating physical timelines that
+    represent audio files in the TimeToAlign! framework.
 
     The loader automatically:
     - Detects the best available backend (soundfile > mutagen > wave)
     - Extracts sample count, sample rate, channels, and format info
-    - Provides a timeline constructor over a continuous seconds axis
+    - Creates a samples timeline with a SamplesToSeconds C-map
+      (``create_timeline``) or a seconds timeline with a SecondsToSamples
+      C-map (``create_continuous_timeline``)
 
     Supported formats depend on installed backends:
     - soundfile: WAV, FLAC, OGG, AIFF, and many more (via libsndfile)
@@ -180,7 +189,7 @@ class AudioLoader(Loader[AudioInfo]):
         >>> loader = AudioLoader()
         >>> loader.load("recording.wav")
         >>> loader.n_samples
-        7938048
+        7938000
         >>> loader.sample_rate
         44100
         >>> loader.duration_seconds
@@ -189,9 +198,9 @@ class AudioLoader(Loader[AudioInfo]):
         >>> # Create a timeline
         >>> timeline = loader.create_timeline(uid="my_audio")
         >>> timeline.unit
-        <TimeUnit.seconds: 'seconds'>
+        <TimeUnit.samples: 'samples'>
         >>> timeline.length
-        Coordinate(180.0, seconds)
+        Coordinate(7938000, samples)
 
     Attributes:
         audio_info: Parsed audio metadata (after loading).
@@ -556,22 +565,23 @@ class AudioLoader(Loader[AudioInfo]):
         uid: str | None = None,
         name: str | None = None,
         attach_cmap: bool = True,
-    ) -> "ContinuousPhysicalTimeline":
-        """Create a continuous seconds timeline from the loaded audio.
+    ) -> "DiscretePhysicalTimeline":
+        """Create a DiscretePhysicalTimeline in samples from the loaded audio.
 
         The timeline is created with:
-        - unit=TimeUnit.seconds
-        - length=duration_seconds
-        - float coordinates
+        - unit=TimeUnit.samples
+        - length=n_samples
+        - integer coordinates
+        - a SamplesToSeconds C-map, unless ``attach_cmap`` is False
 
         Args:
             uid: Unique identifier for the timeline. If None, uses filename.
             name: Human-readable name. If None, uses filename.
-            attach_cmap: Accepted for loader-call compatibility; seconds need
-                no sample-to-seconds conversion map.
+            attach_cmap: If True, attach a SamplesToSeconds conversion map at
+                the file's sample rate.
 
         Returns:
-            A continuous physical timeline representing the audio file.
+            A DiscretePhysicalTimeline representing the audio file.
 
         Raises:
             RuntimeError: If no audio file has been loaded.
@@ -580,40 +590,71 @@ class AudioLoader(Loader[AudioInfo]):
             >>> loader = AudioLoader().load("song.wav")
             >>> timeline = loader.create_timeline()
             >>> timeline.unit
+            <TimeUnit.samples: 'samples'>
+        """
+        from timetoalign.core import NumberType, TimeUnit
+        from timetoalign.timelines import DiscretePhysicalTimeline
+
+        timeline = self._create_audio_timeline(
+            DiscretePhysicalTimeline,
+            length=self.audio_info.n_samples,
+            unit=TimeUnit.samples,
+            number_type=NumberType.int,
+            uid=uid,
+            name=name,
+        )
+        if attach_cmap:
+            timeline.add_conversion_map(self.create_samples_to_seconds_map())
+        return timeline
+
+    def create_continuous_timeline(
+        self,
+        uid: str | None = None,
+        name: str | None = None,
+        attach_cmap: bool = True,
+    ) -> "ContinuousPhysicalTimeline":
+        """Create a ContinuousPhysicalTimeline in seconds from the loaded audio.
+
+        The timeline is created with:
+        - unit=TimeUnit.seconds
+        - length=duration_seconds
+        - float coordinates
+        - a SecondsToSamples C-map, unless ``attach_cmap`` is False
+
+        Args:
+            uid: Unique identifier for the timeline. If None, uses filename.
+            name: Human-readable name. If None, uses filename.
+            attach_cmap: If True, attach a SecondsToSamples conversion map at
+                the file's sample rate.
+
+        Returns:
+            A ContinuousPhysicalTimeline representing the audio file.
+
+        Raises:
+            RuntimeError: If no audio file has been loaded.
+
+        Examples:
+            >>> loader = AudioLoader().load("song.wav")
+            >>> timeline = loader.create_continuous_timeline()
+            >>> timeline.unit
             <TimeUnit.seconds: 'seconds'>
         """
         from timetoalign.core import NumberType, TimeUnit
+        from timetoalign.maps import SecondsToSamples
         from timetoalign.timelines import ContinuousPhysicalTimeline
 
-        info = self.audio_info
-        del attach_cmap
-
-        # Default uid/name from filename
-        if uid is None and info.source_path is not None:
-            uid = info.source_path.stem
-        if name is None and info.source_path is not None:
-            name = info.source_path.name
-
-        # Create the timeline
-        timeline = ContinuousPhysicalTimeline(
-            length=info.duration_seconds,
+        timeline = self._create_audio_timeline(
+            ContinuousPhysicalTimeline,
+            length=self.audio_info.duration_seconds,
             unit=TimeUnit.seconds,
             number_type=NumberType.float,
             uid=uid,
             name=name,
         )
-
-        # Store metadata on the timeline
-        timeline._metadata = {
-            "source_path": str(info.source_path) if info.source_path else None,
-            "sample_rate": info.sample_rate,
-            "channels": info.channels,
-            "duration_seconds": info.duration_seconds,
-            "format": info.format,
-            "subtype": info.subtype,
-            "bits_per_sample": info.bits_per_sample,
-        }
-
+        if attach_cmap:
+            timeline.add_conversion_map(
+                SecondsToSamples(sample_rate=self.audio_info.sample_rate)
+            )
         return timeline
 
     def create_samples_to_seconds_map(self) -> "SamplesToSeconds":
@@ -628,6 +669,43 @@ class AudioLoader(Loader[AudioInfo]):
         from timetoalign.maps import SamplesToSeconds
 
         return SamplesToSeconds(sample_rate=self.audio_info.sample_rate)
+
+    def _create_audio_timeline(
+        self,
+        timeline_cls: type[_PhysicalTimelineT],
+        *,
+        uid: str | None,
+        name: str | None,
+        **axis: Any,
+    ) -> _PhysicalTimelineT:
+        """Create a timeline of ``timeline_cls`` named after and describing the file.
+
+        Args:
+            timeline_cls: The physical timeline class to instantiate.
+            uid: Unique identifier for the timeline. If None, uses filename.
+            name: Human-readable name. If None, uses filename.
+            **axis: ``length``, ``unit`` and ``number_type`` of the timeline.
+
+        Returns:
+            The timeline, carrying the file's metadata.
+        """
+        info = self.audio_info
+        if uid is None and info.source_path is not None:
+            uid = info.source_path.stem
+        if name is None and info.source_path is not None:
+            name = info.source_path.name
+
+        timeline = timeline_cls(uid=uid, name=name, **axis)
+        timeline._metadata = {
+            "source_path": str(info.source_path) if info.source_path else None,
+            "sample_rate": info.sample_rate,
+            "channels": info.channels,
+            "duration_seconds": info.duration_seconds,
+            "format": info.format,
+            "subtype": info.subtype,
+            "bits_per_sample": info.bits_per_sample,
+        }
+        return timeline
 
     # endregion
 

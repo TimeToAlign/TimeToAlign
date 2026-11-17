@@ -4,9 +4,9 @@ Tests for the physical-domain loaders in `timetoalign.loader.physical`.
 
 ## Test Files
 
-### `test_audio.py` (27 tests)
+### `test_audio.py` (36 tests)
 
-Tests for `AudioLoader` against minimal in-memory WAV files.
+Tests for `AudioLoader` against minimal in-memory WAV files and one MP3 specimen.
 
 Durations are asserted **exactly**, with zero tolerance: `AudioLoader`
 computes `duration_seconds = n_samples / sample_rate` and `SamplesToSeconds`
@@ -15,6 +15,33 @@ to the value expression and is checked with `==` (no `pytest.approx`). The
 integer-sample fixtures divide out cleanly (44100/44100 = `1.0`, 96000/48000 =
 `2.0`, 22050/44100 = `0.5`); the 10-sample edge case is pinned as `10 / 44100`,
 the same double the C-map returns. No approx assertions remain in this file.
+
+**Two timelines per file.** A file's native axis is its sample count, so
+`create_timeline()` must give a `DiscretePhysicalTimeline` in `samples`, `int`,
+whose length is the sample count, and attach a `SamplesToSeconds` C-Map at the
+file's sample rate; `create_continuous_timeline()` must give the
+`ContinuousPhysicalTimeline` in `seconds`, `float`, whose length is
+`duration_seconds`, and attach a `SecondsToSamples` C-Map. What proves each map
+is attached at the right rate is its value at the timeline's own end: the
+samples map must take the sample count to the duration, the seconds map the
+duration back to the sample count — a wrong rate, a missing map or a map in the
+wrong direction cannot produce both. The seconds unit declares `float`, so the
+samples map answers with the double `n_samples / sample_rate`, pinned with
+`==` and its type (a `Fraction` there would mean the axis's number type was
+not applied); the samples map answers with an `int`. `attach_cmap=False`
+attaches no map to either timeline (`get_conversion_map` of the other unit is
+`None`). The default id and name come from the file name for both.
+
+These facts are pinned on the WAV fixtures and once on a real specimen read by
+the soundfile or mutagen backend (`TestAudioLoaderSpecimen`, corpus `audio`,
+`hard_techno/Bass Kick.mp3`): 10190592 samples at 44100 Hz, 2 channels,
+`duration_seconds == 231.0791836734694`. The samples timeline's map takes
+10190592 to `231.0791836734694` (a `float`); the seconds timeline's map takes
+`231.0791836734694` to `10190592` (an `int`). A manifest round trip
+(`to_dict` then `Timeline.from_dict`) of either timeline must keep its class,
+unit and length, and its one C-Map's source unit, target unit and scalar
+(`Fraction(1, 44100)` and `44100`); the read map converts the end exactly as
+the attached one did, and the round-tripped `to_dict` equals the original.
 
 **Backend-probe silence** (`TestAudioLoaderProbeSilence`, 3 tests). The loader
 tries backends in order and hands an unreadable file to the next one, so a
@@ -99,7 +126,7 @@ Each recording directory has an XML manifest cataloguing all 332+ data files.
 | Test File | Tests | Status |
 |-----------|-------|--------|
 | `test_repovizz_loader.py` | 27 | All pass |
-| `test_audio.py` | 27 | All pass |
-| **Total** | **54** | **All pass** |
+| `test_audio.py` | 36 | All pass |
+| **Total** | **63** | **All pass** |
 
 All tests pass in parallel mode (`pytest-xdist -n auto`).

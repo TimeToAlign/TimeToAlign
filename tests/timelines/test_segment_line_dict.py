@@ -100,7 +100,9 @@ def _root(data: dict[str, Any]) -> dict[str, Any]:
 
 def test_plain_timeline_writes_false_and_no_class() -> None:
     """A plain timeline writes the flag false; no timeline object has a class."""
-    data = _root(ContinuousLogicalTimeline(length=4, uid="score").to_dict())
+    data = _root(
+        ContinuousLogicalTimeline(length=4, uid="score").to_dict(minimal=False)
+    )
 
     assert "class" not in data
     assert data["is_segment_line"] is False
@@ -108,7 +110,7 @@ def test_plain_timeline_writes_false_and_no_class() -> None:
 
 def test_flat_segment_line_dict_is_exact() -> None:
     """The flag, and the segments as children, which are never locked."""
-    assert _flat().to_dict() == _manifest(
+    assert _flat().to_dict(minimal=False) == _manifest(
         _object(
             "line",
             500,
@@ -139,7 +141,7 @@ def test_nested_segment_line_dict_is_exact() -> None:
         "page_2", 120, True, [accolade("accolade_3", 120, 0)], locked=True, offset=250
     )
 
-    assert _nested().to_dict() == _manifest(
+    assert _nested().to_dict(minimal=False) == _manifest(
         _object("edition", 370, True, [page_1, page_2], locked=False)
     )
 

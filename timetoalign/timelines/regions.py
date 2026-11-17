@@ -293,24 +293,16 @@ end=Coordinate(Fraction(32, 1), quarters))
             return self
         return replace(self, links=links)
 
-    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
-        """Return this region as its JSON object, bounds as bare values.
-
-        Args:
-            minimal: Leave out ``name``, ``meta`` and ``links`` at their
-                defaults, and every key of a link at its default.
-        """
-        return self._dict_form(
-            {
-                "id": self.id,
-                "name": self.name,
-                "start": axis_value_to_json(self.start),
-                "end": axis_value_to_json(self.end),
-                "meta": deepcopy(self.meta),
-                "links": [link.to_dict(minimal=minimal) for link in self.links],
-            },
-            minimal=minimal,
-        )
+    def _dict_fields(self, *, minimal: bool) -> dict[str, Any]:
+        """Return the region's keys; ``name``, ``meta`` and ``links`` are optional."""
+        return {
+            "id": self.id,
+            "name": self.name,
+            "start": axis_value_to_json(self.start),
+            "end": axis_value_to_json(self.end),
+            "meta": deepcopy(self.meta),
+            "links": [link.to_dict(minimal=minimal) for link in self.links],
+        }
 
     def __repr__(self) -> str:
         label = (

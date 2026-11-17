@@ -279,8 +279,8 @@ def test_affine_maps_write_a_linear_map(
         "source_unit": "quarters",
         "target_unit": "quarters",
     }
-    assert cmap.to_dict() == {**base, "name": None, **complete}
-    assert cmap.to_dict(minimal=True) == {**base, **minimal}
+    assert cmap.to_dict(minimal=False) == {**base, "name": None, **complete}
+    assert cmap.to_dict() == {**base, **minimal}
     read = _through_manifest(cmap)
     assert type(read) is LinearMap
     _assert_converts_alike(cmap, read, [0, 1, F(1, 3), 2.5, -7])
@@ -342,7 +342,7 @@ def test_an_interpolation_map_writes_a_linear_table_map() -> None:
         target_unit="seconds",
         uid="warp",
     )
-    assert cmap.to_dict() == {
+    assert cmap.to_dict(minimal=False) == {
         "type": "TableMap",
         "id": "warp",
         "name": None,
@@ -361,8 +361,8 @@ def test_an_interpolation_map_writes_a_linear_table_map() -> None:
 @pytest.mark.parametrize("policy", ["error", "nan"])
 def test_error_and_nan_extrapolation_both_write_none(policy: str) -> None:
     cmap = TableMap(x_values=[0, 4], y_values=[0.0, 2.0], extrapolate=policy, uid="t")
-    assert cmap.to_dict()["extrapolate"] == "none"
-    assert "extrapolate" not in cmap.to_dict(minimal=True)
+    assert cmap.to_dict(minimal=False)["extrapolate"] == "none"
+    assert "extrapolate" not in cmap.to_dict()
     read = ConversionMap.from_dict(cmap.to_dict())
     _assert_converts_alike(cmap, read, [0, 1, 4])
     assert _outcome(cmap, 5) == (ValueError if policy == "error" else "nan")
@@ -487,7 +487,7 @@ def test_a_floating_measure_map_names_the_measure_map_of_its_knots() -> None:
     cmap = QuartersToFloatingMeasures(
         x_values=[0, 4, 7], y_values=[1.0, 2.0, 3.0], uid="floating"
     )
-    assert cmap.to_dict() == {
+    assert cmap.to_dict(minimal=False) == {
         "type": "FloatingMeasureMap",
         "id": "floating",
         "name": None,

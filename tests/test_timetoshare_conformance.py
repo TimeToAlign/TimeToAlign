@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import os
 import tempfile
@@ -20,6 +21,7 @@ from timetoshare import (
     complete,
     dumps,
     fixture_paths,
+    loads,
     minimal,
     rejection_case,
     rejection_paths,
@@ -406,7 +408,7 @@ def test_built_manifests_conform(name: str, builder: Callable[[], list[Any]]) ->
     """
     del name
     for item in builder():
-        written, written_minimal = item.to_dict(), item.to_dict(minimal=True)
+        written, written_minimal = item.to_dict(minimal=False), item.to_dict()
         for value in (written, written_minimal):
             validate(value)
             assert unknown_keys(value) == []
@@ -424,7 +426,7 @@ READERS: dict[str, type] = {
 
 FIXTURE_ROOT = Path(os.path.commonpath(fixture_paths()))
 """The package's ``fixtures/<version>/`` directory, which holds manifests itself."""
-TWIN_SUFFIX = ".minimal.json"
+TWIN_SUFFIX = ".minimal.yaml"
 FIXTURES = sorted(
     path.relative_to(FIXTURE_ROOT).as_posix()
     for path in fixture_paths()
@@ -434,7 +436,7 @@ FIXTURES = sorted(
 
 def _twin(fixture: str) -> str:
     """Return the relative path of a fixture's minimal twin."""
-    return fixture.removesuffix(".json") + TWIN_SUFFIX
+    return fixture.removesuffix(".yaml") + TWIN_SUFFIX
 
 
 def test_every_fixture_has_its_minimal_twin() -> None:
@@ -457,7 +459,7 @@ def test_fixture_and_twin_obey_the_laws(fixture: str) -> None:
     """
     text = (FIXTURE_ROOT / fixture).read_text(encoding="utf-8")
     twin_text = (FIXTURE_ROOT / _twin(fixture)).read_text(encoding="utf-8")
-    value, twin = json.loads(text), json.loads(twin_text)
+    value, twin = loads(text), loads(twin_text)
     for manifest in (value, twin):
         validate(manifest)
         assert unknown_keys(manifest) == []
@@ -468,7 +470,7 @@ def test_fixture_and_twin_obey_the_laws(fixture: str) -> None:
     from_fixture, from_twin = reader.from_dict(value), reader.from_dict(twin)
     assert type(from_fixture) is type(from_twin)
     for read in (from_fixture, from_twin):
-        written, written_minimal = read.to_dict(), read.to_dict(minimal=True)
+        written, written_minimal = read.to_dict(minimal=False), read.to_dict()
         assert dumps(written) == text
         assert dumps(written_minimal) == twin_text
         assert _as_written(written) == _as_written(value)
@@ -480,7 +482,7 @@ def test_a_bundle_reads_every_fixture(fixture: str) -> None:
     """``AlignmentBundle.from_dict`` reads any manifest and writes it back."""
     for path, form in ((fixture, False), (_twin(fixture), True)):
         text = (FIXTURE_ROOT / path).read_text(encoding="utf-8")
-        bundle = AlignmentBundle.from_dict(json.loads(text))
+        bundle = AlignmentBundle.from_dict(loads(text))
         assert dumps(bundle.to_dict(minimal=form)) == text
 
 
@@ -555,7 +557,7 @@ def test_statement_band_order_and_timestamp_rules_are_the_only_unread_cases() ->
     assert unread <= set(REJECTIONS)
     for case in sorted(unread):
         manifest = rejection_case(REJECTIONS[case]).manifest
-        written = AlignmentBundle.from_dict(manifest).to_dict()
+        written = AlignmentBundle.from_dict(manifest).to_dict(minimal=False)
         if case in BAND_ORDER_RULES:
             assert written["graphical"]["order"] == manifest["graphical"]["order"]
         if case in TIMESTAMP_RULES:
@@ -575,16 +577,16 @@ SEVERAL_DEPTHS_ROW = {
     "tempo": 120,
     "time_signature": "4/4",
 }
-"""The one measure-map row of ``several_depths.json`` as the library writes it."""
+"""The one measure-map row of ``several_depths.yaml`` as the library writes it."""
 
 
 @pytest.mark.parametrize("path", warning_paths(), ids=lambda path: path.stem)
 def test_the_library_writes_every_warning_case_back(path: Path) -> None:
     """Each case reads, and writes back in its own form with the same unknown keys."""
-    case = json.loads(path.read_text(encoding="utf-8"))
+    case = loads(path.read_text(encoding="utf-8"))
     manifest = case["manifest"]
     is_minimal = dumps(manifest) == dumps(minimal(manifest))
-    expected = json.loads(json.dumps(manifest))
+    expected = copy.deepcopy(manifest)
     if path.stem == "several_depths":
         expected["measure_maps"][0]["rows"] = [SEVERAL_DEPTHS_ROW]
 

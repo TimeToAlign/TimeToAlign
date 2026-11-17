@@ -587,7 +587,7 @@ class TestSerialization:
     def test_to_dict_basic(self):
         """to_dict includes all timeline properties."""
         tl = Timeline(length=10.0, unit=TimeUnit.seconds, uid="test_tl")
-        (data,) = tl.to_dict()["timelines"]
+        (data,) = tl.to_dict(minimal=False)["timelines"]
 
         assert data["id"] == "test_tl"
         assert data["unit"] == "seconds"

@@ -851,11 +851,13 @@ class MeasureMap(_OpenObject):
             or row_for(index) != default_successor(index - 1)
         ]
 
-    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
+    def to_dict(self, *, minimal: bool = True) -> dict[str, Any]:
         """Return this map as its ``measure_maps`` entry.
 
         Args:
-            minimal: Leave out ``name`` and ``meta`` at their defaults.
+            minimal: Write the minimal form (the default): ``name`` and
+                ``meta`` left out at their defaults. With False, the complete
+                form: both written, their defaults included.
 
         Returns:
             ``{"id", "name", "meta", "rows"}``, the rows compressed, then the

@@ -434,7 +434,8 @@ class TestMapDictForm:
 
     @pytest.mark.parametrize("cmap", _conversion_maps(), ids=lambda m: type(m).__name__)
     def test_only_a_given_name_is_emitted(self, cmap: ConversionMap[Any]) -> None:
-        assert cmap.to_dict()["name"] is None
+        assert cmap.to_dict(minimal=False)["name"] is None
+        assert "name" not in cmap.to_dict()
         named = _read(dict(cmap.to_dict(), name="my-map"))
         assert named.to_dict()["name"] == "my-map"
 

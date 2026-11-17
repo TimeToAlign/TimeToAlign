@@ -82,6 +82,7 @@ from timetoalign.storage import EventData
 
 from .manifest import (
     Manifest,
+    ManifestFileMixin,
     matches_any,
     read_id,
     read_meta,
@@ -355,7 +356,7 @@ class _IdScope:
 
 
 @dataclass
-class TimelineGroup(_IdScope, _OpenObject):
+class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
     """An array of timelines sharing one graphical start and end point.
 
     By definition every member's 0 coincides with every other member's 0 and
@@ -2108,7 +2109,7 @@ class TimelineGroup(_IdScope, _OpenObject):
     def to_dict(
         self,
         *,
-        minimal: bool = False,
+        minimal: bool = True,
         events: bool = False,
         external_references: bool = False,
     ) -> dict[str, Any]:
@@ -2131,7 +2132,9 @@ class TimelineGroup(_IdScope, _OpenObject):
         timeline or region the manifest leaves out leaves it out too.
 
         Args:
-            minimal: If True, leave out every key at its default value.
+            minimal: If False, write every optional key, its default value
+                included (the complete form); by default every key at its
+                default value is left out (the minimal form).
             events: Write every timeline's event rows.
             external_references: Write every timeline's external references.
 
@@ -2153,7 +2156,7 @@ class TimelineGroup(_IdScope, _OpenObject):
             >>> group = TimelineGroup(
             ...     timelines=[part, ContinuousLogicalTimeline(length=Fraction(8))]
             ... )
-            >>> data = group.to_dict(minimal=True)
+            >>> data = group.to_dict()
             >>> [timeline["id"] for timeline in data["timelines"]]
             ['clt_1', 'dgt_1']
             >>> data["groups"]

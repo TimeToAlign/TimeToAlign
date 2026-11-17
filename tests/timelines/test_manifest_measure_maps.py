@@ -85,6 +85,18 @@ def _record(
 # region Writing
 
 
+def test_a_measure_map_writes_its_minimal_entry_by_default() -> None:
+    bars = _bars()
+
+    assert bars.to_dict() == {"id": "measuremap_1", "rows": ROWS}
+    assert bars.to_dict(minimal=False) == {
+        "id": "measuremap_1",
+        "name": None,
+        "meta": {},
+        "rows": ROWS,
+    }
+
+
 def test_writing_lifts_a_quarters_timeline_s_measure_map() -> None:
     score = ContinuousLogicalTimeline(length=F(8), uid="score")
     score.add_measure_map(_bars())
@@ -297,7 +309,7 @@ def test_reading_puts_the_measure_map_back_and_keeps_every_id(form: str) -> None
     assert score.measure_map.meta == {"source": "hand"}
     assert score._conversion_maps == {}
     assert bundle.to_dict(minimal=True) == READ_MINIMAL
-    assert bundle.to_dict() == READ_COMPLETE
+    assert bundle.to_dict(minimal=False) == READ_COMPLETE
 
 
 def _one_root(conversion_maps: list[dict[str, Any]]) -> dict[str, Any]:

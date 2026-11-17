@@ -77,6 +77,7 @@ from .engines import (
 from .flowcontrol import FlowControlRegistry
 from .manifest import (
     Manifest,
+    ManifestFileMixin,
     axis_value_from_json,
     axis_value_to_json,
     check_children_fit,
@@ -178,6 +179,7 @@ class Timeline(
     SegmentsMixin,
     SkeletonsMixin,
     MutableLinksMixin,
+    ManifestFileMixin,
     _OpenObject,
 ):
     """A positive coordinate axis with events and nested child timelines.
@@ -1609,7 +1611,7 @@ class Timeline(
     def to_dict(
         self,
         *,
-        minimal: bool = False,
+        minimal: bool = True,
         events: bool = False,
         external_references: bool = False,
     ) -> dict[str, Any]:
@@ -1633,13 +1635,14 @@ class Timeline(
         ``"events"`` and ``"external_references"`` are written only on
         request.
 
-        By default every optional key is written, its default value
-        included (the complete form); with ``minimal=True`` every key at its
-        default is left out, except ``length``. Keys the library does not
-        know, kept when the timeline was read, are written back. A timeline
-        read from a manifest as a whole writes that manifest's ``id``,
-        ``name``, ``meta``, ``schemes``, ``links``, ``graphical`` and unknown
-        keys back around it.
+        By default every key at its default value is left out, except
+        ``length`` (the minimal form); with ``minimal=False`` every optional
+        key is written, its default value included (the complete form). Keys
+        the library does not know, kept when the timeline was read, are
+        written back. A timeline read from a manifest as a whole writes that
+        manifest's ``id``, ``name``, ``meta``, ``schemes``, ``links``,
+        ``graphical`` and unknown keys back around it. :meth:`to_file` writes
+        the manifest as a file.
 
         The manifest is written whole and valid wherever the timeline
         belongs: ``schemes`` declares every scheme a link of the tree names
@@ -1651,7 +1654,7 @@ class Timeline(
 
         Collections are written in one canonical order, independent of the
         order in which their content was added, so equal timelines give equal
-        JSON text: ``children`` by offset, then id; ``conversion_maps`` by id;
+        text: ``children`` by offset, then id; ``conversion_maps`` by id;
         ``regions`` by start, then end, then id; ``flow_control`` (breaks,
         markers and jumps in one array, see
         :meth:`FlowControlRegistry.to_dict
@@ -1661,7 +1664,8 @@ class Timeline(
         :meth:`from_dict` accepts any order.
 
         Args:
-            minimal: If True, leave out every key at its default value.
+            minimal: If False, write every optional key, its default value
+                included.
             events: If True, write an ``"events"`` key on every timeline
                 object holding its event rows.
             external_references: If True, write an ``"external_references"``
@@ -1688,7 +1692,7 @@ class Timeline(
             >>> from fractions import Fraction
             >>> from timetoalign.timelines import ContinuousLogicalTimeline
             >>> score = ContinuousLogicalTimeline(length=Fraction(32), uid="piece")
-            >>> score.to_dict(minimal=True)
+            >>> score.to_dict()
             {'timetoshare': '0.2.0', 'timelines': [{'id': 'piece', 'unit': 'quarters', \
 'length': [32, 1]}]}
         """

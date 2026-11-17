@@ -450,7 +450,7 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
 
     # region Serialization
 
-    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
+    def to_dict(self, *, minimal: bool = True) -> dict[str, Any]:
         """Return the map's TimeToShare form: one of the format's map types.
 
         Every map is written as one of ten abstract types (``LinearMap``,
@@ -470,7 +470,9 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
         :meth:`Timeline.to_dict <timetoalign.timelines.Timeline.to_dict>`).
 
         Args:
-            minimal: Leave out every key at its default, in nested maps too.
+            minimal: Write the minimal form (the default): every key at its
+                default value left out, in nested maps too. With False, the
+                complete form: every key written, its default included.
 
         Returns:
             The map's TimeToShare form.
@@ -573,7 +575,7 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
             raise ValueError(
                 f"a {map_type} lacks the key(s) [{error.args[0]!r}]"
             ) from error
-        written = cmap.to_dict()
+        written = cmap.to_dict(minimal=False)
         optional = {**ConversionMap._dict_defaults, **map_cls._dict_defaults}
         missing = [key for key in written if key not in optional and key not in data]
         if missing:

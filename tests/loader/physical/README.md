@@ -4,17 +4,70 @@ Tests for the physical-domain loaders in `timetoalign.loader.physical`.
 
 ## Test Files
 
-### `test_audio.py` (36 tests)
+### `test_audio.py` (45 tests)
 
 Tests for `AudioLoader` against minimal in-memory WAV files and one MP3 specimen.
 
-Durations are asserted **exactly**, with zero tolerance: `AudioLoader`
-computes `duration_seconds = n_samples / sample_rate` and `SamplesToSeconds`
-performs the same division, so every duration in these tests is bit-identical
-to the value expression and is checked with `==` (no `pytest.approx`). The
-integer-sample fixtures divide out cleanly (44100/44100 = `1.0`, 96000/48000 =
-`2.0`, 22050/44100 = `0.5`); the 10-sample edge case is pinned as `10 / 44100`,
-the same double the C-map returns. No approx assertions remain in this file.
+**Where the sample count comes from.** The loader tries its backends in a
+fixed order, exact counts first, and records the one that answered in
+`AudioInfo.backend`:
+
+1. `soundfile` — libsndfile's `frames`, the count its decoder produces
+   (libsndfile ≥ 1.1 decodes MP3);
+2. for a `.wav`/`.wave` file, the standard library's `wave` reader
+   (`getnframes()`), then the loader's own RIFF header parser (the `fact`
+   chunk, else the `data` chunk size over the block size) for WAV encodings
+   `wave` rejects, such as IEEE float;
+3. `mutagen`, which states only a **duration**: its count is the estimate
+   `round(duration * sample_rate)`.
+
+A backend that is not installed or cannot read the file hands it on to the
+next; any other exception propagates. On the three exact paths
+`duration_seconds` is `n_samples / sample_rate`; on the mutagen path it is the
+duration mutagen states, and `n_samples` is derived from it.
+
+Durations are asserted **exactly**, with zero tolerance: on the exact paths
+`duration_seconds` and `SamplesToSeconds` perform the same division, so every
+duration in these tests is bit-identical to the value expression and is
+checked with `==` (no `pytest.approx`). The integer-sample fixtures divide out
+cleanly (44100/44100 = `1.0`, 96000/48000 = `2.0`, 22050/44100 = `0.5`); the
+10-sample edge case is pinned as `10 / 44100`, the same double the C-map
+returns. No approx assertions remain in this file.
+
+**The count is a count, never a float round trip** (`TestAudioLoaderSampleCount`).
+A duration in seconds is a double, and `int(n / rate * rate)` truncates
+whenever the product lands a hair below `n`: at 44100 Hz that happens for
+163,732 of the counts from 1 to 2,000,000 (about 8 %). A loader that derives
+its count from a duration therefore loses a sample on those files, and only a
+test on such a count can tell the two apart. What must hold:
+
+- a 15-sample WAV at 44100 Hz (written by the test file's own
+  `create_wav_file`) loads as exactly 15 samples with `backend == "soundfile"`,
+  and as exactly 15 with `backend == "wave"` when soundfile is reported as not
+  installed (the module's `_get_soundfile` patched to return `None`);
+- three counts that the float round trip truncates load exactly through the
+  default chain: **15**, the smallest affected count (`15 / 44100 * 44100` is
+  `14.999999999999998`); **44109**, the first affected count past one second
+  (`44108.99999999999`); and **1999995**, the largest affected count up to
+  2,000,000 (`1999994.9999999998`), which keeps the sweep's file size at 4 MB;
+- the mutagen reader, given those three WAV files, answers the same three
+  counts: mutagen states a WAV's duration as `data size / block size /
+  sample rate`, so `round` recovers the count where `int` would answer
+  14, 44108 and 1999994.
+
+**Known issue: mutagen's count is an estimate** (`test_mutagen_count_is_an_estimate`).
+Where soundfile is not installed and the file is no WAV, the count comes from
+mutagen's duration. For an MP3 that duration counts whole MPEG frames, encoder
+delay and padding included, or, where the file has no VBR header, is guessed
+from the file size and bitrate, so the estimate can miss the decoded count in
+either direction. The Bass Kick specimen pins the first case: through the
+mutagen path (soundfile reported as not installed) it loads as **10190592**
+samples (8846 frames × 1152), `backend == "mutagen"`,
+`duration_seconds == 231.0791836734694` — 1792 samples more than the decoder
+produces. (The second case, observed but not pinned here: the `supra` corpus's
+`fd660zf8362.mp3` has no VBR header, and mutagen's duration gives
+19670083 samples where libsndfile decodes 19715328.) The test exists so that
+the estimate stays documented and visible; it is not the count to rely on.
 
 **Two timelines per file.** A file's native axis is its sample count, so
 `create_timeline()` must give a `DiscretePhysicalTimeline` in `samples`, `int`,
@@ -33,11 +86,16 @@ attaches no map to either timeline (`get_conversion_map` of the other unit is
 `None`). The default id and name come from the file name for both.
 
 These facts are pinned on the WAV fixtures and once on a real specimen read by
-the soundfile or mutagen backend (`TestAudioLoaderSpecimen`, corpus `audio`,
-`hard_techno/Bass Kick.mp3`): 10190592 samples at 44100 Hz, 2 channels,
-`duration_seconds == 231.0791836734694`. The samples timeline's map takes
-10190592 to `231.0791836734694` (a `float`); the seconds timeline's map takes
-`231.0791836734694` to `10190592` (an `int`). A manifest round trip
+the soundfile backend (`TestAudioLoaderSpecimen`, corpus `audio`,
+`hard_techno/Bass Kick.mp3`): **10188800** samples at 44100 Hz, 2 channels,
+`backend == "soundfile"`, `duration_seconds == 231.03854875283446`
+(`10188800 / 44100`). The count was measured with soundfile 0.13.1 on
+libsndfile 1.2.2, both as `soundfile.info(...).frames` and by decoding the
+whole file block by block and counting the frames read; the two agree. The
+samples timeline's map takes 10188800 to `231.03854875283446` (a `float`); the
+seconds timeline's map takes `231.03854875283446` to `10188800` (an `int`).
+These pins require libsndfile ≥ 1.1 (MP3 support); with an older library the
+file falls through to mutagen and the known issue above. A manifest round trip
 (`to_dict` then `Timeline.from_dict`) of either timeline must keep its class,
 unit and length, and its one C-Map's source unit, target unit and scalar
 (`Fraction(1, 44100)` and `44100`); the read map converts the end exactly as
@@ -126,7 +184,7 @@ Each recording directory has an XML manifest cataloguing all 332+ data files.
 | Test File | Tests | Status |
 |-----------|-------|--------|
 | `test_repovizz_loader.py` | 27 | All pass |
-| `test_audio.py` | 36 | All pass |
-| **Total** | **63** | **All pass** |
+| `test_audio.py` | 45 | All pass |
+| **Total** | **72** | **All pass** |
 
 All tests pass in parallel mode (`pytest-xdist -n auto`).

@@ -73,7 +73,6 @@ from timetoalign.loader.midi import PerformanceMidiLoader
 from timetoalign.loader.physical import AudioLoader
 from timetoalign.maps import ScalarMap
 from timetoalign.testdata import ensure_data
-from timetoalign.timelines import ContinuousPhysicalTimeline
 
 DATA_DIR = ensure_data("supra")
 
@@ -312,31 +311,19 @@ dlt2_exp
 # %% [markdown]
 # ### E.3: DPT1 - Audio (MP3)
 #
-# **Note:** MP3 loading requires `mutagen` or `soundfile`. If not installed,
-# we use a mock timeline with the known duration from the README.
+# **Note:** MP3 loading requires the audio extra
+# (`pip install "timetoalign[audio]"`). The timeline is in samples, the file's
+# own axis, with a `SamplesToSeconds` C-Map attached.
 
 # %%
-try:
-    audio_loader = AudioLoader.from_file(MP3_PATH)
-    dpt1_audio = audio_loader.create_timeline(uid="dpt1_audio")
-    audio_duration = audio_loader.duration_seconds
-    audio_info = {
-        "DPT1 (Audio)": dpt1_audio.id,
-        "Sample rate": f"{audio_loader.sample_rate:,} Hz",
-        "Duration": f"{audio_duration:.2f} seconds",
-    }
-except ValueError as e:
-    print(f"Note: MP3 loading unavailable ({e}). Using mock timeline.")
-    audio_duration = 573.0
-    dpt1_audio = ContinuousPhysicalTimeline(
-        length=audio_duration,
-        unit=TimeUnit.seconds,
-        uid="dpt1_audio",
-    )
-    audio_info = {
-        "DPT1 (Audio)": dpt1_audio.id,
-        "Duration": f"{audio_duration:.2f} seconds (from README)",
-    }
+audio_loader = AudioLoader.from_file(MP3_PATH)
+dpt1_audio = audio_loader.create_timeline(uid="dpt1_audio")
+audio_info = {
+    "DPT1 (Audio)": dpt1_audio.id,
+    "Samples": f"{audio_loader.n_samples:,}",
+    "Sample rate": f"{audio_loader.sample_rate:,} Hz",
+    "Duration": f"{audio_loader.duration_seconds:.2f} seconds",
+}
 
 dpt1_audio
 
@@ -580,8 +567,9 @@ parent_df
 # We can query the group from ANY member timeline. Just display the timestamp!
 
 # %%
-# Query at 100 seconds in the audio - its SamplesToSeconds C-Map carries the
-# seconds coordinate onto the samples axis; the timestamp shows ALL peer timelines
+# Query at 100 seconds in the audio - its C-Map goes from samples to seconds,
+# and the query takes its inverse onto the samples axis; the timestamp shows ALL
+# peer timelines
 audio_100s = group.get_timestamp_at(Coordinate(100.0, TimeUnit.seconds), "dpt1_audio")
 audio_100s
 

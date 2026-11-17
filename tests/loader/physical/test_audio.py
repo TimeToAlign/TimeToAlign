@@ -18,6 +18,7 @@ import pytest
 
 from timetoalign.core import IdCoordinate, NumberType, TimeUnit
 from timetoalign.loader.physical import AudioInfo, AudioLoader
+from timetoalign.loader.physical import audio as audio_module
 from timetoalign.maps import LinearMap, SamplesToSeconds, SecondsToSamples
 from timetoalign.testdata import ensure_data
 from timetoalign.timelines import (
@@ -79,6 +80,12 @@ def create_wav_file(
         f.write(b"\x00" * data_size)
 
     return path
+
+
+@pytest.fixture
+def no_soundfile(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Report soundfile as not installed, so the loader's next backends answer."""
+    monkeypatch.setattr(audio_module, "_get_soundfile", lambda: None)
 
 
 @pytest.fixture
@@ -222,7 +229,7 @@ class TestAudioLoaderBasic:
 
 
 class TestAudioLoaderWAV:
-    """Tests for AudioLoader with WAV files using built-in wave module."""
+    """Tests for AudioLoader with WAV files."""
 
     def test_load_wav(self, wav_file: Path):
         """Test loading a WAV file."""
@@ -423,20 +430,77 @@ class TestAudioLoaderIntegration:
 # endregion
 
 
+# region Sample Count
+
+# Counts whose float round trip at 44100 Hz truncates: int(n / 44100 * 44100) == n - 1.
+TRUNCATED_COUNTS = [15, 44109, 1999995]
+
+
+class TestAudioLoaderSampleCount:
+    """The sample count is a count of frames, never a float round trip."""
+
+    def test_short_wav_through_soundfile(self, tmp_path: Path):
+        wav_path = create_wav_file(tmp_path / "fifteen.wav", n_samples=15)
+
+        loader = AudioLoader().load(wav_path)
+        assert loader.audio_info.backend == "soundfile"
+        assert loader.n_samples == 15
+
+    def test_short_wav_through_wave(self, tmp_path: Path, no_soundfile: None):
+        wav_path = create_wav_file(tmp_path / "fifteen.wav", n_samples=15)
+
+        loader = AudioLoader().load(wav_path)
+        assert loader.audio_info.backend == "wave"
+        assert loader.n_samples == 15
+        assert loader.duration_seconds == 15 / 44100
+
+    @pytest.mark.parametrize("n_samples", TRUNCATED_COUNTS)
+    def test_truncated_counts_load_exactly(self, tmp_path: Path, n_samples: int):
+        assert int(n_samples / 44100 * 44100) == n_samples - 1
+        wav_path = create_wav_file(tmp_path / "sweep.wav", n_samples=n_samples)
+
+        loader = AudioLoader().load(wav_path)
+        assert loader.audio_info.backend == "soundfile"
+        assert loader.n_samples == n_samples
+        assert loader.create_timeline().length.value == n_samples
+
+    @pytest.mark.parametrize("n_samples", TRUNCATED_COUNTS)
+    def test_mutagen_estimate_rounds(self, tmp_path: Path, n_samples: int):
+        """mutagen states a WAV's duration as frames / rate; rounding recovers them."""
+        wav_path = create_wav_file(tmp_path / "sweep.wav", n_samples=n_samples)
+
+        info = AudioLoader()._load_with_mutagen(wav_path)
+        assert info.backend == "mutagen"
+        assert info.duration_seconds == n_samples / 44100
+        assert info.n_samples == n_samples
+
+
+# endregion
+
+
 # region Specimen
 
 
 class TestAudioLoaderSpecimen:
-    """Both timelines of a real MP3, read by a third-party backend."""
+    """Both timelines of a real MP3, read by the soundfile backend."""
 
     @pytest.fixture(scope="class")
     def loader(self) -> AudioLoader:
         return AudioLoader().load(BASS_KICK)
 
     def test_audio_info(self, loader: AudioLoader):
-        assert loader.n_samples == 10190592
+        assert loader.audio_info.backend == "soundfile"
+        assert loader.n_samples == 10188800
         assert loader.sample_rate == 44100
         assert loader.channels == 2
+        assert loader.duration_seconds == 231.03854875283446
+
+    def test_mutagen_count_is_an_estimate(self, no_soundfile: None):
+        """Known issue: mutagen's whole-frame duration overcounts the decoder."""
+        loader = AudioLoader().load(BASS_KICK)
+
+        assert loader.audio_info.backend == "mutagen"
+        assert loader.n_samples == 10190592
         assert loader.duration_seconds == 231.0791836734694
 
     def test_samples_timeline(self, loader: AudioLoader):
@@ -445,11 +509,11 @@ class TestAudioLoaderSpecimen:
         assert type(timeline) is DiscretePhysicalTimeline
         assert timeline.unit == TimeUnit.samples
         assert timeline.number_type == NumberType.int
-        assert timeline.length.value == 10190592
+        assert timeline.length.value == 10188800
         assert timeline.id == "Bass Kick"
         assert timeline.name == "Bass Kick.mp3"
-        end = timeline.get_conversion_map(TimeUnit.seconds)(10190592)
-        assert end == 231.0791836734694
+        end = timeline.get_conversion_map(TimeUnit.seconds)(10188800)
+        assert end == 231.03854875283446
         assert type(end) is float
 
     def test_seconds_timeline(self, loader: AudioLoader):
@@ -458,9 +522,9 @@ class TestAudioLoaderSpecimen:
         assert type(timeline) is ContinuousPhysicalTimeline
         assert timeline.unit == TimeUnit.seconds
         assert timeline.number_type == NumberType.float
-        assert timeline.length.value == 231.0791836734694
-        end = timeline.get_conversion_map(TimeUnit.samples)(231.0791836734694)
-        assert end == 10190592
+        assert timeline.length.value == 231.03854875283446
+        end = timeline.get_conversion_map(TimeUnit.samples)(231.03854875283446)
+        assert end == 10188800
         assert type(end) is int
 
     def test_no_cmap(self, loader: AudioLoader):
@@ -477,19 +541,19 @@ class TestAudioLoaderSpecimen:
                 "create_timeline",
                 DiscretePhysicalTimeline,
                 TimeUnit.samples,
-                10190592,
+                10188800,
                 TimeUnit.seconds,
                 Fraction(1, 44100),
-                231.0791836734694,
+                231.03854875283446,
             ),
             (
                 "create_continuous_timeline",
                 ContinuousPhysicalTimeline,
                 TimeUnit.seconds,
-                231.0791836734694,
+                231.03854875283446,
                 TimeUnit.samples,
                 44100,
-                10190592,
+                10188800,
             ),
         ],
         ids=["samples", "seconds"],

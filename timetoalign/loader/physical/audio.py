@@ -15,9 +15,11 @@ Design Philosophy:
     3. Add events from other loaders (annotations, beat markers, etc.)
 
 Backend Support:
-    The loader uses soundfile as the primary backend (for WAV, FLAC, OGG, etc.)
-    with optional mutagen support for MP3/M4A metadata. If neither is available,
-    it falls back to Python's built-in wave module for WAV files only.
+    The loader tries its backends in order, exact sample counts first:
+    soundfile (libsndfile's frame count, WAV, FLAC, OGG, MP3 and more), then for
+    WAV files Python's built-in wave module and a RIFF header parser, then
+    mutagen (MP3, M4A and more), which states only a duration and so yields an
+    estimated count.
 """
 
 from __future__ import annotations
@@ -33,6 +35,7 @@ from typing import TYPE_CHECKING, Any, Iterator, TypeVar
 from timetoalign.loader.base import Loader
 
 if TYPE_CHECKING:
+    from timetoalign.core import NumberType, TimeUnit
     from timetoalign.maps import SamplesToSeconds
     from timetoalign.timelines import (
         ContinuousPhysicalTimeline,
@@ -44,8 +47,14 @@ module_logger = logging.getLogger(__name__)
 
 _PhysicalTimelineT = TypeVar("_PhysicalTimelineT", bound="PhysicalTimeline")
 
+_WAV_SUFFIXES = frozenset({".wav", ".wave"})
+
 
 # region Backend Detection
+
+
+class _CannotRead(Exception):
+    """A backend is not installed or cannot read the file; the next one tries."""
 
 
 def _get_soundfile():
@@ -123,15 +132,21 @@ class AudioInfo:
     that is needed to create a physical timeline.
 
     Attributes:
-        n_samples: Total number of samples in the file (frames).
+        n_samples: Total number of samples in the file (frames). Exact from the
+            soundfile, wave and riff backends; estimated from the stated
+            duration on the mutagen backend.
         sample_rate: Sample rate in Hz (e.g., 44100, 48000).
         channels: Number of audio channels (1=mono, 2=stereo).
-        duration_seconds: Duration in seconds (computed from n_samples/sample_rate).
+        duration_seconds: Duration in seconds: ``n_samples / sample_rate`` where
+            the count is exact, the duration the file states on the mutagen
+            backend.
         format: Audio format/codec (e.g., "WAV", "FLAC", "MP3").
         subtype: Audio subtype/encoding (e.g., "PCM_16", "PCM_24", "VORBIS").
         bits_per_sample: Bit depth (e.g., 16, 24, 32). May be None for lossy formats.
         source_path: Path to the source file.
         extra: Additional format-specific metadata.
+        backend: The backend that read the file: ``"soundfile"``, ``"wave"``,
+            ``"riff"`` or ``"mutagen"``; None for metadata not read by the loader.
     """
 
     n_samples: int
@@ -143,6 +158,7 @@ class AudioInfo:
     bits_per_sample: int | None = None
     source_path: Path | None = None
     extra: dict[str, Any] = field(default_factory=dict)
+    backend: str | None = None
 
     @property
     def length_in_samples(self) -> int:
@@ -174,16 +190,26 @@ class AudioLoader(Loader[AudioInfo]):
     represent audio files in the TimeToAlign! framework.
 
     The loader automatically:
-    - Detects the best available backend (soundfile > mutagen > wave)
+    - Tries its backends in order, exact counts first: soundfile, then for WAV
+      files the built-in wave module and a RIFF header parser, then mutagen
     - Extracts sample count, sample rate, channels, and format info
     - Creates a samples timeline with a SamplesToSeconds C-map
       (``create_timeline``) or a seconds timeline with a SecondsToSamples
       C-map (``create_continuous_timeline``)
 
     Supported formats depend on installed backends:
-    - soundfile: WAV, FLAC, OGG, AIFF, and many more (via libsndfile)
-    - mutagen: MP3, M4A, FLAC, OGG (metadata only, may not have exact sample count)
-    - wave (builtin): WAV only
+    - soundfile: WAV, FLAC, OGG, AIFF, MP3 (libsndfile >= 1.1), and many more
+    - wave (builtin) and the RIFF header parser: WAV only
+    - mutagen: MP3, M4A, FLAC, OGG, and more
+
+    Known issue:
+        mutagen states only a duration, so its sample count is the estimate
+        ``round(duration * sample_rate)``. For an MP3 the duration counts whole
+        MPEG frames, encoder delay and padding included, or, without a VBR
+        header, is guessed from the file size and bitrate, so the estimate can
+        miss the decoded count in either direction. It is used only when
+        soundfile is not installed or cannot read the file;
+        ``audio_info.backend`` names the backend that answered.
 
     Examples:
         >>> loader = AudioLoader()
@@ -216,6 +242,11 @@ class AudioLoader(Loader[AudioInfo]):
     def _load_source(self, source: Path) -> AudioInfo:
         """Load metadata from one audio file.
 
+        The backends are tried in order, exact sample counts first: soundfile,
+        then for a WAV file the wave module and the RIFF header parser, then
+        mutagen. A backend that is not installed or cannot read the file hands
+        it on to the next; any other exception is a defect and propagates.
+
         Args:
             source: Path to the audio file.
 
@@ -229,56 +260,22 @@ class AudioLoader(Loader[AudioInfo]):
         if not source.exists():
             raise FileNotFoundError(f"Audio file not found: {source}")
 
-        # Try backends in order of preference
-        sf = _get_soundfile()
-        if sf is not None:
-            try:
-                info = self._load_with_soundfile(sf, source)
-                self._logger.debug(
-                    f"Read audio metadata from {source} using soundfile: "
-                    f"{info.n_samples} samples @ {info.sample_rate} Hz"
-                )
-                return info
-            except Exception as e:
-                self._logger.debug(f"soundfile failed for {source}: {e}")
+        readers = [self._load_with_soundfile]
+        if source.suffix.lower() in _WAV_SUFFIXES:
+            readers += [self._load_with_wave, self._load_with_riff_parser]
+        readers.append(self._load_with_mutagen)
 
-        # Try mutagen for MP3/M4A
-        mutagen = _get_mutagen()
-        if mutagen is not None:
+        for read in readers:
             try:
-                info = self._load_with_mutagen(mutagen, source)
-                self._logger.debug(
-                    f"Read audio metadata from {source} using mutagen: "
-                    f"{info.n_samples} samples @ {info.sample_rate} Hz"
-                )
-                return info
-            except Exception as e:
-                self._logger.debug(f"mutagen failed for {source}: {e}")
-
-        # Fallback to wave module for WAV files (PCM only)
-        if source.suffix.lower() in (".wav", ".wave"):
-            try:
-                info = self._load_with_wave(source)
-                self._logger.debug(
-                    f"Read audio metadata from {source} using wave: "
-                    f"{info.n_samples} samples @ {info.sample_rate} Hz"
-                )
-                return info
-            except Exception as e:
-                self._logger.debug(f"wave module failed for {source}: {e}")
-
-        # Last resort: manual RIFF header parsing (handles IEEE float and other
-        # non-PCM WAV formats that Python's wave module rejects)
-        if source.suffix.lower() in (".wav", ".wave"):
-            try:
-                info = self._load_with_riff_parser(source)
-                self._logger.debug(
-                    f"Read audio metadata from {source} using RIFF parser: "
-                    f"{info.n_samples} samples @ {info.sample_rate} Hz"
-                )
-                return info
-            except Exception as e:
-                self._logger.debug(f"RIFF parser failed for {source}: {e}")
+                info = read(source)
+            except _CannotRead as e:
+                self._logger.debug(f"{read.__name__} cannot read {source}: {e}")
+                continue
+            self._logger.debug(
+                f"Read audio metadata from {source} using {info.backend}: "
+                f"{info.n_samples} samples @ {info.sample_rate} Hz"
+            )
+            return info
 
         raise ValueError(
             f"Cannot read audio file '{source}'. "
@@ -297,37 +294,65 @@ class AudioLoader(Loader[AudioInfo]):
         self._audio_info = payload
         self._source_path = path
 
-    def _load_with_soundfile(self, sf, path: Path) -> AudioInfo:
+    def _load_with_soundfile(self, path: Path) -> AudioInfo:
         """Load metadata using soundfile (libsndfile backend).
+
+        ``frames`` is the count libsndfile's decoder produces, so the sample
+        count is exact and ``duration_seconds`` is ``n_samples / sample_rate``.
 
         The probe runs with file-descriptor-level stderr muted: libsndfile's
         decoders print their own diagnostics there when the input is not what
         its extension claims, and such a file is handed on to the next backend
         rather than being an error the user must see.
+
+        Raises:
+            _CannotRead: If soundfile is not installed or cannot read the file.
         """
-        with _muted_native_stderr():
-            info = sf.info(str(path))
+        sf = _get_soundfile()
+        if sf is None:
+            raise _CannotRead("soundfile is not installed")
+        try:
+            with _muted_native_stderr():
+                info = sf.info(str(path))
+        except sf.SoundFileError as e:
+            raise _CannotRead(e) from e
 
         return AudioInfo(
             n_samples=info.frames,
             sample_rate=info.samplerate,
             channels=info.channels,
-            duration_seconds=info.duration,
+            duration_seconds=info.frames / info.samplerate,
             format=info.format,
             subtype=info.subtype,
             bits_per_sample=self._subtype_to_bits(info.subtype),
             source_path=path,
-            extra={
-                "sections": info.sections,
-                "seekable": info.seekable,
-            },
+            extra={"sections": info.sections},
+            backend="soundfile",
         )
 
-    def _load_with_mutagen(self, mutagen, path: Path) -> AudioInfo:
-        """Load metadata using mutagen (for MP3, M4A, etc.)."""
-        audio = mutagen.File(str(path))
+    def _load_with_mutagen(self, path: Path) -> AudioInfo:
+        """Load metadata using mutagen (for MP3, M4A, etc.).
+
+        mutagen states a duration, not a frame count, so the sample count is the
+        estimate ``round(duration * sample_rate)`` and ``duration_seconds`` is
+        the stated duration. For an MP3 the duration counts whole MPEG frames,
+        encoder delay and padding included, or, without a VBR header, is
+        guessed from the file size and bitrate, so the estimate can miss the
+        decoded count in either direction.
+
+        Raises:
+            _CannotRead: If mutagen is not installed, cannot parse the file, or
+                states no sample rate or duration for it.
+        """
+        mutagen = _get_mutagen()
+        if mutagen is None:
+            raise _CannotRead("mutagen is not installed")
+        try:
+            audio = mutagen.File(str(path))
+        except mutagen.MutagenError as e:
+            raise _CannotRead(e) from e
         if audio is None:
-            raise ValueError(f"mutagen could not parse {path}")
+            raise _CannotRead("mutagen does not recognise the format")
 
         # Get audio info
         info = audio.info
@@ -335,15 +360,15 @@ class AudioLoader(Loader[AudioInfo]):
         # Sample rate
         sample_rate = getattr(info, "sample_rate", None)
         if sample_rate is None:
-            raise ValueError(f"Could not determine sample rate for {path}")
+            raise _CannotRead("mutagen states no sample rate")
 
         # Duration and sample count
         duration = getattr(info, "length", None)
         if duration is None:
-            raise ValueError(f"Could not determine duration for {path}")
+            raise _CannotRead("mutagen states no duration")
 
-        # Compute sample count from duration (may not be exact for VBR)
-        n_samples = int(duration * sample_rate)
+        # The duration is a double, so the nearest count, never a truncation
+        n_samples = round(duration * sample_rate)
 
         # Channels
         channels = getattr(info, "channels", 2)
@@ -376,30 +401,37 @@ class AudioLoader(Loader[AudioInfo]):
                 "bitrate": getattr(info, "bitrate", None),
                 "codec": getattr(info, "codec", None),
             },
+            backend="mutagen",
         )
 
     def _load_with_wave(self, path: Path) -> AudioInfo:
-        """Load metadata using Python's built-in wave module (WAV only)."""
+        """Load metadata using Python's built-in wave module (PCM WAV only).
+
+        Raises:
+            _CannotRead: If the wave module cannot read the file.
+        """
         wave = _get_wave()
 
-        with wave.open(str(path), "rb") as wf:
-            n_samples = wf.getnframes()
-            sample_rate = wf.getframerate()
-            channels = wf.getnchannels()
-            bits_per_sample = wf.getsampwidth() * 8
+        try:
+            with wave.open(str(path), "rb") as wf:
+                n_samples = wf.getnframes()
+                sample_rate = wf.getframerate()
+                channels = wf.getnchannels()
+                bits_per_sample = wf.getsampwidth() * 8
+        except (wave.Error, EOFError) as e:
+            raise _CannotRead(e) from e
 
-            duration_seconds = n_samples / sample_rate
-
-            return AudioInfo(
-                n_samples=n_samples,
-                sample_rate=sample_rate,
-                channels=channels,
-                duration_seconds=duration_seconds,
-                format="WAV",
-                subtype=f"PCM_{bits_per_sample}",
-                bits_per_sample=bits_per_sample,
-                source_path=path,
-            )
+        return AudioInfo(
+            n_samples=n_samples,
+            sample_rate=sample_rate,
+            channels=channels,
+            duration_seconds=n_samples / sample_rate,
+            format="WAV",
+            subtype=f"PCM_{bits_per_sample}",
+            bits_per_sample=bits_per_sample,
+            source_path=path,
+            backend="wave",
+        )
 
     def _load_with_riff_parser(self, path: Path) -> AudioInfo:
         """Load metadata by manually parsing the RIFF/WAV header.
@@ -417,7 +449,7 @@ class AudioLoader(Loader[AudioInfo]):
             AudioInfo with metadata extracted from the RIFF header.
 
         Raises:
-            ValueError: If the file is not a valid RIFF/WAV file.
+            _CannotRead: If the file is not a valid RIFF/WAV file.
         """
         import struct
 
@@ -429,49 +461,52 @@ class AudioLoader(Loader[AudioInfo]):
             0xFFFE: "EXTENSIBLE",
         }
 
-        with open(path, "rb") as f:
-            # RIFF header
-            riff_id = f.read(4)
-            if riff_id != b"RIFF":
-                raise ValueError(f"Not a RIFF file: {path}")
-            f.read(4)  # file size (unused)
-            wave_id = f.read(4)
-            if wave_id != b"WAVE":
-                raise ValueError(f"Not a WAVE file: {path}")
+        try:
+            with open(path, "rb") as f:
+                # RIFF header
+                riff_id = f.read(4)
+                if riff_id != b"RIFF":
+                    raise _CannotRead("not a RIFF file")
+                f.read(4)  # file size (unused)
+                wave_id = f.read(4)
+                if wave_id != b"WAVE":
+                    raise _CannotRead("not a WAVE file")
 
-            # Parse chunks
-            channels = 0
-            sample_rate = 0
-            bits_per_sample = 0
-            format_tag = 0
-            n_samples: int | None = None
-            data_size = 0
+                # Parse chunks
+                channels = 0
+                sample_rate = 0
+                bits_per_sample = 0
+                format_tag = 0
+                n_samples: int | None = None
+                data_size = 0
 
-            while True:
-                chunk_header = f.read(8)
-                if len(chunk_header) < 8:
-                    break
-                chunk_id = chunk_header[:4]
-                chunk_size = struct.unpack("<I", chunk_header[4:])[0]
+                while True:
+                    chunk_header = f.read(8)
+                    if len(chunk_header) < 8:
+                        break
+                    chunk_id = chunk_header[:4]
+                    chunk_size = struct.unpack("<I", chunk_header[4:])[0]
 
-                if chunk_id == b"fmt ":
-                    fmt_data = f.read(chunk_size)
-                    format_tag = struct.unpack("<H", fmt_data[:2])[0]
-                    channels = struct.unpack("<H", fmt_data[2:4])[0]
-                    sample_rate = struct.unpack("<I", fmt_data[4:8])[0]
-                    bits_per_sample = struct.unpack("<H", fmt_data[14:16])[0]
-                elif chunk_id == b"fact":
-                    fact_data = f.read(chunk_size)
-                    n_samples = struct.unpack("<I", fact_data[:4])[0]
-                elif chunk_id == b"data":
-                    data_size = chunk_size
-                    break  # data chunk is last relevant chunk
-                else:
-                    # Skip unknown chunks
-                    f.seek(chunk_size, 1)
+                    if chunk_id == b"fmt ":
+                        fmt_data = f.read(chunk_size)
+                        format_tag = struct.unpack("<H", fmt_data[:2])[0]
+                        channels = struct.unpack("<H", fmt_data[2:4])[0]
+                        sample_rate = struct.unpack("<I", fmt_data[4:8])[0]
+                        bits_per_sample = struct.unpack("<H", fmt_data[14:16])[0]
+                    elif chunk_id == b"fact":
+                        fact_data = f.read(chunk_size)
+                        n_samples = struct.unpack("<I", fact_data[:4])[0]
+                    elif chunk_id == b"data":
+                        data_size = chunk_size
+                        break  # data chunk is last relevant chunk
+                    else:
+                        # Skip unknown chunks
+                        f.seek(chunk_size, 1)
+        except struct.error as e:
+            raise _CannotRead(f"truncated RIFF chunk: {e}") from e
 
         if sample_rate == 0:
-            raise ValueError(f"No fmt chunk found in {path}")
+            raise _CannotRead("no fmt chunk")
 
         # Compute n_samples from data chunk if fact chunk was absent
         if n_samples is None:
@@ -493,6 +528,7 @@ class AudioLoader(Loader[AudioInfo]):
             bits_per_sample=bits_per_sample,
             source_path=path,
             extra={"format_tag": format_tag},
+            backend="riff",
         )
 
     def _subtype_to_bits(self, subtype: str | None) -> int | None:
@@ -640,7 +676,6 @@ class AudioLoader(Loader[AudioInfo]):
             <TimeUnit.seconds: 'seconds'>
         """
         from timetoalign.core import NumberType, TimeUnit
-        from timetoalign.maps import SecondsToSamples
         from timetoalign.timelines import ContinuousPhysicalTimeline
 
         timeline = self._create_audio_timeline(
@@ -652,9 +687,7 @@ class AudioLoader(Loader[AudioInfo]):
             name=name,
         )
         if attach_cmap:
-            timeline.add_conversion_map(
-                SecondsToSamples(sample_rate=self.audio_info.sample_rate)
-            )
+            timeline.add_conversion_map(self.create_samples_to_seconds_map().inverse())
         return timeline
 
     def create_samples_to_seconds_map(self) -> "SamplesToSeconds":
@@ -674,17 +707,21 @@ class AudioLoader(Loader[AudioInfo]):
         self,
         timeline_cls: type[_PhysicalTimelineT],
         *,
+        length: int | float,
+        unit: TimeUnit,
+        number_type: NumberType,
         uid: str | None,
         name: str | None,
-        **axis: Any,
     ) -> _PhysicalTimelineT:
         """Create a timeline of ``timeline_cls`` named after and describing the file.
 
         Args:
             timeline_cls: The physical timeline class to instantiate.
+            length: Length of the timeline in ``unit``.
+            unit: Unit of the timeline's axis.
+            number_type: Number type of the timeline's axis.
             uid: Unique identifier for the timeline. If None, uses filename.
             name: Human-readable name. If None, uses filename.
-            **axis: ``length``, ``unit`` and ``number_type`` of the timeline.
 
         Returns:
             The timeline, carrying the file's metadata.
@@ -695,7 +732,9 @@ class AudioLoader(Loader[AudioInfo]):
         if name is None and info.source_path is not None:
             name = info.source_path.name
 
-        timeline = timeline_cls(uid=uid, name=name, **axis)
+        timeline = timeline_cls(
+            uid=uid, name=name, length=length, unit=unit, number_type=number_type
+        )
         timeline._metadata = {
             "source_path": str(info.source_path) if info.source_path else None,
             "sample_rate": info.sample_rate,

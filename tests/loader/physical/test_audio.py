@@ -497,14 +497,16 @@ class TestAudioLoaderBackendChain:
 
     def test_zero_rate_names_every_backend(self, tmp_path: Path):
         """A header stating rate 0 is unreadable, not a division by zero."""
+        soundfile = pytest.importorskip("soundfile")
         wav_path = create_wav_file(tmp_path / "zero.wav", n_samples=15, sample_rate=0)
+        with pytest.raises(soundfile.SoundFileError) as declined:
+            soundfile.info(str(wav_path))
 
         with pytest.raises(ValueError) as excinfo:
             AudioLoader().load(wav_path)
         assert str(excinfo.value) == (
             f"Cannot read audio file '{wav_path}':\n"
-            f"  soundfile: Error opening '{wav_path}': "
-            "Internal error : SF_INFO struct incomplete.\n"
+            f"  soundfile: {declined.value}\n"
             "  wave: the file states sample rate 0\n"
             "  riff: the file states sample rate 0\n"
             "  mutagen: the file states sample rate 0"

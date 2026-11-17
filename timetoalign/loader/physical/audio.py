@@ -232,7 +232,9 @@ class AudioLoader(Loader[AudioInfo]):
         channel count rather than reading the header's block align, so without
         a ``fact`` chunk it miscounts samples not packed in whole bytes.
 
-        Where mutagen states no channel count, the loader assumes 2.
+        Where mutagen's stream info has no ``channels`` attribute the loader
+        assumes 2; a stated 0, mutagen's default for several formats, is
+        refused.
 
         A WAV truncated below the size its ``data`` chunk states gets a
         backend-dependent count: soundfile counts the frames present, the other
@@ -352,6 +354,7 @@ class AudioLoader(Loader[AudioInfo]):
                 info = sf.info(str(path))
         except sf.SoundFileError as e:
             raise _CannotRead(e) from e
+        _require_rate_and_channels(info.samplerate, info.channels)
 
         return AudioInfo(
             n_samples=info.frames,

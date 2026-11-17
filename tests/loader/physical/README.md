@@ -40,10 +40,11 @@ hands the loader a timeline whose C-Map would. What must hold:
   never `ZeroDivisionError` (the `wave` reader reads such a header without
   complaint, and mutagen states the rate 0 without complaint). The message
   names the file and then every backend's reason, one line each in the order
-  tried: soundfile `Error opening '<path>': Internal error : SF_INFO struct
-  incomplete.` (libsndfile 1.2.2's text, like the specimen pins below), and
-  `the file states sample rate 0` from `wave`, `riff` and `mutagen`. With every
-  package installed the message must **not** tell the user to install one;
+  tried: soundfile's own error for the file, verbatim (libsndfile refuses such
+  a header itself, so the soundfile reader's own rate check is not reached),
+  and `the file states sample rate 0` from `wave`, `riff` and `mutagen`. With
+  every package installed the message must **not** tell the user to install
+  one;
 - the same file with soundfile reported as not installed gives
   `soundfile: not installed` as the first reason and, as the last line, the
   extra that provides it: `pip install "timetoalign[audio]"`;
@@ -115,8 +116,8 @@ Further known issues, documented and not pinned:
   channels` instead of reading the header's block align, so without a `fact`
   chunk it miscounts samples not packed in whole bytes (12-bit in 2-byte
   containers counts double);
-- mutagen does not state the channel count for every format; the loader then
-  assumes 2;
+- where mutagen's stream info has no `channels` attribute the loader assumes
+  2; a stated 0, mutagen's default for several formats, is refused;
 - a WAV truncated below the size its `data` chunk states loads with a
   backend-dependent count: soundfile counts the frames present, while `wave`,
   `riff` and `mutagen` answer the header's count.

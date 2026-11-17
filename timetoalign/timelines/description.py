@@ -16,10 +16,18 @@ surface of every element carrying links — :class:`~timetoalign.timelines.Timel
 :class:`~timetoalign.timelines.Region` and
 :class:`~timetoalign.alignment.AlignmentBundle` (the manifest itself) — with
 ``links`` and :meth:`LinksMixin.get_links`; the mutable timeline and bundle
-add links in place (:meth:`MutableLinksMixin.add_link`), the frozen region
-returns a copy (:meth:`Region.with_link <timetoalign.timelines.Region.with_link>`).
+add, replace and remove links in place (:meth:`MutableLinksMixin.add_link`,
+:meth:`~MutableLinksMixin.replace_link`, :meth:`~MutableLinksMixin.remove_link`),
+the frozen region returns a copy
+(:meth:`Region.with_link <timetoalign.timelines.Region.with_link>`,
+:meth:`Region.without_link <timetoalign.timelines.Region.without_link>`).
 A link added without an assertion takes the default assertion, if one is set
 (:func:`set_default_assertion`), dated the day it is added.
+
+A part slot names the timelines and regions representing the part by id.
+The library keeps those names true: an element given a new id is named by
+its new id, and a slot whose elements all leave the manifest is ``absent``
+as ``not_represented``, the part existing and the manifest leaving it out.
 
 Examples:
     >>> import timetoalign as tta
@@ -169,6 +177,59 @@ def get_default_assertion() -> Assertion | None:
 
 # endregion
 
+# region What links name
+
+_LEFT_OUT = "not_represented"
+"""Why no element represents a part whose representing elements all left the manifest."""
+
+
+def _named_schemes(links: Iterable[Link]) -> set[str]:
+    """Return the schemes the identifiers of *links* name, at any depth.
+
+    The identifiers of each link, of its part slots and of its ``part_of``
+    entries. A scheme is named by the id of a scheme of the manifest or by
+    the URI of a scheme.
+    """
+    return {
+        identifier.scheme
+        for link in links
+        for owner in (link, *link.parts, *link.part_of)
+        for identifier in owner.identifiers
+    }
+
+
+def _renamed_parts(link: Link, renamed: Mapping[str, str | None]) -> Link:
+    """Return *link* with the elements its part slots name renamed.
+
+    Each id of a slot's ``represented_by`` that *renamed* maps is replaced
+    by the id it maps to, or left out where it maps to None; a slot left
+    with none is ``absent`` as ``not_represented``. A link none of whose
+    slots names a mapped id is returned as it is.
+    """
+    changed = False
+    parts = []
+    for slot in link.parts:
+        kept = tuple(
+            new
+            for new in (
+                renamed.get(element, element) for element in slot.represented_by
+            )
+            if new is not None
+        )
+        if kept == slot.represented_by:
+            parts.append(slot)
+            continue
+        changed = True
+        parts.append(
+            replace(slot, represented_by=kept)
+            if kept
+            else replace(slot, represented_by=(), absent=_LEFT_OUT)
+        )
+    return replace(link, parts=tuple(parts)) if changed else link
+
+
+# endregion
+
 # region Elements carrying links
 
 
@@ -210,11 +271,31 @@ class LinksMixin:
     A timeline, a region and a bundle (the manifest) hold ``links``, the
     tuple of their :class:`Link` objects in the order given, each one
     reading of an entity the element pertains to. A subclass supplies
-    ``links``; this class answers queries over it and builds the link an
-    element adds (:meth:`_link_to_add`).
+    ``links`` and the element's name in a message
+    (:meth:`_links_holder_name`); this class answers queries over the
+    links, builds the link an element adds (:meth:`_link_to_add`) and finds
+    the one it replaces or removes (:meth:`_link_position`).
     """
 
     links: tuple[Link, ...]
+
+    def _links_holder_name(self) -> str:
+        """Return the element as a message names it (``timeline 'score'``)."""
+        raise NotImplementedError
+
+    def _link_position(self, link: Link) -> int:
+        """Return the position of the first link equal to *link*.
+
+        Raises:
+            ValueError: If the element holds no link equal to *link*
+                (``timeline 'score' holds no link equal to the link given``).
+        """
+        for position, held in enumerate(self.links):
+            if held == link:
+                return position
+        raise ValueError(
+            f"{self._links_holder_name()} holds no link equal to the link given"
+        )
 
     def get_links(
         self,
@@ -299,8 +380,8 @@ class LinksMixin:
 class MutableLinksMixin(LinksMixin):
     """A mutable element carrying links: a timeline, a bundle.
 
-    The element holds its links in ``_links``, a list, and adds a link in
-    place.
+    The element holds its links in ``_links``, a list, and adds, replaces
+    and removes a link in place.
     """
 
     _links: list[Link]
@@ -337,6 +418,66 @@ class MutableLinksMixin(LinksMixin):
         """
         self._links.append(self._link_to_add(link, options))
         return self
+
+    def replace_link(self, old: Link, new: Link | str, **options: Any) -> Self:
+        """Replace a link of the element with another, in its place.
+
+        The first link equal to *old* is replaced. The new link is built as
+        :meth:`add_link` builds it, so a link stating no assertion takes the
+        default assertion, if one is set.
+
+        Args:
+            old: A link equal to the one to replace.
+            new: The link taking its place, or the URL of the linked
+                entity, which ``Link.from_url`` reads with *options*.
+            **options: Passed to ``Link.from_url`` with a URL.
+
+        Returns:
+            The element, so that calls chain.
+
+        Raises:
+            TypeError: If *options* are given beside a :class:`Link`.
+            ValueError: If the element holds no link equal to *old*
+                (``timeline 'score' holds no link equal to the link
+                given``), or ``Link.from_url`` refuses the URL or the
+                options. The links are left as they were.
+
+        Examples:
+            >>> from timetoalign.timelines import ContinuousLogicalTimeline
+            >>> score = ContinuousLogicalTimeline(length=8)
+            >>> work = "https://musicbrainz.org/work/4a622b0d-b0c0-405e-b49e-05b70c108284"
+            >>> _ = score.add_link(work)
+            >>> _ = score.replace_link(score.links[0], work, label="Op. 106")
+            >>> [link.label for link in score.links]
+            ['Op. 106']
+        """
+        position = self._link_position(old)
+        self._links[position] = self._link_to_add(new, options)
+        return self
+
+    def remove_link(self, link: Link) -> Self:
+        """Remove a link from the element.
+
+        Args:
+            link: A link equal to the one to remove; the first equal link
+                is removed.
+
+        Returns:
+            The element, so that calls chain.
+
+        Raises:
+            ValueError: If the element holds no link equal to *link*
+                (``bundle 'study' holds no link equal to the link given``).
+        """
+        del self._links[self._link_position(link)]
+        return self
+
+    def _rename_parts(self, renamed: Mapping[str, str | None]) -> None:
+        """Rename the elements the part slots of the element's links name.
+
+        See :func:`_renamed_parts`.
+        """
+        self._links = [_renamed_parts(link, renamed) for link in self._links]
 
 
 # endregion

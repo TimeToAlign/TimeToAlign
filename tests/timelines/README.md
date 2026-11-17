@@ -790,7 +790,10 @@ Parangonada and IIIF loaders the test walks the whole
 and marker to carry a valid id (non-empty, no control character),
 all ids within one manifest to be distinct, and no id to start with `tl:`.
 
-### Links and schemes (`test_description_links.py`)
+### Links and schemes (`test_description_links.py`, `test_description_references.py`)
+
+The second file holds what links name: a partial write, re-minting and
+removal (the last three cases below but one); the first holds the rest.
 
 The description layer of a manifest links the manifest, a timeline or a
 region to works and other entities: `links` on each of the three, and the
@@ -867,10 +870,11 @@ the format's rules rather than from the library's output.
   `Scheme` object is added as it is, and keyword arguments beside it raise
   `TypeError`. `schemes` lists them sorted by id, the order the manifest
   writes them in. On reading, a scheme whose id a group holds is refused
-  with `the id 'g' is held twice in the manifest: by group 'g' and by
-  scheme 'g'`, and `Timeline.from_dict(…, timeline_id="opus")` refuses to
-  give the root the id of the scheme `opus` (`root timeline 'score' cannot
-  take the id 'opus': it is already held by scheme 'opus'`).
+  in the package's words, `#/schemes/0/id: 'g' is not unique in the
+  manifest, first at #/groups/0/id`, and `Timeline.from_dict(…,
+  timeline_id="opus")` refuses to give the root the id of the scheme
+  `opus` (`root timeline 'score' cannot take the id 'opus': it is already
+  held by scheme 'opus'`).
 - **The default assertion.** There is none until one is set:
   `get_default_assertion()` is `None` and `add_link` adds a link without an
   assertion as it is. After `set_default_assertion(asserted_by=…)`,
@@ -893,17 +897,136 @@ the format's rules rather than from the library's output.
   `Timeline.from_dict`, and a one-group anonymous one read by
   `TimelineGroup.from_dict`, write them back too: the manifest's links stay
   with the manifest read as a whole.
-- **What the validator refuses, the library refuses in its words.** The
-  rules of links are the package's: the library hands the part of a
-  manifest those rules read (the manifest's id, schemes and links, every
-  timeline's and region's id and links, in their places) to
-  `timetoshare.validate` before it reads anything else. A part slot naming
-  no timeline or region is refused with the validator's message
+- **One check, the package's, reading and writing.** The rules of links
+  are the package's, and the library checks them through one function of
+  it, `timetoshare.description_problems`, on the manifest as read (before
+  anything else is read) and on the manifest as written (in the one writer
+  every `to_dict` passes through), raising the first problem as it is. A
+  stub put in that function's place proves both doors and nothing more:
+  returning the problems `#/links: first` and `#/links: second`, it makes
+  `Timeline.from_dict` and `Timeline.to_dict` each raise exactly
+  `#/links: first`, the reader having handed it the very manifest given;
+  returning none, both pass. The package's own words follow on each side.
+  Reading: a part slot naming no timeline or region is refused with
   `#/links/0/parts/0/represented_by/0: 'ghost' names no timeline or region
   of this manifest`, the path the one of the manifest read; a link on a
-  region with the level `score`, with a path through the region. Every
-  shared rejection case of links is refused by every reader (see
-  `tests/README.md`).
+  region with the level `score`, with a path through the region. Writing:
+  a timeline whose link names the scheme `opus` that nothing declares
+  raises `#/timelines/0/links/0/identifiers/0/scheme: 'opus' names no
+  scheme of this manifest and is no absolute URI` from `to_dict`, in both
+  forms, and a bundle whose own link does raises the same at
+  `#/links/0/identifiers/0/scheme`; a part slot naming `ghost`, an element
+  of no manifest the timeline belongs to, raises
+  `#/timelines/0/links/0/parts/0/represented_by/0: 'ghost' names no
+  timeline or region of this manifest`. An invalid description layer is
+  never emitted. Every shared rejection case of links is refused by every
+  reader (see `tests/README.md`).
+- **A partial write keeps the manifest valid.** An element writing its
+  own envelope — a timeline, a group — writes part of the manifests it
+  belongs to, and still a whole manifest: it declares every scheme a link
+  of its trees names by id, at any depth (a link's identifiers, its part
+  slots', its `part_of` entries'), taken from the bundles and groups its
+  tree belongs to or from the manifest it was read from; a scheme no link
+  written names stays behind. Each probe compares the minimal form with a
+  literal and has `timetoshare.validate` accept both forms:
+  `bundle.get_timeline("score").to_dict()` where `score`'s link names
+  `opus` by an identifier and the bundle declares `opus` and `bwv` (only
+  `opus` written); `Timeline.from_dict(…, timeline_id="score")` of a
+  manifest of two roots declaring `opus` and `bwv` (only `opus` written);
+  `TimelineGroup.from_dict(…, group_id="g1")` of a manifest of two groups
+  where a part slot of a region's link of `g1`'s member names `opus` and
+  `g2`'s member's link names `bwv` (only `opus` written).
+  `AlignmentBundle.from_bundles` carries the schemes the carried links
+  name: one source bundle declares `opus`, named by a `part_of` entry of
+  its root's link, the other `bwv`, named by its region's link, and
+  `unused`, which nothing names; the merged bundle's `schemes` are exactly
+  `bwv` and `opus`, its manifest validates and reads back to a bundle
+  writing it again. Two different schemes with one id refuse, as given ids
+  do: two source bundles declaring `opus` differently, each named, refuse
+  the merge with `two different schemes carry the id 'opus'`; declared
+  equal, they merge into one. A timeline read from a manifest declaring
+  `opus` one way and added to a bundle declaring it another refuses both
+  the bundle's and its own `to_dict` with the same message.
+- **A slot naming what the write leaves out is `not_represented`.** The
+  format reads a part slot whose elements the manifest leaves out as
+  `absent` `not_represented` — the part exists and this manifest leaves it
+  out, as the editor writes when it removes an element. `score`'s link of
+  the first probe holds a slot naming `perf`, another root of the bundle,
+  and one naming `perf` and `intro`, `score`'s region: `score` written
+  alone writes the first `absent` `not_represented` with no
+  `represented_by` and the second naming `intro` alone, while `score`'s
+  links in memory and the bundle's manifest keep both as stored. A
+  timeline or group selected out of a manifest leaves the rest behind in
+  memory too: after `Timeline.from_dict(…, timeline_id="score")` and
+  `TimelineGroup.from_dict(…, group_id="g1")`, a slot that named a
+  timeline outside the selection is `absent` `not_represented`. An id no
+  manifest of the element holds is no element left out: it is refused at
+  writing (above), never quietly dropped.
+- **Links and schemes change and go.** One implementation serves the
+  timeline and the bundle, so each case runs on both: `replace_link(old,
+  new)` puts `new` in the place of the first link equal to `old` (an equal
+  copy read back from its dict finds it) and returns the element;
+  `replace_link(old, url, label=…)` builds the new link from the URL as
+  `add_link` does, takes the default assertion dated today where one is
+  set, and refuses keyword arguments beside a `Link` with `TypeError`;
+  `remove_link(link)` removes it. A link the element does not hold is
+  refused, `timeline 'score' holds no link equal to the link given`
+  (`bundle 'study' …` on the bundle), and the links are left as they
+  were. `Region.without_link` returns a copy without the link, every other
+  link, the id and the bounds kept and the region unchanged, and refuses
+  a link it does not hold (`region 'region_1' holds no link equal to the
+  link given`). `Timeline.replace_region` stores a region carrying the id
+  of one the timeline holds in its place, so that a region's links change
+  after `add_region`: the timeline returned, `get_region` and the
+  manifest written show the new links; an unknown id raises `KeyError`
+  `No region with id 'ghost'. Available regions: ['intro']`, a region of
+  another unit `ValueError` `Region unit 'seconds' does not match
+  timeline unit 'quarters'`. `AlignmentBundle.remove_scheme` refuses a
+  scheme while a link of the bundle names it, naming the holder: `scheme
+  'cat' cannot be removed: a link of bundle 'study' names it` (a part
+  slot's identifier of the manifest's link), `… of timeline 'score' …` (a
+  `part_of` entry of the root's link), `… of region 'intro' of timeline
+  'score' …` (the region's link); once those links are gone the three are
+  removed and `schemes` is empty, the freed id is taken again by
+  `add_scheme`, and an unknown id raises `KeyError` `bundle 'study'
+  declares no scheme 'ghost'`.
+- **Re-minting keeps references.** Wherever an id is minted again, every
+  part slot that named the element by its old id names it by the new one,
+  and a slot naming another element that had held the old id elsewhere is
+  left alone. Each path is pinned with exact ids, the manifest written
+  validating. Joining a group and joining a bundle: a newcomer tree of
+  minted ids (`clt_1` with child `clt_2` and region `region_1`) meets a
+  member with the same ids and becomes `clt_3`, `clt_4`, `region_2`; its
+  link's slots naming `clt_1`, `clt_2`, `region_1` name `clt_3`, `clt_4`,
+  `region_2`, while the member's slots, and the bundle's own link naming
+  the member's `clt_1` and `region_1`, keep naming them. `add_child`: a
+  child `clt_1` holding `region_1`, its region's link naming both, becomes
+  `clt_2` with `region_2`, the link naming those, while the parent's link
+  naming the parent's `region_1` and `clt_1` keeps them. `Timeline.from_dict(…,
+  timeline_id="piece")`: the root `score` given a new id is named `piece`
+  by the slots of its own link and of the manifest's link, written back
+  with the manifest. `AlignmentBundle.from_bundles`: of two bundles of the
+  same minted tree, the second's root, child and region become `clt_3`,
+  `clt_4`, `region_2` and its link names them; the first's is unchanged.
+- **Removal leaves the removed out of what slots name.** Removing a
+  member from a group takes the ids of its tree, when that tree leaves the
+  group's manifest, out of every part slot of what the group writes: the
+  links of the group's manifest read as a whole, of the members' trees,
+  and of the removed timeline's own tree, whose manifest the group's trees
+  have left; a slot left naming none is `absent` `not_represented`, as the
+  editor does. A group of `a` (region `a1`) and `b` (region `b1`) read
+  with the manifest: the manifest's slots `[b]`, `[a, b1]` become
+  `not_represented`, `[a]`; `a`'s `[b1]`, `[a1, b]` become
+  `not_represented`, `[a1]`; the removed `b`'s `[a]` becomes
+  `not_represented`; the group and `b` each write a manifest
+  `timetoshare.validate` accepts. A bundle holding the group still holds
+  `b`, so after the same removal its manifest is unchanged but for the
+  group's members and validates. A member removed whose root another
+  member shares leaves nothing: a slot naming it keeps naming it.
+- **`create_region` takes the default assertion.** Under a default
+  assertion, `create_region(…, links=[…])` gives a link stating no
+  assertion the default dated today, as `add_link` and `with_link` do,
+  and a link stating its own keeps it.
 
 ### Canonical order of a serialized timeline (`test_canonical_order.py`)
 

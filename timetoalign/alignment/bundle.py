@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, ClassVar
@@ -60,15 +60,21 @@ from timetoalign.core.retrieval import (
 )
 from timetoalign.core.timestamp import TimestampColumn, build_timestamp_table
 from timetoalign.timelines import TimelineGroup, UnknownLengthError
-from timetoalign.timelines.description import Link, MutableLinksMixin, Scheme
+from timetoalign.timelines.description import (
+    Link,
+    MutableLinksMixin,
+    Scheme,
+    _named_schemes,
+)
 from timetoalign.timelines.groups import (
     _groups_by_timeline,
     _held_ids,
     _IdScope,
     _nested,
     _root,
+    _tree,
 )
-from timetoalign.timelines.manifest import Manifest
+from timetoalign.timelines.manifest import Manifest, schemes_named
 
 from .claims import AlignmentAnchor, MatchClaim, MatchClaimField
 from .filters import ClaimFilter
@@ -363,9 +369,11 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, _OpenObject):
         bundle into a new bundle, and carries over every cross-group
         ``MatchClaim`` (both the per-claim list and any columnar
         ``MatchClaimField`` stores) unchanged. The links of the timelines and
-        regions travel with them; the source bundles' own links and schemes
-        belong to their manifests and are not carried over. Each source
-        group is entered as
+        regions travel with them, and so does every scheme they name by id,
+        declared by a source bundle or by the manifest a timeline was read
+        from; the source bundles' own links, and the schemes no carried link
+        names, belong to their manifests and are not carried over. Each
+        source group is entered as
         a new group with the same members, name and meta, each member keeping
         its own lock; a minted group id is minted again in the merged bundle,
         a given one is kept. Groups from
@@ -383,14 +391,26 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, _OpenObject):
             timeline, and cross-group claim from ``bundles``.
 
         Raises:
-            ValueError: If two source bundles share a given group ID, or a
-                given timeline ID collision would occur across bundles.
+            ValueError: If two source bundles share a given group ID, a
+                given timeline ID collision would occur across bundles, or
+                two different schemes carry an id the carried links name
+                (``two different schemes carry the id 'opus'``).
 
         Examples:
             >>> merged = AlignmentBundle.from_bundles([score_bundle, audio_bundle])
             >>> merged.n_groups == score_bundle.n_groups + audio_bundle.n_groups
             True
         """
+        # The schemes the carried links name, refused before anything changes.
+        schemes = schemes_named(
+            (),
+            [
+                timeline
+                for bundle in bundles
+                for root in bundle._roots()
+                for timeline in _tree(root)
+            ],
+        )
         merged = cls(id=id, name=name)
         for bundle in bundles:
             for group in bundle.groups.values():
@@ -413,6 +433,8 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, _OpenObject):
             merged.add_match_claims(bundle.cross_group_claims)
             for claim_field in bundle.cross_group_claim_fields:
                 merged.add_match_claim_field(claim_field)
+        for scheme in schemes:
+            merged.add_scheme(scheme)
         return merged
 
     # region Timeline Management
@@ -631,11 +653,25 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, _OpenObject):
         """Return the groups, keyed by id."""
         return self.groups
 
-    def _element_ids(self) -> dict[str, str]:
-        """Map the ids of the manifest's schemes to their descriptions."""
-        return {
-            scheme_id: f"scheme {quote_id(scheme_id)}" for scheme_id in self._schemes
-        }
+    def _roots(self) -> list["Timeline"]:
+        """Return the root of every tree the bundle holds, once each."""
+        roots: dict[str, Timeline] = {}
+        for timeline in self.timelines.values():
+            root = _root(timeline)
+            roots.setdefault(root.id, root)
+        return list(roots.values())
+
+    def _declared_schemes(self) -> Iterable[Scheme]:
+        """Return the schemes the manifest declares."""
+        return self._schemes.values()
+
+    def _links_holder(self) -> "AlignmentBundle":
+        """Return the bundle: it holds the links of its manifest itself."""
+        return self
+
+    def _links_holder_name(self) -> str:
+        """Return the bundle as a message names it."""
+        return f"bundle {quote_id(self.id)}"
 
     @property
     def schemes(self) -> tuple[Scheme, ...]:
@@ -712,6 +748,59 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, _OpenObject):
         )
         self._schemes[scheme.id] = scheme
         self._yield_minted_ids({scheme.id}, [self])
+        return self
+
+    def remove_scheme(self, scheme_id: str) -> "AlignmentBundle":
+        """Remove a scheme the manifest declares.
+
+        A scheme stays while a link of the bundle names it: a link of the
+        manifest, of a timeline or of a region, in an identifier of its own,
+        of a part slot or of a ``part_of`` entry. Change or remove those
+        links first (:meth:`replace_link`, :meth:`remove_link`).
+
+        Args:
+            scheme_id: The id of the scheme to remove.
+
+        Returns:
+            self (for method chaining)
+
+        Raises:
+            KeyError: If the manifest declares no scheme with that id.
+            ValueError: If a link of the bundle names the scheme (``scheme
+                'opus' cannot be removed: a link of timeline 'score' names
+                it``).
+
+        Examples:
+            >>> from timetoalign.alignment import AlignmentBundle
+            >>> bundle = AlignmentBundle().add_scheme("opus").add_scheme("bwv")
+            >>> [scheme.id for scheme in bundle.remove_scheme("bwv").schemes]
+            ['opus']
+        """
+        if scheme_id not in self._schemes:
+            raise KeyError(
+                f"bundle {quote_id(self.id)} declares no scheme {quote_id(scheme_id)}"
+            )
+        holders: list[tuple[str, Sequence[Link]]] = [
+            (self._links_holder_name(), self._links)
+        ]
+        for root in self._roots():
+            for timeline in _tree(root):
+                holders.append((timeline._links_holder_name(), timeline._links))
+                holders.extend(
+                    (
+                        f"{region._links_holder_name()} of "
+                        f"{timeline._links_holder_name()}",
+                        region.links,
+                    )
+                    for region in timeline._regions.values()
+                )
+        for holder, links in holders:
+            if scheme_id in _named_schemes(links):
+                raise ValueError(
+                    f"scheme {quote_id(scheme_id)} cannot be removed: a link of "
+                    f"{holder} names it"
+                )
+        del self._schemes[scheme_id]
         return self
 
     def _register(self, timeline: "Timeline") -> None:
@@ -3857,7 +3946,9 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, _OpenObject):
         under its id and, unchanged, the band order read with the manifest
         of every timeline written, beside the members of :attr:`styling`. A
         root no group names is ungrouped. The bundle's :attr:`schemes` are
-        written sorted by id and its :attr:`links` in their order. MatchClaims
+        written sorted by id, with every scheme a link of a timeline names
+        that the manifest the timeline was read from declares, and its
+        :attr:`links` in their order. MatchClaims
         are not written; the support policy is a setting of the bundle, not
         part of the manifest.
 
@@ -3893,10 +3984,6 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, _OpenObject):
             >>> data["graphical"]["order"]
             {'group_1': ['clt_1', 'cpt_1']}
         """
-        roots: dict[str, Timeline] = {}
-        for timeline in self.timelines.values():
-            root = _root(timeline)
-            roots.setdefault(root.id, root)
         groups = [self.groups[group_id] for group_id in sorted(self.groups)]
         manifest = Manifest(
             id=None if self._id_minted else self.id,
@@ -3911,7 +3998,7 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, _OpenObject):
         )
         manifest._unknown_keys = self._unknown_keys
         return manifest.write(
-            list(roots.values()),
+            self._roots(),
             groups=[group._to_group_object(minimal=minimal) for group in groups],
             order={group.id: group.timeline_ids for group in groups},
             minimal=minimal,

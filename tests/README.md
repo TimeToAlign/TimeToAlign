@@ -73,9 +73,10 @@ manifest the validators refuse would let an invalid document through one of
 two doors. The cases are listed from the package, not copied, so a case
 added there is covered here without an edit. The cases of links
 (`description_*`) are refused through the package itself: the library
-hands the description layer of every manifest it reads to
-`timetoshare.validate`, which holds those rules (see *Links and schemes* in
-`timelines/README.md`). The three exceptions are the
+hands every manifest it reads, and every manifest it writes, to
+`timetoshare.description_problems`, the package's check of the
+description layer alone, which holds those rules (see *Links and schemes*
+in `timelines/README.md`). The three exceptions are the
 rules the library leaves to the validators because it keeps what they
 check as given: the rules about `graphical.statements` (selectors with
 their addresses, and declarations), which the library never interprets,

@@ -48,6 +48,7 @@ STRUCTURAL_KEYS = {
     "conversion_maps",
     "regions",
     "flow_control",
+    "links",
 }
 
 

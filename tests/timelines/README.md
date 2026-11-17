@@ -1809,7 +1809,7 @@ exactly:
 
 The remaining keys of the timeline object are identical in all four cases:
 `id`, `name`, `unit`, `number_type`, `length`, `locked`, `is_segment_line`,
-`meta`, `children`, `conversion_maps`, `regions` and `flow_control`. The
+`meta`, `children`, `conversion_maps`, `regions`, `flow_control` and `links`. The
 tests assert that exact key set for the default call.
 
 Reference rows serialize as plain dicts with `access_points` a nested list of

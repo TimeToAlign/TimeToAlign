@@ -607,7 +607,9 @@ class TestSerialization:
             "conversion_maps",
             "regions",
             "flow_control",
+            "links",
         }
+        assert data["links"] == []
         assert "events" not in data
 
     def test_to_dict_with_events(self, mixed_event_rows: list[dict[str, Any]]):

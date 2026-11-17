@@ -16,7 +16,7 @@ from typing import Any
 
 import pytest
 import timetoshare
-from timetoshare import complete, dumps, minimal, validate
+from timetoshare import SchemaValidationError, complete, dumps, minimal, validate
 
 import timetoalign
 from timetoalign import (
@@ -25,7 +25,9 @@ from timetoalign import (
     ContinuousLogicalTimeline,
     ContinuousPhysicalTimeline,
     Coordinate,
+    Identifier,
     Link,
+    PartOf,
     PartSlot,
     Scheme,
     Timeline,
@@ -35,6 +37,7 @@ from timetoalign import (
     set_default_assertion,
 )
 from timetoalign.timelines import Region, description
+from timetoalign.timelines import manifest as manifest_module
 
 MB = "http://musicbrainz.org/work/"
 IMSLP = "http://www.wikidata.org/entity/P839"
@@ -476,7 +479,7 @@ def test_reading_refuses_a_scheme_id_a_group_holds() -> None:
     data = _one_root(groups=[{"id": "g", "members": ["score"]}], schemes=[{"id": "g"}])
     _raises(
         ValueError,
-        "the id 'g' is held twice in the manifest: by group 'g' and by scheme 'g'",
+        "#/schemes/0/id: 'g' is not unique in the manifest, first at #/groups/0/id",
         lambda: AlignmentBundle.from_dict(data),
     )
 
@@ -559,6 +562,178 @@ def test_a_default_set_in_another_context_is_not_seen() -> None:
     inside = contextvars.copy_context().run(set_inside)
     assert inside == Assertion(asserted_by=(EDITOR,), method="manual")
     assert get_default_assertion() is None
+
+
+def test_create_region_takes_the_default_assertion(today: datetime.date) -> None:
+    own = Link.from_url(RELEASE_URL, assertion=Assertion(asserted_by=(OTHER,)))
+    score = _quarters("score")
+    with set_default_assertion(asserted_by=EDITOR):
+        region = score.create_region(
+            0, 4, id="intro", links=[Link.from_url(MOVEMENT_I), own]
+        )
+    expected = Assertion(asserted_by=(EDITOR,), asserted_on=today, method="manual")
+    assert region.links == (Link.from_url(MOVEMENT_I, assertion=expected), own)
+    assert [link.assertion for link in score.get_region("intro").links] == [
+        expected,
+        own.assertion,
+    ]
+
+
+# endregion
+
+# region Changing and removing links and schemes
+
+HOLDERS: list[tuple[str, Callable[[], Any]]] = [
+    ("timeline 'score'", lambda: _quarters("score")),
+    ("bundle 'study'", lambda: AlignmentBundle(id="study")),
+]
+
+
+@pytest.mark.parametrize(("holder", "build"), HOLDERS, ids=["timeline", "bundle"])
+def test_a_link_is_replaced_in_its_place_and_removed(
+    holder: str, build: Callable[[], Any]
+) -> None:
+    work, release = Link.from_url(WORK_URL), Link.from_url(RELEASE_URL)
+    movement = Link.from_url(MOVEMENT_I, label="I. Allegro")
+    element = build().add_link(work).add_link(release)
+    equal_copy = Link.from_dict(work.to_dict())
+    assert element.replace_link(equal_copy, movement) is element
+    assert element.links == (movement, release)
+    element.replace_link(release, RELEASE_URL, label="Hammerklavier")
+    assert element.links == (
+        movement,
+        Link.from_url(RELEASE_URL, label="Hammerklavier"),
+    )
+    assert element.remove_link(movement) is element
+    assert element.links == (Link.from_url(RELEASE_URL, label="Hammerklavier"),)
+    for call in (
+        lambda: element.replace_link(work, movement),
+        lambda: element.remove_link(work),
+    ):
+        _raises(ValueError, f"{holder} holds no link equal to the link given", call)
+    _raises(
+        TypeError,
+        "keyword arguments ['label'] build a link from a URL; a Link is added as it is",
+        lambda: element.replace_link(element.links[0], movement, label="x"),
+    )
+    assert element.links == (Link.from_url(RELEASE_URL, label="Hammerklavier"),)
+
+
+def test_a_replacing_link_takes_the_default_assertion(today: datetime.date) -> None:
+    score = _quarters("score").add_link(RELEASE_URL)
+    with set_default_assertion(asserted_by=EDITOR):
+        score.replace_link(score.links[0], WORK_URL)
+    assert score.links == (
+        Link.from_url(
+            WORK_URL,
+            assertion=Assertion(
+                asserted_by=(EDITOR,), asserted_on=today, method="manual"
+            ),
+        ),
+    )
+
+
+def test_a_region_without_a_link() -> None:
+    quarters = TimeUnit.quarters
+    first, second = Link.from_url(MOVEMENT_I), Link.from_url(RELEASE_URL)
+    region = (
+        Region(Coordinate(0, quarters), Coordinate(16, quarters), name="Exposition")
+        .with_link(first)
+        .with_link(second)
+    )
+    without = region.without_link(Link.from_dict(first.to_dict()))
+    assert without.links == (second,)
+    assert region.links == (first, second)
+    assert (without.id, without.start, without.end, without.name) == (
+        "region_1",
+        region.start,
+        region.end,
+        "Exposition",
+    )
+    _raises(
+        ValueError,
+        "region 'region_1' holds no link equal to the link given",
+        lambda: without.without_link(first),
+    )
+
+
+def test_a_region_is_replaced_by_its_id() -> None:
+    score = _quarters("score")
+    score.create_region(0, 4, id="intro")
+    movement = Link.from_url(MOVEMENT_I, label="I. Allegro")
+    changed = score.get_region("intro").with_link(movement)
+    assert score.replace_region(changed) is score
+    assert score.get_region("intro") is changed
+    assert score.to_dict(minimal=True)["timelines"][0]["regions"] == [
+        {
+            "id": "intro",
+            "start": [0, 1],
+            "end": [4, 1],
+            "links": [movement.to_dict(minimal=True)],
+        }
+    ]
+    with pytest.raises(KeyError) as unknown:
+        score.replace_region(
+            Region(
+                Coordinate(0, TimeUnit.quarters),
+                Coordinate(1, TimeUnit.quarters),
+                id="ghost",
+            )
+        )
+    assert (
+        unknown.value.args[0]
+        == "No region with id 'ghost'. Available regions: ['intro']"
+    )
+    _raises(
+        ValueError,
+        "Region unit 'seconds' does not match timeline unit 'quarters'",
+        lambda: score.replace_region(
+            Region(
+                Coordinate(0, TimeUnit.seconds),
+                Coordinate(1, TimeUnit.seconds),
+                id="intro",
+            )
+        ),
+    )
+    assert score.get_region("intro") is changed
+
+
+def test_a_scheme_goes_once_no_link_names_it() -> None:
+    bundle = AlignmentBundle(id="study")
+    for scheme_id in ("opus", "bwv", "cat"):
+        bundle.add_scheme(scheme_id)
+    manifest_link = Link.from_url(WORK_URL).with_parts(
+        "has_part",
+        [PartSlot(identifiers=(Identifier("cat", "1"),), absent="not_represented")],
+    )
+    root_link = Link.from_url(WORK_URL).with_part_of(
+        PartOf("has_part", identifiers=(Identifier("opus", "106"),))
+    )
+    region_link = Link.from_url(MOVEMENT_I, identifiers={"bwv": "1"})
+    score = _quarters("score").add_link(root_link)
+    score.create_region(0, 4, id="intro", links=[region_link])
+    bundle.add_link(manifest_link).add_timeline(score)
+    for scheme_id, holder in (
+        ("cat", "bundle 'study'"),
+        ("opus", "timeline 'score'"),
+        ("bwv", "region 'intro' of timeline 'score'"),
+    ):
+        _raises(
+            ValueError,
+            f"scheme '{scheme_id}' cannot be removed: a link of {holder} names it",
+            lambda scheme_id=scheme_id: bundle.remove_scheme(scheme_id),
+        )
+    assert [scheme.id for scheme in bundle.schemes] == ["bwv", "cat", "opus"]
+    bundle.remove_link(manifest_link)
+    score.remove_link(root_link)
+    score.replace_region(score.get_region("intro").without_link(region_link))
+    for scheme_id in ("cat", "opus", "bwv"):
+        assert bundle.remove_scheme(scheme_id) is bundle
+    assert bundle.schemes == ()
+    assert bundle.add_scheme("opus").schemes == (Scheme("opus"),)
+    with pytest.raises(KeyError) as unknown:
+        bundle.remove_scheme("ghost")
+    assert unknown.value.args[0] == "bundle 'study' declares no scheme 'ghost'"
 
 
 # endregion
@@ -677,6 +852,61 @@ def test_a_group_read_whole_keeps_the_manifest_s_links() -> None:
 # endregion
 
 # region What the validator refuses
+
+
+def test_the_reader_and_the_writer_raise_the_package_s_first_problem(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handed: list[Any] = []
+    problems = [
+        SchemaValidationError("schema", ("links",), "first"),
+        SchemaValidationError("schema", ("links",), "second"),
+    ]
+
+    def stub(value: Any) -> list[SchemaValidationError]:
+        handed.append(value)
+        return list(problems)
+
+    monkeypatch.setattr(manifest_module, "description_problems", stub)
+    data = _one_root()
+    _raises(ValueError, "#/links: first", lambda: Timeline.from_dict(data))
+    assert handed == [data] and handed[0] is data
+    _raises(ValueError, "#/links: first", _quarters("score").to_dict)
+    assert handed[1]["timelines"][0]["id"] == "score"
+    problems.clear()
+    assert Timeline.from_dict(_one_root()).to_dict(minimal=True) == _one_root()
+
+
+def test_a_link_naming_no_declared_scheme_is_never_written() -> None:
+    score = _quarters("score").add_link(WORK_URL, identifiers={"opus": "106"})
+    for form in (False, True):
+        _raises(
+            ValueError,
+            "#/timelines/0/links/0/identifiers/0/scheme: 'opus' names no scheme of "
+            "this manifest and is no absolute URI",
+            lambda form=form: score.to_dict(minimal=form),
+        )
+    bundle = AlignmentBundle().add_link(WORK_URL, identifiers={"opus": "106"})
+    _raises(
+        ValueError,
+        "#/links/0/identifiers/0/scheme: 'opus' names no scheme of this manifest and "
+        "is no absolute URI",
+        bundle.to_dict,
+    )
+
+
+def test_a_slot_naming_no_element_is_never_written() -> None:
+    score = _quarters("score").add_link(
+        Link.from_url(WORK_URL).with_parts(
+            "has_part", [PartSlot(represented_by=("ghost",))]
+        )
+    )
+    _raises(
+        ValueError,
+        "#/timelines/0/links/0/parts/0/represented_by/0: 'ghost' names no timeline "
+        "or region of this manifest",
+        score.to_dict,
+    )
 
 
 def test_a_slot_naming_nothing_is_refused_in_the_validator_s_words() -> None:

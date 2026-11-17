@@ -93,6 +93,8 @@ from .manifest import (
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from timetoshare import Scheme
+
     from timetoalign.core.enums import ColumnNaming
     from timetoalign.display.ascii import Diagram
     from timetoalign.maps.base import ConversionMap
@@ -191,7 +193,10 @@ class _IdScope:
     its members (:meth:`_scope_members`), registers a newcomer
     (:meth:`_register`) and, holding scopes, supplies them
     (:meth:`_sub_scopes`); a scope that can be held names the scopes
-    holding it (:meth:`_holders`).
+    holding it (:meth:`_holders`). The description layer of the scope's
+    own manifest comes through two hooks: the schemes it declares, whose
+    ids are ids of the manifest (:meth:`_declared_schemes`), and what holds
+    its links (:meth:`_links_holder`).
     """
 
     _scope_kind: ClassVar[str]
@@ -224,21 +229,31 @@ class _IdScope:
         """Return the live scopes holding this one among their sub-scopes: none."""
         return []
 
-    def _element_ids(self) -> dict[str, str]:
-        """Map the ids of the elements the scope holds itself to their holders.
+    def _declared_schemes(self) -> Iterable["Scheme"]:
+        """Return the identifier schemes the scope's own manifest declares.
 
-        None by default; a bundle holds the schemes of its manifest.
+        None by default; a bundle declares its schemes, a group read from a
+        manifest as a whole that manifest's.
         """
-        return {}
+        return ()
+
+    def _links_holder(self) -> Any:
+        """Return what holds the links of the scope's own manifest, or None.
+
+        A bundle holds them itself, a group read from a manifest as a whole
+        keeps them on that manifest; anything returned renames the elements
+        its part slots name with ``_rename_parts``.
+        """
+        return None
 
     def _scope_ids(self, *, trees: bool = True) -> dict[str, str]:
         """Map every id the scope's manifest holds to its holder.
 
         The ids of every member's tree, the given ids of the scopes it holds
-        and its own, and the ids of the elements each of them holds itself
-        (:meth:`_element_ids`). A minted scope id is left out: a group's
-        gives way to a given id that takes it (:meth:`_yield_minted_ids`),
-        and a bundle's is never written.
+        and its own, and the ids of the schemes each of them declares
+        (:meth:`_declared_schemes`). A minted scope id is left out: a
+        group's gives way to a given id that takes it
+        (:meth:`_yield_minted_ids`), and a bundle's is never written.
 
         Args:
             trees: Include the ids of the members' trees.
@@ -247,8 +262,8 @@ class _IdScope:
         for scope in (*self._sub_scopes().values(), self):
             if not scope._id_minted:
                 held.setdefault(scope.id, f"{scope._scope_kind} {quote_id(scope.id)}")
-            for element_id, holder in scope._element_ids().items():
-                held.setdefault(element_id, holder)
+            for scheme in scope._declared_schemes():
+                held.setdefault(scheme.id, f"scheme {quote_id(scheme.id)}")
         return held
 
     def _admit_tree(
@@ -439,7 +454,10 @@ class TimelineGroup(_IdScope, _OpenObject):
         group writes.
         - From a manifest with several groups, or a named one, *group_id* or
           *name* (or both) must be given and select the one group whose id
-          and name match them.
+          and name match them. The rest of the manifest is left behind: a
+          part slot of a link of the group's trees that names a timeline or
+          region outside them no longer names it, and a slot left naming
+          none is ``absent`` as ``not_represented``.
 
         A group is read with the timelines its members need: each member id
         is resolved among the manifest's roots and all their descendants, and
@@ -545,13 +563,22 @@ class TimelineGroup(_IdScope, _OpenObject):
                 "the manifest holds several groups or is named: give group_id or name "
                 "to select a group"
             )
-        return select(
+        selected = select(
             groups,
             id=group_id,
             name=name,
             what="group",
             names=[(group.id, group.name) for group in groups],
         )
+        # The rest of the manifest is left out: the other groups let their
+        # members go, and a part slot names nothing outside the group read.
+        for group in groups:
+            if group is not selected:
+                for member in group._timelines.values():
+                    member._leave_scope(group)
+        for member in selected._timelines.values():
+            member._drop_references(content.ids)
+        return selected
 
     @classmethod
     def _from_group_object(
@@ -737,6 +764,14 @@ class TimelineGroup(_IdScope, _OpenObject):
         """Return the members."""
         return list(self._timelines.values())
 
+    def _declared_schemes(self) -> Iterable["Scheme"]:
+        """Return the schemes of the manifest the group was read from as a whole."""
+        return () if self._manifest is None else self._manifest.schemes
+
+    def _links_holder(self) -> Manifest | None:
+        """Return the manifest the group was read from as a whole, or None."""
+        return self._manifest
+
     def _register(self, timeline: "Timeline") -> None:
         """Hold *timeline* as the last member and record the group on it."""
         self._timelines[timeline.id] = timeline
@@ -788,6 +823,15 @@ class TimelineGroup(_IdScope, _OpenObject):
     def remove_timeline(self, timeline_id: str) -> "Timeline":
         """Remove a member from the group.
 
+        The member's tree leaves the group's manifest, unless another
+        member's tree is the same. The part slots of links then name only
+        what is still in the manifest their element belongs to: a slot of
+        the group's members, of the removed timeline's tree or of the
+        manifest the group was read from no longer names a timeline or
+        region that left it, and a slot left naming none is ``absent`` as
+        ``not_represented``. A bundle holding the group still holds the
+        removed timeline, so nothing it holds names less.
+
         Args:
             timeline_id: ID of the timeline to remove.
 
@@ -803,8 +847,18 @@ class TimelineGroup(_IdScope, _OpenObject):
                 f"Available timelines: {self.timeline_ids}"
             )
 
+        held = set(self._scope_ids())
         timeline = self._timelines.pop(timeline_id)
         timeline._leave_scope(self)
+        roots: list[Timeline] = []
+        for member in (*self._timelines.values(), timeline):
+            root = _root(member)
+            if not any(seen is root for seen in roots):
+                roots.append(root)
+                root._drop_references(held)
+        if self._manifest is not None:
+            gone = held.difference(self._scope_ids())
+            self._manifest._rename_parts(dict.fromkeys(gone))
         self._logger.debug(f"Removed timeline '{timeline_id}'")
         return timeline
 
@@ -2070,7 +2124,11 @@ class TimelineGroup(_IdScope, _OpenObject):
         beside the members of :attr:`styling`. A group read from a manifest
         as a whole writes that manifest's ``meta``, ``schemes``, ``links``
         and unknown keys back, and the band order it held of every timeline
-        written, unchanged.
+        written, unchanged. Wherever the group belongs, the manifest is
+        written whole and valid, as :meth:`Timeline.to_dict
+        <timetoalign.timelines.Timeline.to_dict>` writes it: every scheme a
+        link of the trees names is declared, and a part slot naming a
+        timeline or region the manifest leaves out leaves it out too.
 
         Args:
             minimal: If True, leave out every key at its default value.

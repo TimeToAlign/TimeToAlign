@@ -58,7 +58,7 @@ from timetoalign.maps import (
 )
 from timetoalign.storage import EventData
 
-from .description import Link, MutableLinksMixin
+from .description import Link, MutableLinksMixin, Scheme
 from .engines import (
     ChildrenMixin,
     ConversionMapsMixin,
@@ -292,6 +292,11 @@ class Timeline(
     # The manifest this timeline was read from as a whole, written back
     # around it; None for a timeline not read from a manifest.
     _manifest: Manifest | None = None
+
+    # The schemes of the manifest this timeline was read from, whole or in
+    # part, which its links may name: a manifest written holding the
+    # timeline declares those its links name.
+    _source_schemes: tuple[Scheme, ...] = ()
 
     @classmethod
     def _from_dict_initial_length(
@@ -864,12 +869,18 @@ class Timeline(
         registry._admit = self._admit_element_id
 
     def _set_id(self, new_id: str, *, minted: bool = False) -> None:
-        """Give this timeline a new id, renaming it under its parent."""
+        """Give this timeline a new id, renaming it under its parent.
+
+        Every part slot of the timeline's manifest naming the old id names
+        the new one (:meth:`_rename_references`).
+        """
         validate_id(new_id)
-        if self._parent is not None and new_id != self._id:
-            self._parent._rename_child(self._id, new_id)
+        old_id = self._id
+        if self._parent is not None and new_id != old_id:
+            self._parent._rename_child(old_id, new_id)
         self._id = new_id
         self._id_minted = minted
+        self._rename_references(old_id, new_id)
 
     def _identity_entries(self) -> list[tuple[str, bool, str, str]]:
         """Return ``(id, minted, prefix, description)`` for this timeline and
@@ -1103,6 +1114,107 @@ class Timeline(
             owner._reassign_element_id(old_id, new_id)
 
         return [entry for _, entry in joining], rename
+
+    # endregion
+
+    # region References of part slots
+
+    def _links_holder_name(self) -> str:
+        """Return the timeline as a message names it."""
+        return f"timeline {quote_id(self._id)}"
+
+    def _held_links(self) -> list[Link]:
+        """Return the links this timeline holds: its own, then its regions'."""
+        return [
+            *self._links,
+            *(link for region in self._regions.values() for link in region.links),
+        ]
+
+    def _scheme_sources(self) -> list[Scheme]:
+        """Return the schemes this timeline's links may name.
+
+        The schemes of the manifest the timeline was read from, then those
+        each group and bundle its tree belongs to declares.
+        """
+        return [
+            *self._source_schemes,
+            *(
+                scheme
+                for container in self._scope_containers()
+                for scheme in container._declared_schemes()
+            ),
+        ]
+
+    def _rename_parts(self, renamed: Mapping[str, str | None]) -> None:
+        """Rename the elements the part slots of this timeline's links and of
+        its regions' links name (see :meth:`MutableLinksMixin._rename_parts`)."""
+        super()._rename_parts(renamed)
+        self._regions = {
+            region_id: region._with_parts_renamed(renamed)
+            for region_id, region in self._regions.items()
+        }
+
+    def _tree_root(self) -> Timeline:
+        """Return the root of this timeline's tree."""
+        root = self
+        while root._parent is not None:
+            root = root._parent
+        return root
+
+    def _link_holders(self) -> list[Any]:
+        """Return everything holding links in this timeline's manifest.
+
+        The manifest is the timeline's tree and every tree the groups and
+        bundles holding it hold (:meth:`_manifest_ids`): each timeline of
+        those trees, the manifest each of their roots was read from as a
+        whole, and what holds the links of each group's and bundle's own
+        manifest (``_IdScope._links_holder``).
+        """
+        containers = self._scope_containers()
+        roots: list[Timeline] = [self._tree_root()]
+        for container in containers:
+            for member in container._scope_members():
+                root = member._tree_root()
+                if not any(seen is root for seen in roots):
+                    roots.append(root)
+        holders: list[Any] = []
+        for root in roots:
+            holders.extend((root, *(child for _, child in root._iter_descendants())))
+            if root._manifest is not None:
+                holders.append(root._manifest)
+        holders.extend(
+            holder
+            for container in containers
+            if (holder := container._links_holder()) is not None
+        )
+        return list({id(holder): holder for holder in holders}.values())
+
+    def _rename_references(self, old_id: str, new_id: str) -> None:
+        """Make every part slot of this timeline's manifest naming *old_id*
+        name *new_id*, the id the same element holds now."""
+        if old_id == new_id:
+            return
+        for holder in self._link_holders():
+            holder._rename_parts({old_id: new_id})
+
+    def _drop_references(self, ids: Iterable[str]) -> None:
+        """Leave the elements of *ids* that left this timeline's manifest out
+        of the part slots of its tree.
+
+        Each id of *ids* the manifest (:meth:`_manifest_ids`) no longer holds
+        is left out of every part slot of the links of the tree's timelines
+        and regions and of the manifest its root was read from as a whole; a
+        slot left with none is ``absent`` as ``not_represented``.
+        """
+        gone = set(ids).difference(self._manifest_ids())
+        if not gone:
+            return
+        renamed: dict[str, str | None] = dict.fromkeys(gone)
+        root = self._tree_root()
+        for timeline in (root, *(child for _, child in root._iter_descendants())):
+            timeline._rename_parts(renamed)
+        if root._manifest is not None:
+            root._manifest._rename_parts(renamed)
 
     # endregion
 
@@ -1529,6 +1641,14 @@ class Timeline(
         ``name``, ``meta``, ``schemes``, ``links``, ``graphical`` and unknown
         keys back around it.
 
+        The manifest is written whole and valid wherever the timeline
+        belongs: ``schemes`` declares every scheme a link of the tree names
+        by id, taken from the manifest the timeline was read from or the
+        bundles and groups holding it, and a part slot naming a timeline or
+        region this manifest leaves out (another timeline of the bundle)
+        leaves it out too, ``absent`` as ``not_represented`` where it names
+        no other.
+
         Collections are written in one canonical order, independent of the
         order in which their content was added, so equal timelines give equal
         JSON text: ``children`` by offset, then id; ``conversion_maps`` by id;
@@ -1556,8 +1676,13 @@ class Timeline(
         Raises:
             ValueError: If a conversion map has no TimeToShare form or
                 cannot be written losslessly, a jump cannot name the marker
-                it lands on, or a measure map's given id is held by another
-                measure map or by a timeline, group or the manifest.
+                it lands on, a measure map's given id is held by another
+                measure map or by a timeline, group or the manifest, two
+                different schemes carry an id a link names (``two different
+                schemes carry the id 'opus'``), or the description layer
+                written breaks a rule of the format, in TimeToShare's
+                words (``#/timelines/0/links/0/identifiers/0/scheme: 'opus'
+                names no scheme of this manifest and is no absolute URI``).
 
         Examples:
             >>> from fractions import Fraction
@@ -1704,7 +1829,15 @@ class Timeline(
         or descendant, selects it; given both, they must name the same
         timeline. Only arguments naming no timeline override the root's id
         and name, and only in a manifest of one root and no group; the new
-        id must not be held by any element of the manifest.
+        id must not be held by any element of the manifest, and the part
+        slots naming the root name it by its new id.
+
+        A timeline selected leaves the rest of the manifest behind: a part
+        slot of a link of its tree that names a timeline or region of the
+        rest no longer names it, and a slot left naming none is ``absent``
+        as ``not_represented``. The timeline keeps the manifest's
+        ``schemes``, so that a manifest written holding it declares those
+        its links name.
 
         The class comes from the unit (each unit belongs to exactly one
         class) and ``is_segment_line``. Every optional key may be left out
@@ -1768,6 +1901,8 @@ class Timeline(
                         f"{quote_id(timeline_id)}: it is already held by "
                         f"{content.ids[timeline_id]}"
                     )
+                # The manifest's links name the root by its new id too.
+                timeline._manifest = manifest
                 timeline._set_id(timeline_id)
             if name is not None:
                 timeline._name = name
@@ -1781,6 +1916,9 @@ class Timeline(
             )
         if whole and timeline is content.roots[0]:
             timeline._manifest = manifest
+        else:
+            # The rest of the manifest is left out: a part slot names none of it.
+            timeline._drop_references(content.ids)
         if not isinstance(timeline, cls):
             raise ValueError(
                 f"timeline {timeline.id!r} of the manifest is a {type(timeline).__name__}, "
@@ -2047,8 +2185,8 @@ class Timeline(
         Everything the timeline holds is carried over: events, external
         references, conversion maps, regions, flow maps, measure map, metric
         hierarchy, a copy of its flow control, its links, its length and
-        lock, its root offset, the keys it was read with and the manifest it
-        was read from.
+        lock, its root offset, the keys it was read with, a copy of the
+        manifest it was read from and that manifest's schemes.
         Each entry of *children* pairs a child's id with the timeline to embed
         in its place, at its offset and with its lock state; the caller passes
         copies, so that a change to the result never reaches this tree.
@@ -2101,7 +2239,10 @@ class Timeline(
         copied._locked = self._locked
         copied._root_offset = self._root_offset
         copied._unknown_keys = copy.deepcopy(dict(self._unknown_keys))
-        copied._manifest = self._manifest
+        # A copy of the envelope, so that renaming what the copy's part
+        # slots name never reaches the source's.
+        copied._manifest = copy.copy(self._manifest)
+        copied._source_schemes = self._source_schemes
         copied._links = list(self._links)
         return copied
 

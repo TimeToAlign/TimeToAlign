@@ -18,10 +18,10 @@ from fractions import Fraction
 from typing import Any, ClassVar
 
 from timetoalign.core import Coordinate, IdCoordinate, NumberType, TimeUnit
-from timetoalign.core.ids import _IdentifiedElement
+from timetoalign.core.ids import _IdentifiedElement, quote_id
 from timetoalign.core.time import Duration, Interval
 
-from .description import Link, LinksMixin
+from .description import Link, LinksMixin, _renamed_parts
 from .manifest import (
     axis_value_from_json,
     axis_value_to_json,
@@ -44,7 +44,9 @@ class Region(_IdentifiedElement, LinksMixin):
     timeline from a Region.
 
     A region is frozen: :meth:`with_link` returns a copy holding one more
-    link.
+    link, :meth:`without_link` a copy holding one fewer; a timeline stores
+    the copy in the region's place with
+    :meth:`Timeline.replace_region <timetoalign.timelines.Timeline.replace_region>`.
 
     Attributes:
         start: Start coordinate of the region.
@@ -243,6 +245,53 @@ end=Coordinate(Fraction(32, 1), quarters))
             (['I. Allegro'], ())
         """
         return replace(self, links=(*self.links, self._link_to_add(link, options)))
+
+    def without_link(self, link: Link) -> Region:
+        """Return a copy of this region without *link*.
+
+        The copy keeps the region's id, bounds, name, metadata and every
+        other link; this region is left as it is.
+
+        Args:
+            link: A link equal to the one to leave out; the first equal link
+                is left out.
+
+        Raises:
+            ValueError: If the region holds no link equal to *link*
+                (``region 'first' holds no link equal to the link given``).
+
+        Examples:
+            >>> from timetoalign import Coordinate, TimeUnit
+            >>> first = Region(
+            ...     Coordinate(0, TimeUnit.quarters), Coordinate(16, TimeUnit.quarters)
+            ... ).with_link(
+            ...     "https://musicbrainz.org/work/80cbaf7b-a1da-3fc5-b650-6eb72a803980"
+            ... )
+            >>> first.without_link(first.links[0]).links
+            ()
+        """
+        position = self._link_position(link)
+        return replace(
+            self,
+            links=tuple(
+                held for index, held in enumerate(self.links) if index != position
+            ),
+        )
+
+    def _links_holder_name(self) -> str:
+        """Return the region as a message names it."""
+        return f"region {quote_id(self.id)}"
+
+    def _with_parts_renamed(self, renamed: Mapping[str, str | None]) -> Region:
+        """Return the region with the elements its links' part slots name renamed.
+
+        The region itself where no slot names a renamed element (see
+        :func:`~timetoalign.timelines.description._renamed_parts`).
+        """
+        links = tuple(_renamed_parts(link, renamed) for link in self.links)
+        if all(new is old for new, old in zip(links, self.links, strict=True)):
+            return self
+        return replace(self, links=links)
 
     def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
         """Return this region as its JSON object, bounds as bare values.

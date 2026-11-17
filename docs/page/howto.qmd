@@ -84,6 +84,11 @@ documentation:
 - [How to Load an IEEE 1599 Document](howto/how03_ieee1599.ipynb) ---
   IEEE 1599 spine/VTU hub relating score, page images, and audio as one
   multimodal AlignmentBundle.
+- [How to Describe the Work a Bundle Is About](howto/how03_describe_the_work.ipynb) ---
+  Links from the bundle, a timeline and a region to a work, its movements and
+  a release: `Link.from_urls`, part readings, a second reading, the default
+  assertion, `get_links`, editing links and schemes, and the manifest written
+  whole and in part.
 
 ### In-depth Topics
 

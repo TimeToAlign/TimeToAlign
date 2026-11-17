@@ -266,18 +266,29 @@ formatter/linter tooling. See `pyproject.toml` for the full extras hierarchy
 (`midi`, `partitura`, `music21`, `ms3`, `audio`, `graphical`, `plot`,
 `scores`, `loaders`, `tutorial`, `docs`, `testing`, `all`, `dev`).
 
-The conformance tests also need two test oracles that no extra installs:
-`timetoshare` (the TimeToShare schema) and `pymeasuremap` (the Measure Map
-reference implementation). Both are installed from git references,
-`timetoshare` from TimeToShare's development branch and `pymeasuremap` from a
-fixed commit, so they live in the `conformance` dependency group (PEP 735),
-which is not part of the published distribution metadata. Install it beside the extras (pip 25.1 or later):
+`timetoshare`, the TimeToShare package (the manifest schema, its validator,
+the model of links and schemes the library re-exports, and the registry of
+identifier schemes), is a runtime dependency listed in `[project]
+dependencies`, so every install above brings it. Until a release of
+TimeToShare carries the schema version the library writes, it is a git
+reference to TimeToShare's `main` branch. PyPI refuses a direct reference in a
+published package's requirements, so a release of the library needs the
+registry range in its place.
+
+The conformance tests also need a test oracle that no extra installs:
+`pymeasuremap`, the Measure Map reference implementation, the oracle for
+compressed measure-map rows. It is installed from a git reference to a fixed
+commit, so it lives in the `conformance` dependency group (PEP 735), which is
+not part of the published distribution metadata. Install it beside the extras
+(pip 25.1 or later):
 
 ```bash
 pip install --group conformance
 ```
 
-`tox` installs the group in every test environment by itself.
+`tox` installs the group in every test environment by itself. From a checkout
+with the sibling repositories, `pip install -e ../TimeToShare/python
+-e ../pyMeasureMap` installs both packages from source instead.
 
 ### 3.3 Pre-commit Hook
 

@@ -813,7 +813,7 @@ class TestGroupBehindABundle:
         assert newcomer.list_regions() == ["region_2"]
         assert bundle.timelines["d"].list_regions() == ["region_1"]
         assert bundle.timelines["c"] is newcomer
-        data = bundle.to_dict()
+        data = bundle.to_dict(minimal=False)
         assert [timeline["id"] for timeline in data["timelines"]] == [
             "a",
             "b",
@@ -847,7 +847,7 @@ class TestGroupBehindABundle:
         assert newcomer.list_regions() == ["region_2"]
         assert bundle.timelines["d"].list_regions() == ["region_1"]
         assert bundle.timelines["c"] is newcomer
-        data = bundle.to_dict()
+        data = bundle.to_dict(minimal=False)
         assert [timeline["id"] for timeline in data["timelines"]] == ["c", "d"]
         assert data["groups"] == [
             {"id": "group_1", "name": None, "meta": {}, "members": ["c"]}
@@ -1203,7 +1203,7 @@ class TestLoaderParity:
     def test_every_element_has_a_unique_valid_id(
         self, load: Callable[[], Timeline]
     ) -> None:
-        ids = list(_elements(load().to_dict()["timelines"][0]))
+        ids = list(_elements(load().to_dict(minimal=False)["timelines"][0]))
         assert ids
         assert len(ids) == len(set(ids))
         for element_id in ids:

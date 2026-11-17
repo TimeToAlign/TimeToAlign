@@ -191,7 +191,7 @@ def test_child_member_converts_from_its_own_zero() -> None:
 def test_child_member_writes_its_root() -> None:
     """The root of a child member is written; the member is the child's id."""
     group, _ = _child_member()
-    data = group.to_dict()
+    data = group.to_dict(minimal=False)
 
     assert [timeline["id"] for timeline in data["timelines"]] == ["A2", "R"]
     assert data["groups"][0]["members"] == ["A2", "K"]
@@ -217,11 +217,14 @@ def test_group_dict_is_exact() -> None:
         name="edition", meta={"source": "test"}, timelines=[score, image]
     )
 
-    assert group.to_dict() == {
+    assert group.to_dict(minimal=False) == {
         "timetoshare": "0.2.0",
         "name": None,
         "meta": {},
-        "timelines": [image.to_dict()["timelines"][0], score.to_dict()["timelines"][0]],
+        "timelines": [
+            image.to_dict(minimal=False)["timelines"][0],
+            score.to_dict(minimal=False)["timelines"][0],
+        ],
         "groups": [
             {
                 "id": "group_1",

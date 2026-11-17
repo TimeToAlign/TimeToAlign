@@ -450,6 +450,59 @@ the library writes back against the same literal text.
 - **An unknown length.** `"length": null` reads as `length is None` and is
   written back as `null` in both forms: `length` is the one key the minimal
   form never leaves out.
+- **Minimal by default.** `to_dict()` of each of the three classes writes the
+  minimal form; `to_dict(minimal=False)` the complete form. The tests that
+  pin a complete literal ask for it explicitly.
+
+### Manifest files (`test_manifest_files.py`)
+
+`from_file` and `to_file`, one implementation shared by `Timeline`,
+`TimelineGroup` and `AlignmentBundle`, exist for one workflow: read a
+manifest file, enrich it, write it back, and review the change as a diff. A
+file read and written back unchanged must therefore keep its bytes, and a
+change must show as its own lines. The reference texts are never the
+library's own output: each is `timetoshare.dumps` of a manifest written by
+hand (or of a package fixture), in the serialization and form under test,
+so a writer that agreed only with itself could not pass.
+
+- **Byte-identical round trips.** Every package fixture and its minimal twin,
+  read by the class its directory names, is written to text with
+  `timetoshare.dumps` in each of the three serializations; `from_file`
+  followed by `to_file` without arguments reproduces each file byte for
+  byte. Twelve texts per fixture (two forms, three serializations, with and
+  without `graphical` where the fixture has one) cover the form, the styling
+  and the serialization being kept independently: a writer that kept one of
+  the three by accident (always YAML, always minimal, always styling) fails
+  on the texts that differ in it.
+- **The form is inferred from the keys at their defaults.** A minimal
+  manifest with one key stated at its default (`"meta": {}` on a timeline)
+  is not minimal: it is written back in the complete form,
+  `dumps(complete(manifest))`, while the same manifest without that key is
+  written back as it was.
+- **Styling is the `graphical` object.** A one-group manifest file without
+  `graphical` read as a `TimelineGroup` is written back without it, although
+  `to_dict()` writes the group's display order there; the same file with
+  `graphical` keeps it.
+- **A text that is not canonical** — JSON on one line with spaces after its
+  colons — is read as `"json"` and written back as pretty JSON, the bytes
+  `dumps(manifest, serialization="json")`.
+- **Each argument overrides one inference.** On an object read from a
+  minimal canonical YAML file with `graphical`: `minimal=False` writes
+  `dumps(complete(manifest))`, `styling=False` the manifest without
+  `graphical`, `serialization="jcs"` its RFC 8785 text; each leaves the
+  other two as read.
+- **An object built in code** is written minimal, its styling included, in
+  canonical YAML: a bundle with a group writes `dumps(bundle.to_dict())`
+  with its `graphical`.
+- **Selection passes through.** `Timeline.from_file(path,
+  timeline_id="take_1")` reads the one timeline as `Timeline.from_dict`
+  selects it; `TimelineGroup.from_file(path, group_id=...)` likewise.
+- **The editing workflow.** A small bundle in canonical YAML (a score, a
+  recording, both ungrouped) is read with `AlignmentBundle.from_file`, a
+  second recording is added, and the file is written back. The unified diff
+  of the two texts (`difflib.unified_diff`) is asserted exactly: one hunk
+  adding the four lines of the new timeline, nothing else changed.
+- `to_file` returns the path it wrote.
 
 ### Measure maps in a manifest (`test_manifest_measure_maps.py`)
 
@@ -1794,9 +1847,10 @@ accepts ids that name no event — the escape hatch deserialization uses.
 
 #### `to_dict()` flag matrix
 
-`to_dict(*, minimal: bool = False, events: bool = False, external_references:
+`to_dict(*, minimal: bool = True, events: bool = False, external_references:
 bool = False)` writes a manifest whose one timeline object carries the flags'
-keys. Both keys are **absent** unless requested; requesting `external_references` emits
+keys; the matrix is asserted on the complete form (`minimal=False`), whose
+keys do not depend on the timeline's content. Both keys are **absent** unless requested; requesting `external_references` emits
 the key even when the table is empty. The four combinations are asserted
 exactly:
 
@@ -1810,7 +1864,7 @@ exactly:
 The remaining keys of the timeline object are identical in all four cases:
 `id`, `name`, `unit`, `number_type`, `length`, `locked`, `is_segment_line`,
 `meta`, `children`, `conversion_maps`, `regions`, `flow_control` and `links`. The
-tests assert that exact key set for the default call.
+tests assert that exact key set for the complete form without flags.
 
 Reference rows serialize as plain dicts with `access_points` a nested list of
 `{"uri": ..., "kind": ...}` dicts, so the payload is JSON-safe; JSON safety of

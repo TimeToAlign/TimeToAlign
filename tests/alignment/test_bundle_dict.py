@@ -151,12 +151,12 @@ def test_bundle_dict_is_exact() -> None:
     timelines = {timeline.id: timeline for timeline in bundle.timelines.values()}
 
     assert bundle.id == "bundle_1"
-    assert bundle.to_dict() == {
+    assert bundle.to_dict(minimal=False) == {
         "timetoshare": "0.2.0",
         "name": "study",
         "meta": {"corpus": "test"},
         "timelines": [
-            timelines[timeline_id].to_dict()["timelines"][0]
+            timelines[timeline_id].to_dict(minimal=False)["timelines"][0]
             for timeline_id in ["audio", "image", "midi", "notes", "score"]
         ],
         "groups": [
@@ -249,7 +249,7 @@ def test_child_in_one_group_and_root_in_another() -> None:
 
 def test_no_claims_are_written() -> None:
     """The dictionary has no claim key, whatever claims the bundle holds."""
-    data = _direct_bundle().to_dict()
+    data = _direct_bundle().to_dict(minimal=False)
 
     assert set(data) == {
         "timetoshare",
@@ -277,14 +277,14 @@ def test_missing_graphical_reads_members_order() -> None:
 
 def test_styling_round_trips_unchanged() -> None:
     """The bundle's ``styles`` and ``statements`` survive beside every order."""
-    data = _direct_bundle().to_dict()
+    data = _direct_bundle().to_dict(minimal=False)
     data["graphical"].update(copy.deepcopy(STYLING))
 
     rebuilt = AlignmentBundle.from_dict(data)
 
     assert rebuilt.styling == STYLING
-    assert rebuilt.to_dict() == data
-    assert rebuilt.to_dict()["graphical"] == {
+    assert rebuilt.to_dict(minimal=False) == data
+    assert rebuilt.to_dict(minimal=False)["graphical"] == {
         "order": {"group_1": ["score", "audio"], "group_2": ["holes", "midi"]},
         **STYLING,
         "timestamps": [],
@@ -734,7 +734,7 @@ def test_from_bundles_keeps_each_members_lock(locked: bool) -> None:
     source = AlignmentBundle.from_dict(_group_manifest(locked))
     other = AlignmentBundle()
     other.add_timeline(ContinuousLogicalTimeline(length=4, uid="c"), as_group="y")
-    before = source.to_dict()
+    before = source.to_dict(minimal=False)
 
     merged = AlignmentBundle.from_bundles([source, other])
 
@@ -748,13 +748,16 @@ def test_from_bundles_keeps_each_members_lock(locked: bool) -> None:
         False,
         False,
     ]
-    assert {root["id"]: root["locked"] for root in merged.to_dict()["timelines"]} == {
+    assert {
+        root["id"]: root["locked"]
+        for root in merged.to_dict(minimal=False)["timelines"]
+    } == {
         "line": locked,
         "plain": False,
         "c": False,
     }
     assert source.get_timeline("line").is_locked is locked
-    assert source.to_dict() == before
+    assert source.to_dict(minimal=False) == before
 
 
 # endregion

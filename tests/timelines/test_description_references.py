@@ -146,7 +146,7 @@ SCORE_ALONE: dict[str, Any] = {
 def test_a_timeline_of_a_bundle_writes_what_its_links_name() -> None:
     bundle = _bundle_of_score()
     score = bundle.get_timeline("score")
-    written, complete = score.to_dict(minimal=True), score.to_dict()
+    written, complete = score.to_dict(minimal=True), score.to_dict(minimal=False)
     assert written == SCORE_ALONE
     assert complete["timelines"][0]["links"][0]["parts"][0] == {
         "uri": [MOVEMENT],
@@ -475,9 +475,9 @@ def test_removing_a_member_leaves_it_out_of_what_slots_name() -> None:
 
 def test_a_bundle_holding_the_group_keeps_the_removed_member_named() -> None:
     bundle = AlignmentBundle.from_dict(copy.deepcopy(GROUPED))
-    before = bundle.to_dict()
+    before = bundle.to_dict(minimal=False)
     removed = bundle.groups["g"].remove_timeline("b")
-    after = bundle.to_dict()
+    after = bundle.to_dict(minimal=False)
     validate(after)
     assert after["links"] == before["links"]
     assert after["timelines"] == before["timelines"]

@@ -74,7 +74,11 @@ from timetoalign.timelines.groups import (
     _root,
     _tree,
 )
-from timetoalign.timelines.manifest import Manifest, schemes_named
+from timetoalign.timelines.manifest import (
+    Manifest,
+    ManifestFileMixin,
+    schemes_named,
+)
 
 from .claims import AlignmentAnchor, MatchClaim, MatchClaimField
 from .filters import ClaimFilter
@@ -133,7 +137,7 @@ def _resolve_coordinate_and_timeline(
 
 
 @dataclass
-class AlignmentBundle(_IdScope, MutableLinksMixin, _OpenObject):
+class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObject):
     """The primary entry point for all alignment workflows.
 
     An AlignmentBundle manages timelines and their alignment relationships.
@@ -3930,7 +3934,7 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, _OpenObject):
     def to_dict(
         self,
         *,
-        minimal: bool = False,
+        minimal: bool = True,
         events: bool = False,
         external_references: bool = False,
     ) -> dict[str, Any]:
@@ -3953,7 +3957,9 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, _OpenObject):
         part of the manifest.
 
         Args:
-            minimal: If True, leave out every key at its default value.
+            minimal: If False, write every optional key, its default value
+                included (the complete form); by default every key at its
+                default value is left out (the minimal form).
             events: Write every timeline's event rows.
             external_references: Write every timeline's external references.
 
@@ -3980,7 +3986,7 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, _OpenObject):
             >>> "id" in data, [timeline["id"] for timeline in data["timelines"]]
             (False, ['clt_1', 'cpt_1'])
             >>> data["groups"]
-            [{'id': 'group_1', 'name': 'score', 'meta': {}, 'members': ['clt_1', 'cpt_1']}]
+            [{'id': 'group_1', 'name': 'score', 'members': ['clt_1', 'cpt_1']}]
             >>> data["graphical"]["order"]
             {'group_1': ['clt_1', 'cpt_1']}
         """

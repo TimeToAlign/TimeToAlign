@@ -710,7 +710,7 @@ from every assertion here.
    rebuilt bundle must also hold exactly the same participants and the same
    group membership.
 2. **Exact expected forms.** One direct construction pins the whole
-   manifest: two groups and an ungrouped root, a group member that is a
+   manifest in the complete form (`to_dict(minimal=False)`): two groups and an ungrouped root, a group member that is a
    child (its root is written, the child id is the member), the `group_N`
    ids, no `id` (the bundle's `bundle_1` is minted), no `support_policy`,
    and the member order as added. A bundle with a given id writes it; an

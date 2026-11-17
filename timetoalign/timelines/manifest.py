@@ -33,9 +33,21 @@ import math
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from fractions import Fraction
-from typing import TYPE_CHECKING, Any, ClassVar
+from os import PathLike
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, ClassVar, Self
 
-from timetoshare import Link, Scheme, description_problems
+import timetoshare
+from timetoshare import (
+    Link,
+    Scheme,
+    canonical_order,
+    description_problems,
+    dumps,
+    loads,
+    serialization_of,
+)
+from timetoshare.serialization import Serialization
 
 from timetoalign.core import Coordinate, NumberType, TimeUnit
 from timetoalign.core.ids import _OpenObject, mint_id, quote_id, validate_id
@@ -1115,6 +1127,165 @@ def listed(names: list[tuple[str, str | None]]) -> str:
 def _name_of(candidate: Any) -> str | None:
     """Return a candidate's own name, never a derived display name."""
     return getattr(candidate, "_name", candidate.name)
+
+
+# endregion
+
+
+# region Manifest files
+
+
+@dataclass(frozen=True)
+class FileForm:
+    """How a manifest file is written: its form, its styling, its serialization.
+
+    Attributes:
+        minimal: Whether the manifest is in the minimal form (no key at its
+            default value) rather than the complete form.
+        styling: Whether the ``graphical`` object is written.
+        serialization: ``"yaml"`` (canonical YAML), ``"json"`` (pretty JSON)
+            or ``"jcs"`` (RFC 8785 JSON).
+    """
+
+    minimal: bool = True
+    styling: bool = True
+    serialization: Serialization = "yaml"
+
+    @classmethod
+    def of(cls, text: str, data: Any) -> FileForm:
+        """Infer the form, styling and serialization of a manifest file.
+
+        The form is minimal when no key of the manifest *data* holds its
+        default value, compared in value (``timetoshare.minimal`` leaves out
+        no key of it); the styling is written when the manifest holds
+        ``graphical``; the serialization is the one
+        ``timetoshare.serialization_of`` names for *text*.
+
+        Args:
+            text: The file's text.
+            data: The manifest *text* holds.
+        """
+        return cls(
+            minimal=canonical_order(timetoshare.minimal(data)) == canonical_order(data),
+            styling="graphical" in data,
+            serialization=serialization_of(text),
+        )
+
+
+class ManifestFileMixin:
+    """Read a manifest file and write it back in the form it came in.
+
+    Shared by :class:`~timetoalign.timelines.Timeline`,
+    :class:`~timetoalign.timelines.TimelineGroup` and
+    :class:`~timetoalign.alignment.AlignmentBundle`, each of which reads a
+    manifest with ``from_dict`` and writes one with ``to_dict``. An object
+    read from a file keeps the file's :class:`FileForm`, which
+    :meth:`to_file` follows unless told otherwise, so that a file read and
+    written back unchanged keeps its bytes, and a file read, changed and
+    written back changes only where the object changed.
+    """
+
+    _file_form: FileForm | None = None
+    """The form of the file the object was read from, or None."""
+
+    @classmethod
+    def from_file(cls, path: str | PathLike[str], **selection: str | None) -> Self:
+        """Read a manifest file in any serialization, as ``from_dict`` reads a manifest.
+
+        The text is read with ``timetoshare.loads``: canonical YAML, pretty
+        JSON, RFC 8785 JSON or any other JSON or YAML text. The object read
+        records the file's form (minimal when no key of the manifest holds
+        its default value), styling (whether the manifest holds
+        ``graphical``) and serialization, which :meth:`to_file` writes back.
+
+        Args:
+            path: The manifest file, UTF-8.
+            **selection: The keyword arguments of ``from_dict`` that select
+                one timeline or group of the manifest (``timeline_id`` and
+                ``name`` for a timeline, ``group_id`` and ``name`` for a
+                group).
+
+        Returns:
+            The object read.
+
+        Raises:
+            ValueError: If the text cannot be read (with the line and column
+                of the fault), or ``from_dict`` refuses the manifest.
+        """
+        with Path(path).open(encoding="utf-8", newline="") as file:
+            text = file.read()
+        data = loads(text)
+        result = cls.from_dict(data, **selection)  # type: ignore[attr-defined]
+        result._file_form = FileForm.of(text, data)
+        return result
+
+    def to_file(
+        self,
+        path: str | PathLike[str],
+        *,
+        minimal: bool | None = None,
+        styling: bool | None = None,
+        serialization: Serialization | None = None,
+    ) -> Path:
+        """Write the object's manifest to a file.
+
+        The manifest is ``to_dict``'s, written with ``timetoshare.dumps``:
+        every object's keys sorted, its arrays in canonical order, so that
+        equal manifests give equal text and a change shows in a diff as the
+        lines it touches. Each argument left None takes the value the file
+        the object was read from had (see :meth:`from_file`); for an object
+        not read from a file, the minimal form, the styling included, in
+        canonical YAML.
+
+        Args:
+            path: The file to write, UTF-8 with line feeds; it is
+                overwritten.
+            minimal: Write the minimal form (True) or the complete form
+                (False).
+            styling: Write the ``graphical`` object, when the manifest has
+                one (True), or leave it out (False).
+            serialization: ``"yaml"`` (canonical YAML), ``"json"`` (pretty
+                JSON) or ``"jcs"`` (RFC 8785 JSON).
+
+        Returns:
+            The path written.
+
+        Raises:
+            ValueError: If ``to_dict`` cannot write the manifest, or the
+                serialization refuses a value of it.
+
+        Examples:
+            >>> import tempfile
+            >>> from fractions import Fraction
+            >>> from pathlib import Path
+            >>> from timetoalign.timelines import ContinuousLogicalTimeline, Timeline
+            >>> score = ContinuousLogicalTimeline(length=Fraction(32), uid="piece")
+            >>> path = score.to_file(Path(tempfile.mkdtemp()) / "piece.yaml")
+            >>> print(path.read_text(encoding="utf-8"), end="")
+            timelines:
+              -
+                id: piece
+                length: [32, 1]
+                unit: quarters
+            timetoshare: "0.2.0"
+            >>> Timeline.from_file(path).length
+            Coordinate(Fraction(32, 1), quarters)
+        """
+        form = self._file_form or FileForm()
+        manifest = self.to_dict(  # type: ignore[attr-defined]
+            minimal=form.minimal if minimal is None else minimal
+        )
+        if not (form.styling if styling is None else styling):
+            manifest.pop("graphical", None)
+        text = dumps(
+            manifest,
+            serialization=(
+                form.serialization if serialization is None else serialization
+            ),
+        )
+        path = Path(path)
+        path.write_text(text, encoding="utf-8", newline="")
+        return path
 
 
 # endregion

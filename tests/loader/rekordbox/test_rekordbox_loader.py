@@ -113,14 +113,14 @@ def test_pickup_grid_change_and_trailing_measure_are_exact(tmp_path: Path) -> No
         "SampleRate": 48000,
         "POSITION_MARK": [{"Name": "cue", "Type": "0", "Start": "1.25", "Num": "0"}],
     }
-    payload = timeline.to_dict()
+    payload = timeline.to_dict(minimal=False)
     assert payload["measure_maps"] == []
     assert [cmap["type"] for cmap in payload["timelines"][0]["conversion_maps"]] == [
         "LinearMap",
         "TableMap",
     ]
     restored = Timeline.from_dict(json.loads(json.dumps(payload)))
-    assert restored.to_dict() == payload
+    assert restored.to_dict(minimal=False) == payload
 
 
 def test_displaced_anchor_beats_are_not_counted_twice(tmp_path: Path) -> None:

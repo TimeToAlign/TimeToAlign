@@ -297,7 +297,7 @@ def test_reading_puts_the_measure_map_back_and_keeps_every_id(form: str) -> None
     assert score.measure_map.meta == {"source": "hand"}
     assert score._conversion_maps == {}
     assert bundle.to_dict(minimal=True) == READ_MINIMAL
-    assert bundle.to_dict() == READ_COMPLETE
+    assert bundle.to_dict(minimal=False) == READ_COMPLETE
 
 
 def _one_root(conversion_maps: list[dict[str, Any]]) -> dict[str, Any]:

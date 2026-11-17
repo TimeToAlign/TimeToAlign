@@ -685,8 +685,10 @@ A bundle is its timelines and its groups. Its dictionary form is a
 TimeToShare manifest: the bundle's `id` only when one was given, its `name`
 and `meta`, every root timeline once (each the timeline object
 `Timeline.to_dict()` writes, sorted by id), the groups as `Group` objects
-naming their members by id (sorted by id), and every group's member order
-under `graphical.order`. MatchClaims and the support policy (a setting of the
+naming their members by id (sorted by id), every group's member order
+under `graphical.order`, and the bundle's own `schemes` (sorted by id) and
+`links` (in the order added; see *Links and schemes* in
+`tests/timelines/README.md`). MatchClaims and the support policy (a setting of the
 bundle, not of the manifest) are not part of the form; claims are excluded
 from every assertion here.
 

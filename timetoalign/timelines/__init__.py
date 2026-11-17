@@ -19,6 +19,13 @@ Beat grids:
 - BeatGridSegment: One tempo segment of a beat grid
 - GridBeat: One labelled beat of a grid
 
+Description layer (the ``timetoshare`` package's model, re-exported):
+- Link: A typed relation from a timeline, region or manifest to an entity
+- PartSlot, PartOf: The parts of a linked entity, and the wholes it belongs to
+- Identifier, Scheme: Identifiers of an entity, and the schemes naming them
+- Assertion, Descriptor: Who stated a link, and a document about an entity
+- set_default_assertion, get_default_assertion: The assertion links take
+
 Structural components:
 - Region: Named TimeInterval (not a timeline itself)
 - MeasureMap: Immutable printed-order measure structure
@@ -73,6 +80,17 @@ from __future__ import annotations
 
 from .base import Timeline, UnknownLengthError
 from .beatgrid import BeatGrid, BeatGridSegment, GridBeat
+from .description import (
+    Assertion,
+    Descriptor,
+    Identifier,
+    Link,
+    PartOf,
+    PartSlot,
+    Scheme,
+    get_default_assertion,
+    set_default_assertion,
+)
 from .factory import create_timeline
 from .flow import (
     AtomicSection,
@@ -150,6 +168,16 @@ __all__ = [
     "BeatGrid",
     "BeatGridSegment",
     "GridBeat",
+    # Description layer
+    "Assertion",
+    "Descriptor",
+    "Identifier",
+    "Link",
+    "PartOf",
+    "PartSlot",
+    "Scheme",
+    "get_default_assertion",
+    "set_default_assertion",
     # Structural components
     "Region",
     "MeasureMap",

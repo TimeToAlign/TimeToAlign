@@ -58,6 +58,7 @@ from timetoalign.maps import (
 )
 from timetoalign.storage import EventData
 
+from .description import Link, MutableLinksMixin
 from .engines import (
     ChildrenMixin,
     ConversionMapsMixin,
@@ -82,6 +83,7 @@ from .manifest import (
     listed,
     matches_any,
     read_id,
+    read_links,
     read_list,
     read_meta,
     read_name,
@@ -175,6 +177,7 @@ class Timeline(
     RegionsMixin,
     SegmentsMixin,
     SkeletonsMixin,
+    MutableLinksMixin,
     _OpenObject,
 ):
     """A positive coordinate axis with events and nested child timelines.
@@ -216,6 +219,9 @@ class Timeline(
         is_locked: Whether the timeline's length is fixed.
         is_discrete: Whether the timeline uses discrete coordinates.
         is_continuous: Whether the timeline uses continuous coordinates.
+        links: The timeline's links to the entities it pertains to (a work,
+            a recording, a printed edition), in the order added
+            (:meth:`add_link`, :meth:`get_links`).
 
     Examples:
         >>> # Preferred: use concrete subclasses
@@ -261,6 +267,7 @@ class Timeline(
         "conversion_maps",
         "regions",
         "flow_control",
+        "links",
         "events",
         "external_references",
     )
@@ -275,6 +282,7 @@ class Timeline(
         "conversion_maps": [],
         "regions": [],
         "flow_control": [],
+        "links": [],
     }
 
     # Where a root's origin lies on its unit's absolute axis (a manifest
@@ -401,6 +409,9 @@ class Timeline(
 
         # Shared temporal structures enroll timelines through TimeSkeleton.
         self._skeleton_attachments: list[Any] = []
+
+        # Links to the entities the timeline pertains to, in the order added.
+        self._links: list[Link] = []
 
         # Logger
         self._logger = module_logger.getChild(self._id)
@@ -1493,7 +1504,8 @@ class Timeline(
         """Write a TimeToShare manifest holding this timeline as its one root.
 
         The timeline object is the timeline's structure: its axis, children,
-        conversion maps, regions and flow control. Its measure map is a
+        conversion maps, regions and flow control, and its links (see
+        :mod:`~timetoalign.timelines.description`). Its measure map is a
         ``MeasureRecordMap`` among the conversion maps (chained after a
         ``LinearMap`` to quarters on an axis in whole notes or ticks) naming
         an entry of the manifest's ``measure_maps``, which also holds every
@@ -1514,7 +1526,8 @@ class Timeline(
         default is left out, except ``length``. Keys the library does not
         know, kept when the timeline was read, are written back. A timeline
         read from a manifest as a whole writes that manifest's ``id``,
-        ``name``, ``meta``, ``graphical`` and unknown keys back around it.
+        ``name``, ``meta``, ``schemes``, ``links``, ``graphical`` and unknown
+        keys back around it.
 
         Collections are written in one canonical order, independent of the
         order in which their content was added, so equal timelines give equal
@@ -1643,6 +1656,7 @@ class Timeline(
                     )
                 ],
                 "flow_control": flow_control,
+                "links": [link.to_dict(minimal=minimal) for link in self._links],
             }
         )
         if events:
@@ -1938,6 +1952,7 @@ class Timeline(
                 number_type=number_type,
             )
         )
+        timeline._links = read_links(data, what)
 
         timeline._finalize_from_dict(length)
         timeline._locked = locked
@@ -1971,8 +1986,8 @@ class Timeline(
         domain-specific type information.
 
         Events, external references, conversion maps, regions, flow maps,
-        metadata, the root offset and the keys the timeline was read with are
-        preserved. Children are recursively re-typed copies, so a change to
+        links, metadata, the root offset and the keys the timeline was read
+        with are preserved. Children are recursively re-typed copies, so a change to
         the result never reaches the source tree.
 
         Returns:
@@ -2031,8 +2046,9 @@ class Timeline(
 
         Everything the timeline holds is carried over: events, external
         references, conversion maps, regions, flow maps, measure map, metric
-        hierarchy, a copy of its flow control, its length and lock, its root
-        offset, the keys it was read with and the manifest it was read from.
+        hierarchy, a copy of its flow control, its links, its length and
+        lock, its root offset, the keys it was read with and the manifest it
+        was read from.
         Each entry of *children* pairs a child's id with the timeline to embed
         in its place, at its offset and with its lock state; the caller passes
         copies, so that a change to the result never reaches this tree.
@@ -2086,6 +2102,7 @@ class Timeline(
         copied._root_offset = self._root_offset
         copied._unknown_keys = copy.deepcopy(dict(self._unknown_keys))
         copied._manifest = self._manifest
+        copied._links = list(self._links)
         return copied
 
     # endregion

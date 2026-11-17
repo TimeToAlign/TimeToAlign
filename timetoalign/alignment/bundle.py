@@ -39,7 +39,7 @@ from timetoalign.core import (
     resolve_id,
 )
 from timetoalign.core.enums import NumberType
-from timetoalign.core.ids import _OpenObject, mint_id, quote_id, validate_id
+from timetoalign.core.ids import _admit_id, _OpenObject, mint_id, quote_id, validate_id
 from timetoalign.core.retrieval import (
     CoordinateCollection,
     CoordinateFormat,
@@ -60,6 +60,7 @@ from timetoalign.core.retrieval import (
 )
 from timetoalign.core.timestamp import TimestampColumn, build_timestamp_table
 from timetoalign.timelines import TimelineGroup, UnknownLengthError
+from timetoalign.timelines.description import Link, MutableLinksMixin, Scheme
 from timetoalign.timelines.groups import (
     _groups_by_timeline,
     _held_ids,
@@ -126,7 +127,7 @@ def _resolve_coordinate_and_timeline(
 
 
 @dataclass
-class AlignmentBundle(_IdScope, _OpenObject):
+class AlignmentBundle(_IdScope, MutableLinksMixin, _OpenObject):
     """The primary entry point for all alignment workflows.
 
     An AlignmentBundle manages timelines and their alignment relationships.
@@ -161,6 +162,11 @@ class AlignmentBundle(_IdScope, _OpenObject):
         styling: The members of the manifest's ``graphical`` other than
             ``order`` (``styles``, ``statements``, ``timestamps`` and any
             other), kept as given and never interpreted.
+        links: The manifest's links to the entities the bundle pertains to
+            (a work and its parts, a recording), in the order added
+            (:meth:`add_link`, :meth:`get_links`).
+        schemes: The identifier schemes the manifest declares, sorted by id
+            (:meth:`add_scheme`).
 
     Note:
         The two claim stores are interchangeable as far as queries are
@@ -211,6 +217,10 @@ class AlignmentBundle(_IdScope, _OpenObject):
     # The members of the manifest's ``graphical`` other than ``order``,
     # kept as given and never interpreted.
     styling: dict[str, Any] = field(default_factory=dict)
+
+    # The manifest's links, in the order added, and its schemes by id.
+    _links: list[Link] = field(default_factory=list, init=False, repr=False)
+    _schemes: dict[str, Scheme] = field(default_factory=dict, init=False, repr=False)
 
     # Cached WarpMaps: (source_tl_id, target_tl_id) -> WarpMap | None
     # None values are cached as negative results to avoid repeated expensive
@@ -274,7 +284,8 @@ class AlignmentBundle(_IdScope, _OpenObject):
         ``graphical.order`` entry (``members`` order without one).
         ``graphical``'s other keys are kept as :attr:`styling`, and the
         entries of ``graphical.order`` keyed by a timeline, its band orders,
-        are kept too, both unread. Every root no group names joins
+        are kept too, both unread. The manifest's ``schemes`` and ``links``
+        become the bundle's. Every root no group names joins
         ungrouped. A timeline several groups name is a member of each, one
         object shared by them. Keys the library does not know are kept on the
         object read from the JSON object they were found in, and written back.
@@ -292,8 +303,9 @@ class AlignmentBundle(_IdScope, _OpenObject):
                 no timeline of ``"timelines"``, a group naming one member
                 twice, a member that is an ancestor or descendant of another
                 member of its group, an order that is no permutation of its
-                group's members or names no group or timeline. The message
-                names the problem.
+                group's members or names no group or timeline, a link or
+                scheme breaking a rule of the format. The message names the
+                problem.
 
         Examples:
             >>> from fractions import Fraction
@@ -322,6 +334,8 @@ class AlignmentBundle(_IdScope, _OpenObject):
         bundle._has_graphical = manifest.has_graphical
         bundle._band_orders = manifest.band_orders
         bundle._measure_maps = manifest.measure_maps
+        bundle._links = list(manifest.links)
+        bundle._schemes = {scheme.id: scheme for scheme in manifest.schemes}
         for group_data in content.groups:
             group_id = group_data.get("id") if isinstance(group_data, dict) else None
             group = TimelineGroup._from_group_object(
@@ -348,7 +362,10 @@ class AlignmentBundle(_IdScope, _OpenObject):
         Registers every group and standalone timeline from each source
         bundle into a new bundle, and carries over every cross-group
         ``MatchClaim`` (both the per-claim list and any columnar
-        ``MatchClaimField`` stores) unchanged. Each source group is entered as
+        ``MatchClaimField`` stores) unchanged. The links of the timelines and
+        regions travel with them; the source bundles' own links and schemes
+        belong to their manifests and are not carried over. Each source
+        group is entered as
         a new group with the same members, name and meta, each member keeping
         its own lock; a minted group id is minted again in the merged bundle,
         a given one is kept. Groups from
@@ -613,6 +630,89 @@ class AlignmentBundle(_IdScope, _OpenObject):
     def _sub_scopes(self) -> dict[str, TimelineGroup]:
         """Return the groups, keyed by id."""
         return self.groups
+
+    def _element_ids(self) -> dict[str, str]:
+        """Map the ids of the manifest's schemes to their descriptions."""
+        return {
+            scheme_id: f"scheme {quote_id(scheme_id)}" for scheme_id in self._schemes
+        }
+
+    @property
+    def schemes(self) -> tuple[Scheme, ...]:
+        """The identifier schemes the manifest declares, sorted by id."""
+        return tuple(self._schemes[scheme_id] for scheme_id in sorted(self._schemes))
+
+    def add_scheme(
+        self,
+        scheme: Scheme | str,
+        *,
+        name: str | None = None,
+        uri: str | Sequence[str] = (),
+        criteria: str | None = None,
+    ) -> "AlignmentBundle":
+        """Declare an identifier scheme, so that identifiers may name it by id.
+
+        A scheme that mints no URI of its own (a catalogue's opus numbers, a
+        library's shelfmarks) is declared once in the manifest, and a link's
+        :class:`~timetoalign.timelines.description.Identifier` names it by
+        its id. The id is an id of the manifest like any other: unique
+        across its timelines, maps, regions, flow-control elements, groups,
+        measure maps and schemes, and the bundle's own given id. A minted
+        group id it takes is minted again, as for any given id.
+
+        Args:
+            scheme: The scheme, or its id.
+            name: The scheme's name, with an id.
+            uri: URIs that identify or describe the scheme, the first
+                preferred, with an id.
+            criteria: A document stating how the scheme assigns its values,
+                with an id.
+
+        Returns:
+            self (for method chaining)
+
+        Raises:
+            TypeError: If *name*, *uri* or *criteria* are given beside a
+                :class:`~timetoalign.timelines.description.Scheme`.
+            ValueError: If the id is no valid id or already held in the
+                manifest (``scheme 'clt_1' cannot join bundle 'bundle_1':
+                its id 'clt_1' is already held by timeline 'clt_1'``).
+
+        Examples:
+            >>> from timetoalign.alignment import AlignmentBundle
+            >>> bundle = AlignmentBundle().add_scheme(
+            ...     "mb_beethoven_opus",
+            ...     name="Works of Ludwig van Beethoven by opus number",
+            ...     uri="https://musicbrainz.org/series/004f17aa-0f46-4fec-b939-c5dfc849e5c6",
+            ... )
+            >>> bundle.schemes[0].to_dict(minimal=True)["id"]
+            'mb_beethoven_opus'
+        """
+        if isinstance(scheme, Scheme):
+            if name is not None or uri or criteria is not None:
+                raise TypeError(
+                    "name, uri and criteria build a scheme from its id; a Scheme is "
+                    "added as it is"
+                )
+        else:
+            scheme = Scheme(
+                scheme,
+                name=name,
+                uri=(uri,) if isinstance(uri, str) else tuple(uri),
+                criteria=criteria,
+            )
+        validate_id(scheme.id)
+        _admit_id(
+            scheme.id,
+            minted=False,
+            prefix="scheme",
+            taken=self._scope_ids(),
+            element=f"scheme {quote_id(scheme.id)}",
+            scope=f"bundle {quote_id(self.id)}",
+        )
+        self._schemes[scheme.id] = scheme
+        self._yield_minted_ids({scheme.id}, [self])
+        return self
 
     def _register(self, timeline: "Timeline") -> None:
         """Register a timeline, and its root when it is a child."""
@@ -3756,8 +3856,10 @@ class AlignmentBundle(_IdScope, _OpenObject):
         members by id. ``graphical.order`` keeps every group's member order
         under its id and, unchanged, the band order read with the manifest
         of every timeline written, beside the members of :attr:`styling`. A
-        root no group names is ungrouped. MatchClaims are not written; the
-        support policy is a setting of the bundle, not part of the manifest.
+        root no group names is ungrouped. The bundle's :attr:`schemes` are
+        written sorted by id and its :attr:`links` in their order. MatchClaims
+        are not written; the support policy is a setting of the bundle, not
+        part of the manifest.
 
         Args:
             minimal: If True, leave out every key at its default value.
@@ -3766,7 +3868,8 @@ class AlignmentBundle(_IdScope, _OpenObject):
 
         Returns:
             ``{"timetoshare": "0.2.0", "id"?, "name", "meta", "timelines":
-            [...], "groups": [...], "graphical"?: {"order": {...}, ...}}``.
+            [...], "groups": [...], "measure_maps": [...], "schemes": [...],
+            "links": [...], "graphical"?: {"order": {...}, ...}}``.
 
         Examples:
             >>> from fractions import Fraction
@@ -3799,6 +3902,8 @@ class AlignmentBundle(_IdScope, _OpenObject):
             id=None if self._id_minted else self.id,
             name=self.name,
             meta=self.meta,
+            schemes=list(self._schemes.values()),
+            links=self._links,
             styling=self.styling,
             band_orders=self._band_orders,
             has_graphical=self._has_graphical,

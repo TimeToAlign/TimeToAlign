@@ -19,7 +19,8 @@ pip install timetoalign         # Core only — lightweight
 ```
 
 The core install pulls in only PyArrow, pandas, NetworkX,
-typing_extensions, and pydantic.  This gives you the full timeline / map /
+typing_extensions, pydantic, and timetoshare (the TimeToShare manifest format,
+its validator and its model of links to works).  This gives you the full timeline / map /
 alignment framework but no file-format-specific loaders.  If you need loaders,
 plotting, or Jupyter support, install one of the [optional extras](#optional-dependencies)
 described below.  To run the **tutorial notebooks** (see below), for example:
@@ -100,7 +101,7 @@ install with the `dev` extra:
 ```bash
 git clone https://github.com/timetoalign/timetoalign.git
 pip install -e "./timetoalign[dev]"      # Editable install + everything + dev tooling
-cd timetoalign && pip install --group conformance   # Test oracles (pip >= 25.1)
+cd timetoalign && pip install --group conformance   # Test oracle (pip >= 25.1)
 ```
 
 ## Quick Start

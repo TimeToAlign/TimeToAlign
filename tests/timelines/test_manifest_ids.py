@@ -1180,6 +1180,12 @@ LOADERS: list[tuple[str, Callable[[], Timeline]]] = [
         .create_timeline(),
     ),
     (
+        "audio_continuous",
+        lambda: AudioLoader()
+        .load(AUDIO / "hard_techno/Bass Kick.mp3")
+        .create_continuous_timeline(),
+    ),
+    (
         "parangonada",
         lambda: ParangonadaLoader()
         .load(PARANGONAR / "Beethoven_Eroica_op35-cpjku")

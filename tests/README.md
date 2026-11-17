@@ -113,7 +113,8 @@ every conversion-map class with a manifest form attached across four
 timelines, and the three measure views over the quarter-note timeline's
 measure map (the periodic maps have none, and a label step function is
 given its end); the timelines of `Ms3Loader`, `ScoreMidiLoader`,
-`AudioLoader`, `ParangonadaLoader` and `IIIFManifestLoader`; a group of
+`AudioLoader` (in samples and in seconds), `ParangonadaLoader` and
+`IIIFManifestLoader`; a group of
 three timelines whose number types differ; a group whose member is a child;
 a bundle of two groups, an ungrouped root and a grouped child whose root is
 ungrouped; the bundles of `ParangonadaLoader`, `MatchfileLoader`,

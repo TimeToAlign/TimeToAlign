@@ -217,8 +217,10 @@ def _midi() -> Timeline:
     return ScoreMidiLoader().load(MIDI / "score/beethoven_mtd.mid").create_timeline()
 
 
-def _audio() -> Timeline:
-    return AudioLoader().load(AUDIO / "hard_techno/Bass Kick.mp3").create_timeline()
+def _audio() -> list[Timeline]:
+    """The samples timeline of an audio file and its seconds twin."""
+    loader = AudioLoader().load(AUDIO / "hard_techno/Bass Kick.mp3")
+    return [loader.create_timeline(), loader.create_continuous_timeline()]
 
 
 def _parangonada() -> Timeline:
@@ -342,7 +344,7 @@ CATALOGUE: list[tuple[str, Callable[[], list[Any]]]] = [
     ("conversion_maps", _conversion_map_timelines),
     ("ms3", lambda: [_ms3()]),
     ("midi", lambda: [_midi()]),
-    ("audio", lambda: [_audio()]),
+    ("audio", _audio),
     ("parangonada_timeline", lambda: [_parangonada()]),
     ("graphical", lambda: [_graphical()]),
     ("direct_groups", _direct_groups),

@@ -22,15 +22,20 @@ classifiers = [
 ]
 
 # Core dependencies — kept minimal so that `pip install timetoalign` is lightweight.
-# Only the data backbone (PyArrow, pandas), graph library (NetworkX), and
-# typing backports are required.  All file-format-specific loaders pull in
-# their dependencies through the optional extras below.
+# Only the data backbone (PyArrow, pandas), graph library (NetworkX), typing
+# backports and the TimeToShare model of links (timetoshare) are required.
+# All file-format-specific loaders pull in their dependencies through the
+# optional extras below.
 dependencies = [
     "pyarrow>=14.0",
     "pandas>=2.0",
     "networkx>=3.0",
     "typing_extensions>=4.0",
     "pydantic>=2.7,<3",
+    # The manifest format: links and schemes, their validator and the registry of
+    # identifier schemes. Its development branch until a release carries schema
+    # 0.2.0, then the registry range.
+    "timetoshare @ git+https://github.com/TimeToAlign/TimeToShare.git@main#subdirectory=python",
 ]
 
 [project.optional-dependencies]
@@ -89,16 +94,15 @@ dev = [                                       # Testing + docs + lint/format too
 ]
 
 [dependency-groups]
-# Test oracles the suite needs beside the `testing` extra. Both are git
-# references; a dependency group (PEP 735) is not part of the distribution
-# metadata, so neither reaches a published Requires-Dist. Install with
+# Test oracles the suite needs beside the `testing` extra, as git references;
+# a dependency group (PEP 735) is not part of the distribution metadata, so
+# none reaches a published Requires-Dist. Install with
 # `pip install --group conformance` (pip >= 25.1); tox installs it for every
-# test environment.
+# test environment. The TimeToShare package, the oracle for manifests, is a
+# runtime dependency above.
 conformance = [
     "pymeasuremap @ git+https://github.com/measure-map/pyMeasureMap.git@ddcfec3",
     # Measure Map reference implementation, the test oracle for compressed rows; registry pin once a release carries compress
-    "timetoshare @ git+https://github.com/TimeToAlign/TimeToShare.git@main#subdirectory=python",
-    # TimeToShare schema and fixtures, the test oracle for manifests; development branch until a release carries schema 0.2.0, then a registry range
 ]
 
 [project.urls]
@@ -110,6 +114,11 @@ Changelog = "https://github.com/timetoalign/timetoalign/blob/main/CHANGELOG.md"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+# The git reference to timetoshare until its release; PyPI refuses a direct
+# reference in Requires-Dist, so a release needs the registry range first.
+allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["timetoalign"]

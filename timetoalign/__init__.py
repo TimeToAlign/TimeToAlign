@@ -21,7 +21,9 @@ Installation & Optional Dependencies
 =====================================
 
 The core install (``pip install -e .``) is deliberately lightweight:
-only PyArrow, pandas, NetworkX, and typing_extensions are required.  This
+only PyArrow, pandas, NetworkX, typing_extensions, pydantic and timetoshare
+(the TimeToShare manifest format: links, schemes and their validator) are
+required.  This
 gives you the full timeline/map/alignment framework but **no file-format-
 specific loaders**.  Loader backends and other features are available through
 optional extras.
@@ -224,6 +226,16 @@ _DEFERRED_EXPORTS = {
     "Timeline": ("timetoalign.timelines", "Timeline"),
     "TimelineGroup": ("timetoalign.timelines", "TimelineGroup"),
     "UnknownLengthError": ("timetoalign.timelines", "UnknownLengthError"),
+    # Description layer, the timetoshare package's model
+    "Assertion": ("timetoalign.timelines", "Assertion"),
+    "Descriptor": ("timetoalign.timelines", "Descriptor"),
+    "Identifier": ("timetoalign.timelines", "Identifier"),
+    "Link": ("timetoalign.timelines", "Link"),
+    "PartOf": ("timetoalign.timelines", "PartOf"),
+    "PartSlot": ("timetoalign.timelines", "PartSlot"),
+    "Scheme": ("timetoalign.timelines", "Scheme"),
+    "get_default_assertion": ("timetoalign.timelines", "get_default_assertion"),
+    "set_default_assertion": ("timetoalign.timelines", "set_default_assertion"),
     # Alignment layer
     "Agent": ("timetoalign.alignment", "Agent"),
     "AlignmentAnchor": ("timetoalign.alignment", "AlignmentAnchor"),
@@ -360,6 +372,16 @@ __all__ = [
     "BeatGridSegment",
     "GridBeat",
     "SegmentNameGenerator",
+    # Description layer
+    "Assertion",
+    "Descriptor",
+    "Identifier",
+    "Link",
+    "PartOf",
+    "PartSlot",
+    "Scheme",
+    "get_default_assertion",
+    "set_default_assertion",
     # Maps
     "ConstantMap",
     "ConversionMap",

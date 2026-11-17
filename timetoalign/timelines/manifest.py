@@ -3,13 +3,16 @@
 A TimeToShare manifest is one JSON object: the version marker
 ``timetoshare``, an array of root ``timelines`` and, optionally, the
 manifest's ``id``, ``name`` and ``meta``, its ``groups``, its
-``measure_maps`` and its ``graphical``. :class:`~timetoalign.timelines.Timeline`,
+``measure_maps``, its ``schemes`` and ``links`` (the description layer, see
+:mod:`timetoalign.timelines.description`) and its ``graphical``.
+:class:`~timetoalign.timelines.Timeline`,
 :class:`~timetoalign.timelines.TimelineGroup` and
 :class:`~timetoalign.alignment.AlignmentBundle` each write one with
 ``to_dict`` and read one with ``from_dict``. This module holds what they
 share: the version marker, the reading of the manifest around its timelines
 and groups, the writing of that envelope and of the measure maps its
-timelines name, and the codec of a bare value on a timeline's own axis.
+timelines name, the reading of links and schemes, and the codec of a bare
+value on a timeline's own axis.
 
 A value on a timeline's own axis (``length``, ``offset``, region ``start``
 and ``end``, break and marker ``coordinate``, jump ``from_coordinate`` and
@@ -31,6 +34,8 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, ClassVar
+
+from timetoshare import Link, Scheme, validate
 
 from timetoalign.core import Coordinate, NumberType, TimeUnit
 from timetoalign.core.ids import _OpenObject, mint_id, quote_id, validate_id
@@ -291,6 +296,126 @@ def read_list(data: Mapping[str, Any], key: str, what: str) -> list[Any]:
     return value
 
 
+def read_links(data: Mapping[str, Any], what: str) -> list[Link]:
+    """Read an optional ``links`` array of TimeToShare links, ``[]`` by default.
+
+    Each link is read by ``Link.from_dict``, which keeps the keys the format
+    does not declare. The rules of a link are the TimeToShare validator's,
+    which :func:`check_description` applies before the manifest is read.
+
+    Raises:
+        ValueError: If ``links`` is not an array or a link is no object
+            holding ``relation`` and ``level``.
+    """
+    return [
+        Link.from_dict(require_object(item, f"a link of {what}", ("relation", "level")))
+        for item in read_list(data, "links", what)
+    ]
+
+
+def read_schemes(data: Mapping[str, Any]) -> list[Scheme]:
+    """Read the manifest's optional ``schemes`` array, ``[]`` by default.
+
+    Raises:
+        ValueError: If ``schemes`` is not an array, or a scheme is no object
+            or has no valid id.
+    """
+    schemes = []
+    for item in read_list(data, "schemes", "the manifest"):
+        require_object(item, "a scheme", ("id",))
+        read_id(item["id"], "a scheme")
+        schemes.append(Scheme.from_dict(item))
+    return schemes
+
+
+class _Unprojected(Exception):
+    """The structure around the description layer is malformed."""
+
+
+def _projected_timeline(data: Any, *, child: bool) -> dict[str, Any]:
+    """Project a timeline object onto what the rules of links read.
+
+    Its ``id`` and ``links``, its regions' ``id`` and ``links`` and its
+    children, at their array positions, on a placeholder axis.
+
+    Raises:
+        _Unprojected: If a timeline or region is no object with a string
+            id, or ``children`` or ``regions`` is no array.
+    """
+    if not isinstance(data, dict) or not isinstance(data.get("id"), str):
+        raise _Unprojected
+    children, regions = data.get("children", []), data.get("regions", [])
+    if not isinstance(children, list) or not isinstance(regions, list):
+        raise _Unprojected
+    projected: dict[str, Any] = {"id": data["id"], "unit": "quarters", "length": None}
+    if child:
+        projected["offset"] = [0, 1]
+    projected["children"] = [_projected_timeline(item, child=True) for item in children]
+    projected["regions"] = []
+    for region in regions:
+        if not isinstance(region, dict) or not isinstance(region.get("id"), str):
+            raise _Unprojected
+        projected["regions"].append(
+            {"id": region["id"], "start": [0, 1], "end": [0, 1]}
+            | ({"links": region["links"]} if "links" in region else {})
+        )
+    if "links" in data:
+        projected["links"] = data["links"]
+    return projected
+
+
+def _describes(data: Any) -> bool:
+    """Whether a manifest, timeline or region object holds description content.
+
+    A ``schemes`` or ``links`` member other than an empty array, here or in
+    a region or a descendant timeline.
+    """
+    if not isinstance(data, dict):
+        return False
+    if any(key in data and data[key] != [] for key in ("schemes", "links")):
+        return True
+    return any(
+        _describes(item)
+        for key in ("timelines", "children", "regions")
+        if isinstance(data.get(key), list)
+        for item in data[key]
+    )
+
+
+def check_description(data: Mapping[str, Any]) -> None:
+    """Refuse a manifest whose description layer breaks a rule of the format.
+
+    The rules of the description layer — the shape of every link and scheme,
+    the identifiers' schemes and the elements a part slot names, scheme ids
+    unique in the manifest — are the TimeToShare validator's. It is given the
+    part of the manifest these rules read: the manifest's ``id``,
+    ``schemes`` and ``links``, and every timeline's and region's ``id`` and
+    ``links``, at their array positions, each timeline on a placeholder
+    axis, so that a refusal names the path in *data*. A manifest without
+    schemes or links is not checked, and one whose timelines or regions are
+    malformed is left to the reader, which refuses it.
+
+    Raises:
+        ValueError: The validator's refusal, its path first:
+            ``#/links/0/parts/0/represented_by/0: 'ghost' names no timeline
+            or region of this manifest``.
+    """
+    if not _describes(data) or not isinstance(data.get("timelines"), list):
+        return
+    try:
+        timelines = [
+            _projected_timeline(item, child=False) for item in data["timelines"]
+        ]
+    except _Unprojected:
+        return
+    projection: dict[str, Any] = {"timetoshare": TIMETOSHARE_VERSION}
+    projection.update(
+        {key: data[key] for key in ("id", "schemes", "links") if key in data}
+    )
+    projection["timelines"] = timelines
+    validate(projection)
+
+
 # endregion
 
 
@@ -301,17 +426,21 @@ def read_list(data: Mapping[str, Any], key: str, what: str) -> list[Any]:
 class Manifest(_OpenObject):
     """What a manifest holds beside its timelines and groups.
 
-    The manifest's ``id`` (absent when it has none), ``name`` and ``meta``, the
-    members of its ``graphical`` other than ``order`` (``styling``) and the
-    band orders of its timelines (``band_orders``), both kept as given and
-    never interpreted, whether it holds ``graphical`` at all, the measure
-    maps no timeline names, and every key the library does not read.
+    The manifest's ``id`` (absent when it has none), ``name`` and ``meta``, its
+    schemes and links, the members of its ``graphical`` other than ``order``
+    (``styling``) and the band orders of its timelines (``band_orders``),
+    both kept as given and never interpreted, whether it holds ``graphical``
+    at all, the measure maps no timeline names, and every key the library
+    does not read.
 
     Attributes:
         id: The manifest id, or None when it has none (an anonymous bundle,
             or one named by ``name`` alone).
         name: The manifest name, or None.
         meta: The manifest's free metadata.
+        schemes: The identifier schemes the manifest declares, written
+            sorted by id.
+        links: The manifest's links, in their order.
         styling: ``graphical`` without ``order``: ``styles``,
             ``statements``, ``timestamps`` and any other key, kept as given;
             a named timestamp's ``display`` is written in canonical order,
@@ -333,6 +462,8 @@ class Manifest(_OpenObject):
         "timelines",
         "groups",
         "measure_maps",
+        "schemes",
+        "links",
         "graphical",
     )
     _dict_defaults: ClassVar[Mapping[str, Any]] = {
@@ -340,11 +471,15 @@ class Manifest(_OpenObject):
         "meta": {},
         "groups": [],
         "measure_maps": [],
+        "schemes": [],
+        "links": [],
     }
 
     id: str | None = None
     name: str | None = None
     meta: dict[str, Any] = field(default_factory=dict)
+    schemes: list[Scheme] = field(default_factory=list)
+    links: list[Link] = field(default_factory=list)
     styling: dict[str, Any] = field(default_factory=dict)
     band_orders: dict[str, Any] = field(default_factory=dict)
     has_graphical: bool = False
@@ -354,16 +489,18 @@ class Manifest(_OpenObject):
     def read(cls, data: Any) -> tuple[Manifest, ManifestContent]:
         """Read a manifest: its envelope, its timelines and its raw groups.
 
-        The measure maps are read first, then every root timeline is
-        rebuilt, its conversion maps reading the measure maps they name, and
-        every timeline of the roots' trees is indexed by id. Every id is
-        unique across the manifest: the manifest's own, every timeline, root
-        or descendant, group, measure map, conversion map at any depth,
-        region and flow-control element. Groups are left
+        The description layer is checked first, by the TimeToShare validator
+        (:func:`check_description`). The measure maps are read next, then
+        every root timeline is rebuilt, its conversion maps reading the
+        measure maps they name, and every timeline of the roots' trees is
+        indexed by id. Every id is unique across the manifest: the
+        manifest's own, every timeline, root or descendant, group, measure
+        map, conversion map at any depth, region, flow-control element and
+        scheme. Groups are left
         as JSON for the class reading them. ``graphical.order`` is split by
         its keys: a group's display order goes to the content, a timeline's
         band order to the envelope, unchecked. The measure maps no timeline
-        names are kept on the envelope.
+        names, the schemes and the manifest's links are kept on the envelope.
 
         Returns:
             The envelope, and the manifest's content.
@@ -371,7 +508,8 @@ class Manifest(_OpenObject):
         Raises:
             ValueError: If *data* is no TimeToShare manifest (``"not a
                 TimeToShare manifest"``), names another version, or is
-                malformed: an id held twice anywhere in the manifest (see
+                malformed: a link or scheme breaking a rule of the format,
+                an id held twice anywhere in the manifest (see
                 :func:`unique_ids`), a ``graphical.order`` that is no object
                 or names no group or timeline.
         """
@@ -384,6 +522,7 @@ class Manifest(_OpenObject):
                 f"TimeToShare {TIMETOSHARE_VERSION} only"
             )
         require_object(data, "a TimeToShare manifest", ("timelines",))
+        check_description(data)
         manifest_id = read_id(data["id"], "the manifest") if "id" in data else None
         manifest = cls(
             id=manifest_id,
@@ -417,7 +556,12 @@ class Manifest(_OpenObject):
             for group_id in group_ids
             if isinstance(group_id, str)
         )
+        manifest.schemes = read_schemes(data)
+        holders.extend(
+            (scheme.id, f"scheme {quote_id(scheme.id)}") for scheme in manifest.schemes
+        )
         ids = unique_ids(holders)
+        manifest.links = read_links(data, "the manifest")
         named = {
             id(measure_map)
             for timeline in timelines.values()
@@ -487,6 +631,7 @@ class Manifest(_OpenObject):
         key names a timeline or group of the manifest. ``graphical`` is
         written when there is an order to keep, styling, or a ``graphical``
         read with the manifest; ``id`` only when the manifest has one.
+        ``schemes`` are written sorted by id, ``links`` in their order.
 
         Args:
             roots: The root timelines.
@@ -518,6 +663,9 @@ class Manifest(_OpenObject):
         )
         holders.extend(
             (group["id"], f"group {quote_id(group['id'])}") for group in groups
+        )
+        holders.extend(
+            (scheme.id, f"scheme {quote_id(scheme.id)}") for scheme in self.schemes
         )
         entries = MeasureMapEntries(
             unique_ids(holders),
@@ -552,6 +700,11 @@ class Manifest(_OpenObject):
             timelines=timelines,
             groups=list(groups),
             measure_maps=entries.write(minimal=minimal),
+            schemes=[
+                scheme.to_dict(minimal=minimal)
+                for scheme in sorted(self.schemes, key=lambda scheme: scheme.id)
+            ],
+            links=[link.to_dict(minimal=minimal) for link in self.links],
         )
         written = _timeline_ids(timelines)
         band_orders = {

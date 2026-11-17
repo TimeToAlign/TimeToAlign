@@ -71,7 +71,11 @@ and no group, `TimelineGroup.from_dict` for one anonymous group, otherwise
 every manifest, and each must raise `ValueError`. A reader that accepted a
 manifest the validators refuse would let an invalid document through one of
 two doors. The cases are listed from the package, not copied, so a case
-added there is covered here without an edit. The three exceptions are the
+added there is covered here without an edit. The cases of links
+(`description_*`) are refused through the package itself: the library
+hands the description layer of every manifest it reads to
+`timetoshare.validate`, which holds those rules (see *Links and schemes* in
+`timelines/README.md`). The three exceptions are the
 rules the library leaves to the validators because it keeps what they
 check as given: the rules about `graphical.statements` (selectors with
 their addresses, and declarations), which the library never interprets,
@@ -165,15 +169,18 @@ range survive.
 **The display words, restated.** The library writes a named timestamp's
 `display` in canonical order and states the default `display` in the
 complete form, so it keeps its own copy of the display words and of that
-default, since it never imports `timetoshare` at run time. Its display
+default. Its display
 words, in canonical order, equal the package's `TIMESTAMP_DISPLAY`, and its
 default equals the package's `DEFAULTS["timestamp"]["display"]`, both
 compared whole and in order: a word added to the format, an order changed
 or a new default fails here before the library writes a stale form.
 
-**Test-only dependency.** A fresh interpreter imports `timetoalign` and
-checks `sys.modules`; the absence of `timetoshare` proves schema
-validation stays a test-only dependency.
+**Manifests with links.** The catalogue above holds one bundle carrying the
+description layer at every place the format admits it: a scheme and a
+manifest link with part slots, one represented by a region and the others
+absent, a link on a root and a link on its region. It obeys the same laws
+in both forms, so links and schemes are written in the canonical order and
+with exactly the defaults the package states.
 
 ## Layout
 

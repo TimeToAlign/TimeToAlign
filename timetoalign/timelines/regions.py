@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from copy import deepcopy
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from fractions import Fraction
 from typing import Any, ClassVar
 
@@ -21,10 +21,12 @@ from timetoalign.core import Coordinate, IdCoordinate, NumberType, TimeUnit
 from timetoalign.core.ids import _IdentifiedElement
 from timetoalign.core.time import Duration, Interval
 
+from .description import Link, LinksMixin
 from .manifest import (
     axis_value_from_json,
     axis_value_to_json,
     read_id,
+    read_links,
     read_meta,
     read_name,
     require_object,
@@ -34,18 +36,23 @@ from .manifest import (
 
 
 @dataclass(frozen=True)
-class Region(_IdentifiedElement):
+class Region(_IdentifiedElement, LinksMixin):
     """An identified part of a timeline defined by a TimeInterval.
 
     IMPORTANT: Regions are NOT timelines. They cannot hold events or C-maps.
     Use ``Timeline.create_child_from_region(region_id)`` to create a Child
     timeline from a Region.
 
+    A region is frozen: :meth:`with_link` returns a copy holding one more
+    link.
+
     Attributes:
         start: Start coordinate of the region.
         end: End coordinate of the region.
         name: Optional display name (e.g., "Chorus"); names may repeat.
         meta: Additional metadata (e.g., traversal order labels).
+        links: The region's links to the entities it pertains to (a
+            movement, a recording of it), in the order given.
         id: The region's id; minted as ``region_{N}`` when not given.
 
     Examples:
@@ -74,13 +81,25 @@ end=Coordinate(Fraction(32, 1), quarters))
     """
 
     _id_prefix: ClassVar[str] = "region"
-    _dict_keys: ClassVar[tuple[str, ...]] = ("id", "name", "start", "end", "meta")
-    _dict_defaults: ClassVar[Mapping[str, Any]] = {"name": None, "meta": {}}
+    _dict_keys: ClassVar[tuple[str, ...]] = (
+        "id",
+        "name",
+        "start",
+        "end",
+        "meta",
+        "links",
+    )
+    _dict_defaults: ClassVar[Mapping[str, Any]] = {
+        "name": None,
+        "meta": {},
+        "links": [],
+    }
 
     start: Coordinate
     end: Coordinate
     name: str | None = None
     meta: dict[str, Any] = field(default_factory=dict)
+    links: tuple[Link, ...] = ()
 
     @classmethod
     def from_dict(
@@ -93,8 +112,9 @@ end=Coordinate(Fraction(32, 1), quarters))
         """Restore a region from its object in a timeline's ``regions``.
 
         ``start`` and ``end`` are bare values on the timeline's axis, which
-        *unit* and *number_type* describe; ``name`` and ``meta`` may be left
-        out. Keys the library does not know are kept and written back.
+        *unit* and *number_type* describe; ``name``, ``meta`` and ``links``
+        may be left out. Keys the library does not know are kept and written
+        back, inside a link too.
 
         Args:
             data: The region object.
@@ -113,10 +133,12 @@ end=Coordinate(Fraction(32, 1), quarters))
             )
             for key in ("start", "end")
         }
+        what = f"region {region_id!r}"
         region = cls(
             id=region_id,
-            name=read_name(data, f"region {region_id!r}"),
-            meta=read_meta(data, f"region {region_id!r}"),
+            name=read_name(data, what),
+            meta=read_meta(data, what),
+            links=tuple(read_links(data, what)),
             **bounds,
         )
         region._keep_unknown_keys(data)
@@ -125,6 +147,7 @@ end=Coordinate(Fraction(32, 1), quarters))
     def __post_init__(self) -> None:
         """Mint or validate the id, then validate region bounds and units."""
         super().__post_init__()
+        object.__setattr__(self, "links", tuple(self.links))
         if self.end.value < self.start.value:
             raise ValueError(
                 f"Region end ({self.end.value}) cannot be before "
@@ -190,11 +213,43 @@ end=Coordinate(Fraction(32, 1), quarters))
         """
         return self.start.value < other.end.value and other.start.value < self.end.value
 
+    def with_link(self, link: Link | str, **options: Any) -> Region:
+        """Return a copy of this region holding *link* after its own links.
+
+        The copy keeps the region's id, bounds, name and metadata; this
+        region is left as it is. A link stating no assertion takes the
+        default assertion, if one is set (see
+        :func:`~timetoalign.timelines.description.set_default_assertion`).
+
+        Args:
+            link: The link, or the URL of the linked entity, which
+                ``Link.from_url`` reads with *options*.
+            **options: Passed to ``Link.from_url`` with a URL.
+
+        Raises:
+            TypeError: If *options* are given beside a :class:`Link`.
+            ValueError: If ``Link.from_url`` refuses the URL or the options.
+
+        Examples:
+            >>> from timetoalign import Coordinate, TimeUnit
+            >>> first = Region(
+            ...     Coordinate(0, TimeUnit.quarters), Coordinate(16, TimeUnit.quarters)
+            ... )
+            >>> movement = first.with_link(
+            ...     "https://musicbrainz.org/work/80cbaf7b-a1da-3fc5-b650-6eb72a803980",
+            ...     label="I. Allegro",
+            ... )
+            >>> [link.label for link in movement.links], first.links
+            (['I. Allegro'], ())
+        """
+        return replace(self, links=(*self.links, self._link_to_add(link, options)))
+
     def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
         """Return this region as its JSON object, bounds as bare values.
 
         Args:
-            minimal: Leave out ``name`` and ``meta`` at their defaults.
+            minimal: Leave out ``name``, ``meta`` and ``links`` at their
+                defaults, and every key of a link at its default.
         """
         return self._dict_form(
             {
@@ -203,6 +258,7 @@ end=Coordinate(Fraction(32, 1), quarters))
                 "start": axis_value_to_json(self.start),
                 "end": axis_value_to_json(self.end),
                 "meta": deepcopy(self.meta),
+                "links": [link.to_dict(minimal=minimal) for link in self.links],
             },
             minimal=minimal,
         )

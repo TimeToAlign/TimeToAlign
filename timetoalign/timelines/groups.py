@@ -224,13 +224,21 @@ class _IdScope:
         """Return the live scopes holding this one among their sub-scopes: none."""
         return []
 
+    def _element_ids(self) -> dict[str, str]:
+        """Map the ids of the elements the scope holds itself to their holders.
+
+        None by default; a bundle holds the schemes of its manifest.
+        """
+        return {}
+
     def _scope_ids(self, *, trees: bool = True) -> dict[str, str]:
         """Map every id the scope's manifest holds to its holder.
 
-        The ids of every member's tree, and the given ids of the scopes it
-        holds and its own. A minted id is left out: a group's gives way to a
-        given id that takes it (:meth:`_yield_minted_ids`), and a bundle's
-        is never written.
+        The ids of every member's tree, the given ids of the scopes it holds
+        and its own, and the ids of the elements each of them holds itself
+        (:meth:`_element_ids`). A minted scope id is left out: a group's
+        gives way to a given id that takes it (:meth:`_yield_minted_ids`),
+        and a bundle's is never written.
 
         Args:
             trees: Include the ids of the members' trees.
@@ -239,6 +247,8 @@ class _IdScope:
         for scope in (*self._sub_scopes().values(), self):
             if not scope._id_minted:
                 held.setdefault(scope.id, f"{scope._scope_kind} {quote_id(scope.id)}")
+            for element_id, holder in scope._element_ids().items():
+                held.setdefault(element_id, holder)
         return held
 
     def _admit_tree(
@@ -424,8 +434,9 @@ class TimelineGroup(_IdScope, _OpenObject):
           neither.
 
         In these two cases the manifest is read as a whole: its ``meta``,
-        ``graphical`` and unknown keys are kept so that :meth:`to_dict`
-        writes them back, around the anonymous bundle a group writes.
+        ``schemes``, ``links``, ``graphical`` and unknown keys are kept so
+        that :meth:`to_dict` writes them back, around the anonymous bundle a
+        group writes.
         - From a manifest with several groups, or a named one, *group_id* or
           *name* (or both) must be given and select the one group whose id
           and name match them.
@@ -2057,8 +2068,9 @@ class TimelineGroup(_IdScope, _OpenObject):
         members by id, sorted; ``graphical.order`` keeps their display
         order, which is the order they were added in, under the group's id,
         beside the members of :attr:`styling`. A group read from a manifest
-        as a whole writes that manifest's ``meta`` and unknown keys back,
-        and the band order it held of every timeline written, unchanged.
+        as a whole writes that manifest's ``meta``, ``schemes``, ``links``
+        and unknown keys back, and the band order it held of every timeline
+        written, unchanged.
 
         Args:
             minimal: If True, leave out every key at its default value.

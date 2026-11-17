@@ -211,7 +211,8 @@ structure should be partitioned.
 
 `Timeline`, `TimelineGroup` and `AlignmentBundle` write and read one shape of
 TimeToShare manifest: `{"timetoshare": "0.2.0", "timelines": [...]}` with an
-optional `id`, `name`, `meta`, `groups` and `graphical`. A reader that only
+optional `id`, `name`, `meta`, `groups`, `measure_maps`, `schemes`, `links`
+and `graphical` (links and schemes: *Links and schemes* below). A reader that only
 reads what its own writer produced proves nothing about the format, so the
 tests read manifests written by hand from the format's rules, and compare what
 the library writes back against the same literal text.
@@ -788,6 +789,121 @@ Parangonada and IIIF loaders the test walks the whole
 `to_dict` tree and requires every timeline, child, map, region, break, jump
 and marker to carry a valid id (non-empty, no control character),
 all ids within one manifest to be distinct, and no id to start with `tl:`.
+
+### Links and schemes (`test_description_links.py`)
+
+The description layer of a manifest links the manifest, a timeline or a
+region to works and other entities: `links` on each of the three, and the
+manifest's `schemes`, which the identifiers of a link may name by id. The
+model is the `timetoshare` package's; the library carries it on its
+`AlignmentBundle`, `Timeline` and `Region`, reads and writes it, and leaves
+its rules to the package's validator. The tests prove that the library adds
+nothing to the model and loses nothing of it, against literals written from
+the format's rules rather than from the library's output.
+
+- **The classes are the package's.** `Link`, `PartSlot`, `PartOf`,
+  `Identifier`, `Assertion`, `Scheme` and `Descriptor` of `timetoalign` are
+  the very objects of `timetoshare` (`is`), so nothing of the model is
+  redefined and a link built through either is one class.
+- **The work bundle of Op. 106, built through the library.** An
+  `AlignmentBundle` named `Beethoven, Piano Sonata No. 29, Op. 106` takes
+  the scheme `mb_beethoven_opus` through `add_scheme` and one link through
+  `add_link`: `Link.from_urls` of the work's MusicBrainz, Wikidata, VIAF and
+  IMSLP pages with the identifier `op. 106` in that scheme, the label, the
+  editor's assertion (`https://example.org/people/editor`, 2026-11-17,
+  `manual`, `confirmed`) and four part slots, the four movements, from
+  `PartSlot.from_url`, each `absent` `not_represented`. Its minimal form is
+  exactly the minimal literal the TimeToShare package pins for this bundle,
+  written out in the test, and its complete form exactly the complete
+  literal: the MusicBrainz, Wikidata and VIAF entity URIs in `uri`, the
+  IMSLP page as an identifier in the scheme of its Wikidata property
+  followed by `op. 106`, every default stated. `timetoshare.validate`
+  accepts both forms, `minimal` and `complete` map each onto the other, and
+  each form reads back through `AlignmentBundle.from_dict` to a bundle that
+  writes both literals again and equals the built one. A writer that
+  dropped a key, reordered a link's arrays or wrote its own variant of a
+  link fails against text the library did not produce.
+- **A URL is a link.** `add_link(url, label=…)` on a timeline adds exactly
+  `Link.from_url(url, label=…)`; `add_link` returns the timeline, so calls
+  chain, and `links` is the tuple of links in the order added. Keyword
+  arguments beside a `Link` object raise `TypeError`, since they would be
+  ignored.
+- **Every filter of `get_links`, alone and combined.** A timeline holds four
+  links chosen so that each filter splits them differently: the work of Op.
+  106 by its MusicBrainz page, with the identifier `op. 106` in the
+  manifest scheme `mb_beethoven_opus` and the editor's assertion; the same
+  work by its IMSLP page (an identifier in the scheme
+  `http://www.wikidata.org/entity/P839`, which mints no URI) with another
+  agent's assertion; a release by its MusicBrainz page (level
+  `manifestation`) with the editor's assertion; and an agent link with the
+  relation `marcrel:cmp` and no assertion. Each filter answers the exact
+  list, in the order added, and none answers all four or none, so a filter
+  that was ignored, or matched everything, fails: `level="work"` the first
+  two, `relation="marcrel:cmp"` the fourth, `asserted_by` the editor the
+  first and third; `scheme` names a scheme in any of its spellings —
+  `mb_beethoven_opus` (a manifest scheme's id, matched by an identifier)
+  the first; `http://www.wikidata.org/entity/P839` (a scheme URI, matched
+  by an identifier) and `imslp` (the registry's id of that scheme) the
+  second; `musicbrainz_work` (a registry id, matched by a URI the registry
+  recognises) the first; `http://www.wikidata.org/entity/P5813` (the URI of
+  the registry's MusicBrainz release scheme, matched by a recognised URI)
+  the third. `level="work", asserted_by=<editor>` answers the first alone,
+  so the filters combine.
+- **A region's links.** `Region.with_link` returns a new region holding the
+  new link after its own, its id, bounds, name and minted flag kept, and the
+  original unchanged; it takes a URL as `add_link` does. `create_region(…,
+  links=[…])` stores them. A region's object writes `links` in the complete
+  form (`[]` when it holds none) and leaves it out of the minimal form at
+  its default.
+- **A scheme takes its id in the manifest.** A scheme id is an id of the
+  manifest, so `add_scheme` refuses one held by a timeline of the bundle
+  (`scheme 'clt_1' cannot join bundle 'bundle_1': its id 'clt_1' is
+  already held by timeline 'clt_1'`), by a region, by a group of given id,
+  by the bundle's given id and by another scheme, each message compared
+  whole and nothing added; a minted group id gives way, as to any given id
+  (the group `group_1` becomes `group_2`). Once held, the id refuses a
+  newcomer: a timeline whose region holds it cannot join the bundle.
+  `add_scheme("opus", name=…, uri=…, criteria=…)` builds the scheme, a
+  `Scheme` object is added as it is, and keyword arguments beside it raise
+  `TypeError`. `schemes` lists them sorted by id, the order the manifest
+  writes them in. On reading, a scheme whose id a group holds is refused
+  with `the id 'g' is held twice in the manifest: by group 'g' and by
+  scheme 'g'`, and `Timeline.from_dict(…, timeline_id="opus")` refuses to
+  give the root the id of the scheme `opus` (`root timeline 'score' cannot
+  take the id 'opus': it is already held by scheme 'opus'`).
+- **The default assertion.** There is none until one is set:
+  `get_default_assertion()` is `None` and `add_link` adds a link without an
+  assertion as it is. After `set_default_assertion(asserted_by=…)`,
+  `add_link` and `with_link` give a link without an assertion the default
+  dated today — the day is read through one seam of the module, which the
+  test pins to 2026-11-17, so the expected assertion is a literal — while a
+  link stating its own keeps it. `set_default_assertion` used as a context
+  manager restores the previous default on exit: nested, the inner exit
+  restores the outer default and the outer exit restores none. The default
+  lives in a context variable: one set inside `contextvars.copy_context()`
+  is not seen outside it, and every test starts from no default (a fixture
+  holds each in a fresh value), so no test can leak a default into another.
+- **Both forms round-trip, unknown keys included.** A bundle holding a
+  scheme and a manifest link, a root with a link and a region with a link
+  writes the complete and the minimal form; each read back through
+  `AlignmentBundle.from_dict` writes both forms equal to the first writing.
+  Unknown keys `x-note` on a link, its assertion, a part slot and a scheme,
+  each with its own value, are written back where they were found, in both
+  forms. A one-root manifest with manifest links and schemes, read whole by
+  `Timeline.from_dict`, and a one-group anonymous one read by
+  `TimelineGroup.from_dict`, write them back too: the manifest's links stay
+  with the manifest read as a whole.
+- **What the validator refuses, the library refuses in its words.** The
+  rules of links are the package's: the library hands the part of a
+  manifest those rules read (the manifest's id, schemes and links, every
+  timeline's and region's id and links, in their places) to
+  `timetoshare.validate` before it reads anything else. A part slot naming
+  no timeline or region is refused with the validator's message
+  `#/links/0/parts/0/represented_by/0: 'ghost' names no timeline or region
+  of this manifest`, the path the one of the manifest read; a link on a
+  region with the level `score`, with a path through the region. Every
+  shared rejection case of links is refused by every reader (see
+  `tests/README.md`).
 
 ### Canonical order of a serialized timeline (`test_canonical_order.py`)
 

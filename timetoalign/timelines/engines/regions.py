@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import replace
 from typing import Any
 
@@ -11,6 +11,7 @@ from timetoalign.core.ids import quote_id
 from timetoalign.core.time import coordinate_numeric_value
 from timetoalign.core.timestamp import _format_coordinate_value
 
+from ..description import Link
 from ..regions import Region
 
 
@@ -104,6 +105,7 @@ class RegionsMixin:
         id: str | None = None,
         name: str | None = None,
         meta: dict[str, Any] | None = None,
+        links: Iterable[Link] = (),
     ) -> Region:
         """Create a new Region and attach it to this timeline.
 
@@ -117,6 +119,8 @@ class RegionsMixin:
                 minted, unique in this timeline's manifest.
             name: Optional display name; names may repeat.
             meta: Optional metadata dictionary.
+            links: The region's links, stored as given (see
+                :meth:`Region.with_link <timetoalign.timelines.Region.with_link>`).
 
         Returns:
             The created Region object.
@@ -136,6 +140,7 @@ class RegionsMixin:
                 id=id,
                 name=name,
                 meta=meta or {},
+                links=tuple(links),
             )
         )
 

@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
-import sys
 import tempfile
 from collections.abc import Callable
 from fractions import Fraction
@@ -32,13 +30,16 @@ from timetoshare import (
 
 from timetoalign import (
     AlignmentBundle,
+    Assertion,
     ContinuousGraphicalTimeline,
     ContinuousLogicalTimeline,
     ContinuousPhysicalTimeline,
     DiscreteGraphicalTimeline,
     DiscreteLogicalTimeline,
     DiscretePhysicalTimeline,
+    Link,
     Ms3Loader,
+    PartSlot,
     Timeline,
     TimelineGroup,
 )
@@ -264,6 +265,37 @@ def _direct_bundle() -> list[AlignmentBundle]:
     return [bundle]
 
 
+def _described_bundle() -> list[AlignmentBundle]:
+    """A scheme and links on the manifest, a root and its region."""
+    movement = "https://musicbrainz.org/work/80cbaf7b-a1da-3fc5-b650-6eb72a803980"
+    recording = ContinuousPhysicalTimeline(length=690.0, unit="seconds", uid="take")
+    recording.add_link(
+        "https://musicbrainz.org/release/814c53fd-0732-4819-9753-4578f5ab992c",
+        assertion=Assertion(method="manual", match="broad"),
+    )
+    recording.create_region(
+        1.5, 688.0, id="first", links=[Link.from_url(movement, label="I. Allegro")]
+    )
+    bundle = AlignmentBundle(name="Described").add_scheme("opus", name="Opus numbers")
+    bundle.add_link(
+        Link.from_url(
+            "https://musicbrainz.org/work/4a622b0d-b0c0-405e-b49e-05b70c108284",
+            identifiers={"opus": "106"},
+        ).with_parts(
+            "has_part",
+            [
+                PartSlot.from_url(movement, represented_by=["first"]),
+                PartSlot.from_url(
+                    "https://musicbrainz.org/work/7813c9cf-6054-3ef3-b9ed-8ae4690581c9",
+                    absent="not_represented",
+                ),
+            ],
+        )
+    )
+    bundle.add_timeline(recording)
+    return [bundle]
+
+
 LISTEN_HERE = {
     "header": {"ref": "rec-ref.mp3", "createdBy": "Listen Here! v0.20.0"},
     "body": {
@@ -315,6 +347,7 @@ CATALOGUE: list[tuple[str, Callable[[], list[Any]]]] = [
     ("graphical", lambda: [_graphical()]),
     ("direct_groups", _direct_groups),
     ("direct_bundle", _direct_bundle),
+    ("described_bundle", _described_bundle),
     ("tilia_group", lambda: [TiliaJsonLoader.from_file(TILIA).create_group()]),
     (
         "parangonada",
@@ -775,18 +808,3 @@ def test_the_display_words_and_default_are_the_package_s() -> None:
     """The library's own copy of the display words and default is the package's."""
     assert _TIMESTAMP_DISPLAY == TIMESTAMP_DISPLAY
     assert _DEFAULT_DISPLAY == DEFAULTS["timestamp"]["display"]
-
-
-def test_library_never_imports_timetoshare() -> None:
-    """The runtime package remains independent of its test-only schema validator."""
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-c",
-            "import sys, timetoalign; print('timetoshare' in sys.modules)",
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    assert result.stdout.strip() == "False"

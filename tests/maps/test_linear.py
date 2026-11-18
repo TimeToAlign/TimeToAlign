@@ -1,5 +1,6 @@
 """Tests for linear conversion maps."""
 
+import re
 from fractions import Fraction
 
 import numpy as np
@@ -74,6 +75,118 @@ class TestLinearMap:
         res = m(Fraction(1, 1))
         # 1/3 * 1 + 2/3 = 1
         assert res == Fraction(1, 1)
+
+
+class TestLinearMapFromPairs:
+    def test_exact_pairs_give_an_exact_line(self):
+        m = LinearMap.from_pairs(
+            [(Fraction(1, 2), 1), (Fraction(7, 2), 2), (Fraction(13, 2), 3)],
+            source_unit="points",
+            target_unit="quarters",
+        )
+        # (3 - 1) / (13/2 - 1/2) = 1/3; 1 - 1/3 * 1/2 = 5/6
+        assert m.scalar == Fraction(1, 3)
+        assert type(m.scalar) is Fraction
+        assert m.offset == Fraction(5, 6)
+        assert m.source_unit == TimeUnit.points
+        assert m.target_unit == TimeUnit.quarters
+
+    def test_float_pairs_give_the_two_point_line(self):
+        m = LinearMap.from_pairs(
+            [(0.0, 0.0), (213.88223410258962, 10.0), (855.5289364103584, 40.0)],
+            source_unit="points",
+            target_unit="seconds",
+        )
+        assert m.scalar == 0.04675470144567245
+        assert m.offset == 0.0
+
+    def test_order_is_irrelevant(self):
+        pairs = [(2, 5), (0, 1), (1, 3)]
+        assert LinearMap.from_pairs(
+            pairs, source_unit=None, target_unit=None
+        ) == LinearMap.from_pairs(sorted(pairs), source_unit=None, target_unit=None)
+
+    def test_coordinates_carry_their_units(self):
+        m = LinearMap.from_pairs(
+            [
+                (Coordinate(0, TimeUnit.ticks), Coordinate(0, TimeUnit.quarters)),
+                (Coordinate(960, TimeUnit.ticks), Coordinate(2, TimeUnit.quarters)),
+            ],
+            source_unit="ticks",
+            target_unit="quarters",
+        )
+        assert m.scalar == Fraction(1, 480)
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "Calibration pair 1 has a value in seconds, not in quarters."
+            ),
+        ):
+            LinearMap.from_pairs(
+                [(0, 0), (960, Coordinate(2, TimeUnit.seconds))],
+                source_unit="ticks",
+                target_unit="quarters",
+            )
+
+    def test_float_inner_pair_within_one_ulp(self):
+        # The line reads 10.000000000000002 at the inner pair, one ulp above 10.0.
+        LinearMap.from_pairs(
+            [(0.0, 0.0), (213.88223410258962, 10.0), (855.5289364103584, 40.0)],
+            source_unit=None,
+            target_unit=None,
+        )
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "Calibration pair 1 (213.88223410258962, 9.999999999999998) lies off "
+                "the line through the first and last pair, which reads "
+                "10.000000000000002 at 213.88223410258962."
+            ),
+        ):
+            LinearMap.from_pairs(
+                [
+                    (0.0, 0.0),
+                    (213.88223410258962, 9.999999999999998),
+                    (855.5289364103584, 40.0),
+                ],
+                source_unit=None,
+                target_unit=None,
+            )
+
+    def test_exact_inner_pair_must_lie_on_the_line(self):
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "Calibration pair 2 (1, 1000001/1000000) lies off the line through "
+                "the first and last pair, which reads 1 at 1."
+            ),
+        ):
+            LinearMap.from_pairs(
+                [(0, 0), (2, 2), (1, Fraction(1000001, 1000000))],
+                source_unit=None,
+                target_unit=None,
+            )
+
+    def test_refusals(self):
+        with pytest.raises(
+            ValueError,
+            match=re.escape("A calibration needs at least two pairs, got 0."),
+        ):
+            LinearMap.from_pairs([], source_unit=None, target_unit=None)
+        with pytest.raises(
+            ValueError,
+            match=re.escape("Calibration pairs 0 and 2 share the position 1."),
+        ):
+            LinearMap.from_pairs(
+                [(1, 0), (2, 1), (1, 2)], source_unit=None, target_unit=None
+            )
+
+    def test_other_maps_are_no_law(self):
+        with pytest.raises(
+            NotImplementedError,
+            match=re.escape("ShiftMap is built from no calibration pairs"),
+        ):
+            ShiftMap.from_pairs([(0, 0), (1, 1)], source_unit=None, target_unit=None)
 
 
 class TestScalarMap:

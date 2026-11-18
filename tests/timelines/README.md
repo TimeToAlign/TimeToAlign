@@ -2042,6 +2042,50 @@ that share the same coordinate type. These tests verify:
 
 ---
 
+### `test_calibrated_child.py` - Children Calibrated by Position/Value Pairs
+
+**Purpose:** `create_calibrated_child()` turns a calibrated segment of a
+timeline — calibration pairs of a parent position and a value in another
+unit, read under a law — into a child at the segment's start carrying the
+law's conversion map. A drawn axis with labelled ticks is the motivating
+case.
+
+**Validation logic:**
+
+- **The specimen is a real drawing.** A seconds axis drawn in points with
+  five labelled ticks (0, 10, 20, 30, 40 s at 76.70371459980326 …
+  932.2326510101616 pt) is calibrated on a float `points` parent. The child's
+  offset and length are the ones given; the positions become child
+  coordinates by subtracting the offset in float arithmetic, so the first
+  tick lands on 0.0 and the last on 855.5289364103584. The map's scalar is
+  then 40.0 / 855.5289364103584 = 0.04675470144567245 and its offset 0.0,
+  computed independently of the library from the two-point formula. The map
+  is probed at an inner tick (213.88223410258962 → 10.000000000000002, the
+  float the line gives, one ulp above the label) and at the end (→ 40.0).
+  These are the values of plain float arithmetic; a library that rounded,
+  fitted or guessed a ratio would give other bits and fail.
+- **Exact axes stay exact.** On a `fraction` parent, `Fraction` positions and
+  `quarters` values give a `Fraction` scalar and offset and an exact
+  conversion.
+- **A refusal changes nothing.** Moving the label "10" to 300.0 takes it off
+  the line through the end ticks: the call raises, and the parent then has
+  no child, no new segment event and the same manifest ids as before, so the
+  next child it creates gets the id it would have had anyway.
+- **Order is irrelevant.** Unsorted calibration gives a map equal to the
+  sorted one.
+- **The scalar survives serialization bit for bit.** `to_dict()` → JSON text
+  → `from_dict()` of the child restores the scalar with the same `float.hex()`.
+- **Every refusal names the offending pair.** Fewer than two pairs, a
+  repeated position, values in two units, an inner pair off the line, a
+  position before the offset or after its end — each raises `ValueError`
+  with a message naming the pair; a value that is no `Coordinate` raises
+  `TypeError`, since without a unit there is no target axis.
+- **Every timeline class has it.** The method lives with `create_child()` on
+  the children engine; the child is the parent's spawn class, in the
+  parent's unit and number type, with the given id and name.
+
+---
+
 ### `test_types.py` - Domain-Specific Timeline Subclasses
 
 **Purpose:** Validates the 6 timeline types (3 domains x 2 modalities), the

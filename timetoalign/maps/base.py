@@ -7,6 +7,7 @@ map implementations must inherit from.
 from __future__ import annotations
 
 import logging
+import math
 from abc import ABC, abstractmethod
 from collections.abc import Iterator, Mapping, Sequence
 from fractions import Fraction
@@ -29,6 +30,25 @@ T = TypeVar("T")
 
 # Input types that maps can accept
 MapInput = Union[CoordinateValue, Coordinate, NDArray[np.floating[Any]]]
+
+# A calibration pair: a position on the source axis and the value it reads.
+CalibrationPair = tuple[
+    Union[CoordinateValue, Coordinate], Union[CoordinateValue, Coordinate]
+]
+
+
+def _calibration_fits(value: CoordinateValue, expected: CoordinateValue) -> bool:
+    """Whether a calibration *value* agrees with the value a law *expected*.
+
+    Exact numbers must be equal. A float may differ by one ulp of the larger
+    of the two magnitudes: the law's own float arithmetic rounds once, the
+    value as written does not.
+    """
+    if isinstance(value, (int, Fraction)) and isinstance(expected, (int, Fraction)):
+        return value == expected
+    tolerance = math.ulp(max(abs(float(value)), abs(float(expected))))
+    return abs(float(value) - float(expected)) <= tolerance
+
 
 # region ConversionMap
 
@@ -94,6 +114,82 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
         super().__init_subclass__(**kwargs)
         if "_manifest_type" in cls.__dict__ and cls._manifest_type is not None:
             ConversionMap._registry[cls._manifest_type] = cls
+
+    @classmethod
+    def from_pairs(
+        cls,
+        pairs: Sequence[CalibrationPair],
+        *,
+        source_unit: TimeUnit | str | None,
+        target_unit: TimeUnit | str | None,
+    ) -> Self:
+        """Build the map a law reads from calibration pairs.
+
+        Each pair holds a position on the source axis and the value it reads
+        on the target axis, as numbers or as coordinates carrying their unit.
+        A map class that is a law of calibration implements this; the pairs
+        it receives are checked against the law, never fitted to it.
+
+        Args:
+            pairs: ``(position, value)`` pairs, in any order.
+            source_unit: The unit of the positions.
+            target_unit: The unit of the values.
+
+        Returns:
+            The map through the pairs.
+
+        Raises:
+            NotImplementedError: If the class is no law of calibration.
+            ValueError: As the implementing class states.
+        """
+        raise NotImplementedError(f"{cls.__name__} is built from no calibration pairs")
+
+    @classmethod
+    def _calibration_points(
+        cls,
+        pairs: Sequence[CalibrationPair],
+        source_unit: TimeUnit | str | None,
+        target_unit: TimeUnit | str | None,
+    ) -> list[tuple[int, CoordinateValue, CoordinateValue]]:
+        """Return ``(index, position, value)`` of *pairs*, sorted by position.
+
+        A coordinate is read as its number once its unit is checked against
+        *source_unit* or *target_unit*; *index* is the pair's place in the
+        given sequence, which every message names.
+
+        Raises:
+            ValueError: If there are fewer than two pairs, a coordinate is in
+                another unit than its axis, or two pairs share a position.
+        """
+        if len(pairs) < 2:
+            raise ValueError(
+                f"A calibration needs at least two pairs, got {len(pairs)}."
+            )
+        units = {
+            "position": None if source_unit is None else TimeUnit(source_unit),
+            "value": None if target_unit is None else TimeUnit(target_unit),
+        }
+        points = []
+        for index, pair in enumerate(pairs):
+            numbers = []
+            for role, number in zip(units, pair):
+                if isinstance(number, Coordinate):
+                    if units[role] is not None and number.unit != units[role]:
+                        raise ValueError(
+                            f"Calibration pair {index} has a {role} in "
+                            f"{number.unit.value}, not in {units[role].value}."
+                        )
+                    number = number.value
+                numbers.append(number)
+            points.append((index, numbers[0], numbers[1]))
+        points.sort(key=lambda point: point[1])
+        for (first, position, _), (second, other, _) in zip(points, points[1:]):
+            if position == other:
+                raise ValueError(
+                    f"Calibration pairs {first} and {second} share the "
+                    f"position {position}."
+                )
+        return points
 
     def __init__(
         self,

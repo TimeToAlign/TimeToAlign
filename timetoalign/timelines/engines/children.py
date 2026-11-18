@@ -18,7 +18,7 @@ from timetoalign.core.time import (
     subtract_coordinates,
 )
 from timetoalign.core.timestamp import ConversionMapsSpec, _format_coordinate_value
-from timetoalign.maps import ConversionMap
+from timetoalign.maps import ConversionMap, LinearMap
 
 from ..manifest import spell
 from ..regions import Region
@@ -520,6 +520,87 @@ class ChildrenMixin:
             name=name,
         )
         self.add_child(child, offset=offset, allow_expansion=allow_expansion)
+        return child
+
+    def create_calibrated_child(
+        self,
+        length: CoordinateSpec | None,
+        offset: CoordinateSpec,
+        calibration: Sequence[tuple[CoordinateSpec, Coordinate]],
+        *,
+        law: type[ConversionMap[Any]] = LinearMap,
+        uid: str | None = None,
+        name: str | None = None,
+    ) -> "Timeline":
+        """Create a child over a calibrated segment, with the map it reads.
+
+        A segment of this timeline is calibrated by pairs of a position and
+        the value read there in another unit, such as the labelled ticks of
+        a drawn axis. The child starts at *offset*; each position becomes a
+        child coordinate by subtracting *offset* in this timeline's own
+        arithmetic, and *law* builds the conversion map from the child's
+        unit to the values' unit through the pairs (see
+        :meth:`~timetoalign.maps.ConversionMap.from_pairs`). The map is built
+        before the child, so a refusal leaves this timeline unchanged.
+
+        Args:
+            length: Child length in this timeline's unit, or ``None`` when
+                the child's length is unknown.
+            offset: Child start coordinate.
+            calibration: ``(position, value)`` pairs, in any order: positions
+                in this timeline's coordinates, values as coordinates
+                carrying the one unit they share.
+            law: The map class whose ``from_pairs`` reads the pairs.
+            uid: Unique identifier for the child. Auto-generated if None.
+            name: Human-readable name for the child.
+
+        Returns:
+            The newly created and embedded child, carrying the map.
+
+        Raises:
+            TypeError: If a value is no ``Coordinate``.
+            ValueError: If a position lies outside the child, or *law*
+                refuses the pairs (fewer than two, a repeated position,
+                values in two units, a pair off the law), or the child does
+                not fit as in :meth:`create_child`.
+
+        Examples:
+            >>> from timetoalign.core import Coordinate
+            >>> parent = ContinuousGraphicalTimeline(length=100, unit="points")
+            >>> child = parent.create_calibrated_child(
+            ...     80, 10, [(10, Coordinate(0, "seconds")), (90, Coordinate(4, "seconds"))]
+            ... )
+            >>> child.get_conversion_map("seconds").scalar
+            0.05
+        """
+        start = self._resolve_axis_value(offset)
+        end = None if length is None else start + self._resolve_axis_value(length)
+        pairs = []
+        for index, (position, value) in enumerate(calibration):
+            if not isinstance(value, Coordinate):
+                raise TypeError(
+                    f"Calibration pair {index} has a value of type "
+                    f"{type(value).__name__}, not a Coordinate carrying its unit."
+                )
+            at = self._resolve_axis_value(position)
+            if at < start or (end is not None and at > end):
+                raise ValueError(
+                    f"Calibration pair {index} lies at {at}, outside the child "
+                    f"from {start} to {'its unknown end' if end is None else end}."
+                )
+            pairs.append((at - start, value))
+        try:
+            cmap = law.from_pairs(
+                pairs,
+                source_unit=self._unit,
+                target_unit=pairs[0][1].unit if pairs else None,
+            )
+        except ValueError as error:
+            raise ValueError(
+                f"{error} Positions are read from the child's offset {start}."
+            ) from error
+        child = self.create_child(length, offset, uid=uid, name=name)
+        child.add_conversion_map(cmap)
         return child
 
     def create_children_from_boundaries(

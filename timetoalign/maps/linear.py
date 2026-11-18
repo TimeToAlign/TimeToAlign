@@ -8,7 +8,7 @@ This module provides maps that perform affine transformations:
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, ClassVar
 
@@ -20,7 +20,7 @@ from ..core.time import (
     number_from_json,
     number_to_json,
 )
-from .base import ConversionMap, MeasureMapIds
+from .base import CalibrationPair, ConversionMap, MeasureMapIds, _calibration_fits
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -87,6 +87,68 @@ class LinearMap(ConversionMap[CoordinateValue]):
     _manifest_type: ClassVar[str | None] = "LinearMap"
     # The integer defaults leave an exact input exact: 1.0 * x is a float.
     _dict_defaults: ClassVar[dict[str, Any]] = {"scalar": 1, "offset": 0}
+
+    @classmethod
+    def from_pairs(
+        cls,
+        pairs: Sequence[CalibrationPair],
+        *,
+        source_unit: TimeUnit | str | None,
+        target_unit: TimeUnit | str | None,
+    ) -> Self:
+        """Build the line through the first and the last pair by position.
+
+        The scalar is the values' difference over the positions' difference,
+        the offset what is left at the first position, both in the numbers'
+        own arithmetic: exact pairs give an exact map, float pairs a float
+        one. Every inner pair must lie on that line, exactly for exact
+        numbers and within one ulp for floats; the line is never fitted.
+
+        Args:
+            pairs: ``(position, value)`` pairs, in any order, as numbers or
+                coordinates carrying their unit.
+            source_unit: The unit of the positions.
+            target_unit: The unit of the values.
+
+        Returns:
+            The map through the pairs.
+
+        Raises:
+            ValueError: If there are fewer than two pairs, two pairs share a
+                position, a coordinate is in another unit than its axis, or
+                an inner pair lies off the line.
+
+        Examples:
+            >>> m = LinearMap.from_pairs(
+            ...     [(0, 1), (3, 2), (6, 3)], source_unit="points", target_unit="quarters"
+            ... )
+            >>> m.scalar, m.offset
+            (Fraction(1, 3), Fraction(1, 1))
+        """
+        points = cls._calibration_points(pairs, source_unit, target_unit)
+        _, first_position, first_value = points[0]
+        _, last_position, last_value = points[-1]
+        rise = last_value - first_value
+        run = last_position - first_position
+        if isinstance(rise, (int, Fraction)) and isinstance(run, (int, Fraction)):
+            scalar = Fraction(rise) / run
+        else:
+            scalar = rise / run
+        offset = first_value - scalar * first_position
+        for index, position, value in points[1:-1]:
+            on_line = scalar * position + offset
+            if not _calibration_fits(value, on_line):
+                raise ValueError(
+                    f"Calibration pair {index} ({position}, {value}) lies off the "
+                    f"line through the first and last pair, which reads {on_line} "
+                    f"at {position}."
+                )
+        return cls(
+            scalar=scalar,
+            offset=offset,
+            source_unit=source_unit,
+            target_unit=target_unit,
+        )
 
     def __init__(
         self,

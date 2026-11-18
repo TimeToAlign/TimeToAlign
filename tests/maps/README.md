@@ -123,6 +123,20 @@ matched against anything.
 - **Inverse**: Inverse maps behave correctly ($f^{-1}(f(x)) = x$).
 - **Composition**: Composing two linear maps results in a single linear map.
 - **Fraction Support**: Validates high-precision arithmetic.
+- **Built from pairs** (`LinearMap.from_pairs`): the map is the line through
+  the first and last pair by position, so the expected scalar and offset are
+  computed by hand from those two pairs and asserted exactly, never fitted.
+  Exact pairs (`Fraction`, `int`) give an exact `Fraction` scalar; float
+  pairs give the float the two-point formula gives, and the inner pairs must
+  lie on that line — exactly for exact pairs, within one ulp of the larger of
+  value and line value for float pairs. The order of the pairs is irrelevant:
+  a shuffled list builds a map equal to the sorted one. A coordinate pair
+  carries its unit, so a `Coordinate` value in another unit than
+  `target_unit` is refused. Each refusal (fewer than two pairs, a repeated
+  position, a value in another unit, an inner pair off the line) raises
+  `ValueError` naming the offending pair by its index in the given list.
+  The base `ConversionMap.from_pairs` raises `NotImplementedError`, since a
+  law that cannot be built from pairs must say so rather than guess.
 
 ### `test_table.py` - Table-Based Maps
 

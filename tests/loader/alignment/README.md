@@ -402,6 +402,32 @@ product with 44100 is a whole sample:
 Row 7's onset is written as the JSON integer `5`, the one way a JSON number
 can differ from a float, to show it is accepted and read as 5.0 seconds.
 
+### The file as trompa-align writes it
+
+trompa-align's writers (`scripts/trompa_align.py`, `scripts/trompa-align.R` in
+https://github.com/trompamusic/trompa-align) state a note on one side only in
+two ways: a score note the performance misses gets onset `-1` (the
+note-alignment file marks the missing performance note `*`, read as `-1`),
+grouped like any other onset and so sorted first; a performed note not in the
+score gets the id `trompa-align_inserted_` + its spelled pitch, `#` written
+`s`, appended after the sorted rows; the Python writer gives that id as a bare
+string. The second fixture follows that shape, eleven rows:
+
+| obs_num | obs_mean_onset (s) | xml_id | what it states |
+|---|---|---|---|
+| 1 | -1 | `n4` | score note not performed |
+| 2–8 | the seven rows above | | as above |
+| 9 | 5.5 | `n7` | `n7` played a second time |
+| 10 | 2.75 | `"trompa-align_inserted_Cs4"` (bare string) | performed note not in the score |
+| 11 | 4.75 | `trompa-align_inserted_Cs4` (in a list) | a second one of that pitch |
+
+`n4` is the tie end, which a performance never re-attacks: a natural note to
+be missing. Row 9 repeats `n7` (a repeat played against an unrepeated
+score); rows 10 and 11 share one id, as two inserted notes of one pitch do.
+trompa-align itself keeps one row per score id (the closest candidate), so
+row 9 stands for a file another tool wrote or edited; the loader keeps it as
+stated all the same.
+
 ### What is asserted, and why it proves the loader
 
 * **Rows verbatim.** `rows` holds the seven dicts as the file states them, and
@@ -418,7 +444,7 @@ can differ from a float, to show it is accepted and read as 5.0 seconds.
   to the row's onset. On the samples timeline the claim still says seconds:
   the loader does not convert, the bundle does.
 * **Through the bundle, on a samples timeline** (`DiscretePhysicalTimeline`
-  in samples with `SamplesToSeconds(44100)`): `get_matchstamp_at(q)` on the
+  in samples with `SamplesToSeconds(44100)`; the bundle is `create_bundle`'s): `get_matchstamp_at(q)` on the
   score gives, on the performance, the integer sample of the table for each
   anchor quarter, with `is_interpolated` false. At quarter 15/4, halfway
   between the anchors at 3 (88200) and 9/2 (154350), the WarpMap gives 121275,
@@ -430,6 +456,31 @@ can differ from a float, to show it is accepted and read as 5.0 seconds.
 * **Before the first anchor**: quarter 1/4 lies on the score but before the
   first anchor (1/2); under the bundle's default `omit` policy the stamp holds
   the score alone, so the performance does not resolve.
+* **Every stated row, kept** (second fixture). `rows` is the eleven dicts
+  verbatim, the bare string included. The claims are 17 = 1 + 13 + 1 + 2, in
+  row order:
+  * claim 1, a NOMATCH from the score: not synchronous, no anchor, timeline
+    a the score and b the performance, `event_a_id` `n4`, `source_coordinate`
+    `Fraction(9, 2)` quarters, the note's own score position (a loader
+    dropping the row would give 16 claims; one placing it at -1 s would give
+    an anchor);
+  * claims 2–14, the thirteen synchronous claims of the first fixture;
+  * claim 15, synchronous, `n7` at quarter `Fraction(15, 2)` and 5.5 s: the
+    repeated id gives its own claim, not a refusal and not a merge;
+  * claims 16 and 17, NOMATCH from the performance: timeline a the
+    performance and b the score, `event_a_id` `trompa-align_inserted_Cs4`
+    verbatim, `source_coordinate` 2.75 and 4.75 seconds, as floats.
+* **The kinds are logged.** One INFO record names the file and the counts,
+  14 score notes at a time of the recording, 1 not performed, 2 performed
+  notes not in the score; one WARNING names `n7` in rows 8 and 9. The exact
+  messages are asserted, so a wrong count shows.
+* **`create_bundle`** builds what users would otherwise assemble by hand: the
+  bundle is named after the file (`stated`), holds the score in group
+  `score` and the performance in group `performance`, and carries the 17
+  claims of `create_match_claims`. On a samples timeline it answers the same
+  anchors as the hand-built bundle of the first fixture (quarter 3/2 →
+  sample 55125, 15/4 → 121275 interpolated): the NOMATCH claims add no
+  anchor, so the WarpMap is unchanged by them.
 
 ### Refusals
 
@@ -442,16 +493,12 @@ in an otherwise valid fixture, so the refusal can only come from that change.
   timeline without one → `ValueError`.
 * **Malformed rows** (`load`): `obs_num` not consecutive from 1 (`1, 2, 4`),
   a missing key, an onset that is a string or a boolean, an empty `xml_id`
-  list or an empty id, a top level that is not a list → `ValueError` naming
-  the row.
-* **An id in two rows** → `ValueError`: two performance times for one note
-  would give two contradicting claims for one score event.
-* **Negative onsets and `trompa…` ids** → `ValueError` at `load`, naming the
-  rows. trompa-align can write rows of both kinds, and neither states a score
-  note at a time of the recording: a negative onset is no time of it, and an
-  id beginning `trompa` is not an `xml:id` of the score. The loader refuses
-  them rather than skip them, so a file is never read as more complete than
-  it is; a file holding them is read once they are removed.
+  list, an empty id in a list or as a bare string, a top level that is not a
+  list → `ValueError` naming the row. None of these is a row trompa-align
+  writes.
+* **An inserted id at a negative onset** → `ValueError` naming the row: it
+  states a note on neither the score nor the recording, which no writer
+  means.
 * **A second source** → the loaders' shared single-source `ValueError`
   (`tests/loader/README.md`, "Single-source loaders"), naming the held file:
   one MAPS file aligns one performance. The held rows stay; after `clear()`

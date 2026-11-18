@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from fractions import Fraction
 from pathlib import Path
 from typing import Any
@@ -13,8 +14,12 @@ pytest.importorskip("verovio")
 
 from timetoalign import MapsLoader  # noqa: E402
 from timetoalign.alignment.bundle import AlignmentBundle  # noqa: E402
-from timetoalign.alignment.claims import Agent, MatchMetadata  # noqa: E402
-from timetoalign.core import AgentType, TimeUnit  # noqa: E402
+from timetoalign.alignment.claims import (  # noqa: E402
+    Agent,
+    MatchClaim,
+    MatchMetadata,
+)
+from timetoalign.core import AgentType, Coordinate, TimeUnit  # noqa: E402
 from timetoalign.loader.score import VerovioLoader  # noqa: E402
 from timetoalign.maps import SamplesToSeconds  # noqa: E402
 from timetoalign.timelines import (  # noqa: E402
@@ -117,12 +122,29 @@ def _seconds_timeline() -> ContinuousPhysicalTimeline:
 
 
 def _bundle(score: Timeline, performance: Timeline, maps_path: Path) -> AlignmentBundle:
-    claims = MapsLoader.from_file(maps_path).create_match_claims(score, performance)
-    bundle = AlignmentBundle()
-    bundle.add_timeline(score, as_group="score")
-    bundle.add_timeline(performance, as_group="performance")
-    bundle.add_match_claims(claims)
-    return bundle
+    return MapsLoader.from_file(maps_path).create_bundle(score, performance)
+
+
+INSERTED = "trompa-align_inserted_Cs4"
+
+
+def _stated_rows() -> list[dict[str, Any]]:
+    """The rows as trompa-align writes them: unperformed, repeated, inserted."""
+    rows: list[dict[str, Any]] = [
+        {"obs_mean_onset": -1, "xml_id": ["n4"], "obs_num": 1}
+    ]
+    rows += [{**row, "obs_num": row["obs_num"] + 1} for row in _maps_rows()]
+    rows += [
+        {"obs_mean_onset": 5.5, "xml_id": ["n7"], "obs_num": 9},
+        {"obs_mean_onset": 2.75, "xml_id": INSERTED, "obs_num": 10},
+        {"obs_mean_onset": 4.75, "xml_id": [INSERTED], "obs_num": 11},
+    ]
+    return rows
+
+
+@pytest.fixture
+def stated_path(tmp_path: Path) -> Path:
+    return _write(tmp_path / "stated.json", _stated_rows())
 
 
 # region Rows and claims
@@ -171,6 +193,104 @@ def test_metadata_is_recorded_on_every_claim(score: Timeline, maps_path: Path) -
         score, _seconds_timeline(), metadata=metadata
     )
     assert [claim.metadata for claim in claims] == [metadata] * 13
+
+
+def test_stated_rows_are_kept_verbatim(stated_path: Path) -> None:
+    loader = MapsLoader.from_file(stated_path)
+    assert loader.rows == _stated_rows()
+    assert len(loader) == 11
+
+
+def test_every_stated_row_gives_its_claims(score: Timeline, stated_path: Path) -> None:
+    performance = _seconds_timeline()
+    claims = MapsLoader.from_file(stated_path).create_match_claims(score, performance)
+    assert len(claims) == 17
+
+    unperformed = claims[0]
+    assert unperformed.is_synchronous is False
+    assert (unperformed.start_anchor, unperformed.end_anchor) == (None, None)
+    assert (unperformed.timeline_a_id, unperformed.timeline_b_id) == (
+        score.id,
+        performance.id,
+    )
+    assert (unperformed.event_a_id, unperformed.event_b_id) == ("n4", None)
+    assert unperformed.source_coordinate == Coordinate(
+        Fraction(9, 2), TimeUnit.quarters
+    )
+    assert type(unperformed.source_coordinate.value) is Fraction
+
+    aligned = [
+        (xml_id, quarter, float(onset))
+        for onset, ids, quarter, _ in ROWS
+        for xml_id in ids
+    ]
+    aligned.append(("n7", Fraction(15, 2), 5.5))
+    for claim, (xml_id, quarter, seconds) in zip(claims[1:15], aligned, strict=True):
+        assert claim.is_synchronous
+        assert claim.event_a_id == xml_id
+        assert claim.start_anchor.coordinate_a == Coordinate(quarter, TimeUnit.quarters)
+        assert claim.start_anchor.coordinate_b == Coordinate(seconds, TimeUnit.seconds)
+
+    for claim, seconds in zip(claims[15:], [2.75, 4.75], strict=True):
+        assert claim.is_synchronous is False
+        assert (claim.start_anchor, claim.end_anchor) == (None, None)
+        assert (claim.timeline_a_id, claim.timeline_b_id) == (performance.id, score.id)
+        assert (claim.event_a_id, claim.event_b_id) == (INSERTED, None)
+        assert claim.source_coordinate == Coordinate(seconds, TimeUnit.seconds)
+        assert type(claim.source_coordinate.value) is float
+
+
+def test_kinds_are_logged(stated_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level(logging.INFO, logger="timetoalign"):
+        MapsLoader.from_file(stated_path)
+    assert [(record.levelname, record.getMessage()) for record in caplog.records] == [
+        (
+            "INFO",
+            "stated.json: 14 score note(s) at a time of the recording, 1 score "
+            "note(s) not performed (negative onset), 2 performed note(s) not in "
+            "the score",
+        ),
+        (
+            "WARNING",
+            "stated.json lists 1 xml:id(s) in more than one row; each row's claim "
+            "is kept: 'n7' in rows 8, 9",
+        ),
+    ]
+
+
+def _stated(claim: MatchClaim) -> tuple[Any, ...]:
+    """What a claim states, without its generated id."""
+    anchor = claim.start_anchor
+    return (
+        claim.timeline_a_id,
+        claim.timeline_b_id,
+        claim.event_a_id,
+        claim.is_synchronous,
+        claim.source_coordinate,
+        None if anchor is None else (anchor.coordinate_a, anchor.coordinate_b),
+    )
+
+
+def test_create_bundle(score: Timeline, stated_path: Path) -> None:
+    performance = _samples_timeline()
+    loader = MapsLoader.from_file(stated_path)
+    bundle = loader.create_bundle(score, performance)
+    assert bundle.name == "stated"
+    assert bundle.get_group_for_timeline(score.id).name == "score"
+    assert bundle.get_group_for_timeline(performance.id).name == "performance"
+    # Claims carry generated ids, so they are compared by what they state.
+    assert [_stated(claim) for claim in bundle.get_match_claims()] == [
+        _stated(claim) for claim in loader.create_match_claims(score, performance)
+    ]
+    for quarter, sample, interpolated in [
+        (Fraction(3, 2), 55125, False),
+        (Fraction(15, 4), 121275, True),
+    ]:
+        stamp = bundle.get_matchstamp_at(quarter, score.id)
+        assert stamp.get_coordinate_for(
+            performance.id, format="coordinate"
+        ) == Coordinate(sample, TimeUnit.samples)
+        assert stamp.is_interpolated is interpolated
 
 
 # endregion
@@ -272,10 +392,13 @@ def _changed(change) -> list[dict[str, Any]]:
         ),
         (_changed(lambda r: r[4].update(xml_id=[])), r"MAPS row 5 .*xml_id must be"),
         (_changed(lambda r: r[4].update(xml_id=[""])), r"MAPS row 5 .*xml_id must be"),
+        (_changed(lambda r: r[4].update(xml_id="")), r"MAPS row 5 .*xml_id must be"),
+        (_changed(lambda r: r[4].update(xml_id=7)), r"MAPS row 5 .*xml_id must be"),
         ({"rows": _maps_rows()}, r"holds a JSON list of rows"),
         (
-            _changed(lambda r: r[5].update(xml_id=["n6", "n2"])),
-            r"MAPS rows 2 and 6 .* both name xml:id 'n2'",
+            _changed(lambda r: r[5].update(obs_mean_onset=-1, xml_id=[INSERTED])),
+            r"MAPS row 6 .* states the inserted note\(s\) trompa-align_inserted_Cs4 "
+            r"at the negative onset -1",
         ),
     ],
     ids=[
@@ -285,28 +408,16 @@ def _changed(change) -> list[dict[str, Any]]:
         "boolean-onset",
         "no-ids",
         "empty-id",
+        "empty-string-id",
+        "number-id",
         "not-a-list",
-        "id-in-two-rows",
+        "inserted-at-negative-onset",
     ],
 )
 def test_malformed_rows_are_refused(tmp_path: Path, rows: Any, message: str) -> None:
     path = _write(tmp_path / "malformed.json", rows)
     with pytest.raises(ValueError, match=message):
         MapsLoader.from_file(path)
-
-
-def test_negative_onsets_and_trompa_ids_are_refused(tmp_path: Path) -> None:
-    rows = _maps_rows()
-    rows[2]["obs_mean_onset"] = -1
-    rows.append(
-        {"obs_mean_onset": 6.0, "xml_id": ["trompa-x1", "trompa-x2"], "obs_num": 8}
-    )
-    path = _write(tmp_path / "unscored.json", rows)
-    with pytest.raises(ValueError) as raised:
-        MapsLoader.from_file(path)
-    assert str(raised.value).endswith(
-        "Remove them to read the file: row 3 (onset -1); row 8 (ids trompa-x1, trompa-x2)."
-    )
 
 
 def test_a_second_source_is_refused(tmp_path: Path, maps_path: Path) -> None:

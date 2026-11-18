@@ -1,7 +1,7 @@
 """MapsLoader: MAPS score-to-performance alignments as MatchClaims.
 
 A MAPS file (the alignment JSON of the TROMPA project's ``trompa-align``) is a
-list of observations, one per score onset::
+list of observations, one per performance onset::
 
     [
         {"obs_mean_onset": 0.5, "xml_id": ["n1", "n2"], "obs_num": 1},
@@ -9,23 +9,36 @@ list of observations, one per score onset::
     ]
 
 Each row pairs a set of simultaneous score notes, named by their MEI
-``xml:id``, with one time in seconds: the mean onset observed for those notes
-in a recording. ``obs_num`` numbers the rows from 1.
+``xml:id``, with one time in seconds: the onset observed for those notes in a
+recording. ``obs_num`` numbers the rows from 1.
 
-The loader keeps the rows verbatim and turns them into synchronous projection
+trompa-align (https://github.com/trompamusic/trompa-align,
+``scripts/trompa_align.py`` and ``scripts/trompa-align.R``) writes two more
+kinds of rows, both stating a note on one side only:
+
+* **A score note not performed.** The note-alignment file it reconciles marks
+  a missing performance note with ``*``, which it reads as ``-1``; such notes
+  are grouped like any other, under ``obs_mean_onset`` ``-1``.
+* **A performed note not in the score.** Its id is
+  ``trompa-align_inserted_`` followed by the note's spelled pitch (``#``
+  written ``s``), so two inserted notes of one pitch share an id; its onset is
+  the note's time in the recording. The Python writer gives this id as a bare
+  string rather than a one-item list.
+
+The loader keeps the rows verbatim and states each as
 :class:`~timetoalign.alignment.claims.MatchClaim` objects between a score
 timeline whose events carry those ``xml:id`` values (as
 :class:`~timetoalign.loader.score.VerovioLoader` gives) and a performance
 timeline::
 
-    loader = MapsLoader.from_file("alignment.json")
-    claims = loader.create_match_claims(score, performance)
+    bundle = MapsLoader.from_file("alignment.json").create_bundle(score, performance)
 """
 
 from __future__ import annotations
 
 import json
 import math
+from collections import Counter
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -35,12 +48,13 @@ from timetoalign.core.time import Coordinate
 from timetoalign.loader.base import AlignmentLoader
 
 if TYPE_CHECKING:
+    from timetoalign.alignment.bundle import AlignmentBundle
     from timetoalign.timelines.base import Timeline
 
 _KEYS = ("obs_mean_onset", "xml_id", "obs_num")
 
-#: Prefix of the ids trompa-align writes for what is no element of the score.
-_NON_SCORE_ID_PREFIX = "trompa"
+#: Prefix of the ids trompa-align writes for a performed note not in the score.
+_INSERTED_ID_PREFIX = "trompa-align_inserted_"
 
 
 class MapsLoader(AlignmentLoader):
@@ -49,20 +63,30 @@ class MapsLoader(AlignmentLoader):
     **Usage follows the standard loader two-phase pattern:**
 
     1. ``loader.load(path)`` — read and validate the rows of one MAPS file.
-    2. ``loader.create_match_claims(score, performance)`` — one claim per
-       listed ``xml:id``.
+    2. ``loader.create_bundle(score, performance)`` — both timelines and the
+       claims in one bundle; ``create_match_claims`` gives the claims alone.
 
-    ``load`` refuses a file it cannot read as stated: a missing key,
-    ``obs_num`` not consecutive from 1, an onset that is not a JSON number,
-    an ``xml_id`` that is not a non-empty list of non-empty strings, and an id
-    listed in two rows (two performance times for one note). It also refuses
-    two kinds of rows trompa-align can write, because neither pairs a score
-    note with a time of the recording: a **negative onset**, and an id
-    beginning ``trompa``, which is not an ``xml:id`` of the score. They are
-    refused rather than skipped, so a file is never read as more complete
-    than it is; remove them to read the rest.
+    Every row is kept as stated, one claim per listed id:
 
-    One loader reads one file: a MAPS file aligns one performance.
+    * a non-negative onset: a synchronous claim between the score note and
+      the onset;
+    * a negative onset (trompa-align's ``-1`` for a note not performed): a
+      NOMATCH claim from the score side, at the note's score coordinate;
+    * an id beginning ``trompa-align_inserted_`` (a performed note not in the
+      score): a NOMATCH claim from the performance side, at the onset, the id
+      kept verbatim.
+
+    An id listed in two rows (say, a repeat played against an unrepeated
+    score) gives one claim per row, and ``load`` logs it. ``load`` logs the
+    count of each kind, and refuses a file it cannot read as stated: a
+    missing key, ``obs_num`` not consecutive from 1, an onset that is not a
+    JSON number, an ``xml_id`` that is neither a non-empty string nor a
+    non-empty list of them, and an inserted id at a negative onset, which
+    states a note on neither side.
+
+    One loader reads one file: a MAPS file aligns one performance. Its
+    payload is the rows, not an ``AlignmentStore``, so ``store`` stays
+    ``None``.
     """
 
     _single_source = True
@@ -73,6 +97,7 @@ class MapsLoader(AlignmentLoader):
 
     # region Loading
 
+    # The payload is the rows; AlignmentLoader's hooks are typed for a store.
     def _load_source(self, source: Path) -> list[dict[str, Any]]:  # type: ignore[override]
         """Read and validate the rows of one MAPS file.
 
@@ -91,13 +116,45 @@ class MapsLoader(AlignmentLoader):
         _validate_rows(rows, source)
         return rows
 
+    # The payload is the rows; AlignmentLoader's hooks are typed for a store.
     def _accept_source(  # type: ignore[override]
         self, path: Path, source_meta: dict[str, Any], payload: list[dict[str, Any]]
     ) -> None:
-        """Keep the rows of the one file this loader reads."""
+        """Keep the rows of the one file this loader reads, and log their kinds."""
         self._rows = payload
         self._sources.append(path)
         self._source_metadata.append(source_meta)
+        kinds: Counter[str] = Counter()
+        rows_by_id: dict[str, list[int]] = {}
+        for row in payload:
+            for xml_id in _ids(row):
+                if xml_id.startswith(_INSERTED_ID_PREFIX):
+                    kinds["inserted"] += 1
+                    continue
+                kinds["unperformed" if row["obs_mean_onset"] < 0 else "aligned"] += 1
+                rows_by_id.setdefault(xml_id, []).append(row["obs_num"])
+        self._logger.info(
+            "%s: %d score note(s) at a time of the recording, %d score note(s) "
+            "not performed (negative onset), %d performed note(s) not in the score",
+            path.name,
+            kinds["aligned"],
+            kinds["unperformed"],
+            kinds["inserted"],
+        )
+        repeated = {
+            xml_id: rows for xml_id, rows in rows_by_id.items() if len(rows) > 1
+        }
+        if repeated:
+            self._logger.warning(
+                "%s lists %d xml:id(s) in more than one row; each row's claim is "
+                "kept: %s",
+                path.name,
+                len(repeated),
+                "; ".join(
+                    f"{xml_id!r} in rows {', '.join(map(str, rows))}"
+                    for xml_id, rows in repeated.items()
+                ),
+            )
 
     def clear(self) -> None:
         """Forget the loaded file."""
@@ -124,12 +181,15 @@ class MapsLoader(AlignmentLoader):
         *,
         metadata: MatchMetadata | None = None,
     ) -> list[MatchClaim]:
-        """Return one synchronous claim per ``xml:id`` of every row.
+        """Return one claim per listed id of every row, as the row states it.
 
-        A claim relates the event named by the id on ``score``, at its start
-        coordinate there, to ``performance`` at the row's onset in seconds, as
-        the file states it. A performance timeline in another unit reaches
-        seconds through its C-Map; an
+        A note at a non-negative onset gives a synchronous claim relating the
+        event named by the id on ``score``, at its start coordinate there, to
+        ``performance`` at the onset in seconds. A note at a negative onset
+        gives a NOMATCH claim from ``score`` at that start coordinate; an
+        inserted id a NOMATCH claim from ``performance`` at the onset in
+        seconds, the id kept as the event id. A performance timeline in
+        another unit reaches seconds through its C-Map; an
         :class:`~timetoalign.alignment.bundle.AlignmentBundle` holding both
         timelines converts the claims onto its axis.
 
@@ -145,7 +205,7 @@ class MapsLoader(AlignmentLoader):
 
         Raises:
             RuntimeError: If no file has been loaded.
-            KeyError: If an id names no event of ``score``.
+            KeyError: If an id of a score note names no event of ``score``.
             ValueError: If ``performance`` is not in seconds and has no C-Map
                 to seconds.
         """
@@ -154,7 +214,18 @@ class MapsLoader(AlignmentLoader):
         claims: list[MatchClaim] = []
         for row in rows:
             onset = Coordinate(row["obs_mean_onset"], TimeUnit.seconds)
-            for xml_id in row["xml_id"]:
+            for xml_id in _ids(row):
+                if xml_id.startswith(_INSERTED_ID_PREFIX):
+                    claims.append(
+                        MatchClaim.nomatch(
+                            event={"id": xml_id, "start": onset},
+                            source_tl_id=performance.id,
+                            target_tl_id=score.id,
+                            unit=TimeUnit.seconds,
+                            metadata=metadata,
+                        )
+                    )
+                    continue
                 try:
                     start = score.get_coordinate_for(xml_id, format="coordinate")
                 except KeyError:
@@ -163,6 +234,17 @@ class MapsLoader(AlignmentLoader):
                         f"event of score timeline {score.id!r}; is it the score the file "
                         "was made for?"
                     ) from None
+                if onset.value < 0:
+                    claims.append(
+                        MatchClaim.nomatch(
+                            event={"id": xml_id, "start": start},
+                            source_tl_id=score.id,
+                            target_tl_id=performance.id,
+                            unit=score.unit,
+                            metadata=metadata,
+                        )
+                    )
+                    continue
                 claims.append(
                     MatchClaim.from_projection(
                         {"id": xml_id, "start": start},
@@ -174,6 +256,42 @@ class MapsLoader(AlignmentLoader):
                     )
                 )
         return claims
+
+    def create_bundle(
+        self,
+        score: Timeline,
+        performance: Timeline,
+        *,
+        metadata: MatchMetadata | None = None,
+    ) -> AlignmentBundle:
+        """Return a bundle of both timelines, related by the file's claims.
+
+        The score joins as group ``"score"``, the performance as group
+        ``"performance"``, and :meth:`create_match_claims` gives the claims.
+        The bundle is named after the file.
+
+        Args:
+            score: The timeline holding the events the ids name.
+            performance: The timeline of the recording.
+            metadata: Provenance recorded on every claim.
+
+        Returns:
+            The bundle.
+
+        Raises:
+            RuntimeError: If no file has been loaded.
+            KeyError: If an id of a score note names no event of ``score``.
+            ValueError: If ``performance`` is not in seconds and has no C-Map
+                to seconds.
+        """
+        from timetoalign.alignment.bundle import AlignmentBundle
+
+        claims = self.create_match_claims(score, performance, metadata=metadata)
+        bundle = AlignmentBundle(name=self._sources[0].stem)
+        bundle.add_timeline(score, as_group="score")
+        bundle.add_timeline(performance, as_group="performance")
+        bundle.add_match_claims(claims)
+        return bundle
 
     # endregion
 
@@ -191,7 +309,10 @@ class MapsLoader(AlignmentLoader):
 
     def _repr_affordances(self) -> list[str]:
         """Return the invocation snippet for the ``Try`` row."""
-        return ["create_match_claims(score, performance)"]
+        return [
+            "create_bundle(score, performance)",
+            "create_match_claims(score, performance)",
+        ]
 
     # endregion
 
@@ -207,12 +328,16 @@ class MapsLoader(AlignmentLoader):
     # endregion
 
 
+def _ids(row: dict[str, Any]) -> list[str]:
+    """Return a row's ids; a bare string is one id."""
+    ids = row["xml_id"]
+    return [ids] if isinstance(ids, str) else ids
+
+
 def _validate_rows(rows: Any, source: Path) -> None:
     """Raise unless *rows* are MAPS rows this loader reads as stated."""
     if not isinstance(rows, list):
         raise ValueError(f"A MAPS file holds a JSON list of rows; {source} does not.")
-    refused: list[str] = []
-    seen: dict[str, int] = {}
     for position, row in enumerate(rows, start=1):
         if not isinstance(row, dict) or any(key not in row for key in _KEYS):
             raise ValueError(
@@ -237,46 +362,37 @@ def _validate_rows(rows: Any, source: Path) -> None:
             )
         ids = row["xml_id"]
         if (
-            not isinstance(ids, list)
+            not isinstance(ids, (str, list))
             or not ids
-            or not all(isinstance(xml_id, str) and xml_id for xml_id in ids)
+            or not all(isinstance(xml_id, str) and xml_id for xml_id in _ids(row))
         ):
             raise ValueError(
-                f"MAPS row {position} of {source}: xml_id must be a non-empty list of "
-                f"non-empty strings; got {ids!r}."
+                f"MAPS row {position} of {source}: xml_id must be a non-empty string "
+                f"or a non-empty list of them; got {ids!r}."
             )
-        non_score = [
-            xml_id for xml_id in ids if xml_id.startswith(_NON_SCORE_ID_PREFIX)
+        inserted = [
+            xml_id for xml_id in _ids(row) if xml_id.startswith(_INSERTED_ID_PREFIX)
         ]
-        if onset < 0:
-            refused.append(f"row {position} (onset {onset})")
-        if non_score:
-            refused.append(f"row {position} (ids {', '.join(non_score)})")
-        if onset < 0 or non_score:
-            continue
-        for xml_id in ids:
-            if xml_id in seen:
-                raise ValueError(
-                    f"MAPS rows {seen[xml_id]} and {position} of {source} both name "
-                    f"xml:id {xml_id!r}: two performance times for one score note."
-                )
-            seen[xml_id] = position
-    if refused:
-        raise ValueError(
-            f"{source} holds rows that pair no score note with a time of the "
-            "recording: a negative onset is no time of it, and an id beginning "
-            f"{_NON_SCORE_ID_PREFIX!r} is no xml:id of the score. Remove them to read "
-            f"the file: {'; '.join(refused)}."
-        )
+        if onset < 0 and inserted:
+            raise ValueError(
+                f"MAPS row {position} of {source} states the inserted note(s) "
+                f"{', '.join(inserted)} at the negative onset {onset}: a note on "
+                "neither the score nor the recording."
+            )
 
 
 def _require_seconds(performance: Timeline, rows: list[dict[str, Any]]) -> None:
-    """Raise unless a position in seconds resolves on *performance*."""
-    if performance.unit == TimeUnit.seconds or not rows:
+    """Raise unless a position in seconds resolves on *performance*.
+
+    The probe is the first non-negative onset; with none, no claim places
+    anything on *performance*.
+    """
+    onsets = [row["obs_mean_onset"] for row in rows if row["obs_mean_onset"] >= 0]
+    if performance.unit == TimeUnit.seconds or not onsets:
         return
     try:
         performance.get_coordinate_at(
-            Coordinate(rows[0]["obs_mean_onset"], TimeUnit.seconds), format="coordinate"
+            Coordinate(onsets[0], TimeUnit.seconds), format="coordinate"
         )
     except ValueError as error:
         raise ValueError(

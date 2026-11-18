@@ -478,11 +478,24 @@ so a writer that agreed only with itself could not pass.
   and the serialization being kept independently: a writer that kept one of
   the three by accident (always YAML, always minimal, always styling) fails
   on the texts that differ in it.
-- **The form is inferred from the keys at their defaults.** A minimal
-  manifest with one key stated at its default (`"meta": {}` on a timeline)
-  is not minimal: it is written back in the complete form,
+- **The form is inferred from the keys at their defaults.** The form,
+  styling and serialization are TimeToShare's `file_form`: a text is minimal
+  when `dumps(minimal(value))` equals `dumps(value)`, so integers and floats
+  are told apart (before, the two values were compared with `==`, where `0`
+  equals `0.0`; no package fixture, nor any of them with one integral number
+  swapped between integer and float, reads differently under the two rules,
+  because canonical order respells the numbers of both sides alike). A
+  minimal manifest with one key stated at its default (`"meta": {}` on a
+  timeline) is not minimal: it is written back in the complete form,
   `dumps(complete(manifest))`, while the same manifest without that key is
-  written back as it was.
+  written back as it was. A default stated as a float of the integer default
+  (`offset: 0.0` on a `LinearMap`, whose default is `0`) is a key at its
+  default all the same: the text reads as complete and is written back as
+  `dumps(complete(manifest))`, the float kept.
+- **Writing goes through TimeToShare's `dumps_file`** with the complete
+  `to_dict(minimal=False)`; the byte-identical round trips of the minimal
+  twins hold only because `minimal` of the complete manifest equals the
+  library's own minimal manifest for every fixture.
 - **Styling is the `graphical` object.** A one-group manifest file without
   `graphical` read as a `TimelineGroup` is written back without it, although
   `to_dict()` writes the group's display order there; the same file with

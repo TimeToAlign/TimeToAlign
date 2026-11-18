@@ -202,6 +202,25 @@ def test_a_key_at_its_default_makes_the_file_complete(tmp_path: Path) -> None:
     assert _round_trip(AlignmentBundle, text, tmp_path) == text
 
 
+def test_a_float_at_an_integer_default_makes_the_file_complete(tmp_path: Path) -> None:
+    """``offset: 0.0`` states the default ``0``: complete, the float kept."""
+    stated = copy.deepcopy(SIMPLE)
+    stated["timelines"][1]["conversion_maps"] = [
+        {
+            "id": "cmap_1",
+            "offset": 0.0,
+            "scalar": 48000,
+            "source_unit": "seconds",
+            "target_unit": "samples",
+            "type": "LinearMap",
+        }
+    ]
+    validate(stated)
+    written = _round_trip(AlignmentBundle, dumps(stated), tmp_path)
+    assert written == dumps(complete(stated))
+    assert "        offset: 0.0\n" in written
+
+
 def test_styling_is_kept_as_read(tmp_path: Path) -> None:
     """A group file without ``graphical`` stays without it; with one it keeps it."""
     group = _write(tmp_path / "group.yaml", dumps(GROUPED))

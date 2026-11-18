@@ -94,38 +94,43 @@ class LinearMap(ConversionMap[CoordinateValue]):
         pairs: Sequence[CalibrationPair],
         *,
         source_unit: TimeUnit | str | None,
-        target_unit: TimeUnit | str | None,
+        value_unit: TimeUnit | str | None = None,
     ) -> Self:
         """Build the line through the first and the last pair by position.
 
         The scalar is the values' difference over the positions' difference,
         the offset what is left at the first position, both in the numbers'
         own arithmetic: exact pairs give an exact map, float pairs a float
-        one. Every inner pair must lie on that line, exactly for exact
-        numbers and within one ulp for floats; the line is never fitted.
+        one. Every inner pair is checked against that line evaluated exactly
+        on the numbers as given: exact pairs must lie on it, and a float
+        pair may miss it by at most one ulp of its value, the rounding of
+        its printed decimals. The line is never fitted.
 
         Args:
-            pairs: ``(position, value)`` pairs, in any order, as numbers or
-                coordinates carrying their unit.
+            pairs: ``(position, value)`` pairs, in any order: positions as
+                numbers or coordinates, values as coordinates carrying the
+                one unit they share or as numbers in *value_unit*.
             source_unit: The unit of the positions.
-            target_unit: The unit of the values.
+            value_unit: The unit of the values, the map's target unit. Needed
+                when a value is a number; a coordinate value must be in it.
 
         Returns:
             The map through the pairs.
 
         Raises:
+            TypeError: If a value is a number and no *value_unit* is given.
             ValueError: If there are fewer than two pairs, two pairs share a
                 position, a coordinate is in another unit than its axis, or
                 an inner pair lies off the line.
 
         Examples:
             >>> m = LinearMap.from_pairs(
-            ...     [(0, 1), (3, 2), (6, 3)], source_unit="points", target_unit="quarters"
+            ...     [(0, 1), (3, 2), (6, 3)], source_unit="points", value_unit="quarters"
             ... )
             >>> m.scalar, m.offset
             (Fraction(1, 3), Fraction(1, 1))
         """
-        points = cls._calibration_points(pairs, source_unit, target_unit)
+        points, value_unit = cls._calibration_points(pairs, source_unit, value_unit)
         _, first_position, first_value = points[0]
         _, last_position, last_value = points[-1]
         rise = last_value - first_value
@@ -135,19 +140,29 @@ class LinearMap(ConversionMap[CoordinateValue]):
         else:
             scalar = rise / run
         offset = first_value - scalar * first_position
+        exact = all(
+            isinstance(number, (int, Fraction))
+            for _, *numbers in points
+            for number in numbers
+        )
+        exact_slope = (Fraction(last_value) - Fraction(first_value)) / (
+            Fraction(last_position) - Fraction(first_position)
+        )
         for index, position, value in points[1:-1]:
-            on_line = scalar * position + offset
-            if not _calibration_fits(value, on_line):
+            on_line = Fraction(first_value) + exact_slope * (
+                Fraction(position) - Fraction(first_position)
+            )
+            if not _calibration_fits(value, on_line, exact=exact):
                 raise ValueError(
                     f"Calibration pair {index} ({position}, {value}) lies off the "
-                    f"line through the first and last pair, which reads {on_line} "
-                    f"at {position}."
+                    f"line through the first and last pair, which reads "
+                    f"{on_line if exact else float(on_line)} at {position}."
                 )
         return cls(
             scalar=scalar,
             offset=offset,
             source_unit=source_unit,
-            target_unit=target_unit,
+            target_unit=value_unit,
         )
 
     def __init__(

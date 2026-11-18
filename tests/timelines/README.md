@@ -2063,7 +2063,11 @@ case.
   is probed at an inner tick (213.88223410258962 → 10.000000000000002, the
   float the line gives, one ulp above the label) and at the end (→ 40.0).
   These are the values of plain float arithmetic; a library that rounded,
-  fitted or guessed a ratio would give other bits and fail.
+  fitted or guessed a ratio would give other bits and fail. The inner ticks
+  are checked on the child positions against the line through the end ticks
+  evaluated exactly: they lie 0.75, 0.75 and 0.37 ulp of their labels off it,
+  within the one-ulp bound of `LinearMap.from_pairs` (see
+  `tests/maps/README.md`).
 - **Exact axes stay exact.** On a `fraction` parent, `Fraction` positions and
   `quarters` values give a `Fraction` scalar and offset and an exact
   conversion.
@@ -2078,11 +2082,22 @@ case.
 - **Every refusal names the offending pair.** Fewer than two pairs, a
   repeated position, values in two units, an inner pair off the line, a
   position before the offset or after its end — each raises `ValueError`
-  with a message naming the pair; a value that is no `Coordinate` raises
-  `TypeError`, since without a unit there is no target axis.
-- **Every timeline class has it.** The method lives with `create_child()` on
-  the children engine; the child is the parent's spawn class, in the
-  parent's unit and number type, with the given id and name.
+  with a message naming the pair; a number given as a value without
+  `value_unit` raises `TypeError` naming that keyword, since without a unit
+  there is no target axis.
+- **Values come as coordinates or as numbers in `value_unit`.** Numbers with
+  `value_unit` build the same map as the equal coordinates without it, and a
+  `Coordinate` value in another unit than `value_unit` is refused.
+- **Every timeline class has it.** One test runs over the six leaf classes
+  (continuous and discrete, in the three domains) with their default units
+  and number types: integer positions and lengths on the discrete parents,
+  floats on the float parents, `Fraction`s on the `quarters` parent. The
+  pairs (10 → 0, 50 → 2, 90 → 4, child from 10 to 90) read in `quarters`, or
+  in `seconds` for the logical parents, so the scalar is 4/80: the exact
+  `Fraction(1, 20)` where positions and values are both exact, the float
+  0.05 where either is a float. The child is the parent's class, in its unit
+  and number type, and the map reads the inner pair's value exactly.
+- **Identity.** The child gets the given id and name.
 
 ---
 

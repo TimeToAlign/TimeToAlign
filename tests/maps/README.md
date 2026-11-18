@@ -127,15 +127,30 @@ matched against anything.
   the first and last pair by position, so the expected scalar and offset are
   computed by hand from those two pairs and asserted exactly, never fitted.
   Exact pairs (`Fraction`, `int`) give an exact `Fraction` scalar; float
-  pairs give the float the two-point formula gives, and the inner pairs must
-  lie on that line — exactly for exact pairs, within one ulp of the larger of
-  value and line value for float pairs. The order of the pairs is irrelevant:
-  a shuffled list builds a map equal to the sorted one. A coordinate pair
-  carries its unit, so a `Coordinate` value in another unit than
-  `target_unit` is refused. Each refusal (fewer than two pairs, a repeated
-  position, a value in another unit, an inner pair off the line) raises
-  `ValueError` naming the offending pair by its index in the given list.
-  The base `ConversionMap.from_pairs` raises `NotImplementedError`, since a
+  pairs give the float the two-point formula gives. The order of the pairs is
+  irrelevant: a shuffled list builds a map equal to the sorted one.
+- **The check of the inner pairs is a stated bound.** Each inner pair is
+  compared with the line through the end pairs evaluated exactly, on the
+  `Fraction` of every number as given, so the comparison itself rounds
+  nothing. Exact pairs must lie on that line. When any number is a float, a
+  value may miss the exact line by at most one ulp of the value — the rounding
+  of its printed decimals and nothing more. The bound is probed at its edge
+  on the line y = x through (0.0, 0.0) and (2.0, 2.0), where the exact line
+  reads 1 at 1.0: the floats one ulp above 1 (1.0000000000000002) and half an
+  ulp of 1 below it (0.9999999999999999, which is one ulp of itself) pass,
+  while the next floats outward (1.0000000000000004, 0.9999999999999998) are
+  refused. Those values follow from the definition of the float grid, not
+  from the library. On the drawn-axis specimen (`test_calibrated_child.py`)
+  the label 10.0 lies 0.75 ulp below the exact line and passes; the next
+  float below it, 9.999999999999998, lies 1.75 ulps below and is refused.
+- **Values carry a unit.** Values are coordinates sharing one unit, which
+  becomes the map's target unit, or numbers read in `value_unit`. A number
+  without `value_unit` raises `TypeError` naming the keyword, and a
+  `Coordinate` value in another unit than `value_unit` (or than the first
+  coordinate value) is refused. Each refusal (fewer than two pairs, a
+  repeated position, a value in another unit, an inner pair off the line)
+  names the offending pair by its index in the given list. The base
+  `ConversionMap.from_pairs` raises `NotImplementedError`, since a
   law that cannot be built from pairs must say so rather than guess.
 
 ### `test_table.py` - Table-Based Maps

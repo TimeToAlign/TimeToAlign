@@ -10,7 +10,15 @@ import pytest
 
 from timetoalign.core import Coordinate, IdCoordinate
 from timetoalign.maps import LinearMap
-from timetoalign.timelines import ContinuousGraphicalTimeline, Timeline
+from timetoalign.timelines import (
+    ContinuousGraphicalTimeline,
+    ContinuousLogicalTimeline,
+    ContinuousPhysicalTimeline,
+    DiscreteGraphicalTimeline,
+    DiscreteLogicalTimeline,
+    DiscretePhysicalTimeline,
+    Timeline,
+)
 
 # A seconds axis drawn in points: the five labelled ticks of a ScoreWarp drawing.
 TICKS = [
@@ -156,11 +164,75 @@ class TestInputs:
         assert child.number_type == parent.number_type
         assert child.get_conversion_map("seconds").scalar == 0.05
 
+    def test_numbers_in_value_unit(self):
+        by_number = small_parent().create_calibrated_child(
+            80.0, 10.0, [(10.0, 0.0), (50.0, 2.0), (90.0, 4.0)], value_unit="seconds"
+        )
+        by_coordinate = calibrate_small(
+            [(10.0, seconds(0)), (50.0, seconds(2)), (90.0, seconds(4))]
+        )
+        cmap = by_number.get_conversion_map("seconds")
+        assert cmap.target_unit.value == "seconds"
+        assert cmap.scalar == 0.05
+        assert cmap == by_coordinate.get_conversion_map("seconds")
+
+    def test_value_unit_disagreeing_with_a_coordinate(self):
+        parent = small_parent()
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "Calibration pair 1 has a value in seconds, not in quarters." + SUFFIX
+            ),
+        ):
+            parent.create_calibrated_child(
+                80.0, 10.0, [(10.0, 0), (90.0, seconds(4))], value_unit="quarters"
+            )
+        assert parent.n_children == 0
+
     def test_explicit_law(self):
         child = small_parent().create_calibrated_child(
             80.0, 10.0, [(10.0, seconds(0)), (90.0, seconds(4))], law=LinearMap
         )
         assert type(child.get_conversion_map("seconds")) is LinearMap
+
+
+# Each leaf class with its default unit, the number its axis takes, the unit
+# the values read in, and the scalar 4/80 in the arithmetic of the pairs.
+LEAVES = [
+    (ContinuousPhysicalTimeline, float, "quarters", 0.05),
+    (DiscretePhysicalTimeline, int, "quarters", Fraction(1, 20)),
+    (ContinuousLogicalTimeline, Fraction, "seconds", 0.05),
+    (DiscreteLogicalTimeline, int, "seconds", 0.05),
+    (ContinuousGraphicalTimeline, float, "quarters", 0.05),
+    (DiscreteGraphicalTimeline, int, "quarters", Fraction(1, 20)),
+]
+
+
+@pytest.mark.parametrize(
+    "cls, number, value_unit, scalar",
+    LEAVES,
+    ids=[leaf[0].__name__ for leaf in LEAVES],
+)
+def test_every_leaf_class(cls, number, value_unit, scalar):
+    parent = cls(length=number(100))
+    child = parent.create_calibrated_child(
+        number(80),
+        number(10),
+        [
+            (number(position), Coordinate(value, value_unit))
+            for position, value in [(10, 0), (50, 2), (90, 4)]
+        ],
+    )
+    assert type(child) is cls
+    assert child.unit == parent.unit
+    assert child.number_type == parent.number_type
+    assert parent.get_child_offset(child.id).value == number(10)
+    cmap = child.get_conversion_map(value_unit)
+    assert cmap.source_unit == parent.unit
+    assert cmap.target_unit.value == value_unit
+    assert cmap.scalar == scalar
+    assert type(cmap.scalar) is type(scalar)
+    assert cmap(number(40)) == 2
 
 
 class TestRefusals:
@@ -221,12 +293,14 @@ class TestRefusals:
         ):
             calibrate_small([(10.0, seconds(0)), (90.5, seconds(4))])
 
-    def test_value_without_unit(self):
+    def test_number_without_value_unit(self):
+        parent = small_parent()
         with pytest.raises(
             TypeError,
             match=re.escape(
                 "Calibration pair 0 has a value of type int, not a Coordinate "
-                "carrying its unit."
+                "carrying its unit; give value_unit to read numbers."
             ),
         ):
-            calibrate_small([(10.0, 0), (90.0, seconds(4))])
+            parent.create_calibrated_child(80.0, 10.0, [(10.0, 0), (90.0, seconds(4))])
+        assert parent.n_children == 0

@@ -37,17 +37,21 @@ CalibrationPair = tuple[
 ]
 
 
-def _calibration_fits(value: CoordinateValue, expected: CoordinateValue) -> bool:
-    """Whether a calibration *value* agrees with the value a law *expected*.
+def _calibration_fits(
+    value: CoordinateValue, on_line: Fraction, *, exact: bool
+) -> bool:
+    """Whether a calibration *value* agrees with the value *on_line* of a law.
 
-    Exact numbers must be equal. A float may differ by one ulp of the larger
-    of the two magnitudes: the law's own float arithmetic rounds once, the
-    value as written does not.
+    *on_line* is the law evaluated exactly on the numbers as given, so the
+    comparison adds no rounding of its own. Exact pairs must hit it exactly.
+    Otherwise the value may differ from it by at most one ulp of the value:
+    a float carries the rounding of its printed decimals, and that rounding
+    is all the tolerance covers.
     """
-    if isinstance(value, (int, Fraction)) and isinstance(expected, (int, Fraction)):
-        return value == expected
-    tolerance = math.ulp(max(abs(float(value)), abs(float(expected))))
-    return abs(float(value) - float(expected)) <= tolerance
+    difference = abs(Fraction(value) - on_line)
+    if exact:
+        return difference == 0
+    return difference <= Fraction(math.ulp(float(value)))
 
 
 # region ConversionMap
@@ -121,25 +125,28 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
         pairs: Sequence[CalibrationPair],
         *,
         source_unit: TimeUnit | str | None,
-        target_unit: TimeUnit | str | None,
+        value_unit: TimeUnit | str | None = None,
     ) -> Self:
         """Build the map a law reads from calibration pairs.
 
         Each pair holds a position on the source axis and the value it reads
-        on the target axis, as numbers or as coordinates carrying their unit.
-        A map class that is a law of calibration implements this; the pairs
-        it receives are checked against the law, never fitted to it.
+        on the target axis. Values are coordinates carrying the one unit they
+        share, or numbers in *value_unit*. A map class that is a law of
+        calibration implements this; the pairs it receives are checked
+        against the law, never fitted to it.
 
         Args:
             pairs: ``(position, value)`` pairs, in any order.
             source_unit: The unit of the positions.
-            target_unit: The unit of the values.
+            value_unit: The unit of the values, the map's target unit. Needed
+                when a value is a number; a coordinate value must be in it.
 
         Returns:
             The map through the pairs.
 
         Raises:
             NotImplementedError: If the class is no law of calibration.
+            TypeError: If a value is a number and no *value_unit* is given.
             ValueError: As the implementing class states.
         """
         raise NotImplementedError(f"{cls.__name__} is built from no calibration pairs")
@@ -149,15 +156,20 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
         cls,
         pairs: Sequence[CalibrationPair],
         source_unit: TimeUnit | str | None,
-        target_unit: TimeUnit | str | None,
-    ) -> list[tuple[int, CoordinateValue, CoordinateValue]]:
+        value_unit: TimeUnit | str | None,
+    ) -> tuple[list[tuple[int, CoordinateValue, CoordinateValue]], TimeUnit]:
         """Return ``(index, position, value)`` of *pairs*, sorted by position.
 
         A coordinate is read as its number once its unit is checked against
-        *source_unit* or *target_unit*; *index* is the pair's place in the
-        given sequence, which every message names.
+        *source_unit* or *value_unit*; without *value_unit*, the first
+        coordinate value sets the unit every value must share. *index* is the
+        pair's place in the given sequence, which every message names.
+
+        Returns:
+            The points and the unit of the values.
 
         Raises:
+            TypeError: If a value is a number and no *value_unit* is given.
             ValueError: If there are fewer than two pairs, a coordinate is in
                 another unit than its axis, or two pairs share a position.
         """
@@ -167,19 +179,27 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
             )
         units = {
             "position": None if source_unit is None else TimeUnit(source_unit),
-            "value": None if target_unit is None else TimeUnit(target_unit),
+            "value": None if value_unit is None else TimeUnit(value_unit),
         }
         points = []
         for index, pair in enumerate(pairs):
             numbers = []
             for role, number in zip(units, pair):
                 if isinstance(number, Coordinate):
+                    if role == "value" and units[role] is None:
+                        units[role] = number.unit
                     if units[role] is not None and number.unit != units[role]:
                         raise ValueError(
                             f"Calibration pair {index} has a {role} in "
                             f"{number.unit.value}, not in {units[role].value}."
                         )
                     number = number.value
+                elif role == "value" and value_unit is None:
+                    raise TypeError(
+                        f"Calibration pair {index} has a value of type "
+                        f"{type(number).__name__}, not a Coordinate carrying its "
+                        f"unit; give value_unit to read numbers."
+                    )
                 numbers.append(number)
             points.append((index, numbers[0], numbers[1]))
         points.sort(key=lambda point: point[1])
@@ -189,7 +209,7 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
                     f"Calibration pairs {first} and {second} share the "
                     f"position {position}."
                 )
-        return points
+        return points, units["value"]
 
     def __init__(
         self,

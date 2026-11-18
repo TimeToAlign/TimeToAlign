@@ -26,9 +26,15 @@ inside its anchors, or only in value, fails.
   fields.** `ScalarMap`, `ShiftMap`, `TicksToQuarters`, `QuartersToTicks`,
   `SamplesToSeconds` and `SecondsToSamples` write a `LinearMap` (the
   convenience keys `ppq` and `sample_rate` are gone); the minimal form drops
-  `scalar` only when it is the integer 1 and `offset` only when it is the
-  integer 0, because a float `1.0` multiplies an exact input into a float
-  and is therefore not the default. `InterpolationMap` writes a `TableMap`
+  `scalar` when it equals 1 and `offset` when it equals 0. TimeToShare's
+  minimal form governs: it recognises a default by its exact value, and a
+  map in the format carries no number type, so a `LinearMap` with the float
+  scalar `1.0` writes no `scalar` key and is read back with the default
+  scalar, the integer 1. **A float scalar equal to the default does not
+  survive a minimal round trip as a float**: the written map multiplies the
+  exact input `Fraction(1, 3)` into the float `0.3333333333333333`, the map
+  read back answers `Fraction(1, 3)`. The complete form writes `1.0`.
+  `InterpolationMap` writes a `TableMap`
   (`kind` linear, `extrapolate` linear), its `source_id` and `target_id`
   gone. A `TableMap` writes `extrapolate` `none` for the library's `error`
   and `nan`, `linear` for `extrapolate`, `constant` for `constant`; reading

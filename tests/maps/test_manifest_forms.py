@@ -260,15 +260,8 @@ def test_each_view_reads_back_over_the_measure_map_it_names(view: type) -> None:
             {"scalar": 1, "offset": [1, 2]},
             {"offset": [1, 2]},
         ),
-        (
-            LinearMap(
-                scalar=1.0, source_unit="quarters", target_unit="quarters", uid="affine"
-            ),
-            {"scalar": 1.0, "offset": 0},
-            {"scalar": 1.0},
-        ),
     ],
-    ids=["ScalarMap", "ShiftMap", "float_scalar_is_no_default"],
+    ids=["ScalarMap", "ShiftMap"],
 )
 def test_affine_maps_write_a_linear_map(
     cmap: ConversionMap[Any], complete: dict[str, Any], minimal: dict[str, Any]
@@ -284,6 +277,37 @@ def test_affine_maps_write_a_linear_map(
     read = _through_manifest(cmap)
     assert type(read) is LinearMap
     _assert_converts_alike(cmap, read, [0, 1, F(1, 3), 2.5, -7])
+
+
+def test_float_scalar_equal_to_the_default_is_not_written() -> None:
+    # TimeToShare recognises a default by its exact value and a map there
+    # carries no number type, so 1.0 is the default scalar 1.
+    cmap = LinearMap(
+        scalar=1.0, source_unit="quarters", target_unit="quarters", uid="affine"
+    )
+    base = {
+        "type": "LinearMap",
+        "id": "affine",
+        "source_unit": "quarters",
+        "target_unit": "quarters",
+    }
+    assert cmap.to_dict(minimal=False) == {
+        **base,
+        "name": None,
+        "scalar": 1.0,
+        "offset": 0,
+    }
+    assert cmap.to_dict() == base
+    read = _through_manifest(cmap)
+    assert type(read) is LinearMap
+    assert read.scalar == 1
+    assert type(read.scalar) is int
+    # The float does not survive the minimal round trip: the written map
+    # computes in doubles, the read one exactly.
+    assert cmap(F(1, 3)) == 0.3333333333333333
+    assert type(cmap(F(1, 3))) is float
+    assert read(F(1, 3)) == F(1, 3)
+    assert type(read(F(1, 3))) is F
 
 
 @pytest.mark.parametrize(

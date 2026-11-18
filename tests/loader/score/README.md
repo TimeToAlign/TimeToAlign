@@ -215,6 +215,15 @@ different on `flow_only`: it completes repeat regions by inferring boundaries.
 - Chopin's raw Partitura onset is exactly `-0.5` quarter beats and its normalization offset is
   exactly `0.5`; Music21's offset is exactly `0.0`. Metadata and store properties carry those
   exact values.
+- **The anacrusis offset is as exact as the onsets it is read from.** Partitura states the
+  Chopin onsets as exact ratios, so the offset is `Fraction(1, 2)` — its type is asserted,
+  not only its value, because `0.5 == Fraction(1, 2)` would pass a float. The `raw_quarters`
+  ShiftMap the store attaches then reads the timeline's first note, at `1/2`, as
+  `Fraction(0)` and the quarter at `3/2` as `Fraction(1)`: a float offset would answer the
+  floats `0.0` and `1.0`, so the map's answer type is what proves the parameter exact. The
+  offset survives `to_parquet` / `from_parquet` as the Fraction pair `[1, 2]` in
+  `metadata.json`, read back as `Fraction(1, 2)`; a float offset would be written as a
+  float and read back as one.
 - `ScoreStore` and loader parquet tests pin files, note/measure counts, metadata, units, empty
   facets, missing paths, and event-property round trips.
 

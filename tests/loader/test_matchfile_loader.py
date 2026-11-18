@@ -241,7 +241,8 @@ class TestMatchfileLoaderSingle:
 
     def test_anacrusis_offset(self, p01_loader: MatchfileLoader):
         """Anacrusis offset is 0.5 (the negation of min raw onset -0.5)."""
-        assert p01_loader.anacrusis_offset == 0.5
+        assert p01_loader.anacrusis_offset == Fraction(1, 2)
+        assert type(p01_loader.anacrusis_offset) is Fraction
 
     def test_score_cmap_shift(self, p01_loader: MatchfileLoader):
         """raw_quarters ShiftMap converts normalised coords to raw partitura."""
@@ -249,7 +250,10 @@ class TestMatchfileLoaderSingle:
         shift_map = score_tl.get_conversion_map("raw_quarters")
         assert shift_map is not None
         assert isinstance(shift_map, ShiftMap)
-        assert shift_map.offset == -0.5
+        assert shift_map.offset == Fraction(-1, 2)
+        raw = shift_map(Fraction(1, 2))
+        assert raw == Fraction(0)
+        assert type(raw) is Fraction
 
     def test_score_cmap_divs(self, p01_loader: MatchfileLoader):
         """quarters_to_divs ScalarMap is attached, maps 1.0 -> 480."""
@@ -286,9 +290,12 @@ class TestMatchfileLoaderSingle:
         secs_map = perf_tl.get_conversion_map(TimeUnit.seconds)
         assert secs_map is not None
         assert isinstance(secs_map, ScalarMap)
-        # At 120 BPM: 480 ticks = 1 quarter = 0.5 seconds
-        expected = MIDI_CLOCK_RATE / (MIDI_CLOCK_UNITS * 1_000_000) * 480
-        assert abs(secs_map(480) - expected) < 1e-10
+        # At 120 BPM: 480 ticks = 1 quarter = 0.5 seconds, exactly
+        assert secs_map.scalar == Fraction(
+            MIDI_CLOCK_RATE, MIDI_CLOCK_UNITS * 1_000_000
+        )
+        assert secs_map.scalar == Fraction(1, 960)
+        assert secs_map(480) == 0.5
 
     def test_total_claims_count(self, p01_loader: MatchfileLoader):
         """Total MatchClaims = 454 (451 match + 3 NOMATCH)."""

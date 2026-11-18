@@ -6,6 +6,8 @@ into separate notes and controls data.
 
 from __future__ import annotations
 
+from fractions import Fraction
+
 import pytest
 
 from timetoalign.core import TimeUnit
@@ -113,6 +115,21 @@ class TestMidiStoreFromData:
 
         assert store.metadata["ticks_per_beat"] == 480
         assert store.metadata["format"] == 1
+
+    def test_ticks_to_quarters_map_is_exact(self, mixed_midi_data: MidiEventData):
+        """The ticks->quarters map divides by the tick resolution exactly."""
+        store = MidiStore.from_data(mixed_midi_data, metadata={"ticks_per_beat": 480})
+        cmap = store.get_cmaps()["quarters"]
+
+        assert (cmap.source_unit, cmap.target_unit) == (
+            TimeUnit.ticks,
+            TimeUnit.quarters,
+        )
+        assert cmap.scalar == Fraction(1, 480)
+        assert type(cmap.scalar) is Fraction
+        half, two = cmap(240), cmap(960)
+        assert (half, two) == (Fraction(1, 2), Fraction(2))
+        assert type(half) is Fraction and type(two) is Fraction
 
 
 class TestMidiStoreEmpty:

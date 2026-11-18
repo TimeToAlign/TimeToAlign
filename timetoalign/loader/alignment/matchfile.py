@@ -174,8 +174,7 @@ class MatchfileLoader(AlignmentLoader):
         self._score_events: dict[str, tuple[Fraction, Fraction]] = {}
 
         # Anacrusis offset (computed from first file)
-        self._anacrusis_offset: float = 0.0
-        self._anacrusis_offset_exact = Fraction(0)
+        self._anacrusis_offset = Fraction(0)
 
         # Header info from first file
         self._midi_clock_units: int | None = None
@@ -195,11 +194,12 @@ class MatchfileLoader(AlignmentLoader):
         self._source_metadata.append(source_meta)
 
     @property
-    def anacrusis_offset(self) -> float:
+    def anacrusis_offset(self) -> Fraction:
         """The anacrusis offset applied to raw score coordinates.
 
-        Equals ``-min(raw_onsets)`` from the first loaded file. Zero if
-        no anacrusis or if no files have been loaded.
+        Equals ``-min(raw_onsets)`` from the first loaded file, exact as the
+        file states the onsets. Zero if no anacrusis or if no files have
+        been loaded.
         """
         return self._anacrusis_offset
 
@@ -424,10 +424,9 @@ class MatchfileLoader(AlignmentLoader):
         if is_first_file:
             raw_onsets = [exact_score_coords[sid][0] for sid in score_by_id]
             min_onset = min(raw_onsets)
-            self._anacrusis_offset_exact = -min_onset if min_onset < 0 else Fraction(0)
-            self._anacrusis_offset = float(self._anacrusis_offset_exact)
+            self._anacrusis_offset = -min_onset if min_onset < 0 else Fraction(0)
 
-        offset = self._anacrusis_offset_exact
+        offset = self._anacrusis_offset
 
         # Step 1: Verify or add score events to the shared timeline
         if is_first_file:
@@ -464,7 +463,7 @@ class MatchfileLoader(AlignmentLoader):
             # Attach ShiftMap to convert normalised TTA coordinates back
             # to raw partitura coordinates (for display in timestamps).
             # Since normalised = raw + offset, raw = normalised - offset.
-            if self._normalize_anacrusis and offset != 0.0:
+            if self._normalize_anacrusis and offset != 0:
                 shift_map = ShiftMap(
                     offset=-offset,
                     source_unit=self._score_unit,
@@ -532,7 +531,7 @@ class MatchfileLoader(AlignmentLoader):
         perf_tl.add_events(perf_event_dicts)
 
         # Attach ticks_to_seconds ScalarMap
-        seconds_per_tick = midi_clock_rate / (midi_clock_units * 1_000_000)
+        seconds_per_tick = Fraction(midi_clock_rate, midi_clock_units * 1_000_000)
         ticks_to_secs = ScalarMap(
             scalar=seconds_per_tick,
             source_unit=TimeUnit.ticks,

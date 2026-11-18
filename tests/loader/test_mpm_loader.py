@@ -315,8 +315,9 @@ def test_spectrogram_px_to_seconds_cmap(specimen: dict[str, Any]) -> None:
 
     Each frame column advances ``hopSize`` audio samples, so
     ``seconds = px * hopSize / sample_rate``.  The map is a ``ScalarMap``
-    whose scalar is exactly ``hop_size / sample_rate`` (the same Python
-    expression the loader evaluates, so the IEEE-754 double matches).
+    whose scalar is exactly ``Fraction(hop_size, sample_rate)``: both are
+    integers the project states, so the map computes exactly and rounds once,
+    onto the seconds axis, to the double Python's division gives.
     """
     loader = _loaded(specimen["mpr"])
     dgt = loader.create_timeline(PERF_DGT_ID)
@@ -324,7 +325,8 @@ def test_spectrogram_px_to_seconds_cmap(specimen: dict[str, Any]) -> None:
 
     cmap = dgt.get_conversion_map(TimeUnit.seconds)
     assert isinstance(cmap, ScalarMap)
-    assert cmap.scalar == expected_scalar
+    assert cmap.scalar == Fraction(specimen["hop_size"], specimen["sample_rate"])
+    assert type(cmap.scalar) is Fraction
     # The axis resolves px -> seconds: map(0)=0, map(1)=scalar.
     assert dgt.get_timestamp(0).get_unit(TimeUnit.seconds, format="float") == 0.0
     assert (

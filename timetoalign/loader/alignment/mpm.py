@@ -998,7 +998,7 @@ class MpmLoader(AlignmentLoader):
         )
         perf_dgt.add_conversion_map(
             ScalarMap(
-                scalar=spectrogram["hop_size"] / sample_rate,
+                scalar=Fraction(spectrogram["hop_size"], sample_rate),
                 source_unit=TimeUnit.pixels,
                 target_unit=TimeUnit.seconds,
             )

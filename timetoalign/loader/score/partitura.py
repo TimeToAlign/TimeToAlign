@@ -110,15 +110,17 @@ class PartituraLoader(ScoreLoader):
         """
         super().__init__(**kwargs)
         self._force_note_ids = force_note_ids
-        self._anacrusis_offset: float = 0.0
+        self._anacrusis_offset: Fraction | float = Fraction(0)
 
     @property
-    def anacrusis_offset(self) -> float:
+    def anacrusis_offset(self) -> Fraction | float:
         """Quarter-beat shift applied to normalise anacrusis coordinates.
 
         Equal to ``-min(raw_partitura_onset)`` across all notes in the most
-        recently loaded source.  Zero when the score has no anacrusis (i.e.
-        the first note starts at or after beat 0).
+        recently loaded source, a ``Fraction`` when the onsets are exact and
+        a ``float`` only when partitura states the earliest one as a float.
+        Zero when the score has no anacrusis (i.e. the first note starts at
+        or after beat 0).
 
         Use this value to convert a raw partitura coordinate ``c`` to the TTA
         coordinate stored on the resulting timeline: ``tta_coord = c + offset``.
@@ -715,7 +717,7 @@ class PartituraLoader(ScoreLoader):
         ]
         min_qb: Fraction | float = min(all_onsets, default=Fraction(0))
         offset: Fraction | float = -min_qb if min_qb < 0 else Fraction(0)
-        self._anacrusis_offset = float(offset)
+        self._anacrusis_offset = offset
 
         if offset:
             for rows in (note_rows, measure_rows, control_rows, annotation_rows):
@@ -772,6 +774,6 @@ class PartituraLoader(ScoreLoader):
                 "parser": "partitura",
                 "source": str(source),
                 "has_rests": has_rests,
-                "anacrusis_offset": float(offset),
+                "anacrusis_offset": offset,
             },
         )

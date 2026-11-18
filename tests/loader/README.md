@@ -83,10 +83,17 @@ The score-side loader tests assert the numerator and denominator stored with
 logical coordinates, not only their floating-point convenience values. MS3
 measure starts, durations, and ends are compared with exact `Fraction`
 values from the TSV data. Matchfile score events are checked the same way for
-known normalized onsets, durations, and ends. These assertions ensure that
-rhythmic positions remain exactly addressable after they are placed in
-PyArrow event storage, while performance and recording coordinates retain
-their native numeric representation.
+known normalized onsets, durations, and ends. The maps the matchfile loader
+attaches are exact where the file is: its anacrusis offset is
+`Fraction(1, 2)` (read from the exact score onsets), so the `raw_quarters`
+ShiftMap reads `Fraction(1, 2)` quarters as `Fraction(0)`; and the
+ticks→seconds map divides the header's clock rate by its clock units
+exactly (scalar `Fraction(1, 960)`), so 480 ticks, one quarter of
+500000 µs, are `0.5` seconds by equality, not within a tolerance.
+
+These assertions ensure that rhythmic positions remain exactly addressable
+after they are placed in PyArrow event storage, while performance and
+recording coordinates retain their native numeric representation.
 
 ### MS3 coordinate validation logic
 
@@ -479,15 +486,17 @@ frame columns.
 
 ``perf:dgt_1`` is built as ``DiscreteGraphicalTimeline(length=<png width>,
 unit=TimeUnit.pixels)`` and carries **0 events** (the columns are an axis,
-not events). Its only attachment is a px→seconds ``ScalarMap`` with scalar
-``hopSize / sample_rate`` (so ``seconds = px * hopSize / sample_rate``,
-``map(0) == 0``):
+not events). Its only attachment is a px→seconds ``ScalarMap`` with the
+exact scalar ``Fraction(hopSize, sample_rate)`` (so ``seconds = px *
+hopSize / sample_rate``, ``map(0) == 0``). Both integers are stated by the project,
+so the map computes exactly and rounds once, onto the seconds axis:
 
 - **Beethoven**: ``hopSize`` 128, sample rate 44100, scalar
-  ``128 / 44100``; ``map(1) == 128 / 44100`` and ``map(26469) ==
-  26469 * 128 / 44100`` (the audio duration in seconds).
-- **Reger**: ``hopSize`` 512, sample rate 48000, scalar ``512 / 48000``;
-  ``map(1) == 512 / 48000``.
+  ``Fraction(32, 11025)``; ``map(1) == 128 / 44100`` and ``map(26469) ==
+  26469 * 128 / 44100`` (the audio duration in seconds), each the double
+  nearest the exact value, as Python's integer division gives it.
+- **Reger**: ``hopSize`` 512, sample rate 48000, scalar
+  ``Fraction(4, 375)``; ``map(1) == 512 / 48000``.
 
 The map is pulled off the timeline via
 ``timeline.get_conversion_map(TimeUnit.seconds)`` and asserted to be a
@@ -607,7 +616,7 @@ beat-length, spq 2.4) advances 0.5 quarter to ``map(40.0) == 24.9``.
 | ``perf:dgt_1`` length (frame columns / pixels) | 26469 | 1587 |
 | ``perf:dgt_1`` events | 0 | 0 |
 | Spectrogram ``hopSize`` | 128 | 512 |
-| px→seconds ``ScalarMap`` scalar | 128 / 44100 | 512 / 48000 |
+| px→seconds ``ScalarMap`` scalar | ``Fraction(32, 11025)`` | ``Fraction(4, 375)`` |
 
 The bundle holds **5 timelines** (``score:clt_1`` / ``score:dlt_1`` /
 ``perf:cpt_1`` / ``perf:dpt_1`` / ``perf:dgt_1``) and **2 groups**

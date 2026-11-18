@@ -51,14 +51,14 @@ class Music21Loader(ScoreLoader):
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
-        self._anacrusis_offset: float = 0.0
+        self._anacrusis_offset = Fraction(0)
 
     @property
-    def anacrusis_offset(self) -> float:
+    def anacrusis_offset(self) -> Fraction:
         """Quarter-beat shift applied to normalise anacrusis coordinates.
 
         Equal to ``-min(raw_onset)`` across all notes in the most recently
-        loaded source.  Zero when the score has no anacrusis.
+        loaded source, exact.  Zero when the score has no anacrusis.
         """
         return self._anacrusis_offset
 
@@ -347,15 +347,15 @@ class Music21Loader(ScoreLoader):
         # metadata so downstream consumers can apply the same correction.
         all_onsets = [
             (
-                float(struct_to_rational(r["quarterbeats"]))
+                struct_to_rational(r["quarterbeats"])
                 if r.get("quarterbeats")
-                else 0.0
+                else Fraction(0)
             )
             for r in note_rows
         ]
-        min_qb = min(all_onsets) if all_onsets else 0.0
-        m21_offset: Fraction = Fraction(-min_qb) if min_qb < 0 else Fraction(0)
-        self._anacrusis_offset = float(m21_offset)
+        min_qb = min(all_onsets, default=Fraction(0))
+        m21_offset = -min_qb if min_qb < 0 else Fraction(0)
+        self._anacrusis_offset = m21_offset
 
         if m21_offset:
             for rows in (note_rows, measure_rows, control_rows, annotation_rows):
@@ -412,7 +412,7 @@ class Music21Loader(ScoreLoader):
                 "parser": "music21",
                 "source": str(source),
                 "has_rests": has_rests,
-                "anacrusis_offset": float(m21_offset),
+                "anacrusis_offset": m21_offset,
             },
         )
 

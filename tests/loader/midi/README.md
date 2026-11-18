@@ -75,6 +75,11 @@ updates metadata. Mapping keys, iteration, items, lookup, membership, and length
 children at offset zero with the original note/control counts; each child is named after its store
 and carries a minted id, so the tests find it by name.
 
+The ticks→quarters map a `MidiStore` offers divides by the file's tick resolution exactly:
+at 480 PPQ, 240 ticks answer `Fraction(1, 2)` and 960 ticks `Fraction(2, 1)`. The answer type is
+asserted, because a map built on the float `1 / 480` computes in floats and answers `0.5`, which
+compares equal to `Fraction(1, 2)`.
+
 All exact counts, ticks, schemas, IDs, and extents use equality; there are no `pytest.approx` calls
 in the MIDI-loader tests.
 

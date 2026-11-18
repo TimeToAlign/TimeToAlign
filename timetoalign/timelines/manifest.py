@@ -38,9 +38,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Self
 
 import timetoshare
-from timetoshare import Link, Scheme, description_problems, loads
+from timetoshare import Link, Scheme, child_ends, description_problems, loads
 from timetoshare.serialization import Serialization
-from timetoshare.validation.containment import child_ends
 
 from timetoalign.core import Coordinate, NumberType, TimeUnit
 from timetoalign.core.ids import _OpenObject, mint_id, quote_id, validate_id

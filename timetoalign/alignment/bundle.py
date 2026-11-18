@@ -2967,8 +2967,10 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
             interval_anchor_edges: Interval-claim edges reached at an anchor.
             interval_inferred_edges: Interval-claim edges reached in an interior.
             interval_withheld: Timelines the query's interval claims map to
-                no single coordinate. They stay unresolved: no other route
-                may collapse the claims' alternatives into one value.
+                no single coordinate. Each stays unresolved unless an exact
+                anchor of the query's MatchGraph gives it a coordinate, which
+                then wins; no interpolation or warp fills it, so no transfer
+                collapses the claims' alternatives into one value.
             query_has_interval_anchor: Whether an interval claim explicitly
                 anchors the query position.
 

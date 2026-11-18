@@ -26,7 +26,7 @@ Design rationale:
 from __future__ import annotations
 
 import logging
-from typing import Any, ClassVar
+from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
@@ -84,8 +84,6 @@ class InterpolationMap(ConversionMap[float]):
         0.25
     """
 
-    _float_arithmetic: ClassVar[bool] = True
-
     def __init__(
         self,
         *,
@@ -113,9 +111,9 @@ class InterpolationMap(ConversionMap[float]):
             uid: Optional explicit ID.
             name: Optional human-readable name.
             output_number_type: The representation results are written in,
-                among those the target unit admits; ``None`` for the target
-                unit's default. Never ``fraction``: the map computes in
-                doubles.
+                among those the target unit admits; ``None`` for ``float``,
+                which the map computes in, wherever the target unit admits
+                it, else for the target unit's default. Never ``fraction``.
 
         Raises:
             ValueError: If source_coords and target_coords have different
@@ -154,6 +152,11 @@ class InterpolationMap(ConversionMap[float]):
             raise ValueError("source_coords must be strictly monotonically increasing")
 
         self._inverse: InterpolationMap | None = None
+
+    @property
+    def _float_arithmetic(self) -> bool:
+        """True: the map interpolates over float64 anchors, whatever its input."""
+        return True
 
     @property
     def n_anchors(self) -> int:

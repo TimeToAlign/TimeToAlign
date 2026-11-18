@@ -203,11 +203,6 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
     # coordinates.
     _declared_output_number_type: NumberType | None = None
 
-    # Set by maps whose arithmetic runs in doubles whatever their input (an
-    # interpolation over float64 anchors), which therefore cannot be declared
-    # to write fractions: every result would be a float rebuilt as a ratio.
-    _float_arithmetic: ClassVar[bool] = False
-
     # The TimeToShare map type a class reads and writes as itself. Only the
     # classes of the format's ten abstract types declare one; every other
     # class writes one of them and is never read back as itself.
@@ -368,7 +363,7 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
         Raises:
             ValueError: If the target unit does not admit
                 *output_number_type*, or if it is ``fraction`` and the map
-                computes in doubles.
+                computes in doubles (see :attr:`output_number_type`).
         """
         self._id_minted = uid is None
         self._id = mint_id(self._id_prefix, ()) if uid is None else validate_id(uid)
@@ -452,23 +447,73 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
 
         The target decides, and it decides alone: the representation given
         at construction where there is one, else the map class's declared
-        output representation, else the target unit's default. What the value is converted *from* has no say -- a result
-        landing on a float-canonical axis is a float whether the source axis
-        was exact or not, and every reader of this map (row, column, typed
-        getter, direct call) gets that same answer.
+        output representation, else ``float`` for a map that computes in
+        doubles, else the target unit's default. What the value is converted
+        *from* has no say -- a result landing on a float-canonical axis is a
+        float whether the source axis was exact or not, and every reader of
+        this map (row, column, typed getter, direct call) gets that same
+        answer.
+
+        **A map that computes in doubles answers doubles.** Its results are
+        ``float`` wherever the target unit admits one, whatever the unit's
+        default: an interpolation into ``quarters`` answers the float it
+        computed, never the float rebuilt as a ``Fraction``. For the same
+        reason such a map refuses the ``fraction`` declaration. A map
+        computes in doubles when its own arithmetic does (an
+        :class:`~timetoalign.maps.InterpolationMap`) or when a map nested in
+        it answers floats: a chain or a piecewise map with one such member
+        is one. On a discrete target, which admits ``int`` only, the result
+        is rounded as on any other.
 
         A map whose answer is an ordinal rather than a position on the target
         axis -- a measure count, a floor index -- declares that through
         ``_declared_output_number_type``. A label or structured map names no
         target unit and so declares nothing.
         """
+        own = self._own_output_number_type
+        if own is not None:
+            return own
+        if self._target_unit is None:
+            return None
+        return self._target_unit.default_number_type
+
+    @property
+    def _own_output_number_type(self) -> NumberType | None:
+        """The representation the map states itself, before the target unit's default.
+
+        What :attr:`output_number_type` answers from the map alone: the
+        given representation, the class's declared one, or ``float`` for a
+        map computing in doubles where its target unit admits floats.
+        ``None`` leaves it to the target unit. A map nesting this one writes
+        its results in this representation, so the default of the member's
+        target unit, an intermediate axis, is not imposed.
+        """
         if self._given_output_number_type is not None:
             return self._given_output_number_type
         if self._declared_output_number_type is not None:
             return self._declared_output_number_type
-        if self._target_unit is None:
-            return None
-        return self._target_unit.default_number_type
+        if (
+            self._target_unit is not None
+            and self._float_arithmetic
+            and NumberType.float in self._target_unit.allowed_number_types
+        ):
+            return NumberType.float
+        return None
+
+    @property
+    def _float_arithmetic(self) -> bool:
+        """Whether the map computes in doubles, whatever its input.
+
+        A map does when a map nested in it answers floats: it computes in
+        doubles itself, or states ``float`` as its own representation. A map
+        whose own arithmetic runs in doubles (over float64 anchors) answers
+        True.
+        """
+        return any(
+            nested._float_arithmetic
+            or nested._own_output_number_type is NumberType.float
+            for nested in self._nested_maps()
+        )
 
     # region Conversion methods
 
@@ -536,6 +581,23 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
             )
         return self._convert_scalar(value, **kwargs)
 
+    def _evaluate_nested(self, value: CoordinateValue, **kwargs: Any) -> T:
+        """The result a map nesting this one receives from it.
+
+        The member's own guard applies (:meth:`_evaluate`), and its result
+        is written in the representation the member states itself
+        (``_own_output_number_type``), never in its target unit's default:
+        that unit is an intermediate axis, or the nesting map's, which
+        writes the final result once.
+
+        Raises:
+            TypeError: If the map was given the ``fraction`` declaration and
+                *value* is a float.
+        """
+        return self._written_as(
+            self._evaluate(value, **kwargs), self._own_output_number_type
+        )
+
     def _on_target_axis(self, result: T) -> T:
         """Write a public conversion result the way its target axis writes numbers.
 
@@ -548,7 +610,11 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
         Label and structured maps declare no target unit and pass through
         untouched, as does the array lane, which stays float64 by contract.
         """
-        number_type = self.output_number_type
+        return self._written_as(result, self.output_number_type)
+
+    @staticmethod
+    def _written_as(result: T, number_type: NumberType | None) -> T:
+        """*result* written in *number_type*; ``None`` or a non-number passes through."""
         if number_type is None or not isinstance(result, (int, float, Fraction)):
             return result
         return express_as(result, number_type)  # type: ignore[return-value]

@@ -9,7 +9,9 @@ import numpy as np
 import pytest
 
 from timetoalign.core.enums import NumberType, TimeUnit
+from timetoalign.maps.base import ConversionMap
 from timetoalign.maps.composite import ChainMap, PiecewiseMap
+from timetoalign.maps.interpolation import InterpolationMap
 from timetoalign.maps.linear import LinearMap, ScalarMap
 
 
@@ -306,3 +308,151 @@ class TestDeclaredOutputNumberType:
             build(output_number_type="fraction", uid="m").to_dict()
             == build(uid="m").to_dict()
         )
+
+
+def quarters_scalar(scalar, **kwargs) -> ScalarMap:
+    return ScalarMap(
+        scalar=scalar, source_unit="quarters", target_unit="quarters", **kwargs
+    )
+
+
+def interpolation_member() -> InterpolationMap:
+    # quarters [0, 3] -> [0, 1]: 1/3 at 1, which no float represents.
+    return InterpolationMap(
+        source_coords=[0.0, 3.0],
+        target_coords=[0.0, 1.0],
+        source_id="a",
+        target_id="b",
+        source_unit="quarters",
+        target_unit="quarters",
+    )
+
+
+def quarters_piecewise(member: ConversionMap, end: int = 3, **kwargs) -> PiecewiseMap:
+    return PiecewiseMap(
+        breaks=[0, end],
+        maps=[member],
+        source_unit="quarters",
+        target_unit="quarters",
+        **kwargs,
+    )
+
+
+class TestFloatArithmeticMembers:
+    @pytest.mark.parametrize(
+        "build, name",
+        [
+            (
+                lambda **k: ChainMap(
+                    [interpolation_member(), quarters_scalar(Fraction(1, 2))], **k
+                ),
+                "ChainMap",
+            ),
+            (
+                lambda **k: quarters_piecewise(interpolation_member(), **k),
+                "PiecewiseMap",
+            ),
+        ],
+    )
+    def test_interpolation_member_refuses_fraction(self, build, name):
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                f"{name} computes in doubles and cannot be declared to write "
+                "fractions."
+            ),
+        ):
+            build(output_number_type="fraction")
+
+    def test_chain_with_interpolation_member_answers_the_float(self):
+        chain = ChainMap([interpolation_member(), quarters_scalar(Fraction(1, 2))])
+        assert chain.output_number_type is NumberType.float
+        assert chain(Fraction(1)) == 0.16666666666666666
+        assert type(chain(Fraction(1))) is float
+
+    def test_piecewise_with_interpolation_member_answers_the_float(self):
+        piecewise = quarters_piecewise(interpolation_member())
+        assert piecewise.output_number_type is NumberType.float
+        assert piecewise(Fraction(1)) == 0.3333333333333333
+        assert type(piecewise(Fraction(1))) is float
+
+    def test_exact_members_stay_exact(self):
+        chain = ChainMap(
+            [quarters_scalar(Fraction(1, 2)), quarters_scalar(Fraction(1, 3))]
+        )
+        piecewise = quarters_piecewise(quarters_scalar(Fraction(1, 6)), end=6)
+        for cmap in (chain, piecewise):
+            assert cmap.output_number_type is NumberType.fraction
+            assert cmap(1) == Fraction(1, 6)
+            assert type(cmap(1)) is Fraction
+
+    def test_chain_member_declaration_applies(self):
+        def members() -> list[ScalarMap]:
+            return [
+                quarters_scalar(Fraction(1, 2), output_number_type="float"),
+                quarters_scalar(Fraction(1, 3)),
+            ]
+
+        chain = ChainMap(members())
+        assert chain.output_number_type is NumberType.float
+        assert chain(1) == 0.16666666666666666
+        assert type(chain(1)) is float
+        with pytest.raises(ValueError, match="ChainMap computes in doubles"):
+            ChainMap(members(), output_number_type="fraction")
+
+    def test_piecewise_member_declaration_applies(self):
+        def member() -> ScalarMap:
+            return quarters_scalar(Fraction(1, 3), output_number_type="float")
+
+        piecewise = quarters_piecewise(member())
+        assert piecewise.output_number_type is NumberType.float
+        assert piecewise(1) == 0.3333333333333333
+        assert type(piecewise(1)) is float
+        with pytest.raises(ValueError, match="PiecewiseMap computes in doubles"):
+            quarters_piecewise(member(), output_number_type="fraction")
+
+    def test_chain_member_guard_applies(self):
+        chain = ChainMap(
+            [
+                quarters_scalar(0.5),
+                quarters_scalar(
+                    Fraction(1, 3), output_number_type="fraction", uid="exact"
+                ),
+            ]
+        )
+        with pytest.raises(
+            TypeError,
+            match=re.escape(
+                "Map exact is declared to write fractions and computes exactly, "
+                "so it takes an int or a Fraction, not the float 0.5."
+            ),
+        ):
+            chain(1)
+
+    def test_piecewise_member_guard_applies(self):
+        piecewise = quarters_piecewise(
+            quarters_scalar(Fraction(1, 3), output_number_type="fraction", uid="exact")
+        )
+        with pytest.raises(
+            TypeError,
+            match=re.escape(
+                "Map exact is declared to write fractions and computes exactly, "
+                "so it takes an int or a Fraction, not the float 1.0."
+            ),
+        ):
+            piecewise(1.0)
+
+
+class TestPiecewiseExactIntervalSelection:
+    def test_exact_input_is_compared_exactly(self):
+        piecewise = PiecewiseMap(
+            breaks=[0, Fraction(3, 10), 1],
+            maps=[quarters_scalar(1), quarters_scalar(2)],
+            source_unit="quarters",
+            target_unit="quarters",
+            output_number_type="fraction",
+        )
+        below = Fraction(3, 10) - Fraction(1, 10**20)
+        assert float(below) == 0.3
+        assert piecewise(below) == Fraction(29999999999999999999, 10**20)
+        assert piecewise(Fraction(3, 10)) == Fraction(3, 5)

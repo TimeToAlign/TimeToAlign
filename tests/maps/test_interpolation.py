@@ -8,7 +8,6 @@ WarpMap.
 from __future__ import annotations
 
 import re
-from fractions import Fraction
 
 import numpy as np
 import pytest
@@ -510,9 +509,9 @@ class TestInterpolationMapDeclaredOutputNumberType:
 
     def test_float_into_quarters_answers_the_float(self):
         undeclared = self.build()
-        assert undeclared.output_number_type is NumberType.fraction
-        assert undeclared(0.5) == Fraction(1, 4)
-        assert type(undeclared(0.5)) is Fraction
+        assert undeclared.output_number_type is NumberType.float
+        assert undeclared(0.5) == 0.25
+        assert type(undeclared(0.5)) is float
         declared = self.build(output_number_type="float")
         assert declared.output_number_type is NumberType.float
         assert declared(0.5) == 0.25

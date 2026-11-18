@@ -322,11 +322,16 @@ their inverses, into quarters, carry the declaration and answer
 `Fraction(1)` at `Fraction(1, 6)`. `InterpolationMap` computes in doubles
 over float64 anchors, so a `fraction` declaration would rebuild every result
 from a float: it is refused at construction with a `ValueError` naming the
-class. Declared `float` from seconds into quarters, whose default is
-fractions, it answers the float `0.25` at 0.5 where the undeclared map
-answers `Fraction(1, 4)`, and its inverse, into seconds, declares `float`
-too. The declaration is a setting of the library for every
+class. The declaration is a setting of the library for every
 class: `to_dict` writes the same form with it and without it.
+
+**A map that computes in doubles answers doubles.** Its output number type
+is `float` wherever the target unit admits one, whatever the unit's default;
+the rule lives in `ConversionMap.output_number_type`, once for every class.
+Undeclared from seconds into quarters, whose default is fractions, an
+`InterpolationMap` therefore declares `float` and answers the float `0.25`
+at 0.5 (the value it computed, never `Fraction(1, 4)` rebuilt from it), as
+it does declared `float`; its inverse, into seconds, declares `float` too.
 
 ### `test_interpolation.py` - InterpolationMap
 
@@ -385,6 +390,52 @@ shared interface rather than a bespoke value-passing API.
     - Delegation to sub-maps.
     - Array conversion optimization.
     - Naive inversion support.
+
+**A composite computes in doubles when a member answers floats**
+(`TestFloatArithmeticMembers`). Whether a map computes in doubles is a
+property of the instance: a `ChainMap` or `PiecewiseMap` does when any
+member does, or when a member states `float` as its own output number type.
+What would expose a composite that ignores its members is a result no float
+represents, so the probes are chosen around one:
+
+- *A float-arithmetic member.* An `InterpolationMap` from quarters into
+  quarters over `[0, 3] → [0, 1]`, followed in a chain by the exact scalar
+  1/2, or alone in a piecewise map over `[0, 3)`. Declared `fraction`, both
+  composites are refused at construction with the `ValueError` naming their
+  class; before, the chain answered the float rebuilt as
+  `Fraction(6004799503160661, 36028797018963968)` at `Fraction(1)`.
+  Undeclared, both declare `float` (quarters default to fractions, so only
+  the rule can give `float`) and answer `0.16666666666666666` (chain) and
+  `0.3333333333333333` (piecewise) at `Fraction(1)`, type and value
+  asserted together.
+- *Exact members stay exact.* Two exact scalars 1/2 and 1/3 from quarters
+  into quarters (chain), and the scalar 1/6 over `[0, 6)` (piecewise),
+  undeclared: both declare `fraction`, the quarters default, and answer
+  `Fraction(1, 6)` at 1. A composite that counted itself float-arithmetic
+  regardless would answer a float.
+- *A member's own declaration applies.* A member is called through its own
+  evaluation, so its guard runs and its result is written in the
+  representation it states itself (never in its target unit's default, an
+  intermediate axis). A chain whose first member is the exact scalar 1/2
+  declared `float` hands `0.5` to the scalar 1/3 and answers the float
+  `0.16666666666666666`, declaring `float`; a piecewise map whose member is
+  the scalar 1/3 declared `float` answers `0.3333333333333333`. Composites
+  that bypassed the member would answer `Fraction(1, 6)` and
+  `Fraction(1, 3)`. Declaring either composite `fraction` is refused.
+- *A member's own guard applies.* A chain whose first member, the float
+  scalar 0.5, hands `0.5` to a member declared `fraction` raises that
+  member's `TypeError` ("… not the float 0.5."); a piecewise map whose
+  member is declared `fraction` raises it for the float input 1.0. Before,
+  both computed in floats.
+
+**PiecewiseMap picks the interval in the input's own arithmetic.** An int or
+a `Fraction` is compared exactly with the breaks as given; a float with the
+breaks as floats. Breaks `[0, 3/10, 1]` with the exact scalars 1 and 2,
+declared `fraction`: `3/10 − 10⁻²⁰` lies in the first interval and answers
+`Fraction(29999999999999999999, 10**20)`, while `3/10` itself answers
+`Fraction(3, 5)`. As a float `3/10 − 10⁻²⁰` is `0.3`, the break, so a
+float comparison picks the second interval and answers
+`Fraction(59999999999999999998, 10**20)`.
 
 ### `test_periodic.py` - Periodic Maps (RotationMap, FloorMap)
 

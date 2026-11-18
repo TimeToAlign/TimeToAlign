@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import bisect
 from collections.abc import Mapping
+from fractions import Fraction
 from typing import TYPE_CHECKING, Any, ClassVar, Sequence
 
 import numpy as np
@@ -121,6 +122,8 @@ class ChainMap(ConversionMap[CoordinateValue]):
                     f"but Map {next_map.id} expects {next_map.source_unit}"
                 )
 
+        # Set first: whether the chain computes in doubles depends on them.
+        self._maps = list(maps)
         super().__init__(
             source_unit=maps[0].source_unit,
             target_unit=maps[-1].target_unit,
@@ -128,7 +131,6 @@ class ChainMap(ConversionMap[CoordinateValue]):
             name=name,
             output_number_type=output_number_type,
         )
-        self._maps = list(maps)
         self._admit_ids()
 
     @property
@@ -142,36 +144,17 @@ class ChainMap(ConversionMap[CoordinateValue]):
         return all(m.is_invertible for m in self._maps)
 
     def _convert_scalar(self, value: CoordinateValue, **kwargs: Any) -> CoordinateValue:
-        """Apply maps in sequence."""
+        """Apply maps in sequence, each with its own guard and representation."""
         result = value
         for m in self._maps:
-            # We explicitly handle scalar/coordinate conversion in the base __call__
-            # so we can use the internal _convert_scalar or __call__ of sub-maps.
-            # Since maps can return T or NDArray, and we want scalar here,
-            # we rely on the map's behavior.
-            # Note: sub-maps might be flexible, so we pass kwargs.
-            if isinstance(m, ConversionMap):
-                # We're inside _convert_scalar, so we have a raw value.
-                # Sub-maps expect raw value or Coordinate.
-                # We pass the raw value.
-                if hasattr(m, "_convert_scalar"):
-                    result = m._convert_scalar(result, **kwargs)
-                else:
-                    # Fallback to public interface if not our subclass (unlikely)
-                    result = m(result, **kwargs)
-            else:
-                # Should not happen given typing, but safe fallback
-                result = m(result)
+            result = m._evaluate_nested(result, **kwargs)
         return result
 
     def _convert_array(self, values: NDArray[Any], **kwargs: Any) -> NDArray[Any]:
         """Apply maps in sequence to array."""
         result = values
         for m in self._maps:
-            if hasattr(m, "_convert_array"):
-                result = m._convert_array(result, **kwargs)
-            else:
-                result = m(result, **kwargs)
+            result = m._convert_array(result, **kwargs)
         return result
 
     def inverse(self) -> Self:
@@ -283,6 +266,8 @@ class PiecewiseMap(ConversionMap[CoordinateValue]):
         if not all(x < y for x, y in zip(breaks_float, breaks_float[1:])):
             raise ValueError("Breaks must be strictly increasing")
 
+        # Set first: whether the map computes in doubles depends on them.
+        self._maps = list(maps)
         super().__init__(
             source_unit=source_unit,
             target_unit=target_unit,
@@ -293,7 +278,6 @@ class PiecewiseMap(ConversionMap[CoordinateValue]):
 
         self._breaks = np.array(breaks_float, dtype=np.float64)
         self._breaks_orig = list(breaks)
-        self._maps = list(maps)
         self._admit_ids()
 
     @property
@@ -306,52 +290,40 @@ class PiecewiseMap(ConversionMap[CoordinateValue]):
         """The maps for each interval."""
         return list(self._maps)
 
-    def _get_map_index(self, x: float) -> int:
-        """Find the interval index for x."""
-        # bisect_right returns insertion point to maintain order.
-        # breaks=[0, 10, 20]
-        # x=5 -> idx=1 -> map 0 (intervals are 0-10, 10-20)
-        # x=10 -> idx=2 -> map 1
-        # x=20 -> idx=3 -> out of bounds (unless we handle inclusive end)
+    def _get_map_index(
+        self, value: CoordinateValue, allow_upper_bound: bool = False
+    ) -> int:
+        """Find the index of the interval ``[breaks[i], breaks[i+1])`` holding *value*.
 
-        # Using searchsorted equivalent logic
-        # We want index i such that breaks[i] <= x < breaks[i+1]
+        The comparison runs in the input's own arithmetic: an int or a
+        Fraction is compared exactly with the breaks as given, a float with
+        the breaks as floats. A break given as a Fraction no float
+        represents therefore splits exact inputs where it lies.
 
-        if x < self._breaks[0] or x >= self._breaks[-1]:
-            raise ValueError(
-                f"Value {x} out of bounds [{self._breaks[0]}, {self._breaks[-1]})"
-            )
+        Args:
+            value: The input.
+            allow_upper_bound: Assign the last break to the last interval
+                (used for inversion).
 
-        idx = bisect.bisect_right(self._breaks, x) - 1
-        return max(0, min(idx, len(self._maps) - 1))
+        Raises:
+            ValueError: If *value* lies outside ``[breaks[0], breaks[-1])``.
+        """
+        if isinstance(value, (int, Fraction)):
+            breaks: Sequence[Any] = self._breaks_orig
+        else:
+            breaks, value = self._breaks, float(value)
+        if allow_upper_bound and value == breaks[-1]:
+            return len(self._maps) - 1
+        if value < breaks[0] or value >= breaks[-1]:
+            raise ValueError(f"Value {value} out of bounds [{breaks[0]}, {breaks[-1]})")
+        return bisect.bisect_right(breaks, value) - 1
 
     def _convert_scalar(
         self, value: CoordinateValue, allow_upper_bound: bool = False, **kwargs: Any
     ) -> CoordinateValue:
-        """Convert scalar by selecting the appropriate map."""
-        x = float(value)
-
-        # Check bounds
-        if x < self._breaks[0]:
-            raise ValueError(
-                f"Value {x} out of bounds [{self._breaks[0]}, {self._breaks[-1]})"
-            )
-
-        # Special case for upper bound if allowed (used for inversion)
-        if allow_upper_bound and x == self._breaks[-1]:
-            idx = len(self._maps) - 1
-        elif x >= self._breaks[-1]:
-            raise ValueError(
-                f"Value {x} out of bounds [{self._breaks[0]}, {self._breaks[-1]})"
-            )
-        else:
-            idx = self._get_map_index(x)
-
-        m = self._maps[idx]
-
-        if hasattr(m, "_convert_scalar"):
-            return m._convert_scalar(value, **kwargs)
-        return m(value, **kwargs)
+        """Convert scalar by the map of the interval holding it."""
+        m = self._maps[self._get_map_index(value, allow_upper_bound)]
+        return m._evaluate_nested(value, **kwargs)
 
     def _convert_array(self, values: NDArray[Any], **kwargs: Any) -> NDArray[Any]:
         """Convert array by processing chunks."""

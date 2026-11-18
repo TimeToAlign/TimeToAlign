@@ -269,6 +269,8 @@ quartodoc:
         - SecondsToSamples
         - QuartersToFloatingMeasures
         - QuartersToMeasureNumber
+        - name: OutputNumberTypeError
+          package: timetoalign.maps
 
     - title: Alignment
       desc: Classes for connecting and aligning timelines.

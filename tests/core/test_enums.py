@@ -142,16 +142,16 @@ class TestTimeUnit:
         assert unit.allowed_number_types == {NumberType.float, NumberType.fraction}
         assert unit.allowed_number_types == TimeUnit.points.allowed_number_types
 
-    def test_vector_graphics_units_have_no_abbreviation(self) -> None:
-        """``px`` stays the discrete pixel; neither new unit has a short spelling."""
+    def test_vector_graphics_unit_abbreviations(self) -> None:
+        """``uu`` spells user units; ``px`` stays the discrete pixel; CSS pixels have none."""
         abbreviations = TimeUnit.get_abbreviations()
         assert abbreviations["css_pixels"] == []
-        assert abbreviations["user_units"] == []
+        assert abbreviations["user_units"] == ["uu"]
         assert TimeUnit("css_pixels") is TimeUnit.css_pixels
         assert TimeUnit("user_units") is TimeUnit.user_units
+        assert TimeUnit("uu") is TimeUnit.user_units
+        assert TimeUnit.uu is TimeUnit.user_units
         assert TimeUnit("px") is TimeUnit.pixels
-        with pytest.raises(ValueError, match="'uu' is not a valid TimeUnit"):
-            TimeUnit("uu")
 
     def test_a_generic_beat_axis_is_the_number_unit(self) -> None:
         """There is no ``beats`` unit, and no alias resurrects one.

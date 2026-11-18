@@ -274,6 +274,8 @@ class TimeUnit(FancyStrEnum):
     """a document's own coordinate system, such as an SVG viewBox; its size
     is known only per document, so it converts only through that document's
     conversion map"""
+    uu = user_units
+    """a document's own coordinate system, such as an SVG viewBox"""
 
     @property
     def domain(self) -> Domain:

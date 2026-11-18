@@ -14,6 +14,7 @@ loaded by `Ms3Loader` is authoritative whenever loaders are compared.
 | `test_measuremap_loader.py` | MeasureMap expansion, validation, traversal, schema, and comparison with MS3. |
 | `test_flow_csv_validation.py` | Right-open ranges, exact atomic boundaries, live Partitura boundaries, and CSV serialization. |
 | `test_partitura_exactness.py` | Exact Partitura coordinate pairs, instant nulls, flattened timelines, and agreement with Partitura's float map. |
+| `test_successors.py` | The `next` column derived from the measure columns: endings of more than one measure, Music21/Partitura parity, agreement with the ms3 TSVs (see below). |
 | `test_verovio_loader.py` | `VerovioLoader` on MEI fixtures and specimens: exact onsets, kept ids, measures as structure, ties, grace notes, repeats, movements, the physical timeline, music21 parity, Verovio's expansion against the flow controller (see below). |
 
 ## Parsing matrix
@@ -62,13 +63,51 @@ the exact atomic boundaries. TSV and MeasureMap must have identical folded count
 A source that lists each measure's successors (an ms3 TSV, a Measure Map) keeps them. For every
 other score loader `ScoreLoader.load()` derives the `next` column, per part, from the repeat,
 volta and navigation columns of the measure table (`ScoreLoader._successors`), so one rule
-serves Music21, Partitura and Verovio. What proves it: the derived successors are an input of
-the flow controller, so each loader's default flow on every score of the matrix, and each
-pinned deviation below, must stay exactly what it is. The rule writes edges the two former
-loader-specific derivations did not (Music21 wrote none when a score had D.S., D.C., segno,
-coda or Fine marks; Partitura wrote no third volta and no exit after a non-final volta without
-a repeat end), and none of them changes a flow on these scores: the traversal routes voltas
-by pass, and a D.S. or D.C. is executed only where the measure table names its target.
+serves Music21, Partitura and Verovio. An ending is a run of measures that all carry its volta
+number. A repeat end goes back to its repeat start and, outside an ending, on to the following
+measure. A D.S. or D.C. replaces the onward successors with its target and keeps a repeat end's
+way back; a Fine adds `-1`, the end of the piece.
+
+`test_successors.py` proves the rule against two references:
+
+- **An ending of two measures.** The test writes a MusicXML file of seven 4/4 measures: m1 opens
+  a repeat, the first ending is m4–m5 with the repeat end at m5, the second ending is m6, m7
+  closes. Each loader must write volta `1` on m4 *and* m5 and `2` on m6. Then `next` is `4, 6`
+  on m3 (the way into each ending), `1` on m5 (back to the repeat start; the way on is the next
+  ending), null (the following measure) everywhere else, and the default flow is
+  `1 2 3 4 5 1 2 3 6 7`. Music21Loader and PartituraLoader must both give exactly this, hence
+  identical `next` columns. Partitura used to write the volta on an ending's first measure only,
+  which cut the ending after m4 and lost the repeat (m3 `4, 5`, m5 `6, 7`). Music21's former
+  derivation sent every measure of a first ending without a repeat end to the exit (m4 `7`);
+  under the shared rule m4 follows on to m5.
+- **Agreement with ms3.** The ms3 TSV is the source format of `next` and lists every successor,
+  so it is the reference. On `c05n05_musete` and `c11n08_Rondeau`, the derived `next` of every MC,
+  read as a set (null meaning the following MC, `-1` after the last), must equal the TSV's. The
+  sources are the two that carry navigation marks: PartituraLoader on the MusicXML and
+  VerovioLoader on the MEI (Music21 reads none). This pins the jump rule: `c05n05_musete` MC 31
+  is `{17, 6}` and MC 58 `{32, 6}` (back to the repeat start, then the D.S. to the segno at MC 6,
+  never on to the following measure); `c11n08_Rondeau` MC 18 is `{10, 1}` and MC 27 `{19, 1}`
+  (the D.C.); and `c05n05_musete` MC 16, a repeat end with the Fine, holds `-1` beside `1, 17`.
+  Before, a D.S. or D.C. replaced the repeat's edges (MC 31 was `6`).
+
+Where a source cannot state what the TSV lists, the comparison of that MC is a strict `xfail`
+naming the reason, and the remaining MCs of the score still have to agree:
+
+- `c05n05_musete` MC 31 on the MEI: the MEI states a `daCapo` where the TSV has a D.S., so the
+  derived set is `{17, 1}`.
+- `c05n05_musete` MC 16 (both sources): the TSV continues after the D.S. al Fine at the next
+  section, MC 32; the derived set is `{1, 17, -1}`. Neither the MEI nor the rule states a
+  continuation after the Fine.
+- `c11n08_Rondeau` MC 9 (both sources): the TSV continues after each D.C. al segno at the next
+  section, MCs 19 and 28; the derived set is `{1, 10}`, for the same reason.
+
+The derived successors are an input of the flow controller, so each loader's default flow on
+every score of the matrix, and each pinned deviation below, must stay exactly what it is. The rule
+writes edges the two former loader-specific derivations did not (Music21 wrote none when a score
+had D.S., D.C., segno, coda or Fine marks; Partitura wrote no third volta and no exit after a
+non-final volta without a repeat end), and none of them changes a flow on these scores: the
+traversal routes voltas by pass, and a D.S. or D.C. is executed only where the measure table
+names its target.
 
 ## Exact flow-control profiles
 
@@ -316,8 +355,9 @@ A `<tempo xml:id="tempo1" tstamp="1">Andante très expressif</tempo>` sits in m1
   its text verbatim. `notated_id` equals `id` on every event (nothing is expanded). The generated
   id is the same in two loads, and with 6.4.1 it is `s3clx4n` (seeded by `xmlIdChecksum`).
 - **Structure.** The root is one `ContinuousLogicalTimeline` `score:clt_1` in quarters, length
-  9. Its one child, the movement, has the id the root's manifest mints for it, `clt_1` (free
-  beside `score:clt_1`), offset 0, length 9, `meta == {"count": 1, "xml_id": "mdiv1"}`,
+  9. Its one child, the movement, is `score:clt_2`: movement children are minted with the
+  loader's role and its next number (`score:clt_2`, `score:clt_3`, …; `rendered:cpt_2`, … on the
+  physical timeline), independent of a user-given root id. The child has offset 0, length 9, `meta == {"count": 1, "xml_id": "mdiv1"}`,
   holding all 13 events (10 notes, 2 rests, 1 tempo indication); the root holds none. The
   `MeasureMap` has `m1`, `m2` named `1`, `2`, at 0 and 9/2, each 9/8 with actual length 9/2;
   neither measure id is an event. No flow control, no FlowMap.
@@ -331,15 +371,15 @@ A `<tempo xml:id="tempo1" tstamp="1">Andante très expressif</tempo>` sits in m1
   `12 × (octave + 1) + step + alter` of the stored spelling (two independent readings agree).
 - **Physical timeline.** `create_physical_timeline()` is a `ContinuousPhysicalTimeline`
   `rendered:cpt_1` in seconds, number type `Fraction`, length 9/2, `meta["provenance"] ==
-  "verovio_rendered"`, one child `cpt_1` of length 9/2. Every event lies at half its quarter
+  "verovio_rendered"`, one child `rendered:cpt_2` of length 9/2. Every event lies at half its quarter
   position (`d2` 9/8–3/2, `t3` 3–9/2, `tempo1` 0). Its events carry `mc` (1 and 2) but no
   in-measure offset: those are quarters, which have no place on a seconds axis. The logical timeline's C-Map maps
   9/4 quarters to 9/8 seconds, which a map answers as the float `1.125` because the seconds axis
   writes floats (the physical timeline itself is built from the exact values); the physical
   timeline's C-Map maps 9/8 back to exactly `Fraction(9, 4)`. `attach_cmap=False` attaches none.
 - **Two-phase contract and options.** `from_file` and `load` give the same events;
-  `create_timeline(uid="clt_1", name="Fixture")` keeps both, and the movement's minted `clt_1`
-  gives way to the given id: the child becomes `clt_2`. The store metadata records the version and the options the toolkit ran with,
+  `create_timeline(uid="clt_1", name="Fixture")` keeps both, and the movement stays
+  `score:clt_2`. The store metadata records the version and the options the toolkit ran with,
   `{"xmlIdChecksum": True, "mdivAll": True}`. A second source raises.
 
 **`grace.mei`** (4/4, one staff): m1 `a1` C4 quarter · unaccented grace `g1` · `p1` D4 quarter ·
@@ -389,13 +429,13 @@ the printed score).
 `n3` E4 half) and `mov2` (`n=2`, `label=II`, 3/4: `n4` F4 dotted half, `<tempo midi.bpm="60">`
 `t2`). Verovio continues the second movement where the first ends: one timemap entry at 4 holds
 the end of `n3`, the measure start of `m3` and the onset of `n4`; seconds continue (2 s).
-Expected: root length 7; children `clt_1` [0, 4) and `clt_2` [4, 7), named `I`, `II`, with
+Expected: root length 7; children `score:clt_2` [0, 4) and `score:clt_3` [4, 7), named `I`, `II`, with
 `meta` holding `count` (1, 2) and `xml_id`, `n`, `label` verbatim. `n4` is at 0 in its child and
 at 4 on the root; `t2` belongs to the second child. The root's `MeasureMap` (measures at 0, 2, 4)
 and C-Map serve the children through the root: the root's timestamp table gives `n4` 2 seconds;
 a child carries neither. On the physical timeline the second child starts at 2 s and lasts 3 s
 (three quarters at 60 per minute). With `options={"mdivXPathQuery": "./mdiv[2]"}` only the second
-movement is loaded: one child `clt_1` whose `meta["count"]` is still 2 (`count` numbers every
+movement is loaded: one child `score:clt_2` whose `meta["count"]` is still 2 (`count` numbers every
 `<mdiv>` of the file), at 0 with length 3.
 
 **`fast.mei`**: three 256th notes at `midi.bpm="2000"`, 1/64 quarter apart, then rests to the end
@@ -419,8 +459,8 @@ note (`tn` at 7/3, `mc_onset` 1/3). `ch1a` and `ch1b` have `chord_id` `ch1`.
 
 - **Nested movements** (`parangonar/Beethoven_Eroica_op35-cpjku/score.mei`): `<mdiv
   xml:id="Eroica-Variationen">` holds `<mdiv xml:id="Var_14" n="18" label="Var. XIV.">`. The
-  root (length 129/2) has one child `clt_1` (meta `{"count": 1, "xml_id":
-  "Eroica-Variationen"}`), which has one child `clt_2` (meta with `count` 2, `n` `18` and label
+  root (length 129/2) has one child `score:clt_2` (meta `{"count": 1, "xml_id":
+  "Eroica-Variationen"}`), which has one child `score:clt_3` (meta with `count` 2, `n` `18` and label
   `Var. XIV.`); both span [0, 129/2). The 297 notes, 36 rests and 2 tempo indications live in the
   inner child. The `MeasureMap` holds 33 measures. No provisioned file has two sibling movements;
   `two_movements.mei` covers that case.
@@ -438,14 +478,17 @@ note (`tn` at 7/3, `mc_onset` 1/3). `ch1a` and `ch1b` have `chord_id` `ch1`.
   continues at the first coda mark after the jump; any other jump plays until the Fine where the
   score has one, which is what a Fine states. The file states a Fine in MC 7, a segno and a "To"
   coda in MC 9, `D.S. al Coda` in MC 12, a coda in MC 13 and `D.C. al Fine` in MC 15, so the
-  columns `(markers, jump_bwd, jump_fwd, play_until, next)` are exactly: MC 7 `fine`; MC 9
+  columns `(markers, jump_bwd, jump_fwd, play_until, next)` are exactly: MC 7 `fine`, next
+  `8, -1` (the Fine also ends the piece); MC 9
   `segno & coda`; MC 12 `segno`, `coda2`, `coda`, next `9`; MC 13 `coda2`, next `14, 15` (the
   measure before the endings); MC 15 `start`, `fine`, next `1`. Unfolded by the flow
   controller, this table gives exactly the target default flow (parsing matrix).
 - **The Fine rule** (`couperin_concerts/c05n05_musete.mei`, `expandNever`). Segnos in MCs 6, 17
   and 32 (`segno`, `segno2`, `segno3`), a Fine in MC 16, a `daCapo` in MC 31 and a `dalSegno` in
   MC 58, both with the text "au renvoy" (no "al …"). Both jumps play until the Fine: MC 31
-  `start`, `fine`, next `1`; MC 58 `segno`, `fine`, next `6` (the first segno).
+  `start`, `fine`, next `17, 1`; MC 58 `segno`, `fine`, next `32, 6` (the first segno). Both
+  measures end a repeat, which keeps its way back; MC 16, the Fine and a repeat end, has next
+  `1, 17, -1`.
 - **Acceptance against music21** (`vienna_1x22/Chopin_op10_no3.musicxml`): `VerovioLoader` and
   `Music21Loader` must give the same multiset of `(onset, MIDI pitch)` over the non-grace notes,
   once Verovio's placement of principal notes is undone by its own rule: a non-grace note that

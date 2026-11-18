@@ -401,11 +401,11 @@ class PartituraLoader(ScoreLoader):
                         )
 
             # ===== Extract Endings (Volta) and other flow control markers =====
-            # ending_mcs: MC -> volta number (first MC of each ending).
+            # ending_mcs: MC -> volta number, for every MC an ending spans.
             # Navigation directions in implicit X-measures are attached to the
             # preceding playable row in the measure-table convention. Target
             # markers remain on their own row.
-            ending_mcs: dict[int, int] = {}  # start MC -> volta number
+            ending_mcs: dict[int, int] = {}  # MC -> volta number
             marker_names: dict[int, str] = {}
             jump_bwd: dict[int, str] = {}
             jump_fwd: dict[int, str] = {}
@@ -427,7 +427,16 @@ class PartituraLoader(ScoreLoader):
                         num = int(ending_num)
                     except (TypeError, ValueError):
                         num = 1
-                    ending_mcs[marker_mc] = num
+                    # Like a repeat end, obj.end.t is the downbeat after the
+                    # ending's last bar, so the measure starts before it count
+                    # up to that bar's MC.
+                    last_mc = (
+                        max(marker_mc, bisect.bisect_left(measure_starts, obj.end.t))
+                        if obj.end is not None
+                        else marker_mc
+                    )
+                    for ending_mc in range(marker_mc, last_mc + 1):
+                        ending_mcs[ending_mc] = num
                 elif isinstance(
                     obj,
                     (

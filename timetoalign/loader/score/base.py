@@ -36,6 +36,150 @@ class ScoreLoader(EventLoader):
     _default_unit = TimeUnit.quarters
     _event_data_class = NoteEventData
 
+    @classmethod
+    def _with_successors(cls, measures: MeasureData) -> MeasureData:
+        """Return *measures* with ``next`` derived where the source states none.
+
+        A measure table read from a format that lists successors (an ms3
+        TSV, a Measure Map) keeps them. Otherwise each part's successors are
+        derived from its repeat, volta and navigation columns by
+        :meth:`_successors`.
+        """
+        if len(measures) == 0 or any(
+            value is not None for value in measures.column_values("next")
+        ):
+            return measures
+        rows = list(measures)
+        parts: dict[Any, list[int]] = {}
+        for index, row in enumerate(rows):
+            parts.setdefault(row.get("part_id"), []).append(index)
+        successors: list[str | None] = [None] * len(rows)
+        for indices in parts.values():
+            for index, following in zip(
+                indices, cls._successors([rows[i] for i in indices])
+            ):
+                if following is not None:
+                    successors[index] = ", ".join(str(mc) for mc in following)
+        table = measures.table
+        position = table.schema.get_field_index("next")
+        table = table.set_column(
+            position, table.schema.field(position), pa.array(successors, pa.string())
+        )
+        return type(measures)(table, measures.unit, measures.number_type)
+
+    @staticmethod
+    def _successors(rows: list[dict[str, Any]]) -> list[list[int] | None]:
+        """Derive each measure's successor MCs from its flow-control columns.
+
+        Reads ``mc``, ``start_repeat``, ``end_repeat``, ``volta``, ``markers``
+        and ``jump_bwd`` of one part's rows in MC order; ``None`` means the
+        following measure. The rules, later ones taking precedence:
+
+        * A repeat end goes back to the nearest open repeat start; without
+          one, to the measure after the last ending or repeat end before it,
+          else to the first measure. Outside an ending it also continues to
+          the following measure (``-1`` after the last).
+        * An ending is a run of measures with a volta number (a lower number
+          than the previous one opens a new run). The measure before it
+          continues to the first measure of each volta; with one volta only,
+          also past the run. The last measure of every volta but the highest
+          continues past the run unless it ends a repeat, which goes back to
+          the run's repeat start.
+        * A D.S. or D.C. (``jump_bwd``) continues to the measure carrying the
+          named marker, ``start`` naming the first measure, in place of the
+          measure's onward successors; a repeat end keeps its way back.
+        * A Fine (a ``fine`` marker or flag, or ``jump_fwd`` naming ``fine``)
+          also ends the piece (``-1``).
+
+        Args:
+            rows: One part's measure rows in MC order.
+
+        Returns:
+            One successor list (or ``None``) per row.
+        """
+        count = len(rows)
+        mcs = [row["mc"] for row in rows]
+        voltas = [row.get("volta") for row in rows]
+        successors: list[list[int] | None] = [None] * count
+
+        def following(index: int) -> int:
+            return mcs[index + 1] if index + 1 < count else -1
+
+        endings: list[dict[int, list[int]]] = []
+        ending_of: dict[int, int] = {}
+        for index, volta in enumerate(voltas):
+            if volta is None:
+                continue
+            previous = voltas[index - 1] if index > 0 else None
+            if previous is None or volta < previous:
+                endings.append({})
+            endings[-1].setdefault(volta, []).append(index)
+            ending_of[index] = len(endings) - 1
+
+        open_starts: list[int] = []
+        ending_starts: dict[int, int] = {}
+        back: dict[int, int] = {}
+        boundary = 0
+        for index, row in enumerate(rows):
+            if row.get("start_repeat"):
+                open_starts.append(index)
+            ending = ending_of.get(index)
+            if row.get("end_repeat"):
+                if ending in ending_starts:
+                    start = ending_starts[ending]
+                else:
+                    start = open_starts.pop() if open_starts else boundary
+                if ending is None:
+                    successors[index] = [mcs[start], following(index)]
+                else:
+                    ending_starts[ending] = start
+                    successors[index] = [mcs[start]]
+                back[index] = mcs[start]
+                boundary = index + 1
+            elif ending is not None and ending_of.get(index + 1) != ending:
+                boundary = index + 1
+
+        for ending in endings:
+            numbers = sorted(ending)
+            first = ending[numbers[0]][0]
+            last = max(index for indices in ending.values() for index in indices)
+            exit_mc = following(last)
+            if first > 0:
+                fork = [mcs[ending[number][0]] for number in numbers]
+                successors[first - 1] = fork + [exit_mc] if len(numbers) == 1 else fork
+            for number in numbers[:-1]:
+                end = ending[number][-1]
+                if not rows[end].get("end_repeat"):
+                    successors[end] = [exit_mc]
+
+        names = [
+            {name.strip() for name in (row.get("markers") or "").split("&")} - {""}
+            for row in rows
+        ]
+        marked: dict[str, int] = {}
+        for row, row_names in zip(rows, names):
+            for name in row_names:
+                marked.setdefault(name, row["mc"])
+        for index, row in enumerate(rows):
+            target = row.get("jump_bwd")
+            if target in ("start", "firstMeasure"):
+                target_mc = mcs[0]
+            elif target in marked:
+                target_mc = marked[target]
+            else:
+                continue
+            successors[index] = [*([back[index]] if index in back else []), target_mc]
+        for index, row in enumerate(rows):
+            if (
+                row.get("fine")
+                or row.get("jump_fwd") == "fine"
+                or "fine" in names[index]
+            ):
+                edges = successors[index] or [following(index)]
+                if -1 not in edges:
+                    successors[index] = [*edges, -1]
+        return successors
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._store = ScoreStore.empty()
@@ -149,130 +293,6 @@ class ScoreLoader(EventLoader):
         )
 
     # region Flow Control
-
-    @classmethod
-    def _with_successors(cls, measures: MeasureData) -> MeasureData:
-        """Return *measures* with ``next`` derived where the source states none.
-
-        A measure table read from a format that lists successors (an ms3
-        TSV, a Measure Map) keeps them. Otherwise each part's successors are
-        derived from its repeat, volta and navigation columns by
-        :meth:`_successors`.
-        """
-        if len(measures) == 0 or any(
-            value is not None for value in measures.column_values("next")
-        ):
-            return measures
-        rows = list(measures)
-        parts: dict[Any, list[int]] = {}
-        for index, row in enumerate(rows):
-            parts.setdefault(row.get("part_id"), []).append(index)
-        successors: list[str | None] = [None] * len(rows)
-        for indices in parts.values():
-            for index, following in zip(
-                indices, cls._successors([rows[i] for i in indices])
-            ):
-                if following is not None:
-                    successors[index] = ", ".join(str(mc) for mc in following)
-        table = measures.table
-        position = table.schema.get_field_index("next")
-        table = table.set_column(
-            position, table.schema.field(position), pa.array(successors, pa.string())
-        )
-        return type(measures)(table, measures.unit, measures.number_type)
-
-    @staticmethod
-    def _successors(rows: list[dict[str, Any]]) -> list[list[int] | None]:
-        """Derive each measure's successor MCs from its flow-control columns.
-
-        Reads ``mc``, ``start_repeat``, ``end_repeat``, ``volta``, ``markers``
-        and ``jump_bwd`` of one part's rows in MC order; ``None`` means the
-        following measure. The rules, later ones taking precedence:
-
-        * A repeat end goes back to the nearest open repeat start; without
-          one, to the measure after the last ending or repeat end before it,
-          else to the first measure. Outside an ending it also continues to
-          the following measure (``-1`` after the last).
-        * An ending is a run of measures with a volta number (a lower number
-          than the previous one opens a new run). The measure before it
-          continues to the first measure of each volta; with one volta only,
-          also past the run. The last measure of every volta but the highest
-          continues past the run unless it ends a repeat, which goes back to
-          the run's repeat start.
-        * A D.S. or D.C. (``jump_bwd``) continues to the measure carrying the
-          named marker, ``start`` naming the first measure.
-
-        Args:
-            rows: One part's measure rows in MC order.
-
-        Returns:
-            One successor list (or ``None``) per row.
-        """
-        count = len(rows)
-        mcs = [row["mc"] for row in rows]
-        voltas = [row.get("volta") for row in rows]
-        successors: list[list[int] | None] = [None] * count
-
-        def following(index: int) -> int:
-            return mcs[index + 1] if index + 1 < count else -1
-
-        endings: list[dict[int, list[int]]] = []
-        ending_of: dict[int, int] = {}
-        for index, volta in enumerate(voltas):
-            if volta is None:
-                continue
-            previous = voltas[index - 1] if index > 0 else None
-            if previous is None or volta < previous:
-                endings.append({})
-            endings[-1].setdefault(volta, []).append(index)
-            ending_of[index] = len(endings) - 1
-
-        open_starts: list[int] = []
-        ending_starts: dict[int, int] = {}
-        boundary = 0
-        for index, row in enumerate(rows):
-            if row.get("start_repeat"):
-                open_starts.append(index)
-            ending = ending_of.get(index)
-            if row.get("end_repeat"):
-                if ending in ending_starts:
-                    start = ending_starts[ending]
-                else:
-                    start = open_starts.pop() if open_starts else boundary
-                if ending is None:
-                    successors[index] = [mcs[start], following(index)]
-                else:
-                    ending_starts[ending] = start
-                    successors[index] = [mcs[start]]
-                boundary = index + 1
-            elif ending is not None and ending_of.get(index + 1) != ending:
-                boundary = index + 1
-
-        for ending in endings:
-            numbers = sorted(ending)
-            first = ending[numbers[0]][0]
-            last = max(index for indices in ending.values() for index in indices)
-            exit_mc = following(last)
-            if first > 0:
-                fork = [mcs[ending[number][0]] for number in numbers]
-                successors[first - 1] = fork + [exit_mc] if len(numbers) == 1 else fork
-            for number in numbers[:-1]:
-                end = ending[number][-1]
-                if not rows[end].get("end_repeat"):
-                    successors[end] = [exit_mc]
-
-        marked: dict[str, int] = {}
-        for row in rows:
-            for name in (row.get("markers") or "").split("&"):
-                if name.strip():
-                    marked.setdefault(name.strip(), row["mc"])
-        for index, row in enumerate(rows):
-            target = row.get("jump_bwd")
-            if target in ("start", "firstMeasure"):
-                successors[index] = [mcs[0]]
-            elif target in marked:
-                successors[index] = [marked[target]]
-        return successors
 
     def create_flow_controller(
         self,

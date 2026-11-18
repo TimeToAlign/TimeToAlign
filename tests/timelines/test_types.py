@@ -195,6 +195,20 @@ class TestAllTimelineTypes:
                 NumberType.fraction,
                 Fraction(4, 1),
             ),
+            (ContinuousGraphicalTimeline, TimeUnit.css_pixels, NumberType.float, 4.0),
+            (
+                ContinuousGraphicalTimeline,
+                TimeUnit.css_pixels,
+                NumberType.fraction,
+                Fraction(4, 1),
+            ),
+            (ContinuousGraphicalTimeline, TimeUnit.user_units, NumberType.float, 4.0),
+            (
+                ContinuousGraphicalTimeline,
+                TimeUnit.user_units,
+                NumberType.fraction,
+                Fraction(4, 1),
+            ),
             (DiscreteGraphicalTimeline, TimeUnit.pixels, NumberType.int, 4),
         ],
     )
@@ -321,6 +335,37 @@ class TestTimelineSubclassResolution:
         result = Timeline.resolve_subclass("seconds")
 
         assert result is ContinuousPhysicalTimeline
+
+    @pytest.mark.parametrize("unit", ["css_pixels", "user_units"])
+    def test_vector_graphics_units_resolve_continuous_graphical(
+        self, unit: str
+    ) -> None:
+        """CSS pixels and user units select the continuous graphical timeline."""
+        assert Timeline.resolve_subclass(unit) is ContinuousGraphicalTimeline
+        assert Timeline(length=4.0, unit=unit).id == "cgt_1"
+
+    def test_every_unit_has_exactly_one_leaf_class_of_its_kind(self) -> None:
+        """The leaf classes partition the units by domain and discreteness.
+
+        A class's kind is that of its default unit.
+        """
+        leaves = [
+            ContinuousLogicalTimeline,
+            DiscreteLogicalTimeline,
+            ContinuousPhysicalTimeline,
+            DiscretePhysicalTimeline,
+            ContinuousGraphicalTimeline,
+            DiscreteGraphicalTimeline,
+        ]
+        for unit in TimeUnit:
+            (leaf,) = [cls for cls in leaves if unit in cls._allowed_units]
+            assert leaf._default_unit.domain is unit.domain, unit
+            assert leaf._default_unit.is_discrete is unit.is_discrete, unit
+        for domain_class in (LogicalTimeline, PhysicalTimeline, GraphicalTimeline):
+            domain = domain_class._default_unit.domain
+            assert domain_class._allowed_units == {
+                unit for unit in TimeUnit if unit.domain is domain
+            }
 
     def test_unclaimed_unit_falls_back_to_base_timeline(self) -> None:
         """An unmatched unit returns the documented base Timeline fallback."""

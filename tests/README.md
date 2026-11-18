@@ -105,11 +105,19 @@ the keys the library writes in every row it keeps (`name`, `start_repeat`,
 expected text is the case with that one row as the library writes it,
 spelled out in the test, unknown `tempo` included.
 
+**The unit table is the package's.** `{unit.value:
+unit.default_number_type.name for unit in TimeUnit}` equals the package's
+`UNIT_NUMBER_TYPES` exactly: the library knows every unit the schema names,
+no other, and gives each the default number type the validators supply, so
+a unit added on one side only fails here.
+
 **Manifests the library builds.** A catalogue builds manifests directly and
 through the loaders, so the check covers the emitted representation rather
 than assumptions made by a reader: all six timeline classes, each with two
 children, a region, one break, one repeat start and one repeat end landing
-on it, and on the quarter-note timeline a Measure Map built from rows;
+on it (the continuous graphical class once in each of `points`,
+`css_pixels` and `user_units`), and on the quarter-note timeline a Measure
+Map built from rows;
 every conversion-map class with a manifest form attached across four
 timelines, and the three measure views over the quarter-note timeline's
 measure map (the periodic maps have none, and a label step function is

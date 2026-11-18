@@ -29,6 +29,7 @@ from timetoshare import (
     validate,
     warning_paths,
 )
+from timetoshare.manifest import UNIT_NUMBER_TYPES
 
 from timetoalign import (
     AlignmentBundle,
@@ -45,7 +46,7 @@ from timetoalign import (
     Timeline,
     TimelineGroup,
 )
-from timetoalign.core import FlowControlElement
+from timetoalign.core import FlowControlElement, TimeUnit
 from timetoalign.core.time import number_from_json, number_to_json
 from timetoalign.loader.alignment import (
     Ieee1599Loader,
@@ -338,6 +339,14 @@ CATALOGUE: list[tuple[str, Callable[[], list[Any]]]] = [
     (
         "continuous_graphical",
         lambda: [_with_structure(ContinuousGraphicalTimeline, "points", 600.0)],
+    ),
+    (
+        "css_pixels",
+        lambda: [_with_structure(ContinuousGraphicalTimeline, "css_pixels", 600.0)],
+    ),
+    (
+        "user_units",
+        lambda: [_with_structure(ContinuousGraphicalTimeline, "user_units", 600.0)],
     ),
     (
         "discrete_graphical",
@@ -806,6 +815,13 @@ def test_int64_boundary() -> None:
     value = timeline.to_dict()
     assert value["timelines"][0]["length"] == 9007199254740993
     validate(value)
+
+
+def test_the_unit_table_is_the_package_s() -> None:
+    """Every unit and its default number type are the package's, and no other."""
+    assert {
+        unit.value: unit.default_number_type.name for unit in TimeUnit
+    } == UNIT_NUMBER_TYPES
 
 
 def test_the_display_words_and_default_are_the_package_s() -> None:

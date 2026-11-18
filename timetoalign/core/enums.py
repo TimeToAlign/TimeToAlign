@@ -161,7 +161,16 @@ _PHYSICAL_UNITS: frozenset[str] = frozenset(
     {"milliseconds", "seconds", "minutes", "samples", "frames"}
 )
 _GRAPHICAL_UNITS: frozenset[str] = frozenset(
-    {"pixels", "meters", "centimeters", "millimeters", "inches", "points"}
+    {
+        "pixels",
+        "meters",
+        "centimeters",
+        "millimeters",
+        "inches",
+        "points",
+        "css_pixels",
+        "user_units",
+    }
 )
 
 # Units whose values are inherently integral: a fractional tick or a
@@ -256,6 +265,15 @@ class TimeUnit(FancyStrEnum):
     """points"""
     pt = points
     """points"""
+
+    css_pixels = auto()
+    """CSS pixels (1/96 in), the unit of an SVG's outermost viewport and of
+    HTML/CSS layouts; distinct from the discrete :attr:`pixels`"""
+
+    user_units = auto()
+    """a document's own coordinate system, such as an SVG viewBox; its size
+    is known only per document, so it converts only through that document's
+    conversion map"""
 
     @property
     def domain(self) -> Domain:

@@ -19,6 +19,7 @@ from typing import Any, ClassVar, Iterator
 from timetoalign.core import (
     Coordinate,
     CoordinateSpec,
+    Domain,
     TimeUnit,
 )
 from timetoalign.core.timestamp import _format_coordinate_value
@@ -27,68 +28,31 @@ from .base import Timeline, UnknownLengthError
 
 # region Unit Sets by Domain
 
-# Logical domain units (symbolic/musical time)
-LOGICAL_UNITS: frozenset[TimeUnit] = frozenset(
-    {
-        TimeUnit.whole_notes,
-        TimeUnit.quarters,
-        TimeUnit.floating_measures,
-        TimeUnit.ticks,
-        TimeUnit.number,
-    }
-)
+# Every set is derived from TimeUnit's own domain and discreteness, so the
+# unit vocabulary is listed once, in ``timetoalign.core.enums``.
 
-# Physical domain units (acoustic/real time)
-PHYSICAL_UNITS: frozenset[TimeUnit] = frozenset(
-    {
-        TimeUnit.seconds,
-        TimeUnit.milliseconds,
-        TimeUnit.minutes,
-        TimeUnit.samples,
-        TimeUnit.frames,
-    }
-)
 
-# Graphical domain units (visual/spatial)
-GRAPHICAL_UNITS: frozenset[TimeUnit] = frozenset(
-    {
-        TimeUnit.pixels,
-        TimeUnit.meters,
-        TimeUnit.centimeters,
-        TimeUnit.millimeters,
-        TimeUnit.inches,
-        TimeUnit.points,
-    }
-)
+def _units(domain: Domain, *, discrete: bool | None = None) -> frozenset[TimeUnit]:
+    """Return the units of *domain*, optionally only the (non-)discrete ones."""
+    return frozenset(
+        unit
+        for unit in TimeUnit
+        if unit.domain is domain and (discrete is None or unit.is_discrete is discrete)
+    )
 
-# Continuous vs discrete unit categorization
-CONTINUOUS_LOGICAL_UNITS: frozenset[TimeUnit] = frozenset(
-    {
-        TimeUnit.whole_notes,
-        TimeUnit.quarters,
-        TimeUnit.floating_measures,
-        TimeUnit.number,
-    }
-)
-DISCRETE_LOGICAL_UNITS: frozenset[TimeUnit] = frozenset({TimeUnit.ticks})
 
-CONTINUOUS_PHYSICAL_UNITS: frozenset[TimeUnit] = frozenset(
-    {TimeUnit.seconds, TimeUnit.milliseconds, TimeUnit.minutes}
-)
-DISCRETE_PHYSICAL_UNITS: frozenset[TimeUnit] = frozenset(
-    {TimeUnit.samples, TimeUnit.frames}
-)
+LOGICAL_UNITS: frozenset[TimeUnit] = _units(Domain.logical)
+PHYSICAL_UNITS: frozenset[TimeUnit] = _units(Domain.physical)
+GRAPHICAL_UNITS: frozenset[TimeUnit] = _units(Domain.graphical)
 
-CONTINUOUS_GRAPHICAL_UNITS: frozenset[TimeUnit] = frozenset(
-    {
-        TimeUnit.meters,
-        TimeUnit.centimeters,
-        TimeUnit.millimeters,
-        TimeUnit.inches,
-        TimeUnit.points,
-    }
+CONTINUOUS_LOGICAL_UNITS: frozenset[TimeUnit] = _units(Domain.logical, discrete=False)
+DISCRETE_LOGICAL_UNITS: frozenset[TimeUnit] = _units(Domain.logical, discrete=True)
+CONTINUOUS_PHYSICAL_UNITS: frozenset[TimeUnit] = _units(Domain.physical, discrete=False)
+DISCRETE_PHYSICAL_UNITS: frozenset[TimeUnit] = _units(Domain.physical, discrete=True)
+CONTINUOUS_GRAPHICAL_UNITS: frozenset[TimeUnit] = _units(
+    Domain.graphical, discrete=False
 )
-DISCRETE_GRAPHICAL_UNITS: frozenset[TimeUnit] = frozenset({TimeUnit.pixels})
+DISCRETE_GRAPHICAL_UNITS: frozenset[TimeUnit] = _units(Domain.graphical, discrete=True)
 
 # endregion
 
@@ -128,10 +92,11 @@ class GraphicalTimeline(Timeline):
     """A timeline representing graphical/spatial coordinates.
 
     Graphical timelines measure visual positions for score
-    visualization and plotting. They can be in pixels or
-    physical measurements.
+    visualization and plotting. They can be in pixels, physical
+    measurements, CSS pixels, or a document's own user units.
 
-    Allowed units: pixels, meters, centimeters, millimeters, inches, points.
+    Allowed units: pixels, meters, centimeters, millimeters, inches, points,
+    css_pixels, user_units.
     """
 
     _allowed_units: ClassVar[frozenset[TimeUnit]] = GRAPHICAL_UNITS
@@ -182,7 +147,8 @@ class ContinuousGraphicalTimeline(GraphicalTimeline):
 
     Default unit: centimeters.
     Default number type: float.
-    Allowed units: meters, centimeters, millimeters, inches, points.
+    Allowed units: meters, centimeters, millimeters, inches, points,
+    css_pixels, user_units.
     """
 
     _allowed_units: ClassVar[frozenset[TimeUnit]] = CONTINUOUS_GRAPHICAL_UNITS

@@ -866,6 +866,15 @@ ValidationError)` — the concrete class, not a bare `Exception`.
    - Alias support (`q`, `ms`, `px`, etc.)
    - `domain` property mapping
    - `is_discrete` property
+   - The vector-graphics units `css_pixels` (the CSS pixel, 1/96 in) and
+     `user_units` (a document's own coordinate system, such as an SVG
+     viewBox): each is graphical and not discrete, defaults to `float` and
+     admits exactly `float` and `fraction`, as `points` does. Neither has an
+     abbreviation (`get_abbreviations()` lists none for either), `px` stays
+     the alias of the discrete `pixels` (`TimeUnit("px") is TimeUnit.pixels`),
+     and `TimeUnit("uu")` raises `ValueError`: a short spelling would let a
+     CSS pixel or a user unit be read as a discrete pixel, which changes the
+     timeline class and the number type.
 
 4. **NumberType Enum** (8 tests)
    - Values: `int`, `float`, `fraction`

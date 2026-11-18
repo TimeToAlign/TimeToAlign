@@ -303,6 +303,8 @@ UNIT_DEFAULTS = {
     "millimeters": ("float", 4.5),
     "inches": ("float", 4.5),
     "points": ("float", 4.5),
+    "css_pixels": ("float", 4.5),
+    "user_units": ("float", 4.5),
 }
 
 

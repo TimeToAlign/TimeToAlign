@@ -226,7 +226,7 @@ the library writes back against the same literal text.
   and its complete twin, both literal, read to objects whose complete and
   minimal forms are identical; the complete form written back equals the
   complete literal and the minimal form the minimal literal. For each of the
-  sixteen units a minimal timeline reads with the unit's own number type —
+  eighteen units a minimal timeline reads with the unit's own number type —
   `int` for ticks, samples, frames and pixels, `fraction` for quarters and
   whole_notes, `float` otherwise — asserted per unit, so a reader that
   assumed one default for all would fail on two of the three groups.
@@ -2159,21 +2159,34 @@ builders cannot disagree about which maps are columnar.
    - Unit restrictions enforced
 
 4. **Graphical Timeline Tests** (8 tests)
-   - Allowed units (pixels, meters, cm, mm, inches, points)
+   - Allowed units (pixels, meters, cm, mm, inches, points, css_pixels,
+     user_units)
    - Similar pattern to other domains
+   - Every legal leaf unit round-trips with each number type it admits;
+     `css_pixels` and `user_units` with `float` and `fraction`, as `points`
 
-5. **Domain Property Tests** (3 tests)
+5. **Unit sets come from the unit.** Every `TimeUnit` is allowed by
+   exactly one of the six leaf classes, and that class's domain and
+   modality are the unit's own `domain` and `is_discrete`; the domain
+   classes allow exactly the units of their domain. A unit added to
+   `TimeUnit` is therefore placed without a second list to update, and a
+   leaf class listing a unit by hand in the wrong place fails. In
+   particular `Timeline.resolve_subclass("css_pixels")` and
+   `Timeline.resolve_subclass("user_units")` are `ContinuousGraphicalTimeline`,
+   and a `Timeline` in either unit is minted `cgt_1`.
+
+6. **Domain Property Tests** (3 tests)
    - Each domain class returns correct Domain enum
 
-6. **Inheritance Tests** (6 tests)
+7. **Inheritance Tests** (6 tests)
    - All concrete types inherit from correct base classes
 
-7. **Cross-Domain Compatibility Tests** (3 tests)
+8. **Cross-Domain Compatibility Tests** (3 tests)
    - Logical cannot contain physical
    - Physical cannot contain graphical
    - Graphical cannot contain logical
 
-8. **Parameterized SegmentLine and Serialization Tests**
+9. **Parameterized SegmentLine and Serialization Tests**
    - Repeated parameterization returns the identical cached class
    - Dynamic classes inherit the APIs and restrictions of both `SegmentLine`
      and their timeline parameter

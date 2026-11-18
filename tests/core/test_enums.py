@@ -131,6 +131,28 @@ class TestTimeUnit:
         assert TimeUnit.mm is TimeUnit.millimeters
         assert TimeUnit.cm is TimeUnit.centimeters
 
+    @pytest.mark.parametrize("unit", [TimeUnit.css_pixels, TimeUnit.user_units])
+    def test_vector_graphics_units_are_continuous_graphical(
+        self, unit: TimeUnit
+    ) -> None:
+        """CSS pixels and user units are graphical, continuous and float by default."""
+        assert unit.domain is Domain.graphical
+        assert unit.is_discrete is False
+        assert unit.default_number_type is NumberType.float
+        assert unit.allowed_number_types == {NumberType.float, NumberType.fraction}
+        assert unit.allowed_number_types == TimeUnit.points.allowed_number_types
+
+    def test_vector_graphics_units_have_no_abbreviation(self) -> None:
+        """``px`` stays the discrete pixel; neither new unit has a short spelling."""
+        abbreviations = TimeUnit.get_abbreviations()
+        assert abbreviations["css_pixels"] == []
+        assert abbreviations["user_units"] == []
+        assert TimeUnit("css_pixels") is TimeUnit.css_pixels
+        assert TimeUnit("user_units") is TimeUnit.user_units
+        assert TimeUnit("px") is TimeUnit.pixels
+        with pytest.raises(ValueError, match="'uu' is not a valid TimeUnit"):
+            TimeUnit("uu")
+
     def test_a_generic_beat_axis_is_the_number_unit(self) -> None:
         """There is no ``beats`` unit, and no alias resurrects one.
 

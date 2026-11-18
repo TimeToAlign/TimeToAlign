@@ -153,6 +153,16 @@ def _check_calibration(
             )
 
 
+class OutputNumberTypeError(ValueError):
+    """A float handed to a map declared to write fractions.
+
+    Such a map computes exactly, so it takes ints and Fractions only: a float
+    result rebuilt as an exact value would state a ratio the input never
+    stated. The input is refused as a value, like any other position a map
+    cannot answer for.
+    """
+
+
 # region ConversionMap
 
 
@@ -547,8 +557,8 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
 
         Raises:
             ValueError: If the input Coordinate has an incompatible unit.
-            TypeError: If the map was given the ``fraction`` declaration and
-                the scalar input is a float.
+            OutputNumberTypeError: If the map was given the ``fraction``
+                declaration and the scalar input is a float.
         """
         # Handle Coordinate input
         if isinstance(value, Coordinate):
@@ -581,13 +591,13 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
         stated.
 
         Raises:
-            TypeError: If the map was given the ``fraction`` declaration and
-                *value* is a float.
+            OutputNumberTypeError: If the map was given the ``fraction``
+                declaration and *value* is a float.
         """
         if self._given_output_number_type is NumberType.fraction and isinstance(
             value, (float, np.floating)
         ):
-            raise TypeError(
+            raise OutputNumberTypeError(
                 f"Map {self._id} is declared to write fractions and computes "
                 f"exactly, so it takes an int or a Fraction, not the float {value!r}."
             )
@@ -603,8 +613,8 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
         writes the final result once.
 
         Raises:
-            TypeError: If the map was given the ``fraction`` declaration and
-                *value* is a float.
+            OutputNumberTypeError: If the map was given the ``fraction``
+                declaration and *value* is a float.
         """
         return self._written_as(
             self._evaluate(value, **kwargs), self._own_output_number_type

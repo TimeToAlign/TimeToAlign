@@ -225,8 +225,8 @@ matched against anything.
   `fraction` where the value unit admits it (an exact line into `seconds`
   answers `Fraction(1, 2)` at 1); into a discrete unit, which admits
   integers only, the map declares nothing and writes whole ticks (480 at 1).
-  The exact map refuses a float input with a `TypeError` naming the
-  declaration (the points map through (0, 0) and (6, 1) answers
+  The exact map refuses a float input with an `OutputNumberTypeError`
+  naming the declaration (the points map through (0, 0) and (6, 1) answers
   `Fraction(1, 6)` at 1 and `Fraction(1, 12)` at `Fraction(1, 2)`, and
   refuses 1.0), as every map declared `fraction` does (below).
 - **Values carry a unit.** Values are coordinates sharing one unit, which
@@ -289,8 +289,10 @@ asserted together. Undeclared, the map answers the float
 `0.16666666666666666` at 1, since seconds default to floats. Declared
 `fraction`, it answers `Fraction(1, 3)` at the anchor 2, `Fraction(1, 6)` and
 `Fraction(2, 3)` between anchors, and `Fraction(4, 3)` extrapolating past
-the last. **A map declared `fraction` refuses a float input** with a
-`TypeError` naming the declaration: it computes exactly, and a float input
+the last. **A map declared `fraction` refuses a float input** with an
+`OutputNumberTypeError` naming the declaration, a `ValueError` and never a
+`TypeError`: the input's type is supported, its value is what the
+declaration refuses. The map computes exactly, and a float input
 would leave the float result rebuilt as a ratio (at 1.0 the dyadic
 `Fraction(6004799503160661, 36028797018963968)`, a ratio nothing stated). The
 refusal sits in the base's evaluation, so it holds for every map class and
@@ -451,7 +453,7 @@ represents, so the probes are chosen around one:
   `Fraction(1, 3)`. Declaring either composite `fraction` is refused.
 - *A member's own guard applies.* A chain whose first member, the float
   scalar 0.5, hands `0.5` to a member declared `fraction` raises that
-  member's `TypeError` ("… not the float 0.5."); a piecewise map whose
+  member's `OutputNumberTypeError` ("… not the float 0.5."); a piecewise map whose
   member is declared `fraction` raises it for the float input 1.0. Before,
   both computed in floats.
 
@@ -528,7 +530,7 @@ member's guard runs and its result is written in the representation the
 member states itself. Only a result that differs between the two paths can
 tell them apart, so the probes are built around one. A member declared
 `fraction` (the exact scalar 1/3 from quarters into quarters) refuses the
-float input 1.0 with its own `TypeError` ("… not the float 1.0."); a
+float input 1.0 with its own `OutputNumberTypeError` ("… not the float 1.0."); a
 combination bypassing it answered the float `0.3333333333333333` from a
 map declared to write fractions. A member declared `float` (the same exact
 scalar) answers `0.3333333333333333` at 1, where the bypass answered

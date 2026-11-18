@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 from timetoalign.core.enums import NumberType, TimeUnit
-from timetoalign.maps.base import ConversionMap
+from timetoalign.maps.base import ConversionMap, OutputNumberTypeError
 from timetoalign.maps.composite import ChainMap, PiecewiseMap
 from timetoalign.maps.interpolation import InterpolationMap
 from timetoalign.maps.linear import LinearMap, ScalarMap
@@ -289,7 +289,7 @@ class TestDeclaredOutputNumberType:
     def test_fraction_map_refuses_a_float(self, build):
         cmap = build(output_number_type="fraction", uid="exact")
         with pytest.raises(
-            TypeError,
+            OutputNumberTypeError,
             match=re.escape(
                 "Map exact is declared to write fractions and computes exactly, "
                 "so it takes an int or a Fraction, not the float 1.0."
@@ -421,7 +421,7 @@ class TestFloatArithmeticMembers:
             ]
         )
         with pytest.raises(
-            TypeError,
+            OutputNumberTypeError,
             match=re.escape(
                 "Map exact is declared to write fractions and computes exactly, "
                 "so it takes an int or a Fraction, not the float 0.5."
@@ -434,7 +434,7 @@ class TestFloatArithmeticMembers:
             quarters_scalar(Fraction(1, 3), output_number_type="fraction", uid="exact")
         )
         with pytest.raises(
-            TypeError,
+            OutputNumberTypeError,
             match=re.escape(
                 "Map exact is declared to write fractions and computes exactly, "
                 "so it takes an int or a Fraction, not the float 1.0."

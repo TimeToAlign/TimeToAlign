@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 from timetoalign.core.enums import TimeUnit
-from timetoalign.maps import LinearMap, ScalarMap
+from timetoalign.maps import LinearMap, OutputNumberTypeError, ScalarMap
 from timetoalign.maps.combination import CombinationMap
 from timetoalign.maps.periodic import FloorMap, RotationMap
 
@@ -191,7 +191,9 @@ class TestMemberEvaluation:
                 "third": quarters_scalar(Fraction(1, 3), output_number_type="fraction")
             }
         )
-        with pytest.raises(TypeError, match=re.escape("not the float 1.0.")):
+        with pytest.raises(
+            OutputNumberTypeError, match=re.escape("not the float 1.0.")
+        ):
             combo(1.0)
 
     def test_float_member_writes_its_float(self):

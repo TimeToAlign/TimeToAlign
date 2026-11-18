@@ -14,7 +14,7 @@ from timetoalign.core.enums import (
     TimeUnit,
 )
 from timetoalign.core.time import Coordinate
-from timetoalign.maps.base import ConversionMap
+from timetoalign.maps.base import ConversionMap, OutputNumberTypeError
 from timetoalign.maps.table import TableMap
 
 
@@ -314,10 +314,15 @@ class TestDeclaredOutputNumberType:
             "Map tempo is declared to write fractions and computes exactly, so it "
             "takes an int or a Fraction, not the float 1.0."
         )
-        with pytest.raises(TypeError, match=message):
+        with pytest.raises(OutputNumberTypeError, match=message):
             cmap(1.0)
-        with pytest.raises(TypeError, match=message):
+        with pytest.raises(OutputNumberTypeError, match=message):
             cmap(Coordinate(1.0, TimeUnit.quarters, number_type="float"))
+        # A refused value, not an unsupported type.
+        with pytest.raises(ValueError, match=message) as refused:
+            cmap(1.0)
+        assert not isinstance(refused.value, TypeError)
+        assert type(refused.value) is OutputNumberTypeError
 
     def test_float_map_never_answers_a_fraction(self):
         cmap = TableMap(

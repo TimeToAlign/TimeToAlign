@@ -24,7 +24,7 @@ Convenience classes for common conversions:
 
 from __future__ import annotations
 
-from .base import ConversionMap
+from .base import ConversionMap, OutputNumberTypeError
 from .combination import CombinationMap
 from .composite import ChainMap, PiecewiseMap
 from .constant import ConstantMap
@@ -54,6 +54,7 @@ from .table import TableMap
 __all__ = [
     # Base
     "ConversionMap",
+    "OutputNumberTypeError",
     # Constant map
     "ConstantMap",
     # Interpolation (internal engine)

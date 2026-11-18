@@ -10,6 +10,7 @@ import pytest
 
 from timetoalign.core.enums import NumberType, TimeUnit
 from timetoalign.core.time import Coordinate
+from timetoalign.maps.base import OutputNumberTypeError
 from timetoalign.maps.linear import LinearMap, ScalarMap, ShiftMap
 
 # A seconds axis drawn in points: the positions of its five labelled ticks
@@ -477,7 +478,7 @@ class TestLinearMapFromPairs:
         assert exact(1) == Fraction(1, 6)
         assert exact(Fraction(1, 2)) == Fraction(1, 12)
         with pytest.raises(
-            TypeError,
+            OutputNumberTypeError,
             match=re.escape(
                 f"Map {exact.id} is declared to write fractions and computes "
                 "exactly, so it takes an int or a Fraction, not the float 1.0."

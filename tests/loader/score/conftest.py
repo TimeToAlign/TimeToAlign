@@ -3,7 +3,7 @@
 This module consolidates:
 - FlowEntry NamedTuple and parse_flow_csv() (canonical parser with header validation)
 - SpecimenConfig dataclass and SPECIMENS dict (test specimen configuration)
-- Common path constants (TESTS_DATA_DIR, TARGET_FLOWS_DIR, SCORE_DATA_DIR)
+- Common path constants (TARGET_FLOWS_DIR, SCORE_DATA_DIR), resolved via ensure_data
 - Shared helper functions (find_source_file, get_loader_for_source_file)
 """
 
@@ -26,9 +26,8 @@ PARANGONAR_DIR = ensure_data("parangonar")
 
 # region Path Constants
 
-TESTS_DATA_DIR = Path(__file__).parents[2] / "data"
-TARGET_FLOWS_DIR = TESTS_DATA_DIR / "target_flows"
-SCORE_DATA_DIR = TESTS_DATA_DIR / "score"
+TARGET_FLOWS_DIR = ensure_data("target_flows")
+SCORE_DATA_DIR = SCORE_DIR
 
 # endregion
 

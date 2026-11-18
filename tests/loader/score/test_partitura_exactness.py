@@ -3,17 +3,16 @@
 from __future__ import annotations
 
 from fractions import Fraction
-from pathlib import Path
 
 import partitura as pt
 import partitura.score as pts
 import pytest
 
 from timetoalign.loader.score import PartituraLoader
+from timetoalign.testdata import ensure_data
 
-DATA_DIR = Path(__file__).parents[2] / "data"
-CHOPIN_XML = DATA_DIR / "vienna_1x22" / "Chopin_op10_no3.musicxml"
-BEETHOVEN_XML = DATA_DIR / "score" / "beethoven_woo71" / "WoO71.musicxml"
+CHOPIN_XML = ensure_data("vienna_1x22") / "Chopin_op10_no3.musicxml"
+BEETHOVEN_XML = ensure_data("score") / "beethoven_woo71" / "WoO71.musicxml"
 
 
 def _pair(value: dict[str, object]) -> Fraction:

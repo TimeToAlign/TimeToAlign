@@ -13,16 +13,10 @@ from timetoalign.loader.score.partitura import PartituraLoader
 from timetoalign.loader.score.store import ScoreStore
 from timetoalign.testdata import ensure_data
 
-DATA_DIR = Path(__file__).parents[2] / "data" / "vienna_1x22"
-MIDI_SCORE_DIR = Path(__file__).parents[2] / "data" / "midi" / "score"
+DATA_DIR = ensure_data("vienna_1x22")
+MIDI_SCORE_DIR = ensure_data("midi") / "score"
 MS3_DIR = DATA_DIR / "ms3"
-WOO71_MEASURES = (
-    Path(__file__).parents[2]
-    / "data"
-    / "score"
-    / "beethoven_woo71"
-    / "WoO71.measures.tsv"
-)
+WOO71_MEASURES = ensure_data("score") / "beethoven_woo71" / "WoO71.measures.tsv"
 WOO71_NOTES = WOO71_MEASURES.with_name("WoO71.notes.tsv")
 
 

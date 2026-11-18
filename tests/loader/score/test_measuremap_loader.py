@@ -20,16 +20,16 @@ from pathlib import Path
 
 import pytest
 
+from timetoalign.testdata import ensure_data
 from timetoalign.timelines import MeasureMap
 
-# Specimen data paths - all under tests/data/score/
-TESTS_DATA_DIR = Path(__file__).parents[2] / "data" / "score"
-BEETHOVEN_WOO71_DIR = TESTS_DATA_DIR / "beethoven_woo71"
+SCORE_DATA_DIR = ensure_data("score")
+BEETHOVEN_WOO71_DIR = SCORE_DATA_DIR / "beethoven_woo71"
 BEETHOVEN_MM_JSON = BEETHOVEN_WOO71_DIR / "WoO71.measures.mm.json"
 BEETHOVEN_MEASURES_TSV = BEETHOVEN_WOO71_DIR / "WoO71.measures.tsv"
 BEETHOVEN_UNFOLDED_TSV = BEETHOVEN_WOO71_DIR / "WoO71_unfolded.measures.tsv"
 
-FLOW_CONTROL_DIR = TESTS_DATA_DIR / "flow_control" / "flow_only"
+FLOW_CONTROL_DIR = SCORE_DATA_DIR / "flow_control" / "flow_only"
 FLOW_MM_JSON = (
     FLOW_CONTROL_DIR / "out_of_the_flow_experience-flow_only.measures.mm.json"
 )

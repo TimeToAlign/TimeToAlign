@@ -668,7 +668,7 @@ class Manifest(_OpenObject):
 
         Args:
             roots: The root timelines.
-            groups: The written groups.
+            groups: The written groups, each in the complete form.
             order: Every group's member order, keyed by group id.
             minimal: Write the minimal form (the default): every key at its
                 default value left out. With False, the complete form.

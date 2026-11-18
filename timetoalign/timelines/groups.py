@@ -2174,7 +2174,7 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
         manifest.styling = self.styling
         return manifest.write(
             list(roots.values()),
-            groups=[self._to_group_object(minimal=minimal)],
+            groups=[self._to_group_object()],
             order={self.id: self.timeline_ids},
             minimal=minimal,
             events=events,
@@ -2192,11 +2192,12 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
         self._manifest = manifest
         return self
 
-    def _to_group_object(self, *, minimal: bool) -> dict[str, Any]:
+    def _to_group_object(self) -> dict[str, Any]:
         """Write the ``Group`` object: id, name, meta and the sorted member ids.
 
         The one writer of the ``Group`` object, shared by :meth:`to_dict` and
-        the bundle's writer.
+        the bundle's writer. It is written in the complete form; the
+        manifest's writer takes the minimal form of the whole.
         """
         return self._dict_form(
             {
@@ -2205,7 +2206,7 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
                 "meta": copy.deepcopy(self.meta),
                 "members": sorted(self.timeline_ids),
             },
-            minimal=minimal,
+            minimal=False,
         )
 
     # endregion

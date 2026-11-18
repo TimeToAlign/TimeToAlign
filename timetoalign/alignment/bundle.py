@@ -4267,7 +4267,7 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
         manifest._unknown_keys = self._unknown_keys
         return manifest.write(
             self._roots(),
-            groups=[group._to_group_object(minimal=minimal) for group in groups],
+            groups=[group._to_group_object() for group in groups],
             order={group.id: group.timeline_ids for group in groups},
             minimal=minimal,
             events=events,

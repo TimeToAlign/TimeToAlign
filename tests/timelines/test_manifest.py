@@ -14,7 +14,7 @@ from fractions import Fraction
 from typing import Any
 
 import pytest
-from timetoshare import minimal
+from timetoshare import complete, minimal
 
 from timetoalign.alignment import AlignmentBundle
 from timetoalign.core import Coordinate, NumberType, SupportPolicy, TimeUnit
@@ -318,6 +318,61 @@ def test_the_minimal_form_compares_a_default_by_value() -> None:
     assert json.dumps(reread["timelines"][0]["conversion_maps"]) == json.dumps(
         [{**complete_map, "offset": 0}]
     )
+
+
+GROUP_OBJECTS = {
+    "plain": (
+        {},
+        {"id": "g", "members": ["perf", "score"]},
+        {"id": "g", "name": None, "meta": {}, "members": ["perf", "score"]},
+    ),
+    "named": (
+        {"name": "Study", "meta": {"source": "an edition"}},
+        {
+            "id": "g",
+            "name": "Study",
+            "meta": {"source": "an edition"},
+            "members": ["perf", "score"],
+        },
+        {
+            "id": "g",
+            "name": "Study",
+            "meta": {"source": "an edition"},
+            "members": ["perf", "score"],
+        },
+    ),
+}
+"""Each group's keyword arguments, then its object in the minimal and complete form."""
+
+
+def _grouped(writer: str, members: dict[str, Any]) -> Any:
+    """A group ``g`` of a score and a performance, alone or in a bundle."""
+    group = TimelineGroup(
+        id="g",
+        timelines=[
+            ContinuousLogicalTimeline(length=Fraction(8), uid="score"),
+            ContinuousPhysicalTimeline(length=4.0, uid="perf"),
+        ],
+        **members,
+    )
+    if writer == "group":
+        return group
+    return AlignmentBundle().add_group(group)
+
+
+@pytest.mark.parametrize("writer", ["group", "bundle"])
+@pytest.mark.parametrize("case", list(GROUP_OBJECTS), ids=list(GROUP_OBJECTS))
+def test_a_group_takes_its_form_with_the_whole_manifest(writer: str, case: str) -> None:
+    members, minimal_group, complete_group = GROUP_OBJECTS[case]
+    written = _grouped(writer, members)
+
+    minimal_form = written.to_dict(minimal=True)
+    complete_form = written.to_dict(minimal=False)
+
+    assert minimal_form["groups"] == [minimal_group]
+    assert complete_form["groups"] == [complete_group]
+    assert _text(minimal_form) == _text(minimal(complete_form))
+    assert _text(complete_form) == _text(complete(minimal_form))
 
 
 def test_a_reader_supplies_every_default() -> None:

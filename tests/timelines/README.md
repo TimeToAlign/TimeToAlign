@@ -495,6 +495,16 @@ the library writes back against the same literal text.
   back supplies the default as the package does: its complete form writes
   `"offset": 0`, so this map's complete form survives the minimal one in
   value, not in spelling.
+- **A group is put in its form with the whole manifest.** A group object is
+  written once, in the complete form, and the manifest written around it
+  takes TimeToShare's form as a whole. A group without a name or meta and a
+  group with both, written by `TimelineGroup.to_dict` and by
+  `AlignmentBundle.to_dict`, give a minimal form equal to
+  `timetoshare.minimal` of the complete form and a complete form equal to
+  `timetoshare.complete` of the minimal one, and each group object equals
+  its literal: `{"id", "members"}` minimal and `{"id", "name": null,
+  "meta": {}, "members"}` complete for the first, every key in both forms
+  for the second.
 
 ### Manifest files (`test_manifest_files.py`)
 

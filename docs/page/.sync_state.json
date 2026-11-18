@@ -7,7 +7,7 @@
   "how01_loading_data.py": "a5d1b222764d205256b706eaf5b2ee5cb2b60d44d715a12baff4a5a379f0a8d9",
   "how01_tabular_loaders.py": "d60f2bdc0c1cbd1c84c631ac49032101ad8e05ce4681bf3d74cb3a0bc8844051",
   "how01_beat_grids.py": "df94a0a10de544dcbe4c07e1f9f4c01e6eecb67249b474ef2588c1eede0d2629",
-  "how02_supra_piano_roll.py": "75be25b34ab2d0e2b05e8e522e07ca469252e5ee8203d53752ee2c6aba88e7e5",
+  "how02_supra_piano_roll.py": "4b9f98af84e21dfa26ef1c83e1266320d0f37dcfb40ae63b0c7427bd265289f6",
   "how03_beethoven_multimodal.py": "abddb9551312363ac8ed44baea14f1809f88169914645e2f1669ce5cbd063059",
   "how03_loading_vienna_corpus.py": "14a24030c9a53afa713b1014c3b2a443b65454ffda49794b71e4b5e5319a69ca",
   "how03_create_note_alignment.py": "305936313b1486d27bd4a56842cd570f9ac1abbd043689b12a3d8266a0b1e064",
@@ -32,7 +32,7 @@
   "tut07_flow_and_grids.py": "03217ceb12a46ea944fdb7f4af5da55b5738fe1b2e28e133ac290f5058b0ab7c",
   "tut08_data_model.py": "8faff22931435cb61c183c1465d208f2f131deffd8c7bbeff5816a1e717bbfbe",
   "tut09_pitch_and_harmony.py": "8aff86fbb8f45134d76549fb41d70b235c547d90375c05eee05640e9cbf9a08f",
-  "how04_load_anything.py": "5c5ba80a39b3941cca854971707c338eb7124ed4b9755428b5e9ac1cb37ae876",
-  "how02_group_and_bundle_files.py": "2a587d581a9492511ad0d3b8e6aee27d4cdeccd03f355ff47af2889c2f62c984",
-  "how03_describe_the_work.py": "8e51c252c61b2bf99a0a149cc4892fa9e7214a269fd044dc2cdbbc554564bd10"
+  "how04_load_anything.py": "94221401e7e2d23528aa93884dd5298e5c61ca3e388712d3c730165bfde4920a",
+  "how02_group_and_bundle_files.py": "a5b737d4ea97a2c1a452fa27f95b0997d3d99a653c830a493f047323780098f7",
+  "how03_describe_the_work.py": "6d27e0d6f9ee40f09945b95c92a97ddaf5a262a7a2e89b7fda195cdeaeadc564"
 }

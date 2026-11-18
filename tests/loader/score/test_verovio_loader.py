@@ -897,7 +897,7 @@ class TestRepeatFacts:
 
     def test_flow_only_navigation(self, flow_only: VerovioLoader) -> None:
         assert _navigation(flow_only) == {
-            7: ("fine", None, None, None, None),
+            7: ("fine", None, None, None, "8, -1"),
             9: ("segno & coda", None, None, None, None),
             12: (None, "segno", "coda2", "coda", "9"),
             13: ("coda2", None, None, None, "14, 15"),
@@ -911,11 +911,11 @@ class TestRepeatFacts:
         )
         assert _navigation(loader) == {
             6: ("segno", None, None, None, None),
-            16: ("fine", None, None, None, "1, 17"),
+            16: ("fine", None, None, None, "1, 17, -1"),
             17: ("segno2", None, None, None, None),
-            31: (None, "start", None, "fine", "1"),
+            31: (None, "start", None, "fine", "17, 1"),
             32: ("segno3", None, None, None, None),
-            58: (None, "segno", None, "fine", "6"),
+            58: (None, "segno", None, "fine", "32, 6"),
         }
 
 

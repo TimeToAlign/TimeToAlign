@@ -373,13 +373,12 @@ A `<tempo xml:id="tempo1" tstamp="1">Andante très expressif</tempo>` sits in m1
   `rendered:cpt_1` in seconds, number type `Fraction`, length 9/2, `meta["provenance"] ==
   "verovio_rendered"`, one child `rendered:cpt_2` of length 9/2. Every event lies at half its quarter
   position (`d2` 9/8–3/2, `t3` 3–9/2, `tempo1` 0). Its events carry `mc` (1 and 2) but no
-  in-measure offset: those are quarters, which have no place on a seconds axis. The logical timeline's C-Map maps
-  9/4 quarters to 9/8 seconds, which a map answers as the float `1.125` because the seconds axis
-  writes floats (the physical timeline itself is built from the exact values); the physical
-  timeline's C-Map maps 9/8 back to exactly `Fraction(9, 4)`. `attach_cmap=False` attaches none.
+  in-measure offset: those are quarters, which have no place on a seconds axis. The logical timeline's C-Map, built with output number type `fraction`, maps
+  9/4 quarters to exactly `Fraction(9, 8)` seconds, and the physical timeline's C-Map maps 9/8 back
+  to exactly `Fraction(9, 4)`. `attach_cmap=False` attaches none.
 - **Two-phase contract and options.** `from_file` and `load` give the same events;
-  `create_timeline(uid="clt_1", name="Fixture")` keeps both, and the movement stays
-  `score:clt_2`. The store metadata records the version and the options the toolkit ran with,
+  `create_timeline(uid="clt_1", name="Fixture")` keeps both, and the movement is still
+  `score:clt_2`: the root's number is drawn whatever id the root is given. The store metadata records the version and the options the toolkit ran with,
   `{"xmlIdChecksum": True, "mdivAll": True}`. A second source raises.
 
 **`grace.mei`** (4/4, one staff): m1 `a1` C4 quarter · unaccented grace `g1` · `p1` D4 quarter ·
@@ -434,7 +433,9 @@ Expected: root length 7; children `score:clt_2` [0, 4) and `score:clt_3` [4, 7),
 at 4 on the root; `t2` belongs to the second child. The root's `MeasureMap` (measures at 0, 2, 4)
 and C-Map serve the children through the root: the root's timestamp table gives `n4` 2 seconds;
 a child carries neither. On the physical timeline the second child starts at 2 s and lasts 3 s
-(three quarters at 60 per minute). With `options={"mdivXPathQuery": "./mdiv[2]"}` only the second
+(three quarters at 60 per minute); the children are `rendered:cpt_2` and `rendered:cpt_3`. Both C-Maps
+are exact between anchors as well: 10/3 quarters are exactly 5/3 seconds and 13/3 quarters 7/3
+seconds (the second across the tempo change), and back. With `options={"mdivXPathQuery": "./mdiv[2]"}` only the second
 movement is loaded: one child `score:clt_2` whose `meta["count"]` is still 2 (`count` numbers every
 `<mdiv>` of the file), at 0 with length 3.
 

@@ -1694,6 +1694,21 @@ must delegate to the same coordinate resolver and preserve its exact missing
 C-Map error, demonstrating that coordinate normalization is consistent across
 the public timeline surface.
 
+A C-Map declared to write fractions computes exactly and refuses a float, a
+ratio the input never stated. A query reaching such a map is refused at the
+timeline as a query error, never as the map's own `TypeError`. A `score` in
+quarters (8, `fraction`) carries `q2s` (quarters to seconds, scalar `1/2`)
+and `q2n` (quarters to `number`, scalar 2), both declared `fraction`.
+`get_coordinate_at` and `get_timestamp_at` with the float `1.5` seconds, and
+with the float `3.0` in `number`, raise `ValueError` with the exact message
+naming the map, its units, its declaration, the float and the timeline. The
+same getters answer exactly with `Fraction(3, 2)` seconds (3 quarters, the
+stamp reading `3/2` seconds and `6` in `number`) and with the int `3` in
+`number` (`3/2` quarters, `3/4` seconds). Seconds hold no int, so the int
+input goes through `number`, which admits both. A converter that let the
+float through would answer `3.0` rather than refuse; one that kept the map's
+`TypeError` fails the exception type.
+
 ### `test_offset_arithmetic.py` - Nested Offset Arithmetic
 
 These tests validate exact coordinate transfer between parents, children, and

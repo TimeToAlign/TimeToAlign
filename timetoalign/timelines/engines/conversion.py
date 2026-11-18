@@ -619,7 +619,9 @@ class ConversionMapsMixin:
             A coordinate expressed in this timeline's native unit.
 
         Raises:
-            ValueError: If a timeline ID is unknown or no unit conversion path exists.
+            ValueError: If a timeline ID is unknown, no unit conversion path
+                exists, or the path is a C-Map declared to write fractions and
+                *value* is a float, which it cannot resolve exactly.
         """
         resolved = resolve_coordinate_spec(value)
         owner_id = resolved.timeline_id or self._id
@@ -658,7 +660,20 @@ class ConversionMapsMixin:
                     f"No invertible C-Map available to convert coordinate from unit "
                     f"'{resolved.unit}' to '{self._unit}' on timeline '{self._id}'"
                 ) from None
-            native_value = inverse_map(resolved.value)
+            try:
+                native_value = inverse_map(resolved.value)
+            except TypeError as error:
+                # A map declared to write fractions computes exactly and
+                # refuses a float: the query has no exact path to this axis.
+                if not isinstance(resolved.value, float):
+                    raise
+                raise ValueError(
+                    f"C-Map '{unit_map.id}' ('{unit_map.source_unit}' to "
+                    f"'{unit_map.target_unit}') is declared to write fractions and "
+                    f"computes exactly, so it cannot resolve the float "
+                    f"{resolved.value!r} {resolved.unit} on timeline '{self._id}': "
+                    f"pass an int or a Fraction."
+                ) from error
 
         for offset in reversed(offsets):
             native_exact = exact_coordinate_value(native_value)

@@ -982,6 +982,24 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
         )
         return self.groups[min(shared)] if shared else None
 
+    def _warp_units(self) -> list[tuple[TimelineGroup | None, tuple[str, ...]]]:
+        """Return the units a matchstamp warps between, each with its members.
+
+        Every group is one unit. Every registered timeline no group holds is a
+        unit of its own, with ``None`` for its group: it is warped from and
+        into exactly as a group of that one member would be.
+        """
+        membership = self.timeline_to_groups
+        units: list[tuple[TimelineGroup | None, tuple[str, ...]]] = [
+            (group, tuple(group.timeline_ids)) for group in self.groups.values()
+        ]
+        units.extend(
+            (None, (timeline_id,))
+            for timeline_id in self.timelines
+            if timeline_id not in membership
+        )
+        return units
+
     def _group_component(self, timeline_id: str) -> set[str]:
         """Return the timelines reached from one through shared groups.
 
@@ -2533,6 +2551,9 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
                 interval_coordinates=interval_coordinates,
                 interval_anchor_edges=interval_anchor_edges,
                 interval_inferred_edges=interval_inferred_edges,
+                interval_withheld=set(candidate_groups).difference(
+                    interval_coordinates
+                ),
                 query_has_interval_anchor=any(
                     query_coordinate.value
                     in (
@@ -2919,9 +2940,10 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
         interval_coordinates: dict[str, CoordinateValue] | None = None,
         interval_anchor_edges: list[tuple[str, str]] | None = None,
         interval_inferred_edges: list[tuple[str, str]] | None = None,
+        interval_withheld: set[str] | None = None,
         query_has_interval_anchor: bool = False,
     ) -> tuple[
-        dict[str, CoordinateValue],
+        dict[str, CoordinateValue | None],
         list[tuple[str, str]],
         list[tuple[str, str]],
         bool,
@@ -2932,6 +2954,7 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
         query's MatchGraph (exact wins over interpolated), then walks outward
         across groups to closure: every reached timeline expands into its own
         group (interpolation) and warps into not-yet-reached groups (WarpMap),
+        an ungrouped timeline warping from and into a group of its own,
         each transferred coordinate governed by ``support_policy``. The query
         timeline's own coordinate is never dropped, clamped, or altered.
 
@@ -2943,6 +2966,9 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
             interval_coordinates: Unambiguous interval-derived seed values.
             interval_anchor_edges: Interval-claim edges reached at an anchor.
             interval_inferred_edges: Interval-claim edges reached in an interior.
+            interval_withheld: Timelines the query's interval claims map to
+                no single coordinate. They stay unresolved: no other route
+                may collapse the claims' alternatives into one value.
             query_has_interval_anchor: Whether an interval claim explicitly
                 anchors the query position.
 
@@ -2951,7 +2977,7 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
             ``query_has_anchor`` is True when the query node carries an
             explicit anchor (making the stamp non-interpolated).
         """
-        coordinates: dict[str, CoordinateValue] = {}
+        coordinates: dict[str, CoordinateValue | None] = {}
         anchor_edges: list[tuple[str, str]] = []
         inferred_edges: list[tuple[str, str]] = []
 
@@ -2992,6 +3018,8 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
                 inferred_edges.extend(graph_stamp.inferred_edges)
         for timeline_id, value in (interval_coordinates or {}).items():
             coordinates.setdefault(timeline_id, value)
+        for timeline_id in interval_withheld or ():
+            coordinates.setdefault(timeline_id, None)
         for edge in interval_anchor_edges or []:
             if edge not in anchor_edges and edge[::-1] not in anchor_edges:
                 anchor_edges.append(edge)
@@ -3001,9 +3029,13 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
         coordinates[actual_timeline_id] = coordinate
 
         # 2. Transitive closure across groups (BFS worklist).
-        worklist: list[str] = list(coordinates.keys())
+        worklist: list[str] = [
+            timeline_id
+            for timeline_id, value in coordinates.items()
+            if value is not None
+        ]
         processed: set[str] = set()
-        membership = self.timeline_to_groups
+        units = self._warp_units()
 
         while worklist:
             node_id = worklist.pop()
@@ -3011,6 +3043,7 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
                 continue
             processed.add(node_id)
             node_coordinate = coordinates[node_id]
+            assert node_coordinate is not None
             node_timeline = self.get_timeline(node_id)
 
             # Direct instant claims are reachability edges in their own right.
@@ -3053,14 +3086,13 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
                 add_inferred_edge(node_id, relative_id)
                 worklist.append(relative_id)
 
-            node_group_ids = membership.get(node_id, ())
-            for group_id in node_group_ids:
-                source_group = self.groups[group_id]
-
+            # The node's units: each of its groups, or the node alone when it
+            # is an ungrouped registered timeline.
+            for source_group, _ in (unit for unit in units if node_id in unit[1]):
                 # 2a. Within-group conversion to the members of each group of
                 # the node: exact, and always within each member, since
                 # members share one start and one end.
-                if len(source_group.timeline_ids) > 1:
+                if source_group is not None and len(source_group.timeline_ids) > 1:
                     grouped = self._get_group_timestamp(
                         source_group,
                         node_coordinate,
@@ -3074,21 +3106,18 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
                         add_inferred_edge(node_id, member_id)
                         worklist.append(member_id)
 
-                # 2b. Cross-group warp into every not-yet-reached group the
+                # 2b. Cross-group warp into every not-yet-reached unit the
                 # node is no member of.
-                for other_group_id, other_group in self.groups.items():
-                    if other_group_id in node_group_ids:
+                for _, target_ids in units:
+                    if node_id in target_ids:
                         continue
-                    if all(
-                        member_id in coordinates
-                        for member_id in other_group.timeline_ids
-                    ):
+                    if all(member_id in coordinates for member_id in target_ids):
                         continue
                     transferred = self._transfer_to_group(
                         float(node_coordinate),
                         node_id,
                         source_group,
-                        other_group,
+                        target_ids,
                         support_policy,
                     )
                     if transferred is None:
@@ -4035,8 +4064,8 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
         self,
         coordinate: float,
         source_tl_id: str,
-        source_group: TimelineGroup,
-        target_group: TimelineGroup,
+        source_group: TimelineGroup | None,
+        target_ids: Sequence[str],
         support_policy: SupportPolicy,
     ) -> tuple[str, float] | None:
         """Transfer a coordinate from one group to another via WarpMap.
@@ -4047,20 +4076,22 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
         Each transfer is governed by ``support_policy``
         (see :meth:`_transfer_coordinate`); a transfer omitted under the
         ``omit`` policy is skipped so another timeline in the target group may
-        still be reached.
+        still be reached. An ungrouped timeline is a group of its own on
+        either side (see :meth:`_warp_units`).
 
         Args:
             coordinate: Source coordinate.
             source_tl_id: Source timeline ID.
-            source_group: Source group.
-            target_group: Target group.
+            source_group: Source group, or None when the source is ungrouped.
+            target_ids: The target group's members, or the one ungrouped
+                target timeline.
             support_policy: How out-of-support transfers are handled.
 
         Returns:
             ``(target_timeline_id, transferred_coordinate)`` or ``None``.
         """
         # Try direct: source_tl_id -> any timeline in target group
-        for target_tl_id in target_group.timeline_ids:
+        for target_tl_id in target_ids:
             warp = self._get_or_build_warp_map(source_tl_id, target_tl_id)
             if warp is None:
                 continue
@@ -4075,6 +4106,9 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
                 continue
             if transferred is not None:
                 return (target_tl_id, transferred)
+
+        if source_group is None:
+            return None
 
         # Try indirect: convert within source group, then warp
         for src_other_tl_id in source_group.timeline_ids:
@@ -4096,7 +4130,7 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
                 continue
 
             # Try WarpMap from intermediate to target group
-            for target_tl_id in target_group.timeline_ids:
+            for target_tl_id in target_ids:
                 warp = self._get_or_build_warp_map(src_other_tl_id, target_tl_id)
                 if warp is None:
                     continue

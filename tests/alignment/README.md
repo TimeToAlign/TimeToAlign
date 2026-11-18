@@ -193,6 +193,80 @@ needs at least two anchors), which keeps the out-of-support counts exact.
 
 ---
 
+## Ungrouped Timelines Warp (`test_ungrouped_warp.py`)
+
+### What We're Validating
+
+A timeline that is in no group takes part in matchstamp warping exactly as a
+group of that one timeline would: it is a warp source and a warp target. Before
+this was true, a query between two anchors on an ungrouped score returned only
+the score, even though the bundle's own WarpMap for that pair answers the
+position. A test proves the rule only if it holds in the following cases:
+
+1. **Between anchors**, the stamp carries the value the bundle's WarpMap gives
+   for the pair, on every retrieval lane: `get_matchstamp_at`,
+   `get_matchstamps_at` and `get_matchstamp_table` (struct cells and
+   `format="dataframe"` scalars). The value is pinned twice, to a constant
+   worked out by hand and to `_get_or_build_warp_map(...).get_coordinate_at`.
+   That rules out both a wrong map and a lane that skips the map.
+2. **On an anchor**, the stamp still gives the anchor and is not interpolated.
+3. **Outside the anchors**, under the default `omit` policy, the recording does
+   not appear: the stamp holds the score alone, and the table cell is null.
+   A position before the first anchor and one after the last are both checked.
+4. **Both directions.** A query on the ungrouped recording reaches the ungrouped
+   score, so the ungrouped timeline is a warp source as well as a target.
+5. **Parity.** The same bundle answers identically, on the same stamp
+   coordinates and `is_interpolated`, in three forms: nothing grouped; the score
+   in a group of its own; both timelines each in a group of their own. The last
+   form already warped before the fix, so it is the reference.
+6. **No claims, no answer.** An ungrouped timeline with no claims to anything
+   stays unresolved. In the claimed bundle it never appears, and a bundle of two
+   ungrouped timelines with no claims at all answers the queried timeline only.
+7. **Interval ambiguity survives the warp.** Two interval claims mapping one
+   boundary of `mix` to two different positions of `loop` leave `loop` out of
+   the stamp (see "Interval-Claim Position Retrieval"). The closure must not
+   fill it from the WarpMap those same claims build, in the ungrouped form or in
+   the grouped one. Both live in `test_interval_matchstamp.py`:
+   `test_loop_boundary_ambiguity_is_per_claim_and_atomic` (ungrouped) and
+   `test_loop_boundary_ambiguity_survives_grouping` (each timeline in a group of
+   its own). An interior position of either claim still resolves `loop`: mix 15
+   → loop 5 and mix 25 → loop 105.
+
+### Fixture
+
+- `score`: quarters, length 16, exact (`Fraction`) axis.
+- `recording`: samples, length 441000, with `SamplesToSeconds(44100)`.
+- Four instant claims, score quarters → recording **seconds**, so every anchor
+  passes through the C-Map into native samples. Each `seconds × 44100` is whole:
+
+  | score (quarters) | recording (seconds) | recording (samples) |
+  |---|---|---|
+  | 1 | 0.5 | 22050 |
+  | 3 | 1.5 | 66150 |
+  | 5 | 2.0 | 88200 |
+  | 9 | 4.0 | 176400 |
+
+- `other` (seconds, length 10): a third ungrouped timeline with no claims.
+
+### Exact Expected Values
+
+Linear interpolation between neighbouring anchors:
+
+| score query | recording | how |
+|---|---|---|
+| 2 | 44100 | `22050 + (1/2)·44100` |
+| 7/3 | 51450 | `22050 + (2/3)·44100` |
+| 4 | 77175 | `66150 + (1/2)·22050` |
+| 7 | 132300 | `88200 + (1/2)·88200` |
+| 3 (anchor) | 66150 | anchor, `is_interpolated is False` |
+| 1/2, 10 | absent | outside the hull `[1, 9]`, `omit` |
+
+The reverse direction: recording `44100` → score `2`, and recording `77175` →
+score `4`. Both are whole quarters, so the float WarpMap lane meets the exact
+axis without rounding.
+
+---
+
 ## Interval-Claim Position Retrieval (`test_interval_matchstamp.py`)
 
 ### What We're Validating

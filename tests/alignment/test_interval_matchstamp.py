@@ -213,6 +213,30 @@ def test_loop_boundary_ambiguity_is_per_claim_and_atomic() -> None:
     assert "100" in html
 
 
+def test_loop_boundary_ambiguity_survives_grouping() -> None:
+    """A WarpMap never collapses alternatives the query's interval claims keep."""
+    bundle = AlignmentBundle(id="interval-retrieval")
+    bundle.add_timeline(_timeline("mix"), as_group="mix_group")
+    bundle.add_timeline(_timeline("loop"), as_group="loop_group")
+    first = _interval_claim("mix", 10, 20, "loop", 0, 10)
+    second = _interval_claim("mix", 20, 30, "loop", 100, 110)
+    bundle.add_match_claims([first, second])
+
+    boundary = bundle.get_matchstamp_at(20, "mix")
+
+    assert boundary.coordinates == {"mix": _coordinate(20)}
+    with pytest.raises(ValueError):
+        boundary.get_coordinate_for("loop")
+    assert bundle.get_matchstamp_at(15, "mix").coordinates == {
+        "mix": _coordinate(15),
+        "loop": _coordinate(5),
+    }
+    assert bundle.get_matchstamp_at(25, "mix").coordinates == {
+        "mix": _coordinate(25),
+        "loop": _coordinate(105),
+    }
+
+
 def test_plural_coordinate_retrieval_rejects_interval_claim_ambiguity_atomically() -> (
     None
 ):

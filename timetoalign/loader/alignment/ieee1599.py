@@ -120,7 +120,7 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Self
+from typing import TYPE_CHECKING, Any, ClassVar, Self
 
 import numpy as np
 import pyarrow as pa
@@ -413,7 +413,7 @@ class Ieee1599Loader(XmlLoader):
     """
 
     _default_unit = TimeUnit.ticks
-    _single_source = True
+    _single_source: ClassVar[bool] = True
 
     def __init__(self) -> None:
         super().__init__(principal_tags=[])

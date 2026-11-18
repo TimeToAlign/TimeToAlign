@@ -40,7 +40,7 @@ import json
 import math
 from collections import Counter
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from timetoalign.alignment.claims import MatchClaim, MatchMetadata
 from timetoalign.core import TimeUnit
@@ -89,7 +89,7 @@ class MapsLoader(AlignmentLoader):
     ``None``.
     """
 
-    _single_source = True
+    _single_source: ClassVar[bool] = True
 
     def __init__(self) -> None:
         super().__init__()

@@ -457,6 +457,19 @@ represents, so the probes are chosen around one:
   member is declared `fraction` raises it for the float input 1.0. Before,
   both computed in floats.
 
+**What a map states about its arithmetic is read once, at construction**
+(`TestStatedOnceAtConstruction`). A map is immutable once built, so whether
+it computes in doubles and the representation it states itself are fixed
+when it is built; reading them again for every value walks every member,
+recursively. What proves the reading happens once is a value converted after
+the readers have been made to fail: both readers of `ConversionMap` are
+replaced, after construction, by functions that raise, and a chain of a
+float member (the scalar 0.5) and an exact one (1/3), and a piecewise map
+over a chain of the exact scalars 1/2 and 1/3, still answer the float
+`0.16666666666666666` and `Fraction(1, 6)` at 1, declaring `float` and
+`fraction`. Building a map after the replacement raises, which shows the
+readers are the ones construction calls.
+
 **PiecewiseMap picks the interval in the input's own arithmetic.** An int or
 a `Fraction` is compared exactly with the breaks as given; a float with the
 breaks as floats. Breaks `[0, 3/10, 1]` with the exact scalars 1 and 2,

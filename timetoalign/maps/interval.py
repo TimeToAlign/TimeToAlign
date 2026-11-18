@@ -120,13 +120,6 @@ class IntervalToConstantMap(ConversionMap[T], Generic[T]):
             ValueError: If fewer than 1 boundary is provided.
             ValueError: If *end* does not lie after the last boundary.
         """
-        super().__init__(
-            source_unit=source_unit,
-            target_unit=target_unit,
-            uid=uid,
-            name=name,
-        )
-
         if len(boundaries) != len(values):
             raise ValueError(
                 f"boundaries and values must have same length, "
@@ -152,11 +145,18 @@ class IntervalToConstantMap(ConversionMap[T], Generic[T]):
                 f"end {end} must lie after the last boundary {self._boundaries_original[-1]}"
             )
         self._end = end
-        # With an end, the ConstantMap of each interval its form nests.
+        # With an end, the ConstantMap of each interval its form nests. Set
+        # first: the base reads the nested maps once, at construction.
         self._pieces = [
             ConstantMap(value=value, source_unit=source_unit, target_unit=target_unit)
             for value in (self._values if end is not None else ())
         ]
+        super().__init__(
+            source_unit=source_unit,
+            target_unit=target_unit,
+            uid=uid,
+            name=name,
+        )
         self._admit_ids()
 
     @property

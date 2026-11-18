@@ -443,6 +443,28 @@ class TestFloatArithmeticMembers:
             piecewise(1.0)
 
 
+class TestStatedOnceAtConstruction:
+    def test_values_do_not_read_the_members_again(self, monkeypatch):
+        chain = ChainMap([quarters_scalar(0.5), quarters_scalar(Fraction(1, 3))])
+        piecewise = quarters_piecewise(
+            ChainMap([quarters_scalar(Fraction(1, 2)), quarters_scalar(Fraction(1, 3))])
+        )
+
+        def read_again(self):
+            raise AssertionError(f"{type(self).__name__} read its members again")
+
+        monkeypatch.setattr(ConversionMap, "_computes_in_doubles", read_again)
+        monkeypatch.setattr(ConversionMap, "_stated_output_number_type", read_again)
+        assert chain.output_number_type is NumberType.float
+        assert chain(1) == 0.16666666666666666
+        assert type(chain(1)) is float
+        assert piecewise.output_number_type is NumberType.fraction
+        assert piecewise(1) == Fraction(1, 6)
+        assert type(piecewise(1)) is Fraction
+        with pytest.raises(AssertionError, match="ScalarMap read its members again"):
+            quarters_scalar(1)
+
+
 class TestPiecewiseExactIntervalSelection:
     def test_exact_input_is_compared_exactly(self):
         piecewise = PiecewiseMap(

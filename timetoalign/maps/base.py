@@ -389,6 +389,11 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
         else:
             self._target_unit = self._default_target_unit
 
+        # A map is immutable once built, its members and parameters set
+        # before this runs, so what it states about its own arithmetic and
+        # representation is read once here rather than on every value.
+        self._float_arithmetic: bool = self._computes_in_doubles()
+
         # A setting of the library only: the TimeToShare manifest has no key
         # for it, so to_dict() leaves it out and from_dict() reads none.
         self._given_output_number_type: NumberType | None = None
@@ -406,6 +411,9 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
                     f"{type(self).__name__} computes in doubles and cannot be "
                     f"declared to write fractions."
                 )
+        self._own_output_number_type: NumberType | None = (
+            self._stated_output_number_type()
+        )
 
         # Set name: explicit > "source_to_target" > id. Only a given name is
         # written by to_dict(); the others are derived for display.
@@ -488,8 +496,7 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
             return None
         return self._target_unit.default_number_type
 
-    @property
-    def _own_output_number_type(self) -> NumberType | None:
+    def _stated_output_number_type(self) -> NumberType | None:
         """The representation the map states itself, before the target unit's default.
 
         What :attr:`output_number_type` answers from the map alone: the
@@ -497,7 +504,8 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
         map computing in doubles where its target unit admits floats.
         ``None`` leaves it to the target unit. A map nesting this one writes
         its results in this representation, so the default of the member's
-        target unit, an intermediate axis, is not imposed.
+        target unit, an intermediate axis, is not imposed. Read once, at
+        construction, as ``_own_output_number_type``.
         """
         if self._given_output_number_type is not None:
             return self._given_output_number_type
@@ -511,14 +519,14 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
             return NumberType.float
         return None
 
-    @property
-    def _float_arithmetic(self) -> bool:
+    def _computes_in_doubles(self) -> bool:
         """Whether the map computes in doubles, whatever its input.
 
         A map does when one of its own parameters is a float (a float scalar
         or offset, a float anchor: :meth:`_parameters`), or when a map nested
         in it answers floats: it computes in doubles itself, or states
-        ``float`` as its own representation.
+        ``float`` as its own representation. Read once, at construction, as
+        ``_float_arithmetic``.
         """
         return any(
             isinstance(parameter, (float, np.floating))
@@ -532,8 +540,9 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
     def _parameters(self) -> Sequence[Any]:
         """The numbers the map's own arithmetic runs on.
 
-        A subclass sets them before :meth:`__init__` of this class runs, which
-        refuses the ``fraction`` declaration for a map computing in doubles.
+        A subclass sets them, and the maps :meth:`_nested_maps` answers,
+        before :meth:`__init__` of this class runs, which reads whether the
+        map computes in doubles from them.
         """
         return ()
 

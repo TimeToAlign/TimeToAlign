@@ -153,8 +153,7 @@ class InterpolationMap(ConversionMap[float]):
 
         self._inverse: InterpolationMap | None = None
 
-    @property
-    def _float_arithmetic(self) -> bool:
+    def _computes_in_doubles(self) -> bool:
         """True: the map interpolates over float64 anchors, whatever its input."""
         return True
 

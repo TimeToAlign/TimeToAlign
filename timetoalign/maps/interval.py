@@ -294,7 +294,9 @@ class IntervalToConstantMap(ConversionMap[T], Generic[T]):
             kind: Interpolation kind. Default is "previous" (step function).
 
         Returns:
-            TableMap with the same boundaries and values.
+            TableMap with the same boundaries and values, each number as
+            given, and one more anchor one unit past the last boundary
+            holding the last value.
 
         Raises:
             TypeError: If values are not numeric.
@@ -302,16 +304,11 @@ class IntervalToConstantMap(ConversionMap[T], Generic[T]):
         if not all(isinstance(v, (int, float, Fraction)) for v in self._values):
             raise TypeError("to_table_map() requires numeric values")
 
-        # Need at least 2 points for TableMap; add extrapolation point
-        x_values = list(self._boundaries)
-        y_values = [float(v) for v in self._values]
-
-        # Add final extrapolation point (extend last interval)
-        if len(x_values) >= 1:
-            # Use final value extending one unit beyond last boundary
-            final_x = x_values[-1] + 1.0
-            x_values.append(final_x)
-            y_values.append(y_values[-1])
+        # The numbers as given: a float anchor would make the table map
+        # compute in doubles where this map's numbers are exact. A table map
+        # needs two anchors, so the last interval is extended by one unit.
+        x_values = [*self._boundaries_original, self._boundaries_original[-1] + 1]
+        y_values = [*self._values, self._values[-1]]
 
         return TableMap(
             x_values=x_values,

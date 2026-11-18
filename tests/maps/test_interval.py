@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 from timetoalign.core import Measure, MeasureConstituent
-from timetoalign.core.enums import InterpolationKind
+from timetoalign.core.enums import InterpolationKind, NumberType
 from timetoalign.maps.interval import (
     IntervalToConstantMap,
     QuartersToFloatingMeasures,
@@ -117,6 +117,39 @@ class TestIntervalToConstantMap:
         assert table_map(2) == 1
         assert table_map(4) == 2
         assert table_map(6) == 2
+
+    def test_to_table_map_keeps_exact_numbers(self):
+        m = IntervalToConstantMap(
+            boundaries=[0, Fraction(3, 2)],
+            values=[Fraction(1, 3), Fraction(2, 3)],
+            source_unit="quarters",
+            target_unit="quarters",
+        )
+        table_map = m.to_table_map()
+        # The manifest writes a Fraction as a pair, an int as an integer.
+        form = table_map.to_dict()
+        assert form["x_values"] == [0, [3, 2], [5, 2]]
+        assert type(form["x_values"][0]) is int
+        assert form["y_values"] == [[1, 3], [2, 3], [2, 3]]
+        assert table_map.output_number_type is NumberType.fraction
+        assert table_map(Fraction(3, 2)) == Fraction(2, 3)
+        assert type(table_map(Fraction(3, 2))) is Fraction
+        linear = m.to_table_map(kind=InterpolationKind.linear)
+        assert linear(Fraction(3, 4)) == Fraction(1, 2)
+        assert type(linear(Fraction(3, 4))) is Fraction
+
+    def test_to_table_map_keeps_float_numbers(self):
+        m = IntervalToConstantMap(
+            boundaries=[0.0, 1.5],
+            values=[0.25, 0.5],
+            source_unit="quarters",
+            target_unit="quarters",
+        )
+        table_map = m.to_table_map()
+        form = table_map.to_dict()
+        assert form["x_values"] == [0.0, 1.5, 2.5]
+        assert all(type(x) is float for x in form["x_values"])
+        assert table_map.output_number_type is NumberType.float
 
     def test_to_table_map_non_numeric_raises(self):
         """to_table_map raises TypeError for non-numeric values."""

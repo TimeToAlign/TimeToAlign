@@ -479,6 +479,23 @@ declared `fraction`: `3/10 − 10⁻²⁰` lies in the first interval and answer
 float comparison picks the second interval and answers
 `Fraction(59999999999999999998, 10**20)`.
 
+### `test_interval.py` - Step functions (`IntervalToConstantMap`)
+
+**`to_table_map()` keeps the step function's numbers as given.** A map with
+a float parameter computes in doubles, so a table map built from an exact
+step function with float anchors would answer floats where the step function
+answers exact values. The probe is the step function from quarters into
+quarters with boundaries `0` and `3/2` and values `1/3` and `2/3`, none of
+which (`1/3`, `2/3`) a float represents. Its table map has the anchors
+`[0, 3/2, 5/2]` and `[1/3, 2/3, 2/3]` (the last boundary extended by one
+unit, holding the last value), each of the type given, as its manifest form
+shows (`[0, [3, 2], [5, 2]]`, an int and two Fraction pairs), declares `fraction`,
+the quarters default, and answers `Fraction(2, 3)` at `Fraction(3, 2)`;
+read linearly, it answers `Fraction(1, 2)` at `Fraction(3, 4)`. The float
+anchors it was built with before answered `0.6666666666666666` and `0.5`. A
+step function given float numbers keeps them: boundaries `[0.0, 1.5]` give
+the anchors `[0.0, 1.5, 2.5]`, floats, and the table map declares `float`.
+
 ### `test_periodic.py` - Periodic Maps (RotationMap, FloorMap)
 
 **Purpose:** Validates cyclic and floor-division transformations for metrical calculations.

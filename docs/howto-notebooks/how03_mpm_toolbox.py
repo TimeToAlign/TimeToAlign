@@ -89,9 +89,12 @@ loader
 }
 
 # %% [markdown]
-# `create_bundle()` assembles the {{< glossary AlignmentBundle >}}: four
-# timelines arranged in two groups — a shared logical `"score"` group and a
-# physical `"perf"` group. Everything below reads from this single bundle.
+# `create_bundle()` assembles the {{< glossary AlignmentBundle >}}: five
+# timelines arranged in two groups — a logical group named `"score"` and a
+# physical group named `"perf"`, which also holds the spectrogram's pixel axis.
+# A group's name is not its ID: the bundle mints the group IDs `group_1` and
+# `group_2`, while the timeline IDs carry the roles as prefixes, `score:` and
+# `perf:`. Everything below reads from this single bundle.
 
 # %%
 bundle = loader.create_bundle()

@@ -209,17 +209,18 @@ class TestInverse:
         cmap = QuartersToFloatingMeasures.from_measure_map(_eroica_pickup_map())
         inverse = cmap.inverse()
 
-        assert inverse(0.750) == Fraction(0)
-        assert inverse(2.0) == Fraction(5, 2)
-        assert inverse(3.0) == Fraction(9, 2)
+        assert inverse(0.750) == 0.0
+        assert inverse(2.0) == 2.5
+        assert inverse(3.0) == 4.5
 
-    def test_the_inverse_writes_the_quarters_axis_type(self) -> None:
+    def test_the_inverse_computes_in_doubles(self) -> None:
+        """Its knots are fm floats, so it answers floats even into quarters."""
         cmap = QuartersToFloatingMeasures.from_measure_map(_eroica_pickup_map())
         inverse = cmap.inverse()
 
         assert inverse.target_unit is TimeUnit.quarters
-        assert inverse.output_number_type is NumberType.fraction
-        assert isinstance(inverse(2.0), Fraction)
+        assert inverse.output_number_type is NumberType.float
+        assert type(inverse(2.0)) is float
 
     def test_a_truncated_source_value_carries_its_documented_error(self) -> None:
         """Truncation is not reconstructed: the residue is reported, not fixed.
@@ -235,8 +236,8 @@ class TestInverse:
         inverse = cmap.inverse()
 
         recovered = inverse(0.888)
-        assert float(recovered) == -0.0040000000000000036
-        assert recovered == Fraction(-0.0040000000000000036)
+        assert type(recovered) is float
+        assert recovered == -0.0040000000000000036
 
 
 class TestAxisAndOutputType:

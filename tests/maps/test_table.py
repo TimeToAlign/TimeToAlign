@@ -238,6 +238,42 @@ class TestTableMapExact:
         np.testing.assert_array_equal(result, [0.0, 0.5, 1.0, 2.0])
 
 
+class TestFloatParameters:
+    """A float anchor makes the table compute in doubles."""
+
+    @staticmethod
+    def _table(y_last, **kwargs) -> TableMap:
+        return TableMap(
+            x_values=[0, 4],
+            y_values=[0, y_last],
+            source_unit="quarters",
+            target_unit="quarters",
+            **kwargs,
+        )
+
+    def test_fraction_declaration_is_refused(self):
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "TableMap computes in doubles and cannot be declared to write "
+                "fractions."
+            ),
+        ):
+            self._table(0.1, output_number_type="fraction")
+
+    def test_undeclared_map_answers_its_float(self):
+        cmap = self._table(0.1)
+        assert cmap.output_number_type is NumberType.float
+        assert cmap(1) == 0.025
+        assert type(cmap(1)) is float
+
+    def test_exact_anchors_stay_exact(self):
+        cmap = self._table(2)
+        assert cmap.output_number_type is NumberType.fraction
+        assert cmap(1) == Fraction(1, 2)
+        assert type(cmap(1)) is Fraction
+
+
 def exact_tempo_map(**kwargs) -> TableMap:
     """Quarters to seconds through exact anchors: 1/6 s per quarter, then 1/3."""
     return TableMap(

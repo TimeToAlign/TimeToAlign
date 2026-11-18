@@ -461,9 +461,10 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
         computed, never the float rebuilt as a ``Fraction``. For the same
         reason such a map refuses the ``fraction`` declaration. A map
         computes in doubles when its own arithmetic does (an
-        :class:`~timetoalign.maps.InterpolationMap`) or when a map nested in
-        it answers floats: a chain or a piecewise map with one such member
-        is one. On a discrete target, which admits ``int`` only, the result
+        :class:`~timetoalign.maps.InterpolationMap`, a map with a float
+        parameter such as a float scalar or a float anchor) or when a map
+        nested in it answers floats: a chain or a piecewise map with one
+        such member is one. On a discrete target, which admits ``int`` only, the result
         is rounded as on any other.
 
         A map whose answer is an ordinal rather than a position on the target
@@ -505,16 +506,27 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
     def _float_arithmetic(self) -> bool:
         """Whether the map computes in doubles, whatever its input.
 
-        A map does when a map nested in it answers floats: it computes in
-        doubles itself, or states ``float`` as its own representation. A map
-        whose own arithmetic runs in doubles (over float64 anchors) answers
-        True.
+        A map does when one of its own parameters is a float (a float scalar
+        or offset, a float anchor: :meth:`_parameters`), or when a map nested
+        in it answers floats: it computes in doubles itself, or states
+        ``float`` as its own representation.
         """
         return any(
+            isinstance(parameter, (float, np.floating))
+            for parameter in self._parameters()
+        ) or any(
             nested._float_arithmetic
             or nested._own_output_number_type is NumberType.float
             for nested in self._nested_maps()
         )
+
+    def _parameters(self) -> Sequence[Any]:
+        """The numbers the map's own arithmetic runs on.
+
+        A subclass sets them before :meth:`__init__` of this class runs, which
+        refuses the ``fraction`` declaration for a map computing in doubles.
+        """
+        return ()
 
     # region Conversion methods
 

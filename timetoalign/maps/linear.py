@@ -204,8 +204,15 @@ class LinearMap(ConversionMap[CoordinateValue]):
                 unit's default.
 
         Raises:
-            ValueError: If scalar is zero (map would not be invertible).
+            ValueError: If scalar is zero (map would not be invertible), or
+                if *output_number_type* is ``fraction`` and the scalar or
+                the offset is a float.
         """
+        if scalar == 0:
+            raise ValueError("LinearMap scalar cannot be zero (not invertible)")
+        # Set first: whether the map computes in doubles depends on them.
+        self._scalar = scalar
+        self._offset = offset
         super().__init__(
             source_unit=source_unit,
             target_unit=target_unit,
@@ -213,10 +220,6 @@ class LinearMap(ConversionMap[CoordinateValue]):
             name=name,
             output_number_type=output_number_type,
         )
-        if scalar == 0:
-            raise ValueError("LinearMap scalar cannot be zero (not invertible)")
-        self._scalar = scalar
-        self._offset = offset
 
     @property
     def scalar(self) -> CoordinateValue:
@@ -232,6 +235,9 @@ class LinearMap(ConversionMap[CoordinateValue]):
     def is_identity(self) -> bool:
         """Whether this map is the identity transformation."""
         return self._scalar == 1 and self._offset == 0
+
+    def _parameters(self) -> tuple[CoordinateValue, ...]:
+        return (self._scalar, self._offset)
 
     def _convert_scalar(self, value: CoordinateValue, **kwargs: Any) -> CoordinateValue:
         """Apply the linear transformation: y = ax + b."""
@@ -330,7 +336,7 @@ class ScalarMap(ConversionMap[CoordinateValue]):
 
     def __init__(
         self,
-        scalar: CoordinateValue = 1.0,
+        scalar: CoordinateValue = 1,
         *,
         source_unit: TimeUnit | str | None = None,
         target_unit: TimeUnit | str | None = None,
@@ -353,8 +359,13 @@ class ScalarMap(ConversionMap[CoordinateValue]):
                 unit's default.
 
         Raises:
-            ValueError: If scalar is zero.
+            ValueError: If scalar is zero, or if *output_number_type* is
+                ``fraction`` and the scalar is a float.
         """
+        if scalar == 0:
+            raise ValueError("ScalarMap scalar cannot be zero")
+        # Set first: whether the map computes in doubles depends on it.
+        self._scalar = scalar
         super().__init__(
             source_unit=source_unit,
             target_unit=target_unit,
@@ -362,14 +373,14 @@ class ScalarMap(ConversionMap[CoordinateValue]):
             name=name,
             output_number_type=output_number_type,
         )
-        if scalar == 0:
-            raise ValueError("ScalarMap scalar cannot be zero")
-        self._scalar = scalar
 
     @property
     def scalar(self) -> CoordinateValue:
         """The multiplicative factor."""
         return self._scalar
+
+    def _parameters(self) -> tuple[CoordinateValue, ...]:
+        return (self._scalar,)
 
     def _convert_scalar(self, value: CoordinateValue, **kwargs: Any) -> CoordinateValue:
         """Apply the scaling: y = ax."""
@@ -445,7 +456,13 @@ class ShiftMap(ConversionMap[CoordinateValue]):
             output_number_type: The representation results are written in,
                 among those the target unit admits; ``None`` for the target
                 unit's default.
+
+        Raises:
+            ValueError: If *output_number_type* is ``fraction`` and the
+                offset is a float.
         """
+        # Set first: whether the map computes in doubles depends on it.
+        self._offset = offset
         super().__init__(
             source_unit=source_unit,
             target_unit=target_unit,
@@ -453,7 +470,6 @@ class ShiftMap(ConversionMap[CoordinateValue]):
             name=name,
             output_number_type=output_number_type,
         )
-        self._offset = offset
 
     @property
     def offset(self) -> CoordinateValue:
@@ -464,6 +480,9 @@ class ShiftMap(ConversionMap[CoordinateValue]):
     def is_identity(self) -> bool:
         """Whether this map is the identity transformation."""
         return self._offset == 0
+
+    def _parameters(self) -> tuple[CoordinateValue, ...]:
+        return (self._offset,)
 
     def _convert_scalar(self, value: CoordinateValue, **kwargs: Any) -> CoordinateValue:
         """Apply the shift: y = x + b."""

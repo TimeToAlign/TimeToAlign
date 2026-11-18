@@ -556,6 +556,51 @@ class TestShiftMap:
         assert m.is_identity
 
 
+QUARTERS = {"source_unit": "quarters", "target_unit": "quarters"}
+
+
+class TestFloatParameters:
+    """A float scalar or offset makes the map compute in doubles."""
+
+    FLOAT_MAPS = [
+        (lambda **k: LinearMap(scalar=0.1, **QUARTERS, **k), "LinearMap", 0.1),
+        (lambda **k: LinearMap(offset=0.1, **QUARTERS, **k), "LinearMap", 1.1),
+        (lambda **k: ScalarMap(0.1, **QUARTERS, **k), "ScalarMap", 0.1),
+        (lambda **k: ShiftMap(offset=0.1, **QUARTERS, **k), "ShiftMap", 1.1),
+    ]
+
+    @pytest.mark.parametrize("build, name, _", FLOAT_MAPS)
+    def test_fraction_declaration_is_refused(self, build, name, _):
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                f"{name} computes in doubles and cannot be declared to write "
+                "fractions."
+            ),
+        ):
+            build(output_number_type="fraction")
+
+    @pytest.mark.parametrize("build, _, expected", FLOAT_MAPS)
+    def test_undeclared_map_answers_its_float(self, build, _, expected):
+        cmap = build()
+        assert cmap.output_number_type is NumberType.float
+        assert cmap(1) == expected
+        assert type(cmap(1)) is float
+
+    @pytest.mark.parametrize(
+        "cmap, at, expected",
+        [
+            (LinearMap(scalar=Fraction(1, 3), offset=1, **QUARTERS), 1, Fraction(4, 3)),
+            (ScalarMap(**QUARTERS), Fraction(1, 3), Fraction(1, 3)),
+            (ShiftMap(offset=Fraction(1, 3), **QUARTERS), 1, Fraction(4, 3)),
+        ],
+    )
+    def test_exact_parameters_stay_exact(self, cmap, at, expected):
+        assert cmap.output_number_type is NumberType.fraction
+        assert cmap(at) == expected
+        assert type(cmap(at)) is Fraction
+
+
 # region Public convert_array() API Tests
 
 

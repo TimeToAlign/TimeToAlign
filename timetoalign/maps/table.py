@@ -149,15 +149,9 @@ class TableMap(ConversionMap[CoordinateValue]):
             ValueError: If x_values are not strictly increasing.
             ValueError: If fewer than 2 points are provided.
             ValueError: If the target unit does not admit *output_number_type*.
+            ValueError: If *output_number_type* is ``fraction`` and an
+                anchor is a float.
         """
-        super().__init__(
-            source_unit=source_unit,
-            target_unit=target_unit,
-            uid=uid,
-            name=name,
-            output_number_type=output_number_type,
-        )
-
         # Validate inputs
         if len(x_values) != len(y_values):
             raise ValueError(
@@ -167,6 +161,18 @@ class TableMap(ConversionMap[CoordinateValue]):
         if len(x_values) < 2:
             raise ValueError("TableMap requires at least 2 anchor points")
 
+        # Store original values for serialization (may have Fractions). Set
+        # first: whether the map computes in doubles depends on them.
+        self._x_original = list(x_values)
+        self._y_original = list(y_values)
+        super().__init__(
+            source_unit=source_unit,
+            target_unit=target_unit,
+            uid=uid,
+            name=name,
+            output_number_type=output_number_type,
+        )
+
         # Convert to numpy arrays (float64 for interpolation)
         self._x = np.array([float(v) for v in x_values], dtype=np.float64)
         self._y = np.array([float(v) for v in y_values], dtype=np.float64)
@@ -175,10 +181,6 @@ class TableMap(ConversionMap[CoordinateValue]):
         x_diff = np.diff(self._x)
         if not np.all(x_diff > 0):
             raise ValueError("x_values must be strictly monotonically increasing")
-
-        # Store original values for serialization (may have Fractions)
-        self._x_original = list(x_values)
-        self._y_original = list(y_values)
 
         # Exact anchors (every one an int or a Fraction) interpolate exactly
         # for an exact input; one float among them keeps the float path.
@@ -247,6 +249,9 @@ class TableMap(ConversionMap[CoordinateValue]):
     def y_max(self) -> float:
         """Maximum y value."""
         return float(np.max(self._y))
+
+    def _parameters(self) -> list[CoordinateValue]:
+        return [*self._x_original, *self._y_original]
 
     def _convert_scalar(self, value: CoordinateValue, **kwargs: Any) -> CoordinateValue:
         """Convert a single value using interpolation.

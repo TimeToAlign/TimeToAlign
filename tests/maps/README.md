@@ -333,6 +333,33 @@ Undeclared from seconds into quarters, whose default is fractions, an
 at 0.5 (the value it computed, never `Fraction(1, 4)` rebuilt from it), as
 it does declared `float`; its inverse, into seconds, declares `float` too.
 
+**A map whose own parameters are floats computes in doubles**
+(`TestFloatParameters` in `test_linear.py` and `test_table.py`). Whether a
+map computes in doubles is read from the instance: a float scalar or offset
+of a `LinearMap`, `ScalarMap` or `ShiftMap`, or a float anchor of a
+`TableMap`, makes it so, exactly as an `InterpolationMap` is. What would
+expose the old behaviour is a float that is not dyadic-looking once
+rebuilt, so the probes use 0.1: `LinearMap(scalar=0.1)` from quarters into
+quarters answered `Fraction(3602879701896397, 36028797018963968)` at 1, the
+double 0.1 rebuilt as a ratio nothing stated. Now:
+
+- Declared `fraction`, `LinearMap(scalar=0.1)`, `LinearMap(offset=0.1)`,
+  `ScalarMap(0.1)`, `ShiftMap(offset=0.1)` and a `TableMap` over
+  `[0, 4] → [0, 0.1]` (one float anchor among integers) are refused at
+  construction with the `ValueError` naming their class ("… computes in
+  doubles and cannot be declared to write fractions.").
+- Undeclared from quarters into quarters, whose default is fractions, each
+  declares `float` and answers the float it computed: `0.1` at 1 for the
+  scalars, `1.1` at 1 for the offsets, `0.025` at 1 for the table — type and
+  value asserted together.
+- Exact parameters stay exact: `LinearMap(scalar=Fraction(1, 3),
+  offset=1)`, `ScalarMap()` (its default scalar is the integer 1),
+  `ShiftMap(offset=Fraction(1, 3))` and the table `[0, 4] → [0, 2]` declare
+  `fraction` and answer `Fraction(4, 3)`, `Fraction(1, 3)`,
+  `Fraction(4, 3)` and `Fraction(1, 2)` at 1 (`Fraction(1, 3)` for the
+  default scalar map, at `Fraction(1, 3)`). A rule that counted every
+  `LinearMap` or `TableMap` as float arithmetic would answer floats here.
+
 ### `test_interpolation.py` - InterpolationMap
 
 **Purpose:** Validates `InterpolationMap`, the anchor-pair engine used by
@@ -675,11 +702,16 @@ truncation-reconstruction: a value that was truncated on the way out carries at
 most one thousandth of a bar of error, and that is documented rather than
 "corrected". `limit_denominator` and every other ratio-guessing device stay
 banned. Inverting exactly-representable values is asserted instead: on the
-eroica grid `0.750` inverts to `Coordinate(0)` quarters (the pickup's sounding
-onset) and `2.0` to the start of measure 2.
+eroica grid `0.750` inverts to `0.0` quarters (the pickup's sounding
+onset) and `2.0` to `2.5`, the start of measure 2. Its knots on the fm side
+are floats, so the inverse computes in doubles and answers floats even into
+`quarters`, whose default is fractions: a `Fraction` there would be the
+float rebuilt as a ratio (see *A map whose own parameters are floats
+computes in doubles*). The Wagner residue is the float
+`-0.0040000000000000036`.
 
-**Zero tolerance:** every fm value is asserted as the exact float the
-convention states; every quarters value as an exact `Fraction`.
+**Zero tolerance:** every fm value, and every quarters value the inverse
+answers, is asserted as the exact float, type and value together.
 
 ---
 

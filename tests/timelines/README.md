@@ -498,6 +498,17 @@ so a writer that agreed only with itself could not pass.
 - **An object built in code** is written minimal, its styling included, in
   canonical YAML: a bundle with a group writes `dumps(bundle.to_dict())`
   with its `graphical`.
+- **Event rows and external references are kept as read.** A hand-written
+  bundle of a recording holding two event rows (an instant and an interval)
+  and one external-reference row naming the first, beside a score holding
+  both keys empty, is written back byte for byte in each of the three
+  serializations, and so are its two variants holding only one of the keys:
+  the file's keys decide what is written, each independently, so a writer
+  that dropped the rows, or wrote both keys whenever it found one, fails.
+  `to_file(events=False)` on the full literal writes it without `events`.
+  An object built in code with the same timelines, events and references
+  writes neither key by default (the literal without them) and, with
+  `events=True, external_references=True`, the full literal's bytes.
 - **Selection passes through.** `Timeline.from_file(path,
   timeline_id="take_1")` reads the one timeline as `Timeline.from_dict`
   selects it; `TimelineGroup.from_file(path, group_id=...)` likewise.
@@ -3236,71 +3247,33 @@ file (the pattern already used by `test_unfolding.py` for this specimen).
 
 ### `test_timestamps.py` - Cross-Section Timestamp Tables
 
-**Purpose:** Validates `get_timestamp_table()` / `to_dataframe()` and the
-helpers that build the timestamp axis (event-coordinate collection, boundary
-collection, local-coordinate computation) across a timeline hierarchy.
+**Purpose:** Validates `get_timestamp_table()` (both `format="table"` and
+`format="dataframe"`) and the helpers that build the timestamp axis
+(event-coordinate collection, boundary collection, local-coordinate
+computation) across a timeline hierarchy.
 
 **Fraction-length regression (`TestFractionLengthTimestamps`):**
 
 A logical timeline (quarters/beats) carries `number_type = Fraction`, so its
 length is a `Coordinate` whose `value` is a `Fraction`. The bounds check inside
 `_compute_local_coordinates` masks out-of-range coordinates by comparing the
-local-coordinate array against the length scalar through a PyArrow compute
-kernel (`pc.greater`). That kernel rejects a raw `Fraction` argument, so the
-length must be coerced to `float` at the kernel boundary — consistent with the
-sibling `pc.less(local, 0.0)` and the float64 arrays this internal helper
-already operates on. Empirically, only the `pc.greater` comparison broke: the
-boundary collector builds a `pa.array(..., type=pa.float64())`, which coerces a
-`Fraction` via `__float__`, and the child-offset accumulation starts from a
-`float` default so it never reaches a kernel as a raw `Fraction`.
+float member of the coordinate structs against the length scalar through
+PyArrow compute kernels (`pc.greater_equal`, `pc.less_equal`). A kernel rejects
+a raw `Fraction` argument, so the length must reach it as a `float`; the
+comparison is all the float member serves, and the coordinates kept stay
+exact.
 
 | Test | Construction | Exact assertion |
 |------|--------------|-----------------|
-| `test_compute_local_coordinates_with_fraction_length` | CLT length `9/2`, probe `[0.0, 2.0, 4.5, 5.0]` | local = `[0.0, 2.0, 4.5, None]` (5.0 > 4.5 → null) |
-| `test_get_timestamp_table_with_fraction_length` | CLT length `9/2`, events at `0, 3/2, 3` | `num_rows == 3`; axis = `[0.0, 1.5, 3.0]`; root-local = `[0.0, 1.5, 3.0]` |
-| `test_to_dataframe_with_fraction_length` | same timeline | shape `(3, 2)`; axis column = `[Fraction(0), Fraction(3,2), Fraction(3)]` (auto-rendered as Fractions for a Fraction-type timeline) |
+| `test_compute_local_coordinates_with_fraction_length` | CLT length `9/2`, probe `[0.0, 2.0, 4.5, 5.0]` | local = `[0, 2, 9/2, None]` (5 > 9/2 → null) |
+| `test_get_timestamp_table_with_fraction_length` | CLT length `9/2`, events at `0, 3/2, 3` | `num_rows == 3`; the timeline's column = `[0, 3/2, 3]` as Fractions |
+| `test_dataframe_with_fraction_length` | same timeline, `format="dataframe"` | shape `(3, 1)`; the column = `[Fraction(0), Fraction(3, 2), Fraction(3)]` (the axis's number type) |
 
 **Validity Rationale:** The timestamp axis is the spine of every cross-domain
 alignment view. A quarters/beats timeline — the most common logical timeline —
 must produce timestamp tables and frames without raising. The asserted values
 are the exact in-bounds coordinates: the out-of-bounds probe coordinate becomes
-`null`, the event coordinates pass through unchanged, and the root timeline's
-local coordinates equal the axis because its offset is zero.
-
----
-
-### `test_timestamps.py` - Cross-Section Timestamp Tables
-
-**Purpose:** Validates `get_timestamp_table()` / `to_dataframe()` and the
-helpers that build the timestamp axis (event-coordinate collection, boundary
-collection, local-coordinate computation) across a timeline hierarchy.
-
-**Fraction-length regression (`TestFractionLengthTimestamps`):**
-
-A logical timeline (quarters/beats) carries `number_type = Fraction`, so its
-length is a `Coordinate` whose `value` is a `Fraction`. The bounds check inside
-`_compute_local_coordinates` masks out-of-range coordinates by comparing the
-local-coordinate array against the length scalar through a PyArrow compute
-kernel (`pc.greater`). That kernel rejects a raw `Fraction` argument, so the
-length must be coerced to `float` at the kernel boundary — consistent with the
-sibling `pc.less(local, 0.0)` and the float64 arrays this internal helper
-already operates on. Empirically, only the `pc.greater` comparison broke: the
-boundary collector builds a `pa.array(..., type=pa.float64())`, which coerces a
-`Fraction` via `__float__`, and the child-offset accumulation starts from a
-`float` default so it never reaches a kernel as a raw `Fraction`.
-
-| Test | Construction | Exact assertion |
-|------|--------------|-----------------|
-| `test_compute_local_coordinates_with_fraction_length` | CLT length `9/2`, probe `[0.0, 2.0, 4.5, 5.0]` | local = `[0.0, 2.0, 4.5, None]` (5.0 > 4.5 → null) |
-| `test_get_timestamp_table_with_fraction_length` | CLT length `9/2`, events at `0, 3/2, 3` | `num_rows == 3`; axis = `[0.0, 1.5, 3.0]`; root-local = `[0.0, 1.5, 3.0]` |
-| `test_to_dataframe_with_fraction_length` | same timeline | shape `(3, 2)`; axis column = `[Fraction(0), Fraction(3,2), Fraction(3)]` (auto-rendered as Fractions for a Fraction-type timeline) |
-
-**Validity Rationale:** The timestamp axis is the spine of every cross-domain
-alignment view. A quarters/beats timeline — the most common logical timeline —
-must produce timestamp tables and frames without raising. The asserted values
-are the exact in-bounds coordinates: the out-of-bounds probe coordinate becomes
-`null`, the event coordinates pass through unchanged, and the root timeline's
-local coordinates equal the axis because its offset is zero.
+`null`, and the event coordinates pass through unchanged and exact.
 
 ---
 

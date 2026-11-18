@@ -725,7 +725,7 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
             ...     name="Works of Ludwig van Beethoven by opus number",
             ...     uri="https://musicbrainz.org/series/004f17aa-0f46-4fec-b939-c5dfc849e5c6",
             ... )
-            >>> bundle.schemes[0].to_dict(minimal=True)["id"]
+            >>> bundle.schemes[0].to_dict()["id"]
             'mb_beethoven_opus'
         """
         if isinstance(scheme, Scheme):

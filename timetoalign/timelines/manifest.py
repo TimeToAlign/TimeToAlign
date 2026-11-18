@@ -1146,31 +1146,52 @@ class FileForm:
         styling: Whether the ``graphical`` object is written.
         serialization: ``"yaml"`` (canonical YAML), ``"json"`` (pretty JSON)
             or ``"jcs"`` (RFC 8785 JSON).
+        events: Whether every timeline object holds its event rows
+            (``events``).
+        external_references: Whether every timeline object holds its
+            external reference table (``external_references``).
     """
 
     minimal: bool = True
     styling: bool = True
     serialization: Serialization = "yaml"
+    events: bool = False
+    external_references: bool = False
 
     @classmethod
     def of(cls, text: str, data: Any) -> FileForm:
-        """Infer the form, styling and serialization of a manifest file.
+        """Infer the form, styling, serialization and table keys of a manifest file.
 
         The form is minimal when no key of the manifest *data* holds its
         default value, compared in value (``timetoshare.minimal`` leaves out
         no key of it); the styling is written when the manifest holds
         ``graphical``; the serialization is the one
-        ``timetoshare.serialization_of`` names for *text*.
+        ``timetoshare.serialization_of`` names for *text*; ``events`` and
+        ``external_references`` are each written when a timeline object of
+        the manifest, at any depth, holds the key.
 
         Args:
             text: The file's text.
             data: The manifest *text* holds.
         """
+        keys = {key for timeline in _timeline_objects(data) for key in timeline}
         return cls(
             minimal=canonical_order(timetoshare.minimal(data)) == canonical_order(data),
             styling="graphical" in data,
             serialization=serialization_of(text),
+            events="events" in keys,
+            external_references="external_references" in keys,
         )
+
+
+def _timeline_objects(data: Any) -> Iterator[dict[str, Any]]:
+    """Yield every timeline object of a manifest, the children included."""
+    pending = list(data.get("timelines") or ())
+    while pending:
+        timeline = pending.pop()
+        if isinstance(timeline, dict):
+            yield timeline
+            pending.extend(timeline.get("children") or ())
 
 
 class ManifestFileMixin:
@@ -1181,13 +1202,42 @@ class ManifestFileMixin:
     :class:`~timetoalign.alignment.AlignmentBundle`, each of which reads a
     manifest with ``from_dict`` and writes one with ``to_dict``. An object
     read from a file keeps the file's :class:`FileForm`, which
-    :meth:`to_file` follows unless told otherwise, so that a file read and
-    written back unchanged keeps its bytes, and a file read, changed and
-    written back changes only where the object changed.
+    :meth:`to_file` follows unless told otherwise: a file in canonical YAML,
+    pretty JSON or RFC 8785 JSON keeps its bytes; any other text is written
+    back in the canonical form of the serialization it was read as. A file
+    read, changed and written back changes only where the object changed.
     """
 
     _file_form: FileForm | None = None
     """The form of the file the object was read from, or None."""
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any], **selection: str | None) -> Self:
+        """Read the object from a manifest; each class using the mixin defines it.
+
+        Args:
+            data: The manifest.
+            **selection: The keyword arguments that select one timeline or
+                group of the manifest.
+        """
+        raise NotImplementedError
+
+    def to_dict(
+        self,
+        *,
+        minimal: bool = True,
+        events: bool = False,
+        external_references: bool = False,
+    ) -> dict[str, Any]:
+        """Write the object's manifest; each class using the mixin defines it.
+
+        Args:
+            minimal: Write the minimal form (True) or the complete form
+                (False).
+            events: Write every timeline's event rows.
+            external_references: Write every timeline's external references.
+        """
+        raise NotImplementedError
 
     @classmethod
     def from_file(cls, path: str | PathLike[str], **selection: str | None) -> Self:
@@ -1197,7 +1247,9 @@ class ManifestFileMixin:
         JSON, RFC 8785 JSON or any other JSON or YAML text. The object read
         records the file's form (minimal when no key of the manifest holds
         its default value), styling (whether the manifest holds
-        ``graphical``) and serialization, which :meth:`to_file` writes back.
+        ``graphical``), serialization, and whether its timeline objects hold
+        ``events`` and ``external_references``, which :meth:`to_file` writes
+        back.
 
         Args:
             path: The manifest file, UTF-8.
@@ -1216,7 +1268,7 @@ class ManifestFileMixin:
         with Path(path).open(encoding="utf-8", newline="") as file:
             text = file.read()
         data = loads(text)
-        result = cls.from_dict(data, **selection)  # type: ignore[attr-defined]
+        result = cls.from_dict(data, **selection)
         result._file_form = FileForm.of(text, data)
         return result
 
@@ -1227,6 +1279,8 @@ class ManifestFileMixin:
         minimal: bool | None = None,
         styling: bool | None = None,
         serialization: Serialization | None = None,
+        events: bool | None = None,
+        external_references: bool | None = None,
     ) -> Path:
         """Write the object's manifest to a file.
 
@@ -1236,7 +1290,7 @@ class ManifestFileMixin:
         lines it touches. Each argument left None takes the value the file
         the object was read from had (see :meth:`from_file`); for an object
         not read from a file, the minimal form, the styling included, in
-        canonical YAML.
+        canonical YAML, without event rows or external references.
 
         Args:
             path: The file to write, UTF-8 with line feeds; it is
@@ -1247,6 +1301,9 @@ class ManifestFileMixin:
                 one (True), or leave it out (False).
             serialization: ``"yaml"`` (canonical YAML), ``"json"`` (pretty
                 JSON) or ``"jcs"`` (RFC 8785 JSON).
+            events: Write every timeline's event rows (``events``).
+            external_references: Write every timeline's external reference
+                table (``external_references``).
 
         Returns:
             The path written.
@@ -1273,8 +1330,14 @@ class ManifestFileMixin:
             Coordinate(Fraction(32, 1), quarters)
         """
         form = self._file_form or FileForm()
-        manifest = self.to_dict(  # type: ignore[attr-defined]
-            minimal=form.minimal if minimal is None else minimal
+        manifest = self.to_dict(
+            minimal=form.minimal if minimal is None else minimal,
+            events=form.events if events is None else events,
+            external_references=(
+                form.external_references
+                if external_references is None
+                else external_references
+            ),
         )
         if not (form.styling if styling is None else styling):
             manifest.pop("graphical", None)

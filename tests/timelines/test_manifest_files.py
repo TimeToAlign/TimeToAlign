@@ -10,6 +10,7 @@ from __future__ import annotations
 import copy
 import difflib
 import os
+from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
@@ -18,7 +19,10 @@ from timetoshare import complete, dumps, fixture_paths, loads, minimal, validate
 
 from timetoalign.alignment import AlignmentBundle
 from timetoalign.timelines import Timeline, TimelineGroup
-from timetoalign.timelines.types import ContinuousPhysicalTimeline
+from timetoalign.timelines.types import (
+    ContinuousLogicalTimeline,
+    ContinuousPhysicalTimeline,
+)
 
 SERIALIZATIONS = ("yaml", "json", "jcs")
 
@@ -80,6 +84,56 @@ STYLED = {
 SIMPLE = {"timetoshare": "0.2.0", "timelines": [SCORE, TAKE], "name": "Study"}
 """A minimal named bundle of two ungrouped timelines."""
 
+EVENTS = [
+    {
+        "duration": None,
+        "end": None,
+        "event_type": "Beat",
+        "id": "e1",
+        "name": None,
+        "start": 0.0,
+        "temporal_type": "instant",
+    },
+    {
+        "duration": 1.5,
+        "end": 2.5,
+        "event_type": "Note",
+        "id": "e2",
+        "name": "C4",
+        "start": 1.0,
+        "temporal_type": "interval",
+    },
+]
+"""The event rows of ``take_1``: an instant and an interval."""
+
+REFERENCES = [
+    {
+        "access_points": [{"kind": "relative_path", "uri": "analysis/L1.pnml"}],
+        "comment": None,
+        "event_id": "e1",
+        "external_id": "p2",
+    }
+]
+"""The external-reference row of ``take_1``, naming its first event."""
+
+WITH_TABLES = {
+    "timetoshare": "0.2.0",
+    "timelines": [
+        {**SCORE, "events": [], "external_references": []},
+        {**TAKE, "events": EVENTS, "external_references": REFERENCES},
+    ],
+}
+"""A bundle whose timeline objects hold ``events`` and ``external_references``."""
+
+
+def _without(manifest: dict[str, Any], *keys: str) -> dict[str, Any]:
+    """Return *manifest* with *keys* left out of every timeline object."""
+    timelines = [
+        {key: value for key, value in timeline.items() if key not in keys}
+        for timeline in manifest["timelines"]
+    ]
+    return {**manifest, "timelines": timelines}
+
 
 # region Round trips
 
@@ -112,6 +166,24 @@ def test_every_fixture_file_is_written_back_byte_for_byte(
                     serialization,
                     "graphical" in manifest,
                 )
+
+
+@pytest.mark.parametrize(
+    "manifest",
+    [
+        WITH_TABLES,
+        _without(WITH_TABLES, "external_references"),
+        _without(WITH_TABLES, "events"),
+    ],
+    ids=["both", "events", "external_references"],
+)
+@pytest.mark.parametrize("serialization", SERIALIZATIONS)
+def test_event_rows_and_external_references_are_written_back(
+    manifest: dict[str, Any], serialization: str, tmp_path: Path
+) -> None:
+    """The keys a file's timeline objects hold are written back, each on its own."""
+    text = dumps(manifest, serialization=serialization)
+    assert _round_trip(AlignmentBundle, text, tmp_path) == text
 
 
 # endregion
@@ -181,6 +253,48 @@ def test_an_object_built_in_code_is_written_minimal_styled_in_yaml(
     assert written == dumps(STYLED)
     assert written == dumps(bundle.to_dict())
     assert "graphical:" in written
+
+
+def test_event_rows_are_left_out_on_request(tmp_path: Path) -> None:
+    """``events=False`` writes a file read with event rows without them."""
+    source = _write(tmp_path / "bundle.yaml", dumps(WITH_TABLES))
+    target = AlignmentBundle.from_file(source).to_file(tmp_path / "out", events=False)
+    assert _read(target) == dumps(_without(WITH_TABLES, "events"))
+
+
+def test_an_object_built_in_code_writes_event_rows_on_request(
+    tmp_path: Path,
+) -> None:
+    """Neither key by default; both with ``events`` and ``external_references``."""
+    take = ContinuousPhysicalTimeline(length=64.5, uid="take_1")
+    take.add_events(
+        [
+            {
+                "id": "e1",
+                "temporal_type": "instant",
+                "event_type": "Beat",
+                "instant": 0.0,
+            },
+            {
+                "id": "e2",
+                "name": "C4",
+                "temporal_type": "interval",
+                "event_type": "Note",
+                "start": 1.0,
+                "end": 2.5,
+            },
+        ]
+    )
+    take.add_external_references(REFERENCES)
+    bundle = AlignmentBundle()
+    bundle.add_timeline(ContinuousLogicalTimeline(length=Fraction(32), uid="score"))
+    bundle.add_timeline(take)
+    plain = bundle.to_file(tmp_path / "plain.yaml")
+    assert _read(plain) == dumps(_without(WITH_TABLES, "events", "external_references"))
+    tables = bundle.to_file(
+        tmp_path / "tables.yaml", events=True, external_references=True
+    )
+    assert _read(tables) == dumps(WITH_TABLES)
 
 
 def test_selection_passes_through(tmp_path: Path) -> None:

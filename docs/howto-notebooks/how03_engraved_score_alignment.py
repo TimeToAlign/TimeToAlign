@@ -127,9 +127,11 @@ def claims_table(claims) -> pd.DataFrame:
 #
 # `VerovioLoader` reads any format Verovio reads (MEI, MusicXML, Humdrum, …)
 # and takes the score's time from Verovio's *timemap*, which states every
-# onset as an exact fraction of a quarter. The test score sets seven notes
-# against four and five in one beat, so its positions are sevenths and
-# twentieths of a quarter: exact fractions keep them apart.
+# onset as an exact fraction of a quarter. The test score sets tuplets
+# against plain sixteenths: seven eighths in the time of three, each 3/14 of
+# a quarter long, and five sixteenths in the time of three, each 3/20. Its
+# positions are therefore multiples of 3/14 and of 3/20 of a quarter, such as
+# 3/20, 3/14 and 3/10 in the first quarter: exact fractions keep them apart.
 #
 # `create_timeline()` builds the logical timeline in quarters. Every movement
 # (`<mdiv>`) of the file is a child timeline holding that movement's events;
@@ -142,8 +144,8 @@ score
 
 # %% [markdown]
 # Every note keeps the `xml:id` it has in the MEI file; these ids were
-# written by the notation program that exported the score. The first beat,
-# all four staves:
+# written by the notation program that exported the score. The first
+# quarter, all four staves:
 
 # %%
 notes_at(score, 0, 1)
@@ -152,9 +154,9 @@ notes_at(score, 0, 1)
 # An id is a key: `get_coordinate_for` gives a note's position, and
 # `get_timestamp_for` its span on the score and on its movement. The
 # timestamp of a position also shows the score's
-# {{< glossary "Conversion Map" >}} to seconds, which the loader builds from
-# Verovio's own timing: the time Verovio renders from the score's tempo, not
-# a performance.
+# {{< glossary ConversionMap display="conversion map" >}} to seconds, which
+# the loader builds from Verovio's own timing: the time Verovio renders from
+# the score's tempo, not a performance.
 
 # %%
 first_beat = ids_at(score, 1)[0]
@@ -346,14 +348,16 @@ page_axis = page.create_calibrated_child(
 page.get_timestamp_at(594)
 
 # %% [markdown]
-# The pairs are checked against the map's law, a straight line by default.
-# A label that contradicts the others is refused before the child is
-# created, so the page stays unchanged:
+# The pairs are checked against the map's law, a straight line by default,
+# drawn through the first and the last pair. Below, the tick at 720 is
+# mislabelled 1.5 seconds: the line from `(120, 0)` to `(1920, 3)` reaches 1.5
+# only at 1020, so that pair is refused before the child is created, and the
+# page keeps only the axis made above:
 
 # %%
 try:
     page.create_calibrated_child(
-        1800, 120, [(120, 0), (720, 1), (1320, 2.5)], value_unit="seconds"
+        1800, 120, [(120, 0), (720, 1.5), (1320, 2), (1920, 3)], value_unit="seconds"
     )
 except ValueError as error:
     print(error)

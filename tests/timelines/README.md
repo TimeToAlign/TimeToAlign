@@ -2052,33 +2052,40 @@ case.
 
 **Validation logic:**
 
-- **The specimen is a real drawing.** A seconds axis drawn in points with
-  five labelled ticks (0, 10, 20, 30, 40 s at 76.70371459980326 …
-  932.2326510101616 pt) is calibrated on a float `points` parent. The child's
-  offset and length are the ones given; the positions become child
-  coordinates by subtracting the offset in float arithmetic, so the first
-  tick lands on 0.0 and the last on 855.5289364103584. The map's scalar is
+- **A drawn seconds axis with five labelled ticks.** The ticks (0, 10, 20,
+  30, 40 s at 76.70371459980326 … 932.2326510101616 pt) are calibrated on a
+  float `points` parent. The child's offset and length are the ones given;
+  the map reads each position from the offset in float arithmetic, so the
+  first tick reads 0.0 and the last 855.5289364103584. The map's scalar is
   then 40.0 / 855.5289364103584 = 0.04675470144567245 and its offset 0.0,
   computed independently of the library from the two-point formula. The map
   is probed at an inner tick (213.88223410258962 → 10.000000000000002, the
   float the line gives, one ulp above the label) and at the end (→ 40.0).
   These are the values of plain float arithmetic; a library that rounded,
-  fitted or guessed a ratio would give other bits and fail. The inner ticks
-  are checked on the child positions against the line through the end ticks
-  evaluated exactly: they lie 0.75, 0.75 and 0.37 ulp of their labels off it,
-  within the one-ulp bound of `LinearMap.from_pairs` (see
-  `tests/maps/README.md`).
+  fitted or guessed a ratio would give other bits and fail.
+- **The inner ticks are checked on the parent's positions.** The check runs
+  on the positions as given, before the offset is subtracted, where their
+  rounding happened (see `tests/maps/README.md`): against exact labels the
+  inner ticks lie 0.9375, 0.375 and 0.15625 of their ulps off the exact line
+  through the end ticks and pass, building the same map. The fourth tick
+  moved up by two floats (718.3504169075723, 2.16 of its ulps off) is
+  refused and the parent keeps no child. Refusals name positions as given,
+  in the parent's coordinates.
 - **Exact axes stay exact.** On a `fraction` parent, `Fraction` positions and
   `quarters` values give a `Fraction` scalar and offset and an exact
   conversion.
 - **A refusal changes nothing.** Moving the label "10" to 300.0 takes it off
-  the line through the end ticks: the call raises, and the parent then has
+  the line through the end ticks, which reaches 10 at 290.58594870239284:
+  the call raises, and the parent then has
   no child, no new segment event and the same manifest ids as before, so the
   next child it creates gets the id it would have had anyway.
 - **Order is irrelevant.** Unsorted calibration gives a map equal to the
   sorted one.
 - **The scalar survives serialization bit for bit.** `to_dict()` → JSON text
-  → `from_dict()` of the child restores the scalar with the same `float.hex()`.
+  → `from_dict()` of the child restores the scalar with the same
+  `float.hex()` and the offset 0.0. The map's declared `float` output is a
+  library setting the manifest does not carry; the map read back writes
+  floats because seconds do by default.
 - **Every refusal names the offending pair.** Fewer than two pairs, a
   repeated position, values in two units, an inner pair off the line, a
   position before the offset or after its end — each raises `ValueError`

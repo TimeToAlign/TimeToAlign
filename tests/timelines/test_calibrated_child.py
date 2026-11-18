@@ -8,7 +8,7 @@ from fractions import Fraction
 
 import pytest
 
-from timetoalign.core import Coordinate, IdCoordinate
+from timetoalign.core import Coordinate, IdCoordinate, NumberType
 from timetoalign.maps import LinearMap
 from timetoalign.timelines import (
     ContinuousGraphicalTimeline,
@@ -20,7 +20,8 @@ from timetoalign.timelines import (
     Timeline,
 )
 
-# A seconds axis drawn in points: the five labelled ticks of a ScoreWarp drawing.
+# A seconds axis drawn in points with five labelled ticks, positions as a
+# program computed and printed them.
 TICKS = [
     76.70371459980326,
     290.5859487023929,
@@ -31,7 +32,6 @@ TICKS = [
 LABELS = [0, 10, 20, 30, 40]
 AXIS_START = 76.70371459980326
 AXIS_LENGTH = 855.5289364103584
-SUFFIX = " Positions are read from the child's offset 10.0."
 
 
 def seconds(value: float) -> Coordinate:
@@ -97,9 +97,12 @@ class TestDrawnAxis:
         child = calibrate(drawing(), TICKS)
         text = json.dumps(child.to_dict())
         restored = Timeline.from_dict(json.loads(text))
-        scalar = restored.get_conversion_map("seconds").scalar
-        assert type(scalar) is float
-        assert scalar.hex() == (0.04675470144567245).hex()
+        cmap = restored.get_conversion_map("seconds")
+        assert type(cmap.scalar) is float
+        assert cmap.scalar.hex() == (0.04675470144567245).hex()
+        assert cmap.offset == 0.0
+        # The declaration is not written; seconds write floats by default.
+        assert cmap.output_number_type is NumberType.float
 
     def test_a_label_off_the_line_changes_nothing(self):
         parent = drawing()
@@ -109,10 +112,8 @@ class TestDrawnAxis:
         with pytest.raises(
             ValueError,
             match=re.escape(
-                "Calibration pair 1 (223.29628540019672, 10.0) lies off the line "
-                "through the first and last pair, which reads 10.440151157813867 at "
-                "223.29628540019672. Positions are read from the child's offset "
-                "76.70371459980326."
+                "Calibration pair 1 (300.0, 10.0) lies off the line through the "
+                "first and last pair, which reaches 10.0 at 290.58594870239284."
             ),
         ):
             calibrate(parent, moved)
@@ -120,6 +121,38 @@ class TestDrawnAxis:
         assert len(parent.events) == events_before
         assert parent._manifest_ids() == ids_before
         assert parent.create_child(length=1.0).id == "cgt_2"
+
+
+class TestBound:
+    def test_inner_ticks_are_checked_on_the_parent_positions(self):
+        # Exact labels, positions as printed: the inner ticks lie 0.9375,
+        # 0.375 and 0.15625 of their ulps off the exact line through the end
+        # ticks, on the parent's positions.
+        child = drawing().create_calibrated_child(
+            AXIS_LENGTH, AXIS_START, list(zip(TICKS, LABELS)), value_unit="seconds"
+        )
+        cmap = child.get_conversion_map("seconds")
+        assert cmap.scalar == 0.04675470144567245
+        assert cmap.offset == 0.0
+
+    def test_a_tick_two_floats_off_is_refused(self):
+        # Two floats above the fourth tick: 2.16 of its ulps off the line.
+        parent = drawing()
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "Calibration pair 3 (718.3504169075723, 30) lies off the line "
+                "through the first and last pair, which reaches 30 at "
+                "718.350416907572."
+            ),
+        ):
+            parent.create_calibrated_child(
+                AXIS_LENGTH,
+                AXIS_START,
+                list(zip([*TICKS[:3], 718.3504169075723, TICKS[4]], LABELS)),
+                value_unit="seconds",
+            )
+        assert parent.n_children == 0
 
 
 class TestExactAxis:
@@ -181,7 +214,7 @@ class TestInputs:
         with pytest.raises(
             ValueError,
             match=re.escape(
-                "Calibration pair 1 has a value in seconds, not in quarters." + SUFFIX
+                "Calibration pair 1 has a value in seconds, not in quarters."
             ),
         ):
             parent.create_calibrated_child(
@@ -239,16 +272,14 @@ class TestRefusals:
     def test_fewer_than_two_pairs(self):
         with pytest.raises(
             ValueError,
-            match=re.escape("A calibration needs at least two pairs, got 1." + SUFFIX),
+            match=re.escape("A calibration needs at least two pairs, got 1."),
         ):
             calibrate_small([(10.0, seconds(0))])
 
     def test_repeated_position(self):
         with pytest.raises(
             ValueError,
-            match=re.escape(
-                "Calibration pairs 0 and 1 share the position 20.0." + SUFFIX
-            ),
+            match=re.escape("Calibration pairs 0 and 1 share the position 30.0."),
         ):
             calibrate_small(
                 [(30.0, seconds(0)), (30.0, seconds(1)), (90.0, seconds(4))]
@@ -258,7 +289,7 @@ class TestRefusals:
         with pytest.raises(
             ValueError,
             match=re.escape(
-                "Calibration pair 1 has a value in quarters, not in seconds." + SUFFIX
+                "Calibration pair 1 has a value in quarters, not in seconds."
             ),
         ):
             calibrate_small([(10.0, seconds(0)), (90.0, Coordinate(4, "quarters"))])
@@ -267,8 +298,8 @@ class TestRefusals:
         with pytest.raises(
             ValueError,
             match=re.escape(
-                "Calibration pair 1 (40.0, 3.0) lies off the line through the first "
-                "and last pair, which reads 2.0 at 40.0." + SUFFIX
+                "Calibration pair 1 (50.0, 3.0) lies off the line through the first "
+                "and last pair, which reaches 3.0 at 70.0."
             ),
         ):
             calibrate_small(

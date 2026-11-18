@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, Sequence
 import numpy as np
 from numpy.typing import NDArray
 
-from ..core.enums import ExtrapolationPolicy, InterpolationKind, TimeUnit
+from ..core.enums import ExtrapolationPolicy, InterpolationKind, NumberType, TimeUnit
 from ..core.time import (
     CoordinateValue,
     number_from_json,
@@ -126,6 +126,7 @@ class TableMap(ConversionMap[CoordinateValue]):
         target_unit: TimeUnit | str | None = None,
         uid: str | None = None,
         name: str | None = None,
+        output_number_type: NumberType | str | None = None,
     ) -> None:
         """Initialize a TableMap.
 
@@ -139,17 +140,22 @@ class TableMap(ConversionMap[CoordinateValue]):
             target_unit: The unit of output coordinates.
             uid: Optional explicit ID.
             name: Human-readable name for this map. Defaults to the map's ID.
+            output_number_type: The representation results are written in,
+                among those the target unit admits; ``None`` for the target
+                unit's default.
 
         Raises:
             ValueError: If x_values and y_values have different lengths.
             ValueError: If x_values are not strictly increasing.
             ValueError: If fewer than 2 points are provided.
+            ValueError: If the target unit does not admit *output_number_type*.
         """
         super().__init__(
             source_unit=source_unit,
             target_unit=target_unit,
             uid=uid,
             name=name,
+            output_number_type=output_number_type,
         )
 
         # Validate inputs
@@ -402,6 +408,7 @@ class TableMap(ConversionMap[CoordinateValue]):
                 extrapolate=self._extrapolate,
                 source_unit=self._target_unit,
                 target_unit=self._source_unit,
+                output_number_type=self._inverse_output_number_type(),
             )
         else:
             return self.__class__(
@@ -411,6 +418,7 @@ class TableMap(ConversionMap[CoordinateValue]):
                 extrapolate=self._extrapolate,
                 source_unit=self._target_unit,
                 target_unit=self._source_unit,
+                output_number_type=self._inverse_output_number_type(),
             )
 
     def _to_manifest(self, *, minimal: bool, entries: MeasureMapIds) -> dict[str, Any]:

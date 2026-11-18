@@ -1,11 +1,14 @@
 """Tests for table-based maps."""
 
+import json
+import re
 from fractions import Fraction
 
 import numpy as np
 import pytest
 
-from timetoalign.core.enums import ExtrapolationPolicy, InterpolationKind
+from timetoalign.core.enums import ExtrapolationPolicy, InterpolationKind, NumberType
+from timetoalign.maps.base import ConversionMap
 from timetoalign.maps.table import TableMap
 
 
@@ -227,3 +230,102 @@ class TestTableMapExact:
         result = self._exact_map().convert_array(np.array([0, 1, 2, 4]))
         assert result.dtype == np.float64
         np.testing.assert_array_equal(result, [0.0, 0.5, 1.0, 2.0])
+
+
+def exact_tempo_map(**kwargs) -> TableMap:
+    """Quarters to seconds through exact anchors: 1/6 s per quarter, then 1/3."""
+    return TableMap(
+        x_values=[0, 2, 4],
+        y_values=[Fraction(0), Fraction(1, 3), Fraction(1)],
+        source_unit="quarters",
+        target_unit="seconds",
+        **kwargs,
+    )
+
+
+class TestDeclaredOutputNumberType:
+    def test_undeclared_map_writes_the_target_units_default(self):
+        cmap = exact_tempo_map()
+        assert cmap.output_number_type is NumberType.float
+        assert cmap(1) == 1 / 6
+        assert type(cmap(1)) is float
+
+    def test_fraction_map_answers_exactly(self):
+        cmap = exact_tempo_map(output_number_type="fraction")
+        assert cmap.output_number_type is NumberType.fraction
+        # at an anchor, between anchors, and past the last anchor
+        for position, expected in [
+            (2, Fraction(1, 3)),
+            (1, Fraction(1, 6)),
+            (Fraction(3), Fraction(2, 3)),
+            (5, Fraction(4, 3)),
+        ]:
+            result = cmap(position)
+            assert result == expected
+            assert type(result) is Fraction
+
+    def test_fraction_map_never_answers_a_float(self):
+        result = exact_tempo_map(output_number_type="fraction")(1.0)
+        # the float path's 1/6, re-expressed as its exact dyadic
+        assert result == Fraction(1 / 6)
+        assert type(result) is Fraction
+
+    def test_float_map_never_answers_a_fraction(self):
+        cmap = TableMap(
+            x_values=[0, 2],
+            y_values=[Fraction(0), Fraction(1, 3)],
+            source_unit="seconds",
+            target_unit="quarters",
+            output_number_type=NumberType.float,
+        )
+        assert cmap(1) == 1 / 6
+        assert type(cmap(1)) is float
+
+    def test_inverse_answers_exactly(self):
+        inverse = exact_tempo_map(output_number_type="fraction").inverse()
+        assert inverse.output_number_type is NumberType.fraction
+        result = inverse(Fraction(2, 3))
+        assert result == Fraction(3)
+        assert type(result) is Fraction
+
+    def test_inverse_into_a_discrete_unit_writes_its_integers(self):
+        cmap = TableMap(
+            x_values=[0, 960],
+            y_values=[Fraction(0), Fraction(1, 3)],
+            source_unit="ticks",
+            target_unit="seconds",
+            output_number_type="fraction",
+        )
+        inverse = cmap.inverse()
+        assert inverse.output_number_type is NumberType.int
+        assert inverse(Fraction(1, 6)) == 480
+
+    def test_round_trip_drops_the_declaration(self):
+        # The manifest states no number type for a map, so the declaration
+        # is not written and the map read back answers as its target unit
+        # does by default.
+        cmap = exact_tempo_map(output_number_type="fraction", uid="tempo")
+        data = cmap.to_dict(minimal=False)
+        assert data == exact_tempo_map(uid="tempo").to_dict(minimal=False)
+        restored = ConversionMap.from_dict(json.loads(json.dumps(data)))
+        assert restored == exact_tempo_map(uid="tempo")
+        assert restored != cmap
+        assert restored.output_number_type is NumberType.float
+        assert restored(1) == 1 / 6
+        assert type(restored(1)) is float
+
+    def test_target_unit_must_admit_the_declaration(self):
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "Unit 'ticks' does not admit number_type 'float'. "
+                "Allowed number types: int"
+            ),
+        ):
+            TableMap(
+                x_values=[0, 1],
+                y_values=[0, 480],
+                source_unit="quarters",
+                target_unit="ticks",
+                output_number_type="float",
+            )

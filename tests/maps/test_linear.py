@@ -6,9 +6,19 @@ from fractions import Fraction
 import numpy as np
 import pytest
 
-from timetoalign.core.enums import TimeUnit
+from timetoalign.core.enums import NumberType, TimeUnit
 from timetoalign.core.time import Coordinate
 from timetoalign.maps.linear import LinearMap, ScalarMap, ShiftMap
+
+# A seconds axis drawn in points: the positions of its five labelled ticks
+# (0, 10, 20, 30, 40 s), as a program computed and printed them.
+TICKS = [
+    76.70371459980326,
+    290.5859487023929,
+    504.4681828049824,
+    718.350416907572,
+    932.2326510101616,
+]
 
 
 class TestLinearMap:
@@ -166,55 +176,102 @@ class TestLinearMapFromPairs:
                 source_unit="ticks",
             )
 
-    @pytest.mark.parametrize("value", [1.0000000000000002, 1.0, 0.9999999999999999])
-    def test_float_bound_is_one_ulp_of_the_value(self, value):
-        # The exact line through (0, 0) and (2, 2) reads 1 at 1.0.
+    @pytest.mark.parametrize("position", [1.0000000000000002, 1.0, 0.9999999999999999])
+    def test_float_bound_is_one_ulp_of_the_position(self, position):
+        # The exact line through (0, 0) and (2, 2) reaches 1 at 1.
         m = LinearMap.from_pairs(
-            [(0.0, 0.0), (1.0, value), (2.0, 2.0)],
+            [(0.0, 0.0), (position, 1.0), (2.0, 2.0)],
             source_unit=None,
             value_unit="seconds",
         )
         assert m.scalar == 1.0
 
-    @pytest.mark.parametrize("value", [1.0000000000000004, 0.9999999999999998])
-    def test_float_beyond_one_ulp_of_the_value_is_refused(self, value):
+    @pytest.mark.parametrize("position", [1.0000000000000004, 0.9999999999999998])
+    def test_two_ulps_of_the_position_are_refused(self, position):
         with pytest.raises(
             ValueError,
             match=re.escape(
-                f"Calibration pair 1 (1.0, {value}) lies off the line through the "
-                "first and last pair, which reads 1.0 at 1.0."
+                f"Calibration pair 1 ({position}, 1.0) lies off the line through "
+                "the first and last pair, which reaches 1.0 at 1.0."
             ),
         ):
             LinearMap.from_pairs(
-                [(0.0, 0.0), (1.0, value), (2.0, 2.0)],
+                [(0.0, 0.0), (position, 1.0), (2.0, 2.0)],
                 source_unit=None,
                 value_unit="seconds",
             )
 
-    def test_specimen_label_within_the_bound(self):
-        # The exact line reads 10 + 1.33e-15 here: the label 10.0 lies 0.75 ulp below.
-        LinearMap.from_pairs(
-            [(0.0, 0.0), (213.88223410258962, 10.0), (855.5289364103584, 40.0)],
+    def test_an_inner_value_of_zero_takes_the_position_bound(self):
+        # The line through (0, -1) and (2, 1) reaches 0 at 1, and the
+        # position one ulp above 1 is within the bound. Measured on the
+        # value, the bound would be one ulp of 0.0 (5e-324), which forces an
+        # exact hit on a rounded position.
+        m = LinearMap.from_pairs(
+            [(0.0, -1.0), (1.0000000000000002, 0.0), (2.0, 1.0)],
             source_unit=None,
             value_unit="seconds",
         )
-        # The next float below lies 1.75 ulps below the exact line.
+        assert m.scalar == 1.0
+        assert m.offset == -1.0
+
+    def test_drawn_axis_ticks_within_the_bound(self):
+        # A seconds axis drawn in points with five labelled ticks, positions
+        # as a program printed them, read from the first tick.
+        m = LinearMap.from_pairs(
+            list(zip(TICKS, [0, 10, 20, 30, 40])),
+            source_unit="points",
+            value_unit="seconds",
+            origin=TICKS[0],
+        )
+        # 40 / (932.2326510101616 - 76.70371459980326), and 0 - scalar * 0.0
+        assert m.scalar == 0.04675470144567245
+        assert m.offset == 0.0
+        assert m.output_number_type is NumberType.float
+
+    def test_drawn_axis_tick_two_floats_up_is_refused(self):
+        # The second tick moved up by two floats lies 2.94 of its ulps above
+        # the exact position at which the line reaches 10.
         with pytest.raises(
             ValueError,
             match=re.escape(
-                "Calibration pair 1 (213.88223410258962, 9.999999999999998) lies off "
-                "the line through the first and last pair, which reads "
-                "10.000000000000002 at 213.88223410258962."
+                "Calibration pair 1 (290.585948702393, 10) lies off the line through "
+                "the first and last pair, which reaches 10 at 290.58594870239284."
             ),
         ):
             LinearMap.from_pairs(
-                [
-                    (0.0, 0.0),
-                    (213.88223410258962, 9.999999999999998),
-                    (855.5289364103584, 40.0),
-                ],
-                source_unit=None,
+                list(
+                    zip([TICKS[0], 290.585948702393, *TICKS[2:]], [0, 10, 20, 30, 40])
+                ),
+                source_unit="points",
                 value_unit="seconds",
+                origin=TICKS[0],
+            )
+
+    def test_origin_is_subtracted_after_the_check(self):
+        from_child = LinearMap.from_pairs(
+            [(0.0, 0.0), (40.0, 2.0), (80.0, 4.0)],
+            source_unit="points",
+            value_unit="seconds",
+        )
+        from_parent = LinearMap.from_pairs(
+            [(10.0, 0.0), (50.0, 2.0), (90.0, 4.0)],
+            source_unit="points",
+            value_unit="seconds",
+            origin=Coordinate(10.0, TimeUnit.points),
+        )
+        assert (from_parent.scalar, from_parent.offset) == (0.05, 0.0)
+        assert (from_child.scalar, from_child.offset) == (0.05, 0.0)
+
+    def test_origin_in_another_unit_is_refused(self):
+        with pytest.raises(
+            ValueError,
+            match=re.escape("The calibration origin is in pixels, not in points."),
+        ):
+            LinearMap.from_pairs(
+                [(10.0, 0.0), (90.0, 4.0)],
+                source_unit="points",
+                value_unit="seconds",
+                origin=Coordinate(10, TimeUnit.pixels),
             )
 
     def test_exact_inner_pair_must_lie_on_the_line(self):
@@ -222,7 +279,8 @@ class TestLinearMapFromPairs:
             ValueError,
             match=re.escape(
                 "Calibration pair 2 (1, 1000001/1000000) lies off the line through "
-                "the first and last pair, which reads 1 at 1."
+                "the first and last pair, which reaches 1000001/1000000 at "
+                "1000001/1000000."
             ),
         ):
             LinearMap.from_pairs(
@@ -230,6 +288,64 @@ class TestLinearMapFromPairs:
                 source_unit=None,
                 value_unit="quarters",
             )
+
+    def test_one_float_gives_the_whole_calibration_the_position_bound(self):
+        # The same value, once as a float and once as its exact Fraction:
+        # with the float, the calibration is not exact and the position 1 may
+        # miss the line's 1 + 2**-52 by one ulp of 1; with the Fraction,
+        # every number is exact and the pair must lie on the line.
+        m = LinearMap.from_pairs(
+            [(0, 0), (1, 1.0000000000000002), (2, 2)],
+            source_unit=None,
+            value_unit="seconds",
+        )
+        assert m.scalar == 1
+        assert m.output_number_type is NumberType.float
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "Calibration pair 1 (1, 4503599627370497/4503599627370496) lies off "
+                "the line through the first and last pair, which reaches "
+                "4503599627370497/4503599627370496 at "
+                "4503599627370497/4503599627370496."
+            ),
+        ):
+            LinearMap.from_pairs(
+                [(0, 0), (1, Fraction(1.0000000000000002)), (2, 2)],
+                source_unit=None,
+                value_unit="seconds",
+            )
+
+    def test_exact_positions_with_float_values(self):
+        # The line through (0, 0.1) and (2, 0.3) reaches the double 0.2 at
+        # 1 + 1.39e-16 (exactly on the three doubles): 0.625 ulp of 1.
+        m = LinearMap.from_pairs(
+            [(0, 0.1), (1, 0.2), (2, 0.3)], source_unit=None, value_unit="seconds"
+        )
+        # (0.3 - 0.1) / 2 in floats
+        assert m.scalar == 0.09999999999999999
+        assert m.offset == 0.1
+
+    def test_declared_output_number_type(self):
+        floats = LinearMap.from_pairs(
+            [(0.0, 0.0), (2.0, 1.0)], source_unit="points", value_unit="quarters"
+        )
+        assert floats.output_number_type is NumberType.float
+        assert type(floats(1.0)) is float
+        assert floats.inverse().output_number_type is NumberType.float
+        exact = LinearMap.from_pairs(
+            [(0, 0), (2, 1)], source_unit="points", value_unit="seconds"
+        )
+        assert exact.output_number_type is NumberType.fraction
+        assert exact(1) == Fraction(1, 2)
+        assert type(exact(1)) is Fraction
+        # Ticks admit integers only: the map writes whole ticks.
+        ticks = LinearMap.from_pairs(
+            [(0, 0), (2, 960)], source_unit="points", value_unit="ticks"
+        )
+        assert ticks.output_number_type is NumberType.int
+        assert ticks(1) == 480
+        assert type(ticks(1)) is int
 
     def test_refusals(self):
         with pytest.raises(
@@ -243,6 +359,14 @@ class TestLinearMapFromPairs:
         ):
             LinearMap.from_pairs(
                 [(1, 0), (2, 1), (1, 2)], source_unit=None, value_unit="quarters"
+            )
+
+    def test_end_pairs_reading_one_value_are_refused(self):
+        with pytest.raises(
+            ValueError, match=re.escape("LinearMap scalar cannot be zero")
+        ):
+            LinearMap.from_pairs(
+                [(0, 1), (1, 1), (2, 1)], source_unit=None, value_unit="quarters"
             )
 
     def test_other_maps_are_no_law(self):

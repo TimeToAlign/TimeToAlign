@@ -14,13 +14,14 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from numpy.typing import NDArray
 
-from ..core.enums import TimeUnit
+from ..core.enums import NumberType, TimeUnit
 from ..core.time import (
+    Coordinate,
     CoordinateValue,
     number_from_json,
     number_to_json,
 )
-from .base import CalibrationPair, ConversionMap, MeasureMapIds, _calibration_fits
+from .base import CalibrationPair, ConversionMap, MeasureMapIds, _check_calibration
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -95,16 +96,23 @@ class LinearMap(ConversionMap[CoordinateValue]):
         *,
         source_unit: TimeUnit | str | None,
         value_unit: TimeUnit | str | None = None,
+        origin: CoordinateValue | Coordinate = 0,
     ) -> Self:
         """Build the line through the first and the last pair by position.
 
-        The scalar is the values' difference over the positions' difference,
-        the offset what is left at the first position, both in the numbers'
-        own arithmetic: exact pairs give an exact map, float pairs a float
-        one. Every inner pair is checked against that line evaluated exactly
-        on the numbers as given: exact pairs must lie on it, and a float
-        pair may miss it by at most one ulp of its value, the rounding of
-        its printed decimals. The line is never fitted.
+        The positions are read from *origin* (``position - origin``). The
+        scalar is the values' difference over the positions' difference, the
+        offset what is left at the first position, both in the numbers' own
+        arithmetic: exact pairs give an exact map, which writes its results
+        as fractions where the value unit admits them, and pairs holding a
+        float give a float map, which writes floats.
+
+        Every inner pair is checked against the line through the end pairs,
+        evaluated exactly on the positions as given, before *origin* is
+        subtracted: the position at which the line reaches the pair's value
+        must be its position, exactly for an exact calibration and within
+        one ulp of the position otherwise (see
+        :meth:`ConversionMap.from_pairs`). The line is never fitted.
 
         Args:
             pairs: ``(position, value)`` pairs, in any order: positions as
@@ -113,6 +121,8 @@ class LinearMap(ConversionMap[CoordinateValue]):
             source_unit: The unit of the positions.
             value_unit: The unit of the values, the map's target unit. Needed
                 when a value is a number; a coordinate value must be in it.
+            origin: Where the source axis starts, in the coordinates of the
+                positions.
 
         Returns:
             The map through the pairs.
@@ -120,8 +130,8 @@ class LinearMap(ConversionMap[CoordinateValue]):
         Raises:
             TypeError: If a value is a number and no *value_unit* is given.
             ValueError: If there are fewer than two pairs, two pairs share a
-                position, a coordinate is in another unit than its axis, or
-                an inner pair lies off the line.
+                position, a coordinate is in another unit than its axis, the
+                end pairs read one value, or an inner pair lies off the line.
 
         Examples:
             >>> m = LinearMap.from_pairs(
@@ -129,41 +139,44 @@ class LinearMap(ConversionMap[CoordinateValue]):
             ... )
             >>> m.scalar, m.offset
             (Fraction(1, 3), Fraction(1, 1))
+            >>> m(1)
+            Fraction(4, 3)
         """
-        points, value_unit = cls._calibration_points(pairs, source_unit, value_unit)
+        calibration = cls._calibration_points(pairs, source_unit, value_unit, origin)
+        points = calibration.points
         _, first_position, first_value = points[0]
         _, last_position, last_value = points[-1]
+        first_read = first_position - calibration.origin
         rise = last_value - first_value
-        run = last_position - first_position
+        run = (last_position - calibration.origin) - first_read
         if isinstance(rise, (int, Fraction)) and isinstance(run, (int, Fraction)):
             scalar = Fraction(rise) / run
         else:
             scalar = rise / run
-        offset = first_value - scalar * first_position
-        exact = all(
-            isinstance(number, (int, Fraction))
-            for _, *numbers in points
-            for number in numbers
-        )
-        exact_slope = (Fraction(last_value) - Fraction(first_value)) / (
-            Fraction(last_position) - Fraction(first_position)
-        )
-        for index, position, value in points[1:-1]:
-            on_line = Fraction(first_value) + exact_slope * (
-                Fraction(position) - Fraction(first_position)
-            )
-            if not _calibration_fits(value, on_line, exact=exact):
-                raise ValueError(
-                    f"Calibration pair {index} ({position}, {value}) lies off the "
-                    f"line through the first and last pair, which reads "
-                    f"{on_line if exact else float(on_line)} at {position}."
-                )
-        return cls(
+        number_type = NumberType.fraction if calibration.exact else NumberType.float
+        cmap = cls(
             scalar=scalar,
-            offset=offset,
+            offset=first_value - scalar * first_read,
             source_unit=source_unit,
-            target_unit=value_unit,
+            target_unit=calibration.value_unit,
+            output_number_type=(
+                number_type
+                if number_type in calibration.value_unit.allowed_number_types
+                else None
+            ),
         )
+        # The line's exact inverse, through the end pairs as given.
+        position_0, value_0 = Fraction(first_position), Fraction(first_value)
+        per_value = (Fraction(last_position) - position_0) / (
+            Fraction(last_value) - value_0
+        )
+        _check_calibration(
+            calibration,
+            points[1:-1],
+            lambda value: position_0 + (Fraction(value) - value_0) * per_value,
+            "line through the first and last pair",
+        )
+        return cmap
 
     def __init__(
         self,
@@ -174,6 +187,7 @@ class LinearMap(ConversionMap[CoordinateValue]):
         target_unit: TimeUnit | str | None = None,
         uid: str | None = None,
         name: str | None = None,
+        output_number_type: NumberType | str | None = None,
     ) -> None:
         """Initialize a LinearMap.
 
@@ -185,6 +199,9 @@ class LinearMap(ConversionMap[CoordinateValue]):
             uid: Optional explicit ID.
             name: Human-readable name for this map. Used as field header in
                 timestamp tables. Defaults to "source_to_target".
+            output_number_type: The representation results are written in,
+                among those the target unit admits; ``None`` for the target
+                unit's default.
 
         Raises:
             ValueError: If scalar is zero (map would not be invertible).
@@ -194,6 +211,7 @@ class LinearMap(ConversionMap[CoordinateValue]):
             target_unit=target_unit,
             uid=uid,
             name=name,
+            output_number_type=output_number_type,
         )
         if scalar == 0:
             raise ValueError("LinearMap scalar cannot be zero (not invertible)")
@@ -233,6 +251,7 @@ class LinearMap(ConversionMap[CoordinateValue]):
             offset=inv_offset,
             source_unit=self._target_unit,
             target_unit=self._source_unit,
+            output_number_type=self._inverse_output_number_type(),
         )
 
     def compose_with(self, other: LinearMap) -> LinearMap:
@@ -254,6 +273,7 @@ class LinearMap(ConversionMap[CoordinateValue]):
             offset=new_offset,
             source_unit=self._source_unit,
             target_unit=other._target_unit,
+            output_number_type=other._given_output_number_type,
         )
 
     def _to_manifest(self, *, minimal: bool, entries: MeasureMapIds) -> dict[str, Any]:
@@ -316,6 +336,7 @@ class ScalarMap(ConversionMap[CoordinateValue]):
         target_unit: TimeUnit | str | None = None,
         uid: str | None = None,
         name: str | None = None,
+        output_number_type: NumberType | str | None = None,
     ) -> None:
         """Initialize a ScalarMap.
 
@@ -327,6 +348,9 @@ class ScalarMap(ConversionMap[CoordinateValue]):
             name: Human-readable name for this map. Used as field header in
                 timestamp tables. Defaults to "source_to_target" (e.g.,
                 "pixels_to_inches").
+            output_number_type: The representation results are written in,
+                among those the target unit admits; ``None`` for the target
+                unit's default.
 
         Raises:
             ValueError: If scalar is zero.
@@ -336,6 +360,7 @@ class ScalarMap(ConversionMap[CoordinateValue]):
             target_unit=target_unit,
             uid=uid,
             name=name,
+            output_number_type=output_number_type,
         )
         if scalar == 0:
             raise ValueError("ScalarMap scalar cannot be zero")
@@ -360,6 +385,7 @@ class ScalarMap(ConversionMap[CoordinateValue]):
             scalar=_reciprocal(self._scalar),
             source_unit=self._target_unit,
             target_unit=self._source_unit,
+            output_number_type=self._inverse_output_number_type(),
         )
 
     def _to_manifest(self, *, minimal: bool, entries: MeasureMapIds) -> dict[str, Any]:
@@ -405,6 +431,7 @@ class ShiftMap(ConversionMap[CoordinateValue]):
         target_unit: TimeUnit | str | None = None,
         uid: str | None = None,
         name: str | None = None,
+        output_number_type: NumberType | str | None = None,
     ) -> None:
         """Initialize a ShiftMap.
 
@@ -415,12 +442,16 @@ class ShiftMap(ConversionMap[CoordinateValue]):
             uid: Optional explicit ID.
             name: Human-readable name for this map. Used as field header in
                 timestamp tables. Defaults to "source_to_target".
+            output_number_type: The representation results are written in,
+                among those the target unit admits; ``None`` for the target
+                unit's default.
         """
         super().__init__(
             source_unit=source_unit,
             target_unit=target_unit,
             uid=uid,
             name=name,
+            output_number_type=output_number_type,
         )
         self._offset = offset
 
@@ -448,6 +479,7 @@ class ShiftMap(ConversionMap[CoordinateValue]):
             offset=-self._offset,
             source_unit=self._target_unit,
             target_unit=self._source_unit,
+            output_number_type=self._inverse_output_number_type(),
         )
 
     def _to_manifest(self, *, minimal: bool, entries: MeasureMapIds) -> dict[str, Any]:

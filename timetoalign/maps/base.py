@@ -9,9 +9,18 @@ from __future__ import annotations
 import logging
 import math
 from abc import ABC, abstractmethod
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from fractions import Fraction
-from typing import TYPE_CHECKING, Any, ClassVar, Generic, Protocol, TypeVar, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    ClassVar,
+    Generic,
+    NamedTuple,
+    Protocol,
+    TypeVar,
+    Union,
+)
 
 import numpy as np
 from numpy.typing import NDArray
@@ -37,21 +46,54 @@ CalibrationPair = tuple[
 ]
 
 
-def _calibration_fits(
-    value: CoordinateValue, on_line: Fraction, *, exact: bool
-) -> bool:
-    """Whether a calibration *value* agrees with the value *on_line* of a law.
+class _Calibration(NamedTuple):
+    """Calibration pairs read for a law: what every law starts from."""
 
-    *on_line* is the law evaluated exactly on the numbers as given, so the
-    comparison adds no rounding of its own. Exact pairs must hit it exactly.
-    Otherwise the value may differ from it by at most one ulp of the value:
-    a float carries the rounding of its printed decimals, and that rounding
-    is all the tolerance covers.
+    points: list[tuple[int, CoordinateValue, CoordinateValue]]
+    """``(index, position, value)`` sorted by position, positions as given."""
+    value_unit: TimeUnit
+    """The unit of the values, the map's target unit."""
+    origin: CoordinateValue
+    """Where the map's source axis starts, in the coordinates of the positions."""
+    exact: bool
+    """Whether every position and value is exact (an ``int`` or a ``Fraction``)."""
+
+
+def _check_calibration(
+    calibration: _Calibration,
+    points: Sequence[tuple[int, CoordinateValue, CoordinateValue]],
+    reach: Callable[[CoordinateValue], Fraction],
+    law: str,
+) -> None:
+    """Refuse a calibration pair lying off the law beyond the stated bound.
+
+    *reach* answers, exactly on the Fractions of the numbers as given, the
+    position at which the law reads a value. The bound is measured where
+    the rounding happens: on the positions, which a program computed and
+    printed as doubles, as the caller gives them and before *origin* is
+    subtracted, while the values are read as given. When every number of
+    the calibration is exact, each position must be the one the law
+    reaches; otherwise it may miss that position by one ulp of itself.
+
+    Args:
+        calibration: The calibration the law was built from.
+        points: The pairs to check, those the law was not built through.
+        reach: The exact position at which the law reads a value.
+        law: The law as the message names it.
+
+    Raises:
+        ValueError: Naming the first pair beyond the bound.
     """
-    difference = abs(Fraction(value) - on_line)
-    if exact:
-        return difference == 0
-    return difference <= Fraction(math.ulp(float(value)))
+    for index, position, value in points:
+        on_law = reach(value)
+        miss = abs(Fraction(position) - on_law)
+        bound = 0 if calibration.exact else Fraction(math.ulp(float(position)))
+        if miss > bound:
+            raise ValueError(
+                f"Calibration pair {index} ({position}, {value}) lies off the "
+                f"{law}, which reaches {value} at "
+                f"{on_law if calibration.exact else float(on_law)}."
+            )
 
 
 # region ConversionMap
@@ -126,20 +168,33 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
         *,
         source_unit: TimeUnit | str | None,
         value_unit: TimeUnit | str | None = None,
+        origin: CoordinateValue | Coordinate = 0,
     ) -> Self:
         """Build the map a law reads from calibration pairs.
 
-        Each pair holds a position on the source axis and the value it reads
-        on the target axis. Values are coordinates carrying the one unit they
-        share, or numbers in *value_unit*. A map class that is a law of
-        calibration implements this; the pairs it receives are checked
-        against the law, never fitted to it.
+        Each pair holds a position and the value it reads on the target
+        axis. Positions are given in coordinates where the map's source axis
+        starts at *origin*: the map reads ``position - origin``, while the
+        pairs are checked against the law on the positions as given, where
+        their rounding happened. Values are coordinates carrying the one
+        unit they share, or numbers in *value_unit*. A map class that is a
+        law of calibration implements this; the pairs it receives are
+        checked against the law, never fitted to it.
+
+        Exactness is a property of the whole calibration. When every
+        position and value is exact (an ``int`` or a ``Fraction``), the
+        pairs must lie on the law exactly. Otherwise, exact and float
+        numbers may mix, and a position may miss the one at which the law
+        reads its value by one ulp of itself (``math.ulp(position)``), the
+        rounding of a position printed as a double.
 
         Args:
             pairs: ``(position, value)`` pairs, in any order.
             source_unit: The unit of the positions.
             value_unit: The unit of the values, the map's target unit. Needed
                 when a value is a number; a coordinate value must be in it.
+            origin: Where the source axis starts, in the coordinates of the
+                positions: a child's offset on its parent.
 
         Returns:
             The map through the pairs.
@@ -157,16 +212,15 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
         pairs: Sequence[CalibrationPair],
         source_unit: TimeUnit | str | None,
         value_unit: TimeUnit | str | None,
-    ) -> tuple[list[tuple[int, CoordinateValue, CoordinateValue]], TimeUnit]:
-        """Return ``(index, position, value)`` of *pairs*, sorted by position.
+        origin: CoordinateValue | Coordinate,
+    ) -> _Calibration:
+        """Read *pairs* and *origin*, the positions sorted and kept as given.
 
         A coordinate is read as its number once its unit is checked against
-        *source_unit* or *value_unit*; without *value_unit*, the first
-        coordinate value sets the unit every value must share. *index* is the
-        pair's place in the given sequence, which every message names.
-
-        Returns:
-            The points and the unit of the values.
+        *source_unit* (positions and *origin*) or *value_unit*; without
+        *value_unit*, the first coordinate value sets the unit every value
+        must share. *index* is the pair's place in the given sequence, which
+        every message names.
 
         Raises:
             TypeError: If a value is a number and no *value_unit* is given.
@@ -181,6 +235,13 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
             "position": None if source_unit is None else TimeUnit(source_unit),
             "value": None if value_unit is None else TimeUnit(value_unit),
         }
+        if isinstance(origin, Coordinate):
+            if units["position"] is not None and origin.unit != units["position"]:
+                raise ValueError(
+                    f"The calibration origin is in {origin.unit.value}, not in "
+                    f"{units['position'].value}."
+                )
+            origin = origin.value
         points = []
         for index, pair in enumerate(pairs):
             numbers = []
@@ -209,7 +270,12 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
                     f"Calibration pairs {first} and {second} share the "
                     f"position {position}."
                 )
-        return points, units["value"]
+        exact = all(
+            isinstance(number, (int, Fraction))
+            for _, *numbers in points
+            for number in numbers
+        )
+        return _Calibration(points, units["value"], origin, exact)
 
     def __init__(
         self,
@@ -218,6 +284,7 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
         target_unit: TimeUnit | str | None = None,
         uid: str | None = None,
         name: str | None = None,
+        output_number_type: NumberType | str | None = None,
     ) -> None:
         """Initialize a ConversionMap.
 
@@ -231,6 +298,14 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
             name: Human-readable name for this map. Used as field header in
                 timestamp tables. Defaults to "source_to_target" if units are
                 provided, otherwise uses the map's ID.
+            output_number_type: The representation the map's results are
+                written in, among those the target unit admits. ``None``
+                leaves it to the map class or the target unit's default (see
+                :attr:`output_number_type`).
+
+        Raises:
+            ValueError: If the target unit does not admit
+                *output_number_type*.
         """
         self._id_minted = uid is None
         self._id = mint_id(self._id_prefix, ()) if uid is None else validate_id(uid)
@@ -245,6 +320,16 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
             self._target_unit = TimeUnit(target_unit)
         else:
             self._target_unit = self._default_target_unit
+
+        # A setting of the library only: the TimeToShare manifest has no key
+        # for it, so to_dict() leaves it out and from_dict() reads none.
+        self._given_output_number_type: NumberType | None = None
+        if output_number_type is not None:
+            self._given_output_number_type = (
+                NumberType(output_number_type)
+                if self._target_unit is None
+                else self._target_unit.resolve_number_type(output_number_type)
+            )
 
         # Set name: explicit > "source_to_target" > id. Only a given name is
         # written by to_dict(); the others are derived for display.
@@ -294,9 +379,9 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
     def output_number_type(self) -> NumberType | None:
         """The representation this map's results are written in, if any.
 
-        The target decides, and it decides alone: this map's own declared
-        output representation where it has one, else the target unit's
-        default. What the value is converted *from* has no say -- a result
+        The target decides, and it decides alone: the representation given
+        at construction where there is one, else the map class's declared
+        output representation, else the target unit's default. What the value is converted *from* has no say -- a result
         landing on a float-canonical axis is a float whether the source axis
         was exact or not, and every reader of this map (row, column, typed
         getter, direct call) gets that same answer.
@@ -306,6 +391,8 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
         ``_declared_output_number_type``. A label or structured map names no
         target unit and so declares nothing.
         """
+        if self._given_output_number_type is not None:
+            return self._given_output_number_type
         if self._declared_output_number_type is not None:
             return self._declared_output_number_type
         if self._target_unit is None:
@@ -451,6 +538,18 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
         """
         ...
 
+    def _inverse_output_number_type(self) -> NumberType | None:
+        """The output representation an inverse of this map is given.
+
+        The representation given to this map, where the inverse's target,
+        this map's source unit, admits it; else none, so that the inverse
+        writes its results as its target unit does by default.
+        """
+        given = self._given_output_number_type
+        if given is None or self._source_unit is None:
+            return given
+        return given if given in self._source_unit.allowed_number_types else None
+
     def matches_selector(self, key: str) -> bool:
         """Return whether a user conversion-map selector addresses this map.
 
@@ -577,7 +676,10 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
         every coordinate as this map does. Numbers are written in the
         representation they have: an integer, a float, or an exact Fraction
         pair. ``name`` is the name given at construction, or None when the
-        map displays a derived one. Keys the library does not know, kept
+        map displays a derived one. An output number type given at
+        construction is not written: a map of the format is independent of
+        any number type, so the map read back writes its results as its
+        target unit does by default. Keys the library does not know, kept
         when the map was read, are written back.
 
         A measure view names its measure map by id. Written on its own, it

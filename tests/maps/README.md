@@ -129,27 +129,62 @@ matched against anything.
   Exact pairs (`Fraction`, `int`) give an exact `Fraction` scalar; float
   pairs give the float the two-point formula gives. The order of the pairs is
   irrelevant: a shuffled list builds a map equal to the sorted one.
-- **The check of the inner pairs is a stated bound.** Each inner pair is
-  compared with the line through the end pairs evaluated exactly, on the
-  `Fraction` of every number as given, so the comparison itself rounds
-  nothing. Exact pairs must lie on that line. When any number is a float, a
-  value may miss the exact line by at most one ulp of the value — the rounding
-  of its printed decimals and nothing more. The bound is probed at its edge
-  on the line y = x through (0.0, 0.0) and (2.0, 2.0), where the exact line
-  reads 1 at 1.0: the floats one ulp above 1 (1.0000000000000002) and half an
-  ulp of 1 below it (0.9999999999999999, which is one ulp of itself) pass,
-  while the next floats outward (1.0000000000000004, 0.9999999999999998) are
-  refused. Those values follow from the definition of the float grid, not
-  from the library. On the drawn-axis specimen (`test_calibrated_child.py`)
-  the label 10.0 lies 0.75 ulp below the exact line and passes; the next
-  float below it, 9.999999999999998, lies 1.75 ulps below and is refused.
+- **The check of the inner pairs is a stated bound, measured on the
+  positions.** In a drawn axis the labels are exact (0, 10, 20 … s) and the
+  positions are numbers a program computed and printed as doubles, so the
+  rounding lives in the positions. For each inner pair the test oracle is
+  the position at which the line through the end pairs reaches the pair's
+  value, computed exactly on the `Fraction` of every number as given, before
+  any `origin` is subtracted. When every position and value is exact, the
+  given position must be that position. Otherwise it may miss it by at most
+  one ulp of itself (`math.ulp(position)`). The bound is probed at its edge
+  on the line through (0.0, 0.0) and (2.0, 2.0), which reaches 1 at 1: the
+  positions 1.0000000000000002 and 0.9999999999999999 (one ulp of themselves
+  away) and 1.0 pass, and 1.0000000000000004 and 0.9999999999999998 (two
+  ulps of themselves) are refused. Those values follow from the float grid,
+  not from the library. An inner value of 0.0 no longer forces an exact hit:
+  on the line through (0, -1) and (2, 1), the value 0.0 at the position one
+  ulp above 1 passes, where a bound of one ulp of the value (5e-324) would
+  refuse every rounded position.
+- **A drawn seconds axis with five labelled ticks.** Positions
+  76.70371459980326, 290.5859487023929, 504.4681828049824,
+  718.350416907572 and 932.2326510101616 pt against 0, 10, 20, 30 and 40 s,
+  read from the first tick (`origin`). The inner ticks lie 0.9375, 0.375 and
+  0.15625 of their ulps off the exact positions (as the nearest floats:
+  290.58594870239284, 504.4681828049824 and 718.350416907572), so the
+  calibration passes with the scalar 40 / 855.5289364103584 =
+  0.04675470144567245 and offset 0.0.
+  The second tick moved up by two floats (290.585948702393) lies 2.94 of its
+  ulps off and is refused, the message naming the exact position.
+- **`origin` changes what the map reads, not what is checked.** The map
+  reads `position - origin` in the numbers' own arithmetic: pairs at
+  10, 50, 90 with `origin` 10 give the same scalar and offset (0.05, 0.0) as
+  the pairs 0, 40, 80 without one. An `origin` given as a coordinate in
+  another unit than the positions is refused.
+- **Mixing exact and float numbers follows a stated rule, never a refusal.**
+  Exactness is a property of the whole calibration: one float among the
+  numbers gives every inner pair the position bound. The same inner value
+  given as the float 1.0000000000000002 passes at the exact position 1
+  (it lies within one ulp of 1), while its exact `Fraction` (every number
+  then exact) is refused. Exact positions with float values ((0, 0.1),
+  (1, 0.2), (2, 0.3)) pass: the line through the doubles 0.1 and 0.3 reaches
+  the double 0.2 at 0.625 ulp of 1 from 1, and the map is the float line
+  of scalar 0.09999999999999999 and offset 0.1. Exact labels with float
+  positions are the drawn axis above.
+- **The map declares the representation of its results.** Pairs holding a
+  float give a map declaring `float`, which answers floats even into
+  `quarters`, and its inverse declares `float` too. Exact pairs declare
+  `fraction` where the value unit admits it (an exact line into `seconds`
+  answers `Fraction(1, 2)` at 1); into a discrete unit, which admits
+  integers only, the map declares nothing and writes whole ticks (480 at 1).
 - **Values carry a unit.** Values are coordinates sharing one unit, which
   becomes the map's target unit, or numbers read in `value_unit`. A number
   without `value_unit` raises `TypeError` naming the keyword, and a
   `Coordinate` value in another unit than `value_unit` (or than the first
   coordinate value) is refused. Each refusal (fewer than two pairs, a
   repeated position, a value in another unit, an inner pair off the line)
-  names the offending pair by its index in the given list. The base
+  names the offending pair by its index in the given list; end pairs
+  reading one value give a zero scalar, which `LinearMap` refuses. The base
   `ConversionMap.from_pairs` raises `NotImplementedError`, since a
   law that cannot be built from pairs must say so rather than guess.
 
@@ -192,6 +227,29 @@ lane is float64 by contract whatever the anchors: `convert_array` on the
 `Fraction` anchors over `[0, 1, 2, 4]` gives a float64 array
 `[0.0, 0.5, 1.0, 2.0]`. The step kinds (`previous`, `next`, `nearest`)
 involve no arithmetic and keep their behaviour, which the tests above pin.
+
+**A declared output number type** (`TestDeclaredOutputNumberType`). A map
+given `output_number_type` at construction writes every public result in
+it; without one it writes the target unit's default, as before. The probes
+are exact anchors from quarters to seconds (`[0, 2, 4] → [0, 1/3, 1]`),
+whose results 1/6, 2/3 and 4/3 no float represents, so type and value are
+asserted together. Undeclared, the map answers the float
+`0.16666666666666666` at 1, since seconds default to floats. Declared
+`fraction`, it answers `Fraction(1, 3)` at the anchor 2, `Fraction(1, 6)` and
+`Fraction(2, 3)` between anchors, and `Fraction(4, 3)` extrapolating past
+the last; at the float input 1.0 it answers the exact dyadic of the float
+result, never a float. Declared `float` on a `quarters` target, whose
+default is fractions, it answers the float. The inverse carries the
+declaration where its target, the map's source unit, admits it: the
+inverse of the fraction map answers `Fraction(3)` at 2/3, while the inverse
+of a fraction map from `ticks` writes whole ticks (480 at 1/6) and declares
+nothing. **The round trip drops the declaration, on purpose.** A TimeToShare
+map is independent of any number type and the format has no key for one, so
+the declaration is a setting of the library: the declared map writes the
+same complete form as the undeclared one, and `ConversionMap.from_dict` of
+its JSON text gives a map equal to the undeclared map (not to the declared
+one) that answers the float `0.16666666666666666` at 1. A declaration the target unit does not
+admit (`float` into `ticks`) is refused with the unit's own message.
 
 ### `test_interpolation.py` - InterpolationMap
 

@@ -543,12 +543,13 @@ class ChildrenMixin:
 
         A segment of this timeline is calibrated by pairs of a position and
         the value read there in another unit, such as the labelled ticks of
-        a drawn axis. The child starts at *offset*; each position becomes a
-        child coordinate by subtracting *offset* in this timeline's own
-        arithmetic, and *law* builds the conversion map from the child's
-        unit to the values' unit through the pairs (see
-        :meth:`~timetoalign.maps.ConversionMap.from_pairs`). The map is built
-        before the child, so a refusal leaves this timeline unchanged.
+        a drawn axis. The child starts at *offset*, and *law* builds the
+        conversion map from the child's unit to the values' unit through the
+        pairs, reading each position from *offset* in this timeline's own
+        arithmetic (see :meth:`~timetoalign.maps.ConversionMap.from_pairs`).
+        The pairs are checked against the law on the positions as given,
+        where their rounding happened. The map is built before the child, so
+        a refusal leaves this timeline unchanged.
 
         Args:
             length: Child length in this timeline's unit, or ``None`` when
@@ -599,13 +600,10 @@ class ChildrenMixin:
                     f"Calibration pair {index} lies at {at}, outside the child "
                     f"from {start} to {'its unknown end' if end is None else end}."
                 )
-            pairs.append((at - start, value))
-        try:
-            cmap = law.from_pairs(pairs, source_unit=self._unit, value_unit=value_unit)
-        except ValueError as error:
-            raise ValueError(
-                f"{error} Positions are read from the child's offset {start}."
-            ) from error
+            pairs.append((at, value))
+        cmap = law.from_pairs(
+            pairs, source_unit=self._unit, value_unit=value_unit, origin=start
+        )
         child = self.create_child(length, offset, uid=uid, name=name)
         child.add_conversion_map(cmap)
         return child

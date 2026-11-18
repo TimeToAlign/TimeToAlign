@@ -401,9 +401,22 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
                 (``two different schemes carry the id 'opus'``).
 
         Examples:
+            >>> from timetoalign.alignment import AlignmentBundle
+            >>> from timetoalign.timelines.types import (
+            ...     ContinuousLogicalTimeline,
+            ...     ContinuousPhysicalTimeline,
+            ... )
+            >>> score_bundle = AlignmentBundle()
+            >>> _ = score_bundle.add_timeline(ContinuousLogicalTimeline(length=16), as_group="score")
+            >>> audio_bundle = AlignmentBundle()
+            >>> _ = audio_bundle.add_timeline(
+            ...     ContinuousPhysicalTimeline(length=40.0), as_group="audio"
+            ... )
             >>> merged = AlignmentBundle.from_bundles([score_bundle, audio_bundle])
             >>> merged.n_groups == score_bundle.n_groups + audio_bundle.n_groups
             True
+            >>> sorted(merged.timelines)
+            ['clt_1', 'cpt_1']
         """
         # The schemes the carried links name, refused before anything changes.
         schemes = schemes_named(
@@ -606,8 +619,15 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
         Examples:
             Add a recording group with three DPTs:
 
-                >>> grp = TimelineGroup(timelines=[dpt_1, dpt_2, dpt_3])
-                >>> bundle.add_group(grp)
+                >>> from timetoalign.alignment import AlignmentBundle
+                >>> from timetoalign.timelines import TimelineGroup
+                >>> from timetoalign.timelines.types import DiscretePhysicalTimeline
+                >>> grp = TimelineGroup(
+                ...     timelines=[DiscretePhysicalTimeline(length=44100) for _ in range(3)]
+                ... )
+                >>> bundle = AlignmentBundle().add_group(grp)
+                >>> sorted(bundle.timelines), list(bundle.groups)
+                (['dpt_1', 'dpt_2', 'dpt_3'], ['group_1'])
         """
         if any(held is group for held in self.groups.values()):
             raise ValueError(f"Group {quote_id(group.id)} already exists in bundle")
@@ -861,9 +881,20 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
             KeyError: If no timeline matches the pattern.
 
         Examples:
-            >>> bundle.get_timeline("clt_1")          # Exact match
-            >>> bundle.get_timeline("score")         # Substring match
-            >>> bundle.get_timeline(r"^perf:")       # Regex match
+            >>> from timetoalign.alignment import AlignmentBundle
+            >>> from timetoalign.timelines.types import (
+            ...     ContinuousLogicalTimeline,
+            ...     ContinuousPhysicalTimeline,
+            ... )
+            >>> bundle = AlignmentBundle()
+            >>> _ = bundle.add_timeline(ContinuousLogicalTimeline(length=16, uid="score:clt_1"))
+            >>> _ = bundle.add_timeline(ContinuousPhysicalTimeline(length=40.0, uid="perf:cpt_1"))
+            >>> bundle.get_timeline("score:clt_1").id  # Exact match
+            'score:clt_1'
+            >>> bundle.get_timeline("score").id  # Substring match
+            'score:clt_1'
+            >>> bundle.get_timeline(r"^perf:").id  # Regex match
+            'perf:cpt_1'
         """
         resolved_id = resolve_id(timeline_id, list(self.timelines.keys()))
         return self.timelines[resolved_id]
@@ -888,8 +919,18 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
             KeyError: If no group matches the pattern.
 
         Examples:
-            >>> bundle.get_group("group_1")          # Exact match
-            >>> bundle.get_group(r"_1$")             # Regex match
+            >>> from timetoalign.alignment import AlignmentBundle
+            >>> from timetoalign.timelines.types import (
+            ...     ContinuousLogicalTimeline,
+            ...     ContinuousPhysicalTimeline,
+            ... )
+            >>> bundle = AlignmentBundle()
+            >>> _ = bundle.add_timeline(ContinuousLogicalTimeline(length=16), as_group="score")
+            >>> _ = bundle.add_timeline(ContinuousPhysicalTimeline(length=40.0), as_group="audio")
+            >>> bundle.get_group("group_1").timeline_ids  # Exact match
+            ['clt_1']
+            >>> bundle.get_group(r"_2$").timeline_ids  # Regex match
+            ['cpt_1']
         """
         resolved_id = resolve_id(group_id, list(self.groups.keys()))
         return self.groups[resolved_id]
@@ -976,9 +1017,19 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
             KeyError: If any timeline ID is not found.
 
         Examples:
+            >>> from timetoalign.alignment import AlignmentBundle
+            >>> from timetoalign.timelines.types import (
+            ...     ContinuousLogicalTimeline,
+            ...     ContinuousPhysicalTimeline,
+            ...     DiscretePhysicalTimeline,
+            ... )
+            >>> bundle = AlignmentBundle()
+            >>> _ = bundle.add_timeline(ContinuousLogicalTimeline(length=16, uid="score"))
+            >>> _ = bundle.add_timeline(ContinuousPhysicalTimeline(length=40.0, uid="audio"))
+            >>> _ = bundle.add_timeline(DiscretePhysicalTimeline(length=88200, uid="midi"))
             >>> timelines = bundle.get_timelines(["score", "audio", "midi"])
-            >>> len(timelines)
-            3
+            >>> [timeline.id for timeline in timelines]
+            ['score', 'audio', 'midi']
         """
         return [self.get_timeline(timeline_id) for timeline_id in ids]
 
@@ -1346,14 +1397,31 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
                 ``event_a`` and ``event_b`` are ``None``.
 
         Examples:
+            >>> from timetoalign.alignment import AlignmentBundle
+            >>> from timetoalign.timelines.types import (
+            ...     ContinuousLogicalTimeline,
+            ...     ContinuousPhysicalTimeline,
+            ... )
+            >>> score = ContinuousLogicalTimeline(length=16, uid="score")
+            >>> score.add_events(
+            ...     [
+            ...         {"id": "note:000010", "event_type": "Note", "instant": 4},
+            ...         {"id": "note:000099", "event_type": "Note", "instant": 8},
+            ...     ]
+            ... )
+            >>> audio = ContinuousPhysicalTimeline(length=60.0, uid="audio")
+            >>> audio.add_events([{"id": "note:000042", "event_type": "Note", "instant": 50.5}])
+            >>> bundle = AlignmentBundle()
+            >>> _ = bundle.add_timeline(score, as_group="score")
+            >>> _ = bundle.add_timeline(audio, as_group="audio")
             >>> pairs = [
-            ...     ({"start": 0.0}, "score", {"start": 45.5}, "audio"),
+            ...     ({"start": 0}, "score", {"start": 45.5}, "audio"),
             ...     ("note:000010", "score", "note:000042", "audio"),
             ...     ("note:000099", "score", None, "audio"),  # NOMATCH
             ... ]
             >>> claims = bundle.create_match_claims(pairs, agent="manual_alignment")
-            >>> len(claims)
-            3
+            >>> [claim.is_synchronous for claim in claims]
+            [True, True, False]
         """
         from timetoalign.core import AgentType
 
@@ -1622,11 +1690,39 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
             Filtered list of MatchClaims.
 
         Examples:
+            A score aligned with two performances, one of which skips a
+            note::
+
+                >>> from timetoalign.alignment import AlignmentBundle
+                >>> from timetoalign.timelines.types import (
+                ...     ContinuousLogicalTimeline,
+                ...     DiscreteLogicalTimeline,
+                ... )
+                >>> bundle = AlignmentBundle()
+                >>> _ = bundle.add_timeline(
+                ...     ContinuousLogicalTimeline(length=16, uid="score:clt_1"), as_group="score"
+                ... )
+                >>> for n in (1, 5):
+                ...     _ = bundle.add_timeline(
+                ...         DiscreteLogicalTimeline(length=7680, uid=f"perf:dlt_{n}"),
+                ...         as_group=f"perf_{n}",
+                ...     )
+                >>> _ = bundle.create_match_claims(
+                ...     [
+                ...         ({"start": 0}, "score:clt_1", {"start": 0}, "perf:dlt_1"),
+                ...         ({"start": 8}, "score:clt_1", {"start": 3840}, "perf:dlt_1"),
+                ...         ({"start": 0}, "score:clt_1", {"start": 0}, "perf:dlt_5"),
+                ...         ({"start": 8}, "score:clt_1", None, "perf:dlt_5"),  # NOMATCH
+                ...     ]
+                ... )
+
             Get all synchronous claims for a performer::
 
                 >>> claims = bundle.get_match_claims(
                 ...     id_pattern=r"dlt_1$", synchronous_only=True
                 ... )
+                >>> len(claims)
+                2
 
             Get NOMATCH claims for a specific pair::
 
@@ -1634,6 +1730,8 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
                 ...     between=("score:clt_1", "perf:dlt_5"),
                 ...     nomatch_only=True,
                 ... )
+                >>> len(nomatches)
+                1
         """
         filt = self._claim_filter(
             timeline_id=timeline_id,
@@ -1700,9 +1798,31 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
             Filtered ``MatchClaimField`` objects, empty stores dropped.
 
         Examples:
+            >>> from timetoalign.alignment import AlignmentBundle, MatchClaimField
+            >>> from timetoalign.timelines.types import (
+            ...     ContinuousLogicalTimeline,
+            ...     ContinuousPhysicalTimeline,
+            ... )
+            >>> bundle = AlignmentBundle()
+            >>> _ = bundle.add_timeline(
+            ...     ContinuousLogicalTimeline(length=16, uid="score:clt_1"), as_group="score"
+            ... )
+            >>> _ = bundle.add_timeline(
+            ...     ContinuousPhysicalTimeline(length=40.0, uid="rec-a:cpt_1"), as_group="rec-a"
+            ... )
+            >>> _ = bundle.add_match_claim_field(
+            ...     MatchClaimField.from_columns(
+            ...         ["score:clt_1"] * 3,
+            ...         ["rec-a:cpt_1"] * 3,
+            ...         [0, 8, 16],
+            ...         [0.0, 20.0, 40.0],
+            ...         unit_a="quarters",
+            ...         unit_b="seconds",
+            ...     )
+            ... )
             >>> fields = bundle.get_claim_fields(timeline_id="rec-a:cpt_1")
             >>> sum(len(f) for f in fields)
-            66780
+            3
         """
         filt = self._claim_filter(
             timeline_id=timeline_id,
@@ -2268,9 +2388,31 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
             KeyError: If timeline_id is not in the bundle.
 
         Examples:
-            >>> ms = bundle.get_matchstamp_at(10.0, "score:clt_1")
-            >>> ms.n_timelines
-            23  # score + 22 performers
+            >>> from timetoalign.alignment import AlignmentBundle
+            >>> from timetoalign.timelines.types import (
+            ...     ContinuousLogicalTimeline,
+            ...     ContinuousPhysicalTimeline,
+            ... )
+            >>> bundle = AlignmentBundle()
+            >>> _ = bundle.add_timeline(
+            ...     ContinuousLogicalTimeline(length=16, uid="score:clt_1"), as_group="score"
+            ... )
+            >>> for n, seconds in ((1, 40.0), (2, 32.0)):
+            ...     _ = bundle.add_timeline(
+            ...         ContinuousPhysicalTimeline(length=seconds, uid=f"perf:cpt_{n}"),
+            ...         as_group=f"perf_{n}",
+            ...     )
+            ...     _ = bundle.create_match_claims(
+            ...         [
+            ...             ({"start": 0}, "score:clt_1", {"start": 0.0}, f"perf:cpt_{n}"),
+            ...             ({"start": 16}, "score:clt_1", {"start": seconds}, f"perf:cpt_{n}"),
+            ...         ]
+            ...     )
+            >>> ms = bundle.get_matchstamp_at(10, "score:clt_1")
+            >>> ms.n_timelines  # score + 2 performers
+            3
+            >>> ms.get_coordinate_for("perf:cpt_2", format="float")
+            20.0
         """
         if isinstance(at, Interval):
             if timeline_id is None:
@@ -2533,9 +2675,29 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
             MatchStamps and Interval elements produce MatchIntervalStamps.
 
         Examples:
-            >>> stamps = bundle.get_matchstamps_at([0.0, 50.0], "score:clt_1")
+            >>> from timetoalign.alignment import AlignmentBundle
+            >>> from timetoalign.timelines.types import (
+            ...     ContinuousLogicalTimeline,
+            ...     ContinuousPhysicalTimeline,
+            ... )
+            >>> bundle = AlignmentBundle()
+            >>> _ = bundle.add_timeline(
+            ...     ContinuousLogicalTimeline(length=100, uid="score:clt_1"), as_group="score"
+            ... )
+            >>> _ = bundle.add_timeline(
+            ...     ContinuousPhysicalTimeline(length=200.0, uid="perf:cpt_1"), as_group="perf"
+            ... )
+            >>> _ = bundle.create_match_claims(
+            ...     [
+            ...         ({"start": 0}, "score:clt_1", {"start": 0.0}, "perf:cpt_1"),
+            ...         ({"start": 100}, "score:clt_1", {"start": 200.0}, "perf:cpt_1"),
+            ...     ]
+            ... )
+            >>> stamps = bundle.get_matchstamps_at([0, 50], "score:clt_1")
             >>> stamps[1].get_coordinate_for("score:clt_1", format="float")
             50.0
+            >>> stamps[1].get_coordinate_for("perf:cpt_1", format="float")
+            100.0
         """
         values, _ = collection_values(at)
         for position, value in enumerate(values):
@@ -2591,8 +2753,29 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
             ValueError: If several registered timelines own it.
 
         Examples:
+            >>> from timetoalign.alignment import AlignmentBundle
+            >>> from timetoalign.timelines.types import (
+            ...     ContinuousLogicalTimeline,
+            ...     ContinuousPhysicalTimeline,
+            ... )
+            >>> score = ContinuousLogicalTimeline(length=16, uid="score:clt_1")
+            >>> score.add_events([{"id": "note:000001", "event_type": "Note", "instant": 4}])
+            >>> bundle = AlignmentBundle()
+            >>> _ = bundle.add_timeline(score, as_group="score")
+            >>> _ = bundle.add_timeline(
+            ...     ContinuousPhysicalTimeline(length=40.0, uid="perf:cpt_1"), as_group="perf"
+            ... )
+            >>> _ = bundle.create_match_claims(
+            ...     [
+            ...         ({"start": 0}, "score:clt_1", {"start": 0.0}, "perf:cpt_1"),
+            ...         ({"start": 16}, "score:clt_1", {"start": 40.0}, "perf:cpt_1"),
+            ...     ]
+            ... )
             >>> ms = bundle.get_matchstamp_for("note:000001")
             >>> ms.get_coordinate_for(ms.source_id)  # the event's own owner axis
+            IdCoordinate(Fraction(4, 1), quarters, 'score:clt_1')
+            >>> ms.get_coordinate_for("perf:cpt_1", format="float")
+            10.0
         """
         if not isinstance(key, str):
             raise TypeError("get_matchstamp_for requires an event-ID string")
@@ -2953,11 +3136,31 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
             entries (filtered out).
 
         Examples:
+            >>> from timetoalign.alignment import AlignmentBundle
+            >>> from timetoalign.timelines.types import (
+            ...     ContinuousLogicalTimeline,
+            ...     ContinuousPhysicalTimeline,
+            ... )
+            >>> bundle = AlignmentBundle()
+            >>> _ = bundle.add_timeline(
+            ...     ContinuousLogicalTimeline(length=16, uid="score:clt_1"), as_group="score"
+            ... )
+            >>> for n, seconds in ((1, 40.0), (2, 32.0)):
+            ...     _ = bundle.add_timeline(
+            ...         ContinuousPhysicalTimeline(length=seconds, uid=f"perf:cpt_{n}"),
+            ...         as_group=f"perf_{n}",
+            ...     )
+            ...     _ = bundle.create_match_claims(
+            ...         [
+            ...             ({"start": 0}, "score:clt_1", {"start": 0.0}, f"perf:cpt_{n}"),
+            ...             ({"start": 16}, "score:clt_1", {"start": seconds}, f"perf:cpt_{n}"),
+            ...         ]
+            ...     )
             >>> stamps = bundle.get_matchstamps()
-            >>> len(stamps)
-            100
-            >>> stamps[0].n_timelines
-            23
+            >>> len(stamps)  # one per claim
+            4
+            >>> stamps[0].n_timelines  # score + 2 performers
+            3
         """
         if claims is None:
             claims = self.get_match_claims()
@@ -3055,8 +3258,13 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
 
         Raises:
             ValueError: If both ``claims`` and ``at`` are given, on an unknown
-                ``format``, or when a DataFrame-shaping option is supplied for
-                an Arrow result.
+                ``format``, when a DataFrame-shaping option is supplied for
+                an Arrow result, or when an ``at`` position resolves to
+                ambiguous interval-derived coordinates — several candidates
+                for one timeline, as legato note ends and spread chords
+                produce where a match file gives one interval claim per note.
+            NotImplementedError: If ``at`` holds an ``Interval``; there is no
+                interval table form.
 
         Note:
             Collapsed rows are ordered by the coordinate on the
@@ -3067,14 +3275,34 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
             well-formed alignment never does) keeps the smaller one.
 
         Examples:
+            >>> from timetoalign.alignment import AlignmentBundle
+            >>> from timetoalign.timelines.types import (
+            ...     ContinuousLogicalTimeline,
+            ...     ContinuousPhysicalTimeline,
+            ... )
+            >>> bundle = AlignmentBundle()
+            >>> _ = bundle.add_timeline(
+            ...     ContinuousLogicalTimeline(length=16, uid="score:clt_1"), as_group="score"
+            ... )
+            >>> for n, seconds in ((1, 40.0), (2, 32.0)):
+            ...     _ = bundle.add_timeline(
+            ...         ContinuousPhysicalTimeline(length=seconds, uid=f"perf:cpt_{n}"),
+            ...         as_group=f"perf_{n}",
+            ...     )
+            ...     _ = bundle.create_match_claims(
+            ...         [
+            ...             ({"start": 0}, "score:clt_1", {"start": 0.0}, f"perf:cpt_{n}"),
+            ...             ({"start": 16}, "score:clt_1", {"start": seconds}, f"perf:cpt_{n}"),
+            ...         ]
+            ...     )
             >>> table = bundle.get_matchstamp_table()
-            >>> table.num_rows
-            100
+            >>> table.num_rows  # one per claim
+            4
             >>> table.column_names
-            ['score:clt_1', 'perf:dlt_1', 'perf:dlt_2', ...]
-            >>> bundle.get_matchstamp_table(from_graph=True).num_rows
-            25
-            >>> bundle.get_matchstamp_table([0.0, 50.0], "score:clt_1").num_rows
+            ['perf:cpt_1', 'perf:cpt_2', 'score:clt_1']
+            >>> bundle.get_matchstamp_table(from_graph=True).num_rows  # one per instant
+            2
+            >>> bundle.get_matchstamp_table([0, 8], "score:clt_1").num_rows
             2
         """
         validate_table_format(format)
@@ -4061,16 +4289,29 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
             ValueError: If ``depth`` is a negative integer.
 
         Examples:
-            >>> print(bundle.diagram())
+            >>> from timetoalign.alignment import AlignmentBundle
+            >>> from timetoalign.timelines.types import (
+            ...     ContinuousPhysicalTimeline,
+            ...     DiscreteGraphicalTimeline,
+            ... )
+            >>> bundle = AlignmentBundle(id="thoresen_alignment")
+            >>> _ = bundle.add_timeline(DiscreteGraphicalTimeline(length=4835), as_group="image")
+            >>> _ = bundle.add_timeline(
+            ...     ContinuousPhysicalTimeline(length=60.0), grouped_with="dgt_1"
+            ... )
+            >>> print(bundle.diagram(width=60))
             AlignmentBundle[thoresen_alignment]
-
-              TimelineGroup[dgt1_group] (2 timelines)
-              ┌──────────────────────────────────────────────────────┐
-              │ DiscreteGraphicalTimeline[dgt_1:1] (11 events)        │
-              │ 0 ∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶ 4835 pixels    │
-              └──────────────────────────────────────────────────────┘
-
-              MatchClaims: 5
+            <BLANKLINE>
+              TimelineGroup[group_1] (2 timelines)
+              ┌──────────────────────────────────────────────────────────┐
+              │ DiscreteGraphicalTimeline[dgt_1]                         │
+              │                       0 ∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶ 4835 pixels │
+              │                                                          │
+              │ ContinuousPhysicalTimeline[cpt_1]                        │
+              │                       0 ~~~~~~~~~~~~~~~~~~~~ 60 seconds  │
+              └──────────────────────────────────────────────────────────┘
+            <BLANKLINE>
+              MatchClaims: 0
         """
         from timetoalign.display.ascii import bundle_diagram
 

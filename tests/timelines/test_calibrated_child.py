@@ -125,8 +125,8 @@ class TestDrawnAxis:
 
 class TestBound:
     def test_inner_ticks_are_checked_on_the_parent_positions(self):
-        # Exact labels, positions as printed: the inner ticks lie 0.9375,
-        # 0.375 and 0.15625 of their ulps off the exact line through the end
+        # Exact labels, positions as printed: the inner ticks lie 0.031,
+        # 0.012 and 0.010 of their bounds off the exact line through the end
         # ticks, on the parent's positions.
         child = drawing().create_calibrated_child(
             AXIS_LENGTH, AXIS_START, list(zip(TICKS, LABELS)), value_unit="seconds"
@@ -135,13 +135,14 @@ class TestBound:
         assert cmap.scalar == 0.04675470144567245
         assert cmap.offset == 0.0
 
-    def test_a_tick_two_floats_off_is_refused(self):
-        # Two floats above the fourth tick: 2.16 of its ulps off the line.
+    def test_a_tick_a_billionth_off_is_refused(self):
+        # The fourth tick moved up by 1e-9 of the axis length (855.53 pt):
+        # about 490,000 bounds off the line.
         parent = drawing()
         with pytest.raises(
             ValueError,
             match=re.escape(
-                "Calibration pair 3 (718.3504169075723, 30) lies off the line "
+                "Calibration pair 3 (718.350417763101, 30) lies off the line "
                 "through the first and last pair, which reaches 30 at "
                 "718.350416907572."
             ),
@@ -149,7 +150,7 @@ class TestBound:
             parent.create_calibrated_child(
                 AXIS_LENGTH,
                 AXIS_START,
-                list(zip([*TICKS[:3], 718.3504169075723, TICKS[4]], LABELS)),
+                list(zip([*TICKS[:3], 718.350417763101, TICKS[4]], LABELS)),
                 value_unit="seconds",
             )
         assert parent.n_children == 0

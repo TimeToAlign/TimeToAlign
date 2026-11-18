@@ -137,25 +137,65 @@ matched against anything.
   value, computed exactly on the `Fraction` of every number as given, before
   any `origin` is subtracted. When every position and value is exact, the
   given position must be that position. Otherwise it may miss it by at most
-  one ulp of itself (`math.ulp(position)`). The bound is probed at its edge
-  on the line through (0.0, 0.0) and (2.0, 2.0), which reaches 1 at 1: the
-  positions 1.0000000000000002 and 0.9999999999999999 (one ulp of themselves
-  away) and 1.0 pass, and 1.0000000000000004 and 0.9999999999999998 (two
-  ulps of themselves) are refused. Those values follow from the float grid,
-  not from the library. An inner value of 0.0 no longer forces an exact hit:
-  on the line through (0, -1) and (2, 1), the value 0.0 at the position one
-  ulp above 1 passes, where a bound of one ulp of the value (5e-324) would
-  refuse every rounded position.
+  `½·ulp(p) + ½·(|1 − t|·ulp(p_first) + |t|·ulp(p_last)) + (1 + |1 − t| + |t|)·K·M`,
+  where `p` is the inner position, `p_first` and `p_last` the end positions
+  as given, `t` the inner value's fraction of the way from the first value
+  to the last, `M` the axis's largest `|position|`, and
+  `K = γ₄·(2 + u)/(1 − γ₄)` with `γ₄ = 4u/(1 − 4u)` and `u = 2**-53`
+  (about `8u`, between four and eight ulps of `M` once multiplied by it).
+  **Derivation.** Take every position as a double a program computed from
+  `x0 + w·(v − v_first)/(v_last − v_first)`, with `x0` and `w` doubles and
+  the values as given; a position rounded once from an exact line is the
+  case with no error before the last rounding. By forward error analysis
+  each operation contributes at most half an ulp of its own result, at most
+  `u` times its magnitude. The two subtractions of values, the division and
+  the multiplication by `w` are a product of four rounded operations in
+  whichever order they run, so the computed `m = w·t` misses the exact one
+  by at most `γ₄·|m|`; the addition of `x0` adds half an ulp of `p`. `x0`
+  is the position of an end, so `|x0| ≤ M`, and `|m| ≤ ((1 + u)·M + |x0|)/(1 − γ₄)`:
+  one position misses its exact one by at most `½·ulp(p) + K·M`. The end
+  positions miss theirs by the same bound, which moves the line they are
+  checked against: at the fraction `t` of the values, the reached position
+  moves by `|1 − t|` times the first end's miss plus `|t|` times the last
+  end's. The sum is the bound.
+  - *Proof by simulation.* A seeded generator (seed 20261118, 2,000 lines)
+    draws an exact line (a float start in [−1000, 1000), a float width of
+    either sign and magnitude in [1, 2000), three to twelve ticks, integer
+    labels) and gives each line twice: every position rounded once from the
+    exact line (`float(Fraction)`, correctly rounded), and every position
+    computed in doubles as `x0 + w·v/v_last`, the multiplication first or
+    the division first on alternate lines. Every axis of both kinds is
+    accepted. On each axis one inner position moved by 1e-9 of the axis
+    length is refused, and so is one inner label raised by half the label
+    step (or by 1), each message naming that pair. Over 20,000 such lines
+    the worst miss is 0.098 of the bound for once-rounded positions and
+    0.248 for computed ones (0.090 and 0.217 over the 2,000 the tests
+    run); the former bound of one ulp of the position refused 3.0 % and
+    28.9 % of them.
+  - *The edges on a simple line.* On the line through (0.0, 0.0) and
+    (2.0, 2.0), which reaches 1 at 1 (`t` = ½, `M` = 2), the bound is
+    `½·ulp(p) + 2**-53 + 2**-1076 + 4·K`, `4·K` just above `2**-48`: 17
+    ulps of 1 and a little above 1, and 33.5 half-ulps of 1 and a little
+    below. The positions 1.0000000000000004, 1.0000000000000038 (17 ulps
+    above), 1.0 and 0.9999999999999963 (33 half-ulps below) pass;
+    1.000000000000004 (18 ulps) and 0.9999999999999962 (34 half-ulps) are
+    refused. Those values follow from the float grid and the formula, not
+    from the library. An inner value of 0.0 does not force an exact hit: on
+    the line through (0, -1) and (2, 1), the value 0.0 at the position one
+    ulp above 1 passes, where a bound measured on the value (5e-324) would
+    refuse every rounded position.
 - **A drawn seconds axis with five labelled ticks.** Positions
   76.70371459980326, 290.5859487023929, 504.4681828049824,
   718.350416907572 and 932.2326510101616 pt against 0, 10, 20, 30 and 40 s,
-  read from the first tick (`origin`). The inner ticks lie 0.9375, 0.375 and
-  0.15625 of their ulps off the exact positions (as the nearest floats:
-  290.58594870239284, 504.4681828049824 and 718.350416907572), so the
-  calibration passes with the scalar 40 / 855.5289364103584 =
-  0.04675470144567245 and offset 0.0.
-  The second tick moved up by two floats (290.585948702393) lies 2.94 of its
-  ulps off and is refused, the message naming the exact position.
+  read from the first tick (`origin`). The inner ticks miss the exact
+  positions (as the nearest floats: 290.58594870239284, 504.4681828049824
+  and 718.350416907572) by 0.9375, 0.375 and 0.15625 of their ulps, which
+  is 0.031, 0.012 and 0.010 of their bounds, so the calibration passes with
+  the scalar 40 / 855.5289364103584 = 0.04675470144567245 and offset 0.0.
+  The second tick moved up by 1e-9 of the axis length (290.58594955792177,
+  about 500,000 bounds off) is refused, the message naming the exact
+  position, and so is the third tick labelled 25 instead of 20, which the
+  line reaches at 611.4092998562772.
 - **`origin` changes what the map reads, not what is checked.** The map
   reads `position - origin` in the numbers' own arithmetic: pairs at
   10, 50, 90 with `origin` 10 give the same scalar and offset (0.05, 0.0) as
@@ -165,10 +205,10 @@ matched against anything.
   Exactness is a property of the whole calibration: one float among the
   numbers gives every inner pair the position bound. The same inner value
   given as the float 1.0000000000000002 passes at the exact position 1
-  (it lies within one ulp of 1), while its exact `Fraction` (every number
-  then exact) is refused. Exact positions with float values ((0, 0.1),
+  (it misses by `2**-52`, well within the bound of 17 ulps of 1), while its
+  exact `Fraction` (every number then exact) is refused. Exact positions with float values ((0, 0.1),
   (1, 0.2), (2, 0.3)) pass: the line through the doubles 0.1 and 0.3 reaches
-  the double 0.2 at 0.625 ulp of 1 from 1, and the map is the float line
+  the double 0.2 at 0.625 ulp of 1 from 1, within its bound, and the map is the float line
   of scalar 0.09999999999999999 and offset 0.1. Exact labels with float
   positions are the drawn axis above.
 - **The map declares the representation of its results.** Pairs holding a

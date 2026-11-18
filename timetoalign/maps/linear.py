@@ -110,9 +110,19 @@ class LinearMap(ConversionMap[CoordinateValue]):
         Every inner pair is checked against the line through the end pairs,
         evaluated exactly on the positions as given, before *origin* is
         subtracted: the position at which the line reaches the pair's value
-        must be its position, exactly for an exact calibration and within
-        one ulp of the position otherwise (see
-        :meth:`ConversionMap.from_pairs`). The line is never fitted.
+        must be its position, exactly for an exact calibration. Otherwise
+        it may miss it by what a program computing the positions in doubles
+        explains: half an ulp of the position for its last rounding, the
+        errors of the arithmetic before it, bounded by the axis's largest
+        position, and the end positions' errors interpolated along the line,
+        since rounding the ends moves the line: in all,
+        ``½·ulp(p) + ½·(|1 − t|·ulp(p_first) + |t|·ulp(p_last)) +
+        (1 + |1 − t| + |t|)·K·M``, with ``t`` the pair's value as a fraction
+        of the way from the first value to the last, ``M`` the axis's
+        largest ``|position|`` and ``K`` about ``8·2**-53`` (see
+        :meth:`ConversionMap.from_pairs`). Positions rounded once from an
+        exact line, and positions computed as ``x0 + w·t``, pass.
+        The line is never fitted.
 
         Args:
             pairs: ``(position, value)`` pairs, in any order: positions as

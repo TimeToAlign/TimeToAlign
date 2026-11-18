@@ -782,11 +782,38 @@ class TestPartituraLoaderMusicXML:
             )
 
 
+def _strict_xfail(reason: str, raises: type[Exception] = AssertionError) -> Any:
+    return pytest.mark.xfail(raises=raises, strict=True, reason=reason)
+
+
+# Partitura's MEI importer raises before the loader sees a measure.
+_PARTITURA_MEI_DIR_WITHOUT_TSTAMP = _strict_xfail(
+    "Partitura's MEI importer raises in _find_dir_positions: a <dir> with @type "
+    "is placed by @startid and states no @tstamp",
+    raises=TypeError,
+)
+_PARTITURA_MEI_IMPORT_FAILS = {
+    "polyrhythm_only": _strict_xfail(
+        "Partitura's MEI importer raises in _handle_metersig: staff 3 states its meter "
+        "only as meter.sym='cut'",
+        raises=Exception,
+    ),
+    "c05n05_musete": _PARTITURA_MEI_DIR_WITHOUT_TSTAMP,
+    "c11n08_Rondeau": _PARTITURA_MEI_DIR_WITHOUT_TSTAMP,
+}
+
+
 @pytest.mark.filterwarnings("ignore::DeprecationWarning")
 class TestPartituraLoaderMEI:
     """Validate PartituraLoader with MEI files."""
 
-    @pytest.mark.parametrize("specimen_name", SPECIMENS.keys())
+    @pytest.mark.parametrize(
+        "specimen_name",
+        [
+            pytest.param(name, marks=_PARTITURA_MEI_IMPORT_FAILS.get(name, ()))
+            for name in SPECIMENS
+        ],
+    )
     def test_partitura_mei_folded_count(self, specimen_name: str) -> None:
         """PartituraLoader MEI folded measure count is correct."""
         spec = SPECIMENS[specimen_name]
@@ -847,10 +874,6 @@ def _verovio_flow(piece: str) -> tuple[Any, Any, Any]:
     return loader, flow, load_valid_flows(TARGET_FLOWS_DIR / spec.flow_csv)
 
 
-def _verovio_xfail(reason: str, raises: type[Exception] = AssertionError) -> Any:
-    return pytest.mark.xfail(raises=raises, strict=True, reason=reason)
-
-
 # Rachmaninoff is not loaded: Verovio 6.4.1 crashes the process on its MEI.
 VEROVIO_MATRIX = [
     pytest.param("polyrhythm_only", id="polyrhythm_only"),
@@ -858,14 +881,14 @@ VEROVIO_MATRIX = [
     pytest.param(
         "c05n05_musete",
         id="c05n05_musete",
-        marks=_verovio_xfail(
+        marks=_strict_xfail(
             "the MEI states a D.C. at MC 31 where the target flow jumps to the segno"
         ),
     ),
     pytest.param(
         "c11n08_Rondeau",
         id="c11n08_Rondeau",
-        marks=_verovio_xfail(
+        marks=_strict_xfail(
             "the MEI states its D.C.s at MCs 18 and 27 without where they end"
         ),
     ),
@@ -874,7 +897,7 @@ VEROVIO_MATRIX = [
         id="WoO71",
         marks=[
             pytest.mark.slow,
-            _verovio_xfail(
+            _strict_xfail(
                 "the MEI states no section breaks, which cut the target's sections"
             ),
         ],
@@ -882,7 +905,7 @@ VEROVIO_MATRIX = [
     pytest.param(
         "op18_no4_mov4_flow",
         id="op18_no4_mov4_flow",
-        marks=_verovio_xfail(
+        marks=_strict_xfail(
             "the skeleton's measures have no content, so no timemap entry",
             raises=ValueError,
         ),

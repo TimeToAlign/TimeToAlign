@@ -145,6 +145,11 @@ different on `flow_only`: it completes repeat regions by inferring boundaries.
 - The `flow_only` CSV must retain both `default` and `ms3` interpretations.
 - Music21 reads only the 10 measures of the `flow_only` MEI that state an `@n` (of 15): its
   MEI folded count and MEI-against-MusicXML flow are strict `xfail`s.
+- Partitura's MEI importer (1.7.0) raises before the loader sees a measure, so the Partitura MEI
+  folded count is a strict `xfail` on three scores: on `polyrhythm_only` it raises `Exception`
+  in `_handle_metersig`, because staff 3 states its meter only as `meter.sym="cut"`; on
+  `c05n05_musete` and `c11n08_Rondeau` it raises `TypeError` in `_find_dir_positions`, because a
+  `<dir>` with a `@type` is placed by `@startid` and states no `@tstamp`.
 
 ## Loader-specific assertions
 

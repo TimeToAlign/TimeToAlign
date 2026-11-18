@@ -155,11 +155,13 @@ def test_timeline_name_and_id(drawing, loader):
     assert drawing.id == "cgt_1"
     named = loader.create_timeline(uid="drawing", name="Drawing")
     assert (named.id, named.name) == ("drawing", "Drawing")
+    assert named.list_children() == ["cgt_4"]
 
 
 def test_successive_timelines_get_distinct_ids(loader):
     first, second = loader.create_timeline(), loader.create_timeline()
-    assert (first.id, second.id) == ("cgt_1", "cgt_2")
+    assert (first.id, first.list_children()) == ("cgt_1", ["cgt_2"])
+    assert (second.id, second.list_children()) == ("cgt_3", ["cgt_4"])
 
 
 def test_axis_child(drawing):

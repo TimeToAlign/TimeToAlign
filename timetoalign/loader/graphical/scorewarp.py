@@ -343,6 +343,11 @@ class ScoreWarpLoader(Loader[_ScoreWarpAxis]):
         segment's, named by the title label, with the C-Map from
         ``css_pixels`` to the title's unit through the labelled ticks.
 
+        Both ids are minted ``cgt_N`` by this loader, the root first: its
+        number is drawn even when *uid* names it, and a given *uid* is
+        recorded among the loader's minted ids, so the child is never
+        minted the root's id and successive timelines share none.
+
         Args:
             uid: Unique identifier for the timeline. ``None`` mints
                 ``cgt_N``, a number this loader has not minted before.
@@ -360,22 +365,29 @@ class ScoreWarpLoader(Loader[_ScoreWarpAxis]):
 
         axis = self._require_axis()
         minted = uid is None
+        root_id = _mint_timeline_id(self, TimeUnit.css_pixels)
+        if minted:
+            uid = root_id
+        else:
+            self._minted_timeline_ids.add(uid)
         timeline = _flag_minted(
             ContinuousGraphicalTimeline(
                 length=axis.extent,
                 unit=TimeUnit.css_pixels,
-                uid=_mint_timeline_id(self, TimeUnit.css_pixels) if minted else uid,
+                uid=uid,
                 name=name or self._sources[0].stem,
                 meta={"svg_width": axis.width, "svg_height": axis.height},
             ),
             minted,
         )
-        timeline.create_calibrated_child(
+        child = timeline.create_calibrated_child(
             axis.end - axis.start,
             axis.start,
             [(x, Coordinate(value, axis.unit)) for x, value in axis.calibration],
+            uid=_mint_timeline_id(self, TimeUnit.css_pixels),
             name=axis.title,
         )
+        _flag_minted(child, True)
         return timeline
 
     def __repr__(self) -> str:

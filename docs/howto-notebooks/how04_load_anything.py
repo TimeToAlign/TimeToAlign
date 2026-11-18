@@ -1160,27 +1160,49 @@ if match_evts_a and match_evts_b:
 # full cross-section each. The **whole-alignment** table below instead tabulates
 # the entire alignment. Users hold coordinates, not `MatchClaim` objects, so the
 # coordinate-batch form is the recommended entry point.
+#
+# A match file aligns notes, so every claim it yields is an interval claim
+# pairing a note's score span with its performed span. A score position can lie
+# in several such spans at once — the notes of a chord played slightly spread,
+# or a note that ends where the next begins — and each claim then contributes
+# its own performance candidate. The stamp lists them side by side and never
+# merges them; the performance belongs to the stamp's coordinates only where
+# all candidates agree.
 
 # %%
 # get_matchstamps_at(coords, timeline_id) - resolve THESE score coordinates into
-# full cross-group MatchStamps (raw numeric + timeline_id form).
+# cross-group MatchStamps (raw numeric + timeline_id form), one candidate per
+# interval claim containing the position.
 match_query_events = list(match_tl_a.get_events())
 match_query_coords = [
     match_query_events[i]["start"]["value"]
     for i in (0, len(match_query_events) // 2, -1)
 ]
-match_bundle.get_matchstamps_at(match_query_coords, match_tl_ids[0])
+match_stamps = match_bundle.get_matchstamps_at(match_query_coords, match_tl_ids[0])
+match_stamps
 
 # %%
-# get_matchstamp_table(coords) - the same batch as a table. Here the query
+# get_matchstamp_table(coords) - the same batch as a table, one row per query
+# coordinate. A cell holds one coordinate, so only positions whose performance
+# is among the stamp's present_timelines can be tabulated. Here the query
 # coordinates are IdCoordinates, which carry their own timeline_id, so no
-# separate timeline_id argument is needed. One row per query coordinate.
+# separate timeline_id argument is needed.
 from timetoalign.core import IdCoordinate
 
 match_id_coords = [
-    IdCoordinate(c, match_tl_a.unit, match_tl_ids[0]) for c in match_query_coords
+    IdCoordinate(c, match_tl_a.unit, match_tl_ids[0])
+    for c, stamp in zip(match_query_coords, match_stamps)
+    if match_tl_ids[1] in stamp.present_timelines
 ]
 match_bundle.get_matchstamp_table(match_id_coords)
+
+# %%
+# A position with several performance candidates has no single cell value, so
+# the table refuses the whole batch rather than pick one.
+try:
+    match_bundle.get_matchstamp_table(match_query_coords, match_tl_ids[0])
+except ValueError as error:
+    print(error)
 
 # %%
 # get_matchstamp_table() - no arguments tabulates the WHOLE alignment (one row

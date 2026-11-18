@@ -336,6 +336,18 @@ the library writes back against the same literal text.
   `{"order": {}, "statements": [], "styles": {}}` in the complete form,
   through `Timeline` and `AlignmentBundle` alike; a manifest read without
   `graphical` is written without it. Presence is part of the round trip.
+- **A styling member at its default is dropped as TimeToShare drops it.**
+  The library keeps the styling read (every member of `graphical` but
+  `order`) in TimeToShare's minimal form and has no default table of its
+  own: `styles: {}`, `statements: []` and `timestamps: []` are each read to
+  no member, a named timestamp's default `display` to none and a
+  non-default `display` to its canonical order. Each case is asserted
+  twice, against a literal written from the format's defaults and against
+  `timetoshare.minimal` of a manifest holding only that `graphical`, so the
+  library and TimeToShare cannot drift apart. A member whose value Python's
+  `==` confuses with another type (`0` and `False`, in an unknown member
+  and inside a style's declarations) is kept with its own type, as
+  TimeToShare compares a boolean only with a boolean.
 - **A named timestamp's `display` has the format's default.** The library
   keeps `graphical.timestamps` unread but for `display`, the parts drawn of
   a timestamp, whose default `["wedge", "name", "cross_section"]` the

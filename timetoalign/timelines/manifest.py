@@ -56,14 +56,6 @@ if TYPE_CHECKING:
 TIMETOSHARE_VERSION = "0.2.0"
 """The TimeToShare version the library reads and writes."""
 
-_STYLING_DEFAULTS: dict[str, Any] = {
-    key: value
-    for key, value in timetoshare.DEFAULTS["graphical"].items()
-    if key != "order"
-}
-"""The members of ``graphical`` other than ``order``, with their defaults."""
-
-
 # region Bare values on a timeline's own axis
 
 
@@ -634,13 +626,10 @@ class Manifest(_OpenObject):
                 if key not in group_ids
             }
             order = {key: entry for key, entry in order.items() if key in group_ids}
-            # A styling member at its default is left out, so that the complete
-            # and the minimal form read to the same styling.
-            manifest.styling = {
-                key: copy.deepcopy(value)
-                for key, value in graphical.items()
-                if key != "order" and _STYLING_DEFAULTS.get(key, object()) != value
-            }
+            # The styling is kept in TimeToShare's minimal form, so that the
+            # complete and the minimal form read to the same styling.
+            styling = {key: value for key, value in graphical.items() if key != "order"}
+            manifest.styling = timetoshare.minimal({"graphical": styling})["graphical"]
 
         return manifest, ManifestContent(roots, timelines, groups, order, ids)
 

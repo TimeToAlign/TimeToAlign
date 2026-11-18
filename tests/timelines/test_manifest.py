@@ -1976,6 +1976,59 @@ def test_a_timestamp_display_is_written_in_canonical_order_with_its_default(
     assert data == kept
 
 
+STYLING_CASES = {
+    "styles_default": ({"styles": {}}, {}),
+    "statements_default": ({"statements": []}, {}),
+    "timestamps_default": ({"timestamps": []}, {}),
+    "display_default": (
+        {"timestamps": [_stamp(1, display=["cross_section", "name", "wedge"])]},
+        {"timestamps": [_stamp(1)]},
+    ),
+    "display_reordered": (
+        {"timestamps": [_stamp(1, display=["name", "wedge"])]},
+        {"timestamps": [_stamp(1, display=["wedge", "name"])]},
+    ),
+    "zero_and_false": (
+        {
+            "styles": {"a": {"stroke-width": 0, "visible": False}},
+            "statements": [],
+            "frame": False,
+            "inset": 0,
+        },
+        {
+            "styles": {"a": {"stroke-width": 0, "visible": False}},
+            "frame": False,
+            "inset": 0,
+        },
+    ),
+}
+"""Each styling read with the styling the format's defaults make of it."""
+
+
+@pytest.mark.parametrize(
+    "reader",
+    [TimelineGroup.from_dict, AlignmentBundle.from_dict],
+    ids=["group", "bundle"],
+)
+@pytest.mark.parametrize("case", list(STYLING_CASES), ids=list(STYLING_CASES))
+def test_a_styling_member_at_its_default_is_dropped_as_timetoshare_drops_it(
+    reader: Any, case: str
+) -> None:
+    given, expected = STYLING_CASES[case]
+    data = {
+        "timetoshare": "0.2.0",
+        "timelines": [{"id": "r", "unit": "quarters", "length": [4, 1]}],
+        "groups": [{"id": "g", "members": ["r"]}],
+        "graphical": copy.deepcopy(given),
+    }
+
+    styling = reader(data).styling
+
+    assert styling == expected
+    assert styling == minimal({"graphical": given})["graphical"]
+    assert _text(styling) == _text(expected)
+
+
 def test_mixed_group_arguments_raise() -> None:
     data = {
         "timetoshare": "0.2.0",

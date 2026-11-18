@@ -342,7 +342,8 @@ at 0.5 (the value it computed, never `Fraction(1, 4)` rebuilt from it), as
 it does declared `float`; its inverse, into seconds, declares `float` too.
 
 **A map whose own parameters are floats computes in doubles**
-(`TestFloatParameters` in `test_linear.py` and `test_table.py`). Whether a
+(`TestFloatParameters` in `test_linear.py`, `test_table.py`,
+`test_constant.py` and `test_interval.py`). Whether a
 map computes in doubles is read from the instance: a float scalar or offset
 of a `LinearMap`, `ScalarMap` or `ShiftMap`, or a float anchor of a
 `TableMap`, makes it so, exactly as an `InterpolationMap` is. What would
@@ -367,6 +368,21 @@ double 0.1 rebuilt as a ratio nothing stated. Now:
   `Fraction(4, 3)` and `Fraction(1, 2)` at 1 (`Fraction(1, 3)` for the
   default scalar map, at `Fraction(1, 3)`). A rule that counted every
   `LinearMap` or `TableMap` as float arithmetic would answer floats here.
+- A step function's parameters are its values: the one value of a
+  `ConstantMap`, the value of each interval of an `IntervalToConstantMap`.
+  Its boundaries only choose the interval and never enter the result, so
+  they are no parameters, and float boundaries leave exact values exact.
+  The probe uses float boundaries `[0.0, 1.5]` throughout. Undeclared from
+  quarters into quarters, `ConstantMap(value=0.1)` answers the float `0.1`
+  at 0, and the step function of values `[0.1, 0.5]` answers the float
+  `0.1` at 1, with and without an `end` (3), and so does its
+  `to_table_map()`: the two forms of one step function agree. Both
+  answered `Fraction(3602879701896397, 36028797018963968)` before, the
+  rebuilt double. With the exact values `Fraction(1, 10)` and
+  `Fraction(1, 2)` (and `ConstantMap(value=Fraction(1, 10))`) they declare
+  `fraction` and answer `Fraction(1, 10)` — which a rule counting the
+  float boundaries would turn into a float. A label is no number: a
+  `ConstantMap` or step function of strings answers the string as before.
 
 ### `test_interpolation.py` - InterpolationMap
 

@@ -193,6 +193,9 @@ class IntervalToConstantMap(ConversionMap[T], Generic[T]):
         """IntervalToConstantMap is NOT invertible (many-to-one)."""
         return False
 
+    def _parameters(self) -> list[T]:
+        return self._values
+
     def _convert_scalar(self, value: CoordinateValue, **kwargs: Any) -> T:
         """Find the value for a given coordinate.
 

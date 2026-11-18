@@ -5,9 +5,12 @@ inside CombinationMap to attach metadata labels (e.g., filenames) to
 every coordinate on a timeline.
 """
 
+from fractions import Fraction
+
 import numpy as np
 import pytest
 
+from timetoalign.core.enums import NumberType
 from timetoalign.maps import CombinationMap, ConstantMap, LinearMap, ScalarMap
 from timetoalign.maps.base import ConversionMap
 
@@ -229,3 +232,27 @@ class TestConstantMapImport:
         from timetoalign import ConstantMap as CM
 
         assert CM is ConstantMap
+
+
+class TestFloatParameters:
+    """The constant is the map's parameter: a float one is answered as a float."""
+
+    def test_float_constant_answers_the_float(self):
+        cmap = ConstantMap(value=0.1, source_unit="quarters", target_unit="quarters")
+        assert cmap.output_number_type is NumberType.float
+        result = cmap(0)
+        assert result == 0.1
+        assert type(result) is float
+
+    def test_exact_constant_stays_exact(self):
+        cmap = ConstantMap(
+            value=Fraction(1, 10), source_unit="quarters", target_unit="quarters"
+        )
+        assert cmap.output_number_type is NumberType.fraction
+        result = cmap(0)
+        assert result == Fraction(1, 10)
+        assert type(result) is Fraction
+
+    def test_label_is_no_parameter(self):
+        cmap = ConstantMap(value="page1.jpeg")
+        assert cmap(0.1) == "page1.jpeg"

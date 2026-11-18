@@ -81,13 +81,14 @@ class ConstantMap(ConversionMap[Any]):
             uid: Optional explicit ID.
             name: Human-readable name for this map. Defaults to the map's ID.
         """
+        # Set first: the base reads the parameters once, at construction.
+        self._value = value
         super().__init__(
             source_unit=source_unit,
             target_unit=target_unit,
             uid=uid,
             name=name,
         )
-        self._value = value
 
     @property
     def value(self) -> Any:
@@ -98,6 +99,9 @@ class ConstantMap(ConversionMap[Any]):
     def is_invertible(self) -> bool:
         """ConstantMap is not invertible (many-to-one mapping)."""
         return False
+
+    def _parameters(self) -> tuple[Any, ...]:
+        return (self._value,)
 
     def _convert_scalar(self, value: CoordinateValue, **kwargs: Any) -> Any:
         """Return the constant value regardless of input."""

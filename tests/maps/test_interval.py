@@ -172,6 +172,48 @@ class TestIntervalToConstantMap:
             m.inverse()
 
 
+class TestFloatParameters:
+    """The values are the step function's parameters; its boundaries are not."""
+
+    @staticmethod
+    def _step(values, end=None):
+        return IntervalToConstantMap(
+            boundaries=[0.0, 1.5],
+            values=values,
+            end=end,
+            source_unit="quarters",
+            target_unit="quarters",
+        )
+
+    @pytest.mark.parametrize("end", [None, 3])
+    def test_float_values_answer_floats(self, end):
+        m = self._step([0.1, 0.5], end=end)
+        assert m.output_number_type is NumberType.float
+        result = m(1)
+        assert result == 0.1
+        assert type(result) is float
+
+    def test_float_values_agree_with_the_table_map(self):
+        m = self._step([0.1, 0.5])
+        table_result = m.to_table_map()(1)
+        assert table_result == 0.1
+        assert type(table_result) is float
+        assert type(m(1)) is type(table_result)
+
+    @pytest.mark.parametrize("end", [None, 3])
+    def test_exact_values_stay_exact_over_float_boundaries(self, end):
+        m = self._step([Fraction(1, 10), Fraction(1, 2)], end=end)
+        assert m.output_number_type is NumberType.fraction
+        result = m(1)
+        assert result == Fraction(1, 10)
+        assert type(result) is Fraction
+
+    def test_labels_are_no_parameters(self):
+        m = IntervalToConstantMap(boundaries=[0.0, 1.5], values=["A", "B"])
+        assert m(1) == "A"
+        assert m(2) == "B"
+
+
 class TestQuartersToMeasureNumber:
     """Tests for QuartersToMeasureNumber."""
 

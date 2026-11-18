@@ -1742,9 +1742,7 @@ stamp reading `3/2` seconds and `6` in `number`) and with the int `3` in
 `number` (`3/2` quarters, `3/4` seconds). Seconds hold no int, so the int
 input goes through `number`, which admits both. A converter that let the
 float through would answer `3.0` rather than refuse; one that kept the map's
-own error fails the exception type, which must be `ValueError` itself. The
-refusal test needs `timetoalign.maps.base.OutputNumberTypeError` and is
-skipped, saying so, where the maps package does not define it.
+own error fails the exception type, which must be `ValueError` itself.
 
 Every other error a map raises passes through the timeline unchanged, the
 same object, even for a float input: a timeline that relabelled any error

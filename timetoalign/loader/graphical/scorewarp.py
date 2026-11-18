@@ -344,7 +344,8 @@ class ScoreWarpLoader(Loader[_ScoreWarpAxis]):
         ``css_pixels`` to the title's unit through the labelled ticks.
 
         Args:
-            uid: Unique identifier for the timeline. Auto-generated if None.
+            uid: Unique identifier for the timeline. ``None`` mints
+                ``cgt_N``, a number this loader has not minted before.
             name: Human-readable name. Uses the source file's stem if None.
 
         Returns:
@@ -355,13 +356,19 @@ class ScoreWarpLoader(Loader[_ScoreWarpAxis]):
             ValueError: If the labelled ticks do not lie on one line, as the
                 calibration check states.
         """
+        from timetoalign.timelines.factory import _flag_minted, _mint_timeline_id
+
         axis = self._require_axis()
-        timeline = ContinuousGraphicalTimeline(
-            length=axis.extent,
-            unit=TimeUnit.css_pixels,
-            uid=uid,
-            name=name or self._sources[0].stem,
-            meta={"svg_width": axis.width, "svg_height": axis.height},
+        minted = uid is None
+        timeline = _flag_minted(
+            ContinuousGraphicalTimeline(
+                length=axis.extent,
+                unit=TimeUnit.css_pixels,
+                uid=_mint_timeline_id(self, TimeUnit.css_pixels) if minted else uid,
+                name=name or self._sources[0].stem,
+                meta={"svg_width": axis.width, "svg_height": axis.height},
+            ),
+            minted,
         )
         timeline.create_calibrated_child(
             axis.end - axis.start,

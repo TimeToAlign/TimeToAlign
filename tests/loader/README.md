@@ -960,6 +960,9 @@ cases are mutated copies of the same text.
 * **The child is the segment.** Offset 76.70371459980326, length
   855.5289364103584 (the double difference of the ends), named by the title
   label, with an id minted from its unit.
+* **The loader mints the root's id.** Two ``create_timeline()`` calls on one
+  loader give ``cgt_1`` and ``cgt_2``; a timeline minting its own id would
+  give ``cgt_1`` twice, since each new timeline is its own empty scope.
 * **The map is the line through the pairs, in float arithmetic.** The
   positions are floats, so the map is a float map: scalar
   ``40 / 855.5289364103584 == 0.04675470144567245``, offset ``0.0``.

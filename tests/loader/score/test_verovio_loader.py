@@ -353,7 +353,7 @@ class TestTimeline:
         assert {r["id"]: r for r in loaded.get_events(include_children=True)} == events
 
     def test_one_score_per_loader(self, mei: dict[str, Path]) -> None:
-        with pytest.raises(ValueError, match="already holds a score"):
+        with pytest.raises(ValueError, match="reads one source"):
             VerovioLoader().load(mei["basic"], mei["grace"])
 
 

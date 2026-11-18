@@ -31,22 +31,14 @@ import copy
 import json
 import math
 from collections.abc import Iterable, Iterator, Mapping
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from fractions import Fraction
 from os import PathLike
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Self
 
 import timetoshare
-from timetoshare import (
-    Link,
-    Scheme,
-    canonical_order,
-    description_problems,
-    dumps,
-    loads,
-    serialization_of,
-)
+from timetoshare import Link, Scheme, description_problems, loads
 from timetoshare.serialization import Serialization
 
 from timetoalign.core import Coordinate, NumberType, TimeUnit
@@ -1137,24 +1129,19 @@ def _name_of(candidate: Any) -> str | None:
 
 
 @dataclass(frozen=True)
-class FileForm:
-    """How a manifest file is written: its form, its styling, its serialization.
+class FileForm(timetoshare.FileForm):
+    """How a manifest file is written: TimeToShare's file form, and the timeline tables.
+
+    The form, the styling and the serialization are ``timetoshare.FileForm``'s;
+    the two tables are the library's own.
 
     Attributes:
-        minimal: Whether the manifest is in the minimal form (no key at its
-            default value) rather than the complete form.
-        styling: Whether the ``graphical`` object is written.
-        serialization: ``"yaml"`` (canonical YAML), ``"json"`` (pretty JSON)
-            or ``"jcs"`` (RFC 8785 JSON).
         events: Whether every timeline object holds its event rows
             (``events``).
         external_references: Whether every timeline object holds its
             external reference table (``external_references``).
     """
 
-    minimal: bool = True
-    styling: bool = True
-    serialization: Serialization = "yaml"
     events: bool = False
     external_references: bool = False
 
@@ -1162,11 +1149,8 @@ class FileForm:
     def of(cls, text: str, data: Any) -> FileForm:
         """Infer the form, styling, serialization and table keys of a manifest file.
 
-        The form is minimal when no key of the manifest *data* holds its
-        default value, compared in value (``timetoshare.minimal`` leaves out
-        no key of it); the styling is written when the manifest holds
-        ``graphical``; the serialization is the one
-        ``timetoshare.serialization_of`` names for *text*; ``events`` and
+        The form, the styling and the serialization are the ones
+        ``timetoshare.file_form`` reads off *text*; ``events`` and
         ``external_references`` are each written when a timeline object of
         the manifest, at any depth, holds the key.
 
@@ -1176,12 +1160,14 @@ class FileForm:
         """
         keys = {key for timeline in _timeline_objects(data) for key in timeline}
         return cls(
-            minimal=canonical_order(timetoshare.minimal(data)) == canonical_order(data),
-            styling="graphical" in data,
-            serialization=serialization_of(text),
+            **asdict(timetoshare.file_form(text)),
             events="events" in keys,
             external_references="external_references" in keys,
         )
+
+
+_NEW_FILE = FileForm(minimal=True, styling=True, serialization="yaml")
+"""The form of an object not read from a file: minimal, styled, canonical YAML."""
 
 
 def _timeline_objects(data: Any) -> Iterator[dict[str, Any]]:
@@ -1245,11 +1231,10 @@ class ManifestFileMixin:
 
         The text is read with ``timetoshare.loads``: canonical YAML, pretty
         JSON, RFC 8785 JSON or any other JSON or YAML text. The object read
-        records the file's form (minimal when no key of the manifest holds
-        its default value), styling (whether the manifest holds
-        ``graphical``), serialization, and whether its timeline objects hold
-        ``events`` and ``external_references``, which :meth:`to_file` writes
-        back.
+        records the file's form, styling and serialization, as
+        ``timetoshare.file_form`` reads them, and whether its timeline
+        objects hold ``events`` and ``external_references``, which
+        :meth:`to_file` writes back.
 
         Args:
             path: The manifest file, UTF-8.
@@ -1284,9 +1269,10 @@ class ManifestFileMixin:
     ) -> Path:
         """Write the object's manifest to a file.
 
-        The manifest is ``to_dict``'s, written with ``timetoshare.dumps``:
-        every object's keys sorted, its arrays in canonical order, so that
-        equal manifests give equal text and a change shows in a diff as the
+        The manifest is ``to_dict``'s complete form, written with
+        ``timetoshare.dumps_file`` in the form, styling and serialization
+        chosen: every object's keys sorted, its arrays in canonical order, so
+        that equal manifests give equal text and a change shows in a diff as the
         lines it touches. Each argument left None takes the value the file
         the object was read from had (see :meth:`from_file`); for an object
         not read from a file, the minimal form, the styling included, in
@@ -1329,24 +1315,23 @@ class ManifestFileMixin:
             >>> Timeline.from_file(path).length
             Coordinate(Fraction(32, 1), quarters)
         """
-        form = self._file_form or FileForm()
+        given = {
+            "minimal": minimal,
+            "styling": styling,
+            "serialization": serialization,
+            "events": events,
+            "external_references": external_references,
+        }
+        form = replace(
+            self._file_form or _NEW_FILE,
+            **{key: value for key, value in given.items() if value is not None},
+        )
         manifest = self.to_dict(
-            minimal=form.minimal if minimal is None else minimal,
-            events=form.events if events is None else events,
-            external_references=(
-                form.external_references
-                if external_references is None
-                else external_references
-            ),
+            minimal=False,
+            events=form.events,
+            external_references=form.external_references,
         )
-        if not (form.styling if styling is None else styling):
-            manifest.pop("graphical", None)
-        text = dumps(
-            manifest,
-            serialization=(
-                form.serialization if serialization is None else serialization
-            ),
-        )
+        text = timetoshare.dumps_file(manifest, form)
         path = Path(path)
         path.write_text(text, encoding="utf-8", newline="")
         return path

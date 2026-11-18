@@ -39,7 +39,7 @@ storage constructor tests, but are intentionally not accepted by
 | `tabular/` | CSV / TSV / Parquet loader specifics |
 | `score/` | Music-notation loaders (Ms3, music21, Partitura) |
 | `midi/` | Score and performance MIDI loaders |
-| `graphical/` | PDF / image loaders |
+| `graphical/` | PDF / image loaders, and `ScoreWarpLoader` (a ScoreWarp SVG's drawn time axis, see below) |
 | `format/` | Cross-format loaders (JSON, XML, TTL) |
 | `physical/` | Audio loaders and time-coordinate ingestion |
 
@@ -904,3 +904,65 @@ waveform-display payload and is ignored.
   differing lengths);
 * ``header.ref`` is absent from ``body.audio``;
 * fewer than two recordings are present.
+
+## `ScoreWarpLoader` validation logic
+
+ScoreWarp engraves a score and shifts its elements to performance time, then
+draws a seconds axis into the SVG: a ``g.timeAxis`` group holding one
+``line.horizontalAxis``, vertical tick lines (major ticks longer than minor
+ones) and text labels, one title such as "Time (s)" and a number at every
+major tick. The loader turns that axis into a ``css_pixels`` timeline of the
+drawing with one calibrated child, the axis, whose C-Map reads seconds.
+
+### The fixture
+
+``tests/loader/graphical/test_scorewarp_loader.py`` writes a ScoreWarp-shaped
+SVG into ``tmp_path``: a root sized ``792`` × ``175`` with a viewBox, and an
+axis drawn from 76.70371459980326 to 932.2326510101616, past the viewport's
+right edge (``overflow="visible"``). It has 41 tick lines, a tick every
+1/40 of the segment; the five major ones sit at 76.70371459980326,
+290.5859487023929, 504.4681828049824, 718.350416907572 and
+932.2326510101616 under the labels "0" … "40". These are the doubles a
+drawing tool prints, so the tick spacing carries their rounding. Negative
+cases are mutated copies of the same text.
+
+### What proves the loader works
+
+* **Values are read, never derived.** Changing the label "40" to "41" must be
+  refused by the calibration check: the inner pairs no longer lie on the line
+  through the end pairs. A loader that computed the labels from the axis
+  length would accept the mutation.
+* **The drawing contains its axis.** The timeline's length is the content
+  extent, max(viewport width, the end of every line of the axis):
+  932.2326510101616, never the viewport's 792. Text extents are not counted
+  (no font metrics), a documented limit.
+* **The child is the segment.** Offset 76.70371459980326, length
+  855.5289364103584 (the double difference of the ends), named by the title
+  label, with an id minted from its unit.
+* **The map is the line through the pairs, in float arithmetic.** The
+  positions are floats, so the map is a float map: scalar
+  ``40 / 855.5289364103584 == 0.04675470144567245``, offset ``0.0``.
+* **The map reads the drawn tick.** The "10" tick lies at 213.88223410258962
+  on the child, where the map reads 10.000000000000002. The test recomputes
+  that value in exact rational arithmetic on the drawn doubles (the line
+  through the end ticks, evaluated at the "10" tick) and checks that it
+  rounds to the same double, so the pinned value is the drawing's own, not an
+  artefact of the map's arithmetic. The same value reaches the parent's
+  timestamp at the tick.
+* **Counts.** 41 tick lines found, 5 calibration pairs (each numeric label
+  on a tick), unit seconds from "(s)", and the root's size strings kept
+  verbatim in ``svg_size`` and the timeline's ``meta``.
+
+### Error cases
+
+``load`` raises ``ValueError`` when:
+
+* no ``g.timeAxis`` is present, or more than one;
+* a ``transform`` sits on the axis group, inside it or on an ancestor, or the
+  group lies in a nested ``<svg>`` viewport;
+* the title's unit is unknown (the message names the unit);
+* the root's ``width`` or ``height`` is in a unit other than ``px`` or none
+  (``mm`` in the test);
+
+and the calibration check refuses a label that contradicts the others (the
+"41" mutation).

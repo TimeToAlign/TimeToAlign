@@ -203,6 +203,7 @@ _DEFERRED_EXPORTS = {
         "timetoalign.loader.graphical",
         "IIIFManifestLoader",
     ),
+    "ScoreWarpLoader": ("timetoalign.loader.graphical", "ScoreWarpLoader"),
     "RepoVizzInfo": ("timetoalign.loader", "RepoVizzInfo"),
     "RepoVizzLoader": ("timetoalign.loader", "RepoVizzLoader"),
     "TiliaDictStore": ("timetoalign.loader", "TiliaDictStore"),
@@ -364,6 +365,7 @@ __all__ = [
     "GraphicalLoader",
     "ATONLoader",
     "IIIFManifestLoader",
+    "ScoreWarpLoader",
     # Timelines
     "Timeline",
     "LogicalTimeline",

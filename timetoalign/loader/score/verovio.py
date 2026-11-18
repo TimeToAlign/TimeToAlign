@@ -72,7 +72,6 @@ _METER_SYMBOLS = {"common": ("4", "4"), "cut": ("2", "2")}
 # Extra note columns, verbatim from the MEI.
 _NOTE_EXTRA_TYPES: dict[str, pa.DataType] = {
     "notated_id": pa.string(),
-    "layer": pa.int64(),
     "dur": pa.string(),
     "dots": pa.int64(),
     "grace": pa.string(),
@@ -80,7 +79,12 @@ _NOTE_EXTRA_TYPES: dict[str, pa.DataType] = {
 }
 _TEMPO_EXTRA_TYPES: dict[str, pa.DataType] = {"notated_id": pa.string()}
 _POSITION_COLUMNS = ("start", "end")
-_STRUCT_COLUMNS = ("start", "end", "mc_onset", "mn_onset")
+# In-measure offsets are quarters; only the quarters timeline carries them.
+_MEASURE_OFFSETS = ("mc_onset",)
+_STRUCT_COLUMNS = (*_POSITION_COLUMNS, *_MEASURE_OFFSETS)
+# ``<repeatMark @func>`` values naming a place, and those naming a jump back.
+_MARKER_FUNCS = ("segno", "coda", "fine")
+_JUMP_FUNCS = {"dalSegno": "segno", "daCapo": "start"}
 
 
 def _local(tag: str) -> str:
@@ -126,6 +130,7 @@ class _Measure:
     volta: int | None
     meter: tuple[str, str] | None
     movement: int | None
+    marks: list[tuple[str, str]] = field(default_factory=list)
 
 
 @dataclass
@@ -145,6 +150,7 @@ class _Timed:
     accid_ges: str | None = None
     grace: str | None = None
     tie: str | None = None
+    chord: str | None = None
 
 
 @dataclass
@@ -200,7 +206,7 @@ class _Rendering:
     spans: dict[int, tuple[Fraction, Fraction]]
     measures: list[_RenderedMeasure]
     expanded: bool
-    printed: list[tuple[Fraction, Fraction]]
+    printed: list[tuple[_Measure, Fraction, Fraction]]
     end: Fraction
 
 
@@ -256,12 +262,12 @@ def _check_unique_ids(root: ET.Element, score: _Score) -> None:
 
 
 def _read_score(mei: str) -> _Score:
-    """Collect movements, measures, notes, rests, ties and tempo indications.
+    """Collect movements, measures, notes, rests, ties, tempos and repeat marks.
 
     The tree supplies what Verovio has no query for: which movement,
-    measure, staff and layer an element belongs to, the ``<tie>`` elements
-    and the tempo text. Positions are not computed here; they come from the
-    timemap.
+    measure, staff, layer and chord an element belongs to, the ``<tie>``
+    elements, the tempo text and each measure's ``<repeatMark>``s (``@func``
+    and text). Positions are not computed here; they come from the timemap.
     """
     root = ET.fromstring(mei)
     score = _Score()
@@ -330,6 +336,14 @@ def _read_score(mei: str) -> _Score:
                     (element.get("endid") or "").lstrip("#") or None,
                 )
             )
+        elif tag == "repeatMark" and "measure" in ctx:
+            score.measures[ctx["measure"] - 1].marks.append(
+                (
+                    element.get("func") or "",
+                    " ".join("".join(element.itertext()).split()),
+                )
+            )
+            return
         elif tag == "tempo" and "measure" in ctx:
             bpm = element.get("midi.bpm")
             staff = (element.get("staff") or "").split()
@@ -399,6 +413,7 @@ def _timed(element: ET.Element, tag: str, ctx: dict[str, Any]) -> _Timed:
         timed.tie = element.get("tie") or (
             chord.get("tie") if chord is not None else None
         )
+        timed.chord = chord.get(_XML_ID) if chord is not None else None
     return timed
 
 
@@ -424,13 +439,15 @@ class VerovioLoader(ScoreLoader):
     reproduces its own time.
 
     **Movements.** Every ``<mdiv>`` Verovio loads is a child timeline, in
-    document order: ``{id}_mdiv{k}`` (``k`` counts all ``<mdiv>``s from 1),
-    placed at its first position, as long as its measures, its ``xml:id``,
-    ``n`` and ``label`` in ``meta``. A nested ``<mdiv>`` is a child of its
-    parent's timeline. Events live in the innermost movement holding them,
-    at parent − offset; the root holds the measures, the flow control and
-    the C-Map. A single-movement score has its one child too. All movements
-    are loaded unless an ``mdivAll`` or ``mdivXPathQuery`` option chooses.
+    document order, its id minted in the root's manifest (``clt_N``,
+    ``cpt_N``): placed at its first position, as long as its measures, named
+    by its ``label``, with ``meta`` holding ``count`` (its place among all
+    ``<mdiv>``s of the file, from 1) and its ``xml:id``, ``n`` and ``label``
+    verbatim. A nested ``<mdiv>`` is a child of its parent's timeline.
+    Events live in the innermost movement holding them, at parent − offset;
+    the root holds the measures, the flow control and the C-Map. A
+    single-movement score has its one child too. All movements are loaded
+    unless an ``mdivAll`` or ``mdivXPathQuery`` option chooses.
 
     **Repeats.** The timemap is Verovio's rendering: with repeats expanded
     (Verovio's default, steered by the ``expand``, ``expandAlways`` and
@@ -440,10 +457,11 @@ class VerovioLoader(ScoreLoader):
     ``id`` when nothing is expanded), read with ``getNotatedIdForElement``
     for ids the notated tree does not hold. The store's measure table is the
     printed one (one row per ``<measure>`` in document order, lengths as
-    rendered, positions on the folded axis), from which
+    rendered, positions on the folded axis), carrying the repeat barlines,
+    endings and ``<repeatMark>``s (segno, coda, Fine, D.S., D.C.), from which
     :meth:`create_flow_controller` derives the repeat structure. Without an
     expansion the timeline carries that table as its ``MeasureMap`` and its
-    repeat barlines and endings as flow control. With an expansion the
+    flow control. With an expansion the
     timeline is already unfolded: its ``MeasureMap`` lists the rendered
     measures (row id = rendered id, name = ``@n``) without flow control, and
     two FlowMaps state the playback order of the printed measures:
@@ -471,7 +489,11 @@ class VerovioLoader(ScoreLoader):
 
     Events: one interval event per note (``event_type`` ``"Note"``) and per
     rest (``"Rest"``) from onset to offset, and one instant event per
-    ``<tempo>`` and pass (``"tempo indication"``, its ``text`` verbatim). A
+    ``<tempo>`` and pass (``"tempo indication"``, its ``text`` verbatim).
+    ``mc``, ``mn`` name the printed measure; ``mc_onset`` is the position in
+    the rendered pass of it, in quarters, on the logical timeline only.
+    ``voice`` is the ``<layer>`` number, ``chord_id`` the ``xml:id`` of the
+    note's ``<chord>``. A
     tied note's continuation is an event of its own; field ``tie`` (``i``,
     ``m``, ``t``, verbatim from ``@tie`` or from the ``<tie>`` elements
     naming the note) tells attacks from continuations. Field ``grace`` is
@@ -498,8 +520,12 @@ class VerovioLoader(ScoreLoader):
         entry of its own; such a score raises, naming the measures.
         Verovio 6.4.1's expansion leaves out the measures of ``<ending>``s
         it cannot place (both endings, and no repeat of their passage, after
-        another repeat); their lengths are then not stated and the load
-        raises, naming them, unless ``expandNever`` reads the notated score.
+        another repeat). Their lengths are read from a second rendering
+        with ``expandNever``; their events are not in the rendered
+        timelines. They are logged and listed in the store metadata under
+        ``"omitted_measures"``.
+        Verovio's expansion does not follow D.S. and D.C. marks; the
+        printed measure table states them.
         ``expandAlways`` writes the expansion into the MEI tree, which then
         no longer states the printed score; it raises.
         Verovio 6.4.1 crashes the process in ``renderToTimemap`` when it
@@ -561,10 +587,7 @@ class VerovioLoader(ScoreLoader):
                 "no longer states the printed score; the default expands the timemap "
                 "only"
             )
-        toolkit.setOptions(options)
-        if not toolkit.loadFile(str(source)):
-            raise ValueError(f"Verovio could not load {source}: {toolkit.getLog()}")
-
+        _load_file(toolkit, source, options)
         score = _read_score(toolkit.getMEI())
         if score.duplicate_ids:
             module_logger.warning(
@@ -574,18 +597,24 @@ class VerovioLoader(ScoreLoader):
                 source,
                 score.duplicate_ids[:5],
             )
-        timemap = toolkit.renderToTimemap({**_TIMEMAP_OPTIONS, "useFractions": True})
-        if not timemap:
-            raise ValueError(
-                f"Verovio's timemap of {source} is empty: {toolkit.getLog()}"
-            )
-        _check_against_qstamps(timemap, toolkit.renderToTimemap(_TIMEMAP_OPTIONS))
+        timemap = _timemap(toolkit, source)
 
         notated = _notated_ids(timemap, score, toolkit)
         rendered = _rendered_measures(timemap, notated)
         score = _loaded_movements(score, {m.notated_id for m in rendered})
-        printed = _printed_measures(rendered, score, expanded=bool(notated))
-        onsets, offsets = _positions(timemap, score, notated)
+        lengths = _measure_lengths(rendered)
+        omitted = [
+            m.xml_id for m in score.measures if notated and m.xml_id not in lengths
+        ]
+        if omitted:
+            lengths = _unexpanded_lengths(source, options, lengths, omitted)
+        printed = _printed_measures(rendered, score, lengths, expanded=bool(notated))
+        omitted_mcs = {
+            mc
+            for mc, measure in enumerate(score.measures, start=1)
+            if measure.xml_id in omitted
+        }
+        onsets, offsets = _positions(timemap, score, notated, omitted_mcs)
 
         tie_marks, dangling = _tie_marks(score)
         for tie_id in dangling:
@@ -612,6 +641,7 @@ class VerovioLoader(ScoreLoader):
         tempo_rows = [
             row
             for tempo in score.tempos
+            if tempo.measure not in omitted_mcs
             for row in _tempo_rows(tempo, onsets, passes, toolkit, bool(notated))
         ]
         movement = {
@@ -645,9 +675,13 @@ class VerovioLoader(ScoreLoader):
         )
         measures = MeasureData.from_dicts(
             [
-                _measure_row(index, measure, start, length)
-                for index, (measure, (start, length)) in enumerate(
-                    zip(score.measures, printed)
+                {
+                    **_measure_row(mc, measure.xml_id, measure, start, length),
+                    **_repeat_columns(measure),
+                    **navigation,
+                }
+                for mc, ((measure, start, length), navigation) in enumerate(
+                    zip(printed, _navigation(score.measures)), start=1
                 )
             ],
             unit=TimeUnit.quarters,
@@ -668,6 +702,7 @@ class VerovioLoader(ScoreLoader):
                 "has_rests": has_rests,
                 "dangling_ties": dangling,
                 "duplicate_ids": score.duplicate_ids,
+                "omitted_measures": omitted,
             },
         )
 
@@ -832,35 +867,42 @@ class VerovioLoader(ScoreLoader):
         minted = uid is None
         if minted:
             uid = _mint_timeline_id(self, unit, role=role)
-        start = convert(Fraction(0))
-        root = timeline_cls(
-            length=convert(rendering.end) - start,
-            unit=unit,
-            number_type=NumberType.fraction,
-            uid=uid,
-            name=name,
-            meta=meta,
-        )
-        _flag_minted(root, minted)
-
         by_movement: dict[int | None, list[dict[str, Any]]] = {}
         for row in rendering.rows:
             by_movement.setdefault(rendering.movement[row["id"]], []).append(row)
+
+        def build(
+            movement: int | None, first: Fraction, last: Fraction, **kwargs: Any
+        ) -> Timeline:
+            """Create the timeline of *movement* spanning [first, last)."""
+            return _timeline(
+                timeline_cls,
+                by_movement.get(movement, []),
+                unit,
+                convert,
+                first,
+                last - first,
+                **kwargs,
+            )
+
+        start = convert(Fraction(0))
+        root = build(None, start, convert(rendering.end), uid=uid, name=name, meta=meta)
+        _flag_minted(root, minted)
         nodes: dict[int | None, tuple[Timeline, Fraction]] = {None: (root, start)}
         for index, movement in enumerate(rendering.movements):
             if index not in rendering.spans:
                 continue
             parent, parent_start = nodes[movement.parent]
             span_start, span_end = (convert(p) for p in rendering.spans[index])
-            child = timeline_cls(
-                length=span_end - span_start,
-                unit=unit,
-                number_type=NumberType.fraction,
-                uid=f"{root.id}_mdiv{index + 1}",
+            child = build(
+                index,
+                span_start,
+                span_end,
                 name=movement.label,
                 meta={
                     key: value
                     for key, value in (
+                        ("count", index + 1),
                         ("xml_id", movement.xml_id),
                         ("n", movement.n),
                         ("label", movement.label),
@@ -868,11 +910,8 @@ class VerovioLoader(ScoreLoader):
                     if value is not None
                 },
             )
-            _flag_minted(child, minted)
             nodes[index] = (child, span_start)
-            _set_events(child, by_movement.get(index, []), unit, convert, span_start)
             parent.add_child(child, offset=span_start - parent_start)
-        _set_events(root, by_movement.get(None, []), unit, convert, start)
         return root
 
     def _attach_rendered_structure(
@@ -882,26 +921,20 @@ class VerovioLoader(ScoreLoader):
         from timetoalign.timelines import MeasureMap
         from timetoalign.timelines.flow import FlowMap
 
-        printed = list(self._store.measures)
-        printed_index = {row["id"]: index for index, row in enumerate(printed)}
-        rows = []
-        for count, measure in enumerate(rendering.measures, start=1):
-            source = printed[printed_index[measure.notated_id]]
-            rows.append(
-                {
-                    "id": measure.xml_id,
-                    "name": source["name"],
-                    "temporal_type": "interval",
-                    "event_type": ScoreEventType.MEASURE,
-                    "quarterbeats": rational_to_struct(measure.start),
-                    "duration_qb": rational_to_struct(measure.end - measure.start),
-                    "mc": count,
-                    "mn": source["mn"],
-                    "mn_int": source["mn_int"],
-                    "mm_id": measure.xml_id,
-                    "timesig": source["timesig"],
-                }
+        printed_index = {
+            measure.xml_id: index
+            for index, (measure, _, _) in enumerate(rendering.printed)
+        }
+        rows = [
+            _measure_row(
+                count,
+                measure.xml_id,
+                rendering.printed[printed_index[measure.notated_id]][0],
+                measure.start,
+                measure.end - measure.start,
             )
+            for count, measure in enumerate(rendering.measures, start=1)
+        ]
         timeline.add_measure_map(
             MeasureMap.from_measure_data(
                 MeasureData.from_dicts(
@@ -911,12 +944,13 @@ class VerovioLoader(ScoreLoader):
         )
         spans: list[tuple[Fraction, Fraction]] = []
         for measure in rendering.measures:
-            start, length = rendering.printed[printed_index[measure.notated_id]]
+            _, start, length = rendering.printed[printed_index[measure.notated_id]]
             if spans and spans[-1][1] == start:
                 spans[-1] = (spans[-1][0], start + length)
             else:
                 spans.append((start, start + length))
-        printed_end = rendering.printed[-1][0] + rendering.printed[-1][1]
+        _, last_start, last_length = rendering.printed[-1]
+        printed_end = last_start + last_length
         forward = FlowMap(
             spans,
             id="verovio",
@@ -927,14 +961,16 @@ class VerovioLoader(ScoreLoader):
         timeline.add_flow_map(forward.inverse(), id="source")
 
 
-def _set_events(
-    timeline: Timeline,
+def _timeline(
+    timeline_cls: type[Timeline],
     rows: list[dict[str, Any]],
     unit: TimeUnit,
     convert: Callable[[Fraction], Fraction],
     origin: Fraction,
-) -> None:
-    """Give *timeline* the events of *rows*, positions relative to *origin*."""
+    length: Fraction,
+    **kwargs: Any,
+) -> Timeline:
+    """Create a timeline of *length* holding *rows*, positions relative to *origin*."""
     notes = [row for row in rows if row["temporal_type"] == "interval"]
     tempos = [row for row in rows if row["temporal_type"] == "instant"]
     parts: list[EventData] = []
@@ -948,8 +984,29 @@ def _set_events(
                 ControlEventData, tempos, _TEMPO_EXTRA_TYPES, unit, convert, origin
             )
         )
-    if parts:
-        timeline._events = parts[0].concat(*parts[1:])
+    if not parts:
+        return timeline_cls(
+            length=length, unit=unit, number_type=NumberType.fraction, **kwargs
+        )
+    timeline = timeline_cls.from_event_data(parts[0].concat(*parts[1:]), **kwargs)
+    timeline.length = length
+    return timeline
+
+
+def _load_file(toolkit: Any, source: Path, options: dict[str, Any]) -> None:
+    """Set the toolkit's options and load *source*, or raise with Verovio's log."""
+    toolkit.setOptions(options)
+    if not toolkit.loadFile(str(source)):
+        raise ValueError(f"Verovio could not load {source}: {toolkit.getLog()}")
+
+
+def _timemap(toolkit: Any, source: Path) -> list[dict[str, Any]]:
+    """Return the toolkit's exact timemap, cross-checked against the float one."""
+    timemap = toolkit.renderToTimemap({**_TIMEMAP_OPTIONS, "useFractions": True})
+    if not timemap:
+        raise ValueError(f"Verovio's timemap of {source} is empty: {toolkit.getLog()}")
+    _check_against_qstamps(timemap, toolkit.renderToTimemap(_TIMEMAP_OPTIONS))
+    return timemap
 
 
 def _check_against_qstamps(
@@ -1049,16 +1106,8 @@ def _loaded_movements(score: _Score, rendered: set[str]) -> _Score:
     return score
 
 
-def _printed_measures(
-    rendered: list[_RenderedMeasure], score: _Score, *, expanded: bool
-) -> list[tuple[Fraction, Fraction]]:
-    """Return ``(start, length)`` of every printed measure on the folded axis.
-
-    A measure's length is its rendered span, the same in every pass; the
-    folded positions follow the printed order. Without an expansion the
-    rendered order is the printed one and the positions coincide.
-    """
-    order = [measure.xml_id for measure in score.measures]
+def _measure_lengths(rendered: list[_RenderedMeasure]) -> dict[str, Fraction]:
+    """Return the length of every rendered printed measure, equal in every pass."""
     lengths: dict[str, Fraction] = {}
     for measure in rendered:
         length = measure.end - measure.start
@@ -1067,24 +1116,69 @@ def _printed_measures(
                 f"Measure {measure.notated_id!r} has rendered lengths "
                 f"{lengths[measure.notated_id]} and {length}"
             )
-    missing = [xml_id for xml_id in order if xml_id not in lengths]
-    if missing and expanded:
+    return lengths
+
+
+def _unexpanded_lengths(
+    source: Path,
+    options: dict[str, Any],
+    lengths: dict[str, Fraction],
+    omitted: list[str],
+) -> dict[str, Fraction]:
+    """Return the printed lengths of a rendering with ``expandNever``.
+
+    Verovio's expansion can leave printed measures out; a second rendering
+    of the notated score states their lengths. Every measure both renderings
+    hold must have the same length in each.
+    """
+    module_logger.warning(
+        "Verovio's expansion of %s leaves out %d printed measure(s) %s; their "
+        "lengths come from a rendering with expandNever",
+        source,
+        len(omitted),
+        omitted[:5],
+    )
+    toolkit = verovio.toolkit()
+    _load_file(toolkit, source, {**options, "expandNever": True})
+    unexpanded = _measure_lengths(_rendered_measures(_timemap(toolkit, source), {}))
+    differing = sorted(
+        xml_id
+        for xml_id, length in lengths.items()
+        if unexpanded.get(xml_id, length) != length
+    )
+    if differing:
         raise ValueError(
-            f"Verovio's expansion omits {len(missing)} printed measure(s), so their "
-            f"lengths are not stated: {missing[:5]}. Read the notated score with "
-            "options={'expandNever': True}"
+            f"Measures {differing[:5]} have other lengths in Verovio's expansion "
+            "than in its rendering with expandNever"
         )
+    return {**unexpanded, **lengths}
+
+
+def _printed_measures(
+    rendered: list[_RenderedMeasure],
+    score: _Score,
+    lengths: dict[str, Fraction],
+    *,
+    expanded: bool,
+) -> list[tuple[_Measure, Fraction, Fraction]]:
+    """Return ``(measure, start, length)`` of every printed measure, folded.
+
+    The folded positions follow the printed order. Without an expansion the
+    rendered order is the printed one and the positions coincide.
+    """
+    missing = [m.xml_id for m in score.measures if m.xml_id not in lengths]
+    order = [m.xml_id for m in score.measures]
     if missing or (not expanded and [m.notated_id for m in rendered] != order):
         raise ValueError(
             "The timemap's measures differ from the MEI tree's: "
             f"{len(lengths)} of {len(order)} measures have an entry; without one: "
             f"{missing[:5]} (Verovio gives a measure without content no length)"
         )
-    printed: list[tuple[Fraction, Fraction]] = []
+    printed: list[tuple[_Measure, Fraction, Fraction]] = []
     position = rendered[0].start
-    for xml_id in order:
-        printed.append((position, lengths[xml_id]))
-        position += lengths[xml_id]
+    for measure in score.measures:
+        printed.append((measure, position, lengths[measure.xml_id]))
+        position += lengths[measure.xml_id]
     return printed
 
 
@@ -1110,9 +1204,16 @@ def _movement_spans(
 
 
 def _positions(
-    timemap: list[dict[str, Any]], score: _Score, notated: dict[str, str]
+    timemap: list[dict[str, Any]],
+    score: _Score,
+    notated: dict[str, str],
+    omitted: set[int],
 ) -> tuple[dict[str, Fraction], dict[str, Fraction]]:
-    """Return the exact onset and offset of every rendered note and rest."""
+    """Return the exact onset and offset of every rendered note and rest.
+
+    Notes and rests of the printed measures (MCs) in *omitted*, which the
+    rendering leaves out, have none.
+    """
     onsets: dict[str, Fraction] = {}
     offsets: dict[str, Fraction] = {}
     for entry in timemap:
@@ -1122,7 +1223,11 @@ def _positions(
                 target[xml_id] = position
     rendered = {notated.get(xml_id, xml_id) for xml_id in onsets}
     unknown = sorted(rendered - set(score.timed))
-    missing = sorted(set(score.timed) - rendered)
+    missing = sorted(
+        xml_id
+        for xml_id, timed in score.timed.items()
+        if xml_id not in rendered and timed.measure not in omitted
+    )
     unended = sorted(set(onsets) - set(offsets))
     for problem, ids in (
         ("names elements that are no note or rest of the tree", unknown),
@@ -1158,7 +1263,6 @@ class _Passes:
             "mc": mc,
             "mn": self.score.measures[mc - 1].n,
             "mc_onset": position - start,
-            "mn_onset": position - start,
         }
 
 
@@ -1205,9 +1309,10 @@ def _timed_row(
         "midi": None,
         "tpc": None,
         "octave": None,
+        "chord_id": timed.chord,
+        "voice": timed.layer,
         "staff": timed.staff,
         "notated_id": notated_id,
-        "layer": timed.layer,
         "dur": timed.dur,
         "dots": timed.dots,
         "grace": None,
@@ -1315,27 +1420,97 @@ def _tempo_rows(
 
 
 def _measure_row(
-    index: int, measure: _Measure, start: Fraction, length: Fraction
+    mc: int, xml_id: str, measure: _Measure, start: Fraction, length: Fraction
 ) -> dict[str, Any]:
-    """Build the structure row of one printed measure."""
+    """Build the structure row of one measure: *mc*-th, id *xml_id*.
+
+    A printed measure's id is its ``xml:id``; a rendered pass of it has its
+    own id and takes everything else from the printed *measure*.
+    """
     number = measure.n if measure.n is not None and measure.n.isdigit() else None
     return {
-        "id": measure.xml_id,
+        "id": xml_id,
         "name": measure.n,
         "temporal_type": "interval",
         "event_type": ScoreEventType.MEASURE,
         "quarterbeats": rational_to_struct(start),
         "duration_qb": rational_to_struct(length),
-        "mc": index + 1,
+        "mc": mc,
         "mn": measure.n,
         "mn_int": int(number) if number is not None else None,
-        "mm_id": measure.xml_id,
+        "mm_id": xml_id,
         "timesig": "/".join(measure.meter) if measure.meter else None,
+    }
+
+
+def _repeat_columns(measure: _Measure) -> dict[str, Any]:
+    """Return a printed measure's repeat barlines, ending number and barline."""
+    return {
         "start_repeat": measure.left in ("rptstart", "rptboth"),
         "end_repeat": measure.right in ("rptend", "rptboth"),
         "volta": measure.volta,
         "barline": measure.right,
     }
+
+
+def _navigation(measures: list[_Measure]) -> list[dict[str, str | None]]:
+    """Return the navigation columns of every printed measure.
+
+    They are read from each measure's ``<repeatMark>``s, in the columns'
+    shared meaning:
+
+    * ``markers`` names the measure's segno, coda and Fine marks in document
+      order, joined by ``" & "``; from the second segno or coda of the score
+      on, a mark is named with its count (``coda2``).
+    * ``jump_bwd`` is ``segno`` for a ``dalSegno`` (the first segno) and
+      ``start`` for a ``daCapo``.
+    * ``play_until`` and ``jump_fwd``: a mark whose text says "al Coda"
+      plays from the jump's target until the first coda mark there (the "To
+      Coda" sign), then continues at the first coda mark after the jump.
+      Otherwise a jump plays until the Fine where the score has one: that
+      is what a Fine mark states.
+    """
+    names: list[list[tuple[str, str]]] = []
+    counts: Counter = Counter()
+    for measure in measures:
+        own = []
+        for func, _ in measure.marks:
+            if func in _MARKER_FUNCS:
+                counts[func] += 1
+                numbered = func != "fine" and counts[func] > 1
+                own.append((func, f"{func}{counts[func]}" if numbered else func))
+        names.append(own)
+
+    def first(func: str, start: int, stop: int) -> str | None:
+        return next(
+            (name for own in names[start:stop] for kind, name in own if kind == func),
+            None,
+        )
+
+    segno = next(
+        (i for i, own in enumerate(names) if any(k == "segno" for k, _ in own)), None
+    )
+    rows: list[dict[str, str | None]] = []
+    for index, measure in enumerate(measures):
+        row: dict[str, str | None] = {
+            "markers": " & ".join(name for _, name in names[index]) or None,
+            "jump_bwd": None,
+            "jump_fwd": None,
+            "play_until": None,
+        }
+        for func, text in measure.marks:
+            if func not in _JUMP_FUNCS:
+                continue
+            row["jump_bwd"] = _JUMP_FUNCS[func]
+            target = 0 if func == "daCapo" else segno
+            if "al coda" in text.lower():
+                if target is not None:
+                    row["play_until"] = first("coda", target, index + 1)
+                    row["jump_fwd"] = first("coda", index + 1, len(measures))
+            elif counts["fine"]:
+                row["play_until"] = "fine"
+        rows.append(row)
+    return rows
 
 
 def _event_data(
@@ -1349,11 +1524,14 @@ def _event_data(
     """Build *cls* from rows that all share one set of keys.
 
     Positions (``start``, ``end``) pass through *convert* and are taken
-    relative to *origin*; the in-measure offsets stay in quarters.
+    relative to *origin*. In-measure offsets are quarters and are kept on a
+    quarters axis only.
     """
     schema = cls.get_schema(unit, NumberType.fraction)
     columns: dict[str, Any] = {}
     for name in rows[0]:
+        if name in _MEASURE_OFFSETS and unit is not TimeUnit.quarters:
+            continue
         values = [row.get(name) for row in rows]
         if name in _POSITION_COLUMNS and convert is not None:
             values = [convert(value) - origin for value in values]

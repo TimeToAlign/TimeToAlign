@@ -570,7 +570,9 @@ class Ms3Loader(ScoreLoader):
             gracenote = (
                 str(row["gracenote"]) if pd.notna(row.get("gracenote")) else None
             )
-            chord_id = int(row["chord_id"]) if pd.notna(row.get("chord_id")) else None
+            chord_id = (
+                str(int(row["chord_id"])) if pd.notna(row.get("chord_id")) else None
+            )
 
             voice = int(row["voice"]) if pd.notna(row.get("voice")) else None
             staff = int(row["staff"]) if pd.notna(row.get("staff")) else None

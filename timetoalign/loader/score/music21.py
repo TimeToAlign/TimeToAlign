@@ -262,7 +262,7 @@ class Music21Loader(ScoreLoader):
                                     mn,
                                     mc_onset,
                                     part_id,
-                                    chord_id=id(obj),
+                                    chord_id=str(id(obj)),
                                 )
                             )
 
@@ -426,7 +426,7 @@ class Music21Loader(ScoreLoader):
         mc_onset: Fraction,
         part_id: str,
         is_rest: bool = False,
-        chord_id: int | None = None,
+        chord_id: str | None = None,
     ) -> dict[str, Any]:
         """Create note row dict."""
         midi = None

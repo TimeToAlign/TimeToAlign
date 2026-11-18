@@ -36,6 +36,23 @@ folded counts, and same-loader MEI/MusicXML equivalence where both formats exist
 than 500,000 bytes use the documented size skip because third-party parsing is too slow for
 this integration suite.
 
+`TestVerovioLoaderMEI` reads each matrix score's MEI with `VerovioLoader` (`expandNever`: the
+printed measure table is the same either way, and Verovio crashes on expanding the
+flow-control files) and requires the folded count and the target `default` flow from the
+printed table. `polyrhythm_only` and `flow_only` match exactly (`flow_only`: 31 visits, D.S. al
+Coda, a To-Coda jump, voltas 1–3 and D.C. al Fine, all from the MEI's own marks). Each residue is
+a strict `xfail` naming what the MEI states:
+
+- `c05n05_musete`: a `daCapo` at MC 31, where the target flow jumps to the segno.
+- `c11n08_Rondeau`: `daCapo`s at MCs 18 and 27 with neither a Fine nor an "al …" text, so
+  nothing states where they end; the traversal stops at the cycle.
+- `WoO71` (slow): no section breaks, which cut the target's sections. The MC sequence itself is
+  the target's, all 505 visits, asserted by `test_woo71_mc_sequence`.
+- `op18_no4_mov4_flow`: a skeleton whose measures have no content, hence no timemap entry; the
+  load raises `ValueError`.
+
+Rachmaninoff is not in the Verovio matrix: Verovio 6.4.1 crashes the process on its MEI.
+
 Every `.flow.csv` must exist and contain `atomic` and `default` modes. Its number of atomic rows
 must equal the specimen value above. MS3 must reproduce one documented valid default flow and
 the exact atomic boundaries. TSV and MeasureMap must have identical folded counts.
@@ -46,11 +63,11 @@ A source that lists each measure's successors (an ms3 TSV, a Measure Map) keeps 
 other score loader `ScoreLoader.load()` derives the `next` column, per part, from the repeat,
 volta and navigation columns of the measure table (`ScoreLoader._successors`), so one rule
 serves Music21, Partitura and Verovio. What proves it: the derived successors are an input of
-the flow controller, so each loader's default flow on every specimen of the matrix, and each
+the flow controller, so each loader's default flow on every score of the matrix, and each
 pinned deviation below, must stay exactly what it is. The rule writes edges the two former
 loader-specific derivations did not (Music21 wrote none when a score had D.S., D.C., segno,
 coda or Fine marks; Partitura wrote no third volta and no exit after a non-final volta without
-a repeat end), and none of them changes a flow on these specimens: the traversal routes voltas
+a repeat end), and none of them changes a flow on these scores: the traversal routes voltas
 by pass, and a D.S. or D.C. is executed only where the measure table names its target.
 
 ## Exact flow-control profiles
@@ -86,6 +103,8 @@ different on `flow_only`: it completes repeat regions by inferring boundaries.
   `[3, 5, 8, 9, 10, 11, 14]`, and voltas
   `[(5, 1), (6, 2), (7, 3), (14, 1), (15, 2)]`.
 - The `flow_only` CSV must retain both `default` and `ms3` interpretations.
+- Music21 reads only the 10 measures of the `flow_only` MEI that state an `@n` (of 15): its
+  MEI folded count and MEI-against-MusicXML flow are strict `xfail`s.
 
 ## Loader-specific assertions
 
@@ -287,33 +306,40 @@ A `<tempo xml:id="tempo1" tstamp="1">Andante très expressif</tempo>` sits in m1
 - **Exact onsets.** An 8th is 1/2 quarter; a duplet 8th is 1/2 × 3/2 = 3/4. Hence `r1` 0–1/2,
   `c1a`/`c1b` 1/2–3/2, `d1` 3/2–9/4, `d2` 9/4–3, `t1` 3–9/2, `b1` 0–3, `b2` 3–9/2, `t2` 9/2–6,
   `t3` 6–9, `r2` 9/2–6, the generated note 6–9. The stored cells of `d2` hold numerator 9 and
-  denominator 4; the timeline's number type is `Fraction`.
+  denominator 4; the timeline's number type is `Fraction`. All of these are dyadic, so a float
+  reading of the timemap would store the very same cells: they prove the values, not that the
+  loader reads exactly. `startid.mei` below holds the triplet that does.
+- **In-measure offsets.** `mc_onset` is the position in the measure: `t2` 0, `t3` 3/2. `mn_onset`
+  is not written (it would repeat `mc_onset`) and stays null.
 - **Ids.** Note ids are the fixture's `<note>` `xml:id`s (read with the standard library from the
   fixture) plus one generated id; rests are `r1`, `r2`; the tempo indication is `tempo1` at 0 with
   its text verbatim. `notated_id` equals `id` on every event (nothing is expanded). The generated
   id is the same in two loads, and with 6.4.1 it is `s3clx4n` (seeded by `xmlIdChecksum`).
 - **Structure.** The root is one `ContinuousLogicalTimeline` `score:clt_1` in quarters, length
-  9. Its one child is `score:clt_1_mdiv1` at offset 0, length 9, `meta == {"xml_id": "mdiv1"}`,
+  9. Its one child, the movement, has the id the root's manifest mints for it, `clt_1` (free
+  beside `score:clt_1`), offset 0, length 9, `meta == {"count": 1, "xml_id": "mdiv1"}`,
   holding all 13 events (10 notes, 2 rests, 1 tempo indication); the root holds none. The
   `MeasureMap` has `m1`, `m2` named `1`, `2`, at 0 and 9/2, each 9/8 with actual length 9/2;
   neither measure id is an event. No flow control, no FlowMap.
 - **Ties.** `t1` is `i`, `t2` `t`, `t3` `i`; every other note has none. The dangling tie `tie2`
   is listed under `dangling_ties`, logged once as a warning, and nothing is invented: `t3` ends at
   9, where the timemap ends it.
-- **Staff and pitch.** The chord notes have staff 2 and layer 1 (the chord's `@staff`); `r1`
-  has staff 1. `c1b` is `A♭3`, specific pitch `(A, -1, 3)`, MIDI pitch 56; the generated note is
+- **Staff and pitch.** The chord notes have staff 2 (the chord's `@staff`), voice 1 (the
+  `<layer>` number, stored once, in `voice`) and `chord_id` `c1`; `r1` has staff 1, voice 1; no
+  other event has a `chord_id`. `c1b` is `A♭3`, specific pitch `(A, -1, 3)`, MIDI pitch 56; the generated note is
   `F♯3`, MIDI pitch 54. For every note the MIDI pitch Verovio reports equals
   `12 × (octave + 1) + step + alter` of the stored spelling (two independent readings agree).
 - **Physical timeline.** `create_physical_timeline()` is a `ContinuousPhysicalTimeline`
   `rendered:cpt_1` in seconds, number type `Fraction`, length 9/2, `meta["provenance"] ==
-  "verovio_rendered"`, one child `rendered:cpt_1_mdiv1` of length 9/2. Every event lies at half
-  its quarter position (`d2` 9/8–3/2, `t3` 3–9/2, `tempo1` 0). The logical timeline's C-Map maps
+  "verovio_rendered"`, one child `cpt_1` of length 9/2. Every event lies at half its quarter
+  position (`d2` 9/8–3/2, `t3` 3–9/2, `tempo1` 0). Its events carry `mc` (1 and 2) but no
+  in-measure offset: those are quarters, which have no place on a seconds axis. The logical timeline's C-Map maps
   9/4 quarters to 9/8 seconds, which a map answers as the float `1.125` because the seconds axis
   writes floats (the physical timeline itself is built from the exact values); the physical
   timeline's C-Map maps 9/8 back to exactly `Fraction(9, 4)`. `attach_cmap=False` attaches none.
 - **Two-phase contract and options.** `from_file` and `load` give the same events;
-  `create_timeline(uid="debussy", name="CdL")` keeps both, and the child becomes
-  `debussy_mdiv1`. The store metadata records the version and the options the toolkit ran with,
+  `create_timeline(uid="clt_1", name="Fixture")` keeps both, and the movement's minted `clt_1`
+  gives way to the given id: the child becomes `clt_2`. The store metadata records the version and the options the toolkit ran with,
   `{"xmlIdChecksum": True, "mdivAll": True}`. A second source raises.
 
 **`grace.mei`** (4/4, one staff): m1 `a1` C4 quarter · unaccented grace `g1` · `p1` D4 quarter ·
@@ -347,28 +373,44 @@ them.
 
 **`repeat_endings.mei`** (2/4): `m1`–`m2` a plain repeat, then `m3` (`rptstart`), first ending
 `m4` (`rptend`), second ending `m5`. Verovio 6.4.1 renders m1 m2 m1 m2 m3: no second pass of m3
-and neither ending. The printed measures `m4`, `m5` then have no stated length, and the load
-raises naming them and pointing to `expandNever`. With `expandNever` it loads, and the flow
-controller's default flow is MC 1 2 1 2 3 4 3 5. `expandAlways` raises (it writes the expansion
-into the MEI tree, which then no longer states the printed score).
+and neither ending. The expansion states no length for the printed measures `m4`, `m5`, so the
+loader reads the printed lengths from a second Verovio rendering with `expandNever`; nothing is
+computed by the loader. Expected: one warning naming the two measures; store metadata
+`omitted_measures == ["m4", "m5"]`; the printed table `m1`…`m5` at 0, 2, 4, 6, 8, each 2 long,
+identical to the table of a load with `expandNever` (whose `omitted_measures` is empty); the
+rendered timeline of length 10 with the `MeasureMap` `m1`, `m2`, `m1-rend2`, `m2-rend2`, `m3`
+and the events `m1n`, `m2n`, `m1n-rend2`, `m2n-rend2`, `m3n` (`m4n`, `m5n` are not rendered). The
+printed table's default flow is MC 1 2 1 2 3 4 3 5, which is not Verovio's order: that
+difference is the defect, and the hardening experiment below is where it is recorded.
+`expandAlways` raises (it writes the expansion into the MEI tree, which then no longer states
+the printed score).
 
 **`two_movements.mei`**: `mdiv` `mov1` (`n=1`, `label=I`, 2/4: `n1` C4 and `n2` D4 quarters,
 `n3` E4 half) and `mov2` (`n=2`, `label=II`, 3/4: `n4` F4 dotted half, `<tempo midi.bpm="60">`
 `t2`). Verovio continues the second movement where the first ends: one timemap entry at 4 holds
 the end of `n3`, the measure start of `m3` and the onset of `n4`; seconds continue (2 s).
-Expected: root length 7; children `score:clt_1_mdiv1` [0, 4) and `score:clt_1_mdiv2` [4, 7),
-named `I`, `II`, with `meta` `{"xml_id", "n", "label"}` verbatim. `n4` is at 0 in its child and
+Expected: root length 7; children `clt_1` [0, 4) and `clt_2` [4, 7), named `I`, `II`, with
+`meta` holding `count` (1, 2) and `xml_id`, `n`, `label` verbatim. `n4` is at 0 in its child and
 at 4 on the root; `t2` belongs to the second child. The root's `MeasureMap` (measures at 0, 2, 4)
 and C-Map serve the children through the root: the root's timestamp table gives `n4` 2 seconds;
 a child carries neither. On the physical timeline the second child starts at 2 s and lasts 3 s
 (three quarters at 60 per minute). With `options={"mdivXPathQuery": "./mdiv[2]"}` only the second
-movement is loaded: one child, still `score:clt_1_mdiv2` (``k`` counts every `<mdiv>` of the
-file), at 0 with length 3.
+movement is loaded: one child `clt_1` whose `meta["count"]` is still 2 (`count` numbers every
+`<mdiv>` of the file), at 0 with length 3.
 
 **`fast.mei`**: three 256th notes at `midi.bpm="2000"`, 1/64 quarter apart, then rests to the end
 of the 2/4 measure; Verovio rounds the first four entries to the milliseconds 0, 0, 1, 1.
 `create_timeline()` works (length 2; the C-Map only needs increasing quarters); `create_physical_timeline()` raises, naming the coinciding entries, because their
 order in seconds is not stated.
+
+**`startid.mei`** (2/4): m1 `a1` C4 quarter, chord `ch1` (`ch1a` E4, `ch1b` G4, quarter) with
+`<tempo xml:id="tc" startid="#ch1">Allegro</tempo>`; m2 a triplet `tu` (`num=3 numbase=2`: `u1`,
+`u2`, `u3`, 8ths) and `a2` F4 quarter, with `<tempo xml:id="tn" startid="#u2">Meno mosso</tempo>`.
+A triplet 8th is 1/2 × 2/3 = 1/3 quarter, so `u1` 2–7/3, `u2` 7/3–8/3, `u3` 8/3–3. `u2`'s start
+cell holds numerator 7 and denominator 3, and its `mc_onset` 1/3: no binary fraction equals a
+third, so only an exact reading of `qfrac` stores these cells. A tempo indication naming a chord
+sits at the chord's first note (`tc` at 1, where `ch1a` starts); one naming a note sits at that
+note (`tn` at 7/3, `mc_onset` 1/3). `ch1a` and `ch1b` have `chord_id` `ch1`.
 
 **Duplicate ids.** Two `<dynam xml:id="dd">` in `repeat.mei` load (listed under
 `duplicate_ids`); two notes sharing `xml:id="m1n"` raise, naming `m1n`.
@@ -377,8 +419,8 @@ order in seconds is not stated.
 
 - **Nested movements** (`parangonar/Beethoven_Eroica_op35-cpjku/score.mei`): `<mdiv
   xml:id="Eroica-Variationen">` holds `<mdiv xml:id="Var_14" n="18" label="Var. XIV.">`. The
-  root (length 129/2) has one child `score:clt_1_mdiv1` (meta `{"xml_id":
-  "Eroica-Variationen"}`), which has one child `score:clt_1_mdiv2` (meta with `n` `18` and label
+  root (length 129/2) has one child `clt_1` (meta `{"count": 1, "xml_id":
+  "Eroica-Variationen"}`), which has one child `clt_2` (meta with `count` 2, `n` `18` and label
   `Var. XIV.`); both span [0, 129/2). The 297 notes, 36 rests and 2 tempo indications live in the
   inner child. The `MeasureMap` holds 33 measures. No provisioned file has two sibling movements;
   `two_movements.mei` covers that case.
@@ -388,6 +430,22 @@ order in seconds is not stated.
   `start_repeat` at MCs 4, 9, 10; `end_repeat` at 3, 5, 8, 10, 11, 14; voltas (5, 1), (6, 2),
   (7, 3), (14, 1), (15, 2)). Known issue: Verovio 6.4.1 crashes the process in
   `renderToTimemap` when it expands this file's repeats, so no test loads it expanded.
+- **Repeat marks** (same file). Each `<repeatMark>` is read into the navigation columns, with
+  the meaning they have for every score loader: `markers` names the segno, coda and Fine marks
+  of a measure (joined by ` & `, a second segno or coda of the score numbered, `coda2`);
+  `jump_bwd` is `segno` for `func="dalSegno"`, `start` for `func="daCapo"`; "al Coda" in the
+  text plays from the jump's target to the first coda mark there (the "To Coda" sign) and
+  continues at the first coda mark after the jump; any other jump plays until the Fine where the
+  score has one, which is what a Fine states. The file states a Fine in MC 7, a segno and a "To"
+  coda in MC 9, `D.S. al Coda` in MC 12, a coda in MC 13 and `D.C. al Fine` in MC 15, so the
+  columns `(markers, jump_bwd, jump_fwd, play_until, next)` are exactly: MC 7 `fine`; MC 9
+  `segno & coda`; MC 12 `segno`, `coda2`, `coda`, next `9`; MC 13 `coda2`, next `14, 15` (the
+  measure before the endings); MC 15 `start`, `fine`, next `1`. Unfolded by the flow
+  controller, this table gives exactly the target default flow (parsing matrix).
+- **The Fine rule** (`couperin_concerts/c05n05_musete.mei`, `expandNever`). Segnos in MCs 6, 17
+  and 32 (`segno`, `segno2`, `segno3`), a Fine in MC 16, a `daCapo` in MC 31 and a `dalSegno` in
+  MC 58, both with the text "au renvoy" (no "al …"). Both jumps play until the Fine: MC 31
+  `start`, `fine`, next `1`; MC 58 `segno`, `fine`, next `6` (the first segno).
 - **Acceptance against music21** (`vienna_1x22/Chopin_op10_no3.musicxml`): `VerovioLoader` and
   `Music21Loader` must give the same multiset of `(onset, MIDI pitch)` over the non-grace notes,
   once Verovio's placement of principal notes is undone by its own rule: a non-grace note that
@@ -398,13 +456,18 @@ order in seconds is not stated.
 - **Hardening: Verovio's expansion against `ScoreFlowController`** (slow). For each specimen the
   printed measure table (`store.measures`) is unfolded with `FlowMode.default`, and the resulting
   MC sequence must equal Verovio's rendered measure order, read through the public surface: each
-  rendered measure's start, folded through FlowMap `source`, is a printed measure start. Equal on
-  `couperin_concerts/c05n05_musete.mei` (58 printed, 116 rendered) and
-  `couperin_concerts/c11n08_Rondeau.mei` (60, 120). Each divergence is its own strict `xfail`:
+  rendered measure's start, folded through FlowMap `source`, is a printed measure start. On the
+  `repeat.mei` fixture they are equal (above). Every provisioned score differs, each a strict
+  `xfail` with its cause:
+  - `couperin_concerts/c05n05_musete.mei` and `couperin_concerts/c11n08_Rondeau.mei`:
+    **Verovio**'s expansion does not follow D.S. and D.C. marks (it renders 116 and 120
+    measures, the repeats only), while the measure table states them (a D.C. in MC 31 and a D.S.
+    in MC 58; D.C.s in MCs 18 and 27).
   - `beethoven_woo71/WoO71.mei`: **Verovio** leaves out both endings numbered bar 19 (MCs 260,
-    261) and does not repeat their passage; the load raises (`ValueError`).
+    261) and does not repeat their passage: 495 rendered measures, where the printed table
+    unfolds to 505. The load reads the two lengths from the rendering with `expandNever`.
   - `beethoven_op18-4iv_multimodal/ABC/n04op18-4_04.mei`: **Verovio** leaves out the endings at
-    MCs 44–45, 93–94 and 102–103; the load raises.
+    MCs 44–45, 93–94 and 102–103: 254 rendered measures, where the printed table unfolds to 291.
   - `beethoven_op18-4iv_multimodal/recordings/Beethoven_Op018No4-04.mei`: **the source** opens a
     first `<ending>` at MC 44 that closes only at the end of the score, with the second ending
     nested in it (Verovio logs `Adding 'ending' to a 'ending'`). The measure table therefore
@@ -415,6 +478,11 @@ order in seconds is not stated.
     `renderToTimemap` when it expands `OpenScoreSQ/sq8913219.mei`; with `expandNever` it reads.
   - Not usable: the `*_flow.mei` skeletons have measures without content, which Verovio gives no
     timemap entry; the load raises naming them.
+  - Known issue, not loaded: Verovio 6.4.1 crashes the process on the Rachmaninoff MEI
+    (`rachmaninoff_concerto2/score/…Rachmaninoff.mei`), with `expandNever` too.
+- **Omitted endings in provisioned scores** (slow, Verovio 6.4.1). WoO71 and `n04op18-4_04.mei` load with
+  Verovio's default expansion: `omitted_measures` names exactly the measures at MCs 260, 261 and
+  at MCs 44, 45, 93, 94, 102, 103, and the rendered `MeasureMap`s hold 495 and 254 measures.
 - **Id check overhead.** Measured on the largest provisioned MEI (`wagner_walkure/…/
   Wagner_WWV086B-3.mei`, 8.8 MB, 76 623 ids, Verovio 6.4.1): `loadFile` 3.9 s and the timemap
   3.1 s; `getMEI` 0.09 s and its parse 0.21 s, which the loader needs anyway for membership; the

@@ -206,6 +206,31 @@ FAST = (
     + _TAIL
 )
 
+STARTID = (
+    _HEAD
+    + _score(
+        "2/4",
+        """
+<measure xml:id="m1" n="1"><staff xml:id="m1s" n="1"><layer xml:id="m1l" n="1">
+  <note xml:id="a1" pname="c" oct="4" dur="4"/>
+  <chord xml:id="ch1" dur="4">
+    <note xml:id="ch1a" pname="e" oct="4"/><note xml:id="ch1b" pname="g" oct="4"/>
+  </chord>
+</layer></staff>
+<tempo xml:id="tc" staff="1" startid="#ch1">Allegro</tempo></measure>
+<measure xml:id="m2" n="2"><staff xml:id="m2s" n="1"><layer xml:id="m2l" n="1">
+  <tuplet xml:id="tu" num="3" numbase="2">
+    <note xml:id="u1" pname="c" oct="5" dur="8"/>
+    <note xml:id="u2" pname="d" oct="5" dur="8"/>
+    <note xml:id="u3" pname="e" oct="5" dur="8"/>
+  </tuplet>
+  <note xml:id="a2" pname="f" oct="4" dur="4"/>
+</layer></staff>
+<tempo xml:id="tn" staff="1" startid="#u2">Meno mosso</tempo></measure>""",
+    )
+    + _TAIL
+)
+
 DUPLICATE_DYNAM = REPEAT.replace(
     _TEMPO_BEAT_2,
     '<dynam xml:id="dd" staff="1" tstamp="1">p</dynam>'
@@ -220,6 +245,7 @@ FIXTURES = {
     "repeat_endings": REPEAT_ENDINGS,
     "two_movements": TWO_MOVEMENTS,
     "fast": FAST,
+    "startid": STARTID,
     "duplicate_dynam": DUPLICATE_DYNAM,
     "duplicate_note": DUPLICATE_NOTE,
 }
@@ -293,15 +319,13 @@ class TestTimeline:
         assert str(timeline.unit) == "quarters"
         assert str(timeline.number_type) == "fraction"
         assert timeline.length.value == Fraction(9)
-        assert timeline.list_children() == ["score:clt_1_mdiv1"]
-        child = timeline.get_child("score:clt_1_mdiv1")
+        assert timeline.list_children() == ["clt_1"]
+        child = timeline.get_child("clt_1")
         assert child.length.value == Fraction(9)
-        assert child.meta == {"xml_id": "mdiv1"}
+        assert child.meta == {"count": 1, "xml_id": "mdiv1"}
         assert len(list(timeline.get_events(include_children=False))) == 0
         assert len(list(child.get_events(include_children=False))) == 13
-        assert {row["source_timeline"] for row in events.values()} == {
-            "score:clt_1_mdiv1"
-        }
+        assert {row["source_timeline"] for row in events.values()} == {"clt_1"}
 
     def test_event_types(self, events: dict[str, dict]) -> None:
         assert Counter(row["event_type"] for row in events.values()) == {
@@ -312,10 +336,10 @@ class TestTimeline:
 
     def test_uid_and_name_kept(self, mei: dict[str, Path]) -> None:
         timeline = VerovioLoader.from_file(mei["basic"]).create_timeline(
-            uid="debussy", name="CdL"
+            uid="clt_1", name="Fixture"
         )
-        assert (timeline.id, timeline.name) == ("debussy", "CdL")
-        assert timeline.list_children() == ["debussy_mdiv1"]
+        assert (timeline.id, timeline.name) == ("clt_1", "Fixture")
+        assert timeline.list_children() == ["clt_2"]
 
     def test_options_recorded(self, loader: VerovioLoader) -> None:
         metadata = loader.store.metadata
@@ -392,6 +416,11 @@ class TestIdsAndOnsets:
         cell = events["d2"]["start"]
         assert (cell["numerator"], cell["denominator"]) == (9, 4)
 
+    def test_measure_offsets(self, events: dict[str, dict]) -> None:
+        assert _q(events["t2"]["mc_onset"]) == Fraction(0)
+        assert _q(events["t3"]["mc_onset"]) == Fraction(3, 2)
+        assert {row.get("mn_onset") for row in events.values()} == {None}
+
     def test_tempo_indication(self, events: dict[str, dict]) -> None:
         tempo = events["tempo1"]
         assert tempo["event_type"] == "tempo indication"
@@ -435,11 +464,44 @@ class TestTies:
         ]
 
 
+class TestStartIdAndTriplet:
+    @pytest.fixture(scope="class")
+    def startid(self, mei: dict[str, Path]) -> dict[str, dict]:
+        timeline = VerovioLoader.from_file(mei["startid"]).create_timeline()
+        return {row["id"]: row for row in timeline.get_events(include_children=True)}
+
+    def test_triplet_thirds(self, startid: dict[str, dict]) -> None:
+        assert {i: _span(startid[i]) for i in ("u1", "u2", "u3")} == {
+            "u1": (Fraction(2), Fraction(7, 3)),
+            "u2": (Fraction(7, 3), Fraction(8, 3)),
+            "u3": (Fraction(8, 3), Fraction(3)),
+        }
+        start, offset = startid["u2"]["start"], startid["u2"]["mc_onset"]
+        assert (start["numerator"], start["denominator"]) == (7, 3)
+        assert (offset["numerator"], offset["denominator"]) == (1, 3)
+
+    def test_tempo_on_a_chord(self, startid: dict[str, dict]) -> None:
+        assert startid["tc"]["text"] == "Allegro"
+        assert _q(startid["tc"]["start"]) == _q(startid["ch1a"]["start"]) == 1
+
+    def test_tempo_on_a_note(self, startid: dict[str, dict]) -> None:
+        assert startid["tn"]["text"] == "Meno mosso"
+        assert _q(startid["tn"]["start"]) == Fraction(7, 3)
+        assert _q(startid["tn"]["mc_onset"]) == Fraction(1, 3)
+
+    def test_chord_ids(self, startid: dict[str, dict]) -> None:
+        chords = {i: row["chord_id"] for i, row in startid.items() if row["chord_id"]}
+        assert chords == {"ch1a": "ch1", "ch1b": "ch1"}
+
+
 class TestStaffAndPitch:
     def test_cross_staff_chord(self, events: dict[str, dict]) -> None:
         for xml_id in ("c1a", "c1b"):
-            assert (events[xml_id]["staff"], events[xml_id]["layer"]) == (2, 1)
-        assert (events["r1"]["staff"], events["r1"]["layer"]) == (1, 1)
+            row = events[xml_id]
+            assert (row["staff"], row["voice"], row["chord_id"]) == (2, 1, "c1")
+        assert (events["r1"]["staff"], events["r1"]["voice"]) == (1, 1)
+        chords = {i: row["chord_id"] for i, row in events.items() if row["chord_id"]}
+        assert chords == {"c1a": "c1", "c1b": "c1"}
 
     def test_spelling(self, events: dict[str, dict], mei: dict[str, Path]) -> None:
         flat = events["c1b"]
@@ -475,8 +537,8 @@ class TestPhysicalTimeline:
         assert str(physical.number_type) == "fraction"
         assert physical.length.value == Fraction(9, 2)
         assert physical.meta == {"provenance": "verovio_rendered"}
-        assert physical.list_children() == ["rendered:cpt_1_mdiv1"]
-        assert physical.get_child("rendered:cpt_1_mdiv1").length.value == Fraction(9, 2)
+        assert physical.list_children() == ["cpt_1"]
+        assert physical.get_child("cpt_1").length.value == Fraction(9, 2)
         assert physical.measure_map is None
 
     def test_events_at_half_their_quarters(
@@ -486,6 +548,8 @@ class TestPhysicalTimeline:
     ) -> None:
         seconds = {row["id"]: row for row in physical.get_events(include_children=True)}
         assert set(seconds) == set(events)
+        assert {row.get("mc_onset") for row in seconds.values()} == {None}
+        assert {row["mc"] for row in seconds.values()} == {1, 2}
         for xml_id, row in events.items():
             assert _q(seconds[xml_id]["start"]) == _q(row["start"]) / 2, xml_id
             if row["temporal_type"] == "interval":
@@ -630,15 +694,44 @@ class TestRepeats:
             "mdivAll": True,
         }
 
-    def test_omitted_endings_refused(self, mei: dict[str, Path]) -> None:
-        with pytest.raises(ValueError, match="omits 2 printed") as raised:
-            VerovioLoader.from_file(mei["repeat_endings"])
-        assert "['m4', 'm5']" in str(raised.value)
-        assert "expandNever" in str(raised.value)
+    def test_omitted_endings_read_unexpanded(
+        self, mei: dict[str, Path], caplog: pytest.LogCaptureFixture
+    ) -> None:
+        with caplog.at_level(
+            logging.WARNING, logger="timetoalign.loader.score.verovio"
+        ):
+            loader = VerovioLoader.from_file(mei["repeat_endings"])
+        assert loader.store.metadata["omitted_measures"] == ["m4", "m5"]
+        assert ["leaves out 2 printed" in r.getMessage() for r in caplog.records] == [
+            True
+        ]
+        rows = list(loader.store.measures)
+        assert [(r["id"], _q(r["start"]), _q(r["duration"])) for r in rows] == [
+            (f"m{mc}", Fraction(2 * mc - 2), Fraction(2)) for mc in range(1, 6)
+        ]
+        timeline = loader.create_timeline()
+        assert timeline.length.value == Fraction(10)
+        assert [m.id for m in timeline.measure_map.measures] == [
+            "m1",
+            "m2",
+            "m1-rend2",
+            "m2-rend2",
+            "m3",
+        ]
+        events = timeline.get_events(include_children=True)
+        assert sorted(row["id"] for row in events) == [
+            "m1n",
+            "m1n-rend2",
+            "m2n",
+            "m2n-rend2",
+            "m3n",
+        ]
+        assert _flow(loader) == [1, 2, 1, 2, 3, 4, 3, 5]
         notated = VerovioLoader.from_file(
             mei["repeat_endings"], options={"expandNever": True}
         )
-        assert _flow(notated) == [1, 2, 1, 2, 3, 4, 3, 5]
+        assert notated.store.metadata["omitted_measures"] == []
+        assert list(notated.store.measures) == rows
 
     def test_expand_always_refused(self, mei: dict[str, Path]) -> None:
         with pytest.raises(ValueError, match="expandAlways"):
@@ -663,12 +756,12 @@ class TestMovements:
     def test_children(self, movements: VerovioLoader) -> None:
         root = movements.create_timeline()
         assert root.length.value == Fraction(7)
-        assert root.list_children() == ["score:clt_1_mdiv1", "score:clt_1_mdiv2"]
+        assert root.list_children() == ["clt_1", "clt_2"]
         first, second = (root.get_child(c) for c in root.list_children())
         assert (first.name, first.length.value) == ("I", Fraction(4))
         assert (second.name, second.length.value) == ("II", Fraction(3))
-        assert first.meta == {"xml_id": "mov1", "n": "1", "label": "I"}
-        assert second.meta == {"xml_id": "mov2", "n": "2", "label": "II"}
+        assert first.meta == {"count": 1, "xml_id": "mov1", "n": "1", "label": "I"}
+        assert second.meta == {"count": 2, "xml_id": "mov2", "n": "2", "label": "II"}
         assert root.get_coordinate_for("n4").value == Fraction(4)
         assert second.get_coordinate_for("n4").value == Fraction(0)
         assert {row["id"] for row in second.get_events(include_children=False)} == {
@@ -685,13 +778,13 @@ class TestMovements:
         ]
         table = root.get_timestamp_table(format="dataframe")
         assert table.loc["n4", "quarters_to_seconds (seconds)"] == 2
-        child = root.get_child("score_mdiv2")
+        child = root.get_child("clt_2")
         assert (child.measure_map, child.n_conversion_maps) == (None, 0)
 
     def test_physical_children(self, movements: VerovioLoader) -> None:
         physical = movements.create_physical_timeline(uid="rendered")
         assert physical.length.value == Fraction(5)
-        second = physical.get_child("rendered_mdiv2")
+        second = physical.get_child("cpt_2")
         assert physical.get_coordinate_for("n4").value == Fraction(2)
         assert second.length.value == Fraction(3)
 
@@ -700,7 +793,8 @@ class TestMovements:
             mei["two_movements"], options={"mdivXPathQuery": "./mdiv[2]"}
         )
         root = loader.create_timeline()
-        assert root.list_children() == ["score:clt_1_mdiv2"]
+        assert root.list_children() == ["clt_1"]
+        assert root.get_child("clt_1").meta["count"] == 2
         assert root.length.value == Fraction(3)
         assert root.get_coordinate_for("n4").value == Fraction(0)
 
@@ -708,12 +802,17 @@ class TestMovements:
         path = PARANGONAR_DIR / "Beethoven_Eroica_op35-cpjku" / "score.mei"
         root = VerovioLoader.from_file(path).create_timeline()
         assert root.length.value == Fraction(129, 2)
-        assert root.list_children() == ["score:clt_1_mdiv1"]
-        outer = root.get_child("score:clt_1_mdiv1")
-        assert outer.meta == {"xml_id": "Eroica-Variationen"}
-        assert outer.list_children() == ["score:clt_1_mdiv2"]
-        inner = outer.get_child("score:clt_1_mdiv2")
-        assert inner.meta == {"xml_id": "Var_14", "n": "18", "label": "Var. XIV."}
+        assert root.list_children() == ["clt_1"]
+        outer = root.get_child("clt_1")
+        assert outer.meta == {"count": 1, "xml_id": "Eroica-Variationen"}
+        assert outer.list_children() == ["clt_2"]
+        inner = outer.get_child("clt_2")
+        assert inner.meta == {
+            "count": 2,
+            "xml_id": "Var_14",
+            "n": "18",
+            "label": "Var. XIV.",
+        }
         assert outer.length.value == inner.length.value == Fraction(129, 2)
         assert len(list(outer.get_events(include_children=False))) == 0
         assert Counter(
@@ -732,8 +831,27 @@ class TestIdCheck:
             VerovioLoader.from_file(mei["duplicate_note"])
 
 
+_NAVIGATION = ("markers", "jump_bwd", "jump_fwd", "play_until", "next")
+
+
+def _navigation(loader: VerovioLoader) -> dict[int, tuple]:
+    """Return the navigation columns of the measures that have one."""
+    return {
+        row["mc"]: tuple(row[column] for column in _NAVIGATION)
+        for row in loader.store.measures
+        if any(row[column] for column in _NAVIGATION[:-1])
+    }
+
+
 class TestRepeatFacts:
-    def test_flow_only_measure_rows_match_table(self) -> None:
+    @pytest.fixture(scope="class")
+    def flow_only(self) -> VerovioLoader:
+        return VerovioLoader.from_file(
+            FLOW_CONTROL_DIR / "out_of_the_flow_experience-flow_only.mei",
+            options={"expandNever": True},
+        )
+
+    def test_flow_only_measure_rows_match_table(self, flow_only: VerovioLoader) -> None:
         tsv = (
             FLOW_CONTROL_DIR
             / "flow_only"
@@ -741,11 +859,7 @@ class TestRepeatFacts:
         )
         with tsv.open(newline="") as handle:
             table = list(csv.DictReader(handle, delimiter="\t"))
-        loader = VerovioLoader.from_file(
-            FLOW_CONTROL_DIR / "out_of_the_flow_experience-flow_only.mei",
-            options={"expandNever": True},
-        )
-        rows = list(loader.store.measures)
+        rows = list(flow_only.store.measures)
         assert len(rows) == len(table) == 15
         facts = [
             (r["mc"], r["start_repeat"], r["end_repeat"], r["volta"]) for r in rows
@@ -763,25 +877,48 @@ class TestRepeatFacts:
         assert [mc for mc, start, _, _ in facts if start] == [4, 9, 10]
         assert [mc for mc, _, end, _ in facts if end] == [3, 5, 8, 10, 11, 14]
 
+    def test_flow_only_navigation(self, flow_only: VerovioLoader) -> None:
+        assert _navigation(flow_only) == {
+            7: ("fine", None, None, None, None),
+            9: ("segno & coda", None, None, None, None),
+            12: (None, "segno", "coda2", "coda", "9"),
+            13: ("coda2", None, None, None, "14, 15"),
+            15: (None, "start", None, "fine", "1"),
+        }
+
+    def test_jumps_play_until_the_fine(self) -> None:
+        loader = VerovioLoader.from_file(
+            SCORE_DIR / "couperin_concerts" / "c05n05_musete.mei",
+            options={"expandNever": True},
+        )
+        assert _navigation(loader) == {
+            6: ("segno", None, None, None, None),
+            16: ("fine", None, None, None, "1, 17"),
+            17: ("segno2", None, None, None, None),
+            31: (None, "start", None, "fine", "1"),
+            32: ("segno3", None, None, None, None),
+            58: (None, "segno", None, "fine", "6"),
+        }
+
 
 def _principal_onsets(rows: list[dict]) -> Counter:
     """Return Verovio's non-grace notes with each principal at its notated onset.
 
-    A non-grace note starting where a grace note of its staff and layer ends
+    A non-grace note starting where a grace note of its staff and voice ends
     is a principal; after an accented group its notated onset is the onset of
     the group's first grace note, after an unaccented one its own onset.
     """
-    graces = {(r["staff"], r["layer"], _q(r["end"])): r for r in rows if r["grace"]}
+    graces = {(r["staff"], r["voice"], _q(r["end"])): r for r in rows if r["grace"]}
     keys: Counter = Counter()
     for row in rows:
         if row["grace"]:
             continue
         onset = _q(row["start"])
-        lead = graces.get((row["staff"], row["layer"], onset))
+        lead = graces.get((row["staff"], row["voice"], onset))
         if lead is not None and lead["grace"] == "acc":
             while lead is not None:
                 onset = _q(lead["start"])
-                lead = graces.get((row["staff"], row["layer"], onset))
+                lead = graces.get((row["staff"], row["voice"], onset))
         keys[(onset, row["midi"])] += 1
     return keys
 
@@ -810,34 +947,48 @@ def test_music21_parity() -> None:
     assert _principal_onsets(rows) == expected
 
 
+def _expansion_xfail(reason: str) -> pytest.MarkDecorator:
+    return pytest.mark.xfail(raises=AssertionError, strict=True, reason=reason)
+
+
 HARDENING = [
-    pytest.param("couperin_concerts/c05n05_musete.mei", id="c05n05_musete"),
-    pytest.param("couperin_concerts/c11n08_Rondeau.mei", id="c11n08_Rondeau"),
+    pytest.param(
+        "couperin_concerts/c05n05_musete.mei",
+        id="c05n05_musete",
+        marks=_expansion_xfail(
+            "Verovio's expansion does not follow the D.C. at MC 31 and the D.S. at "
+            "MC 58 that the measure table states"
+        ),
+    ),
+    pytest.param(
+        "couperin_concerts/c11n08_Rondeau.mei",
+        id="c11n08_Rondeau",
+        marks=_expansion_xfail(
+            "Verovio's expansion does not follow the D.C.s at MCs 18 and 27 that "
+            "the measure table states"
+        ),
+    ),
     pytest.param(
         "beethoven_woo71/WoO71.mei",
         id="WoO71",
-        marks=pytest.mark.xfail(
-            raises=ValueError,
-            strict=True,
-            reason="Verovio's expansion leaves out the endings at MCs 260-261",
+        marks=_expansion_xfail(
+            "Verovio's expansion leaves out the endings at MCs 260-261 and the "
+            "repeat of their passage"
         ),
     ),
     pytest.param(
         "beethoven_op18-4iv_multimodal/ABC/n04op18-4_04.mei",
         id="n04op18-4_04",
-        marks=pytest.mark.xfail(
-            raises=ValueError,
-            strict=True,
-            reason="Verovio's expansion leaves out the endings at MCs 44-45, 93-94, 102-103",
+        marks=_expansion_xfail(
+            "Verovio's expansion leaves out the endings at MCs 44-45, 93-94, "
+            "102-103 and the repeats of their passages"
         ),
     ),
     pytest.param(
         "beethoven_op18-4iv_multimodal/recordings/Beethoven_Op018No4-04.mei",
         id="Beethoven_Op018No4-04",
-        marks=pytest.mark.xfail(
-            raises=AssertionError,
-            strict=True,
-            reason="the source leaves its first ending at MC 44 open to the end",
+        marks=_expansion_xfail(
+            "the source leaves its first ending at MC 44 open to the end"
         ),
     ),
 ]
@@ -855,6 +1006,29 @@ def test_expansion_matches_flow_controller(relative: str) -> None:
         for m in timeline.measure_map.measures
     ]
     assert _flow(loader) == rendered
+
+
+@pytest.mark.slow
+@on_pinned_version
+@pytest.mark.parametrize(
+    "relative,omitted,rendered",
+    [
+        ("beethoven_woo71/WoO71.mei", [260, 261], 495),
+        (
+            "beethoven_op18-4iv_multimodal/ABC/n04op18-4_04.mei",
+            [44, 45, 93, 94, 102, 103],
+            254,
+        ),
+    ],
+    ids=["WoO71", "n04op18-4_04"],
+)
+def test_omitted_endings_in_provisioned_scores(
+    relative: str, omitted: list[int], rendered: int
+) -> None:
+    loader = VerovioLoader.from_file(SCORE_DIR / relative)
+    ids = set(loader.store.metadata["omitted_measures"])
+    assert [row["mc"] for row in loader.store.measures if row["id"] in ids] == omitted
+    assert len(loader.create_timeline().measure_map.measures) == rendered
 
 
 class TestGuards:

@@ -8,6 +8,7 @@ dependencies:
 * :class:`PartituraLoader` — requires the ``partitura`` extra
 * :class:`Music21Loader` — requires the ``music21`` extra
 * :class:`Ms3Loader` — requires the ``ms3`` extra
+* :class:`VerovioLoader` — requires the ``verovio`` extra
 
 If you attempt to import a loader whose dependency is not installed, an
 :exc:`ImportError` is raised with installation instructions.
@@ -45,6 +46,7 @@ _OPTIONAL_LOADERS = {
     "PartituraLoader": ("partitura", "partitura"),
     "Music21Loader": ("music21", "music21"),
     "Ms3Loader": ("ms3", "ms3"),
+    "VerovioLoader": ("verovio", "verovio"),
 }
 
 
@@ -74,5 +76,12 @@ try:
     from .ms3 import Ms3Loader
 
     __all__.append("Ms3Loader")
+except ImportError:
+    pass
+
+try:
+    from .verovio import VerovioLoader
+
+    __all__.append("VerovioLoader")
 except ImportError:
     pass

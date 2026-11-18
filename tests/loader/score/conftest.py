@@ -19,6 +19,10 @@ import pytest
 from timetoalign.testdata import ensure_data
 
 ensure_data("score", "target_flows", "vienna_1x22", "midi", "supra")
+SCORE_DIR = ensure_data("score")
+FLOW_CONTROL_DIR = SCORE_DIR / "flow_control"
+VIENNA_DIR = ensure_data("vienna_1x22")
+PARANGONAR_DIR = ensure_data("parangonar")
 
 # region Path Constants
 

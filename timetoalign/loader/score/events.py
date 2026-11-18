@@ -29,6 +29,7 @@ class ScoreEventType:
     TIME_SIGNATURE = "TimeSignature"
     KEY_SIGNATURE = "KeySignature"
     TEMPO = "Tempo"
+    TEMPO_INDICATION = "tempo indication"
     METRONOME = "Metronome"
     DYNAMIC = "Dynamic"
     DIRECTION = "Direction"

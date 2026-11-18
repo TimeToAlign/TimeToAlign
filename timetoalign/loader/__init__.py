@@ -7,7 +7,8 @@ Loader Taxonomy:
     The package contains three categories of loaders:
 
     **Loader** - Returns EventStore (events only):
-        - ScoreLoader subclasses: Music21Loader, PartituraLoader, Ms3Loader
+        - ScoreLoader subclasses: Music21Loader, PartituraLoader, Ms3Loader,
+          VerovioLoader
         - MidiLoader subclasses: ScoreMidiLoader, PerformanceMidiLoader
         - TabularLoader subclasses: CsvLoader, TsvLoader
 

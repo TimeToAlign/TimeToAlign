@@ -45,6 +45,9 @@ Install with ``pip install -e ".[<extra>]"`` from the repository root.
 +---------------+--------------------------------------+----------------------------------------------+
 | ``ms3``       | ``ms3``                              | DCML TSV score parsing (Ms3Loader)           |
 +---------------+--------------------------------------+----------------------------------------------+
+| ``verovio``   | ``verovio``                          | Engraved-score loading via Verovio           |
+|               |                                      | (VerovioLoader)                              |
++---------------+--------------------------------------+----------------------------------------------+
 | ``audio``     | ``soundfile``, ``mutagen``           | Audio file loading + MP3/M4A metadata        |
 +---------------+--------------------------------------+----------------------------------------------+
 | ``graphical`` | ``pymupdf``, ``pillow``              | PDF/image loading & drawing                  |
@@ -177,6 +180,7 @@ _DEFERRED_EXPORTS = {
     "MeasureMapLoader": ("timetoalign.loader.score", "MeasureMapLoader"),
     "Music21Loader": ("timetoalign.loader.score", "Music21Loader"),
     "PartituraLoader": ("timetoalign.loader.score", "PartituraLoader"),
+    "VerovioLoader": ("timetoalign.loader.score", "VerovioLoader"),
     "JsonLoader": ("timetoalign.loader.format", "JsonLoader"),
     "XmlLoader": ("timetoalign.loader.format", "XmlLoader"),
     "MidiLoader": ("timetoalign.loader.midi", "MidiLoader"),
@@ -340,6 +344,7 @@ __all__ = [
     "MeasureMapLoader",
     "Music21Loader",
     "PartituraLoader",
+    "VerovioLoader",
     "JsonLoader",
     "XmlLoader",
     "MidiLoader",

@@ -16,7 +16,6 @@ See tests/data/vienna_1x22/README.md for gold standard values.
 from __future__ import annotations
 
 from fractions import Fraction
-from pathlib import Path
 
 import pytest
 
@@ -25,17 +24,15 @@ from timetoalign.alignment.claims import _reset_anchor_ids, _reset_claim_ids
 from timetoalign.core import TimeUnit
 from timetoalign.loader.alignment.matchfile import MatchfileLoader
 from timetoalign.maps.linear import ScalarMap, ShiftMap
-from timetoalign.testdata import ensure_data
 from timetoalign.timelines.types import (
     ContinuousLogicalTimeline,
     DiscreteLogicalTimeline,
 )
 
-ensure_data("vienna_1x22", "score")
+from .conftest import VIENNA_DATA_DIR
 
 # region Test Data
 
-VIENNA_DATA_DIR = Path(__file__).parent.parent / "data" / "vienna_1x22"
 P01_MATCH = VIENNA_DATA_DIR / "Chopin_op10_no3_p01.match"
 ALL_MATCH_FILES = sorted(VIENNA_DATA_DIR.glob("*.match"))
 

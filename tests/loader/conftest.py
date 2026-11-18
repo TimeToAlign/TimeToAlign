@@ -11,6 +11,9 @@ import pytest
 from timetoalign.core import TimeUnit
 from timetoalign.loader import EventLoader
 from timetoalign.storage import EventData
+from timetoalign.testdata import ensure_data
+
+VIENNA_DATA_DIR = ensure_data("vienna_1x22")
 
 
 @pytest.fixture

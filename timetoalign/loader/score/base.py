@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from abc import abstractmethod
 from datetime import datetime, timezone
+from fractions import Fraction
+from numbers import Integral
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -23,6 +25,31 @@ if TYPE_CHECKING:
     from timetoalign.timelines.flow import ScoreFlowController, SegmentNameGenerator
 
 module_logger = logging.getLogger(__name__)
+
+
+def _coordinate_struct(value: Fraction | float) -> dict[str, Any]:
+    """Return a coordinate struct without inventing a ratio for a float."""
+    if isinstance(value, Fraction):
+        return {
+            "value": float(value),
+            "numerator": value.numerator,
+            "denominator": value.denominator,
+        }
+    return {"value": float(value), "numerator": None, "denominator": None}
+
+
+def _struct_coordinate_value(struct: dict[str, Any]) -> Fraction | float:
+    """Read a coordinate pair, falling back to its value-only projection."""
+    numerator = struct.get("numerator")
+    denominator = struct.get("denominator")
+    if (
+        isinstance(numerator, Integral)
+        and not isinstance(numerator, bool)
+        and isinstance(denominator, Integral)
+        and not isinstance(denominator, bool)
+    ):
+        return Fraction(int(numerator), int(denominator))
+    return float(struct["value"])
 
 
 class ScoreLoader(EventLoader):
@@ -179,6 +206,36 @@ class ScoreLoader(EventLoader):
                 if -1 not in edges:
                     successors[index] = [*edges, -1]
         return successors
+
+    @staticmethod
+    def _normalise_anacrusis(
+        note_rows: list[dict[str, Any]], *other_rows: list[dict[str, Any]]
+    ) -> Fraction | float:
+        """Shift every row so that the earliest note onset is 0; return the shift.
+
+        A timeline starts at 0, while a parser may place the notes of an
+        anacrusis at negative quarter positions. The shift is minus the
+        earliest ``quarterbeats`` of *note_rows* when that is negative, else
+        0, and is added to the ``quarterbeats`` of every row of *note_rows*
+        and *other_rows* (measures, controls, annotations), in place. Exact
+        positions stay exact: the shift is a ``Fraction`` unless the earliest
+        onset is stated only as a float, and a shifted cell keeps its ratio
+        whenever the sum has one. The loader exposes the shift as its
+        ``anacrusis_offset`` and stores it in the ``ScoreStore`` metadata.
+        """
+        onsets = [
+            _struct_coordinate_value(row["quarterbeats"])
+            for row in note_rows
+            if row.get("quarterbeats") is not None
+        ]
+        earliest: Fraction | float = min(onsets, default=Fraction(0))
+        offset: Fraction | float = -earliest if earliest < 0 else Fraction(0)
+        if offset:
+            for rows in (note_rows, *other_rows):
+                for row in rows:
+                    position = _struct_coordinate_value(row["quarterbeats"])
+                    row["quarterbeats"] = _coordinate_struct(position + offset)
+        return offset
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

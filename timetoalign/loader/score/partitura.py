@@ -16,7 +16,7 @@ with suppressed_backend_warnings():
 
 from timetoalign.core import NumberType, TimeUnit
 
-from .base import ScoreLoader
+from .base import ScoreLoader, _coordinate_struct
 from .store import ScoreStore
 from .stores import (
     AnnotationEventData,
@@ -48,31 +48,6 @@ _CONTROL_EVENT_TYPES = (
     pts.Direction,
     pts.Slur,
 )
-
-
-def _coordinate_struct(value: Fraction | float) -> dict[str, Any]:
-    """Return a coordinate struct without inventing a ratio for a float."""
-    if isinstance(value, Fraction):
-        return {
-            "value": float(value),
-            "numerator": value.numerator,
-            "denominator": value.denominator,
-        }
-    return {"value": float(value), "numerator": None, "denominator": None}
-
-
-def _struct_coordinate_value(struct: dict[str, Any]) -> Fraction | float:
-    """Read a coordinate pair, falling back to its value-only projection."""
-    numerator = struct.get("numerator")
-    denominator = struct.get("denominator")
-    if (
-        isinstance(numerator, Integral)
-        and not isinstance(numerator, bool)
-        and isinstance(denominator, Integral)
-        and not isinstance(denominator, bool)
-    ):
-        return Fraction(int(numerator), int(denominator))
-    return float(struct["value"])
 
 
 class PartituraLoader(ScoreLoader):
@@ -700,31 +675,10 @@ class PartituraLoader(ScoreLoader):
                     }
                 )
 
-        # ── Anacrusis normalisation ───────────────────────────────────────────
-        # TTA timelines always start at coordinate 0.  When partitura reports
-        # negative quarter-beat onsets (anacrusis notes), we shift all event
-        # coordinates so the earliest onset becomes 0.0.
-        #
-        # The shift is applied uniformly to notes, measures, controls, and
-        # annotations.  Its value is exposed via self.anacrusis_offset and
-        # stored in the ScoreStore metadata so that any loader that needs to
-        # compare raw partitura values against stored TTA coordinates can apply
-        # the same correction.
-        all_onsets = [
-            _struct_coordinate_value(r["quarterbeats"])
-            for r in note_rows
-            if r.get("quarterbeats") is not None
-        ]
-        min_qb: Fraction | float = min(all_onsets, default=Fraction(0))
-        offset: Fraction | float = -min_qb if min_qb < 0 else Fraction(0)
+        offset = self._normalise_anacrusis(
+            note_rows, measure_rows, control_rows, annotation_rows
+        )
         self._anacrusis_offset = offset
-
-        if offset:
-            for rows in (note_rows, measure_rows, control_rows, annotation_rows):
-                for r in rows:
-                    old_qb = _struct_coordinate_value(r["quarterbeats"])
-                    new_qb = old_qb + offset
-                    r["quarterbeats"] = _coordinate_struct(new_qb)
 
         # Build data
         notes_data = getattr(NoteEventData, "from_" + "dicts")(

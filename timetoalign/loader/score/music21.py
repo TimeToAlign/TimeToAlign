@@ -13,7 +13,6 @@ import music21 as m21
 from timetoalign.core import NumberType, TimeUnit
 from timetoalign.core.time import (
     rational_to_struct,
-    struct_to_rational,
 )
 
 from .base import ScoreLoader
@@ -338,31 +337,10 @@ class Music21Loader(ScoreLoader):
                         }
                     )
 
-        # ── Anacrusis normalisation ───────────────────────────────────────────
-        # TTA timelines always start at coordinate 0.  When music21 reports
-        # negative quarter-beat offsets (anacrusis notes), we shift all event
-        # coordinates so the earliest onset becomes 0.0.  The shift is applied
-        # uniformly to notes, measures, controls, and annotations and its value
-        # is exposed via self.anacrusis_offset and stored in the ScoreStore
-        # metadata so downstream consumers can apply the same correction.
-        all_onsets = [
-            (
-                struct_to_rational(r["quarterbeats"])
-                if r.get("quarterbeats")
-                else Fraction(0)
-            )
-            for r in note_rows
-        ]
-        min_qb = min(all_onsets, default=Fraction(0))
-        m21_offset = -min_qb if min_qb < 0 else Fraction(0)
+        m21_offset = self._normalise_anacrusis(
+            note_rows, measure_rows, control_rows, annotation_rows
+        )
         self._anacrusis_offset = m21_offset
-
-        if m21_offset:
-            for rows in (note_rows, measure_rows, control_rows, annotation_rows):
-                for r in rows:
-                    old_qb = struct_to_rational(r["quarterbeats"])
-                    new_qb = old_qb + m21_offset
-                    r["quarterbeats"] = rational_to_struct(new_qb)
 
         # Build data
         notes_data = getattr(NoteEventData, "from_" + "dicts")(

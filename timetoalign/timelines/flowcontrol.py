@@ -276,11 +276,7 @@ class Break(_IdentifiedElement):
         "label",
         "meta",
     )
-    _dict_defaults: ClassVar[Mapping[str, Any]] = {
-        "name": None,
-        "label": None,
-        "meta": {},
-    }
+    _manifest_path: ClassVar[tuple[str, ...]] = ("timelines", "flow_control")
 
     coordinate: Coordinate
     control_type: FlowControlElement = FlowControlElement.section_break
@@ -354,7 +350,7 @@ class Break(_IdentifiedElement):
         """
         return _is_active(self.condition, 1, pass_number, after_dc_ds)
 
-    def _dict_fields(self, *, minimal: bool) -> dict[str, Any]:
+    def _dict_fields(self) -> dict[str, Any]:
         """Return the keys of this break's ``flow_marker`` element."""
         return {
             "id": self.id,
@@ -447,12 +443,7 @@ class Jump(_IdentifiedElement):
         "label",
         "meta",
     )
-    _dict_defaults: ClassVar[Mapping[str, Any]] = {
-        "repeat_count": 1,
-        "name": None,
-        "label": None,
-        "meta": {},
-    }
+    _manifest_path: ClassVar[tuple[str, ...]] = ("timelines", "flow_control")
 
     from_coordinate: Coordinate
     to_coordinate: Coordinate
@@ -621,7 +612,7 @@ class Jump(_IdentifiedElement):
             return float("inf")  # type: ignore
         return 0
 
-    def _dict_fields(self, *, minimal: bool) -> dict[str, Any]:
+    def _dict_fields(self) -> dict[str, Any]:
         """Return the keys of this jump's ``jump_from`` element.
 
         ``target`` is written when the jump names one, ``repeat_count`` on a
@@ -692,11 +683,7 @@ class Marker(_IdentifiedElement):
         "label",
         "meta",
     )
-    _dict_defaults: ClassVar[Mapping[str, Any]] = {
-        "name": None,
-        "label": None,
-        "meta": {},
-    }
+    _manifest_path: ClassVar[tuple[str, ...]] = ("timelines", "flow_control")
 
     coordinate: Coordinate
     name: str | None = None
@@ -746,7 +733,7 @@ class Marker(_IdentifiedElement):
         """The coordinate value of the marker."""
         return self.coordinate.value
 
-    def _dict_fields(self, *, minimal: bool) -> dict[str, Any]:
+    def _dict_fields(self) -> dict[str, Any]:
         """Return the keys of this marker's ``jump_to`` element."""
         return {
             "id": self.id,

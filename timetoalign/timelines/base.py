@@ -273,20 +273,6 @@ class Timeline(
         "events",
         "external_references",
     )
-    # A timeline object's optional keys and their values when absent; a
-    # number_type left out is the unit's own.
-    _dict_defaults: ClassVar[Mapping[str, Any]] = {
-        "name": None,
-        "locked": False,
-        "is_segment_line": False,
-        "meta": {},
-        "children": [],
-        "conversion_maps": [],
-        "regions": [],
-        "flow_control": [],
-        "links": [],
-    }
-
     # Where a root's origin lies on its unit's absolute axis (a manifest
     # root's ``offset``), or None. Stored and written back only.
     _root_offset: Coordinate | None = None
@@ -1707,16 +1693,16 @@ class Timeline(
     def _to_timeline_object(
         self,
         *,
-        minimal: bool,
         events: bool,
         external_references: bool,
         offset: Coordinate | None,
         entries: MeasureMapEntries,
     ) -> dict[str, Any]:
-        """Write the timeline object: the timeline's own JSON object.
+        """Write the timeline object, the timeline's own JSON object, in the complete form.
+
+        The manifest's writer puts the manifest in the form asked for.
 
         Args:
-            minimal: Leave out every key at its default value.
             events: Write the event rows.
             external_references: Write the external reference table.
             offset: The ``offset`` to write (a child's placement on its
@@ -1726,7 +1712,6 @@ class Timeline(
         """
         children = [
             child._to_timeline_object(
-                minimal=minimal,
                 events=events,
                 external_references=external_references,
                 offset=self._child_offsets[child_id],
@@ -1739,12 +1724,12 @@ class Timeline(
         ]
         entries.own = self.measure_map
         conversion_maps = [
-            cmap._to_manifest(minimal=minimal, entries=entries)
+            cmap._to_manifest(minimal=False, entries=entries)
             for cmap in sorted(self._all_conversion_maps(), key=lambda cmap: cmap.id)
         ]
         # A jump_to written where a jump lands on none takes a minted id,
         # which no element written later may take.
-        flow_control = self._flow_control.to_dict(minimal=minimal, taken=entries.taken)
+        flow_control = self._flow_control.to_dict(minimal=False, taken=entries.taken)
         for element in flow_control:
             entries.taken.setdefault(
                 element["id"],
@@ -1774,7 +1759,7 @@ class Timeline(
                         region,
                         start=express_scalar_as(region.start, self._number_type),
                         end=express_scalar_as(region.end, self._number_type),
-                    ).to_dict(minimal=minimal)
+                    ).to_dict(minimal=False)
                     for region in sorted(
                         self._regions.values(),
                         key=lambda region: (
@@ -1785,18 +1770,14 @@ class Timeline(
                     )
                 ],
                 "flow_control": flow_control,
-                "links": [link.to_dict(minimal=minimal) for link in self._links],
+                "links": [link.to_dict(minimal=False) for link in self._links],
             }
         )
         if events:
             fields["events"] = self._event_rows_to_json()
         if external_references:
             fields["external_references"] = self._external_references.to_pylist()
-        defaults = {
-            **self._dict_defaults,
-            "number_type": str(self._unit.default_number_type),
-        }
-        return self._dict_form(fields, minimal=minimal, defaults=defaults)
+        return self._dict_form(fields, minimal=False)
 
     def _event_rows_to_json(self) -> list[dict[str, Any]]:
         """Return the event rows with their coordinates as JSON numbers."""

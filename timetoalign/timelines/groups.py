@@ -405,7 +405,7 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
     """
 
     _dict_keys: ClassVar[tuple[str, ...]] = ("id", "name", "meta", "members")
-    _dict_defaults: ClassVar[Mapping[str, Any]] = {"name": None, "meta": {}}
+    _manifest_path: ClassVar[tuple[str, ...]] = ("groups",)
     _scope_kind: ClassVar[str] = "group"
     _writes_minted_id: ClassVar[bool] = True
 

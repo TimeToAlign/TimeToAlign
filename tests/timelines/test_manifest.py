@@ -14,9 +14,11 @@ from fractions import Fraction
 from typing import Any
 
 import pytest
+from timetoshare import minimal
 
 from timetoalign.alignment import AlignmentBundle
 from timetoalign.core import Coordinate, NumberType, SupportPolicy, TimeUnit
+from timetoalign.maps import LinearMap
 from timetoalign.timelines import Timeline, TimelineGroup
 from timetoalign.timelines.manifest import TIMETOSHARE_VERSION
 from timetoalign.timelines.types import (
@@ -264,6 +266,58 @@ def test_every_element_writer_writes_the_minimal_form_by_default(kind: str) -> N
 
     assert element.to_dict() == minimal
     assert element.to_dict(minimal=False) == complete
+
+
+def test_the_minimal_form_compares_a_default_by_value() -> None:
+    timeline = ContinuousPhysicalTimeline(length=10.0, uid="take")
+    timeline.add_conversion_map(
+        LinearMap(
+            scalar=2.0,
+            offset=0.0,
+            source_unit="seconds",
+            target_unit="seconds",
+            uid="double",
+        )
+    )
+    written = timeline.to_dict()
+    complete = timeline.to_dict(minimal=False)
+    complete_map = {
+        "type": "LinearMap",
+        "id": "double",
+        "name": None,
+        "source_unit": "seconds",
+        "target_unit": "seconds",
+        "scalar": 2.0,
+        "offset": 0.0,
+    }
+    minimal_map = {
+        "type": "LinearMap",
+        "id": "double",
+        "source_unit": "seconds",
+        "target_unit": "seconds",
+        "scalar": 2.0,
+    }
+
+    assert written == {
+        "timetoshare": TIMETOSHARE_VERSION,
+        "timelines": [
+            {
+                "id": "take",
+                "unit": "seconds",
+                "length": 10.0,
+                "conversion_maps": [minimal_map],
+            }
+        ],
+    }
+    assert json.dumps(written) == json.dumps(minimal(complete))
+    assert json.dumps(complete["timelines"][0]["conversion_maps"]) == json.dumps(
+        [complete_map]
+    )
+    assert timeline.get_conversion_map("double").to_dict() == minimal_map
+    reread = Timeline.from_dict(written).to_dict(minimal=False)
+    assert json.dumps(reread["timelines"][0]["conversion_maps"]) == json.dumps(
+        [{**complete_map, "offset": 0}]
+    )
 
 
 def test_a_reader_supplies_every_default() -> None:

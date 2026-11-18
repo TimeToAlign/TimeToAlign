@@ -472,6 +472,17 @@ the library writes back against the same literal text.
   registry — equals that element in the minimal literal, and
   `to_dict(minimal=False)` equals it in the complete literal. The tests that
   pin a complete form ask for it explicitly.
+- **The minimal form is the package's.** A default compares by value, as
+  `timetoshare.minimal` compares it, never by type: a seconds timeline
+  holding a float `LinearMap` of scalar `2.0` and offset `0.0` writes the
+  map without `offset` in the minimal form, through the timeline's
+  `to_dict()` and the map's own, and with `"offset": 0.0` in the complete
+  form; the timeline's minimal form equals `minimal` of its complete form.
+  The map's offset is `0.0` and its default `0`, so a writer comparing type
+  and value keeps the key the package leaves out. The minimal form read
+  back supplies the default as the package does: its complete form writes
+  `"offset": 0`, so this map's complete form survives the minimal one in
+  value, not in spelling.
 
 ### Manifest files (`test_manifest_files.py`)
 

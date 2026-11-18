@@ -56,14 +56,12 @@ if TYPE_CHECKING:
 TIMETOSHARE_VERSION = "0.2.0"
 """The TimeToShare version the library reads and writes."""
 
-_STYLING_DEFAULTS: dict[str, Any] = {"styles": {}, "statements": [], "timestamps": []}
+_STYLING_DEFAULTS: dict[str, Any] = {
+    key: value
+    for key, value in timetoshare.DEFAULTS["graphical"].items()
+    if key != "order"
+}
 """The members of ``graphical`` other than ``order``, with their defaults."""
-
-_TIMESTAMP_DISPLAY = ("wedge", "name", "id", "coordinate", "cross_section")
-"""The words of a named timestamp's ``display``, in canonical order."""
-
-_DEFAULT_DISPLAY = ["wedge", "name", "cross_section"]
-"""The ``display`` of a named timestamp that states none."""
 
 
 # region Bare values on a timeline's own axis
@@ -417,9 +415,7 @@ def _part_targets(timelines: list[dict[str, Any]]) -> set[str]:
     return found
 
 
-def _leave_out_unwritten(
-    fields: dict[str, Any], roots: list[Timeline], *, minimal: bool
-) -> None:
+def _leave_out_unwritten(fields: dict[str, Any], roots: list[Timeline]) -> None:
     """Drop from the part slots written the elements the write leaves out.
 
     A timeline or a group written on its own writes part of the manifests
@@ -453,7 +449,7 @@ def _leave_out_unwritten(
             link = Link.from_dict(data)
             pruned = _renamed_parts(link, renamed)
             if pruned is not link:
-                links[index] = pruned.to_dict(minimal=minimal)
+                links[index] = pruned.to_dict(minimal=False)
 
 
 # endregion
@@ -506,14 +502,6 @@ class Manifest(_OpenObject):
         "links",
         "graphical",
     )
-    _dict_defaults: ClassVar[Mapping[str, Any]] = {
-        "name": None,
-        "meta": {},
-        "groups": [],
-        "measure_maps": [],
-        "schemes": [],
-        "links": [],
-    }
 
     id: str | None = None
     name: str | None = None
@@ -683,8 +671,11 @@ class Manifest(_OpenObject):
         the manifest's own, and every scheme a link of a timeline written
         names that the timeline knows (:func:`schemes_named`). A part slot
         naming an element the manifest leaves out leaves it out too
-        (:func:`_leave_out_unwritten`). The manifest written is checked as a
-        manifest read is (:func:`check_description`).
+        (:func:`_leave_out_unwritten`). The form is TimeToShare's: the
+        manifest is built whole and put in its form by
+        :func:`timetoshare.minimal` or :func:`timetoshare.complete`. The
+        manifest written is checked as a manifest read is
+        (:func:`check_description`).
 
         Args:
             roots: The root timelines.
@@ -740,7 +731,6 @@ class Manifest(_OpenObject):
         )
         timelines = [
             root._to_timeline_object(
-                minimal=minimal,
                 events=events,
                 external_references=external_references,
                 offset=root._root_offset,
@@ -758,14 +748,14 @@ class Manifest(_OpenObject):
             meta=copy.deepcopy(self.meta),
             timelines=timelines,
             groups=list(groups),
-            measure_maps=entries.write(minimal=minimal),
+            measure_maps=entries.write(),
             schemes=[
-                scheme.to_dict(minimal=minimal)
+                scheme.to_dict(minimal=False)
                 for scheme in sorted(schemes, key=lambda scheme: scheme.id)
             ],
-            links=[link.to_dict(minimal=minimal) for link in self.links],
+            links=[link.to_dict(minimal=False) for link in self.links],
         )
-        _leave_out_unwritten(fields, roots, minimal=minimal)
+        _leave_out_unwritten(fields, roots)
         written = _timeline_ids(timelines)
         band_orders = {
             key: copy.deepcopy(entry)
@@ -774,26 +764,9 @@ class Manifest(_OpenObject):
         }
         order = dict(sorted({**band_orders, **(order or {})}.items()))
         if order or self.styling or self.has_graphical:
-            graphical: dict[str, Any] = {"order": order}
-            for key, default in _STYLING_DEFAULTS.items():
-                value = self.styling.get(key, default)
-                if key == "timestamps" and isinstance(value, list):
-                    value = [
-                        _written_timestamp(entry, minimal=minimal) for entry in value
-                    ]
-                if not (minimal and value == default):
-                    graphical[key] = copy.deepcopy(value)
-            if minimal and not order:
-                del graphical["order"]
-            graphical.update(
-                {
-                    key: copy.deepcopy(value)
-                    for key, value in self.styling.items()
-                    if key not in _STYLING_DEFAULTS
-                }
-            )
-            fields["graphical"] = graphical
-        result = self._dict_form(fields, minimal=minimal)
+            fields["graphical"] = {"order": order, **copy.deepcopy(self.styling)}
+        built = self._dict_form(fields, minimal=False)
+        result = timetoshare.minimal(built) if minimal else timetoshare.complete(built)
         check_description(result)
         return result
 
@@ -873,10 +846,10 @@ class MeasureMapEntries:
 
         return self.id_of(MeasureMap.from_rows(rows))
 
-    def write(self, *, minimal: bool) -> list[dict[str, Any]]:
-        """Return the ``measure_maps`` entries, sorted by id."""
+    def write(self) -> list[dict[str, Any]]:
+        """Return the ``measure_maps`` entries, sorted by id, in the complete form."""
         return [
-            {**self._entries[entry_id].to_dict(minimal=minimal), "id": entry_id}
+            {**self._entries[entry_id].to_dict(minimal=False), "id": entry_id}
             for entry_id in sorted(self._entries)
         ]
 
@@ -901,39 +874,6 @@ class MeasureMapEntries:
         self._entries.setdefault(entry_id, measure_map)
         self._written[id(measure_map)] = (measure_map, entry_id)
         return entry_id
-
-
-def _display_key(word: Any) -> tuple[int, int, str]:
-    """Order the words of ``display``: the known ones canonically, then others.
-
-    A string the format does not know follows them by code point, and any
-    other value follows last in its given order.
-    """
-    if word in _TIMESTAMP_DISPLAY:
-        return (0, _TIMESTAMP_DISPLAY.index(word), "")
-    if isinstance(word, str):
-        return (1, 0, word)
-    return (2, 0, "")
-
-
-def _written_timestamp(entry: Any, *, minimal: bool) -> Any:
-    """Return a named timestamp as written: its ``display`` in canonical order.
-
-    The complete form states the default ``display`` where the timestamp
-    states none, and the minimal form leaves the default out. Every other
-    member is copied as given; the library reads none of them.
-    """
-    if not isinstance(entry, dict):
-        return copy.deepcopy(entry)
-    written = copy.deepcopy(entry)
-    display = written.get("display", _DEFAULT_DISPLAY)
-    if isinstance(display, list):
-        display = sorted(display, key=_display_key)
-    if minimal and display == _DEFAULT_DISPLAY:
-        written.pop("display", None)
-    else:
-        written["display"] = copy.deepcopy(display)
-    return written
 
 
 def _same_entry(left: MeasureMap, right: MeasureMap) -> bool:

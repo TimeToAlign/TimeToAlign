@@ -139,7 +139,7 @@ class MeasureMap(_OpenObject):
     """
 
     _dict_keys: ClassVar[tuple[str, ...]] = ("id", "name", "meta", "rows")
-    _dict_defaults: ClassVar[Mapping[str, Any]] = {"name": None, "meta": {}}
+    _manifest_path: ClassVar[tuple[str, ...]] = ("measure_maps",)
 
     _unknown_row_keys: Mapping[str, Mapping[str, Any]] = MappingProxyType({})
     # The identity of a map that never went through __init__ (a section's

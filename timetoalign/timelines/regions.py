@@ -91,11 +91,7 @@ end=Coordinate(Fraction(32, 1), quarters))
         "meta",
         "links",
     )
-    _dict_defaults: ClassVar[Mapping[str, Any]] = {
-        "name": None,
-        "meta": {},
-        "links": [],
-    }
+    _manifest_path: ClassVar[tuple[str, ...]] = ("timelines", "regions")
 
     start: Coordinate
     end: Coordinate
@@ -293,7 +289,7 @@ end=Coordinate(Fraction(32, 1), quarters))
             return self
         return replace(self, links=links)
 
-    def _dict_fields(self, *, minimal: bool) -> dict[str, Any]:
+    def _dict_fields(self) -> dict[str, Any]:
         """Return the region's keys; ``name``, ``meta`` and ``links`` are optional."""
         return {
             "id": self.id,
@@ -301,7 +297,7 @@ end=Coordinate(Fraction(32, 1), quarters))
             "start": axis_value_to_json(self.start),
             "end": axis_value_to_json(self.end),
             "meta": deepcopy(self.meta),
-            "links": [link.to_dict(minimal=minimal) for link in self.links],
+            "links": [link.to_dict(minimal=False) for link in self.links],
         }
 
     def __repr__(self) -> str:

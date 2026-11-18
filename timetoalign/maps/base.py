@@ -192,6 +192,7 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
 
     # The one optional key every map's dictionary form shares.
     _dict_defaults: ClassVar[dict[str, Any]] = {"name": None}
+    _manifest_path: ClassVar[tuple[str, ...]] = ("timelines", "conversion_maps")
 
     # Class-level attributes that subclasses may override
     _default_source_unit: TimeUnit | None = None

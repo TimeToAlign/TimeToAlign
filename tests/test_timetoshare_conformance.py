@@ -14,8 +14,6 @@ from typing import Any
 import numpy as np
 import pytest
 from timetoshare import (
-    DEFAULTS,
-    TIMESTAMP_DISPLAY,
     SchemaValidationError,
     canonical_order,
     complete,
@@ -86,7 +84,6 @@ from timetoalign.maps import (
 from timetoalign.testdata import ensure_data
 from timetoalign.timelines import MeasureMap
 from timetoalign.timelines.flowcontrol import Break, Jump, Marker
-from timetoalign.timelines.manifest import _DEFAULT_DISPLAY, _TIMESTAMP_DISPLAY
 
 SCORE = ensure_data("score")
 MIDI = ensure_data("midi")
@@ -490,11 +487,18 @@ def test_fixture_and_twin_obey_the_laws(fixture: str) -> None:
 
 @pytest.mark.parametrize("fixture", FIXTURES)
 def test_a_bundle_reads_every_fixture(fixture: str) -> None:
-    """``AlignmentBundle.from_dict`` reads any manifest and writes it back."""
+    """``AlignmentBundle.from_dict`` reads any manifest and writes it back.
+
+    The bundle's minimal form is the package's ``minimal`` of its complete
+    form, whichever form was read.
+    """
     for path, form in ((fixture, False), (_twin(fixture), True)):
         text = (FIXTURE_ROOT / path).read_text(encoding="utf-8")
         bundle = AlignmentBundle.from_dict(loads(text))
         assert dumps(bundle.to_dict(minimal=form)) == text
+        written, written_complete = bundle.to_dict(), bundle.to_dict(minimal=False)
+        assert written == minimal(written_complete)
+        assert dumps(written) == dumps(minimal(written_complete))
 
 
 STATEMENT_RULES = {
@@ -822,9 +826,3 @@ def test_the_unit_table_is_the_package_s() -> None:
     assert {
         unit.value: unit.default_number_type.name for unit in TimeUnit
     } == UNIT_NUMBER_TYPES
-
-
-def test_the_display_words_and_default_are_the_package_s() -> None:
-    """The library's own copy of the display words and default is the package's."""
-    assert _TIMESTAMP_DISPLAY == TIMESTAMP_DISPLAY
-    assert _DEFAULT_DISPLAY == DEFAULTS["timestamp"]["display"]

@@ -58,7 +58,10 @@ change. For every pair:
   must write children, conversion maps, regions, flow control, timelines,
   groups and members in canonical order without help;
 - `AlignmentBundle.from_dict`, which reads every manifest, reads each
-  fixture and each twin and writes it back byte for byte in its own form.
+  fixture and each twin and writes it back byte for byte in its own form,
+  and the bundle's minimal form is `minimal` of its complete form, as text
+  and as a value: the library's minimal form is the package's, whichever
+  form was read.
 
 The fixtures are written by timetoalign through the fixture script, so a
 fixture that the library cannot reproduce from itself would fail here;
@@ -176,15 +179,6 @@ followed by `b` at 61 in a line of length 60 is refused at `a`, `ends at
 timeline of length 9007199254740993 writes `"length": 9007199254740993` in
 a manifest `validate` accepts, so integers above the floating-point safe
 range survive.
-
-**The display words, restated.** The library writes a named timestamp's
-`display` in canonical order and states the default `display` in the
-complete form, so it keeps its own copy of the display words and of that
-default. Its display
-words, in canonical order, equal the package's `TIMESTAMP_DISPLAY`, and its
-default equals the package's `DEFAULTS["timestamp"]["display"]`, both
-compared whole and in order: a word added to the format, an order changed
-or a new default fails here before the library writes a stale form.
 
 **Manifests with links.** The catalogue above holds one bundle carrying the
 description layer at every place the format admits it: a scheme and a

@@ -23,6 +23,8 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any, ClassVar
 
+import timetoshare
+
 from .enums import TimeUnit
 
 
@@ -426,13 +428,13 @@ class _OpenObject:
     reader keeps them on the object read from the JSON object they were
     found in (:meth:`_keep_unknown_keys`), and the writer writes them back
     after its own keys (:meth:`_dict_form`). A subclass lists its known keys
-    in ``_dict_keys`` and the value each optional key has when absent in
-    ``_dict_defaults``: the complete form writes every known key, the
-    minimal form leaves out each key whose value is its default.
+    in ``_dict_keys`` and names in ``_manifest_path`` where its JSON object
+    lies in a manifest. The writer builds the complete form, every known key
+    written; the minimal form is TimeToShare's (:func:`_minimal_at`).
     """
 
     _dict_keys: ClassVar[tuple[str, ...]] = ()
-    _dict_defaults: ClassVar[Mapping[str, Any]] = {}
+    _manifest_path: ClassVar[tuple[str, ...]] = ()
     _unknown_keys: Mapping[str, Any] = MappingProxyType({})
 
     def _keep_unknown_keys(
@@ -454,29 +456,31 @@ class _OpenObject:
     ) -> dict[str, Any]:
         """Return *fields*, then the unknown keys kept.
 
-        With *minimal*, a field whose value equals its default (in
-        *defaults*, else ``_dict_defaults``) is left out.
+        *fields* is the complete form. With *minimal*, the object is written
+        in TimeToShare's minimal form at its ``_manifest_path``. *defaults*
+        is ignored: the defaults are TimeToShare's.
         """
-        defaults = self._dict_defaults if defaults is None else defaults
-        written = {
-            key: value
-            for key, value in fields.items()
-            if not (minimal and key in defaults and _same_json(value, defaults[key]))
-        }
+        del defaults
+        written = dict(fields)
         written.update(deepcopy(dict(self._unknown_keys)))
-        return written
+        return _minimal_at(written, self._manifest_path) if minimal else written
 
 
-def _same_json(value: Any, default: Any) -> bool:
-    """Whether two JSON values are equal in type and value.
+def _minimal_at(value: dict[str, Any], path: tuple[str, ...]) -> dict[str, Any]:
+    """Return *value*, a JSON object at *path* of a manifest, in its minimal form.
 
-    A boolean is never equal to a number, nor an integer to a float: the
-    default ``1`` of a key is not ``1.0``, which a reader would read as a
-    float and compute with as one.
+    The minimal form is the one :func:`timetoshare.minimal` writes: the
+    object is placed as the first entry of each array *path* names, from a
+    bare manifest down (``()`` is the manifest itself), and taken back out.
+    A timeline holding it states no unit, so no own-axis value is respelled.
     """
-    if isinstance(value, (bool, int, float)) or isinstance(default, (bool, int, float)):
-        return type(value) is type(default) and value == default
-    return value == default
+    holder: Any = value
+    for key in reversed(path):
+        holder = {key: [holder]}
+    result = timetoshare.minimal(holder)
+    for key in path:
+        result = result[key][0]
+    return result
 
 
 @dataclass(frozen=True)
@@ -514,10 +518,10 @@ class _IdentifiedElement(_OpenObject):
                 default value left out, in nested objects too. With False,
                 the complete form: every key written, its default included.
         """
-        return self._dict_form(self._dict_fields(minimal=minimal), minimal=minimal)
+        return self._dict_form(self._dict_fields(), minimal=minimal)
 
-    def _dict_fields(self, *, minimal: bool) -> dict[str, Any]:
-        """Return the element's keys in written order, nested objects in *minimal* form."""
+    def _dict_fields(self) -> dict[str, Any]:
+        """Return the element's keys in written order, in the complete form."""
         raise NotImplementedError
 
 

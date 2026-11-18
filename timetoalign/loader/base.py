@@ -1157,7 +1157,7 @@ class AlignmentLoader(Loader["AlignmentStore"]):
     AlignmentLoader is for formats that encode aligned multimodal data:
     - TiLiA JSON -> hierarchical annotations with alignments
     - Match files -> score-to-performance alignment
-    - MPM, parangonada, Listen Here!, and PerformancePrecision exports
+    - MPM, parangonada, Listen Here!, MAPS, and PerformancePrecision exports
 
     Subclasses must implement:
     - _load_source(): Parse a single source into AlignmentStore

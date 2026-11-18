@@ -18,6 +18,7 @@ Loader Taxonomy:
 
     **AlignmentLoader** - Returns AlignmentStore (events + C-maps + matches):
         - MatchfileLoader: Score-to-performance alignment
+        - MapsLoader: MAPS score-to-performance alignment (MatchClaims)
         - TiliaJsonLoader: TiLiA hierarchical annotations
         - MpmLoader, ParangonadaLoader, PerformancePrecisionLoader,
           ListenHereLoader: multimodal alignment exports
@@ -65,7 +66,7 @@ from timetoalign.storage.schema import (
     parse_table_metadata,
 )
 
-from .alignment import MatchfileLoader, TiliaDictStore, TiliaJsonLoader
+from .alignment import MapsLoader, MatchfileLoader, TiliaDictStore, TiliaJsonLoader
 from .base import AlignmentLoader, EventLoader, Loader, ManifestData, ManifestLoader
 from .physical import (
     AudioInfo,
@@ -84,6 +85,7 @@ __all__ = [
     "ManifestLoader",
     "AlignmentLoader",
     # Alignment loaders
+    "MapsLoader",
     "MatchfileLoader",
     "TiliaDictStore",
     "TiliaJsonLoader",

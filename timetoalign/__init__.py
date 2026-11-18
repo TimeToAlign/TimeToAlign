@@ -196,6 +196,7 @@ _DEFERRED_EXPORTS = {
         "PerformancePrecisionLoader",
     ),
     "ListenHereLoader": ("timetoalign.loader.alignment", "ListenHereLoader"),
+    "MapsLoader": ("timetoalign.loader.alignment", "MapsLoader"),
     "GraphicalLoader": ("timetoalign.loader.graphical", "GraphicalLoader"),
     "ATONLoader": ("timetoalign.loader.graphical.aton", "ATONLoader"),
     "IIIFManifestLoader": (
@@ -359,6 +360,7 @@ __all__ = [
     "MpmLoader",
     "PerformancePrecisionLoader",
     "ListenHereLoader",
+    "MapsLoader",
     "GraphicalLoader",
     "ATONLoader",
     "IIIFManifestLoader",

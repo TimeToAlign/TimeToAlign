@@ -1,8 +1,8 @@
 # Alignment-loader tests
 
-This directory holds the corpus-driven tests for loaders in
-`timetoalign.loader.alignment` that need their own fixtures and their own
-validation write-up.  The older alignment-loader tests still live one level up
+This directory holds the tests for loaders in `timetoalign.loader.alignment`
+that need their own fixtures and their own validation write-up, driven by a
+corpus or by small files the tests write themselves.  The older alignment-loader tests still live one level up
 in `tests/loader/` (`test_matchfile_loader.py`, `test_listen_here_loader.py`,
 …); see `tests/loader/README.md` for those.
 
@@ -15,6 +15,7 @@ module level so the corpus is materialised once, before collection.
 |------|-------------------|
 | `test_ieee1599.py` | `Ieee1599Loader` against all six IEEE 1599 specimens — spine delta accumulation, the four projection layers, verbatim media references, and the spine-hub claim topology. Zero-tolerance counts and coordinates (see below). |
 | `test_ieee1599_structural.py` | The `<structural>` layer of the gymnopédie specimen — the segment ↔ Petri-net-place resolution and the `external_references` rows it produces on the spine. Exact row counts and exact resolutions (see below). |
+| `test_trompa_maps.py` | `MapsLoader` on a MEI score and a MAPS file the tests write — one claim per listed `xml:id`, both sides of every claim, retrieval through a bundle on a samples and on a seconds performance, and every refusal (see below). |
 
 Fast lane: gymnopédie, animals, khomus.  The three large specimens
 (pazzariello, serie, bach) carry `@pytest.mark.slow` and run under
@@ -353,3 +354,100 @@ returns `None`, and `get_field(MatchClaim)` follows the selector pattern: both
 `MatchClaim` and `MatchClaimField` resolve to the document's single claim
 field, anything else raises `TypeError`, and calling it before `load()` raises
 `RuntimeError`.
+
+## `MapsLoader` validation logic
+
+No corpus: the tests write a two-measure MEI score and the MAPS JSON for it
+into `tmp_path`, so every expected value below is read off the fixture by hand.
+The score is loaded with `VerovioLoader` (the test module is skipped without
+`verovio`).
+
+### The score
+
+Two staves, one 9/8 measure followed by a second, so a measure lasts 9/2
+quarters and onsets fall on halves of a quarter: what proves that the score
+side is the score's own exact position, not a float. Attacks, in quarters:
+
+| quarter | staff 1 | staff 2 |
+|---|---|---|
+| 1/2 | chord `ch1a`, `ch1b`, `ch1c` | `b1` |
+| 3/2 | `n2` | `b2` |
+| 3 | `n3` (tie start) | `b3` |
+| 9/2 | `n4` (tie end) | `b4` |
+| 6 | `n5` | |
+| 13/2 | `n6` | |
+| 15/2 | `n7` | `b5` |
+
+Both staves open with an eighth rest, so the first attack is at 1/2 and a
+quarter before it exists on the score. `n4` continues `n3` and is not an
+attack: the MAPS file has no row for it, and nothing in the loader needs one.
+
+### The MAPS file
+
+Seven rows, one per attack time, every onset a dyadic number of seconds whose
+product with 44100 is a whole sample:
+
+| obs_num | obs_mean_onset (s) | xml_id | sample at 44100 Hz |
+|---|---|---|---|
+| 1 | 0.5 | `ch1a`, `ch1b`, `ch1c`, `b1` | 22050 |
+| 2 | 1.25 | `n2`, `b2` | 55125 |
+| 3 | 2.0 | `n3`, `b3` | 88200 |
+| 4 | 3.5 | `b4` | 154350 |
+| 5 | 4.25 | `n5` | 187425 |
+| 6 | 4.5 | `n6` | 198450 |
+| 7 | 5 | `n7`, `b5` | 220500 |
+
+Row 7's onset is written as the JSON integer `5`, the one way a JSON number
+can differ from a float, to show it is accepted and read as 5.0 seconds.
+
+### What is asserted, and why it proves the loader
+
+* **Rows verbatim.** `rows` holds the seven dicts as the file states them, and
+  `len(loader) == 7`.
+* **One claim per listed id.** 4 + 2 + 2 + 1 + 1 + 1 + 2 = 13 claims, in row
+  order and within a row in the file's id order. A loader making one claim per
+  row would give 7; one per chord or per distinct score position would give 7
+  as well, so the count alone tells them apart.
+* **Both sides of every claim.** For each claim: the score timeline's id and
+  the event's `xml:id` as `event_a_id`; the score coordinate, a `Fraction` in
+  quarters, equal to the table above (`Fraction(1, 2)` for all four ids of
+  row 1, `Fraction(15, 2)` for row 7); the performance timeline's id and the
+  performance coordinate as the file states it, in **seconds**, a float equal
+  to the row's onset. On the samples timeline the claim still says seconds:
+  the loader does not convert, the bundle does.
+* **Through the bundle, on a samples timeline** (`DiscretePhysicalTimeline`
+  in samples with `SamplesToSeconds(44100)`): `get_matchstamp_at(q)` on the
+  score gives, on the performance, the integer sample of the table for each
+  anchor quarter, with `is_interpolated` false. At quarter 15/4, halfway
+  between the anchors at 3 (88200) and 9/2 (154350), the WarpMap gives 121275,
+  with `is_interpolated` true. These values exist only if the bundle converted
+  the seconds of the claims through the timeline's C-Map: the claims never
+  name a sample.
+* **Through the bundle, on a seconds timeline**: the same queries give the
+  onsets themselves (0.5 … 5.0) and 2.75 halfway.
+* **Before the first anchor**: quarter 1/4 lies on the score but before the
+  first anchor (1/2); under the bundle's default `omit` policy the stamp holds
+  the score alone, so the performance does not resolve.
+
+### Refusals
+
+Each refusal raises before anything is created; each test changes one thing
+in an otherwise valid fixture, so the refusal can only come from that change.
+
+* **An id not on the score**: a row naming `zz9` → `KeyError` naming the id
+  and its `obs_num`.
+* **No path to seconds**: a samples timeline without a C-Map, and a quarters
+  timeline without one → `ValueError`.
+* **Malformed rows** (`load`): `obs_num` not consecutive from 1 (`1, 2, 4`),
+  a missing key, an onset that is a string or a boolean, an empty `xml_id`
+  list or an empty id, a top level that is not a list → `ValueError` naming
+  the row.
+* **An id in two rows** → `ValueError`: two performance times for one note
+  would give two contradicting claims for one score event.
+* **Negative onsets and `trompa…` ids** → `ValueError` at `load`, naming the
+  rows. trompa-align can write rows of both kinds, and neither states a score
+  note at a time of the recording: a negative onset is no time of it, and an
+  id beginning `trompa` is not an `xml:id` of the score. The loader refuses
+  them rather than skip them, so a file is never read as more complete than
+  it is; a file holding them is read once they are removed.
+* **A second source** → `ValueError`: one MAPS file aligns one performance.

@@ -17,6 +17,9 @@ Loaders:
     MpmLoader: MPM-Toolbox MSM+MPM+MPR triples (notated score + modelled
         performance markup + observed alignment) ingested as one
         multimodal AlignmentBundle.
+    MapsLoader: MAPS score-to-performance alignment JSON (TROMPA's
+        trompa-align), stated as MatchClaims between a score timeline keyed
+        by MEI ``xml:id`` and a performance timeline.
     Ieee1599Loader: IEEE 1599 XML documents (spine + logic / notational /
         audio layers) ingested as one multimodal AlignmentBundle in which
         every layer is aligned to the spine.
@@ -34,10 +37,12 @@ from .mpm import MpmLoader
 from .parangonada import ParangonadaLoader
 from .performance_precision import PerformancePrecisionLoader
 from .tilia import TiliaDictStore, TiliaJsonLoader
+from .trompa_maps import MapsLoader
 
 __all__ = [
     "Ieee1599Loader",
     "ListenHereLoader",
+    "MapsLoader",
     "MatchfileLoader",
     "MpmLoader",
     "ParangonadaLoader",

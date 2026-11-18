@@ -869,16 +869,15 @@ class VerovioLoader(ScoreLoader):
         minted ids, so no movement is minted the root's id (``score:clt_2``
         given, the movements are ``score:clt_3``, …).
         """
-        from timetoalign.timelines.factory import _flag_minted, _mint_timeline_id
+        from timetoalign.timelines.factory import (
+            _flag_minted,
+            _mint_timeline_id,
+            _root_timeline_id,
+        )
 
         rendering = self._require_rendering()
         unit = TimeUnit.quarters if role == "score" else TimeUnit.seconds
-        minted = uid is None
-        root_id = _mint_timeline_id(self, unit, role=role)
-        if minted:
-            uid = root_id
-        else:
-            self._minted_timeline_ids.add(uid.rpartition(":")[2])
+        uid, minted = _root_timeline_id(self, unit, uid, role=role)
         by_movement: dict[int | None, list[dict[str, Any]]] = {}
         for row in rendering.rows:
             by_movement.setdefault(rendering.movement[row["id"]], []).append(row)

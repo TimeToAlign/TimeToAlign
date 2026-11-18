@@ -361,15 +361,14 @@ class ScoreWarpLoader(Loader[_ScoreWarpAxis]):
             ValueError: If the labelled ticks do not lie on one line, as the
                 calibration check states.
         """
-        from timetoalign.timelines.factory import _flag_minted, _mint_timeline_id
+        from timetoalign.timelines.factory import (
+            _flag_minted,
+            _mint_timeline_id,
+            _root_timeline_id,
+        )
 
         axis = self._require_axis()
-        minted = uid is None
-        root_id = _mint_timeline_id(self, TimeUnit.css_pixels)
-        if minted:
-            uid = root_id
-        else:
-            self._minted_timeline_ids.add(uid)
+        uid, minted = _root_timeline_id(self, TimeUnit.css_pixels, uid)
         timeline = _flag_minted(
             ContinuousGraphicalTimeline(
                 length=axis.extent,

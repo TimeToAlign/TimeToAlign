@@ -47,9 +47,10 @@ def mei(tmp_path: Path) -> Path:
     [
         (None, "score:clt_1", ["score:clt_2", "score:clt_3"]),
         ("score:clt_2", "score:clt_2", ["score:clt_3", "score:clt_4"]),
+        ("perf:clt_2", "perf:clt_2", ["score:clt_3", "score:clt_4"]),
         ("score", "score", ["score:clt_2", "score:clt_3"]),
     ],
-    ids=["minted", "given-minted-shape", "given-other-shape"],
+    ids=["minted", "given-minted-shape", "given-other-role", "given-other-shape"],
 )
 def test_movements_never_take_the_root_id(
     mei: Path, uid: str | None, root: str, movements: list[str]

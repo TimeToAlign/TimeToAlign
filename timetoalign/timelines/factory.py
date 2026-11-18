@@ -48,6 +48,27 @@ def _mint_timeline_id(owner: object, unit: TimeUnit, *, role: str | None = None)
     return timeline_id if role is None else f"{role}:{timeline_id}"
 
 
+def _root_timeline_id(
+    owner: object, unit: TimeUnit, uid: str | None, *, role: str | None = None
+) -> tuple[str, bool]:
+    """Return the id of a tree's root and whether it was minted.
+
+    The root's number is drawn from *owner*'s minted ids even when *uid*
+    names the root, so the timelines minted after it number on from it. A
+    given *uid* also takes its own number from those ids, by its part after
+    the last ``:``: the number counts every timeline of the prefix whatever
+    its role (:func:`_mint_timeline_id`), so ``score:clt_2``, ``perf:clt_2``
+    and ``clt_2`` all hold ``clt_2``, and no timeline of the tree is minted
+    the root's id. A given id of another shape reserves a number nothing is
+    minted.
+    """
+    root_id = _mint_timeline_id(owner, unit, role=role)
+    if uid is None:
+        return root_id, True
+    getattr(owner, "_minted_timeline_ids").add(uid.rpartition(":")[2])
+    return uid, False
+
+
 def _flag_minted(timeline: "Timeline", minted: bool) -> "Timeline":
     """Record that the library minted *timeline*'s id, and return it.
 

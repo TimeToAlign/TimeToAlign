@@ -558,6 +558,12 @@ from them, so:
   movements `score:clt_3`, `score:clt_4`. Without the reservation the first
   movement is minted `score:clt_2`, collides with the root and is re-minted
   on joining as `clt_1`, losing its role; the exact list tells the two apart;
+* a given id led by another role (`uid="perf:clt_2"`) reserves its number
+  too, since the number counts every timeline of the prefix whatever its
+  role: the movements are `score:clt_3`, `score:clt_4`. The rule strips any
+  role, not only the loader's own; it is the one rule `ScoreWarpLoader`
+  follows as well (`tests/loader/README.md`, "`ScoreWarpLoader` validation
+  logic");
 * a given id of another shape (`uid="score"`) reserves nothing a movement
   could take: the movements stay `score:clt_2`, `score:clt_3`;
 * `create_physical_timeline(uid="rendered:cpt_2")` gives movements

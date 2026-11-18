@@ -146,6 +146,9 @@ Tests resolve corpus paths via ``timetoalign.testdata.ensure_data("<corpus>")``
 (see ``tests/data/README.md``).  Hardcoded relative ``Path("tests/data/...")``
 constants are forbidden — they break under ``jupytext --execute`` and in CI
 container layouts.  See ``tests/data/README.md`` for the binding contract.
+``conftest.py`` resolves ``VIENNA_DATA_DIR`` this way for the tests at this
+package's top level (``test_matchfile_loader.py``), so they read the corpus
+wherever ``TTA_TESTDATA_DIR`` places it, a worktree included.
 
 ## `PerformancePrecisionLoader` validation logic
 
@@ -981,6 +984,13 @@ cases are mutated copies of the same text.
   (``drawing``, after the first drawing) is kept while the loader still draws
   the root's number, ``cgt_3``, so its child is ``cgt_4``, as
   ``VerovioLoader`` does for a given root.
+* **A given root id of the minted shape reserves its number, with or without
+  a role.** On a fresh loader, ``uid="cgt_2"`` and ``uid="drawing:cgt_2"``
+  both give the child ``cgt_3``: the root draws ``cgt_1``, the given id
+  holds ``cgt_2``. Without the reservation the child is ``cgt_2``; reserving
+  the role-led id verbatim would not hold the number either. This is the
+  rule ``VerovioLoader`` follows (``tests/loader/score/README.md``, "Ids of a
+  given root"), one helper for both loaders.
 * **The map is the line through the pairs, in float arithmetic.** The
   positions are floats, so the map is a float map: scalar
   ``40 / 855.5289364103584 == 0.04675470144567245``, offset ``0.0``.

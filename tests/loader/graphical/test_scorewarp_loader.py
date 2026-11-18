@@ -158,6 +158,12 @@ def test_timeline_name_and_id(drawing, loader):
     assert named.list_children() == ["cgt_4"]
 
 
+@pytest.mark.parametrize("uid", ["cgt_2", "drawing:cgt_2"], ids=["bare", "role-led"])
+def test_given_root_id_reserves_its_number(loader, uid):
+    timeline = loader.create_timeline(uid=uid)
+    assert (timeline.id, timeline.list_children()) == (uid, ["cgt_3"])
+
+
 def test_successive_timelines_get_distinct_ids(loader):
     first, second = loader.create_timeline(), loader.create_timeline()
     assert (first.id, first.list_children()) == ("cgt_1", ["cgt_2"])

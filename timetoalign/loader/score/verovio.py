@@ -440,7 +440,8 @@ class VerovioLoader(ScoreLoader):
 
     **Movements.** Every ``<mdiv>`` Verovio loads is a child timeline, in
     document order, its id minted by the loader after the root's
-    (``score:clt_2``, ``rendered:cpt_2``, …, whatever id the root is given):
+    (``score:clt_2``, ``rendered:cpt_2``, …; a number a given root id such
+    as ``score:clt_2`` holds is skipped):
     placed at its first position, as long as its measures, named
     by its ``label``, with ``meta`` holding ``count`` (its place among all
     ``<mdiv>``s of the file, from 1) and its ``xml:id``, ``n`` and ``label``
@@ -864,7 +865,9 @@ class VerovioLoader(ScoreLoader):
 
         Every timeline of the tree is minted ``{role}:{prefix}_N`` by this
         loader, the root first: its number is drawn even when *uid* names
-        it, so the movements' ids do not depend on the root's.
+        it. A given *uid* also takes its own number from the loader's
+        minted ids, so no movement is minted the root's id (``score:clt_2``
+        given, the movements are ``score:clt_3``, …).
         """
         from timetoalign.timelines.factory import _flag_minted, _mint_timeline_id
 
@@ -874,6 +877,8 @@ class VerovioLoader(ScoreLoader):
         root_id = _mint_timeline_id(self, unit, role=role)
         if minted:
             uid = root_id
+        else:
+            self._minted_timeline_ids.add(uid.rpartition(":")[2])
         by_movement: dict[int | None, list[dict[str, Any]]] = {}
         for row in rendering.rows:
             by_movement.setdefault(rendering.movement[row["id"]], []).append(row)

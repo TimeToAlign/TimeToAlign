@@ -16,6 +16,7 @@ loaded by `Ms3Loader` is authoritative whenever loaders are compared.
 | `test_partitura_exactness.py` | Exact Partitura coordinate pairs, instant nulls, flattened timelines, and agreement with Partitura's float map. |
 | `test_successors.py` | The `next` column derived from the measure columns: endings of more than one measure, Music21/Partitura parity, agreement with the ms3 TSVs (see below). |
 | `test_verovio_loader.py` | `VerovioLoader` on MEI fixtures and specimens: exact onsets, kept ids, measures as structure, ties, grace notes, repeats, movements, the physical timeline, music21 parity, Verovio's expansion against the flow controller (see below). |
+| `test_verovio_ids.py` | `VerovioLoader`'s minted timeline ids when the root's id is given (see "Ids of a given root" below). |
 
 ## Parsing matrix
 
@@ -532,6 +533,28 @@ note (`tn` at 7/3, `mc_onset` 1/3). `ch1a` and `ch1b` have `chord_id` `ch1`.
   3.1 s; `getMEI` 0.09 s and its parse 0.21 s, which the loader needs anyway for membership; the
   uniqueness count itself 0.02 s. In that file 15 ids name more than one element (its MuseScore
   export repeats ids of `<dynam>`, `<dir>` and `<fermata>` elements); they are listed, not refused.
+
+### Ids of a given root
+
+`test_verovio_ids.py` writes one MEI with two `<mdiv>`s (one 2/4 measure each)
+and asks for the ids of the root and its two movement children. The loader
+mints `{role}:{prefix}_N`, the root's number first. A given root id of that
+same shape names a number the movements could be minted; the loader takes it
+from them, so:
+
+* `create_timeline()` gives the root `score:clt_1` and movements
+  `score:clt_2`, `score:clt_3`;
+* `create_timeline(uid="score:clt_2")` gives the root `score:clt_2` and
+  movements `score:clt_3`, `score:clt_4`. Without the reservation the first
+  movement is minted `score:clt_2`, collides with the root and is re-minted
+  on joining as `clt_1`, losing its role; the exact list tells the two apart;
+* a given id of another shape (`uid="score"`) reserves nothing a movement
+  could take: the movements stay `score:clt_2`, `score:clt_3`;
+* `create_physical_timeline(uid="rendered:cpt_2")` gives movements
+  `rendered:cpt_3`, `rendered:cpt_4`: the same rule on the seconds tree.
+
+Each case uses a fresh loader, since a loader's minted ids count across its
+calls.
 
 ### Guards
 

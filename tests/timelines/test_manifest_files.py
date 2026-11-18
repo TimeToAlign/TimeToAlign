@@ -20,6 +20,7 @@ from timetoshare import complete, dumps, fixture_paths, loads, minimal, validate
 from timetoalign.alignment import AlignmentBundle
 from timetoalign.timelines import Timeline, TimelineGroup
 from timetoalign.timelines.types import (
+    ContinuousGraphicalTimeline,
     ContinuousLogicalTimeline,
     ContinuousPhysicalTimeline,
 )
@@ -314,6 +315,21 @@ def test_an_object_built_in_code_writes_event_rows_on_request(
         tmp_path / "tables.yaml", events=True, external_references=True
     )
     assert _read(tables) == dumps(WITH_TABLES)
+
+
+def test_a_drawing_written_is_a_drawing_read(tmp_path: Path) -> None:
+    """A child ending at its page in doubles only is written and read back."""
+    page = ContinuousGraphicalTimeline(
+        length=932.2326510101616, unit="points", uid="page"
+    )
+    system = ContinuousGraphicalTimeline(
+        length=855.5289364103584, unit="points", uid="system"
+    )
+    page.add_child(system, 76.70371459980326)
+    bundle = AlignmentBundle()
+    bundle.add_timeline(page)
+    path = bundle.to_file(tmp_path / "drawing.yaml")
+    assert AlignmentBundle.from_file(path).to_dict() == bundle.to_dict()
 
 
 def test_selection_passes_through(tmp_path: Path) -> None:

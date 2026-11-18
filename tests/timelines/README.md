@@ -290,6 +290,21 @@ the library writes back against the same literal text.
   are refused with the values spelled as written (`ends at 62.5`, `offset
   75.0`, `ends at 61.0`). The setters keep the library's own message, since
   no JSON spelling exists there.
+- **A child's end is the sum a reader computes.** The rule is TimeToShare's,
+  delegated to its `child_ends`, so the reader and the validators cannot
+  disagree: where the parent and the child are both `float`, the end is the
+  double sum of the two JSON numbers, exact otherwise. A `points` page of
+  length `932.2326510101616` holding a child at offset `76.70371459980326`
+  of length `855.5289364103584` ends, in doubles, exactly at the page's
+  length, while the exact sum lies one rounding beyond it: the page is read,
+  and so is a segment line whose second segment ends there. The same values
+  as Fraction pairs on a `fraction` page, and the same float page holding a
+  `fraction` child, are refused with the exact end
+  `[65600040932999587, 70368744177664]`; a `ticks` parent of length `2**53`
+  holding a child at offset 1 of length `2**53` is refused with `ends at
+  9007199254740993`, although the double sum would round back to `2**53`.
+  A reader summing exactly everywhere fails the first two cases, one summing
+  in doubles everywhere the last three.
 - **Ids are free; a length is not negative.** An id is any non-empty
   string without a control character, so the words that name the parts and
   facets of a drawn timeline are ids like any other: `start` as a root id,
@@ -522,6 +537,12 @@ so a writer that agreed only with itself could not pass.
   An object built in code with the same timelines, events and references
   writes neither key by default (the literal without them) and, with
   `events=True, external_references=True`, the full literal's bytes.
+- **A drawing written is a drawing read.** A `points` page of length
+  `932.2326510101616` holding a child at offset `76.70371459980326` of length
+  `855.5289364103584` (built in code, accepted there because the child ends
+  at the page's length in doubles) is written with `AlignmentBundle.to_file`
+  and read back with `from_file`; the bundle read writes the same manifest.
+  The reader used to sum exactly and refuse its own output.
 - **Selection passes through.** `Timeline.from_file(path,
   timeline_id="take_1")` reads the one timeline as `Timeline.from_dict`
   selects it; `TimelineGroup.from_file(path, group_id=...)` likewise.

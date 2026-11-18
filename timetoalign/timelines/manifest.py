@@ -40,6 +40,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, Self
 import timetoshare
 from timetoshare import Link, Scheme, description_problems, loads
 from timetoshare.serialization import Serialization
+from timetoshare.validation.containment import child_ends
 
 from timetoalign.core import Coordinate, NumberType, TimeUnit
 from timetoalign.core.ids import _OpenObject, mint_id, quote_id, validate_id
@@ -189,9 +190,12 @@ def check_children_fit(data: Mapping[str, Any], number_type: NumberType) -> None
 
     Child by child in array order: an ``offset`` beyond the length, or else an
     end beyond it where the end is known (offset plus length, or, in a
-    segment line, a segment of unknown length's successor's offset). A child
-    of another unit is left to the reader, which refuses it. The messages
-    are the TimeToShare validators', values spelled as written.
+    segment line, a segment of unknown length's successor's offset). Where
+    the parent and the child are both ``float``, the end is the double sum a
+    reader computes, exact otherwise; the ends are TimeToShare's
+    (``child_ends``). A child of another unit is left to the reader, which
+    refuses it. The messages are the TimeToShare validators', values spelled
+    as written.
 
     Raises:
         ValueError: ``offset 75.0 of 'take' is beyond the length 60.0 of its
@@ -202,26 +206,11 @@ def check_children_fit(data: Mapping[str, Any], number_type: NumberType) -> None
     if length is None:
         return
     bound = Fraction(number_from_json(length))
-    children = [
-        child for child in data.get("children", []) if child["unit"] == data["unit"]
-    ]
-    offsets = [Fraction(number_from_json(child["offset"])) for child in children]
-    ends: list[Fraction | None] = [
-        (
-            None
-            if child["length"] is None
-            else offset + Fraction(number_from_json(child["length"]))
-        )
-        for child, offset in zip(children, offsets, strict=True)
-    ]
-    if data.get("is_segment_line") is True:
-        order = sorted(range(len(children)), key=lambda index: offsets[index])
-        for index, successor in zip(order, order[1:]):
-            if ends[index] is None:
-                ends[index] = offsets[successor]
     parent = data["id"]
-    for child, offset, end in zip(children, offsets, ends, strict=True):
-        if offset > bound:
+    for child, end in zip(data.get("children", []), child_ends(data), strict=True):
+        if child["unit"] != data["unit"]:
+            continue
+        if Fraction(number_from_json(child["offset"])) > bound:
             raise ValueError(
                 f"offset {spell(child['offset'])} of '{child['id']}' is beyond the "
                 f"length {spell(length)} of its parent '{parent}'"

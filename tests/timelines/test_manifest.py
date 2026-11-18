@@ -1608,6 +1608,107 @@ def test_a_child_beyond_its_parent_is_refused_in_the_validators_words(
     assert str(refused.value) == message
 
 
+PAGE, AT, SYSTEM = 932.2326510101616, 76.70371459980326, 855.5289364103584
+"""A page length, and a child's offset and length that end there in doubles only."""
+
+
+def _pair(value: float) -> list[int]:
+    exact = Fraction(value)
+    return [exact.numerator, exact.denominator]
+
+
+def _root(**timeline: Any) -> dict[str, Any]:
+    return {"timetoshare": "0.2.0", "timelines": [{"id": "page", **timeline}]}
+
+
+@pytest.mark.parametrize(
+    "manifest",
+    [
+        _root(
+            unit="points",
+            length=PAGE,
+            children=[
+                {"id": "system", "unit": "points", "offset": AT, "length": SYSTEM}
+            ],
+        ),
+        _root(
+            unit="points",
+            length=PAGE,
+            is_segment_line=True,
+            children=[
+                {"id": "a", "unit": "points", "offset": 0.0, "length": AT},
+                {"id": "b", "unit": "points", "offset": AT, "length": SYSTEM},
+            ],
+        ),
+    ],
+    ids=["child", "segment"],
+)
+def test_a_float_child_ends_at_the_double_sum(manifest: dict[str, Any]) -> None:
+    assert AT + SYSTEM == PAGE
+    page = Timeline.from_dict(manifest)
+    assert page.to_dict()["timelines"][0]["children"][-1]["offset"] == AT
+
+
+@pytest.mark.parametrize(
+    ("manifest", "message"),
+    [
+        (
+            _root(
+                unit="points",
+                number_type="fraction",
+                length=_pair(PAGE),
+                children=[
+                    {
+                        "id": "system",
+                        "unit": "points",
+                        "number_type": "fraction",
+                        "offset": _pair(AT),
+                        "length": _pair(SYSTEM),
+                    }
+                ],
+            ),
+            "child 'system' ends at [65600040932999587, 70368744177664], beyond the "
+            "length [2050001279156237, 2199023255552] of its parent 'page'",
+        ),
+        (
+            _root(
+                unit="points",
+                length=PAGE,
+                children=[
+                    {
+                        "id": "system",
+                        "unit": "points",
+                        "number_type": "fraction",
+                        "offset": AT,
+                        "length": _pair(SYSTEM),
+                    }
+                ],
+            ),
+            "child 'system' ends at [65600040932999587, 70368744177664], beyond the "
+            "length 932.2326510101616 of its parent 'page'",
+        ),
+        (
+            _root(
+                unit="ticks",
+                length=2**53,
+                children=[
+                    {"id": "system", "unit": "ticks", "offset": 1, "length": 2**53}
+                ],
+            ),
+            "child 'system' ends at 9007199254740993, beyond the length "
+            "9007199254740992 of its parent 'page'",
+        ),
+    ],
+    ids=["fraction", "mixed", "int"],
+)
+def test_any_other_child_ends_at_the_exact_sum(
+    manifest: dict[str, Any], message: str
+) -> None:
+    with pytest.raises(ValueError) as refused:
+        Timeline.from_dict(manifest)
+    assert str(refused.value) == message
+
+
 WORDS: dict[str, Any] = {
     "timetoshare": "0.2.0",
     "id": "card",

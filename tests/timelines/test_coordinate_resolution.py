@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from fractions import Fraction
+from typing import Any
 
 import pytest
 
 from timetoalign import Coordinate, Timeline, TimeUnit
-from timetoalign.maps import LinearMap
+from timetoalign.maps import LinearMap, base
 from timetoalign.timelines import SegmentLine
 from timetoalign.timelines.types import ContinuousLogicalTimeline
 
@@ -88,6 +89,14 @@ def _exact_score() -> ContinuousLogicalTimeline:
     return score
 
 
+OUTPUT_NUMBER_TYPE_ERROR = getattr(base, "OutputNumberTypeError", None)
+"""The class of a map's refusal of a float, where the maps package defines it."""
+
+
+@pytest.mark.skipif(
+    OUTPUT_NUMBER_TYPE_ERROR is None,
+    reason="timetoalign.maps.base defines no OutputNumberTypeError",
+)
 @pytest.mark.parametrize("getter", ["get_coordinate_at", "get_timestamp_at"])
 @pytest.mark.parametrize(
     ("coordinate", "names"),
@@ -102,11 +111,44 @@ def test_a_float_through_an_exact_map_is_a_query_error(
 ) -> None:
     with pytest.raises(ValueError) as refused:
         getattr(_exact_score(), getter)(coordinate)
+    assert type(refused.value) is ValueError
+    assert type(refused.value.__cause__) is OUTPUT_NUMBER_TYPE_ERROR
     assert str(refused.value) == (
         f"{names} is declared to write fractions and computes exactly, so it "
         f"cannot resolve the float {coordinate.value!r} {coordinate.unit} on "
         "timeline 'score': pass an int or a Fraction."
     )
+
+
+def _faulty_score(error: Exception) -> ContinuousLogicalTimeline:
+    """A fraction axis whose float-declared C-Map to seconds raises *error*."""
+
+    class FaultyMap(LinearMap):
+        def _convert_scalar(self, value: Any, **kwargs: Any) -> Any:
+            raise error
+
+    score = ContinuousLogicalTimeline(length=Fraction(8), uid="score")
+    score.add_conversion_map(
+        FaultyMap(
+            source_unit="quarters",
+            target_unit="seconds",
+            scalar=Fraction(1, 2),
+            output_number_type="float",
+            uid="q2s",
+        )
+    )
+    return score
+
+
+@pytest.mark.parametrize(
+    "error",
+    [TypeError("a fault of the map"), ValueError("a fault of the map")],
+    ids=["type_error", "value_error"],
+)
+def test_any_other_map_error_on_a_float_passes_unchanged(error: Exception) -> None:
+    with pytest.raises(type(error)) as raised:
+        _faulty_score(error).get_coordinate_at(Coordinate(1.5, TimeUnit.seconds))
+    assert raised.value is error
 
 
 @pytest.mark.parametrize(

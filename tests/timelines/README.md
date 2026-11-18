@@ -1728,8 +1728,10 @@ C-Map error, demonstrating that coordinate normalization is consistent across
 the public timeline surface.
 
 A C-Map declared to write fractions computes exactly and refuses a float, a
-ratio the input never stated. A query reaching such a map is refused at the
-timeline as a query error, never as the map's own `TypeError`. A `score` in
+ratio the input never stated, raising `OutputNumberTypeError`. A query
+reaching such a map is refused at the timeline as a plain `ValueError` whose
+message adds the timeline, with the map's refusal as its cause; the
+timeline recognises the refusal by its class alone. A `score` in
 quarters (8, `fraction`) carries `q2s` (quarters to seconds, scalar `1/2`)
 and `q2n` (quarters to `number`, scalar 2), both declared `fraction`.
 `get_coordinate_at` and `get_timestamp_at` with the float `1.5` seconds, and
@@ -1740,7 +1742,16 @@ stamp reading `3/2` seconds and `6` in `number`) and with the int `3` in
 `number` (`3/2` quarters, `3/4` seconds). Seconds hold no int, so the int
 input goes through `number`, which admits both. A converter that let the
 float through would answer `3.0` rather than refuse; one that kept the map's
-`TypeError` fails the exception type.
+own error fails the exception type, which must be `ValueError` itself. The
+refusal test needs `timetoalign.maps.base.OutputNumberTypeError` and is
+skipped, saying so, where the maps package does not define it.
+
+Every other error a map raises passes through the timeline unchanged, the
+same object, even for a float input: a timeline that relabelled any error
+on a float as the fraction refusal would report a cause that is not the
+cause. A `LinearMap` subclass declared to write floats, whose evaluation
+raises a `TypeError` or a `ValueError` of its own, is queried with the float
+`1.5` seconds; `get_coordinate_at` raises that very error object.
 
 ### `test_offset_arithmetic.py` - Nested Offset Arithmetic
 

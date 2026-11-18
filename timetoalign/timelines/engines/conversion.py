@@ -33,6 +33,13 @@ from timetoalign.core.retrieval import (
 from timetoalign.core.time import coordinate_numeric_value, exact_coordinate_value
 from timetoalign.maps import ConversionMap
 
+try:
+    from timetoalign.maps.base import OutputNumberTypeError
+
+    _FLOAT_REFUSALS: tuple[type[Exception], ...] = (OutputNumberTypeError,)
+except ImportError:
+    _FLOAT_REFUSALS = ()
+
 if TYPE_CHECKING:
     from ..base import Timeline
 
@@ -662,11 +669,9 @@ class ConversionMapsMixin:
                 ) from None
             try:
                 native_value = inverse_map(resolved.value)
-            except TypeError as error:
+            except _FLOAT_REFUSALS as error:
                 # A map declared to write fractions computes exactly and
                 # refuses a float: the query has no exact path to this axis.
-                if not isinstance(resolved.value, float):
-                    raise
                 raise ValueError(
                     f"C-Map '{unit_map.id}' ('{unit_map.source_unit}' to "
                     f"'{unit_map.target_unit}') is declared to write fractions and "

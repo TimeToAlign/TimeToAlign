@@ -452,7 +452,7 @@ trial.replace_link(
     reading.with_parts("has_part", [reading.parts[0], ghost, *reading.parts[2:]]),
 )
 edited = copy.deepcopy(manifest)
-edited["links"][0]["parts"][1] = ghost.to_dict(minimal=True)
+edited["links"][0]["parts"][1] = ghost.to_dict()
 for operation in (trial.to_dict, lambda: tta.AlignmentBundle.from_dict(edited)):
     try:
         operation()

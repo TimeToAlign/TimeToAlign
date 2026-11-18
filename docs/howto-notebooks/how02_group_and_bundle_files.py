@@ -451,7 +451,10 @@ group_read = TimelineGroup.from_file(group_path)
 # notes what it found: the form is minimal when no key holds its default,
 # and the serialization is the one the text is written in. `to_file()`
 # writes an object read from a file back in the same form, styling and
-# serialization, so a file read and written back unchanged keeps its bytes.
+# serialization. A file in canonical YAML, pretty JSON or RFC 8785 JSON that
+# is read and written back unchanged so keeps its bytes; any other JSON or
+# YAML text is written back in the canonical form of the serialization it
+# was read as.
 # `minimal=`, `styling=` and `serialization=` override each; an object built
 # in code is written in the minimal form, its styling included, in canonical
 # YAML.

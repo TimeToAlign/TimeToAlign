@@ -395,7 +395,8 @@ Minimal form: |
   write. Readers supply every default left out, so a minimal manifest can be
   written by hand; the smallest names the version and one timeline with its
   id, unit and length. to_file() writes a manifest file in the form it was
-  read in, canonical YAML for a new object.
+  read in, and in the minimal form and canonical YAML for an object not read
+  from a file.
 
 MpmLoader: |
   Loader for an MPM-Toolbox project: a sibling .msm score, .mpm modelled
@@ -595,7 +596,8 @@ TimeStamp: |
   format="float"/"int"/"fraction" request; there is no ambient float view.
 
 TimeToShare manifest: |
-  The JSON file format in which timelines, groups and bundles are exchanged,
+  The file format in which timelines, groups and bundles are exchanged,
+  written in canonical YAML, or optionally in pretty JSON or RFC 8785 JSON,
   one shape for all: the version marker "timetoshare", an array of root
   timelines, and optionally the manifest's id, name and meta, its groups, its
   measure maps, its schemes and links (the description layer) and its
@@ -606,7 +608,8 @@ TimeToShare manifest: |
   anonymous bundle. A value on a timeline's own axis (length, a child's offset,
   region bounds, flow-control coordinates) is written bare, in the axis's
   number type. Timeline, TimelineGroup and AlignmentBundle write one with
-  to_dict() and read one with from_dict(). The library class TimeSkeleton is
+  to_dict() and read one with from_dict(), and write and read a manifest
+  file with to_file() and from_file(). The library class TimeSkeleton is
   a different thing: a temporal structure shared by the timelines of one work.
 
 Unknown key: |

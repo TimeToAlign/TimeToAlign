@@ -273,8 +273,10 @@ quartodoc:
       contents:
         - name: TimelineGroup
           package: timetoalign.timelines
+          include_inherited: true
         - name: AlignmentBundle
           package: timetoalign.alignment
+          include_inherited: true
         - name: SupportPolicy
           package: timetoalign.core
         - name: AlignmentAnchor

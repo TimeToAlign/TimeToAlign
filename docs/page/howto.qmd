@@ -84,6 +84,11 @@ documentation:
 - [How to Load an IEEE 1599 Document](howto/how03_ieee1599.ipynb) ---
   IEEE 1599 spine/VTU hub relating score, page images, and audio as one
   multimodal AlignmentBundle.
+- [How to Align an Engraved Score with a Recording and a Drawn Time Axis](howto/how03_engraved_score_alignment.ipynb) ---
+  VerovioLoader, MapsLoader and ScoreWarpLoader: a score in exact quarters
+  with notes by `xml:id`, a MAPS alignment as MatchClaims, a ScoreWarp time
+  axis in `css_pixels`, `create_calibrated_child`, and the bundle saved and
+  read back.
 - [How to Describe the Work a Bundle Is About](howto/how03_describe_the_work.ipynb) ---
   Links from the bundle, a timeline and a region to a work, its movements and
   a release: `Link.from_urls`, part readings, a second reading, the default

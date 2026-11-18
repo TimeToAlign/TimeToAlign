@@ -98,6 +98,8 @@ website:
               href: howto/how03_listen_here.ipynb
             - text: "How to Load an IEEE 1599 Document"
               href: howto/how03_ieee1599.ipynb
+            - text: "How to Align an Engraved Score with a Recording and a Drawn Time Axis"
+              href: howto/how03_engraved_score_alignment.ipynb
             - text: "How to Describe the Work a Bundle Is About"
               href: howto/how03_describe_the_work.ipynb
         - section: "In-depth Topics"
@@ -373,6 +375,8 @@ quartodoc:
           package: timetoalign.loader.score
         - name: MeasureMapLoader
           package: timetoalign.loader.score
+        - name: VerovioLoader
+          package: timetoalign.loader.score
         - name: MidiLoader
           package: timetoalign.loader.midi
         - name: PerformanceMidiLoader
@@ -385,6 +389,8 @@ quartodoc:
           package: timetoalign.loader.graphical
         - name: ATONLoader
           package: timetoalign.loader.graphical.aton
+        - name: ScoreWarpLoader
+          package: timetoalign.loader.graphical
         - name: MatchfileLoader
           package: timetoalign.loader.alignment.matchfile
         - name: TiliaJsonLoader
@@ -399,3 +405,5 @@ quartodoc:
           package: timetoalign.loader.alignment.mpm
         - name: ListenHereLoader
           package: timetoalign.loader.alignment.listen_here
+        - name: MapsLoader
+          package: timetoalign.loader.alignment

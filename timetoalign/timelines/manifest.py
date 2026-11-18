@@ -1136,9 +1136,9 @@ class FileForm(timetoshare.FileForm):
     the two tables are the library's own.
 
     Attributes:
-        events: Whether every timeline object holds its event rows
+        events: Whether any timeline object holds its event rows
             (``events``).
-        external_references: Whether every timeline object holds its
+        external_references: Whether any timeline object holds its
             external reference table (``external_references``).
     """
 

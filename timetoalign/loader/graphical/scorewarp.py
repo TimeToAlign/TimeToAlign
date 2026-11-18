@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from fractions import Fraction
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 from timetoalign.core import Coordinate, TimeUnit
 from timetoalign.loader.base import Loader
@@ -242,6 +242,9 @@ class ScoreWarpLoader(Loader[_ScoreWarpAxis]):
         >>> cmap = axis.get_conversion_map("seconds")
     """
 
+    #: One loader reads one SVG: one drawing, one axis.
+    _single_source: ClassVar[bool] = True
+
     def __init__(self) -> None:
         """Initialize the loader."""
         super().__init__()
@@ -274,13 +277,18 @@ class ScoreWarpLoader(Loader[_ScoreWarpAxis]):
     def _accept_source(
         self, path: Path, source_meta: dict[str, Any], payload: _ScoreWarpAxis
     ) -> None:
-        """Keep the axis of the source loaded last."""
+        """Keep the axis of the one source."""
         super()._accept_source(path, source_meta, payload)
         self._axis = payload
         self._logger.debug(
             f"Loaded the time axis of {path}: {len(payload.ticks)} ticks, "
             f"{len(payload.calibration)} labelled"
         )
+
+    def clear(self) -> None:
+        """Forget the loaded SVG."""
+        super().clear()
+        self._axis = None
 
     def _require_axis(self) -> _ScoreWarpAxis:
         """Return the loaded axis, or raise when nothing is loaded."""
@@ -352,7 +360,7 @@ class ScoreWarpLoader(Loader[_ScoreWarpAxis]):
             length=axis.extent,
             unit=TimeUnit.css_pixels,
             uid=uid,
-            name=name or self._sources[-1].stem,
+            name=name or self._sources[0].stem,
             meta={"svg_width": axis.width, "svg_height": axis.height},
         )
         timeline.create_calibrated_child(

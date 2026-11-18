@@ -244,6 +244,27 @@ def test_refuses_unknown_unit(tmp_path):
         ScoreWarpLoader.from_file(_write(tmp_path, text))
 
 
+def test_refuses_a_second_svg(tmp_path, loader):
+    first = loader.sources[0]
+    second = tmp_path / "minutes.svg"
+    second.write_text(
+        _svg().replace(">Time (s)<", ">Time (minutes)<"), encoding="utf-8"
+    )
+    with pytest.raises(ValueError) as raised:
+        loader.load(second)
+    assert str(raised.value) == (
+        f"ScoreWarpLoader reads one source and already holds {first}; use a new "
+        f"loader for {second}, or call clear() first."
+    )
+    assert loader.sources == [first]
+    assert loader.calibration[-1][1] == Coordinate(Fraction(40), TimeUnit.seconds)
+    loader.clear()
+    assert repr(loader) == "ScoreWarpLoader(not loaded)"
+    loader.load(second)
+    assert loader.sources == [second]
+    assert loader.calibration[-1][1] == Coordinate(Fraction(40), TimeUnit.minutes)
+
+
 def test_refuses_size_in_mm(tmp_path):
     text = _svg().replace('width="792"', 'width="209.55mm"')
     with pytest.raises(ValueError, match=r"width is '209.55mm'"):

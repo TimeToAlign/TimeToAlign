@@ -312,8 +312,12 @@ def test_negative_onsets_and_trompa_ids_are_refused(tmp_path: Path) -> None:
 def test_a_second_source_is_refused(tmp_path: Path, maps_path: Path) -> None:
     other = _write(tmp_path / "other.json", _maps_rows())
     loader = MapsLoader.from_file(maps_path)
-    with pytest.raises(ValueError, match=r"reads one MAPS file"):
+    with pytest.raises(ValueError) as raised:
         loader.load(other)
+    assert str(raised.value) == (
+        f"MapsLoader reads one source and already holds {maps_path}; use a new "
+        f"loader for {other}, or call clear() first."
+    )
     assert loader.rows == _maps_rows()
     loader.clear()
     assert len(loader) == 0

@@ -9,7 +9,7 @@ from collections import Counter
 from dataclasses import dataclass, field, replace
 from fractions import Fraction
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, ClassVar
 
 import pyarrow as pa
 import verovio
@@ -538,6 +538,9 @@ class VerovioLoader(ScoreLoader):
         >>> seconds = loader.create_physical_timeline()
     """
 
+    #: One loader reads one score: its timemap and C-Map are the score's.
+    _single_source: ClassVar[bool] = True
+
     def __init__(self, *, options: dict[str, Any] | None = None, **kwargs: Any) -> None:
         """Initialize the loader.
 
@@ -569,11 +572,6 @@ class VerovioLoader(ScoreLoader):
 
     def _load_source(self, source: Path) -> ScoreStore:
         """Load one file into a ScoreStore through a fresh toolkit."""
-        if self._rendering is not None:
-            raise ValueError(
-                f"This VerovioLoader already holds a score; load {source} with "
-                "another loader"
-            )
         toolkit = verovio.toolkit()
         version = toolkit.getVersion()
         if _version_tuple(version)[:2] < _MIN_VERSION:

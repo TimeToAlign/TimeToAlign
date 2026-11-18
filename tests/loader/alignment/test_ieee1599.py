@@ -1036,9 +1036,14 @@ class TestLoaderContract:
         """One spine, one bundle: a second document needs a second loader."""
         loader = Ieee1599Loader.from_file(ieee1599_path("animals"))
 
-        with pytest.raises(ValueError, match="already holds"):
+        with pytest.raises(ValueError) as raised:
             loader.load(ieee1599_path("khomus"))
-        with pytest.raises(ValueError, match="exactly one"):
+        assert str(raised.value) == (
+            f"Ieee1599Loader reads one source and already holds "
+            f"{ieee1599_path('animals')}; use a new loader for "
+            f"{ieee1599_path('khomus')}, or call clear() first."
+        )
+        with pytest.raises(ValueError, match=r"Ieee1599Loader reads one source; got 2"):
             Ieee1599Loader().load(ieee1599_path("animals"), ieee1599_path("khomus"))
 
     def test_string_and_element_ingest_share_the_guard(self, ieee1599_path) -> None:

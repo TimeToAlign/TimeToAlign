@@ -347,7 +347,9 @@ The loader accepts exactly one document (one spine, one bundle) and refuses a
 second by whichever door it arrives at — `load()`, and equally the inherited
 `load_string()` and `load_element()`, which would otherwise re-enter the parse
 and suffix a second document's timelines onto the first's.  All three raise the
-same `ValueError`, and a test drives each of them.  `create_timeline(uid)`
+loaders' shared single-source `ValueError` (`tests/loader/README.md`,
+"Single-source loaders"), whose message names the held file, and a test drives
+each of them; two paths in one call are refused before either is parsed.  `create_timeline(uid)`
 builds once and returns the cached timeline,
 `create_timelines(id_pattern=...)` filters by uid regex, `create_group()`
 returns `None`, and `get_field(MatchClaim)` follows the selector pattern: both
@@ -450,4 +452,7 @@ in an otherwise valid fixture, so the refusal can only come from that change.
   id beginning `trompa` is not an `xml:id` of the score. The loader refuses
   them rather than skip them, so a file is never read as more complete than
   it is; a file holding them is read once they are removed.
-* **A second source** → `ValueError`: one MAPS file aligns one performance.
+* **A second source** → the loaders' shared single-source `ValueError`
+  (`tests/loader/README.md`, "Single-source loaders"), naming the held file:
+  one MAPS file aligns one performance. The held rows stay; after `clear()`
+  the loader reads the other file.

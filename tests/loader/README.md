@@ -13,6 +13,27 @@ vectorized loader contract directly. Row dictionaries remain covered by the
 storage constructor tests, but are intentionally not accepted by
 `Loader.load()`.
 
+## Single-source loaders
+
+A loader that reads one source sets `_single_source` on its class, and one
+check on `Loader` (called by `Loader.load`, by every `load` that overrides it,
+and by every other door into the parse) refuses a further source with one
+`ValueError` naming the loader and the source it holds. `test_loader.py` proves
+the rule on a `DummyLoader` subclass, where nothing else could refuse:
+
+* **Two in one call** are refused before either is parsed: the loader holds no
+  source afterwards, so the refusal cannot be a parse failure of the second.
+* **A second call** is refused naming the loader class and the held path, and
+  the held source and its two events are untouched.
+* **`clear()`** releases the loader: it then reads the other source, and holds
+  only that one.
+* **Unflagged loaders** are unaffected: the plain `DummyLoader` reads two
+  sources in two calls.
+
+Each flagged loader (`VerovioLoader`, `ScoreWarpLoader`, `Ieee1599Loader`,
+`MapsLoader`) has one test of its own showing the flag is set and the same
+message reaches its users.
+
 ## Categories
 
 | File / Subdirectory | What it validates |
@@ -966,3 +987,10 @@ cases are mutated copies of the same text.
 
 and the calibration check refuses a label that contradicts the others (the
 "41" mutation).
+
+One loader reads one SVG. A second ``load`` raises the shared single-source
+``ValueError`` (see "Single-source loaders"), naming the held file, and leaves
+the held axis in place: the calibration still reads seconds. After
+``clear()`` the loader holds nothing (``repr`` says "not loaded") and reads
+the second file, whose title "Time (minutes)" makes its calibration read
+minutes, so the axis held is provably the new file's.

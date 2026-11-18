@@ -66,6 +66,10 @@ class Loader(ABC, Generic[PayloadT]):
     :class:`ManifestLoader`, and :class:`AlignmentLoader`.
     """
 
+    #: Whether one loader reads one source only. ``load`` then refuses a second
+    #: source, in the same call or a later one, until ``clear()``.
+    _single_source: ClassVar[bool] = False
+
     def __init__(self) -> None:
         """Initialize shared loader state."""
         self._sources: list[Path] = []
@@ -94,8 +98,45 @@ class Loader(ABC, Generic[PayloadT]):
         self._sources.append(path)
         self._source_metadata.append(source_meta)
 
+    def _refuse_further_source(self, *sources: object) -> None:
+        """Refuse *sources* when a single-source loader cannot take them.
+
+        A loader whose ``_single_source`` is set reads one source; it refuses
+        more than one in one call, and any while it holds one. Every door into
+        such a loader's parse calls this before parsing anything.
+
+        Raises:
+            ValueError: If the loader reads one source and *sources* are
+                more than one, or it already holds one.
+        """
+        if not self._single_source:
+            return
+        name = self.__class__.__name__
+        held = self._held_source()
+        if held is not None:
+            raise ValueError(
+                f"{name} reads one source and already holds {held}; use a new "
+                f"loader for {', '.join(map(str, sources))}, or call clear() first."
+            )
+        if len(sources) > 1:
+            raise ValueError(
+                f"{name} reads one source; got {len(sources)}: "
+                f"{', '.join(map(str, sources))}."
+            )
+
+    def _held_source(self) -> str | None:
+        """Name the source this loader holds, or ``None`` when it holds none."""
+        return str(self._sources[0]) if self._sources else None
+
     def load(self, *sources: Path | str) -> Self:
-        """Load and accept one or more sources through the shared template."""
+        """Load and accept one or more sources through the shared template.
+
+        Raises:
+            ValueError: If the loader reads one source and is given more than
+                one, or any while it holds one (after ``clear()`` it reads
+                one again). Nothing is parsed then.
+        """
+        self._refuse_further_source(*sources)
         for source in sources:
             path = Path(source)
             source_meta, payload = self._unpack_source_result(self._load_source(path))

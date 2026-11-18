@@ -65,6 +65,8 @@ class MapsLoader(AlignmentLoader):
     One loader reads one file: a MAPS file aligns one performance.
     """
 
+    _single_source = True
+
     def __init__(self) -> None:
         super().__init__()
         self._rows: list[dict[str, Any]] | None = None
@@ -93,11 +95,6 @@ class MapsLoader(AlignmentLoader):
         self, path: Path, source_meta: dict[str, Any], payload: list[dict[str, Any]]
     ) -> None:
         """Keep the rows of the one file this loader reads."""
-        if self._rows is not None:
-            raise ValueError(
-                f"MapsLoader reads one MAPS file and holds {self._sources[0]}; "
-                f"use another loader for {path}."
-            )
         self._rows = payload
         self._sources.append(path)
         self._source_metadata.append(source_meta)

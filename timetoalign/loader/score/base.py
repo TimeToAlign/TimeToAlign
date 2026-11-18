@@ -233,7 +233,12 @@ class ScoreLoader(EventLoader):
 
         Returns:
             Self, for method chaining.
+
+        Raises:
+            ValueError: If the loader reads one source and is given more than
+                one, or any while it holds one.
         """
+        self._refuse_further_source(*sources)
         for source in sources:
             path = Path(source)
 

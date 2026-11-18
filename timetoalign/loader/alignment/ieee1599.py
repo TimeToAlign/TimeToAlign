@@ -413,6 +413,7 @@ class Ieee1599Loader(XmlLoader):
     """
 
     _default_unit = TimeUnit.ticks
+    _single_source = True
 
     def __init__(self) -> None:
         super().__init__(principal_tags=[])
@@ -453,17 +454,13 @@ class Ieee1599Loader(XmlLoader):
 
         Raises:
             ValueError: If more than one source is given, or if this loader
-                has already ingested a document.  One IEEE 1599 document is
-                one self-contained work with its own spine; two documents are
-                two bundles, so they need two loaders.
+                already holds a document.  One IEEE 1599 document is one
+                self-contained work with its own spine; two documents are two
+                bundles, so they need two loaders.
         """
-        if len(sources) != 1:
-            raise ValueError(
-                "Ieee1599Loader ingests exactly one IEEE 1599 document per "
-                f"loader; got {len(sources)} sources."
-            )
-        self._reject_second_document()
-        self._name = Path(sources[0]).stem
+        self._refuse_further_source(*sources)
+        if sources:
+            self._name = Path(sources[0]).stem
         return super().load(*sources)
 
     def load_string(self, xml_string: str) -> Self:
@@ -476,9 +473,9 @@ class Ieee1599Loader(XmlLoader):
             Self, for method chaining.
 
         Raises:
-            ValueError: If this loader has already ingested a document.
+            ValueError: If this loader already holds a document.
         """
-        self._reject_second_document()
+        self._refuse_further_source("an XML string")
         return super().load_string(xml_string)
 
     def load_element(self, root: ET.Element) -> Self:
@@ -491,30 +488,22 @@ class Ieee1599Loader(XmlLoader):
             Self, for method chaining.
 
         Raises:
-            ValueError: If this loader has already ingested a document.
+            ValueError: If this loader already holds a document.
         """
-        self._reject_second_document()
+        self._refuse_further_source("an XML element")
         return super().load_element(root)
 
-    def _reject_second_document(self) -> None:
-        """Guard every ingest path against a second document.
+    def _held_source(self) -> str | None:
+        """Name the held document, which a string or element gives no path.
 
-        One IEEE 1599 document is one self-contained work with its own spine;
-        a second one parsed into the same loader would suffix its timeline
-        uids onto the first one's and claim against the wrong spine, so it is
-        refused however it arrives — as a path, a string or an element.
-
-        Raises:
-            ValueError: If a document is already held.
+        Every door into the parse (a path, a string, an element) asks this,
+        so a second document is refused however it arrives: parsed into the
+        same loader, it would suffix its timeline uids onto the first one's
+        and claim against the wrong spine.
         """
         if self._spine_uid is None:
-            return
-        held = self._sources[0].name if self._sources else self._name or "a document"
-        raise ValueError(
-            f"This Ieee1599Loader already holds {held}. Each IEEE 1599 "
-            "document is a self-contained bundle: use a new loader, or call "
-            "clear() first."
-        )
+            return None
+        return super()._held_source() or "a document read from XML"
 
     def clear(self) -> None:
         """Discard the loaded document and every derived artefact."""

@@ -350,15 +350,7 @@ class PiecewiseMap(ConversionMap[CoordinateValue]):
             if not np.any(mask):
                 continue
 
-            subset = values[mask]
-            m = self._maps[idx]
-
-            if hasattr(m, "_convert_array"):
-                converted = m._convert_array(subset, **kwargs)
-            else:
-                converted = m(subset, **kwargs)
-
-            result[mask] = converted
+            result[mask] = self._maps[idx]._convert_array(values[mask], **kwargs)
 
         return result
 

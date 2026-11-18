@@ -4,11 +4,14 @@ CombinationMap yields multiple outputs from multiple C-Maps applied to the
 same input.
 """
 
+import re
+from fractions import Fraction
+
 import numpy as np
 import pytest
 
 from timetoalign.core.enums import TimeUnit
-from timetoalign.maps import LinearMap
+from timetoalign.maps import LinearMap, ScalarMap
 from timetoalign.maps.combination import CombinationMap
 from timetoalign.maps.periodic import FloorMap, RotationMap
 
@@ -171,3 +174,42 @@ class TestCombinationMap:
         np.testing.assert_array_equal(result["measure"], expected_measures)
         # Beat values are exact modular arithmetic results (quarters % 4 + 1)
         np.testing.assert_array_equal(result["beat"], expected_beats)
+
+
+def quarters_scalar(scalar, **kwargs) -> ScalarMap:
+    return ScalarMap(
+        scalar=scalar, source_unit="quarters", target_unit="quarters", **kwargs
+    )
+
+
+class TestMemberEvaluation:
+    """Each output is its member's own evaluation: guard and representation."""
+
+    def test_fraction_member_refuses_a_float(self):
+        combo = CombinationMap(
+            maps={
+                "third": quarters_scalar(Fraction(1, 3), output_number_type="fraction")
+            }
+        )
+        with pytest.raises(TypeError, match=re.escape("not the float 1.0.")):
+            combo(1.0)
+
+    def test_float_member_writes_its_float(self):
+        combo = CombinationMap(
+            maps={"third": quarters_scalar(Fraction(1, 3), output_number_type="float")}
+        )
+        result = combo(1)
+        assert result == {"third": 0.3333333333333333}
+        assert type(result["third"]) is float
+
+    def test_each_output_follows_its_member(self):
+        combo = CombinationMap(
+            maps={
+                "half": quarters_scalar(0.5),
+                "third": quarters_scalar(Fraction(1, 3)),
+            }
+        )
+        result = combo(1)
+        assert result == {"half": 0.5, "third": Fraction(1, 3)}
+        assert type(result["half"]) is float
+        assert type(result["third"]) is Fraction

@@ -495,6 +495,21 @@ Both are explicitly NOT invertible because they are many-to-one mappings.
 - **Serialization**: see *Manifest forms*.
 - **SUPRA Metrical Positions**: Validates against SUPRA reference (measure 222, beat 4 at quarter 887).
 
+**Each output is its member's own evaluation** (`TestMemberEvaluation`).
+A combination calls every member as a composite calls its members, so the
+member's guard runs and its result is written in the representation the
+member states itself. Only a result that differs between the two paths can
+tell them apart, so the probes are built around one. A member declared
+`fraction` (the exact scalar 1/3 from quarters into quarters) refuses the
+float input 1.0 with its own `TypeError` ("… not the float 1.0."); a
+combination bypassing it answered the float `0.3333333333333333` from a
+map declared to write fractions. A member declared `float` (the same exact
+scalar) answers `0.3333333333333333` at 1, where the bypass answered
+`Fraction(1, 3)`. A float-arithmetic member (the float scalar 0.5 into
+quarters) beside an exact one (the scalar 1/3) answers the float `0.5`
+while its neighbour keeps `Fraction(1, 3)`: each output follows its own
+member, type and value asserted together.
+
 **Validity Rationale:**
 
 CombinationMap enables multi-valued lookups required by the TTA model:

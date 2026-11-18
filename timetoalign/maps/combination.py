@@ -156,9 +156,9 @@ class CombinationMap(ConversionMap[dict[str, Any]]):
         return False
 
     def _convert_scalar(self, value: CoordinateValue, **kwargs: Any) -> dict[str, Any]:
-        """Apply all sub-maps to a single value."""
+        """Apply all sub-maps to a single value, each with its own guard and representation."""
         return {
-            name: self._maps[name]._convert_scalar(value, **kwargs)
+            name: self._maps[name]._evaluate_nested(value, **kwargs)
             for name in self._names
         }
 

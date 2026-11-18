@@ -354,24 +354,17 @@ class Break(_IdentifiedElement):
         """
         return _is_active(self.condition, 1, pass_number, after_dc_ds)
 
-    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
-        """Return this break as its ``flow_marker`` element.
-
-        Args:
-            minimal: Leave out every key at its default.
-        """
-        return self._dict_form(
-            {
-                "id": self.id,
-                "type": "flow_marker",
-                "manifestation": self.control_type.value,
-                "coordinate": axis_value_to_json(self.coordinate),
-                "name": self.name,
-                "label": self.label,
-                "meta": deepcopy(self.meta),
-            },
-            minimal=minimal,
-        )
+    def _dict_fields(self, *, minimal: bool) -> dict[str, Any]:
+        """Return the keys of this break's ``flow_marker`` element."""
+        return {
+            "id": self.id,
+            "type": "flow_marker",
+            "manifestation": self.control_type.value,
+            "coordinate": axis_value_to_json(self.coordinate),
+            "name": self.name,
+            "label": self.label,
+            "meta": deepcopy(self.meta),
+        }
 
     def __repr__(self) -> str:
         type_str = self.control_type.name
@@ -628,15 +621,12 @@ class Jump(_IdentifiedElement):
             return float("inf")  # type: ignore
         return 0
 
-    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
-        """Return this jump as its ``jump_from`` element.
+    def _dict_fields(self, *, minimal: bool) -> dict[str, Any]:
+        """Return the keys of this jump's ``jump_from`` element.
 
         ``target`` is written when the jump names one, ``repeat_count`` on a
         ``repeat_end`` only. A jump to a position no marker of its timeline
         lies on is written by its registry, which names a ``jump_to`` there.
-
-        Args:
-            minimal: Leave out every key at its default.
         """
         fields: dict[str, Any] = {
             "id": self.id,
@@ -649,7 +639,7 @@ class Jump(_IdentifiedElement):
         if self.control_type is FlowControlElement.repeat_end:
             fields["repeat_count"] = self.repeat_count
         fields.update(name=self.name, label=self.label, meta=deepcopy(self.meta))
-        return self._dict_form(fields, minimal=minimal)
+        return fields
 
     def __repr__(self) -> str:
         type_str = self.control_type.name
@@ -756,24 +746,17 @@ class Marker(_IdentifiedElement):
         """The coordinate value of the marker."""
         return self.coordinate.value
 
-    def to_dict(self, *, minimal: bool = False) -> dict[str, Any]:
-        """Return this marker as its ``jump_to`` element.
-
-        Args:
-            minimal: Leave out every key at its default.
-        """
-        return self._dict_form(
-            {
-                "id": self.id,
-                "type": "jump_to",
-                "manifestation": self.control_type.value,
-                "coordinate": axis_value_to_json(self.coordinate),
-                "name": self.name,
-                "label": self.label,
-                "meta": deepcopy(self.meta),
-            },
-            minimal=minimal,
-        )
+    def _dict_fields(self, *, minimal: bool) -> dict[str, Any]:
+        """Return the keys of this marker's ``jump_to`` element."""
+        return {
+            "id": self.id,
+            "type": "jump_to",
+            "manifestation": self.control_type.value,
+            "coordinate": axis_value_to_json(self.coordinate),
+            "name": self.name,
+            "label": self.label,
+            "meta": deepcopy(self.meta),
+        }
 
     def __repr__(self) -> str:
         label = (
@@ -1201,7 +1184,7 @@ class FlowControlRegistry:
             self._admit = owner
 
     def to_dict(
-        self, *, minimal: bool = False, taken: Collection[str] = ()
+        self, *, minimal: bool = True, taken: Collection[str] = ()
     ) -> list[dict[str, Any]]:
         """Return all control events as the ``flow_control`` array.
 
@@ -1217,7 +1200,9 @@ class FlowControlRegistry:
         landing at 0 names none. The registry's own lists are not changed.
 
         Args:
-            minimal: Leave out every key at its default.
+            minimal: Write each element in the minimal form (the default):
+                every key at its default value left out. With False, the
+                complete form: every key written, its default included.
             taken: Ids held beside the registry's own (its timeline's
                 manifest), which a minted ``jump_to`` avoids.
 

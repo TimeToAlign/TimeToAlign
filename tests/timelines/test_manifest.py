@@ -216,17 +216,54 @@ def test_minimal_and_complete_read_to_equal_objects() -> None:
     from_minimal = Timeline.from_dict(copy.deepcopy(MINIMAL))
     from_complete = Timeline.from_dict(copy.deepcopy(COMPLETE))
 
-    assert from_minimal.to_dict() == from_complete.to_dict() == COMPLETE
+    assert (
+        from_minimal.to_dict(minimal=False)
+        == from_complete.to_dict(minimal=False)
+        == COMPLETE
+    )
     assert (
         from_minimal.to_dict(minimal=True)
         == from_complete.to_dict(minimal=True)
         == MINIMAL
     )
-    assert _text(from_complete.to_dict()) == _text(COMPLETE)
+    assert _text(from_complete.to_dict(minimal=False)) == _text(COMPLETE)
     assert from_minimal.get_region("theme") == from_complete.get_region("theme")
     assert from_minimal.flow_control.breaks == from_complete.flow_control.breaks
     assert from_minimal.flow_control.jumps == from_complete.flow_control.jumps
     assert from_minimal.flow_control.markers == from_complete.flow_control.markers
+
+
+@pytest.mark.parametrize("reader", sorted(READERS))
+def test_to_dict_writes_the_minimal_form_by_default(reader: str) -> None:
+    read = READERS[reader](copy.deepcopy(COMPLETE))
+    assert read.to_dict() == read.to_dict(minimal=True)
+    assert read.to_dict() != read.to_dict(minimal=False)
+    if reader == "timeline":
+        assert read.to_dict() == MINIMAL
+
+
+ELEMENTS: dict[str, tuple[Any, str, int | None]] = {
+    # element kind: (the element of the timeline read, its key, its index)
+    "region": (lambda t: t.get_region("theme"), "regions", 0),
+    "conversion map": (lambda t: t.get_conversion_map("tempo"), "conversion_maps", 0),
+    "marker": (lambda t: t.flow_control.markers[0], "flow_control", 0),
+    "jump": (lambda t: t.flow_control.jumps[0], "flow_control", 1),
+    "break": (lambda t: t.flow_control.breaks[0], "flow_control", 2),
+    "flow control registry": (lambda t: t.flow_control, "flow_control", None),
+}
+
+
+@pytest.mark.parametrize("kind", list(ELEMENTS))
+def test_every_element_writer_writes_the_minimal_form_by_default(kind: str) -> None:
+    element_of, key, index = ELEMENTS[kind]
+    element = element_of(Timeline.from_dict(copy.deepcopy(COMPLETE)))
+    minimal = MINIMAL["timelines"][0][key]
+    complete = COMPLETE["timelines"][0][key]
+    if index is not None:
+        minimal, complete = minimal[index], complete[index]
+
+    assert element.to_dict() == minimal
+    assert element.to_dict(minimal=False) == complete
 
 
 def test_a_reader_supplies_every_default() -> None:
@@ -246,7 +283,7 @@ def test_a_reader_supplies_every_default() -> None:
     )
     assert jump.to_coordinate == Coordinate(0, TimeUnit.quarters)
     assert (jump.target, jump.name, jump.label, jump.meta) == (None, None, None, {})
-    assert timeline.get_conversion_map("tempo").to_dict()["name"] is None
+    assert timeline.get_conversion_map("tempo").to_dict(minimal=False)["name"] is None
 
 
 UNIT_DEFAULTS = {
@@ -285,7 +322,7 @@ def test_a_number_type_left_out_is_the_units_own(unit: str) -> None:
 
     assert timeline.number_type is NumberType[number_type]
     assert timeline.to_dict(minimal=True) == data
-    assert timeline.to_dict()["timelines"][0]["number_type"] == number_type
+    assert timeline.to_dict(minimal=False)["timelines"][0]["number_type"] == number_type
 
 
 def test_the_class_comes_from_the_unit_and_a_class_key_is_kept() -> None:
@@ -1723,7 +1760,7 @@ def test_a_graphical_object_read_is_written_back(reader: Any) -> None:
     read = reader(copy.deepcopy({**data, "graphical": {}}))
 
     assert read.to_dict(minimal=True) == {**data, "graphical": {}}
-    assert read.to_dict()["graphical"] == {
+    assert read.to_dict(minimal=False)["graphical"] == {
         "order": {},
         "statements": [],
         "styles": {},
@@ -1767,7 +1804,7 @@ def test_a_timestamp_display_is_written_in_canonical_order_with_its_default(
     read = reader(data)
 
     default = ["wedge", "name", "cross_section"]
-    assert read.to_dict()["graphical"]["timestamps"] == [
+    assert read.to_dict(minimal=False)["graphical"]["timestamps"] == [
         _stamp(1, display=default),
         _stamp(2, display=default),
         _stamp(3, display=["wedge", "name"]),

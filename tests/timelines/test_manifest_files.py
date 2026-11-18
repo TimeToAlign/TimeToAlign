@@ -1,0 +1,236 @@
+"""Manifest files: read in any serialization, written back as they came.
+
+The strategy is documented in ``tests/timelines/README.md`` ("Manifest
+files"). Every reference text is ``timetoshare.dumps`` of a manifest written
+by hand or of a package fixture, never the library's own output.
+"""
+
+from __future__ import annotations
+
+import copy
+import difflib
+import os
+from pathlib import Path
+from typing import Any
+
+import pytest
+from timetoshare import complete, dumps, fixture_paths, loads, minimal, validate
+
+from timetoalign.alignment import AlignmentBundle
+from timetoalign.timelines import Timeline, TimelineGroup
+from timetoalign.timelines.types import ContinuousPhysicalTimeline
+
+SERIALIZATIONS = ("yaml", "json", "jcs")
+
+FIXTURE_ROOT = Path(os.path.commonpath(fixture_paths()))
+"""The package's ``fixtures/<version>/`` directory."""
+
+READERS: dict[str, type] = {
+    ".": Timeline,
+    "groups": TimelineGroup,
+    "bundles": AlignmentBundle,
+}
+"""The class reading a fixture directory's manifests as a whole."""
+
+FIXTURES = sorted(
+    path.relative_to(FIXTURE_ROOT).as_posix()
+    for path in fixture_paths()
+    if not path.name.endswith(".minimal.yaml")
+)
+
+
+def _write(path: Path, text: str) -> Path:
+    """Write *text* to *path* exactly, line feeds included."""
+    path.write_bytes(text.encode("utf-8"))
+    return path
+
+
+def _read(path: Path) -> str:
+    """Return the exact text of *path*."""
+    return path.read_bytes().decode("utf-8")
+
+
+def _round_trip(reader: type, text: str, tmp_path: Path) -> str:
+    """Read *text* from a file with *reader* and return what ``to_file`` writes."""
+    source = _write(tmp_path / "source.txt", text)
+    target = tmp_path / "target.txt"
+    assert reader.from_file(source).to_file(target) == target
+    return _read(target)
+
+
+SCORE = {"id": "score", "length": [32, 1], "unit": "quarters"}
+TAKE = {"id": "take_1", "length": 64.5, "unit": "seconds"}
+
+GROUPED = {
+    "timetoshare": "0.2.0",
+    "timelines": [SCORE, TAKE],
+    "groups": [{"id": "g", "members": ["score", "take_1"]}],
+}
+"""A minimal anonymous bundle of one group, without ``graphical``."""
+
+STYLED = {
+    **GROUPED,
+    "graphical": {
+        "order": {"g": ["take_1", "score"]},
+        "styles": {"frame-highlight": {"stroke": "#7F00FF"}},
+    },
+}
+"""The same manifest with a ``graphical`` object."""
+
+SIMPLE = {"timetoshare": "0.2.0", "timelines": [SCORE, TAKE], "name": "Study"}
+"""A minimal named bundle of two ungrouped timelines."""
+
+
+# region Round trips
+
+
+@pytest.mark.parametrize("manifest", [GROUPED, STYLED, SIMPLE])
+def test_the_literals_are_valid_minimal_manifests(manifest: dict[str, Any]) -> None:
+    """The hand-written manifests are valid, and minimal."""
+    validate(manifest)
+    assert dumps(minimal(manifest)) == dumps(manifest)
+    assert loads(dumps(manifest)) == manifest
+
+
+@pytest.mark.parametrize("fixture", FIXTURES)
+def test_every_fixture_file_is_written_back_byte_for_byte(
+    fixture: str, tmp_path: Path
+) -> None:
+    """Each form, serialization and styling of each fixture keeps its bytes."""
+    reader = READERS[Path(fixture).parent.as_posix()]
+    twin = fixture.removesuffix(".yaml") + ".minimal.yaml"
+    for name in (fixture, twin):
+        value = loads((FIXTURE_ROOT / name).read_text(encoding="utf-8"))
+        variants = [value]
+        if "graphical" in value:
+            variants.append({k: v for k, v in value.items() if k != "graphical"})
+        for manifest in variants:
+            for serialization in SERIALIZATIONS:
+                text = dumps(manifest, serialization=serialization)
+                assert _round_trip(reader, text, tmp_path) == text, (
+                    name,
+                    serialization,
+                    "graphical" in manifest,
+                )
+
+
+# endregion
+
+
+# region Inference
+
+
+def test_a_key_at_its_default_makes_the_file_complete(tmp_path: Path) -> None:
+    """One key stated at its default is enough for the complete form."""
+    stated = copy.deepcopy(SIMPLE)
+    stated["timelines"][0]["meta"] = {}
+    text = dumps(stated)
+    assert _round_trip(AlignmentBundle, text, tmp_path) == dumps(complete(stated))
+    text = dumps(SIMPLE)
+    assert _round_trip(AlignmentBundle, text, tmp_path) == text
+
+
+def test_styling_is_kept_as_read(tmp_path: Path) -> None:
+    """A group file without ``graphical`` stays without it; with one it keeps it."""
+    group = _write(tmp_path / "group.yaml", dumps(GROUPED))
+    assert "graphical" in TimelineGroup.from_file(group).to_dict()
+    for manifest in (GROUPED, STYLED):
+        text = dumps(manifest)
+        assert _round_trip(TimelineGroup, text, tmp_path) == text
+
+
+def test_a_text_that_is_not_canonical_is_written_canonical(tmp_path: Path) -> None:
+    """JSON on one line is read as pretty JSON and written as pretty JSON."""
+    text = (
+        '{"timetoshare": "0.2.0", "name": "Study", "timelines": ['
+        '{"id": "score", "unit": "quarters", "length": [32, 1]}, '
+        '{"id": "take_1", "unit": "seconds", "length": 64.5}]}'
+    )
+    assert loads(text) == SIMPLE
+    written = _round_trip(AlignmentBundle, text, tmp_path)
+    assert written == dumps(SIMPLE, serialization="json")
+
+
+@pytest.mark.parametrize(
+    ("argument", "expected"),
+    [
+        ({"minimal": False}, dumps(complete(STYLED))),
+        (
+            {"styling": False},
+            dumps({k: v for k, v in STYLED.items() if k != "graphical"}),
+        ),
+        ({"serialization": "jcs"}, dumps(STYLED, serialization="jcs")),
+    ],
+    ids=["minimal", "styling", "serialization"],
+)
+def test_each_argument_overrides_one_inference(
+    argument: dict[str, Any], expected: str, tmp_path: Path
+) -> None:
+    """Each argument changes what it names and keeps the other two as read."""
+    source = _write(tmp_path / "group.yaml", dumps(STYLED))
+    target = TimelineGroup.from_file(source).to_file(tmp_path / "out", **argument)
+    assert _read(target) == expected
+
+
+def test_an_object_built_in_code_is_written_minimal_styled_in_yaml(
+    tmp_path: Path,
+) -> None:
+    """Minimal form, styling included, canonical YAML."""
+    bundle = AlignmentBundle.from_dict(STYLED)
+    written = _read(bundle.to_file(tmp_path / "bundle.yaml"))
+    assert written == dumps(STYLED)
+    assert written == dumps(bundle.to_dict())
+    assert "graphical:" in written
+
+
+def test_selection_passes_through(tmp_path: Path) -> None:
+    """``from_file`` selects as ``from_dict`` does, and keeps the file's form."""
+    path = _write(tmp_path / "group.json", dumps(GROUPED, serialization="json"))
+    take = Timeline.from_file(path, timeline_id="take_1")
+    assert take.id == "take_1"
+    expected = dumps(
+        {"timetoshare": "0.2.0", "timelines": [TAKE]}, serialization="json"
+    )
+    assert _read(take.to_file(tmp_path / "take.json")) == expected
+    group = TimelineGroup.from_file(path, group_id="g")
+    assert group.timeline_ids == ["score", "take_1"]
+
+
+# endregion
+
+
+# region The editing workflow
+
+
+EDITED_DIFF = """\
+--- before.yaml
++++ after.yaml
+@@ -8,4 +8,8 @@
+     id: take_1
+     length: 64.5
+     unit: seconds
++  -
++    id: take_2
++    length: 70.25
++    unit: seconds
+ timetoshare: "0.2.0"
+"""
+
+
+def test_a_timeline_added_changes_only_its_own_lines(tmp_path: Path) -> None:
+    """Read, add a timeline, write back: the diff is the new timeline alone."""
+    before = dumps(SIMPLE)
+    path = _write(tmp_path / "study.yaml", before)
+    bundle = AlignmentBundle.from_file(path)
+    bundle.add_timeline(ContinuousPhysicalTimeline(length=70.25, uid="take_2"))
+    bundle.to_file(path)
+    diff = difflib.unified_diff(
+        before.splitlines(keepends=True),
+        _read(path).splitlines(keepends=True),
+        "before.yaml",
+        "after.yaml",
+    )
+    assert "".join(diff) == EDITED_DIFF
+
+
+# endregion

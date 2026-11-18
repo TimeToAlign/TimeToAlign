@@ -106,8 +106,8 @@ Commensurable: |
   See Commensurability.
 
 Complete form: |
-  The form in which to_dict() writes a TimeToShare manifest by default: every
-  key the format defines is written, those holding their default value
+  The form in which to_dict(minimal=False) writes a TimeToShare manifest:
+  every key the format defines is written, those holding their default value
   included (null, {}, []). A key whose default is its absence, such as a
   manifest's id or a root timeline's offset, is written only when it has a
   value. The complete and the minimal form of one object read back to equal
@@ -389,11 +389,13 @@ MetricalPositionMap: |
   count standing as its number.
 
 Minimal form: |
-  The form in which to_dict(minimal=True) writes a TimeToShare manifest:
-  every key holding its default value is left out, except a timeline's
-  length, which both forms write. Readers supply every default left out, so a
-  minimal manifest can be written by hand; the smallest names the version and
-  one timeline with its id, unit and length.
+  The form in which every to_dict() writes a TimeToShare manifest by default
+  (to_dict(minimal=False) writes the complete form): every key holding its
+  default value is left out, except a timeline's length, which both forms
+  write. Readers supply every default left out, so a minimal manifest can be
+  written by hand; the smallest names the version and one timeline with its
+  id, unit and length. to_file() writes a manifest file in the form it was
+  read in, canonical YAML for a new object.
 
 MpmLoader: |
   Loader for an MPM-Toolbox project: a sibling .msm score, .mpm modelled

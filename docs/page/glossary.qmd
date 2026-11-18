@@ -144,8 +144,8 @@ to the relevant section of the conceptual model.
 :   See {{< glossary Commensurability >}}.
 
 **Complete form**
-:   The form in which `to_dict()` writes a
-    {{< glossary "TimeToShare manifest" >}} by default: every key the format
+:   The form in which `to_dict(minimal=False)` writes a
+    {{< glossary "TimeToShare manifest" >}}: every key the format
     defines is written, those holding their default value included (`null`,
     `{}`, `[]`). A key whose default is its absence, such as a manifest's `id`
     or a root timeline's `offset`, is written only when it has a value. The
@@ -542,12 +542,14 @@ to the relevant section of the conceptual model.
     See [Conversion maps](concepts.qmd#conversion-maps).
 
 **Minimal form**
-:   The form in which `to_dict(minimal=True)` writes a
-    {{< glossary "TimeToShare manifest" >}}: every key holding its default
+:   The form in which every `to_dict()` writes a
+    {{< glossary "TimeToShare manifest" >}} by default (`to_dict(minimal=False)`
+    writes the {{< glossary "Complete form" >}}): every key holding its default
     value is left out, except a timeline's `length`, which both forms write.
     Readers supply every default left out, so a minimal manifest can be written
     by hand; the smallest names the version and one timeline with its `id`,
-    `unit` and `length`.
+    `unit` and `length`. `to_file()` writes a manifest file in the form it was
+    read in, canonical YAML for a new object.
     See [How to Save and Load Timelines, Groups and Bundles](howto/how02_group_and_bundle_files.ipynb).
 
 **MpmLoader**

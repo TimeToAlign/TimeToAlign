@@ -506,6 +506,20 @@ class _IdentifiedElement(_OpenObject):
         else:
             validate_id(self.id)
 
+    def to_dict(self, *, minimal: bool = True) -> dict[str, Any]:
+        """Return this element as its JSON object, coordinates as bare values.
+
+        Args:
+            minimal: Write the minimal form (the default): every key at its
+                default value left out, in nested objects too. With False,
+                the complete form: every key written, its default included.
+        """
+        return self._dict_form(self._dict_fields(minimal=minimal), minimal=minimal)
+
+    def _dict_fields(self, *, minimal: bool) -> dict[str, Any]:
+        """Return the element's keys in written order, nested objects in *minimal* form."""
+        raise NotImplementedError
+
 
 # endregion
 

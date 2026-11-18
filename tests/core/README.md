@@ -1408,8 +1408,9 @@ Every conversion-map class that has a manifest form — all but the two
 periodic maps, whose refusal `tests/maps/README.md` pins — contributes one
 live instance (an `IntervalToConstantMap` of labels given its `end`, the
 four measure views over one two-bar measure map): its `to_dict()` is
-JSON-safe and keeps exact Fractions, its name is written only when given,
-and a custom name round-trips through `ConversionMap.from_dict`, a view
+JSON-safe and keeps exact Fractions, its name is written only when given
+(`null` in the complete form, left out of the minimal form it writes by
+default), and a custom name round-trips through `ConversionMap.from_dict`, a view
 given the measure map it names.
 
 ### Coordinate cell rendering

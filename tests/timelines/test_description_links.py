@@ -230,7 +230,7 @@ def test_the_classes_are_the_package_s(name: str) -> None:
 
 def test_the_work_bundle_of_op_106_in_both_forms() -> None:
     built = _op_106()
-    written, written_minimal = built.to_dict(), built.to_dict(minimal=True)
+    written, written_minimal = built.to_dict(minimal=False), built.to_dict(minimal=True)
     assert written_minimal == OP_106_MINIMAL
     assert written == OP_106_COMPLETE
     assert dumps(written_minimal) == dumps(OP_106_MINIMAL)
@@ -241,7 +241,7 @@ def test_the_work_bundle_of_op_106_in_both_forms() -> None:
     assert dumps(minimal(written)) == dumps(written_minimal)
     for literal in (OP_106_COMPLETE, OP_106_MINIMAL):
         read = AlignmentBundle.from_dict(copy.deepcopy(literal))
-        assert read.to_dict() == OP_106_COMPLETE
+        assert read.to_dict(minimal=False) == OP_106_COMPLETE
         assert read.to_dict(minimal=True) == OP_106_MINIMAL
         assert read == built
 
@@ -344,7 +344,7 @@ def test_a_region_s_links() -> None:
     score.create_region(0, 4, id="intro", links=[first])
     score.create_region(4, 8, id="verse")
     assert score.get_region("intro").links == (first,)
-    regions = score.to_dict()["timelines"][0]["regions"]
+    regions = score.to_dict(minimal=False)["timelines"][0]["regions"]
     assert regions == [
         {
             "id": "intro",

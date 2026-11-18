@@ -31,7 +31,8 @@ passes cannot be the library agreeing with itself.
 
 **The fixtures, both ways.** `fixture_paths()` lists every manifest under
 the package's `fixtures/0.2.0/` (drawings excluded): each fixture in the
-complete form and its minimal twin `<name>.minimal.json` beside it. The
+complete form and its minimal twin `<name>.minimal.yaml` beside it, both
+in canonical YAML and read with the package's `loads`. The
 pairing is exact, every fixture has its twin and every twin its fixture,
 and the fixtures lie in exactly the three directories a reader is named
 for (directly in the directory, `groups/`, `bundles/`), none of them
@@ -50,8 +51,8 @@ change. For every pair:
   twin to objects of the same class that write the same manifests: the
   defaults the twin leaves out are supplied by the library's reader as the
   package supplies them;
-- each object writes back byte for byte: `dumps(to_dict())` is the
-  fixture's text and `dumps(to_dict(minimal=True))` the twin's. Because
+- each object writes back byte for byte: `dumps(to_dict(minimal=False))`
+  is the fixture's text and `dumps(to_dict())` the twin's. Because
   `dumps` puts arrays in canonical order itself, the library's own output
   is also compared with keys sorted and arrays as they stand: the library
   must write children, conversion maps, regions, flow control, timelines,
@@ -98,7 +99,7 @@ unknown keys at many depths, each with the `unknown_keys` the validators
 report. `AlignmentBundle.from_dict` reads every case, and the bundle writes
 it back in the form the case is written in (complete or minimal) byte for
 byte with `dumps`, its `unknown_keys` equal to the case's list. One case,
-`several_depths.json`, writes its measure-map row as a hand would, without
+`several_depths.yaml`, writes its measure-map row as a hand would, without
 the keys the library writes in every row it keeps (`name`, `start_repeat`,
 `end_repeat`) and with JSON numbers where the library writes exact pairs; the
 expected text is the case with that one row as the library writes it,
@@ -122,7 +123,7 @@ ungrouped; the bundles of `ParangonadaLoader`, `MatchfileLoader`,
 `ListenHereLoader` (a two-recording export written to a temporary
 directory, since no corpus holds one) and `TiliaJsonLoader`, and the group
 of `TiliaJsonLoader`. The corpus paths come from `ensure_data` at module
-level. For each object, `to_dict()` and `to_dict(minimal=True)` validate
+level. For each object, `to_dict(minimal=False)` and `to_dict()` validate
 with no unknown keys, `minimal` and `complete` map each onto the other as
 text, and `canonical_order` changes neither. MatchClaims are not part of a
 manifest and take no part.

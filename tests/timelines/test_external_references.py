@@ -34,7 +34,7 @@ from timetoalign.timelines.engines.external_references import (
 
 # region Helpers
 
-#: Keys every timeline object of ``to_dict()`` carries, whatever the flags.
+#: Keys every timeline object of ``to_dict(minimal=False)`` carries, whatever the flags.
 STRUCTURAL_KEYS = {
     "id",
     "name",
@@ -53,8 +53,8 @@ STRUCTURAL_KEYS = {
 
 
 def _object(timeline: Timeline, **flags: bool) -> dict[str, Any]:
-    """The timeline object ``to_dict`` writes for *timeline*, its one root."""
-    return timeline.to_dict(**flags)["timelines"][0]
+    """The complete timeline object ``to_dict`` writes for *timeline*, its one root."""
+    return timeline.to_dict(minimal=False, **flags)["timelines"][0]
 
 
 def _timeline(uid: str = "spine", length: float = 10.0) -> Timeline:

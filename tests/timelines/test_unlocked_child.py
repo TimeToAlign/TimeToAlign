@@ -74,7 +74,7 @@ def test_a_childs_locked_is_read_and_written_as_it_stands() -> None:
     )
 
     rec = Timeline.from_dict(data)
-    complete = rec.to_dict()
+    complete = rec.to_dict(minimal=False)
     minimal = rec.to_dict(minimal=True)
 
     assert [rec.get_child(uid).is_locked for uid in "abc"] == [False, False, True]
@@ -86,7 +86,7 @@ def test_a_childs_locked_is_read_and_written_as_it_stands() -> None:
     assert [
         child.get("locked", "absent") for child in minimal["timelines"][0]["children"]
     ] == ["absent", "absent", True]
-    assert Timeline.from_dict(complete).to_dict() == complete
+    assert Timeline.from_dict(complete).to_dict(minimal=False) == complete
     assert Timeline.from_dict(minimal).to_dict(minimal=True) == minimal
 
 
@@ -498,7 +498,9 @@ def test_reading_unlocks_a_plain_segment_and_keeps_a_lines_lock(
     page_locked: bool,
 ) -> None:
     line, pages = _read_lines(page_locked=page_locked)
-    plain, edition = (timeline.to_dict()["timelines"][0] for timeline in (line, pages))
+    plain, edition = (
+        timeline.to_dict(minimal=False)["timelines"][0] for timeline in (line, pages)
+    )
     plain_minimal, edition_minimal = (
         timeline.to_dict(minimal=True)["timelines"][0] for timeline in (line, pages)
     )

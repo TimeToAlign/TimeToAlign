@@ -30,8 +30,10 @@
 #
 # This guide writes each of the three, reads them back, checks that the
 # rebuilt objects answer every query exactly as the originals do, selects one
-# timeline or group out of a larger manifest, and saves the manifests as JSON
-# files. It ends with a timeline whose length is not known.
+# timeline or group out of a larger manifest, saves the manifests as files
+# with `to_file()` and reads them with `from_file()`, and edits a file the
+# way a reviewed change would. It ends with a timeline whose length is not
+# known.
 #
 # A manifest holds structure: timelines, their children, conversion maps,
 # regions and flow control, the measure maps the conversion maps read, and
@@ -42,17 +44,20 @@
 # %% [markdown]
 # ## Setup
 #
-# Install the library with `pip install timetoalign`. Four small helpers keep
-# the cells below short: `answers` lists what a stamp says about every
-# timeline it reaches, `show` prints a manifest as the JSON text a file would
-# hold, `outline` shows a manifest with each root timeline reduced to its id,
-# and `save` / `load` write and read a JSON file.
+# Install the library with `pip install timetoalign`; the TimeToShare
+# package comes with it. Three small helpers keep the cells below short:
+# `answers` lists what a stamp says about every timeline it reaches, `show`
+# prints a manifest as the text a file would hold, in canonical YAML (see
+# [Save and load files](#save-and-load-files)), and `outline` shows a
+# manifest with each root timeline reduced to its id.
 
 # %%
-import json
+import difflib
 import tempfile
 from fractions import Fraction
 from pathlib import Path
+
+from timetoshare import dumps
 
 from timetoalign import (
     AlignmentBundle,
@@ -80,25 +85,13 @@ def answers(stamps):
 
 
 def show(data):
-    """Print a manifest as JSON text."""
-    print(json.dumps(data, indent=2))
+    """Print a manifest as canonical YAML."""
+    print(dumps(data), end="")
 
 
 def outline(data):
     """Show a manifest with each root timeline reduced to its id."""
     return {**data, "timelines": [timeline["id"] for timeline in data["timelines"]]}
-
-
-def save(name, data):
-    """Write a manifest as a JSON file, and return the path."""
-    path = FILES / f"{name}.json"
-    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-    return path
-
-
-def load(path):
-    """Read a JSON file back into a dictionary."""
-    return json.loads(path.read_text(encoding="utf-8"))
 
 
 # %% [markdown]
@@ -112,10 +105,10 @@ score.create_region(0, 8, name="First half")
 score
 
 # %% [markdown]
-# `to_dict()` writes the **complete form**: every key the format defines,
-# each written even when it holds its default (`null`, `{}`, `[]`). The
-# manifest opens with the version marker `"timetoshare": "0.2.0"`; its
-# `timelines` array holds the score as its one root.
+# `to_dict()` writes the **minimal form**: every key holding its default is
+# left out, `length` being the one key written in every form. The manifest
+# carries the version marker `timetoshare: "0.2.0"`; its `timelines` array
+# holds the score as its one root.
 #
 # A value on the timeline's own axis (its `length`, a region's `start` and
 # `end`) is written bare, in the axis's number type: quarters count in exact
@@ -127,12 +120,12 @@ score_data = score.to_dict()
 show(score_data)
 
 # %% [markdown]
-# `to_dict(minimal=True)` writes the **minimal form**: every key holding its
-# default is left out. `length` is the one exception, written in both forms.
+# `to_dict(minimal=False)` writes the **complete form**: every key the format
+# defines, each written even when it holds its default (`null`, `{}`, `[]`).
 
 # %%
-score_minimal = score.to_dict(minimal=True)
-show(score_minimal)
+score_complete = score.to_dict(minimal=False)
+show(score_complete)
 
 # %% [markdown]
 # ## Read a timeline
@@ -140,16 +133,16 @@ show(score_minimal)
 # `Timeline.from_dict()` reads either form and supplies every default that
 # is left out. It returns the class the unit decides, here a
 # `ContinuousLogicalTimeline` for quarters. Both forms read to the same
-# timeline: each writes back the complete form of the original, and its
-# minimal form.
+# timeline: each writes back the minimal form of the original, and its
+# complete form.
 
 # %%
-from_complete = Timeline.from_dict(score_data)
-from_minimal = Timeline.from_dict(score_minimal)
+from_minimal = Timeline.from_dict(score_data)
+from_complete = Timeline.from_dict(score_complete)
 (
     type(from_minimal).__name__,
     from_complete.to_dict() == from_minimal.to_dict() == score_data,
-    from_minimal.to_dict(minimal=True) == score_minimal,
+    from_minimal.to_dict(minimal=False) == score_complete,
 )
 
 # %% [markdown]
@@ -237,13 +230,13 @@ before
 
 # %%
 group_data = group.to_dict()
-show(group.to_dict(minimal=True))
+show(group_data)
 
 # %% [markdown]
 # A child's `offset` is a bare value on its parent's axis, in its parent's
 # number type: the second half starts at `[8, 1]` quarters into the score.
 # `add_child()` locks a child unless it is given `locked=False`, so this one
-# writes `"locked": true`. An unlocked child writes `false`, and reading keeps
+# writes `locked: true`. An unlocked child writes `false`, and reading keeps
 # whichever the manifest states.
 
 # %%
@@ -256,7 +249,7 @@ group_data["timelines"][0]["children"][0]["offset"]
 # form they appear at their defaults.
 
 # %%
-group_data["graphical"]
+group.to_dict(minimal=False)["graphical"]
 
 # %% [markdown]
 # ## Read a group
@@ -336,7 +329,7 @@ bundle_before
 
 # %%
 bundle_data = bundle.to_dict()
-outline(bundle.to_dict(minimal=True))
+outline(bundle_data)
 
 # %% [markdown]
 # ## Read a bundle
@@ -421,29 +414,91 @@ annotated = {
         }
     ],
 }
-Timeline.from_dict(annotated).to_dict(minimal=True) == annotated
+Timeline.from_dict(annotated).to_dict() == annotated
 
 # %% [markdown]
-# ## Save the files
+# ## Save and load files
 #
-# A manifest contains only JSON values, so `json` writes it as it is, and a
-# file read back with `json` goes straight into `from_dict()`. Floats survive
-# the trip as well: `json` writes `10.0` as `10.0`, and the recording's
-# coordinates come back as the same floats.
+# `to_file()` writes an object's manifest to a file and returns its path;
+# `from_file()` reads a file as `from_dict()` reads a manifest, taking the
+# same selection arguments. A file is written in **canonical YAML** unless
+# you ask for another serialization: the keys of every object sorted, the
+# arrays in a canonical order, every member and every item on lines of its
+# own, and a list of plain values, such as a Fraction pair, on one line.
+# Equal manifests so give equal text. Floats keep their float spelling:
+# the recording's `10.0` seconds stay `10.0`.
 
 # %%
-group_path = save("second_half", group_data)
-bundle_path = save("edition", bundle_data)
+group_path = group.to_file(FILES / "second_half.yaml")
+print(group_path.read_text(encoding="utf-8"), end="")
+
+# %% [markdown]
+# The group read from the file writes the same manifest and answers the same
+# queries.
+
+# %%
+group_read = TimelineGroup.from_file(group_path)
 (
-    TimelineGroup.from_dict(load(group_path)).to_dict() == group_data,
-    AlignmentBundle.from_dict(load(bundle_path)).to_dict() == bundle_data,
-    answers(
-        TimelineGroup.from_dict(load(group_path)).get_timestamps_at(
-            positions, second_half.id
-        )
-    )
-    == before,
+    group_read.to_dict() == group_data,
+    answers(group_read.get_timestamps_at(positions, second_half.id)) == before,
 )
+
+# %% [markdown]
+# A manifest file has a **form** (minimal or complete), may hold
+# **styling** (a `graphical` object) and has a **serialization**: canonical
+# YAML (`"yaml"`), pretty JSON (`"json"`) or RFC 8785 JSON (`"jcs"`), whose
+# bytes suit a digest or a signature. `from_file()` reads all three and
+# notes what it found: the form is minimal when no key holds its default,
+# and the serialization is the one the text is written in. `to_file()`
+# writes an object read from a file back in the same form, styling and
+# serialization, so a file read and written back unchanged keeps its bytes.
+# `minimal=`, `styling=` and `serialization=` override each; an object built
+# in code is written in the minimal form, its styling included, in canonical
+# YAML.
+#
+# Here the bundle is saved as pretty JSON in the complete form, and a copy
+# written from the file read back is the same file, byte for byte.
+
+# %%
+bundle_path = bundle.to_file(
+    FILES / "edition.json", minimal=False, serialization="json"
+)
+copy_path = AlignmentBundle.from_file(bundle_path).to_file(FILES / "copy.json")
+print(*bundle_path.read_text(encoding="utf-8").splitlines()[:12], sep="\n")
+copy_path.read_bytes() == bundle_path.read_bytes()
+
+# %% [markdown]
+# ## Edit a file and review the change
+#
+# Manifests are meant to be kept in a repository and changed by reviewed
+# pull requests. The workflow is: read the file, enrich what it holds, write
+# it back, and review the diff. Canonical YAML keeps every change to its own
+# lines, so the diff shows what was added and nothing else.
+#
+# Here a second performance joins the performance's group in the bundle's
+# YAML file.
+
+# %%
+edition_path = bundle.to_file(FILES / "edition.yaml")
+before_text = edition_path.read_text(encoding="utf-8")
+
+edition = AlignmentBundle.from_file(edition_path)
+second_take = ContinuousPhysicalTimeline(length=13.25, name="Second performance")
+edition.add_timeline(second_take, grouped_with=performance.id)
+edition.to_file(edition_path)
+
+diff = difflib.unified_diff(
+    before_text.splitlines(keepends=True),
+    edition_path.read_text(encoding="utf-8").splitlines(keepends=True),
+    "edition.yaml",
+    "edition.yaml (edited)",
+)
+print("".join(diff), end="")
+
+# %% [markdown]
+# The diff holds the lines of the new timeline, and the one line each of the
+# group's `members` and of its display order in `graphical.order`, which
+# now name it. Every other line of the file is unchanged.
 
 # %% [markdown]
 # ## A timeline of unknown length
@@ -476,7 +531,7 @@ stream
 # it gives back a timeline whose length is not known.
 
 # %%
-stream_data = stream.to_dict(minimal=True)
+stream_data = stream.to_dict()
 show(stream_data)
 Timeline.from_dict(stream_data).is_length_known
 

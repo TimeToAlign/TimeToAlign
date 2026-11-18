@@ -42,11 +42,14 @@
 # Install the library with `pip install timetoalign`; the TimeToShare
 # package, whose classes the library uses for links, comes with it. No data
 # is downloaded: every address below is read offline. `show` prints a
-# manifest as the JSON text a file would hold, and `summary` lists links by
+# manifest as the text a file would hold, in canonical YAML, the
+# serialization `to_file()` writes by default, and `summary` lists links by
 # their level, their first URI and the agent who asserted them.
 
 # %%
-import json
+import copy
+
+from timetoshare import dumps
 
 import timetoalign as tta
 
@@ -70,8 +73,8 @@ MOVEMENTS = {
 
 
 def show(data):
-    """Print a manifest as JSON text."""
-    print(json.dumps(data, indent=2, ensure_ascii=False))
+    """Print a manifest as canonical YAML."""
+    print(dumps(data), end="")
 
 
 def summary(links):
@@ -350,10 +353,11 @@ summary(bundle.get_links(asserted_by=MUSICOLOGIST))
 #
 # `to_dict()` writes the links where they stand: the bundle's in the
 # manifest's `links`, the recording's and its region's in theirs, and the
-# scheme in `schemes`. The minimal form leaves out every key at its default.
+# scheme in `schemes`. It writes the minimal form, which leaves out every
+# key at its default; `to_dict(minimal=False)` writes the complete form.
 
 # %%
-manifest = bundle.to_dict(minimal=True)
+manifest = bundle.to_dict()
 show(manifest)
 
 # %% [markdown]
@@ -365,8 +369,8 @@ read_back = tta.AlignmentBundle.from_dict(manifest)
 (
     read_back.links == bundle.links,
     read_back.schemes == bundle.schemes,
-    read_back.to_dict(minimal=True) == manifest,
-    read_back.to_dict() == bundle.to_dict(),
+    read_back.to_dict() == manifest,
+    read_back.to_dict(minimal=False) == bundle.to_dict(minimal=False),
 )
 
 # %% [markdown]
@@ -380,7 +384,7 @@ read_back = tta.AlignmentBundle.from_dict(manifest)
 # `not_represented`.
 
 # %%
-show(bundle.get_timeline("recording").to_dict(minimal=True))
+show(bundle.get_timeline("recording").to_dict())
 
 # %% [markdown]
 # ## Change and remove links
@@ -447,7 +451,7 @@ trial.replace_link(
     reading,
     reading.with_parts("has_part", [reading.parts[0], ghost, *reading.parts[2:]]),
 )
-edited = json.loads(json.dumps(manifest))
+edited = copy.deepcopy(manifest)
 edited["links"][0]["parts"][1] = ghost.to_dict(minimal=True)
 for operation in (trial.to_dict, lambda: tta.AlignmentBundle.from_dict(edited)):
     try:

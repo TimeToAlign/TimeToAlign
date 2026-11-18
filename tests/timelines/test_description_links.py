@@ -352,7 +352,7 @@ def test_a_region_s_links() -> None:
             "start": [0, 1],
             "end": [4, 1],
             "meta": {},
-            "links": [first.to_dict()],
+            "links": [first.to_dict(minimal=False)],
         },
         {
             "id": "verse",
@@ -405,9 +405,7 @@ def test_a_scheme_id_held_in_the_bundle_is_refused(scheme_id: str, holder: str) 
         f"is already held by {holder}",
         lambda: bundle.add_scheme(scheme_id, name="Refused"),
     )
-    assert [scheme.to_dict() for scheme in bundle.schemes] == [
-        {"id": "opus", "name": None, "uri": [], "criteria": None}
-    ]
+    assert [scheme.to_dict() for scheme in bundle.schemes] == [{"id": "opus"}]
 
 
 def test_a_scheme_id_is_never_the_bundle_s_given_id() -> None:

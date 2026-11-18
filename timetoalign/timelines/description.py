@@ -36,7 +36,7 @@ Examples:
     >>> _ = take.add_link(
     ...     "https://musicbrainz.org/release/814c53fd-0732-4819-9753-4578f5ab992c"
     ... )
-    >>> take.links[0].to_dict(minimal=True)
+    >>> take.links[0].to_dict()
     {'relation': 'pertains_to', 'level': 'manifestation', \
 'uri': ['http://musicbrainz.org/release/814c53fd-0732-4819-9753-4578f5ab992c']}
     >>> [link.level for link in take.get_links(scheme="musicbrainz_release")]

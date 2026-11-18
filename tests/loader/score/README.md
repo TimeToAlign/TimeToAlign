@@ -40,6 +40,19 @@ Every `.flow.csv` must exist and contain `atomic` and `default` modes. Its numbe
 must equal the specimen value above. MS3 must reproduce one documented valid default flow and
 the exact atomic boundaries. TSV and MeasureMap must have identical folded counts.
 
+### Successors derived from the measure columns
+
+A source that lists each measure's successors (an ms3 TSV, a Measure Map) keeps them. For every
+other score loader `ScoreLoader.load()` derives the `next` column, per part, from the repeat,
+volta and navigation columns of the measure table (`ScoreLoader._successors`), so one rule
+serves Music21, Partitura and Verovio. What proves it: the derived successors are an input of
+the flow controller, so each loader's default flow on every specimen of the matrix, and each
+pinned deviation below, must stay exactly what it is. The rule writes edges the two former
+loader-specific derivations did not (Music21 wrote none when a score had D.S., D.C., segno,
+coda or Fine marks; Partitura wrote no third volta and no exit after a non-final volta without
+a repeat end), and none of them changes a flow on these specimens: the traversal routes voltas
+by pass, and a D.S. or D.C. is executed only where the measure table names its target.
+
 ## Exact flow-control profiles
 
 `TestFlowControlProfiles` contains the former standalone parity assertions. It derives repeat

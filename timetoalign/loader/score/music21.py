@@ -83,13 +83,8 @@ class Music21Loader(ScoreLoader):
         #    are not translated to RepeatBracket spanners by music21.
         is_mei = source.suffix.lower() == ".mei"
         mei_measure_info: dict[int, dict[str, Any]] = (
-            {}
-        )  # mc -> {volta, end_repeat, start_repeat, has_fine, has_segno, …}
-        mei_has_any_nav_markers: bool = False
-        if is_mei:
-            mei_measure_info, mei_has_any_nav_markers = self._parse_mei_measure_info(
-                source
-            )
+            self._parse_mei_measure_info(source) if is_mei else {}
+        )  # mc -> {number, volta, start_repeat, end_repeat}
 
         for part_idx, part in enumerate(parts):
             # Ensure part_id is always a string (MEI may return int IDs)
@@ -189,61 +184,6 @@ class Music21Loader(ScoreLoader):
                     # Get volta number
                     volta = volta_by_offset.get(float(m.offset))
 
-                # Extract repeat expression markers (D.S., D.C., Segno, etc.)
-                has_fine = False
-                has_segno = False
-                has_coda = False
-                has_ds = False  # DalSegno or DalSegnoAlCoda/AlFine
-                has_ds_al_coda = False
-                has_dc = False  # DaCapo or DaCapoAlFine/AlCoda
-                has_dc_al_fine = False
-
-                if is_mei:
-                    # music21's MEI parser does not translate <repeatMark> elements
-                    # into m21.repeat.* objects, so we use the pre-parsed XML data.
-                    # Per-measure flags are set from mei_measure_info when available.
-                    # The file-level mei_has_any_nav_markers flag covers markers that
-                    # appear in unnumbered (skeleton) measures which have no MC entry.
-                    if mc in mei_info_by_mc:
-                        mei_nav = mei_info_by_mc[mc]
-                        has_fine = mei_nav.get("has_fine", False)
-                        has_segno = mei_nav.get("has_segno", False)
-                        has_coda = mei_nav.get("has_coda", False)
-                        has_ds = mei_nav.get("has_ds", False)
-                        has_ds_al_coda = mei_nav.get("has_ds_al_coda", False)
-                        has_dc = mei_nav.get("has_dc", False)
-                        has_dc_al_fine = mei_nav.get("has_dc_al_fine", False)
-                    elif mei_has_any_nav_markers and mc == 1:
-                        # If the file has navigation markers but none mapped to this
-                        # MC, propagate the file-level flag to MC 1 so that
-                        # _compute_next_fields detects has_navigation_markers=True
-                        # and returns all-None next values (single-pass traversal).
-                        has_segno = True
-                else:
-                    for obj in m:
-                        if isinstance(obj, m21.repeat.Fine):
-                            has_fine = True
-                        elif isinstance(obj, m21.repeat.Segno):
-                            has_segno = True
-                        elif isinstance(obj, m21.repeat.Coda):
-                            has_coda = True
-                        elif isinstance(obj, m21.repeat.DalSegnoAlCoda):
-                            has_ds = True
-                            has_ds_al_coda = True
-                        elif isinstance(
-                            obj,
-                            (m21.repeat.DalSegno, m21.repeat.DalSegnoAlFine),
-                        ):
-                            has_ds = True
-                        elif isinstance(obj, m21.repeat.DaCapoAlFine):
-                            has_dc = True
-                            has_dc_al_fine = True
-                        elif isinstance(
-                            obj,
-                            (m21.repeat.DaCapo, m21.repeat.DaCapoAlCoda),
-                        ):
-                            has_dc = True
-
                 measure_info.append(
                     {
                         "mc": mc,
@@ -253,20 +193,10 @@ class Music21Loader(ScoreLoader):
                         "start_repeat": start_repeat,
                         "end_repeat": end_repeat,
                         "volta": volta,
-                        "has_fine": has_fine,
-                        "has_segno": has_segno,
-                        "has_coda": has_coda,
-                        "has_ds": has_ds,
-                        "has_ds_al_coda": has_ds_al_coda,
-                        "has_dc": has_dc,
-                        "has_dc_al_fine": has_dc_al_fine,
                     }
                 )
 
-            # Second pass: compute 'next' field for each measure
-            next_values = self._compute_next_fields(measure_info)
-
-            # Build measure rows
+            # Build measure rows; ScoreLoader.load derives their successors.
             for i, info in enumerate(measure_info):
                 measure_rows.append(
                     {
@@ -283,7 +213,6 @@ class Music21Loader(ScoreLoader):
                         "start_repeat": info["start_repeat"],
                         "end_repeat": info["end_repeat"],
                         "volta": info["volta"],
-                        "next": next_values[i],
                         "part_id": part_id,
                     }
                 )
@@ -566,83 +495,35 @@ class Music21Loader(ScoreLoader):
         }
 
     @staticmethod
-    def _parse_mei_measure_info(
-        source: Path,
-    ) -> tuple[dict[int, dict[str, Any]], bool]:
-        """Parse an MEI file directly to extract measure flow-control metadata.
+    def _parse_mei_measure_info(source: Path) -> dict[int, dict[str, Any]]:
+        """Parse an MEI file directly to extract measure repeat facts.
 
         music21's MEI parser does not translate ``<ending>`` elements into
-        ``RepeatBracket`` spanners, and does not convert ``<repeatMark>``
-        elements into ``m21.repeat.*`` objects. This method parses the raw XML
-        to recover:
+        ``RepeatBracket`` spanners. This method parses the raw XML to recover,
+        per ``<measure>``:
 
+        - ``number``: its ``@n`` as an integer, or ``None``.
         - ``volta``: ending number (1, 2, …) for measures inside ``<ending>``
           elements.
         - ``start_repeat``: True when the measure has ``left="rptstart"``.
         - ``end_repeat``: True when the measure has ``right="rptend"``.
-        - ``has_fine``, ``has_segno``, ``has_coda``, ``has_ds``,
-          ``has_ds_al_coda``, ``has_dc``, ``has_dc_al_fine``: True when the
-          measure contains a ``<repeatMark>`` child with the corresponding
-          ``func`` attribute value.
-
-        The second return value is a file-level boolean that is ``True`` when
-        any ``<repeatMark>`` navigation marker (segno, fine, daCapo, dalSegno,
-        coda) is found anywhere in the file, including in unnumbered measures
-        that are not present in the returned dict.  This is used to ensure
-        ``_compute_next_fields`` activates its single-pass guard even when
-        navigation markers fall in skeleton measures without an ``@n``
-        attribute.
 
         Args:
             source: Path to the ``.mei`` file.
 
         Returns:
-            A 2-tuple of:
-            - Mapping from source measure position to a dict containing its
-              MEI ``@n`` value, ``volta``, ``start_repeat``, ``end_repeat``,
-              and navigation marker flags.
-            - ``True`` if any navigation marker was found anywhere in the file.
+            Mapping from source measure position (from 1) to its facts.
         """
         try:
             tree = ET.parse(str(source))
         except ET.ParseError:
             module_logger.warning("Failed to parse MEI XML for %s", source)
-            return {}, False
+            return {}
 
         root = tree.getroot()
         result: dict[int, dict[str, Any]] = {}
-        has_any_nav_markers = False
-
-        # Map MEI <repeatMark func="..."> values to internal flag names.
-        _FUNC_TO_FLAGS: dict[str, list[str]] = {
-            "fine": ["has_fine"],
-            "segno": ["has_segno"],
-            "coda": ["has_coda"],
-            "dalSegno": ["has_ds"],
-            "dalSegnoAlCoda": ["has_ds", "has_ds_al_coda"],
-            "dalSegnoAlFine": ["has_ds"],
-            "daCapo": ["has_dc"],
-            "daCapoAlFine": ["has_dc", "has_dc_al_fine"],
-            "daCapoAlCoda": ["has_dc"],
-        }
-
-        def _nav_flags_for_measure(element: ET.Element) -> dict[str, bool]:
-            """Return navigation-marker flags for a single <measure> element."""
-            flags: dict[str, bool] = {}
-            for child in element:
-                child_tag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
-                if child_tag == "repeatMark":
-                    func = child.get("func", "")
-                    for flag_name in _FUNC_TO_FLAGS.get(func, []):
-                        flags[flag_name] = True
-            return flags
-
-        # Walk every <measure> element, tracking whether it is inside an <ending>
-        measure_index = 0
 
         def _walk(element: ET.Element, current_volta: int | None) -> None:
-            nonlocal has_any_nav_markers, measure_index
-
             tag = element.tag.split("}")[-1] if "}" in element.tag else element.tag
 
             # Entering an <ending> element: parse its label as volta number
@@ -655,39 +536,23 @@ class Music21Loader(ScoreLoader):
                     current_volta = None
 
             if tag == "measure":
-                measure_index += 1
-                nav_flags = _nav_flags_for_measure(element)
-                if nav_flags:
-                    has_any_nav_markers = True
-
-                left = element.get("left", "")
-                right = element.get("right", "")
                 n_str = element.get("n")
                 try:
                     number = int(n_str) if n_str is not None else None
                 except ValueError:
                     number = None
-                entry: dict[str, Any] = {
+                result[len(result) + 1] = {
                     "number": number,
                     "volta": current_volta,
-                    "start_repeat": left == "rptstart",
-                    "end_repeat": right == "rptend",
-                    "has_fine": False,
-                    "has_segno": False,
-                    "has_coda": False,
-                    "has_ds": False,
-                    "has_ds_al_coda": False,
-                    "has_dc": False,
-                    "has_dc_al_fine": False,
+                    "start_repeat": element.get("left", "") == "rptstart",
+                    "end_repeat": element.get("right", "") == "rptend",
                 }
-                entry.update(nav_flags)
-                result[measure_index] = entry
 
             for child in element:
                 _walk(child, current_volta)
 
         _walk(root, None)
-        return result, has_any_nav_markers
+        return result
 
     @staticmethod
     def _expand_mei_skeleton(
@@ -799,212 +664,3 @@ class Music21Loader(ScoreLoader):
                         expanded.append(synthetic)
 
         return expanded
-
-    @staticmethod
-    def _compute_next_fields(
-        measure_info: list[dict[str, Any]],
-    ) -> list[str | None]:
-        """Compute the 'next' field for each measure from repeat/volta markers.
-
-        The 'next' field is a comma-separated list of MC values representing
-        all possible successor measures. It drives the `ScoreFlowController`'s
-        atomic-section detection and flow computation.
-
-        This method handles repeat barlines and volta brackets only. D.S., D.C.,
-        Fine, Segno, and Coda markers require path-aware traversal logic that
-        the `ScoreFlowController` does not support. When any of these markers
-        are present, the method returns all-None values, yielding a single-pass
-        flow. This avoids unresolvable cycles when repeats and D.S./D.C./Fine
-        interact (e.g., terminal repeats that only resolve via D.S. al Fine).
-
-        Args:
-            measure_info: List of dicts with mc, start_repeat, end_repeat, volta,
-                and D.S./D.C./Fine/Segno/Coda flags.
-
-        Returns:
-            List of next-field strings (or None for sequential default).
-        """
-        n = len(measure_info)
-        if n == 0:
-            return []
-
-        # If any measure has D.S./D.C./Fine/Segno/Coda markers, skip next
-        # computation entirely. These markers require path-aware traversal
-        # (e.g., Fine only terminates on the return pass after D.S.) which
-        # cannot be resolved by static next-field analysis.
-        has_navigation_markers = any(
-            info.get("has_fine")
-            or info.get("has_segno")
-            or info.get("has_coda")
-            or info.get("has_ds")
-            or info.get("has_dc")
-            for info in measure_info
-        )
-        if has_navigation_markers:
-            return [None] * n
-
-        # Initialize with None (= default sequential next)
-        next_values: list[str | None] = [None] * n
-
-        # ===== Identify volta groups =====
-        # Each group: {start_idx, end_idx_exclusive, voltas: {num: [mcs]}}
-        volta_groups: list[dict[str, Any]] = []
-        i = 0
-        while i < n:
-            if measure_info[i]["volta"] is not None:
-                group_start = i
-                group_voltas: dict[int, list[int]] = {}
-                while i < n and measure_info[i]["volta"] is not None:
-                    v = measure_info[i]["volta"]
-                    if v not in group_voltas:
-                        group_voltas[v] = []
-                    group_voltas[v].append(measure_info[i]["mc"])
-                    i += 1
-                volta_groups.append(
-                    {
-                        "start_idx": group_start,
-                        "end_idx": i,  # exclusive
-                        "voltas": group_voltas,
-                    }
-                )
-            else:
-                i += 1
-
-        # Map: MC of measure before volta group -> group info
-        pre_volta_mc_to_group: dict[int, dict[str, Any]] = {}
-        for vg in volta_groups:
-            pre_idx = vg["start_idx"] - 1
-            if pre_idx >= 0:
-                pre_mc = measure_info[pre_idx]["mc"]
-                pre_volta_mc_to_group[pre_mc] = vg
-
-        # Map: MC in volta -> volta group info (for computing exit MC)
-        mc_to_volta_group: dict[int, dict[str, Any]] = {}
-        for vg in volta_groups:
-            for v_mcs in vg["voltas"].values():
-                for mc in v_mcs:
-                    mc_to_volta_group[mc] = vg
-
-        # ===== Main computation pass =====
-        for i, info in enumerate(measure_info):
-            mc = info["mc"]
-            is_last = i == n - 1
-            next_mc = measure_info[i + 1]["mc"] if not is_last else -1
-
-            # ----- Measure before a volta group: branching next -----
-            if mc in pre_volta_mc_to_group:
-                vg = pre_volta_mc_to_group[mc]
-                volta_first_mcs = []
-                for v_num in sorted(vg["voltas"].keys()):
-                    volta_first_mcs.append(vg["voltas"][v_num][0])
-                next_values[i] = ", ".join(str(m) for m in volta_first_mcs)
-                continue
-
-            # ----- End repeat with volta: go back to repeat start -----
-            if info["end_repeat"] and info["volta"] is not None:
-                repeat_target = Music21Loader._find_repeat_start_for_volta(
-                    measure_info, i
-                )
-                next_values[i] = str(repeat_target)
-                continue
-
-            # ----- Volta measure (not end_repeat, not last volta) -----
-            # Non-final volta measures without end_repeat skip to the exit MC
-            if info["volta"] is not None and not info["end_repeat"]:
-                vg = mc_to_volta_group[mc]
-                exit_idx = vg["end_idx"]  # first idx after volta group
-                max_volta = max(vg["voltas"].keys())
-
-                if info["volta"] < max_volta:
-                    # Not the last volta: skip to exit MC
-                    if exit_idx < n:
-                        exit_mc = measure_info[exit_idx]["mc"]
-                        next_values[i] = str(exit_mc)
-                    else:
-                        next_values[i] = "-1"
-                # Last volta without end_repeat: leave as None (sequential)
-                continue
-
-            # ----- Start+End repeat (startend barline) -----
-            if info["start_repeat"] and info["end_repeat"]:
-                if not is_last:
-                    next_values[i] = f"{mc}, {next_mc}"
-                else:
-                    next_values[i] = str(mc)
-                continue
-
-            # ----- End repeat without volta -----
-            if info["end_repeat"]:
-                repeat_target = Music21Loader._find_repeat_start_no_volta(
-                    measure_info, i
-                )
-                if is_last:
-                    next_values[i] = str(repeat_target)
-                else:
-                    next_values[i] = f"{repeat_target}, {next_mc}"
-                continue
-
-            # Default: next_values[i] remains None (sequential)
-
-        return next_values
-
-    @staticmethod
-    def _find_repeat_start_for_volta(
-        measure_info: list[dict[str, Any]],
-        end_idx: int,
-    ) -> int:
-        """Find the repeat-start MC for an end_repeat measure inside a volta.
-
-        Walks backward from end_idx, skipping over the volta group itself,
-        to find the matching start_repeat.
-
-        Args:
-            measure_info: All measure info dicts.
-            end_idx: Index of the end_repeat volta measure.
-
-        Returns:
-            The MC of the matching repeat start.
-        """
-        # Walk backward past the volta group to find the branching measure,
-        # then continue backward to find its matching repeat start.
-        for j in range(end_idx - 1, -1, -1):
-            if measure_info[j]["volta"] is None:
-                # We've exited the volta group going backward.
-                # Now find the nearest start_repeat at or before this MC.
-                for k in range(j, -1, -1):
-                    if measure_info[k]["start_repeat"]:
-                        return measure_info[k]["mc"]
-                # No explicit start found; use first MC
-                return measure_info[0]["mc"]
-        # Entire file is volta (shouldn't happen)
-        return measure_info[0]["mc"]
-
-    @staticmethod
-    def _find_repeat_start_no_volta(
-        measure_info: list[dict[str, Any]],
-        end_idx: int,
-    ) -> int:
-        """Find the repeat-start MC for an end_repeat measure not in a volta.
-
-        Walks backward from end_idx to find the nearest start_repeat,
-        but stops if it hits a volta group boundary (the repeat belongs
-        to a different section).
-
-        Args:
-            measure_info: All measure info dicts.
-            end_idx: Index of the end_repeat measure.
-
-        Returns:
-            The MC of the matching repeat start, or self-MC if no match.
-        """
-        mc = measure_info[end_idx]["mc"]
-        for j in range(end_idx - 1, -1, -1):
-            info_j = measure_info[j]
-            # Stop if we hit a volta measure (different repeat section)
-            if info_j["volta"] is not None:
-                # No matching start_repeat in this section; self-repeat
-                return mc
-            if info_j["start_repeat"]:
-                return info_j["mc"]
-        # No explicit start found; repeat from beginning
-        return measure_info[0]["mc"]

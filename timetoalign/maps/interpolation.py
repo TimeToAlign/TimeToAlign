@@ -26,13 +26,13 @@ Design rationale:
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 from numpy.typing import NDArray
 from typing_extensions import Self
 
-from ..core.enums import ExtrapolationPolicy, InterpolationKind, TimeUnit
+from ..core.enums import ExtrapolationPolicy, InterpolationKind, NumberType, TimeUnit
 from .base import ConversionMap, MeasureMapIds
 from .table import _table_form
 
@@ -84,6 +84,8 @@ class InterpolationMap(ConversionMap[float]):
         0.25
     """
 
+    _float_arithmetic: ClassVar[bool] = True
+
     def __init__(
         self,
         *,
@@ -95,6 +97,7 @@ class InterpolationMap(ConversionMap[float]):
         target_unit: TimeUnit | str | None = None,
         uid: str | None = None,
         name: str | None = None,
+        output_number_type: NumberType | str | None = None,
     ) -> None:
         """Initialize an InterpolationMap.
 
@@ -109,17 +112,23 @@ class InterpolationMap(ConversionMap[float]):
             target_unit: The unit of target coordinates (optional).
             uid: Optional explicit ID.
             name: Optional human-readable name.
+            output_number_type: The representation results are written in,
+                among those the target unit admits; ``None`` for the target
+                unit's default. Never ``fraction``: the map computes in
+                doubles.
 
         Raises:
             ValueError: If source_coords and target_coords have different
                 lengths, if fewer than 2 anchor points are given, or if
-                source_coords is not strictly monotonically increasing.
+                source_coords is not strictly monotonically increasing, or
+                if *output_number_type* is ``fraction``.
         """
         super().__init__(
             source_unit=source_unit,
             target_unit=target_unit,
             uid=uid,
             name=name,
+            output_number_type=output_number_type,
         )
 
         self.source_coords: NDArray[np.floating[Any]] = np.array(
@@ -289,6 +298,7 @@ class InterpolationMap(ConversionMap[float]):
             target_id=self.source_id,
             source_unit=self._target_unit,
             target_unit=self._source_unit,
+            output_number_type=self._inverse_output_number_type(),
         )
         inv._inverse = self
         self._inverse = inv

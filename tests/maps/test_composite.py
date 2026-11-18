@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import re
+from fractions import Fraction
+
 import numpy as np
 import pytest
 
-from timetoalign.core.enums import TimeUnit
+from timetoalign.core.enums import NumberType, TimeUnit
 from timetoalign.maps.composite import ChainMap, PiecewiseMap
 from timetoalign.maps.linear import LinearMap, ScalarMap
 
@@ -237,3 +240,69 @@ class TestPiecewiseMapConvertArray:
 
         # Array and scalar paths perform identical IEEE 754 operations
         np.testing.assert_array_equal(array_result, scalar_results)
+
+
+def exact_members() -> list[ScalarMap]:
+    # quarters -> quarters -> seconds, 1/6 s per quarter: no float is 1/6.
+    return [
+        ScalarMap(
+            scalar=Fraction(1, 2), source_unit="quarters", target_unit="quarters"
+        ),
+        ScalarMap(scalar=Fraction(1, 3), source_unit="quarters", target_unit="seconds"),
+    ]
+
+
+def exact_chain(**kwargs) -> ChainMap:
+    return ChainMap(exact_members(), **kwargs)
+
+
+def exact_piecewise(**kwargs) -> PiecewiseMap:
+    return PiecewiseMap(
+        breaks=[0, 6],
+        maps=[
+            ScalarMap(
+                scalar=Fraction(1, 6), source_unit="quarters", target_unit="seconds"
+            )
+        ],
+        source_unit="quarters",
+        target_unit="seconds",
+        **kwargs,
+    )
+
+
+@pytest.mark.parametrize("build", [exact_chain, exact_piecewise])
+class TestDeclaredOutputNumberType:
+    def test_undeclared_map_writes_the_target_units_default(self, build):
+        cmap = build()
+        assert cmap.output_number_type is NumberType.float
+        assert cmap(1) == 0.16666666666666666
+        assert type(cmap(1)) is float
+
+    def test_fraction_map_answers_exactly(self, build):
+        cmap = build(output_number_type="fraction")
+        assert cmap.output_number_type is NumberType.fraction
+        assert cmap(1) == Fraction(1, 6)
+        assert type(cmap(1)) is Fraction
+
+    def test_fraction_map_refuses_a_float(self, build):
+        cmap = build(output_number_type="fraction", uid="exact")
+        with pytest.raises(
+            TypeError,
+            match=re.escape(
+                "Map exact is declared to write fractions and computes exactly, "
+                "so it takes an int or a Fraction, not the float 1.0."
+            ),
+        ):
+            cmap(1.0)
+
+    def test_inverse_carries_the_declaration(self, build):
+        inverse = build(output_number_type="fraction").inverse()
+        assert inverse.output_number_type is NumberType.fraction
+        assert inverse(Fraction(1, 6)) == Fraction(1)
+        assert type(inverse(Fraction(1, 6))) is Fraction
+
+    def test_declaration_is_not_written(self, build):
+        assert (
+            build(output_number_type="fraction", uid="m").to_dict()
+            == build(uid="m").to_dict()
+        )

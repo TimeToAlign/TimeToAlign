@@ -7,7 +7,13 @@ from fractions import Fraction
 import numpy as np
 import pytest
 
-from timetoalign.core.enums import ExtrapolationPolicy, InterpolationKind, NumberType
+from timetoalign.core.enums import (
+    ExtrapolationPolicy,
+    InterpolationKind,
+    NumberType,
+    TimeUnit,
+)
+from timetoalign.core.time import Coordinate
 from timetoalign.maps.base import ConversionMap
 from timetoalign.maps.table import TableMap
 
@@ -264,11 +270,18 @@ class TestDeclaredOutputNumberType:
             assert result == expected
             assert type(result) is Fraction
 
-    def test_fraction_map_never_answers_a_float(self):
-        result = exact_tempo_map(output_number_type="fraction")(1.0)
-        # the float path's 1/6, re-expressed as its exact dyadic
-        assert result == Fraction(1 / 6)
-        assert type(result) is Fraction
+    def test_fraction_map_refuses_a_float(self):
+        # The float path's 1/6 would come back as the dyadic
+        # Fraction(6004799503160661, 36028797018963968), a ratio nothing stated.
+        cmap = exact_tempo_map(output_number_type="fraction", uid="tempo")
+        message = re.escape(
+            "Map tempo is declared to write fractions and computes exactly, so it "
+            "takes an int or a Fraction, not the float 1.0."
+        )
+        with pytest.raises(TypeError, match=message):
+            cmap(1.0)
+        with pytest.raises(TypeError, match=message):
+            cmap(Coordinate(1.0, TimeUnit.quarters, number_type="float"))
 
     def test_float_map_never_answers_a_fraction(self):
         cmap = TableMap(

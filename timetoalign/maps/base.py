@@ -147,6 +147,11 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
     # coordinates.
     _declared_output_number_type: NumberType | None = None
 
+    # Set by maps whose arithmetic runs in doubles whatever their input (an
+    # interpolation over float64 anchors), which therefore cannot be declared
+    # to write fractions: every result would be a float rebuilt as a ratio.
+    _float_arithmetic: ClassVar[bool] = False
+
     # The TimeToShare map type a class reads and writes as itself. Only the
     # classes of the format's ten abstract types declare one; every other
     # class writes one of them and is never read back as itself.
@@ -305,7 +310,8 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
 
         Raises:
             ValueError: If the target unit does not admit
-                *output_number_type*.
+                *output_number_type*, or if it is ``fraction`` and the map
+                computes in doubles.
         """
         self._id_minted = uid is None
         self._id = mint_id(self._id_prefix, ()) if uid is None else validate_id(uid)
@@ -330,6 +336,14 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
                 if self._target_unit is None
                 else self._target_unit.resolve_number_type(output_number_type)
             )
+            if (
+                self._float_arithmetic
+                and self._given_output_number_type is NumberType.fraction
+            ):
+                raise ValueError(
+                    f"{type(self).__name__} computes in doubles and cannot be "
+                    f"declared to write fractions."
+                )
 
         # Set name: explicit > "source_to_target" > id. Only a given name is
         # written by to_dict(); the others are derived for display.
@@ -419,6 +433,8 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
 
         Raises:
             ValueError: If the input Coordinate has an incompatible unit.
+            TypeError: If the map was given the ``fraction`` declaration and
+                the scalar input is a float.
         """
         # Handle Coordinate input
         if isinstance(value, Coordinate):
@@ -444,7 +460,23 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
         rather than calling the map, so the value is written once instead of
         being degraded on the way out and rebuilt on arrival. Everyone else
         calls the map and gets its target axis's representation.
+
+        A map given the ``fraction`` declaration computes exactly, so it
+        takes ints and Fractions only: a float input would leave a float
+        result rebuilt as an exact value, which is a ratio the input never
+        stated.
+
+        Raises:
+            TypeError: If the map was given the ``fraction`` declaration and
+                *value* is a float.
         """
+        if self._given_output_number_type is NumberType.fraction and isinstance(
+            value, (float, np.floating)
+        ):
+            raise TypeError(
+                f"Map {self._id} is declared to write fractions and computes "
+                f"exactly, so it takes an int or a Fraction, not the float {value!r}."
+            )
         return self._convert_scalar(value, **kwargs)
 
     def _on_target_axis(self, result: T) -> T:

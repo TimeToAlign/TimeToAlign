@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, Sequence
 import numpy as np
 from numpy.typing import NDArray
 
-from ..core.enums import TimeUnit
+from ..core.enums import NumberType, TimeUnit
 from ..core.time import (
     CoordinateValue,
     number_from_json,
@@ -87,6 +87,7 @@ class ChainMap(ConversionMap[CoordinateValue]):
         *,
         uid: str | None = None,
         name: str | None = None,
+        output_number_type: NumberType | str | None = None,
     ) -> None:
         """Initialize a ChainMap.
 
@@ -94,6 +95,9 @@ class ChainMap(ConversionMap[CoordinateValue]):
             maps: Sequence of maps. Must not be empty.
             uid: Optional explicit ID.
             name: Human-readable name for this map. Defaults to the map's ID.
+            output_number_type: The representation results are written in,
+                among those the target unit admits; ``None`` for the target
+                unit's default.
 
         Raises:
             ValueError: If maps is empty.
@@ -122,6 +126,7 @@ class ChainMap(ConversionMap[CoordinateValue]):
             target_unit=maps[-1].target_unit,
             uid=uid,
             name=name,
+            output_number_type=output_number_type,
         )
         self._maps = list(maps)
         self._admit_ids()
@@ -179,7 +184,11 @@ class ChainMap(ConversionMap[CoordinateValue]):
             raise NotImplementedError("ChainMap is not invertible")
 
         inv_maps = [m.inverse() for m in reversed(self._maps)]
-        return self.__class__(inv_maps, uid=f"inv_{self.id}")
+        return self.__class__(
+            inv_maps,
+            uid=f"inv_{self.id}",
+            output_number_type=self._inverse_output_number_type(),
+        )
 
     def _to_manifest(self, *, minimal: bool, entries: MeasureMapIds) -> dict[str, Any]:
         """Write the ``ChainMap`` with each member's own form."""
@@ -244,6 +253,7 @@ class PiecewiseMap(ConversionMap[CoordinateValue]):
         target_unit: TimeUnit | str | None = None,
         uid: str | None = None,
         name: str | None = None,
+        output_number_type: NumberType | str | None = None,
     ) -> None:
         """Initialize a PiecewiseMap.
 
@@ -254,6 +264,9 @@ class PiecewiseMap(ConversionMap[CoordinateValue]):
             target_unit: Output unit.
             uid: Explicit ID.
             name: Human-readable name for this map. Defaults to the map's ID.
+            output_number_type: The representation results are written in,
+                among those the target unit admits; ``None`` for the target
+                unit's default.
 
         Raises:
             ValueError: If lengths mismatch or breaks are not sorted.
@@ -275,6 +288,7 @@ class PiecewiseMap(ConversionMap[CoordinateValue]):
             target_unit=target_unit,
             uid=uid,
             name=name,
+            output_number_type=output_number_type,
         )
 
         self._breaks = np.array(breaks_float, dtype=np.float64)
@@ -404,6 +418,7 @@ class PiecewiseMap(ConversionMap[CoordinateValue]):
             source_unit=self._target_unit,
             target_unit=self._source_unit,
             uid=f"inv_{self.id}",
+            output_number_type=self._inverse_output_number_type(),
         )
 
     def _to_manifest(self, *, minimal: bool, entries: MeasureMapIds) -> dict[str, Any]:

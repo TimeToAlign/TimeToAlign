@@ -177,6 +177,10 @@ matched against anything.
   `fraction` where the value unit admits it (an exact line into `seconds`
   answers `Fraction(1, 2)` at 1); into a discrete unit, which admits
   integers only, the map declares nothing and writes whole ticks (480 at 1).
+  The exact map refuses a float input with a `TypeError` naming the
+  declaration (the points map through (0, 0) and (6, 1) answers
+  `Fraction(1, 6)` at 1 and `Fraction(1, 12)` at `Fraction(1, 2)`, and
+  refuses 1.0), as every map declared `fraction` does (below).
 - **Values carry a unit.** Values are coordinates sharing one unit, which
   becomes the map's target unit, or numbers read in `value_unit`. A number
   without `value_unit` raises `TypeError` naming the keyword, and a
@@ -237,8 +241,15 @@ asserted together. Undeclared, the map answers the float
 `0.16666666666666666` at 1, since seconds default to floats. Declared
 `fraction`, it answers `Fraction(1, 3)` at the anchor 2, `Fraction(1, 6)` and
 `Fraction(2, 3)` between anchors, and `Fraction(4, 3)` extrapolating past
-the last; at the float input 1.0 it answers the exact dyadic of the float
-result, never a float. Declared `float` on a `quarters` target, whose
+the last. **A map declared `fraction` refuses a float input** with a
+`TypeError` naming the declaration: it computes exactly, and a float input
+would leave the float result rebuilt as a ratio (at 1.0 the dyadic
+`Fraction(6004799503160661, 36028797018963968)`, a ratio nothing stated). The
+refusal sits in the base's evaluation, so it holds for every map class and
+for a `Coordinate` input declared `float`, and it is checked on `TableMap`,
+on the exact `LinearMap` built from pairs, and on a `ChainMap`. An `int` and
+a `Fraction` are computed exactly, and the float array lane is untouched (it
+is float64 by contract). Declared `float` on a `quarters` target, whose
 default is fractions, it answers the float. The inverse carries the
 declaration where its target, the map's source unit, admits it: the
 inverse of the fraction map answers `Fraction(3)` at 2/3, while the inverse
@@ -250,6 +261,24 @@ same complete form as the undeclared one, and `ConversionMap.from_dict` of
 its JSON text gives a map equal to the undeclared map (not to the declared
 one) that answers the float `0.16666666666666666` at 1. A declaration the target unit does not
 admit (`float` into `ticks`) is refused with the unit's own message.
+
+**Every map with a target unit takes the declaration.** The keyword lives in
+`ConversionMap.__init__`; `ChainMap`, `PiecewiseMap` and `InterpolationMap`
+pass it through, as `LinearMap`, `ScalarMap`, `ShiftMap` and `TableMap` do.
+Each is checked on its own (`test_composite.py`, `test_interpolation.py`), on
+exact members from quarters to seconds whose result at 1 is 1/6, a value no
+float represents. Undeclared, a `ChainMap` and a `PiecewiseMap` answer the
+float `0.16666666666666666`, since seconds default to floats; declared
+`fraction` they answer `Fraction(1, 6)`, refuse the float input 1.0, and
+their inverses, into quarters, carry the declaration and answer
+`Fraction(1)` at `Fraction(1, 6)`. `InterpolationMap` computes in doubles
+over float64 anchors, so a `fraction` declaration would rebuild every result
+from a float: it is refused at construction with a `ValueError` naming the
+class. Declared `float` from seconds into quarters, whose default is
+fractions, it answers the float `0.25` at 0.5 where the undeclared map
+answers `Fraction(1, 4)`, and its inverse, into seconds, declares `float`
+too. The declaration is a setting of the library for every
+class: `to_dict` writes the same form with it and without it.
 
 ### `test_interpolation.py` - InterpolationMap
 

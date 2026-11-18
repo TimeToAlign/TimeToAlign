@@ -347,6 +347,21 @@ class TestLinearMapFromPairs:
         assert ticks(1) == 480
         assert type(ticks(1)) is int
 
+    def test_exact_map_refuses_a_float(self):
+        exact = LinearMap.from_pairs(
+            [(0, 0), (6, 1)], source_unit="points", value_unit="seconds"
+        )
+        assert exact(1) == Fraction(1, 6)
+        assert exact(Fraction(1, 2)) == Fraction(1, 12)
+        with pytest.raises(
+            TypeError,
+            match=re.escape(
+                f"Map {exact.id} is declared to write fractions and computes "
+                "exactly, so it takes an int or a Fraction, not the float 1.0."
+            ),
+        ):
+            exact(1.0)
+
     def test_refusals(self):
         with pytest.raises(
             ValueError,

@@ -7,10 +7,14 @@ WarpMap.
 
 from __future__ import annotations
 
+import re
+from fractions import Fraction
+
 import numpy as np
 import pytest
 
 from timetoalign.core import Coordinate, TimeUnit
+from timetoalign.core.enums import NumberType
 from timetoalign.maps import ConversionMap, InterpolationMap, LinearMap
 
 
@@ -476,3 +480,51 @@ class TestMatchesSelector:
             target_id="parent:1",
         )
         assert not imap.matches_selector("nope")
+
+
+class TestInterpolationMapDeclaredOutputNumberType:
+    """The map computes in doubles, so it may declare floats, never fractions."""
+
+    @staticmethod
+    def build(**kwargs) -> InterpolationMap:
+        return InterpolationMap(
+            source_coords=[0.0, 2.0],
+            target_coords=[0.0, 1.0],
+            source_id="perf",
+            target_id="score",
+            source_unit="seconds",
+            target_unit="quarters",
+            uid="imap",
+            **kwargs,
+        )
+
+    def test_fraction_is_refused(self):
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "InterpolationMap computes in doubles and cannot be declared to "
+                "write fractions."
+            ),
+        ):
+            self.build(output_number_type="fraction")
+
+    def test_float_into_quarters_answers_the_float(self):
+        undeclared = self.build()
+        assert undeclared.output_number_type is NumberType.fraction
+        assert undeclared(0.5) == Fraction(1, 4)
+        assert type(undeclared(0.5)) is Fraction
+        declared = self.build(output_number_type="float")
+        assert declared.output_number_type is NumberType.float
+        assert declared(0.5) == 0.25
+        assert type(declared(0.5)) is float
+
+    def test_inverse_carries_the_declaration(self):
+        inverse = self.build(output_number_type="float").inverse()
+        assert inverse.output_number_type is NumberType.float
+        assert inverse(0.25) == 0.5
+        assert type(inverse(0.25)) is float
+
+    def test_declaration_is_not_written(self):
+        assert (
+            self.build(output_number_type="float").to_dict() == self.build().to_dict()
+        )

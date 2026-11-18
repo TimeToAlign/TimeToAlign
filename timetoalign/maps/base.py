@@ -65,46 +65,41 @@ def _check_calibration(
     reach: Callable[[CoordinateValue], Fraction],
     law: str,
 ) -> None:
-    """Refuse a calibration pair lying off the law beyond the stated bound.
+    """Refuse a calibration pair lying off the law beyond the derived bound.
 
     *reach* answers, exactly on the Fractions of the numbers as given, the
-    position at which the law through the first and the last pair reads a
-    value. The bound is measured where the rounding happens: on the
-    positions, which a program computed and printed as doubles, as the
-    caller gives them and before *origin* is subtracted, while the values
-    are read as given. When every number of the calibration is exact, each
-    position must be the one the law reaches.
+    position at which the law reads a value. The bound is measured where
+    the rounding happens: on the positions, which a program computed in
+    doubles and printed, as the caller gives them and before *origin* is
+    subtracted, while the values are read as given. When every number of
+    the calibration is exact, each position must be the one the law
+    reaches. Otherwise it may miss that position by the error of a position
+    computed in doubles as ``x0 + w·(v − v_first)/(v_last − v_first)``,
+    the multiplication and the division in any order, which forward error
+    analysis bounds as follows.
 
-    Otherwise each position is taken as a double a program computed from
-    the line ``P(v) = x0 + w·(v − v_first)/(v_last − v_first)``, with ``x0``
-    and ``w`` doubles and the values as given; a position rounded once from
-    an exact line is the special case of no error before the last rounding.
-    By forward error analysis, each operation contributes at most half an
-    ulp of its own result, which is at most ``u`` times the result's
-    magnitude (``u = 2**-53``, for normal doubles):
+    Let ``t = (v − v_first)/(v_last − v_first)``, exact on the values as
+    given, and ``u = 2**-53``. An operation rounding to the nearest double
+    errs by at most half an ulp of its result, at most ``u`` of its
+    magnitude, and not at all when its exact result is a double. The
+    product ``w·t`` passes through the multiplication, the division and
+    each label subtraction whose exact difference is no double: ``k``
+    roundings, each a factor ``(1 + δ)``, ``|δ| ≤ u``, in any order, so it
+    misses by at most ``γ_k·|t|·|w|`` with ``γ_k = k·u/(1 − k·u)``. Adding
+    ``x0`` rounds once more, by half an ulp of the position itself. One
+    position therefore misses ``x0 + w·t`` by at most
+    ``E(p, t) = ½·ulp(p) + γ_k·|t|·|w|``.
 
-    - The two subtractions of values, the division and the multiplication
-      by ``w`` form a product of four rounded operations, in whichever
-      order they run, so the computed ``m = w·t`` misses the exact one by
-      at most ``γ₄·|m|``, ``γ₄ = 4u/(1 − 4u)``.
-    - The addition of ``x0`` rounds once more, by at most half an ulp of the
-      position ``p`` itself.
-
-    ``|m|`` is bounded by the operands' magnitudes: ``x0`` is the position
-    of an end, so ``|x0| ≤ M``, the axis's largest ``|position|``, and
-    ``|m| ≤ ((1 + u)·M + |x0|)/(1 − γ₄)``. One position therefore misses its
-    exact one by at most ``E(p) = ½·ulp(p) + K·M``, with
-    ``K = γ₄·(2 + u)/(1 − γ₄)``, about ``8u``: between four and eight ulps
-    of ``M``.
-
-    The end positions miss theirs by the same bound, and the line through
-    the given ends moves with them: at the fraction ``t`` of the way from
-    the first value to the last, the reached position moves by ``|1 − t|``
-    times the first end's miss plus ``|t|`` times the last end's. An inner
-    pair is therefore refused only when it misses the line through the
-    given ends by more than
-    ``½·ulp(p) + ½·(|1 − t|·ulp(p_first) + |t|·ulp(p_last))
-    + (1 + |1 − t| + |t|)·K·M``.
+    The line is drawn through the end pairs as given, which are computed
+    positions too: the first at ``t = 0``, where the product is exactly 0,
+    the last at ``t = 1``. Their errors move the line at ``t`` by at most
+    ``|1 − t|·E(p_first, 0) + |t|·E(p_last, 1)``. ``|w|`` is known through
+    the span as given, ``S = |p_last − p_first|``, up to those errors:
+    ``|w| ≤ W = (S + ½·ulp(p_first) + ½·ulp(p_last)) / (1 − γ_k)``, with
+    ``k`` counted for the last pair. The bound is
+    ``E(p, t) + |1 − t|·E(p_first, 0) + |t|·E(p_last, 1)`` with ``W`` for
+    ``|w|``, evaluated exactly. A position rounded once from its exact value
+    misses it by ``½·ulp(p)`` alone, which the bound contains.
 
     Args:
         calibration: The calibration the law was built from.
@@ -117,33 +112,38 @@ def _check_calibration(
     """
     _, first_position, first_value = calibration.points[0]
     _, last_position, last_value = calibration.points[-1]
-    half = Fraction(1, 2)
-    end_ulps = (
-        Fraction(math.ulp(float(first_position))),
-        Fraction(math.ulp(float(last_position))),
-    )
     span = Fraction(last_value) - Fraction(first_value)
-    # The positions are sorted, so the largest |position| is an end's.
-    u = Fraction(1, 2**53)
-    gamma_4 = 4 * u / (1 - 4 * u)
-    computed = (
-        gamma_4
-        * (2 + u)
-        / (1 - gamma_4)
-        * max(abs(Fraction(first_position)), abs(Fraction(last_position)))
-    )
+
+    def t_of(value: CoordinateValue) -> Fraction:
+        return (Fraction(value) - Fraction(first_value)) / span
+
+    def gamma(value: CoordinateValue) -> Fraction:
+        # γ_k, k counting the roundings of the product w·t.
+        roundings = (Fraction(value) - Fraction(first_value), span)
+        k = 2 + sum(Fraction(float(d)) != d for d in roundings)
+        return Fraction(k, 2**53 - k)
+
+    def half_ulp(position: CoordinateValue) -> Fraction:
+        return Fraction(math.ulp(float(position))) / 2
+
+    def error(position: CoordinateValue, value: CoordinateValue) -> Fraction:
+        # E(p, t), with W for |w|.
+        return half_ulp(position) + gamma(value) * abs(t_of(value)) * width
+
+    if not calibration.exact:
+        width = (
+            abs(Fraction(last_position) - Fraction(first_position))
+            + half_ulp(first_position)
+            + half_ulp(last_position)
+        ) / (1 - gamma(last_value))
+        ends = error(first_position, first_value), error(last_position, last_value)
     for index, position, value in points:
         on_law = reach(value)
         miss = abs(Fraction(position) - on_law)
-        if calibration.exact:
-            bound = Fraction(0)
-        else:
-            t = (Fraction(value) - Fraction(first_value)) / span
-            bound = (
-                half * Fraction(math.ulp(float(position)))
-                + half * (abs(1 - t) * end_ulps[0] + abs(t) * end_ulps[1])
-                + (1 + abs(1 - t) + abs(t)) * computed
-            )
+        bound = Fraction(0)
+        if not calibration.exact:
+            t = t_of(value)
+            bound = error(position, value) + abs(1 - t) * ends[0] + abs(t) * ends[1]
         if miss > bound:
             raise ValueError(
                 f"Calibration pair {index} ({position}, {value}) lies off the "
@@ -246,11 +246,9 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
         position and value is exact (an ``int`` or a ``Fraction``), the
         pairs must lie on the law exactly. Otherwise, exact and float
         numbers may mix, and a position may miss the one at which the law
-        reads its value by what computing the positions in doubles
-        explains: half an ulp of itself, the errors of the arithmetic that
-        computed it, bounded by the axis's largest position, and the end
-        positions' errors interpolated along the law; the implementing
-        class states the bound, and its calibration check derives it.
+        reads its value by the error a position computed in doubles may
+        carry, a bound derived by forward error analysis in ulps of the
+        positions and of the span.
 
         Args:
             pairs: ``(position, value)`` pairs, in any order.

@@ -2065,12 +2065,12 @@ case.
   fitted or guessed a ratio would give other bits and fail.
 - **The inner ticks are checked on the parent's positions.** The check runs
   on the positions as given, before the offset is subtracted, where their
-  rounding happened (see `tests/maps/README.md`, which derives the bound
-  for positions a program computed in doubles): against exact labels the
-  inner ticks lie 0.031, 0.012 and 0.010 of their bounds off the exact line
+  rounding happened (see `tests/maps/README.md`): against exact labels the
+  inner ticks lie 0.9375, 0.375 and 0.15625 of their ulps off the exact line
   through the end ticks and pass, building the same map. The fourth tick
-  moved up by 1e-9 of the axis length (718.350417763101, about 490,000
-  bounds off) is refused and the parent keeps no child. Refusals name positions as given,
+  moved up by four floats (718.3504169075725, 4.16 of its ulps off, beyond
+  the 3.40 ulps a computed position may miss there) is refused and the
+  parent keeps no child. Refusals name positions as given,
   in the parent's coordinates.
 - **Exact axes stay exact.** On a `fraction` parent, `Fraction` positions and
   `quarters` values give a `Fraction` scalar and offset and an exact

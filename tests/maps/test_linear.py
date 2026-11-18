@@ -1,5 +1,6 @@
 """Tests for linear conversion maps."""
 
+import math
 import random
 import re
 from fractions import Fraction
@@ -21,32 +22,61 @@ TICKS = [
     932.2326510101616,
 ]
 
+# Seeded random axes: a start and a width each a uniform number in [1, 10)
+# times a decade, 3 to 13 ticks, integer labels from a random first label by
+# a random step.
+SEED = 20261118
+DECADES = [0.1, 1, 10, 100, 1000]
 
-def computed_axes(count):
-    """Axes of exact lines, their positions rounded once or computed in doubles.
 
-    Each axis is drawn from ``x0 + w·(v - v_first)/(v_last - v_first)``: once
-    with every position rounded once from the exact line, once with every
-    position computed in double arithmetic, the multiplication first or the
-    division first on alternate axes.
-    """
-    rng = random.Random(20261118)
-    for number in range(count):
-        ticks = rng.randint(3, 12)
-        start = rng.uniform(-1000, 1000)
-        width = rng.uniform(1, 2000) * rng.choice([1, -1])
-        step = rng.randint(1, 100)
-        values = [step * i for i in range(ticks)]
-        once = [
-            float(Fraction(start) + Fraction(width) * value / values[-1])
-            for value in values
-        ]
-        if number % 2:
-            computed = [start + width * value / values[-1] for value in values]
-        else:
-            computed = [start + width * (value / values[-1]) for value in values]
-        yield once, list(values)
-        yield computed, list(values)
+def random_axes(n: int) -> list[tuple[float, float, list[int]]]:
+    rng = random.Random(SEED)
+    axes = []
+    for _ in range(n):
+        x0 = rng.uniform(1, 10) * rng.choice(DECADES) * rng.choice([1, -1])
+        w = rng.uniform(1, 10) * rng.choice(DECADES)
+        first, step = rng.randint(0, 100), rng.randint(1, 20)
+        axes.append((x0, w, [first + j * step for j in range(rng.randint(3, 13))]))
+    return axes
+
+
+AXES = random_axes(2000)
+
+# Each axis placed four ways: every exact position rounded once, and computed
+# in doubles with the multiplication and the division in each order.
+PLACEMENTS = {
+    "rounded once": lambda x0, w, d, D: float(Fraction(x0) + Fraction(w) * d / D),
+    "(w*d)/D": lambda x0, w, d, D: x0 + (w * d) / D,
+    "w*(d/D)": lambda x0, w, d, D: x0 + w * (d / D),
+    "(w/D)*d": lambda x0, w, d, D: x0 + (w / D) * d,
+}
+
+
+def placed(placement: str) -> list[list[tuple[float, int]]]:
+    place = PLACEMENTS[placement]
+    calibrations = []
+    for x0, w, labels in AXES:
+        span = labels[-1] - labels[0]
+        positions = [place(x0, w, v - labels[0], span) for v in labels]
+        calibrations.append(list(zip(positions, labels)))
+    return calibrations
+
+
+def beyond_rounding_alone(pairs: list[tuple[float, int]]) -> bool:
+    """Whether an inner position misses the line by more than the rounding of
+    itself and of the end positions, in exact arithmetic."""
+    (p0, v0), (pn, vn) = pairs[0], pairs[-1]
+
+    def half_ulp(x: float) -> Fraction:
+        return Fraction(math.ulp(x)) / 2
+
+    for p, v in pairs[1:-1]:
+        t = Fraction(v - v0, vn - v0)
+        miss = abs(Fraction(p) - (Fraction(p0) + t * (Fraction(pn) - Fraction(p0))))
+        rounding = half_ulp(p) + (1 - t) * half_ulp(p0) + t * half_ulp(pn)
+        if miss > rounding:
+            return True
+    return False
 
 
 class TestLinearMap:
@@ -206,14 +236,13 @@ class TestLinearMapFromPairs:
 
     @pytest.mark.parametrize(
         "position",
-        [1.0000000000000004, 1.0000000000000038, 1.0, 0.9999999999999963],
+        [1.0000000000000007, 1.0000000000000002, 1.0, 0.9999999999999994],
     )
-    def test_positions_within_the_bound_pass(self, position):
-        # The exact line through (0, 0) and (2, 2) reaches 1 at 1. The bound
-        # is ulp(position)/2 + 2**-53 + 2**-1076 + 4K, 4K just above 2**-48:
-        # 17.00000000000001 ulps of 1 above 1, where 17 ulps
-        # (1.0000000000000038) are missed, and 33.5 half-ulps below, where
-        # 33 (0.9999999999999963) are missed.
+    def test_float_bound_edge_passes(self, position):
+        # The exact line through (0, 0) and (2, 2) reaches 1 at 1. With t = 1/2
+        # the bound is six 2**-53 above 1 (three ulps of 1) and five and a half
+        # below, plus terms of order 2**-105: 1 + 3 * 2**-52 and 1 - 5 * 2**-53
+        # are its last floats.
         m = LinearMap.from_pairs(
             [(0.0, 0.0), (position, 1.0), (2.0, 2.0)],
             source_unit=None,
@@ -221,9 +250,9 @@ class TestLinearMapFromPairs:
         )
         assert m.scalar == 1.0
 
-    @pytest.mark.parametrize("position", [1.000000000000004, 0.9999999999999962])
-    def test_positions_beyond_the_bound_are_refused(self, position):
-        # 18 ulps of 1 above 1, and 34 half-ulps below.
+    @pytest.mark.parametrize("position", [1.0000000000000009, 0.9999999999999993])
+    def test_float_bound_edge_refuses(self, position):
+        # 1 + 4 * 2**-52 and 1 - 6 * 2**-53: the first floats past the bound.
         with pytest.raises(
             ValueError,
             match=re.escape(
@@ -264,41 +293,82 @@ class TestLinearMapFromPairs:
         assert m.offset == 0.0
         assert m.output_number_type is NumberType.float
 
-    def test_drawn_axis_tick_displaced_by_a_billionth_is_refused(self):
-        # The second tick moved up by 1e-9 of the axis length (855.53 pt)
-        # lies about 500,000 bounds off the line.
+    def test_drawn_axis_tick_two_floats_up_is_refused(self):
+        # The second tick moved up by two floats lies 2.94 of its ulps above
+        # the exact position at which the line reaches 10, 1.17 of the bound.
         with pytest.raises(
             ValueError,
             match=re.escape(
-                "Calibration pair 1 (290.58594955792177, 10) lies off the line "
-                "through the first and last pair, which reaches 10 at "
-                "290.58594870239284."
+                "Calibration pair 1 (290.585948702393, 10) lies off the line through "
+                "the first and last pair, which reaches 10 at 290.58594870239284."
             ),
         ):
             LinearMap.from_pairs(
                 list(
-                    zip([TICKS[0], 290.58594955792177, *TICKS[2:]], [0, 10, 20, 30, 40])
+                    zip([TICKS[0], 290.585948702393, *TICKS[2:]], [0, 10, 20, 30, 40])
                 ),
                 source_unit="points",
                 value_unit="seconds",
                 origin=TICKS[0],
             )
 
-    def test_drawn_axis_mislabelled_tick_is_refused(self):
+    def test_drawn_axis_tick_moved_by_a_billionth_of_the_span_is_refused(self):
+        moved = TICKS[2] + 1e-9 * (TICKS[4] - TICKS[0])
+        assert moved == 504.46818366051133
         with pytest.raises(
             ValueError,
             match=re.escape(
-                "Calibration pair 2 (504.4681828049824, 25) lies off the line "
-                "through the first and last pair, which reaches 25 at "
-                "611.4092998562772."
+                "Calibration pair 2 (504.46818366051133, 20) lies off the line "
+                "through the first and last pair, which reaches 20 at "
+                "504.4681828049824."
             ),
         ):
             LinearMap.from_pairs(
-                list(zip(TICKS, [0, 10, 25, 30, 40])),
+                list(zip([*TICKS[:2], moved, *TICKS[3:]], [0, 10, 20, 30, 40])),
                 source_unit="points",
                 value_unit="seconds",
                 origin=TICKS[0],
             )
+
+    def test_drawn_axis_mislabelled_tick_is_refused(self):
+        # Labelled 41, the last tick moves the line's 10 s to
+        # 76.70371459980326 + 10/41 * 855.5289364103584.
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "Calibration pair 1 (290.5859487023929, 10) lies off the line "
+                "through the first and last pair, which reaches 10 at "
+                "285.3693088462321."
+            ),
+        ):
+            LinearMap.from_pairs(
+                list(zip(TICKS, [0, 10, 20, 30, 41])),
+                source_unit="points",
+                value_unit="seconds",
+                origin=TICKS[0],
+            )
+
+    @pytest.mark.parametrize(
+        ("placement", "beyond"),
+        [("rounded once", 0), ("(w*d)/D", 339), ("w*(d/D)", 281), ("(w/D)*d", 227)],
+    )
+    def test_random_axes_are_accepted(self, placement, beyond):
+        calibrations = placed(placement)
+        # Not vacuous: computed positions miss by more than rounding alone.
+        assert sum(map(beyond_rounding_alone, calibrations)) == beyond
+        for pairs in calibrations:
+            LinearMap.from_pairs(pairs, source_unit="points", value_unit="seconds")
+
+    @pytest.mark.parametrize("placement", list(PLACEMENTS))
+    def test_random_axes_moved_by_a_billionth_of_the_span_are_refused(self, placement):
+        for pairs in placed(placement):
+            (p0, _), (pn, _) = pairs[0], pairs[-1]
+            middle = len(pairs) // 2
+            position, value = pairs[middle]
+            moved = list(pairs)
+            moved[middle] = (position + 1e-9 * (pn - p0), value)
+            with pytest.raises(ValueError, match=f"Calibration pair {middle} "):
+                LinearMap.from_pairs(moved, source_unit="points", value_unit="seconds")
 
     def test_origin_is_subtracted_after_the_check(self):
         from_child = LinearMap.from_pairs(
@@ -378,43 +448,6 @@ class TestLinearMapFromPairs:
         # (0.3 - 0.1) / 2 in floats
         assert m.scalar == 0.09999999999999999
         assert m.offset == 0.1
-
-    def test_rounded_and_computed_axes_pass(self):
-        for positions, values in computed_axes(2000):
-            LinearMap.from_pairs(
-                list(zip(positions, values)), source_unit="points", value_unit="seconds"
-            )
-
-    def test_a_position_a_billionth_off_is_refused(self):
-        for number, (positions, values) in enumerate(computed_axes(2000)):
-            index = 1 + number % (len(positions) - 2)
-            length = abs(Fraction(positions[-1]) - Fraction(positions[0]))
-            moved = float(Fraction(positions[index]) + length / 10**9)
-            positions[index] = moved
-            with pytest.raises(
-                ValueError, match=re.escape(f"Calibration pair {index} ({moved}, ")
-            ):
-                LinearMap.from_pairs(
-                    list(zip(positions, values)),
-                    source_unit="points",
-                    value_unit="seconds",
-                )
-
-    def test_a_mislabelled_tick_is_refused(self):
-        for number, (positions, values) in enumerate(computed_axes(2000)):
-            index = 1 + number % (len(positions) - 2)
-            values[index] += values[1] // 2 or 1
-            with pytest.raises(
-                ValueError,
-                match=re.escape(
-                    f"Calibration pair {index} ({positions[index]}, {values[index]})"
-                ),
-            ):
-                LinearMap.from_pairs(
-                    list(zip(positions, values)),
-                    source_unit="points",
-                    value_unit="seconds",
-                )
 
     def test_declared_output_number_type(self):
         floats = LinearMap.from_pairs(

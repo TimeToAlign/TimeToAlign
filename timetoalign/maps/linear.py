@@ -46,7 +46,6 @@ def _linear_form(
         "LinearMap",
         {"scalar": number_to_json(scalar), "offset": number_to_json(offset)},
         minimal=minimal,
-        defaults=LinearMap._dict_defaults,
     )
 
 
@@ -86,8 +85,6 @@ class LinearMap(ConversionMap[CoordinateValue]):
 
     _id_prefix: ClassVar[str] = "lmap"
     _manifest_type: ClassVar[str | None] = "LinearMap"
-    # The integer defaults leave an exact input exact: 1.0 * x is a float.
-    _dict_defaults: ClassVar[dict[str, Any]] = {"scalar": 1, "offset": 0}
 
     @classmethod
     def from_pairs(
@@ -290,10 +287,10 @@ class LinearMap(ConversionMap[CoordinateValue]):
     def _from_manifest(
         cls, data: dict[str, Any], measure_maps: Mapping[str, Any]
     ) -> LinearMap:
-        """Read a ``LinearMap``, ``scalar`` 1 and ``offset`` 0 when left out."""
+        """Read a ``LinearMap`` from its complete form."""
         return cls(
-            scalar=number_from_json(data.get("scalar", 1)),
-            offset=number_from_json(data.get("offset", 0)),
+            scalar=number_from_json(data["scalar"]),
+            offset=number_from_json(data["offset"]),
             source_unit=data.get("source_unit"),
             target_unit=data.get("target_unit"),
             uid=data.get("id"),

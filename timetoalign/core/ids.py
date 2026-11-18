@@ -452,15 +452,12 @@ class _OpenObject:
         fields: Mapping[str, Any],
         *,
         minimal: bool,
-        defaults: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Return *fields*, then the unknown keys kept.
 
         *fields* is the complete form. With *minimal*, the object is written
-        in TimeToShare's minimal form at its ``_manifest_path``. *defaults*
-        is ignored: the defaults are TimeToShare's.
+        in TimeToShare's minimal form at its ``_manifest_path``.
         """
-        del defaults
         written = dict(fields)
         written.update(deepcopy(dict(self._unknown_keys)))
         return _minimal_at(written, self._manifest_path) if minimal else written

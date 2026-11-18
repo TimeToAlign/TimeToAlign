@@ -23,6 +23,7 @@ from typing import (
 )
 
 import numpy as np
+import timetoshare
 from numpy.typing import NDArray
 
 from ..core.enums import NumberType, TimeUnit
@@ -190,8 +191,6 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
     # ancestor's.
     _id_prefix: ClassVar[str] = "cmap"
 
-    # The one optional key every map's dictionary form shares.
-    _dict_defaults: ClassVar[dict[str, Any]] = {"name": None}
     _manifest_path: ClassVar[tuple[str, ...]] = ("timelines", "conversion_maps")
 
     # Class-level attributes that subclasses may override
@@ -892,7 +891,6 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
         fields: Mapping[str, Any],
         *,
         minimal: bool,
-        defaults: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Write the fields every map shares, then *fields*, then unknown keys.
 
@@ -900,7 +898,6 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
             manifest_type: The TimeToShare type written.
             fields: The type's own fields.
             minimal: Leave out every key at its default.
-            defaults: The type's own optional fields and their defaults.
         """
         return self._dict_form(
             {
@@ -912,7 +909,6 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
                 **fields,
             },
             minimal=minimal,
-            defaults={**ConversionMap._dict_defaults, **(defaults or {})},
         )
 
     @classmethod
@@ -929,7 +925,8 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
         only, so a ``LinearMap`` from ticks to quarters reads as a
         :class:`LinearMap`, never as the ``TicksToQuarters`` it may have
         been written from. A key the type writes is required unless it has
-        a default; every key it does not write is kept and written back.
+        a default, which TimeToShare supplies (:func:`timetoshare.complete`);
+        every key it does not write is kept and written back.
 
         Args:
             data: The map's TimeToShare form.
@@ -955,19 +952,35 @@ class ConversionMap(_OpenObject, ABC, Generic[T]):
         if map_cls is None:
             known = ", ".join(sorted(cls._registry))
             raise ValueError(f"Unknown map type: {map_type!r}. Known types: {known}")
+        completed = cls._completed_at(data)
         try:
-            cmap = map_cls._from_manifest(data, measure_maps or {})
+            cmap = map_cls._from_manifest(completed, measure_maps or {})
         except KeyError as error:
             raise ValueError(
                 f"a {map_type} lacks the key(s) [{error.args[0]!r}]"
             ) from error
         written = cmap.to_dict(minimal=False)
-        optional = {**ConversionMap._dict_defaults, **map_cls._dict_defaults}
-        missing = [key for key in written if key not in optional and key not in data]
+        missing = [key for key in written if key not in completed]
         if missing:
             raise ValueError(f"a {map_type} lacks the key(s) {missing}")
-        cmap._keep_unknown_keys(data, known=set(written) | set(optional))
+        cmap._keep_unknown_keys(data, known=set(written))
         return cmap
+
+    @classmethod
+    def _completed_at(cls, data: dict[str, Any]) -> dict[str, Any]:
+        """Return *data*, a map's form, with every key it leaves out at its default.
+
+        The complete form is the one :func:`timetoshare.complete` writes: the
+        map is placed as the first entry of each array ``_manifest_path``
+        names and taken back out, its nested maps completed with it.
+        """
+        holder: Any = data
+        for key in reversed(cls._manifest_path):
+            holder = {key: [holder]}
+        result = timetoshare.complete(holder)
+        for key in cls._manifest_path:
+            result = result[key][0]
+        return result
 
     @classmethod
     def _from_manifest(

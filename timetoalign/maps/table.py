@@ -66,7 +66,6 @@ def _table_form(
             "extrapolate": _EXTRAPOLATION_WRITTEN[extrapolate],
         },
         minimal=minimal,
-        defaults=TableMap._dict_defaults,
     )
 
 
@@ -113,7 +112,6 @@ class TableMap(ConversionMap[CoordinateValue]):
 
     _id_prefix: ClassVar[str] = "tmap"
     _manifest_type: ClassVar[str | None] = "TableMap"
-    _dict_defaults: ClassVar[dict[str, Any]] = {"kind": "linear", "extrapolate": "none"}
 
     def __init__(
         self,
@@ -450,16 +448,16 @@ class TableMap(ConversionMap[CoordinateValue]):
     def _from_manifest(
         cls, data: dict[str, Any], measure_maps: Mapping[str, Any]
     ) -> TableMap:
-        """Read a ``TableMap``: kind ``linear`` and extrapolation ``none`` by default.
+        """Read a ``TableMap`` from its complete form.
 
         Raises:
             ValueError: If ``kind`` or ``extrapolate`` names no value the
                 format defines.
         """
-        kind = data.get("kind", "linear")
+        kind = data["kind"]
         if kind not in {member.value for member in _KINDS}:
             raise ValueError(f"a TableMap has an unknown kind {kind!r}")
-        extrapolate = data.get("extrapolate", "none")
+        extrapolate = data["extrapolate"]
         if extrapolate not in _EXTRAPOLATION_READ:
             raise ValueError(f"a TableMap has an unknown extrapolate {extrapolate!r}")
         return cls(

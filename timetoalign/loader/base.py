@@ -101,17 +101,20 @@ class Loader(ABC, Generic[PayloadT]):
     def _refuse_further_source(self, *sources: object) -> None:
         """Refuse *sources* when a single-source loader cannot take them.
 
-        A loader whose ``_single_source`` is set reads one source; it refuses
-        more than one in one call, and any while it holds one. Every door into
-        such a loader's parse calls this before parsing anything.
+        A loader whose ``_single_source`` is set reads one source; it requires
+        that source, so it refuses a call with none, more than one in one
+        call, and any while it holds one. Every door into such a loader's
+        parse calls this before parsing anything.
 
         Raises:
-            ValueError: If the loader reads one source and *sources* are
-                more than one, or it already holds one.
+            ValueError: If the loader reads one source and *sources* are none
+                or more than one, or it already holds one.
         """
         if not self._single_source:
             return
         name = self.__class__.__name__
+        if not sources:
+            raise ValueError(f"{name} reads one source; got none.")
         held = self._held_source()
         if held is not None:
             raise ValueError(
@@ -132,9 +135,9 @@ class Loader(ABC, Generic[PayloadT]):
         """Load and accept one or more sources through the shared template.
 
         Raises:
-            ValueError: If the loader reads one source and is given more than
-                one, or any while it holds one (after ``clear()`` it reads
-                one again). Nothing is parsed then.
+            ValueError: If the loader reads one source and is given none or
+                more than one, or any while it holds one (after ``clear()``
+                it reads one again). Nothing is parsed then.
         """
         self._refuse_further_source(*sources)
         for source in sources:

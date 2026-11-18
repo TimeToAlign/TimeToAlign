@@ -27,12 +27,16 @@ the rule on a `DummyLoader` subclass, where nothing else could refuse:
   the held source and its two events are untouched.
 * **`clear()`** releases the loader: it then reads the other source, and holds
   only that one.
+* **No source** is refused as well: a single-source loader requires its one
+  source, so `load()` with none raises `<Loader> reads one source; got none.`
+  and the loader holds nothing.
 * **Unflagged loaders** are unaffected: the plain `DummyLoader` reads two
-  sources in two calls.
+  sources in two calls, and an empty call loads nothing.
 
 Each flagged loader (`VerovioLoader`, `ScoreWarpLoader`, `Ieee1599Loader`,
 `MapsLoader`) has one test of its own showing the flag is set and the same
-message reaches its users.
+message reaches its users. `Ieee1599Loader`, whose `load` overrides the
+template, also pins the empty call.
 
 ## Categories
 

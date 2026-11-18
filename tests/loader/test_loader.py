@@ -298,8 +298,19 @@ class TestSingleSource:
         assert loader.load(second).sources == [second]
         assert len(loader) == 2
 
+    def test_no_source_is_refused(self) -> None:
+        loader = SingleSourceDummyLoader()
+        with pytest.raises(ValueError) as raised:
+            loader.load()
+        assert (
+            str(raised.value) == "SingleSourceDummyLoader reads one source; got none."
+        )
+        assert loader.sources == []
+        assert len(loader) == 0
+
     def test_unflagged_loaders_read_many(self, sources: tuple[Path, Path]) -> None:
         first, second = sources
         loader = DummyLoader().load(first).load(second)
         assert loader.sources == [first, second]
         assert len(loader) == 4
+        assert DummyLoader().load().sources == []

@@ -453,14 +453,13 @@ class Ieee1599Loader(XmlLoader):
             Self, for method chaining.
 
         Raises:
-            ValueError: If more than one source is given, or if this loader
-                already holds a document.  One IEEE 1599 document is one
+            ValueError: If no source or more than one is given, or if this
+                loader already holds a document.  One IEEE 1599 document is one
                 self-contained work with its own spine; two documents are two
                 bundles, so they need two loaders.
         """
         self._refuse_further_source(*sources)
-        if sources:
-            self._name = Path(sources[0]).stem
+        self._name = Path(sources[0]).stem
         return super().load(*sources)
 
     def load_string(self, xml_string: str) -> Self:

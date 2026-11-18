@@ -1045,6 +1045,12 @@ class TestLoaderContract:
         )
         with pytest.raises(ValueError, match=r"Ieee1599Loader reads one source; got 2"):
             Ieee1599Loader().load(ieee1599_path("animals"), ieee1599_path("khomus"))
+        empty = Ieee1599Loader()
+        with pytest.raises(ValueError) as raised:
+            empty.load()
+        assert str(raised.value) == "Ieee1599Loader reads one source; got none."
+        assert empty.sources == []
+        assert empty.timeline_uids == []
 
     def test_string_and_element_ingest_share_the_guard(self, ieee1599_path) -> None:
         """Every door into the parse is one document wide, not just ``load()``."""

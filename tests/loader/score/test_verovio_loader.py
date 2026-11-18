@@ -319,13 +319,13 @@ class TestTimeline:
         assert str(timeline.unit) == "quarters"
         assert str(timeline.number_type) == "fraction"
         assert timeline.length.value == Fraction(9)
-        assert timeline.list_children() == ["clt_1"]
-        child = timeline.get_child("clt_1")
+        assert timeline.list_children() == ["score:clt_2"]
+        child = timeline.get_child("score:clt_2")
         assert child.length.value == Fraction(9)
         assert child.meta == {"count": 1, "xml_id": "mdiv1"}
         assert len(list(timeline.get_events(include_children=False))) == 0
         assert len(list(child.get_events(include_children=False))) == 13
-        assert {row["source_timeline"] for row in events.values()} == {"clt_1"}
+        assert {row["source_timeline"] for row in events.values()} == {"score:clt_2"}
 
     def test_event_types(self, events: dict[str, dict]) -> None:
         assert Counter(row["event_type"] for row in events.values()) == {
@@ -339,7 +339,7 @@ class TestTimeline:
             uid="clt_1", name="Fixture"
         )
         assert (timeline.id, timeline.name) == ("clt_1", "Fixture")
-        assert timeline.list_children() == ["clt_2"]
+        assert timeline.list_children() == ["score:clt_2"]
 
     def test_options_recorded(self, loader: VerovioLoader) -> None:
         metadata = loader.store.metadata
@@ -537,8 +537,8 @@ class TestPhysicalTimeline:
         assert str(physical.number_type) == "fraction"
         assert physical.length.value == Fraction(9, 2)
         assert physical.meta == {"provenance": "verovio_rendered"}
-        assert physical.list_children() == ["cpt_1"]
-        assert physical.get_child("cpt_1").length.value == Fraction(9, 2)
+        assert physical.list_children() == ["rendered:cpt_2"]
+        assert physical.get_child("rendered:cpt_2").length.value == Fraction(9, 2)
         assert physical.measure_map is None
 
     def test_events_at_half_their_quarters(
@@ -564,11 +564,27 @@ class TestPhysicalTimeline:
         forward = timeline.get_conversion_map("seconds")
         inverse = physical.get_conversion_map("quarters")
         assert (timeline.n_conversion_maps, physical.n_conversion_maps) == (1, 1)
-        assert forward(Fraction(9, 4)) == 1.125
-        assert inverse(Fraction(9, 8)) == Fraction(9, 4)
-        assert isinstance(inverse(Fraction(9, 8)), Fraction)
+        for value, expected in (
+            (forward(Fraction(9, 4)), Fraction(9, 8)),
+            (inverse(Fraction(9, 8)), Fraction(9, 4)),
+        ):
+            assert (type(value), value) == (Fraction, expected)
 
-    def test_attach_cmap_false(self, loader: VerovioLoader) -> None:
+    def test_conversion_maps_exact_between_anchors(self, mei: dict[str, Path]) -> None:
+        loader = VerovioLoader.from_file(mei["two_movements"])
+        forward = loader.create_timeline().get_conversion_map("seconds")
+        inverse = loader.create_physical_timeline().get_conversion_map("quarters")
+        pairs = [
+            (Fraction(4), Fraction(2)),
+            (Fraction(10, 3), Fraction(5, 3)),
+            (Fraction(13, 3), Fraction(7, 3)),
+        ]
+        for quarters, seconds in pairs:
+            assert (type(forward(quarters)), forward(quarters)) == (Fraction, seconds)
+            assert (type(inverse(seconds)), inverse(seconds)) == (Fraction, quarters)
+
+    def test_attach_cmap_false(self, mei: dict[str, Path]) -> None:
+        loader = VerovioLoader.from_file(mei["basic"])
         assert loader.create_timeline(attach_cmap=False).n_conversion_maps == 0
         assert loader.create_physical_timeline(attach_cmap=False).n_conversion_maps == 0
 
@@ -749,14 +765,14 @@ def _flow(loader: VerovioLoader) -> list[int]:
 
 
 class TestMovements:
-    @pytest.fixture(scope="class")
+    @pytest.fixture
     def movements(self, mei: dict[str, Path]) -> VerovioLoader:
         return VerovioLoader.from_file(mei["two_movements"])
 
     def test_children(self, movements: VerovioLoader) -> None:
         root = movements.create_timeline()
         assert root.length.value == Fraction(7)
-        assert root.list_children() == ["clt_1", "clt_2"]
+        assert root.list_children() == ["score:clt_2", "score:clt_3"]
         first, second = (root.get_child(c) for c in root.list_children())
         assert (first.name, first.length.value) == ("I", Fraction(4))
         assert (second.name, second.length.value) == ("II", Fraction(3))
@@ -778,13 +794,15 @@ class TestMovements:
         ]
         table = root.get_timestamp_table(format="dataframe")
         assert table.loc["n4", "quarters_to_seconds (seconds)"] == 2
-        child = root.get_child("clt_2")
+        assert root.list_children() == ["score:clt_2", "score:clt_3"]
+        child = root.get_child("score:clt_3")
         assert (child.measure_map, child.n_conversion_maps) == (None, 0)
 
     def test_physical_children(self, movements: VerovioLoader) -> None:
         physical = movements.create_physical_timeline(uid="rendered")
         assert physical.length.value == Fraction(5)
-        second = physical.get_child("cpt_2")
+        assert physical.list_children() == ["rendered:cpt_2", "rendered:cpt_3"]
+        second = physical.get_child("rendered:cpt_3")
         assert physical.get_coordinate_for("n4").value == Fraction(2)
         assert second.length.value == Fraction(3)
 
@@ -793,8 +811,8 @@ class TestMovements:
             mei["two_movements"], options={"mdivXPathQuery": "./mdiv[2]"}
         )
         root = loader.create_timeline()
-        assert root.list_children() == ["clt_1"]
-        assert root.get_child("clt_1").meta["count"] == 2
+        assert root.list_children() == ["score:clt_2"]
+        assert root.get_child("score:clt_2").meta["count"] == 2
         assert root.length.value == Fraction(3)
         assert root.get_coordinate_for("n4").value == Fraction(0)
 
@@ -802,11 +820,11 @@ class TestMovements:
         path = PARANGONAR_DIR / "Beethoven_Eroica_op35-cpjku" / "score.mei"
         root = VerovioLoader.from_file(path).create_timeline()
         assert root.length.value == Fraction(129, 2)
-        assert root.list_children() == ["clt_1"]
-        outer = root.get_child("clt_1")
+        assert root.list_children() == ["score:clt_2"]
+        outer = root.get_child("score:clt_2")
         assert outer.meta == {"count": 1, "xml_id": "Eroica-Variationen"}
-        assert outer.list_children() == ["clt_2"]
-        inner = outer.get_child("clt_2")
+        assert outer.list_children() == ["score:clt_3"]
+        inner = outer.get_child("score:clt_3")
         assert inner.meta == {
             "count": 2,
             "xml_id": "Var_14",

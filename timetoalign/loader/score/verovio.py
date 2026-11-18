@@ -439,8 +439,9 @@ class VerovioLoader(ScoreLoader):
     reproduces its own time.
 
     **Movements.** Every ``<mdiv>`` Verovio loads is a child timeline, in
-    document order, its id minted in the root's manifest (``clt_N``,
-    ``cpt_N``): placed at its first position, as long as its measures, named
+    document order, its id minted by the loader after the root's
+    (``score:clt_2``, ``rendered:cpt_2``, …, whatever id the root is given):
+    placed at its first position, as long as its measures, named
     by its ``label``, with ``meta`` holding ``count`` (its place among all
     ``<mdiv>``s of the file, from 1) and its ``xml:id``, ``n`` and ``label``
     verbatim. A nested ``<mdiv>`` is a child of its parent's timeline.
@@ -722,7 +723,9 @@ class VerovioLoader(ScoreLoader):
         """Create the C-Map from Verovio's quarters to its rendered seconds.
 
         One linear ``TableMap`` with an anchor ``(qfrac, tstamp / 1000)`` at
-        every timemap entry, exact both ways, undefined outside the score.
+        every timemap entry, undefined outside the score. Its results are
+        written as ``Fraction`` seconds, and so are its inverse's quarters:
+        the map is exact both ways.
 
         Returns:
             The quarters → seconds ``TableMap``.
@@ -739,6 +742,7 @@ class VerovioLoader(ScoreLoader):
             extrapolate=ExtrapolationPolicy.error,
             source_unit=TimeUnit.quarters,
             target_unit=TimeUnit.seconds,
+            output_number_type=NumberType.fraction,
         )
 
     def create_timeline(  # type: ignore[override]
@@ -830,7 +834,7 @@ class VerovioLoader(ScoreLoader):
         cmap = self.create_quarters_to_seconds_map()
         timeline = self._build_timeline(
             ContinuousPhysicalTimeline,
-            lambda position: Fraction(cmap._evaluate(position)),
+            lambda position: cmap(position),
             uid=uid,
             name=name,
             role="rendered",
@@ -857,16 +861,21 @@ class VerovioLoader(ScoreLoader):
             convert: Maps a position in quarters to the timeline's axis.
             uid: The root's id, or ``None`` to mint ``{role}:{prefix}_N``.
             name: The root's display name.
-            role: The role of a minted id.
+            role: The role of the minted ids.
             meta: The root's metadata.
+
+        Every timeline of the tree is minted ``{role}:{prefix}_N`` by this
+        loader, the root first: its number is drawn even when *uid* names
+        it, so the movements' ids do not depend on the root's.
         """
         from timetoalign.timelines.factory import _flag_minted, _mint_timeline_id
 
         rendering = self._require_rendering()
         unit = TimeUnit.quarters if role == "score" else TimeUnit.seconds
         minted = uid is None
+        root_id = _mint_timeline_id(self, unit, role=role)
         if minted:
-            uid = _mint_timeline_id(self, unit, role=role)
+            uid = root_id
         by_movement: dict[int | None, list[dict[str, Any]]] = {}
         for row in rendering.rows:
             by_movement.setdefault(rendering.movement[row["id"]], []).append(row)
@@ -898,6 +907,7 @@ class VerovioLoader(ScoreLoader):
                 index,
                 span_start,
                 span_end,
+                uid=_mint_timeline_id(self, unit, role=role),
                 name=movement.label,
                 meta={
                     key: value
@@ -910,6 +920,7 @@ class VerovioLoader(ScoreLoader):
                     if value is not None
                 },
             )
+            _flag_minted(child, True)
             nodes[index] = (child, span_start)
             parent.add_child(child, offset=span_start - parent_start)
         return root

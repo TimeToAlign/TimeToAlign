@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 
 from timetoalign import Coordinate, Timeline, TimeUnit
-from timetoalign.maps import LinearMap, base
+from timetoalign.maps import LinearMap, OutputNumberTypeError
 from timetoalign.timelines import SegmentLine
 from timetoalign.timelines.types import ContinuousLogicalTimeline
 
@@ -89,14 +89,6 @@ def _exact_score() -> ContinuousLogicalTimeline:
     return score
 
 
-OUTPUT_NUMBER_TYPE_ERROR = getattr(base, "OutputNumberTypeError", None)
-"""The class of a map's refusal of a float, where the maps package defines it."""
-
-
-@pytest.mark.skipif(
-    OUTPUT_NUMBER_TYPE_ERROR is None,
-    reason="timetoalign.maps.base defines no OutputNumberTypeError",
-)
 @pytest.mark.parametrize("getter", ["get_coordinate_at", "get_timestamp_at"])
 @pytest.mark.parametrize(
     ("coordinate", "names"),
@@ -112,7 +104,7 @@ def test_a_float_through_an_exact_map_is_a_query_error(
     with pytest.raises(ValueError) as refused:
         getattr(_exact_score(), getter)(coordinate)
     assert type(refused.value) is ValueError
-    assert type(refused.value.__cause__) is OUTPUT_NUMBER_TYPE_ERROR
+    assert type(refused.value.__cause__) is OutputNumberTypeError
     assert str(refused.value) == (
         f"{names} is declared to write fractions and computes exactly, so it "
         f"cannot resolve the float {coordinate.value!r} {coordinate.unit} on "

@@ -438,7 +438,8 @@ the printed score).
 `n3` E4 half) and `mov2` (`n=2`, `label=II`, 3/4: `n4` F4 dotted half, `<tempo midi.bpm="60">`
 `t2`). Verovio continues the second movement where the first ends: one timemap entry at 4 holds
 the end of `n3`, the measure start of `m3` and the onset of `n4`; seconds continue (2 s).
-Expected: root length 7; children `score:clt_2` [0, 4) and `score:clt_3` [4, 7), named `I`, `II`, with
+Expected: root length 7; children `score:clt_2` [0, 4) and `score:clt_3` [4, 7) (the same with
+`uid="score"`), named `I`, `II`, with
 `meta` holding `count` (1, 2) and `xml_id`, `n`, `label` verbatim. `n4` is at 0 in its child and
 at 4 on the root; `t2` belongs to the second child. The root's `MeasureMap` (measures at 0, 2, 4)
 and C-Map serve the children through the root: the root's timestamp table gives `n4` 2 seconds;

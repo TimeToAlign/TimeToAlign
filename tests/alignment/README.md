@@ -384,6 +384,86 @@ axis.
 
 ---
 
+## A Matchstamp Reads Only the Claims Naming Each Timeline (`test_closure_work.py`)
+
+### What We're Validating
+
+A matchstamp's closure visits every timeline of the bundle's trees that holds
+the position: a score with loader category children or unfolded spans, and
+recordings with feature and track children, put dozens to hundreds of
+timelines on that walk while claims name only a handful of them. Two pieces of
+work must therefore scale with the claims naming a timeline, never with the
+bundle's whole claim list times the number of timelines visited:
+
+- **Relevance.** Only a claim naming a timeline can be relevant to a position
+  on it, so the claims a visited timeline expresses in native units
+  (`_claim_in_native_units`) are those naming it. Before the fix every visited
+  timeline expressed every claim of the bundle, and a ten-thousand-claim
+  alignment over a 289-timeline bundle did not answer.
+- **MatchLines.** A MatchLine keeps only the stamps holding its source, and a
+  graph node exists only where a claim names a timeline, so a source no claim
+  names has no line. Such a source is answered without building a MatchLine
+  from every claim of the bundle.
+
+Wall time cannot prove either (it depends on the machine and is not an exact
+value). What proves it is the amount of work, counted by wrapping
+`AlignmentBundle._claim_in_native_units` (claims expressed),
+`MatchLine.from_claims` (lines built, with their source) and
+`AlignmentBundle._transfer_to_group` (warps attempted). These counts are exact
+for the fixture, independent of speed, and the first two scale with the number
+of visited timelines exactly when the defect is present. The stamp itself is
+pinned too, so the counts cannot fall by reaching fewer timelines.
+
+### Fixture
+
+Quarters and seconds, float seconds, exact quarters.
+
+- Group `score_group`, members in order `score`, `facsimile`, `edition`, all
+  quarters of length 40. `score` has 20 children `part_1` … `part_20`, each of
+  length 40 at offset 0 (category children spanning the whole score).
+- Groups `perf_n_group` (`n = 1, 2, 3`), each holding one seconds timeline
+  `perf_n` of length 120 with 10 children `perf_n_track_1` … `perf_n_track_10`, each of
+  length 120 at offset 0.
+- Group `recording_group` holding the seconds timeline `recording`, length 50.
+- Claims, in this order: for each `n`, 21 instant claims `score q` ↔
+  `perf_n n·q` for `q = 0, 2, …, 40` (63 claims); then 2 claims `edition 0` ↔
+  `recording 5.0` and `edition 40` ↔ `recording 45.0`. 65 claims in all.
+
+Query: `get_matchstamp_at(11, "score")`, between two anchors, so every other
+timeline is reached by a warp, the group or the tree.
+
+### Derivation of the counts
+
+- `score` is asked for its relevant claims three times (the interval-claim
+  scan, the exact-anchor MatchGraph, the closure): 3 × 63 = 189. In the
+  closure `edition` and `recording` express their 2 claims each, every
+  `perf_n` its 21: 2 + 2 + 63 = 67. `facsimile`, the parts and the tracks name
+  no claim and express none. Relevance: 256.
+- The closure pops `score` first. Its group adds `facsimile` and `edition`;
+  then it warps into the four other groups: `perf_1`–`perf_3` directly from
+  `score`'s MatchLine (built: 65 claims expressed), `recording` only
+  indirectly — `score`'s line does not reach it, `facsimile` names no claim
+  (no line built), `edition`'s line does (built: 65). Every group is then
+  reached, so no later node warps. MatchLines: 2 (`score`, `edition`),
+  130 claims expressed; transfers: 4.
+- Total claims expressed: 256 + 130 = **386**. Before the fix each of the 59
+  relevance calls (3 on `score`, 56 more timelines visited) expressed all 65
+  claims and a third line was built for `facsimile`: 59 × 65 + 3 × 65 = 4030.
+
+### Exact Expected Values
+
+| Measure | Value |
+|---|---|
+| claims expressed in native units | 386 |
+| MatchLines built, by source | `["score", "edition"]` |
+| `_transfer_to_group` calls | 4 |
+| timelines in the stamp | 57 (3 score group, 20 parts, 3 performances, 30 tracks, `recording`) |
+| `perf_1`, `perf_2`, `perf_3` | `11.0`, `22.0`, `33.0` seconds |
+| `edition`, `part_7` | `11` quarters each |
+| `recording` | `16.0` seconds |
+
+---
+
 ## Every Timeline of a Bundle's Trees (`test_nested_addressing.py`)
 
 ### What We're Validating

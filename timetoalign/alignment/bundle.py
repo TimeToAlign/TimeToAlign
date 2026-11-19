@@ -242,6 +242,11 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
     _matchgraph_cache: dict[tuple[str, CoordinateValue], MatchGraph] = field(
         default_factory=dict, repr=False
     )
+    # The listed cross-group claims by each timeline they name, in store
+    # order; None until first read after the claims changed.
+    _claims_by_timeline: dict[str, list[MatchClaim]] | None = field(
+        default=None, repr=False, compare=False
+    )
     # Hash of cross_group_claims list at time of last cache build
     _cache_claims_hash: int = field(default=0, repr=False)
 
@@ -1980,9 +1985,15 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
     def _relevant_claims_at(
         self, timeline_id: str, coordinate: Coordinate
     ) -> list[MatchClaim]:
-        """Find relevant claims in deterministic store and row order."""
+        """Find relevant claims in deterministic store and row order.
+
+        Only a claim naming the timeline can be relevant to a position on it,
+        so only those are expressed in native units and compared: a timeline
+        no claim names (a loader's category child, an unfolded span) costs
+        nothing, however many claims the bundle holds.
+        """
         relevant: list[MatchClaim] = []
-        for raw_claim in self.cross_group_claims:
+        for raw_claim in self._claims_naming(timeline_id):
             claim = self._claim_in_native_units(raw_claim)
             if self._claim_is_relevant_at(claim, timeline_id, coordinate):
                 relevant.append(claim)
@@ -3714,7 +3725,40 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         self._warp_map_cache.clear()
         self._matchline_cache.clear()
         self._matchgraph_cache.clear()
+        self._claims_by_timeline = None
         self._cache_claims_hash = 0
+
+    def _refresh_claim_caches(self) -> None:
+        """Drop the caches built from the claims when either store changed.
+
+        The hash moves when EITHER store changes: it folds in the total claim
+        count and the identity of each columnar store alongside the list's
+        own identity.
+        """
+        claims_hash = id(self.cross_group_claims) + self.n_cross_group_claims
+        for claim_field in self.cross_group_claim_fields:
+            claims_hash += id(claim_field)
+        if claims_hash != self._cache_claims_hash:
+            self._warp_map_cache.clear()
+            self._matchline_cache.clear()
+            self._claims_by_timeline = None
+            self._cache_claims_hash = claims_hash
+
+    def _claims_naming(self, timeline_id: str) -> list[MatchClaim]:
+        """Return the listed cross-group claims naming a timeline, in store order.
+
+        The index is built once per state of the claim stores; it holds the
+        claims as stored, since a claim's timelines do not change when its
+        coordinates are expressed in native units.
+        """
+        self._refresh_claim_caches()
+        if self._claims_by_timeline is None:
+            index: dict[str, list[MatchClaim]] = {}
+            for claim in self.cross_group_claims:
+                for named in dict.fromkeys(claim.timelines):
+                    index.setdefault(named, []).append(claim)
+            self._claims_by_timeline = index
+        return self._claims_by_timeline.get(timeline_id, [])
 
     def _claim_in_native_units(self, claim: MatchClaim) -> MatchClaim:
         """Return a claim whose anchors use each timeline's native axis.
@@ -3787,6 +3831,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         Returns:
             MatchLine for the source, or None if construction fails.
         """
+        self._refresh_claim_caches()
         if source_tl_id in self._matchline_cache:
             return self._matchline_cache[source_tl_id]
 
@@ -3795,10 +3840,20 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         # field is cut to its source slice — for R recordings that is 2/R of
         # the rows — before anything is materialised, and the resulting
         # MatchLine is then cached per source.
-        claims = list(self.cross_group_claims)
+        field_claims: list[MatchClaim] = []
         for claim_field in self.cross_group_claim_fields:
-            claims.extend(claim_field.connecting(source_tl_id).to_claims())
-        claims = [self._claim_in_native_units(claim) for claim in claims]
+            field_claims.extend(claim_field.connecting(source_tl_id).to_claims())
+        # A MatchLine keeps only the stamps holding its source, and a graph
+        # node exists only where a claim names a timeline, so a source no
+        # claim names has an empty line: it is not built from every claim of
+        # the bundle to find that out.
+        if not field_claims and not self._claims_naming(source_tl_id):
+            self._matchline_cache[source_tl_id] = None
+            return None
+        claims = [
+            self._claim_in_native_units(claim)
+            for claim in [*self.cross_group_claims, *field_claims]
+        ]
 
         try:
             match_line = MatchLine.from_claims(
@@ -3838,17 +3893,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         if self.n_cross_group_claims == 0:
             return None
 
-        # Check cache validity. The hash must move when EITHER store changes,
-        # so it folds in the total claim count and the identity of each
-        # columnar store alongside the list's own identity.
-        claims_hash = id(self.cross_group_claims) + self.n_cross_group_claims
-        for claim_field in self.cross_group_claim_fields:
-            claims_hash += id(claim_field)
-        if claims_hash != self._cache_claims_hash:
-            self._warp_map_cache.clear()
-            self._matchline_cache.clear()
-            self._cache_claims_hash = claims_hash
-
+        self._refresh_claim_caches()
         cache_key = (source_tl_id, target_tl_id)
         if cache_key in self._warp_map_cache:
             return self._warp_map_cache[cache_key]

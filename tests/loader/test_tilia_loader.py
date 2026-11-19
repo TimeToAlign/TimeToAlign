@@ -17,22 +17,19 @@ See Also:
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pyarrow as pa
 import pytest
 
 from timetoalign.loader.alignment.tilia import TiliaDictStore, TiliaJsonLoader
 from timetoalign.testdata import ensure_data
 
-ensure_data("score")
-
 # region Test data paths
 
-DATA_ROOT = Path(__file__).resolve().parents[1] / "data"
-
 BRUCKNER_PATH = (
-    DATA_ROOT / "score" / "bruckner5_scherzo" / "harnoncourt" / "Bruckner5_Scherzo.json"
+    ensure_data("score")
+    / "bruckner5_scherzo"
+    / "harnoncourt"
+    / "Bruckner5_Scherzo.json"
 )
 
 # endregion

@@ -1,6 +1,6 @@
 """Tests for LabLoader.
 
-Tests use synthetic .lab files in tests/data/fixtures/lab/.
+Tests use the synthetic .lab files of the ``fixtures`` test-data corpus.
 All expected values are EXACT per the ZERO TOLERANCE validation policy.
 """
 
@@ -12,9 +12,10 @@ import pytest
 
 from timetoalign.core import TimeUnit
 from timetoalign.loader.tabular import LabLoader
+from timetoalign.testdata import ensure_data
 
 # Test data directory
-LAB_FIXTURES_DIR = Path(__file__).parent.parent.parent / "data" / "fixtures" / "lab"
+LAB_FIXTURES_DIR = ensure_data("fixtures") / "lab"
 
 
 # region Fixtures

@@ -15,7 +15,6 @@ Schema invariants pinned here (represent pitch exactly once):
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pandas as pd
@@ -29,20 +28,20 @@ from timetoalign.core.events import (
     EnharmonicPitchField,
 )
 from timetoalign.loader.score.ms3 import Ms3Loader
+from timetoalign.testdata import ensure_data
 
 # ---------------------------------------------------------------------------
 # Paths to test specimens
 # ---------------------------------------------------------------------------
 
-DATA_DIR = Path(os.environ.get("TTA_TESTDATA_DIR", Path(__file__).parents[1] / "data"))
-VIENNA_DIR = DATA_DIR / "vienna_1x22"
+VIENNA_DIR, SCORE_DIR = ensure_data("vienna_1x22", "score")
 MS3_DIR = VIENNA_DIR / "ms3"
 
 CHOPIN_NOTES_TSV = MS3_DIR / "chopin_op10_no3.notes.tsv"
 CHOPIN_MEASURES_TSV = MS3_DIR / "chopin_op10_no3.measures.tsv"
 CHOPIN_XML = VIENNA_DIR / "Chopin_op10_no3.musicxml"
 
-BEETHOVEN_DIR = DATA_DIR / "score" / "beethoven_op18-4iv_multimodal" / "ABC"
+BEETHOVEN_DIR = SCORE_DIR / "beethoven_op18-4iv_multimodal" / "ABC"
 BEETHOVEN_HARMONIES_TSV = BEETHOVEN_DIR / "n04op18-4_04.harmonies.tsv"
 
 

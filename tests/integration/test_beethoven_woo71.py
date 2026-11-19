@@ -15,17 +15,17 @@ This piece is significantly larger than Chopin (4753 vs 498 notes) and tests:
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pandas as pd
 import pytest
+
+from timetoalign.testdata import ensure_data
 
 # Gold standard counts (verified via wc -l)
 BEETHOVEN_WOO71_GOLD_NOTES = 4753
 BEETHOVEN_WOO71_GOLD_MEASURES = 397
 
 # Test data paths
-DATA_DIR = Path(__file__).parents[1] / "data" / "score" / "beethoven_woo71"
+DATA_DIR = ensure_data("score") / "beethoven_woo71"
 NOTES_TSV = DATA_DIR / "WoO71.notes.tsv"
 MEASURES_TSV = DATA_DIR / "WoO71.measures.tsv"
 
@@ -39,14 +39,10 @@ class TestBeethovenWoO71GoldStandard:
 
     def test_notes_tsv_exists(self):
         """Gold standard notes TSV file exists."""
-        if not NOTES_TSV.exists():
-            pytest.skip(f"Test data not found: {NOTES_TSV}")
         assert NOTES_TSV.exists()
 
     def test_measures_tsv_exists(self):
         """Gold standard measures TSV file exists."""
-        if not MEASURES_TSV.exists():
-            pytest.skip(f"Test data not found: {MEASURES_TSV}")
         assert MEASURES_TSV.exists()
 
     def test_notes_tsv_count_exact(self):
@@ -55,8 +51,6 @@ class TestBeethovenWoO71GoldStandard:
         Derivation: wc -l WoO71.notes.tsv = 4754 lines
         4754 - 1 header = 4753 notes
         """
-        if not NOTES_TSV.exists():
-            pytest.skip(f"Test data not found: {NOTES_TSV}")
 
         df = pd.read_csv(NOTES_TSV, sep="\t")
         assert len(df) == BEETHOVEN_WOO71_GOLD_NOTES, (
@@ -70,8 +64,6 @@ class TestBeethovenWoO71GoldStandard:
         Derivation: wc -l WoO71.measures.tsv = 398 lines
         398 - 1 header = 397 measures
         """
-        if not MEASURES_TSV.exists():
-            pytest.skip(f"Test data not found: {MEASURES_TSV}")
 
         df = pd.read_csv(MEASURES_TSV, sep="\t")
         assert len(df) == BEETHOVEN_WOO71_GOLD_MEASURES, (
@@ -89,8 +81,6 @@ class TestBeethovenWoO71TsvStructure:
 
     def test_notes_tsv_has_required_columns(self):
         """Notes TSV has all required columns."""
-        if not NOTES_TSV.exists():
-            pytest.skip(f"Test data not found: {NOTES_TSV}")
 
         df = pd.read_csv(NOTES_TSV, sep="\t", nrows=5)
 
@@ -109,8 +99,6 @@ class TestBeethovenWoO71TsvStructure:
 
     def test_measures_tsv_has_required_columns(self):
         """Measures TSV has all required columns."""
-        if not MEASURES_TSV.exists():
-            pytest.skip(f"Test data not found: {MEASURES_TSV}")
 
         df = pd.read_csv(MEASURES_TSV, sep="\t", nrows=5)
 
@@ -145,8 +133,6 @@ class TestBeethovenWoO71WithMs3Loader:
     @pytest.mark.slow
     def test_tsv_loader_notes_count_exact(self, tsv_loader):
         """Ms3Loader note count matches gold standard EXACTLY."""
-        if not NOTES_TSV.exists():
-            pytest.skip(f"Test data not found: {NOTES_TSV}")
 
         tsv_loader.load(NOTES_TSV)
         store = tsv_loader.store
@@ -208,8 +194,6 @@ class TestBeethovenWoO71DataIntegrity:
         DOCUMENTED BEHAVIOR: Beethoven WoO71 has 8 notes in volta sections
         with null quarterbeats but valid quarterbeats_all_endings.
         """
-        if not NOTES_TSV.exists():
-            pytest.skip(f"Test data not found: {NOTES_TSV}")
 
         df = pd.read_csv(NOTES_TSV, sep="\t")
         null_qb = df["quarterbeats"].isna()
@@ -247,8 +231,6 @@ class TestBeethovenWoO71DataIntegrity:
 
     def test_notes_tsv_no_empty_midi_pitch(self):
         """All notes have non-null MIDI pitch (no rests in notes file)."""
-        if not NOTES_TSV.exists():
-            pytest.skip(f"Test data not found: {NOTES_TSV}")
 
         df = pd.read_csv(NOTES_TSV, sep="\t")
         null_count = df["midi"].isna().sum()
@@ -263,8 +245,6 @@ class TestBeethovenWoO71DataIntegrity:
 
     def test_measures_tsv_sequential_mc(self):
         """Measure counts are sequential starting from 1."""
-        if not MEASURES_TSV.exists():
-            pytest.skip(f"Test data not found: {MEASURES_TSV}")
 
         df = pd.read_csv(MEASURES_TSV, sep="\t")
 
@@ -282,8 +262,6 @@ class TestBeethovenWoO71DataIntegrity:
 
         Notes should be ordered by time (ties allowed for chords).
         """
-        if not NOTES_TSV.exists():
-            pytest.skip(f"Test data not found: {NOTES_TSV}")
 
         df = pd.read_csv(NOTES_TSV, sep="\t")
 

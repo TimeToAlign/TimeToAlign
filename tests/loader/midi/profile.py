@@ -11,8 +11,9 @@ with warnings.catch_warnings():
     import partitura as pt
 
 from timetoalign.loader.midi import PerformanceMidiLoader, ScoreMidiLoader
+from timetoalign.testdata import ensure_data
 
-DATA_DIR = Path(__file__).parents[2] / "data" / "midi"
+DATA_DIR = ensure_data("midi")
 
 
 def profile_loader(name: str, loader_cls, path: Path, **kwargs):

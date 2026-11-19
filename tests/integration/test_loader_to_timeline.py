@@ -20,21 +20,21 @@ from pathlib import Path
 
 import pytest
 
+from timetoalign.testdata import ensure_data
 from timetoalign.timelines import Timeline, create_timeline
 
 # Test data paths
-DATA_DIR = Path(__file__).parents[1] / "data" / "vienna_1x22"
+DATA_DIR, MIDI_DIR = ensure_data("vienna_1x22", "midi")
 SCORE_DIR = DATA_DIR
 MS3_DIR = DATA_DIR / "ms3"
 
 # MIDI specimens live in the dedicated ``midi`` corpus, split by role.
-MIDI_DIR = Path(__file__).parents[1] / "data" / "midi"
 MIDI_SCORE_DIR = MIDI_DIR / "score"
 MIDI_PERF_DIR = MIDI_DIR / "performance"
 
 # Gold standard counts from MS3 TSV files
-# Source: tests/data/vienna_1x22/ms3/chopin_op10_no3.notes.tsv (499 lines - 1 header = 498)
-# Source: tests/data/vienna_1x22/ms3/chopin_op10_no3.measures.tsv (23 lines - 1 header = 22)
+# Source: vienna_1x22 corpus, ms3/chopin_op10_no3.notes.tsv (499 lines - 1 header = 498)
+# Source: vienna_1x22 corpus, ms3/chopin_op10_no3.measures.tsv (23 lines - 1 header = 22)
 CHOPIN_GOLD_NOTES = 498
 CHOPIN_GOLD_MEASURES = 22
 
@@ -65,8 +65,6 @@ class TestScoreLoaderToTimeline:
     def chopin_musicxml(self) -> Path:
         """Path to Chopin Op.10 No.3 MusicXML file."""
         path = SCORE_DIR / "Chopin_op10_no3.musicxml"
-        if not path.exists():
-            pytest.skip(f"Test data not found: {path}")
         return path
 
     def test_partitura_create_timeline_structure(self, chopin_musicxml: Path):
@@ -180,8 +178,6 @@ class TestScoreLoaderWithFilters:
     def chopin_musicxml(self) -> Path:
         """Path to Chopin Op.10 No.3 MusicXML file."""
         path = SCORE_DIR / "Chopin_op10_no3.musicxml"
-        if not path.exists():
-            pytest.skip(f"Test data not found: {path}")
         return path
 
     def test_filter_notes_only(self, chopin_musicxml: Path):
@@ -227,16 +223,12 @@ class TestMidiLoaderToTimeline:
     def beethoven_midi(self) -> Path:
         """Path to Beethoven Op.18 score MIDI file."""
         path = MIDI_SCORE_DIR / "beethoven_op18.mid"
-        if not path.exists():
-            pytest.skip(f"Test data not found: {path}")
         return path
 
     @pytest.fixture
     def supra_midi(self) -> Path:
         """Path to Supra piano roll performance MIDI file."""
         path = MIDI_PERF_DIR / "supra_raw.mid"
-        if not path.exists():
-            pytest.skip(f"Test data not found: {path}")
         return path
 
     def test_score_midi_creates_bundle_with_notes_and_controls(
@@ -317,8 +309,6 @@ class TestCrossLoaderConsistency:
     def chopin_musicxml(self) -> Path:
         """Path to Chopin Op.10 No.3 MusicXML file."""
         path = SCORE_DIR / "Chopin_op10_no3.musicxml"
-        if not path.exists():
-            pytest.skip(f"Test data not found: {path}")
         return path
 
     def test_partitura_vs_music21_note_count_identical(self, chopin_musicxml: Path):
@@ -410,8 +400,6 @@ class TestCreateTimelineFunction:
     def chopin_musicxml(self) -> Path:
         """Path to Chopin Op.10 No.3 MusicXML file."""
         path = SCORE_DIR / "Chopin_op10_no3.musicxml"
-        if not path.exists():
-            pytest.skip(f"Test data not found: {path}")
         return path
 
     def test_create_timeline_from_loader(self, chopin_musicxml: Path):

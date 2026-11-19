@@ -45,6 +45,8 @@ from timetoalign.timelines import (
     get_timeline_class,
 )
 
+from .conftest import SCORE_DIR
+
 # region Region Tests
 
 
@@ -2253,8 +2255,11 @@ class TestUnifiedAPIWithRealData:
     """
 
     WAGNER_PATH = (
-        "tests/data/score/wagner_walkure/01_RawData/score_musescore/"
-        "Wagner_WWV086B-3.measures.tsv"
+        SCORE_DIR
+        / "wagner_walkure"
+        / "01_RawData"
+        / "score_musescore"
+        / "Wagner_WWV086B-3.measures.tsv"
     )
 
     @pytest.fixture
@@ -2270,16 +2275,10 @@ class TestUnifiedAPIWithRealData:
             A ContinuousLogicalTimeline with 1733 Measure interval events
             including timesig, keysig, breaks columns.
         """
-        from pathlib import Path
-
         from timetoalign.loader.score import Ms3Loader
 
-        path = Path(self.WAGNER_PATH)
-        if not path.exists():
-            pytest.skip(f"Test data not found: {path}")
-
         loader = Ms3Loader()
-        loader.load(path)
+        loader.load(self.WAGNER_PATH)
         measures = loader.store.measures
 
         if len(measures) == 0:

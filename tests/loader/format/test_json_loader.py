@@ -11,27 +11,20 @@ See Also:
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pyarrow as pa
 import pytest
 
 from timetoalign.loader.format.json import JsonLoader
 from timetoalign.storage.store import DictStore
+from timetoalign.testdata import ensure_data
 
 # region Test data paths
 
-DATA_ROOT = Path(__file__).resolve().parents[2] / "data"
+AUDIO_DIR, OMR_DIR = ensure_data("audio", "audiolabs_omr")
 
-DJ_STUDIO_PATH = DATA_ROOT / "audio" / "hard_techno" / "dj_studio_data.json"
-WAGNER_PATH = (
-    DATA_ROOT
-    / "audiolabs_omr"
-    / "Wagner_WWV086B-3"
-    / "json"
-    / "Wagner_WWV086B_140.json"
-)
-ANNOTATIONS_PATH = DATA_ROOT / "audiolabs_omr" / "all_annotations.json"
+DJ_STUDIO_PATH = AUDIO_DIR / "hard_techno" / "dj_studio_data.json"
+WAGNER_PATH = OMR_DIR / "Wagner_WWV086B-3" / "json" / "Wagner_WWV086B_140.json"
+ANNOTATIONS_PATH = OMR_DIR / "all_annotations.json"
 
 # endregion
 

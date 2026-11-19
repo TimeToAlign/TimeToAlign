@@ -10,7 +10,7 @@ This module tests the MatchfileLoader against the Vienna 1x22 dataset
 - AlignmentBundle assembly (single-file and multi-file)
 
 All counts are exact per the Zero Tolerance Validation Policy.
-See tests/data/vienna_1x22/README.md for gold standard values.
+See the README.md of the vienna_1x22 test-data corpus for gold standard values.
 """
 
 from __future__ import annotations

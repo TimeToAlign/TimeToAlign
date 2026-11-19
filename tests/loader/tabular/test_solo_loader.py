@@ -18,8 +18,6 @@ section *SoloLoader*.  Summary:
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 from timetoalign.core import (
@@ -29,25 +27,19 @@ from timetoalign.core import (
     IdField,
 )
 from timetoalign.loader.tabular import SoloLoader
+from timetoalign.testdata import ensure_data
 
 # ---------------------------------------------------------------------------
 # Fixture
 # ---------------------------------------------------------------------------
 
 
-SOLO_FILE = (
-    Path(__file__).resolve().parent.parent.parent
-    / "data"
-    / "performance_precision"
-    / "Chopin Nocturne Op. 9 No. 2.solo"
-)
+SOLO_FILE = ensure_data("performance_precision") / "Chopin Nocturne Op. 9 No. 2.solo"
 
 
 @pytest.fixture(scope="module")
 def loader() -> SoloLoader:
     """Load the canonical Chopin Nocturne .solo specimen once per session."""
-    if not SOLO_FILE.exists():
-        pytest.skip(f"SoloLoader specimen not found at {SOLO_FILE}")
     return SoloLoader.from_file(SOLO_FILE)
 
 

@@ -23,6 +23,7 @@ import numpy as np
 
 from timetoalign.loader.score import Ms3Loader
 from timetoalign.loader.tabular import TabularLoader
+from timetoalign.testdata import ensure_data
 
 # region Profiling Infrastructure
 
@@ -150,7 +151,7 @@ def get_specimens() -> list[tuple[Path, type[TabularLoader], dict[str, Any]]]:
     Returns:
         List of (file_path, loader_class, loader_kwargs) tuples.
     """
-    base = Path(__file__).parent.parent.parent / "data" / "score"
+    base = ensure_data("score")
 
     specimens = []
 

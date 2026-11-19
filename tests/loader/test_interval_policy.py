@@ -464,13 +464,10 @@ class TestCsvLoaderIntegration:
 
     def test_csv_loader_fills_duration(self):
         """CsvLoader on test_events.csv should produce duration for all rows."""
-        from pathlib import Path
-
         from timetoalign.loader.tabular.csv import CsvLoader
+        from timetoalign.testdata import ensure_data
 
-        csv_path = Path(__file__).parent.parent / "data" / "tabular" / "test_events.csv"
-        if not csv_path.exists():
-            pytest.skip(f"Test CSV not found: {csv_path}")
+        csv_path = ensure_data("tabular") / "test_events.csv"
 
         loader = CsvLoader()
         loader.load(csv_path)

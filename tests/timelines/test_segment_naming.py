@@ -15,17 +15,13 @@ See ``README.md`` for the full validity rationale.
 
 from __future__ import annotations
 
-from pathlib import Path
-
-import pytest
-
 from timetoalign.loader.score import Ms3Loader
 from timetoalign.timelines import ScoreFlowController, SegmentNameGenerator
 
+from .conftest import SCORE_DIR
+
 # Folded measures TSV for Beethoven Op.18 No.4 iv (repeats + volta brackets).
-# Resolved relative to this test file — the same pattern test_unfolding.py uses
-# for this specimen.
-SCORE_DATA_DIR = Path(__file__).parent.parent / "data" / "score"
+SCORE_DATA_DIR = SCORE_DIR
 OP18_MEASURES = (
     SCORE_DATA_DIR
     / "beethoven_op18-4iv_multimodal"
@@ -93,10 +89,6 @@ class TestSegmentNameGenerator:
 # region Integration: ScoreFlowController labelling
 
 
-@pytest.mark.skipif(
-    not OP18_MEASURES.exists(),
-    reason=f"Test data not found: {OP18_MEASURES}",
-)
 class TestControllerVoltaLabelling:
     """The controller labels its atomic sections via the generator."""
 

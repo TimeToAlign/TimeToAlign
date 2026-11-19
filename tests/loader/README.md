@@ -67,6 +67,7 @@ template, also pins the empty call.
 | `graphical/` | PDF / image loaders, and `ScoreWarpLoader` (a ScoreWarp SVG's drawn time axis, see below) |
 | `format/` | Cross-format loaders (JSON, XML, TTL) |
 | `physical/` | Audio loaders and time-coordinate ingestion |
+| `mei_head/`, `melody/` | The importers of descriptive metadata: an MEI header and MeLODy's Turtle as statements on a bundle, its timelines and regions |
 
 ## Exact rational coordinates
 

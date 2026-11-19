@@ -68,6 +68,7 @@ from timetoalign.storage.schema import (
 
 from .alignment import MapsLoader, MatchfileLoader, TiliaDictStore, TiliaJsonLoader
 from .base import AlignmentLoader, EventLoader, Loader, ManifestData, ManifestLoader
+from .metadata import MeiHeadLoader, MelodyLoader
 from .physical import (
     AudioInfo,
     AudioLoader,
@@ -96,6 +97,9 @@ __all__ = [
     "RepoVizzInfo",
     "EepNotesLoader",
     "RekordboxLoader",
+    # Metadata importers
+    "MeiHeadLoader",
+    "MelodyLoader",
     "Field",
     "ComputedField",
     "parse_json_to_struct",

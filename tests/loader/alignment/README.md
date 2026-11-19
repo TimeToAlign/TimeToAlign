@@ -455,7 +455,10 @@ stated all the same.
   onsets themselves (0.5 … 5.0) and 2.75 halfway.
 * **Before the first anchor**: quarter 1/4 lies on the score but before the
   first anchor (1/2); under the bundle's default `omit` policy the stamp holds
-  the score alone, so the performance does not resolve.
+  the score and its one child alone, so the performance does not resolve. The
+  child is `score:clt_2`, the movement `mdiv1` holding the notes, at offset 0 over
+  the whole score: it covers 1/4, so the score's offsets carry the query onto
+  it at 1/4.
 * **Every stated row, kept** (second fixture). `rows` is the eleven dicts
   verbatim, the bare string included. The claims are 17 = 1 + 13 + 1 + 2, in
   row order:

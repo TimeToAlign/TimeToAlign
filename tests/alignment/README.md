@@ -408,6 +408,49 @@ query at 1363/2, `clt_4` included. The table at `clt_4` 27/2 has the columns
 `clt_1`, `clt_4`, `clt_6`, `clt_7`, `cpt_1`, the `clt_4` column naming its
 timeline in the field metadata.
 
+### Claims on an Unregistered Nested Timeline
+
+A claim names the timeline it was made on. When that timeline is a child no one
+registered, the bundle must still make the claim, and warp through it, exactly
+as it would for a registered timeline. The root's offsets carry a position onto
+the child, but they cannot warp it on: the claims build the child's `MatchLine`,
+never the root's. So the child must be a warp unit of its own, like every
+ungrouped registered timeline. What proves it:
+
+8. **Claims are made on it.** `create_match_claims` resolves event ids on the
+   unregistered child, where a registry lookup would raise `KeyError`; an id
+   naming no timeline of the trees still raises `KeyError`, naming every known
+   timeline.
+9. **The warp runs through it between the anchors.** A position between the two
+   claims, queried on the child, on its root and on the recording, gives the same
+   three coordinates each time. Before, only the two anchors themselves reached the
+   recording (an exact-anchor edge needs no warp); every position between them
+   stopped at the tree. Three sources agreeing shows the warp runs in both
+   directions.
+10. **Only through the timeline that holds the claims.** A root position the
+    child does not cover reaches nothing else: the root holds no claim, so no warp
+    runs from it.
+11. **The private coordinate transfer agrees**, in both directions, and is no
+    longer refused for an unregistered source or target.
+
+Fixture (separate from the one above): `clt_1` root, quarters, length 100,
+registered; `clt_2` its child at offset 20, length 40, not registered, events
+`n1` at 0 and `n2` at 40; `cpt_1` seconds, length 30, registered, events `a1` at
+5.0 and `a2` at 25.0. Claims made by `create_match_claims`: `n1 ↔ a1`,
+`n2 ↔ a2`.
+
+| query | expected coordinates (in this order) |
+|---|---|
+| `clt_2` 20 | `clt_2` 20, `clt_1` 40, `cpt_1` 15.0 |
+| `clt_1` 40 | `clt_1` 40, `cpt_1` 15.0, `clt_2` 20 |
+| `cpt_1` 15.0 | `cpt_1` 15.0, `clt_1` 40, `clt_2` 20 |
+| `clt_1` 10 | `clt_1` 10 |
+
+`15.0 = 5.0 + (20 / 40) · (25.0 − 5.0)`; `40 = 20 + 20`. The claims' anchors are
+`clt_2` 0 ↔ `cpt_1` 5.0 and `clt_2` 40 ↔ `cpt_1` 25.0, both synchronous.
+`transfer(20, "clt_2", "cpt_1")` is `15.0` and `transfer(15.0, "cpt_1",
+"clt_2")` is `20.0`.
+
 ---
 
 ## TimelineGroup Integration

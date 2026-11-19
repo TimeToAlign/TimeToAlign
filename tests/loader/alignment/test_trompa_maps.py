@@ -337,7 +337,9 @@ def test_quarter_before_the_first_anchor_does_not_resolve(
     stamp = _bundle(score, performance, maps_path).get_matchstamp_at(
         Fraction(1, 4), score.id
     )
-    assert stamp.present_timelines == [score.id]
+    assert score.list_children() == ["score:clt_2"]
+    assert stamp.present_timelines == [score.id, "score:clt_2"]
+    assert stamp.get_coordinate_for("score:clt_2").value == Fraction(1, 4)
     with pytest.raises(KeyError):
         stamp.get_coordinate_for(performance.id)
 

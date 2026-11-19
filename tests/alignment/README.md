@@ -490,6 +490,29 @@ Exact fixture: `clt_1` (quarters, length 10) with children `clt_2` at 1/3
 `clt_1` 49/12, `clt_2` 15/4, `clt_3` 3/4 (`3/4 = 1/4 + 1/2`, `49/12 = 3/4 +
 10/3`, `15/4 = 49/12 − 1/3`), every value a `Fraction`.
 
+### Grouping a Nested Timeline
+
+A group may hold any timeline of the bundle's trees, so every way of founding
+or joining a group must find a nested one through the same lookup as the
+getters, and must register it as a member is registered (a group member is
+always in `timeline_ids`). Before, `add_timeline(t, grouped_with=X)` looked `X`
+up in the registry alone and raised `KeyError` for a child no one had
+registered. What proves it:
+
+14. **`grouped_with` names a nested timeline.** In the main fixture's tree with
+    only the root `clt_1` registered, `add_timeline(clt_6, grouped_with="clt_7")`
+    founds one group of `clt_7` and `clt_6` (in that order), registers both
+    (`timeline_ids` is `clt_1`, `clt_7`, `clt_6`), and a stamp at `clt_6` 27/2
+    reaches `clt_7` 27/2, `clt_4` 27/2 and `clt_1` 1363/2.
+15. **`add_group` with a nested member** gives the same membership and the same
+    stamp, whether the bundle held the tree before (`clt_1`, `clt_7`, `clt_6`)
+    or the group brings it (`clt_7`, `clt_1`, `clt_6`: a member is registered
+    with its root right after it).
+16. **A name of no timeline** still raises `KeyError`, now naming every timeline
+    the bundle knows, nested ones included:
+    `Timeline to group with 'clt_9' not in bundle. Available timelines: ['clt_1',
+    'clt_2', 'clt_3', 'clt_4', 'clt_7', 'clt_5']`.
+
 ---
 
 ## TimelineGroup Integration

@@ -14,7 +14,7 @@ from timetoalign.alignment.bundle import AlignmentBundle
 from timetoalign.alignment.claims import AlignmentAnchor, MatchClaim
 from timetoalign.core import Coordinate, IdCoordinate, TimeUnit
 from timetoalign.core.fields import field_metadata
-from timetoalign.timelines import Timeline
+from timetoalign.timelines import Timeline, TimelineGroup
 
 # region Fixture
 
@@ -534,6 +534,101 @@ def test_exact_tree_stays_exact_up_and_down() -> None:
         ("clt_3", Fraction(3, 4)),
     ]
     assert all(type(value) is Fraction for _, value in values)
+
+
+# endregion
+
+
+# region Grouping a nested timeline
+
+GROUPED_AT_27_HALVES = {
+    "clt_6": Fraction(27, 2),
+    "clt_7": Fraction(27, 2),
+    "clt_1": Fraction(1363, 2),
+    "clt_4": Fraction(27, 2),
+}
+
+
+def _tree() -> dict[str, Timeline]:
+    """Build the main fixture's tree and the partner, nothing in a bundle.
+
+    Returns:
+        Every timeline of the tree and the partner ``clt_6``, by id.
+    """
+    root = Timeline(length=1616, unit=TimeUnit.quarters, uid="clt_1")
+    timelines = {"clt_1": root}
+    for child_id, offset, length in CHILDREN:
+        child = Timeline(length=length, unit=TimeUnit.quarters, uid=child_id)
+        root.add_child(child, offset=offset)
+        timelines[child_id] = child
+    grandchild = Timeline(length=27, unit=TimeUnit.quarters, uid="clt_7")
+    timelines["clt_4"].add_child(grandchild, offset=0)
+    timelines["clt_7"] = grandchild
+    timelines["clt_6"] = Timeline(length=27, unit=TimeUnit.quarters, uid="clt_6")
+    return timelines
+
+
+def _stamp_from_partner(bundle: AlignmentBundle) -> dict[str, object]:
+    """Return the values of the stamp at ``clt_6`` 27/2, by id."""
+    return dict(_values(bundle.get_matchstamp_at(Fraction(27, 2), "clt_6").coordinates))
+
+
+def test_grouped_with_names_a_nested_timeline() -> None:
+    """``grouped_with`` finds an unregistered child and registers it as a member."""
+    timelines = _tree()
+    bundle = AlignmentBundle(id="grouped").add_timeline(timelines["clt_1"])
+
+    bundle.add_timeline(timelines["clt_6"], grouped_with="clt_7")
+
+    assert bundle.timeline_ids == ["clt_1", "clt_7", "clt_6"]
+    assert bundle.groups["group_1"].timeline_ids == ["clt_7", "clt_6"]
+    assert bundle.timeline_to_groups == {"clt_6": ("group_1",), "clt_7": ("group_1",)}
+    values = _values(bundle.get_matchstamp_at(Fraction(27, 2), "clt_6").coordinates)
+    assert values == [
+        ("clt_6", Fraction(27, 2)),
+        ("clt_1", Fraction(1363, 2)),
+        ("clt_7", Fraction(27, 2)),
+        ("clt_4", Fraction(27, 2)),
+    ]
+    _assert_exact_types(values)
+
+
+@pytest.mark.parametrize(
+    ("tree_first", "registered"),
+    [(True, ["clt_1", "clt_7", "clt_6"]), (False, ["clt_7", "clt_1", "clt_6"])],
+)
+def test_add_group_with_a_nested_member(
+    tree_first: bool, registered: list[str]
+) -> None:
+    """A group holding a nested member joins whether or not its tree is held."""
+    timelines = _tree()
+    bundle = AlignmentBundle(id="grouped")
+    if tree_first:
+        bundle.add_timeline(timelines["clt_1"])
+
+    bundle.add_group(
+        TimelineGroup(name="score", timelines=[timelines["clt_7"], timelines["clt_6"]])
+    )
+
+    assert bundle.timeline_ids == registered
+    assert bundle.timeline_to_groups == {"clt_6": ("group_1",), "clt_7": ("group_1",)}
+    assert _stamp_from_partner(bundle) == GROUPED_AT_27_HALVES
+
+
+def test_grouped_with_an_unknown_timeline_names_every_known_one() -> None:
+    """A name of no timeline of the trees raises, nested timelines listed."""
+    timelines = _tree()
+    bundle = AlignmentBundle(id="grouped").add_timeline(timelines["clt_1"])
+
+    with pytest.raises(KeyError) as raised:
+        bundle.add_timeline(timelines["clt_6"], grouped_with="clt_9")
+
+    assert raised.value.args[0] == (
+        "Timeline to group with 'clt_9' not in bundle. Available timelines: "
+        "['clt_1', 'clt_2', 'clt_3', 'clt_4', 'clt_7', 'clt_5']"
+    )
+    assert bundle.timeline_ids == ["clt_1"]
+    assert bundle.groups == {}
 
 
 # endregion

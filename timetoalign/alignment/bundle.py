@@ -485,8 +485,10 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
 
         Args:
             timeline: The Timeline to add.
-            grouped_with: ID of an existing timeline to share a group with.
-                If provided, both timelines become part of the same group.
+            grouped_with: ID of a timeline of the bundle's trees to share a
+                group with, registered or nested in one; it is registered as
+                a member. If provided, both timelines become part of the same
+                group.
                 If the target timeline is not yet in a group, a new group
                 is created with the target as its first member. A target in
                 several groups is refused, since the group to join would be a
@@ -505,7 +507,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 map, region or flow-control element of it — is held by
                 another element of the bundle's trees (a minted id held there
                 is minted again instead), by a group or by the bundle.
-            KeyError: If grouped_with references a non-existent timeline.
+            KeyError: If grouped_with names no timeline of the bundle's trees,
+                naming every timeline the bundle knows.
 
         Examples:
             Linear (full-extent) alignment:
@@ -540,11 +543,13 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             # An ungrouped participant is a root: a child joins through its
             # root and stays reachable as the root's descendant.
             timeline = _root(timeline)
-        if grouped_with is not None and grouped_with not in self.timelines:
-            raise KeyError(
-                f"Cannot group with '{grouped_with}': not in bundle. "
-                f"Available timelines: {list(self.timelines.keys())}"
-            )
+        # The timeline to group with may be any timeline of the bundle's
+        # trees, registered or nested in one.
+        target = (
+            self._require_known_timeline(grouped_with, role="Timeline to group with")
+            if grouped_with is not None
+            else None
+        )
         registered = self.timelines.get(timeline.id) is timeline
         if registered and grouped_with is None and as_group is None:
             raise ValueError(f"Timeline '{timeline.id}' already exists in bundle")
@@ -567,9 +572,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             (group,) = target_groups
             group.add_timeline(timeline)
         else:
-            if grouped_with is not None and _nested(
-                self.timelines[grouped_with], timeline
-            ):
+            if target is not None and _nested(target, timeline):
                 raise ValueError(
                     f"Timeline {quote_id(timeline.id)} cannot be grouped with "
                     f"{quote_id(grouped_with)}: one is nested in the other, and a parent "
@@ -577,13 +580,14 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 )
             if not registered:
                 self._admit(timeline)
-            if grouped_with is not None or as_group is not None:
-                founders = [timeline]
-                if grouped_with is not None:
-                    founders.insert(0, self.timelines[grouped_with])
+            if target is not None or as_group is not None:
+                founders = [timeline] if target is None else [target, timeline]
                 group = TimelineGroup(name=as_group, timelines=founders)
                 group.id = self._free_group_id(group)
                 self._hold_group(group)
+                if target is not None:
+                    # A member is registered, a nested one too.
+                    self._register(target)
 
         self._register(timeline)
         if group is not None:

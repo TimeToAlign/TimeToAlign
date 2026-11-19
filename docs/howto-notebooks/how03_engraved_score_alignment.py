@@ -371,7 +371,9 @@ page.list_children()
 # timelines, their children and conversion maps, the score's measures. A
 # manifest holds no MatchClaims, and events only when asked for with
 # `events=True`; the claims stay in the MAPS file, which names the score's
-# events, so the events are written too.
+# events, so the events are written too. The file opens with the
+# manifest's inline JSON-LD `@context`; the cell below prints it from
+# `timelines` on.
 
 # %%
 bundle.add_timeline(drawing)

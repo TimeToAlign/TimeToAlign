@@ -63,7 +63,7 @@ the manuscript (not Chorissimo from Figure 5).
 | `how03_loading_vienna_corpus` | Loading the Vienna 4x22 Corpus | MatchfileLoader, 22 performances, AlignmentBundle |
 | `how03_ieee1599` | How to Load an IEEE 1599 Document | Ieee1599Loader, spine/VTU, multimodal AlignmentBundle across score/pixels/audio |
 | `how03_engraved_score_alignment` | How to Align an Engraved Score with a Recording and a Drawn Time Axis | VerovioLoader, MapsLoader, ScoreWarpLoader, css_pixels, create_calibrated_child |
-| `how03_describe_the_work` | How to Describe the Work a Bundle Is About | Links and schemes on a bundle, a timeline and a region; part readings, assertions, the manifest form |
+| `how03_describe_the_work` | How to Describe What a Bundle and Its Timelines Stand For | Statements and provenance on a bundle, a timeline and a region; proposals and decisions, the inline context, MeiHeadLoader, MelodyLoader |
 | **`how04_hendrix_song_genesis`** | **Encoding Song Genesis (Hendrix)** | **MatchClaim, NOMATCH, synchronous vs conceptual (manuscript Section 3.5)** |
 
 Notebooks highlighted in bold correspond directly to examples in the

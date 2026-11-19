@@ -100,7 +100,7 @@ website:
               href: howto/how03_ieee1599.ipynb
             - text: "How to Align an Engraved Score with a Recording and a Drawn Time Axis"
               href: howto/how03_engraved_score_alignment.ipynb
-            - text: "How to Describe the Work a Bundle Is About"
+            - text: "How to Describe What a Bundle and Its Timelines Stand For"
               href: howto/how03_describe_the_work.ipynb
         - section: "In-depth Topics"
           contents:
@@ -312,26 +312,16 @@ quartodoc:
         - name: SnoteRecord
           package: timetoalign.alignment
 
-    - title: Description Layer
-      desc: Links from a manifest, its timelines and its regions to works and other entities, and the identifier schemes they name (the TimeToShare package's classes, re-exported).
+    - title: Statements
+      desc: Property–value statements and their provenance on a bundle, its timelines at any depth and its regions; a timeline and a bundle change them in place, a region returns a copy.
       contents:
-        - name: Link
+        - name: StatementsMixin
           package: timetoalign.timelines
-        - name: PartSlot
+        - name: MutableStatementsMixin
           package: timetoalign.timelines
-        - name: PartOf
+        - name: Region
           package: timetoalign.timelines
-        - name: Identifier
-          package: timetoalign.timelines
-        - name: Assertion
-          package: timetoalign.timelines
-        - name: Scheme
-          package: timetoalign.timelines
-        - name: Descriptor
-          package: timetoalign.timelines
-        - name: set_default_assertion
-          package: timetoalign.timelines
-        - name: get_default_assertion
+        - name: LIBRARY_AGENT
           package: timetoalign.timelines
 
     - title: Loaders
@@ -409,3 +399,7 @@ quartodoc:
           package: timetoalign.loader.alignment.listen_here
         - name: MapsLoader
           package: timetoalign.loader.alignment
+        - name: MeiHeadLoader
+          package: timetoalign.loader
+        - name: MelodyLoader
+          package: timetoalign.loader

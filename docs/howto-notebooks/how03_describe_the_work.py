@@ -14,461 +14,506 @@
 # ---
 
 # %% [markdown]
-# # How to Describe the Work a Bundle Is About
+# # How to Describe What a Bundle and Its Timelines Stand For
 #
-# An alignment bundle holds the timelines of some music, a score or a
-# recording, and nothing in their units and lengths says which music it is.
-# A TimeToShare manifest says so in its **description layer**: a
-# {{< glossary "description link" >}} leads from the manifest, a timeline or
-# a region to an entity outside it, at one of five
-# {{< glossary level >}}s (a work, an expression, a manifestation, an item or
-# an agent), and names that entity by the addresses catalogues give it. The
-# element *pertains to* the entity; the two never become one, and a timeline
-# keeps its own id, unit and length.
+# A TimeToShare manifest holds two planes. Its temporal structure states how
+# coordinates relate: timelines, their nesting, maps, regions and flow
+# control. Its {{< glossary statement >}}s state what the elements stand
+# for and how those things relate to others, and never nest, order or align
+# anything.
 #
-# This guide describes Beethoven's Piano Sonata No. 29 in B♭ major, Op. 106.
-# It builds the link to the work from the addresses of its catalogue pages,
-# lists the four movements, states who made the link, adds a second reading
-# of the movements' order, links a recording and its first movement, finds
-# and edits links, and writes the manifest whole and in part.
+# Three kinds of element are subjects of statements: the bundle, which is
+# the manifest itself and names the work it is about; every timeline, at any
+# depth, for the manifestation it is the axis of (an edition, an encoding, a
+# recording file, a video); and every region, for the stretch of that
+# manifestation it marks. A statement is a pair of a property and a value,
+# both identifiers in published vocabularies where they name things; the
+# property `type` reads "is a". Works and expressions are never elements:
+# they appear as values, the work under the bundle's `schema:about`.
 #
-# The format of the description layer is specified in TimeToShare's
-# [description of a manifest](https://github.com/TimeToAlign/TimeToShare/blob/main/docs/description.md);
-# this guide shows how the library carries it.
+# A manifest carrying statements is YAML-LD: its inline `@context` declares
+# the prefixes its compact IRIs use, so it reads as linked data without
+# fetching anything. The {{< glossary catalogue >}} shipped with the
+# TimeToShare package knows the vocabularies, the identifier systems and the
+# verbs that state one relation in each of them.
+#
+# This guide describes the LayerIt example: an MEI encoding of the first six
+# bars of Debussy's *Clair de lune*, a concert video of Maria João Pires and
+# a WAV file cut from its sound. It states what each timeline is, who
+# performs, who said so, decides on proposals, describes a region, writes
+# the manifest, and imports the description of an MEI header and of a
+# MeLODy repository. The format is specified in TimeToShare's
+# [description of a manifest](https://github.com/TimeToAlign/TimeToShare/blob/main/docs/description.md).
 
 # %% [markdown]
 # ## Setup
 #
-# Install the library with `pip install timetoalign`; the TimeToShare
-# package, whose classes the library uses for links, comes with it. No data
-# is downloaded: every address below is read offline. `show` prints a
-# manifest as the text a file would hold, in canonical YAML, the
-# serialization `to_file()` writes by default, and `summary` lists links by
-# their level, their first URI and the agent who asserted them.
+# Install the library with `pip install timetoalign`; the MeLODy import also
+# needs rdflib, `pip install "timetoalign[rdf]"`. No data is downloaded: the
+# MEI header and the MeLODy repository are written below into a temporary
+# directory. The identifiers are those of public catalogues; the editor who
+# states the pairs and the days are invented.
+#
+# `show` prints the pairs of a subject, or of a value node inside it, and
+# the {{< glossary "provenance entry" >}} of each pair that has one; a value
+# node's own entries are shown when `show` is given that node.
+# `show_manifest` prints a manifest as canonical YAML, leaving the format's
+# own terms out of `@context` so that only the prefixes remain.
 
 # %%
-import copy
+import json
+import tempfile
+from pathlib import Path
 
-from timetoshare import dumps, to_file_id
+from timetoshare import FORMAT_CONTEXT, dumps, to_file_id
 
 import timetoalign as tta
+from timetoalign.loader import MeiHeadLoader, MelodyLoader
 
 EDITOR = "https://example.org/people/editor"
-MUSICOLOGIST = "https://example.org/people/musicologist"
-
-WORK = "https://musicbrainz.org/work/4a622b0d-b0c0-405e-b49e-05b70c108284"
-IMSLP = "https://imslp.org/wiki/Piano_Sonata_No.29,_Op.106_(Beethoven,_Ludwig_van)"
-MOVEMENTS = {
-    "I. Allegro": "https://musicbrainz.org/work/80cbaf7b-a1da-3fc5-b650-6eb72a803980",
-    "II. Scherzo. Assai vivace": (
-        "https://musicbrainz.org/work/7813c9cf-6054-3ef3-b9ed-8ae4690581c9"
-    ),
-    "III. Adagio sostenuto": (
-        "https://musicbrainz.org/work/7d110747-f011-41d4-9ce5-a1fad9abed2f"
-    ),
-    "IV. Introduzione. Largo – Allegro risoluto": (
-        "https://musicbrainz.org/work/cfa82cd6-bcb5-39dd-9beb-c98e275c7c84"
-    ),
-}
+DAY = "2026-11-18"
+FOLDER = Path(tempfile.mkdtemp())
 
 
-def show(data):
-    """Print a manifest as canonical YAML."""
-    print(dumps(data), end="")
+def text(value):
+    """Write a JSON value on one line."""
+    return json.dumps(value, ensure_ascii=False)
 
 
-def summary(links):
-    """List each link as its level, its first URI and who asserted it."""
-    return [
-        (
-            link.level,
-            link.uri[0],
-            link.assertion.asserted_by[0] if link.assertion else None,
-        )
-        for link in links
-    ]
+def show(holder, node=()):
+    """Print the pairs of a holder or of one of its value nodes, then their entries.
+
+    A value node's own entries are left out of its pair; ``node=`` shows them.
+    """
+    for property, value in holder.get_pairs(node=node):
+        if isinstance(value, dict):
+            value = {key: item for key, item in value.items() if key != "provenance"}
+        print(f"{property}: {text(value)}")
+    for entry in holder.get_provenance(node=node):
+        rest = {
+            key: value
+            for key, value in entry.items()
+            if key not in ("property", "value", "status")
+        }
+        print(f"[{entry['status']}] {entry['property']}: {text(entry['value'])}")
+        print(f"    {text(rest)}")
 
 
-def slots(link):
-    """List each part slot of a link: its label and what represents it."""
-    return [
-        (slot.label, list(slot.represented_by) or slot.absent) for slot in link.parts
-    ]
+def show_manifest(manifest):
+    """Print a manifest as canonical YAML, its context reduced to the prefixes."""
+    prefixes = {
+        key: value
+        for key, value in manifest["@context"].items()
+        if key not in FORMAT_CONTEXT
+    }
+    print(dumps({**manifest, "@context": prefixes}), end="")
 
 
 # %% [markdown]
-# ## Name the work by its catalogue pages
-#
-# `Link.from_urls()` takes the addresses you copy from catalogue pages: here
-# the work's pages at MusicBrainz, Wikidata, VIAF and IMSLP. Its opus number
-# is given as an identifier in the scheme `mb_beethoven_opus`, which the
-# bundle declares below.
+# The bundle holds the three timelines: the encoding `clt_6` in quarters,
+# 27 of them for six bars of 9/8; the video `cpt_1` in seconds, of unknown
+# length, with a child `cpt_2` for the part the example uses; and the WAV
+# file `dpt_1` in samples.
 
 # %%
-work = tta.Link.from_urls(
-    WORK,
-    "https://www.wikidata.org/wiki/Q146730",
-    "https://viaf.org/viaf/186299955",
-    IMSLP,
-    identifiers={"mb_beethoven_opus": "op. 106"},
-    label="Piano Sonata No. 29 in B♭ major, Op. 106",
+bundle = tta.AlignmentBundle(
+    id="layerit", name="LayerIt, Clair de lune mm. 1–6 (Pires)"
 )
-work.level, work.relation
-
-# %% [markdown]
-# Each address is read through TimeToShare's registry of identifier schemes,
-# which knows what kind of entity each catalogue's pages name. MusicBrainz
-# and IMSLP pages name works, so the link is at the level `work` without your
-# stating it; the relation of a link at a bibliographic level is
-# `pertains_to`.
-#
-# MusicBrainz, Wikidata and VIAF each give the work an **entity URI**, a URI
-# identifying the work itself, and every address is rewritten to that form
-# (`http`, Wikidata's `/entity/` path). These go to `uri`, in the order given,
-# so the MusicBrainz work comes first and is the preferred one.
-
-# %%
-work.uri
-
-# %% [markdown]
-# IMSLP gives no URI for a work, so its page name becomes an
-# {{< glossary identifier >}}: a value in a {{< glossary scheme >}}, here the
-# scheme of IMSLP page names, which the Wikidata property P839 identifies.
-# The opus number has no URI anywhere, so it stays an identifier in the
-# scheme you named. Each fact is stored once: an identifier whose scheme
-# gives URIs would have been stored in `uri` as its URI instead.
-
-# %%
-work.identifiers
-
-# %% [markdown]
-# ## List the movements
-#
-# A link may state the parts of its entity as it reads them, a
-# {{< glossary "part reading" >}}: every part, in order, each as a
-# {{< glossary "part slot" >}}. `PartSlot.from_url()` names a movement by its
-# MusicBrainz page. A slot is either represented by elements of the manifest
-# or absent with an {{< glossary "absence reason" >}}; nothing in the bundle
-# represents a movement yet, so each is `not_represented`: the movement
-# exists, and no element of this manifest represents it.
-#
-# `with_parts()` returns a new link; the link built above stays as it was.
-
-# %%
-work = work.with_parts(
-    "has_part",
-    [
-        tta.PartSlot.from_url(url, label=label, absent="not_represented")
-        for label, url in MOVEMENTS.items()
-    ],
+score = tta.ContinuousLogicalTimeline(
+    length=27, uid="clt_6", name="Clair de lune, mm. 1–6 (MEI)"
 )
-slots(work)
-
-# %% [markdown]
-# ## Declare the scheme and add the link
-#
-# The bundle stands for the manifest as a whole, so a link of the manifest
-# is a link of the bundle. A scheme without a URI of its own is declared once
-# in the manifest and named by its id. `add_scheme()` takes the id, a name and the
-# URI of the MusicBrainz series of Beethoven's works by opus number. The
-# scheme id is an id of the manifest like any other, unique beside its
-# timelines, regions and groups.
-
-# %%
-bundle = tta.AlignmentBundle(id="op106", name="Beethoven, Piano Sonata No. 29, Op. 106")
-bundle.add_scheme(
-    "mb_beethoven_opus",
-    name="Works of Ludwig van Beethoven by opus number",
-    uri="https://musicbrainz.org/series/004f17aa-0f46-4fec-b939-c5dfc849e5c6",
+video = tta.ContinuousPhysicalTimeline(
+    length=None, uid="cpt_1", name="Maria João Pires live at Jardin Musical"
 )
-bundle.schemes
+video.create_child(length=33.353016, uid="cpt_2")
+wav = tta.DiscretePhysicalTimeline(
+    length=1470868, uid="dpt_1", name="ClairDeLune_MariaJoaoPires_untilM6.wav"
+)
+for timeline in (score, video, wav):
+    bundle.add_timeline(timeline)
+bundle.timeline_ids
 
 # %% [markdown]
-# An {{< glossary assertion >}} records who stated a link, when and how.
-# Rather than build one for every link, set a default: inside the `with`
-# block, every link added without an assertion takes the default, dated the
-# day it is added (for this page, the day it was built). The method is
-# `manual` unless you state another.
-
-# %%
-with tta.set_default_assertion(asserted_by=EDITOR) as default:
-    bundle.add_link(work)
-default
-
-# %% [markdown]
-# The default itself carries no date; the link took it dated the day it was
-# added.
-
-# %%
-bundle.links[0].assertion
-
-# %% [markdown]
-# Leaving the block restores the default it replaced, here none: a link added
-# now keeps no assertion unless it brings its own.
-
-# %%
-tta.get_default_assertion() is None
-
-# %% [markdown]
-# ## Add a second reading
+# ## Say what the bundle and a timeline are
 #
-# Sources may disagree about an entity. The first edition published in London
-# in 1819 printed the sonata in two parts: the first holds the first three
-# movements in the order I–III–II, the Adagio sostenuto before the Scherzo,
-# and the second the introduction and fugue. Both first editions, Vienna's
-# and London's, are on [IMSLP](https://imslp.org/wiki/Piano_Sonata_No.29,_Op.106_(Beethoven,_Ludwig_van)).
-#
-# One link is one attributed reading, so the London order is a second link
-# to the same work, with an assertion of its own. Here a second person states
-# it, and the assertion names the IMSLP page as the source it rests on.
+# `add_statement()` states one pair on a timeline or a bundle, in place. The
+# bundle is about the work, named here by its Wikidata item; the value is a
+# node, a thing with an `id` and a `label` cached for display. The video's
+# timeline is a video: `type` takes a class, and the catalogue's verb
+# `is_a` states the same in Wikidata's vocabulary, as an instance of
+# (`wdt:P31`) the item for a video, `wd:Q98069877`. `add_verb()` takes the
+# verb, the system and the value, and states the pairs the catalogue's
+# pattern for them gives.
 
 # %%
-london_order = [
-    "I. Allegro",
-    "III. Adagio sostenuto",
-    "II. Scherzo. Assai vivace",
-    "IV. Introduzione. Largo – Allegro risoluto",
+bundle.add_statement("schema:about", {"id": "wd:Q29117946", "label": "Clair de lune"})
+video.add_statement("type", "schema:VideoObject")
+video.add_verb("is_a", "wikidata", "wd:Q98069877")
+video.statements
+
+# %% [markdown]
+# ## One verb, two vocabularies
+#
+# The pianist is named in two systems: by a Wikidata item through
+# Wikidata's property "performer" (`wdt:P175`), and by a VIAF identifier
+# through the MARC relator "performer" (`rel:prf`), the fallback for a
+# system without a property of its own. Each pair holds a node of its own.
+
+# %%
+video.add_verb("performed_by", "wikidata", "wd:Q235650", label="Maria João Pires")
+video.add_verb("performed_by", "fallback", "viaf:113931950")
+[(rectangle.verb, rectangle.things) for rectangle in video.get_rectangles()]
+
+# %% [markdown]
+# `get_rectangles()` gathers the pairs the catalogue reads as one verb about
+# one thing. So far the two performers are two things. A value node is a
+# subject too: `node=` addresses it by its path, the property and the
+# index, and `schema:sameAs` on the Wikidata node ties the two. The pairs
+# then form one rectangle, labelled by the node's label.
+
+# %%
+video.add_statement("schema:sameAs", {"id": "viaf:113931950"}, node=("wdt:P175", 0))
+[
+    (rectangle.verb, rectangle.label, rectangle.things)
+    for rectangle in video.get_rectangles()
 ]
-london = tta.Link.from_url(
-    WORK, label="Piano Sonata No. 29 in B♭ major, Op. 106"
-).with_parts(
-    "has_part",
-    [
-        tta.PartSlot.from_url(MOVEMENTS[label], label=label, absent="not_represented")
-        for label in london_order
-    ],
-)
-with tta.set_default_assertion(asserted_by=MUSICOLOGIST, based_on=IMSLP):
-    bundle.add_link(london)
-slots(bundle.links[1])
 
 # %% [markdown]
-# Both readings keep four slots. That the London edition printed the fourth
-# movement as a part of its own is a fact of that edition, which a link at
-# the level `manifestation` could state with parts of its own; the readings
-# of the work are left as they are.
-
-# %% [markdown]
-# ## Link a recording and its first movement
+# ## Who said so
 #
-# Timelines and regions carry links as the bundle does. The recording below
-# is invented for this guide, and so are its timings and its release:
-# `https://example.org/releases/hammerklavier` is an address no catalogue
-# recognises, so the link keeps it as it is and you state the level. A
-# MusicBrainz release page would be recognised at the level `manifestation`
-# by itself. A second link names the pianist at the level `agent`, whose
-# relation is the agent's role, here `prf`, the performer, of the MARC
-# relators.
+# A pair without a provenance entry is stated by the manifest's publisher.
+# `provenance=` adds a `confirmed` entry naming who stated the pair, when,
+# how and why; the keys are those the file writes. `get_provenance()`
+# answers the entries, optionally of one status.
 
 # %%
-RELEASE = "https://example.org/releases/hammerklavier"
-PERFORMER = "http://id.loc.gov/vocabulary/relators/prf"
-
-recording = tta.ContinuousPhysicalTimeline(
-    length=2700.0, uid="recording", name="Recording"
+video.add_statement(
+    "schema:sameAs",
+    {"id": "https://www.youtube.com/watch?v=Ch2mrPm1JnM"},
+    provenance={
+        "stated_by": [EDITOR],
+        "date": DAY,
+        "method": "manual",
+        "note": "pasted URL",
+    },
 )
-recording.add_link(RELEASE, level="manifestation")
-recording.add_link(
-    "https://example.org/people/pianist", level="agent", relation=PERFORMER
-)
-[(link.level, link.relation) for link in recording.links]
+video.get_provenance()
 
 # %% [markdown]
-# The first movement takes the first 690 seconds. Its region pertains to the
-# movement, a work of its own, which belongs to the sonata at position 1: a
-# `part_of` entry names the sonata by its MusicBrainz URI and its opus number.
+# ## Propose, confirm and reject
 #
-# A region is frozen. `with_link()` returns a copy holding one more link, and
-# `replace_region()` stores that copy in the place of the region with its id.
+# A proposal is a candidate awaiting a decision: it exists only as its
+# entry, and the subject does not state it. The WAV file was cut from the
+# video's sound, which is an inference. A value naming an element of the
+# manifest is the node of its reference, `#` followed by its ID, which
+# `to_file_id()` builds.
 
 # %%
-allegro = recording.create_region(0.0, 690.0, id="mvt_1", name="I. Allegro")
-movement = tta.Link.from_url(MOVEMENTS["I. Allegro"], label="I. Allegro").with_part_of(
-    tta.PartOf(
-        "has_part",
-        uri=work.uri[:1],
-        identifiers=(tta.Identifier("mb_beethoven_opus", "op. 106"),),
-        position=1,
-    )
+source = {"id": to_file_id(video.id)}
+wav.propose_statement(
+    "dcterms:source",
+    source,
+    stated_by=EDITOR,
+    method="inferred",
+    date=DAY,
+    note="assumed ripped from the video's sound and cut",
 )
-recording.replace_region(allegro.with_link(movement))
-allegro.links, summary(recording.get_region("mvt_1").links)
+show(wav)
 
 # %% [markdown]
-# Once the recording is in the bundle, its region can represent the first
-# movement in both readings. A link is frozen too: build the reading with its
-# first slot represented by `mvt_1`, and `replace_link()` puts it in the
-# place of the old one.
+# Confirming states the pair and turns its entry `confirmed`, with the new
+# agent and day and every other key kept.
 
 # %%
-bundle.add_timeline(recording)
-represented = tta.PartSlot.from_url(
-    MOVEMENTS["I. Allegro"], label="I. Allegro", represented_by=["mvt_1"]
-)
-for reading in bundle.get_links(level="work"):
-    bundle.replace_link(
-        reading, reading.with_parts("has_part", [represented, *reading.parts[1:]])
-    )
-[slots(reading) for reading in bundle.links]
+wav.confirm_statement("dcterms:source", source, stated_by=EDITOR, date="2026-11-19")
+show(wav)
 
 # %% [markdown]
-# ## Find links
+# A rejection keeps a candidate that was examined and refused, so that no
+# tool proposes it again. A lookup in the GND proposes its entry "Clair de
+# lune" as the work the encoding is an example of; it is Debussy's song on
+# Verlaine's poem, not the piano piece. The rejected entry keeps how the
+# candidate was found.
+
+# %%
+score.add_statement("type", "melod:Manifestation")
+score.propose_statement(
+    "schema:exampleOfWork",
+    {"id": "gnd:1156628156"},
+    stated_by=EDITOR,
+    method="reconciled",
+    service="https://lobid.org/gnd/search",
+    date=DAY,
+)
+score.reject_statement(
+    "schema:exampleOfWork",
+    {"id": "gnd:1156628156"},
+    stated_by=EDITOR,
+    date=DAY,
+    note="GND 'Clair de lune' is Debussy's song L 32 on Verlaine, not the piano piece",
+)
+show(score)
+
+# %% [markdown]
+# Proposals and decisions take a node path as statements do. The encoding
+# is an edition of the work (`wdt:P629`), and the GND entry for the piano
+# piece is proposed as the same work, inside that node.
+
+# %%
+score.add_statement("wdt:P629", {"id": "wd:Q29117946", "label": "Clair de lune"})
+score.propose_statement(
+    "schema:sameAs",
+    {"id": "gnd:300042558"},
+    node=("wdt:P629", 0),
+    stated_by=EDITOR,
+    method="reconciled",
+    service="https://lobid.org/gnd/search",
+    match="exact",
+    date=DAY,
+)
+show(score, node=("wdt:P629", 0))
+
+# %% [markdown]
+# ## Describe a region
 #
-# `get_links()` answers the links matching every filter given, in their
-# order: `level`, `relation`, `asserted_by` (one of the agents asserting
-# the link) and `scheme`. A scheme may be named by the id of a scheme of the
-# manifest, by a scheme's URI, or by the id of a scheme of TimeToShare's
-# registry, which also matches a URI that the registry recognises in that
-# scheme.
+# A region stands for the stretch of its timeline's manifestation it marks.
+# Regions are frozen: `with_statement()` returns a copy holding the pair,
+# and `replace_region()` stores it in the place of the region with its ID.
+# The region's siblings `without_statement()`, `with_proposal()`,
+# `with_confirmation()`, `with_rejection()`, `with_verb()` and
+# `with_prefix()` mirror the timeline's methods.
 
 # %%
-summary(bundle.get_links(level="work"))
-
-# %%
-summary(bundle.get_links(asserted_by=MUSICOLOGIST))
-
-# %% [markdown]
-# Only the editor's reading carries the opus number and the IMSLP page name;
-# both readings name the work by its MusicBrainz URI.
-
-# %%
-{
-    scheme: summary(bundle.get_links(scheme=scheme))
-    for scheme in ("mb_beethoven_opus", "imslp", "musicbrainz_work")
-}
-
-# %% [markdown]
-# Filters combine, and every element carrying links answers the same
-# query: the bundle, a timeline and a region.
-
-# %%
-(
-    summary(bundle.get_links(level="work", asserted_by=EDITOR)),
-    summary(recording.get_links(relation=PERFORMER)),
-    summary(recording.get_region("mvt_1").get_links(scheme="musicbrainz_work")),
+opening = score.create_region(0, 9, id="region_1", name="mm. 1–2")
+score.replace_region(
+    opening.with_statement("rdfs:comment", "the opening, before the melody enters")
 )
+opening.statements, score.get_region("region_1").statements
 
 # %% [markdown]
-# ## Write and read the manifest
+# ## Write the manifest
 #
-# `to_dict()` writes the links where they stand: the bundle's in the
-# manifest's `links`, the recording's and its region's in theirs, and the
-# scheme in `schemes`. It writes the minimal form, which leaves out every
-# key at its default; `to_dict(minimal=False)` writes the complete form.
+# `to_dict()` writes each element's `statements` and `provenance` where the
+# element stands, and an `@context` holding the format's terms and the
+# prefixes the statements use, no others. Every prefix used here is the
+# catalogue's; a prefix it lacks is declared on the element with
+# `add_prefix()`, and a pair using an undeclared one is refused.
 
 # %%
 manifest = bundle.to_dict()
-show(manifest)
+show_manifest(manifest)
 
 # %% [markdown]
-# `from_dict()` reads the links and schemes back, and the bundle read writes
-# both forms exactly as the original does.
+# The bundle read back writes the same manifest, and so does a manifest file.
 
 # %%
-read_back = tta.AlignmentBundle.from_dict(manifest)
+bundle.to_file(FOLDER / "layerit.yaml")
 (
-    read_back.links == bundle.links,
-    read_back.schemes == bundle.schemes,
-    read_back.to_dict() == manifest,
-    read_back.to_dict(minimal=False) == bundle.to_dict(minimal=False),
+    tta.AlignmentBundle.from_dict(manifest).to_dict() == manifest,
+    tta.AlignmentBundle.from_file(FOLDER / "layerit.yaml").to_dict() == manifest,
 )
 
 # %% [markdown]
-# ## Write one timeline
+# A timeline written on its own writes a manifest of its own. The WAV
+# file's source names the video, which that manifest does not hold, so the
+# pair is left out together with its entry; the bundle's own statements
+# stay behind, and the `@context` holds the format's terms alone.
+
+# %%
+show_manifest(bundle.get_timeline("dpt_1").to_dict())
+
+# %% [markdown]
+# ## Import an MEI header
 #
-# A timeline written on its own writes a manifest of its own, which must be
-# valid by itself. The region's link names the scheme `mb_beethoven_opus` in
-# its `part_of` entry, so the scheme is written with the timeline; the
-# bundle's own links pertain to the bundle and stay behind. A part slot
-# naming an element that such a write leaves out would be written as absent,
-# `not_represented`.
+# An MEI file's `meiHead` describes the work it encodes, the work's
+# expressions, the manifestations embodying them and the items exemplifying
+# those. `MeiHeadLoader` states that description in LRMoo's and MeLODy's
+# vocabulary. The header below is a short one modelled on the Carl Nielsen
+# Edition's header of the song *Hr. Olufs Sang*, CNW 133; the autograph's
+# address is invented.
 
 # %%
-show(bundle.get_timeline("recording").to_dict())
+HEADER = """<?xml version="1.0" encoding="UTF-8"?>
+<mei xmlns="http://www.music-encoding.org/ns/mei" meiversion="5.1">
+ <meiHead>
+  <fileDesc><titleStmt><title>Hr. Olufs Sang</title></titleStmt><pubStmt/></fileDesc>
+  <workList>
+   <work xml:id="work_1">
+    <identifier xml:id="identifier_1" label="CNW">133</identifier>
+    <title xml:id="title_1" type="main" xml:lang="da">Hr. Olufs Sang</title>
+    <composer><persName xml:id="persName_1" role="composer">Carl Nielsen</persName></composer>
+    <lyricist><persName xml:id="persName_2"
+      auth.uri="https://d-nb.info/gnd/" codedval="119018934">Holger Drachmann</persName></lyricist>
+    <expressionList>
+     <expression xml:id="expression_1">
+      <title xml:id="title_3">Version for voice and piano</title>
+      <key xml:id="key_1" pname="f" accid="s" mode="minor"/>
+     </expression>
+    </expressionList>
+   </work>
+  </workList>
+  <manifestationList>
+   <manifestation xml:id="source_1">
+    <titleStmt><title xml:id="title_4">Score, print</title></titleStmt>
+    <relationList>
+     <relation xml:id="relation_2" rel="isEmbodimentOf" target="#expression_1"/>
+    </relationList>
+   </manifestation>
+   <manifestation xml:id="source_2" sameas="https://example.org/sources/autograph">
+    <titleStmt><title xml:id="title_5" type="main">Score, autograph</title></titleStmt>
+    <itemList>
+     <item xml:id="item_1">
+      <identifier xml:id="identifier_4" label="RISM">DK-Kk CNS 342e</identifier>
+     </item>
+    </itemList>
+   </manifestation>
+  </manifestationList>
+ </meiHead>
+</mei>
+"""
+(FOLDER / "cnw0133.mei").write_text(HEADER, encoding="utf-8")
+song = MeiHeadLoader.from_file(FOLDER / "cnw0133.mei").create_bundle(date="2026-11-19")
+song.id, [(tl_id, song.get_timeline(tl_id).name) for tl_id in song.timeline_ids]
 
 # %% [markdown]
-# ## Change and remove links
+# The bundle takes the file's stem as its ID. Each manifestation becomes a
+# graphical timeline in millimetres of unknown length, named by its title,
+# the axis along which pages of the print or the autograph can be laid out.
+# The work lands as a value node under the bundle's `schema:about`, its IRI the
+# file's address followed by `#` and the work's `xml:id`, and the bundle
+# points to the MEI file with `rdfs:seeAlso`.
+
+# %%
+show(song)
+
+# %% [markdown]
+# Every pair carries an entry: method `imported`, the agent
+# `timetoalign.timelines.LIBRARY_AGENT` (the library's address) unless
+# `stated_by=` names another, and as its basis
+# the MEI element it comes from. What the header encodes with an IRI is
+# stated: the lyricist, whom the header names by a GND number. A name
+# without an IRI is proposed for reconciliation: the composer.
+
+# %%
+WORK = ("schema:about", 0)
+show(song, node=WORK)
+
+# %% [markdown]
+# The expression is a value node too, under `lrmoo:R4_embodies` of the
+# manifestation that embodies it, the print; the autograph holds its item.
+
+# %%
+show(song.get_timeline("cgt_1"))
+
+# %% [markdown]
+# A proposal is decided as any other. Here the editor confirms the
+# composer's name as the header writes it; a lookup service could instead
+# propose the person's IRI, as the GND entry was proposed above.
+
+# %%
+song.confirm_statement(
+    "rel:cmp", {"label": "Carl Nielsen"}, stated_by=EDITOR, date="2026-11-19", node=WORK
+)
+song.get_provenance("proposed", node=WORK), song.statements["schema:about"][0][
+    "rel:cmp"
+]
+
+# %% [markdown]
+# `create_bundle(into=…)` states the description on an existing bundle, and
+# `subjects=` maps the `xml:id` of a manifestation or an item to one of its
+# timelines or regions. Importing again adds nothing: a pair already
+# stated, proposed or rejected is passed over, so a decision stays.
+# `base=` gives the MEI file's published address, from which every IRI and
+# basis built from an `xml:id` then begins.
+
+# %% [markdown]
+# ## Import a MeLODy repository
 #
-# `replace_link()` takes a link equal to the one to replace and the new link,
-# or a URL with the options of `Link.from_url()`. Here the release gets a
-# label.
+# A MeLODy data repository keeps one Turtle file per entity: a work, an
+# expression, a manifestation, an item, a person. Its statements are pairs
+# already, so `MelodyLoader` carries them as they are, in LRMoo, MeLODy's
+# own terms and schema.org. The repository below is written for this guide
+# in the shape of MeLODy's template.
 
 # %%
-recording.replace_link(
-    recording.links[0], RELEASE, level="manifestation", label="Hammerklavier"
-)
-recording.links[0].label
-
-# %% [markdown]
-# A scheme stays while any link of the bundle names it, at any depth: in an
-# identifier of its own, of a part slot or of a `part_of` entry.
-# `remove_scheme()` refuses and names the first such link.
-
-# %%
-try:
-    bundle.remove_scheme("mb_beethoven_opus")
-except ValueError as error:
-    print(f"ValueError: {error}")
-
-# %% [markdown]
-# To remove the scheme, remove or change those links first. On the bundle read
-# back above, `remove_link()` removes the editor's reading, and the refusal
-# then names the next link, the region's. `without_link()` returns the region
-# without its link, `replace_region()` stores it, and the scheme can go.
-
-# %%
-read_back.remove_link(read_back.links[0])
-try:
-    read_back.remove_scheme("mb_beethoven_opus")
-except ValueError as error:
-    print(f"ValueError: {error}")
-
-read_back_recording = read_back.get_timeline("recording")
-first_movement = read_back_recording.get_region("mvt_1")
-read_back_recording.replace_region(first_movement.without_link(first_movement.links[0]))
-read_back.remove_scheme("mb_beethoven_opus").schemes
-
-# %% [markdown]
-# ## A slot names elements of the manifest
-#
-# A part slot names the timelines and regions representing its part by
-# their ids, and each id must belong to the manifest. The library checks the
-# description layer by TimeToShare's rules whenever it reads a manifest and
-# whenever it writes one, and raises the first problem found, its location
-# in the manifest first. Here the Scherzo's slot names a region `mvt_2` that
-# the recording does not hold: a bundle holding that link refuses to write
-# its manifest, and a manifest stating it is refused when read. A slot on
-# its own writes its ids bare; inside a manifest every id is written `#`
-# followed by the id, so the edited manifest names `#mvt_2`.
-
-# %%
-trial = tta.AlignmentBundle.from_dict(manifest)
-reading = trial.links[0]
-ghost = tta.PartSlot.from_url(
-    MOVEMENTS["II. Scherzo. Assai vivace"],
-    label="II. Scherzo. Assai vivace",
-    represented_by=["mvt_2"],
-)
-trial.replace_link(
-    reading,
-    reading.with_parts("has_part", [reading.parts[0], ghost, *reading.parts[2:]]),
-)
-edited = copy.deepcopy(manifest)
-edited["links"][0]["parts"][1] = {
-    **ghost.to_dict(),
-    "represented_by": [to_file_id("mvt_2")],
+PREFIXES = """\
+@prefix melod: <https://lod.academy/melod/vocab/ontology#> .
+@prefix melodTerms: <https://lod.academy/melod/vocab/terms#> .
+@prefix lrmoo: <http://iflastandards.info/ns/lrm/lrmoo/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix schema: <https://schema.org/> .
+"""
+REPOSITORY = {
+    "works/1.ttl": """\
+<urn:uuid:works/1> a melod:Work ;
+  melod:hasTitle [ a melod:Title ; rdfs:label "Clair de lune"@fr ] ;
+  owl:sameAs <http://www.wikidata.org/entity/Q29117946> ;
+  lrmoo:R3_is_realised_in <urn:uuid:expressions/2> .
+""",
+    "expressions/2.ttl": """\
+<urn:uuid:expressions/2> a melod:Expression ;
+  rdfs:label "Clair de lune, piano" ;
+  melod:hasContribution [ a melod:Contribution ; melod:hasAgent <urn:uuid:persons/3> ;
+    melod:hasRole melodTerms:Composer ] .
+""",
+    "persons/3.ttl": """\
+<urn:uuid:persons/3> a melod:Person ; schema:givenName "Claude" ;
+  schema:familyName "Debussy" ; owl:sameAs <http://www.wikidata.org/entity/Q4700> .
+""",
+    "manifestations/4.ttl": """\
+<urn:uuid:manifestations/4> a melod:Manifestation ;
+  melod:hasTitle [ a melod:Title ; rdfs:label "Suite bergamasque, first edition" ] ;
+  lrmoo:R4_embodies <urn:uuid:expressions/2> .
+""",
+    "items/5.ttl": """\
+<urn:uuid:items/5> a melod:Item ; rdfs:label "Copy 1" ; melod:hasShelfmark "TEST 1" ;
+  lrmoo:R7_exemplifies <urn:uuid:manifestations/4> .
+""",
 }
-for operation in (trial.to_dict, lambda: tta.AlignmentBundle.from_dict(edited)):
-    try:
-        operation()
-    except ValueError as error:
-        print(f"ValueError: {error}")
+repository = FOLDER / "melody"
+for relative, turtle in REPOSITORY.items():
+    path = repository / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(PREFIXES + turtle, encoding="utf-8")
+
+suite = MelodyLoader.from_file(repository).create_bundle(
+    id="clair_de_lune", date="2026-11-19"
+)
+[(tl_id, suite.get_timeline(tl_id).name) for tl_id in suite.timeline_ids]
+
+# %% [markdown]
+# The one manifestation embodying the work's expression became a timeline.
+# The work is the value of the bundle's `schema:about`, with the triples of
+# its file. IRIs are compacted with the catalogue's prefixes, which read
+# MeLODy's `https://schema.org/` as `schema:`.
+
+# %%
+show(suite, node=("schema:about", 0))
+
+# %% [markdown]
+# The manifestation's timeline states its own IRI as `owl:sameAs`, the
+# expression it embodies as a value node and its item under
+# `lrmoo:R7i_is_exemplified_by`; the item names its manifestation by the
+# timeline's reference. A person who is no subject is a value, labelled
+# from the triples of its file. Each entry's basis is the file the pair was
+# read from.
+
+# %%
+show(suite.get_timeline("cgt_1"))
+
+# %% [markdown]
+# Both importers' bundles write manifests as any other, their `@context`
+# holding the prefixes of LRMoo, MeLODy and the other vocabularies used.
+
+# %%
+sorted(key for key in suite.to_dict()["@context"] if key not in FORMAT_CONTEXT)
 
 # %% [markdown]
 # ## Next
 #
-# - The format of links, schemes, assertions, part readings and absence
-#   reasons: TimeToShare's
+# - Statements, provenance, the inline context and the catalogue as the
+#   format specifies them: TimeToShare's
 #   [description of a manifest](https://github.com/TimeToAlign/TimeToShare/blob/main/docs/description.md).
 # - Saving manifests to files, selecting one timeline or group, and the
 #   complete and minimal forms:

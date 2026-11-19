@@ -89,11 +89,11 @@ documentation:
   with notes by `xml:id`, a MAPS alignment as MatchClaims, a ScoreWarp time
   axis in `css_pixels`, `create_calibrated_child`, and the bundle saved and
   read back.
-- [How to Describe the Work a Bundle Is About](howto/how03_describe_the_work.ipynb) ---
-  Links from the bundle, a timeline and a region to a work, its movements and
-  a release: `Link.from_urls`, part readings, a second reading, the default
-  assertion, `get_links`, editing links and schemes, and the manifest written
-  whole and in part.
+- [How to Describe What a Bundle and Its Timelines Stand For](howto/how03_describe_the_work.ipynb) ---
+  Statements and provenance on the bundle, a timeline and a region:
+  `add_statement`, `add_verb` and rectangles, proposals, confirmation and
+  rejection, the manifest's inline `@context`, a timeline written alone, and
+  the MEI header and MeLODy imports (`MeiHeadLoader`, `MelodyLoader`).
 
 ### In-depth Topics
 

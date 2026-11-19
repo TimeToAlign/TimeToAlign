@@ -48,8 +48,10 @@
 # package comes with it. Three small helpers keep the cells below short:
 # `answers` lists what a stamp says about every timeline it reaches, `show`
 # prints a manifest as the text a file would hold, in canonical YAML (see
-# [Save and load files](#save-and-load-files)), and `outline` shows a
-# manifest with each root timeline reduced to its id.
+# [Save and load files](#save-and-load-files)), with its `@context` reduced
+# to the prefixes beyond the format's own terms, and `outline` shows a
+# manifest with each root timeline reduced to its id and without its
+# `@context`.
 
 # %%
 import difflib
@@ -57,7 +59,7 @@ import tempfile
 from fractions import Fraction
 from pathlib import Path
 
-from timetoshare import dumps
+from timetoshare import FORMAT_CONTEXT, dumps
 
 from timetoalign import (
     AlignmentBundle,
@@ -85,13 +87,18 @@ def answers(stamps):
 
 
 def show(data):
-    """Print a manifest as canonical YAML."""
-    print(dumps(data), end="")
+    """Print a manifest as canonical YAML, its context reduced to the prefixes."""
+    context = data.get("@context", {})
+    prefixes = {
+        key: value for key, value in context.items() if key not in FORMAT_CONTEXT
+    }
+    print(dumps({**data, "@context": prefixes}), end="")
 
 
 def outline(data):
-    """Show a manifest with each root timeline reduced to its id."""
-    return {**data, "timelines": [timeline["id"] for timeline in data["timelines"]]}
+    """Show a manifest with each root timeline reduced to its id, without its context."""
+    rest = {key: value for key, value in data.items() if key != "@context"}
+    return {**rest, "timelines": [timeline["id"] for timeline in data["timelines"]]}
 
 
 # %% [markdown]
@@ -118,6 +125,12 @@ score
 # Every ID in a manifest, an element's own and every reference to one, is
 # written `#` followed by the ID: the score's ID `clt_1` is written `#clt_1`.
 # The objects hold their IDs without it, so `score.id` is `clt_1`.
+#
+# Every manifest written opens with an inline JSON-LD `@context`: the
+# format's own terms (`timetoshare.FORMAT_CONTEXT`) and the prefixes its
+# statements use, none here, which is why `show` prints it empty. A file
+# holds the whole context; the statements are the subject of
+# [How to Describe What a Bundle and Its Timelines Stand For](how03_describe_the_work.ipynb).
 
 # %%
 score_data = score.to_dict()
@@ -400,10 +413,13 @@ TimelineGroup.from_dict(smallest, name="Piece alone").timeline_ids
 # application for its own use. The library keeps every such key on the object
 # read from the JSON object it was found in, and writes it back in place.
 # Here an editor stored its zoom on the manifest, a colour on the timeline
-# and a note on a region.
+# and a note on a region. The manifest states the format's `@context`, as
+# every manifest the library writes does, so that it is written back
+# unchanged.
 
 # %%
 annotated = {
+    "@context": dict(FORMAT_CONTEXT),
     "timetoshare": "0.2.0",
     "editor": {"zoom": 2.5},
     "timelines": [
@@ -430,7 +446,8 @@ Timeline.from_dict(annotated).to_dict() == annotated
 # arrays in a canonical order, every member and every item on lines of its
 # own, and a list of plain values, such as a Fraction pair, on one line.
 # Equal manifests so give equal text. Floats keep their float spelling:
-# the recording's `10.0` seconds stay `10.0`.
+# the recording's `10.0` seconds stay `10.0`. The file opens with the
+# whole `@context`.
 
 # %%
 group_path = group.to_file(FILES / "second_half.yaml")

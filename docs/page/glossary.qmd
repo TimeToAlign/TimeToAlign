@@ -13,19 +13,6 @@ to the relevant section of the conceptual model.
 
 ## A
 
-**Absence reason**
-:   The term a {{< glossary "part slot" >}} states in `absent` when no
-    element of the manifest represents its part: `not_represented` (the part
-    exists and is identified, and no element of this manifest represents it),
-    `lost` (no source of it survives), `unfinished` (begun or planned and never
-    completed), `unknown` (whether a part occupies the position, or which part
-    does, is not known) or `not_recorded` (the slot exists, and the publisher
-    states nothing about how the part is represented). The vocabulary is open;
-    an unregistered bare word is read as `not_represented`. A slot is written
-    `not_represented` when its elements all leave the manifest, or when a
-    timeline or group written on its own leaves them out.
-    See [TimeToShare's description layer](https://github.com/TimeToAlign/TimeToShare/blob/main/docs/description.md), section 6.
-
 **AlignmentAnchor**
 :   A coordinate pair associating one coordinate on timeline A with one on
     timeline B; a neutral record with no claim semantics---provenance is
@@ -52,21 +39,6 @@ to the relevant section of the conceptual model.
     only one score-to-performance correspondence. The complete pairwise claim
     set is held in a {{< glossary MatchClaimField >}}.
     See [Alignment](concepts.qmd#alignment).
-
-**Assertion**
-:   Who stated a {{< glossary "description link" >}}, a
-    {{< glossary "part slot" >}} or a `part_of` entry: the agents
-    (`asserted_by`, URIs), the day (`asserted_on`), how (`method`: `manual`,
-    `reconciled`, `imported` or `inferred`), the service and the sources it
-    rests on (`service`, `based_on`), how closely the entity corresponds
-    (`match`: `exact`, `close`, `broad`, `narrow` or `related`) and whether it
-    stands (`status`: `confirmed`, `unconfirmed` or `rejected`). Every key is
-    optional. A slot or entry without an assertion takes that of its link, and
-    assertions that differ make separate links. `set_default_assertion()` sets
-    the assertion that a link added without one takes, dated the day the link
-    is added; used as a context manager, it restores the previous default on
-    exit.
-    See [How to Describe the Work a Bundle Is About](howto/how03_describe_the_work.ipynb).
 
 ## B
 
@@ -97,6 +69,24 @@ to the relevant section of the conceptual model.
     See [Flow control](concepts.qmd#flow-control).
 
 ## C
+
+**Catalogue**
+:   Data shipped with the TimeToShare package that guides the writing of
+    {{< glossary statement >}}s and that tools read to offer properties
+    and values and to print pairs in words: the `prefixes` of the
+    vocabularies its patterns use, from which a written manifest's inline
+    `@context` takes those its statements use; `aliases`, namespaces read as
+    equal (`https://schema.org/` as `http://schema.org/`); the identifier
+    `systems` (Wikidata, MusicBrainz, the GND, VIAF, MeLODy with LRMoo,
+    IMSLP and others, and the fallback vocabularies that state a relation
+    where a system has no property of its own); the `verbs`, relations in
+    words (`is_a`, `performed_by`, `part_of`, …) each with a pattern per
+    system; and the `types` of thing a subject or value is. The validators
+    never consult it. `add_verb()` states a verb in one system's vocabulary,
+    and `get_rectangles()` gathers the pairs it reads as one verb about one
+    thing.
+    See [How to Describe What a Bundle and Its Timelines Stand For](howto/how03_describe_the_work.ipynb) and
+    [TimeToShare's description of a manifest](https://github.com/TimeToAlign/TimeToShare/blob/main/docs/description.md), section 10.
 
 **ChainMap**
 :   A {{< glossary MultiMap >}} that applies multiple
@@ -194,29 +184,6 @@ to the relevant section of the conceptual model.
     See [Foundations](concepts.qmd#foundations).
 
 ## D
-
-**Description link**
-:   A typed relation from the manifest, a {{< glossary Timeline >}} or a
-    {{< glossary Region >}} to an external entity at a stated
-    {{< glossary level >}}: a work, an expression, a manifestation, an item
-    or an agent. It names the entity by entity URIs (`uri`) and by
-    {{< glossary identifier >}}s in schemes that mint no URI, and may state
-    its {{< glossary assertion >}}, the parts of the entity in its reading
-    (a {{< glossary "part reading" >}}) and the wholes the entity belongs to
-    (`part_of`). The element pertains to the entity (`relation`
-    `pertains_to`, or, at the level `agent`, the role of the agent); the two
-    are never declared identical, and the element keeps its own
-    {{< glossary "element id" >}}. One link is one attributed reading, so
-    readings that differ are separate links. `Timeline`, `Region` and
-    {{< glossary AlignmentBundle >}} hold links as `Link` objects of the
-    `timetoshare` package and answer `get_links(level=, relation=, scheme=,
-    asserted_by=)`; a timeline or bundle adds, replaces and removes links in
-    place (`add_link()`, `replace_link()`, `remove_link()`), and a frozen
-    region returns a copy (`with_link()`, `without_link()`), which
-    `Timeline.replace_region()` stores. `Link.from_urls()` builds a link from
-    the addresses of catalogue pages.
-    See [How to Describe the Work a Bundle Is About](howto/how03_describe_the_work.ipynb) and
-    [TimeToShare's description layer](https://github.com/TimeToAlign/TimeToShare/blob/main/docs/description.md).
 
 **DictStore**
 :   A generic `EventStore` subclass holding a `dict[str, EventData]` with
@@ -318,16 +285,6 @@ to the relevant section of the conceptual model.
     identity should be discarded.
     See [Foundations](concepts.qmd#foundations).
 
-**Identifier**
-:   A value naming an external entity in a {{< glossary scheme >}} that
-    mints no URI for it, stored as a `scheme` and a `value`: an IMSLP page name
-    in the scheme `http://www.wikidata.org/entity/P839`, an opus number in a
-    scheme the manifest declares. Each fact is stored once: where a scheme
-    mints a URI for the entity, the URI is stored in the link's `uri` and the
-    value is not repeated as an identifier, and `Link.from_urls()` stores such
-    an identifier as its URI.
-    See [TimeToShare's description layer](https://github.com/TimeToAlign/TimeToShare/blob/main/docs/description.md), section 2.
-
 **Instant**
 :   Associates a {{< glossary Coordinate >}} (a "time-point") with a
     signification such as "start of event *e*". Instants sharing a
@@ -384,21 +341,6 @@ to the relevant section of the conceptual model.
     {{< glossary Instant >}}, or `None` when it is not known (see
     {{< glossary "Unknown length" >}}).
     See [Foundations](concepts.qmd#foundations).
-
-**Level**
-:   The kind of entity a {{< glossary "description link" >}} reaches, one
-    of five words. The four bibliographic levels are entities of the IFLA
-    Library Reference Model: `work` (a creation in the abstract, such as a
-    sonata, a movement or a song), `expression` (one realisation of a work,
-    such as an arrangement or a recorded performance), `manifestation` (one
-    embodiment of an expression, such as an edition or a release) and `item`
-    (one exemplar of a manifestation, such as a copy or a file). The fifth,
-    `agent`, is a person or a corporate body. The level states what the link
-    reaches and nothing about the element holding it: a timeline encoded from
-    a printed score may link to the work and to the edition, at two levels.
-    `Link.from_urls()` takes the level from the addresses that the registry of
-    identifier schemes recognises, else from `level=`.
-    See [TimeToShare's description layer](https://github.com/TimeToAlign/TimeToShare/blob/main/docs/description.md), section 1.2.
 
 **Locked**
 :   A timeline state that fixes its coordinate axis: no
@@ -599,30 +541,6 @@ to the relevant section of the conceptual model.
     share the same measuring unit.
     See [Nested timelines](concepts.qmd#nested-timelines).
 
-**Part reading**
-:   The parts of a linked entity as one
-    {{< glossary "description link" >}} reads them: `parts`, complete and in
-    order, each a {{< glossary "part slot" >}}, with `parts_relation`
-    stating how the entity holds them (`has_part`, `aggregates` or
-    `incorporates`) and `parts_ordered` whether their order is that of the
-    entity or a display order only. The position of a part is its place in the
-    list, so a part that nothing represents keeps its slot. Readings that
-    differ, as two editions ordering the movements of a sonata differently, are
-    separate links to one entity. `Link.with_parts()` sets one.
-    See [How to Describe the Work a Bundle Is About](howto/how03_describe_the_work.ipynb).
-
-**Part slot**
-:   One part of a linked entity in a {{< glossary "part reading" >}},
-    named by its URIs and identifiers, with an optional label and
-    {{< glossary assertion >}}. Exactly one of `represented_by` and
-    `absent` is stated: the ids of the timelines (at any depth) and regions of
-    the manifest that represent the part, or an
-    {{< glossary "absence reason" >}}. Several elements may represent one
-    part. The library keeps the ids true: an element given a new id is named
-    by its new id, and a slot whose elements all leave the manifest is absent
-    as `not_represented`. `PartSlot.from_url()` builds a slot from the address
-    of the part.
-
 **PerformancePrecisionLoader**
 :   Loader for audio-to-score alignment specimens: a directory bundling a
     `.solo` score, a Verovio timemap, and per-performer alignment files at the
@@ -648,6 +566,24 @@ to the relevant section of the conceptual model.
     a matched note, {{< glossary NOMATCH >}} for a score-only or
     performance-only note. Reads the existing alignment; never runs an aligner.
     Returns an {{< glossary AlignmentBundle >}} via `create_bundle()`.
+
+**Provenance entry**
+:   The annotation of one {{< glossary statement >}} in the `provenance`
+    beside an element's `statements` (or inside a value node, for its own
+    pairs). It names the pair again by `property` and `value` and gives its
+    `status`: `confirmed` (the subject states the pair), `proposed` (a
+    candidate awaiting a decision) or `rejected` (a candidate examined and
+    refused, so that no tool proposes it again). It may state who stated it
+    (`stated_by`), the day (`date`), how (`method`: `manual`, `reconciled`,
+    `imported`, `inferred`), the lookup `service`, the sources it rests on
+    (`basis`), how closely the value matches (`match`) and a `note`. A
+    proposed or rejected pair is never stated; a pair without an entry is
+    stated by the manifest's publisher, and a subject has at most one entry
+    per pair. `provenance=` on `add_statement()` writes a confirmed entry;
+    `propose_statement()`, `confirm_statement()` and `reject_statement()`
+    decide; `get_provenance(status)` answers the entries.
+    See [How to Describe What a Bundle and Its Timelines Stand For](howto/how03_describe_the_work.ipynb) and
+    [TimeToShare's description of a manifest](https://github.com/TimeToAlign/TimeToShare/blob/main/docs/description.md), section 9.
 
 ## R
 
@@ -693,19 +629,6 @@ to the relevant section of the conceptual model.
 
 ## S
 
-**Scheme**
-:   An identifier scheme declared in the `schemes` of a manifest, so that
-    {{< glossary identifier >}}s may name it by its id: the opus numbers of
-    one composer, or one edition of a thematic catalogue, since catalogues
-    renumber their entries from one edition to the next. It holds an `id`,
-    unique among all ids of the manifest, and optionally a `name`, URIs that
-    identify or describe it, and `criteria`, a document stating how it assigns
-    its values. A scheme with a URI of its own, such as a Wikidata
-    external-identifier property, is named by that URI and needs no
-    declaration. `AlignmentBundle.add_scheme()` declares a scheme and
-    `remove_scheme()` removes one that no link names; a timeline or group
-    written on its own declares every scheme its links name.
-
 **Segment**
 :   A {{< glossary Child >}} timeline that is contiguous with its
     siblings. Segments enable concatenation of local coordinate systems.
@@ -731,6 +654,29 @@ to the relevant section of the conceptual model.
 :   An {{< glossary Instant >}} marking the start of a
     {{< glossary TimeInterval >}}.
     See [Foundations](concepts.qmd#foundations).
+
+**Statement**
+:   A property–value pair saying what an element of a manifest stands for or
+    how that thing relates to others. Three kinds of element carry
+    `statements`: the manifest (the {{< glossary AlignmentBundle >}}),
+    which names the work it is about by `schema:about`; every
+    {{< glossary Timeline >}} at any depth, for the manifestation it is
+    the axis of; and every {{< glossary Region >}}, for the stretch it
+    marks. A group carries none, and works and expressions are values, never
+    elements. The property is `type` ("is a") or an IRI, compact
+    (`prefix:suffix`, the prefix declared by the manifest's inline
+    `@context`) or absolute; the value is a literal, a value object, a node
+    (a thing, `{id: …}`, with its own pairs) or an ordered list. A value
+    naming an element is its reference, `{id: "#cpt_1"}`; the library
+    renames it with the element and drops the pair when the element leaves
+    the manifest. Statements never nest, order or align timelines. A
+    timeline and a bundle change them in place (`add_statement()`,
+    `add_verb()`, `remove_statement()`), a frozen region returns a copy
+    (`with_statement()`, `without_statement()`); each pair may carry a
+    {{< glossary "provenance entry" >}}. `MeiHeadLoader` and
+    `MelodyLoader` import them from an MEI header and from MeLODy's Turtle.
+    See [How to Describe What a Bundle and Its Timelines Stand For](howto/how03_describe_the_work.ipynb) and
+    [TimeToShare's description of a manifest](https://github.com/TimeToAlign/TimeToShare/blob/main/docs/description.md).
 
 **SupportPolicy**
 :   How a cross-timeline {{< glossary MatchStamp >}} treats a timeline whose
@@ -820,8 +766,8 @@ to the relevant section of the conceptual model.
     written in canonical YAML, or optionally in pretty JSON or RFC 8785 JSON,
     one shape for all: the version marker `"timetoshare"`, an array of root
     `timelines`, and optionally the manifest's `id`, `name` and `meta`, its
-    `groups`, its `measure_maps`, its `schemes` and `links` (the description
-    layer, see {{< glossary "description link" >}}) and its `graphical`
+    `groups`, its `measure_maps`, its `@context`, `statements` and
+    `provenance` (see {{< glossary statement >}}) and its `graphical`
     (display order and styling). A single
     timeline is a manifest of one root, a group a manifest with one group; a
     manifest with an `id` or a `name` is named. Every manifest is an

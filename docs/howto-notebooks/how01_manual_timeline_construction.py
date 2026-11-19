@@ -203,7 +203,8 @@ piece
 # ## Serialisation
 #
 # `to_dict()` writes a TimeToShare manifest holding the timeline as its one
-# root. With `events=True`, the timeline's object in `timelines` also carries
+# root, beside the version marker and the inline JSON-LD `@context` every
+# manifest carries. With `events=True`, the timeline's object in `timelines` also carries
 # its event rows under `events`, a key the library reads back but the
 # TimeToShare format does not define. Manifests themselves are the subject of
 # [How to Save and Load Timelines, Groups and Bundles](how02_group_and_bundle_files.ipynb).

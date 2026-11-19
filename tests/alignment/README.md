@@ -2211,14 +2211,17 @@ onsets on the unfolded reference axis:
 **Ground truth.** A ``TimeSkeleton`` *is* its authored temporal facts: the
 section hierarchy, the metric hierarchy, and the authored flows (each flow's id
 and its ordered step content, ``Gap`` markers included). Everything else —
-generated uid, participants and their claims, materialized reference timelines,
+id, participants and their claims, materialized reference timelines,
 display names — is identity or usage, not structure.
 
 **Validation logic.** Equality must be decided by exactly the three structural
 facts and nothing else. Each fact needs one positive and one negative proof:
 
-1. Two skeletons built from structurally equal hierarchies compare **equal**
-   even though their generated uids differ — so identity is excluded.
+1. Two skeletons built from structurally equal hierarchies with **different
+   given ids** (``"first"``, ``"second"``) compare **equal** — so identity is
+   excluded. The ids must be given: two skeletons built without one share the
+   same minted id (below), so they could not show that a differing id is
+   ignored.
 2. Hierarchies whose leaf measure counts differ (``(3, 2, 2)`` vs
    ``(4, 2, 2)``) break equality — so the section hierarchy is included, and
    deleting its clause cannot go unnoticed while the other facts agree.
@@ -2256,6 +2259,17 @@ to one timeline — the timeline must hold **both** (count 2, each retrievable a
 the very object attached); detaching the **first** must remove exactly the
 first, leaving the second in place. A store using equality-based membership
 would alias the two and fail both halves.
+
+**Identity.** A skeleton is held by no scope (a bundle holds timelines and
+claims, a timeline lists its skeletons by object, never by id), so a skeleton
+built without an id mints one by the rule of every free element: the first
+free id of its prefix in an empty scope, ``skeleton_1``. There is no
+process-wide counter, so the answer never depends on what was built before:
+two skeletons built one after the other without an id both have the id
+``skeleton_1``, and a third built after them still does. A given id is kept
+verbatim (``"op35/skeleton"``, slash included, as the Rekordbox loader names
+a track's skeleton); an id containing a control character is refused with the
+message of every given id (``Invalid id``).
 
 ### (j) Materialization round trip
 

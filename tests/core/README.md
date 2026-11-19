@@ -972,8 +972,9 @@ stores `grouping` and `division` and derives the rest. The specimens:
 
 ### `test_ids.py` - Scoped ID System
 
-**Purpose:** Validates the `ScopedId` and `IdGenerator` classes and the
-stateless generator of manifest element ids.
+**Purpose:** Validates the `ScopedId` class and the stateless generator of
+manifest element ids. There is no process-wide id counter: `IdGenerator` is
+deleted, so no test of one exists.
 
 **Test Categories:**
 
@@ -995,32 +996,18 @@ stateless generator of manifest element ids.
    - `nested()` for hierarchical scopes
    - `is_scoped` property
 
-5. **IdGenerator Creation** (2 tests)
-   - Creation with scope
-   - Empty scope allowed
-
-6. **IdGenerator get_or_create** (9 tests)
-   - Wrapping external IDs
-   - Auto-generation with type hints
-   - Counter incrementation
-   - Independent counters per type hint
-
-7. **IdGenerator State** (5 tests)
-   - `count` property
-   - `has_seen()` lookup
-   - `reset()` and `reset_counters()` methods
-
-8. **IdGenerator Empty Scope** (2 tests)
-   - Unscoped ID generation
-
-9. **The manifest id generator** (`mint_id`, `validate_id`,
+5. **The manifest id generator** (`mint_id`, `validate_id`,
    `timeline_id_prefix`)
    - `mint_id(prefix, taken)` answers `{prefix}_{N}` with N the smallest
      positive integer not taken: `("clt", ())` → `clt_1`;
      `("clt", {"clt_1", "clt_3"})` → `clt_2`; `("clt", {"clt_2"})` →
      `clt_1`; with a role, `("score:clt", {"score:clt_1"})` →
      `score:clt_2`. Called twice with the same arguments it answers the same
-     id, because it keeps no state.
+     id, because it keeps no state. It is the library's only id generator:
+     an element held by no scope mints from an empty taken set, so every
+     free `MatchClaim` is `claim_1`, every free `Region` `region_1` and
+     every `TimeSkeleton` built without an id `skeleton_1` (the skeleton
+     case is tested in `tests/alignment/test_skeleton.py`).
    - `mint_ids(prefix, taken, count)` is the same rule for many ids at once
      (claim scopes admit whole columns): it must answer exactly what
      `mint_id` answers called `count` times with each answer added to the

@@ -35,9 +35,9 @@
 #
 # | Recording | Notes | Matched | Unmatched EEP | Unmatched ABC |
 # |-----------|-------|---------|---------------|---------------|
-# | Normal | 4,026 | 3,740 | 16 | 23 |
-# | Mechanical | 4,026 | 3,743 | 13 | 20 |
-# | Exaggerated | 2,820 | 2,650 | 4 | 1,113 |
+# | Normal | 4,026 | 3,741 | 15 | 10 |
+# | Mechanical | 4,026 | 3,742 | 14 | 9 |
+# | Exaggerated | 2,820 | 2,650 | 4 | 1,101 |
 
 # %% [markdown]
 # ## 1. Setup
@@ -570,9 +570,9 @@ exaggerated_match = match_results["dpt_11"]
 #
 # | Recording | Matched | Unmatched EEP | Unmatched ABC |
 # |-----------|---------|---------------|---------------|
-# | Normal | 3,740 | 16 | 23 |
-# | Mechanical | 3,743 | 13 | 20 |
-# | Exaggerated | 2,650 | 4 | 1,113 |
+# | Normal | 3,741 | 15 | 10 |
+# | Mechanical | 3,742 | 14 | 9 |
+# | Exaggerated | 2,650 | 4 | 1,101 |
 #
 # **Next:** Part III adds the Emerson group and demonstrates cross-group
 # coordinate transfer using an `AlignmentBundle`.
@@ -920,6 +920,19 @@ annotations_df[["start", "name"]].head(15)
 
 # %%
 stamp = bundle.get_matchstamp_at(79.0, "clt_1")
+len(stamp.present_timelines)
+
+# %% [markdown]
+# The bundle answers for every nested timeline of its trees, here also the
+# children of the unfolded score's timelines and of each recording, so the
+# stamp holds 114 timelines. To keep the output readable, the cells below
+# narrow it to the bundle's own members (`bundle.timeline_ids`) with the
+# getter's `timeline_ids=` filter; the children's coordinates are still
+# there whenever you ask without the filter.
+
+# %%
+members = set(bundle.timeline_ids)
+stamp = bundle.get_matchstamp_at(79.0, "clt_1", timeline_ids=members)
 stamp
 
 # %% [markdown]
@@ -946,7 +959,7 @@ stamp
 # instead, ask for one with `get_coordinate_for(id, format="float")`.
 
 # %%
-bundle.get_matchstamp_at(79.0, "clt_1").to_dict(format="nested")
+bundle.get_matchstamp_at(79.0, "clt_1", timeline_ids=members).to_dict(format="nested")
 
 # %% [markdown]
 # Note that the `emerson` group now appears in the output: the
@@ -957,7 +970,7 @@ bundle.get_matchstamp_at(79.0, "clt_1").to_dict(format="nested")
 # The flat format is useful for programmatic access:
 
 # %%
-bundle.get_matchstamp_at(79.0, "clt_1").to_dict(format="flat")
+bundle.get_matchstamp_at(79.0, "clt_1", timeline_ids=members).to_dict(format="flat")
 
 # %% [markdown]
 # ### 14.3 USE CASE B — Reverse Transfer: Emerson to All Groups
@@ -967,7 +980,7 @@ bundle.get_matchstamp_at(79.0, "clt_1").to_dict(format="flat")
 # connected timeline — including the three EEP recording groups:
 
 # %%
-bundle.get_matchstamp_at(120.0, "dpt_16").to_dict(format="nested")
+bundle.get_matchstamp_at(120.0, "dpt_16", timeline_ids=members).to_dict(format="nested")
 
 # %% [markdown]
 # A coordinate at 120 seconds into the Emerson recording is mapped
@@ -990,7 +1003,7 @@ section_coords
 # %%
 boundary_rows = []
 for _qb in section_coords.values():
-    _stamp = bundle.get_matchstamp_at(float(_qb), "clt_1")
+    _stamp = bundle.get_matchstamp_at(float(_qb), "clt_1", timeline_ids=members)
     _row = {}
     for _tl_id in _stamp.present_timelines:
         _coord = _stamp.get_coordinate_for(_tl_id)
@@ -1005,7 +1018,7 @@ boundary_df
 
 # %% [markdown]
 # Each row gives the exact coordinate of a section boundary in every
-# timeline and domain — including the Emerson recording's `dpt_16`
+# member timeline and domain — including the Emerson recording's `dpt_16`
 # column. Every column matches its own timeline's native type, and that is
 # the point worth pausing on: pixel and sample counts are integers because
 # those axes are discrete, seconds are floats, and quarterbeats are exact

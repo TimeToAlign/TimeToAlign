@@ -44,7 +44,6 @@
 
 # %%
 
-import numpy as np
 import pandas as pd
 from PIL import Image
 
@@ -506,12 +505,10 @@ abc_notes_df = clt1_unfolded.get_events(
 abc_notes_df["staff"] = pd.to_numeric(abc_notes_df["staff"], errors="coerce").astype(
     "Int64"
 )
-abc_notes_df["tied"] = pd.to_numeric(abc_notes_df["tied"], errors="coerce")
-abc_notes_df.loc[abc_notes_df["tied"] == 0, "tied"] = np.nan
 abc_notes_df["quarterbeats_playthrough"] = abc_notes_df["start"]
 
 abc_prepared = prepare_abc_notes_for_matching(abc_notes_df)
-len(abc_prepared)  # note onsets after dropping tied notes
+len(abc_prepared)  # sounding onsets: untied notes and tie starts
 
 # %% [markdown]
 # ## 10. Aligning Recordings with the Score via Note Matching

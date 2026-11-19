@@ -1661,7 +1661,8 @@ class Timeline(
 
         Returns:
             A JSON-serializable manifest ``{"timetoshare": "0.2.0", ...,
-            "timelines": [timeline]}``.
+            "timelines": [timeline]}``, every ID written ``#`` followed by
+            the ID, as a manifest file writes it.
 
         Raises:
             ValueError: If a conversion map has no TimeToShare form or
@@ -1679,7 +1680,7 @@ class Timeline(
             >>> from timetoalign.timelines import ContinuousLogicalTimeline
             >>> score = ContinuousLogicalTimeline(length=Fraction(32), uid="piece")
             >>> score.to_dict()
-            {'timetoshare': '0.2.0', 'timelines': [{'id': 'piece', 'unit': 'quarters', \
+            {'timetoshare': '0.2.0', 'timelines': [{'id': '#piece', 'unit': 'quarters', \
 'length': [32, 1]}]}
         """
         manifest = self._manifest if self._manifest is not None else Manifest()
@@ -1861,7 +1862,7 @@ class Timeline(
             >>> piece = Timeline.from_dict(
             ...     {
             ...         "timetoshare": "0.2.0",
-            ...         "timelines": [{"id": "piece", "unit": "quarters", "length": [32, 1]}],
+            ...         "timelines": [{"id": "#piece", "unit": "quarters", "length": [32, 1]}],
             ...     }
             ... )
             >>> type(piece).__name__, piece.length

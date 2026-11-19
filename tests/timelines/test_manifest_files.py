@@ -63,20 +63,20 @@ def _round_trip(reader: type, text: str, tmp_path: Path) -> str:
     return _read(target)
 
 
-SCORE = {"id": "score", "length": [32, 1], "unit": "quarters"}
-TAKE = {"id": "take_1", "length": 64.5, "unit": "seconds"}
+SCORE = {"id": "#score", "length": [32, 1], "unit": "quarters"}
+TAKE = {"id": "#take_1", "length": 64.5, "unit": "seconds"}
 
 GROUPED = {
     "timetoshare": "0.2.0",
     "timelines": [SCORE, TAKE],
-    "groups": [{"id": "g", "members": ["score", "take_1"]}],
+    "groups": [{"id": "#g", "members": ["#score", "#take_1"]}],
 }
 """A minimal anonymous bundle of one group, without ``graphical``."""
 
 STYLED = {
     **GROUPED,
     "graphical": {
-        "order": {"g": ["take_1", "score"]},
+        "order": {"#g": ["#take_1", "#score"]},
         "styles": {"frame-highlight": {"stroke": "#7F00FF"}},
     },
 }
@@ -208,7 +208,7 @@ def test_a_float_at_an_integer_default_makes_the_file_complete(tmp_path: Path) -
     stated = copy.deepcopy(SIMPLE)
     stated["timelines"][1]["conversion_maps"] = [
         {
-            "id": "cmap_1",
+            "id": "#cmap_1",
             "offset": 0.0,
             "scalar": 48000,
             "source_unit": "seconds",
@@ -235,8 +235,8 @@ def test_a_text_that_is_not_canonical_is_written_canonical(tmp_path: Path) -> No
     """JSON on one line is read as pretty JSON and written as pretty JSON."""
     text = (
         '{"timetoshare": "0.2.0", "name": "Study", "timelines": ['
-        '{"id": "score", "unit": "quarters", "length": [32, 1]}, '
-        '{"id": "take_1", "unit": "seconds", "length": 64.5}]}'
+        '{"id": "#score", "unit": "quarters", "length": [32, 1]}, '
+        '{"id": "#take_1", "unit": "seconds", "length": 64.5}]}'
     )
     assert loads(text) == SIMPLE
     written = _round_trip(AlignmentBundle, text, tmp_path)
@@ -355,11 +355,11 @@ EDITED_DIFF = """\
 --- before.yaml
 +++ after.yaml
 @@ -8,4 +8,8 @@
-     id: take_1
+     id: "#take_1"
      length: 64.5
      unit: seconds
 +  -
-+    id: take_2
++    id: "#take_2"
 +    length: 70.25
 +    unit: seconds
  timetoshare: "0.2.0"

@@ -11,6 +11,7 @@ from typing import Any
 
 import pytest
 
+from tests.helpers import bare
 from timetoalign.core import FlowControlElement
 from timetoalign.maps import ConstantMap, ScalarMap, ShiftMap
 from timetoalign.timelines import (
@@ -195,7 +196,7 @@ def test_to_dict_is_invariant_under_every_insertion_order(axis_name: str) -> Non
 
 @pytest.mark.parametrize("axis_name", AXES)
 def test_to_dict_writes_the_canonical_order(axis_name: str) -> None:
-    payload = _root(_build(AXES[axis_name], COLLECTIONS).to_dict())
+    payload = _root(bare(_build(AXES[axis_name], COLLECTIONS).to_dict()))
     assert [entry["id"] for entry in payload["children"]] == CANONICAL_CHILDREN
     assert [entry["id"] for entry in payload["conversion_maps"]] == CANONICAL_MAPS
     assert [entry["id"] for entry in payload["regions"]] == CANONICAL_REGIONS
@@ -216,7 +217,7 @@ def test_offsets_compare_by_value_not_by_their_json_spelling() -> None:
     offsets = {
         name: [
             entry["offset"]
-            for entry in _root(_build(axis, COLLECTIONS).to_dict())["children"]
+            for entry in _root(bare(_build(axis, COLLECTIONS).to_dict()))["children"]
         ]
         for name, axis in AXES.items()
     }

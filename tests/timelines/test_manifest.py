@@ -16,6 +16,7 @@ from typing import Any
 import pytest
 from timetoshare import complete, minimal
 
+from tests.helpers import bare, filed, reading
 from timetoalign.alignment import AlignmentBundle
 from timetoalign.core import Coordinate, NumberType, SupportPolicy, TimeUnit
 from timetoalign.maps import LinearMap
@@ -27,9 +28,9 @@ from timetoalign.timelines.types import (
 )
 
 READERS = {
-    "timeline": Timeline.from_dict,
-    "group": lambda data: TimelineGroup.from_dict(data, group_id="g"),
-    "bundle": AlignmentBundle.from_dict,
+    "timeline": reading(Timeline.from_dict),
+    "group": lambda data: TimelineGroup.from_dict(filed(data), group_id="g"),
+    "bundle": reading(AlignmentBundle.from_dict),
 }
 
 
@@ -59,7 +60,7 @@ def test_another_version_is_refused_naming_the_current_one(reader: str) -> None:
 
 def test_the_marker_is_written_from_one_constant() -> None:
     assert TIMETOSHARE_VERSION == "0.2.0"
-    assert AlignmentBundle().to_dict(minimal=True) == {
+    assert bare(AlignmentBundle().to_dict(minimal=True)) == {
         "timetoshare": "0.2.0",
         "timelines": [],
     }
@@ -215,20 +216,20 @@ COMPLETE: dict[str, Any] = {
 
 
 def test_minimal_and_complete_read_to_equal_objects() -> None:
-    from_minimal = Timeline.from_dict(copy.deepcopy(MINIMAL))
-    from_complete = Timeline.from_dict(copy.deepcopy(COMPLETE))
+    from_minimal = Timeline.from_dict(filed(copy.deepcopy(MINIMAL)))
+    from_complete = Timeline.from_dict(filed(copy.deepcopy(COMPLETE)))
 
     assert (
-        from_minimal.to_dict(minimal=False)
-        == from_complete.to_dict(minimal=False)
+        bare(from_minimal.to_dict(minimal=False))
+        == bare(from_complete.to_dict(minimal=False))
         == COMPLETE
     )
     assert (
-        from_minimal.to_dict(minimal=True)
-        == from_complete.to_dict(minimal=True)
+        bare(from_minimal.to_dict(minimal=True))
+        == bare(from_complete.to_dict(minimal=True))
         == MINIMAL
     )
-    assert _text(from_complete.to_dict(minimal=False)) == _text(COMPLETE)
+    assert _text(bare(from_complete.to_dict(minimal=False))) == _text(COMPLETE)
     assert from_minimal.get_region("theme") == from_complete.get_region("theme")
     assert from_minimal.flow_control.breaks == from_complete.flow_control.breaks
     assert from_minimal.flow_control.jumps == from_complete.flow_control.jumps
@@ -238,10 +239,10 @@ def test_minimal_and_complete_read_to_equal_objects() -> None:
 @pytest.mark.parametrize("reader", sorted(READERS))
 def test_to_dict_writes_the_minimal_form_by_default(reader: str) -> None:
     read = READERS[reader](copy.deepcopy(COMPLETE))
-    assert read.to_dict() == read.to_dict(minimal=True)
-    assert read.to_dict() != read.to_dict(minimal=False)
+    assert bare(read.to_dict()) == bare(read.to_dict(minimal=True))
+    assert bare(read.to_dict()) != bare(read.to_dict(minimal=False))
     if reader == "timeline":
-        assert read.to_dict() == MINIMAL
+        assert bare(read.to_dict()) == MINIMAL
 
 
 ELEMENTS: dict[str, tuple[Any, str, int | None]] = {
@@ -258,7 +259,7 @@ ELEMENTS: dict[str, tuple[Any, str, int | None]] = {
 @pytest.mark.parametrize("kind", list(ELEMENTS))
 def test_every_element_writer_writes_the_minimal_form_by_default(kind: str) -> None:
     element_of, key, index = ELEMENTS[kind]
-    element = element_of(Timeline.from_dict(copy.deepcopy(COMPLETE)))
+    element = element_of(Timeline.from_dict(filed(copy.deepcopy(COMPLETE))))
     minimal = MINIMAL["timelines"][0][key]
     complete = COMPLETE["timelines"][0][key]
     if index is not None:
@@ -279,8 +280,8 @@ def test_the_minimal_form_compares_a_default_by_value() -> None:
             uid="double",
         )
     )
-    written = timeline.to_dict()
-    complete = timeline.to_dict(minimal=False)
+    written = bare(timeline.to_dict())
+    complete = bare(timeline.to_dict(minimal=False))
     complete_map = {
         "type": "LinearMap",
         "id": "double",
@@ -314,7 +315,7 @@ def test_the_minimal_form_compares_a_default_by_value() -> None:
         [complete_map]
     )
     assert timeline.get_conversion_map("double").to_dict() == minimal_map
-    reread = Timeline.from_dict(written).to_dict(minimal=False)
+    reread = bare(Timeline.from_dict(filed(written)).to_dict(minimal=False))
     assert json.dumps(reread["timelines"][0]["conversion_maps"]) == json.dumps(
         [{**complete_map, "offset": 0}]
     )
@@ -366,8 +367,8 @@ def test_a_group_takes_its_form_with_the_whole_manifest(writer: str, case: str) 
     members, minimal_group, complete_group = GROUP_OBJECTS[case]
     written = _grouped(writer, members)
 
-    minimal_form = written.to_dict(minimal=True)
-    complete_form = written.to_dict(minimal=False)
+    minimal_form = bare(written.to_dict(minimal=True))
+    complete_form = bare(written.to_dict(minimal=False))
 
     assert minimal_form["groups"] == [minimal_group]
     assert complete_form["groups"] == [complete_group]
@@ -376,7 +377,7 @@ def test_a_group_takes_its_form_with_the_whole_manifest(writer: str, case: str) 
 
 
 def test_a_reader_supplies_every_default() -> None:
-    timeline = Timeline.from_dict(copy.deepcopy(MINIMAL))
+    timeline = Timeline.from_dict(filed(copy.deepcopy(MINIMAL)))
     (brk,) = timeline.flow_control.breaks
     (jump,) = timeline.flow_control.jumps
 
@@ -429,11 +430,14 @@ def test_a_number_type_left_out_is_the_units_own(unit: str) -> None:
         "timelines": [{"id": "t", "unit": unit, "length": length}],
     }
 
-    timeline = Timeline.from_dict(data)
+    timeline = Timeline.from_dict(filed(data))
 
     assert timeline.number_type is NumberType[number_type]
-    assert timeline.to_dict(minimal=True) == data
-    assert timeline.to_dict(minimal=False)["timelines"][0]["number_type"] == number_type
+    assert bare(timeline.to_dict(minimal=True)) == data
+    assert (
+        bare(timeline.to_dict(minimal=False))["timelines"][0]["number_type"]
+        == number_type
+    )
 
 
 def test_the_class_comes_from_the_unit_and_a_class_key_is_kept() -> None:
@@ -449,10 +453,10 @@ def test_the_class_comes_from_the_unit_and_a_class_key_is_kept() -> None:
         ],
     }
 
-    timeline = Timeline.from_dict(copy.deepcopy(data))
+    timeline = Timeline.from_dict(filed(copy.deepcopy(data)))
 
     assert type(timeline) is ContinuousPhysicalTimeline
-    assert timeline.to_dict(minimal=True) == data
+    assert bare(timeline.to_dict(minimal=True)) == data
 
 
 # endregion
@@ -530,7 +534,7 @@ def test_each_bare_key_checks_its_representation(
     path: tuple[Any, ...], value: Any, message: str
 ) -> None:
     with pytest.raises(ValueError) as refused:
-        AlignmentBundle.from_dict(_with_value(path, value))
+        AlignmentBundle.from_dict(filed(_with_value(path, value)))
     assert str(refused.value) == message
 
 
@@ -596,7 +600,7 @@ def test_every_axis_kind_checks_its_representation(
         "timelines": [{"id": "t", "unit": unit, "length": length}],
     }
     with pytest.raises(ValueError) as refused:
-        Timeline.from_dict(data)
+        Timeline.from_dict(filed(data))
     assert str(refused.value) == message
 
 
@@ -617,7 +621,7 @@ def test_numbers_javascript_cannot_tell_apart_are_accepted(
         "timelines": [{"id": "t", "unit": unit, "length": length}],
     }
 
-    value = Timeline.from_dict(data).length.value
+    value = Timeline.from_dict(filed(data)).length.value
 
     assert (value, type(value)) == (expected, type(expected))
 
@@ -729,22 +733,25 @@ UNKNOWN: dict[str, Any] = {
 
 
 def test_unknown_keys_are_written_back_where_they_were_found() -> None:
-    bundle = AlignmentBundle.from_dict(copy.deepcopy(UNKNOWN))
+    bundle = AlignmentBundle.from_dict(filed(copy.deepcopy(UNKNOWN)))
 
-    assert bundle.to_dict(minimal=True) == UNKNOWN
-    assert AlignmentBundle.from_dict(bundle.to_dict()).to_dict(minimal=True) == UNKNOWN
+    assert bare(bundle.to_dict(minimal=True)) == UNKNOWN
+    assert (
+        bare(AlignmentBundle.from_dict(bundle.to_dict()).to_dict(minimal=True))
+        == UNKNOWN
+    )
 
 
 def test_the_group_reader_keeps_the_unknown_keys_of_what_it_reads() -> None:
-    group = TimelineGroup.from_dict(copy.deepcopy(UNKNOWN))
+    group = TimelineGroup.from_dict(filed(copy.deepcopy(UNKNOWN)))
 
-    assert group.to_dict(minimal=True) == UNKNOWN
+    assert bare(group.to_dict(minimal=True)) == UNKNOWN
 
 
 def test_the_timeline_reader_keeps_the_unknown_keys_of_what_it_reads() -> None:
-    score = Timeline.from_dict(copy.deepcopy(UNKNOWN), timeline_id="score")
+    score = Timeline.from_dict(filed(copy.deepcopy(UNKNOWN)), timeline_id="score")
 
-    assert score.to_dict(minimal=True) == {
+    assert bare(score.to_dict(minimal=True)) == {
         "timetoshare": "0.2.0",
         "timelines": [UNKNOWN["timelines"][1]],
         "measure_maps": UNKNOWN["measure_maps"],
@@ -762,7 +769,10 @@ def test_a_one_root_manifest_keeps_its_envelope() -> None:
         "graphical": {"styles": {"thin": {"stroke-width": 1}}},
     }
 
-    assert Timeline.from_dict(copy.deepcopy(data)).to_dict(minimal=True) == data
+    assert (
+        bare(Timeline.from_dict(filed(copy.deepcopy(data))).to_dict(minimal=True))
+        == data
+    )
 
 
 # endregion
@@ -794,16 +804,16 @@ def _offset_manifest(offset: float | None) -> dict[str, Any]:
 def test_a_negative_root_offset_round_trips() -> None:
     data = _offset_manifest(-5.5)
 
-    timeline = Timeline.from_dict(copy.deepcopy(data))
+    timeline = Timeline.from_dict(filed(copy.deepcopy(data)))
 
     assert timeline.root_offset == Coordinate(-5.5, TimeUnit.seconds)
-    assert timeline.to_dict(minimal=True) == data
-    assert timeline.to_dict()["timelines"][0]["offset"] == -5.5
+    assert bare(timeline.to_dict(minimal=True)) == data
+    assert bare(timeline.to_dict())["timelines"][0]["offset"] == -5.5
 
 
 def test_a_root_offset_changes_nothing_computed() -> None:
-    placed = Timeline.from_dict(_offset_manifest(-5.5))
-    plain = Timeline.from_dict(_offset_manifest(None))
+    placed = Timeline.from_dict(filed(_offset_manifest(-5.5)))
+    plain = Timeline.from_dict(filed(_offset_manifest(None)))
 
     assert plain.root_offset is None
     assert placed.get_child_offset("take") == plain.get_child_offset("take")
@@ -851,14 +861,14 @@ GROUPS = "'g1' (name 'pair'), 'g2' (name 'pair')"
 
 
 def test_a_timeline_is_selected_by_id_or_name() -> None:
-    part = Timeline.from_dict(copy.deepcopy(SELECTION), timeline_id="part")
-    perf = Timeline.from_dict(copy.deepcopy(SELECTION), name="Performance")
+    part = Timeline.from_dict(filed(copy.deepcopy(SELECTION)), timeline_id="part")
+    perf = Timeline.from_dict(filed(copy.deepcopy(SELECTION)), name="Performance")
 
     assert (part.id, part.length) == (
         "part",
         Coordinate(Fraction(16), TimeUnit.quarters),
     )
-    assert part.to_dict(minimal=True)["timelines"] == [
+    assert bare(part.to_dict(minimal=True))["timelines"] == [
         {
             "id": "part",
             "name": "Score",
@@ -897,7 +907,7 @@ def test_a_timeline_selection_must_match_once(
     arguments: dict[str, str], message: str
 ) -> None:
     with pytest.raises(ValueError) as refused:
-        Timeline.from_dict(copy.deepcopy(SELECTION), **arguments)
+        Timeline.from_dict(filed(copy.deepcopy(SELECTION)), **arguments)
     assert str(refused.value) == message
 
 
@@ -907,7 +917,7 @@ def test_a_one_root_manifest_is_read_whole_with_overrides() -> None:
         "timelines": [{"id": "score", "unit": "quarters", "length": [8, 1]}],
     }
 
-    timeline = Timeline.from_dict(data, timeline_id="edition", name="Edition")
+    timeline = Timeline.from_dict(filed(data), timeline_id="edition", name="Edition")
 
     assert (timeline.id, timeline.name) == ("edition", "Edition")
 
@@ -967,7 +977,7 @@ def _tree_ids(timeline: Timeline) -> list[str]:
 def test_a_descendant_of_one_root_is_selected_not_taken_by_the_root(
     arguments: dict[str, str],
 ) -> None:
-    child = Timeline.from_dict(copy.deepcopy(FAMILY), **arguments)
+    child = Timeline.from_dict(filed(copy.deepcopy(FAMILY)), **arguments)
 
     assert (child.id, child.name, child.length, child._parent.id) == (
         "ex_child",
@@ -993,10 +1003,10 @@ def test_a_descendant_of_one_root_is_selected_not_taken_by_the_root(
 def test_arguments_matching_no_timeline_override_the_one_root(
     arguments: dict[str, str], root: dict[str, str]
 ) -> None:
-    timeline = Timeline.from_dict(copy.deepcopy(FAMILY), **arguments)
+    timeline = Timeline.from_dict(filed(copy.deepcopy(FAMILY)), **arguments)
 
     assert timeline._parent is None
-    assert timeline.to_dict(minimal=True) == {
+    assert bare(timeline.to_dict(minimal=True)) == {
         "timetoshare": "0.2.0",
         "timelines": [{**FAMILY["timelines"][0], **root}],
     }
@@ -1023,7 +1033,7 @@ def test_an_override_never_takes_an_id_held_in_the_manifest(
     data: dict[str, Any], timeline_id: str, message: str
 ) -> None:
     with pytest.raises(ValueError) as refused:
-        Timeline.from_dict(copy.deepcopy(data), timeline_id=timeline_id)
+        Timeline.from_dict(filed(copy.deepcopy(data)), timeline_id=timeline_id)
     assert str(refused.value) == message
 
 
@@ -1088,15 +1098,15 @@ def test_a_selection_that_cannot_override_raises(
     data: dict[str, Any], arguments: dict[str, str], message: str
 ) -> None:
     with pytest.raises(ValueError) as refused:
-        Timeline.from_dict(copy.deepcopy(data), **arguments)
+        Timeline.from_dict(filed(copy.deepcopy(data)), **arguments)
     assert str(refused.value) == message
 
 
 def test_a_group_is_selected_by_id() -> None:
-    group = TimelineGroup.from_dict(copy.deepcopy(SELECTION), group_id="g1")
+    group = TimelineGroup.from_dict(filed(copy.deepcopy(SELECTION)), group_id="g1")
 
     assert (group.id, group.name, group.timeline_ids) == ("g1", "pair", ["score"])
-    assert group.to_dict(minimal=True) == {
+    assert bare(group.to_dict(minimal=True)) == {
         "timetoshare": "0.2.0",
         "timelines": [SELECTION["timelines"][0]],
         "groups": [SELECTION["groups"][0]],
@@ -1126,7 +1136,7 @@ def test_a_group_selection_must_match_once(
     arguments: dict[str, str], message: str
 ) -> None:
     with pytest.raises(ValueError) as refused:
-        TimelineGroup.from_dict(copy.deepcopy(SELECTION), **arguments)
+        TimelineGroup.from_dict(filed(copy.deepcopy(SELECTION)), **arguments)
     assert str(refused.value) == message
 
 
@@ -1138,7 +1148,7 @@ ONE_TIMELINE = {
 
 def test_a_manifest_of_one_timeline_makes_a_group_when_asked() -> None:
     group = TimelineGroup.from_dict(
-        copy.deepcopy(ONE_TIMELINE), group_id="edition", name="Edition"
+        filed(copy.deepcopy(ONE_TIMELINE)), group_id="edition", name="Edition"
     )
 
     assert (group.id, group.name, group.timeline_ids) == (
@@ -1147,7 +1157,7 @@ def test_a_manifest_of_one_timeline_makes_a_group_when_asked() -> None:
         ["score"],
     )
     with pytest.raises(ValueError) as refused:
-        TimelineGroup.from_dict(copy.deepcopy(ONE_TIMELINE))
+        TimelineGroup.from_dict(filed(copy.deepcopy(ONE_TIMELINE)))
     assert str(refused.value) == (
         "the manifest holds one timeline and no group: give group_id or name to make a group of it"
     )
@@ -1162,16 +1172,18 @@ def test_a_one_group_manifest_is_read_whole_with_overrides() -> None:
     }
 
     group = TimelineGroup.from_dict(
-        copy.deepcopy(data), group_id="edition", name="Edition"
+        filed(copy.deepcopy(data)), group_id="edition", name="Edition"
     )
 
     assert (group.id, group.name) == ("edition", "Edition")
-    assert group.to_dict(minimal=True) == {
+    assert bare(group.to_dict(minimal=True)) == {
         **data,
         "groups": [{"id": "edition", "name": "Edition", "members": ["score"]}],
         "graphical": {"order": {"edition": ["score"]}},
     }
-    assert TimelineGroup.from_dict(copy.deepcopy(data)).to_dict(minimal=True) == {
+    assert bare(
+        TimelineGroup.from_dict(filed(copy.deepcopy(data))).to_dict(minimal=True)
+    ) == {
         **data,
         "graphical": {"order": {"g": ["score"]}},
     }
@@ -1189,7 +1201,7 @@ def test_a_group_never_takes_the_id_of_a_descendant_timeline(
     data: dict[str, Any],
 ) -> None:
     with pytest.raises(ValueError) as refused:
-        TimelineGroup.from_dict(copy.deepcopy(data), group_id="ex_child")
+        TimelineGroup.from_dict(filed(copy.deepcopy(data)), group_id="ex_child")
     assert str(refused.value) == (
         "group id 'ex_child' is already held by timeline 'ex_child'"
     )
@@ -1198,9 +1210,9 @@ def test_a_group_never_takes_the_id_of_a_descendant_timeline(
 def test_a_group_id_matching_the_one_group_reads_it_unchanged() -> None:
     data = {**FAMILY, "groups": [{"id": "g", "name": "pair", "members": ["ex"]}]}
 
-    group = TimelineGroup.from_dict(copy.deepcopy(data), group_id="g")
+    group = TimelineGroup.from_dict(filed(copy.deepcopy(data)), group_id="g")
 
-    assert group.to_dict(minimal=True) == {
+    assert bare(group.to_dict(minimal=True)) == {
         **data,
         "graphical": {"order": {"g": ["ex"]}},
     }
@@ -1215,11 +1227,11 @@ def test_a_named_one_group_manifest_needs_a_selection() -> None:
     }
 
     with pytest.raises(ValueError) as refused:
-        TimelineGroup.from_dict(copy.deepcopy(data))
+        TimelineGroup.from_dict(filed(copy.deepcopy(data)))
     assert str(refused.value) == (
         "the manifest holds several groups or is named: give group_id or name to select a group"
     )
-    assert TimelineGroup.from_dict(copy.deepcopy(data), group_id="g").id == "g"
+    assert TimelineGroup.from_dict(filed(copy.deepcopy(data)), group_id="g").id == "g"
 
 
 # endregion
@@ -1234,10 +1246,10 @@ def test_an_anonymous_bundle_writes_no_id() -> None:
         "timelines": [{"id": "score", "unit": "quarters", "length": [8, 1]}],
     }
 
-    bundle = AlignmentBundle.from_dict(copy.deepcopy(data))
+    bundle = AlignmentBundle.from_dict(filed(copy.deepcopy(data)))
 
     assert bundle.id == "bundle_1"
-    assert bundle.to_dict(minimal=True) == data
+    assert bare(bundle.to_dict(minimal=True)) == data
 
 
 def test_a_manifest_with_a_name_and_no_id() -> None:
@@ -1247,10 +1259,16 @@ def test_a_manifest_with_a_name_and_no_id() -> None:
         "timelines": [{"id": "score", "unit": "quarters", "length": [8, 1]}],
     }
 
-    bundle = AlignmentBundle.from_dict(copy.deepcopy(data))
+    bundle = AlignmentBundle.from_dict(filed(copy.deepcopy(data)))
 
-    assert (bundle.name, bundle.to_dict(minimal=True)) == ("Eroica Variations", data)
-    assert Timeline.from_dict(copy.deepcopy(data)).to_dict(minimal=True) == data
+    assert (bundle.name, bare(bundle.to_dict(minimal=True))) == (
+        "Eroica Variations",
+        data,
+    )
+    assert (
+        bare(Timeline.from_dict(filed(copy.deepcopy(data))).to_dict(minimal=True))
+        == data
+    )
 
 
 def test_a_support_policy_key_is_not_read() -> None:
@@ -1260,10 +1278,10 @@ def test_a_support_policy_key_is_not_read() -> None:
         "timelines": [{"id": "score", "unit": "quarters", "length": [8, 1]}],
     }
 
-    bundle = AlignmentBundle.from_dict(copy.deepcopy(data))
+    bundle = AlignmentBundle.from_dict(filed(copy.deepcopy(data)))
 
     assert bundle.support_policy is SupportPolicy.omit
-    assert bundle.to_dict(minimal=True) == data
+    assert bare(bundle.to_dict(minimal=True)) == data
 
 
 def test_the_manifest_id_is_unique_with_the_timeline_ids() -> None:
@@ -1274,7 +1292,7 @@ def test_the_manifest_id_is_unique_with_the_timeline_ids() -> None:
     }
 
     with pytest.raises(ValueError) as refused:
-        AlignmentBundle.from_dict(data)
+        AlignmentBundle.from_dict(filed(data))
     assert str(refused.value) == (
         "the id 'score' is held twice in the manifest: by the manifest and by "
         "timeline 'score'"
@@ -1292,7 +1310,7 @@ def test_the_order_is_an_object() -> None:
     data["graphical"] = {"order": [["score"], ["perf"]]}
 
     with pytest.raises(ValueError) as refused:
-        AlignmentBundle.from_dict(data)
+        AlignmentBundle.from_dict(filed(data))
     assert str(refused.value) == (
         "'graphical.order' must map group or timeline ids to orders"
     )
@@ -1303,7 +1321,7 @@ def test_an_order_naming_no_group_or_timeline_is_refused() -> None:
     data["graphical"] = {"order": {"g3": ["perf"]}}
 
     with pytest.raises(ValueError) as refused:
-        AlignmentBundle.from_dict(data)
+        AlignmentBundle.from_dict(filed(data))
     assert str(refused.value) == "'graphical.order' names no group or timeline: ['g3']"
 
 
@@ -1406,7 +1424,7 @@ ONE_ROOT = {
         "graphical": {
             "order": ONE_ROOT_BANDS,
             "styles": {},
-            "statements": [],
+            "rules": [],
             "timestamps": [],
         },
     },
@@ -1430,16 +1448,16 @@ GROUPED = {
         "graphical": {
             "order": GROUPED_BANDS,
             "styles": {},
-            "statements": [],
+            "rules": [],
             "timestamps": [],
         },
     },
 }
 WHOLE_READS = {
-    "timeline": (Timeline.from_dict, ONE_ROOT),
-    "group": (TimelineGroup.from_dict, GROUPED),
-    "bundle_one_root": (AlignmentBundle.from_dict, ONE_ROOT),
-    "bundle_grouped": (AlignmentBundle.from_dict, GROUPED),
+    "timeline": (reading(Timeline.from_dict), ONE_ROOT),
+    "group": (reading(TimelineGroup.from_dict), GROUPED),
+    "bundle_one_root": (reading(AlignmentBundle.from_dict), ONE_ROOT),
+    "bundle_grouped": (reading(AlignmentBundle.from_dict), GROUPED),
 }
 
 
@@ -1451,8 +1469,10 @@ def test_band_orders_survive_a_round_trip(case: str, form: str) -> None:
 
     read = reader(copy.deepcopy(literals[form]))
 
-    assert _text(read.to_dict(minimal=form == "minimal")) == _text(literals[form])
-    assert _text(read.to_dict(minimal=other == "minimal")) == _text(literals[other])
+    assert _text(bare(read.to_dict(minimal=form == "minimal"))) == _text(literals[form])
+    assert _text(bare(read.to_dict(minimal=other == "minimal"))) == _text(
+        literals[other]
+    )
 
 
 @pytest.mark.parametrize("case", list(WHOLE_READS), ids=list(WHOLE_READS))
@@ -1464,22 +1484,25 @@ def test_band_orders_are_copied_on_reading(case: str) -> None:
     for entry in data["graphical"]["order"].values():
         entry.reverse()
 
-    assert _text(read.to_dict(minimal=True)) == _text(literals["minimal"])
+    assert _text(bare(read.to_dict(minimal=True))) == _text(literals["minimal"])
 
 
 def test_a_band_order_is_never_checked() -> None:
     data = copy.deepcopy(ONE_ROOT["minimal"])
     data["graphical"]["order"]["part"] = ["line", "markers"]
 
-    assert Timeline.from_dict(copy.deepcopy(data)).to_dict(minimal=True) == data
+    assert (
+        bare(Timeline.from_dict(filed(copy.deepcopy(data))).to_dict(minimal=True))
+        == data
+    )
 
 
 def test_a_removed_timeline_takes_its_band_order_along() -> None:
-    group = TimelineGroup.from_dict(copy.deepcopy(GROUPED["minimal"]))
+    group = TimelineGroup.from_dict(filed(copy.deepcopy(GROUPED["minimal"])))
 
     group.remove_timeline("perf")
 
-    assert group.to_dict(minimal=True) == {
+    assert bare(group.to_dict(minimal=True)) == {
         "timetoshare": "0.2.0",
         "timelines": [SCORE_MINIMAL],
         "groups": [{"id": "g", "members": ["part"]}],
@@ -1491,10 +1514,10 @@ def test_a_removed_timeline_takes_its_band_order_along() -> None:
 
 def test_a_new_id_on_load_leaves_the_old_band_order_out() -> None:
     timeline = Timeline.from_dict(
-        copy.deepcopy(ONE_ROOT["minimal"]), timeline_id="edition"
+        filed(copy.deepcopy(ONE_ROOT["minimal"])), timeline_id="edition"
     )
 
-    assert timeline.to_dict(minimal=True) == {
+    assert bare(timeline.to_dict(minimal=True)) == {
         "timetoshare": "0.2.0",
         "timelines": [SCORE_MINIMAL | {"id": "edition"}],
         "graphical": {"order": {"part": PART_BANDS}},
@@ -1502,9 +1525,11 @@ def test_a_new_id_on_load_leaves_the_old_band_order_out() -> None:
 
 
 def test_a_selected_timeline_keeps_no_graphical() -> None:
-    perf = Timeline.from_dict(copy.deepcopy(GROUPED["minimal"]), timeline_id="perf")
+    perf = Timeline.from_dict(
+        filed(copy.deepcopy(GROUPED["minimal"])), timeline_id="perf"
+    )
 
-    assert perf.to_dict(minimal=True) == {
+    assert bare(perf.to_dict(minimal=True)) == {
         "timetoshare": "0.2.0",
         "timelines": [PERF_MINIMAL],
     }
@@ -1515,9 +1540,11 @@ def test_a_selected_timeline_keeps_no_graphical() -> None:
 
 def test_a_written_manifest_is_a_json_fixpoint() -> None:
     score = ContinuousLogicalTimeline(length=Fraction(10, 3), uid="score")
-    data = score.to_dict()
+    data = bare(score.to_dict())
 
-    assert Timeline.from_dict(json.loads(json.dumps(data))).to_dict() == data
+    assert (
+        bare(Timeline.from_dict(filed(json.loads(json.dumps(data)))).to_dict()) == data
+    )
 
 
 def test_a_length_of_null_reads_as_unknown_and_is_always_written() -> None:
@@ -1526,11 +1553,11 @@ def test_a_length_of_null_reads_as_unknown_and_is_always_written() -> None:
         "timelines": [{"id": "stream", "unit": "seconds", "length": None}],
     }
 
-    timeline = Timeline.from_dict(copy.deepcopy(data))
+    timeline = Timeline.from_dict(filed(copy.deepcopy(data)))
 
     assert timeline.length is None
-    assert timeline.to_dict(minimal=True) == data
-    assert timeline.to_dict()["timelines"][0]["length"] is None
+    assert bare(timeline.to_dict(minimal=True)) == data
+    assert bare(timeline.to_dict())["timelines"][0]["length"] is None
 
 
 # region Measure-map rows
@@ -1581,21 +1608,24 @@ def test_unknown_row_keys_are_kept_and_force_their_row() -> None:
         {"count": 2, "x-row": "kept"},
         {"count": 3, "tempo": 96},
     ]
-    score = Timeline.from_dict(_quarters_root(copy.deepcopy(rows)))
+    score = Timeline.from_dict(filed(_quarters_root(copy.deepcopy(rows))))
 
-    written = score.to_dict(minimal=True)
+    written = bare(score.to_dict(minimal=True))
 
     assert written["measure_maps"][0]["rows"] == [
         _full_row(1, next=["2"]),
         _full_row(2, next=["3"], **{"x-row": "kept"}),
         _full_row(3, tempo=96),
     ]
-    assert Timeline.from_dict(copy.deepcopy(written)).to_dict(minimal=True) == written
+    assert (
+        bare(Timeline.from_dict(filed(copy.deepcopy(written))).to_dict(minimal=True))
+        == written
+    )
     plain = Timeline.from_dict(
-        _quarters_root([{"count": 1, "time_signature": "4/4"}, {"count": 3}])
+        filed(_quarters_root([{"count": 1, "time_signature": "4/4"}, {"count": 3}]))
     )
     assert score.measure_map == plain.measure_map
-    assert plain.to_dict(minimal=True)["measure_maps"][0]["rows"] == [
+    assert bare(plain.to_dict(minimal=True))["measure_maps"][0]["rows"] == [
         _full_row(1, next=["2"]),
         _full_row(3),
     ]
@@ -1643,7 +1673,7 @@ def test_rows_and_maps_a_manifest_refuses(
     manifest: dict[str, Any], message: str
 ) -> None:
     with pytest.raises(ValueError) as refused:
-        Timeline.from_dict(manifest)
+        Timeline.from_dict(filed(manifest))
     assert str(refused.value) == message
 
 
@@ -1676,12 +1706,12 @@ def test_reading_never_changes_a_length(
     child: dict[str, Any], message: str, locked: bool
 ) -> None:
     with pytest.raises(ValueError) as refused:
-        Timeline.from_dict(_parent_with(child, locked=locked))
+        Timeline.from_dict(filed(_parent_with(child, locked=locked)))
     assert str(refused.value) == message
 
     fits = {"id": "coda", "unit": "quarters", "offset": [6, 1], "length": [4, 1]}
-    score = Timeline.from_dict(_parent_with(fits, locked=locked))
-    for form in (score.to_dict(), score.to_dict(minimal=True)):
+    score = Timeline.from_dict(filed(_parent_with(fits, locked=locked)))
+    for form in (bare(score.to_dict()), bare(score.to_dict(minimal=True))):
         assert form["timelines"][0]["length"] == [10, 1]
 
 
@@ -1713,7 +1743,7 @@ def test_a_child_beyond_its_parent_is_refused_in_the_validators_words(
     if len(children) == 2:
         root["is_segment_line"] = True
     with pytest.raises(ValueError) as refused:
-        Timeline.from_dict({"timetoshare": "0.2.0", "timelines": [root]})
+        Timeline.from_dict(filed({"timetoshare": "0.2.0", "timelines": [root]}))
     assert str(refused.value) == message
 
 
@@ -1754,8 +1784,8 @@ def _root(**timeline: Any) -> dict[str, Any]:
 )
 def test_a_float_child_ends_at_the_double_sum(manifest: dict[str, Any]) -> None:
     assert AT + SYSTEM == PAGE
-    page = Timeline.from_dict(manifest)
-    assert page.to_dict()["timelines"][0]["children"][-1]["offset"] == AT
+    page = Timeline.from_dict(filed(manifest))
+    assert bare(page.to_dict())["timelines"][0]["children"][-1]["offset"] == AT
 
 
 @pytest.mark.parametrize(
@@ -1814,7 +1844,7 @@ def test_any_other_child_ends_at_the_exact_sum(
     manifest: dict[str, Any], message: str
 ) -> None:
     with pytest.raises(ValueError) as refused:
-        Timeline.from_dict(manifest)
+        Timeline.from_dict(filed(manifest))
     assert str(refused.value) == message
 
 
@@ -1853,7 +1883,7 @@ WORDS: dict[str, Any] = {
 
 
 def test_words_naming_parts_and_facets_are_ids() -> None:
-    bundle = AlignmentBundle.from_dict(copy.deepcopy(WORDS))
+    bundle = AlignmentBundle.from_dict(filed(copy.deepcopy(WORDS)))
 
     assert bundle.id == "card"
     assert list(bundle.groups) == ["regions_1"]
@@ -1861,12 +1891,12 @@ def test_words_naming_parts_and_facets_are_ids() -> None:
     assert root.list_children() == ["markers_10"]
     assert root.list_regions() == ["end"]
     assert root.get_conversion_map("label").id == "label"
-    assert bundle.to_dict(minimal=True) == WORDS
+    assert bare(bundle.to_dict(minimal=True)) == WORDS
 
 
 def test_words_naming_parts_and_facets_are_overrides() -> None:
-    timeline = Timeline.from_dict(_quarters_root(), timeline_id="start")
-    group = TimelineGroup.from_dict(_quarters_root(), group_id="regions_1")
+    timeline = Timeline.from_dict(filed(_quarters_root()), timeline_id="start")
+    group = TimelineGroup.from_dict(filed(_quarters_root()), group_id="regions_1")
 
     assert timeline.id == "start"
     assert group.id == "regions_1"
@@ -1889,7 +1919,7 @@ def test_words_naming_parts_and_facets_are_overrides() -> None:
 )
 def test_a_negative_length_is_refused(timeline: dict[str, Any], message: str) -> None:
     with pytest.raises(ValueError) as refused:
-        Timeline.from_dict({"timetoshare": "0.2.0", "timelines": [timeline]})
+        Timeline.from_dict(filed({"timetoshare": "0.2.0", "timelines": [timeline]}))
     assert str(refused.value) == message
     with pytest.raises(ValueError) as refused:
         ContinuousLogicalTimeline(length=Fraction(-12), uid="x")
@@ -1946,9 +1976,9 @@ def test_a_group_made_from_one_timeline_keeps_the_manifests_keys() -> None:
         "graphical": {"styles": {"a": {"fill": "red"}}},
     }
 
-    group = TimelineGroup.from_dict(copy.deepcopy(data), group_id="g")
+    group = TimelineGroup.from_dict(filed(copy.deepcopy(data)), group_id="g")
 
-    assert group.to_dict(minimal=True) == {
+    assert bare(group.to_dict(minimal=True)) == {
         "timetoshare": "0.2.0",
         "meta": {"k": 1},
         "x-top": 1,
@@ -1960,7 +1990,7 @@ def test_a_group_made_from_one_timeline_keeps_the_manifests_keys() -> None:
 
 @pytest.mark.parametrize(
     "reader",
-    [Timeline.from_dict, AlignmentBundle.from_dict],
+    [reading(Timeline.from_dict), reading(AlignmentBundle.from_dict)],
     ids=["timeline", "bundle"],
 )
 def test_a_graphical_object_read_is_written_back(reader: Any) -> None:
@@ -1971,14 +2001,14 @@ def test_a_graphical_object_read_is_written_back(reader: Any) -> None:
 
     read = reader(copy.deepcopy({**data, "graphical": {}}))
 
-    assert read.to_dict(minimal=True) == {**data, "graphical": {}}
-    assert read.to_dict(minimal=False)["graphical"] == {
+    assert bare(read.to_dict(minimal=True)) == {**data, "graphical": {}}
+    assert bare(read.to_dict(minimal=False))["graphical"] == {
         "order": {},
-        "statements": [],
+        "rules": [],
         "styles": {},
         "timestamps": [],
     }
-    assert "graphical" not in reader(copy.deepcopy(data)).to_dict()
+    assert "graphical" not in bare(reader(copy.deepcopy(data)).to_dict())
 
 
 def _stamp(number: int, **members: Any) -> dict[str, Any]:
@@ -1994,7 +2024,7 @@ def _stamp(number: int, **members: Any) -> dict[str, Any]:
 
 @pytest.mark.parametrize(
     "reader",
-    [Timeline.from_dict, AlignmentBundle.from_dict],
+    [reading(Timeline.from_dict), reading(AlignmentBundle.from_dict)],
     ids=["timeline", "bundle"],
 )
 def test_a_timestamp_display_is_written_in_canonical_order_with_its_default(
@@ -2016,13 +2046,13 @@ def test_a_timestamp_display_is_written_in_canonical_order_with_its_default(
     read = reader(data)
 
     default = ["wedge", "name", "cross_section"]
-    assert read.to_dict(minimal=False)["graphical"]["timestamps"] == [
+    assert bare(read.to_dict(minimal=False))["graphical"]["timestamps"] == [
         _stamp(1, display=default),
         _stamp(2, display=default),
         _stamp(3, display=["wedge", "name"]),
         _stamp(4, display=["wedge", "coordinate", "flag"], note={"x": 1}),
     ]
-    assert read.to_dict(minimal=True)["graphical"]["timestamps"] == [
+    assert bare(read.to_dict(minimal=True))["graphical"]["timestamps"] == [
         _stamp(1),
         _stamp(2),
         _stamp(3, display=["wedge", "name"]),
@@ -2033,7 +2063,7 @@ def test_a_timestamp_display_is_written_in_canonical_order_with_its_default(
 
 STYLING_CASES = {
     "styles_default": ({"styles": {}}, {}),
-    "statements_default": ({"statements": []}, {}),
+    "rules_default": ({"rules": []}, {}),
     "timestamps_default": ({"timestamps": []}, {}),
     "display_default": (
         {"timestamps": [_stamp(1, display=["cross_section", "name", "wedge"])]},
@@ -2046,7 +2076,7 @@ STYLING_CASES = {
     "zero_and_false": (
         {
             "styles": {"a": {"stroke-width": 0, "visible": False}},
-            "statements": [],
+            "rules": [],
             "frame": False,
             "inset": 0,
         },
@@ -2062,7 +2092,7 @@ STYLING_CASES = {
 
 @pytest.mark.parametrize(
     "reader",
-    [TimelineGroup.from_dict, AlignmentBundle.from_dict],
+    [reading(TimelineGroup.from_dict), reading(AlignmentBundle.from_dict)],
     ids=["group", "bundle"],
 )
 @pytest.mark.parametrize("case", list(STYLING_CASES), ids=list(STYLING_CASES))
@@ -2092,12 +2122,12 @@ def test_mixed_group_arguments_raise() -> None:
     }
 
     with pytest.raises(ValueError) as refused:
-        TimelineGroup.from_dict(copy.deepcopy(data), group_id="g", name="Other")
+        TimelineGroup.from_dict(filed(copy.deepcopy(data)), group_id="g", name="Other")
 
     assert str(refused.value) == (
         "the manifest holds no group with id 'g', name 'Other'; its groups: 'g' (name 'G')"
     )
-    group = TimelineGroup.from_dict(copy.deepcopy(data), group_id="g", name="G")
+    group = TimelineGroup.from_dict(filed(copy.deepcopy(data)), group_id="g", name="G")
     assert (group.id, group.name) == ("g", "G")
 
 

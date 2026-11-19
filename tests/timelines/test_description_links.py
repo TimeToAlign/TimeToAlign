@@ -19,6 +19,7 @@ import timetoshare
 from timetoshare import SchemaValidationError, complete, dumps, minimal, validate
 
 import timetoalign
+from tests.helpers import bare, filed, reading
 from timetoalign import (
     AlignmentBundle,
     Assertion,
@@ -230,19 +231,21 @@ def test_the_classes_are_the_package_s(name: str) -> None:
 
 def test_the_work_bundle_of_op_106_in_both_forms() -> None:
     built = _op_106()
-    written, written_minimal = built.to_dict(minimal=False), built.to_dict(minimal=True)
+    written, written_minimal = bare(built.to_dict(minimal=False)), bare(
+        built.to_dict(minimal=True)
+    )
     assert written_minimal == OP_106_MINIMAL
     assert written == OP_106_COMPLETE
     assert dumps(written_minimal) == dumps(OP_106_MINIMAL)
     assert dumps(written) == dumps(OP_106_COMPLETE)
     for form in (written, written_minimal):
-        validate(form)
+        validate(filed(form))
     assert dumps(complete(written_minimal)) == dumps(written)
     assert dumps(minimal(written)) == dumps(written_minimal)
     for literal in (OP_106_COMPLETE, OP_106_MINIMAL):
-        read = AlignmentBundle.from_dict(copy.deepcopy(literal))
-        assert read.to_dict(minimal=False) == OP_106_COMPLETE
-        assert read.to_dict(minimal=True) == OP_106_MINIMAL
+        read = AlignmentBundle.from_dict(filed(copy.deepcopy(literal)))
+        assert bare(read.to_dict(minimal=False)) == OP_106_COMPLETE
+        assert bare(read.to_dict(minimal=True)) == OP_106_MINIMAL
         assert read == built
 
 
@@ -344,7 +347,7 @@ def test_a_region_s_links() -> None:
     score.create_region(0, 4, id="intro", links=[first])
     score.create_region(4, 8, id="verse")
     assert score.get_region("intro").links == (first,)
-    regions = score.to_dict(minimal=False)["timelines"][0]["regions"]
+    regions = bare(score.to_dict(minimal=False))["timelines"][0]["regions"]
     assert regions == [
         {
             "id": "intro",
@@ -363,7 +366,7 @@ def test_a_region_s_links() -> None:
             "links": [],
         },
     ]
-    assert score.to_dict(minimal=True)["timelines"][0]["regions"] == [
+    assert bare(score.to_dict(minimal=True))["timelines"][0]["regions"] == [
         {
             "id": "intro",
             "start": [0, 1],
@@ -453,7 +456,7 @@ def test_schemes_are_built_added_and_sorted() -> None:
         given,
         Scheme("opus", name="Opus", uri=(SERIES,)),
     )
-    assert [scheme["id"] for scheme in bundle.to_dict()["schemes"]] == [
+    assert [scheme["id"] for scheme in bare(bundle.to_dict())["schemes"]] == [
         "bwv",
         "catalogue",
         "opus",
@@ -478,7 +481,7 @@ def test_reading_refuses_a_scheme_id_a_group_holds() -> None:
     _raises(
         ValueError,
         "#/schemes/0/id: 'g' is not unique in the manifest, first at #/groups/0/id",
-        lambda: AlignmentBundle.from_dict(data),
+        lambda: AlignmentBundle.from_dict(filed(data)),
     )
 
 
@@ -488,7 +491,7 @@ def test_a_root_cannot_take_a_scheme_s_id() -> None:
         "root timeline 'score' cannot take the id 'opus': it is already held by "
         "scheme 'opus'",
         lambda: Timeline.from_dict(
-            _one_root(schemes=[{"id": "opus"}]), timeline_id="opus"
+            filed(_one_root(schemes=[{"id": "opus"}])), timeline_id="opus"
         ),
     )
 
@@ -662,7 +665,7 @@ def test_a_region_is_replaced_by_its_id() -> None:
     changed = score.get_region("intro").with_link(movement)
     assert score.replace_region(changed) is score
     assert score.get_region("intro") is changed
-    assert score.to_dict(minimal=True)["timelines"][0]["regions"] == [
+    assert bare(score.to_dict(minimal=True))["timelines"][0]["regions"] == [
         {
             "id": "intro",
             "start": [0, 1],
@@ -771,11 +774,11 @@ def _described() -> AlignmentBundle:
 @pytest.mark.parametrize("form", [False, True], ids=["complete", "minimal"])
 def test_both_forms_round_trip(form: bool) -> None:
     bundle = _described()
-    written = bundle.to_dict(minimal=form)
-    validate(written)
-    read = AlignmentBundle.from_dict(json.loads(json.dumps(written)))
-    assert read.to_dict() == bundle.to_dict()
-    assert read.to_dict(minimal=True) == bundle.to_dict(minimal=True)
+    written = bare(bundle.to_dict(minimal=form))
+    validate(filed(written))
+    read = AlignmentBundle.from_dict(filed(json.loads(json.dumps(written))))
+    assert bare(read.to_dict()) == bare(bundle.to_dict())
+    assert bare(read.to_dict(minimal=True)) == bare(bundle.to_dict(minimal=True))
     assert read.links == bundle.links
     assert read.schemes == bundle.schemes
     take = read.get_timeline("take")
@@ -800,13 +803,13 @@ def _noted(data: dict[str, Any]) -> dict[str, Any]:
 
 
 def test_unknown_keys_inside_links_are_written_where_found() -> None:
-    noted = _noted(_described().to_dict())
+    noted = _noted(bare(_described().to_dict()))
     noted_minimal = minimal(noted)
     for literal in (noted, noted_minimal):
-        read = AlignmentBundle.from_dict(copy.deepcopy(literal))
-        assert dumps(read.to_dict()) == dumps(noted)
-        assert dumps(read.to_dict(minimal=True)) == dumps(noted_minimal)
-    written = AlignmentBundle.from_dict(noted).to_dict(minimal=True)
+        read = AlignmentBundle.from_dict(filed(copy.deepcopy(literal)))
+        assert dumps(bare(read.to_dict())) == dumps(noted)
+        assert dumps(bare(read.to_dict(minimal=True))) == dumps(noted_minimal)
+    written = bare(AlignmentBundle.from_dict(filed(noted)).to_dict(minimal=True))
     assert written["links"][0]["x-note"] == "manifest link"
     assert written["links"][0]["assertion"]["x-note"] == "assertion"
     assert written["links"][0]["parts"][0]["x-note"] == "slot"
@@ -829,21 +832,26 @@ ONE_ROOT_DESCRIBED: dict[str, Any] = _one_root(
 
 
 def test_a_timeline_read_whole_keeps_the_manifest_s_links() -> None:
-    score = Timeline.from_dict(copy.deepcopy(ONE_ROOT_DESCRIBED))
+    score = Timeline.from_dict(filed(copy.deepcopy(ONE_ROOT_DESCRIBED)))
     assert score.links == ()
-    assert score.to_dict(minimal=True) == ONE_ROOT_DESCRIBED
+    assert bare(score.to_dict(minimal=True)) == ONE_ROOT_DESCRIBED
 
 
 def test_a_group_read_whole_keeps_the_manifest_s_links() -> None:
-    group = TimelineGroup.from_dict(copy.deepcopy(ONE_ROOT_DESCRIBED), group_id="g")
+    group = TimelineGroup.from_dict(
+        filed(copy.deepcopy(ONE_ROOT_DESCRIBED)), group_id="g"
+    )
     grouped = {
         **ONE_ROOT_DESCRIBED,
         "groups": [{"id": "g", "members": ["score"]}],
         "graphical": {"order": {"g": ["score"]}},
     }
-    assert group.to_dict(minimal=True) == grouped
+    assert bare(group.to_dict(minimal=True)) == grouped
     assert (
-        TimelineGroup.from_dict(copy.deepcopy(grouped)).to_dict(minimal=True) == grouped
+        bare(
+            TimelineGroup.from_dict(filed(copy.deepcopy(grouped))).to_dict(minimal=True)
+        )
+        == grouped
     )
 
 
@@ -866,13 +874,16 @@ def test_the_reader_and_the_writer_raise_the_package_s_first_problem(
         return list(problems)
 
     monkeypatch.setattr(manifest_module, "description_problems", stub)
-    data = _one_root()
+    data = filed(_one_root())
     _raises(ValueError, "#/links: first", lambda: Timeline.from_dict(data))
     assert handed == [data] and handed[0] is data
     _raises(ValueError, "#/links: first", _quarters("score").to_dict)
-    assert handed[1]["timelines"][0]["id"] == "score"
+    assert handed[1]["timelines"][0]["id"] == "#score"
     problems.clear()
-    assert Timeline.from_dict(_one_root()).to_dict(minimal=True) == _one_root()
+    assert (
+        bare(Timeline.from_dict(filed(_one_root())).to_dict(minimal=True))
+        == _one_root()
+    )
 
 
 def test_a_link_naming_no_declared_scheme_is_never_written() -> None:
@@ -882,7 +893,7 @@ def test_a_link_naming_no_declared_scheme_is_never_written() -> None:
             ValueError,
             "#/timelines/0/links/0/identifiers/0/scheme: 'opus' names no scheme of "
             "this manifest and is no absolute URI",
-            lambda form=form: score.to_dict(minimal=form),
+            lambda form=form: bare(score.to_dict(minimal=form)),
         )
     bundle = AlignmentBundle().add_link(WORK_URL, identifiers={"opus": "106"})
     _raises(
@@ -918,7 +929,7 @@ def test_a_slot_naming_nothing_is_refused_in_the_validator_s_words() -> None:
             }
         ]
     )
-    for reader in (Timeline.from_dict, AlignmentBundle.from_dict):
+    for reader in (reading(Timeline.from_dict), reading(AlignmentBundle.from_dict)):
         _raises(
             ValueError,
             "#/links/0/parts/0/represented_by/0: 'ghost' names no timeline or region "
@@ -941,7 +952,7 @@ def test_a_region_s_link_is_refused_at_its_path() -> None:
         ValueError,
         "#/timelines/0/regions/0/links/0/level: 'score' is not one of ['work', "
         "'expression', 'manifestation', 'item', 'agent']",
-        lambda: Timeline.from_dict(data),
+        lambda: Timeline.from_dict(filed(data)),
     )
 
 

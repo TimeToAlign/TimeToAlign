@@ -100,7 +100,7 @@ class TestMapIntegration:
         data = tl.to_dict()
         (timeline_data,) = data["timelines"]
         assert len(timeline_data["conversion_maps"]) == 1
-        assert timeline_data["conversion_maps"][0]["id"] == "cmap1"
+        assert timeline_data["conversion_maps"][0]["id"] == "#cmap1"
 
         # Round trip
         restored = Timeline.from_dict(data)

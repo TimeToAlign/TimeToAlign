@@ -217,6 +217,20 @@ reads what its own writer produced proves nothing about the format, so the
 tests read manifests written by hand from the format's rules, and compare what
 the library writes back against the same literal text.
 
+- **IDs in the file form.** A manifest dict, what `to_dict` returns and
+  `from_dict` reads, writes every ID as `#` followed by the ID, while every
+  object holds IDs bare. Most literals are written with bare IDs, as the
+  objects hold them, and reach a reader through `tests/helpers.py`'s
+  `filed` (or a reader wrapped by `reading`); what a writer returns is
+  compared after `bare`. Both are TimeToShare's `with_file_ids` and
+  `with_bare_ids`, which the package proves, applied to a whole manifest
+  only. Literals that stand for file text (`test_manifest_files.py`) and the
+  assertions on a written manifest's own keys (`test_base.py`,
+  `test_maps_integration.py`, the doctests) spell the `#` themselves. A
+  literal whose empty bundle `id` becomes `#` is refused with
+  `#/id: '#' is not written as an ID: nothing follows the '#'`; a bare ID
+  in a manifest is refused with its path, `#/timelines/0/id: 'score' is not
+  written as an ID: it does not start with '#'`.
 - **The version marker.** Without `timetoshare` each reader raises exactly
   `not a TimeToShare manifest`; `"timetoshare": "0.1.0"` raises a message
   naming both `'0.1.0'` and `0.2.0`. Nothing else is read first, so the
@@ -333,7 +347,7 @@ the library writes back against the same literal text.
   writes an anonymous bundle.
 - **A `graphical` object read is written back.** `"graphical": {}` on a
   one-root manifest is written back as `{}` in the minimal form and as
-  `{"order": {}, "statements": [], "styles": {}}` in the complete form,
+  `{"order": {}, "rules": [], "styles": {}}` in the complete form,
   through `Timeline` and `AlignmentBundle` alike; a manifest read without
   `graphical` is written without it. Presence is part of the round trip.
 - **A styling member at its default is dropped as TimeToShare drops it.**
@@ -1362,7 +1376,7 @@ dictionaries alone would not prove the rebuilt group *behaves* the same, so the
 queries are asserted as well.
 
 **Styling is carried, never read.** A manifest's `graphical` may hold
-`styles` and `statements` beside `order`: presentation data the library keeps
+`styles` and `rules` beside `order`: presentation data the library keeps
 on `TimelineGroup.styling` without interpreting it. What proves it is carried
 unchanged is a styling block the library could not have produced itself — a
 named style, a statement setting that style by name and a statement setting a
@@ -1370,7 +1384,7 @@ declaration directly, nested three levels deep — surviving `from_dict` →
 `to_dict` equal to the input dictionary, beside the unchanged `order`; and the
 rebuilt group's `styling` must not share an object with the input, so a later
 edit of the input dictionary cannot reach the group. Each member alone
-(`styles` only, `statements` only) round-trips alone in the minimal form, so
+(`styles` only, `rules` only) round-trips alone in the minimal form, so
 neither is invented when absent; a group without styling writes `graphical`
 as `{"order": {...}}` in the minimal form and adds `styles: {}` and
 `statements: []` in the complete one. A `graphical` holding styling but no

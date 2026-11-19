@@ -589,7 +589,7 @@ class TestSerialization:
         tl = Timeline(length=10.0, unit=TimeUnit.seconds, uid="test_tl")
         (data,) = tl.to_dict(minimal=False)["timelines"]
 
-        assert data["id"] == "test_tl"
+        assert data["id"] == "#test_tl"
         assert data["unit"] == "seconds"
         assert data["length"] == 10.0
         assert data["locked"] is False
@@ -628,7 +628,7 @@ class TestSerialization:
 
         (data,) = parent.to_dict()["timelines"]
         (child_data,) = data["children"]
-        assert child_data["id"] == "child"
+        assert child_data["id"] == "#child"
         assert child_data["offset"] == 10.0
 
     def test_from_dict_roundtrip(self, mixed_event_rows: list[dict[str, Any]]):

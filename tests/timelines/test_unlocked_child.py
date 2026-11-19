@@ -12,6 +12,7 @@ from typing import Any
 
 import pytest
 
+from tests.helpers import bare, filed
 from timetoalign.timelines import ContinuousPhysicalTimeline, SegmentLine, Timeline
 
 
@@ -73,9 +74,9 @@ def test_a_childs_locked_is_read_and_written_as_it_stands() -> None:
         }
     )
 
-    rec = Timeline.from_dict(data)
-    complete = rec.to_dict(minimal=False)
-    minimal = rec.to_dict(minimal=True)
+    rec = Timeline.from_dict(filed(data))
+    complete = bare(rec.to_dict(minimal=False))
+    minimal = bare(rec.to_dict(minimal=True))
 
     assert [rec.get_child(uid).is_locked for uid in "abc"] == [False, False, True]
     assert [child["locked"] for child in complete["timelines"][0]["children"]] == [
@@ -85,9 +86,13 @@ def test_a_childs_locked_is_read_and_written_as_it_stands() -> None:
     ]
     assert [
         child.get("locked", "absent") for child in minimal["timelines"][0]["children"]
-    ] == ["absent", "absent", True]
-    assert Timeline.from_dict(complete).to_dict(minimal=False) == complete
-    assert Timeline.from_dict(minimal).to_dict(minimal=True) == minimal
+    ] == [
+        "absent",
+        "absent",
+        True,
+    ]
+    assert bare(Timeline.from_dict(filed(complete)).to_dict(minimal=False)) == complete
+    assert bare(Timeline.from_dict(filed(minimal)).to_dict(minimal=True)) == minimal
 
 
 def test_add_child_locks_by_default_and_keeps_the_childs_state_when_told() -> None:
@@ -246,15 +251,17 @@ def test_a_parent_of_unknown_length_checks_nothing() -> None:
 def _line(*, locked: bool = False) -> SegmentLine:
     """A segment line of length 6 with the unlocked segments A [0, 4) and B [4, 6)."""
     line = Timeline.from_dict(
-        _manifest(
-            {
-                "id": "line",
-                "unit": "seconds",
-                "length": 6.0,
-                "locked": locked,
-                "is_segment_line": True,
-                "children": [_child("A", 0.0, 4.0), _child("B", 4.0, 2.0)],
-            }
+        filed(
+            _manifest(
+                {
+                    "id": "line",
+                    "unit": "seconds",
+                    "length": 6.0,
+                    "locked": locked,
+                    "is_segment_line": True,
+                    "children": [_child("A", 0.0, 4.0), _child("B", 4.0, 2.0)],
+                }
+            )
         )
     )
     assert isinstance(line, SegmentLine)
@@ -344,7 +351,7 @@ def _segments(line: Timeline) -> list[Timeline]:
 
 
 def _written_children(line: Timeline, *, minimal: bool) -> list[dict[str, Any]]:
-    return line.to_dict(minimal=minimal)["timelines"][0]["children"]
+    return bare(line.to_dict(minimal=minimal))["timelines"][0]["children"]
 
 
 @pytest.mark.parametrize(
@@ -488,7 +495,9 @@ def _read_lines(*, page_locked: bool) -> tuple[Timeline, Timeline]:
         "is_segment_line": True,
         "children": [page("page_1", 0.0), page("page_2", 2.0)],
     }
-    return Timeline.from_dict(_manifest(plain)), Timeline.from_dict(_manifest(edition))
+    return Timeline.from_dict(filed(_manifest(plain))), Timeline.from_dict(
+        filed(_manifest(edition))
+    )
 
 
 @pytest.mark.parametrize(
@@ -499,10 +508,12 @@ def test_reading_unlocks_a_plain_segment_and_keeps_a_lines_lock(
 ) -> None:
     line, pages = _read_lines(page_locked=page_locked)
     plain, edition = (
-        timeline.to_dict(minimal=False)["timelines"][0] for timeline in (line, pages)
+        bare(timeline.to_dict(minimal=False))["timelines"][0]
+        for timeline in (line, pages)
     )
     plain_minimal, edition_minimal = (
-        timeline.to_dict(minimal=True)["timelines"][0] for timeline in (line, pages)
+        bare(timeline.to_dict(minimal=True))["timelines"][0]
+        for timeline in (line, pages)
     )
 
     assert [segment.is_locked for segment in _segments(line)] == [False, False]
@@ -517,7 +528,10 @@ def test_reading_unlocks_a_plain_segment_and_keeps_a_lines_lock(
         segment["locked"]
         for page in edition["children"]
         for segment in page["children"]
-    ] == [False, False]
+    ] == [
+        False,
+        False,
+    ]
 
 
 # endregion
@@ -660,10 +674,10 @@ def test_casts_keep_the_root_offset_and_the_keys_read() -> None:
         ),
         "meta": {"k": 1},
     }
-    read = Timeline.from_dict(data)
+    read = Timeline.from_dict(filed(data))
 
     for cast in (read.as_segment_line(), read.as_segment_line().to_timeline()):
-        written = cast.to_dict(minimal=True)
+        written = bare(cast.to_dict(minimal=True))
         root = written["timelines"][0]
         assert cast.root_offset == read.root_offset
         assert (root["offset"], root["x-root"], written["meta"]) == (-2.5, 1, {"k": 1})

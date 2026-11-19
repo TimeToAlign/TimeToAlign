@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 from timetoshare import validate
 
+from tests.helpers import bare, filed
 from timetoalign.alignment import AlignmentBundle
 from timetoalign.core import Coordinate, FlowControlElement, TimeUnit
 from timetoalign.loader.alignment import ParangonadaLoader
@@ -161,18 +162,18 @@ class TestDeterminism:
     """Minted ids depend on the manifest only, never on the process history."""
 
     def test_reference_ids(self) -> None:
-        assert _ids(_reference().to_dict()) == REFERENCE_IDS
+        assert _ids(bare(_reference().to_dict())) == REFERENCE_IDS
 
     def test_unrelated_construction_first_changes_nothing(self) -> None:
-        reference = _reference().to_dict()
+        reference = bare(_reference().to_dict())
         for _ in range(5):
             ContinuousLogicalTimeline(length=4)
         for _ in range(4):
             LinearMap(scalar=3)
-        assert _reference().to_dict() == reference
+        assert bare(_reference().to_dict()) == reference
 
     def test_reverse_insertion_order_mints_the_same_ids(self) -> None:
-        assert _ids(_reference(reverse=True).to_dict()) == REFERENCE_IDS
+        assert _ids(bare(_reference(reverse=True).to_dict())) == REFERENCE_IDS
 
     def test_smallest_free_number(self) -> None:
         root = ContinuousLogicalTimeline(length=32)
@@ -229,7 +230,7 @@ class TestGivenIds:
     """Whatever id is given is the id, through a JSON round trip."""
 
     def test_given_ids_are_kept(self) -> None:
-        assert _ids(_given_manifest().to_dict()) == {
+        assert _ids(bare(_given_manifest().to_dict())) == {
             "timeline": "performance",
             "children": {"Bass Kick", "score:clt_7"},
             "regions": {"a"},
@@ -241,10 +242,10 @@ class TestGivenIds:
 
     @pytest.mark.parametrize("build", [_given_manifest, _reference])
     def test_round_trip_is_text_identical(self, build: Callable[[], Timeline]) -> None:
-        payload = build().to_dict()
+        payload = bare(build().to_dict())
         text = json.dumps(payload)
-        restored = Timeline.from_dict(json.loads(text))
-        assert json.dumps(restored.to_dict()) == text
+        restored = Timeline.from_dict(filed(json.loads(text)))
+        assert json.dumps(bare(restored.to_dict())) == text
 
     @pytest.mark.parametrize("refused", ["", "a\tb", "a\nb"])
     @pytest.mark.parametrize(
@@ -386,9 +387,9 @@ class TestFreeIds:
     """Slashes, spaces, colons and URIs are ids, through a manifest round trip."""
 
     def test_every_kind_keeps_its_free_id(self) -> None:
-        payload = _free_bundle().to_dict()
+        payload = bare(_free_bundle().to_dict())
         text = json.dumps(payload)
-        read = AlignmentBundle.from_dict(json.loads(text))
+        read = AlignmentBundle.from_dict(filed(json.loads(text)))
 
         assert read.id == "https://example.org/op35"
         score = read.timelines["score/1"]
@@ -409,8 +410,8 @@ class TestFreeIds:
             "score/1",
         ]
         assert payload["measure_maps"][0]["id"] == "https://example.org/op35/bars"
-        assert read.to_dict() == payload
-        assert json.dumps(read.to_dict()) == text
+        assert bare(read.to_dict()) == payload
+        assert json.dumps(bare(read.to_dict())) == text
 
 
 def _root_pair(
@@ -564,9 +565,9 @@ def test_an_id_held_twice_in_a_manifest_is_refused(
     element_id, first, second = holders
     for root in data["timelines"]:
         alone = {"timetoshare": "0.2.0", "timelines": [root]}
-        assert Timeline.from_dict(alone).id == root["id"]
+        assert Timeline.from_dict(filed(alone)).id == root["id"]
     with pytest.raises(ValueError) as refused:
-        AlignmentBundle.from_dict(data)
+        AlignmentBundle.from_dict(filed(data))
     assert str(refused.value) == (
         f"the id '{element_id}' is held twice in the manifest: by {first} and by "
         f"{second}"
@@ -813,7 +814,7 @@ class TestGroupBehindABundle:
         assert newcomer.list_regions() == ["region_2"]
         assert bundle.timelines["d"].list_regions() == ["region_1"]
         assert bundle.timelines["c"] is newcomer
-        data = bundle.to_dict(minimal=False)
+        data = bare(bundle.to_dict(minimal=False))
         assert [timeline["id"] for timeline in data["timelines"]] == [
             "a",
             "b",
@@ -823,7 +824,7 @@ class TestGroupBehindABundle:
         assert data["groups"] == [
             {"id": "group_1", "name": None, "meta": {}, "members": ["a", "b", "c"]}
         ]
-        validate(data)
+        validate(filed(data))
 
     def test_an_empty_group_refuses_a_given_id_held_in_the_bundle_atomically(
         self,
@@ -847,12 +848,12 @@ class TestGroupBehindABundle:
         assert newcomer.list_regions() == ["region_2"]
         assert bundle.timelines["d"].list_regions() == ["region_1"]
         assert bundle.timelines["c"] is newcomer
-        data = bundle.to_dict(minimal=False)
+        data = bare(bundle.to_dict(minimal=False))
         assert [timeline["id"] for timeline in data["timelines"]] == ["c", "d"]
         assert data["groups"] == [
             {"id": "group_1", "name": None, "meta": {}, "members": ["c"]}
         ]
-        validate(data)
+        validate(filed(data))
 
     def test_an_unpickled_bundle_holds_its_empty_group_again(self) -> None:
         bundle, _group, newcomer = _empty_group_behind_a_bundle("r")
@@ -908,7 +909,7 @@ def test_a_written_jump_to_takes_an_id_of_the_whole_manifest() -> None:
             (element["id"], element.get("target"))
             for element in timeline["flow_control"]
         ]
-        for timeline in bundle.to_dict()["timelines"]
+        for timeline in bare(bundle.to_dict())["timelines"]
     }
     assert written == {
         "perf": [("jump_to_1", None), ("ds-perf", "jump_to_1")],
@@ -973,7 +974,7 @@ class TestNestedMaps:
             LinearMap(scalar=3, source_unit="quarters", target_unit="seconds")
         )
         timeline.add_conversion_map(_seconds_to_minutes())
-        written = timeline.to_dict()["timelines"][0]["conversion_maps"]
+        written = bare(timeline.to_dict())["timelines"][0]["conversion_maps"]
         assert [_map_ids(cmap) for cmap in written] == [
             ("cmap_1", ["lmap_3", "lmap_2"]),
             "lmap_1",
@@ -988,7 +989,7 @@ class TestNestedMaps:
         timeline = ContinuousLogicalTimeline(length=4, unit="whole_notes")
         timeline.add_conversion_map(ConstantMap(value="a", source_unit="whole_notes"))
         timeline.add_conversion_map(combination)
-        payload = timeline.to_dict()
+        payload = bare(timeline.to_dict())
         assert [
             _map_ids(cmap) for cmap in payload["timelines"][0]["conversion_maps"]
         ] == [
@@ -996,7 +997,10 @@ class TestNestedMaps:
             ("cmap_5", [("cmap_3", ["lmap_1", "cmap_2"]), "cmap_4"]),
         ]
         text = json.dumps(payload)
-        assert json.dumps(Timeline.from_dict(json.loads(text)).to_dict()) == text
+        assert (
+            json.dumps(bare(Timeline.from_dict(filed(json.loads(text))).to_dict()))
+            == text
+        )
 
     def test_the_constant_maps_of_an_interval_map_with_an_end(self) -> None:
         cmap = IntervalToConstantMap(
@@ -1049,7 +1053,7 @@ class TestNestedMaps:
         assert twice.id == "lmap_1"
 
     def test_reading_refuses_a_nested_id_repeated(self) -> None:
-        payload = ContinuousLogicalTimeline(length=16, uid="piece").to_dict()
+        payload = bare(ContinuousLogicalTimeline(length=16, uid="piece").to_dict())
         payload["timelines"][0]["conversion_maps"] = [
             {
                 "type": "ChainMap",
@@ -1064,7 +1068,7 @@ class TestNestedMaps:
             ValueError,
             match="its id 'lmap_1' is already held by conversion map 'lmap_1'",
         ):
-            Timeline.from_dict(payload)
+            Timeline.from_dict(filed(payload))
 
 
 # endregion
@@ -1209,7 +1213,7 @@ class TestLoaderParity:
     def test_every_element_has_a_unique_valid_id(
         self, load: Callable[[], Timeline]
     ) -> None:
-        ids = list(_elements(load().to_dict(minimal=False)["timelines"][0]))
+        ids = list(_elements(bare(load().to_dict(minimal=False))["timelines"][0]))
         assert ids
         assert len(ids) == len(set(ids))
         for element_id in ids:

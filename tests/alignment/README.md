@@ -838,7 +838,7 @@ from every assertion here.
    permutation of its members. A key the library does not know is not
    refused: it is kept and written back.
 6. **Styling is carried, never read.** A bundle file's `graphical` may hold
-   `styles` and `statements` beside `order`; they belong to the bundle, not
+   `styles` and `rules` beside `order`; they belong to the bundle, not
    to any of its groups, and the library keeps them on
    `AlignmentBundle.styling` without interpreting them. A styling block of a
    named style, a statement setting it by name and one setting a declaration

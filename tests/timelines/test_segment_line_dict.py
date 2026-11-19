@@ -11,6 +11,7 @@ from typing import Any
 
 import pytest
 
+from tests.helpers import bare, filed
 from timetoalign.timelines import SegmentLine, Timeline
 from timetoalign.timelines.types import (
     ContinuousLogicalTimeline,
@@ -101,7 +102,7 @@ def _root(data: dict[str, Any]) -> dict[str, Any]:
 def test_plain_timeline_writes_false_and_no_class() -> None:
     """A plain timeline writes the flag false; no timeline object has a class."""
     data = _root(
-        ContinuousLogicalTimeline(length=4, uid="score").to_dict(minimal=False)
+        bare(ContinuousLogicalTimeline(length=4, uid="score").to_dict(minimal=False))
     )
 
     assert "class" not in data
@@ -110,7 +111,7 @@ def test_plain_timeline_writes_false_and_no_class() -> None:
 
 def test_flat_segment_line_dict_is_exact() -> None:
     """The flag, and the segments as children, which are never locked."""
-    assert _flat().to_dict(minimal=False) == _manifest(
+    assert bare(_flat().to_dict(minimal=False)) == _manifest(
         _object(
             "line",
             500,
@@ -141,7 +142,7 @@ def test_nested_segment_line_dict_is_exact() -> None:
         "page_2", 120, True, [accolade("accolade_3", 120, 0)], locked=True, offset=250
     )
 
-    assert _nested().to_dict(minimal=False) == _manifest(
+    assert bare(_nested().to_dict(minimal=False)) == _manifest(
         _object("edition", 370, True, [page_1, page_2], locked=False)
     )
 
@@ -162,23 +163,23 @@ def test_nested_segment_line_dict_is_exact() -> None:
 )
 def test_round_trip_rebuilds_the_line_type(build: Any, expected_type: type) -> None:
     """The flag and the children's class rebuild the parameterized type."""
-    data = build().to_dict()
+    data = bare(build().to_dict())
 
-    restored = Timeline.from_dict(data)
+    restored = Timeline.from_dict(filed(data))
 
     assert type(restored) is expected_type
-    assert restored.to_dict() == data
+    assert bare(restored.to_dict()) == data
 
 
 def test_children_out_of_order_rebuild_in_offset_order() -> None:
     """A dictionary listing segments out of order reads as the same line."""
-    data = _flat().to_dict()
+    data = bare(_flat().to_dict())
     _root(data)["children"].reverse()
 
-    restored = Timeline.from_dict(data)
+    restored = Timeline.from_dict(filed(data))
 
     assert restored.list_segments() == ["first", "second"]
-    assert restored.to_dict() == _flat().to_dict()
+    assert bare(restored.to_dict()) == bare(_flat().to_dict())
 
 
 def test_segments_rebuild_in_offset_order_not_key_order() -> None:
@@ -191,7 +192,7 @@ def test_segments_rebuild_in_offset_order_not_key_order() -> None:
     line = SegmentLine[DiscreteGraphicalTimeline](length=0, uid="line")
     for _ in range(11):
         line.append_segment(DiscreteGraphicalTimeline(length=10))
-    data = line.to_dict()
+    data = bare(line.to_dict())
     _root(data)["children"].sort(key=lambda child: child["id"])
     assert [child["id"] for child in _root(data)["children"]][:4] == [
         "dgt_1",
@@ -200,19 +201,21 @@ def test_segments_rebuild_in_offset_order_not_key_order() -> None:
         "dgt_2",
     ]
 
-    restored = Timeline.from_dict(data)
+    restored = Timeline.from_dict(filed(data))
 
     assert restored.list_segments() == [f"dgt_{n}" for n in range(1, 12)]
-    assert restored.to_dict() == line.to_dict()
+    assert bare(restored.to_dict()) == bare(line.to_dict())
 
 
 def test_empty_parameterized_line_round_trips() -> None:
     """A line with no segments rebuilds as a line of its unit's class."""
     line = SegmentLine[ContinuousLogicalTimeline](length=0, uid="empty")
-    data = line.to_dict()
+    data = bare(line.to_dict())
 
     assert _root(data)["is_segment_line"] is True
-    assert type(Timeline.from_dict(data)) is SegmentLine[ContinuousLogicalTimeline]
+    assert (
+        type(Timeline.from_dict(filed(data))) is SegmentLine[ContinuousLogicalTimeline]
+    )
 
 
 # endregion
@@ -222,7 +225,7 @@ def test_empty_parameterized_line_round_trips() -> None:
 
 
 def _refused(change: Any) -> dict[str, Any]:
-    data = copy.deepcopy(_flat().to_dict())
+    data = copy.deepcopy(bare(_flat().to_dict()))
     change(_root(data))
     return data
 
@@ -274,18 +277,18 @@ def _mixed_classes(data: dict[str, Any]) -> None:
 def test_from_dict_refuses(change: Any, message: str) -> None:
     """Each malformed segment line is refused with a ValueError naming it."""
     with pytest.raises(ValueError, match=message):
-        Timeline.from_dict(_refused(change))
+        Timeline.from_dict(filed(_refused(change)))
 
 
 def test_a_stale_class_key_is_not_read() -> None:
     """A ``class`` key names nothing: the unit and the flag decide the type."""
-    data = _flat().to_dict()
+    data = bare(_flat().to_dict())
     _root(data)["class"] = "ContinuousLogicalTimeline"
 
-    restored = Timeline.from_dict(data)
+    restored = Timeline.from_dict(filed(data))
 
     assert type(restored) is SegmentLine[DiscreteGraphicalTimeline]
-    assert restored.to_dict() == data
+    assert bare(restored.to_dict()) == data
 
 
 # endregion
@@ -296,7 +299,7 @@ def test_a_stale_class_key_is_not_read() -> None:
 
 def test_bare_untyped_segment_line_reads_as_a_line_of_its_unit() -> None:
     """A never-typed SegmentLine() writes its unit and reads as a typed line."""
-    data = SegmentLine(length=0, unit="pixels", uid="bare").to_dict(minimal=True)
+    data = bare(SegmentLine(length=0, unit="pixels", uid="bare").to_dict(minimal=True))
 
     assert data == {
         "timetoshare": "0.2.0",
@@ -304,7 +307,9 @@ def test_bare_untyped_segment_line_reads_as_a_line_of_its_unit() -> None:
             {"id": "bare", "unit": "pixels", "length": 0, "is_segment_line": True}
         ],
     }
-    assert type(Timeline.from_dict(data)) is SegmentLine[DiscreteGraphicalTimeline]
+    assert (
+        type(Timeline.from_dict(filed(data))) is SegmentLine[DiscreteGraphicalTimeline]
+    )
 
 
 def test_empty_nested_segment_line_reads_one_level_shallower() -> None:
@@ -316,7 +321,7 @@ def test_empty_nested_segment_line_reads_one_level_shallower() -> None:
     restored = Timeline.from_dict(line.to_dict())
 
     assert type(restored) is SegmentLine[DiscreteGraphicalTimeline]
-    assert restored.to_dict() == line.to_dict()
+    assert bare(restored.to_dict()) == bare(line.to_dict())
 
 
 # endregion

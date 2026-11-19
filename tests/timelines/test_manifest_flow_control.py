@@ -14,6 +14,7 @@ from typing import Any
 
 import pytest
 
+from tests.helpers import bare, filed
 from timetoalign import Ms3Loader
 from timetoalign.core import (
     ActivationCondition,
@@ -87,19 +88,23 @@ def _complete(element: dict[str, Any]) -> dict[str, Any]:
 @pytest.mark.parametrize("form", ["minimal", "complete"])
 def test_the_literal_round_trips(form: str) -> None:
     flow = MINIMAL_FLOW if form == "minimal" else [_complete(e) for e in MINIMAL_FLOW]
-    timeline = Timeline.from_dict(_manifest(copy.deepcopy(flow)))
-    written = timeline.to_dict(minimal=form == "minimal")["timelines"][0][
+    timeline = Timeline.from_dict(filed(_manifest(copy.deepcopy(flow))))
+    written = bare(timeline.to_dict(minimal=form == "minimal"))["timelines"][0][
         "flow_control"
     ]
     assert written == flow
-    other = timeline.to_dict(minimal=form != "minimal")["timelines"][0]["flow_control"]
+    other = bare(timeline.to_dict(minimal=form != "minimal"))["timelines"][0][
+        "flow_control"
+    ]
     assert other == (
         [_complete(e) for e in MINIMAL_FLOW] if form == "minimal" else MINIMAL_FLOW
     )
 
 
 def test_reading_builds_the_library_s_elements() -> None:
-    registry = Timeline.from_dict(_manifest(copy.deepcopy(MINIMAL_FLOW))).flow_control
+    registry = Timeline.from_dict(
+        filed(_manifest(copy.deepcopy(MINIMAL_FLOW)))
+    ).flow_control
 
     assert [
         (b.id, b.control_type, b.position, b.name, b.label) for b in registry.breaks
@@ -138,7 +143,7 @@ def test_a_jump_without_target_lands_at_the_start() -> None:
         _element("back", "jump_from", "repeat_end", 8),
         _element("dc", "jump_from", "da_capo", 16),
     ]
-    registry = Timeline.from_dict(_manifest(flow)).flow_control
+    registry = Timeline.from_dict(filed(_manifest(flow))).flow_control
     assert [(j.to_coordinate, j.target) for j in registry.jumps] == [
         (_q(0), None),
         (_q(0), None),
@@ -154,7 +159,7 @@ def test_a_jump_landing_elsewhere_than_its_target_is_refused() -> None:
         Jump(_q(16), _q(6), control_type=E.dal_segno, target=segno.id, id="ds")
     )
     with pytest.raises(ValueError) as refused:
-        timeline.to_dict()
+        bare(timeline.to_dict())
     assert (
         str(refused.value) == "jump 'ds' lands at 6, but its target 'segno' lies at 4"
     )
@@ -176,7 +181,7 @@ def test_a_destination_without_a_marker_gets_one() -> None:
             Jump(_q(at), _q(to), control_type=control_type, id=jump_id)
         )
 
-    flow = timeline.to_dict(minimal=True)["timelines"][0]["flow_control"]
+    flow = bare(timeline.to_dict(minimal=True))["timelines"][0]["flow_control"]
     landings = [
         (element["id"], element["manifestation"], element["coordinate"])
         for element in flow
@@ -207,14 +212,14 @@ def test_a_destination_without_a_marker_gets_one() -> None:
     assert [(j.id, j.to_position) for j in read.flow_control.jumps] == [
         (j.id, j.to_position) for j in timeline.flow_control.jumps
     ]
-    assert read.to_dict() == Timeline.from_dict(read.to_dict()).to_dict()
+    assert bare(read.to_dict()) == bare(Timeline.from_dict(read.to_dict()).to_dict())
 
 
 def test_a_da_capo_landing_elsewhere_than_the_start_is_refused() -> None:
     timeline = ContinuousLogicalTimeline(length=F(32), uid="score")
     timeline.flow_control.add_jump(Jump(_q(16), _q(3), control_type=E.da_capo, id="dc"))
     with pytest.raises(ValueError) as refused:
-        timeline.to_dict()
+        bare(timeline.to_dict())
     assert (
         str(refused.value)
         == "jump 'dc' (da_capo) lands at 3, not at the timeline's start"
@@ -318,7 +323,7 @@ def test_reading_refuses_what_the_format_does_not_define(
     flow: list[dict[str, Any]], message: str
 ) -> None:
     with pytest.raises(ValueError) as refused:
-        Timeline.from_dict(_manifest(flow))
+        Timeline.from_dict(filed(_manifest(flow)))
     assert str(refused.value) == message
 
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import pyarrow as pa
+import timetoshare
 
 from timetoalign.core import (
     NumberType,
@@ -50,3 +51,39 @@ def coordinate_column(
 ) -> pa.StructArray:
     """Encode positions as a coordinate column under one declared type."""
     return build_number_struct_array(values, number_type=number_type)
+
+
+def filed(value: Any) -> Any:
+    """Return a manifest written with bare IDs in the file form, ``#`` + the ID.
+
+    A test writes a manifest as the library holds it, with bare IDs; a
+    manifest dict, which ``from_dict`` reads, is in the file form. Only a
+    whole manifest (a dict carrying the ``timetoshare`` marker) is
+    converted; any other value is returned as it is.
+    """
+    if isinstance(value, dict) and "timetoshare" in value:
+        return timetoshare.with_file_ids(value)
+    return value
+
+
+def bare(value: Any) -> Any:
+    """Return a manifest in the file form with bare IDs, as the tests write it.
+
+    The inverse of :func:`filed`, for a whole manifest only: the dict of one
+    object inside a manifest is bare already, so handing one here is a
+    mistake of the test and raises.
+    """
+    if not (isinstance(value, dict) and "timetoshare" in value):
+        raise TypeError("bare() takes a whole manifest, a dict with 'timetoshare'")
+    return timetoshare.with_bare_ids(value)
+
+
+def reading(reader: Any) -> Any:
+    """Return *reader* taking a manifest written with bare IDs (:func:`filed`)."""
+
+    def read(data: Any, **selection: Any) -> Any:
+        return reader(filed(data), **selection)
+
+    read.__name__ = reader.__name__
+    read.__qualname__ = reader.__qualname__
+    return read

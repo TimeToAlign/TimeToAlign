@@ -437,7 +437,9 @@ read_back.remove_scheme("mb_beethoven_opus").schemes
 # whenever it writes one, and raises the first problem found, its location
 # in the manifest first. Here the Scherzo's slot names a region `mvt_2` that
 # the recording does not hold: a bundle holding that link refuses to write
-# its manifest, and a manifest stating it is refused when read.
+# its manifest, and a manifest stating it is refused when read. A slot on
+# its own writes its ids bare; inside a manifest every id is written `#`
+# followed by the id, so the edited manifest names `#mvt_2`.
 
 # %%
 trial = tta.AlignmentBundle.from_dict(manifest)
@@ -452,7 +454,7 @@ trial.replace_link(
     reading.with_parts("has_part", [reading.parts[0], ghost, *reading.parts[2:]]),
 )
 edited = copy.deepcopy(manifest)
-edited["links"][0]["parts"][1] = ghost.to_dict()
+edited["links"][0]["parts"][1] = {**ghost.to_dict(), "represented_by": ["#mvt_2"]}
 for operation in (trial.to_dict, lambda: tta.AlignmentBundle.from_dict(edited)):
     try:
         operation()

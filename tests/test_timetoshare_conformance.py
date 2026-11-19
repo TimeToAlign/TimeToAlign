@@ -29,6 +29,7 @@ from timetoshare import (
 )
 from timetoshare.manifest import UNIT_NUMBER_TYPES
 
+from tests.helpers import filed
 from timetoalign import (
     AlignmentBundle,
     Assertion,
@@ -504,19 +505,19 @@ def test_a_bundle_reads_every_fixture(fixture: str) -> None:
 STATEMENT_RULES = {
     "address_facet_with_part",
     "address_facet_without_id",
-    "statement_select_empty_addresses",
-    "statement_select_inside_unknown_element",
-    "statement_select_projection",
-    "statement_select_unknown_element",
-    "statement_set_content_not_string",
-    "statement_set_dasharray_malformed",
-    "statement_set_max_width_zero",
-    "statement_set_neither_object_nor_string",
-    "statement_set_opacity_above_one",
-    "statement_set_shadow_lower_case",
-    "statement_set_stroke_lower_case",
+    "rule_select_empty_addresses",
+    "rule_select_inside_unknown_element",
+    "rule_select_projection",
+    "rule_select_unknown_element",
+    "rule_set_content_not_string",
+    "rule_set_dasharray_malformed",
+    "rule_set_max_width_zero",
+    "rule_set_neither_object_nor_string",
+    "rule_set_opacity_above_one",
+    "rule_set_shadow_lower_case",
+    "rule_set_stroke_lower_case",
 }
-"""Rejection cases about ``graphical.statements``, which the library keeps unread."""
+"""Rejection cases about ``graphical.rules``, which the library keeps unread."""
 
 BAND_ORDER_RULES = {
     "band_order_missing_band",
@@ -562,8 +563,8 @@ def test_the_library_refuses_every_rejection_case(case: str) -> None:
             reader(manifest)
 
 
-def test_statement_band_order_and_timestamp_rules_are_the_only_unread_cases() -> None:
-    """The library keeps statements, band orders and named timestamps unchecked.
+def test_rule_band_order_and_timestamp_cases_are_the_only_unread_cases() -> None:
+    """The library keeps rules, band orders and named timestamps unchecked.
 
     So it accepts these cases. A band order is written back unchanged with its
     timeline, the named timestamps unchanged.
@@ -617,13 +618,13 @@ def _quarters_manifest(rows: list[dict[str, Any]]) -> dict[str, Any]:
     result["timelines"][0]["conversion_maps"] = [
         {
             "type": "MeasureRecordMap",
-            "id": "record",
+            "id": "#record",
             "source_unit": "quarters",
             "target_unit": None,
-            "measure_map": "bars",
+            "measure_map": "#bars",
         }
     ]
-    result["measure_maps"] = [{"id": "bars", "rows": rows}]
+    result["measure_maps"] = [{"id": "#bars", "rows": rows}]
     return result
 
 
@@ -723,13 +724,21 @@ def test_both_readers_refuse_an_integer_no_double_holds() -> None:
 def _beyond(
     unit: str, length: Any, children: list[dict[str, Any]], **keys: Any
 ) -> dict[str, Any]:
-    """A manifest of one root holding *children*."""
-    return {
-        "timetoshare": "0.2.0",
-        "timelines": [
-            {"id": "r", "unit": unit, "length": length, "children": children, **keys}
-        ],
-    }
+    """A manifest file of one root holding *children*, written with bare IDs."""
+    return filed(
+        {
+            "timetoshare": "0.2.0",
+            "timelines": [
+                {
+                    "id": "r",
+                    "unit": unit,
+                    "length": length,
+                    "children": children,
+                    **keys,
+                }
+            ],
+        }
+    )
 
 
 @pytest.mark.parametrize(

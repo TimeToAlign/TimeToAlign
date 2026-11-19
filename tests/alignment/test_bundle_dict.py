@@ -15,6 +15,7 @@ from typing import Any
 
 import pytest
 
+from tests.helpers import bare, filed
 from timetoalign.alignment import AlignmentBundle
 from timetoalign.core import SupportPolicy
 from timetoalign.loader import RekordboxLoader
@@ -77,9 +78,9 @@ def _bundle_answers(bundle: AlignmentBundle) -> dict[str, Any]:
 
 def _assert_round_trip(bundle: AlignmentBundle, **flags: bool) -> AlignmentBundle:
     """Rebuild a bundle from its dictionary and require identical answers."""
-    data = bundle.to_dict(**flags)
-    rebuilt = AlignmentBundle.from_dict(data)
-    assert rebuilt.to_dict(**flags) == data
+    data = bare(bundle.to_dict(**flags))
+    rebuilt = AlignmentBundle.from_dict(filed(data))
+    assert bare(rebuilt.to_dict(**flags)) == data
     assert _bundle_answers(rebuilt) == _bundle_answers(bundle)
     return rebuilt
 
@@ -151,12 +152,12 @@ def test_bundle_dict_is_exact() -> None:
     timelines = {timeline.id: timeline for timeline in bundle.timelines.values()}
 
     assert bundle.id == "bundle_1"
-    assert bundle.to_dict(minimal=False) == {
+    assert bare(bundle.to_dict(minimal=False)) == {
         "timetoshare": "0.2.0",
         "name": "study",
         "meta": {"corpus": "test"},
         "timelines": [
-            timelines[timeline_id].to_dict(minimal=False)["timelines"][0]
+            bare(timelines[timeline_id].to_dict(minimal=False))["timelines"][0]
             for timeline_id in ["audio", "image", "midi", "notes", "score"]
         ],
         "groups": [
@@ -179,11 +180,11 @@ def test_bundle_dict_is_exact() -> None:
         "graphical": {
             "order": {"group_1": ["score", "audio"], "group_2": ["holes", "midi"]},
             "styles": {},
-            "statements": [],
+            "rules": [],
             "timestamps": [],
         },
     }
-    assert bundle.to_dict(minimal=True)["graphical"] == {
+    assert bare(bundle.to_dict(minimal=True))["graphical"] == {
         "order": {"group_1": ["score", "audio"], "group_2": ["holes", "midi"]}
     }
 
@@ -192,14 +193,14 @@ def test_given_bundle_id_is_written() -> None:
     """A given id is the manifest's; a minted one is never written."""
     bundle = AlignmentBundle(id="op35")
 
-    assert bundle.to_dict(minimal=True) == {
+    assert bare(bundle.to_dict(minimal=True)) == {
         "timetoshare": "0.2.0",
         "id": "op35",
         "timelines": [],
     }
     rebuilt = AlignmentBundle.from_dict(_direct_bundle().to_dict())
     assert rebuilt.id == "bundle_1"
-    assert "id" not in rebuilt.to_dict()
+    assert "id" not in bare(rebuilt.to_dict())
 
 
 def test_direct_bundle_round_trip() -> None:
@@ -237,7 +238,7 @@ def test_child_in_one_group_and_root_in_another() -> None:
         ContinuousPhysicalTimeline(length=30.0, uid="audio"), grouped_with="image"
     )
 
-    data = bundle.to_dict()
+    data = bare(bundle.to_dict())
     _assert_round_trip(bundle)
 
     assert [timeline["id"] for timeline in data["timelines"]] == ["audio", "image"]
@@ -249,7 +250,7 @@ def test_child_in_one_group_and_root_in_another() -> None:
 
 def test_no_claims_are_written() -> None:
     """The dictionary has no claim key, whatever claims the bundle holds."""
-    data = _direct_bundle().to_dict(minimal=False)
+    data = bare(_direct_bundle().to_dict(minimal=False))
 
     assert set(data) == {
         "timetoshare",
@@ -266,59 +267,59 @@ def test_no_claims_are_written() -> None:
 
 def test_missing_graphical_reads_members_order() -> None:
     """A group without an order entry joins in ``members`` order."""
-    data = _direct_bundle().to_dict()
+    data = bare(_direct_bundle().to_dict())
     del data["graphical"]["order"]["group_1"]
 
-    rebuilt = AlignmentBundle.from_dict(data)
+    rebuilt = AlignmentBundle.from_dict(filed(data))
 
     assert rebuilt.groups["group_1"].timeline_ids == ["audio", "score"]
     assert rebuilt.groups["group_2"].timeline_ids == ["holes", "midi"]
 
 
 def test_styling_round_trips_unchanged() -> None:
-    """The bundle's ``styles`` and ``statements`` survive beside every order."""
-    data = _direct_bundle().to_dict(minimal=False)
+    """The bundle's ``styles`` and ``rules`` survive beside every order."""
+    data = bare(_direct_bundle().to_dict(minimal=False))
     data["graphical"].update(copy.deepcopy(STYLING))
 
-    rebuilt = AlignmentBundle.from_dict(data)
+    rebuilt = AlignmentBundle.from_dict(filed(data))
 
     assert rebuilt.styling == STYLING
-    assert rebuilt.to_dict(minimal=False) == data
-    assert rebuilt.to_dict(minimal=False)["graphical"] == {
+    assert bare(rebuilt.to_dict(minimal=False)) == data
+    assert bare(rebuilt.to_dict(minimal=False))["graphical"] == {
         "order": {"group_1": ["score", "audio"], "group_2": ["holes", "midi"]},
         **STYLING,
         "timestamps": [],
     }
     assert all(group.styling == {} for group in rebuilt.groups.values())
     assert rebuilt.styling["styles"] is not data["graphical"]["styles"]
-    assert rebuilt.styling["statements"] is not data["graphical"]["statements"]
-    data["graphical"]["statements"].clear()
+    assert rebuilt.styling["rules"] is not data["graphical"]["rules"]
+    data["graphical"]["rules"].clear()
     assert rebuilt.styling == STYLING
 
 
 def test_styling_without_order_reads_members_order() -> None:
     """A ``graphical`` holding only styling joins every group in ``members`` order."""
-    data = _direct_bundle().to_dict()
-    data["graphical"] = {"statements": STYLING["statements"]}
+    data = bare(_direct_bundle().to_dict())
+    data["graphical"] = {"rules": STYLING["rules"]}
 
-    rebuilt = AlignmentBundle.from_dict(data)
+    rebuilt = AlignmentBundle.from_dict(filed(data))
 
     assert rebuilt.groups["group_1"].timeline_ids == ["audio", "score"]
-    assert rebuilt.to_dict(minimal=True)["graphical"] == {
+    assert bare(rebuilt.to_dict(minimal=True))["graphical"] == {
         "order": {"group_1": ["audio", "score"], "group_2": ["holes", "midi"]},
-        "statements": STYLING["statements"],
+        "rules": STYLING["rules"],
     }
 
 
 def test_unknown_graphical_key_is_kept() -> None:
     """A ``graphical`` key other than order, styles and statements is kept."""
-    data = _direct_bundle().to_dict()
+    data = bare(_direct_bundle().to_dict())
     data["graphical"].update(STYLING, frame={"inset": 4})
 
-    rebuilt = AlignmentBundle.from_dict(data)
+    rebuilt = AlignmentBundle.from_dict(filed(data))
 
     assert rebuilt.styling == {**STYLING, "frame": {"inset": 4}}
-    assert rebuilt.to_dict() == data
+    assert bare(rebuilt.to_dict()) == data
 
 
 @pytest.mark.slow
@@ -351,7 +352,7 @@ def test_listen_here_bundle_round_trip(tmp_path: Path) -> None:
 
 def _malformed(change: Callable[[dict[str, Any]], Any]) -> dict[str, Any]:
     """A valid bundle dictionary with one change applied."""
-    data = _direct_bundle().to_dict()
+    data = bare(_direct_bundle().to_dict())
     change(data)
     return data
 
@@ -361,7 +362,10 @@ def _malformed(change: Callable[[dict[str, Any]], Any]) -> dict[str, Any]:
     [
         (lambda d: d.pop("timetoshare"), "not a TimeToShare manifest"),
         (lambda d: d.pop("timelines"), r"lacks the key\(s\) \['timelines'\]"),
-        (lambda d: d.update(id=""), "Invalid id ''"),
+        (
+            lambda d: d.update(id=""),
+            "#/id: '#' is not written as an ID: nothing follows the '#'",
+        ),
         (
             lambda d: d["timelines"].append(d["timelines"][0]),
             "the id 'audio' is held twice in the manifest: by timeline 'audio' and "
@@ -428,7 +432,7 @@ def test_from_dict_refuses_malformed_input(
     data = _malformed(change)
 
     with pytest.raises(ValueError, match=message):
-        AlignmentBundle.from_dict(data)
+        AlignmentBundle.from_dict(filed(data))
 
 
 # endregion
@@ -552,7 +556,7 @@ def _shared_member_bundle() -> AlignmentBundle:
 def test_groups_sharing_a_member_round_trip(minimal: bool) -> None:
     """A member of two groups is written in both and read back as one object."""
     bundle = _shared_member_bundle()
-    data = bundle.to_dict(minimal=minimal)
+    data = bare(bundle.to_dict(minimal=minimal))
 
     assert [timeline["id"] for timeline in data["timelines"]] == ["a", "b", "t", "u"]
     assert [(group["id"], group["members"]) for group in data["groups"]] == [
@@ -574,7 +578,7 @@ def test_groups_sharing_a_member_round_trip(minimal: bool) -> None:
 def test_given_id_collision_raises_and_leaves_the_bundle() -> None:
     """A given id held by another timeline of the bundle is refused."""
     bundle = _direct_bundle()
-    before = bundle.to_dict()
+    before = bare(bundle.to_dict())
 
     with pytest.raises(ValueError) as refused:
         bundle.add_timeline(DiscreteGraphicalTimeline(length=10, uid="holes"))
@@ -582,7 +586,7 @@ def test_given_id_collision_raises_and_leaves_the_bundle() -> None:
         "timeline 'holes' cannot join bundle 'bundle_1': its id 'holes' is already "
         "held by timeline 'holes'"
     )
-    assert bundle.to_dict() == before
+    assert bare(bundle.to_dict()) == before
 
 
 def test_descendant_id_collision_raises() -> None:
@@ -634,7 +638,7 @@ def test_timeline_id_equal_to_a_given_group_id_is_refused() -> None:
     bundle.add_group(
         TimelineGroup(id="g", timelines=[ContinuousLogicalTimeline(length=4)])
     )
-    before = bundle.to_dict()
+    before = bare(bundle.to_dict())
 
     with pytest.raises(ValueError) as refused:
         bundle.add_timeline(ContinuousPhysicalTimeline(length=1.0, uid="g"))
@@ -642,7 +646,7 @@ def test_timeline_id_equal_to_a_given_group_id_is_refused() -> None:
         "timeline 'g' cannot join bundle 'bundle_1': its id 'g' is already held by "
         "group 'g'"
     )
-    assert bundle.to_dict() == before
+    assert bare(bundle.to_dict()) == before
 
 
 def test_minted_group_id_taken_by_a_timeline_is_minted_again() -> None:
@@ -701,7 +705,7 @@ def test_parent_and_child_cannot_share_a_group(grouped: bool) -> None:
     image.add_child(holes, offset=1000)
     bundle = AlignmentBundle()
     bundle.add_timeline(image, as_group="page" if grouped else None)
-    before = bundle.to_dict()
+    before = bare(bundle.to_dict())
     message = (
         "Timeline 'holes' cannot join group 'group_1': it is nested with member "
         "'image'"
@@ -711,7 +715,7 @@ def test_parent_and_child_cannot_share_a_group(grouped: bool) -> None:
 
     with pytest.raises(ValueError, match=message):
         bundle.add_timeline(holes, grouped_with="image")
-    assert bundle.to_dict() == before
+    assert bare(bundle.to_dict()) == before
 
 
 def test_from_bundles_re_mints_minted_group_ids() -> None:
@@ -731,10 +735,10 @@ def test_from_bundles_re_mints_minted_group_ids() -> None:
 @pytest.mark.parametrize("locked", [False, True], ids=["unlocked", "locked"])
 def test_from_bundles_keeps_each_members_lock(locked: bool) -> None:
     """Merging locks no member and leaves its source bundles as they were."""
-    source = AlignmentBundle.from_dict(_group_manifest(locked))
+    source = AlignmentBundle.from_dict(filed(_group_manifest(locked)))
     other = AlignmentBundle()
     other.add_timeline(ContinuousLogicalTimeline(length=4, uid="c"), as_group="y")
-    before = source.to_dict(minimal=False)
+    before = bare(source.to_dict(minimal=False))
 
     merged = AlignmentBundle.from_bundles([source, other])
 
@@ -750,14 +754,14 @@ def test_from_bundles_keeps_each_members_lock(locked: bool) -> None:
     ]
     assert {
         root["id"]: root["locked"]
-        for root in merged.to_dict(minimal=False)["timelines"]
+        for root in bare(merged.to_dict(minimal=False))["timelines"]
     } == {
         "line": locked,
         "plain": False,
         "c": False,
     }
     assert source.get_timeline("line").is_locked is locked
-    assert source.to_dict(minimal=False) == before
+    assert bare(source.to_dict(minimal=False)) == before
 
 
 # endregion

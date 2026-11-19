@@ -114,6 +114,10 @@ score
 # `end`) is written bare, in the axis's number type: quarters count in exact
 # fractions, so sixteen quarters are the pair `[16, 1]`. The library's class
 # is not written: the unit decides it.
+#
+# Every ID in a manifest, an element's own and every reference to one, is
+# written `#` followed by the ID: the score's ID `clt_1` is written `#clt_1`.
+# The objects hold their IDs without it, so `score.id` is `clt_1`.
 
 # %%
 score_data = score.to_dict()
@@ -148,7 +152,7 @@ from_complete = Timeline.from_dict(score_complete)
 # %% [markdown]
 # Because every default may be left out, a manifest is easy to write by
 # hand. The smallest one names the version and one timeline with its `id`,
-# `unit` and `length`. In a manifest of one timeline and no group,
+# `unit` and `length`, the ID written with its `#`. In a manifest of one timeline and no group,
 # `timeline_id=` and `name=` override that timeline's id and name as it is
 # read, unless a timeline of the manifest already has that id or name: such
 # a timeline is selected instead, and an id and a name given together must
@@ -157,7 +161,7 @@ from_complete = Timeline.from_dict(score_complete)
 # %%
 smallest = {
     "timetoshare": "0.2.0",
-    "timelines": [{"id": "piece", "unit": "quarters", "length": [32, 1]}],
+    "timelines": [{"id": "#piece", "unit": "quarters", "length": [32, 1]}],
 }
 piece = Timeline.from_dict(smallest, name="Full score")
 piece.id, piece.name, piece.length
@@ -172,7 +176,7 @@ try:
     Timeline.from_dict(
         {
             "timetoshare": "0.2.0",
-            "timelines": [{"id": "piece", "unit": "quarters", "length": 32}],
+            "timelines": [{"id": "#piece", "unit": "quarters", "length": 32}],
         }
     )
 except ValueError as error:
@@ -243,7 +247,7 @@ show(group_data)
 group_data["timelines"][0]["children"][0]["offset"]
 
 # %% [markdown]
-# `graphical` may also carry `styles` and `statements`, the TimeToShare
+# `graphical` may also carry `styles` and `rules`, the TimeToShare
 # styling. The library does not interpret them: `from_dict()` keeps them as
 # the group's `styling` and `to_dict()` writes them back. In the complete
 # form they appear at their defaults.
@@ -404,12 +408,12 @@ annotated = {
     "editor": {"zoom": 2.5},
     "timelines": [
         {
-            "id": "piece",
+            "id": "#piece",
             "unit": "quarters",
             "length": [32, 1],
             "colour": "#c03030",
             "regions": [
-                {"id": "intro", "start": [0, 1], "end": [4, 1], "source": "manual"}
+                {"id": "#intro", "start": [0, 1], "end": [4, 1], "source": "manual"}
             ],
         }
     ],

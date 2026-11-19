@@ -170,7 +170,7 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
             synchronous-instant pairwise claims, queried vectorized without
             materialising the full claim list.
         styling: The members of the manifest's ``graphical`` other than
-            ``order`` (``styles``, ``statements``, ``timestamps`` and any
+            ``order`` (``styles``, ``rules``, ``timestamps`` and any
             other), kept as given and never interpreted.
         links: The manifest's links to the entities the bundle pertains to
             (a work and its parts, a recording), in the order added
@@ -4248,11 +4248,11 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
             ... )
             >>> data = bundle.to_dict()
             >>> "id" in data, [timeline["id"] for timeline in data["timelines"]]
-            (False, ['clt_1', 'cpt_1'])
+            (False, ['#clt_1', '#cpt_1'])
             >>> data["groups"]
-            [{'id': 'group_1', 'name': 'score', 'members': ['clt_1', 'cpt_1']}]
+            [{'id': '#group_1', 'name': 'score', 'members': ['#clt_1', '#cpt_1']}]
             >>> data["graphical"]["order"]
-            {'group_1': ['clt_1', 'cpt_1']}
+            {'#group_1': ['#clt_1', '#cpt_1']}
         """
         groups = [self.groups[group_id] for group_id in sorted(self.groups)]
         manifest = Manifest(

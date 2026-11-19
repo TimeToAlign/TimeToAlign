@@ -11,6 +11,7 @@ from typing import Any
 
 import pytest
 
+from tests.helpers import bare, filed, reading
 from timetoalign.alignment import AlignmentBundle
 from timetoalign.core import Coordinate, IdCoordinate, TimeUnit
 from timetoalign.core.time import express_as
@@ -72,9 +73,9 @@ def _answers(group: TimelineGroup) -> dict[tuple[str, Any], dict[str, Any]]:
 
 def _assert_round_trip(group: TimelineGroup, **flags: bool) -> TimelineGroup:
     """Rebuild a group from its dictionary and require identical answers."""
-    data = group.to_dict(**flags)
-    rebuilt = TimelineGroup.from_dict(data)
-    assert rebuilt.to_dict(**flags) == data
+    data = bare(group.to_dict(**flags))
+    rebuilt = TimelineGroup.from_dict(filed(data))
+    assert bare(rebuilt.to_dict(**flags)) == data
     assert rebuilt.timeline_ids == group.timeline_ids
     assert _answers(rebuilt) == _answers(group)
     return rebuilt
@@ -191,14 +192,14 @@ def test_child_member_converts_from_its_own_zero() -> None:
 def test_child_member_writes_its_root() -> None:
     """The root of a child member is written; the member is the child's id."""
     group, _ = _child_member()
-    data = group.to_dict(minimal=False)
+    data = bare(group.to_dict(minimal=False))
 
     assert [timeline["id"] for timeline in data["timelines"]] == ["A2", "R"]
     assert data["groups"][0]["members"] == ["A2", "K"]
     assert data["graphical"] == {
         "order": {"group_1": ["A2", "K"]},
         "styles": {},
-        "statements": [],
+        "rules": [],
         "timestamps": [],
     }
 
@@ -217,13 +218,13 @@ def test_group_dict_is_exact() -> None:
         name="edition", meta={"source": "test"}, timelines=[score, image]
     )
 
-    assert group.to_dict(minimal=False) == {
+    assert bare(group.to_dict(minimal=False)) == {
         "timetoshare": "0.2.0",
         "name": None,
         "meta": {},
         "timelines": [
-            image.to_dict(minimal=False)["timelines"][0],
-            score.to_dict(minimal=False)["timelines"][0],
+            bare(image.to_dict(minimal=False))["timelines"][0],
+            bare(score.to_dict(minimal=False))["timelines"][0],
         ],
         "groups": [
             {
@@ -239,11 +240,11 @@ def test_group_dict_is_exact() -> None:
         "graphical": {
             "order": {"group_1": ["score", "image"]},
             "styles": {},
-            "statements": [],
+            "rules": [],
             "timestamps": [],
         },
     }
-    assert group.to_dict(minimal=True) == {
+    assert bare(group.to_dict(minimal=True)) == {
         "timetoshare": "0.2.0",
         "timelines": [
             {"id": "image", "unit": "pixels", "length": 4800},
@@ -267,11 +268,11 @@ def test_flags_pass_through_to_every_root() -> None:
     score.add_events([{"start": Fraction(1, 3), "event_type": "Note"}])
     group = TimelineGroup(timelines=[score])
 
-    data = group.to_dict(events=True, external_references=True)
+    data = bare(group.to_dict(events=True, external_references=True))
 
     assert (
         data["timelines"]
-        == score.to_dict(events=True, external_references=True)["timelines"]
+        == bare(score.to_dict(events=True, external_references=True))["timelines"]
     )
 
 
@@ -295,21 +296,23 @@ def test_round_trip_of_two_children_of_one_root() -> None:
 
     rebuilt = _assert_round_trip(group)
 
-    assert [timeline["id"] for timeline in group.to_dict()["timelines"]] == ["audio"]
+    assert [timeline["id"] for timeline in bare(group.to_dict())["timelines"]] == [
+        "audio"
+    ]
     assert rebuilt.timeline_ids == ["last", "first"]
 
 
 def test_order_defaults_to_members_without_graphical() -> None:
     """Without a ``graphical`` part the members join in ``members`` order."""
-    data = _three_types().to_dict()
+    data = bare(_three_types().to_dict())
     del data["graphical"]
 
-    assert TimelineGroup.from_dict(data).timeline_ids == ["A", "B", "C"]
+    assert TimelineGroup.from_dict(filed(data)).timeline_ids == ["A", "B", "C"]
 
 
 STYLING: dict[str, Any] = {
     "styles": {"frame-highlight": {"stroke": "#7F00FF", "stroke-width": 2}},
-    "statements": [
+    "rules": [
         {"select": {"element": "frame"}, "set": "frame-highlight"},
         {
             "select": {
@@ -325,20 +328,20 @@ STYLING: dict[str, Any] = {
 
 @pytest.mark.parametrize(
     "keys",
-    [("styles", "statements"), ("styles",), ("statements",)],
-    ids=["both", "styles", "statements"],
+    [("styles", "rules"), ("styles",), ("rules",)],
+    ids=["both", "styles", "rules"],
 )
 def test_styling_round_trips_unchanged(keys: tuple[str, ...]) -> None:
-    """``styles`` and ``statements`` survive the round trip beside ``order``."""
-    data = _three_types().to_dict()
+    """``styles`` and ``rules`` survive the round trip beside ``order``."""
+    data = bare(_three_types().to_dict())
     data["graphical"].update(copy.deepcopy({key: STYLING[key] for key in keys}))
     expected = {key: STYLING[key] for key in keys}
 
-    rebuilt = TimelineGroup.from_dict(data)
+    rebuilt = TimelineGroup.from_dict(filed(data))
 
     assert rebuilt.styling == expected
-    assert rebuilt.to_dict() == data
-    assert rebuilt.to_dict(minimal=True)["graphical"] == {
+    assert bare(rebuilt.to_dict()) == data
+    assert bare(rebuilt.to_dict(minimal=True))["graphical"] == {
         "order": {"group_1": ["A", "B", "C"]},
         **expected,
     }
@@ -353,21 +356,21 @@ def test_absent_styling_stays_absent() -> None:
     rebuilt = TimelineGroup.from_dict(_three_types().to_dict())
 
     assert rebuilt.styling == {}
-    assert rebuilt.to_dict(minimal=True)["graphical"] == {
+    assert bare(rebuilt.to_dict(minimal=True))["graphical"] == {
         "order": {"group_1": ["A", "B", "C"]}
     }
 
 
 def test_styling_without_order_reads_members_order() -> None:
     """A ``graphical`` holding only styling joins the members in ``members`` order."""
-    data = _three_types().to_dict()
+    data = bare(_three_types().to_dict())
     data["groups"][0]["members"] = ["C", "A", "B"]
     data["graphical"] = {"styles": STYLING["styles"]}
 
-    rebuilt = TimelineGroup.from_dict(data)
+    rebuilt = TimelineGroup.from_dict(filed(data))
 
     assert rebuilt.timeline_ids == ["C", "A", "B"]
-    assert rebuilt.to_dict(minimal=True)["graphical"] == {
+    assert bare(rebuilt.to_dict(minimal=True))["graphical"] == {
         "order": {"group_1": ["C", "A", "B"]},
         "styles": STYLING["styles"],
     }
@@ -375,29 +378,29 @@ def test_styling_without_order_reads_members_order() -> None:
 
 def test_unknown_graphical_key_is_kept() -> None:
     """A ``graphical`` key other than order, styles and statements is kept."""
-    data = _three_types().to_dict()
+    data = bare(_three_types().to_dict())
     data["graphical"].update(STYLING, frame={"inset": 4})
 
-    rebuilt = TimelineGroup.from_dict(data)
+    rebuilt = TimelineGroup.from_dict(filed(data))
 
     assert rebuilt.styling == {**STYLING, "frame": {"inset": 4}}
-    assert rebuilt.to_dict() == data
+    assert bare(rebuilt.to_dict()) == data
 
 
 def test_manifest_meta_round_trips() -> None:
     """The manifest's own ``meta`` belongs to the manifest, not to the group."""
-    data = _three_types().to_dict()
+    data = bare(_three_types().to_dict())
     data["meta"] = {"source": "an edition"}
 
-    rebuilt = TimelineGroup.from_dict(data)
+    rebuilt = TimelineGroup.from_dict(filed(data))
 
     assert rebuilt.meta == {}
-    assert rebuilt.to_dict() == data
+    assert bare(rebuilt.to_dict()) == data
 
 
 def _malformed(change: Any) -> dict[str, Any]:
     """A valid group dictionary with one change applied."""
-    data = _three_types().to_dict()
+    data = bare(_three_types().to_dict())
     change(data)
     return data
 
@@ -449,13 +452,13 @@ def test_from_dict_refuses_malformed_input(change: Any, message: str) -> None:
     data = _malformed(change)
 
     with pytest.raises(ValueError, match=message):
-        TimelineGroup.from_dict(data)
+        TimelineGroup.from_dict(filed(data))
 
 
 def test_from_dict_refuses_a_parent_beside_its_child() -> None:
     """A group object naming a member's root is refused, naming both."""
     group, _ = _child_member()
-    data = group.to_dict()
+    data = bare(group.to_dict())
     data["groups"][0]["members"].append("R")
     data["graphical"]["order"]["group_1"].append("R")
 
@@ -463,7 +466,7 @@ def test_from_dict_refuses_a_parent_beside_its_child() -> None:
         ValueError,
         match="Timeline 'R' cannot join group 'group_1': it is nested with member 'K'",
     ):
-        TimelineGroup.from_dict(data)
+        TimelineGroup.from_dict(filed(data))
 
 
 def test_groups_sharing_a_member_read_each_group() -> None:
@@ -482,10 +485,10 @@ def test_groups_sharing_a_member_read_each_group() -> None:
             timelines=[shared, ContinuousLogicalTimeline(length=Fraction(9), uid="b")],
         )
     )
-    data = bundle.to_dict()
+    data = bare(bundle.to_dict())
 
-    first = TimelineGroup.from_dict(data, group_id="g1")
-    second = TimelineGroup.from_dict(data, group_id="g2")
+    first = TimelineGroup.from_dict(filed(data), group_id="g1")
+    second = TimelineGroup.from_dict(filed(data), group_id="g2")
 
     assert first.timeline_ids == ["t", "a"]
     assert second.timeline_ids == ["t", "b"]
@@ -508,7 +511,7 @@ def test_default_id_is_minted_statelessly() -> None:
 def test_given_id_collision_raises_and_leaves_the_group() -> None:
     """A given id held by another timeline of the group's trees is refused."""
     group = _three_types()
-    before = group.to_dict()
+    before = bare(group.to_dict())
 
     with pytest.raises(ValueError) as refused:
         group.add_timeline(ContinuousPhysicalTimeline(length=1.0, uid="B"))
@@ -516,7 +519,7 @@ def test_given_id_collision_raises_and_leaves_the_group() -> None:
         "timeline 'B' cannot join group 'group_1': its id 'B' is already held by "
         "timeline 'B'"
     )
-    assert group.to_dict() == before
+    assert bare(group.to_dict()) == before
 
 
 def test_descendant_id_collision_raises() -> None:
@@ -682,7 +685,7 @@ def _written_locks(holder: Any, *, minimal: bool) -> dict[str, Any]:
     """Each written root's ``locked`` (None where the key is left out)."""
     return {
         root["id"]: root.get("locked")
-        for root in holder.to_dict(minimal=minimal)["timelines"]
+        for root in bare(holder.to_dict(minimal=minimal))["timelines"]
     }
 
 
@@ -706,7 +709,7 @@ def test_a_segment_line_member_is_locked_by_construction(join: str) -> None:
 
 def _group_manifest(locked: bool) -> dict[str, Any]:
     """A manifest whose group holds a segment line stating *locked*."""
-    data = _line().to_dict(minimal=True)
+    data = bare(_line().to_dict(minimal=True))
     data["timelines"][0]["locked"] = locked
     data["timelines"].append({"id": "plain", "unit": "seconds", "length": 6.0})
     data["groups"] = [{"id": "g", "members": ["line", "plain"]}]
@@ -715,7 +718,7 @@ def _group_manifest(locked: bool) -> dict[str, Any]:
 
 @pytest.mark.parametrize(
     "read",
-    [TimelineGroup.from_dict, AlignmentBundle.from_dict],
+    [reading(TimelineGroup.from_dict), reading(AlignmentBundle.from_dict)],
     ids=["group", "bundle"],
 )
 @pytest.mark.parametrize("locked", [False, True], ids=["unlocked", "locked"])
@@ -730,10 +733,10 @@ def test_reading_keeps_the_lock_a_member_line_states(read: Any, locked: bool) ->
 @pytest.mark.parametrize("locked", [False, True], ids=["unlocked", "locked"])
 def test_a_group_made_from_one_line_keeps_the_lock_it_states(locked: bool) -> None:
     """A group of the one root of a manifest without groups reads its lock too."""
-    data = _line().to_dict(minimal=True)
+    data = bare(_line().to_dict(minimal=True))
     data["timelines"][0]["locked"] = locked
 
-    group = TimelineGroup.from_dict(data, group_id="g")
+    group = TimelineGroup.from_dict(filed(data), group_id="g")
 
     assert (group.timeline_ids, group.get_timeline("line").is_locked) == (
         ["line"],

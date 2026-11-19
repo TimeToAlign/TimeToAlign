@@ -23,6 +23,16 @@ number type, never the lexical form: an integral JSON number on an ``int``
 axis is that integer, an integer on a ``float`` axis that float, and a pair
 with integral float members (``[1, 8.0]``) that Fraction. A value no reading
 of the number type admits is refused.
+
+A manifest file writes every ID, an element's own and every reference to
+one, as ``#`` followed by the ID (``"id": "#clt_1"``); every object of the
+library holds IDs bare (``clt_1``). The boundary is the whole manifest: a
+dict carrying the ``timetoshare`` version marker, which ``to_dict`` returns
+and ``from_dict`` takes, or a file, is in the file form; the dict of one
+object inside it (a conversion map, a region, a measure map, a link) is
+bare. :meth:`Manifest.read` and :meth:`Manifest.write` convert, through
+TimeToShare's :func:`timetoshare.with_bare_ids` and
+:func:`timetoshare.with_file_ids`.
 """
 
 from __future__ import annotations
@@ -312,6 +322,25 @@ def read_schemes(data: Mapping[str, Any]) -> list[Scheme]:
     return schemes
 
 
+def bare_ids(data: Mapping[str, Any]) -> dict[str, Any]:
+    """Return a manifest as a file holds it with every ID bare.
+
+    A manifest file writes every ID, an element's own and every reference
+    to one, as ``#`` followed by the ID; the library holds IDs bare
+    (:func:`timetoshare.with_bare_ids`).
+
+    Raises:
+        ValueError: If an ID is not written so, its path first:
+            ``#/timelines/0/id: 'score' is not written as an ID: it does not
+            start with '#'``.
+    """
+    try:
+        return timetoshare.with_bare_ids(data)
+    except timetoshare.FileIdError as error:
+        pointer = timetoshare.json_pointer(error.path)
+        raise ValueError(f"{pointer}: {error}") from None
+
+
 def check_description(data: Mapping[str, Any]) -> None:
     """Refuse a manifest whose description layer breaks a rule of the format.
 
@@ -322,6 +351,7 @@ def check_description(data: Mapping[str, Any]) -> None:
     whole manifest and nothing else, and the first problem it finds is
     raised. A manifest is checked as it is read, before anything else is
     read, and as it is written, so that an invalid one is never emitted.
+    *data* is in the file form; the messages quote IDs bare.
 
     Raises:
         ValueError: The first problem, its path in *data* first:
@@ -469,7 +499,7 @@ class Manifest(_OpenObject):
             sorted by id.
         links: The manifest's links, in their order.
         styling: ``graphical`` without ``order``: ``styles``,
-            ``statements``, ``timestamps`` and any other key, kept as given;
+            ``rules``, ``timestamps`` and any other key, kept as given;
             a named timestamp's ``display`` is written in canonical order,
             its default stated in the complete form only.
         band_orders: The entries of ``graphical.order`` keyed by a
@@ -508,7 +538,10 @@ class Manifest(_OpenObject):
     def read(cls, data: Any) -> tuple[Manifest, ManifestContent]:
         """Read a manifest: its envelope, its timelines and its raw groups.
 
-        The description layer is checked first, by TimeToShare's rules
+        *data* is the manifest as a file holds it, every ID written ``#``
+        followed by the ID; it is read with bare IDs (:func:`bare_ids`), as
+        every object of the library holds them. The description layer is
+        checked first, by TimeToShare's rules
         (:func:`check_description`). The measure maps are read next, then
         every root timeline is rebuilt, its conversion maps reading the
         measure maps they name, and every timeline of the roots' trees is
@@ -528,8 +561,8 @@ class Manifest(_OpenObject):
 
         Raises:
             ValueError: If *data* is no TimeToShare manifest (``"not a
-                TimeToShare manifest"``), names another version, or is
-                malformed: a link or scheme breaking a rule of the format,
+                TimeToShare manifest"``), names another version, writes an ID
+                without its ``#`` (:func:`bare_ids`), or is malformed: a link or scheme breaking a rule of the format,
                 an id held twice anywhere in the manifest (see
                 :func:`unique_ids`), a ``graphical.order`` that is no object
                 or names no group or timeline.
@@ -543,7 +576,9 @@ class Manifest(_OpenObject):
                 f"TimeToShare {TIMETOSHARE_VERSION} only"
             )
         require_object(data, "a TimeToShare manifest", ("timelines",))
+        bare = bare_ids(data)
         check_description(data)
+        data = bare
         manifest_id = read_id(data["id"], "the manifest") if "id" in data else None
         manifest = cls(
             id=manifest_id,
@@ -661,9 +696,10 @@ class Manifest(_OpenObject):
         naming an element the manifest leaves out leaves it out too
         (:func:`_leave_out_unwritten`). The form is TimeToShare's: the
         manifest is built whole and put in its form by
-        :func:`timetoshare.minimal` or :func:`timetoshare.complete`. The
-        manifest written is checked as a manifest read is
-        (:func:`check_description`).
+        :func:`timetoshare.minimal` or :func:`timetoshare.complete`, and
+        every ID is written as a file writes it, ``#`` followed by the ID
+        (:func:`timetoshare.with_file_ids`). The manifest written is checked
+        as a manifest read is (:func:`check_description`).
 
         Args:
             roots: The root timelines.
@@ -755,6 +791,7 @@ class Manifest(_OpenObject):
             fields["graphical"] = {"order": order, **copy.deepcopy(self.styling)}
         built = self._dict_form(fields, minimal=False)
         result = timetoshare.minimal(built) if minimal else timetoshare.complete(built)
+        result = timetoshare.with_file_ids(result)
         check_description(result)
         return result
 
@@ -1225,7 +1262,7 @@ class ManifestFileMixin:
             >>> print(path.read_text(encoding="utf-8"), end="")
             timelines:
               -
-                id: piece
+                id: "#piece"
                 length: [32, 1]
                 unit: quarters
             timetoshare: "0.2.0"

@@ -14,6 +14,7 @@ from typing import Any
 
 import pytest
 
+from tests.helpers import bare, filed, reading
 from timetoalign import Ms3Loader
 from timetoalign.alignment import AlignmentBundle
 from timetoalign.maps import (
@@ -101,7 +102,7 @@ def test_writing_lifts_a_quarters_timeline_s_measure_map() -> None:
     score = ContinuousLogicalTimeline(length=F(8), uid="score")
     score.add_measure_map(_bars())
 
-    assert score.to_dict(minimal=True) == {
+    assert bare(score.to_dict(minimal=True)) == {
         "timetoshare": "0.2.0",
         "timelines": [
             {
@@ -113,7 +114,7 @@ def test_writing_lifts_a_quarters_timeline_s_measure_map() -> None:
         ],
         "measure_maps": [{"id": "measuremap_1", "rows": ROWS}],
     }
-    written = score.to_dict()["timelines"][0]
+    written = bare(score.to_dict())["timelines"][0]
     assert "measure_map" not in written and "metric_hierarchy" not in written
 
 
@@ -121,7 +122,7 @@ def test_a_whole_notes_timeline_reads_its_measure_map_through_times_four() -> No
     piece = ContinuousLogicalTimeline(length=F(2), unit="whole_notes", uid="piece")
     piece.add_measure_map(_bars())
 
-    assert piece.to_dict(minimal=True)["timelines"][0]["conversion_maps"] == [
+    assert bare(piece.to_dict(minimal=True))["timelines"][0]["conversion_maps"] == [
         {
             "type": "ChainMap",
             "id": "cmap_1",
@@ -150,7 +151,7 @@ def test_a_ticks_timeline_reads_its_measure_map_through_the_map_given() -> None:
     )
     midi.add_measure_map(_bars(), to_quarters=to_quarters)
 
-    (chain,) = midi.to_dict(minimal=True)["timelines"][0]["conversion_maps"]
+    (chain,) = bare(midi.to_dict(minimal=True))["timelines"][0]["conversion_maps"]
     assert chain["maps"][0] == {
         "type": "LinearMap",
         "id": "ppq",
@@ -161,7 +162,7 @@ def test_a_ticks_timeline_reads_its_measure_map_through_the_map_given() -> None:
     assert midi.reach.value == 3840
     restored = Timeline.from_dict(json.loads(json.dumps(midi.to_dict())))
     assert restored.measure_map == _bars()
-    assert restored.to_dict() == midi.to_dict()
+    assert bare(restored.to_dict()) == bare(midi.to_dict())
 
 
 @pytest.mark.parametrize(
@@ -300,7 +301,7 @@ READ_COMPLETE: dict[str, Any] = {
 @pytest.mark.parametrize("form", ["minimal", "complete"])
 def test_reading_puts_the_measure_map_back_and_keeps_every_id(form: str) -> None:
     literal = READ_MINIMAL if form == "minimal" else READ_COMPLETE
-    bundle = AlignmentBundle.from_dict(copy.deepcopy(literal))
+    bundle = AlignmentBundle.from_dict(filed(copy.deepcopy(literal)))
     score, midi = bundle.timelines["score"], bundle.timelines["midi"]
 
     assert score.measure_map == _bars()
@@ -308,8 +309,8 @@ def test_reading_puts_the_measure_map_back_and_keeps_every_id(form: str) -> None
     assert (score.measure_map.id, score.measure_map.name) == ("score_bars", "Bars")
     assert score.measure_map.meta == {"source": "hand"}
     assert score._conversion_maps == {}
-    assert bundle.to_dict(minimal=True) == READ_MINIMAL
-    assert bundle.to_dict(minimal=False) == READ_COMPLETE
+    assert bare(bundle.to_dict(minimal=True)) == READ_MINIMAL
+    assert bare(bundle.to_dict(minimal=False)) == READ_COMPLETE
 
 
 def _one_root(conversion_maps: list[dict[str, Any]]) -> dict[str, Any]:
@@ -356,7 +357,7 @@ def _one_root(conversion_maps: list[dict[str, Any]]) -> dict[str, Any]:
 def test_two_maps_reading_a_measure_map_are_refused(
     conversion_maps: list[dict[str, Any]],
 ) -> None:
-    for reader in (Timeline.from_dict, AlignmentBundle.from_dict):
+    for reader in (reading(Timeline.from_dict), reading(AlignmentBundle.from_dict)):
         with pytest.raises(ValueError) as refused:
             reader(_one_root(copy.deepcopy(conversion_maps)))
         assert str(refused.value) == (
@@ -368,7 +369,7 @@ def test_two_maps_reading_a_measure_map_are_refused(
 def test_a_record_map_directly_on_a_ticks_timeline_is_refused() -> None:
     manifest = _one_root([_record("bars_map", "bars")])
     manifest["timelines"][0].update(unit="ticks", length=3840)
-    for reader in (Timeline.from_dict, AlignmentBundle.from_dict):
+    for reader in (reading(Timeline.from_dict), reading(AlignmentBundle.from_dict)):
         with pytest.raises(ValueError) as refused:
             reader(copy.deepcopy(manifest))
         assert str(refused.value) == (
@@ -385,12 +386,12 @@ def test_a_record_map_nested_elsewhere_is_a_view() -> None:
         "maps": {"record": _record("bars_map", "inner")},
     }
     manifest = _one_root([_record("bars_map", "bars"), nested])
-    score = Timeline.from_dict(copy.deepcopy(manifest))
+    score = Timeline.from_dict(filed(copy.deepcopy(manifest)))
 
     kept = score.get_conversion_map("both")
     assert isinstance(kept, CombinationMap)
     assert kept.get_map("record").measure_map is score.measure_map
-    assert score.to_dict(minimal=True) == manifest
+    assert bare(score.to_dict(minimal=True)) == manifest
 
 
 # endregion
@@ -437,10 +438,10 @@ def test_timelines_share_an_entry_when_their_measure_maps_are_equal(
         timeline.add_measure_map(measure_map)
         bundle.add_timeline(timeline)
 
-    written = bundle.to_dict(minimal=True)
+    written = bare(bundle.to_dict(minimal=True))
     assert _entries(written) == entries
     assert _named(written) == named
-    read = AlignmentBundle.from_dict(written)
+    read = AlignmentBundle.from_dict(filed(written))
     shared = read.timelines["a"].measure_map is read.timelines["b"].measure_map
     assert shared is (second != "different")
 
@@ -451,8 +452,8 @@ def test_an_entry_no_timeline_names_is_kept() -> None:
         "timelines": [{"id": "score", "unit": "quarters", "length": [8, 1]}],
         "measure_maps": [{"id": "spare", "rows": ROWS}],
     }
-    for reader in (Timeline.from_dict, AlignmentBundle.from_dict):
-        assert reader(copy.deepcopy(manifest)).to_dict(minimal=True) == manifest
+    for reader in (reading(Timeline.from_dict), reading(AlignmentBundle.from_dict)):
+        assert bare(reader(copy.deepcopy(manifest)).to_dict(minimal=True)) == manifest
 
 
 @pytest.mark.parametrize(
@@ -513,21 +514,21 @@ def test_a_measure_map_id_is_unique_with_the_manifest_s_ids(
         **change,
     }
     with pytest.raises(ValueError) as refused:
-        AlignmentBundle.from_dict(manifest)
+        AlignmentBundle.from_dict(filed(manifest))
     assert str(refused.value) == message
 
 
 def test_a_minted_measure_map_id_is_minted_around_the_manifest_s_ids() -> None:
     score = ContinuousLogicalTimeline(length=F(8), uid="measuremap_1")
     score.add_measure_map(_bars())
-    assert _entries(score.to_dict()) == ["measuremap_2"]
+    assert _entries(bare(score.to_dict())) == ["measuremap_2"]
 
 
 def test_a_given_measure_map_id_held_by_a_timeline_is_refused_on_writing() -> None:
     score = ContinuousLogicalTimeline(length=F(8), uid="score")
     score.add_measure_map(MeasureMap(_bars().measures, id="score"))
     with pytest.raises(ValueError) as refused:
-        score.to_dict()
+        bare(score.to_dict())
     assert str(refused.value) == (
         "measure map 'score' cannot be written: its id is already held by "
         "timeline 'score'"
@@ -545,7 +546,7 @@ def test_two_different_measure_maps_of_one_given_id_are_refused_on_writing() -> 
         timeline.add_measure_map(MeasureMap(measure_map.measures, id="bars"))
         bundle.add_timeline(timeline)
     with pytest.raises(ValueError) as refused:
-        bundle.to_dict()
+        bare(bundle.to_dict())
     assert str(refused.value) == "two different measure maps carry the id 'bars'"
 
 
@@ -568,7 +569,7 @@ def test_a_score_s_floating_measure_map_names_the_timeline_s_entry() -> None:
     assert len(floating) == 1
     assert floating[0].measure_map is not score.measure_map
 
-    written = score.to_dict(minimal=True)
+    written = bare(score.to_dict(minimal=True))
     assert _entries(written) == ["measuremap_1"]
     views = [
         cmap["measure_map"]
@@ -576,10 +577,10 @@ def test_a_score_s_floating_measure_map_names_the_timeline_s_entry() -> None:
         if "measure_map" in cmap
     ]
     assert views == ["measuremap_1", "measuremap_1"]
-    read = Timeline.from_dict(json.loads(json.dumps(written)))
+    read = Timeline.from_dict(filed(json.loads(json.dumps(written))))
     read_floating = read.get_conversion_map(floating[0].id)
     assert read_floating.measure_map is read.measure_map
-    assert read.to_dict(minimal=True) == written
+    assert bare(read.to_dict(minimal=True)) == written
 
 
 def _timeline_with(*maps: Any) -> ContinuousLogicalTimeline:
@@ -605,7 +606,7 @@ def test_legacy_maps_built_from_the_timeline_s_measures_name_its_entry() -> None
             uid="m",
         ),
     ]
-    written = _timeline_with(*maps).to_dict(minimal=True)
+    written = bare(_timeline_with(*maps).to_dict(minimal=True))
 
     assert _entries(written) == ["measuremap_1"]
     assert {
@@ -617,7 +618,7 @@ def test_legacy_maps_built_from_the_timeline_s_measures_name_its_entry() -> None
         "m": "measuremap_1",
         "n": "measuremap_1",
     }
-    read = Timeline.from_dict(written)
+    read = Timeline.from_dict(filed(written))
     for map_id in ("f", "m", "n"):
         assert read.get_conversion_map(map_id).measure_map is read.measure_map
 
@@ -632,14 +633,14 @@ def test_legacy_maps_built_from_other_data_write_entries_of_their_own() -> None:
     meter = MetricMap(
         starts=[F(0), F(2)], mcs=[1, 2], mns=["0", "1"], lengths=[F(2), F(6)], uid="m"
     )
-    written = _timeline_with(floating, meter).to_dict(minimal=True)
+    written = bare(_timeline_with(floating, meter).to_dict(minimal=True))
 
     assert _entries(written) == ["measuremap_1", "measuremap_2", "measuremap_3"]
     assert {
         cmap["id"]: cmap["measure_map"]
         for cmap in written["timelines"][0]["conversion_maps"]
     } == {"cmap_1": "measuremap_1", "f": "measuremap_2", "m": "measuremap_3"}
-    read = Timeline.from_dict(json.loads(json.dumps(written)))
+    read = Timeline.from_dict(filed(json.loads(json.dumps(written))))
     read_floating, read_meter = read.get_conversion_map("f"), read.get_conversion_map(
         "m"
     )

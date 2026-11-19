@@ -381,7 +381,7 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
         name: Optional human-readable name.
         meta: Additional metadata dictionary.
         styling: The members of the manifest's ``graphical`` other than
-            ``order`` (``styles``, ``statements``, ``timestamps`` and any
+            ``order`` (``styles``, ``rules``, ``timestamps`` and any
             other), kept as given and never interpreted.
 
     Examples:
@@ -650,7 +650,7 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
             name: Optional human-readable name.
             timelines: Initial members, in order (optional).
             meta: Additional metadata dictionary.
-            styling: The group file's ``styles`` and ``statements``
+            styling: The group file's ``styles`` and ``rules``
                 (optional), kept as given and never interpreted.
 
         Raises:
@@ -2158,11 +2158,11 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
             ... )
             >>> data = group.to_dict()
             >>> [timeline["id"] for timeline in data["timelines"]]
-            ['clt_1', 'dgt_1']
+            ['#clt_1', '#dgt_1']
             >>> data["groups"]
-            [{'id': 'group_1', 'members': ['clt_1', 'dgt_2']}]
+            [{'id': '#group_1', 'members': ['#clt_1', '#dgt_2']}]
             >>> data["graphical"]
-            {'order': {'group_1': ['dgt_2', 'clt_1']}}
+            {'order': {'#group_1': ['#dgt_2', '#clt_1']}}
         """
         roots: dict[str, Timeline] = {}
         for member in self._timelines.values():

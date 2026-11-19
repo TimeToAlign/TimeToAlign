@@ -27,7 +27,11 @@ the schema version published by the installed `timetoshare` package. The
 package's own functions are the oracle: `validate`, `unknown_keys`,
 `complete`, `minimal`, `canonical_order` and `dumps` are written
 independently of the library, in Python and JavaScript, so a test that
-passes cannot be the library agreeing with itself.
+passes cannot be the library agreeing with itself. Every manifest the
+library writes and the package checks is in the file form, every ID
+written `#` followed by the ID; the few manifests written inline here are
+turned into it by `tests/helpers.py`'s `filed` or spell the `#`
+themselves.
 
 **The fixtures, both ways.** `fixture_paths()` lists every manifest under
 the package's `fixtures/0.2.0/` (drawings excluded): each fixture in the
@@ -82,7 +86,7 @@ hands every manifest it reads, and every manifest it writes, to
 description layer alone, which holds those rules (see *Links and schemes*
 in `timelines/README.md`). The three exceptions are the
 rules the library leaves to the validators because it keeps what they
-check as given: the rules about `graphical.statements` (selectors with
+check as given: the rules about `graphical.rules` (selectors with
 their addresses, and declarations), which the library never interprets,
 the rules about
 the entries of a band order (a `graphical.order` entry keyed by a

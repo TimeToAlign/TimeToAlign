@@ -22,6 +22,7 @@ from typing import cast
 
 import pytest
 
+from tests.helpers import bare, filed
 from timetoalign.core import Domain, NumberType, TimeUnit, number_to_json
 from timetoalign.maps.linear import ScalarMap
 from timetoalign.timelines import (
@@ -431,8 +432,8 @@ class TestSerializedTypeParameters:
             )
             original.append_segment(segment)
 
-        data = original.to_dict(events=True)
-        restored = Timeline.from_dict(data)
+        data = bare(original.to_dict(events=True))
+        restored = Timeline.from_dict(filed(data))
 
         assert data["timelines"][0]["is_segment_line"] is True
         assert isinstance(restored, SegmentLine)
@@ -447,11 +448,11 @@ class TestSerializedTypeParameters:
             1,
         ]
         assert [
-            segment.to_dict(events=True)["timelines"][0]["events"][0]["id"]
+            bare(segment.to_dict(events=True))["timelines"][0]["events"][0]["id"]
             for _, _, segment in restored.iter_segments()
         ] == ["event_0", "event_1"]
         assert [
-            segment.to_dict(events=True)["timelines"][0]["events"][0]["start"]
+            bare(segment.to_dict(events=True))["timelines"][0]["events"][0]["start"]
             for _, _, segment in restored.iter_segments()
         ] == [number_to_json(event_instant), number_to_json(event_instant)]
         assert [
@@ -561,7 +562,9 @@ class TestSerializedTypeParameters:
         )
         del systems["offset"]
 
-        restored = Timeline.from_dict({"timetoshare": "0.2.0", "timelines": [systems]})
+        restored = Timeline.from_dict(
+            filed({"timetoshare": "0.2.0", "timelines": [systems]})
+        )
         inner_class = SegmentLine[DiscreteGraphicalTimeline]
 
         assert type(restored) is SegmentLine[inner_class]

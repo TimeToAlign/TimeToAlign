@@ -16,6 +16,7 @@ from typing import Any
 import pytest
 from timetoshare import validate
 
+from tests.helpers import bare, filed
 from timetoalign import (
     AlignmentBundle,
     ContinuousLogicalTimeline,
@@ -146,7 +147,9 @@ SCORE_ALONE: dict[str, Any] = {
 def test_a_timeline_of_a_bundle_writes_what_its_links_name() -> None:
     bundle = _bundle_of_score()
     score = bundle.get_timeline("score")
-    written, complete = score.to_dict(minimal=True), score.to_dict(minimal=False)
+    written, complete = bare(score.to_dict(minimal=True)), bare(
+        score.to_dict(minimal=False)
+    )
     assert written == SCORE_ALONE
     assert complete["timelines"][0]["links"][0]["parts"][0] == {
         "uri": [MOVEMENT],
@@ -156,11 +159,11 @@ def test_a_timeline_of_a_bundle_writes_what_its_links_name() -> None:
         "absent": LEFT_OUT,
         "assertion": None,
     }
-    validate(written)
-    validate(complete)
+    validate(filed(written))
+    validate(filed(complete))
     assert _named(score.links[0]) == [["perf"], ["perf", "intro"]]
-    whole = bundle.to_dict(minimal=True)
-    validate(whole)
+    whole = bare(bundle.to_dict(minimal=True))
+    validate(filed(whole))
     assert [scheme["id"] for scheme in whole["schemes"]] == ["bwv", "opus"]
     assert [timeline["id"] for timeline in whole["timelines"]] == ["perf", "score"]
     assert _written_named(whole["timelines"][1]["links"][0]) == [
@@ -187,9 +190,9 @@ TWO_ROOTS: dict[str, Any] = {
 
 
 def test_a_timeline_selected_from_a_manifest_writes_what_its_links_name() -> None:
-    score = Timeline.from_dict(copy.deepcopy(TWO_ROOTS), timeline_id="score")
+    score = Timeline.from_dict(filed(copy.deepcopy(TWO_ROOTS)), timeline_id="score")
     assert _named(score.links[0]) == [LEFT_OUT]
-    written = score.to_dict(minimal=True)
+    written = bare(score.to_dict(minimal=True))
     assert written == {
         "timetoshare": "0.2.0",
         "timelines": [
@@ -211,7 +214,7 @@ def test_a_timeline_selected_from_a_manifest_writes_what_its_links_name() -> Non
         ],
         "schemes": [{"id": "opus"}],
     }
-    validate(written)
+    validate(filed(written))
     validate(score.to_dict())
 
 
@@ -246,11 +249,11 @@ TWO_GROUPS: dict[str, Any] = {
 
 
 def test_a_group_selected_from_a_manifest_writes_what_its_links_name() -> None:
-    group = TimelineGroup.from_dict(copy.deepcopy(TWO_GROUPS), group_id="g1")
+    group = TimelineGroup.from_dict(filed(copy.deepcopy(TWO_GROUPS)), group_id="g1")
     assert _named(group.get_timeline("score").get_region("intro").links[0]) == [
         LEFT_OUT
     ]
-    written = group.to_dict(minimal=True)
+    written = bare(group.to_dict(minimal=True))
     assert written == {
         "timetoshare": "0.2.0",
         "timelines": [
@@ -288,7 +291,7 @@ def test_a_group_selected_from_a_manifest_writes_what_its_links_name() -> None:
         "schemes": [{"id": "opus"}],
         "graphical": {"order": {"g1": ["score"]}},
     }
-    validate(written)
+    validate(filed(written))
     validate(group.to_dict())
 
 
@@ -318,10 +321,13 @@ def test_from_bundles_carries_the_schemes_its_links_name() -> None:
     second = _source(Scheme("bwv"), "take", on_region=True).add_scheme("unused")
     merged = AlignmentBundle.from_bundles([first, second])
     assert merged.schemes == (Scheme("bwv"), Scheme("opus", name="Opus"))
-    written = merged.to_dict()
-    validate(written)
+    written = bare(merged.to_dict())
+    validate(filed(written))
     assert [scheme["id"] for scheme in written["schemes"]] == ["bwv", "opus"]
-    assert AlignmentBundle.from_dict(copy.deepcopy(written)).to_dict() == written
+    assert (
+        bare(AlignmentBundle.from_dict(filed(copy.deepcopy(written))).to_dict())
+        == written
+    )
 
 
 def test_two_different_schemes_with_one_id_refuse() -> None:
@@ -335,18 +341,20 @@ def test_two_different_schemes_with_one_id_refuse() -> None:
     validate(merged.to_dict())
 
     read = Timeline.from_dict(
-        {
-            "timetoshare": "0.2.0",
-            "schemes": [{"id": "opus", "name": "read"}],
-            "timelines": [
-                {
-                    "id": "score",
-                    "unit": "quarters",
-                    "length": [8, 1],
-                    "links": [_naming(identifiers={"opus": "106"}).to_dict()],
-                }
-            ],
-        }
+        filed(
+            {
+                "timetoshare": "0.2.0",
+                "schemes": [{"id": "opus", "name": "read"}],
+                "timelines": [
+                    {
+                        "id": "score",
+                        "unit": "quarters",
+                        "length": [8, 1],
+                        "links": [_naming(identifiers={"opus": "106"}).to_dict()],
+                    }
+                ],
+            }
+        )
     )
     bundle = AlignmentBundle().add_scheme(Scheme("opus", name="declared"))
     bundle.add_timeline(read)
@@ -408,10 +416,10 @@ def test_a_root_given_an_id_on_reading_is_named_by_it() -> None:
         ],
         "links": [_naming(["score"], ["intro"]).to_dict(minimal=True)],
     }
-    piece = Timeline.from_dict(data, timeline_id="piece")
+    piece = Timeline.from_dict(filed(data), timeline_id="piece")
     assert _named(piece.links[0]) == [["piece"]]
-    written = piece.to_dict(minimal=True)
-    validate(written)
+    written = bare(piece.to_dict(minimal=True))
+    validate(filed(written))
     assert _written_named(written["links"][0]) == [["piece"], ["intro"]]
     assert _written_named(written["timelines"][0]["links"][0]) == [["piece"]]
 
@@ -461,24 +469,24 @@ GROUPED: dict[str, Any] = {
 
 
 def test_removing_a_member_leaves_it_out_of_what_slots_name() -> None:
-    group = TimelineGroup.from_dict(copy.deepcopy(GROUPED))
+    group = TimelineGroup.from_dict(filed(copy.deepcopy(GROUPED)))
     removed = group.remove_timeline("b")
     a = group.get_timeline("a")
     assert _named(a.links[0]) == [LEFT_OUT, ["a1"]]
     assert _named(removed.links[0]) == [LEFT_OUT]
-    written = group.to_dict(minimal=True)
-    validate(written)
+    written = bare(group.to_dict(minimal=True))
+    validate(filed(written))
     assert _written_named(written["links"][0]) == [LEFT_OUT, ["a"]]
     assert _written_named(written["timelines"][0]["links"][0]) == [LEFT_OUT, ["a1"]]
     validate(removed.to_dict())
 
 
 def test_a_bundle_holding_the_group_keeps_the_removed_member_named() -> None:
-    bundle = AlignmentBundle.from_dict(copy.deepcopy(GROUPED))
-    before = bundle.to_dict(minimal=False)
+    bundle = AlignmentBundle.from_dict(filed(copy.deepcopy(GROUPED)))
+    before = bare(bundle.to_dict(minimal=False))
     removed = bundle.groups["g"].remove_timeline("b")
-    after = bundle.to_dict(minimal=False)
-    validate(after)
+    after = bare(bundle.to_dict(minimal=False))
+    validate(filed(after))
     assert after["links"] == before["links"]
     assert after["timelines"] == before["timelines"]
     assert after["groups"] == [{"id": "g", "name": None, "meta": {}, "members": ["a"]}]

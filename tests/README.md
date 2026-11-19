@@ -38,9 +38,9 @@ the package's `fixtures/0.2.0/` (drawings excluded): each fixture in the
 complete form and its minimal twin `<name>.minimal.yaml` beside it, both
 in canonical YAML and read with the package's `loads`. The
 pairing is exact, every fixture has its twin and every twin its fixture,
-and the fixtures lie in exactly the three directories a reader is named
-for (directly in the directory, `groups/`, `bundles/`), none of them
-empty. How many fixtures each holds is the package's catalogue to decide,
+and the fixtures lie in exactly the four directories a reader is named
+for (directly in the directory, `groups/`, `bundles/`, `statements/`),
+none of them empty. How many fixtures each holds is the package's catalogue to decide,
 so no count is pinned here: a fixture added there is proved here without a
 change. For every pair:
 
@@ -51,7 +51,8 @@ change. For every pair:
   forms, compared as text, so `8` and `8.0` or a missing `null` differ;
 - the class that reads the directory's manifests as a whole
   (`Timeline.from_dict` directly in the directory, `TimelineGroup.from_dict`
-  in `groups/`, `AlignmentBundle.from_dict` in `bundles/`) reads fixture and
+  in `groups/`, `AlignmentBundle.from_dict` in `bundles/` and
+  `statements/`) reads fixture and
   twin to objects of the same class that write the same manifests: the
   defaults the twin leaves out are supplied by the library's reader as the
   package supplies them;

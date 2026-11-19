@@ -613,7 +613,7 @@ class PartituraLoader(ScoreLoader):
                         "tpc": tpc,
                         "octave": octave,
                         "velocity": 64,
-                        "tied": 0,
+                        "tied": None,
                         "gracenote": (
                             "grace" if isinstance(obj, pts.GraceNote) else None
                         ),

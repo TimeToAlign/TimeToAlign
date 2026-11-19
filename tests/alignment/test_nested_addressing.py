@@ -334,3 +334,118 @@ def test_filters_select_nested_timelines(filters: dict, expected: list[str]) -> 
 
 
 # endregion
+
+
+# region Claims on an unregistered nested timeline
+
+
+def _claimed_child_bundle() -> AlignmentBundle:
+    """Build a root whose unregistered child holds the claims to a recording.
+
+    Returns:
+        The bundle, with the two claims made through ``create_match_claims``.
+    """
+    root = Timeline(length=100, unit=TimeUnit.quarters, uid="clt_1")
+    child = Timeline(length=40, unit=TimeUnit.quarters, uid="clt_2")
+    root.add_child(child, offset=20)
+    child.add_events(
+        [
+            {"id": "n1", "event_type": "Note", "instant": 0},
+            {"id": "n2", "event_type": "Note", "instant": 40},
+        ]
+    )
+    recording = Timeline(length=30.0, unit=TimeUnit.seconds, uid="cpt_1")
+    recording.add_events(
+        [
+            {"id": "a1", "event_type": "Note", "instant": 5.0},
+            {"id": "a2", "event_type": "Note", "instant": 25.0},
+        ]
+    )
+    bundle = AlignmentBundle(id="claimed_child")
+    bundle.add_timeline(root)
+    bundle.add_timeline(recording)
+    bundle.create_match_claims(
+        [("n1", "clt_2", "a1", "cpt_1"), ("n2", "clt_2", "a2", "cpt_1")]
+    )
+    return bundle
+
+
+def test_claims_are_made_on_an_unregistered_child() -> None:
+    """``create_match_claims`` resolves events on a child no one registered."""
+    bundle = _claimed_child_bundle()
+
+    anchors = [
+        (
+            claim.start_anchor.timeline_a_id,
+            claim.start_anchor.coordinate_a.value,
+            claim.start_anchor.timeline_b_id,
+            claim.start_anchor.coordinate_b.value,
+        )
+        for claim in bundle.cross_group_claims
+    ]
+
+    assert bundle.timeline_ids == ["clt_1", "cpt_1"]
+    assert anchors == [
+        ("clt_2", Fraction(0), "cpt_1", 5.0),
+        ("clt_2", Fraction(40), "cpt_1", 25.0),
+    ]
+    assert [claim.is_synchronous for claim in bundle.cross_group_claims] == [True, True]
+
+
+def test_claims_on_an_unknown_timeline_name_every_known_one() -> None:
+    """An id naming no timeline of the trees raises, naming every known one."""
+    bundle = _claimed_child_bundle()
+
+    with pytest.raises(KeyError) as raised:
+        bundle.create_match_claims([("n1", "clt_9", "a1", "cpt_1")])
+
+    assert raised.value.args[0] == (
+        "Timeline 'clt_9' not in bundle. Available timelines: ['clt_1', 'cpt_1', 'clt_2']"
+    )
+
+
+@pytest.mark.parametrize(
+    ("timeline_id", "position", "expected"),
+    [
+        (
+            "clt_2",
+            Fraction(20),
+            [("clt_2", Fraction(20)), ("clt_1", Fraction(40)), ("cpt_1", 15.0)],
+        ),
+        (
+            "clt_1",
+            Fraction(40),
+            [("clt_1", Fraction(40)), ("cpt_1", 15.0), ("clt_2", Fraction(20))],
+        ),
+        (
+            "cpt_1",
+            15.0,
+            [("cpt_1", 15.0), ("clt_1", Fraction(40)), ("clt_2", Fraction(20))],
+        ),
+        ("clt_1", Fraction(10), [("clt_1", Fraction(10))]),
+    ],
+)
+def test_warp_runs_through_the_claimed_child(
+    timeline_id: str, position: object, expected: list[tuple[str, object]]
+) -> None:
+    """Between the anchors, every source reaches the same three coordinates."""
+    bundle = _claimed_child_bundle()
+
+    values = _values(bundle.get_matchstamp_at(position, timeline_id).coordinates)
+
+    assert values == expected
+    _assert_exact_types(values)
+
+
+def test_transfer_runs_through_the_claimed_child() -> None:
+    """The private transfer accepts the unregistered child on either side."""
+    bundle = _claimed_child_bundle()
+
+    forward = bundle.transfer(20, "clt_2", "cpt_1")
+    backward = bundle.transfer(15.0, "cpt_1", "clt_2")
+
+    assert (type(forward), forward) == (float, 15.0)
+    assert (type(backward), backward) == (float, 20.0)
+
+
+# endregion

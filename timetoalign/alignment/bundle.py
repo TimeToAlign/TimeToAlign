@@ -737,6 +737,27 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             return held
         return self._known_timelines().get(timeline_id)
 
+    def _require_known_timeline(
+        self, timeline_id: str, *, role: str = "Timeline"
+    ) -> "Timeline":
+        """Return the timeline of the bundle's trees with this exact id.
+
+        Args:
+            timeline_id: The exact id of a timeline of the bundle's trees.
+            role: How the message names the timeline (``"Source timeline"``).
+
+        Raises:
+            KeyError: If no timeline of the bundle's trees has this id, naming
+                every timeline the bundle knows (:meth:`_known_timelines`).
+        """
+        held = self._known_timeline(timeline_id)
+        if held is None:
+            raise KeyError(
+                f"{role} '{timeline_id}' not in bundle. "
+                f"Available timelines: {list(self._known_timelines())}"
+            )
+        return held
+
     def _statements_holder(self) -> "AlignmentBundle":
         """Return the bundle: it holds the statements of its manifest itself."""
         return self
@@ -910,9 +931,17 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
     def _warp_units(self) -> list[tuple[TimelineGroup | None, tuple[str, ...]]]:
         """Return the units a matchstamp warps between, each with its members.
 
-        Every group is one unit. Every registered timeline no group holds is a
+        Every group is one unit. Every other timeline of the bundle's trees
+        (:meth:`_known_timelines`), registered or not and at any depth, is a
         unit of its own, with ``None`` for its group: it is warped from and
         into exactly as a group of that one member would be.
+
+        A nested timeline needs its own unit because a claim names the
+        timeline it was made on: claims on a child build that child's
+        ``MatchLine``, never its root's, so the root's offsets carry a
+        position to the child (:meth:`_manifest_relatives`) but only the
+        child's unit warps it on through those claims. A unit no claim
+        reaches warps nothing.
         """
         membership = self.timeline_to_groups
         units: list[tuple[TimelineGroup | None, tuple[str, ...]]] = [
@@ -920,7 +949,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         ]
         units.extend(
             (None, (timeline_id,))
-            for timeline_id in self.timelines
+            for timeline_id in self._known_timelines()
             if timeline_id not in membership
         )
         return units
@@ -1066,23 +1095,16 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             The transferred coordinate, or None if no path exists.
 
         Raises:
-            KeyError: If either timeline is not in the bundle.
+            KeyError: If either id names no timeline of the bundle's trees.
         """
-        if from_timeline not in self.timelines:
-            raise KeyError(
-                f"Source timeline '{from_timeline}' not in bundle. "
-                f"Available timelines: {list(self.timelines.keys())}"
-            )
-        if to_timeline not in self.timelines:
-            raise KeyError(
-                f"Target timeline '{to_timeline}' not in bundle. "
-                f"Available timelines: {list(self.timelines.keys())}"
-            )
+        source_timeline = self._require_known_timeline(
+            from_timeline, role="Source timeline"
+        )
+        self._require_known_timeline(to_timeline, role="Target timeline")
 
         coord_value, _resolved_timeline_id, _unit = _resolve_coordinate_and_timeline(
             coord, from_timeline
         )
-        source_timeline = self.get_timeline(from_timeline)
         if isinstance(coord, IdCoordinate):
             query_input = coord.to_coordinate()
         elif isinstance(coord, Coordinate):
@@ -1338,6 +1360,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             ValueError: If event dicts are missing required keys, an event
                 id string doesn't resolve to an existing event, or both
                 ``event_a`` and ``event_b`` are ``None``.
+            KeyError: If a timeline id names no timeline of the bundle's
+                trees. A nested timeline is found whether or not it was
+                registered.
 
         Examples:
             >>> from timetoalign.alignment import AlignmentBundle
@@ -1372,8 +1397,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
 
         claims = []
         for event_a, tl_a, event_b, tl_b in event_pairs:
-            timeline_a = self.timelines[tl_a]
-            timeline_b = self.timelines[tl_b]
+            timeline_a = self._require_known_timeline(tl_a)
+            timeline_b = self._require_known_timeline(tl_b)
             event_a = self._resolve_event(event_a, timeline_a, tl_a)
             event_b = self._resolve_event(event_b, timeline_b, tl_b)
 
@@ -2406,14 +2431,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 "timeline_id is required unless coordinate is an IdCoordinate"
             )
 
+        source_timeline = self._require_known_timeline(timeline_id)
         known = self._known_timelines()
-        if timeline_id not in known:
-            raise KeyError(
-                f"Timeline '{timeline_id}' not in bundle. "
-                f"Available timelines: {list(known)}"
-            )
-
-        source_timeline = known[timeline_id]
         if isinstance(at, IdCoordinate):
             query_input = at.to_coordinate()
         elif isinstance(at, Coordinate):
@@ -3002,8 +3021,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 coordinates[target_id] = target_coordinate
                 worklist.append(target_id)
 
-            # A registered timeline reaches the others of its manifest tree
-            # (its root and the root's descendants) by exact offsets.
+            # Every timeline reaches the others of its manifest tree (its root
+            # and the root's descendants) by exact offsets.
             for relative_id, relative_coordinate in self._manifest_relatives(
                 node_timeline, node_coordinate
             ).items():
@@ -3014,7 +3033,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 worklist.append(relative_id)
 
             # The node's units: each of its groups, or the node alone when it
-            # is an ungrouped registered timeline.
+            # is ungrouped, registered or not.
             for source_group, _ in (unit for unit in units if node_id in unit[1]):
                 # 2a. Within-group conversion to the members of each group of
                 # the node: exact, and always within each member, since

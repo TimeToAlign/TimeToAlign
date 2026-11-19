@@ -317,11 +317,17 @@ The proof is a measures TSV in `tmp_path` of three 4/4 measures, one cell remove
 | `mc` of the second row | `The measures table 'p.measures.tsv' states no mc in row 2` |
 | `act_dur` of the second row, no `duration_qb` column | `The measures table 'p.measures.tsv' states no length of mc 2 (row 2): neither act_dur nor duration_qb holds a value` |
 | both length cells of the second row, both columns present | the same message |
+| `act_dur` of the second row, its `duration_qb` the text `four` | `The measures table 'p.measures.tsv' states no readable length of mc 2 (row 2)` |
 
 The complete table loads with lengths `[4, 4, 4]` as exact `Fraction`s and counts `[1, 2, 3]`,
 so the refusals are not passed by refusing every table. A row giving `duration_qb` alone still
 loads: with `act_dur` empty and `duration_qb` `3.0` its measure is `Fraction(3)` long, the
 length the source states.
+
+The last case states a length the loader cannot read: the cell holds a value, so the row is
+not "without a length", but no number can be read from it. Reading it as anything (`0`, the
+nominal length, the next row's position) would invent the length again, so it is refused
+under its own message, which says the length is unreadable rather than absent.
 
 ## Coordinate exactness
 

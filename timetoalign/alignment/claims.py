@@ -1875,23 +1875,6 @@ class MatchClaimField(SemanticField[MatchClaim]):
         "event_b_name",
     )
 
-    def __init__(
-        self,
-        raw: "StructField | None" = None,
-        *,
-        source_fields: "str | dict[str, Any] | None" = None,
-        name: str | None = None,
-        metadata: MatchMetadata | None = None,
-    ) -> None:
-        """Wrap a derived ``MatchClaim`` struct field, carrying shared metadata.
-
-        Prefer the :meth:`from_columns` / :meth:`from_claims` / :meth:`from_dict`
-        classmethods; this constructor mirrors the base ``SemanticField`` so
-        blueprint construction keeps working, plus a field-level ``metadata``.
-        """
-        super().__init__(raw, source_fields=source_fields, name=name)
-        self._metadata: MatchMetadata | None = metadata
-
     # ── construction ──────────────────────────────────────────────────────
 
     @classmethod
@@ -2505,6 +2488,23 @@ class MatchClaimField(SemanticField[MatchClaim]):
             if claim.metadata != first:
                 return None
         return first
+
+    def __init__(
+        self,
+        raw: "StructField | None" = None,
+        *,
+        source_fields: "str | dict[str, Any] | None" = None,
+        name: str | None = None,
+        metadata: MatchMetadata | None = None,
+    ) -> None:
+        """Wrap a derived ``MatchClaim`` struct field, carrying shared metadata.
+
+        Prefer the :meth:`from_columns` / :meth:`from_claims` / :meth:`from_dict`
+        classmethods; this constructor mirrors the base ``SemanticField`` so
+        blueprint construction keeps working, plus a field-level ``metadata``.
+        """
+        super().__init__(raw, source_fields=source_fields, name=name)
+        self._metadata: MatchMetadata | None = metadata
 
     # ── access ────────────────────────────────────────────────────────────
 

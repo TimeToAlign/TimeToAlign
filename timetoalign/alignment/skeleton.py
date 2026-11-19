@@ -14,11 +14,12 @@ from timetoalign.core import (
     FlowMode,
     Gap,
     IdCoordinate,
-    IdGenerator,
     MeasureId,
     MeasureNumber,
     NumberType,
     TimeUnit,
+    mint_id,
+    validate_id,
 )
 from timetoalign.timelines.flow import Flow, PlaythroughSection
 from timetoalign.timelines.groups import _root
@@ -29,8 +30,6 @@ from .claims import AlignmentAnchor, MatchClaim
 
 if TYPE_CHECKING:
     from timetoalign.timelines import BeatGrid
-
-_skeleton_id_generator = IdGenerator(scope="skeleton")
 
 
 class TimeSkeleton:
@@ -58,7 +57,9 @@ class TimeSkeleton:
         flows: dict[str, list[str | Gap]] | None = None,
         beat_grid: BeatGrid | None = None,
     ) -> None:
-        self._id = uid or _skeleton_id_generator.create(type_hint="skel")
+        # A skeleton is held by no scope, so a minted id is the first free one
+        # of its prefix in an empty scope, the rule of every free element.
+        self._id = validate_id(uid) if uid else mint_id("skeleton", ())
         self._section_hierarchy = section_hierarchy
         self._metric_hierarchy = metric_hierarchy
         self._beat_grid = beat_grid

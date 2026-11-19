@@ -434,15 +434,40 @@ class TestMembership:
 # endregion
 
 
+# region Identity
+
+
+class TestSkeletonId:
+    """A skeleton is held by no scope, so it mints like every free element."""
+
+    def test_skeletons_without_id_all_mint_the_first_free_id(self) -> None:
+        ids = [TimeSkeleton(_concrete_hierarchy(3)).id for _ in range(3)]
+        assert ids == ["skeleton_1", "skeleton_1", "skeleton_1"]
+
+    def test_given_id_is_kept_verbatim(self) -> None:
+        skeleton = TimeSkeleton(_concrete_hierarchy(3), uid="op35/skeleton")
+        assert skeleton.id == "op35/skeleton"
+        assert TimeSkeleton(_concrete_hierarchy(3)).id == "skeleton_1"
+
+    def test_given_id_with_control_character_is_refused(self) -> None:
+        with pytest.raises(ValueError) as refused:
+            TimeSkeleton(_concrete_hierarchy(3), uid="a\tb")
+        assert str(refused.value) == (
+            "Invalid id 'a\\tb': an id must be non-empty and contain no control character"
+        )
+
+
+# endregion
+
 # region (i) Structural equality and identity-based attachment
 
 
 class TestStructuralEquality:
     """Equality is the authored structure; identity and usage are excluded."""
 
-    def test_equal_hierarchies_compare_equal_despite_distinct_uids(self) -> None:
-        first = TimeSkeleton(_concrete_hierarchy(3, 2, 2))
-        second = TimeSkeleton(_concrete_hierarchy(3, 2, 2))
+    def test_equal_hierarchies_compare_equal_despite_distinct_ids(self) -> None:
+        first = TimeSkeleton(_concrete_hierarchy(3, 2, 2), uid="first")
+        second = TimeSkeleton(_concrete_hierarchy(3, 2, 2), uid="second")
         assert first.id != second.id
         assert first == second
 

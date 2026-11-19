@@ -115,7 +115,6 @@ from timetoalign.core import (
     Domain,
     EventType,
     IdCoordinate,
-    IdGenerator,
     Interval,
     IntervalField,
     NumberType,
@@ -313,7 +312,6 @@ __all__ = [
     "TimeIntervalStamp",
     # IDs
     "ScopedId",
-    "IdGenerator",
     # Loader - Event-based (Type 2)
     "EventData",
     "EventStore",

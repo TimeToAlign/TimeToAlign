@@ -1,12 +1,11 @@
 """Identity management for TTA objects.
 
-This module provides scoped IDs that preserve source provenance,
-generators for creating unique IDs within a scope, and utilities
-for resolving partial/regex ID patterns.
+This module provides scoped IDs that preserve source provenance, the one
+stateless generator of minted IDs, and utilities for resolving
+partial/regex ID patterns.
 
 Includes:
 - ScopedId: An identifier with scope:local format.
-- IdGenerator: General-purpose unique ID generation within a scope.
 - mint_id: The one generator of minted ids, ``{prefix}_{N}``
   (e.g., ``clt_1``, ``region_2``, ``score:clt_1``); ``mint_ids`` mints many
   at once by the same rule.
@@ -141,99 +140,6 @@ class ScopedId:
     def is_scoped(self) -> bool:
         """Whether this ID has a non-empty scope."""
         return bool(self.scope)
-
-
-@dataclass
-class IdGenerator:
-    """Generates unique IDs within a given scope.
-
-    Supports both:
-    1. Wrapping external IDs with the scope
-    2. Generating new IDs when none provided
-
-    Tracks seen IDs to detect collisions.
-
-    Attributes:
-        scope: The scope to apply to all generated/wrapped IDs
-
-    Examples:
-        >>> gen = IdGenerator("midi")
-
-        >>> gen.get_or_create("n42")  # Wrap external ID
-        'midi:n42'
-
-        >>> gen.get_or_create(None, type_hint="note")  # Generate
-        'midi:note_1'
-
-        >>> gen.get_or_create(None, type_hint="note")  # Generate next
-        'midi:note_2'
-    """
-
-    scope: str
-
-    # Internal state
-    _counters: dict[str, int] = field(default_factory=dict)
-    _seen: set[str] = field(default_factory=set)
-
-    def get_or_create(
-        self,
-        external_id: str | None = None,
-        type_hint: str = "event",
-    ) -> str:
-        """Get a scoped ID string.
-
-        Args:
-            external_id: The ID from the source, if any. Will be wrapped
-                        with the scope but otherwise preserved.
-            type_hint: A prefix for generated IDs if external_id is None.
-
-        Returns:
-            A string in "scope:local_id" format (or just "local_id" if
-            scope is empty).
-        """
-        if external_id is not None and str(external_id).strip():
-            # Wrap external ID
-            local = str(external_id).strip()
-        else:
-            # Generate new ID
-            counter = self._counters.get(type_hint, 0) + 1
-            self._counters[type_hint] = counter
-            local = f"{type_hint}_{counter}"
-
-        # Create scoped ID
-        scoped = ScopedId(self.scope, local)
-        full_id = str(scoped)
-
-        # Track for collision detection (we don't raise, just track)
-        self._seen.add(full_id)
-
-        return full_id
-
-    def create(self, type_hint: str = "event") -> str:
-        """Generate a new unique ID (no external ID)."""
-        return self.get_or_create(None, type_hint=type_hint)
-
-    def wrap(self, external_id: str) -> str:
-        """Wrap an external ID with the scope."""
-        return self.get_or_create(external_id)
-
-    def reset(self) -> None:
-        """Reset all counters and seen IDs."""
-        self._counters.clear()
-        self._seen.clear()
-
-    def reset_counters(self) -> None:
-        """Reset counters but keep seen IDs (for continuation)."""
-        self._counters.clear()
-
-    @property
-    def count(self) -> int:
-        """Total number of IDs generated/wrapped."""
-        return len(self._seen)
-
-    def has_seen(self, id_str: str) -> bool:
-        """Check if an ID has been generated/wrapped by this generator."""
-        return id_str in self._seen
 
 
 # region Manifest element ids

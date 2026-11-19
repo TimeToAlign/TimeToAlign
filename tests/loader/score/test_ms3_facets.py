@@ -260,3 +260,20 @@ def test_a_row_without_a_length_is_refused(tmp_path, text):
         _load(_measures(tmp_path, text))
 
     assert str(raised.value) == NO_LENGTH
+
+
+def test_a_length_that_cannot_be_read_is_refused(tmp_path):
+    text = (
+        "mc\tmn\tquarterbeats\tact_dur\tduration_qb\ttimesig\n"
+        "1\t1\t0\t1\t4.0\t4/4\n"
+        "2\t2\t4\t\tfour\t4/4\n"
+        "3\t3\t8\t1\t4.0\t4/4\n"
+    )
+
+    with pytest.raises(ValueError) as raised:
+        _load(_measures(tmp_path, text))
+
+    assert str(raised.value) == (
+        "The measures table 'p.measures.tsv' states no readable length of mc 2 "
+        "(row 2)"
+    )

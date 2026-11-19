@@ -1518,9 +1518,16 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         claim whose minted id the bundle already holds (or an earlier claim
         of the same call) is minted again, ``claim_N`` with the smallest N
         free; a given id the bundle already holds is refused, before any
-        claim is added. A claim that belongs to no bundle is added as
-        itself (renamed in place where its id gave way); a claim another
-        bundle holds is added as a copy, so that bundle keeps its ids.
+        claim is added. A claim's ``source_claim_id`` naming a claim of the
+        same call whose id gave way takes the new id with it. A claim that
+        belongs to no bundle is added as itself (renamed in place where its
+        id or its ``source_claim_id`` changed); a claim another bundle holds
+        is added as a copy, so that bundle keeps its ids.
+
+        A claim's hash follows its id, so a claim renamed in place hashes
+        differently afterwards: one kept in a set or as a dictionary key
+        before it was added is no longer found there, and is looked up
+        again by the claim object or its new id.
 
         Args:
             claims: MatchClaim objects, claim tuples, or lists of claim tuples.
@@ -1600,8 +1607,14 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
 
         The field's ids join the bundle's as :meth:`add_match_claims` admits
         claims: a minted id the bundle holds is minted again, a given one is
-        refused. Where an id gave way, the bundle stores a new field and the
-        one passed in is left unchanged.
+        refused, and a row's ``source_claim_id`` naming a row whose id gave
+        way takes the new id with it. Where an id gave way, the bundle stores
+        a new field and the one passed in is left unchanged.
+
+        A claim's hash follows its id, so a claim read from the field passed
+        in no longer equals the bundle's claim of that row where the row's
+        id gave way: one kept in a set or as a dictionary key before is
+        looked up again among the bundle's claims.
 
         Args:
             claim_field: A :class:`MatchClaimField` of synchronous pairwise
@@ -1619,19 +1632,6 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         self._invalidate_warp_cache()
         return self
 
-    def _claim_ids(self) -> pa.Array:
-        """The ids of every claim the bundle holds, both stores together."""
-        import pyarrow as pa
-
-        return pa.concat_arrays(
-            [
-                pa.array(
-                    [claim.id for claim in self.cross_group_claims], type=pa.string()
-                ),
-                *(claim_field._ids for claim_field in self.cross_group_claim_fields),
-            ]
-        )
-
     @property
     def n_cross_group_claims(self) -> int:
         """Total cross-group claims across BOTH claim stores.
@@ -1643,6 +1643,19 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         """
         return len(self.cross_group_claims) + sum(
             len(claim_field) for claim_field in self.cross_group_claim_fields
+        )
+
+    def _claim_ids(self) -> pa.Array:
+        """The ids of every claim the bundle holds, both stores together."""
+        import pyarrow as pa
+
+        return pa.concat_arrays(
+            [
+                pa.array(
+                    [claim.id for claim in self.cross_group_claims], type=pa.string()
+                ),
+                *(claim_field._ids for claim_field in self.cross_group_claim_fields),
+            ]
         )
 
     def _known_id_pattern(self, id_pattern: str | None) -> str | None:

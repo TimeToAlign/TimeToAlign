@@ -889,6 +889,7 @@ the metadata shape and the field's internal column layout changed.
 | `TestTableRoundTrip` | the Arrow table / Parquet round trip and its two refusals, as specified above |
 | `test_refuses_non_synchronous_row` / `test_refuses_row_without_start_anchor` | `from_table` names row 1 (`is_synchronous` false) / row 2 (null `start_anchor`) with `from_claims`'s message; `test_from_claims_refuses_alike` pins that message on `from_claims` |
 | `test_refuses_metadata_stated_twice` | a mixed-metadata table given the schema key raises, naming the 2 rows with metadata |
+| `test_from_dict_refuses_metadata_stated_twice` | the same field's `to_dict()` given the key `metadata` raises with the same refusal, worded for a dictionary (`... under its key 'metadata' and in 2 row(s).`): both readers share one check, so neither keeps one statement and drops the other |
 | `TestEquality` | a claim equals (and hashes like) its copy held by a bundle; the `from_claims` round trip holds for claims outside a bundle and for a bundle's claims |
 | `test_from_columns_length_mismatch_raises` | unequal column lengths raise `ValueError` |
 | `test_empty_field` | zero-row field: `len == 0`, `timeline_ids == set()`, `to_claims() == []` |
@@ -949,9 +950,10 @@ table written to Parquet keeps its ids), so an id minted by a counter that
 restarts with each process collides as soon as stored claims meet new ones:
 reading a stored field and building claims again gave twice the claims and
 half the distinct ids. The rule tested is the one every other id of the
-library follows (id system spec §2): `claim_N`, N the smallest number free
-in the scope; a minted id gives way when it joins a scope already holding
-it, a given id never does.
+library follows (timelines, regions, groups, bundles): `claim_N`, N the
+smallest number free in the scope; a minted id gives way when it joins a
+scope already holding it, a given id never does, and a scope refuses it
+instead.
 
 - **A free claim** mints `claim_1` (its own scope is empty) and records
   `id_minted == True`; a given id is kept verbatim, `id_minted == False`; an
@@ -970,6 +972,19 @@ it, a given id never does.
   already held by a bundle joins as a copy, so the bundle it came from keeps
   its ids. A field whose ids all stay joins as itself; otherwise as a new
   field, and the caller's field is unchanged.
+- **References follow the ids**: a `source_claim_id` names a claim of the
+  scope it was written in. When newcomers join together and one's id gives
+  way, every newcomer's `source_claim_id` naming that id takes the new one,
+  unless another newcomer keeps the id (then the reference names that one
+  and stays). A reference to a claim no newcomer re-mints stays as it is.
+  Without this, a field holding an implicit claim and its source would,
+  once both rows are re-minted, point the implicit claim at whatever claim
+  of the bundle held the old id.
+- **A graph is the scope of the claims it makes**: `extend_to_groups`
+  makes every implicit claim free (`claim_1`), then mints their ids among
+  the ids of the graph's claims, in the order they were made, so every
+  implicit edge's `claim_id` names one claim of the graph. Their
+  `source_claim_id` names an explicit claim of the graph and stays.
 
 ### Why this proves "beyond one process"
 
@@ -998,7 +1013,8 @@ after reading: (2, 1.0), (6, 3.0), and once more the four stored ones.
 | `test_field_is_a_scope` | `from_claims` of three fresh claims → `claim_1`, `claim_2`, `claim_3`; a given `claim_1` after a minted `claim_1` keeps it, the minted one becomes `claim_2`; two given `"a"` raise `claim id 'a' is given twice` |
 | `test_from_columns_mints_ids` | the gold vector's ids are `claim_1`–`claim_3`, `id_minted` all True |
 | `test_stored_and_new_claims_are_distinct` | the stored field read from Parquet keeps `claim_1`–`claim_4`; the same four built again plus the two new ones, added to the bundle, become `claim_5`–`claim_10` in order; the caller's objects carry them and `claim.bundle is bundle`; all ten ids distinct |
-| `test_graph_filter_unaffected` | a bundle of the stored field and the two new claims (`claim_1`–`claim_6`): `MatchGraph(bundle.get_match_claims()).extend_to_groups(bundle.groups)` adds implicit claims, every one `claim_1` (minted free, in no scope); `filter(explicit_only=True)` keeps exactly `claim_1`–`claim_6` and no implicit claim; `filter(timeline_ids={"score", "audio"})` keeps the same six |
+| `test_graph_filter_unaffected` | a bundle of the stored field and the two new claims (`claim_1`–`claim_6`): `MatchGraph(bundle.get_match_claims()).extend_to_groups(bundle.groups)` adds six implicit claims, `claim_7`–`claim_12` in the order made, `id_minted` True; every edge's `claim_id` equals its claim's id and the twelve are distinct; each implicit claim's `source_claim_id` is one of `claim_1`–`claim_6`, the explicit claim whose `score` coordinate it carries; `filter(explicit_only=True)` keeps exactly `claim_1`–`claim_6` and no implicit claim; `filter(timeline_ids={"score", "audio"})` keeps the same six |
+| `test_references_follow_reminted_ids` | `from_claims` of a free projection `score ↔ audio` (0, 0.0) and the implicit claim made from it (`source_claim_id` `claim_1`) stores `claim_1`, `claim_2`, the reference `claim_1` kept (the first row keeps the id); added to a bundle already holding `claim_1`, `claim_2`, the rows become `claim_3`, `claim_4` and the second row's `source_claim_id` `claim_3`; the same two claims as objects, added by `add_match_claims` to such a bundle, become `claim_3`, `claim_4` in place, the implicit one's `source_claim_id` `claim_3`; a bundle holding a given `"anchor"` and a minted `claim_1` takes an implicit claim made from `"anchor"`: its id becomes `claim_2` and its `source_claim_id` stays `"anchor"` (a reference to no re-minted newcomer) |
 | `test_two_runs_merged` | a subprocess and this process store the same field: ids equal (`claim_1`–`claim_4`); both added to one bundle: the second becomes `claim_5`–`claim_8`, every other table value equal |
 | `test_given_id_refused_atomically` | a bundle holding a given `"a"` refuses a claim and a field with a given `"a"` (`claim id 'a' is already held by another claim of this bundle`); after each refusal the bundle holds what it held and the newcomer keeps its id and no bundle |
 | `test_held_claim_joins_as_copy` | `from_bundles` of two bundles each holding `claim_1`, `claim_2`: the merge holds `claim_1`–`claim_4`; the second source still holds `claim_1`, `claim_2`, each with `bundle` the source |
@@ -1249,6 +1265,13 @@ result. The coordinate column holds the fraction strings ms3 writes; the kept ro
 `[0.0, 1.0, 707/2 = 353.5]` exactly, and the pitch column is renamed `pitch`. The frame is
 built as pandas builds it, so under pandas 3 the strings arrive in a `str` column, not an
 `object` one: the conversion used to test for `object` and left every coordinate a string.
+
+Two more runs read the tie cells as text, as a TSV read with every column as `str` holds
+them: `"1"`, `"0"`, `"-1"` as in the table, and for the untied note once `""` and once
+`" "`. A text cell that is empty or holds only whitespace is an empty cell, so the kept ids
+are again exactly `["a", "b", "f"]` in both runs. Parsing the text as numbers alone would
+refuse the whitespace cell (`pd.to_numeric` cannot parse `" "`), and the untied note would
+not be kept.
 
 A tie cell outside ms3's values is not read as anything: a frame whose cells are `1` and `2`
 raises `ValueError` with exactly `Column 'tied' holds tie values other than 1, 0, -1: [2.0]`,

@@ -211,9 +211,9 @@ structure should be partitioned.
 
 `Timeline`, `TimelineGroup` and `AlignmentBundle` write and read one shape of
 TimeToShare manifest: `{"timetoshare": "0.2.0", "timelines": [...]}` with an
-optional `id`, `name`, `meta`, `groups`, `measure_maps` and `graphical`
-(and `@context`, `statements` and `provenance`, carried unread: *Statements
-carried* below). A reader that only
+optional `id`, `name`, `meta`, `groups`, `measure_maps`, `graphical`,
+`@context`, `statements` and `provenance` (*Statements* below). A
+reader that only
 reads what its own writer produced proves nothing about the format, so the
 tests read manifests written by hand from the format's rules, and compare what
 the library writes back against the same literal text.
@@ -943,55 +943,119 @@ samples timeline and its seconds twin), Parangonada and IIIF loaders the test wa
 and marker to carry a valid id (non-empty, no control character),
 all ids within one manifest to be distinct, and no id to start with `tl:`.
 
-### Statements carried (`test_manifest_statements_carried.py`)
+### Statements (`test_statements.py`, `test_statements_references.py`)
 
-A manifest describes what it is about in JSON-LD: an inline `@context` on
-the manifest, and `statements` and `provenance` on the manifest, on every
-timeline (children included) and on every region. The library does not read
-these keys yet; it keeps them as keys it does not know and writes them back.
-A key carried that way is only proven carried where it is put, so the test
-puts all three keys at every place the format admits them and reads them
-through every class that reads a manifest as a whole.
+A bundle (the manifest), every timeline at any depth and every region hold
+`statements` and `provenance` exactly as the file writes them; the manifest
+written carries an inline JSON-LD `@context`. The library's API is a
+delegation: matching, adding, removing, proposing, confirming, rejecting,
+the rectangles a catalogue reads and the prefixes a document uses are
+TimeToShare's (`timetoshare.statements`, `timetoshare.catalogue`), run on a
+one-subject document built from the holder's own state. Re-testing those
+rules here would only test the package twice. Each case therefore proves
+what the library adds, and where the package decides, its own messages are
+the oracle (the expected `ValueError` text is the package's, or is computed
+by calling the package):
 
-- **Two manifests, written by hand.** One holds one root and no group, so
-  that `Timeline.from_dict` reads it whole: the manifest (`id` `rec`,
-  `@context`, `statements`, `provenance`), a root `cpt_1` in seconds of
-  unknown length, its child `cpt_2` and its region `region_1`, each with
-  its own `statements` and `provenance`. The other is an anonymous bundle
-  with one group, so that `TimelineGroup.from_dict` reads it whole: the same
-  tree beside a second root `clt_6` in quarters (with `statements` and
-  `provenance` of its own), both members of `group_1`. The values are those
-  of the TimeToShare format's own examples: Wikidata, VIAF and GND things,
-  nodes with labels and nested pairs, a typed literal (`xsd:date`), `type`
-  lists, and provenance entries `confirmed`, `proposed` and `rejected` with
-  `stated_by`, `date`, `method`, `basis` and `note`. Each element carries
-  different values, so that a key moved from one element to another fails
-  as surely as a key lost.
-- **Exact equality, both forms, every reader.** The literals are the
-  minimal form; the complete form is `timetoshare.complete` of it, so the
-  expected text follows the format's defaults whatever they are. The first
-  manifest is read by `Timeline.from_dict` and `AlignmentBundle.from_dict`,
-  the second by `TimelineGroup.from_dict` and `AlignmentBundle.from_dict`,
-  each from both forms, and each object writes the minimal form with
-  `to_dict()` and the complete form with `to_dict(minimal=False)`, equal to
-  the expected dict: equality of the whole manifest, not of the three keys,
-  so that nothing beside them is lost or added either.
-- **Files.** The same reads go through `from_file` and `to_file`: each form
-  of each manifest is written by `timetoshare.dumps` in every serialization
-  (`yaml`, `json`, `jcs`), read from the file and written back, and the text
-  written is byte for byte the text read. The file keeps its form, so this
-  also proves that the three keys take no part in choosing it.
-- **IDs inside them are not IDs of the file form.** An element's own ID and
-  every reference to one are written `#` followed by the ID in the file and
-  held bare in memory; an IRI inside `statements` or `provenance` is an IRI
-  reference and is the same text in both. The manifests hold such IRIs
-  naming elements (`#cpt_1` as a value of the child's statements, `#cpt_2`
-  in a `basis`), and nodes whose `id` is a compact IRI (`wd:Q235650`), which
-  is no element ID and does not begin with `#`. Equality of the written
-  manifest would not show a value stripped of its `#` on reading and given
-  it back on writing, so the test also reads the keys the objects hold in
-  memory (the root's, the child's, the region's and the manifest's kept
-  keys) and requires them to equal the file's values, `#` included.
+- **Storage and the three faces agree.** One parametrised suite runs every
+  case over the three holders: a timeline (`ContinuousPhysicalTimeline`
+  `cpt_1` of unknown length), a bundle (`AlignmentBundle(id="rec")`) and a
+  region (`region_1`, 0.0 to 10.0 seconds) through an adapter that calls the
+  region's copy-on-write method, stores the copy with `replace_region` and
+  reads it back with `get_region`. A case that passes on one face and not
+  another shows a face that does not delegate the same way. The pair `type
+  schema:VideoObject` and the verb `performed_by` in Wikidata's vocabulary
+  (`wd:Q235650`, label "Maria João Pires") give the exact `statements`
+  dict, keys in code-point order, and `provenance == []`: no entry is
+  written unless asked for, since there is no default assertion. The same
+  pair again, and with the thing written as its absolute IRI
+  (`http://www.wikidata.org/entity/Q235650`), raise the package's `'wdt:P175'
+  already has this value`: the holder's context includes the catalogue's
+  prefixes, otherwise the absolute IRI would not match. Removing both pairs
+  leaves `{}` and `[]`.
+- **The prefix rule.** A pair using `foaf:` raises `the prefix 'foaf' is
+  declared neither by the catalogue nor on <holder>`, the holder named as
+  `timeline 'cpt_1'`, `bundle 'rec'` or `region 'region_1'`, and the
+  holder's state is unchanged (the statements compared before and after).
+  `add_prefix("foaf", "http://xmlns.com/foaf/0.1/")` then admits the pair and
+  `prefixes` is exactly that one entry. `add_prefix("unit", ...)` is refused
+  with `cannot declare the prefix 'unit' as '<namespace>': <problem>`, the
+  problem computed by calling `timetoshare.statement_problems` on the same
+  context, so the test follows the package's name rules rather than copying
+  them; `foaf` redeclared with another namespace raises `the prefix 'foaf'
+  already stands for 'http://xmlns.com/foaf/0.1/' on <holder>`, and the same
+  declaration again changes nothing.
+- **Provenance.** On `cpt_1`, the sequence of the package's own test values
+  (a pair stated with `provenance=`, a `type` pair with an entry, a
+  proposal resting on `basis: ["#cpt_2"]`, its confirmation with a label, its
+  rejection with a note), `stated_by` given once as a string: every entry is
+  compared whole, so the string's becoming a one-item list and every member
+  kept or replaced is visible. With `date` omitted and the module's `_today`
+  fixed to 2026-11-21 the entry is dated `"2026-11-21"`: the date is the
+  library's, the rest the package's.
+- **Node paths.** A `wdt:P629` node holding its own `schema:sameAs` pair; a
+  proposal of a second `schema:sameAs` at `node=("wdt:P629", 0)` and its
+  rejection leave the node's `provenance` exactly one `rejected` entry
+  (method, note, date and `stated_by` as given) and `get_pairs(node=...)`
+  the one pair stated, so the path reaches the node and not the holder.
+- **Copy-on-write.** A region's `with_statement` leaves the original's
+  statements `{}`; `replace_region` stores the copy, and `get_region` reads
+  it back. Regions with different statements are unequal.
+- **Rectangles.** `get_rectangles()` of `cpt_1` read through
+  `AlignmentBundle.from_dict` of the package's second example manifest (a
+  score encoding `clt_6` and its video `cpt_1`) gives the package's three
+  rectangles for that timeline, `is_a`, `performed_by` and `same_as`, with
+  their things and labels, read with the shipped catalogue.
+- **The manifest boundary.** The second example manifest, completed with
+  `timetoshare` and `id`, reads; its statements land on `clt_6` and `cpt_1`
+  (compared whole), `to_dict()["@context"]` equals the manifest's own and
+  the round trip is equal. A plain timeline writes exactly
+  `{"@context": FORMAT_CONTEXT, "timetoshare": "0.2.0", "timelines": [...]}`.
+  A prefix declared but unused (`foaf`) is not written. A prefix the
+  catalogue lacks (`mbw`) is kept as `prefixes` on the holder using it and
+  only there (`{}` elsewhere), and written back; a prefix declared with
+  another namespace than the catalogue's (`schema: "https://schema.org/"`)
+  is kept on the holder too. Two timelines read from two manifests whose
+  `ex` stands for two namespaces refuse to be written in one bundle with
+  `the prefix 'ex' stands for 'http://a.example/' on timeline 'clt_1' and for
+  'http://b.example/' on timeline 'clt_2'`. Statements without `@context`
+  are refused on reading with the package's message, and a timeline stating
+  `dcterms:source: [{"id": "#ghost"}]` is refused on writing with the
+  package's `'#ghost' names no element of this manifest` at its path. A
+  timeline read whole writes the manifest's own statements back; a manifest
+  without `@context` reads and is written with the format's terms.
+
+The reference plumbing (`test_statements_references.py`) keeps what a value
+names true when IDs change and when part of a manifest is written. A part of
+a manifest naming another is a pair `dcterms:source: [{"id": "#X"}]` with a
+`confirmed` entry whose `basis` is `["#X"]`, so every case checks the three
+places a reference can stand, value, entry value and basis item:
+
+- **Renamed.** An element given a new ID — a timeline or region minted again
+  on joining a group or a bundle, on `add_child` or in
+  `AlignmentBundle.from_bundles`, a root given an ID on reading, a group
+  minted again by `from_bundles` — is named by its new ID in the value, the
+  entry and the basis, and the manifest written validates. The member
+  already in the scope keeps its own references: renames run before the
+  newcomer joins, so a holder naming its own element by the ID the newcomer
+  had is untouched. A conversion map and a flow-control element minted
+  again with their subtree are renamed in a value naming them. A map added
+  to a timeline that already holds a map of its minted ID takes a new ID,
+  and a statement naming the existing map still names it: only an element
+  that was named before it moved is renamed.
+- **Dropped.** An element leaving the manifest — a member removed from a
+  group, a timeline or a group selected from a larger manifest, a partial
+  write (a timeline of a bundle written on its own) — takes its pair, its
+  entry and its basis item with it; the manifest written validates and
+  equals the expected literal. A bundle holding the group still holds the
+  removed member, so nothing it holds names less.
+- **Prefixes travel with their holders.** `from_bundles` carries a
+  timeline's own prefixes, and two namespaces for one prefix refuse to be
+  written as above.
+- **What starts empty, what copies.** `create_child_from_region` and
+  `get_slice` give timelines without statements (a region's statements stay
+  on the region); `to_typed` copies statements and prefixes, and a change
+  to the copy leaves the source as it was.
 
 ### Canonical order of a serialized timeline (`test_canonical_order.py`)
 

@@ -11,13 +11,17 @@ from a Region.
 
 from __future__ import annotations
 
+import datetime
+from collections.abc import Mapping, Sequence
 from copy import deepcopy
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from fractions import Fraction
 from typing import Any, ClassVar
 
+from timetoshare import Catalogue
+
 from timetoalign.core import Coordinate, IdCoordinate, NumberType, TimeUnit
-from timetoalign.core.ids import _IdentifiedElement
+from timetoalign.core.ids import _IdentifiedElement, quote_id
 from timetoalign.core.time import Duration, Interval
 
 from .manifest import (
@@ -28,20 +32,29 @@ from .manifest import (
     read_name,
     require_object,
 )
+from .statements import (
+    STATE_KEYS,
+    NodePath,
+    StatementsMixin,
+    read_statement_state,
+    renamed_state,
+)
 
 # region Region
 
 
 @dataclass(frozen=True)
-class Region(_IdentifiedElement):
+class Region(_IdentifiedElement, StatementsMixin):
     """An identified part of a timeline defined by a TimeInterval.
 
     IMPORTANT: Regions are NOT timelines. They cannot hold events or C-maps.
     Use ``Timeline.create_child_from_region(region_id)`` to create a Child
     timeline from a Region.
 
-    A region is frozen: a timeline stores a changed copy in the region's
-    place with
+    A region is frozen: :meth:`with_statement` and its siblings return a
+    copy holding other statements (see
+    :mod:`~timetoalign.timelines.statements`), and a timeline stores a
+    changed copy in the region's place with
     :meth:`Timeline.replace_region <timetoalign.timelines.Timeline.replace_region>`.
 
     Attributes:
@@ -83,6 +96,7 @@ end=Coordinate(Fraction(32, 1), quarters))
         "start",
         "end",
         "meta",
+        *STATE_KEYS,
     )
     _manifest_path: ClassVar[tuple[str, ...]] = ("timelines", "regions")
 
@@ -90,6 +104,12 @@ end=Coordinate(Fraction(32, 1), quarters))
     end: Coordinate
     name: str | None = None
     meta: dict[str, Any] = field(default_factory=dict)
+    # The region's statements and provenance as the file writes them, and
+    # the prefixes they need beyond the catalogue's; compared.
+    _statement_state: Mapping[str, Any] = field(
+        default_factory=dict, kw_only=True, repr=False
+    )
+    _prefixes: Mapping[str, str] = field(default_factory=dict, kw_only=True, repr=False)
 
     @classmethod
     def from_dict(
@@ -102,8 +122,10 @@ end=Coordinate(Fraction(32, 1), quarters))
         """Restore a region from its object in a timeline's ``regions``.
 
         ``start`` and ``end`` are bare values on the timeline's axis, which
-        *unit* and *number_type* describe; ``name`` and ``meta`` may be left
-        out. Keys the library does not know are kept and written back.
+        *unit* and *number_type* describe; ``name``, ``meta``,
+        ``statements`` and ``provenance`` may be left out. Keys the library
+        does not know are kept and written back. The prefixes the statements
+        need are the manifest's, which its reader sets.
 
         Args:
             data: The region object.
@@ -127,6 +149,7 @@ end=Coordinate(Fraction(32, 1), quarters))
             id=region_id,
             name=read_name(data, what),
             meta=read_meta(data, what),
+            _statement_state=read_statement_state(data),
             **bounds,
         )
         region._keep_unknown_keys(data)
@@ -201,14 +224,200 @@ end=Coordinate(Fraction(32, 1), quarters))
         return self.start.value < other.end.value and other.start.value < self.end.value
 
     def _dict_fields(self) -> dict[str, Any]:
-        """Return the region's keys; ``name`` and ``meta`` are optional."""
+        """Return the region's keys; ``name`` and ``meta`` are optional,
+        ``statements`` and ``provenance`` written only when not empty."""
         return {
             "id": self.id,
             "name": self.name,
             "start": axis_value_to_json(self.start),
             "end": axis_value_to_json(self.end),
             "meta": deepcopy(self.meta),
+            **deepcopy(dict(self._statement_state)),
         }
+
+    # region Statements, copy-on-write
+
+    def _statement_holder_name(self) -> str:
+        """Return the region as a message names it."""
+        return f"region {quote_id(self.id)}"
+
+    def _with_statement_state(
+        self,
+        state: Mapping[str, Any] | None = None,
+        prefixes: Mapping[str, str] | None = None,
+    ) -> Region:
+        """Return a copy holding *state* and *prefixes* (None keeps them)."""
+        return replace(
+            self,
+            _statement_state=self._statement_state if state is None else dict(state),
+            _prefixes=self._prefixes if prefixes is None else dict(prefixes),
+        )
+
+    def _with_references_renamed(self, renamed: Mapping[str, str | None]) -> Region:
+        """Return the region with the elements its statements name renamed.
+
+        The region itself where its statements name none of them (see
+        :func:`~timetoalign.timelines.statements.renamed_state`).
+        """
+        if not self._statement_state:
+            return self
+        state = renamed_state(self._statement_state, renamed)
+        if state == self._statement_state:
+            return self
+        return self._with_statement_state(state)
+
+    def with_statement(
+        self,
+        property: str,
+        value: Any,
+        *,
+        node: NodePath = (),
+        provenance: Mapping[str, Any] | None = None,
+    ) -> Region:
+        """Return a copy stating the pair ``(property, value)``; this region is left as it is.
+
+        See :meth:`MutableStatementsMixin.add_statement
+        <timetoalign.timelines.MutableStatementsMixin.add_statement>`.
+
+        Examples:
+            >>> from timetoalign import Coordinate, TimeUnit
+            >>> intro = Region(Coordinate(0, TimeUnit.quarters), Coordinate(12, TimeUnit.quarters))
+            >>> described = intro.with_statement("rdfs:comment", "the opening")
+            >>> intro.statements, described.statements
+            ({}, {'rdfs:comment': ['the opening']})
+        """
+        return self._with_statement_state(
+            self._state_with_statement(
+                property, value, node=node, provenance=provenance
+            )
+        )
+
+    def without_statement(
+        self, property: str, value: Any, *, node: NodePath = ()
+    ) -> Region:
+        """Return a copy without the pair ``(property, value)`` and its confirmed entry.
+
+        See :meth:`MutableStatementsMixin.remove_statement
+        <timetoalign.timelines.MutableStatementsMixin.remove_statement>`.
+        """
+        return self._with_statement_state(
+            self._state_without_statement(property, value, node=node)
+        )
+
+    def with_proposal(
+        self,
+        property: str,
+        value: Any,
+        *,
+        stated_by: str | Sequence[str],
+        method: str,
+        date: str | datetime.date | None = None,
+        service: str | None = None,
+        basis: Sequence[str] = (),
+        match: str | None = None,
+        note: str | None = None,
+        node: NodePath = (),
+    ) -> Region:
+        """Return a copy proposing the pair ``(property, value)``.
+
+        See :meth:`MutableStatementsMixin.propose_statement
+        <timetoalign.timelines.MutableStatementsMixin.propose_statement>`.
+        """
+        return self._with_statement_state(
+            self._state_with_proposal(
+                property,
+                value,
+                stated_by=stated_by,
+                method=method,
+                date=date,
+                service=service,
+                basis=basis,
+                match=match,
+                note=note,
+                node=node,
+            )
+        )
+
+    def with_confirmation(
+        self,
+        property: str,
+        value: Any,
+        *,
+        stated_by: str | Sequence[str],
+        date: str | datetime.date | None = None,
+        node: NodePath = (),
+    ) -> Region:
+        """Return a copy with a proposed or rejected pair confirmed and stated.
+
+        See :meth:`MutableStatementsMixin.confirm_statement
+        <timetoalign.timelines.MutableStatementsMixin.confirm_statement>`.
+        """
+        return self._with_statement_state(
+            self._state_with_confirmation(
+                property, value, stated_by=stated_by, date=date, node=node
+            )
+        )
+
+    def with_rejection(
+        self,
+        property: str,
+        value: Any,
+        *,
+        stated_by: str | Sequence[str],
+        date: str | datetime.date | None = None,
+        note: str | None = None,
+        node: NodePath = (),
+    ) -> Region:
+        """Return a copy with the pair rejected.
+
+        See :meth:`MutableStatementsMixin.reject_statement
+        <timetoalign.timelines.MutableStatementsMixin.reject_statement>`.
+        """
+        return self._with_statement_state(
+            self._state_with_rejection(
+                property, value, stated_by=stated_by, date=date, note=note, node=node
+            )
+        )
+
+    def with_verb(
+        self,
+        verb: str,
+        system: str,
+        value: str,
+        *,
+        label: str | None = None,
+        slots: Mapping[str, Any] | None = None,
+        alternative: int = 0,
+        provenance: Mapping[str, Any] | None = None,
+        catalogue: Catalogue | None = None,
+    ) -> Region:
+        """Return a copy stating a verb of the catalogue in one system's vocabulary.
+
+        See :meth:`MutableStatementsMixin.add_verb
+        <timetoalign.timelines.MutableStatementsMixin.add_verb>`.
+        """
+        return self._with_statement_state(
+            self._state_with_verb(
+                verb,
+                system,
+                value,
+                label=label,
+                slots=slots,
+                alternative=alternative,
+                provenance=provenance,
+                catalogue=catalogue,
+            )
+        )
+
+    def with_prefix(self, name: str, namespace: str) -> Region:
+        """Return a copy declaring a prefix its statements may use.
+
+        See :meth:`MutableStatementsMixin.add_prefix
+        <timetoalign.timelines.MutableStatementsMixin.add_prefix>`.
+        """
+        return self._with_statement_state(prefixes=self._prefixes_with(name, namespace))
+
+    # endregion
 
     def __repr__(self) -> str:
         label = (

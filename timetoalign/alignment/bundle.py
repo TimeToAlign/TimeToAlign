@@ -68,6 +68,7 @@ from timetoalign.timelines.groups import (
     _root,
 )
 from timetoalign.timelines.manifest import Manifest, ManifestFileMixin
+from timetoalign.timelines.statements import MutableStatementsMixin
 
 from .claims import AlignmentAnchor, MatchClaim, MatchClaimField
 from .filters import ClaimFilter
@@ -126,7 +127,7 @@ def _resolve_coordinate_and_timeline(
 
 
 @dataclass
-class AlignmentBundle(_IdScope, ManifestFileMixin, _OpenObject):
+class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _OpenObject):
     """The primary entry point for all alignment workflows.
 
     An AlignmentBundle manages timelines and their alignment relationships.
@@ -161,6 +162,9 @@ class AlignmentBundle(_IdScope, ManifestFileMixin, _OpenObject):
         styling: The members of the manifest's ``graphical`` other than
             ``order`` (``styles``, ``rules``, ``timestamps`` and any
             other), kept as given and never interpreted.
+        statements: What the manifest stands for, as property–value pairs,
+            with their :attr:`provenance` (see
+            :mod:`~timetoalign.timelines.statements`).
 
     Note:
         The two claim stores are interchangeable as far as queries are
@@ -211,6 +215,13 @@ class AlignmentBundle(_IdScope, ManifestFileMixin, _OpenObject):
     # The members of the manifest's ``graphical`` other than ``order``,
     # kept as given and never interpreted.
     styling: dict[str, Any] = field(default_factory=dict)
+
+    # The manifest's statements and provenance as the file writes them, and
+    # the prefixes they need beyond the catalogue's.
+    _statement_state: dict[str, Any] = field(
+        default_factory=dict, init=False, repr=False
+    )
+    _prefixes: dict[str, str] = field(default_factory=dict, init=False, repr=False)
 
     # Cached WarpMaps: (source_tl_id, target_tl_id) -> WarpMap | None
     # None values are cached as negative results to avoid repeated expensive
@@ -274,7 +285,9 @@ class AlignmentBundle(_IdScope, ManifestFileMixin, _OpenObject):
         ``graphical.order`` entry (``members`` order without one).
         ``graphical``'s other keys are kept as :attr:`styling`, and the
         entries of ``graphical.order`` keyed by a timeline, its band orders,
-        are kept too, both unread. Every root no group names joins
+        are kept too, both unread. The manifest's statements and provenance
+        become the bundle's, with the prefixes of its ``@context`` they need.
+        Every root no group names joins
         ungrouped. A timeline several groups name is a member of each, one
         object shared by them. Keys the library does not know are kept on the
         object read from the JSON object they were found in, and written back.
@@ -322,6 +335,7 @@ class AlignmentBundle(_IdScope, ManifestFileMixin, _OpenObject):
         bundle._has_graphical = manifest.has_graphical
         bundle._band_orders = manifest.band_orders
         bundle._measure_maps = manifest.measure_maps
+        bundle._set_statement_state(manifest.statement_state, manifest.prefixes)
         for group_data in content.groups:
             group_id = group_data.get("id") if isinstance(group_data, dict) else None
             group = TimelineGroup._from_group_object(
@@ -348,10 +362,14 @@ class AlignmentBundle(_IdScope, ManifestFileMixin, _OpenObject):
         Registers every group and standalone timeline from each source
         bundle into a new bundle, and carries over every cross-group
         ``MatchClaim`` (both the per-claim list and any columnar
-        ``MatchClaimField`` stores) unchanged. Each source group is entered as
+        ``MatchClaimField`` stores) unchanged. The statements of the
+        timelines and regions travel with them, and their prefixes; the
+        source bundles' own statements describe their manifests and are not
+        carried. Each source group is entered as
         a new group with the same members, name and meta, each member keeping
         its own lock; a minted group id is minted again in the merged bundle,
-        a given one is kept. Groups from
+        a given one is kept, and a statement of its members' trees naming
+        it names its new id. Groups from
         different source bundles remain distinct — merging does not itself
         align timelines across bundles. Add cross-group MatchClaims (e.g. via
         :meth:`create_match_claims`) afterwards to align them.
@@ -399,6 +417,7 @@ class AlignmentBundle(_IdScope, ManifestFileMixin, _OpenObject):
                 for member in group:
                     rebuilt._admit_member(member)
                 merged.add_group(rebuilt)
+                rebuilt._rename_member_references(group.id, rebuilt.id)
             grouped = bundle.timeline_to_groups
             for timeline_id, timeline in bundle.timelines.items():
                 if timeline_id in grouped:
@@ -641,6 +660,14 @@ class AlignmentBundle(_IdScope, ManifestFileMixin, _OpenObject):
             root = _root(timeline)
             roots.setdefault(root.id, root)
         return list(roots.values())
+
+    def _statements_holder(self) -> "AlignmentBundle":
+        """Return the bundle: it holds the statements of its manifest itself."""
+        return self
+
+    def _statement_holder_name(self) -> str:
+        """Return the bundle as a message names it."""
+        return f"bundle {quote_id(self.id)}"
 
     def _register(self, timeline: "Timeline") -> None:
         """Register a timeline, and its root when it is a child."""
@@ -4028,7 +4055,10 @@ class AlignmentBundle(_IdScope, ManifestFileMixin, _OpenObject):
         members by id. ``graphical.order`` keeps every group's member order
         under its id and, unchanged, the band order read with the manifest
         of every timeline written, beside the members of :attr:`styling`. A
-        root no group names is ungrouped. MatchClaims are not written; the
+        root no group names is ungrouped. The bundle's statements and
+        provenance are the manifest's, and the manifest carries its inline
+        JSON-LD ``@context`` with the prefixes its statements use.
+        MatchClaims are not written; the
         support policy is a setting of the bundle, not part of the manifest.
 
         Args:
@@ -4039,9 +4069,10 @@ class AlignmentBundle(_IdScope, ManifestFileMixin, _OpenObject):
             external_references: Write every timeline's external references.
 
         Returns:
-            ``{"timetoshare": "0.2.0", "id"?, "name", "meta", "timelines":
-            [...], "groups": [...], "measure_maps": [...], "graphical"?:
-            {"order": {...}, ...}}``.
+            ``{"@context": {...}, "timetoshare": "0.2.0", "id"?, "name",
+            "meta", "timelines": [...], "groups": [...], "measure_maps":
+            [...], "statements"?, "provenance"?, "graphical"?: {"order":
+            {...}, ...}}``.
 
         Examples:
             >>> from fractions import Fraction
@@ -4070,6 +4101,8 @@ class AlignmentBundle(_IdScope, ManifestFileMixin, _OpenObject):
             id=None if self._id_minted else self.id,
             name=self.name,
             meta=self.meta,
+            statement_state=self._statement_state,
+            prefixes=self._prefixes,
             styling=self.styling,
             band_orders=self._band_orders,
             has_graphical=self._has_graphical,

@@ -3,14 +3,17 @@
 A TimeToShare manifest is one JSON object: the version marker
 ``timetoshare``, an array of root ``timelines`` and, optionally, the
 manifest's ``id``, ``name`` and ``meta``, its ``groups``, its
-``measure_maps`` and its ``graphical``.
+``measure_maps``, its ``graphical``, and its inline JSON-LD ``@context``
+with the manifest's ``statements`` and ``provenance`` (see
+:mod:`~timetoalign.timelines.statements`).
 :class:`~timetoalign.timelines.Timeline`,
 :class:`~timetoalign.timelines.TimelineGroup` and
 :class:`~timetoalign.alignment.AlignmentBundle` each write one with
 ``to_dict`` and read one with ``from_dict``. This module holds what they
 share: the version marker, the reading of the manifest around its timelines
-and groups, the writing of that envelope and of the measure maps its
-timelines name, and the codec of a bare value on a timeline's own axis.
+and groups, the writing of that envelope, of the measure maps its
+timelines name and of the ``@context`` its statements need, the check of
+the statements, and the codec of a bare value on a timeline's own axis.
 
 A value on a timeline's own axis (``length``, ``offset``, region ``start``
 and ``end``, break and marker ``coordinate``, jump ``from_coordinate`` and
@@ -30,7 +33,8 @@ and ``from_dict`` takes, or a file, is in the file form; the dict of one
 object inside it (a conversion map, a region, a measure map) is bare.
 :meth:`Manifest.read` and :meth:`Manifest.write` convert, through
 TimeToShare's :func:`timetoshare.with_bare_ids` and
-:func:`timetoshare.with_file_ids`.
+:func:`timetoshare.with_file_ids`. Statements are the same in both forms: a
+value naming an element is ``{"id": "#clt_1"}`` in memory too.
 """
 
 from __future__ import annotations
@@ -46,13 +50,21 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Self
 
 import timetoshare
-from timetoshare import child_ends, load_catalogue, loads
+from timetoshare import FORMAT_CONTEXT, child_ends, load_catalogue, loads
 from timetoshare.serialization import Serialization
+from timetoshare.statements import statement_positions, subjects
 
 from timetoalign.core import Coordinate, NumberType, TimeUnit
 from timetoalign.core.ids import _OpenObject, mint_id, quote_id, validate_id
 from timetoalign.core.time import is_fraction_json, number_from_json, number_to_json
 from timetoalign.maps.base import MEASURE_MAP_ID_PREFIX
+
+from .statements import (
+    STATE_KEYS,
+    needed_prefixes,
+    read_statement_state,
+    renamed_state,
+)
 
 if TYPE_CHECKING:
     from .base import Timeline
@@ -305,6 +317,66 @@ def bare_ids(data: Mapping[str, Any]) -> dict[str, Any]:
         raise ValueError(f"{pointer}: {error}") from None
 
 
+def check_statements(data: Mapping[str, Any]) -> None:
+    """Refuse a manifest whose statements break a rule of the format.
+
+    The rules of the ``@context``, the statements and their provenance are
+    TimeToShare's: :func:`timetoshare.statement_problems` checks them, and
+    nothing else, and the first problem is raised. A manifest is checked as
+    it is read, before anything else is read, and as it is written, so that
+    a manifest whose statements break a rule is never emitted. *data* is in
+    the file form; the messages quote IDs bare.
+
+    Raises:
+        timetoshare.SchemaValidationError: The first problem, a
+            ``ValueError`` whose message starts with its path in *data*:
+            ``#/timelines/0/statements/dcterms:source/0/id: '#ghost' names
+            no element of this manifest``.
+    """
+    problems = timetoshare.statement_problems(data)
+    if problems:
+        raise problems[0]
+
+
+def _referenced_ids(fields: Mapping[str, Any]) -> set[str]:
+    """The bare IDs the statements of a manifest name as ``#id``."""
+    return {
+        text[1:]
+        for kind, _path, text in statement_positions(fields)
+        if kind == "ref" and isinstance(text, str) and text.startswith("#")
+    }
+
+
+def _leave_out_unwritten(
+    fields: dict[str, Any], roots: list[Timeline], written: set[str]
+) -> dict[str, Any]:
+    """Drop from the statements written the elements the write leaves out.
+
+    A timeline or a group written on its own writes part of the manifests
+    it belongs to: a value may name an element of those manifests
+    (``Timeline._manifest_ids`` of the roots written) that this one does
+    not hold. The pair naming it, its provenance entry and every ``basis``
+    or ``stated_by`` item naming it are left out. A reference naming no
+    element of any of those manifests stays, for the check of the manifest
+    written to refuse.
+
+    Args:
+        fields: The manifest written, IDs bare.
+        roots: The roots written.
+        written: Every ID the manifest written holds.
+    """
+    referenced = _referenced_ids(fields) - written
+    if not referenced:
+        return fields
+    known: set[str] = set()
+    for root in roots:
+        known.update(root._manifest_ids())
+    gone = referenced & known
+    if not gone:
+        return fields
+    return timetoshare.with_references_renamed(fields, dict.fromkeys(gone))
+
+
 # endregion
 
 
@@ -316,7 +388,8 @@ class Manifest(_OpenObject):
     """What a manifest holds beside its timelines and groups.
 
     The manifest's ``id`` (absent when it has none), ``name`` and ``meta``,
-    the members of its ``graphical`` other than ``order``
+    its statements and provenance with the prefixes they need, the members
+    of its ``graphical`` other than ``order``
     (``styling``) and the band orders of its timelines (``band_orders``),
     both kept as given and never interpreted, whether it holds ``graphical``
     at all, the measure maps no timeline names, and every key the library
@@ -327,6 +400,10 @@ class Manifest(_OpenObject):
             or one named by ``name`` alone).
         name: The manifest name, or None.
         meta: The manifest's free metadata.
+        statement_state: The manifest's ``statements`` and ``provenance``,
+            each only when not empty, as the file writes them.
+        prefixes: The prefixes those use that the catalogue lacks or gives
+            another namespace, from the manifest's ``@context``.
         styling: ``graphical`` without ``order``: ``styles``,
             ``rules``, ``timestamps`` and any other key, kept as given;
             a named timestamp's ``display`` is written in canonical order,
@@ -341,6 +418,7 @@ class Manifest(_OpenObject):
     """
 
     _dict_keys: ClassVar[tuple[str, ...]] = (
+        "@context",
         "timetoshare",
         "id",
         "name",
@@ -348,12 +426,15 @@ class Manifest(_OpenObject):
         "timelines",
         "groups",
         "measure_maps",
+        *STATE_KEYS,
         "graphical",
     )
 
     id: str | None = None
     name: str | None = None
     meta: dict[str, Any] = field(default_factory=dict)
+    statement_state: dict[str, Any] = field(default_factory=dict)
+    prefixes: dict[str, str] = field(default_factory=dict)
     styling: dict[str, Any] = field(default_factory=dict)
     band_orders: dict[str, Any] = field(default_factory=dict)
     has_graphical: bool = False
@@ -367,8 +448,7 @@ class Manifest(_OpenObject):
         followed by the ID; it is read with bare IDs (:func:`bare_ids`), as
         every object of the library holds them. The statements and their
         provenance are checked first, by TimeToShare's rules
-        (``timetoshare.statement_problems``). The measure maps are read
-        next, then
+        (:func:`check_statements`). The measure maps are read next, then
         every root timeline is rebuilt, its conversion maps reading the
         measure maps they name, and every timeline of the roots' trees is
         indexed by id. Every id is unique across the manifest: the
@@ -378,7 +458,12 @@ class Manifest(_OpenObject):
         as JSON for the class reading them. ``graphical.order`` is split by
         its keys: a group's display order goes to the content, a timeline's
         band order to the envelope, unchecked. The measure maps no timeline
-        names are kept on the envelope.
+        names are kept on the envelope. The manifest, every timeline and
+        every region keep their statements and provenance as written, each
+        with the prefixes of the manifest's ``@context`` it uses that the
+        catalogue lacks or gives another namespace. A manifest without
+        ``@context`` and without statements reads; the format's warnings
+        are not reported.
 
         Returns:
             The envelope, and the manifest's content.
@@ -403,15 +488,21 @@ class Manifest(_OpenObject):
             )
         require_object(data, "a TimeToShare manifest", ("timelines",))
         bare = bare_ids(data)
-        problems = timetoshare.statement_problems(data)
-        if problems:
-            raise problems[0]
+        check_statements(data)
+        own = {
+            key: value
+            for key, value in data.get("@context", {}).items()
+            if key not in FORMAT_CONTEXT
+        }
         data = bare
         manifest_id = read_id(data["id"], "the manifest") if "id" in data else None
+        state = read_statement_state(data)
         manifest = cls(
             id=manifest_id,
             name=read_name(data, "the manifest"),
             meta=read_meta(data, "the manifest"),
+            statement_state=state,
+            prefixes=needed_prefixes(state, own),
         )
         manifest._keep_unknown_keys(data)
 
@@ -426,6 +517,9 @@ class Manifest(_OpenObject):
         unique_ids(holders)
         measure_maps = {measure_map.id: measure_map for measure_map in read_maps}
         roots, timelines = _read_roots(data["timelines"], measure_maps)
+        if own:
+            for timeline in timelines.values():
+                timeline._take_prefixes(own)
         holders.extend(
             (element_id, description)
             for root in roots
@@ -507,16 +601,19 @@ class Manifest(_OpenObject):
         key names a timeline or group of the manifest. ``graphical`` is
         written when there is an order to keep, styling, or a ``graphical``
         read with the manifest; ``id`` only when the manifest has one. The
+        manifest's, every timeline's and every region's statements and
+        provenance are written where not empty; a value naming an element
+        of the manifests the roots belong to that this one leaves out is
+        left out with its provenance (:func:`_leave_out_unwritten`). The
         form is TimeToShare's: the
         manifest is built whole and put in its form by
         :func:`timetoshare.minimal` or :func:`timetoshare.complete`, and
         every ID is written as a file writes it, ``#`` followed by the ID
         (:func:`timetoshare.with_file_ids`). Every manifest written carries
         its inline JSON-LD ``@context``: the format's terms and the prefixes
-        its statements use (:func:`timetoshare.with_context`), each standing
-        for the namespace the ``@context`` read with the manifest declares,
-        else the catalogue's; a prefix no statement uses is not written. The
-        statements and provenance
+        its statements use (:func:`timetoshare.with_context`), each prefix
+        standing for the namespace the holders using it declare, else the
+        catalogue's (:meth:`_prefix_table`). The statements and provenance
         written are checked as a manifest read is, so that a manifest whose
         statements break a rule of the format is never emitted.
 
@@ -534,10 +631,13 @@ class Manifest(_OpenObject):
             ValueError: If an id is held twice among the manifest, its
                 timelines' trees and its groups (:func:`unique_ids`), or a
                 measure map cannot be written (two different ones carry one
-                given id, or one's given id is held by another element), or
+                given id, or one's given id is held by another element), two
+                holders written use one prefix for two namespaces (``the
+                prefix 'ex' stands for 'http://a.example/' on timeline
+                'clt_1' and for 'http://b.example/' on timeline 'clt_2'``), or
                 the statements written break a rule of the format (the first
                 problem, a ``timetoshare.SchemaValidationError``): a value
-                naming an element no longer written, for instance.
+                naming an element of no manifest of the roots, for instance.
         """
         trees = [
             timeline
@@ -588,7 +688,14 @@ class Manifest(_OpenObject):
             groups=list(groups),
             measure_maps=entries.write(),
         )
-        written = _timeline_ids(timelines)
+        fields.update(copy.deepcopy(self.statement_state))
+        fields = _leave_out_unwritten(
+            fields,
+            roots,
+            {*entries.taken, *(entry["id"] for entry in fields["measure_maps"])},
+        )
+        prefixes = self._prefix_table(fields, trees)
+        written = _timeline_ids(fields["timelines"])
         band_orders = {
             key: copy.deepcopy(entry)
             for key, entry in self.band_orders.items()
@@ -599,13 +706,56 @@ class Manifest(_OpenObject):
             fields["graphical"] = {"order": order, **copy.deepcopy(self.styling)}
         built = self._dict_form(fields, minimal=False)
         result = timetoshare.minimal(built) if minimal else timetoshare.complete(built)
-        result = timetoshare.with_context(
-            timetoshare.with_file_ids(result), load_catalogue().prefixes
-        )
-        problems = timetoshare.statement_problems(result)
-        if problems:
-            raise problems[0]
+        result = timetoshare.with_context(timetoshare.with_file_ids(result), prefixes)
+        check_statements(result)
         return result
+
+    def _prefix_table(
+        self, fields: Mapping[str, Any], trees: list[Timeline]
+    ) -> dict[str, str]:
+        """Return the namespace of every prefix the statements written use.
+
+        The catalogue's prefixes, then holder by holder in written order
+        (the manifest; each timeline object, depth first, followed by its
+        regions): a prefix a holder uses stands for the namespace the holder
+        declares, else the catalogue's.
+
+        Raises:
+            ValueError: If two holders use one prefix for two namespaces.
+        """
+        catalogue = load_catalogue().prefixes
+        held: dict[str, Any] = {}
+        for timeline in trees:
+            held[timeline.id] = timeline
+            held.update(timeline._regions)
+        table = dict(catalogue)
+        fixed: dict[str, tuple[str, str]] = {}
+        for _path, element, kind in subjects(fields):
+            state = {key: element[key] for key in STATE_KEYS if key in element}
+            if not state:
+                continue
+            if kind == "manifest":
+                declared, holder = self.prefixes, "the manifest"
+            else:
+                element_holder = held[element["id"]]
+                declared = element_holder._own_prefixes()
+                holder = element_holder._statement_holder_name()
+            for prefix in timetoshare.used_prefixes(state):
+                iri = declared.get(prefix, catalogue.get(prefix))
+                if iri is None:
+                    continue
+                first = fixed.setdefault(prefix, (iri, holder))
+                if first[0] != iri:
+                    raise ValueError(
+                        f"the prefix '{prefix}' stands for '{first[0]}' on {first[1]} "
+                        f"and for '{iri}' on {holder}"
+                    )
+                table[prefix] = iri
+        return table
+
+    def _rename_statement_references(self, renamed: Mapping[str, str | None]) -> None:
+        """Rename or drop the elements the manifest's statements name."""
+        self.statement_state = renamed_state(self.statement_state, renamed)
 
 
 class MeasureMapEntries:

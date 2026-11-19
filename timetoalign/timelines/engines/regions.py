@@ -144,7 +144,9 @@ class RegionsMixin:
     def replace_region(self, region: Region) -> Self:
         """Store *region* in place of the region holding its id.
 
-        Regions are frozen: a region changed — given another name with
+        Regions are frozen: a region changed — given a statement with
+        :meth:`Region.with_statement
+        <timetoalign.timelines.Region.with_statement>`, another name with
         ``dataclasses.replace`` — is a new region, which takes the place of
         the one this timeline holds under its id.
 
@@ -160,13 +162,12 @@ class RegionsMixin:
             ValueError: If the region's unit is not the timeline's.
 
         Examples:
-            >>> from dataclasses import replace
             >>> from timetoalign.timelines import ContinuousLogicalTimeline
             >>> score = ContinuousLogicalTimeline(length=16)
             >>> intro = score.create_region(0, 4, id="intro")
-            >>> _ = score.replace_region(replace(intro, name="Introduction"))
-            >>> score.get_region("intro").name
-            'Introduction'
+            >>> _ = score.replace_region(intro.with_statement("rdfs:label", "Introduction"))
+            >>> score.get_region("intro").statements
+            {'rdfs:label': ['Introduction']}
         """
         self.get_region(region.id)
         if region.unit != self._unit:
@@ -178,13 +179,18 @@ class RegionsMixin:
         return self
 
     def _rename_region(self, old_id: str, new_id: str) -> None:
-        """Store the region *old_id* under the minted id *new_id*."""
+        """Store the region *old_id* under the minted id *new_id*.
+
+        Every statement of the timeline's manifest naming *old_id* names
+        *new_id* (``Timeline._rename_references``).
+        """
         self._regions = {
             (new_id if key == old_id else key): (
                 replace(region, id=new_id, _minted=True) if key == old_id else region
             )
             for key, region in self._regions.items()
         }
+        self._rename_references(old_id, new_id)
 
     def create_regions_from_boundaries(
         self,

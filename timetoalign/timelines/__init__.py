@@ -19,6 +19,11 @@ Beat grids:
 - BeatGridSegment: One tempo segment of a beat grid
 - GridBeat: One labelled beat of a grid
 
+Statements (what a bundle, a timeline or a region stands for):
+- StatementsMixin: Property–value pairs and their provenance, read side
+- MutableStatementsMixin: The same, changed in place (timeline, bundle)
+- LIBRARY_AGENT: The agent this library's importers name by default
+
 Structural components:
 - Region: Named TimeInterval (not a timeline itself)
 - MeasureMap: Immutable printed-order measure structure
@@ -101,6 +106,7 @@ from .flow import (
 )
 from .groups import TimelineGroup
 from .regions import Region
+from .statements import LIBRARY_AGENT, MutableStatementsMixin, StatementsMixin
 from .structure import (
     Expansion,
     MeasureMap,
@@ -150,6 +156,10 @@ __all__ = [
     "BeatGrid",
     "BeatGridSegment",
     "GridBeat",
+    # Statements
+    "LIBRARY_AGENT",
+    "MutableStatementsMixin",
+    "StatementsMixin",
     # Structural components
     "Region",
     "MeasureMap",

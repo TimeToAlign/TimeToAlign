@@ -90,6 +90,13 @@ from .manifest import (
     select,
 )
 from .regions import Region
+from .statements import (
+    STATE_KEYS,
+    MutableStatementsMixin,
+    needed_prefixes,
+    read_statement_state,
+    statement_holders,
+)
 from .structure import MeasureMap, MetricHierarchy
 
 if TYPE_CHECKING:
@@ -176,6 +183,7 @@ class Timeline(
     RegionsMixin,
     SegmentsMixin,
     SkeletonsMixin,
+    MutableStatementsMixin,
     ManifestFileMixin,
     _OpenObject,
 ):
@@ -218,6 +226,9 @@ class Timeline(
         is_locked: Whether the timeline's length is fixed.
         is_discrete: Whether the timeline uses discrete coordinates.
         is_continuous: Whether the timeline uses continuous coordinates.
+        statements: What the timeline stands for, as property–value pairs,
+            with their :attr:`provenance` (see
+            :mod:`~timetoalign.timelines.statements`).
 
     Examples:
         >>> # Preferred: use concrete subclasses
@@ -263,6 +274,7 @@ class Timeline(
         "conversion_maps",
         "regions",
         "flow_control",
+        *STATE_KEYS,
         "events",
         "external_references",
     )
@@ -390,6 +402,11 @@ class Timeline(
 
         # Shared temporal structures enroll timelines through TimeSkeleton.
         self._skeleton_attachments: list[Any] = []
+
+        # What the timeline stands for: its statements and provenance as the
+        # file writes them, and the prefixes they need beyond the catalogue's.
+        self._statement_state: dict[str, Any] = {}
+        self._prefixes: dict[str, str] = {}
 
         # Logger
         self._logger = module_logger.getChild(self._id)
@@ -842,13 +859,18 @@ class Timeline(
         registry._admit = self._admit_element_id
 
     def _set_id(self, new_id: str, *, minted: bool = False) -> None:
-        """Give this timeline a new id, renaming it under its parent."""
+        """Give this timeline a new id, renaming it under its parent.
+
+        Every statement of the timeline's manifest naming the old id names
+        the new one (:meth:`_rename_references`).
+        """
         validate_id(new_id)
         old_id = self._id
         if self._parent is not None and new_id != old_id:
             self._parent._rename_child(old_id, new_id)
         self._id = new_id
         self._id_minted = minted
+        self._rename_references(old_id, new_id)
 
     def _identity_entries(self) -> list[tuple[str, bool, str, str]]:
         """Return ``(id, minted, prefix, description)`` for this timeline and
@@ -883,7 +905,11 @@ class Timeline(
         ]
 
     def _reassign_element_id(self, old_id: str, new_id: str) -> None:
-        """Store the element of this timeline with *old_id* under a minted id."""
+        """Store the element of this timeline with *old_id* under a minted id.
+
+        Every statement of the timeline's manifest naming the old id names
+        the new one.
+        """
         held_map = next(
             (
                 nested
@@ -895,14 +921,16 @@ class Timeline(
         )
         if old_id == self._id:
             self._set_id(new_id, minted=True)
-        elif old_id in self._conversion_maps:
-            self._rename_conversion_map(old_id, new_id)
-        elif held_map is not None:
-            held_map._id = new_id
         elif old_id in self._regions:
             self._rename_region(old_id, new_id)
         else:
-            self._flow_control._reassign_id(old_id, new_id)
+            if old_id in self._conversion_maps:
+                self._rename_conversion_map(old_id, new_id)
+            elif held_map is not None:
+                held_map._id = new_id
+            else:
+                self._flow_control._reassign_id(old_id, new_id)
+            self._rename_references(old_id, new_id)
 
     def _tree_ids(self) -> dict[str, str]:
         """Map every id of this timeline's tree to its holder's description.
@@ -1082,6 +1110,88 @@ class Timeline(
             owner._reassign_element_id(old_id, new_id)
 
         return [entry for _, entry in joining], rename
+
+    # endregion
+
+    # region References in statements
+
+    def _statement_holder_name(self) -> str:
+        """Return the timeline as a message names it."""
+        return f"timeline {quote_id(self._id)}"
+
+    def _rename_statement_references(self, renamed: Mapping[str, str | None]) -> None:
+        """Rename the elements this timeline's statements and its regions' name."""
+        super()._rename_statement_references(renamed)
+        self._regions = {
+            region_id: region._with_references_renamed(renamed)
+            for region_id, region in self._regions.items()
+        }
+
+    def _take_prefixes(self, declared: Mapping[str, str]) -> None:
+        """Keep the prefixes of *declared* that this timeline's statements and
+        each of its regions' need beyond the catalogue's."""
+        self._prefixes = needed_prefixes(self._statement_state, declared)
+        self._regions = {
+            region_id: (
+                region._with_statement_state(
+                    prefixes=needed_prefixes(region._statement_state, declared)
+                )
+                if region._statement_state
+                else region
+            )
+            for region_id, region in self._regions.items()
+        }
+
+    def _tree_root(self) -> Timeline:
+        """Return the root of this timeline's tree."""
+        root = self
+        while root._parent is not None:
+            root = root._parent
+        return root
+
+    def _statement_holders(self) -> list[Any]:
+        """Return everything holding statements in this timeline's manifest.
+
+        The manifest is the timeline's tree and every tree the groups and
+        bundles holding it hold (:meth:`_manifest_ids`): each timeline of
+        those trees (each with its regions), the manifest each of their
+        roots was read from as a whole, and what holds the statements of
+        each group's and bundle's own manifest
+        (``_IdScope._statements_holder``).
+        """
+        containers = self._scope_containers()
+        roots: list[Timeline] = [self._tree_root()]
+        for container in containers:
+            for member in container._scope_members():
+                root = member._tree_root()
+                if not any(seen is root for seen in roots):
+                    roots.append(root)
+        return statement_holders(roots, containers)
+
+    def _rename_references(self, old_id: str, new_id: str) -> None:
+        """Make every statement of this timeline's manifest naming *old_id*
+        name *new_id*, the id the same element holds now."""
+        if old_id == new_id:
+            return
+        for holder in self._statement_holders():
+            holder._rename_statement_references({old_id: new_id})
+
+    def _drop_references(self, ids: Iterable[str]) -> None:
+        """Leave the elements of *ids* that left this timeline's manifest out
+        of the statements of its tree.
+
+        Each id of *ids* the manifest (:meth:`_manifest_ids`) no longer holds
+        is dropped from the statements of the tree's timelines and regions
+        and of the manifest its root was read from as a whole: a value
+        naming it leaves its list, with its provenance entry, and a
+        ``basis`` or ``stated_by`` item naming it leaves its list.
+        """
+        gone = set(ids).difference(self._manifest_ids())
+        if not gone:
+            return
+        renamed: dict[str, str | None] = dict.fromkeys(gone)
+        for holder in statement_holders([self._tree_root()], ()):
+            holder._rename_statement_references(renamed)
 
     # endregion
 
@@ -1483,7 +1593,8 @@ class Timeline(
         """Write a TimeToShare manifest holding this timeline as its one root.
 
         The timeline object is the timeline's structure: its axis, children,
-        conversion maps, regions and flow control. Its measure map is a
+        conversion maps, regions and flow control, and its statements and
+        provenance (see :mod:`~timetoalign.timelines.statements`). Its measure map is a
         ``MeasureRecordMap`` among the conversion maps (chained after a
         ``LinearMap`` to quarters on an axis in whole notes or ticks) naming
         an entry of the manifest's ``measure_maps``, which also holds every
@@ -1504,10 +1615,15 @@ class Timeline(
         key is written, its default value included (the complete form). Keys
         the library does not know, kept when the timeline was read, are
         written back. A timeline read from a manifest as a whole writes that
-        manifest's ``id``, ``name``, ``meta``, ``graphical`` and unknown
-        keys back around it. :meth:`to_file` writes the manifest as a file.
-        Every manifest carries its inline JSON-LD ``@context``: the format's
-        terms and the prefixes its statements use.
+        manifest's ``id``, ``name``, ``meta``, statements, ``graphical``
+        and unknown keys back around it. :meth:`to_file` writes the
+        manifest as a file. Every manifest carries its inline JSON-LD
+        ``@context``: the format's terms and the prefixes its statements use.
+
+        The manifest is written whole and valid wherever the timeline
+        belongs: a value naming a timeline or region this manifest leaves
+        out (another timeline of the bundle) is left out with its
+        provenance.
 
         Collections are written in one canonical order, independent of the
         order in which their content was added, so equal timelines give equal
@@ -1539,7 +1655,11 @@ class Timeline(
             ValueError: If a conversion map has no TimeToShare form or
                 cannot be written losslessly, a jump cannot name the marker
                 it lands on, a measure map's given id is held by another
-                measure map or by a timeline, group or the manifest.
+                measure map or by a timeline, group or the manifest, two
+                timelines or regions use one prefix for two namespaces, or
+                the statements written break a rule of the format, in
+                TimeToShare's words (``#/timelines/0/statements/dcterms:source/0/id:
+                '#ghost' names no element of this manifest``).
 
         Examples:
             >>> from timetoshare import FORMAT_CONTEXT
@@ -1640,6 +1760,7 @@ class Timeline(
                     )
                 ],
                 "flow_control": flow_control,
+                **copy.deepcopy(self._statement_state),
             }
         )
         if events:
@@ -1683,7 +1804,12 @@ class Timeline(
         or descendant, selects it; given both, they must name the same
         timeline. Only arguments naming no timeline override the root's id
         and name, and only in a manifest of one root and no group; the new
-        id must not be held by any element of the manifest.
+        id must not be held by any element of the manifest, and the
+        statements naming the root name it by its new id.
+
+        A timeline selected leaves the rest of the manifest behind: a value
+        of a statement of its tree naming a timeline or region of the rest
+        is dropped, with its provenance.
 
         The class comes from the unit (each unit belongs to exactly one
         class) and ``is_segment_line``. Every optional key may be left out
@@ -1747,6 +1873,8 @@ class Timeline(
                         f"{quote_id(timeline_id)}: it is already held by "
                         f"{content.ids[timeline_id]}"
                     )
+                # The manifest's statements name the root by its new id too.
+                timeline._manifest = manifest
                 timeline._set_id(timeline_id)
             if name is not None:
                 timeline._name = name
@@ -1760,6 +1888,9 @@ class Timeline(
             )
         if whole and timeline is content.roots[0]:
             timeline._manifest = manifest
+        else:
+            # The rest of the manifest is left out: no statement names it.
+            timeline._drop_references(content.ids)
         if not isinstance(timeline, cls):
             raise ValueError(
                 f"timeline {timeline.id!r} of the manifest is a {type(timeline).__name__}, "
@@ -1942,6 +2073,7 @@ class Timeline(
                 unit=unit,
                 number_type=number_type,
             )
+        timeline._statement_state = read_statement_state(data)
         timeline._keep_unknown_keys(data)
         return timeline
 
@@ -2025,8 +2157,8 @@ class Timeline(
         Everything the timeline holds is carried over: events, external
         references, conversion maps, regions, flow maps, measure map, metric
         hierarchy, a copy of its flow control, its length and lock, its root
-        offset, the keys it was read with and a copy of the manifest it was
-        read from.
+        offset, the keys it was read with, a copy of its statements and
+        prefixes and a copy of the manifest it was read from.
         Each entry of *children* pairs a child's id with the timeline to embed
         in its place, at its offset and with its lock state; the caller passes
         copies, so that a change to the result never reaches this tree.
@@ -2079,6 +2211,10 @@ class Timeline(
         copied._locked = self._locked
         copied._root_offset = self._root_offset
         copied._unknown_keys = copy.deepcopy(dict(self._unknown_keys))
+        copied._statement_state = copy.deepcopy(self._statement_state)
+        copied._prefixes = dict(self._prefixes)
+        # A copy of the envelope, so that renaming what the copy's
+        # statements name never reaches the source's.
         copied._manifest = copy.copy(self._manifest)
         return copied
 

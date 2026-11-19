@@ -90,6 +90,7 @@ from .manifest import (
     require_object,
     select,
 )
+from .statements import statement_holders
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -192,7 +193,8 @@ class _IdScope:
     its members (:meth:`_scope_members`), registers a newcomer
     (:meth:`_register`) and, holding scopes, supplies them
     (:meth:`_sub_scopes`); a scope that can be held names the scopes
-    holding it (:meth:`_holders`).
+    holding it (:meth:`_holders`). The statements of the scope's own
+    manifest come through one hook (:meth:`_statements_holder`).
     """
 
     _scope_kind: ClassVar[str]
@@ -224,6 +226,32 @@ class _IdScope:
     def _holders(self) -> list["_IdScope"]:
         """Return the live scopes holding this one among their sub-scopes: none."""
         return []
+
+    def _statements_holder(self) -> Any:
+        """Return what holds the statements of the scope's own manifest, or None.
+
+        A bundle holds them itself, a group read from a manifest as a whole
+        keeps them on that manifest; anything returned renames the elements
+        its statements name with ``_rename_statement_references``.
+        """
+        return None
+
+    def _rename_member_references(self, old_id: str, new_id: str) -> None:
+        """Make the statements of the members' trees and of the scope's own
+        manifest naming *old_id* name *new_id*.
+
+        Only this scope's manifest is renamed: another scope holding a
+        member may hold an element of its own under *old_id*.
+        """
+        if old_id == new_id:
+            return
+        roots: list[Timeline] = []
+        for member in self._scope_members():
+            root = _root(member)
+            if not any(seen is root for seen in roots):
+                roots.append(root)
+        for holder in statement_holders(roots, [self]):
+            holder._rename_statement_references({old_id: new_id})
 
     def _scope_ids(self, *, trees: bool = True) -> dict[str, str]:
         """Map every id the scope's manifest holds to its holder.
@@ -425,12 +453,15 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
           neither.
 
         In these two cases the manifest is read as a whole: its ``meta``,
-        ``graphical`` and unknown keys are kept so
+        statements, ``graphical`` and unknown keys are kept so
         that :meth:`to_dict` writes them back, around the anonymous bundle a
-        group writes.
+        group writes; a statement naming the group by an id it overrides
+        names it by the new one.
         - From a manifest with several groups, or a named one, *group_id* or
           *name* (or both) must be given and select the one group whose id
-          and name match them. The rest of the manifest is left behind.
+          and name match them. The rest of the manifest is left behind: a
+          value of a statement of the group's trees naming a timeline or
+          region outside them is dropped, with its provenance.
 
         A group is read with the timelines its members need: each member id
         is resolved among the manifest's roots and all their descendants, and
@@ -526,11 +557,15 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
                         f"group id {quote_id(group_id)} is already held by "
                         f"{content.ids[group_id]}"
                     )
-                group.id = validate_id(group_id)
+                old_id, group.id = group.id, validate_id(group_id)
                 group._id_minted = False
             if name is not None:
                 group.name = name
-            return group._keep_manifest(manifest)
+            group._keep_manifest(manifest)
+            if group_id is not None:
+                # The statements name the group by its new id.
+                group._rename_member_references(old_id, group.id)
+            return group
         if group_id is None and name is None:
             raise ValueError(
                 "the manifest holds several groups or is named: give group_id or name "
@@ -544,11 +579,13 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
             names=[(group.id, group.name) for group in groups],
         )
         # The rest of the manifest is left out: the other groups let their
-        # members go.
+        # members go, and no statement names anything outside the group read.
         for group in groups:
             if group is not selected:
                 for member in group._timelines.values():
                     member._leave_scope(group)
+        for member in selected._timelines.values():
+            member._drop_references(content.ids)
         return selected
 
     @classmethod
@@ -735,6 +772,10 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
         """Return the members."""
         return list(self._timelines.values())
 
+    def _statements_holder(self) -> Manifest | None:
+        """Return the manifest the group was read from as a whole, or None."""
+        return self._manifest
+
     def _register(self, timeline: "Timeline") -> None:
         """Hold *timeline* as the last member and record the group on it."""
         self._timelines[timeline.id] = timeline
@@ -787,7 +828,13 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
         """Remove a member from the group.
 
         The member's tree leaves the group's manifest, unless another
-        member's tree is the same.
+        member's tree is the same. The statements then name only what is
+        still in the manifest their holder belongs to: a value of a
+        statement of the group's members, of the removed timeline's tree or
+        of the manifest the group was read from naming a timeline or region
+        that left it is dropped, with its provenance. A bundle holding the
+        group still holds the removed timeline, so nothing it holds names
+        less.
 
         Args:
             timeline_id: ID of the timeline to remove.
@@ -804,8 +851,18 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
                 f"Available timelines: {self.timeline_ids}"
             )
 
+        held = set(self._scope_ids())
         timeline = self._timelines.pop(timeline_id)
         timeline._leave_scope(self)
+        roots: list[Timeline] = []
+        for member in (*self._timelines.values(), timeline):
+            root = _root(member)
+            if not any(seen is root for seen in roots):
+                roots.append(root)
+                root._drop_references(held)
+        if self._manifest is not None:
+            gone = held.difference(self._scope_ids())
+            self._manifest._rename_statement_references(dict.fromkeys(gone))
         self._logger.debug(f"Removed timeline '{timeline_id}'")
         return timeline
 
@@ -2069,8 +2126,13 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
         members by id, sorted; ``graphical.order`` keeps their display
         order, which is the order they were added in, under the group's id,
         beside the members of :attr:`styling`. A group read from a manifest
-        as a whole writes that manifest's ``meta`` and unknown keys back,
-        and the band order it held of every timeline written, unchanged.
+        as a whole writes that manifest's ``meta``, statements and unknown
+        keys back, and the band order it held of every timeline written,
+        unchanged. The group itself holds no statements: the format keeps
+        them off groups. Wherever the group belongs, the manifest is written
+        whole and valid, as :meth:`Timeline.to_dict
+        <timetoalign.timelines.Timeline.to_dict>` writes it: a value naming
+        a timeline or region the manifest leaves out is left out too.
 
         Args:
             minimal: If False, write every optional key, its default value

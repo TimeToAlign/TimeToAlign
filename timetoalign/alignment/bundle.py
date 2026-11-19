@@ -3895,9 +3895,18 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         the root, subtracting the other's) is two roundings on a float axis
         where one step is none: a child at offset 0 got another value than
         its parent. Step by step, a zero offset is the identity, and an
-        exact axis stays exact. A timeline appears when its closed span
-        ``[0, length]`` contains the position (bounded below only where the
-        length is unknown). Every timeline of the tree takes part, whatever
+        exact axis stays exact.
+
+        Which timelines appear follows the timeline's own parent-to-child
+        rule (``Timeline._holds_position``, which its stamps and tables read
+        too): a timeline that is not an ancestor of the queried one appears
+        when it holds the position, ``[0, length)`` and its end where no
+        sibling starts there, so a boundary shared by two siblings belongs
+        to the one starting there. An ancestor contains the queried
+        timeline's whole span, end included; it appears when its closed span
+        ``[0, length]`` holds the position, which only leaves it out for a
+        position off the queried timeline. A length that is not known bounds
+        below only. Every timeline of the tree takes part, whatever
         its depth and whether or not it is registered or grouped
         (:meth:`_known_timelines`): a middle ancestor between a registered
         root and a grouped descendant is reached like either of them.
@@ -3928,14 +3937,22 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                         value, offset.value, subtract=subtract
                     )
                     pending.append(neighbour)
+        ancestors: set[str] = set()
+        node = timeline
+        while node._parent is not None:
+            node = node._parent
+            ancestors.add(node.id)
         reached: dict[str, CoordinateValue] = {}
-        for relative in _tree(_root(timeline)):
+        for relative in _tree(node):
             if relative is timeline:
                 continue
             value = carried[relative.id]
-            if 0 <= value and (
-                relative.length is None or value <= relative.length.value
-            ):
+            if relative.id in ancestors:
+                length = relative.length
+                holds = 0 <= value and (length is None or value <= length.value)
+            else:
+                holds = relative._holds_position(value)
+            if holds:
                 reached[relative.id] = express_as(value, relative.number_type)
         return reached
 

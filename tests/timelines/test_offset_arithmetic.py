@@ -103,11 +103,56 @@ class TestParentToChildTransfer:
         # Before child span
         assert parent._get_child_coordinate("child", 5.0) is None
 
-        # After child span [10, 40)
-        assert parent._get_child_coordinate("child", 40.0) is None
+        # After child span [10, 40]
+        assert parent._get_child_coordinate("child", 40.5) is None
 
         # Negative
         assert parent._get_child_coordinate("child", -1.0) is None
+
+        # The end of a child no sibling follows is on the child
+        assert parent._get_child_coordinate("child", 40.0) == 30.0
+
+    def test_shared_boundary_belongs_to_the_later_sibling(
+        self,
+        parent: ContinuousPhysicalTimeline,
+        child: ContinuousPhysicalTimeline,
+        grandchild: ContinuousPhysicalTimeline,
+    ) -> None:
+        """Where one child ends and the next starts, only the next holds it.
+
+        ``child`` spans [10, 40] and ``grandchild``, here a second child,
+        starts at 40: parent 40 is ``grandchild`` 0 and not ``child`` 30, in
+        the stamp and in the table alike. ``grandchild`` ends at 50 with no
+        sibling after it, so parent 50 is its 10.
+        """
+        parent.add_child(child, offset=10.0)
+        parent.add_child(grandchild, offset=40.0)
+
+        assert parent._get_child_coordinate("child", 40.0) is None
+        assert parent._get_child_coordinate("grandchild", 40.0) == 0.0
+        assert parent._get_child_coordinate("grandchild", 50.0) == 10.0
+        stamps = [
+            {
+                timeline_id: coordinate.value
+                for timeline_id, coordinate in parent.get_timestamp_at(
+                    position
+                ).coordinates.items()
+            }
+            for position in (40.0, 50.0)
+        ]
+        assert stamps == [
+            {"parent": 40.0, "grandchild": 0.0},
+            {"parent": 50.0, "grandchild": 10.0},
+        ]
+        table = parent.get_timestamp_table([40.0, 50.0], format="dataframe")
+        assert list(table.columns) == [
+            "parent (seconds)",
+            "child (seconds)",
+            "grandchild (seconds)",
+        ]
+        assert table["parent (seconds)"].tolist() == [40.0, 50.0]
+        assert table["child (seconds)"].isna().tolist() == [True, True]
+        assert table["grandchild (seconds)"].tolist() == [0.0, 10.0]
 
     def test_unknown_child_returns_none(
         self,
@@ -207,7 +252,7 @@ class TestTimeStampOffsetArithmetic:
         parent: ContinuousPhysicalTimeline,
         child: ContinuousPhysicalTimeline,
     ) -> None:
-        """Verify boundary values: start inclusive, end exclusive."""
+        """Verify boundary values: start inclusive, a lone child's end inclusive."""
         parent.add_child(child, offset=10.0)
 
         # Start: inclusive (child coord = 0.0)
@@ -218,10 +263,14 @@ class TestTimeStampOffsetArithmetic:
         ts_near_end = parent.get_timestamp(39.9)
         assert ts_near_end.get_coordinate_for("child", format="float") == 29.9
 
-        # End: exclusive (child coord = 30.0 == length, out of range)
+        # End: inclusive, since no sibling starts there (child coord 30.0)
         ts_end = parent.get_timestamp(40.0)
+        assert ts_end.get_coordinate_for("child", format="float") == 30.0
+
+        # Past the end: out of range
+        ts_after = parent.get_timestamp(40.5)
         with pytest.raises(KeyError):
-            ts_end.get_coordinate_for("child")
+            ts_after.get_coordinate_for("child")
 
     def test_no_interpolation_maps_attribute(
         self,

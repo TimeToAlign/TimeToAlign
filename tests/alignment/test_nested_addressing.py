@@ -193,9 +193,36 @@ def test_middle_ancestor_appears_from_every_source(
                 ("clt_7", Fraction(0)),
                 ("clt_6", Fraction(0)),
                 ("cpt_1", 0.0),
-                ("clt_3", Fraction(312)),
                 ("clt_4", Fraction(0)),
             ],
+        ),
+        (
+            "clt_3",
+            Fraction(312),
+            [
+                ("clt_3", Fraction(312)),
+                ("clt_7", Fraction(0)),
+                ("clt_1", Fraction(668)),
+                ("clt_6", Fraction(0)),
+                ("cpt_1", 0.0),
+                ("clt_4", Fraction(0)),
+            ],
+        ),
+        (
+            "clt_4",
+            Fraction(0),
+            [
+                ("clt_4", Fraction(0)),
+                ("clt_7", Fraction(0)),
+                ("clt_1", Fraction(668)),
+                ("clt_6", Fraction(0)),
+                ("cpt_1", 0.0),
+            ],
+        ),
+        (
+            "clt_1",
+            Fraction(1616),
+            [("clt_1", Fraction(1616)), ("clt_5", Fraction(624))],
         ),
         ("clt_1", Fraction(100), [("clt_1", Fraction(100)), ("clt_2", Fraction(100))]),
         ("clt_5", Fraction(300), [("clt_5", Fraction(300)), ("clt_1", Fraction(1292))]),
@@ -212,10 +239,10 @@ def test_middle_ancestor_appears_from_every_source(
         ),
     ],
 )
-def test_closed_spans_decide_who_appears(
+def test_holding_timelines_appear(
     source: str, position: Fraction, expected: list[tuple[str, object]]
 ) -> None:
-    """Siblings meet at a shared boundary; a covered position shows its covers only."""
+    """A shared boundary is the later sibling's; a lone child's end is the child's."""
     bundle, _ = _bundle()
 
     values = _values(bundle.get_matchstamp_at(position, source).coordinates)

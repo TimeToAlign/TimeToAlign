@@ -336,9 +336,10 @@ class ConversionMapsMixin:
 
         ``child_coord = parent_coord - offset``
 
-        Returns None if *parent_coord* falls outside the child's
-        ``[offset, offset + length)`` span; a child of unknown length spans
-        everything from its offset on.
+        Returns None if the child does not hold *parent_coord*
+        (:meth:`_holds_position`): outside ``[offset, offset + length)``, or
+        at the child's end where a sibling starts; a child of unknown length
+        spans everything from its offset on.
 
         Args:
             child_id: The child timeline ID.
@@ -354,10 +355,7 @@ class ConversionMapsMixin:
         child_coord = parent_coord
         for offset in offsets:
             child_coord = shift_number(child_coord, offset.value, subtract=True)
-        extent = child._extent
-        if child_coord < 0 or (extent is not None and child_coord >= extent):
-            return None
-        return child_coord
+        return child_coord if child._holds_position(child_coord) else None
 
     def _get_parent_coordinate_from_child(
         self, child_id: str, child_coord: CoordinateValue

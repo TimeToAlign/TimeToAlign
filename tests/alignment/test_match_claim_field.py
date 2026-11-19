@@ -832,6 +832,21 @@ class TestTableRoundTrip:
         ):
             MatchClaimField.from_table(table)
 
+    def test_from_dict_refuses_metadata_stated_twice(self) -> None:
+        human = MatchMetadata(
+            agent=Agent(name="ann", type=AgentType.human, identifier="ann")
+        )
+        field = MatchClaimField.from_claims(_round_trip_claims([None, human, human]))
+        data = field.to_dict() | {"metadata": human.to_dict()}
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "A MatchClaimField dictionary states its metadata once: this "
+                "dictionary carries it under its key 'metadata' and in 2 row(s)."
+            ),
+        ):
+            MatchClaimField.from_dict(data)
+
     def test_refuses_other_type(self) -> None:
         table = pa.table({"match_claim": pa.array([1, 2])})
         with pytest.raises(

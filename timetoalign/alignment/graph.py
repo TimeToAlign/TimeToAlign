@@ -33,10 +33,16 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import networkx as nx
 import pandas as pd
+import pyarrow as pa
 
-from timetoalign.alignment.claims import AlignmentAnchor, MatchClaim
+from timetoalign.alignment.claims import (
+    _CLAIM_ID_PREFIX,
+    AlignmentAnchor,
+    MatchClaim,
+)
 from timetoalign.alignment.filters import ClaimFilter
 from timetoalign.core.enums import Domain, NumberType, TimeUnit
+from timetoalign.core.ids import mint_ids
 from timetoalign.core.retrieval import (
     CoordinateCollection,
     CoordinateFormat,
@@ -1025,7 +1031,10 @@ class MatchGraph:
         Nodes: (timeline_id, coordinate) tuples
         Edges: Anchors with attributes (explicit, synchronous, claim_id, and
         claim: the claim object itself, which selects claims, since a claim
-        id is unique only in the scope holding the claim)
+        id is unique only in the scope holding the claim: the explicit
+        claims keep the ids of the scopes they come from, so two free claims
+        may share one, while :meth:`extend_to_groups` mints the implicit
+        claims' ids among those of the graph's claims)
 
         Returns:
             networkx Graph representing the anchor structure.
@@ -1400,7 +1409,9 @@ class MatchGraph:
         carries a coordinate from the members of one to the members of the
         other. Filters control which timelines receive implicit claims; a
         timeline they exclude receives no coordinate, so no extension passes
-        through it.
+        through it. The implicit claims' ids are minted among the ids of
+        this graph's claims (``claim_N``, the smallest N free, in the order
+        the claims are made), so each names one claim of the extended graph.
 
         Args:
             groups: Dict of group_id -> TimelineGroup.
@@ -1454,6 +1465,7 @@ class MatchGraph:
                     include_units=include_units,
                 )
 
+        self._mint_implicit_claim_ids(extended, implicit_claims)
         all_claims = list(self._claims) + implicit_claims
         return MatchGraph._from_graph(
             extended,
@@ -1463,6 +1475,36 @@ class MatchGraph:
             source=self._source,
             source_id=self._source_id,
         )
+
+    def _mint_implicit_claim_ids(
+        self, extended: nx.Graph, implicit_claims: list[MatchClaim]
+    ) -> None:
+        """Mint the ids of the implicit claims in this graph's scope.
+
+        Each implicit claim is made free, so all of them hold ``claim_1``;
+        they are given ``claim_N``, the N the smallest numbers the graph's
+        claims leave free, in the order they were made, and every edge
+        carrying one takes its new id. Their ``source_claim_id`` names a
+        claim of the graph and is left as it is.
+
+        Args:
+            extended: The extended graph, whose edges carry the claims.
+            implicit_claims: The claims the extension made, in order.
+        """
+        if not implicit_claims:
+            return
+        fresh = mint_ids(
+            _CLAIM_ID_PREFIX,
+            pa.array([claim.id for claim in self._claims], type=pa.string()),
+            len(implicit_claims),
+        )
+        for claim, claim_id in zip(implicit_claims, fresh.to_pylist(), strict=True):
+            # A claim just made, held by nothing else: renamed in place.
+            object.__setattr__(claim, "id", claim_id)
+        for _, _, data in extended.edges(data=True):
+            claim = data.get("claim")
+            if claim is not None:
+                data["claim_id"] = claim.id
 
     def _extend_through_group(
         self,

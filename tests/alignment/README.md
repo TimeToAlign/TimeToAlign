@@ -982,6 +982,51 @@ from every assertion here.
 
 ---
 
+## Note Onsets for Matching (`test_matching.py`)
+
+### What We're Validating
+
+`prepare_abc_notes_for_matching` keeps one row per sounding onset of an ms3 notes table.
+ms3's `tied` column is `1` where a note is tied to the following one (a tie starts),
+`-1` where it is tied to by the previous one (a tie ends), `0` where both hold (a tie
+continues) and empty where the note is not tied. A note sounds anew only when it is not
+tied or starts a tie; the continuation and end of a tie prolong a sound already started.
+The function used to keep empty and `-1` and drop `1` and `0`, so every tied sound was
+matched at its last note instead of its first.
+
+### Proof
+
+A hand-written frame of seven notes, each with an `id`, in row order:
+
+| id | tied | reading |
+|---|---|---|
+| `a` | empty | untied |
+| `b` | `1` | starts a chain |
+| `c` | `0` | continues it |
+| `d` | `0` | continues it |
+| `e` | `-1` | ends it |
+| `f` | `1` | starts a two-note tie |
+| `g` | `-1` | ends it |
+
+The kept ids must be exactly `["a", "b", "f"]`, in this order and re-indexed from 0. Keeping
+the old reading gives `["a", "e", "g"]`; keeping `0` gives the chain three onsets; dropping
+the empty cell loses the untied note, so each wrong reading fails. The frame is tested twice,
+the tie cells once as floats with `NaN` (how `pandas.read_csv` reads an ms3 TSV) and once
+as nullable `Int64` with `<NA>` (how a loaded timeline's event table arrives), with the same
+result. The coordinate column holds the fraction strings ms3 writes; the kept rows read
+`[0.0, 1.0, 707/2 = 353.5]` exactly, and the pitch column is renamed `pitch`. The frame is
+built as pandas builds it, so under pandas 3 the strings arrive in a `str` column, not an
+`object` one: the conversion used to test for `object` and left every coordinate a string.
+
+A tie cell outside ms3's values is not read as anything: a frame whose cells are `1` and `2`
+raises `ValueError` with exactly `Column 'tied' holds tie values other than 1, 0, -1: [2.0]`,
+so an unknown value is neither kept as an onset nor dropped silently.
+
+The kept tie start carries its own notated duration, not the length of the chain: the
+function selects onsets and promises no duration.
+
+---
+
 ## SUPRA Integration Tests (`test_supra_integration.py`)
 
 ### What We're Validating

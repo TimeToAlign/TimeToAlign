@@ -790,6 +790,10 @@ class Ms3Loader(ScoreLoader):
 
         Returns:
             ScoreStore retaining the source facts needed by legacy flow readers.
+
+        Raises:
+            ValueError: If a row states no ``mc``, or neither ``act_dur`` nor
+                ``duration_qb`` (the measure's length). Neither is invented.
         """
         import pandas as pd
 
@@ -797,10 +801,13 @@ class Ms3Loader(ScoreLoader):
             return ScoreStore.empty()
 
         measure_rows = []
+        table = f"The measures table {source.name!r}"
 
-        for idx, row in df.iterrows():
+        for position, (_, row) in enumerate(df.iterrows(), start=1):
             # ===== Core Identity =====
-            mc = int(row["mc"]) if pd.notna(row.get("mc")) else idx + 1
+            if not self._has_value(row.get("mc")):
+                raise ValueError(f"{table} states no mc in row {position}")
+            mc = int(row["mc"])
             mn = str(row.get("mn", mc)) if pd.notna(row.get("mn")) else str(mc)
 
             # Parse MN as integer (strip suffix if present)
@@ -812,14 +819,20 @@ class Ms3Loader(ScoreLoader):
             # ===== Temporal (with quarterbeats_all_endings fallback) =====
             qb = self._resolve_quarterbeats(row)
 
+            # act_dur (whole notes, exact) or duration_qb (quarters, derived)
+            if self._parse_fraction(row.get("act_dur")) is None and not (
+                self._has_value(row.get("duration_qb"))
+            ):
+                raise ValueError(
+                    f"{table} states no length of mc {mc} (row {position}): "
+                    "neither act_dur nor duration_qb holds a value"
+                )
             dur_qb = self._resolve_duration(row, "act_dur")
-
-            # act_dur is often a fraction string like "1/2" for half a bar
-            act_dur = row.get("act_dur")
-            if self._has_value(act_dur):
-                actual_length = float(dur_qb) if dur_qb is not None else None
-            else:
-                actual_length = float(dur_qb) if dur_qb is not None else 0.0
+            if dur_qb is None:
+                raise ValueError(
+                    f"{table} states no readable length of mc {mc} (row {position})"
+                )
+            actual_length = float(dur_qb)
 
             # mc_offset for split bars
             mc_offset = (
@@ -937,14 +950,9 @@ class Ms3Loader(ScoreLoader):
                         if qb is not None
                         else coordinate_to_struct(0)
                     ),
-                    "duration": (
-                        coordinate_to_struct(dur_qb)
-                        if dur_qb is not None
-                        else coordinate_to_struct(0)
-                    ),
+                    "duration": coordinate_to_struct(dur_qb),
                     "end": coordinate_to_struct(
-                        (qb if qb is not None else Fraction(0))
-                        + (dur_qb if dur_qb is not None else Fraction(0))
+                        (qb if qb is not None else Fraction(0)) + dur_qb
                     ),
                     "nominal_length": nominal_length,
                     "actual_length": actual_length,

@@ -388,7 +388,11 @@ to the relevant section of the conceptual model.
     pair of timelines it connects. Four cases: (a) event-to-event,
     (b) projection, (c) {{< glossary NOMATCH >}}, (d) implicit (from group
     extension). Held individually, or columnar at scale in a
-    {{< glossary MatchClaimField >}}.
+    {{< glossary MatchClaimField >}}. Its id is given or minted: a claim
+    given none mints `claim_N`, `N` the smallest number free in the scope
+    that holds it (a MatchClaimField or an {{< glossary AlignmentBundle >}}),
+    and `id_minted` records which. Joining a scope, a minted id already held
+    there is minted again and a given one is refused.
     See [Alignment](concepts.qmd#alignment).
 
 **MatchClaimField**
@@ -404,7 +408,10 @@ to the relevant section of the conceptual model.
     `from_columns()`, it is the scalable backing for dense
     {{< glossary AlignmentMatrix >}} alignments, where the complete pairwise
     topology of a whole work runs to roughly a million claims. Shared provenance
-    is held once at field level, never per row.
+    is held once at field level; only claims whose metadata differ carry it
+    per row. The `table` property gives the field as an Arrow table, the
+    shared provenance in its schema metadata, and `from_table()` reads it
+    back unchanged, from Parquet too.
     See [Alignment](concepts.qmd#alignment).
 
 **MatchGraph**
@@ -759,6 +766,8 @@ to the relevant section of the conceptual model.
     label and structured map values, `present_timelines`, and
     `is_interpolated`. A bare number is an explicit
     `format="float"/"int"/"fraction"` request; there is no ambient float view.
+    A child answers from its start up to its end, and at its end only where
+    no sibling starts there.
     See [Nested timelines](concepts.qmd#nested-timelines).
 
 **TimeToShare manifest**

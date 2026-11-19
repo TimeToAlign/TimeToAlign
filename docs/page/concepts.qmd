@@ -484,6 +484,14 @@ coordinate. It answers the question: "At coordinate *c* of the root
 timeline, what are the local coordinates in each Child, and what do all
 C-maps produce?"
 
+Which Children answer follows one containment rule. A Child holds the
+parent positions from its start up to, but not including, its end, and its
+end as well where no sibling starts there. A boundary two siblings share
+therefore belongs to the one starting at it, so one parent position names one
+segment, while a Child that nothing follows still answers at its own end.
+TimeStamps, timestamp tables and the MatchStamps of an AlignmentBundle all
+apply this rule, to every timeline of a tree, nested ones included.
+
 By analogy, a **TimeIntervalStamp** combines a start TimeStamp and an end
 TimeStamp, representing the cross-section of an interval through the
 hierarchy.

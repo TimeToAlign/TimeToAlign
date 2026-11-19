@@ -38,6 +38,18 @@ Each flagged loader (`VerovioLoader`, `ScoreWarpLoader`, `Ieee1599Loader`,
 message reaches its users. `Ieee1599Loader`, whose `load` overrides the
 template, also pins the empty call.
 
+## Verovio version compatibility validation
+
+`test_verovio_version.py` uses a self-contained MEI written under `tmp_path`,
+without corpus fixtures. A proxy changes only the toolkit's reported version;
+the real toolkit still loads the file and produces the timemap. Plain `6.4.1`,
+hyphenated `6.4.1-fbe8f46`, bracketed `6.4.1[undefined]`, and the minimum
+`4.4.0[undefined]` must all load the same two eighth notes at exact quarter
+positions `0` and `1/2`, ending at `1`. The store must retain the full reported
+version, including its suffix. Both plain and bracketed `4.3.1` must raise the
+normal minimum-version `ImportError`, with the full reported version in its
+message, rather than failing integer conversion.
+
 ## Categories
 
 | File / Subdirectory | What it validates |

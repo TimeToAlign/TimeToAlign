@@ -93,8 +93,9 @@ def _local(tag: str) -> str:
 
 
 def _version_tuple(version: str) -> tuple[int, ...]:
-    """Return ``(major, minor, patch)`` from ``"6.4.1-fbe8f46"``."""
-    return tuple(int(part) for part in version.split("-")[0].split("."))
+    """Return the release tuple, ignoring hyphenated or bracketed build suffixes."""
+    release = version.split("-", 1)[0].split("[", 1)[0]
+    return tuple(int(part) for part in release.split("."))
 
 
 def _qfrac(entry: dict[str, Any]) -> Fraction:

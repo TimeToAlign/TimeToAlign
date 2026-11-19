@@ -337,9 +337,14 @@ in a stamp exactly when it holds the position by the timeline's own
 parent-to-child rule: `[0, length)`, plus its end where no sibling starts there,
 applied along the path — a position carried down reaches a timeline only if
 every child on the way holds it, as in the root's own stamps and tables
-(`../timelines/README.md`, `test_offset_arithmetic.py`). An ancestor of the
-queried timeline holds its whole span, end included, since it contains it; no
-span of its own is checked.
+(`../timelines/README.md`, `test_offset_arithmetic.py`). The walk up starts
+only from a position on the queried timeline, closed `[0, length]`: its own end
+is its own whatever its siblings do, since the position was asked of it. An
+ancestor contains that span, end included, so no span of its own is checked. A
+position outside the queried timeline lies on no ancestor and reaches no
+relative through the tree; the stamp then holds what the other mechanisms give
+(the queried timeline alone where nothing else applies), exactly as a
+timeline's own stamp and a group's answer outside their span, without raising.
 
 Before this held, a timeline between a registered root and a grouped
 descendant (a "middle ancestor") was invisible: querying it raised `KeyError`,
@@ -367,12 +372,21 @@ holds in the following cases:
    `clt_7` 27 and, through its group and the claim there, `cpt_1` 9.0. A
    position covered by one child only shows that child and the root. An
    unregistered branch with no group and no claim is reached by offsets alone.
-5. **Every lane follows.** The plural getter, the key getter (`_for`), the
+5. **The walk up starts on the queried timeline.** A small tree pins it (fixture
+   below): a position past the queried child's end and one before its start
+   reach no ancestor, so neither the parent nor the sibling the parent would
+   carry the position into appears; the queried child's own end does reach its
+   parent, and from there only the sibling starting at it (and that sibling's
+   child), while the queried child's own child keeps its lone end. Before the
+   rule, `A` 6 came back with `P` 6, `B` 2 and `B1` 2, and `A` -1 with `P` -1:
+   positions the queried timeline does not have, carried onto timelines that
+   do.
+6. **Every lane follows.** The plural getter, the key getter (`_for`), the
    position table and the coordinate getter all give the same values as the
    singular stamp; they share one assembly path, and the test pins each of them.
-6. **Filters select among every known timeline.** `timeline_ids`, `id_pattern`
+7. **Filters select among every known timeline.** `timeline_ids`, `id_pattern`
    and `include_units` keep exactly the nested timelines they name.
-7. **An unknown id** still raises `KeyError`, naming every timeline the bundle
+8. **An unknown id** still raises `KeyError`, naming every timeline the bundle
    knows: the registered ones in registration order, then each root's other
    descendants depth-first.
 
@@ -421,6 +435,24 @@ finds it among its children, so the root owns it, and the stamp is the root's
 query at 1363/2, `clt_4` included. The table at `clt_4` 27/2 has the columns
 `clt_1`, `clt_4`, `clt_6`, `clt_7`, `cpt_1`, the `clt_4` column naming its
 timeline in the field metadata.
+
+### The Walk Up Starts on the Queried Timeline
+
+- `P`: root, quarters, length 8, registered alone; children `A` at 0 and `B` at
+  4, each of length 4; `A1` in `A` and `B1` in `B`, each at 0 with length 4.
+
+| query | expected coordinates (in this order) |
+|---|---|
+| `A` 6 | `A` 6 |
+| `A` -1 | `A` -1 |
+| `A` 4 | `A` 4, `P` 4, `A1` 4, `B` 0, `B1` 0 |
+| `A` 0 | `A` 0, `P` 0, `A1` 0 |
+
+`A` 6 would be `P` 6, which `B` holds at 2; it is not on `A`, so the tree is not
+entered. `A` 4 is `A`'s own end: `P` 4 is the boundary `B` starts at, so `B` and
+`B1` take it, and `A1`, which ends with `A` and is followed by nothing inside
+it, holds its end. The queried timeline's coordinate is kept as asked in every
+row. Values are `Fraction`s.
 
 ### Claims on an Unregistered Nested Timeline
 

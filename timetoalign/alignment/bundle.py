@@ -3962,10 +3962,16 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
 
         Which timelines appear follows the timeline's own parent-to-child
         rule (``Timeline._holds_position``, which its stamps and tables read
-        too). The position is carried up to every ancestor, since an
-        ancestor contains its descendant's whole span, end included. From
-        the queried timeline and from each ancestor it is carried down only
-        into the children that hold it, ``[0, length)`` and their end where
+        too). The walk starts only from a position on the queried timeline,
+        closed ``[0, length]``: its own end is its own whatever its siblings
+        do, since the position was asked of it. From there the position is
+        carried up to every ancestor, since an ancestor contains its
+        descendant's whole span, end included. A position outside the queried
+        timeline lies on no ancestor and reaches no relative: none is
+        returned, and the stamp holds the queried timeline with whatever the
+        other mechanisms reach, as a timeline's own stamp and a group's
+        answer outside their span. From the queried timeline and from each
+        ancestor it is carried down only into the children that hold it, ``[0, length)`` and their end where
         no sibling starts there, and so on at every depth: a timeline
         appears only if every timeline on the way down holds the position,
         exactly as in the root's own stamp, so a boundary shared by two
@@ -3982,8 +3988,11 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
 
         Returns:
             The coordinates of the other timelines of the tree that reach the
-            position, by id, the root first and then depth-first.
+            position, by id, the root first and then depth-first; empty for a
+            position outside the queried timeline.
         """
+        if not timeline._holds_position(coordinate, end_held=True):
+            return {}
         carried: dict[str, CoordinateValue] = {timeline.id: coordinate}
         reached_from = [timeline]
         node = timeline

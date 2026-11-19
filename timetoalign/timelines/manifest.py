@@ -365,8 +365,10 @@ class Manifest(_OpenObject):
 
         *data* is the manifest as a file holds it, every ID written ``#``
         followed by the ID; it is read with bare IDs (:func:`bare_ids`), as
-        every object of the library holds them. The measure maps are read
-        first, then
+        every object of the library holds them. The statements and their
+        provenance are checked first, by TimeToShare's rules
+        (``timetoshare.statement_problems``). The measure maps are read
+        next, then
         every root timeline is rebuilt, its conversion maps reading the
         measure maps they name, and every timeline of the roots' trees is
         indexed by id. Every id is unique across the manifest: the
@@ -384,7 +386,9 @@ class Manifest(_OpenObject):
         Raises:
             ValueError: If *data* is no TimeToShare manifest (``"not a
                 TimeToShare manifest"``), names another version, writes an ID
-                without its ``#`` (:func:`bare_ids`), or is malformed: an id
+                without its ``#`` (:func:`bare_ids`), or is malformed:
+                statements or provenance breaking a rule of the format (the
+                first problem, a ``timetoshare.SchemaValidationError``), an id
                 held twice anywhere in the manifest (see
                 :func:`unique_ids`), a ``graphical.order`` that is no object
                 or names no group or timeline.
@@ -398,7 +402,11 @@ class Manifest(_OpenObject):
                 f"TimeToShare {TIMETOSHARE_VERSION} only"
             )
         require_object(data, "a TimeToShare manifest", ("timelines",))
-        data = bare_ids(data)
+        bare = bare_ids(data)
+        problems = timetoshare.statement_problems(data)
+        if problems:
+            raise problems[0]
+        data = bare
         manifest_id = read_id(data["id"], "the manifest") if "id" in data else None
         manifest = cls(
             id=manifest_id,
@@ -503,7 +511,9 @@ class Manifest(_OpenObject):
         manifest is built whole and put in its form by
         :func:`timetoshare.minimal` or :func:`timetoshare.complete`, and
         every ID is written as a file writes it, ``#`` followed by the ID
-        (:func:`timetoshare.with_file_ids`).
+        (:func:`timetoshare.with_file_ids`). The statements and provenance
+        written are checked as a manifest read is, so that a manifest whose
+        statements break a rule of the format is never emitted.
 
         Args:
             roots: The root timelines.
@@ -519,7 +529,10 @@ class Manifest(_OpenObject):
             ValueError: If an id is held twice among the manifest, its
                 timelines' trees and its groups (:func:`unique_ids`), or a
                 measure map cannot be written (two different ones carry one
-                given id, or one's given id is held by another element).
+                given id, or one's given id is held by another element), or
+                the statements written break a rule of the format (the first
+                problem, a ``timetoshare.SchemaValidationError``): a value
+                naming an element no longer written, for instance.
         """
         trees = [
             timeline
@@ -581,7 +594,11 @@ class Manifest(_OpenObject):
             fields["graphical"] = {"order": order, **copy.deepcopy(self.styling)}
         built = self._dict_form(fields, minimal=False)
         result = timetoshare.minimal(built) if minimal else timetoshare.complete(built)
-        return timetoshare.with_file_ids(result)
+        result = timetoshare.with_file_ids(result)
+        problems = timetoshare.statement_problems(result)
+        if problems:
+            raise problems[0]
+        return result
 
 
 class MeasureMapEntries:

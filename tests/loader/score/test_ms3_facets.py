@@ -1,6 +1,7 @@
-"""Ms3Loader companion discovery in the ms3 and DCML corpus layouts.
+"""Ms3Loader: companion discovery in both corpus layouts, and empty note cells.
 
-Validation logic: ``tests/loader/score/README.md``, "MS3 facet discovery".
+Validation logic: ``tests/loader/score/README.md``, "MS3 facet discovery" and
+"MS3 empty note cells".
 """
 
 from __future__ import annotations
@@ -150,3 +151,41 @@ def test_without_auto_discover_nothing_is_looked_for(tmp_path):
     loader = _load(paths["notes"])
 
     assert loader.sources == [paths["notes"].resolve()]
+
+
+# Four notes with the four tie cells (empty, 0, 1, -1), then a spelling
+# without an octave.
+TIED_NOTES = (
+    "mc\tmn\tquarterbeats\tduration_qb\tduration\ttied\tmidi\tname\toctave\n"
+    "1\t1\t0\t1.0\t1/4\t\t62\tD4\t4\n"
+    "1\t1\t1\t1.0\t1/4\t0\t64\tE4\t4\n"
+    "1\t1\t2\t1.0\t1/4\t1\t65\tF4\t4\n"
+    "1\t1\t3\t1.0\t1/4\t-1\t65\tF4\t4\n"
+    "2\t2\t4\t1.0\t1/4\t\t60\tC\t\n"
+)
+
+
+def _tied_notes(tmp_path: Path):
+    path = tmp_path / "p.notes.tsv"
+    path.write_text(TIED_NOTES, encoding="utf-8")
+    return _load(path).store.notes.table
+
+
+def test_an_empty_tie_cell_is_no_tie_and_every_value_is_kept(tmp_path):
+    table = _tied_notes(tmp_path)
+
+    assert table.column("tied").to_pylist() == [None, 0, 1, -1, None]
+
+
+def test_an_empty_octave_states_no_specific_pitch(tmp_path):
+    table = _tied_notes(tmp_path)
+
+    assert table.column("octave").to_pylist() == [4, 4, 4, 4, None]
+    assert table.column("midi").to_pylist() == [62, 64, 65, 65, 60]
+    assert table.column("specific_pitch").to_pylist() == [
+        {"step": "D", "alter": 0, "octave": 4, "cents": 0.0},
+        {"step": "E", "alter": 0, "octave": 4, "cents": 0.0},
+        {"step": "F", "alter": 0, "octave": 4, "cents": 0.0},
+        {"step": "F", "alter": 0, "octave": 4, "cents": 0.0},
+        None,
+    ]

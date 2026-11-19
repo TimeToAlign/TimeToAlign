@@ -14,7 +14,7 @@ loaded by `Ms3Loader` is authoritative whenever loaders are compared.
 | `test_measuremap_loader.py` | MeasureMap expansion, validation, traversal, schema, and comparison with MS3. |
 | `test_flow_csv_validation.py` | Right-open ranges, exact atomic boundaries, live Partitura boundaries, and CSV serialization. |
 | `test_partitura_exactness.py` | Exact Partitura coordinate pairs, instant nulls, flattened timelines, and agreement with Partitura's float map. |
-| `test_ms3_facets.py` | `Ms3Loader`'s companion discovery in both corpus layouts (see "MS3 facet discovery" below). |
+| `test_ms3_facets.py` | `Ms3Loader`'s companion discovery in both corpus layouts and its reading of empty note cells (see "MS3 facet discovery" and "MS3 empty note cells" below). |
 | `test_successors.py` | The `next` column derived from the measure columns: endings of more than one measure, Music21/Partitura parity, agreement with the ms3 TSVs (see below). |
 | `test_verovio_loader.py` | `VerovioLoader` on MEI fixtures and specimens: exact onsets, kept ids, measures as structure, ties, grace notes, repeats, movements, the physical timeline, music21 parity, Verovio's expansion against the flow controller (see below). |
 | `test_verovio_ids.py` | `VerovioLoader`'s minted timeline ids when the root's id is given (see "Ids of a given root" below). |
@@ -276,6 +276,28 @@ states none. Without `auto_discover` nothing is looked for and nothing warns.
 The real corpus is checked by hand only (CC BY-NC-SA, never copied here): from
 `notes/l075-03_suite_clair.notes.tsv` discovery loads all four facets, length 324 quarters, 72
 measures, 1680 notes, 150 labels.
+
+## MS3 empty note cells
+
+An empty cell states nothing, so it reads as null, never as a value. In ms3's `tied` column `1`
+starts a tie, `0` continues one (tied from the previous note and to the next), `-1` ends one,
+and an empty cell is a note without a tie. The loader used to read the empty cell as `0`, which
+turned every untied note into a tie middle: in mm. 1–6 of Clair de lune it gave `{0: 38, 1: 20,
+-1: 19}` where the TSV holds 36 empty cells and two `0`s. The same reading filled an empty
+`octave` with `4` and built a specific pitch on it, an octave the source never states.
+
+The proof is one notes TSV in `tmp_path` with four notes whose `tied` cells are, in row order,
+empty, `0`, `1` and `-1`; the loaded `tied` column must be exactly `[None, 0, 1, -1]`, so a
+default of either `0` or any other value fails on the first row, and a reader that shifted
+values fails on the others. A fifth note spelled `C` with an empty `octave` must load with a
+null `octave` and a null `specific_pitch`, while its MIDI pitch `60` stays; the notes with an
+octave keep their specific pitch, so the check is not passed by dropping spellings wholesale.
+
+Every other optional integer cell of the notes facet (`mc`, `midi`, `tpc`, `voice`, `staff`,
+`chord_id`) already reads as null. Music21Loader and PartituraLoader read no ties; they wrote
+`0` into the shared `tied` column, which under ms3's values claims a tie middle on every note,
+and now write null. By hand on Clair de lune: mm. 1–6 give start 20, end 19, middle 2, none 36;
+the whole movement 118, 118, 3 and 1441, exactly the TSV's counts.
 
 ## Coordinate exactness
 

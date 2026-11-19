@@ -576,9 +576,13 @@ class Ms3Loader(ScoreLoader):
             # EnharmonicPitch view on request, redundant with specific_pitch).
             midi = int(row["midi"]) if pd.notna(row.get("midi")) else None
 
-            # Pitch - Specific (canonical pydantic-derived shape)
+            octave_val = int(row["octave"]) if pd.notna(row.get("octave")) else None
+            tpc_val = int(row["tpc"]) if pd.notna(row.get("tpc")) else None
+
+            # Pitch - Specific (canonical pydantic-derived shape). A spelling
+            # without an octave states no specific pitch.
             specific_pitch = None
-            if pd.notna(row.get("name")):
+            if pd.notna(row.get("name")) and octave_val is not None:
                 name = str(row["name"])
                 step = name[0].upper() if name else "C"
                 alter = 0
@@ -587,20 +591,17 @@ class Ms3Loader(ScoreLoader):
                         name[1:].count("#") - name[1:].count("b") - name[1:].count("-")
                     )
 
-                octave = int(row["octave"]) if pd.notna(row.get("octave")) else 4
-
                 specific_pitch = {
                     "step": step,
                     "alter": alter,
-                    "octave": octave,
+                    "octave": octave_val,
                     "cents": 0.0,
                 }
 
-            octave_val = int(row["octave"]) if pd.notna(row.get("octave")) else None
-            tpc_val = int(row["tpc"]) if pd.notna(row.get("tpc")) else None
-
             # Attributes
-            tied = int(row["tied"]) if pd.notna(row.get("tied")) else 0
+            # ms3: 1 tie start, 0 tie middle, -1 tie end; an empty cell is
+            # no tie and stays null.
+            tied = int(row["tied"]) if pd.notna(row.get("tied")) else None
             gracenote = (
                 str(row["gracenote"]) if pd.notna(row.get("gracenote")) else None
             )

@@ -464,7 +464,7 @@ class Music21Loader(ScoreLoader):
             "tpc": tpc,
             "octave": octave,
             "velocity": 64,
-            "tied": 0,
+            "tied": None,
             "gracenote": None,
             "chord_id": chord_id,
             "voice": getattr(obj, "voice", None),

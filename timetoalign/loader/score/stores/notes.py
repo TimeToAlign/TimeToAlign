@@ -67,7 +67,8 @@ class NoteEventData(EventData):
             "octave", pa.int64(), nullable=True, metadata={"number_type": "int64"}
         ),
         # Attributes
-        pa.field("tied", pa.int64(), nullable=True),  # -1=end, 0=none, 1=start
+        # ms3 tie values: 1 start, 0 middle, -1 end; null where no tie is stated
+        pa.field("tied", pa.int64(), nullable=True),
         pa.field("gracenote", pa.string(), nullable=True),
         pa.field("chord_id", pa.string(), nullable=True),  # the source's chord id
         # Context

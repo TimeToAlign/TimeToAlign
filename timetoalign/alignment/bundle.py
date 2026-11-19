@@ -150,7 +150,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         id: Unique identifier for this bundle, ``bundle_N`` unless given.
         name: Optional human-readable name.
         timelines: Dictionary mapping timeline IDs to Timeline objects: every
-            timeline added, and the root of every one that is a child.
+            timeline added, and the root of every one that is a child. The
+            other descendants of these roots are not listed, yet every
+            getter answers for them as for the listed ones.
         groups: Dictionary mapping group IDs to TimelineGroup objects. The
             groups are the one statement of membership; a timeline may be a
             member of several (see :attr:`timeline_to_groups`).
@@ -703,6 +705,38 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             roots.setdefault(root.id, root)
         return list(roots.values())
 
+    def _known_timelines(self) -> dict[str, "Timeline"]:
+        """Return every timeline the bundle answers for, by id.
+
+        A bundle knows every timeline of its trees, whatever its depth and
+        whether or not it was added, registered or grouped: the registered
+        timelines first, in registration order, then every other descendant
+        of each root, depth-first. Registering is how a tree enters the
+        bundle, never a condition for finding one of its timelines; the
+        registry itself (:attr:`timelines`) is unchanged by a lookup.
+
+        Every getter addresses timelines through this mapping (or
+        :meth:`_known_timeline` for one exact id), and a stamp reaches each
+        of them from any other timeline of its tree by exact offsets
+        (:meth:`_manifest_relatives`).
+        """
+        known: dict[str, Timeline] = dict(self.timelines)
+        for root in self._roots():
+            for _, descendant in root._iter_descendants():
+                known.setdefault(descendant.id, descendant)
+        return known
+
+    def _known_timeline(self, timeline_id: str) -> "Timeline | None":
+        """Return the timeline of the bundle's trees with this exact id, else None.
+
+        The same rule as :meth:`_known_timelines`, answered from the registry
+        first so the common case walks no tree.
+        """
+        held = self.timelines.get(timeline_id)
+        if held is not None:
+            return held
+        return self._known_timelines().get(timeline_id)
+
     def _statements_holder(self) -> "AlignmentBundle":
         """Return the bundle: it holds the statements of its manifest itself."""
         return self
@@ -746,7 +780,11 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         return mint_id("group", set(held) | set(self.groups) | set(_held_ids(group)))
 
     def get_timeline(self, timeline_id: str) -> "Timeline":
-        """Get a timeline by ID.
+        """Get a timeline of the bundle's trees by ID.
+
+        Every timeline of the trees the bundle holds is found, registered or
+        not and at any depth; registered timelines come first when a pattern
+        matches several.
 
         Supports partial string and regex matching:
         1. Exact match: If ``timeline_id`` matches an ID exactly, returns it.
@@ -780,8 +818,11 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             >>> bundle.get_timeline(r"^perf:").id  # Regex match
             'perf:cpt_1'
         """
-        resolved_id = resolve_id(timeline_id, list(self.timelines.keys()))
-        return self.timelines[resolved_id]
+        held = self.timelines.get(timeline_id)
+        if held is not None:
+            return held
+        known = self._known_timelines()
+        return known[resolve_id(timeline_id, list(known))]
 
     def get_group(self, group_id: str) -> TimelineGroup:
         """Get a group by ID.
@@ -1528,19 +1569,21 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             len(claim_field) for claim_field in self.cross_group_claim_fields
         )
 
-    def _registered_id_pattern(self, id_pattern: str | None) -> str | None:
-        """Narrow a timeline-id regex to the bundle's registered timelines.
+    def _known_id_pattern(self, id_pattern: str | None) -> str | None:
+        """Narrow a timeline-id regex to the timelines the bundle knows.
 
         Claims may name timelines the bundle does not hold; a pattern only
-        ever selects among the registered ones, so it is rewritten as an
-        exact alternation of the registered ids it matches.
+        ever selects among the known ones (:meth:`_known_timelines`), so it
+        is rewritten as an exact alternation of the known ids it matches.
         """
         if id_pattern is None:
             return None
 
         pattern = re.compile(id_pattern)
         matched = {
-            timeline_id for timeline_id in self.timelines if pattern.search(timeline_id)
+            timeline_id
+            for timeline_id in self._known_timelines()
+            if pattern.search(timeline_id)
         }
         if not matched:
             return r"(?!)"
@@ -1648,7 +1691,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         if filt is None:
             return []
 
-        timeline_lookup = self.timelines
+        timeline_lookup = self._known_timelines()
         claims = [
             c
             for c in self.cross_group_claims
@@ -1738,7 +1781,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         )
         if filt is None:
             return []
-        return self._filtered_claim_fields(filt, self.timelines)
+        return self._filtered_claim_fields(filt, self._known_timelines())
 
     def _claim_filter(
         self,
@@ -1752,29 +1795,30 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         include_domains: set["Domain"] | None,
         include_units: set["TimeUnit"] | None,
     ) -> ClaimFilter | None:
-        """Build the ``ClaimFilter`` for the registered timelines.
+        """Build the ``ClaimFilter`` for the timelines the bundle knows.
 
-        Every ID-shaped criterion selects among the bundle's registered
-        timelines, once, for both claim stores.
+        Every ID-shaped criterion selects among the bundle's known timelines
+        (:meth:`_known_timelines`), once, for both claim stores.
 
         Returns:
             The filter, or ``None`` when a required timeline is unknown to the
             bundle and no claim can possibly match.
         """
-        if timeline_id is not None and timeline_id not in self.timelines:
+        known = self._known_timelines()
+        if timeline_id is not None and timeline_id not in known:
             return None
         if between is not None and any(
-            between_id not in self.timelines for between_id in between
+            between_id not in known for between_id in between
         ):
             return None
         return ClaimFilter.from_kwargs(
             timeline_id=timeline_id,
             timeline_ids=(
-                {selected for selected in timeline_ids if selected in self.timelines}
+                {selected for selected in timeline_ids if selected in known}
                 if timeline_ids is not None
                 else None
             ),
-            id_pattern=self._registered_id_pattern(id_pattern),
+            id_pattern=self._known_id_pattern(id_pattern),
             between=between,
             synchronous_only=synchronous_only,
             nomatch_only=nomatch_only,
@@ -1823,7 +1867,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         Fraction, which is the argument-type inference the boundary rule
         exists to remove.
         """
-        timeline = self.timelines.get(timeline_id)
+        timeline = self._known_timeline(timeline_id)
         if timeline is None:
             return coordinate
         return express_as(coordinate, timeline.number_type)
@@ -2011,9 +2055,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 )
             source_id = timeline_id
             result_id = timeline_id
-        if source_id not in self.timelines:
+        if self._known_timeline(source_id) is None:
             raise KeyError(f"Unknown source timeline ID {source_id!r} in {self.id!r}")
-        if result_id not in self.timelines:
+        if self._known_timeline(result_id) is None:
             raise KeyError(f"Unknown result timeline ID {result_id!r} in {self.id!r}")
         if source_id == result_id:
             plain = at.to_coordinate() if isinstance(at, IdCoordinate) else at
@@ -2057,7 +2101,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         values, index = validate_coordinate_collection(at)
         if not values and timeline_id is None:
             raise ValueError("timeline_id is required for an empty bundle query")
-        if timeline_id is not None and timeline_id not in self.timelines:
+        if timeline_id is not None and self._known_timeline(timeline_id) is None:
             raise KeyError(f"Unknown result timeline ID {timeline_id!r} in {self.id!r}")
         results: list[IdCoordinate] = []
         for value in values:
@@ -2362,13 +2406,14 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 "timeline_id is required unless coordinate is an IdCoordinate"
             )
 
-        if timeline_id not in self.timelines:
+        known = self._known_timelines()
+        if timeline_id not in known:
             raise KeyError(
                 f"Timeline '{timeline_id}' not in bundle. "
-                f"Available timelines: {list(self.timelines.keys())}"
+                f"Available timelines: {list(known)}"
             )
 
-        source_timeline = self.get_timeline(timeline_id)
+        source_timeline = known[timeline_id]
         if isinstance(at, IdCoordinate):
             query_input = at.to_coordinate()
         elif isinstance(at, Coordinate):
@@ -2454,7 +2499,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             for coordinate_id, value in coordinates.items()
             if value is not None
         }
-        declared = [held for held in self.timelines if held in values]
+        declared = [held for held in known if held in values]
         ordered_ids = [timeline_id]
         ordered_ids.extend(held for held in declared if held != timeline_id)
         ordered_ids.extend(sorted(set(values).difference(ordered_ids)))
@@ -2488,19 +2533,15 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         if has_filter:
             filt = ClaimFilter.from_kwargs(
                 timeline_ids=(
-                    {
-                        selected
-                        for selected in timeline_ids
-                        if selected in self.timelines
-                    }
+                    {selected for selected in timeline_ids if selected in known}
                     if timeline_ids is not None
                     else None
                 ),
-                id_pattern=self._registered_id_pattern(id_pattern),
+                id_pattern=self._known_id_pattern(id_pattern),
                 include_domains=include_domains,
                 include_units=include_units,
             )
-            filter_timelines = self.timelines
+            filter_timelines = known
             filtered_coords = {
                 tl_id: coord
                 for tl_id, coord in stamp.coordinates.items()
@@ -3378,23 +3419,34 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         field_lists: dict[str, list[Coordinate | None]] = {
             tl_id: [None] * n_rows for tl_id in sorted(all_tl_ids)
         }
+        known = self._known_timelines()
+        axes: dict[str, Timeline] = {}
+
+        def cell(tl_id: str, value: Coordinate | float | None) -> Coordinate | None:
+            """Write one cell on its timeline's axis, resolving the axis once."""
+            timeline = axes.get(tl_id)
+            if timeline is None:
+                timeline = known[tl_id] if tl_id in known else self.get_timeline(tl_id)
+                axes[tl_id] = timeline
+            return self._canonical_table_coordinate(timeline, value)
+
         for position, row in enumerate(rows):
             for tl_id, value in row.items():
                 column = field_lists.get(tl_id)
                 if column is not None:
-                    column[position] = self._canonical_table_coordinate(tl_id, value)
+                    column[position] = cell(tl_id, value)
 
         offset = len(rows)
         for ids_a, ids_b, coordinates_a, coordinates_b in bulk_columns:
             for position in range(len(ids_a)):
                 column = field_lists.get(ids_a[position])
                 if column is not None:
-                    column[offset + position] = self._canonical_table_coordinate(
+                    column[offset + position] = cell(
                         ids_a[position], coordinates_a[position]
                     )
                 column = field_lists.get(ids_b[position])
                 if column is not None:
-                    column[offset + position] = self._canonical_table_coordinate(
+                    column[offset + position] = cell(
                         ids_b[position], coordinates_b[position]
                     )
             offset += len(ids_a)
@@ -3446,8 +3498,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 None,
             )
             if exemplar is None:
-                if name in self.timelines:
-                    timeline = self.get_timeline(name)
+                if name in known:
+                    timeline = known[name]
                     unit = timeline.unit
                     number_type = timeline.number_type
                 else:
@@ -3462,29 +3514,26 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                     values=coordinates,
                     unit=unit,
                     number_type=number_type,
-                    timeline_id=name if name in self.timelines else None,
+                    timeline_id=name if name in known else None,
                 )
             )
         return build_timestamp_table(columns)
 
+    @staticmethod
     def _canonical_table_coordinate(
-        self, timeline_id: str, value: Coordinate | float | None
+        timeline: "Timeline", value: Coordinate | float | None
     ) -> Coordinate | None:
         """Return one match-stamp table cell in its timeline's canonical type.
 
         Args:
-            timeline_id: ID of a bundle timeline.
+            timeline: The timeline the cell's column belongs to.
             value: Stored coordinate or a numeric value from a columnar claim.
 
         Returns:
             Canonical coordinate, or ``None`` for an absent cell.
-
-        Raises:
-            KeyError: If ``timeline_id`` is not registered in the bundle.
         """
         if value is None:
             return None
-        timeline = self.get_timeline(timeline_id)
         raw_value = value.value if isinstance(value, Coordinate) else value
         return Coordinate(
             raw_value,
@@ -3591,7 +3640,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         """
 
         def _native(timeline_id: str, coordinate: Coordinate) -> Coordinate:
-            timeline = self.timelines.get(timeline_id)
+            timeline = self._known_timeline(timeline_id)
             if timeline is None:
                 return coordinate
             if coordinate.unit == TimeUnit.number:
@@ -3809,41 +3858,40 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
     def _manifest_relatives(
         self, timeline: "Timeline", coordinate: CoordinateValue
     ) -> dict[str, CoordinateValue]:
-        """Carry a position onto the registered timelines of its manifest tree.
+        """Carry a position onto every other timeline of its manifest tree.
 
-        A child sits at an exact offset inside its root, so a position on any
-        timeline of the tree is a position on the root, and from there on
-        every registered timeline of the tree whose closed span ``[0, length]``
-        contains it.
+        A child sits at an exact offset inside its parent, so a position on
+        any timeline of the tree is a position on the root, and from there on
+        every timeline of the tree whose closed span ``[0, length]`` contains
+        it (bounded below only where the length is unknown). Every timeline
+        of the tree takes part, whatever its depth and whether or not it is
+        registered or grouped (:meth:`_known_timelines`): a middle ancestor
+        between a registered root and a grouped descendant is reached like
+        either of them.
 
         Args:
-            timeline: A registered timeline.
+            timeline: A timeline of one of the bundle's trees.
             coordinate: A position on it.
 
         Returns:
-            The coordinates of the other registered timelines of the tree that
-            reach the position, by id.
+            The coordinates of the other timelines of the tree that reach the
+            position, by id, the root first and then depth-first.
         """
         root = _root(timeline)
-        relatives = [
-            held
-            for held in self.timelines.values()
-            if held is not timeline and _root(held) is root
-        ]
-        if not relatives:
-            return {}
-        root_coordinate = (
-            coordinate
-            if timeline is root
-            else root._get_parent_coordinate_from_child(timeline.id, coordinate)
-        )
-        reached: dict[str, CoordinateValue] = {}
-        for relative in relatives:
-            origin = (
-                0
-                if relative is root
-                else root._get_parent_coordinate_from_child(relative.id, 0)
+        origins: dict[str, tuple[Timeline, CoordinateValue]] = {}
+        pending: list[tuple[Timeline, CoordinateValue]] = [(root, 0)]
+        while pending:
+            node, origin = pending.pop()
+            origins[node.id] = (node, origin)
+            pending.extend(
+                (child, origin + node.get_child_offset(child_id).value)
+                for child_id, child in reversed(node._children.items())
             )
+        root_coordinate = coordinate + origins[timeline.id][1]
+        reached: dict[str, CoordinateValue] = {}
+        for relative, origin in origins.values():
+            if relative is timeline:
+                continue
             value = root_coordinate - origin
             if 0 <= value and (
                 relative.length is None or value <= relative.length.value
@@ -3858,7 +3906,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             Dict mapping timeline IDs to unit strings (e.g. "samples", "quarters").
         """
         unit_map: dict[str, str] = {}
-        for timeline_id, tl in self.timelines.items():
+        for timeline_id, tl in self._known_timelines().items():
             if hasattr(tl, "unit") and tl.unit is not None:
                 unit_map[timeline_id] = str(tl.unit)
         return unit_map
@@ -3873,14 +3921,14 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         surfaces them — the bundle-level counterpart of the TimelineGroup method
         of the same name.
         """
-        tl = self.timelines.get(timeline_id)
+        tl = self._known_timeline(timeline_id)
         if tl is None:
             return []
         return list(tl._conversion_maps.values())
 
     def _timeline_length(self, timeline_id: str) -> CoordinateValue | None:
         """Return a timeline's exact length in its native unit, or None."""
-        tl = self.timelines.get(timeline_id)
+        tl = self._known_timeline(timeline_id)
         if tl is None or tl.length is None:
             return None
         return tl.length.value

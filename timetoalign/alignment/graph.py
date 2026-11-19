@@ -107,6 +107,8 @@ class MatchStamp(Stamp):
         is_interpolated: Whether the stamp used interpolated transfer.
         conversion_maps: Conversion maps available to unit lookup and display.
             Opt-in: defaults to ``False``.
+        interval_claims: The interval claims covering the queried position,
+            in relevance order: the claims themselves, never copies.
 
     Examples:
         >>> stamp = MatchStamp(
@@ -131,7 +133,16 @@ class MatchStamp(Stamp):
     interval_claims: list[MatchClaim] = field(default_factory=list)
 
     def __post_init__(self) -> None:
-        """Isolate mutable containers from callers and serialized data."""
+        """Isolate mutable containers from callers and serialized data.
+
+        The coordinate dict and the edge and claim lists are the stamp's own;
+        the claims in the list are not copied. A claim is frozen (only a
+        free claim joining a bundle takes the id the bundle gives it, and
+        stays the same claim), so sharing it cannot let the caller change
+        what the stamp says; the stamp names the claims that answered, not
+        copies of them, which would cost a copy of every claim at every
+        retrieval.
+        """
         if not isinstance(self.source_id, str) or not self.source_id:
             raise ValueError("MatchStamp source_id must be a non-empty timeline ID")
         if self.source_id not in self.coordinates:
@@ -164,7 +175,7 @@ class MatchStamp(Stamp):
                 raise TypeError(
                     "MatchStamp interval_claims must contain interval MatchClaim values"
                 )
-            normalized_claims.append(claim.model_copy(deep=True))
+            normalized_claims.append(claim)
         object.__setattr__(self, "interval_claims", normalized_claims)
 
     def _interval_candidate_rows(

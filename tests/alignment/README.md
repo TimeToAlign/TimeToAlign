@@ -324,6 +324,66 @@ ordering expectations; no tolerance or approximate comparison is used.
 
 ---
 
+## A Claim's Bundle Is Never Copied With It (`test_claim_back_reference.py`)
+
+### What We're Validating
+
+A claim held by a bundle records that bundle (`MatchClaim.bundle`), so that
+`get_matchstamp` can be called without passing it. That record is where the
+claim is, not part of what it claims. Copying a claim must therefore never copy
+the bundle: a deep copy of one claim that dragged its bundle along copied every
+other claim the bundle holds, so retrieving a stamp at a position covered by
+`k` interval claims cost `k` times the whole bundle, and a loaded alignment of
+ten thousand claims did not answer.
+
+Wall time cannot prove this (it depends on the machine and is not an exact
+value). What proves it is the number of claims copied, counted by wrapping
+`MatchClaim.__deepcopy__`: it is the number of objects the operation actually
+duplicated, independent of speed, and it scales with the bundle exactly when
+the defect is present.
+
+- **One claim, one copy.** A bundle holds 300 interval claims. Deep-copying one
+  of them (`copy.deepcopy` and `model_copy(deep=True)` alike) copies exactly
+  one claim. Before the fix the count was 303 (the bundle's every claim).
+- **A copy is held by no bundle.** The copy's `bundle` is `None`: a copy is not
+  among the bundle's claims, so naming that bundle would state a membership
+  that does not exist. The copy equals the original (`__eq__` reads the fields
+  only) and is a different object.
+- **A copied bundle's claims name the copied bundle.** Deep-copying the whole
+  bundle copies each claim once (300 copies, not 300²), and each copied claim's
+  `bundle` is the copied bundle, never the original and never `None` — the
+  claim and its bundle were copied together.
+- **Retrieval copies no claim.** `get_matchstamp_at` at a position three
+  overlapping interval claims cover makes zero claim copies; the stamp's
+  `interval_claims` are the bundle's own claim objects (identity), in
+  relevance order, and still name the bundle. A `MatchStamp` does not copy
+  claims because a claim is frozen: the stamp copies its list, so a caller
+  mutating the list it passed leaves the stamp's list unchanged, which the
+  test checks too.
+
+### Fixture
+
+Two standalone float-canonical `floating_measures` timelines, `score` and
+`perf`, length 1200. Claim `i` (`i = 0 … 299`) maps `score [i, i + 1]` to
+`perf [2i, 2i + 2]`; three further claims `score [10, 12]`, `score [10.25,
+10.75]`, `score [9, 11]` (to `perf [20, 24]`, `[20.5, 21.5]`, `[18, 22]`)
+overlap position `10.5`, which claim 10 also covers. The query at `score 10.5`
+is therefore covered by exactly four claims; they all map it to `perf 21`.
+
+### Exact Expected Values
+
+| Operation | Claims copied | Back-reference |
+|---|---|---|
+| `copy.deepcopy(held claim)` | 1 | `None` |
+| `held.model_copy(deep=True)` | 1 | `None` |
+| `copy.deepcopy(bundle)` | 303 | every copy's `bundle is` the copied bundle |
+| `get_matchstamp_at(10.5, "score")` | 0 | `interval_claims` are claims 10, 300, 301, 302 of the bundle, by identity |
+
+The stamp's `perf` coordinate is `21` floating measures, a float on the float
+axis.
+
+---
+
 ## Every Timeline of a Bundle's Trees (`test_nested_addressing.py`)
 
 ### What We're Validating

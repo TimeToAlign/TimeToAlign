@@ -10,19 +10,23 @@ Validation strategy and gold values are documented in
 
 from __future__ import annotations
 
+import re
 import time
 from fractions import Fraction
+from pathlib import Path
 
 import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 
 from timetoalign.alignment import (
     Agent,
+    AlignmentAnchor,
     MatchClaim,
     MatchClaimField,
     MatchMetadata,
 )
-from timetoalign.core import AgentType, TimeUnit
+from timetoalign.core import AgentType, Coordinate, TimeUnit
 from timetoalign.core.fields import SemanticField, derive_arrow_struct
 
 # region Fixtures
@@ -412,8 +416,20 @@ class TestFromClaims:
     """Building from existing claims and round-tripping."""
 
     def test_roundtrip_from_claims(self, gold_field: MatchClaimField) -> None:
-        rebuilt = MatchClaimField.from_claims(gold_field.to_claims())
-        assert rebuilt.table.equals(gold_field.table)
+        claims = gold_field.to_claims()
+        rebuilt = MatchClaimField.from_claims(claims)
+        assert rebuilt.to_claims() == claims
+        # The bulk rows carry no claim id; the materialised claims carry
+        # minted ones, which the rebuilt rows keep. Every other sub-field is
+        # identical.
+        rebuilt_column = rebuilt.table.column("match_claim").combine_chunks()
+        gold_column = gold_field.table.column("match_claim").combine_chunks()
+        assert rebuilt_column.field("id").to_pylist() == [c.id for c in claims]
+        for sub_field in MatchClaimField.pa_schema:
+            if sub_field.name != "id":
+                assert rebuilt_column.field(sub_field.name).equals(
+                    gold_column.field(sub_field.name)
+                ), sub_field.name
 
     def test_fraction_and_mixed_units_roundtrip(self) -> None:
         claim = MatchClaim.from_projection(
@@ -478,6 +494,7 @@ class TestFromClaims:
         ]
         field = MatchClaimField.from_claims(claims)
         assert field.metadata is None
+        assert [claim.metadata for claim in field] == [m1, m2]
 
     def test_from_claims_explicit_metadata_overrides(self) -> None:
         per_claim = MatchMetadata(
@@ -562,6 +579,168 @@ class TestDictRoundTrip:
         )
         assert field.to_dict()["metadata"] is None
         assert MatchClaimField.from_dict(field.to_dict()).metadata is None
+
+
+def _round_trip_claims(metadata: list[MatchMetadata | None]) -> list[MatchClaim]:
+    """Three claims covering every stored representation once.
+
+    An exact-fraction interval claim with event ids on both sides, an
+    int-coordinate projection, and an implicit float/fraction claim with an
+    event name and a ``source_claim_id``; ``metadata`` gives each its own.
+    """
+    interval = MatchClaim.from_events(
+        event_a={"id": "note_7", "start": Fraction(7, 3), "end": Fraction(10, 3)},
+        tl_a_id="score",
+        event_b={"id": "onset_7", "start": 1.25, "end": 2.5},
+        tl_b_id="audio",
+        unit_a=TimeUnit.quarters,
+        unit_b=TimeUnit.seconds,
+        end_coord_key="end",
+        metadata=metadata[0],
+    )
+    projection = MatchClaim.from_projection(
+        event={"id": "tick_96", "start": 96},
+        source_tl_id="midi",
+        target_tl_id="pcm",
+        target_coord=44100,
+        source_unit=TimeUnit.ticks,
+        target_unit=TimeUnit.samples,
+        metadata=metadata[1],
+    )
+    implicit = MatchClaim(
+        timeline_a_id="audio",
+        timeline_b_id="score",
+        start_anchor=AlignmentAnchor(
+            timeline_a_id="audio",
+            coordinate_a=Coordinate(0.5, TimeUnit.seconds),
+            timeline_b_id="score",
+            coordinate_b=Coordinate(Fraction(1, 3), TimeUnit.quarters),
+        ),
+        is_explicit=False,
+        event_a_id="onset_1",
+        event_b_id="note_1",
+        event_b_name="C♯4",
+        source_claim_id="claim_source",
+        metadata=metadata[2],
+    )
+    return [interval, projection, implicit]
+
+
+def _through_parquet(field: MatchClaimField, path: Path) -> MatchClaimField:
+    """Write ``field.table`` to a Parquet file and read it back."""
+    pq.write_table(field.table, path)
+    return MatchClaimField.from_table(pq.read_table(path))
+
+
+class TestTableRoundTrip:
+    """``.table`` / ``from_table`` through an actual Parquet file."""
+
+    def test_claims_are_what_they_say(self) -> None:
+        interval, projection, implicit = _round_trip_claims([None, None, None])
+        assert interval.is_interval
+        assert interval.start_anchor.coordinate_a.value == Fraction(7, 3)
+        assert interval.end_anchor.coordinate_a.value == Fraction(10, 3)
+        assert interval.start_anchor.coordinate_b.value == 1.25
+        assert interval.end_anchor.coordinate_b.value == 2.5
+        assert (interval.event_a_id, interval.event_b_id) == ("note_7", "onset_7")
+        assert projection.start_anchor.coordinate_a.value == 96
+        assert type(projection.start_anchor.coordinate_a.value) is int
+        assert projection.start_anchor.coordinate_b.value == 44100
+        assert type(projection.start_anchor.coordinate_b.value) is int
+        assert implicit.is_explicit is False
+        assert implicit.start_anchor.coordinate_b.value == Fraction(1, 3)
+
+    def test_shared_metadata_round_trip(self, tmp_path: Path) -> None:
+        shared = MatchMetadata(
+            agent=Agent(name="dtw", type=AgentType.software, identifier="v1"),
+            certainty=0.75,
+        )
+        claims = _round_trip_claims([shared, shared, shared])
+        field = MatchClaimField.from_claims(claims)
+        assert field.metadata == shared
+        assert field.table.schema.metadata == {
+            b"timetoalign:match_metadata": (
+                b'{"agent": {"name": "dtw", "type": "software", '
+                b'"identifier": "v1"}, "certainty": 0.75}'
+            )
+        }
+        restored = _through_parquet(field, tmp_path / "claims.parquet")
+        assert restored.metadata == shared
+        assert restored.to_claims() == claims
+
+    def test_mixed_metadata_round_trip(self, tmp_path: Path) -> None:
+        human = MatchMetadata(
+            agent=Agent(name="ann", type=AgentType.human, identifier="ann"),
+            certainty=0.5,
+        )
+        software = MatchMetadata(
+            agent=Agent(name="dtw", type=AgentType.software, identifier="v1")
+        )
+        claims = _round_trip_claims([None, human, software])
+        field = MatchClaimField.from_claims(claims)
+        assert field.metadata is None
+        assert field.table.schema.metadata is None
+        restored = _through_parquet(field, tmp_path / "claims.parquet")
+        assert restored.metadata is None
+        assert restored.to_claims() == claims
+        assert [claim.metadata for claim in restored] == [None, human, software]
+
+    def test_columnar_field_round_trip(
+        self, gold_field: MatchClaimField, meta: MatchMetadata, tmp_path: Path
+    ) -> None:
+        restored = _through_parquet(gold_field, tmp_path / "claims.parquet")
+        assert restored.metadata == meta
+        assert restored.table.equals(gold_field.table, check_metadata=True)
+
+    def test_empty_field_round_trip(self, tmp_path: Path) -> None:
+        restored = _through_parquet(
+            MatchClaimField.from_claims([]), tmp_path / "claims.parquet"
+        )
+        assert len(restored) == 0
+        assert restored.metadata is None
+
+    def test_chunked_column(self, gold_field: MatchClaimField) -> None:
+        column = gold_field.table.column("match_claim").combine_chunks()
+        chunked = pa.chunked_array([column.slice(0, 1), column.slice(1)])
+        table = pa.table(
+            {"match_claim": chunked}, metadata=gold_field.table.schema.metadata
+        )
+        assert table.column("match_claim").num_chunks == 2
+        restored = MatchClaimField.from_table(table)
+        assert restored.table.equals(gold_field.table, check_metadata=True)
+
+    def test_refuses_extra_column(self, gold_field: MatchClaimField) -> None:
+        table = gold_field.table.append_column("extra", pa.array([1, 2, 3]))
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "A MatchClaimField table holds exactly one column named "
+                "'match_claim'; this table has the columns ['match_claim', 'extra']."
+            ),
+        ):
+            MatchClaimField.from_table(table)
+
+    def test_refuses_renamed_column(self, gold_field: MatchClaimField) -> None:
+        table = gold_field.table.rename_columns(["claims"])
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "A MatchClaimField table holds exactly one column named "
+                "'match_claim'; this table has the columns ['claims']."
+            ),
+        ):
+            MatchClaimField.from_table(table)
+
+    def test_refuses_other_type(self) -> None:
+        table = pa.table({"match_claim": pa.array([1, 2])})
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "Column 'match_claim' has type int64, which is not the "
+                "MatchClaim struct type "
+            ),
+        ):
+            MatchClaimField.from_table(table)
 
 
 # endregion

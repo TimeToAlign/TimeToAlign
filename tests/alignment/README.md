@@ -521,20 +521,62 @@ level** (a Python attribute, `self._metadata`) and **injected on read**. This
 mirrors how `CoordinateField` carries its `unit` outside the data: the struct
 column's `metadata` sub-field is left null in the bulk path, and `__getitem__`
 injects the field-level metadata into each materialised `MatchClaim`. This
-keeps the store compact (one struct column, no per-row metadata) while the field
-remains a real SemanticField. Each anchor coordinate is stored as a nested
+keeps the store compact (one struct column) while the field remains a real
+SemanticField. Each anchor coordinate is stored as a nested
 `{value, numerator, denominator, unit}` struct so exact rational values and
 per-row units survive materialisation.
 
-### Scope (v1) — and what raises
+### Scope — and what raises
 
-The store holds **synchronous instant pairwise claims only**: each row has
-`is_synchronous is True`, a `start_anchor`, and `end_anchor is None`. Two
-categories are deliberately out of scope and `from_claims` raises `ValueError`
-on either:
+The store holds **synchronous pairwise claims**: each row has
+`is_synchronous is True` and a `start_anchor`; interval claims keep their
+`end_anchor`. **NOMATCH claims** (`is_synchronous is False`, no anchors) are
+out of scope and `from_claims` raises `ValueError` on them.
 
-- **NOMATCH claims** (`is_synchronous is False`, no anchors).
-- **Interval claims** (carry an `end_anchor`).
+### `from_claims` keeps every claim whole
+
+`from_claims` writes each claim's `id`, `source_claim_id`, event ids and
+names, and `is_explicit` into the row, so `from_claims(claims).to_claims() ==
+claims` — pydantic equality over every field, the claim `id` included. A
+claim's `id` is minted at construction, so a row without one (the bulk
+`from_columns` path) mints a fresh id on every materialisation; storing it is
+what makes the equality hold. Metadata follows one rule: one metadata shared
+by every claim becomes the field's metadata and the rows carry none; claims
+whose metadata differ (`None` included) leave the field's metadata `None` and
+each row carries its own claim's metadata; an explicit `metadata=` replaces
+every claim's own.
+
+### Arrow table and Parquet round trip (`TestTableRoundTrip`)
+
+`MatchClaimField.from_table(table)` is the inverse of `.table`. The field's
+shared metadata lives outside the struct column, so `.table` writes it into
+the Arrow schema metadata under `timetoalign:match_metadata` (the JSON of
+`MatchMetadata.to_dict()`) and `from_table` reads it back; no key means
+`None`.
+
+A round trip proves losslessness only when it is compared **claim by claim
+against the original claims** (`to_claims() == claims`, every field, ids
+included) — a table-to-table comparison would pass a column that both sides
+drop alike. The claims are chosen so that every stored representation is
+exercised once:
+
+- exact `Fraction` coordinates on `quarters` (`7/3`, `10/3`, `1/3`), whose
+  ratio must come back as the ratio, never as the double beside it;
+- `int` coordinates on `ticks` / `samples` (`96`, `44100`);
+- `float` coordinates on `seconds` (`1.25`, `2.5`);
+- event ids on both sides, an event name, a `source_claim_id`, an implicit
+  (`is_explicit=False`) claim;
+- an interval claim with its end anchor;
+- **shared** metadata (field-level, written to the schema metadata) and
+  **mixed** metadata (one claim without, two with different agents and
+  certainties: per row, schema metadata absent).
+
+Each case goes through an actual Parquet file in `tmp_path`
+(`pyarrow.parquet.write_table` / `read_table`), which also hands `from_table`
+a chunked column. The schema-metadata value is asserted byte-exact. The two
+refusals are asserted with their messages: a table whose columns are not
+exactly `["match_claim"]` (an extra column; a renamed column), and a
+`match_claim` column of another type.
 
 ### Internal schema (the derived `MatchClaim` struct)
 
@@ -588,13 +630,14 @@ the metadata shape and the field's internal column layout changed.
 | `test_filter_and_combination` | `timeline_id` AND `timeline_ids` combine with logical AND |
 | `test_to_claims` | `len(f.to_claims()) == 3`, all synchronous instants |
 | `test_iter` | iteration yields 3 synchronous-instant claims |
-| `test_roundtrip_from_claims` | `from_claims(f.to_claims()).table` equals `f.table` (`.equals`) |
+| `test_roundtrip_from_claims` | `from_claims(f.to_claims())` materialises `f.to_claims()` again, and its table equals `f.table` in every sub-field but `id` (the bulk rows have none; the materialised claims carry minted ones) |
 | `test_roundtrip_from_dict` | `from_dict(f.to_dict()).table` equals `f.table`; metadata preserved |
 | `test_getitem_injects_metadata` | a materialised claim carries the field-level metadata (struct row is null there) |
 | `test_from_claims_rejects_nomatch` | a `MatchClaim.nomatch(...)` raises `ValueError` |
-| `test_from_claims_rejects_interval` | an interval claim (both anchors) raises `ValueError` |
+| `test_from_claims_preserves_interval` | an interval claim keeps its end anchor: both timelines' intervals equal the claim's |
 | `test_from_claims_adopts_common_metadata` | shared per-claim metadata becomes field metadata when `metadata=None` |
-| `test_from_claims_mixed_metadata_stays_none` | divergent per-claim metadata → field metadata stays `None` |
+| `test_from_claims_mixed_metadata_stays_none` | divergent per-claim metadata → field metadata stays `None`, and each materialised claim carries its own (`m1`, `m2`) |
+| `TestTableRoundTrip` | the Arrow table / Parquet round trip and its two refusals, as specified above |
 | `test_from_columns_length_mismatch_raises` | unequal column lengths raise `ValueError` |
 | `test_empty_field` | zero-row field: `len == 0`, `timeline_ids == set()`, `to_claims() == []` |
 | `test_repr` | `repr(f) == "MatchClaimField(claims=3, timelines=3)"` |

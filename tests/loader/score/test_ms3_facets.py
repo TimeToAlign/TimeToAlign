@@ -1,7 +1,7 @@
-"""Ms3Loader: companion discovery in both corpus layouts, and empty note cells.
+"""Ms3Loader: companion discovery, empty note cells, measures it cannot read.
 
-Validation logic: ``tests/loader/score/README.md``, "MS3 facet discovery" and
-"MS3 empty note cells".
+Validation logic: ``tests/loader/score/README.md``, "MS3 facet discovery",
+"MS3 empty note cells" and "MS3 measures without a count or a length".
 """
 
 from __future__ import annotations
@@ -189,3 +189,74 @@ def test_an_empty_octave_states_no_specific_pitch(tmp_path):
         {"step": "F", "alter": 0, "octave": 4, "cents": 0.0},
         None,
     ]
+
+
+# Three 4/4 measures; each refusal case removes one cell (see "MS3 measures
+# without a count or a length").
+def _measures(tmp_path: Path, text: str) -> Path:
+    path = tmp_path / "p.measures.tsv"
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def _measure_map(path: Path) -> list[tuple[int, Fraction]]:
+    timeline = _load(path).create_timeline()
+    return [(m.count, m.actual_length) for m in timeline.measure_map]
+
+
+def test_a_complete_measures_table_loads_its_counts_and_lengths(tmp_path):
+    measures = _measure_map(_measures(tmp_path, MEASURES))
+
+    assert measures == [(1, Fraction(4)), (2, Fraction(4)), (3, Fraction(4))]
+    assert all(type(length) is Fraction for _, length in measures)
+
+
+def test_duration_qb_alone_states_the_length(tmp_path):
+    text = (
+        "mc\tmn\tquarterbeats\tact_dur\tduration_qb\ttimesig\n"
+        "1\t1\t0\t1\t4.0\t4/4\n"
+        "2\t2\t4\t\t3.0\t4/4\n"
+        "3\t3\t7\t1\t4.0\t4/4\n"
+    )
+
+    measures = _measure_map(_measures(tmp_path, text))
+
+    assert measures == [(1, Fraction(4)), (2, Fraction(3)), (3, Fraction(4))]
+    assert type(measures[1][1]) is Fraction
+
+
+def test_a_row_without_mc_is_refused(tmp_path):
+    text = MEASURES.replace("2\t2\t4\t1\t4/4\n", "\t2\t4\t1\t4/4\n")
+
+    with pytest.raises(ValueError) as raised:
+        _load(_measures(tmp_path, text))
+
+    assert (
+        str(raised.value) == "The measures table 'p.measures.tsv' states no mc in row 2"
+    )
+
+
+NO_LENGTH = (
+    "The measures table 'p.measures.tsv' states no length of mc 2 (row 2): "
+    "neither act_dur nor duration_qb holds a value"
+)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        MEASURES.replace("2\t2\t4\t1\t4/4\n", "2\t2\t4\t\t4/4\n"),
+        (
+            "mc\tmn\tquarterbeats\tact_dur\tduration_qb\ttimesig\n"
+            "1\t1\t0\t1\t4.0\t4/4\n"
+            "2\t2\t4\t\t\t4/4\n"
+            "3\t3\t8\t1\t4.0\t4/4\n"
+        ),
+    ],
+    ids=["no_duration_qb_column", "both_cells_empty"],
+)
+def test_a_row_without_a_length_is_refused(tmp_path, text):
+    with pytest.raises(ValueError) as raised:
+        _load(_measures(tmp_path, text))
+
+    assert str(raised.value) == NO_LENGTH

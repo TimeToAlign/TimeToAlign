@@ -14,7 +14,7 @@ loaded by `Ms3Loader` is authoritative whenever loaders are compared.
 | `test_measuremap_loader.py` | MeasureMap expansion, validation, traversal, schema, and comparison with MS3. |
 | `test_flow_csv_validation.py` | Right-open ranges, exact atomic boundaries, live Partitura boundaries, and CSV serialization. |
 | `test_partitura_exactness.py` | Exact Partitura coordinate pairs, instant nulls, flattened timelines, and agreement with Partitura's float map. |
-| `test_ms3_facets.py` | `Ms3Loader`'s companion discovery in both corpus layouts and its reading of empty note cells (see "MS3 facet discovery" and "MS3 empty note cells" below). |
+| `test_ms3_facets.py` | `Ms3Loader`'s companion discovery in both corpus layouts and its reading of empty note cells, and its refusal of a measure without a count or a length (see "MS3 facet discovery", "MS3 empty note cells" and "MS3 measures without a count or a length" below). |
 | `test_successors.py` | The `next` column derived from the measure columns: endings of more than one measure, Music21/Partitura parity, agreement with the ms3 TSVs (see below). |
 | `test_verovio_loader.py` | `VerovioLoader` on MEI fixtures and specimens: exact onsets, kept ids, measures as structure, ties, grace notes, repeats, movements, the physical timeline, music21 parity, Verovio's expansion against the flow controller (see below). |
 | `test_verovio_ids.py` | `VerovioLoader`'s minted timeline ids when the root's id is given (see "Ids of a given root" below). |
@@ -298,6 +298,30 @@ Every other optional integer cell of the notes facet (`mc`, `midi`, `tpc`, `voic
 `0` into the shared `tied` column, which under ms3's values claims a tie middle on every note,
 and now write null. By hand on Clair de lune: mm. 1–6 give start 20, end 19, middle 2, none 36;
 the whole movement 118, 118, 3 and 1441, exactly the TSV's counts.
+
+## MS3 measures without a count or a length
+
+A measures table numbers every measure in `mc` and states its length in `act_dur` (whole
+notes, exact) or `duration_qb` (quarters, derived). The loader used to invent what a row
+left out: an empty `mc` became the row's position plus one, so a gap in the numbering moved
+every following measure without a word, and a row stating neither length became a measure of
+length `0`. Neither is a reading of the source; both now refuse, and no other column states
+either value exactly (`timesig` states the nominal length, not the actual one, and the next
+row's `quarterbeats` is not this measure's end where endings or jumps follow it).
+
+The proof is a measures TSV in `tmp_path` of three 4/4 measures, one cell removed per case;
+`Ms3Loader.from_file` must raise `ValueError` with exactly:
+
+| Removed | Message |
+|---|---|
+| `mc` of the second row | `The measures table 'p.measures.tsv' states no mc in row 2` |
+| `act_dur` of the second row, no `duration_qb` column | `The measures table 'p.measures.tsv' states no length of mc 2 (row 2): neither act_dur nor duration_qb holds a value` |
+| both length cells of the second row, both columns present | the same message |
+
+The complete table loads with lengths `[4, 4, 4]` as exact `Fraction`s and counts `[1, 2, 3]`,
+so the refusals are not passed by refusing every table. A row giving `duration_qb` alone still
+loads: with `act_dur` empty and `duration_qb` `3.0` its measure is `Fraction(3)` long, the
+length the source states.
 
 ## Coordinate exactness
 

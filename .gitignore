@@ -29,3 +29,12 @@ verify.log
 
 # build files
 /dist/
+
+# Editors
+.idea/
+.vscode/
+*.swp
+
+# Dependencies and virtual environments
+node_modules/
+.venv/

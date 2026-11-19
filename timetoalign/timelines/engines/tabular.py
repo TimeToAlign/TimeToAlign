@@ -626,9 +626,10 @@ class TabularExportMixin:
     ) -> pa.StructArray:
         """Compute local coordinates from root coordinates.
 
-        Offset subtraction with bounds checking. Coordinates outside
-        ``[0, length]`` are replaced with null; a timeline of unknown length
-        is bounded below only.
+        Offset subtraction with bounds checking. Coordinates this timeline
+        does not hold are replaced with null: those outside ``[0, length)``,
+        and its end where a sibling starts there (``_holds_position``); a
+        timeline of unknown length is bounded below only.
 
         The subtraction runs in this timeline's declared representation, so a
         child of an exact parent reports exact local positions; only the
@@ -652,7 +653,10 @@ class TabularExportMixin:
         within = pc.greater_equal(shifted, 0.0)
         extent = self._extent
         if extent is not None:
-            within = pc.and_(within, pc.less_equal(shifted, float(extent)))
+            # The containment rule of ``_holds_position``, on a column: the
+            # end belongs to this timeline unless a sibling starts there.
+            below_end = pc.less_equal if self._holds_own_end else pc.less
+            within = pc.and_(within, below_end(shifted, float(extent)))
 
         # At offset zero the local coordinate IS the root coordinate, so the
         # cells are reused rather than recomputed.

@@ -71,8 +71,8 @@ class TestTimeStampWithChildren:
     def test_get_child_coordinate_at_boundary(self):
         """Get child coordinate at exact boundaries.
 
-        Child spans [offset, offset + length) on the parent, i.e. [25, 75).
-        The right endpoint is *exclusive* per the TTA interval model.
+        Child spans [offset, offset + length] on the parent, i.e. [25, 75]:
+        its end is held because no sibling starts there.
         """
         parent = Timeline(length=100, unit=TimeUnit.seconds)
         child = Timeline(length=50, unit=TimeUnit.seconds, uid="child:1")
@@ -83,10 +83,14 @@ class TestTimeStampWithChildren:
         ts_start = parent.get_timestamp(25.0)
         assert ts_start.get_coordinate_for("child:1", format="float") == 0.0
 
-        # At child end (parent 75) -- right-exclusive, so None
+        # At child end (parent 75) -- no sibling starts there, so held
         ts_end = parent.get_timestamp(75.0)
+        assert ts_end.get_coordinate_for("child:1", format="float") == 50.0
+
+        # Past the child end (parent 75.5) -- outside
+        ts_after = parent.get_timestamp(75.5)
         with pytest.raises(KeyError):
-            ts_end.get_coordinate_for("child:1")
+            ts_after.get_coordinate_for("child:1")
 
         # Just before child end (parent 74.999...) -- still inside
         ts_just_before = parent.get_timestamp(74.999)
@@ -115,9 +119,9 @@ class TestTimeStampWithChildren:
     def test_multiple_children(self):
         """Timestamps work with multiple children.
 
-        child1 spans [10, 40) and child2 spans [60, 90) on the parent.
-        At parent coordinate 40, child1 is *excluded* (right-exclusive)
-        and child2 has not started yet, so both return None.
+        child1 spans [10, 40] and child2 spans [60, 90] on the parent.
+        At parent coordinate 40, child1 holds its end (no sibling starts
+        there) and child2 has not started yet.
         At parent coordinate 35, child1 returns 25.0 and child2 returns
         None.
         """
@@ -128,10 +132,9 @@ class TestTimeStampWithChildren:
         parent.add_child(child1, offset=10)
         parent.add_child(child2, offset=60)
 
-        # Parent 40 is at the right-exclusive boundary of child1 [10, 40)
+        # Parent 40 is the end of child1, which no sibling starts at
         ts_boundary = parent.get_timestamp(40.0)
-        with pytest.raises(KeyError):
-            ts_boundary.get_coordinate_for("child:1")
+        assert ts_boundary.get_coordinate_for("child:1", format="float") == 30.0
         with pytest.raises(KeyError):
             ts_boundary.get_coordinate_for("child:2")
 

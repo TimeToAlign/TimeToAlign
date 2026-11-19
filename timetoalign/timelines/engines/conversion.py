@@ -30,7 +30,7 @@ from timetoalign.core.retrieval import (
     validate_coordinate_collection,
     validate_key_collection,
 )
-from timetoalign.core.time import coordinate_numeric_value, exact_coordinate_value
+from timetoalign.core.time import shift_number
 from timetoalign.maps import ConversionMap, OutputNumberTypeError
 
 if TYPE_CHECKING:
@@ -336,9 +336,10 @@ class ConversionMapsMixin:
 
         ``child_coord = parent_coord - offset``
 
-        Returns None if *parent_coord* falls outside the child's
-        ``[offset, offset + length)`` span; a child of unknown length spans
-        everything from its offset on.
+        Returns None if the child does not hold *parent_coord*
+        (:meth:`_holds_position`): outside ``[offset, offset + length)``, or
+        at the child's end where a sibling starts; a child of unknown length
+        spans everything from its offset on.
 
         Args:
             child_id: The child timeline ID.
@@ -353,17 +354,8 @@ class ConversionMapsMixin:
         offsets, child = path
         child_coord = parent_coord
         for offset in offsets:
-            child_exact = exact_coordinate_value(child_coord)
-            offset_exact = exact_coordinate_value(offset.value)
-            child_coord = (
-                child_exact - offset_exact
-                if child_exact is not None and offset_exact is not None
-                else float(coordinate_numeric_value(child_coord)) - float(offset.value)
-            )
-        extent = child._extent
-        if child_coord < 0 or (extent is not None and child_coord >= extent):
-            return None
-        return child_coord
+            child_coord = shift_number(child_coord, offset.value, subtract=True)
+        return child_coord if child._holds_position(child_coord) else None
 
     def _get_parent_coordinate_from_child(
         self, child_id: str, child_coord: CoordinateValue
@@ -387,13 +379,7 @@ class ConversionMapsMixin:
             raise KeyError(child_id)
         parent_coord = child_coord
         for offset in reversed(path[0]):
-            parent_exact = exact_coordinate_value(parent_coord)
-            offset_exact = exact_coordinate_value(offset.value)
-            parent_coord = (
-                parent_exact + offset_exact
-                if parent_exact is not None and offset_exact is not None
-                else float(coordinate_numeric_value(parent_coord)) + float(offset.value)
-            )
+            parent_coord = shift_number(parent_coord, offset.value, subtract=False)
         return parent_coord
 
     def _get_unit_maps(self, unit: TimeUnit) -> list[ConversionMap[Any]]:
@@ -674,13 +660,7 @@ class ConversionMapsMixin:
                 ) from error
 
         for offset in reversed(offsets):
-            native_exact = exact_coordinate_value(native_value)
-            offset_exact = exact_coordinate_value(offset.value)
-            native_value = (
-                native_exact + offset_exact
-                if native_exact is not None and offset_exact is not None
-                else float(coordinate_numeric_value(native_value)) + float(offset.value)
-            )
+            native_value = shift_number(native_value, offset.value, subtract=False)
 
         # Expressed on THIS timeline's axis, in the type it declares -- which
         # may differ from its unit's default when the caller chose otherwise.

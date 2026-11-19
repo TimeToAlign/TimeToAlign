@@ -333,7 +333,9 @@ and whether or not it was added, registered or grouped. Registering is how a
 timeline enters a bundle (its root comes along); it is not a condition for
 being found. Each timeline of a tree reaches every other one of that tree by the
 exact parent-child offsets, the first transfer mechanism, and a timeline appears
-in a stamp exactly when its closed span `[0, length]` contains the position.
+in a stamp exactly when it holds the position by the timeline's own
+parent-to-child rule: `[0, length)`, plus its end where no sibling starts there.
+An ancestor of the queried timeline holds its whole span, end included.
 
 Before this held, a timeline between a registered root and a grouped
 descendant (a "middle ancestor") was invisible: querying it raised `KeyError`,
@@ -353,11 +355,14 @@ holds in the following cases:
    root, the grouped descendant and its group partner all return the same
    coordinate set, the middle ancestor included. Four sources agreeing rules out
    a rule that depends on where the query starts.
-4. **Spans are closed and only containing timelines appear.** At the boundary
-   between two unregistered siblings both appear, one at its end, one at its
-   start; a position covered by one child only shows that child and the root.
-   An unregistered branch with no group and no claim is reached by offsets
-   alone.
+4. **Only the timelines holding the position appear.** At the boundary between
+   two unregistered siblings only the one starting there appears (`clt_4` at 0,
+   not `clt_3` at 312): one position on the root names one movement, as it does
+   in the root's own stamps. The end of a child nothing follows stays on it:
+   `clt_7` ends at 27 inside `clt_4`, which runs on, so `clt_4` 27 still reaches
+   `clt_7` 27 and, through its group and the claim there, `cpt_1` 9.0. A
+   position covered by one child only shows that child and the root. An
+   unregistered branch with no group and no claim is reached by offsets alone.
 5. **Every lane follows.** The plural getter, the key getter (`_for`), the
    position table and the coordinate getter all give the same values as the
    singular stamp; they share one assembly path, and the test pins each of them.
@@ -392,12 +397,17 @@ holds in the following cases:
 | `clt_4` 27/2 | `clt_4` 27/2, `clt_7` 27/2, `clt_1` 1363/2, `clt_6` 27/2, `cpt_1` 4.5 |
 | `clt_1` 1363/2, `clt_7` 27/2, `clt_6` 27/2 | the same five values |
 | `clt_4` 27 | `clt_4` 27, `clt_7` 27, `clt_1` 695, `clt_6` 27, `cpt_1` 9.0 |
-| `clt_1` 668 | `clt_1` 668, `clt_7` 0, `clt_6` 0, `cpt_1` 0.0, `clt_3` 312, `clt_4` 0 |
+| `clt_1` 668 | `clt_1` 668, `clt_7` 0, `clt_6` 0, `cpt_1` 0.0, `clt_4` 0 |
+| `clt_3` 312 | `clt_3` 312, `clt_7` 0, `clt_1` 668, `clt_6` 0, `cpt_1` 0.0, `clt_4` 0 |
+| `clt_4` 0 | `clt_4` 0, `clt_7` 0, `clt_1` 668, `clt_6` 0, `cpt_1` 0.0 |
+| `clt_1` 1616 | `clt_1` 1616, `clt_5` 624 |
 | `clt_1` 100 | `clt_1` 100, `clt_2` 100 |
 | `clt_5` 300 | `clt_5` 300, `clt_1` 1292 |
 
 `1363/2 = 668 + 27/2`; `cpt_1` 4.5 is the WarpMap between the two claims,
-`(27/2) / 27 · 9`, and 0.0 and 9.0 are the claims' own anchors. The order is the
+`(27/2) / 27 · 9`, and 0.0 and 9.0 are the claims' own anchors. `clt_3` 312
+is the root's 668, which `clt_4` holds and `clt_3` does not; the root's end 1616
+is the end of `clt_5`, the last movement, which nothing follows. The order is the
 query timeline, then the registered timelines in registration order, then the
 other descendants depth-first; a filter keeps that order. Quarters values are
 `Fraction`s on every lane, seconds values floats.
@@ -450,6 +460,68 @@ registered; `clt_2` its child at offset 20, length 40, not registered, events
 `clt_2` 0 ↔ `cpt_1` 5.0 and `clt_2` 40 ↔ `cpt_1` 25.0, both synchronous.
 `transfer(20, "clt_2", "cpt_1")` is `15.0` and `transfer(15.0, "cpt_1",
 "clt_2")` is `20.0`.
+
+### One Step per Edge
+
+A position is carried from the queried timeline along the tree's edges, one
+offset addition (child to parent) or subtraction (parent to child) per edge,
+exactly as a timeline converts between itself and its children. Going through the
+root instead adds the queried timeline's origin and subtracts the other's: on a
+float axis that is two roundings, so a child at offset 0 got a value differing
+from its parent's in the last digit, and two lanes of one stamp named different
+positions. What proves the walk:
+
+12. **A zero offset is the identity on a float axis.** In a drawing with a nested
+    child at offset 0, a position on the child and the same position on its parent
+    are the same float, whichever of the two is queried; and from the root both
+    get one value. The values are a real specimen's (a page drawing in CSS
+    pixels), where the sum through the root does not round back: `101.68572501334543
+    + 76.70371459980326 = 178.38943961314868`, and `178.38943961314868 −
+    76.70371459980326 = 101.68572501334542`.
+13. **An exact tree stays exact** across a path that goes up and down again
+    (grandchild → its parent → the root → an uncle), with `Fraction` results.
+
+Float fixture: `cgt_1` (css_pixels, float, length 932.2326510101616), its child
+`cgt_2` at 76.70371459980326 (length 855.5289364103584), and `cgt_2`'s child
+`cgt_3` at 0 (length 713.3617548979767); `cgt_1` registered.
+
+| query | expected coordinates (in this order) |
+|---|---|
+| `cgt_3` 101.68572501334543 | `cgt_3` 101.68572501334543, `cgt_1` 178.38943961314868, `cgt_2` 101.68572501334543 |
+| `cgt_2` 101.68572501334543 | `cgt_2` 101.68572501334543, `cgt_1` 178.38943961314868, `cgt_3` 101.68572501334543 |
+| `cgt_1` 178.38943961314868 | `cgt_1` 178.38943961314868, `cgt_2` 101.68572501334542, `cgt_3` 101.68572501334542 |
+
+From the root the value on `cgt_2` is the one subtraction the edge prescribes,
+and `cgt_3` repeats it exactly.
+
+Exact fixture: `clt_1` (quarters, length 10) with children `clt_2` at 1/3
+(length 4) and `clt_3` at 10/3 (length 2); `clt_3`'s child `clt_4` at 1/2
+(length 1); `clt_1` registered. Querying `clt_4` at 1/4 gives `clt_4` 1/4,
+`clt_1` 49/12, `clt_2` 15/4, `clt_3` 3/4 (`3/4 = 1/4 + 1/2`, `49/12 = 3/4 +
+10/3`, `15/4 = 49/12 − 1/3`), every value a `Fraction`.
+
+### Grouping a Nested Timeline
+
+A group may hold any timeline of the bundle's trees, so every way of founding
+or joining a group must find a nested one through the same lookup as the
+getters, and must register it as a member is registered (a group member is
+always in `timeline_ids`). Before, `add_timeline(t, grouped_with=X)` looked `X`
+up in the registry alone and raised `KeyError` for a child no one had
+registered. What proves it:
+
+14. **`grouped_with` names a nested timeline.** In the main fixture's tree with
+    only the root `clt_1` registered, `add_timeline(clt_6, grouped_with="clt_7")`
+    founds one group of `clt_7` and `clt_6` (in that order), registers both
+    (`timeline_ids` is `clt_1`, `clt_7`, `clt_6`), and a stamp at `clt_6` 27/2
+    reaches `clt_7` 27/2, `clt_4` 27/2 and `clt_1` 1363/2.
+15. **`add_group` with a nested member** gives the same membership and the same
+    stamp, whether the bundle held the tree before (`clt_1`, `clt_7`, `clt_6`)
+    or the group brings it (`clt_7`, `clt_1`, `clt_6`: a member is registered
+    with its root right after it).
+16. **A name of no timeline** still raises `KeyError`, now naming every timeline
+    the bundle knows, nested ones included:
+    `Timeline to group with 'clt_9' not in bundle. Available timelines: ['clt_1',
+    'clt_2', 'clt_3', 'clt_4', 'clt_7', 'clt_5']`.
 
 ---
 
@@ -1282,13 +1354,14 @@ transfer and rational offsets compose exactly.
 |------|-----------|
 | `test_exact_parent_to_child` | `_get_child_coordinate()` returns the exact result |
 | `test_exact_child_to_parent` | `_get_parent_coordinate_from_child()` returns the exact result |
-| `test_out_of_bounds_returns_none` | `None` for a coordinate outside the child span |
+| `test_out_of_bounds_returns_none` | `None` for a coordinate outside the child span; the end of a lone child is held |
+| `test_shared_boundary_belongs_to_the_later_sibling` | Where one child ends and another starts, only the later one holds the position, in stamps and tables alike |
 | `test_unknown_child_returns_none` / `test_unknown_child_raises_keyerror` | Unknown ids keep their established return or exception |
 | `test_recursive_offset_exact` | Offsets compose through a grandchild |
 | `test_recursive_fraction_offset_exact` | Rational offsets compose without float coercion |
 | `test_timestamp_uses_offset_arithmetic` | A `TimeStamp` resolves a child through its offset |
 | `test_timestamp_out_of_bounds_returns_none` | A stamp outside the child span raises `KeyError` for the child |
-| `test_timestamp_boundary_values` | Start inclusive, end exclusive |
+| `test_timestamp_boundary_values` | Start inclusive; the end of a child nothing follows inclusive |
 | `test_no_interpolation_maps_attribute` | A timeline holds no interpolation maps |
 
 ---

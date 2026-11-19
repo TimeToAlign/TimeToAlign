@@ -14,7 +14,7 @@ from timetoalign.alignment.bundle import AlignmentBundle
 from timetoalign.alignment.claims import AlignmentAnchor, MatchClaim
 from timetoalign.core import Coordinate, IdCoordinate, TimeUnit
 from timetoalign.core.fields import field_metadata
-from timetoalign.timelines import Timeline
+from timetoalign.timelines import Timeline, TimelineGroup
 
 # region Fixture
 
@@ -193,9 +193,36 @@ def test_middle_ancestor_appears_from_every_source(
                 ("clt_7", Fraction(0)),
                 ("clt_6", Fraction(0)),
                 ("cpt_1", 0.0),
-                ("clt_3", Fraction(312)),
                 ("clt_4", Fraction(0)),
             ],
+        ),
+        (
+            "clt_3",
+            Fraction(312),
+            [
+                ("clt_3", Fraction(312)),
+                ("clt_7", Fraction(0)),
+                ("clt_1", Fraction(668)),
+                ("clt_6", Fraction(0)),
+                ("cpt_1", 0.0),
+                ("clt_4", Fraction(0)),
+            ],
+        ),
+        (
+            "clt_4",
+            Fraction(0),
+            [
+                ("clt_4", Fraction(0)),
+                ("clt_7", Fraction(0)),
+                ("clt_1", Fraction(668)),
+                ("clt_6", Fraction(0)),
+                ("cpt_1", 0.0),
+            ],
+        ),
+        (
+            "clt_1",
+            Fraction(1616),
+            [("clt_1", Fraction(1616)), ("clt_5", Fraction(624))],
         ),
         ("clt_1", Fraction(100), [("clt_1", Fraction(100)), ("clt_2", Fraction(100))]),
         ("clt_5", Fraction(300), [("clt_5", Fraction(300)), ("clt_1", Fraction(1292))]),
@@ -212,10 +239,10 @@ def test_middle_ancestor_appears_from_every_source(
         ),
     ],
 )
-def test_closed_spans_decide_who_appears(
+def test_holding_timelines_appear(
     source: str, position: Fraction, expected: list[tuple[str, object]]
 ) -> None:
-    """Siblings meet at a shared boundary; a covered position shows its covers only."""
+    """A shared boundary is the later sibling's; a lone child's end is the child's."""
     bundle, _ = _bundle()
 
     values = _values(bundle.get_matchstamp_at(position, source).coordinates)
@@ -446,6 +473,189 @@ def test_transfer_runs_through_the_claimed_child() -> None:
 
     assert (type(forward), forward) == (float, 15.0)
     assert (type(backward), backward) == (float, 20.0)
+
+
+# endregion
+
+
+# region One step per edge
+
+DRAWING_X = 101.68572501334543
+DRAWING_ROOT_X = 178.38943961314868
+
+
+def _drawing_bundle() -> AlignmentBundle:
+    """Build a page drawing whose nested child sits at offset 0 in its parent.
+
+    Returns:
+        The bundle holding the drawing's root.
+    """
+    root = Timeline(length=932.2326510101616, unit=TimeUnit.css_pixels, uid="cgt_1")
+    child = Timeline(length=855.5289364103584, unit=TimeUnit.css_pixels, uid="cgt_2")
+    grandchild = Timeline(
+        length=713.3617548979767, unit=TimeUnit.css_pixels, uid="cgt_3"
+    )
+    root.add_child(child, offset=76.70371459980326)
+    child.add_child(grandchild, offset=0)
+    bundle = AlignmentBundle(id="drawing")
+    bundle.add_timeline(root)
+    return bundle
+
+
+@pytest.mark.parametrize(
+    ("source", "position", "expected"),
+    [
+        (
+            "cgt_3",
+            DRAWING_X,
+            [("cgt_3", DRAWING_X), ("cgt_1", DRAWING_ROOT_X), ("cgt_2", DRAWING_X)],
+        ),
+        (
+            "cgt_2",
+            DRAWING_X,
+            [("cgt_2", DRAWING_X), ("cgt_1", DRAWING_ROOT_X), ("cgt_3", DRAWING_X)],
+        ),
+        (
+            "cgt_1",
+            DRAWING_ROOT_X,
+            [
+                ("cgt_1", DRAWING_ROOT_X),
+                ("cgt_2", 101.68572501334542),
+                ("cgt_3", 101.68572501334542),
+            ],
+        ),
+    ],
+)
+def test_zero_offset_is_the_identity_on_a_float_axis(
+    source: str, position: float, expected: list[tuple[str, object]]
+) -> None:
+    """A child at offset 0 and its parent name one float, whoever is queried."""
+    bundle = _drawing_bundle()
+
+    values = _values(bundle.get_matchstamp_at(position, source).coordinates)
+
+    assert values == expected
+    assert all(type(value) is float for _, value in values)
+    named = dict(values)
+    assert named["cgt_2"] == named["cgt_3"]
+
+
+def test_exact_tree_stays_exact_up_and_down() -> None:
+    """Grandchild to parent to root to uncle: every step exact."""
+    root = Timeline(length=10, unit=TimeUnit.quarters, uid="clt_1")
+    uncle = Timeline(length=4, unit=TimeUnit.quarters, uid="clt_2")
+    parent = Timeline(length=2, unit=TimeUnit.quarters, uid="clt_3")
+    grandchild = Timeline(length=1, unit=TimeUnit.quarters, uid="clt_4")
+    root.add_child(uncle, offset=Fraction(1, 3))
+    root.add_child(parent, offset=Fraction(10, 3))
+    parent.add_child(grandchild, offset=Fraction(1, 2))
+    bundle = AlignmentBundle(id="exact")
+    bundle.add_timeline(root)
+
+    values = _values(bundle.get_matchstamp_at(Fraction(1, 4), "clt_4").coordinates)
+
+    assert values == [
+        ("clt_4", Fraction(1, 4)),
+        ("clt_1", Fraction(49, 12)),
+        ("clt_2", Fraction(15, 4)),
+        ("clt_3", Fraction(3, 4)),
+    ]
+    assert all(type(value) is Fraction for _, value in values)
+
+
+# endregion
+
+
+# region Grouping a nested timeline
+
+GROUPED_AT_27_HALVES = {
+    "clt_6": Fraction(27, 2),
+    "clt_7": Fraction(27, 2),
+    "clt_1": Fraction(1363, 2),
+    "clt_4": Fraction(27, 2),
+}
+
+
+def _tree() -> dict[str, Timeline]:
+    """Build the main fixture's tree and the partner, nothing in a bundle.
+
+    Returns:
+        Every timeline of the tree and the partner ``clt_6``, by id.
+    """
+    root = Timeline(length=1616, unit=TimeUnit.quarters, uid="clt_1")
+    timelines = {"clt_1": root}
+    for child_id, offset, length in CHILDREN:
+        child = Timeline(length=length, unit=TimeUnit.quarters, uid=child_id)
+        root.add_child(child, offset=offset)
+        timelines[child_id] = child
+    grandchild = Timeline(length=27, unit=TimeUnit.quarters, uid="clt_7")
+    timelines["clt_4"].add_child(grandchild, offset=0)
+    timelines["clt_7"] = grandchild
+    timelines["clt_6"] = Timeline(length=27, unit=TimeUnit.quarters, uid="clt_6")
+    return timelines
+
+
+def _stamp_from_partner(bundle: AlignmentBundle) -> dict[str, object]:
+    """Return the values of the stamp at ``clt_6`` 27/2, by id."""
+    return dict(_values(bundle.get_matchstamp_at(Fraction(27, 2), "clt_6").coordinates))
+
+
+def test_grouped_with_names_a_nested_timeline() -> None:
+    """``grouped_with`` finds an unregistered child and registers it as a member."""
+    timelines = _tree()
+    bundle = AlignmentBundle(id="grouped").add_timeline(timelines["clt_1"])
+
+    bundle.add_timeline(timelines["clt_6"], grouped_with="clt_7")
+
+    assert bundle.timeline_ids == ["clt_1", "clt_7", "clt_6"]
+    assert bundle.groups["group_1"].timeline_ids == ["clt_7", "clt_6"]
+    assert bundle.timeline_to_groups == {"clt_6": ("group_1",), "clt_7": ("group_1",)}
+    values = _values(bundle.get_matchstamp_at(Fraction(27, 2), "clt_6").coordinates)
+    assert values == [
+        ("clt_6", Fraction(27, 2)),
+        ("clt_1", Fraction(1363, 2)),
+        ("clt_7", Fraction(27, 2)),
+        ("clt_4", Fraction(27, 2)),
+    ]
+    _assert_exact_types(values)
+
+
+@pytest.mark.parametrize(
+    ("tree_first", "registered"),
+    [(True, ["clt_1", "clt_7", "clt_6"]), (False, ["clt_7", "clt_1", "clt_6"])],
+)
+def test_add_group_with_a_nested_member(
+    tree_first: bool, registered: list[str]
+) -> None:
+    """A group holding a nested member joins whether or not its tree is held."""
+    timelines = _tree()
+    bundle = AlignmentBundle(id="grouped")
+    if tree_first:
+        bundle.add_timeline(timelines["clt_1"])
+
+    bundle.add_group(
+        TimelineGroup(name="score", timelines=[timelines["clt_7"], timelines["clt_6"]])
+    )
+
+    assert bundle.timeline_ids == registered
+    assert bundle.timeline_to_groups == {"clt_6": ("group_1",), "clt_7": ("group_1",)}
+    assert _stamp_from_partner(bundle) == GROUPED_AT_27_HALVES
+
+
+def test_grouped_with_an_unknown_timeline_names_every_known_one() -> None:
+    """A name of no timeline of the trees raises, nested timelines listed."""
+    timelines = _tree()
+    bundle = AlignmentBundle(id="grouped").add_timeline(timelines["clt_1"])
+
+    with pytest.raises(KeyError) as raised:
+        bundle.add_timeline(timelines["clt_6"], grouped_with="clt_9")
+
+    assert raised.value.args[0] == (
+        "Timeline to group with 'clt_9' not in bundle. Available timelines: "
+        "['clt_1', 'clt_2', 'clt_3', 'clt_4', 'clt_7', 'clt_5']"
+    )
+    assert bundle.timeline_ids == ["clt_1"]
+    assert bundle.groups == {}
 
 
 # endregion

@@ -1672,7 +1672,10 @@ deeper descendants. Parent-to-descendant lookup checks every embedding span,
 while descendant-to-parent lookup and `get_coordinate()` compose all offsets
 into the ancestor coordinate system. Integer and `Fraction` cases assert exact
 results, unknown IDs retain their established return or exception behavior, and
-timestamp cross-sections keep their left-inclusive, right-exclusive bounds.
+a child holds `[offset, offset + length)` plus its end where no sibling starts
+there, in timestamp cross-sections and timestamp tables alike (one predicate,
+`_holds_position`): a lone child's end is on the child, and a boundary two
+siblings share is on the one starting there only.
 
 ### `test_fraction_generation.py` - Exact Logical Coordinate Generation
 

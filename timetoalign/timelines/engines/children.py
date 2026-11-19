@@ -21,6 +21,7 @@ from timetoalign.core.time import (
     coordinate_numeric_value,
     number_to_json,
     shift_coordinate,
+    shift_number,
     subtract_coordinates,
 )
 from timetoalign.core.timestamp import ConversionMapsSpec, _format_coordinate_value
@@ -97,6 +98,50 @@ class ChildrenMixin:
             return self._length.value
         parent = self._parent
         return None if parent is None else parent._child_extent(self._id)
+
+    @property
+    def _holds_own_end(self) -> bool:
+        """Whether this timeline's end is a position on it.
+
+        It is, unless a sibling starts exactly there: the shared boundary
+        belongs to the sibling that starts at it (:meth:`_holds_position`).
+        A root holds its end; so does a timeline of unbounded extent, which
+        has none.
+        """
+        parent = self._parent
+        extent = self._extent
+        if parent is None or extent is None:
+            return True
+        end = shift_number(
+            parent._child_offsets[self._id].value, extent, subtract=False
+        )
+        return not any(
+            child_id != self._id and offset.value == end
+            for child_id, offset in parent._child_offsets.items()
+        )
+
+    def _holds_position(self, value: CoordinateValue) -> bool:
+        """Whether a position carried down from a parent lies on this timeline.
+
+        The ONE containment rule for a position carried from a parent onto a
+        child: the timeline's stamps (``_get_child_coordinate``), its tables
+        (``_compute_local_coordinates``, the same rule on columns) and a
+        bundle's stamps across a tree all read it. The span is
+        ``[0, extent)``, plus the end itself where no sibling starts there
+        (:attr:`_holds_own_end`): a boundary two siblings share belongs to
+        the one starting at it, while the end of a child nothing follows,
+        such as a section ending before its parent does, stays on the child.
+        A timeline of unbounded extent holds everything from 0 on. (Ruling
+        of 2026-11-19, open to revision: a closed span put a shared boundary
+        on both siblings, a strictly half-open one put the end of the last
+        child on none.)
+        """
+        if value < 0:
+            return False
+        extent = self._extent
+        if extent is None or value < extent:
+            return True
+        return value == extent and self._holds_own_end
 
     def _set_length(self, length: Coordinate | None) -> None:
         """Set this timeline's length, which its parent must contain.

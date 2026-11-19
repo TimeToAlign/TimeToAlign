@@ -58,6 +58,7 @@ from timetoalign.core.retrieval import (
     validate_key_collection,
     validate_table_format,
 )
+from timetoalign.core.time import shift_number
 from timetoalign.core.timestamp import TimestampColumn, build_timestamp_table
 from timetoalign.timelines import TimelineGroup, UnknownLengthError
 from timetoalign.timelines.groups import (
@@ -66,6 +67,7 @@ from timetoalign.timelines.groups import (
     _IdScope,
     _nested,
     _root,
+    _tree,
 )
 from timetoalign.timelines.manifest import Manifest, ManifestFileMixin
 from timetoalign.timelines.statements import MutableStatementsMixin, rename_references
@@ -483,8 +485,10 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
 
         Args:
             timeline: The Timeline to add.
-            grouped_with: ID of an existing timeline to share a group with.
-                If provided, both timelines become part of the same group.
+            grouped_with: ID of a timeline of the bundle's trees to share a
+                group with, registered or nested in one; it is registered as
+                a member. If provided, both timelines become part of the same
+                group.
                 If the target timeline is not yet in a group, a new group
                 is created with the target as its first member. A target in
                 several groups is refused, since the group to join would be a
@@ -503,7 +507,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 map, region or flow-control element of it — is held by
                 another element of the bundle's trees (a minted id held there
                 is minted again instead), by a group or by the bundle.
-            KeyError: If grouped_with references a non-existent timeline.
+            KeyError: If grouped_with names no timeline of the bundle's trees,
+                naming every timeline the bundle knows.
 
         Examples:
             Linear (full-extent) alignment:
@@ -538,11 +543,13 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             # An ungrouped participant is a root: a child joins through its
             # root and stays reachable as the root's descendant.
             timeline = _root(timeline)
-        if grouped_with is not None and grouped_with not in self.timelines:
-            raise KeyError(
-                f"Cannot group with '{grouped_with}': not in bundle. "
-                f"Available timelines: {list(self.timelines.keys())}"
-            )
+        # The timeline to group with may be any timeline of the bundle's
+        # trees, registered or nested in one.
+        target = (
+            self._require_known_timeline(grouped_with, role="Timeline to group with")
+            if grouped_with is not None
+            else None
+        )
         registered = self.timelines.get(timeline.id) is timeline
         if registered and grouped_with is None and as_group is None:
             raise ValueError(f"Timeline '{timeline.id}' already exists in bundle")
@@ -565,9 +572,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             (group,) = target_groups
             group.add_timeline(timeline)
         else:
-            if grouped_with is not None and _nested(
-                self.timelines[grouped_with], timeline
-            ):
+            if target is not None and _nested(target, timeline):
                 raise ValueError(
                     f"Timeline {quote_id(timeline.id)} cannot be grouped with "
                     f"{quote_id(grouped_with)}: one is nested in the other, and a parent "
@@ -575,13 +580,14 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 )
             if not registered:
                 self._admit(timeline)
-            if grouped_with is not None or as_group is not None:
-                founders = [timeline]
-                if grouped_with is not None:
-                    founders.insert(0, self.timelines[grouped_with])
+            if target is not None or as_group is not None:
+                founders = [timeline] if target is None else [target, timeline]
                 group = TimelineGroup(name=as_group, timelines=founders)
                 group.id = self._free_group_id(group)
                 self._hold_group(group)
+                if target is not None:
+                    # A member is registered, a nested one too.
+                    self._register(target)
 
         self._register(timeline)
         if group is not None:
@@ -3918,13 +3924,30 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         """Carry a position onto every other timeline of its manifest tree.
 
         A child sits at an exact offset inside its parent, so a position on
-        any timeline of the tree is a position on the root, and from there on
-        every timeline of the tree whose closed span ``[0, length]`` contains
-        it (bounded below only where the length is unknown). Every timeline
-        of the tree takes part, whatever its depth and whether or not it is
-        registered or grouped (:meth:`_known_timelines`): a middle ancestor
-        between a registered root and a grouped descendant is reached like
-        either of them.
+        any timeline of the tree is a position on each of the others. It is
+        carried from the queried timeline along the tree's edges, one step
+        per edge: up to a parent by adding the child's offset, down to a
+        child by subtracting it (:func:`~timetoalign.core.time.shift_number`,
+        the parent-child mechanism of :class:`Timeline` itself). Going
+        through the root instead (adding the queried timeline's origin on
+        the root, subtracting the other's) is two roundings on a float axis
+        where one step is none: a child at offset 0 got another value than
+        its parent. Step by step, a zero offset is the identity, and an
+        exact axis stays exact.
+
+        Which timelines appear follows the timeline's own parent-to-child
+        rule (``Timeline._holds_position``, which its stamps and tables read
+        too): a timeline that is not an ancestor of the queried one appears
+        when it holds the position, ``[0, length)`` and its end where no
+        sibling starts there, so a boundary shared by two siblings belongs
+        to the one starting there. An ancestor contains the queried
+        timeline's whole span, end included; it appears when its closed span
+        ``[0, length]`` holds the position, which only leaves it out for a
+        position off the queried timeline. A length that is not known bounds
+        below only. Every timeline of the tree takes part, whatever
+        its depth and whether or not it is registered or grouped
+        (:meth:`_known_timelines`): a middle ancestor between a registered
+        root and a grouped descendant is reached like either of them.
 
         Args:
             timeline: A timeline of one of the bundle's trees.
@@ -3934,25 +3957,40 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             The coordinates of the other timelines of the tree that reach the
             position, by id, the root first and then depth-first.
         """
-        root = _root(timeline)
-        origins: dict[str, tuple[Timeline, CoordinateValue]] = {}
-        pending: list[tuple[Timeline, CoordinateValue]] = [(root, 0)]
+        carried: dict[str, CoordinateValue] = {timeline.id: coordinate}
+        pending = [timeline]
         while pending:
-            node, origin = pending.pop()
-            origins[node.id] = (node, origin)
-            pending.extend(
-                (child, origin + node.get_child_offset(child_id).value)
-                for child_id, child in reversed(node._children.items())
-            )
-        root_coordinate = coordinate + origins[timeline.id][1]
+            node = pending.pop()
+            value = carried[node.id]
+            steps: list[tuple[Timeline, Coordinate, bool]] = [
+                (child, node._child_offsets[child_id], True)
+                for child_id, child in node._children.items()
+            ]
+            parent = node._parent
+            if parent is not None:
+                steps.append((parent, parent._child_offsets[node.id], False))
+            for neighbour, offset, subtract in steps:
+                if neighbour.id not in carried:
+                    carried[neighbour.id] = shift_number(
+                        value, offset.value, subtract=subtract
+                    )
+                    pending.append(neighbour)
+        ancestors: set[str] = set()
+        node = timeline
+        while node._parent is not None:
+            node = node._parent
+            ancestors.add(node.id)
         reached: dict[str, CoordinateValue] = {}
-        for relative, origin in origins.values():
+        for relative in _tree(node):
             if relative is timeline:
                 continue
-            value = root_coordinate - origin
-            if 0 <= value and (
-                relative.length is None or value <= relative.length.value
-            ):
+            value = carried[relative.id]
+            if relative.id in ancestors:
+                length = relative.length
+                holds = 0 <= value and (length is None or value <= length.value)
+            else:
+                holds = relative._holds_position(value)
+            if holds:
                 reached[relative.id] = express_as(value, relative.number_type)
         return reached
 

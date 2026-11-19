@@ -1064,7 +1064,9 @@ The ID system ensures:
 
 2. **TimeStampWithChildren** (6 tests)
    - Child coordinate resolution via `get_coordinate_for("child:id")`
-   - Boundary handling: left-inclusive, right-exclusive `[offset, offset+length)`
+   - Boundary handling: a child holds `[offset, offset+length)` and its end where
+     no sibling starts there; a lone child's end is on the child, a boundary two
+     children share belongs to the one starting at it
    - Out-of-range axes raise `KeyError` (no extrapolation)
    - Multiple children with staggered offsets
    - `to_dict()` materialization
@@ -1162,9 +1164,11 @@ print(interval)            # Two-column (start, end) display with '-' for out-of
 **Design Notes:**
 
 - **Child bounds checking**: `TimeStamp.get_coordinate_for(child_id)` raises
-  `KeyError` when the queried coordinate falls outside the child's
-  `[offset, offset+length)` span, per the TTA
-  left-inclusive, right-exclusive interval convention.
+  `KeyError` when the child does not hold the queried coordinate: outside its
+  `[offset, offset+length)` span, or at its end where a sibling starts. The end
+  of a child nothing follows is held, so a section ending before its parent
+  still answers its own end; a shared boundary is held once, by the sibling
+  starting there, so one parent position never names two siblings.
 - **TimeIntervalStamp.__str__**: Shows a `-` when one endpoint is out of range for a
   child, making it easy to see events that straddle children.
 

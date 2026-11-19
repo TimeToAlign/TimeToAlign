@@ -1043,6 +1043,29 @@ places a reference can stand, value, entry value and basis item:
   to a timeline that already holds a map of its minted ID takes a new ID,
   and a statement naming the existing map still names it: only an element
   that was named before it moved is renamed.
+- **A group given a new ID.** A statement naming a group by `#group_N`
+  follows the group wherever its minted ID is minted again, and only
+  where the old ID named that group:
+  - `add_group` of a group minted `group_1` into a bundle whose own
+    `group_1` holds `p` mints it `group_2`; the newcomer member `s` naming
+    `#group_1` names `group_2`, while `p`, a member of both groups whose
+    tree the bundle held before, keeps naming the bundle's `group_1`.
+  - `from_bundles` of a bundle holding `group_1` (member `f`) and a source
+    bundle whose minted groups `group_1` (`m`) and `group_2` (`n`) become
+    `group_2` and `group_3`: every tree carried from the source, the
+    ungrouped root `u` included, is renamed at once, so `u` naming both
+    groups names `group_2`, `group_3` (each reference renamed once, never
+    twice), `m` naming the source's `group_2` names `group_3`, and `f`
+    still names `group_1`. The trees are shared with the source bundle,
+    so the source no longer writes: its `to_dict` raises the check's
+    `'#group_3' names no element of this manifest`. This is a documented
+    limit of `from_bundles`.
+  - A minted `group_1` giving way to a given ID `group_1` — a timeline
+    joining the bundle holding the group, a timeline joining the group,
+    a region added to a member — becomes `group_2`; the member and the
+    bundle naming `#group_1` name `group_2`, while the joining timeline,
+    whose `#group_1` names itself, keeps it.
+  Each manifest written validates.
 - **Dropped.** An element leaving the manifest — a member removed from a
   group, a timeline or a group selected from a larger manifest, a partial
   write (a timeline of a bundle written on its own) — takes its pair, its

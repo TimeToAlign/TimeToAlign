@@ -52,7 +52,6 @@ from typing import TYPE_CHECKING, Any, ClassVar, Self
 import timetoshare
 from timetoshare import FORMAT_CONTEXT, child_ends, load_catalogue, loads
 from timetoshare.serialization import Serialization
-from timetoshare.statements import statement_positions, subjects
 
 from timetoalign.core import Coordinate, NumberType, TimeUnit
 from timetoalign.core.ids import _OpenObject, mint_id, quote_id, validate_id
@@ -338,15 +337,6 @@ def check_statements(data: Mapping[str, Any]) -> None:
         raise problems[0]
 
 
-def _referenced_ids(fields: Mapping[str, Any]) -> set[str]:
-    """The bare IDs the statements of a manifest name as ``#id``."""
-    return {
-        text[1:]
-        for kind, _path, text in statement_positions(fields)
-        if kind == "ref" and isinstance(text, str) and text.startswith("#")
-    }
-
-
 def _leave_out_unwritten(
     fields: dict[str, Any], roots: list[Timeline], written: set[str]
 ) -> dict[str, Any]:
@@ -365,16 +355,10 @@ def _leave_out_unwritten(
         roots: The roots written.
         written: Every ID the manifest written holds.
     """
-    referenced = _referenced_ids(fields) - written
-    if not referenced:
-        return fields
     known: set[str] = set()
     for root in roots:
         known.update(root._manifest_ids())
-    gone = referenced & known
-    if not gone:
-        return fields
-    return timetoshare.with_references_renamed(fields, dict.fromkeys(gone))
+    return timetoshare.with_references_renamed(fields, dict.fromkeys(known - written))
 
 
 # endregion
@@ -730,7 +714,7 @@ class Manifest(_OpenObject):
             held.update(timeline._regions)
         table = dict(catalogue)
         fixed: dict[str, tuple[str, str]] = {}
-        for _path, element, kind in subjects(fields):
+        for _path, element, kind in timetoshare.subjects(fields):
             state = {key: element[key] for key in STATE_KEYS if key in element}
             if not state:
                 continue

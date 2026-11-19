@@ -90,7 +90,7 @@ from .manifest import (
     require_object,
     select,
 )
-from .statements import statement_holders
+from .statements import rename_references
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -236,6 +236,15 @@ class _IdScope:
         """
         return None
 
+    def _member_roots(self) -> list["Timeline"]:
+        """Return the root of every member's tree, once each, in member order."""
+        roots: list[Timeline] = []
+        for member in self._scope_members():
+            root = _root(member)
+            if not any(seen is root for seen in roots):
+                roots.append(root)
+        return roots
+
     def _rename_member_references(self, old_id: str, new_id: str) -> None:
         """Make the statements of the members' trees and of the scope's own
         manifest naming *old_id* name *new_id*.
@@ -243,15 +252,7 @@ class _IdScope:
         Only this scope's manifest is renamed: another scope holding a
         member may hold an element of its own under *old_id*.
         """
-        if old_id == new_id:
-            return
-        roots: list[Timeline] = []
-        for member in self._scope_members():
-            root = _root(member)
-            if not any(seen is root for seen in roots):
-                roots.append(root)
-        for holder in statement_holders(roots, [self]):
-            holder._rename_statement_references({old_id: new_id})
+        rename_references(self._member_roots(), [self], {old_id: new_id})
 
     def _scope_ids(self, *, trees: bool = True) -> dict[str, str]:
         """Map every id the scope's manifest holds to its holder.
@@ -324,18 +325,27 @@ class _IdScope:
         return holders
 
     def _yield_minted_ids(
-        self, given: set[str], containers: Sequence["_IdScope"]
+        self,
+        given: set[str],
+        containers: Sequence["_IdScope"],
+        newcomer: "Timeline | None" = None,
     ) -> None:
         """Mint again each written minted id of this scope or its sub-scopes
         that *given* holds.
 
         The new id avoids every id of the *containers*, the scopes the given
         ids belong to, and every scope they hold; each scope holding the
-        scope minted again keys it by the new id.
+        scope minted again keys it by the new id. The statements of every
+        manifest holding the scope minted again — its members' trees, its
+        own manifest and every bundle holding it with their trees — name it
+        by its new id, except the *newcomer*'s tree, where the old id names
+        the newcomer's own element.
 
         Args:
             given: Given ids now held in the scope's manifest.
             containers: The scopes the given ids belong to.
+            newcomer: The root of the tree whose given ids joined, or None
+                when the elements holding them are not stored yet.
         """
         for scope in [self, *self._sub_scopes().values()]:
             if not (scope._writes_minted_id and scope._id_minted and scope.id in given):
@@ -350,6 +360,14 @@ class _IdScope:
                 held = container._sub_scopes()
                 if held.get(old_id) is scope:
                     held[scope.id] = held.pop(old_id)
+            holding = [scope, *scope._holders()]
+            roots = [
+                root
+                for holder in holding
+                for root in holder._member_roots()
+                if root is not newcomer
+            ]
+            rename_references(roots, holding, {old_id: scope.id})
 
 
 # endregion

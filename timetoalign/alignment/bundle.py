@@ -68,7 +68,7 @@ from timetoalign.timelines.groups import (
     _root,
 )
 from timetoalign.timelines.manifest import Manifest, ManifestFileMixin
-from timetoalign.timelines.statements import MutableStatementsMixin
+from timetoalign.timelines.statements import MutableStatementsMixin, rename_references
 
 from .claims import AlignmentAnchor, MatchClaim, MatchClaimField
 from .filters import ClaimFilter
@@ -368,11 +368,18 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         carried. Each source group is entered as
         a new group with the same members, name and meta, each member keeping
         its own lock; a minted group id is minted again in the merged bundle,
-        a given one is kept, and a statement of its members' trees naming
-        it names its new id. Groups from
+        a given one is kept, and a statement of any tree carried from the
+        same source bundle — a member's or an ungrouped root's — naming it
+        names its new id. Groups from
         different source bundles remain distinct — merging does not itself
         align timelines across bundles. Add cross-group MatchClaims (e.g. via
         :meth:`create_match_claims`) afterwards to align them.
+
+        Known limit: the timelines are not copied, the merged bundle shares
+        them with the source bundles. A source bundle whose group was minted
+        again in the merged one therefore no longer writes: the statements
+        of its trees name that group by its new id, which the source bundle
+        does not hold, and its ``to_dict`` raises.
 
         Args:
             bundles: The bundles to merge, in order.
@@ -407,6 +414,13 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         """
         merged = cls(id=id, name=name)
         for bundle in bundles:
+            held = merged._roots()
+            carried = [
+                root
+                for root in bundle._roots()
+                if not any(root is seen for seen in held)
+            ]
+            rebuilt_groups: list[tuple[str, TimelineGroup]] = []
             for group in bundle.groups.values():
                 rebuilt = TimelineGroup(
                     id=None if group._id_minted else group.id,
@@ -416,8 +430,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 # A member keeps its own lock: merging locks nothing.
                 for member in group:
                     rebuilt._admit_member(member)
-                merged.add_group(rebuilt)
-                rebuilt._rename_member_references(group.id, rebuilt.id)
+                merged._take_group(rebuilt)
+                rebuilt_groups.append((group.id, rebuilt))
             grouped = bundle.timeline_to_groups
             for timeline_id, timeline in bundle.timelines.items():
                 if timeline_id in grouped:
@@ -425,6 +439,11 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 if merged.timelines.get(timeline.id) is timeline:
                     continue
                 merged.add_timeline(timeline)
+            # Every tree carried from the bundle names its groups by their
+            # new ids, all renamed at once.
+            rename_references(
+                carried, (), {old: rebuilt.id for old, rebuilt in rebuilt_groups}
+            )
             merged.add_match_claims(bundle.cross_group_claims)
             for claim_field in bundle.cross_group_claim_fields:
                 merged.add_match_claim_field(claim_field)
@@ -577,7 +596,11 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         its own ``id``, with the root of every member that is a child — into
         the bundle's timeline and group registries. A member may already be a
         member of another group of the bundle: a timeline may belong to
-        several groups.
+        several groups. A group whose minted id the bundle holds already is
+        minted again, and the statements of the trees joining with it, and
+        of the manifest it was read from, name it by its new id; a tree the
+        bundle held already names the bundle's own elements and is left as
+        it is.
 
         Args:
             group: A ``TimelineGroup`` that already contains timelines.
@@ -605,6 +628,27 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 >>> sorted(bundle.timelines), list(bundle.groups)
                 (['dpt_1', 'dpt_2', 'dpt_3'], ['group_1'])
         """
+        old_id = group.id
+        held = self._roots()
+        joining = [
+            root
+            for root in group._member_roots()
+            if not any(root is seen for seen in held)
+        ]
+        self._take_group(group)
+        # The trees joining name the group by the id it had; the trees the
+        # bundle held name its own elements.
+        rename_references(joining, [group], {old_id: group.id})
+        return self
+
+    def _take_group(self, group: TimelineGroup) -> None:
+        """Admit *group* and its members, the group under an id of its own.
+
+        The statements naming the group are left as they are.
+
+        Raises:
+            ValueError: As :meth:`add_group`; nothing has changed then.
+        """
         if any(held is group for held in self.groups.values()):
             raise ValueError(f"Group {quote_id(group.id)} already exists in bundle")
         members = list(group)
@@ -624,8 +668,6 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             self._register(member)
 
         self._logger.debug(f"Added group '{group.id}' with {len(members)} timelines")
-
-        return self
 
     def _admit(self, timeline: "Timeline", *, check_only: bool = False) -> None:
         """Admit a timeline's manifest tree into the bundle's id scope.

@@ -991,11 +991,16 @@ class Timeline(
     def _settle_scope(self, given: set[str], joining: Sequence[_IdScope] = ()) -> None:
         """Mint again every minted group id that the *given* ids now take.
 
+        A statement naming a group minted again names its new id, except
+        in a tree joining: there the old id names the tree's own element.
+
         Args:
             given: The given ids that joined this timeline's manifest.
             joining: Groups and bundles the tree is joining, not yet
-                recorded on it.
+                recorded on it; when given, this timeline's tree is the one
+                joining.
         """
+        newcomer = self._tree_root() if joining else None
         containers = [
             *joining,
             *(
@@ -1005,7 +1010,7 @@ class Timeline(
             ),
         ]
         for container in containers:
-            container._yield_minted_ids(given, containers)
+            container._yield_minted_ids(given, containers, newcomer)
 
     def _admit_entries(
         self,

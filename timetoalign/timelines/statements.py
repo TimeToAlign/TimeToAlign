@@ -158,6 +158,22 @@ def statement_holders(roots: Iterable[Any], scopes: Iterable[Any]) -> list[Any]:
     return list({id(holder): holder for holder in holders}.values())
 
 
+def rename_references(
+    roots: Iterable[Any], scopes: Iterable[Any], renamed: Mapping[str, str | None]
+) -> None:
+    """Rename or drop the elements the statements of *roots* and *scopes* name.
+
+    Every holder of :func:`statement_holders` applies *renamed* at once, so
+    ``{"a": "b", "b": "c"}`` renames each reference once. Pairs mapping an
+    id to itself are passed over.
+    """
+    renamed = {old: new for old, new in renamed.items() if old != new}
+    if not renamed:
+        return
+    for holder in statement_holders(roots, scopes):
+        holder._rename_statement_references(renamed)
+
+
 def _subject(node: NodePath) -> tuple[str | int, ...]:
     """The path of a holder's value node in its one-subject document."""
     return ("statements", *node) if node else ()

@@ -363,6 +363,80 @@ def test_from_bundles_renames_a_group_minted_again() -> None:
     validate(merged.to_dict())
 
 
+def test_add_group_renames_the_group_in_the_trees_joining_with_it() -> None:
+    p = _naming(_quarters("p"), "group_1")
+    s = _naming(_quarters("s"), "group_1")
+    bundle = AlignmentBundle().add_timeline(p, as_group="first")
+    group = TimelineGroup(timelines=[p, s])
+    assert group.id == "group_1"
+    bundle.add_group(group)
+    assert (sorted(bundle.groups), group.id) == (["group_1", "group_2"], "group_2")
+    assert (_named(p), _named(s)) == (["group_1"], ["group_2"])
+    validate(bundle.to_dict())
+
+
+def test_from_bundles_renames_every_tree_of_the_source_at_once() -> None:
+    f = _naming(_quarters("f"), "group_1")
+    first = AlignmentBundle().add_timeline(f, as_group="f")
+    m, n = _naming(_quarters("m"), "group_2"), _quarters("n")
+    u = _naming(_quarters("u"), "group_1", "group_2")
+    source = (
+        AlignmentBundle().add_timeline(m, as_group="a").add_timeline(n, as_group="b")
+    )
+    source.add_timeline(u)
+    assert sorted(source.groups) == ["group_1", "group_2"]
+    merged = AlignmentBundle.from_bundles([first, source])
+    assert {key: group.timeline_ids for key, group in merged.groups.items()} == {
+        "group_1": ["f"],
+        "group_2": ["m"],
+        "group_3": ["n"],
+    }
+    assert (_named(f), _named(m), _named(u)) == (
+        ["group_1"],
+        ["group_3"],
+        ["group_2", "group_3"],
+    )
+    validate(merged.to_dict())
+    # The source shares its trees with the merged bundle: it no longer writes.
+    _raises(
+        "#/timelines/0/statements/dcterms:source/0/id: '#group_3' names no element "
+        "of this manifest",
+        source.to_dict,
+    )
+
+
+def _grouped_naming_group_1() -> tuple[Timeline, TimelineGroup, AlignmentBundle]:
+    """``m`` in the minted ``group_1`` of a bundle, both naming ``#group_1``."""
+    m = _naming(_quarters("m"), "group_1")
+    group = TimelineGroup(timelines=[m])
+    bundle = _naming(AlignmentBundle().add_group(group), "group_1")
+    return m, group, bundle
+
+
+@pytest.mark.parametrize("joins", ["bundle", "group"])
+def test_a_group_giving_way_to_a_given_id_is_renamed_but_in_the_newcomer(
+    joins: str,
+) -> None:
+    m, group, bundle = _grouped_naming_group_1()
+    newcomer = _naming(_quarters("group_1"), "group_1")
+    (bundle if joins == "bundle" else group).add_timeline(newcomer)
+    assert (group.id, sorted(bundle.groups)) == ("group_2", ["group_2"])
+    assert (_named(m), _named(bundle), _named(newcomer)) == (
+        ["group_2"],
+        ["group_2"],
+        ["group_1"],
+    )
+    validate(bundle.to_dict())
+
+
+def test_a_region_given_the_id_of_a_minted_group_renames_the_group() -> None:
+    m, group, bundle = _grouped_naming_group_1()
+    m.create_region(0, 4, id="group_1")
+    assert group.id == "group_2"
+    assert (_named(m), _named(bundle)) == (["group_2"], ["group_2"])
+    validate(bundle.to_dict())
+
+
 def _q(value: int) -> Coordinate:
     return Coordinate(Fraction(value), TimeUnit.quarters)
 

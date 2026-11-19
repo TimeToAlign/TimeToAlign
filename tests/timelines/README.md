@@ -353,7 +353,7 @@ the library writes back against the same literal text.
 - **A styling member at its default is dropped as TimeToShare drops it.**
   The library keeps the styling read (every member of `graphical` but
   `order`) in TimeToShare's minimal form and has no default table of its
-  own: `styles: {}`, `statements: []` and `timestamps: []` are each read to
+  own: `styles: {}`, `rules: []` and `timestamps: []` are each read to
   no member, a named timestamp's default `display` to none and a
   non-default `display` to its canonical order. Each case is asserted
   twice, against a literal written from the format's defaults and against
@@ -1379,7 +1379,7 @@ queries are asserted as well.
 `styles` and `rules` beside `order`: presentation data the library keeps
 on `TimelineGroup.styling` without interpreting it. What proves it is carried
 unchanged is a styling block the library could not have produced itself — a
-named style, a statement setting that style by name and a statement setting a
+named style, a rule setting that style by name and a rule setting a
 declaration directly, nested three levels deep — surviving `from_dict` →
 `to_dict` equal to the input dictionary, beside the unchanged `order`; and the
 rebuilt group's `styling` must not share an object with the input, so a later
@@ -1387,7 +1387,7 @@ edit of the input dictionary cannot reach the group. Each member alone
 (`styles` only, `rules` only) round-trips alone in the minimal form, so
 neither is invented when absent; a group without styling writes `graphical`
 as `{"order": {...}}` in the minimal form and adds `styles: {}` and
-`statements: []` in the complete one. A `graphical` holding styling but no
+`rules: []` in the complete one. A `graphical` holding styling but no
 `order` reads its members in `members` order, as an absent `graphical` does.
 Any other key of `graphical` (`frame`) is kept and written back, never read.
 The band orders of `graphical.order`, keyed by a timeline's id, are carried

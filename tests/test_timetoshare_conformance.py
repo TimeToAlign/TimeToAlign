@@ -502,7 +502,7 @@ def test_a_bundle_reads_every_fixture(fixture: str) -> None:
         assert dumps(written) == dumps(minimal(written_complete))
 
 
-STATEMENT_RULES = {
+STYLE_RULES = {
     "address_facet_with_part",
     "address_facet_without_id",
     "rule_select_empty_addresses",
@@ -553,7 +553,7 @@ def _whole_reader(manifest: Any) -> Callable[[Any], Any]:
 
 @pytest.mark.parametrize(
     "case",
-    sorted(set(REJECTIONS) - STATEMENT_RULES - BAND_ORDER_RULES - TIMESTAMP_RULES),
+    sorted(set(REJECTIONS) - STYLE_RULES - BAND_ORDER_RULES - TIMESTAMP_RULES),
 )
 def test_the_library_refuses_every_rejection_case(case: str) -> None:
     """Both the whole reader and the bundle reader refuse each case."""
@@ -569,7 +569,7 @@ def test_rule_band_order_and_timestamp_cases_are_the_only_unread_cases() -> None
     So it accepts these cases. A band order is written back unchanged with its
     timeline, the named timestamps unchanged.
     """
-    unread = STATEMENT_RULES | BAND_ORDER_RULES | TIMESTAMP_RULES
+    unread = STYLE_RULES | BAND_ORDER_RULES | TIMESTAMP_RULES
     assert unread <= set(REJECTIONS)
     for case in sorted(unread):
         manifest = rejection_case(REJECTIONS[case]).manifest

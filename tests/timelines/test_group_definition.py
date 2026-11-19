@@ -377,7 +377,7 @@ def test_styling_without_order_reads_members_order() -> None:
 
 
 def test_unknown_graphical_key_is_kept() -> None:
-    """A ``graphical`` key other than order, styles and statements is kept."""
+    """A ``graphical`` key other than order, styles and rules is kept."""
     data = bare(_three_types().to_dict())
     data["graphical"].update(STYLING, frame={"inset": 4})
 

@@ -841,7 +841,7 @@ from every assertion here.
    `styles` and `rules` beside `order`; they belong to the bundle, not
    to any of its groups, and the library keeps them on
    `AlignmentBundle.styling` without interpreting them. A styling block of a
-   named style, a statement setting it by name and one setting a declaration
+   named style, a rule setting it by name and one setting a declaration
    directly survives `from_dict` → `to_dict` equal to the input, beside the
    unchanged per-group `order`, and the rebuilt bundle's `styling` shares no
    object with the input. The direct construction writes `graphical` as

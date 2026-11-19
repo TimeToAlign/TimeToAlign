@@ -7,6 +7,7 @@ from collections.abc import Iterator, Sequence
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, Literal
 
+import pyarrow as pa
 import pyarrow.compute as pc
 
 from timetoalign.core import (
@@ -18,6 +19,7 @@ from timetoalign.core import (
 )
 from timetoalign.core.ids import mint_id, timeline_id_prefix
 from timetoalign.core.time import (
+    compare_number_column,
     coordinate_numeric_value,
     number_to_json,
     shift_coordinate,
@@ -103,45 +105,107 @@ class ChildrenMixin:
     def _holds_own_end(self) -> bool:
         """Whether this timeline's end is a position on it.
 
-        It is, unless a sibling starts exactly there: the shared boundary
-        belongs to the sibling that starts at it (:meth:`_holds_position`).
-        A root holds its end; so does a timeline of unbounded extent, which
-        has none.
+        It is, unless a sibling of nonzero extent starts exactly there: the
+        shared boundary belongs to the sibling that starts at it
+        (:meth:`_holds_position`). A sibling of zero length takes nothing
+        away, since nothing of it lies beyond the boundary, and a timeline of
+        zero length holds its end, which is also its start. A root holds its
+        end; so does a timeline of unbounded extent, which has none.
         """
         parent = self._parent
         extent = self._extent
-        if parent is None or extent is None:
+        if parent is None or extent is None or extent == 0:
             return True
         end = shift_number(
             parent._child_offsets[self._id].value, extent, subtract=False
         )
         return not any(
-            child_id != self._id and offset.value == end
+            child_id != self._id
+            and offset.value == end
+            and parent._children[child_id]._extent != 0
             for child_id, offset in parent._child_offsets.items()
         )
 
-    def _holds_position(self, value: CoordinateValue) -> bool:
+    def _holds_position(
+        self, value: CoordinateValue, *, end_held: bool | None = None
+    ) -> bool:
         """Whether a position carried down from a parent lies on this timeline.
 
         The ONE containment rule for a position carried from a parent onto a
         child: the timeline's stamps (``_get_child_coordinate``), its tables
-        (``_compute_local_coordinates``, the same rule on columns) and a
-        bundle's stamps across a tree all read it. The span is
-        ``[0, extent)``, plus the end itself where no sibling starts there
-        (:attr:`_holds_own_end`): a boundary two siblings share belongs to
-        the one starting at it, while the end of a child nothing follows,
-        such as a section ending before its parent does, stays on the child.
-        A timeline of unbounded extent holds everything from 0 on. (Ruling
-        of 2026-11-19, open to revision: a closed span put a shared boundary
-        on both siblings, a strictly half-open one put the end of the last
-        child on none.)
+        (:meth:`_holds_column`, the same rule on a column), its
+        :meth:`get_children_at` and a bundle's stamps across a tree all read
+        it. A position carried further down reaches a descendant only if
+        every timeline on the way holds it. The span is ``[0, extent)``,
+        plus the end itself where no sibling starts there
+        (:attr:`_holds_own_end`). One boundary position belongs to one of two
+        adjoining siblings, the one starting at it, so a position is never
+        counted twice across them; and the end of a child nothing follows,
+        such as a section ending before its parent does, stays reachable on
+        that child. A timeline of unbounded extent holds everything from 0
+        on.
+
+        Args:
+            value: A position on this timeline's own axis.
+            end_held: Whether the end is held; by default as
+                :attr:`_holds_own_end` says. A position asked of this timeline
+                itself holds its end whatever its siblings do, so the span is
+                closed, ``[0, extent]``.
+
+        Returns:
+            Whether the position lies on this timeline.
         """
         if value < 0:
             return False
         extent = self._extent
         if extent is None or value < extent:
             return True
-        return value == extent and self._holds_own_end
+        return value == extent and (
+            self._holds_own_end if end_held is None else end_held
+        )
+
+    def _holds_column(
+        self,
+        positions: pa.StructArray,
+        number_type: NumberType,
+        start: CoordinateValue = 0,
+        *,
+        end_held: bool | None = None,
+    ) -> pa.Array:
+        """Apply :meth:`_holds_position` to a column of positions.
+
+        Each row is decided as the scalar rule decides the position it
+        holds, exactly on an ``int`` or ``fraction`` column
+        (:func:`~timetoalign.core.time.compare_number_column`), never through
+        a float that could put a position just inside a boundary on the
+        wrong side of it.
+
+        Args:
+            positions: Coordinate structs, null where no position arrives.
+            number_type: How *positions* declare their numbers.
+            start: Where this timeline's 0 lies on the axis of *positions*:
+                0 for positions already on this timeline, its offset for
+                positions on its parent.
+            end_held: Whether the end is held; by default as
+                :attr:`_holds_own_end` says. A timeline's own column holds
+                its end whatever its siblings do, since the positions were
+                asked of it.
+
+        Returns:
+            A boolean array, false wherever the position is not held or the
+            row is null.
+        """
+        within = compare_number_column(positions, start, "greater_equal", number_type)
+        extent = self._extent
+        if extent is not None:
+            end = shift_number(start, extent, subtract=False)
+            below = compare_number_column(positions, end, "less", number_type)
+            if self._holds_own_end if end_held is None else end_held:
+                below = pc.or_(
+                    below, compare_number_column(positions, end, "equal", number_type)
+                )
+            within = pc.and_(within, below)
+        return pc.fill_null(within, False)
 
     def _set_length(self, length: Coordinate | None) -> None:
         """Set this timeline's length, which its parent must contain.
@@ -1000,11 +1064,16 @@ class ChildrenMixin:
         self,
         coord: CoordinateSpec,
     ) -> list["Timeline"]:
-        """Return all children whose extent contains the given coordinate.
+        """Return all children that hold the given coordinate.
 
-        A child contains coord if offset <= coord < offset + child.length; a
-        child of unknown length contains every coord from its offset on (up
-        to its successor's offset in a segment line).
+        A child holds every position from its offset up to its end, and its
+        end too unless a sibling starts there: one boundary position belongs
+        to the sibling starting at it, while the end of a child nothing
+        follows stays on that child. A child of unknown length holds every
+        position from its offset on (up to its successor's offset in a
+        segment line). This is the rule the timeline's stamps and tables
+        follow, so a child listed here is a child the stamp at *coord*
+        names.
 
         Args:
             coord: The coordinate to query.
@@ -1013,15 +1082,14 @@ class ChildrenMixin:
             List of child Timeline objects, ordered by offset.
             Empty list if no children contain coord.
         """
-        coord_val = float(self._resolve_axis_value(coord))
-        matching: list[tuple[float, Timeline]] = []
-        for child_id, child in self._children.items():
-            offset = float(self._child_offsets[child_id].value)
-            extent = child._extent
-            if offset <= coord_val and (
-                extent is None or coord_val < offset + float(extent)
-            ):
-                matching.append((offset, child))
+        value = self._resolve_axis_value(coord)
+        matching = [
+            (offset.value, self._children[child_id])
+            for child_id, offset in self._child_offsets.items()
+            if self._children[child_id]._holds_position(
+                shift_number(value, offset.value, subtract=True)
+            )
+        ]
         matching.sort(key=lambda x: x[0])
         return [child for _, child in matching]
 

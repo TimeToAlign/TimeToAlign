@@ -251,6 +251,52 @@ def test_holding_timelines_appear(
     _assert_exact_types(values)
 
 
+def _siblings_bundle() -> AlignmentBundle:
+    """Build ``P`` with the adjoining children ``A`` and ``B``, each with a child.
+
+    Returns:
+        A bundle holding ``P`` alone.
+    """
+    root = Timeline(length=8, unit=TimeUnit.quarters, uid="P")
+    for child_id, offset in (("A", 0), ("B", 4)):
+        child = Timeline(length=4, unit=TimeUnit.quarters, uid=child_id)
+        root.add_child(child, offset=offset)
+        child.add_child(
+            Timeline(length=4, unit=TimeUnit.quarters, uid=f"{child_id}1"), offset=0
+        )
+    return AlignmentBundle(id="siblings").add_timeline(root)
+
+
+@pytest.mark.parametrize(
+    ("position", "expected"),
+    [
+        (Fraction(6), [("A", Fraction(6))]),
+        (Fraction(-1), [("A", Fraction(-1))]),
+        (
+            Fraction(4),
+            [
+                ("A", Fraction(4)),
+                ("P", Fraction(4)),
+                ("A1", Fraction(4)),
+                ("B", Fraction(0)),
+                ("B1", Fraction(0)),
+            ],
+        ),
+        (Fraction(0), [("A", Fraction(0)), ("P", Fraction(0)), ("A1", Fraction(0))]),
+    ],
+)
+def test_walk_up_starts_on_the_queried_timeline(
+    position: Fraction, expected: list[tuple[str, object]]
+) -> None:
+    """A position off the queried child reaches no ancestor; its own end does."""
+    bundle = _siblings_bundle()
+
+    values = _values(bundle.get_matchstamp_at(position, "A").coordinates)
+
+    assert values == expected
+    assert all(type(value) is Fraction for _, value in values)
+
+
 # endregion
 
 
@@ -462,6 +508,62 @@ def test_warp_runs_through_the_claimed_child(
 
     assert values == expected
     _assert_exact_types(values)
+
+
+def test_only_registered_and_claimed_timelines_are_units() -> None:
+    """The claimed child is a unit of its own beside the two registered ones."""
+    bundle = _claimed_child_bundle()
+
+    assert bundle._warp_units() == [
+        (None, ("clt_1",)),
+        (None, ("cpt_1",)),
+        (None, ("clt_2",)),
+    ]
+
+
+def test_unclaimed_descendants_are_no_units(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A hundred unclaimed children add no unit and no transfer."""
+    root = Timeline(length=100, unit=TimeUnit.quarters, uid="score")
+    for index in range(100):
+        root.add_child(
+            Timeline(length=1, unit=TimeUnit.quarters, uid=f"bar_{index}"), index
+        )
+    recording = Timeline(length=100.0, unit=TimeUnit.seconds, uid="perf")
+    bundle = AlignmentBundle()
+    bundle.add_timeline(root, as_group="gs")
+    bundle.add_timeline(recording, as_group="gp")
+    bundle.add_match_claims(
+        [
+            MatchClaim.from_events(
+                event_a={"start": position},
+                tl_a_id="score",
+                event_b={"start": float(position)},
+                tl_b_id="perf",
+                unit_a=TimeUnit.quarters,
+                unit_b=TimeUnit.seconds,
+            )
+            for position in (0, 100)
+        ]
+    )
+    transfers: list[str] = []
+    transfer = AlignmentBundle._transfer_to_group
+
+    def counting(self: AlignmentBundle, *args: object, **kwargs: object) -> object:
+        transfers.append(str(args[1]))
+        return transfer(self, *args, **kwargs)
+
+    monkeypatch.setattr(AlignmentBundle, "_transfer_to_group", counting)
+
+    units = bundle._warp_units()
+    values = _values(bundle.get_matchstamp_at(Fraction(101, 2), "score").coordinates)
+
+    assert [members for _, members in units] == [("score",), ("perf",)]
+    assert sorted(values, key=lambda item: item[0]) == [
+        ("bar_50", Fraction(1, 2)),
+        ("perf", 50.5),
+        ("score", Fraction(101, 2)),
+    ]
+    assert transfers == ["score"]
 
 
 def test_transfer_runs_through_the_claimed_child() -> None:

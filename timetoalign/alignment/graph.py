@@ -33,10 +33,16 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import networkx as nx
 import pandas as pd
+import pyarrow as pa
 
-from timetoalign.alignment.claims import AlignmentAnchor, MatchClaim
+from timetoalign.alignment.claims import (
+    _CLAIM_ID_PREFIX,
+    AlignmentAnchor,
+    MatchClaim,
+)
 from timetoalign.alignment.filters import ClaimFilter
 from timetoalign.core.enums import Domain, NumberType, TimeUnit
+from timetoalign.core.ids import mint_ids
 from timetoalign.core.retrieval import (
     CoordinateCollection,
     CoordinateFormat,
@@ -573,12 +579,21 @@ class MatchStamp(Stamp):
         """Readable cross-section showing all coordinates.
 
         Examples:
+            >>> stamp = MatchStamp(
+            ...     coordinates={
+            ...         "score": Coordinate(4, TimeUnit.quarters),
+            ...         "parts": Coordinate(4, TimeUnit.quarters),
+            ...         "audio": Coordinate(2.5, TimeUnit.seconds),
+            ...     },
+            ...     source_id="score",
+            ...     anchor_edges=[("score", "audio")],
+            ...     inferred_edges=[("score", "parts")],
+            ... )
             >>> print(stamp)
             MatchStamp (3 timelines, 2 edges)
-              ID              Coordinate   Type
-              score:clt_1      0            anchor
-              perf:dlt_1       0            anchor
-              perf:dlt_2       128          inferred
+              score   4 quarters  anchor
+              parts   4 quarters  inferred
+              audio  2.5 seconds  anchor
         """
         n_edges = self.n_explicit_edges + self.n_inferred_edges
         lines: list[str] = [
@@ -946,14 +961,42 @@ class MatchGraph:
         claims: List of all MatchClaims in this graph (synchronous and non-synchronous).
 
     Examples:
-        >>> # Build graph from claims
-        >>> graph = MatchGraph(claims=[claim1, claim2])
+        Build a graph from two claims between a score and a recording:
 
-        >>> # Extend via group membership
-        >>> extended = graph.extend_to_groups(groups)
+        >>> from timetoalign.timelines import Timeline, TimelineGroup
+        >>> def claim(quarters, seconds):
+        ...     return MatchClaim(
+        ...         timeline_a_id="score",
+        ...         timeline_b_id="audio",
+        ...         start_anchor=AlignmentAnchor(
+        ...             timeline_a_id="score",
+        ...             coordinate_a=Coordinate(quarters, TimeUnit.quarters),
+        ...             timeline_b_id="audio",
+        ...             coordinate_b=Coordinate(seconds, TimeUnit.seconds),
+        ...         ),
+        ...         is_synchronous=True,
+        ...     )
+        >>> graph = MatchGraph(claims=[claim(0, 0.0), claim(4, 2.0)])
+        >>> graph.n_nodes, graph.n_edges, graph.n_components
+        (4, 2, 2)
 
-        >>> # Get synchronized timestamps
-        >>> stamps = graph.get_stamps()
+        Extend it through the group the score shares with its parts:
+
+        >>> score = Timeline(length=8, unit=TimeUnit.quarters, uid="score")
+        >>> parts = Timeline(length=8, unit=TimeUnit.quarters, uid="parts")
+        >>> group = TimelineGroup(name="edition", timelines=[score, parts])
+        >>> extended = graph.extend_to_groups({group.id: group})
+        >>> extended.n_nodes, extended.n_edges
+        (6, 4)
+
+        One stamp per synchronized position:
+
+        >>> stamps = extended.get_stamps()
+        >>> print(stamps[1])
+        MatchStamp (3 timelines, 2 edges)
+          audio   2 seconds  anchor
+          parts  4 quarters  inferred
+          score  4 quarters  anchor
     """
 
     def __init__(
@@ -1025,7 +1068,10 @@ class MatchGraph:
         Nodes: (timeline_id, coordinate) tuples
         Edges: Anchors with attributes (explicit, synchronous, claim_id, and
         claim: the claim object itself, which selects claims, since a claim
-        id is unique only in the scope holding the claim)
+        id is unique only in the scope holding the claim: the explicit
+        claims keep the ids of the scopes they come from, so two free claims
+        may share one, while :meth:`extend_to_groups` mints the implicit
+        claims' ids among those of the graph's claims)
 
         Returns:
             networkx Graph representing the anchor structure.
@@ -1400,7 +1446,9 @@ class MatchGraph:
         carries a coordinate from the members of one to the members of the
         other. Filters control which timelines receive implicit claims; a
         timeline they exclude receives no coordinate, so no extension passes
-        through it.
+        through it. The implicit claims' ids are minted among the ids of
+        this graph's claims (``claim_N``, the smallest N free, in the order
+        the claims are made), so each names one claim of the extended graph.
 
         Args:
             groups: Dict of group_id -> TimelineGroup.
@@ -1454,6 +1502,7 @@ class MatchGraph:
                     include_units=include_units,
                 )
 
+        self._mint_implicit_claim_ids(extended, implicit_claims)
         all_claims = list(self._claims) + implicit_claims
         return MatchGraph._from_graph(
             extended,
@@ -1463,6 +1512,36 @@ class MatchGraph:
             source=self._source,
             source_id=self._source_id,
         )
+
+    def _mint_implicit_claim_ids(
+        self, extended: nx.Graph, implicit_claims: list[MatchClaim]
+    ) -> None:
+        """Mint the ids of the implicit claims in this graph's scope.
+
+        Each implicit claim is made free, so all of them hold ``claim_1``;
+        they are given ``claim_N``, the N the smallest numbers the graph's
+        claims leave free, in the order they were made, and every edge
+        carrying one takes its new id. Their ``source_claim_id`` names a
+        claim of the graph and is left as it is.
+
+        Args:
+            extended: The extended graph, whose edges carry the claims.
+            implicit_claims: The claims the extension made, in order.
+        """
+        if not implicit_claims:
+            return
+        fresh = mint_ids(
+            _CLAIM_ID_PREFIX,
+            pa.array([claim.id for claim in self._claims], type=pa.string()),
+            len(implicit_claims),
+        )
+        for claim, claim_id in zip(implicit_claims, fresh.to_pylist(), strict=True):
+            # A claim just made, held by nothing else: renamed in place.
+            object.__setattr__(claim, "id", claim_id)
+        for _, _, data in extended.edges(data=True):
+            claim = data.get("claim")
+            if claim is not None:
+                data["claim_id"] = claim.id
 
     def _extend_through_group(
         self,

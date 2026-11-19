@@ -468,18 +468,15 @@ class EventsMixin:
                 try:
                     child_coord = ts.get_coordinate_for(child_id, format="coordinate")
                 except KeyError:
+                    # The stamp names exactly the children holding the
+                    # position (``_holds_position``).
                     continue
-                if child_coord.value >= 0:
-                    child = self._children[child_id]
-                    extent = child._extent
-                    if extent is None or child_coord.value <= extent:
-                        # Recursively get events in child
-                        child_result = child.get_events_at(
-                            child_coord.value,
-                            tolerance=tolerance,
-                            include_children=True,
-                        )
-                        result.update(child_result)
+                child_result = self._children[child_id].get_events_at(
+                    child_coord.value,
+                    tolerance=tolerance,
+                    include_children=True,
+                )
+                result.update(child_result)
 
         return result
 

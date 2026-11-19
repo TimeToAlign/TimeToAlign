@@ -179,8 +179,18 @@ def test_graph_filter_unaffected(tmp_path: Path) -> None:
 
     graph = MatchGraph(explicit).extend_to_groups(bundle.groups)
     implicit = [claim for claim in graph.claims if not claim.is_explicit]
-    assert len(implicit) == 6
-    assert {claim.id for claim in implicit} == {"claim_1"}
+    assert [claim.id for claim in implicit] == [f"claim_{n}" for n in range(7, 13)]
+    assert all(claim.id_minted for claim in implicit)
+    edges = [data for _, _, data in graph._graph.edges(data=True)]
+    assert [data["claim_id"] for data in edges] == [data["claim"].id for data in edges]
+    assert len({data["claim_id"] for data in edges}) == len(edges) == 12
+    by_id = {claim.id: claim for claim in explicit}
+    for claim in implicit:
+        source = by_id[claim.source_claim_id]
+        assert (
+            source.start_anchor.coordinate_a.value
+            == claim.start_anchor.coordinate_a.value
+        )
 
     kept = graph.filter(explicit_only=True).claims
     assert sorted(claim.id for claim in kept) == [f"claim_{n}" for n in range(1, 7)]
@@ -189,6 +199,54 @@ def test_graph_filter_unaffected(tmp_path: Path) -> None:
     kept = graph.filter(timeline_ids={"score", "audio"}).claims
     assert sorted(claim.id for claim in kept) == [f"claim_{n}" for n in range(1, 7)]
     assert all(claim.is_explicit for claim in kept)
+
+
+def test_references_follow_reminted_ids() -> None:
+    def pair() -> tuple[MatchClaim, MatchClaim]:
+        source = _claims(STORED[:1])[0]
+        implicit = MatchClaim.implicit(
+            "score",
+            0,
+            "score_copy",
+            0,
+            unit_a=TimeUnit.quarters,
+            unit_b=TimeUnit.quarters,
+            source_claim=source,
+        )
+        return source, implicit
+
+    def holding_two() -> AlignmentBundle:
+        return AlignmentBundle().add_match_claims(_claims(NEW))
+
+    field = MatchClaimField.from_claims(list(pair()))
+    assert _ids(field) == ["claim_1", "claim_2"]
+    assert [claim.source_claim_id for claim in field] == [None, "claim_1"]
+
+    bundle = holding_two().add_match_claim_field(field)
+    joined = bundle.cross_group_claim_fields[0]
+    assert _ids(joined) == ["claim_3", "claim_4"]
+    assert [claim.source_claim_id for claim in joined] == [None, "claim_3"]
+
+    source, implicit = pair()
+    holding_two().add_match_claims([source, implicit])
+    assert (source.id, implicit.id) == ("claim_3", "claim_4")
+    assert implicit.source_claim_id == "claim_3"
+
+    anchor = MatchClaim.from_dict(
+        _claims(STORED[:1])[0].to_dict() | {"id": "anchor", "id_minted": False}
+    )
+    bundle = AlignmentBundle().add_match_claims([anchor, _claims(NEW[:1])[0]])
+    implicit = MatchClaim.implicit(
+        "score",
+        0,
+        "score_copy",
+        0,
+        unit_a=TimeUnit.quarters,
+        unit_b=TimeUnit.quarters,
+        source_claim=bundle.cross_group_claims[0],
+    )
+    bundle.add_match_claims([implicit])
+    assert (implicit.id, implicit.source_claim_id) == ("claim_2", "anchor")
 
 
 def test_two_runs_merged(tmp_path: Path) -> None:

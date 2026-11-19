@@ -31,7 +31,6 @@ import json
 import logging
 import re
 from collections.abc import Iterator, Sequence
-from decimal import Decimal
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, ClassVar
 
@@ -77,7 +76,11 @@ from timetoalign.core.retrieval import (
     format_coordinates,
     validate_key_collection,
 )
-from timetoalign.core.time import express_scalar_as, struct_to_rational
+from timetoalign.core.time import (
+    compare_number_column,
+    express_scalar_as,
+    struct_to_rational,
+)
 from timetoalign.core.timestamp import _format_coordinate
 
 if TYPE_CHECKING:
@@ -176,16 +179,54 @@ def _admitted_claim_ids(
     return pc.replace_with_mask(ids, renew, fresh), minted
 
 
+def _followed_references(
+    before: pa.Array, after: pa.Array, references: pa.Array
+) -> pa.Array:
+    """Return *references* renamed with the ids that gave way in one admission.
+
+    A reference (``source_claim_id``) names a claim of the scope it was
+    written in, so among newcomers admitted together it names a newcomer.
+    Where a newcomer's id gave way and no newcomer keeps that id, every
+    reference to it takes the newcomer's new id (the first such newcomer in
+    row order, where several gave the id up). A reference to an id a
+    newcomer keeps, or to no newcomer's id, stays.
+
+    Args:
+        before: The newcomers' ids before the admission.
+        after: Their ids after it (:func:`_admitted_claim_ids`).
+        references: The newcomers' references (null where none).
+
+    Returns:
+        The references, in row order.
+    """
+    before = pc.cast(before, pa.string())
+    after = pc.cast(after, pa.string())
+    references = pc.cast(references, pa.string())
+    gone = pc.and_(
+        pc.fill_null(pc.not_equal(before, after), False),
+        pc.invert(pc.is_in(before, value_set=after)),
+    )
+    if not pc.any(gone).as_py():
+        return references
+    renamed = pc.take(
+        after.filter(gone),
+        pc.index_in(references, value_set=before.filter(gone)),
+    )
+    return pc.coalesce(renamed, references)
+
+
 def _join_claims(
     claims: Sequence["MatchClaim"], taken: pa.Array, *, scope: str
 ) -> list["MatchClaim"]:
     """Return *claims* as they join a scope holding the ids *taken*.
 
     The ids are admitted by :func:`_admitted_claim_ids` (so a refusal
-    changes nothing). A claim that belongs to no bundle joins as itself,
-    renamed in place where its minted id gave way, so the caller's object
-    is the one the scope holds. A claim a bundle already holds, or one
-    listed twice, joins as a copy: the bundle it came from keeps its ids.
+    changes nothing), and the ``source_claim_id`` of each newcomer follows
+    the ids that gave way (:func:`_followed_references`). A claim that
+    belongs to no bundle joins as itself, renamed in place where its minted
+    id or its reference changed, so the caller's object is the one the
+    scope holds. A claim a bundle already holds, or one listed twice, joins
+    as a copy: the bundle it came from keeps its ids.
 
     Args:
         claims: The newcomers.
@@ -195,20 +236,31 @@ def _join_claims(
     Returns:
         The claims to store, in order.
     """
+    before = pa.array([claim.id for claim in claims], type=pa.string())
     admitted, _ = _admitted_claim_ids(
-        pa.array([claim.id for claim in claims], type=pa.string()),
+        before,
         pa.array([claim.id_minted for claim in claims], type=pa.bool_()),
         taken,
         scope=scope,
     )
+    references = _followed_references(
+        before,
+        admitted,
+        pa.array([claim.source_claim_id for claim in claims], type=pa.string()),
+    )
     joined: list[MatchClaim] = []
     seen: set[int] = set()
-    for claim, claim_id in zip(claims, admitted.to_pylist(), strict=True):
+    for claim, claim_id, reference in zip(
+        claims, admitted.to_pylist(), references.to_pylist(), strict=True
+    ):
         listed = id(claim)
+        update = {"id": claim_id, "source_claim_id": reference}
         if claim._bundle is not None or listed in seen:
-            claim = claim.model_copy(update={"id": claim_id})
-        elif claim_id != claim.id:
-            object.__setattr__(claim, "id", claim_id)
+            claim = claim.model_copy(update=update)
+        else:
+            for name, value in update.items():
+                if getattr(claim, name) != value:
+                    object.__setattr__(claim, name, value)
         seen.add(listed)
         joined.append(claim)
     return joined
@@ -598,7 +650,9 @@ class MatchClaim(BaseModel):
             claim. None for synchronous claims, whose coordinate is held by
             the anchor instead.
         id: The claim's identifier, unique in the scope holding the claim
-            (a :class:`MatchClaimField` or an ``AlignmentBundle``). Without
+            (a :class:`MatchClaimField` or an ``AlignmentBundle``; a
+            ``MatchGraph`` mints its implicit claims' ids among the ids of
+            its claims). Without
             one, the claim mints ``claim_1``: its own scope is empty, and a
             scope it joins mints it again where that id is held there. A
             given id is kept verbatim, and a scope already holding it
@@ -1821,23 +1875,6 @@ class MatchClaimField(SemanticField[MatchClaim]):
         "event_b_name",
     )
 
-    def __init__(
-        self,
-        raw: "StructField | None" = None,
-        *,
-        source_fields: "str | dict[str, Any] | None" = None,
-        name: str | None = None,
-        metadata: MatchMetadata | None = None,
-    ) -> None:
-        """Wrap a derived ``MatchClaim`` struct field, carrying shared metadata.
-
-        Prefer the :meth:`from_columns` / :meth:`from_claims` / :meth:`from_dict`
-        classmethods; this constructor mirrors the base ``SemanticField`` so
-        blueprint construction keeps working, plus a field-level ``metadata``.
-        """
-        super().__init__(raw, source_fields=source_fields, name=name)
-        self._metadata: MatchMetadata | None = metadata
-
     # ── construction ──────────────────────────────────────────────────────
 
     @classmethod
@@ -2021,7 +2058,9 @@ class MatchClaimField(SemanticField[MatchClaim]):
             A new :class:`MatchClaimField`.
 
         Raises:
-            ValueError: If two rows are given the same id.
+            ValueError: If the mapping carries metadata both under its key
+                ``metadata`` and in its rows (``row_metadata``), or if two
+                rows are given the same id.
         """
         metadata_dict = data.get("metadata")
         metadata = (
@@ -2046,6 +2085,12 @@ class MatchClaimField(SemanticField[MatchClaim]):
                 None if entry is None else MatchMetadata.from_dict(entry)
                 for entry in row_metadata
             ],
+        )
+        cls._refuse_metadata_twice(
+            metadata,
+            per_row["metadata"],
+            source="dictionary",
+            where="under its key 'metadata'",
         )
         struct_array = cls._build_struct_array(
             len(tl_a),
@@ -2130,19 +2175,15 @@ class MatchClaimField(SemanticField[MatchClaim]):
         if pc.any(out_of_scope).as_py():
             raise cls._out_of_scope(pc.index(out_of_scope, True).as_py())
         stored = (table.schema.metadata or {}).get(cls._METADATA_KEY)
-        if stored is None:
-            metadata = None
-        else:
-            metadata = MatchMetadata.from_dict(json.loads(stored))
-            row_metadata = struct_array.field("metadata")
-            with_metadata = len(row_metadata) - row_metadata.null_count
-            if with_metadata:
-                raise ValueError(
-                    f"A MatchClaimField table states its metadata once: this "
-                    f"table carries it in its schema metadata "
-                    f"({cls._METADATA_KEY.decode()!r}) and in {with_metadata} "
-                    f"row(s)."
-                )
+        metadata = (
+            None if stored is None else MatchMetadata.from_dict(json.loads(stored))
+        )
+        cls._refuse_metadata_twice(
+            metadata,
+            struct_array.field("metadata"),
+            source="table",
+            where=f"in its schema metadata ({cls._METADATA_KEY.decode()!r})",
+        )
         return cls._scoped(struct_array, metadata=metadata)
 
     @staticmethod
@@ -2152,6 +2193,37 @@ class MatchClaimField(SemanticField[MatchClaim]):
             f"MatchClaimField holds synchronous claims only; claim at index "
             f"{index} is non-synchronous (NOMATCH) and is out of scope."
         )
+
+    @staticmethod
+    def _refuse_metadata_twice(
+        metadata: MatchMetadata | None,
+        row_metadata: pa.Array,
+        *,
+        source: str,
+        where: str,
+    ) -> None:
+        """Refuse metadata stated for the whole field and in rows as well.
+
+        A field states its metadata once: for every row, or per row. A
+        source stating both would lose one of them on reading.
+
+        Args:
+            metadata: The field-level metadata the source states, if any.
+            row_metadata: The rows' metadata (null where a row states none).
+            source: What is read, for the message (``"table"``).
+            where: Where the source states the field-level metadata.
+
+        Raises:
+            ValueError: If both are stated.
+        """
+        if metadata is None:
+            return
+        with_metadata = len(row_metadata) - row_metadata.null_count
+        if with_metadata:
+            raise ValueError(
+                f"A MatchClaimField {source} states its metadata once: this "
+                f"{source} carries it {where} and in {with_metadata} row(s)."
+            )
 
     @classmethod
     def _row_arrays(
@@ -2185,6 +2257,9 @@ class MatchClaimField(SemanticField[MatchClaim]):
     ) -> "MatchClaimField":
         """Wrap *struct_array* with its ids admitted into a scope.
 
+        A row's ``source_claim_id`` naming a row whose id gave way takes
+        the new id with it (:func:`_followed_references`).
+
         Args:
             struct_array: The claim rows.
             metadata: The field-level metadata.
@@ -2192,41 +2267,26 @@ class MatchClaimField(SemanticField[MatchClaim]):
                 own scope).
             scope: What the scope is, for the message.
         """
+        before = struct_array.field("id")
         ids, minted = _admitted_claim_ids(
-            struct_array.field("id"),
+            before,
             struct_array.field("id_minted"),
             pa.array([], type=pa.string()) if taken is None else taken,
             scope=scope,
         )
-        children = {"id": ids, "id_minted": minted}
+        children = {
+            "id": ids,
+            "id_minted": minted,
+            "source_claim_id": _followed_references(
+                before, ids, struct_array.field("source_claim_id")
+            ),
+        }
         arrays = [
             children.get(sub_field.name, struct_array.field(sub_field.name))
             for sub_field in cls.pa_schema
         ]
         rebuilt = pa.StructArray.from_arrays(arrays, fields=list(cls.pa_schema))
         return cls._from_struct_array(rebuilt, metadata=metadata)
-
-    def _joined(self, taken: pa.Array, *, scope: str) -> "MatchClaimField":
-        """Return this field as it joins a scope holding the ids *taken*.
-
-        A minted id held there is minted again, a given one refused (see
-        :func:`_admitted_claim_ids`). Where every id stays, the field itself
-        is returned; otherwise a new field, and this one is left unchanged.
-        """
-        joined = self._scoped(
-            self._struct_array(), metadata=self._metadata, taken=taken, scope=scope
-        )
-        return self if joined._ids.equals(self._ids) else joined
-
-    def _struct_array(self) -> pa.StructArray:
-        """The claim rows, an empty array of the struct type when none."""
-        data = self._raw.data
-        return pa.array([], type=self.pa_schema) if data is None else data
-
-    @property
-    def _ids(self) -> pa.Array:
-        """The claim ids, one per row."""
-        return self._struct_array().field("id")
 
     @classmethod
     def _from_struct_array(
@@ -2429,6 +2489,23 @@ class MatchClaimField(SemanticField[MatchClaim]):
                 return None
         return first
 
+    def __init__(
+        self,
+        raw: "StructField | None" = None,
+        *,
+        source_fields: "str | dict[str, Any] | None" = None,
+        name: str | None = None,
+        metadata: MatchMetadata | None = None,
+    ) -> None:
+        """Wrap a derived ``MatchClaim`` struct field, carrying shared metadata.
+
+        Prefer the :meth:`from_columns` / :meth:`from_claims` / :meth:`from_dict`
+        classmethods; this constructor mirrors the base ``SemanticField`` so
+        blueprint construction keeps working, plus a field-level ``metadata``.
+        """
+        super().__init__(raw, source_fields=source_fields, name=name)
+        self._metadata: MatchMetadata | None = metadata
+
     # ── access ────────────────────────────────────────────────────────────
 
     def __len__(self) -> int:
@@ -2516,6 +2593,11 @@ class MatchClaimField(SemanticField[MatchClaim]):
             ids.update(v for v in column.to_pylist() if v is not None)
         return ids
 
+    @property
+    def _ids(self) -> pa.Array:
+        """The claim ids, one per row."""
+        return self._struct_array().field("id")
+
     def connecting(self, timeline_id: str) -> "MatchClaimField":
         """Return the claims that involve ``timeline_id`` on either side.
 
@@ -2586,15 +2668,17 @@ class MatchClaimField(SemanticField[MatchClaim]):
         masks: list[pa.Array] = []
         for side in ("a", "b"):
             side_id = pc.equal(data.field(f"timeline_{side}_id"), timeline_id)
-            start = self._coordinate_comparison_mask(
-                "start_anchor", side, query, "equal"
+            start_cells = data.field("start_anchor").field(f"coordinate_{side}")
+            end_cells = data.field("end_anchor").field(f"coordinate_{side}")
+            start = compare_number_column(
+                start_cells, query.value, "equal", query.number_type
             )
             contained = pc.and_(
-                self._coordinate_comparison_mask(
-                    "start_anchor", side, query, "less_equal"
+                compare_number_column(
+                    start_cells, query.value, "less_equal", query.number_type
                 ),
-                self._coordinate_comparison_mask(
-                    "end_anchor", side, query, "greater_equal"
+                compare_number_column(
+                    end_cells, query.value, "greater_equal", query.number_type
                 ),
             )
             relevant = pc.if_else(
@@ -2866,6 +2950,23 @@ class MatchClaimField(SemanticField[MatchClaim]):
             ),
         }
 
+    def _joined(self, taken: pa.Array, *, scope: str) -> "MatchClaimField":
+        """Return this field as it joins a scope holding the ids *taken*.
+
+        A minted id held there is minted again, a given one refused (see
+        :func:`_admitted_claim_ids`). Where every id stays, the field itself
+        is returned; otherwise a new field, and this one is left unchanged.
+        """
+        joined = self._scoped(
+            self._struct_array(), metadata=self._metadata, taken=taken, scope=scope
+        )
+        return self if joined._ids.equals(self._ids) else joined
+
+    def _struct_array(self) -> pa.StructArray:
+        """The claim rows, an empty array of the struct type when none."""
+        data = self._raw.data
+        return pa.array([], type=self.pa_schema) if data is None else data
+
     def _empty(self) -> "MatchClaimField":
         """Return a zero-row field of this schema, keeping the metadata."""
         data = self._raw.data
@@ -2881,38 +2982,6 @@ class MatchClaimField(SemanticField[MatchClaim]):
         """The stored anchor coordinate values on ``side`` (``"a"`` / ``"b"``)."""
         anchor = self._raw.data.field("start_anchor")
         return anchor.field(f"coordinate_{side}").field("value")
-
-    def _coordinate_comparison_mask(
-        self,
-        anchor_name: str,
-        side: str,
-        query: Coordinate,
-        comparison: str,
-    ) -> pa.Array:
-        """Compare one stored coordinate column to an exact typed query."""
-        coordinate = self._raw.data.field(anchor_name).field(f"coordinate_{side}")
-        if query.number_type in (NumberType.int, NumberType.fraction):
-            exact = Fraction(query.value)
-            decimal = pa.decimal256(37, 0)
-            stored_numerator = pc.cast(coordinate.field("numerator"), decimal)
-            stored_denominator = pc.cast(coordinate.field("denominator"), decimal)
-            left = pc.multiply(
-                stored_numerator,
-                pa.scalar(Decimal(exact.denominator), type=decimal),
-            )
-            right = pc.multiply(
-                stored_denominator,
-                pa.scalar(Decimal(exact.numerator), type=decimal),
-            )
-        else:
-            left = coordinate.field("value")
-            right = pa.scalar(float(query.value))
-        operations = {
-            "equal": pc.equal,
-            "less_equal": pc.less_equal,
-            "greater_equal": pc.greater_equal,
-        }
-        return operations[comparison](left, right)
 
     @staticmethod
     def _id_value_set(timeline_ids: set[str]) -> pa.Array:

@@ -595,6 +595,11 @@ end_ts = group.get_timestamp_at(int(aton_loader.musical_length.value), "dgt_hole
 end_ts
 
 # %% [markdown]
+# The end stamp lists the nested timelines that reach the end of the music
+# (`dlt_1`, `dlt_4`, `clt_3`) and leaves out those that end earlier: a child
+# holds its own end where no sibling starts there.
+
+# %% [markdown]
 # ### I.3: Round-Trip Verification
 #
 # Verify that coordinate transfer is reversible. We show the full timestamps

@@ -233,7 +233,9 @@ claims_table(claims)
 # still builds its {{< glossary WarpMap >}} between them. A matchstamp at an
 # aligned note gives the recording's time; one at a note between two aligned
 # notes, such as the septuplet note at 3/7 of a quarter, gives a time
-# interpolated by the warp:
+# interpolated by the warp. Each stamp also holds the position on the
+# movement child, since the bundle answers for every timeline of the score's
+# tree, the child included:
 
 # %%
 bundle = AlignmentBundle(name="Out-of-the-flow Experience")

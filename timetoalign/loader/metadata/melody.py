@@ -41,14 +41,19 @@ from timetoshare import load_catalogue
 from timetoalign.alignment.bundle import AlignmentBundle
 from timetoalign.core import TimeUnit
 from timetoalign.loader.base import Loader
-from timetoalign.timelines.base import Timeline
-from timetoalign.timelines.statements import LIBRARY_AGENT, _day
+from timetoalign.loader.metadata._statements import (
+    Plan,
+    Target,
+    day,
+    refuse_arguments,
+    refuse_value_entity,
+)
+from timetoalign.timelines.statements import LIBRARY_AGENT
 from timetoalign.timelines.types import ContinuousGraphicalTimeline
 
 __all__ = ["MelodyLoader", "MelodyRecord"]
 
 _RDF = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
-_RDFS = "http://www.w3.org/2000/01/rdf-schema#"
 _XSD = "http://www.w3.org/2001/XMLSchema#"
 _OWL = "http://www.w3.org/2002/07/owl#"
 _SKOS = "http://www.w3.org/2004/02/skos/core#"
@@ -92,7 +97,8 @@ class MelodyRecord:
         source: The path given to :meth:`MelodyLoader.load`.
         files: Per Turtle file read, its path relative to the directory (a
             file given directly: its name) and its ``rdflib.Graph``, in
-            sorted relative-path order.
+            sorted relative-path order. Two sources may hold files of one
+            relative path; each is read.
     """
 
     source: Path
@@ -216,7 +222,9 @@ class MelodyLoader(Loader[MelodyRecord]):
         ``imported``, basis the subject's file (and the file of the entity
         whose node the value is, where it differs). A pair the subject
         already states, proposes or rejects is skipped, so importing twice
-        into one bundle adds nothing and a rejection is never undone.
+        into one bundle adds nothing and a rejection is never undone. Every
+        pair is checked before the bundle changes: a refused one leaves it
+        as it was.
 
         Args:
             work: The IRI of the ``melod:Work`` the bundle is about; the
@@ -244,16 +252,11 @@ class MelodyLoader(Loader[MelodyRecord]):
                 of the graph, a work, an expression, or an entity that is no
                 manifestation or item of the work, or maps one to an ID
                 naming no timeline or region of ``into``; a blank node
-                contains itself.
+                contains itself; a pair is refused (``the prefix 'doi' is
+                declared neither by the catalogue nor on the new timeline of
+                manifestation 'urn:uuid:manifestations/4'``).
         """
-        if id is not None and into is not None:
-            raise ValueError(
-                "id names a new bundle; the bundle given as into keeps its own"
-            )
-        if subjects and into is None:
-            raise ValueError(
-                "subjects needs into: a new bundle holds no element to map to"
-            )
+        refuse_arguments(into, id, subjects)
         graph = _Repository(self._records)
         work_iri = graph.work(work)
         expressions = graph.objects(work_iri, _REALISED_IN)
@@ -261,8 +264,10 @@ class MelodyLoader(Loader[MelodyRecord]):
             {m for e in expressions for m in graph.subjects(_EMBODIES, e)}
         )
         items = {m: graph.subjects(_EXEMPLIFIES, m) for m in manifestations}
-        mapped = self._mapped_elements(
-            graph, work_iri, manifestations, items, subjects or {}, into
+        bundle = into if into is not None else AlignmentBundle(id=id or "")
+        plan = Plan(bundle)
+        targets = self._mapped_elements(
+            graph, work_iri, manifestations, items, subjects or {}, plan
         )
         importer = _Importer(
             graph,
@@ -275,33 +280,25 @@ class MelodyLoader(Loader[MelodyRecord]):
                 "stated_by": (
                     [stated_by] if isinstance(stated_by, str) else list(stated_by)
                 ),
-                "date": _day(date),
+                "date": day(date),
                 "method": "imported",
             },
         )
-        # Every value is built once before anything changes, so that a
-        # blank node containing itself is refused while the bundle is intact.
-        importer.plan({iri: "" for iri in (*manifestations, *mapped)})
-
-        bundle = into if into is not None else AlignmentBundle(id=id or "")
-        holders: dict[str, _Holder] = {
-            iri: _Holder.of(element) for iri, element in mapped.items()
-        }
         for manifestation in manifestations:
-            if manifestation in holders:
-                continue
-            timeline = ContinuousGraphicalTimeline(
-                length=None,
-                unit=TimeUnit.millimeters,
-                name=importer.timeline_name(manifestation),
-            )
-            bundle.add_timeline(timeline)
-            holders[manifestation] = _Holder(timeline)
-        element_ids = {iri: holder.id for iri, holder in holders.items()}
-        bundle_holder = _Holder(bundle)
+            if manifestation not in targets:
+                timeline = ContinuousGraphicalTimeline(
+                    length=None,
+                    unit=TimeUnit.millimeters,
+                    name=importer.timeline_name(manifestation),
+                )
+                targets[manifestation] = plan.new_timeline(
+                    timeline, f"manifestation '{manifestation}'"
+                )
+        element_ids = {iri: target.id for iri, target in targets.items()}
         for subject, property, value, basis in importer.plan(element_ids):
-            holder = bundle_holder if subject is None else holders[subject]
-            holder.state(property, value, {**importer.provenance, "basis": basis})
+            target = plan.bundle_target if subject is None else targets[subject]
+            plan.state(target, property, value, {**importer.provenance, "basis": basis})
+        plan.commit()
         return bundle
 
     @staticmethod
@@ -311,36 +308,26 @@ class MelodyLoader(Loader[MelodyRecord]):
         manifestations: Sequence[str],
         items: Mapping[str, Sequence[str]],
         subjects: Mapping[str, str],
-        into: AlignmentBundle | None,
-    ) -> dict[str, Timeline | tuple[Timeline, str]]:
-        """Resolve *subjects* to the elements of *into*, refusing what cannot map."""
+        plan: Plan,
+    ) -> dict[str, Target]:
+        """Resolve *subjects* to the elements of the bundle, refusing what cannot map."""
         allowed = {*manifestations, *(i for found in items.values() for i in found)}
-        mapped: dict[str, Timeline | tuple[Timeline, str]] = {}
+        mapped: dict[str, Target] = {}
         for key, element_id in subjects.items():
             types = graph.types(key)
             if not types:
                 raise ValueError(
                     f"subjects names '{key}', which is no entity of the graph"
                 )
-            for kind, article in ((_WORK, "a work"), (_EXPRESSION, "an expression")):
+            for kind, word in ((_WORK, "work"), (_EXPRESSION, "expression")):
                 if kind in types:
-                    raise ValueError(
-                        f"subjects maps '{key}', {article}; works and expressions are "
-                        "values, never elements"
-                    )
+                    refuse_value_entity(key, word)
             if key not in allowed:
                 raise ValueError(
                     f"subjects maps '{key}', which is no manifestation or item of the "
                     f"work '{work}'"
                 )
-            assert into is not None  # subjects without into is refused before
-            element = _element_named(into, element_id)
-            if element is None:
-                raise ValueError(
-                    f"subjects maps '{key}' to '{element_id}', which is no timeline or "
-                    f"region of {into._statement_holder_name()}"
-                )
-            mapped[key] = element
+            mapped[key] = plan.mapped(key, element_id)
         return mapped
 
 
@@ -348,24 +335,30 @@ class MelodyLoader(Loader[MelodyRecord]):
 
 
 class _Repository:
-    """The graphs of every file read, and what the import asks of them."""
+    """The graphs of every file read, and what the import asks of them.
+
+    A file is keyed by its relative path and the position of its source in
+    loading order, so that two sources holding files of one relative path
+    (``a/x.ttl`` and ``b/x.ttl`` given directly) are both read; a basis
+    names a file by its relative path.
+    """
 
     def __init__(self, records: Sequence[MelodyRecord]) -> None:
         rdflib = _rdflib()
         self._rdflib = rdflib
-        self.files: dict[str, Any] = {}
+        self.files: dict[tuple[str, int], Any] = {}
         self.union = rdflib.Graph()
-        for record in records:
+        for position, record in enumerate(records):
             for relative, graph in record.files:
-                self.files.setdefault(relative, graph)
+                self.files[relative, position] = graph
                 self.union += graph
-        # An entity's file is the first file, in relative-path order, whose
-        # graph types it.
-        self.entity_files: dict[str, str] = {}
-        for relative in sorted(self.files):
-            for subject in self.files[relative].subjects(rdflib.RDF.type, None):
+        # An entity's file is the first file, in relative-path order (then
+        # loading order), whose graph types it.
+        self.entity_files: dict[str, tuple[str, int]] = {}
+        for file in sorted(self.files):
+            for subject in self.files[file].subjects(rdflib.RDF.type, None):
                 if isinstance(subject, rdflib.URIRef):
-                    self.entity_files.setdefault(str(subject), relative)
+                    self.entity_files.setdefault(str(subject), file)
 
     def uri(self, iri: str) -> Any:
         return self._rdflib.URIRef(iri)
@@ -412,7 +405,8 @@ class _Repository:
         return works[0]
 
     def file_of(self, iri: str) -> str:
-        return self.entity_files[iri]
+        """The relative path of the entity's file."""
+        return self.entity_files[iri][0]
 
     def graph_of(self, iri: str) -> Any:
         return self.files[self.entity_files[iri]]
@@ -730,79 +724,6 @@ def _quoted(relative: str) -> str:
     return "/".join(
         urllib.parse.quote(segment, safe="") for segment in relative.split("/")
     )
-
-
-# endregion
-
-
-# region Holders
-
-
-def _element_named(
-    bundle: AlignmentBundle, element_id: str
-) -> Timeline | tuple[Timeline, str] | None:
-    """The timeline (at any depth) or region of *bundle* with *element_id*.
-
-    A region is given as its timeline and its ID.
-    """
-    for root in bundle._roots():
-        for timeline in (root, *(child for _, child in root._iter_descendants())):
-            if timeline.id == element_id:
-                return timeline
-            if element_id in timeline.list_regions():
-                return timeline, element_id
-    return None
-
-
-class _Holder:
-    """A bundle, a timeline or a region the import states pairs of."""
-
-    def __init__(
-        self, target: AlignmentBundle | Timeline, region: str | None = None
-    ) -> None:
-        self.target = target
-        self.region = region
-
-    @classmethod
-    def of(cls, element: Timeline | tuple[Timeline, str]) -> _Holder:
-        if isinstance(element, tuple):
-            return cls(*element)
-        return cls(element)
-
-    @property
-    def id(self) -> str:
-        return self.region if self.region is not None else self.target.id
-
-    def _current(self) -> Any:
-        if self.region is None:
-            return self.target
-        assert isinstance(self.target, Timeline)
-        return self.target.get_region(self.region)
-
-    def _known(self, property: str, value: Any) -> bool:
-        """Whether the holder states, proposes or rejects the pair already."""
-        current = self._current()
-        context = current._statement_context()
-        pair = (property, value)
-        return any(
-            timetoshare.same_pair(context, pair, known) for known in current.get_pairs()
-        ) or any(
-            timetoshare.same_pair(context, pair, (entry["property"], entry["value"]))
-            for entry in current.provenance
-        )
-
-    def state(self, property: str, value: Any, provenance: Mapping[str, Any]) -> None:
-        """State the pair with its entry, unless the holder knows it already."""
-        if self._known(property, value):
-            return
-        if self.region is None:
-            self.target.add_statement(property, value, provenance=provenance)
-            return
-        assert isinstance(self.target, Timeline)
-        region = self.target.get_region(self.region)
-        self.target.replace_region(
-            region.with_statement(property, value, provenance=provenance)
-        )
 
 
 # endregion

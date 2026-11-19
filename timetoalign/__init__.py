@@ -56,7 +56,7 @@ Install with ``pip install -e ".[<extra>]"`` from the repository root.
 +---------------+--------------------------------------+----------------------------------------------+
 | ``delta``     | ``deltalake``                        | Delta Lake columnar storage (future)         |
 +---------------+--------------------------------------+----------------------------------------------+
-| ``rdf``       | ``rdflib``                           | RDF / linked-data export (future)            |
+| ``rdf``       | ``rdflib``                           | MeLODy Turtle import (``MelodyLoader``)      |
 +---------------+--------------------------------------+----------------------------------------------+
 
 Composite extras — convenience bundles

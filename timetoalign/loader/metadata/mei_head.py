@@ -10,11 +10,13 @@ property–value pairs with provenance (see
   is the MEI file's address followed by ``#`` and the work's ``xml:id``; the
   bundle points to the MEI file with ``rdfs:seeAlso``;
 * an expression is a value node as well, written under ``lrmoo:R4_embodies``
-  of every manifestation embodying it, else under the work's
+  of every manifestation embodying it (a manifestation's ``isEmbodimentOf``
+  or the expression's ``hasEmbodiment``), else under the work's
   ``lrmoo:R3_is_realised_in``;
 * each manifestation becomes a graphical timeline in millimetres of unknown
   length (or lands on an element of an existing bundle);
-* each item is a value node of its manifestation (or lands on an element).
+* each item is a value node of its manifestation, with the IRI built as a
+  work's when it has an ``xml:id`` (or lands on an element).
 
 What is linked-data-ready as encoded (relations, ``@sameas``, authority
 IRIs, identifiers, titles, dates, keys, meters, media of performance) is
@@ -59,8 +61,15 @@ from timetoshare import load_catalogue, to_file_id
 from timetoalign.alignment import AlignmentBundle
 from timetoalign.core import TimeUnit
 from timetoalign.loader.base import Loader
+from timetoalign.loader.metadata._statements import (
+    Plan,
+    Target,
+    day,
+    refuse_arguments,
+    refuse_value_entity,
+)
 from timetoalign.timelines import ContinuousGraphicalTimeline
-from timetoalign.timelines.statements import LIBRARY_AGENT, NodePath, StatementsMixin
+from timetoalign.timelines.statements import LIBRARY_AGENT, NodePath
 
 __all__ = ["MeiHeadLoader"]
 
@@ -322,11 +331,13 @@ class MeiHeadLoader(Loader[MeiHead]):
 
         The work becomes a value node under the bundle's ``schema:about``,
         each manifestation a new graphical timeline in millimetres of
-        unknown length, named by its first title and added to the bundle
-        before any statement; expressions and items are value nodes. A pair
-        a subject already states, proposes or rejects is passed over, so
-        importing a header twice into one bundle adds nothing and a
-        rejection stays.
+        unknown length, named by its first title; expressions and items are
+        value nodes. A pair a subject already states, proposes or rejects is
+        passed over, and the pairs of a value node go into it only while
+        the subject states it, so importing a header twice into one bundle
+        adds nothing, a rejection stays and a confirmation too. Every pair
+        is checked before the bundle changes: a refused one leaves it as it
+        was.
 
         Args:
             into: The bundle to state the description on, returned; a new
@@ -353,80 +364,34 @@ class MeiHeadLoader(Loader[MeiHead]):
                 *into*, *subjects* without *into*, a key of *subjects* names
                 no work, expression, manifestation or item, or names a work
                 or an expression, a value names no timeline or region of
-                *into*, the header holds more than one work, or a work or an
-                expression has no ``xml:id``.
+                *into*, the header holds more than one work, a work or an
+                expression has no ``xml:id``, or a pair is refused (``the
+                prefix 'doi' is declared neither by the catalogue nor on the
+                new timeline of manifestation 'source_2'``).
         """
         if self._head is None:
             raise ValueError(
                 f"{type(self).__name__} holds no source: load an MEI file first."
             )
-        if into is not None and id is not None:
-            raise ValueError(
-                "id names a new bundle; the bundle given as into keeps its own"
-            )
-        if subjects and into is None:
-            raise ValueError(
-                "subjects needs into: a new bundle holds no element to map to"
-            )
+        refuse_arguments(into, id, subjects)
         path = self._head.path
         run = _Import(
             self._head.element,
             base=quote(path.name) if base is None else base,
             stated_by=[stated_by] if isinstance(stated_by, str) else list(stated_by),
-            day=_day(date),
+            day=day(date),
         )
         bundle = into if into is not None else AlignmentBundle(id=id or _stem_id(path))
-        run.check(bundle, dict(subjects or {}))
-        run.apply(bundle, dict(subjects or {}))
+        plan = Plan(bundle)
+        mapped = run.check(plan, dict(subjects or {}))
+        run.plan(plan, mapped)
+        plan.commit()
         return bundle
 
 
 def _stem_id(path: Path) -> str:
     """The file's stem with every character outside ``[A-Za-z0-9_.-]`` replaced."""
     return re.sub(r"[^A-Za-z0-9_.-]", "_", path.stem)
-
-
-def _day(date: str | datetime.date | None) -> str:
-    if date is None:
-        return datetime.date.today().isoformat()
-    return date.isoformat() if isinstance(date, datetime.date) else date
-
-
-# region The subjects written to
-
-
-@dataclass(frozen=True)
-class _Subject:
-    """What an entity's pairs are written to: the bundle, a timeline or a region."""
-
-    holder: Any
-    region: str | None = None
-
-    def view(self) -> StatementsMixin:
-        """The holder's statements as they stand."""
-        return self.holder.get_region(self.region) if self.region else self.holder
-
-    def change(self, mutable: str, copied: str, *args: Any, **kwargs: Any) -> None:
-        """Run the in-place *mutable* method, or the region's *copied* one."""
-        if self.region is None:
-            getattr(self.holder, mutable)(*args, **kwargs)
-        else:
-            region = getattr(self.view(), copied)(*args, **kwargs)
-            self.holder.replace_region(region)
-
-
-def _element_subjects(bundle: AlignmentBundle) -> dict[str, _Subject]:
-    """Every timeline (at any depth) and region of *bundle*, by ID."""
-    found: dict[str, _Subject] = {}
-    for root in bundle._roots():
-        for timeline in (root, *(child for _, child in root._iter_descendants())):
-            found.setdefault(timeline.id, _Subject(timeline))
-            for region_id in timeline.list_regions():
-                found.setdefault(region_id, _Subject(timeline, region_id))
-    return found
-
-
-# endregion
 
 
 class _Import:
@@ -463,13 +428,19 @@ class _Import:
                 if (xml_id := _xml_id(element)) is not None:
                     self.kinds.setdefault(xml_id, kind)
         self.expression_by_id = {_xml_id(e): e for e in self.expressions}
+        self.manifestation_by_id = {_xml_id(m): m for m in self.manifestations}
+        self.embodied, self.embodied_by_expression = self._embodiments()
         # The ID of the element an entity's statements land on, by xml:id.
         self.elements: dict[str, str] = {}
 
     # region Checks and the order of writing
 
-    def check(self, bundle: AlignmentBundle, subjects: dict[str, str]) -> None:
-        """Refuse what the import cannot do, before anything changes."""
+    def check(self, plan: Plan, subjects: dict[str, str]) -> dict[str, Target]:
+        """Refuse what the import cannot do, before anything changes.
+
+        Returns:
+            The element each key of *subjects* maps to.
+        """
         for key in subjects:
             kind = self.kinds.get(key)
             if kind is None:
@@ -478,18 +449,8 @@ class _Import:
                     "manifestation or item of the meiHead"
                 )
             if kind in ("work", "expression"):
-                article = "an" if kind == "expression" else "a"
-                raise ValueError(
-                    f"subjects maps '{key}', {article} {kind}; works and expressions are "
-                    "values, never elements"
-                )
-        elements = _element_subjects(bundle)
-        for key, value in subjects.items():
-            if value not in elements:
-                raise ValueError(
-                    f"subjects maps '{key}' to '{value}', which is no timeline or "
-                    f"region of {bundle._statement_holder_name()}"
-                )
+                refuse_value_entity(key, kind)
+        mapped = {key: plan.mapped(key, value) for key, value in subjects.items()}
         if len(self.works) > 1:
             raise ValueError(
                 f"the meiHead holds {len(self.works)} works; a bundle is about one work"
@@ -504,15 +465,15 @@ class _Import:
                         f"{kind} {number} of the meiHead has no xml:id, from which "
                         "its IRI is built"
                     )
+        return mapped
 
-    def apply(self, bundle: AlignmentBundle, subjects: dict[str, str]) -> None:
-        """Add the new timelines, then state every pair."""
-        elements = _element_subjects(bundle)
-        targets: list[tuple[ET.Element, _Subject]] = []
-        for manifestation in self.manifestations:
+    def plan(self, plan: Plan, mapped: dict[str, Target]) -> None:
+        """Plan the new timelines, then every pair."""
+        targets: list[tuple[ET.Element, Target]] = []
+        for number, manifestation in enumerate(self.manifestations, start=1):
             xml_id = _xml_id(manifestation)
-            if xml_id is not None and xml_id in subjects:
-                subject = elements[subjects[xml_id]]
+            if xml_id is not None and xml_id in mapped:
+                target = mapped[xml_id]
             else:
                 titles = self._titles("manifestation", manifestation)
                 timeline = ContinuousGraphicalTimeline(
@@ -520,18 +481,19 @@ class _Import:
                     unit=TimeUnit.millimeters,
                     name=_text(titles[0]) if titles else None,
                 )
-                bundle.add_timeline(timeline)
-                subject = _Subject(timeline)
+                entity = f"'{xml_id}'" if xml_id is not None else str(number)
+                target = plan.new_timeline(timeline, f"manifestation {entity}")
             if xml_id is not None:
-                self.elements[xml_id] = subject.region or subject.holder.id
-            targets.append((manifestation, subject))
-        for key, value in subjects.items():
+                self.elements[xml_id] = target.id
+            targets.append((manifestation, target))
+        for key, target in mapped.items():
             if self.kinds[key] == "item":
-                self.elements[key] = value
+                self.elements[key] = target.id
 
-        about = _Subject(bundle)
+        about = plan.bundle_target
         for work in self.works:
             self._apply(
+                plan,
                 about,
                 (),
                 _Pair(
@@ -542,16 +504,19 @@ class _Import:
                 ),
             )
         self._apply(
-            about, (), _Pair("rdfs:seeAlso", {"id": self._compact(self.base)}, None)
+            plan,
+            about,
+            (),
+            _Pair("rdfs:seeAlso", {"id": self._compact(self.base)}, None),
         )
-        for manifestation, subject in targets:
+        for manifestation, target in targets:
             for pair in self._pairs("manifestation", manifestation):
-                self._apply(subject, (), pair)
+                self._apply(plan, target, (), pair)
             for item in _children(manifestation, "itemList", "item"):
                 xml_id = _xml_id(item)
-                if xml_id is not None and xml_id in subjects:
+                if xml_id is not None and xml_id in mapped:
                     for pair in self._pairs("item", item):
-                        self._apply(elements[subjects[xml_id]], (), pair)
+                        self._apply(plan, mapped[xml_id], (), pair)
 
     # endregion
 
@@ -561,72 +526,40 @@ class _Import:
         xml_id = None if element is None else _xml_id(element)
         return self.base if xml_id is None else f"{self.base}#{xml_id}"
 
-    def _known(self, subject: _Subject, node: NodePath, pair: _Pair) -> bool:
-        """Whether the subject states, proposes or rejects the pair already."""
-        view = subject.view()
-        context = view._statement_context()
-        wanted = (pair.property, pair.value)
-        return any(
-            timetoshare.same_pair(context, held, wanted)
-            for held in view.get_pairs(node=node)
-        ) or any(
-            timetoshare.same_pair(context, (entry["property"], entry["value"]), wanted)
-            for entry in view.get_provenance(node=node)
-        )
+    def _apply(self, plan: Plan, target: Target, node: NodePath, pair: _Pair) -> None:
+        """State or propose *pair* at *node* of *target*, then its inner pairs.
 
-    def _index(self, subject: _Subject, node: NodePath, pair: _Pair) -> int:
-        """The position of the pair's value in its property's list."""
-        view = subject.view()
-        context = view._statement_context()
-        values = [
-            value for key, value in view.get_pairs(node=node) if key == pair.property
-        ]
-        return next(
-            index
-            for index, value in enumerate(values)
-            if timetoshare.same_pair(
-                context, (pair.property, value), (pair.property, pair.value)
+        The inner pairs go into the value as the target holds it now; a value
+        the target does not hold (rejected, or still proposed) takes none.
+        """
+        basis = [self._basis(pair.source)]
+        if pair.proposed:
+            plan.propose(
+                target,
+                pair.property,
+                pair.value,
+                stated_by=self.stated_by,
+                date=self.day,
+                basis=basis,
+                note=pair.note,
+                node=node,
             )
-        )
-
-    def _apply(self, subject: _Subject, node: NodePath, pair: _Pair) -> None:
-        """State or propose *pair* at *node* of *subject*, then its inner pairs."""
-        if not self._known(subject, node, pair):
-            basis = [self._basis(pair.source)]
-            if pair.proposed:
-                subject.change(
-                    "propose_statement",
-                    "with_proposal",
-                    pair.property,
-                    pair.value,
-                    stated_by=self.stated_by,
-                    method="imported",
-                    date=self.day,
-                    basis=basis,
-                    note=pair.note,
-                    node=node,
-                )
-            else:
-                provenance: dict[str, Any] = {
-                    "stated_by": self.stated_by,
-                    "date": self.day,
-                    "method": "imported",
-                    "basis": basis,
-                }
-                if pair.note is not None:
-                    provenance["note"] = pair.note
-                subject.change(
-                    "add_statement",
-                    "with_statement",
-                    pair.property,
-                    pair.value,
-                    node=node,
-                    provenance=provenance,
-                )
-        if pair.inner and not pair.proposed:
-            inside = (*node, pair.property, self._index(subject, node, pair))
+            return
+        provenance: dict[str, Any] = {
+            "stated_by": self.stated_by,
+            "date": self.day,
+            "method": "imported",
+            "basis": basis,
+        }
+        if pair.note is not None:
+            provenance["note"] = pair.note
+        plan.state(target, pair.property, pair.value, provenance, node)
+        if not pair.inner:
+            return
+        index = plan.held_index(target, pair.property, pair.value, node)
+        if index is not None:
             for inner in pair.inner:
-                self._apply(subject, inside, inner)
+                self._apply(plan, target, (*node, pair.property, index), inner)
 
     # endregion
 
@@ -649,7 +582,7 @@ class _Import:
         return {"id": self._compact(urljoin(self.base, token))}
 
     def _iri(self, element: ET.Element) -> str:
-        """The IRI of a work or an expression: the file's address and its xml:id."""
+        """The IRI of a work, an expression or an item: the file's address and its xml:id."""
         return self._compact(f"{self.base}#{_xml_id(element)}")
 
     def _authority_iris(self, element: ET.Element) -> list[str]:
@@ -893,7 +826,6 @@ class _Import:
     def _nesting(self, kind: Kind, element: ET.Element) -> list[_Pair]:
         """A work's expressions; a manifestation's items."""
         if kind == "work":
-            embodied = self._embodied()
             return [
                 _Pair(
                     "lrmoo:R3_is_realised_in",
@@ -901,7 +833,7 @@ class _Import:
                     expression,
                     inner=(
                         ()
-                        if _xml_id(expression) in embodied
+                        if expression in self.embodied
                         else tuple(self._pairs("expression", expression))
                     ),
                 )
@@ -937,8 +869,15 @@ class _Import:
         return pairs
 
     def _item_node(self, pairs: list[_Pair], source: ET.Element) -> _Pair:
-        """An item as one value node: its stated pairs inside, its proposals after."""
-        node: dict[str, list[Any]] = {}
+        """An item as one value node: its stated pairs inside, its proposals after.
+
+        An item with an ``xml:id`` is the node of the IRI ``<base>#<xml:id>``,
+        as works and expressions are; any other item (and the item a
+        singleton manifestation holds) is a blank node.
+        """
+        node: dict[str, Any] = {}
+        if _local(source) == "item" and _xml_id(source) is not None:
+            node["id"] = self._iri(source)
         for pair in pairs:
             if not pair.proposed:
                 node.setdefault(pair.property, []).append(pair.value)
@@ -949,16 +888,50 @@ class _Import:
             inner=tuple(pair for pair in pairs if pair.proposed),
         )
 
-    def _embodied(self) -> set[str]:
-        """The xml:ids of the expressions a manifestation's relation embodies."""
-        return {
-            token[1:]
-            for manifestation in self.manifestations
-            for relation in _children(manifestation, "relationList", "relation")
-            if relation.get("rel") == "isEmbodimentOf"
-            for token in (relation.get("target") or "").split()
-            if token.startswith("#") and token[1:] in self.expression_by_id
-        }
+    def _targets(
+        self, element: ET.Element, rel: str
+    ) -> Iterator[tuple[ET.Element, str]]:
+        """Each relation *rel* of *element* with the ``xml:id`` of each ``#`` target."""
+        for relation in _children(element, "relationList", "relation"):
+            if relation.get("rel") == rel:
+                for token in (relation.get("target") or "").split():
+                    if token.startswith("#"):
+                        yield relation, token[1:]
+
+    def _embodiments(
+        self,
+    ) -> tuple[list[ET.Element], dict[ET.Element, list[tuple[ET.Element, ET.Element]]]]:
+        """The expressions manifestations embody, by either side of the relation.
+
+        A manifestation's ``isEmbodimentOf`` and an expression's
+        ``hasEmbodiment`` state one fact: the expression is written under
+        that manifestation's ``lrmoo:R4_embodies``.
+
+        Returns:
+            The expressions some manifestation embodies; and per
+            manifestation, the expressions only a ``hasEmbodiment`` of the
+            expression places under it, each with that relation.
+        """
+        embodied: list[ET.Element] = []
+        by_expression: dict[ET.Element, list[tuple[ET.Element, ET.Element]]] = {}
+        stated: set[tuple[int, int]] = set()
+        for manifestation in self.manifestations:
+            for _, target in self._targets(manifestation, "isEmbodimentOf"):
+                if (expression := self.expression_by_id.get(target)) is not None:
+                    stated.add((id(manifestation), id(expression)))
+                    embodied.append(expression)
+        for expression in self.expressions:
+            for relation, target in self._targets(expression, "hasEmbodiment"):
+                manifestation = self.manifestation_by_id.get(target)
+                if manifestation is None:
+                    continue
+                embodied.append(expression)
+                if (id(manifestation), id(expression)) not in stated:
+                    stated.add((id(manifestation), id(expression)))
+                    by_expression.setdefault(manifestation, []).append(
+                        (expression, relation)
+                    )
+        return embodied, by_expression
 
     def _relations(self, kind: Kind, element: ET.Element) -> list[_Pair]:
         pairs = []
@@ -978,25 +951,35 @@ class _Import:
             else:
                 continue
             for token in (relation.get("target") or "").split():
-                expression = (
-                    self.expression_by_id.get(token[1:])
-                    if token.startswith("#")
-                    else None
-                )
+                local = token[1:] if token.startswith("#") else None
+                if (
+                    kind == "expression"
+                    and rel == "hasEmbodiment"
+                    and local in self.manifestation_by_id
+                ):
+                    continue  # the manifestation states it, by lrmoo:R4_embodies
+                expression = self.expression_by_id.get(local) if local else None
                 embodies = kind == "manifestation" and rel == "isEmbodimentOf"
                 for property in properties:
                     if embodies and expression is not None:
-                        pairs.append(
-                            _Pair(
-                                property,
-                                {"id": self._iri(expression)},
-                                relation,
-                                inner=tuple(self._pairs("expression", expression)),
-                            )
-                        )
+                        pairs.append(self._embodiment(expression, relation))
                     else:
                         pairs.append(_Pair(property, self._ref(token), relation))
+        if kind == "manifestation":
+            pairs += [
+                self._embodiment(expression, relation)
+                for expression, relation in self.embodied_by_expression.get(element, [])
+            ]
         return pairs
+
+    def _embodiment(self, expression: ET.Element, relation: ET.Element) -> _Pair:
+        """The expression in full under ``lrmoo:R4_embodies``, from *relation*."""
+        return _Pair(
+            "lrmoo:R4_embodies",
+            {"id": self._iri(expression)},
+            relation,
+            inner=tuple(self._pairs("expression", expression)),
+        )
 
     # endregion
 

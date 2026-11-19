@@ -38,6 +38,8 @@ follows from that rule alone:
 | every pair stated carries a `confirmed` entry: `stated_by` the library, the date given, `method: imported`, `basis` the base followed by the subject's file (percent-encoded per segment); a pair whose value is an entity's node adds that entity's file when it differs | every subject; the base and file-name cases |
 | files under `indexes/`, `configuration/`, `datasets/` are not read | the main repository's `indexes/works.ttl`, which types the work `melod:WorkEntity`: read, it would type the work twice and become the work's file |
 | a pair already stated, proposed or rejected is skipped | importing twice; a rejected pair |
+| a file is read per source and relative path: two sources holding files of one relative path are both read, each named by that path in a `basis` | two files `x.ttl` in two folders, given directly |
+| every pair is checked before the bundle changes | a manifestation stating `owl:sameAs <doi:10.1000/x>`, a prefix no context declares |
 
 Every value written is checked by `timetoshare.validate` through
 `to_dict()`, with no warning, and the manifest read back writes itself
@@ -85,10 +87,20 @@ library's reader and writer keep it.
    `into`; `subjects` without `into`; a key that is no entity; a work, an
    expression, and a person as keys; a value naming no element; a parse
    error (the expected text is rdflib's own error for the same file); a
-   blank node containing itself.
-6. **Kinds repository**, one file named with a space and given directly:
-   every literal and object kind of the mapping not in the main repository;
-   the basis is the percent-encoded file name, and with `base` given the
-   base followed by it.
-7. **rdflib missing** (its import made to fail): `load` raises
+   blank node containing itself; a pair refused while it is stated (the
+   manifestation's `owl:sameAs <doi:10.1000/x>`): no timeline is added and
+   the message names the timeline the import would have added by its
+   manifestation, as it holds no ID yet.
+6. **Kinds repository**, a folder holding a work file whose name has a
+   space and an expression file: every literal and object kind of the
+   mapping not in the main repository; the basis is the work file's path,
+   percent-encoded, and with `base` given the base followed by it.
+7. **Files given directly**: the main repository's work and expression
+   files given as two sources: no manifestation, so the expression is a
+   full node under the work's `lrmoo:R3_is_realised_in` and the basis names
+   both files by their names. Two files of one name, `a/x.ttl` (the work)
+   and `b/x.ttl` (the expression, the manifestation and the person), given
+   directly: both are read, the result is the main repository's without the
+   item, and every basis is `x.ttl`.
+8. **rdflib missing** (its import made to fail): `load` raises
    `ImportError('MelodyLoader needs rdflib: pip install "timetoalign[rdf]"')`.

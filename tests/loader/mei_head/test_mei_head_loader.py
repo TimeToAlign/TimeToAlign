@@ -66,6 +66,7 @@ CNW0133 = """<?xml version="1.0" encoding="UTF-8"?>
        <repository><corpName xml:id="corpName_1">DK-Kk</corpName></repository>
        <identifier xml:id="identifier_3">CNS 342e</identifier>
       </physLoc>
+      <identifier xml:id="identifier_4" label="RISM">DK-Kk CNS 342e</identifier>
      </item>
     </itemList>
    </manifestation>
@@ -79,18 +80,31 @@ ANDANTE = """<?xml version="1.0" encoding="UTF-8"?>
 <mei xmlns="http://www.music-encoding.org/ns/mei" meiversion="4.0.1">
  <meiHead>
   <workList>
-   <work xml:id="work_1">
+   <work xml:id="work_1" auth.uri="https://d-nb.info/gnd/" codedval="300000001">
+    <identifier xml:id="identifier_2" type="opus">12</identifier>
     <titleStmt>
      <title xml:id="title_1">Andante</title>
-     <respStmt><persName xml:id="persName_1" role="dedicatee">Anna</persName></respStmt>
+     <title xml:id="title_4" type="popular">Little Andante</title>
+     <respStmt>
+      <persName xml:id="persName_1" role="dedicatee">Anna</persName>
+      <persName xml:id="persName_3" role="cph">Verlag Y</persName>
+      <persName xml:id="persName_4" role="organ tuner">Tuner Z</persName>
+     </respStmt>
     </titleStmt>
     <composer xml:id="composer_1">Anonymous</composer>
     <creation><date xml:id="date_1" notbefore="1890" notafter="1895">c. 1890</date></creation>
+    <meter xml:id="meter_2" count="3+2" unit="8"/>
     <expressionList>
      <expression xml:id="expression_1">
       <title xml:id="title_2" xml:lang="de">Fassung für Orgel</title>
       <contributor><persName xml:id="persName_2" role="organ builder"
         sameas="http://viaf.org/viaf/1">Orgelbau X</persName></contributor>
+      <meter xml:id="meter_1" count="3" unit="4"/>
+      <perfMedium><perfResList>
+       <perfRes xml:id="perfRes_1" auth.uri="https://example.org/media/" codedval="org"
+         count="2">organ</perfRes>
+       <perfResList><perfRes xml:id="perfRes_2">bellows treader</perfRes></perfResList>
+      </perfResList></perfMedium>
      </expression>
     </expressionList>
    </work>
@@ -98,6 +112,7 @@ ANDANTE = """<?xml version="1.0" encoding="UTF-8"?>
   <manifestationList>
    <manifestation xml:id="source_1" singleton="true">
     <titleStmt><title xml:id="title_3">Autograph</title></titleStmt>
+    <pubStmt><date xml:id="date_2" isodate="1895-05-01">1 May 1895</date></pubStmt>
     <physLoc>
      <repository><corpName xml:id="corpName_1"
        auth.uri="http://viaf.org/viaf/" codedval="123">Bibliothek</corpName></repository>
@@ -109,6 +124,38 @@ ANDANTE = """<?xml version="1.0" encoding="UTF-8"?>
  </meiHead>
 </mei>
 """
+
+# The expression placed by its own hasEmbodiment instead of the
+# manifestation's isEmbodimentOf.
+HAS_EMBODIMENT = CNW0133.replace(
+    '    <relationList><relation xml:id="relation_2" rel="isEmbodimentOf" '
+    'target="#expression_1"/></relationList>\n',
+    "",
+).replace(
+    "      </perfResList></perfMedium>\n",
+    "      </perfResList></perfMedium>\n"
+    '      <relationList><relation xml:id="relation_3" rel="hasEmbodiment" '
+    'target="#source_1"/></relationList>\n',
+)
+
+# A second item of the autograph, of the first one's content.
+TWO_ITEMS = CNW0133.replace(
+    "     </item>\n",
+    """     </item>
+     <item xml:id="item_2">
+      <physLoc>
+       <repository><corpName xml:id="corpName_2">DK-Kk</corpName></repository>
+       <identifier xml:id="identifier_5">CNS 342e</identifier>
+      </physLoc>
+      <identifier xml:id="identifier_6" label="RISM">DK-Kk CNS 342e</identifier>
+     </item>
+""",
+)
+
+# The autograph's @sameas uses a prefix neither the catalogue nor a holder declares.
+UNDECLARED_PREFIX = CNW0133.replace(
+    'sameas="https://example.org/sources/autograph"', 'sameas="doi:10.1000/x"'
+)
 
 TWO_WORKS = """<mei xmlns="http://www.music-encoding.org/ns/mei"><meiHead><workList>
  <work xml:id="work_1"/><work xml:id="work_2"/>
@@ -196,8 +243,20 @@ SOURCE_IDENTIFIER = {
     "rdfs:label": ["CNU Source"],
     "owl:hasValue": ["A"],
 }
-ITEM = {"type": ["melod:Item"], "melod:hasShelfmark": ["CNS 342e"]}
+ITEM_PAIRS = {
+    "type": ["melod:Item"],
+    "melod:hasIdentifier": [
+        {
+            "type": ["melod:Identifier"],
+            "rdfs:label": ["RISM"],
+            "owl:hasValue": ["DK-Kk CNS 342e"],
+        }
+    ],
+    "melod:hasShelfmark": ["CNS 342e"],
+}
+ITEM = {"id": "cnw0133.xml#item_1", **ITEM_PAIRS}
 KEEPER = "cidoc:P50_has_current_keeper"
+EDITOR = "https://example.org/people/editor"
 
 
 def work_node(
@@ -275,14 +334,15 @@ def print_statements(base: str = "cnw0133.xml") -> dict[str, Any]:
     }
 
 
-def print_provenance(base: str = "cnw0133.xml") -> list[dict[str, Any]]:
+def print_provenance(
+    base: str = "cnw0133.xml", relation: str = "relation_2"
+) -> list[dict[str, Any]]:
+    """source_1's entries; *relation* is the relation placing the expression."""
     return [
         confirmed("rdf:type", {"id": "melod:Manifestation"}, "source_1", base),
         confirmed("melod:hasTitle", title("Score, print", None, None), "title_4", base),
         confirmed("melod:hasIdentifier", SOURCE_IDENTIFIER, "identifier_2", base),
-        confirmed(
-            "lrmoo:R4_embodies", {"id": f"{base}#expression_1"}, "relation_2", base
-        ),
+        confirmed("lrmoo:R4_embodies", {"id": f"{base}#expression_1"}, relation, base),
     ]
 
 
@@ -302,7 +362,7 @@ AUTOGRAPH_PROVENANCE = [
     confirmed(
         "owl:sameAs", {"id": "https://example.org/sources/autograph"}, "source_2"
     ),
-    confirmed("lrmoo:R7i_is_exemplified_by", ITEM, "item_1"),
+    confirmed("lrmoo:R7i_is_exemplified_by", {"id": "cnw0133.xml#item_1"}, "item_1"),
 ]
 
 PREFIXES = "cidoc dcterms gnd lrmoo melod melodTerms mus owl rdf rdfs rel schema skos xsd".split()
@@ -405,6 +465,54 @@ class TestNewBundle:
         assert {tuple(e["stated_by"]) for e in work["provenance"]} == {tuple(agents)}
 
 
+def write_header(folder: Path, text: str) -> Path:
+    """*text* as ``cnw0133.xml`` in *folder*, so every basis reads as the first header's."""
+    folder.mkdir(exist_ok=True)
+    path = folder / "cnw0133.xml"
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+class TestVariants:
+    """What one header cannot hold at once, each a variant of the first."""
+
+    def test_has_embodiment(self, tmp_path: Path) -> None:
+        path = write_header(tmp_path / "variant", HAS_EMBODIMENT)
+        bundle = MeiHeadLoader.from_file(path).create_bundle(date=DATE)
+        assert bundle.timeline_ids == ["cgt_1", "cgt_2"]
+        assert bundle.statements == {
+            "rdfs:seeAlso": [{"id": "cnw0133.xml"}],
+            "schema:about": [work_node()],
+        }
+        printed = bundle.get_timeline("cgt_1")
+        assert printed.statements == print_statements()
+        assert printed.provenance == print_provenance(relation="relation_3")
+        assert_written(bundle)
+
+    def test_two_items_of_equal_content(self, tmp_path: Path) -> None:
+        path = write_header(tmp_path / "variant", TWO_ITEMS)
+        bundle = MeiHeadLoader.from_file(path).create_bundle(date=DATE)
+        autograph = bundle.get_timeline("cgt_2")
+        assert autograph.statements["lrmoo:R7i_is_exemplified_by"] == [
+            {
+                **ITEM,
+                "provenance": [proposed(KEEPER, {"label": "DK-Kk"}, "corpName_1")],
+            },
+            {
+                "id": "cnw0133.xml#item_2",
+                **ITEM_PAIRS,
+                "provenance": [proposed(KEEPER, {"label": "DK-Kk"}, "corpName_2")],
+            },
+        ]
+        assert autograph.provenance == [
+            *AUTOGRAPH_PROVENANCE,
+            confirmed(
+                "lrmoo:R7i_is_exemplified_by", {"id": "cnw0133.xml#item_2"}, "item_2"
+            ),
+        ]
+        assert_written(bundle)
+
+
 class TestSecondHeader:
     """MEI 4.0.1, titles in titleStmt, names in other places, a bounded date,
     an expression no manifestation embodies, a singleton manifestation."""
@@ -412,19 +520,43 @@ class TestSecondHeader:
     def test_work(self, andante: Path) -> None:
         bundle = MeiHeadLoader.from_file(andante).create_bundle(date=DATE)
         base = "andante.xml"
+        opus = {
+            "type": ["melod:Identifier"],
+            "rdfs:label": ["opus"],
+            "owl:hasValue": ["12"],
+        }
         dated = {
             "type": ["melod:Date"],
             "melod:notBefore": [{"@value": "1890", "@type": "xsd:gYear"}],
             "melod:notAfter": [{"@value": "1895", "@type": "xsd:gYear"}],
             "schema:description": ["c. 1890"],
         }
+        work_meter = {
+            "type": ["melod:Meter"],
+            "melod:hasMeterCount": ["3+2"],
+            "melod:inMeterUnit": [8],
+        }
         label = {"@value": "Fassung für Orgel", "@language": "de"}
         builder = {"id": "viaf:1", "label": "Orgelbau X"}
+        meter = {
+            "type": ["melod:Meter"],
+            "melod:hasMeterCount": [3],
+            "melod:inMeterUnit": [4],
+        }
+        organ = {
+            "rdfs:label": ["organ"],
+            "skos:notation": ["org"],
+            "mus:U30_foresees_quantity_of_medium_of_performance": [2],
+            "owl:sameAs": [{"id": "https://example.org/media/org"}],
+        }
+        treader = {"rdfs:label": ["bellows treader"]}
         expression = {
             "id": "andante.xml#expression_1",
             "type": ["melod:Expression"],
             "rdfs:label": [label],
             "rel:ctb": [builder],
+            "melod:hasMeter": [meter],
+            MEDIUM: [organ, treader],
             "provenance": [
                 confirmed("rdf:type", {"id": "melod:Expression"}, "expression_1", base),
                 confirmed("rdfs:label", label, "title_2", base),
@@ -435,8 +567,15 @@ class TestSecondHeader:
                     base,
                     note="role 'organ builder'",
                 ),
+                confirmed("melod:hasMeter", meter, "meter_1", base),
+                confirmed(MEDIUM, organ, "perfRes_1", base),
+                confirmed(MEDIUM, treader, "perfRes_2", base),
             ],
         }
+        titles = [
+            title("Andante", None, None),
+            title("Little Andante", None, "OtherTitle"),
+        ]
         assert bundle.id == "andante"
         assert bundle.statements == {
             "rdfs:seeAlso": [{"id": "andante.xml"}],
@@ -444,20 +583,32 @@ class TestSecondHeader:
                 {
                     "id": "andante.xml#work_1",
                     "type": ["melod:Work"],
-                    "melod:hasTitle": [title("Andante", None, None)],
+                    "melod:hasTitle": titles,
+                    "melod:hasIdentifier": [opus],
                     "schema:dateCreated": [dated],
+                    "melod:hasMeter": [work_meter],
+                    "owl:sameAs": [{"id": "gnd:300000001"}],
                     "lrmoo:R3_is_realised_in": [expression],
                     "provenance": [
                         confirmed("rdf:type", {"id": "melod:Work"}, "work_1", base),
-                        confirmed(
-                            "melod:hasTitle",
-                            title("Andante", None, None),
-                            "title_1",
-                            base,
-                        ),
+                        confirmed("melod:hasTitle", titles[0], "title_1", base),
+                        confirmed("melod:hasTitle", titles[1], "title_4", base),
+                        confirmed("melod:hasIdentifier", opus, "identifier_2", base),
                         proposed("rel:dte", {"label": "Anna"}, "persName_1", base),
+                        proposed("rel:cph", {"label": "Verlag Y"}, "persName_3", base),
+                        proposed(
+                            "rel:ctb",
+                            {"label": "Tuner Z"},
+                            "persName_4",
+                            base,
+                            note="unreconciled; role 'organ tuner'",
+                        ),
                         proposed("rel:cmp", {"label": "Anonymous"}, "composer_1", base),
                         confirmed("schema:dateCreated", dated, "date_1", base),
+                        confirmed("melod:hasMeter", work_meter, "meter_2", base),
+                        confirmed(
+                            "owl:sameAs", {"id": "gnd:300000001"}, "work_1", base
+                        ),
                         confirmed(
                             "lrmoo:R3_is_realised_in",
                             {"id": "andante.xml#expression_1"},
@@ -476,6 +627,11 @@ class TestSecondHeader:
     def test_singleton_manifestation(self, andante: Path) -> None:
         bundle = MeiHeadLoader.from_file(andante).create_bundle(date=DATE)
         base = "andante.xml"
+        published = {
+            "type": ["melod:ExactDate"],
+            "melod:isodate": [{"@value": "1895-05-01", "@type": "xsd:date"}],
+            "schema:description": ["1 May 1895"],
+        }
         item = {
             "type": ["melod:Item"],
             "melod:hasShelfmark": ["Mus. ms. 1"],
@@ -488,6 +644,7 @@ class TestSecondHeader:
         assert autograph.statements == {
             "type": ["melod:Manifestation"],
             "melod:hasTitle": [title("Autograph", None, None)],
+            "schema:datePublished": [published],
             "lrmoo:R7i_is_exemplified_by": [item],
             "melod:hasManifestationPart": [part],
             "dcterms:hasPart": [part],
@@ -497,6 +654,7 @@ class TestSecondHeader:
             confirmed(
                 "melod:hasTitle", title("Autograph", None, None), "title_3", base
             ),
+            confirmed("schema:datePublished", published, "date_2", base),
             confirmed("lrmoo:R7i_is_exemplified_by", item, "source_1", base),
             confirmed("melod:hasManifestationPart", part, "relation_1", base),
             confirmed("dcterms:hasPart", part, "relation_1", base),
@@ -507,7 +665,8 @@ class TestSecondHeader:
             MeiHeadLoader.from_file(andante).create_bundle(date=DATE)
         )
         assert context_prefixes(manifest) == sorted(
-            "cidoc dcterms lrmoo melod rdf rdfs rel schema viaf xsd".split()
+            "cidoc dcterms gnd lrmoo melod melodTerms mus owl rdf rdfs rel schema skos "
+            "viaf xsd".split()
         )
 
 
@@ -546,9 +705,14 @@ class TestInto:
             into=bundle, subjects={"source_1": "cgt_6", "item_1": "region_1"}, date=DATE
         )
         region = bundle.get_timeline("cgt_6").get_region("region_1")
-        assert region.statements == ITEM
+        assert region.statements == ITEM_PAIRS
         assert region.provenance == [
             confirmed("rdf:type", {"id": "melod:Item"}, "item_1"),
+            confirmed(
+                "melod:hasIdentifier",
+                ITEM_PAIRS["melod:hasIdentifier"][0],
+                "identifier_4",
+            ),
             confirmed("melod:hasShelfmark", "CNS 342e", "identifier_3"),
             proposed(KEEPER, {"label": "DK-Kk"}, "corpName_1"),
         ]
@@ -585,6 +749,56 @@ class TestInto:
             if e["property"] == "rel:cmp"
         ]
         assert statuses == ["rejected"]
+
+
+class TestDecisionsKept:
+    """A decision taken on a value node survives a second import."""
+
+    AGAIN = {"source_1": "cgt_1", "source_2": "cgt_2"}
+
+    def test_rejected_work(self, cnw0133: Path) -> None:
+        loader = MeiHeadLoader.from_file(cnw0133)
+        bundle = loader.create_bundle(date=DATE)
+        bundle.reject_statement(
+            "schema:about", {"id": WORK}, stated_by=EDITOR, date="2026-11-20"
+        )
+        decided = bundle.to_dict()
+        loader.create_bundle(into=bundle, subjects=self.AGAIN, date="2026-11-21")
+        assert bundle.to_dict() == decided
+        assert bundle.statements == {"rdfs:seeAlso": [{"id": "cnw0133.xml"}]}
+
+    def test_rejected_embodiment(self, cnw0133: Path) -> None:
+        loader = MeiHeadLoader.from_file(cnw0133)
+        bundle = loader.create_bundle(date=DATE)
+        printed = bundle.get_timeline("cgt_1")
+        printed.reject_statement(
+            "lrmoo:R4_embodies", {"id": EXPRESSION}, stated_by=EDITOR, date="2026-11-20"
+        )
+        decided = bundle.to_dict()
+        loader.create_bundle(into=bundle, subjects=self.AGAIN, date="2026-11-21")
+        assert bundle.to_dict() == decided
+        assert "lrmoo:R4_embodies" not in printed.statements
+
+    def test_confirmed_keeper_in_an_item(self, cnw0133: Path) -> None:
+        loader = MeiHeadLoader.from_file(cnw0133)
+        bundle = loader.create_bundle(date=DATE)
+        autograph = bundle.get_timeline("cgt_2")
+        item = ("lrmoo:R7i_is_exemplified_by", 0)
+        autograph.confirm_statement(
+            KEEPER, {"label": "DK-Kk"}, stated_by=EDITOR, date="2026-11-20", node=item
+        )
+        decided = bundle.to_dict()
+        loader.create_bundle(into=bundle, subjects=self.AGAIN, date="2026-11-21")
+        assert bundle.to_dict() == decided
+        assert autograph.get_pairs(node=item) == [
+            (KEEPER, {"label": "DK-Kk"}),
+            ("melod:hasIdentifier", ITEM_PAIRS["melod:hasIdentifier"][0]),
+            ("melod:hasShelfmark", "CNS 342e"),
+            ("type", "melod:Item"),
+        ]
+        assert [e["status"] for e in autograph.get_provenance(node=item)] == [
+            "confirmed"
+        ]
 
 
 class TestBase:
@@ -660,6 +874,19 @@ class TestRefusals:
         with pytest.raises(ValueError) as raised:
             loader.create_bundle(into=bundle, date=DATE, **kwargs)
         assert str(raised.value) == message
+        assert bundle.to_dict() == before
+
+    def test_a_refused_pair_changes_nothing(self, tmp_path: Path) -> None:
+        path = write_header(tmp_path / "variant", UNDECLARED_PREFIX)
+        bundle = layerit()
+        before = bundle.to_dict()
+        with pytest.raises(ValueError) as raised:
+            MeiHeadLoader.from_file(path).create_bundle(into=bundle, date=DATE)
+        assert str(raised.value) == (
+            "the prefix 'doi' is declared neither by the catalogue nor on the new "
+            "timeline of manifestation 'source_2'"
+        )
+        assert bundle.timeline_ids == ["clt_6", "cgt_6"]
         assert bundle.to_dict() == before
 
     def test_subjects_without_into(self, cnw0133: Path) -> None:

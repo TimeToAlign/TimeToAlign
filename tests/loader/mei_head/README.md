@@ -19,14 +19,24 @@ mapping at least once:
   by `@codedval`), an exact creation date, one expression (title, key, meter,
   two media of performance), a relation with a fallback property; two
   manifestations, one embodying the expression through a relation and one
-  with `@sameas`, a main title and an item (shelfmark, a repository given
-  only by name).
-* `andante.xml` (MEI 4.0.1): a work titled in its `titleStmt`, a dedicatee
-  in `titleStmt/respStmt`, a composer element holding only text, a date
-  given by its bounds, one expression no manifestation embodies (with a
-  language-tagged title and a contributor of an unknown role that has an
-  IRI), a singleton manifestation whose `physLoc` names a repository with an
-  IRI, and a `hasPart` relation.
+  with `@sameas`, a main title and an item (an identifier, a shelfmark, a
+  repository given only by name).
+* `andante.xml` (MEI 4.0.1): a work with an authority IRI of its own
+  (`@auth.uri` and `@codedval`), an identifier labelled by its `@type`, a
+  title and a title of a type MeLODy does not list (`OtherTitle`) in its
+  `titleStmt`; in `titleStmt/respStmt` a dedicatee, a name whose role is a
+  three-letter code and one of an unknown role, none with an IRI; a composer
+  element holding only text, a date given by its bounds, a meter whose
+  count is no number; one expression no manifestation embodies (with a
+  language-tagged title, a contributor of an unknown role that has an IRI,
+  a meter of count and unit, a medium with a count and an authority IRI and
+  one in a nested list); a singleton manifestation with a publication date,
+  whose `physLoc` names a repository with an IRI, and a `hasPart` relation.
+
+Three variants of `cnw0133.xml` cover what one header cannot hold at once:
+the expression placed by its own `hasEmbodiment` instead of the
+manifestation's `isEmbodimentOf`; two items of equal content; a `@sameas`
+whose prefix no context declares.
 
 Every expected statement and provenance entry is written from the mapping,
 never copied from a run: the tests compare whole dictionaries for equality,
@@ -39,17 +49,24 @@ another basis fails.
   `schema:about`, with the IRI `<base>#<xml:id>`; the bundle also points to
   the MEI file with `rdfs:seeAlso`.
 * An **expression** is a value node with the IRI `<base>#<xml:id>`, written
-  in full under `lrmoo:R4_embodies` of each manifestation that names it in a
-  relation `isEmbodimentOf`; the work then names it by its IRI alone under
-  `lrmoo:R3_is_realised_in`. An expression no manifestation embodies is
-  written in full under the work's `lrmoo:R3_is_realised_in` (the second
-  header proves this branch).
+  in full under `lrmoo:R4_embodies` of each manifestation embodying it; the
+  work then names it by its IRI alone under `lrmoo:R3_is_realised_in`. Either
+  side of the relation places it: the manifestation's `isEmbodimentOf` or
+  the expression's `hasEmbodiment`. The variant stating only the latter
+  gives the first header's statements exactly, the `lrmoo:R4_embodies` entry
+  based on the expression's relation, and no `lrmoo:R4i_is_embodied_in` in
+  the expression: one fact is stated once. An expression no manifestation
+  embodies is written in full under the work's `lrmoo:R3_is_realised_in`
+  (the second header proves this branch).
 * Each **manifestation** becomes a new graphical timeline in millimetres of
   unknown length, named by its first title, added to the bundle before any
   statement, so a value naming it (`{"id": "#cgt_1"}`) carries its final ID.
 * An **item** is a value node under its manifestation's
   `lrmoo:R7i_is_exemplified_by`, its pairs stated inside the node; a
-  repository without an IRI is proposed inside the node.
+  repository without an IRI is proposed inside the node. An item with an
+  `xml:id` has the IRI `<base>#<xml:id>` as its `id`, so two items of equal
+  content stay two nodes (the variant with two such items); the item of a
+  singleton manifestation, which has no element of its own, is a blank node.
 
 The tests check the timelines' IDs, units, lengths and names, each holder's
 `statements` and `provenance`, and the manifest written: `to_dict()` passes
@@ -74,6 +91,12 @@ is the statement API's.
   element the first import gave it, leaves the manifest written unchanged:
   a pair the subject states, proposes or rejects is skipped. A rejected
   proposal is not proposed again.
+* A decision taken on a value node survives a second import, which then
+  changes nothing: the work rejected under `schema:about` (its pairs are not
+  put back, since the bundle no longer holds the node); an expression
+  rejected under a manifestation's `lrmoo:R4_embodies`; the keeper proposed
+  inside an item node confirmed there (the item is found by its IRI though
+  its content changed, and the confirmation stays).
 * `base` sets the address against which relative targets resolve and from
   which every basis and IRI is built; the default is the file name,
   percent-encoded, and the bundle's default ID is the file's stem with every
@@ -86,4 +109,9 @@ import `into` a bundle, the bundle's manifest is unchanged: `id` together
 with `into`, `subjects` without `into`, a key naming no work, expression,
 manifestation or item, a key naming a work or an expression (they are values,
 never elements), a value naming no timeline or region of the bundle, a header
-with two works, and a file holding no `meiHead`.
+with two works, and a file holding no `meiHead`. A pair refused while the
+import states it refuses the whole import before the bundle changes: the
+variant whose manifestation has `@sameas="doi:10.1000/x"` (a prefix neither
+the catalogue nor the holder declares) leaves the bundle's manifest
+unchanged and adds no timeline; the message names the timeline the import
+would have added by its manifestation, as it holds no ID yet.

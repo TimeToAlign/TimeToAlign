@@ -504,6 +504,25 @@ class TestErrors:
         assert str(raised.value) == "a blank node of works/1.ttl contains itself"
         assert layerit.to_dict() == before
 
+    def test_a_refused_pair_changes_nothing(
+        self, tmp_path: Path, layerit: AlignmentBundle
+    ) -> None:
+        undeclared = MANIFESTATION.replace(
+            " .\n", " ;\n  owl:sameAs <doi:10.1000/x> .\n"
+        )
+        folder = write(
+            tmp_path / "repo", {**REPOSITORY, "manifestations/4.ttl": undeclared}
+        )
+        before = layerit.to_dict()
+        with pytest.raises(ValueError) as raised:
+            MelodyLoader.from_file(folder).create_bundle(into=layerit, date=DATE)
+        assert str(raised.value) == (
+            "the prefix 'doi' is declared neither by the catalogue nor on the new "
+            "timeline of manifestation 'urn:uuid:manifestations/4'"
+        )
+        assert list(layerit.timelines) == ["clt_6"]
+        assert layerit.to_dict() == before
+
     def test_a_file_that_is_no_turtle(self, tmp_path: Path) -> None:
         path = tmp_path / "broken.ttl"
         path.write_text(PREFIXES + "<urn:uuid:works/1> a .\n", encoding="utf-8")
@@ -535,6 +554,34 @@ class TestKinds:
         assert bundle.statements == {"schema:about": [unembodied]}
         assert bundle.provenance == [
             C("schema:about", {"id": "urn:uuid:works/1"}, "1.ttl", "2.ttl")
+        ]
+
+    def test_two_files_of_one_name_given_directly(self, tmp_path: Path) -> None:
+        first = write(tmp_path / "a", {"x.ttl": WORK}) / "x.ttl"
+        second = write(tmp_path / "b", {"x.ttl": EXPRESSION + MANIFESTATION + PERSON})
+        loader = MelodyLoader.from_file(first, second / "x.ttl")
+        assert [[name for name, _ in record.files] for record in loader.records] == [
+            ["x.ttl"],
+            ["x.ttl"],
+        ]
+        bundle = loader.create_bundle(id="clair_de_lune", date=DATE)
+        assert list(bundle.timelines) == ["cgt_1"]
+        assert bundle.statements == {"schema:about": [WORK_NODE]}
+        assert bundle.provenance == [
+            C("schema:about", {"id": "urn:uuid:works/1"}, "x.ttl")
+        ]
+        edition = bundle.timelines["cgt_1"]
+        assert edition.statements == {
+            "type": ["melod:Manifestation"],
+            "owl:sameAs": [{"id": "urn:uuid:manifestations/4"}],
+            "lrmoo:R4_embodies": [expression_node(DEBUSSY)],
+            "melod:hasTitle": [TITLE],
+        }
+        assert edition.provenance == [
+            C("rdf:type", {"id": "melod:Manifestation"}, "x.ttl"),
+            C("owl:sameAs", {"id": "urn:uuid:manifestations/4"}, "x.ttl"),
+            C("lrmoo:R4_embodies", {"id": "urn:uuid:expressions/2"}, "x.ttl"),
+            C("melod:hasTitle", TITLE, "x.ttl"),
         ]
 
     @pytest.mark.parametrize(

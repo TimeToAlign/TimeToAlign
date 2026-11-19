@@ -21,7 +21,6 @@ website:
       - reference/ColumnNaming.qmd
       - reference/ColumnRole.qmd
       - reference/ScopedId.qmd
-      - reference/IdGenerator.qmd
       - reference/TimeStamp.qmd
       - reference/TimeIntervalStamp.qmd
       section: Core Types
@@ -92,7 +91,6 @@ website:
       - reference/MatchFileContext.qmd
       - reference/NoteRecord.qmd
       - reference/SnoteRecord.qmd
-      - reference/TimelineIdGenerator.qmd
       section: Alignment
     - contents:
       - reference/Loader.qmd

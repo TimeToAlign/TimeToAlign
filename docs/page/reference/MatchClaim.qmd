@@ -20,22 +20,23 @@ for synchronous claims.
 
 ## Attributes {.doc-section .doc-section-attributes}
 
-| Name              | Type                                                                      | Description                                                                                                                        |
-|-------------------|---------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------|
-| timeline_a_id     | [str](`str`)                                                              | First timeline's unique identifier.                                                                                                |
-| timeline_b_id     | [str](`str`)                                                              | Second timeline's unique identifier.                                                                                               |
-| start_anchor      | [AlignmentAnchor](`timetoalign.alignment.claims.AlignmentAnchor`) \| None | AlignmentAnchor for event starts (None for non-synchronous).                                                                       |
-| end_anchor        | [AlignmentAnchor](`timetoalign.alignment.claims.AlignmentAnchor`) \| None | AlignmentAnchor for event ends (None for instants or non-synchronous claims).                                                      |
-| is_synchronous    | [bool](`bool`)                                                            | True if temporally synchronous matches.                                                                                            |
-| is_explicit       | [bool](`bool`)                                                            | True if directly claimed, False if inferred.                                                                                       |
-| metadata          | [MatchMetadata](`timetoalign.alignment.claims.MatchMetadata`) \| None     | Provenance information (agent, criteria, certainty).                                                                               |
-| source_claim_id   | [str](`str`) \| None                                                      | For implicit claims, the ID of the claim that generated this one.                                                                  |
-| event_a_id        | [str](`str`) \| None                                                      | ID of the event on timeline A (if known).                                                                                          |
-| event_a_name      | [str](`str`) \| None                                                      | Name/label of the event on timeline A (if known).                                                                                  |
-| event_b_id        | [str](`str`) \| None                                                      | ID of the event on timeline B (if known).                                                                                          |
-| event_b_name      | [str](`str`) \| None                                                      | Name/label of the event on timeline B (if known).                                                                                  |
-| source_coordinate | [Coordinate](`timetoalign.core.Coordinate`) \| None                       | Unmatched source-side coordinate for a NOMATCH claim. None for synchronous claims, whose coordinate is held by the anchor instead. |
-| id                | [str](`str`)                                                              | Unique identifier for this claim.                                                                                                  |
+| Name              | Type                                                                      | Description                                                                                                                                                                                                                                                                                                                             |
+|-------------------|---------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| timeline_a_id     | [str](`str`)                                                              | First timeline's unique identifier.                                                                                                                                                                                                                                                                                                     |
+| timeline_b_id     | [str](`str`)                                                              | Second timeline's unique identifier.                                                                                                                                                                                                                                                                                                    |
+| start_anchor      | [AlignmentAnchor](`timetoalign.alignment.claims.AlignmentAnchor`) \| None | AlignmentAnchor for event starts (None for non-synchronous).                                                                                                                                                                                                                                                                            |
+| end_anchor        | [AlignmentAnchor](`timetoalign.alignment.claims.AlignmentAnchor`) \| None | AlignmentAnchor for event ends (None for instants or non-synchronous claims).                                                                                                                                                                                                                                                           |
+| is_synchronous    | [bool](`bool`)                                                            | True if temporally synchronous matches.                                                                                                                                                                                                                                                                                                 |
+| is_explicit       | [bool](`bool`)                                                            | True if directly claimed, False if inferred.                                                                                                                                                                                                                                                                                            |
+| metadata          | [MatchMetadata](`timetoalign.alignment.claims.MatchMetadata`) \| None     | Provenance information (agent, criteria, certainty).                                                                                                                                                                                                                                                                                    |
+| source_claim_id   | [str](`str`) \| None                                                      | For implicit claims, the ID of the claim that generated this one.                                                                                                                                                                                                                                                                       |
+| event_a_id        | [str](`str`) \| None                                                      | ID of the event on timeline A (if known).                                                                                                                                                                                                                                                                                               |
+| event_a_name      | [str](`str`) \| None                                                      | Name/label of the event on timeline A (if known).                                                                                                                                                                                                                                                                                       |
+| event_b_id        | [str](`str`) \| None                                                      | ID of the event on timeline B (if known).                                                                                                                                                                                                                                                                                               |
+| event_b_name      | [str](`str`) \| None                                                      | Name/label of the event on timeline B (if known).                                                                                                                                                                                                                                                                                       |
+| source_coordinate | [Coordinate](`timetoalign.core.Coordinate`) \| None                       | Unmatched source-side coordinate for a NOMATCH claim. None for synchronous claims, whose coordinate is held by the anchor instead.                                                                                                                                                                                                      |
+| id                | [str](`str`)                                                              | The claim's identifier, unique in the scope holding the claim (a :class:`MatchClaimField` or an ``AlignmentBundle``). Without one, the claim mints ``claim_1``: its own scope is empty, and a scope it joins mints it again where that id is held there. A given id is kept verbatim, and a scope already holding it refuses the claim. |
+| id_minted         | [bool](`bool`)                                                            | Whether ``id`` was minted rather than given, so whether it gives way when the claim joins a scope. Stored with the claim, so a claim read back from storage still gives way.                                                                                                                                                            |
 
 ## Examples {.doc-section .doc-section-examples}
 
@@ -411,17 +412,46 @@ only the two timelines in this claim (no graph construction needed).
 
 #### Examples {.doc-section .doc-section-examples}
 
-Full stamp (default -- from graph, all groups)::
+A score and two performances, each in its own group, each
+claimed at the score's quarter 8:
 
-    >>> stamp = claim.get_matchstamp()  # uses claim's bundle
-    >>> stamp.n_timelines
-    23  # score + 22 performers at this coordinate
+```python
+>>> from timetoalign.alignment import AlignmentBundle
+>>> from timetoalign.timelines.types import (
+...     ContinuousLogicalTimeline,
+...     ContinuousPhysicalTimeline,
+... )
+>>> bundle = AlignmentBundle()
+>>> _ = bundle.add_timeline(
+...     ContinuousLogicalTimeline(length=16, uid="score"), as_group="score"
+... )
+>>> for n, seconds in ((1, 40.0), (2, 32.0)):
+...     _ = bundle.add_timeline(
+...         ContinuousPhysicalTimeline(length=seconds, uid=f"perf_{n}"),
+...         as_group=f"perf_{n}",
+...     )
+...     claims = bundle.create_match_claims(
+...         [({"start": 8}, "score", {"start": seconds / 2}, f"perf_{n}")]
+...     )
+>>> claim = claims[0]  # score <-> perf_2
+```
 
-Reduced stamp (two timelines only)::
+The full stamp (from the graph) reaches every connected timeline:
 
-    >>> stamp = claim.get_matchstamp(from_graph=False)
-    >>> stamp.n_timelines
-    2   # just the two timelines in this claim
+```python
+>>> stamp = claim.get_matchstamp()  # uses the claim's bundle
+>>> stamp.n_timelines
+3
+>>> stamp.get_coordinate_for("perf_1", format="float")
+20.0
+```
+
+The reduced stamp holds the claim's two timelines only:
+
+```python
+>>> claim.get_matchstamp(from_graph=False).n_timelines
+2
+```
 
 ### implicit { #timetoalign.alignment.MatchClaim.implicit }
 

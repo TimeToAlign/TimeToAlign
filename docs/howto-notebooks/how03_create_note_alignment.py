@@ -82,8 +82,11 @@ abc_df = pd.read_csv(ABC_DIR / "n04op18-4_04_unfolded.notes.tsv", sep="\t")
 # %% [markdown]
 # ## 3. Prepare & Match Notes
 #
-# Before matching, we filter out rests and tied notes, and explode chords
-# into individual pitches.
+# Before matching, we drop the rests of the performance notes and explode
+# their chords into individual pitches. Of the score notes we keep those that
+# sound anew: a note without a tie, or the first note of a tie. The notes a
+# tie continues or ends prolong a sound already started, so a tied sound is
+# matched at its first note.
 
 # %%
 eep_prepared = prepare_eep_notes_for_matching(eep_df)

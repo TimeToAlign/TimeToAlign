@@ -51,7 +51,7 @@ each with a single responsibility:
 
 | Subpackage    | Responsibility                                                                                    |
 |---------------|---------------------------------------------------------------------------------------------------|
-| `core/`       | Foundational types: enums (`Domain`, `TimeUnit`, …), `Coordinate` / `IdCoordinate`, `TimeStamp`, `IdGenerator`; `core/fields.py` contains the `SemanticField` bases plus the Arrow translator/builder. |
+| `core/`       | Foundational types: enums (`Domain`, `TimeUnit`, …), `Coordinate` / `IdCoordinate`, `TimeStamp`, `ScopedId` and the id minting of `core/ids.py`; `core/fields.py` contains the `SemanticField` bases plus the Arrow translator/builder. |
 | `display/`    | ASCII rendering helpers for timelines, groups, bundles, flows.                                    |
 | `maps/`       | `ConversionMap` family (`LinearMap`, `TableMap`, `ChainMap`, `PiecewiseMap`, …).                  |
 | `timelines/`  | `Timeline` classes for all six domain × modality combinations, `TimelineGroup`, regions, flow control, beat grids. |

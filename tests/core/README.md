@@ -1021,6 +1021,13 @@ stateless generator of manifest element ids.
      `clt_1`; with a role, `("score:clt", {"score:clt_1"})` →
      `score:clt_2`. Called twice with the same arguments it answers the same
      id, because it keeps no state.
+   - `mint_ids(prefix, taken, count)` is the same rule for many ids at once
+     (claim scopes admit whole columns): it must answer exactly what
+     `mint_id` answers called `count` times with each answer added to the
+     taken set. Checked against that loop: `("claim", ["claim_2", "x"], 3)`
+     → `claim_1`, `claim_3`, `claim_4`; nulls in `taken` are ignored; a
+     `count` of 0 answers an empty array; taken `claim_1`…`claim_5` with
+     `count` 2 → `claim_6`, `claim_7`.
    - An id is free: any non-empty string without a control character.
      `validate_id` returns unchanged `"performance"`, `"a"`, `"Bass Kick"`,
      `"score:clt_7"`, `"a/b"` (a slash), `"intro to part 2"` (spaces), the

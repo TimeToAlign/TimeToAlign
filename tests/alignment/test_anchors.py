@@ -347,13 +347,13 @@ class TestMatchClaim:
         assert claim.end_anchor is end
 
     def test_auto_generated_id(self, basic_anchor: AlignmentAnchor) -> None:
-        """Test ID is auto-generated if not provided."""
+        """Without an id, a claim mints ``claim_1`` in its own empty scope."""
         claim = MatchClaim(
             timeline_a_id="score:1",
             timeline_b_id="recording:1",
             start_anchor=basic_anchor,
         )
-        assert claim.id.startswith("claim:MatchClaim")
+        assert (claim.id, claim.id_minted) == ("claim_1", True)
 
     def test_explicit_id(self, basic_anchor: AlignmentAnchor) -> None:
         """Test explicit ID is preserved."""
@@ -363,7 +363,7 @@ class TestMatchClaim:
             start_anchor=basic_anchor,
             id="my_claim",
         )
-        assert claim.id == "my_claim"
+        assert (claim.id, claim.id_minted) == ("my_claim", False)
 
     def test_mismatched_anchors_raises(self) -> None:
         """Test error when anchors connect different timelines."""

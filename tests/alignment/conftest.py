@@ -16,7 +16,6 @@ from pathlib import Path
 import pytest
 
 from timetoalign.alignment import Agent, AlignmentAnchor, MatchClaim, MatchMetadata
-from timetoalign.alignment.claims import _reset_anchor_ids, _reset_claim_ids
 from timetoalign.core import AgentType, Coordinate, TimeUnit
 from timetoalign.testdata import ensure_data
 from timetoalign.timelines import (
@@ -136,24 +135,6 @@ EVENT_H_END_GLOBAL = DGT2_SEGMENT_LENGTHS[0] + EVENT_H_END_LOCAL
 
 # Audio timing for validation
 AUDIO_DURATION_SECONDS = 150.0
-
-# endregion
-
-
-# region ID Reset Fixtures
-
-
-@pytest.fixture(autouse=True)
-def reset_ids() -> None:
-    """Reset ID generators before each test.
-
-    This ensures test isolation - each test starts with fresh IDs.
-    Resets the anchor and claim generators; group and bundle ids are minted
-    statelessly and need no reset.
-    """
-    _reset_anchor_ids()
-    _reset_claim_ids()
-
 
 # endregion
 

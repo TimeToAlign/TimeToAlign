@@ -7,8 +7,9 @@ for resolving partial/regex ID patterns.
 Includes:
 - ScopedId: An identifier with scope:local format.
 - IdGenerator: General-purpose unique ID generation within a scope.
-- mint_id: The one generator of manifest element ids, ``{prefix}_{N}``
-  (e.g., ``clt_1``, ``region_2``, ``score:clt_1``).
+- mint_id: The one generator of minted ids, ``{prefix}_{N}``
+  (e.g., ``clt_1``, ``region_2``, ``score:clt_1``); ``mint_ids`` mints many
+  at once by the same rule.
 - validate_id: The rule every given id obeys.
 - resolve_id: Resolve a partial string or regex to a single ID.
 - resolve_ids: Resolve a pattern to all matching IDs.
@@ -23,6 +24,9 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any, ClassVar
 
+import numpy as np
+import pyarrow as pa
+import pyarrow.compute as pc
 import timetoshare
 
 from .enums import TimeUnit
@@ -317,6 +321,37 @@ def mint_id(prefix: str, taken: Container[str]) -> str:
     while f"{prefix}_{number}" in taken:
         number += 1
     return f"{prefix}_{number}"
+
+
+def mint_ids(prefix: str, taken: pa.Array, count: int) -> pa.Array:
+    """Mint *count* ids ``{prefix}_{N}``, the N the smallest numbers not taken.
+
+    The columnar sibling of :func:`mint_id`, by the same rule and as
+    stateless: minting one id after another into a growing taken set gives
+    exactly these ids, in this order.
+
+    Args:
+        prefix: The type prefix (``"claim"``).
+        taken: The ids already held in the scope (a string array; nulls are
+            ignored).
+        count: How many ids to mint.
+
+    Returns:
+        A string array of *count* ids, ascending by number.
+
+    Examples:
+        >>> mint_ids("claim", pa.array(["claim_2", "x"]), 3).to_pylist()
+        ['claim_1', 'claim_3', 'claim_4']
+        >>> len(mint_ids("claim", pa.array([], pa.string()), 0))
+        0
+    """
+    occupied = pc.unique(pc.drop_null(pc.cast(taken, pa.string())))
+    numbers = pa.array(np.arange(1, count + len(occupied) + 1, dtype=np.int64))
+    candidates = pc.binary_join_element_wise(
+        f"{prefix}_", pc.cast(numbers, pa.string()), ""
+    )
+    free = candidates.filter(pc.invert(pc.is_in(candidates, value_set=occupied)))
+    return free.slice(0, count)
 
 
 def timeline_id_prefix(unit: TimeUnit) -> str:

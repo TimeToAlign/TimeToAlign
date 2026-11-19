@@ -35,6 +35,7 @@ from decimal import Decimal
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, ClassVar
 
+import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -54,7 +55,6 @@ from timetoalign.core import (
     CoordinateSpec,
     CoordinateValue,
     IdCoordinate,
-    IdGenerator,
     Interval,
     NumberType,
     TimeUnit,
@@ -65,6 +65,7 @@ from timetoalign.core.fields import (
     build_struct_array,
     register_value_projector,
 )
+from timetoalign.core.ids import mint_id, mint_ids, quote_id, validate_id
 from timetoalign.core.retrieval import (
     CoordinateFormat,
     CoordinateResult,
@@ -86,9 +87,8 @@ if TYPE_CHECKING:
 
 module_logger = logging.getLogger(__name__)
 
-# Module-level ID generators
-_anchor_id_generator = IdGenerator(scope="anchor")
-_claim_id_generator = IdGenerator(scope="claim")
+#: The prefix of a minted claim id (``claim_1``).
+_CLAIM_ID_PREFIX = "claim"
 
 
 def _column_declares_exact(units: pa.Array) -> bool:
@@ -110,16 +110,108 @@ def _column_declares_exact(units: pa.Array) -> bool:
     return False
 
 
-def _reset_anchor_ids() -> None:
-    """Reset the module-level ID generator. For testing only."""
-    global _anchor_id_generator
-    _anchor_id_generator = IdGenerator(scope="anchor")
+def _admitted_claim_ids(
+    ids: pa.Array, minted: pa.Array, taken: pa.Array, *, scope: str
+) -> tuple[pa.Array, pa.Array]:
+    """Return the ids and minted flags rows keep when they join a claim scope.
+
+    The rule of every scope of the library (a manifest, a group, a bundle),
+    applied to claims: a given id held in the scope, or given twice among
+    the newcomers, is refused; a minted id held in the scope, or held by an
+    earlier newcomer, is minted again (``claim_N``, the smallest N free); a
+    row without an id is minted one. Every check runs before any id is
+    chosen, so a refusal changes nothing. Vectorized: the cost is that of
+    hashing the ids, whatever their number.
+
+    Args:
+        ids: The newcomers' ids (a string array; null for a row without one).
+        minted: Whether each newcomer's id was minted (null counts as given
+            where an id is present).
+        taken: The ids the scope already holds.
+        scope: What the scope is, for the message (``"bundle"``, ``"field"``).
+
+    Returns:
+        The ids the newcomers keep, in row order, and their minted flags.
+
+    Raises:
+        ValueError: If a given id is already held in the scope or given
+            twice.
+    """
+    ids = pc.cast(ids, pa.string())
+    taken = pc.cast(taken, pa.string())
+    minted = pc.or_(pc.fill_null(minted, False), pc.is_null(ids))
+    given_ids = ids.filter(pc.invert(minted))
+    held = given_ids.filter(pc.is_in(given_ids, value_set=taken))
+    if len(held):
+        raise ValueError(
+            f"claim id {quote_id(held[0].as_py())} is already held by another "
+            f"claim of this {scope}"
+        )
+    counts = pc.value_counts(given_ids)
+    repeated = counts.filter(pc.greater(counts.field("counts"), 1))
+    if len(repeated):
+        raise ValueError(
+            f"claim id {quote_id(repeated.field('values')[0].as_py())} is given twice"
+        )
+
+    occupied = pa.concat_arrays([taken, given_ids])
+    positions = pa.array(np.arange(len(ids), dtype=np.int64))
+    minted_rows = pa.table({"id": ids, "position": positions}).filter(minted)
+    first_positions = (
+        minted_rows.group_by("id")
+        .aggregate([("position", "min")])
+        .column("position_min")
+    )
+    keep = pc.and_(
+        pc.and_(minted, pc.is_in(positions, value_set=first_positions)),
+        pc.and_(pc.is_valid(ids), pc.invert(pc.is_in(ids, value_set=occupied))),
+    )
+    renew = pc.and_(minted, pc.invert(keep))
+    count = pc.sum(renew).as_py() or 0
+    if count == 0:
+        return ids, minted
+    fresh = mint_ids(
+        _CLAIM_ID_PREFIX, pa.concat_arrays([occupied, ids.filter(keep)]), count
+    )
+    return pc.replace_with_mask(ids, renew, fresh), minted
 
 
-def _reset_claim_ids() -> None:
-    """Reset the module-level ID generator. For testing only."""
-    global _claim_id_generator
-    _claim_id_generator = IdGenerator(scope="claim")
+def _join_claims(
+    claims: Sequence["MatchClaim"], taken: pa.Array, *, scope: str
+) -> list["MatchClaim"]:
+    """Return *claims* as they join a scope holding the ids *taken*.
+
+    The ids are admitted by :func:`_admitted_claim_ids` (so a refusal
+    changes nothing). A claim that belongs to no bundle joins as itself,
+    renamed in place where its minted id gave way, so the caller's object
+    is the one the scope holds. A claim a bundle already holds, or one
+    listed twice, joins as a copy: the bundle it came from keeps its ids.
+
+    Args:
+        claims: The newcomers.
+        taken: The ids the scope already holds.
+        scope: What the scope is, for the message.
+
+    Returns:
+        The claims to store, in order.
+    """
+    admitted, _ = _admitted_claim_ids(
+        pa.array([claim.id for claim in claims], type=pa.string()),
+        pa.array([claim.id_minted for claim in claims], type=pa.bool_()),
+        taken,
+        scope=scope,
+    )
+    joined: list[MatchClaim] = []
+    seen: set[int] = set()
+    for claim, claim_id in zip(claims, admitted.to_pylist(), strict=True):
+        listed = id(claim)
+        if claim._bundle is not None or listed in seen:
+            claim = claim.model_copy(update={"id": claim_id})
+        elif claim_id != claim.id:
+            object.__setattr__(claim, "id", claim_id)
+        seen.add(listed)
+        joined.append(claim)
+    return joined
 
 
 # region Agent
@@ -450,6 +542,7 @@ class AlignmentAnchor(BaseModel):
 
 _CLAIM_KEY_ORDER: tuple[str, ...] = (
     "id",
+    "id_minted",
     "timeline_a_id",
     "timeline_b_id",
     "start_anchor",
@@ -504,7 +597,15 @@ class MatchClaim(BaseModel):
         source_coordinate: Unmatched source-side coordinate for a NOMATCH
             claim. None for synchronous claims, whose coordinate is held by
             the anchor instead.
-        id: Unique identifier for this claim.
+        id: The claim's identifier, unique in the scope holding the claim
+            (a :class:`MatchClaimField` or an ``AlignmentBundle``). Without
+            one, the claim mints ``claim_1``: its own scope is empty, and a
+            scope it joins mints it again where that id is held there. A
+            given id is kept verbatim, and a scope already holding it
+            refuses the claim.
+        id_minted: Whether ``id`` was minted rather than given, so whether
+            it gives way when the claim joins a scope. Stored with the claim,
+            so a claim read back from storage still gives way.
 
     Examples:
         >>> # Synchronous instant match via factory
@@ -547,22 +648,22 @@ class MatchClaim(BaseModel):
     event_b_id: str | None = None
     event_b_name: str | None = None
     source_coordinate: Coordinate | None = None
-    id: str = ""  # noqa: A003 — auto-generated claim id
+    id: str = ""  # noqa: A003 — minted when not given
+    id_minted: bool = False
 
-    # Runtime association with the owning bundle. A private attr is excluded
-    # from equality, hash, repr, and the derived Arrow schema.
+    # Runtime association with the owning bundle. A private attr takes no
+    # part in the derived Arrow schema or the repr, and ``__eq__`` excludes it.
     _bundle: Any = PrivateAttr(default=None)
 
     @model_validator(mode="after")
     def _validate_claim(self) -> "MatchClaim":
-        """Auto-generate the ID and validate anchor presence vs synchrony."""
-        # Auto-generate ID (frozen model: bypass via object.__setattr__).
+        """Mint or validate the ID and validate anchor presence vs synchrony."""
+        # Frozen model: set through object.__setattr__.
         if not self.id:
-            object.__setattr__(
-                self,
-                "id",
-                _claim_id_generator.create(type_hint="MatchClaim"),
-            )
+            object.__setattr__(self, "id", mint_id(_CLAIM_ID_PREFIX, ()))
+            object.__setattr__(self, "id_minted", True)
+        else:
+            validate_id(self.id)
 
         # Validate anchor presence based on synchrony
         if self.is_synchronous:
@@ -605,6 +706,18 @@ class MatchClaim(BaseModel):
                     "is_synchronous=True."
                 )
         return self
+
+    def __eq__(self, other: object) -> bool:
+        """Compare every field; the bundle back-reference takes no part.
+
+        A claim records the bundle holding it (:attr:`bundle`) for
+        :meth:`get_matchstamp`; that is where the claim is, not what it
+        claims, so a claim equals its copy read back from a
+        :class:`MatchClaimField`, in a bundle or not.
+        """
+        if not isinstance(other, MatchClaim):
+            return NotImplemented
+        return type(self) is type(other) and self.__dict__ == other.__dict__
 
     @property
     def is_interval(self) -> bool:
@@ -876,17 +989,40 @@ class MatchClaim(BaseModel):
                 (neither passed nor set via ``set_bundle()``).
 
         Examples:
-            Full stamp (default -- from graph, all groups)::
+            A score and two performances, each in its own group, each
+            claimed at the score's quarter 8:
 
-                >>> stamp = claim.get_matchstamp()  # uses claim's bundle
-                >>> stamp.n_timelines
-                23  # score + 22 performers at this coordinate
+            >>> from timetoalign.alignment import AlignmentBundle
+            >>> from timetoalign.timelines.types import (
+            ...     ContinuousLogicalTimeline,
+            ...     ContinuousPhysicalTimeline,
+            ... )
+            >>> bundle = AlignmentBundle()
+            >>> _ = bundle.add_timeline(
+            ...     ContinuousLogicalTimeline(length=16, uid="score"), as_group="score"
+            ... )
+            >>> for n, seconds in ((1, 40.0), (2, 32.0)):
+            ...     _ = bundle.add_timeline(
+            ...         ContinuousPhysicalTimeline(length=seconds, uid=f"perf_{n}"),
+            ...         as_group=f"perf_{n}",
+            ...     )
+            ...     claims = bundle.create_match_claims(
+            ...         [({"start": 8}, "score", {"start": seconds / 2}, f"perf_{n}")]
+            ...     )
+            >>> claim = claims[0]  # score <-> perf_2
 
-            Reduced stamp (two timelines only)::
+            The full stamp (from the graph) reaches every connected timeline:
 
-                >>> stamp = claim.get_matchstamp(from_graph=False)
-                >>> stamp.n_timelines
-                2   # just the two timelines in this claim
+            >>> stamp = claim.get_matchstamp()  # uses the claim's bundle
+            >>> stamp.n_timelines
+            3
+            >>> stamp.get_coordinate_for("perf_1", format="float")
+            20.0
+
+            The reduced stamp holds the claim's two timelines only:
+
+            >>> claim.get_matchstamp(from_graph=False).n_timelines
+            2
         """
         if not self.is_synchronous or self.start_anchor is None:
             return None
@@ -1346,13 +1482,25 @@ class MatchClaim(BaseModel):
         Shows claim type, timelines with coordinates, events, and metadata.
 
         Examples:
+            >>> claim = MatchClaim.from_events(
+            ...     event_a={"id": "e001", "name": "Intro", "start": 0, "end": Fraction(1, 2)},
+            ...     tl_a_id="score:clt_1",
+            ...     event_b={"id": "e042", "name": "Intro", "start": 0, "end": 261},
+            ...     tl_b_id="perf:dlt_1",
+            ...     unit_a=TimeUnit.quarters,
+            ...     unit_b=TimeUnit.ticks,
+            ...     end_coord_key="end",
+            ...     metadata=MatchMetadata(
+            ...         agent=Agent(name="partitura", type=AgentType.software, identifier="1.0")
+            ...     ),
+            ... )
             >>> print(claim)
             MatchClaim (synchronous, interval)
-              Timeline A:  score:clt_1  [0.0 -- 0.5]
+              Timeline A:  score:clt_1  [0 quarters -- 1/2 quarters]
               Event A:     e001 "Intro"
-              Timeline B:  perf:dlt_1   [0 -- 261]
+              Timeline B:  perf:dlt_1  [0 ticks -- 261 ticks]
               Event B:     e042 "Intro"
-              Metadata:    agent=partitura, certainty=1.0
+              Metadata:    agent=partitura
         """
 
         def _event_str(ev_id: str | None, ev_name: str | None) -> str | None:
@@ -1658,14 +1806,19 @@ class MatchClaimField(SemanticField[MatchClaim]):
     _COLUMN_NAME: ClassVar[str] = "match_claim"
     #: The Arrow schema-metadata key carrying the field-level metadata.
     _METADATA_KEY: ClassVar[bytes] = b"timetoalign:match_metadata"
-    #: The per-row string sub-fields :meth:`from_claims` copies from each claim.
-    _ROW_STRINGS: ClassVar[tuple[str, ...]] = (
+    #: The per-row sub-fields beside the anchors and the metadata, each read
+    #: from a claim by :meth:`from_claims`, written by :meth:`to_dict` and
+    #: read by :meth:`from_dict` under its own name; the types are the
+    #: derived struct's.
+    _ROW_VALUES: ClassVar[tuple[str, ...]] = (
+        "id",
+        "id_minted",
+        "is_explicit",
         "source_claim_id",
         "event_a_id",
         "event_a_name",
         "event_b_id",
         "event_b_name",
-        "id",
     )
 
     def __init__(
@@ -1709,10 +1862,11 @@ class MatchClaimField(SemanticField[MatchClaim]):
 
         Each row is a synchronous instant claim: ``timeline_a_id`` /
         ``timeline_b_id`` and the ``start_anchor`` sub-struct are filled from
-        the inputs; ``is_synchronous`` and ``is_explicit`` are ``True``;
-        ``end_anchor`` / event ids / names / ``source_coordinate`` /
-        ``metadata`` / ``source_claim_id`` / ``id`` are left null (the shared
-        metadata is injected on read, the id is generated on materialise).
+        the inputs; ``is_synchronous`` and ``is_explicit`` are ``True``; the
+        ids ``claim_1`` ... ``claim_n`` are minted (the field is the scope of
+        its claims' ids); ``end_anchor`` / event ids / names /
+        ``source_coordinate`` / ``metadata`` / ``source_claim_id`` are left
+        null (the shared metadata is injected on read).
 
         Args:
             timeline_a_ids: Timeline-A ids, one per claim.
@@ -1744,7 +1898,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
         n = next(iter(lengths))
 
         struct_array = cls._build_struct_array(n, tl_a, tl_b, coord_a, coord_b)
-        return cls._from_struct_array(struct_array, metadata=metadata)
+        return cls._scoped(struct_array, metadata=metadata)
 
     @classmethod
     def from_claims(
@@ -1757,9 +1911,11 @@ class MatchClaimField(SemanticField[MatchClaim]):
 
         Every claim must be synchronous and carry a start anchor. Interval
         claims retain their end anchors. Each row keeps its claim's
-        ``id``, ``source_claim_id``, event ids and names, and
-        ``is_explicit``, so every claim materialises equal to the one
-        stored.
+        ``id`` and ``id_minted``, ``source_claim_id``, event ids and names,
+        and ``is_explicit``, so every claim materialises equal to the one
+        stored. The field is the scope of its claims' ids: where two minted
+        ids are alike, the later one is minted again (``claim_N``, the
+        smallest N free), and two given ids alike are refused.
 
         If ``metadata`` is ``None`` and all claims share one identical
         :class:`MatchMetadata` (by equality), that metadata is adopted as the
@@ -1778,15 +1934,11 @@ class MatchClaimField(SemanticField[MatchClaim]):
 
         Raises:
             ValueError: If any claim is non-synchronous (NOMATCH) or lacks a
-                start anchor.
+                start anchor, or if two claims are given the same id.
         """
         for index, claim in enumerate(claims):
             if not claim.is_synchronous or claim.start_anchor is None:
-                raise ValueError(
-                    f"MatchClaimField holds synchronous claims only; "
-                    f"claim at index {index} is non-synchronous (NOMATCH) and "
-                    f"is out of scope."
-                )
+                raise cls._out_of_scope(index)
         if metadata is None:
             metadata = cls._common_metadata(claims)
 
@@ -1836,21 +1988,13 @@ class MatchClaimField(SemanticField[MatchClaim]):
                 for claim in claims
             ],
         )
-        per_row: dict[str, pa.Array] = {
-            "is_explicit": pa.array(
-                [claim.is_explicit for claim in claims], type=pa.bool_()
-            ),
-            **{
-                name: pa.array(
-                    [getattr(claim, name) for claim in claims], type=pa.string()
-                )
-                for name in cls._ROW_STRINGS
+        per_row = cls._row_arrays(
+            {
+                name: [getattr(claim, name) for claim in claims]
+                for name in cls._ROW_VALUES
             },
-        }
-        if metadata is None:
-            per_row["metadata"] = build_struct_array(
-                MatchMetadata, [claim.metadata for claim in claims]
-            )
+            None if metadata is not None else [claim.metadata for claim in claims],
+        )
         struct_array = cls._build_struct_array(
             len(claims),
             tl_a,
@@ -1861,20 +2005,23 @@ class MatchClaimField(SemanticField[MatchClaim]):
             end_coord_b,
             per_row=per_row,
         )
-        return cls._from_struct_array(struct_array, metadata=metadata)
+        return cls._scoped(struct_array, metadata=metadata)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "MatchClaimField":
         """Deserialize a field from a plain dictionary.
 
-        Inverse of :meth:`to_dict`.
+        Inverse of :meth:`to_dict`: every column it writes is read back, so
+        the field's table and claims come back equal.
 
         Args:
-            data: A mapping with the four column lists and an optional
-                ``metadata`` dict.
+            data: A mapping as :meth:`to_dict` writes it.
 
         Returns:
             A new :class:`MatchClaimField`.
+
+        Raises:
+            ValueError: If two rows are given the same id.
         """
         metadata_dict = data.get("metadata")
         metadata = (
@@ -1892,6 +2039,14 @@ class MatchClaimField(SemanticField[MatchClaim]):
         end_units_b = data["end_unit_b"]
         end_coord_a = cls._coordinate_struct_array(end_values_a, end_units_a)
         end_coord_b = cls._coordinate_struct_array(end_values_b, end_units_b)
+        row_metadata = data["row_metadata"]
+        per_row = cls._row_arrays(
+            {name: data[name] for name in cls._ROW_VALUES},
+            [
+                None if entry is None else MatchMetadata.from_dict(entry)
+                for entry in row_metadata
+            ],
+        )
         struct_array = cls._build_struct_array(
             len(tl_a),
             tl_a,
@@ -1900,8 +2055,9 @@ class MatchClaimField(SemanticField[MatchClaim]):
             coord_b,
             end_coord_a,
             end_coord_b,
+            per_row=per_row,
         )
-        return cls._from_struct_array(struct_array, metadata=metadata)
+        return cls._scoped(struct_array, metadata=metadata)
 
     @classmethod
     def from_table(cls, table: pa.Table) -> "MatchClaimField":
@@ -1914,7 +2070,9 @@ class MatchClaimField(SemanticField[MatchClaim]):
         ``timetoalign:match_metadata`` (the JSON of
         :meth:`MatchMetadata.to_dict`); a table without that key gives a
         field whose metadata is ``None``.  Every row is kept as stored, so
-        anything the struct column carries per row comes back unchanged.
+        anything the struct column carries per row comes back unchanged;
+        the ids are admitted as :meth:`from_claims` admits them (a row
+        without one is minted one).
 
         Args:
             table: A table as written by :attr:`table`.
@@ -1925,7 +2083,10 @@ class MatchClaimField(SemanticField[MatchClaim]):
         Raises:
             ValueError: If the table does not hold exactly one column named
                 ``match_claim``, or that column's type is not
-                :attr:`pa_schema`.
+                :attr:`pa_schema`; if a row is non-synchronous or lacks a
+                start anchor (the rows :meth:`from_claims` refuses); if the
+                table carries metadata both in its schema metadata and in
+                its rows; or if two rows are given the same id.
 
         Examples:
             >>> agent = Agent(name="dtw", type=AgentType.software, identifier="v1")
@@ -1961,11 +2122,111 @@ class MatchClaimField(SemanticField[MatchClaim]):
                 f"Column {cls._COLUMN_NAME!r} has type {column.type}, which is "
                 f"not the MatchClaim struct type {cls.pa_schema}."
             )
-        stored = (table.schema.metadata or {}).get(cls._METADATA_KEY)
-        metadata = (
-            None if stored is None else MatchMetadata.from_dict(json.loads(stored))
+        struct_array = column.combine_chunks()
+        out_of_scope = pc.or_(
+            pc.invert(pc.fill_null(struct_array.field("is_synchronous"), False)),
+            pc.is_null(struct_array.field("start_anchor")),
         )
-        return cls._from_struct_array(column.combine_chunks(), metadata=metadata)
+        if pc.any(out_of_scope).as_py():
+            raise cls._out_of_scope(pc.index(out_of_scope, True).as_py())
+        stored = (table.schema.metadata or {}).get(cls._METADATA_KEY)
+        if stored is None:
+            metadata = None
+        else:
+            metadata = MatchMetadata.from_dict(json.loads(stored))
+            row_metadata = struct_array.field("metadata")
+            with_metadata = len(row_metadata) - row_metadata.null_count
+            if with_metadata:
+                raise ValueError(
+                    f"A MatchClaimField table states its metadata once: this "
+                    f"table carries it in its schema metadata "
+                    f"({cls._METADATA_KEY.decode()!r}) and in {with_metadata} "
+                    f"row(s)."
+                )
+        return cls._scoped(struct_array, metadata=metadata)
+
+    @staticmethod
+    def _out_of_scope(index: int) -> ValueError:
+        """The refusal of a row the field cannot hold, naming its index."""
+        return ValueError(
+            f"MatchClaimField holds synchronous claims only; claim at index "
+            f"{index} is non-synchronous (NOMATCH) and is out of scope."
+        )
+
+    @classmethod
+    def _row_arrays(
+        cls,
+        values: dict[str, Sequence[Any]],
+        row_metadata: Sequence[MatchMetadata | None] | None,
+    ) -> dict[str, pa.Array]:
+        """Build the :attr:`_ROW_VALUES` sub-fields (and row metadata) by name.
+
+        Args:
+            values: One list per name of :attr:`_ROW_VALUES`.
+            row_metadata: Each row's metadata, or ``None`` where the field
+                holds one metadata for every row.
+        """
+        arrays = {
+            name: pa.array(values[name], type=cls.pa_schema.field(name).type)
+            for name in cls._ROW_VALUES
+        }
+        if row_metadata is not None:
+            arrays["metadata"] = build_struct_array(MatchMetadata, row_metadata)
+        return arrays
+
+    @classmethod
+    def _scoped(
+        cls,
+        struct_array: pa.StructArray,
+        *,
+        metadata: MatchMetadata | None,
+        taken: pa.Array | None = None,
+        scope: str = "field",
+    ) -> "MatchClaimField":
+        """Wrap *struct_array* with its ids admitted into a scope.
+
+        Args:
+            struct_array: The claim rows.
+            metadata: The field-level metadata.
+            taken: The ids the scope already holds (none: the field is its
+                own scope).
+            scope: What the scope is, for the message.
+        """
+        ids, minted = _admitted_claim_ids(
+            struct_array.field("id"),
+            struct_array.field("id_minted"),
+            pa.array([], type=pa.string()) if taken is None else taken,
+            scope=scope,
+        )
+        children = {"id": ids, "id_minted": minted}
+        arrays = [
+            children.get(sub_field.name, struct_array.field(sub_field.name))
+            for sub_field in cls.pa_schema
+        ]
+        rebuilt = pa.StructArray.from_arrays(arrays, fields=list(cls.pa_schema))
+        return cls._from_struct_array(rebuilt, metadata=metadata)
+
+    def _joined(self, taken: pa.Array, *, scope: str) -> "MatchClaimField":
+        """Return this field as it joins a scope holding the ids *taken*.
+
+        A minted id held there is minted again, a given one refused (see
+        :func:`_admitted_claim_ids`). Where every id stays, the field itself
+        is returned; otherwise a new field, and this one is left unchanged.
+        """
+        joined = self._scoped(
+            self._struct_array(), metadata=self._metadata, taken=taken, scope=scope
+        )
+        return self if joined._ids.equals(self._ids) else joined
+
+    def _struct_array(self) -> pa.StructArray:
+        """The claim rows, an empty array of the struct type when none."""
+        data = self._raw.data
+        return pa.array([], type=self.pa_schema) if data is None else data
+
+    @property
+    def _ids(self) -> pa.Array:
+        """The claim ids, one per row."""
+        return self._struct_array().field("id")
 
     @classmethod
     def _from_struct_array(
@@ -2555,70 +2816,55 @@ class MatchClaimField(SemanticField[MatchClaim]):
     def to_dict(self) -> dict[str, Any]:
         """Serialize to a plain dictionary (inverse of :meth:`from_dict`).
 
-        The id and coordinate columns are emitted as plain Python lists (read
-        directly from the struct sub-fields); the metadata is emitted via
-        :meth:`MatchMetadata.to_dict` (or ``None``).
+        Every value the table carries is written: the timeline ids, the
+        coordinate and unit columns of both anchors (an exact coordinate as
+        its :class:`~fractions.Fraction`), the per-row values named in
+        :attr:`_ROW_VALUES` (claim id and whether it was minted,
+        ``is_explicit``, ``source_claim_id``, event ids and names), each
+        row's own metadata (``row_metadata``) and the field's metadata
+        (``metadata``, via :meth:`MatchMetadata.to_dict`, or ``None``).
 
         Returns:
             A round-trippable mapping.
         """
-        data = self._raw.data
-        if data is None:
-            empty: list[Any] = []
-            columns = {
-                "timeline_a_id": empty,
-                "timeline_b_id": empty,
-                "coordinate_a": empty,
-                "coordinate_b": empty,
-                "unit_a": empty,
-                "unit_b": empty,
-                "end_coordinate_a": empty,
-                "end_coordinate_b": empty,
-                "end_unit_a": empty,
-                "end_unit_b": empty,
-            }
-        else:
-            anchor = data.field("start_anchor")
-            end_anchor = data.field("end_anchor")
-            stored_a = anchor.field("coordinate_a").to_pylist()
-            stored_b = anchor.field("coordinate_b").to_pylist()
-            stored_end_a = end_anchor.field("coordinate_a").to_pylist()
-            stored_end_b = end_anchor.field("coordinate_b").to_pylist()
+        data = self._struct_array()
+        anchor = data.field("start_anchor")
+        end_anchor = data.field("end_anchor")
+        stored_a = anchor.field("coordinate_a").to_pylist()
+        stored_b = anchor.field("coordinate_b").to_pylist()
+        stored_end_a = end_anchor.field("coordinate_a").to_pylist()
+        stored_end_b = end_anchor.field("coordinate_b").to_pylist()
 
-            def storage_value(value: dict[str, Any]) -> CoordinateValue:
-                """Read one known claim-coordinate storage cell."""
-                numerator = value["numerator"]
-                denominator = value["denominator"]
-                if numerator is not None and denominator is not None:
-                    return Fraction(numerator, denominator)
-                return value["value"]
+        def storage_value(value: dict[str, Any] | None) -> CoordinateValue | None:
+            """Read one claim-coordinate storage cell (``None`` when absent)."""
+            if value is None:
+                return None
+            numerator = value["numerator"]
+            denominator = value["denominator"]
+            if numerator is not None and denominator is not None:
+                return Fraction(numerator, denominator)
+            return value["value"]
 
-            columns = {
-                "timeline_a_id": data.field("timeline_a_id").to_pylist(),
-                "timeline_b_id": data.field("timeline_b_id").to_pylist(),
-                "coordinate_a": [storage_value(value) for value in stored_a],
-                "coordinate_b": [storage_value(value) for value in stored_b],
-                "unit_a": [value["unit"] for value in stored_a],
-                "unit_b": [value["unit"] for value in stored_b],
-                "end_coordinate_a": [
-                    None if value is None else storage_value(value)
-                    for value in stored_end_a
-                ],
-                "end_coordinate_b": [
-                    None if value is None else storage_value(value)
-                    for value in stored_end_b
-                ],
-                "end_unit_a": [
-                    None if value is None else value["unit"] for value in stored_end_a
-                ],
-                "end_unit_b": [
-                    None if value is None else value["unit"] for value in stored_end_b
-                ],
-            }
-        columns["metadata"] = (
-            self._metadata.to_dict() if self._metadata is not None else None
-        )
-        return columns
+        def unit(value: dict[str, Any] | None) -> str | None:
+            return None if value is None else value["unit"]
+
+        return {
+            "timeline_a_id": data.field("timeline_a_id").to_pylist(),
+            "timeline_b_id": data.field("timeline_b_id").to_pylist(),
+            "coordinate_a": [storage_value(value) for value in stored_a],
+            "coordinate_b": [storage_value(value) for value in stored_b],
+            "unit_a": [unit(value) for value in stored_a],
+            "unit_b": [unit(value) for value in stored_b],
+            "end_coordinate_a": [storage_value(value) for value in stored_end_a],
+            "end_coordinate_b": [storage_value(value) for value in stored_end_b],
+            "end_unit_a": [unit(value) for value in stored_end_a],
+            "end_unit_b": [unit(value) for value in stored_end_b],
+            **{name: data.field(name).to_pylist() for name in self._ROW_VALUES},
+            "row_metadata": data.field("metadata").to_pylist(),
+            "metadata": (
+                self._metadata.to_dict() if self._metadata is not None else None
+            ),
+        }
 
     def _empty(self) -> "MatchClaimField":
         """Return a zero-row field of this schema, keeping the metadata."""

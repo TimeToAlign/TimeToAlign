@@ -2,6 +2,7 @@
 
 from typing import Any
 
+import pyarrow as pa
 import pytest
 
 from timetoalign.core import TimeUnit
@@ -9,6 +10,7 @@ from timetoalign.core.ids import (
     IdGenerator,
     ScopedId,
     mint_id,
+    mint_ids,
     timeline_id_prefix,
     validate_id,
 )
@@ -344,6 +346,35 @@ class TestMintId:
     def test_no_state_between_calls(self) -> None:
         assert mint_id("region", ()) == "region_1"
         assert mint_id("region", ()) == "region_1"
+
+
+class TestMintIds:
+    """mint_ids answers what mint_id answers, one id after another."""
+
+    @staticmethod
+    def _one_by_one(prefix: str, taken: list[str | None], count: int) -> list[str]:
+        held = {value for value in taken if value is not None}
+        minted = []
+        for _ in range(count):
+            minted.append(mint_id(prefix, held))
+            held.add(minted[-1])
+        return minted
+
+    @pytest.mark.parametrize(
+        ("taken", "count", "expected"),
+        [
+            (["claim_2", "x"], 3, ["claim_1", "claim_3", "claim_4"]),
+            (["claim_1", None], 1, ["claim_2"]),
+            (["claim_1"], 0, []),
+            ([f"claim_{n}" for n in range(1, 6)], 2, ["claim_6", "claim_7"]),
+        ],
+    )
+    def test_same_as_minting_one_by_one(
+        self, taken: list[str | None], count: int, expected: list[str]
+    ) -> None:
+        minted = mint_ids("claim", pa.array(taken, type=pa.string()), count)
+        assert minted.to_pylist() == expected
+        assert expected == self._one_by_one("claim", taken, count)
 
 
 class TestValidateId:

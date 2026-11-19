@@ -264,7 +264,6 @@ def _complete_timeline(
         "children": [],
         "regions": [],
         "flow_control": [],
-        "links": [],
         **keys,
     }
 
@@ -293,8 +292,6 @@ READ_COMPLETE: dict[str, Any] = {
     ],
     "groups": [],
     "measure_maps": READ_MINIMAL["measure_maps"],
-    "schemes": [],
-    "links": [],
 }
 
 

@@ -235,8 +235,6 @@ def test_group_dict_is_exact() -> None:
             }
         ],
         "measure_maps": [],
-        "schemes": [],
-        "links": [],
         "graphical": {
             "order": {"group_1": ["score", "image"]},
             "styles": {},

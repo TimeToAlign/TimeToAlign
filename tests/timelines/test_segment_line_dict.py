@@ -73,7 +73,6 @@ def _object(
         "conversion_maps": [],
         "regions": [],
         "flow_control": [],
-        "links": [],
     }
 
 
@@ -86,8 +85,6 @@ def _manifest(timeline: dict[str, Any]) -> dict[str, Any]:
         "timelines": [timeline],
         "groups": [],
         "measure_maps": [],
-        "schemes": [],
-        "links": [],
     }
 
 

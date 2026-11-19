@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import replace
 from typing import Any
 
@@ -13,7 +13,6 @@ from timetoalign.core.ids import quote_id
 from timetoalign.core.time import coordinate_numeric_value
 from timetoalign.core.timestamp import _format_coordinate_value
 
-from ..description import Link, LinksMixin
 from ..regions import Region
 
 
@@ -107,7 +106,6 @@ class RegionsMixin:
         id: str | None = None,
         name: str | None = None,
         meta: dict[str, Any] | None = None,
-        links: Iterable[Link] = (),
     ) -> Region:
         """Create a new Region and attach it to this timeline.
 
@@ -121,10 +119,6 @@ class RegionsMixin:
                 minted, unique in this timeline's manifest.
             name: Optional display name; names may repeat.
             meta: Optional metadata dictionary.
-            links: The region's links, in their order; a link stating no
-                assertion takes the default assertion, if one is set, as
-                with :meth:`Region.with_link
-                <timetoalign.timelines.Region.with_link>`.
 
         Returns:
             The created Region object.
@@ -144,17 +138,15 @@ class RegionsMixin:
                 id=id,
                 name=name,
                 meta=meta or {},
-                links=tuple(LinksMixin._link_to_add(link, {}) for link in links),
             )
         )
 
     def replace_region(self, region: Region) -> Self:
         """Store *region* in place of the region holding its id.
 
-        Regions are frozen: a region changed — given a link with
-        :meth:`Region.with_link <timetoalign.timelines.Region.with_link>`,
-        another name with ``dataclasses.replace`` — is a new region, which
-        takes the place of the one this timeline holds under its id.
+        Regions are frozen: a region changed — given another name with
+        ``dataclasses.replace`` — is a new region, which takes the place of
+        the one this timeline holds under its id.
 
         Args:
             region: The region to store, carrying the id of a region of
@@ -168,13 +160,13 @@ class RegionsMixin:
             ValueError: If the region's unit is not the timeline's.
 
         Examples:
+            >>> from dataclasses import replace
             >>> from timetoalign.timelines import ContinuousLogicalTimeline
             >>> score = ContinuousLogicalTimeline(length=16)
             >>> intro = score.create_region(0, 4, id="intro")
-            >>> movement = "https://musicbrainz.org/work/80cbaf7b-a1da-3fc5-b650-6eb72a803980"
-            >>> _ = score.replace_region(intro.with_link(movement, label="I. Allegro"))
-            >>> [link.label for link in score.get_region("intro").links]
-            ['I. Allegro']
+            >>> _ = score.replace_region(replace(intro, name="Introduction"))
+            >>> score.get_region("intro").name
+            'Introduction'
         """
         self.get_region(region.id)
         if region.unit != self._unit:
@@ -186,18 +178,13 @@ class RegionsMixin:
         return self
 
     def _rename_region(self, old_id: str, new_id: str) -> None:
-        """Store the region *old_id* under the minted id *new_id*.
-
-        Every part slot of the timeline's manifest naming *old_id* names
-        *new_id* (``Timeline._rename_references``).
-        """
+        """Store the region *old_id* under the minted id *new_id*."""
         self._regions = {
             (new_id if key == old_id else key): (
                 replace(region, id=new_id, _minted=True) if key == old_id else region
             )
             for key, region in self._regions.items()
         }
-        self._rename_references(old_id, new_id)
 
     def create_regions_from_boundaries(
         self,

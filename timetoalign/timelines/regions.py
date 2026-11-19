@@ -11,22 +11,19 @@ from a Region.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from copy import deepcopy
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from fractions import Fraction
 from typing import Any, ClassVar
 
 from timetoalign.core import Coordinate, IdCoordinate, NumberType, TimeUnit
-from timetoalign.core.ids import _IdentifiedElement, quote_id
+from timetoalign.core.ids import _IdentifiedElement
 from timetoalign.core.time import Duration, Interval
 
-from .description import Link, LinksMixin, _renamed_parts
 from .manifest import (
     axis_value_from_json,
     axis_value_to_json,
     read_id,
-    read_links,
     read_meta,
     read_name,
     require_object,
@@ -36,16 +33,15 @@ from .manifest import (
 
 
 @dataclass(frozen=True)
-class Region(_IdentifiedElement, LinksMixin):
+class Region(_IdentifiedElement):
     """An identified part of a timeline defined by a TimeInterval.
 
     IMPORTANT: Regions are NOT timelines. They cannot hold events or C-maps.
     Use ``Timeline.create_child_from_region(region_id)`` to create a Child
     timeline from a Region.
 
-    A region is frozen: :meth:`with_link` returns a copy holding one more
-    link, :meth:`without_link` a copy holding one fewer; a timeline stores
-    the copy in the region's place with
+    A region is frozen: a timeline stores a changed copy in the region's
+    place with
     :meth:`Timeline.replace_region <timetoalign.timelines.Timeline.replace_region>`.
 
     Attributes:
@@ -53,8 +49,6 @@ class Region(_IdentifiedElement, LinksMixin):
         end: End coordinate of the region.
         name: Optional display name (e.g., "Chorus"); names may repeat.
         meta: Additional metadata (e.g., traversal order labels).
-        links: The region's links to the entities it pertains to (a
-            movement, a recording of it), in the order given.
         id: The region's id; minted as ``region_{N}`` when not given.
 
     Examples:
@@ -89,7 +83,6 @@ end=Coordinate(Fraction(32, 1), quarters))
         "start",
         "end",
         "meta",
-        "links",
     )
     _manifest_path: ClassVar[tuple[str, ...]] = ("timelines", "regions")
 
@@ -97,7 +90,6 @@ end=Coordinate(Fraction(32, 1), quarters))
     end: Coordinate
     name: str | None = None
     meta: dict[str, Any] = field(default_factory=dict)
-    links: tuple[Link, ...] = ()
 
     @classmethod
     def from_dict(
@@ -110,9 +102,8 @@ end=Coordinate(Fraction(32, 1), quarters))
         """Restore a region from its object in a timeline's ``regions``.
 
         ``start`` and ``end`` are bare values on the timeline's axis, which
-        *unit* and *number_type* describe; ``name``, ``meta`` and ``links``
-        may be left out. Keys the library does not know are kept and written
-        back, inside a link too.
+        *unit* and *number_type* describe; ``name`` and ``meta`` may be left
+        out. Keys the library does not know are kept and written back.
 
         Args:
             data: The region object.
@@ -136,7 +127,6 @@ end=Coordinate(Fraction(32, 1), quarters))
             id=region_id,
             name=read_name(data, what),
             meta=read_meta(data, what),
-            links=tuple(read_links(data, what)),
             **bounds,
         )
         region._keep_unknown_keys(data)
@@ -145,7 +135,6 @@ end=Coordinate(Fraction(32, 1), quarters))
     def __post_init__(self) -> None:
         """Mint or validate the id, then validate region bounds and units."""
         super().__post_init__()
-        object.__setattr__(self, "links", tuple(self.links))
         if self.end.value < self.start.value:
             raise ValueError(
                 f"Region end ({self.end.value}) cannot be before "
@@ -211,93 +200,14 @@ end=Coordinate(Fraction(32, 1), quarters))
         """
         return self.start.value < other.end.value and other.start.value < self.end.value
 
-    def with_link(self, link: Link | str, **options: Any) -> Region:
-        """Return a copy of this region holding *link* after its own links.
-
-        The copy keeps the region's id, bounds, name and metadata; this
-        region is left as it is. A link stating no assertion takes the
-        default assertion, if one is set (see
-        :func:`~timetoalign.timelines.description.set_default_assertion`).
-
-        Args:
-            link: The link, or the URL of the linked entity, which
-                ``Link.from_url`` reads with *options*.
-            **options: Passed to ``Link.from_url`` with a URL.
-
-        Raises:
-            TypeError: If *options* are given beside a :class:`Link`.
-            ValueError: If ``Link.from_url`` refuses the URL or the options.
-
-        Examples:
-            >>> from timetoalign import Coordinate, TimeUnit
-            >>> first = Region(
-            ...     Coordinate(0, TimeUnit.quarters), Coordinate(16, TimeUnit.quarters)
-            ... )
-            >>> movement = first.with_link(
-            ...     "https://musicbrainz.org/work/80cbaf7b-a1da-3fc5-b650-6eb72a803980",
-            ...     label="I. Allegro",
-            ... )
-            >>> [link.label for link in movement.links], first.links
-            (['I. Allegro'], ())
-        """
-        return replace(self, links=(*self.links, self._link_to_add(link, options)))
-
-    def without_link(self, link: Link) -> Region:
-        """Return a copy of this region without *link*.
-
-        The copy keeps the region's id, bounds, name, metadata and every
-        other link; this region is left as it is.
-
-        Args:
-            link: A link equal to the one to leave out; the first equal link
-                is left out.
-
-        Raises:
-            ValueError: If the region holds no link equal to *link*
-                (``region 'first' holds no link equal to the link given``).
-
-        Examples:
-            >>> from timetoalign import Coordinate, TimeUnit
-            >>> first = Region(
-            ...     Coordinate(0, TimeUnit.quarters), Coordinate(16, TimeUnit.quarters)
-            ... ).with_link(
-            ...     "https://musicbrainz.org/work/80cbaf7b-a1da-3fc5-b650-6eb72a803980"
-            ... )
-            >>> first.without_link(first.links[0]).links
-            ()
-        """
-        position = self._link_position(link)
-        return replace(
-            self,
-            links=tuple(
-                held for index, held in enumerate(self.links) if index != position
-            ),
-        )
-
-    def _links_holder_name(self) -> str:
-        """Return the region as a message names it."""
-        return f"region {quote_id(self.id)}"
-
-    def _with_parts_renamed(self, renamed: Mapping[str, str | None]) -> Region:
-        """Return the region with the elements its links' part slots name renamed.
-
-        The region itself where no slot names a renamed element (see
-        :func:`~timetoalign.timelines.description._renamed_parts`).
-        """
-        links = tuple(_renamed_parts(link, renamed) for link in self.links)
-        if all(new is old for new, old in zip(links, self.links, strict=True)):
-            return self
-        return replace(self, links=links)
-
     def _dict_fields(self) -> dict[str, Any]:
-        """Return the region's keys; ``name``, ``meta`` and ``links`` are optional."""
+        """Return the region's keys; ``name`` and ``meta`` are optional."""
         return {
             "id": self.id,
             "name": self.name,
             "start": axis_value_to_json(self.start),
             "end": axis_value_to_json(self.end),
             "meta": deepcopy(self.meta),
-            "links": [link.to_dict(minimal=False) for link in self.links],
         }
 
     def __repr__(self) -> str:

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, ClassVar
@@ -39,7 +39,7 @@ from timetoalign.core import (
     resolve_id,
 )
 from timetoalign.core.enums import NumberType
-from timetoalign.core.ids import _admit_id, _OpenObject, mint_id, quote_id, validate_id
+from timetoalign.core.ids import _OpenObject, mint_id, quote_id, validate_id
 from timetoalign.core.retrieval import (
     CoordinateCollection,
     CoordinateFormat,
@@ -60,25 +60,14 @@ from timetoalign.core.retrieval import (
 )
 from timetoalign.core.timestamp import TimestampColumn, build_timestamp_table
 from timetoalign.timelines import TimelineGroup, UnknownLengthError
-from timetoalign.timelines.description import (
-    Link,
-    MutableLinksMixin,
-    Scheme,
-    _named_schemes,
-)
 from timetoalign.timelines.groups import (
     _groups_by_timeline,
     _held_ids,
     _IdScope,
     _nested,
     _root,
-    _tree,
 )
-from timetoalign.timelines.manifest import (
-    Manifest,
-    ManifestFileMixin,
-    schemes_named,
-)
+from timetoalign.timelines.manifest import Manifest, ManifestFileMixin
 
 from .claims import AlignmentAnchor, MatchClaim, MatchClaimField
 from .filters import ClaimFilter
@@ -137,7 +126,7 @@ def _resolve_coordinate_and_timeline(
 
 
 @dataclass
-class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObject):
+class AlignmentBundle(_IdScope, ManifestFileMixin, _OpenObject):
     """The primary entry point for all alignment workflows.
 
     An AlignmentBundle manages timelines and their alignment relationships.
@@ -172,11 +161,6 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
         styling: The members of the manifest's ``graphical`` other than
             ``order`` (``styles``, ``rules``, ``timestamps`` and any
             other), kept as given and never interpreted.
-        links: The manifest's links to the entities the bundle pertains to
-            (a work and its parts, a recording), in the order added
-            (:meth:`add_link`, :meth:`get_links`).
-        schemes: The identifier schemes the manifest declares, sorted by id
-            (:meth:`add_scheme`).
 
     Note:
         The two claim stores are interchangeable as far as queries are
@@ -227,10 +211,6 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
     # The members of the manifest's ``graphical`` other than ``order``,
     # kept as given and never interpreted.
     styling: dict[str, Any] = field(default_factory=dict)
-
-    # The manifest's links, in the order added, and its schemes by id.
-    _links: list[Link] = field(default_factory=list, init=False, repr=False)
-    _schemes: dict[str, Scheme] = field(default_factory=dict, init=False, repr=False)
 
     # Cached WarpMaps: (source_tl_id, target_tl_id) -> WarpMap | None
     # None values are cached as negative results to avoid repeated expensive
@@ -294,8 +274,7 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
         ``graphical.order`` entry (``members`` order without one).
         ``graphical``'s other keys are kept as :attr:`styling`, and the
         entries of ``graphical.order`` keyed by a timeline, its band orders,
-        are kept too, both unread. The manifest's ``schemes`` and ``links``
-        become the bundle's. Every root no group names joins
+        are kept too, both unread. Every root no group names joins
         ungrouped. A timeline several groups name is a member of each, one
         object shared by them. Keys the library does not know are kept on the
         object read from the JSON object they were found in, and written back.
@@ -313,9 +292,8 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
                 no timeline of ``"timelines"``, a group naming one member
                 twice, a member that is an ancestor or descendant of another
                 member of its group, an order that is no permutation of its
-                group's members or names no group or timeline, a link or
-                scheme breaking a rule of the format. The message names the
-                problem.
+                group's members or names no group or timeline. The message
+                names the problem.
 
         Examples:
             >>> from fractions import Fraction
@@ -344,8 +322,6 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
         bundle._has_graphical = manifest.has_graphical
         bundle._band_orders = manifest.band_orders
         bundle._measure_maps = manifest.measure_maps
-        bundle._links = list(manifest.links)
-        bundle._schemes = {scheme.id: scheme for scheme in manifest.schemes}
         for group_data in content.groups:
             group_id = group_data.get("id") if isinstance(group_data, dict) else None
             group = TimelineGroup._from_group_object(
@@ -372,12 +348,7 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
         Registers every group and standalone timeline from each source
         bundle into a new bundle, and carries over every cross-group
         ``MatchClaim`` (both the per-claim list and any columnar
-        ``MatchClaimField`` stores) unchanged. The links of the timelines and
-        regions travel with them, and so does every scheme they name by id,
-        declared by a source bundle or by the manifest a timeline was read
-        from; the source bundles' own links, and the schemes no carried link
-        names, belong to their manifests and are not carried over. Each
-        source group is entered as
+        ``MatchClaimField`` stores) unchanged. Each source group is entered as
         a new group with the same members, name and meta, each member keeping
         its own lock; a minted group id is minted again in the merged bundle,
         a given one is kept. Groups from
@@ -396,9 +367,7 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
 
         Raises:
             ValueError: If two source bundles share a given group ID, a
-                given timeline ID collision would occur across bundles, or
-                two different schemes carry an id the carried links name
-                (``two different schemes carry the id 'opus'``).
+                given timeline ID collision would occur across bundles.
 
         Examples:
             >>> from timetoalign.alignment import AlignmentBundle
@@ -418,16 +387,6 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
             >>> sorted(merged.timelines)
             ['clt_1', 'cpt_1']
         """
-        # The schemes the carried links name, refused before anything changes.
-        schemes = schemes_named(
-            (),
-            [
-                timeline
-                for bundle in bundles
-                for root in bundle._roots()
-                for timeline in _tree(root)
-            ],
-        )
         merged = cls(id=id, name=name)
         for bundle in bundles:
             for group in bundle.groups.values():
@@ -450,8 +409,6 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
             merged.add_match_claims(bundle.cross_group_claims)
             for claim_field in bundle.cross_group_claim_fields:
                 merged.add_match_claim_field(claim_field)
-        for scheme in schemes:
-            merged.add_scheme(scheme)
         return merged
 
     # region Timeline Management
@@ -684,148 +641,6 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
             root = _root(timeline)
             roots.setdefault(root.id, root)
         return list(roots.values())
-
-    def _declared_schemes(self) -> Iterable[Scheme]:
-        """Return the schemes the manifest declares."""
-        return self._schemes.values()
-
-    def _links_holder(self) -> "AlignmentBundle":
-        """Return the bundle: it holds the links of its manifest itself."""
-        return self
-
-    def _links_holder_name(self) -> str:
-        """Return the bundle as a message names it."""
-        return f"bundle {quote_id(self.id)}"
-
-    @property
-    def schemes(self) -> tuple[Scheme, ...]:
-        """The identifier schemes the manifest declares, sorted by id."""
-        return tuple(self._schemes[scheme_id] for scheme_id in sorted(self._schemes))
-
-    def add_scheme(
-        self,
-        scheme: Scheme | str,
-        *,
-        name: str | None = None,
-        uri: str | Sequence[str] = (),
-        criteria: str | None = None,
-    ) -> "AlignmentBundle":
-        """Declare an identifier scheme, so that identifiers may name it by id.
-
-        A scheme that mints no URI of its own (a catalogue's opus numbers, a
-        library's shelfmarks) is declared once in the manifest, and a link's
-        :class:`~timetoalign.timelines.description.Identifier` names it by
-        its id. The id is an id of the manifest like any other: unique
-        across its timelines, maps, regions, flow-control elements, groups,
-        measure maps and schemes, and the bundle's own given id. A minted
-        group id it takes is minted again, as for any given id.
-
-        Args:
-            scheme: The scheme, or its id.
-            name: The scheme's name, with an id.
-            uri: URIs that identify or describe the scheme, the first
-                preferred, with an id.
-            criteria: A document stating how the scheme assigns its values,
-                with an id.
-
-        Returns:
-            self (for method chaining)
-
-        Raises:
-            TypeError: If *name*, *uri* or *criteria* are given beside a
-                :class:`~timetoalign.timelines.description.Scheme`.
-            ValueError: If the id is no valid id or already held in the
-                manifest (``scheme 'clt_1' cannot join bundle 'bundle_1':
-                its id 'clt_1' is already held by timeline 'clt_1'``).
-
-        Examples:
-            >>> from timetoalign.alignment import AlignmentBundle
-            >>> bundle = AlignmentBundle().add_scheme(
-            ...     "mb_beethoven_opus",
-            ...     name="Works of Ludwig van Beethoven by opus number",
-            ...     uri="https://musicbrainz.org/series/004f17aa-0f46-4fec-b939-c5dfc849e5c6",
-            ... )
-            >>> bundle.schemes[0].to_dict()["id"]
-            'mb_beethoven_opus'
-        """
-        if isinstance(scheme, Scheme):
-            if name is not None or uri or criteria is not None:
-                raise TypeError(
-                    "name, uri and criteria build a scheme from its id; a Scheme is "
-                    "added as it is"
-                )
-        else:
-            scheme = Scheme(
-                scheme,
-                name=name,
-                uri=(uri,) if isinstance(uri, str) else tuple(uri),
-                criteria=criteria,
-            )
-        validate_id(scheme.id)
-        _admit_id(
-            scheme.id,
-            minted=False,
-            prefix="scheme",
-            taken=self._scope_ids(),
-            element=f"scheme {quote_id(scheme.id)}",
-            scope=f"bundle {quote_id(self.id)}",
-        )
-        self._schemes[scheme.id] = scheme
-        self._yield_minted_ids({scheme.id}, [self])
-        return self
-
-    def remove_scheme(self, scheme_id: str) -> "AlignmentBundle":
-        """Remove a scheme the manifest declares.
-
-        A scheme stays while a link of the bundle names it: a link of the
-        manifest, of a timeline or of a region, in an identifier of its own,
-        of a part slot or of a ``part_of`` entry. Change or remove those
-        links first (:meth:`replace_link`, :meth:`remove_link`).
-
-        Args:
-            scheme_id: The id of the scheme to remove.
-
-        Returns:
-            self (for method chaining)
-
-        Raises:
-            KeyError: If the manifest declares no scheme with that id.
-            ValueError: If a link of the bundle names the scheme (``scheme
-                'opus' cannot be removed: a link of timeline 'score' names
-                it``).
-
-        Examples:
-            >>> from timetoalign.alignment import AlignmentBundle
-            >>> bundle = AlignmentBundle().add_scheme("opus").add_scheme("bwv")
-            >>> [scheme.id for scheme in bundle.remove_scheme("bwv").schemes]
-            ['opus']
-        """
-        if scheme_id not in self._schemes:
-            raise KeyError(
-                f"bundle {quote_id(self.id)} declares no scheme {quote_id(scheme_id)}"
-            )
-        holders: list[tuple[str, Sequence[Link]]] = [
-            (self._links_holder_name(), self._links)
-        ]
-        for root in self._roots():
-            for timeline in _tree(root):
-                holders.append((timeline._links_holder_name(), timeline._links))
-                holders.extend(
-                    (
-                        f"{region._links_holder_name()} of "
-                        f"{timeline._links_holder_name()}",
-                        region.links,
-                    )
-                    for region in timeline._regions.values()
-                )
-        for holder, links in holders:
-            if scheme_id in _named_schemes(links):
-                raise ValueError(
-                    f"scheme {quote_id(scheme_id)} cannot be removed: a link of "
-                    f"{holder} names it"
-                )
-        del self._schemes[scheme_id]
-        return self
 
     def _register(self, timeline: "Timeline") -> None:
         """Register a timeline, and its root when it is a child."""
@@ -4213,12 +4028,8 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
         members by id. ``graphical.order`` keeps every group's member order
         under its id and, unchanged, the band order read with the manifest
         of every timeline written, beside the members of :attr:`styling`. A
-        root no group names is ungrouped. The bundle's :attr:`schemes` are
-        written sorted by id, with every scheme a link of a timeline names
-        that the manifest the timeline was read from declares, and its
-        :attr:`links` in their order. MatchClaims
-        are not written; the support policy is a setting of the bundle, not
-        part of the manifest.
+        root no group names is ungrouped. MatchClaims are not written; the
+        support policy is a setting of the bundle, not part of the manifest.
 
         Args:
             minimal: If False, write every optional key, its default value
@@ -4229,8 +4040,8 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
 
         Returns:
             ``{"timetoshare": "0.2.0", "id"?, "name", "meta", "timelines":
-            [...], "groups": [...], "measure_maps": [...], "schemes": [...],
-            "links": [...], "graphical"?: {"order": {...}, ...}}``.
+            [...], "groups": [...], "measure_maps": [...], "graphical"?:
+            {"order": {...}, ...}}``.
 
         Examples:
             >>> from fractions import Fraction
@@ -4259,8 +4070,6 @@ class AlignmentBundle(_IdScope, MutableLinksMixin, ManifestFileMixin, _OpenObjec
             id=None if self._id_minted else self.id,
             name=self.name,
             meta=self.meta,
-            schemes=list(self._schemes.values()),
-            links=self._links,
             styling=self.styling,
             band_orders=self._band_orders,
             has_graphical=self._has_graphical,

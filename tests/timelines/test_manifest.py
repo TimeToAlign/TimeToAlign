@@ -151,7 +151,6 @@ COMPLETE: dict[str, Any] = {
                     "conversion_maps": [],
                     "regions": [],
                     "flow_control": [],
-                    "links": [],
                 }
             ],
             "conversion_maps": [
@@ -172,7 +171,6 @@ COMPLETE: dict[str, Any] = {
                     "start": [0, 1],
                     "end": [8, 1],
                     "meta": {},
-                    "links": [],
                 }
             ],
             "flow_control": [
@@ -205,13 +203,10 @@ COMPLETE: dict[str, Any] = {
                     "meta": {},
                 },
             ],
-            "links": [],
         }
     ],
     "groups": [],
     "measure_maps": [],
-    "schemes": [],
-    "links": [],
 }
 
 
@@ -1382,7 +1377,6 @@ def _empty_complete(
         "conversion_maps": [],
         "regions": [],
         "flow_control": [],
-        "links": [],
         **keys,
     }
 
@@ -1419,8 +1413,6 @@ ONE_ROOT = {
         "timelines": [SCORE_COMPLETE],
         "groups": [],
         "measure_maps": [],
-        "schemes": [],
-        "links": [],
         "graphical": {
             "order": ONE_ROOT_BANDS,
             "styles": {},
@@ -1443,8 +1435,6 @@ GROUPED = {
         "timelines": [PERF_COMPLETE, SCORE_COMPLETE],
         "groups": [{"id": "g", "name": None, "meta": {}, "members": ["part", "perf"]}],
         "measure_maps": [],
-        "schemes": [],
-        "links": [],
         "graphical": {
             "order": GROUPED_BANDS,
             "styles": {},

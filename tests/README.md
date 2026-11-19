@@ -79,12 +79,7 @@ and no group, `TimelineGroup.from_dict` for one anonymous group, otherwise
 every manifest, and each must raise `ValueError`. A reader that accepted a
 manifest the validators refuse would let an invalid document through one of
 two doors. The cases are listed from the package, not copied, so a case
-added there is covered here without an edit. The cases of links
-(`description_*`) are refused through the package itself: the library
-hands every manifest it reads, and every manifest it writes, to
-`timetoshare.description_problems`, the package's check of the
-description layer alone, which holds those rules (see *Links and schemes*
-in `timelines/README.md`). The three exceptions are the
+added there is covered here without an edit. The three exceptions are the
 rules the library leaves to the validators because it keeps what they
 check as given: the rules about `graphical.rules` (selectors with
 their addresses, and declarations), which the library never interprets,
@@ -183,13 +178,6 @@ followed by `b` at 61 in a line of length 60 is refused at `a`, `ends at
 timeline of length 9007199254740993 writes `"length": 9007199254740993` in
 a manifest `validate` accepts, so integers above the floating-point safe
 range survive.
-
-**Manifests with links.** The catalogue above holds one bundle carrying the
-description layer at every place the format admits it: a scheme and a
-manifest link with part slots, one represented by a region and the others
-absent, a link on a root and a link on its region. It obeys the same laws
-in both forms, so links and schemes are written in the canonical order and
-with exactly the defaults the package states.
 
 ## Layout
 

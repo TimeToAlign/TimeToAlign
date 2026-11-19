@@ -175,8 +175,6 @@ def test_bundle_dict_is_exact() -> None:
             },
         ],
         "measure_maps": [],
-        "schemes": [],
-        "links": [],
         "graphical": {
             "order": {"group_1": ["score", "audio"], "group_2": ["holes", "midi"]},
             "styles": {},
@@ -259,8 +257,6 @@ def test_no_claims_are_written() -> None:
         "timelines",
         "groups",
         "measure_maps",
-        "schemes",
-        "links",
         "graphical",
     }
 

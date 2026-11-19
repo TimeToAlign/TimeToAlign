@@ -3,16 +3,14 @@
 A TimeToShare manifest is one JSON object: the version marker
 ``timetoshare``, an array of root ``timelines`` and, optionally, the
 manifest's ``id``, ``name`` and ``meta``, its ``groups``, its
-``measure_maps``, its ``schemes`` and ``links`` (the description layer, see
-:mod:`timetoalign.timelines.description`) and its ``graphical``.
+``measure_maps`` and its ``graphical``.
 :class:`~timetoalign.timelines.Timeline`,
 :class:`~timetoalign.timelines.TimelineGroup` and
 :class:`~timetoalign.alignment.AlignmentBundle` each write one with
 ``to_dict`` and read one with ``from_dict``. This module holds what they
 share: the version marker, the reading of the manifest around its timelines
 and groups, the writing of that envelope and of the measure maps its
-timelines name, the reading of links and schemes, and the codec of a bare
-value on a timeline's own axis.
+timelines name, and the codec of a bare value on a timeline's own axis.
 
 A value on a timeline's own axis (``length``, ``offset``, region ``start``
 and ``end``, break and marker ``coordinate``, jump ``from_coordinate`` and
@@ -29,8 +27,8 @@ one, as ``#`` followed by the ID (``"id": "#clt_1"``); every object of the
 library holds IDs bare (``clt_1``). The boundary is the whole manifest: a
 dict carrying the ``timetoshare`` version marker, which ``to_dict`` returns
 and ``from_dict`` takes, or a file, is in the file form; the dict of one
-object inside it (a conversion map, a region, a measure map, a link) is
-bare. :meth:`Manifest.read` and :meth:`Manifest.write` convert, through
+object inside it (a conversion map, a region, a measure map) is bare.
+:meth:`Manifest.read` and :meth:`Manifest.write` convert, through
 TimeToShare's :func:`timetoshare.with_bare_ids` and
 :func:`timetoshare.with_file_ids`.
 """
@@ -48,15 +46,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Self
 
 import timetoshare
-from timetoshare import Link, Scheme, child_ends, description_problems, loads
+from timetoshare import child_ends, loads
 from timetoshare.serialization import Serialization
 
 from timetoalign.core import Coordinate, NumberType, TimeUnit
 from timetoalign.core.ids import _OpenObject, mint_id, quote_id, validate_id
 from timetoalign.core.time import is_fraction_json, number_from_json, number_to_json
 from timetoalign.maps.base import MEASURE_MAP_ID_PREFIX
-
-from .description import _named_schemes, _renamed_parts
 
 if TYPE_CHECKING:
     from .base import Timeline
@@ -290,38 +286,6 @@ def read_list(data: Mapping[str, Any], key: str, what: str) -> list[Any]:
     return value
 
 
-def read_links(data: Mapping[str, Any], what: str) -> list[Link]:
-    """Read an optional ``links`` array of TimeToShare links, ``[]`` by default.
-
-    Each link is read by ``Link.from_dict``, which keeps the keys the format
-    does not declare. The rules of a link are TimeToShare's, which
-    :func:`check_description` applies before the manifest is read.
-
-    Raises:
-        ValueError: If ``links`` is not an array or a link is no object
-            holding ``relation`` and ``level``.
-    """
-    return [
-        Link.from_dict(require_object(item, f"a link of {what}", ("relation", "level")))
-        for item in read_list(data, "links", what)
-    ]
-
-
-def read_schemes(data: Mapping[str, Any]) -> list[Scheme]:
-    """Read the manifest's optional ``schemes`` array, ``[]`` by default.
-
-    Raises:
-        ValueError: If ``schemes`` is not an array, or a scheme is no object
-            or has no valid id.
-    """
-    schemes = []
-    for item in read_list(data, "schemes", "the manifest"):
-        require_object(item, "a scheme", ("id",))
-        read_id(item["id"], "a scheme")
-        schemes.append(Scheme.from_dict(item))
-    return schemes
-
-
 def bare_ids(data: Mapping[str, Any]) -> dict[str, Any]:
     """Return a manifest as a file holds it with every ID bare.
 
@@ -341,138 +305,6 @@ def bare_ids(data: Mapping[str, Any]) -> dict[str, Any]:
         raise ValueError(f"{pointer}: {error}") from None
 
 
-def check_description(data: Mapping[str, Any]) -> None:
-    """Refuse a manifest whose description layer breaks a rule of the format.
-
-    The rules of the description layer — the shape of every link and
-    scheme, scheme ids unique in the manifest, the dates of assertions, the
-    schemes identifiers name and the elements part slots name — are
-    TimeToShare's: ``timetoshare.description_problems`` checks them on the
-    whole manifest and nothing else, and the first problem it finds is
-    raised. A manifest is checked as it is read, before anything else is
-    read, and as it is written, so that an invalid one is never emitted.
-    *data* is in the file form; the messages quote IDs bare.
-
-    Raises:
-        ValueError: The first problem, its path in *data* first:
-            ``#/links/0/parts/0/represented_by/0: 'ghost' names no timeline
-            or region of this manifest``.
-    """
-    problems = description_problems(data)
-    if problems:
-        raise problems[0]
-
-
-def schemes_named(
-    declared: Iterable[Scheme], timelines: Iterable[Timeline]
-) -> list[Scheme]:
-    """Return the schemes the links of *timelines* name that *declared* lacks.
-
-    A link names a scheme by id in an identifier of its own, of a part slot
-    or of a ``part_of`` entry. Each id the links of a timeline or of its
-    regions name is looked up among the schemes *declared* and the schemes
-    the timeline knows (``Timeline._scheme_sources``): those of the bundles
-    and groups its tree belongs to and of the manifest it was read from. An
-    id no scheme carries is left to the check of the manifest written.
-
-    Args:
-        declared: The schemes the manifest declares already.
-        timelines: The timelines whose links are written.
-
-    Returns:
-        The schemes to declare beside *declared*, in the order found.
-
-    Raises:
-        ValueError: If two different schemes carry an id the links name
-            (``two different schemes carry the id 'opus'``).
-    """
-    held = {scheme.id: scheme for scheme in declared}
-    found: list[Scheme] = []
-    for timeline in timelines:
-        named = _named_schemes(timeline._held_links())
-        if not named:
-            continue
-        for scheme in timeline._scheme_sources():
-            if scheme.id not in named:
-                continue
-            known = held.get(scheme.id)
-            if known is None:
-                held[scheme.id] = scheme
-                found.append(scheme)
-            elif known != scheme:
-                raise ValueError(
-                    f"two different schemes carry the id {quote_id(scheme.id)}"
-                )
-    return found
-
-
-def _written_links(fields: Mapping[str, Any]) -> Iterator[list[Any]]:
-    """Yield every ``links`` array of a manifest written, to change in place.
-
-    The manifest's, every timeline's and every region's.
-    """
-    if isinstance(fields.get("links"), list):
-        yield fields["links"]
-    pending = list(fields["timelines"])
-    while pending:
-        timeline = pending.pop()
-        if isinstance(timeline.get("links"), list):
-            yield timeline["links"]
-        for region in timeline.get("regions", []):
-            if isinstance(region.get("links"), list):
-                yield region["links"]
-        pending.extend(timeline.get("children", []))
-
-
-def _part_targets(timelines: list[dict[str, Any]]) -> set[str]:
-    """The ids a part slot may name in a manifest written: timelines and regions."""
-    found: set[str] = set()
-    pending = list(timelines)
-    while pending:
-        timeline = pending.pop()
-        found.add(timeline["id"])
-        found.update(region["id"] for region in timeline.get("regions", []))
-        pending.extend(timeline.get("children", []))
-    return found
-
-
-def _leave_out_unwritten(fields: dict[str, Any], roots: list[Timeline]) -> None:
-    """Drop from the part slots written the elements the write leaves out.
-
-    A timeline or a group written on its own writes part of the manifests
-    it belongs to: a part slot of a link written may name a timeline or
-    region of those manifests (``Timeline._manifest_ids`` of the roots
-    written) that this one does not hold. The id is left out of the slot,
-    and a slot left with none is ``absent`` as ``not_represented``: the
-    part exists, and this manifest leaves it out. An id no manifest of the
-    roots holds is left as it is, for the check of the manifest written to
-    refuse.
-    """
-    targets = _part_targets(fields["timelines"])
-    outside = {
-        element
-        for links in _written_links(fields)
-        for link in links
-        for slot in link.get("parts", [])
-        for element in slot.get("represented_by", [])
-        if element not in targets
-    }
-    if not outside:
-        return
-    known: set[str] = set()
-    for root in roots:
-        known.update(root._manifest_ids())
-    renamed: dict[str, str | None] = dict.fromkeys(outside & known)
-    if not renamed:
-        return
-    for links in _written_links(fields):
-        for index, data in enumerate(links):
-            link = Link.from_dict(data)
-            pruned = _renamed_parts(link, renamed)
-            if pruned is not link:
-                links[index] = pruned.to_dict(minimal=False)
-
-
 # endregion
 
 
@@ -483,8 +315,8 @@ def _leave_out_unwritten(fields: dict[str, Any], roots: list[Timeline]) -> None:
 class Manifest(_OpenObject):
     """What a manifest holds beside its timelines and groups.
 
-    The manifest's ``id`` (absent when it has none), ``name`` and ``meta``, its
-    schemes and links, the members of its ``graphical`` other than ``order``
+    The manifest's ``id`` (absent when it has none), ``name`` and ``meta``,
+    the members of its ``graphical`` other than ``order``
     (``styling``) and the band orders of its timelines (``band_orders``),
     both kept as given and never interpreted, whether it holds ``graphical``
     at all, the measure maps no timeline names, and every key the library
@@ -495,9 +327,6 @@ class Manifest(_OpenObject):
             or one named by ``name`` alone).
         name: The manifest name, or None.
         meta: The manifest's free metadata.
-        schemes: The identifier schemes the manifest declares, written
-            sorted by id.
-        links: The manifest's links, in their order.
         styling: ``graphical`` without ``order``: ``styles``,
             ``rules``, ``timestamps`` and any other key, kept as given;
             a named timestamp's ``display`` is written in canonical order,
@@ -519,16 +348,12 @@ class Manifest(_OpenObject):
         "timelines",
         "groups",
         "measure_maps",
-        "schemes",
-        "links",
         "graphical",
     )
 
     id: str | None = None
     name: str | None = None
     meta: dict[str, Any] = field(default_factory=dict)
-    schemes: list[Scheme] = field(default_factory=list)
-    links: list[Link] = field(default_factory=list)
     styling: dict[str, Any] = field(default_factory=dict)
     band_orders: dict[str, Any] = field(default_factory=dict)
     has_graphical: bool = False
@@ -540,21 +365,18 @@ class Manifest(_OpenObject):
 
         *data* is the manifest as a file holds it, every ID written ``#``
         followed by the ID; it is read with bare IDs (:func:`bare_ids`), as
-        every object of the library holds them. The description layer is
-        checked first, by TimeToShare's rules
-        (:func:`check_description`). The measure maps are read next, then
+        every object of the library holds them. The measure maps are read
+        first, then
         every root timeline is rebuilt, its conversion maps reading the
         measure maps they name, and every timeline of the roots' trees is
         indexed by id. Every id is unique across the manifest: the
         manifest's own, every timeline, root or descendant, group, measure
-        map, conversion map at any depth, region, flow-control element and
-        scheme. Groups are left
+        map, conversion map at any depth, region and flow-control element.
+        Groups are left
         as JSON for the class reading them. ``graphical.order`` is split by
         its keys: a group's display order goes to the content, a timeline's
         band order to the envelope, unchecked. The measure maps no timeline
-        names, the schemes and the manifest's links are kept on the envelope;
-        every timeline keeps the schemes too, which its links may name
-        wherever it is written.
+        names are kept on the envelope.
 
         Returns:
             The envelope, and the manifest's content.
@@ -562,8 +384,8 @@ class Manifest(_OpenObject):
         Raises:
             ValueError: If *data* is no TimeToShare manifest (``"not a
                 TimeToShare manifest"``), names another version, writes an ID
-                without its ``#`` (:func:`bare_ids`), or is malformed: a link or scheme breaking a rule of the format,
-                an id held twice anywhere in the manifest (see
+                without its ``#`` (:func:`bare_ids`), or is malformed: an id
+                held twice anywhere in the manifest (see
                 :func:`unique_ids`), a ``graphical.order`` that is no object
                 or names no group or timeline.
         """
@@ -576,9 +398,7 @@ class Manifest(_OpenObject):
                 f"TimeToShare {TIMETOSHARE_VERSION} only"
             )
         require_object(data, "a TimeToShare manifest", ("timelines",))
-        bare = bare_ids(data)
-        check_description(data)
-        data = bare
+        data = bare_ids(data)
         manifest_id = read_id(data["id"], "the manifest") if "id" in data else None
         manifest = cls(
             id=manifest_id,
@@ -612,18 +432,7 @@ class Manifest(_OpenObject):
             for group_id in group_ids
             if isinstance(group_id, str)
         )
-        manifest.schemes = read_schemes(data)
-        holders.extend(
-            (scheme.id, f"scheme {quote_id(scheme.id)}") for scheme in manifest.schemes
-        )
         ids = unique_ids(holders)
-        manifest.links = read_links(data, "the manifest")
-        if manifest.schemes:
-            # Each timeline keeps the schemes its links may name, so that it
-            # writes them wherever it is written.
-            schemes = tuple(manifest.schemes)
-            for timeline in timelines.values():
-                timeline._source_schemes = schemes
         named = {
             id(measure_map)
             for timeline in timelines.values()
@@ -689,17 +498,12 @@ class Manifest(_OpenObject):
         written, removed or given another id, is left out, so that every
         key names a timeline or group of the manifest. ``graphical`` is
         written when there is an order to keep, styling, or a ``graphical``
-        read with the manifest; ``id`` only when the manifest has one.
-        ``links`` are written in their order and ``schemes`` sorted by id:
-        the manifest's own, and every scheme a link of a timeline written
-        names that the timeline knows (:func:`schemes_named`). A part slot
-        naming an element the manifest leaves out leaves it out too
-        (:func:`_leave_out_unwritten`). The form is TimeToShare's: the
+        read with the manifest; ``id`` only when the manifest has one. The
+        form is TimeToShare's: the
         manifest is built whole and put in its form by
         :func:`timetoshare.minimal` or :func:`timetoshare.complete`, and
         every ID is written as a file writes it, ``#`` followed by the ID
-        (:func:`timetoshare.with_file_ids`). The manifest written is checked
-        as a manifest read is (:func:`check_description`).
+        (:func:`timetoshare.with_file_ids`).
 
         Args:
             roots: The root timelines.
@@ -713,20 +517,15 @@ class Manifest(_OpenObject):
 
         Raises:
             ValueError: If an id is held twice among the manifest, its
-                timelines' trees, its groups and its schemes
-                (:func:`unique_ids`), two different schemes carry an id a
-                link names (:func:`schemes_named`), a measure map cannot be
-                written (two different ones carry one given id, or one's
-                given id is held by another element), or the description
-                layer written breaks a rule of the format
-                (:func:`check_description`).
+                timelines' trees and its groups (:func:`unique_ids`), or a
+                measure map cannot be written (two different ones carry one
+                given id, or one's given id is held by another element).
         """
         trees = [
             timeline
             for root in roots
             for timeline in (root, *(child for _, child in root._iter_descendants()))
         ]
-        schemes = [*self.schemes, *schemes_named(self.schemes, trees)]
         holders: list[tuple[str, str]] = []
         if self.id is not None:
             holders.append((self.id, "the manifest"))
@@ -737,9 +536,6 @@ class Manifest(_OpenObject):
         )
         holders.extend(
             (group["id"], f"group {quote_id(group['id'])}") for group in groups
-        )
-        holders.extend(
-            (scheme.id, f"scheme {quote_id(scheme.id)}") for scheme in schemes
         )
         entries = MeasureMapEntries(
             unique_ids(holders),
@@ -773,13 +569,7 @@ class Manifest(_OpenObject):
             timelines=timelines,
             groups=list(groups),
             measure_maps=entries.write(),
-            schemes=[
-                scheme.to_dict(minimal=False)
-                for scheme in sorted(schemes, key=lambda scheme: scheme.id)
-            ],
-            links=[link.to_dict(minimal=False) for link in self.links],
         )
-        _leave_out_unwritten(fields, roots)
         written = _timeline_ids(timelines)
         band_orders = {
             key: copy.deepcopy(entry)
@@ -791,16 +581,7 @@ class Manifest(_OpenObject):
             fields["graphical"] = {"order": order, **copy.deepcopy(self.styling)}
         built = self._dict_form(fields, minimal=False)
         result = timetoshare.minimal(built) if minimal else timetoshare.complete(built)
-        result = timetoshare.with_file_ids(result)
-        check_description(result)
-        return result
-
-    def _rename_parts(self, renamed: Mapping[str, str | None]) -> None:
-        """Rename the elements the part slots of the manifest's links name.
-
-        See :func:`~timetoalign.timelines.description._renamed_parts`.
-        """
-        self.links = [_renamed_parts(link, renamed) for link in self.links]
+        return timetoshare.with_file_ids(result)
 
 
 class MeasureMapEntries:

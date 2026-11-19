@@ -240,7 +240,10 @@ grandchild_round_trip
 #
 # When children tile their parent with no gaps or overlaps, the hierarchy is a
 # {{< glossary SegmentLine >}}. Every parent position then belongs to exactly
-# one child, so lookup is unambiguous.
+# one child, so lookup is unambiguous. One rule makes it so: a child holds its
+# parent's positions from its start up to its end, and its end only where no
+# sibling starts there. A boundary two children share belongs to the one
+# starting at it, and the last child keeps its parent's end.
 
 # %%
 piece_is_segment_line = piece.is_segment_line()
@@ -333,7 +336,9 @@ timestamp_view
 
 # %% [markdown]
 # `present_timelines` lists every timeline the stamp holds a coordinate for —
-# the piece, the active movement, and the active grandchild phrase. One
+# the piece, the active movement, and the active grandchild phrase. The
+# position reaches the phrase through the movement: a nested timeline answers
+# only when every timeline on the way down holds the position. One
 # retrieval method serves them all, and `format=` decides what comes back:
 # `format="float"` gives the bare number `5.5`, while the default returns an
 # `IdCoordinate` carrying the exact `Fraction`, the unit, and the timeline the

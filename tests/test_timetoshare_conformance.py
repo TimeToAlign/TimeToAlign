@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import copy
 import json
 import os
 import tempfile
@@ -14,11 +13,13 @@ from typing import Any
 import numpy as np
 import pytest
 from timetoshare import (
+    FORMAT_CONTEXT,
     SchemaValidationError,
     canonical_order,
     complete,
     dumps,
     fixture_paths,
+    load_catalogue,
     loads,
     minimal,
     rejection_case,
@@ -26,6 +27,7 @@ from timetoshare import (
     unknown_keys,
     validate,
     warning_paths,
+    with_context,
 )
 from timetoshare.manifest import UNIT_NUMBER_TYPES
 
@@ -376,14 +378,16 @@ def _as_written(value: dict[str, Any]) -> str:
 def test_built_manifests_conform(name: str, builder: Callable[[], list[Any]]) -> None:
     """Every manifest the library builds conforms in both forms.
 
-    Both forms validate without unknown keys, ``minimal`` and ``complete``
-    map each onto the other, and the library already writes the canonical
-    order the schema package defines.
+    Both forms validate without unknown keys, carry the inline context of a
+    manifest without statements (the format's terms alone), ``minimal`` and
+    ``complete`` map each onto the other, and the library already writes
+    the canonical order the schema package defines.
     """
     del name
     for item in builder():
         written, written_minimal = item.to_dict(minimal=False), item.to_dict()
         for value in (written, written_minimal):
+            assert value["@context"] == FORMAT_CONTEXT
             validate(value)
             assert unknown_keys(value) == []
             assert _as_written(canonical_order(value)) == _as_written(value)
@@ -564,11 +568,18 @@ SEVERAL_DEPTHS_ROW = {
 
 @pytest.mark.parametrize("path", warning_paths(), ids=lambda path: path.stem)
 def test_the_library_writes_every_warning_case_back(path: Path) -> None:
-    """Each case reads, and writes back in its own form with the same unknown keys."""
+    """Each case reads, and writes back in its own form with the same unknown keys.
+
+    The manifest written carries the inline context the package builds for
+    the case: the format's terms and the prefixes its statements use, each
+    standing for the namespace the case declares, else the catalogue's. A
+    case without ``@context`` (``context_absent``) gains one; a prefix the
+    case declares but does not use (``bundle_blank_*``) is not written.
+    """
     case = loads(path.read_text(encoding="utf-8"))
     manifest = case["manifest"]
     is_minimal = dumps(manifest) == dumps(minimal(manifest))
-    expected = copy.deepcopy(manifest)
+    expected = with_context(manifest, load_catalogue().prefixes)
     if path.stem == "several_depths":
         expected["measure_maps"][0]["rows"] = [SEVERAL_DEPTHS_ROW]
 

@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from timetoshare import FORMAT_CONTEXT
 
 from tests.helpers import bare, filed
 from timetoalign.alignment import AlignmentBundle
@@ -153,6 +154,7 @@ def test_bundle_dict_is_exact() -> None:
 
     assert bundle.id == "bundle_1"
     assert bare(bundle.to_dict(minimal=False)) == {
+        "@context": dict(FORMAT_CONTEXT),
         "timetoshare": "0.2.0",
         "name": "study",
         "meta": {"corpus": "test"},
@@ -192,6 +194,7 @@ def test_given_bundle_id_is_written() -> None:
     bundle = AlignmentBundle(id="op35")
 
     assert bare(bundle.to_dict(minimal=True)) == {
+        "@context": dict(FORMAT_CONTEXT),
         "timetoshare": "0.2.0",
         "id": "op35",
         "timelines": [],
@@ -251,6 +254,7 @@ def test_no_claims_are_written() -> None:
     data = bare(_direct_bundle().to_dict(minimal=False))
 
     assert set(data) == {
+        "@context",
         "timetoshare",
         "name",
         "meta",

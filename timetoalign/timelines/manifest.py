@@ -46,7 +46,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Self
 
 import timetoshare
-from timetoshare import child_ends, loads
+from timetoshare import child_ends, load_catalogue, loads
 from timetoshare.serialization import Serialization
 
 from timetoalign.core import Coordinate, NumberType, TimeUnit
@@ -511,7 +511,12 @@ class Manifest(_OpenObject):
         manifest is built whole and put in its form by
         :func:`timetoshare.minimal` or :func:`timetoshare.complete`, and
         every ID is written as a file writes it, ``#`` followed by the ID
-        (:func:`timetoshare.with_file_ids`). The statements and provenance
+        (:func:`timetoshare.with_file_ids`). Every manifest written carries
+        its inline JSON-LD ``@context``: the format's terms and the prefixes
+        its statements use (:func:`timetoshare.with_context`), each standing
+        for the namespace the ``@context`` read with the manifest declares,
+        else the catalogue's; a prefix no statement uses is not written. The
+        statements and provenance
         written are checked as a manifest read is, so that a manifest whose
         statements break a rule of the format is never emitted.
 
@@ -594,7 +599,9 @@ class Manifest(_OpenObject):
             fields["graphical"] = {"order": order, **copy.deepcopy(self.styling)}
         built = self._dict_form(fields, minimal=False)
         result = timetoshare.minimal(built) if minimal else timetoshare.complete(built)
-        result = timetoshare.with_file_ids(result)
+        result = timetoshare.with_context(
+            timetoshare.with_file_ids(result), load_catalogue().prefixes
+        )
         problems = timetoshare.statement_problems(result)
         if problems:
             raise problems[0]
@@ -1057,7 +1064,10 @@ class ManifestFileMixin:
             >>> from timetoalign.timelines import ContinuousLogicalTimeline, Timeline
             >>> score = ContinuousLogicalTimeline(length=Fraction(32), uid="piece")
             >>> path = score.to_file(Path(tempfile.mkdtemp()) / "piece.yaml")
-            >>> print(path.read_text(encoding="utf-8"), end="")
+            >>> text = path.read_text(encoding="utf-8")
+            >>> text.startswith('"@context":')
+            True
+            >>> print(text[text.index("\\ntimelines:") + 1 :], end="")
             timelines:
               -
                 id: "#piece"

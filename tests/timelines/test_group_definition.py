@@ -10,6 +10,7 @@ from fractions import Fraction
 from typing import Any
 
 import pytest
+from timetoshare import FORMAT_CONTEXT
 
 from tests.helpers import bare, filed, reading
 from timetoalign.alignment import AlignmentBundle
@@ -219,6 +220,7 @@ def test_group_dict_is_exact() -> None:
     )
 
     assert bare(group.to_dict(minimal=False)) == {
+        "@context": dict(FORMAT_CONTEXT),
         "timetoshare": "0.2.0",
         "name": None,
         "meta": {},
@@ -243,6 +245,7 @@ def test_group_dict_is_exact() -> None:
         },
     }
     assert bare(group.to_dict(minimal=True)) == {
+        "@context": dict(FORMAT_CONTEXT),
         "timetoshare": "0.2.0",
         "timelines": [
             {"id": "image", "unit": "pixels", "length": 4800},

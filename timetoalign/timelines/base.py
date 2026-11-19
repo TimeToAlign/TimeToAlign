@@ -1506,6 +1506,8 @@ class Timeline(
         written back. A timeline read from a manifest as a whole writes that
         manifest's ``id``, ``name``, ``meta``, ``graphical`` and unknown
         keys back around it. :meth:`to_file` writes the manifest as a file.
+        Every manifest carries its inline JSON-LD ``@context``: the format's
+        terms and the prefixes its statements use.
 
         Collections are written in one canonical order, independent of the
         order in which their content was added, so equal timelines give equal
@@ -1540,12 +1542,15 @@ class Timeline(
                 measure map or by a timeline, group or the manifest.
 
         Examples:
-            >>> from fractions import Fraction
+            >>> from timetoshare import FORMAT_CONTEXT
             >>> from timetoalign.timelines import ContinuousLogicalTimeline
-            >>> score = ContinuousLogicalTimeline(length=Fraction(32), uid="piece")
-            >>> score.to_dict()
-            {'timetoshare': '0.2.0', 'timelines': [{'id': '#piece', 'unit': 'quarters', \
-'length': [32, 1]}]}
+            >>> score = ContinuousLogicalTimeline(length=8, uid="piece")
+            >>> score.to_dict() == {
+            ...     "@context": dict(FORMAT_CONTEXT),
+            ...     "timetoshare": "0.2.0",
+            ...     "timelines": [{"id": "#piece", "unit": "quarters", "length": [8, 1]}],
+            ... }
+            True
         """
         manifest = self._manifest if self._manifest is not None else Manifest()
         return manifest.write(

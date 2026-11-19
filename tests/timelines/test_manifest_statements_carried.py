@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from timetoshare import complete, dumps, minimal
+from timetoshare import complete, dumps, minimal, with_context
 
 from timetoalign.alignment import AlignmentBundle
 from timetoalign.timelines import Timeline, TimelineGroup
@@ -227,6 +227,9 @@ ONE_ROOT: dict[str, Any] = {
     **BUNDLE_DESCRIPTION,
 }
 """One root and no group, the minimal form: what ``Timeline`` reads whole."""
+# Its context holds the prefixes its own statements use, as every manifest
+# written does: those only the other manifest's statements use are left out.
+ONE_ROOT["@context"] = with_context(ONE_ROOT, {})["@context"]
 
 ONE_GROUP: dict[str, Any] = {
     "timetoshare": "0.2.0",
@@ -318,7 +321,10 @@ def test_values_inside_them_keep_their_hash_in_memory() -> None:
     assert _kept(root.get_child("cpt_2")) == EXCERPT_DESCRIPTION
     assert _kept(root.get_region("region_1")) == PIECE_DESCRIPTION
     assert root._manifest is not None
-    assert root._manifest._unknown_keys == {"@context": CONTEXT, **BUNDLE_DESCRIPTION}
+    assert root._manifest._unknown_keys == {
+        "@context": ONE_ROOT["@context"],
+        **BUNDLE_DESCRIPTION,
+    }
 
     bundle = AlignmentBundle.from_dict(ONE_GROUP)
     assert _kept(bundle.timelines["clt_6"]) == EDITION_DESCRIPTION

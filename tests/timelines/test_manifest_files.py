@@ -15,7 +15,16 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from timetoshare import complete, dumps, fixture_paths, loads, minimal, validate
+from timetoshare import (
+    FORMAT_CONTEXT,
+    complete,
+    dumps,
+    fixture_paths,
+    loads,
+    minimal,
+    validate,
+    with_context,
+)
 
 from timetoalign.alignment import AlignmentBundle
 from timetoalign.timelines import Timeline, TimelineGroup
@@ -68,6 +77,7 @@ SCORE = {"id": "#score", "length": [32, 1], "unit": "quarters"}
 TAKE = {"id": "#take_1", "length": 64.5, "unit": "seconds"}
 
 GROUPED = {
+    "@context": dict(FORMAT_CONTEXT),
     "timetoshare": "0.2.0",
     "timelines": [SCORE, TAKE],
     "groups": [{"id": "#g", "members": ["#score", "#take_1"]}],
@@ -83,7 +93,12 @@ STYLED = {
 }
 """The same manifest with a ``graphical`` object."""
 
-SIMPLE = {"timetoshare": "0.2.0", "timelines": [SCORE, TAKE], "name": "Study"}
+SIMPLE = {
+    "@context": dict(FORMAT_CONTEXT),
+    "timetoshare": "0.2.0",
+    "timelines": [SCORE, TAKE],
+    "name": "Study",
+}
 """A minimal named bundle of two ungrouped timelines."""
 
 EVENTS = [
@@ -119,6 +134,7 @@ REFERENCES = [
 """The external-reference row of ``take_1``, naming its first event."""
 
 WITH_TABLES = {
+    "@context": dict(FORMAT_CONTEXT),
     "timetoshare": "0.2.0",
     "timelines": [
         {**SCORE, "events": [], "external_references": []},
@@ -152,7 +168,10 @@ def test_the_literals_are_valid_minimal_manifests(manifest: dict[str, Any]) -> N
 def test_every_fixture_file_is_written_back_byte_for_byte(
     fixture: str, tmp_path: Path
 ) -> None:
-    """Each form, serialization and styling of each fixture keeps its bytes."""
+    """Each form, serialization and styling of each fixture keeps its bytes.
+
+    A fixture without ``@context`` gains the one the writer emits.
+    """
     reader = READERS[Path(fixture).parent.as_posix()]
     twin = fixture.removesuffix(".yaml") + ".minimal.yaml"
     for name in (fixture, twin):
@@ -163,7 +182,8 @@ def test_every_fixture_file_is_written_back_byte_for_byte(
         for manifest in variants:
             for serialization in SERIALIZATIONS:
                 text = dumps(manifest, serialization=serialization)
-                assert _round_trip(reader, text, tmp_path) == text, (
+                written = dumps(with_context(manifest, {}), serialization=serialization)
+                assert _round_trip(reader, text, tmp_path) == written, (
                     name,
                     serialization,
                     "graphical" in manifest,
@@ -239,7 +259,7 @@ def test_a_text_that_is_not_canonical_is_written_canonical(tmp_path: Path) -> No
         '{"id": "#score", "unit": "quarters", "length": [32, 1]}, '
         '{"id": "#take_1", "unit": "seconds", "length": 64.5}]}'
     )
-    assert loads(text) == SIMPLE
+    assert loads(text) == {k: v for k, v in SIMPLE.items() if k != "@context"}
     written = _round_trip(AlignmentBundle, text, tmp_path)
     assert written == dumps(SIMPLE, serialization="json")
 
@@ -339,7 +359,12 @@ def test_selection_passes_through(tmp_path: Path) -> None:
     take = Timeline.from_file(path, timeline_id="take_1")
     assert take.id == "take_1"
     expected = dumps(
-        {"timetoshare": "0.2.0", "timelines": [TAKE]}, serialization="json"
+        {
+            "@context": dict(FORMAT_CONTEXT),
+            "timetoshare": "0.2.0",
+            "timelines": [TAKE],
+        },
+        serialization="json",
     )
     assert _read(take.to_file(tmp_path / "take.json")) == expected
     group = TimelineGroup.from_file(path, group_id="g")
@@ -355,7 +380,7 @@ def test_selection_passes_through(tmp_path: Path) -> None:
 EDITED_DIFF = """\
 --- before.yaml
 +++ after.yaml
-@@ -8,4 +8,8 @@
+@@ -59,4 +59,8 @@
      id: "#take_1"
      length: 64.5
      unit: seconds

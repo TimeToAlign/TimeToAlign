@@ -10,6 +10,7 @@ import copy
 from typing import Any
 
 import pytest
+from timetoshare import FORMAT_CONTEXT
 
 from tests.helpers import bare, filed
 from timetoalign.timelines import SegmentLine, Timeline
@@ -79,6 +80,7 @@ def _object(
 def _manifest(timeline: dict[str, Any]) -> dict[str, Any]:
     """The complete manifest of one root timeline object."""
     return {
+        "@context": dict(FORMAT_CONTEXT),
         "timetoshare": "0.2.0",
         "name": None,
         "meta": {},
@@ -299,6 +301,7 @@ def test_bare_untyped_segment_line_reads_as_a_line_of_its_unit() -> None:
     data = bare(SegmentLine(length=0, unit="pixels", uid="bare").to_dict(minimal=True))
 
     assert data == {
+        "@context": dict(FORMAT_CONTEXT),
         "timetoshare": "0.2.0",
         "timelines": [
             {"id": "bare", "unit": "pixels", "length": 0, "is_segment_line": True}

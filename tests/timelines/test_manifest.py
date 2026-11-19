@@ -14,7 +14,7 @@ from fractions import Fraction
 from typing import Any
 
 import pytest
-from timetoshare import complete, minimal
+from timetoshare import FORMAT_CONTEXT, complete, minimal
 
 from tests.helpers import bare, filed, reading
 from timetoalign.alignment import AlignmentBundle
@@ -61,6 +61,7 @@ def test_another_version_is_refused_naming_the_current_one(reader: str) -> None:
 def test_the_marker_is_written_from_one_constant() -> None:
     assert TIMETOSHARE_VERSION == "0.2.0"
     assert bare(AlignmentBundle().to_dict(minimal=True)) == {
+        "@context": dict(FORMAT_CONTEXT),
         "timetoshare": "0.2.0",
         "timelines": [],
     }
@@ -73,6 +74,7 @@ def test_the_marker_is_written_from_one_constant() -> None:
 
 
 MINIMAL: dict[str, Any] = {
+    "@context": dict(FORMAT_CONTEXT),
     "timetoshare": "0.2.0",
     "timelines": [
         {
@@ -123,6 +125,7 @@ MINIMAL: dict[str, Any] = {
 }
 
 COMPLETE: dict[str, Any] = {
+    "@context": dict(FORMAT_CONTEXT),
     "timetoshare": "0.2.0",
     "name": None,
     "meta": {},
@@ -295,6 +298,7 @@ def test_the_minimal_form_compares_a_default_by_value() -> None:
     }
 
     assert written == {
+        "@context": dict(FORMAT_CONTEXT),
         "timetoshare": TIMETOSHARE_VERSION,
         "timelines": [
             {
@@ -421,6 +425,7 @@ def test_the_unit_defaults_cover_every_unit() -> None:
 def test_a_number_type_left_out_is_the_units_own(unit: str) -> None:
     number_type, length = UNIT_DEFAULTS[unit]
     data = {
+        "@context": dict(FORMAT_CONTEXT),
         "timetoshare": "0.2.0",
         "timelines": [{"id": "t", "unit": unit, "length": length}],
     }
@@ -437,6 +442,7 @@ def test_a_number_type_left_out_is_the_units_own(unit: str) -> None:
 
 def test_the_class_comes_from_the_unit_and_a_class_key_is_kept() -> None:
     data = {
+        "@context": dict(FORMAT_CONTEXT),
         "timetoshare": "0.2.0",
         "timelines": [
             {
@@ -628,6 +634,7 @@ def test_numbers_javascript_cannot_tell_apart_are_accepted(
 
 
 UNKNOWN: dict[str, Any] = {
+    "@context": dict(FORMAT_CONTEXT),
     "timetoshare": "0.2.0",
     "$schema": "https://timetoalign.github.io/timetoshare/0.2.0/timetoshare.schema.json",
     "x-note": "manifest",
@@ -747,6 +754,7 @@ def test_the_timeline_reader_keeps_the_unknown_keys_of_what_it_reads() -> None:
     score = Timeline.from_dict(filed(copy.deepcopy(UNKNOWN)), timeline_id="score")
 
     assert bare(score.to_dict(minimal=True)) == {
+        "@context": dict(FORMAT_CONTEXT),
         "timetoshare": "0.2.0",
         "timelines": [UNKNOWN["timelines"][1]],
         "measure_maps": UNKNOWN["measure_maps"],
@@ -755,6 +763,7 @@ def test_the_timeline_reader_keeps_the_unknown_keys_of_what_it_reads() -> None:
 
 def test_a_one_root_manifest_keeps_its_envelope() -> None:
     data = {
+        "@context": dict(FORMAT_CONTEXT),
         "timetoshare": "0.2.0",
         "id": "op35",
         "name": "Eroica Variations",
@@ -793,7 +802,11 @@ def _offset_manifest(offset: float | None) -> dict[str, Any]:
     }
     if offset is not None:
         root["offset"] = offset
-    return {"timetoshare": "0.2.0", "timelines": [root]}
+    return {
+        "@context": dict(FORMAT_CONTEXT),
+        "timetoshare": "0.2.0",
+        "timelines": [root],
+    }
 
 
 def test_a_negative_root_offset_round_trips() -> None:
@@ -918,6 +931,7 @@ def test_a_one_root_manifest_is_read_whole_with_overrides() -> None:
 
 
 FAMILY: dict[str, Any] = {
+    "@context": dict(FORMAT_CONTEXT),
     "timetoshare": "0.2.0",
     "timelines": [
         {
@@ -1002,6 +1016,7 @@ def test_arguments_matching_no_timeline_override_the_one_root(
 
     assert timeline._parent is None
     assert bare(timeline.to_dict(minimal=True)) == {
+        "@context": dict(FORMAT_CONTEXT),
         "timetoshare": "0.2.0",
         "timelines": [{**FAMILY["timelines"][0], **root}],
     }
@@ -1102,6 +1117,7 @@ def test_a_group_is_selected_by_id() -> None:
 
     assert (group.id, group.name, group.timeline_ids) == ("g1", "pair", ["score"])
     assert bare(group.to_dict(minimal=True)) == {
+        "@context": dict(FORMAT_CONTEXT),
         "timetoshare": "0.2.0",
         "timelines": [SELECTION["timelines"][0]],
         "groups": [SELECTION["groups"][0]],
@@ -1160,6 +1176,7 @@ def test_a_manifest_of_one_timeline_makes_a_group_when_asked() -> None:
 
 def test_a_one_group_manifest_is_read_whole_with_overrides() -> None:
     data = {
+        "@context": dict(FORMAT_CONTEXT),
         "timetoshare": "0.2.0",
         "meta": {"source": "an edition"},
         "timelines": [{"id": "score", "unit": "quarters", "length": [8, 1]}],
@@ -1237,6 +1254,7 @@ def test_a_named_one_group_manifest_needs_a_selection() -> None:
 
 def test_an_anonymous_bundle_writes_no_id() -> None:
     data = {
+        "@context": dict(FORMAT_CONTEXT),
         "timetoshare": "0.2.0",
         "timelines": [{"id": "score", "unit": "quarters", "length": [8, 1]}],
     }
@@ -1249,6 +1267,7 @@ def test_an_anonymous_bundle_writes_no_id() -> None:
 
 def test_a_manifest_with_a_name_and_no_id() -> None:
     data = {
+        "@context": dict(FORMAT_CONTEXT),
         "timetoshare": "0.2.0",
         "name": "Eroica Variations",
         "timelines": [{"id": "score", "unit": "quarters", "length": [8, 1]}],
@@ -1268,6 +1287,7 @@ def test_a_manifest_with_a_name_and_no_id() -> None:
 
 def test_a_support_policy_key_is_not_read() -> None:
     data = {
+        "@context": dict(FORMAT_CONTEXT),
         "timetoshare": "0.2.0",
         "support_policy": "clamp",
         "timelines": [{"id": "score", "unit": "quarters", "length": [8, 1]}],
@@ -1402,11 +1422,13 @@ GROUPED_BANDS = {
 
 ONE_ROOT = {
     "minimal": {
+        "@context": dict(FORMAT_CONTEXT),
         "timetoshare": "0.2.0",
         "timelines": [SCORE_MINIMAL],
         "graphical": {"order": ONE_ROOT_BANDS},
     },
     "complete": {
+        "@context": dict(FORMAT_CONTEXT),
         "timetoshare": "0.2.0",
         "name": None,
         "meta": {},
@@ -1423,12 +1445,14 @@ ONE_ROOT = {
 }
 GROUPED = {
     "minimal": {
+        "@context": dict(FORMAT_CONTEXT),
         "timetoshare": "0.2.0",
         "timelines": [PERF_MINIMAL, SCORE_MINIMAL],
         "groups": [{"id": "g", "members": ["part", "perf"]}],
         "graphical": {"order": GROUPED_BANDS},
     },
     "complete": {
+        "@context": dict(FORMAT_CONTEXT),
         "timetoshare": "0.2.0",
         "name": None,
         "meta": {},
@@ -1493,6 +1517,7 @@ def test_a_removed_timeline_takes_its_band_order_along() -> None:
     group.remove_timeline("perf")
 
     assert bare(group.to_dict(minimal=True)) == {
+        "@context": dict(FORMAT_CONTEXT),
         "timetoshare": "0.2.0",
         "timelines": [SCORE_MINIMAL],
         "groups": [{"id": "g", "members": ["part"]}],
@@ -1508,6 +1533,7 @@ def test_a_new_id_on_load_leaves_the_old_band_order_out() -> None:
     )
 
     assert bare(timeline.to_dict(minimal=True)) == {
+        "@context": dict(FORMAT_CONTEXT),
         "timetoshare": "0.2.0",
         "timelines": [SCORE_MINIMAL | {"id": "edition"}],
         "graphical": {"order": {"part": PART_BANDS}},
@@ -1520,6 +1546,7 @@ def test_a_selected_timeline_keeps_no_graphical() -> None:
     )
 
     assert bare(perf.to_dict(minimal=True)) == {
+        "@context": dict(FORMAT_CONTEXT),
         "timetoshare": "0.2.0",
         "timelines": [PERF_MINIMAL],
     }
@@ -1539,6 +1566,7 @@ def test_a_written_manifest_is_a_json_fixpoint() -> None:
 
 def test_a_length_of_null_reads_as_unknown_and_is_always_written() -> None:
     data = {
+        "@context": dict(FORMAT_CONTEXT),
         "timetoshare": "0.2.0",
         "timelines": [{"id": "stream", "unit": "seconds", "length": None}],
     }
@@ -1839,6 +1867,7 @@ def test_any_other_child_ends_at_the_exact_sum(
 
 
 WORDS: dict[str, Any] = {
+    "@context": dict(FORMAT_CONTEXT),
     "timetoshare": "0.2.0",
     "id": "card",
     "timelines": [
@@ -1957,6 +1986,7 @@ def test_a_negative_child_offset_is_not_supported_yet(
 
 def test_a_group_made_from_one_timeline_keeps_the_manifests_keys() -> None:
     data = {
+        "@context": dict(FORMAT_CONTEXT),
         "timetoshare": "0.2.0",
         "id": "op",
         "name": "Op",
@@ -1969,6 +1999,7 @@ def test_a_group_made_from_one_timeline_keeps_the_manifests_keys() -> None:
     group = TimelineGroup.from_dict(filed(copy.deepcopy(data)), group_id="g")
 
     assert bare(group.to_dict(minimal=True)) == {
+        "@context": dict(FORMAT_CONTEXT),
         "timetoshare": "0.2.0",
         "meta": {"k": 1},
         "x-top": 1,
@@ -1985,6 +2016,7 @@ def test_a_group_made_from_one_timeline_keeps_the_manifests_keys() -> None:
 )
 def test_a_graphical_object_read_is_written_back(reader: Any) -> None:
     data = {
+        "@context": dict(FORMAT_CONTEXT),
         "timetoshare": "0.2.0",
         "timelines": [{"id": "r", "unit": "quarters", "length": [4, 1]}],
     }

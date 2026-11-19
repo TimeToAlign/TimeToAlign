@@ -937,19 +937,25 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
     def _warp_units(self) -> list[tuple[TimelineGroup | None, tuple[str, ...]]]:
         """Return the units a matchstamp warps between, each with its members.
 
-        Every group is one unit. Every other timeline of the bundle's trees
-        (:meth:`_known_timelines`), registered or not and at any depth, is a
-        unit of its own, with ``None`` for its group: it is warped from and
-        into exactly as a group of that one member would be.
+        Every group is one unit, and so is every other registered timeline,
+        with ``None`` for its group: it is warped from and into exactly as a
+        group of that one member would be. A timeline of the bundle's trees
+        that is neither registered nor grouped (:meth:`_known_timelines`) is
+        a unit of its own only when a claim names it.
 
-        A nested timeline needs its own unit because a claim names the
-        timeline it was made on: claims on a child build that child's
-        ``MatchLine``, never its root's, so the root's offsets carry a
-        position to the child (:meth:`_manifest_relatives`) but only the
-        child's unit warps it on through those claims. A unit no claim
-        reaches warps nothing.
+        A claim names the timeline it was made on: claims on a child build
+        that child's ``MatchLine``, never its root's, so the root's offsets
+        carry a position to the child (:meth:`_manifest_relatives`) but only
+        the child's unit warps it on through those claims. A unit no claim
+        reaches warps nothing, so a descendant no claim names is left out
+        rather than tried on every step of the closure.
         """
         membership = self.timeline_to_groups
+        claimed: set[str] = set()
+        for claim in self.cross_group_claims:
+            claimed.update(claim.timelines)
+        for claim_field in self.cross_group_claim_fields:
+            claimed.update(claim_field.timeline_ids)
         units: list[tuple[TimelineGroup | None, tuple[str, ...]]] = [
             (group, tuple(group.timeline_ids)) for group in self.groups.values()
         ]
@@ -957,6 +963,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             (None, (timeline_id,))
             for timeline_id in self._known_timelines()
             if timeline_id not in membership
+            and (timeline_id in self.timelines or timeline_id in claimed)
         )
         return units
 

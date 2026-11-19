@@ -446,6 +446,16 @@ ungrouped registered timeline. What proves it:
     runs from it.
 11. **The private coordinate transfer agrees**, in both directions, and is no
     longer refused for an unregistered source or target.
+12. **Only a claimed descendant is a unit of its own.** A descendant no claim
+    names warps nothing, so it is no unit: a registered root (quarters, length
+    100) with 100 unregistered children of length 1, grouped alone, beside a
+    grouped recording (seconds, length 100.0) with claims `0 ↔ 0.0` and
+    `100 ↔ 100.0` on the root, has exactly 2 units, and the stamp at the
+    root's 50.5 holds the root 50.5, its child at 50 holding 1/2, and the
+    recording 50.5 after exactly 1 transfer (102 units and 298 transfers
+    before). In the fixture above, the units are the registered `clt_1` and
+    `cpt_1` and the claimed `clt_2`, and the queries of 9–10 give the values
+    below.
 
 Fixture (separate from the one above): `clt_1` root, quarters, length 100,
 registered; `clt_2` its child at offset 20, length 40, not registered, events

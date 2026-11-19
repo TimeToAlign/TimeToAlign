@@ -82,6 +82,42 @@ def test_free_claim_mints_claim_1() -> None:
         MatchClaim.from_dict(first.to_dict() | {"id": "a\tb", "id_minted": False})
 
 
+def test_two_free_claims_become_distinct() -> None:
+    def pair() -> tuple[MatchClaim, MatchClaim]:
+        to_audio = _claims(STORED[:1])[0]
+        to_copy = MatchClaim.from_projection(
+            event={"start": 4},
+            source_tl_id="score",
+            target_tl_id="score_copy",
+            target_coord=4,
+            source_unit=TimeUnit.quarters,
+            target_unit=TimeUnit.quarters,
+        )
+        return to_audio, to_copy
+
+    first, second = pair()
+    assert (first.id, second.id) == ("claim_1", "claim_1")
+
+    graph = MatchGraph([first, second])
+    kept = graph.filter(timeline_ids={"score", "audio"}).claims
+    assert len(kept) == 1 and kept[0] is first
+    kept = graph.filter(timeline_ids={"score", "score_copy"}).claims
+    assert len(kept) == 1 and kept[0] is second
+    edge_ids = sorted(data["claim_id"] for _, _, data in graph._graph.edges(data=True))
+    assert edge_ids == ["claim_1", "claim_1"]
+
+    assert _ids(MatchClaimField.from_claims([first, second])) == ["claim_1", "claim_2"]
+    assert (first.id, second.id) == ("claim_1", "claim_1")
+
+    bundle = AlignmentBundle()
+    bundle.add_match_claims([first, second])
+    assert (first.id, second.id) == ("claim_1", "claim_2")
+    kept = MatchGraph(bundle.cross_group_claims).filter(
+        timeline_ids={"score", "score_copy"}
+    )
+    assert [claim.id for claim in kept.claims] == ["claim_2"]
+
+
 def test_field_is_a_scope() -> None:
     field = MatchClaimField.from_claims(_claims(STORED[:3]))
     assert _ids(field) == ["claim_1", "claim_2", "claim_3"]

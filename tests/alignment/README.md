@@ -865,6 +865,7 @@ after reading: (2, 1.0), (6, 3.0), and once more the four stored ones.
 | Test | Validates |
 |------|-----------|
 | `test_free_claim_mints_claim_1` | two fresh claims are both `claim_1`, `id_minted` True; a given `"onset 7"` is kept, `id_minted` False; `"a\tb"` raises |
+| `test_two_free_claims_become_distinct` | two free claims, `score ↔ audio` (0, 0.0) and `score ↔ score_copy` (4, 4), both `claim_1`: a graph built from them filters by object, so `filter(timeline_ids={"score", "audio"})` keeps the first alone and `{"score", "score_copy"}` the second alone, while both edges still carry `claim_id == "claim_1"`; `from_claims` stores them as `claim_1`, `claim_2` and leaves the objects unchanged; a bundle renames the second in place to `claim_2`, and a graph of the bundle's claims keeps `claim_2` for `{"score", "score_copy"}` |
 | `test_field_is_a_scope` | `from_claims` of three fresh claims → `claim_1`, `claim_2`, `claim_3`; a given `claim_1` after a minted `claim_1` keeps it, the minted one becomes `claim_2`; two given `"a"` raise `claim id 'a' is given twice` |
 | `test_from_columns_mints_ids` | the gold vector's ids are `claim_1`–`claim_3`, `id_minted` all True |
 | `test_stored_and_new_claims_are_distinct` | the stored field read from Parquet keeps `claim_1`–`claim_4`; the same four built again plus the two new ones, added to the bundle, become `claim_5`–`claim_10` in order; the caller's objects carry them and `claim.bundle is bundle`; all ten ids distinct |

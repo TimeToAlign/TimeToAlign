@@ -1023,9 +1023,9 @@ class MatchGraph:
         nodes or edges.
 
         Nodes: (timeline_id, coordinate) tuples
-        Edges: Anchors with attributes (explicit, synchronous, claim: the
-        claim object itself, since a claim id is unique only in the scope
-        holding the claim)
+        Edges: Anchors with attributes (explicit, synchronous, claim_id, and
+        claim: the claim object itself, which selects claims, since a claim
+        id is unique only in the scope holding the claim)
 
         Returns:
             networkx Graph representing the anchor structure.
@@ -1088,6 +1088,7 @@ class MatchGraph:
             node_b,
             explicit=claim.is_explicit,
             synchronous=claim.is_synchronous,
+            claim_id=claim.id,
             claim=claim,
         )
 
@@ -1546,6 +1547,7 @@ class MatchGraph:
                     synchronous=True,
                     inferred_via="group",
                     group_id=group_id,
+                    claim_id=implicit_claim.id,
                     claim=implicit_claim,
                 )
 

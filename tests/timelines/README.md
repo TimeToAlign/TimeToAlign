@@ -1667,15 +1667,73 @@ raises a `TypeError` or a `ValueError` of its own, is queried with the float
 
 ### `test_offset_arithmetic.py` - Nested Offset Arithmetic
 
-These tests validate exact coordinate transfer between parents, children, and
-deeper descendants. Parent-to-descendant lookup checks every embedding span,
-while descendant-to-parent lookup and `get_coordinate()` compose all offsets
-into the ancestor coordinate system. Integer and `Fraction` cases assert exact
-results, unknown IDs retain their established return or exception behavior, and
-a child holds `[offset, offset + length)` plus its end where no sibling starts
-there, in timestamp cross-sections and timestamp tables alike (one predicate,
-`_holds_position`): a lone child's end is on the child, and a boundary two
-siblings share is on the one starting there only.
+**Design:** Parent–child coordinate transfer uses exact offset arithmetic
+(`child_coord = parent_coord - offset`), so no floating-point drift enters a
+transfer and rational offsets compose exactly. Parent-to-descendant lookup
+checks every embedding span, while descendant-to-parent lookup and
+`get_coordinate()` compose all offsets into the ancestor coordinate system.
+Integer and `Fraction` cases assert exact results; unknown IDs retain their
+established return or exception behavior.
+
+**One containment rule, applied along the path.** A child holds
+`[offset, offset + length)` plus its end where no sibling of nonzero length
+starts there (one predicate, `_holds_position`): a lone child's end is on the
+child, and a boundary two siblings share is on the one starting there only.
+A position carried further down reaches a descendant only if every timeline
+on the way holds it, so a grandchild never shows a position its parent leaves
+to a sibling. Every reader follows that one rule: the timeline's stamps, its
+tables, `get_children_at`, `get_events_at` and a bundle's stamps across the
+tree. A test proves it only if all of them give the same answer on cases where
+a lane deciding otherwise would differ:
+
+- **The grandchild at a shared boundary.** `P` (length 8) with `A` at 0 and
+  `B` at 4 (length 4 each), `A1` filling `A`, `B1` filling `B`. At `P` 4 the
+  stamp names exactly `P` 4, `B` 0, `B1` 0; the table row has `A` and `A1`
+  null and the same three values; the bundle's stamp is the same set from
+  `P` 4, `B` 0 and `B1` 0. `A1` alone holds its end inside `A` (nothing in `A`
+  starts at 4), so a lane that checked only the target, not the path, shows
+  `A1` without `A` — the defect this pins. Queried on `A` at 4, `A`'s own stamp
+  and table hold `A1` 4: a timeline's own positions are asked of it, so its
+  end is its own whatever its siblings do; the bundle from `A` 4 adds the
+  ancestor `P` 4 and what `P` 4 reaches (`B`, `B1`).
+- **Exact tables decide exactly.** On an exact axis the table compares the
+  positions as ratios (cross-multiplied), never through their floats. Two
+  cases where floats decide wrong: a child at `7/10` of length `1/10` at
+  `4/5` (`7/10 + 1/10` is `4/5` exactly, but `0.7 + 0.1` is not `0.8`): the
+  stamp and the table both hold the child at `1/10`, its end, which nothing
+  follows; and `A` at `1/10` (length `1/5`) beside `B` at `3/10`, at `3/10`:
+  `B` alone, at 0, in the stamp and the table, `A` null.
+- **Lanes agree.** On a three-level tree with siblings at shared and unshared
+  boundaries, every position from 0 to 1 in steps of `1/100` gives the same
+  set of timelines in the root's stamp, its table row and the bundle's stamp,
+  on an exact (quarters), a float (seconds) and an int (samples) axis, and the
+  table's values equal the stamp's.
+- **A zero-length child** is held at its offset, which is its end, even where
+  a sibling starts there too; it takes no position from the child ending
+  there either: `Z` (length 0) and `C` (length 4) at 4 with `A` (length 4) at
+  0: at 4 the stamp holds `C` 0 and `Z` 0, not `A`; with `C` removed it holds
+  `A` 4 and `Z` 0.
+- **`get_children_at`** lists exactly the children the stamp names: `B` alone
+  at 4 in the first case; a lone child ending at 4 inside a parent of length 8
+  at 4 (formerly left out, its end then on no child).
+
+| Test | Validates |
+|------|-----------|
+| `test_exact_parent_to_child` | `_get_child_coordinate()` returns the exact result |
+| `test_exact_child_to_parent` | `_get_parent_coordinate_from_child()` returns the exact result |
+| `test_out_of_bounds_returns_none` | `None` for a coordinate outside the child span; the end of a lone child is held |
+| `test_shared_boundary_belongs_to_the_later_sibling` | Where one child ends and another starts, only the later one holds the position, in stamps and tables alike |
+| `test_unknown_child_returns_none` / `test_unknown_child_raises_keyerror` | Unknown ids keep their established return or exception |
+| `test_recursive_offset_exact` | Offsets compose through a grandchild |
+| `test_recursive_fraction_offset_exact` | Rational offsets compose without float coercion |
+| `test_timestamp_uses_offset_arithmetic` | A `TimeStamp` resolves a child through its offset |
+| `test_timestamp_out_of_bounds_returns_none` | A stamp outside the child span raises `KeyError` for the child |
+| `test_timestamp_boundary_values` | Start inclusive; the end of a child nothing follows inclusive |
+| `test_no_interpolation_maps_attribute` | A timeline holds no interpolation maps |
+| `TestContainmentAlongThePath` | The grandchild at a shared boundary, in stamp, table, bundle and `get_children_at`; a timeline's own end |
+| `TestExactTableContainment` | The two exact-axis cases |
+| `test_lanes_agree_at_every_position` | Stamp, table and bundle agree on three axes, values included |
+| `TestZeroLengthChild` | A zero-length child is held at its offset and takes no end away |
 
 ### `test_fraction_generation.py` - Exact Logical Coordinate Generation
 
@@ -3345,11 +3403,12 @@ computation) across a timeline hierarchy.
 A logical timeline (quarters/beats) carries `number_type = Fraction`, so its
 length is a `Coordinate` whose `value` is a `Fraction`. The bounds check inside
 `_compute_local_coordinates` masks out-of-range coordinates by comparing the
-float member of the coordinate structs against the length scalar through
-PyArrow compute kernels (`pc.greater_equal`, `pc.less_equal`). A kernel rejects
-a raw `Fraction` argument, so the length must reach it as a `float`; the
-comparison is all the float member serves, and the coordinates kept stay
-exact.
+coordinate structs against the length exactly, on their ratio side
+(`compare_number_column`, cross-multiplied in decimals), as a single position
+is compared in a stamp; a float comparison would put a position just inside a
+boundary on the wrong side of it (`test_offset_arithmetic.py`,
+`TestExactTableContainment`). The length therefore never reaches a kernel as a
+raw `Fraction`, and the coordinates kept stay exact.
 
 | Test | Construction | Exact assertion |
 |------|--------------|-----------------|

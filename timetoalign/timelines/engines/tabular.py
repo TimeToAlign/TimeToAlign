@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any
 
@@ -47,6 +47,7 @@ from timetoalign.maps import ConversionMap
 
 if TYPE_CHECKING:
     from timetoalign.core.enums import ColumnNaming
+    from timetoalign.timelines.base import Timeline
 
 
 def _empty_coordinates() -> pa.StructArray:
@@ -621,54 +622,96 @@ class TabularExportMixin:
 
     def _compute_local_coordinates(
         self,
-        root_coords: pa.StructArray,
-        offset: int | float | Fraction = 0,
+        parent_coords: pa.StructArray,
+        offset: int | float | Fraction | None = None,
+        *,
+        number_type: NumberType | None = None,
     ) -> pa.StructArray:
-        """Compute local coordinates from root coordinates.
+        """Carry a column of positions one edge down, onto this timeline.
 
-        Offset subtraction with bounds checking. Coordinates this timeline
-        does not hold are replaced with null: those outside ``[0, length)``,
-        and its end where a sibling starts there (``_holds_position``); a
-        timeline of unknown length is bounded below only.
+        A row keeps its position where this timeline holds it
+        (:meth:`_holds_column`, the rule of ``_holds_position`` on a column)
+        and is null elsewhere: outside ``[0, length)``, at its end where a
+        sibling starts there, and wherever the parent's own column is null,
+        so a position reaches a descendant only through every timeline on
+        the way, as it does in the timeline's stamps. A timeline of unknown
+        length is bounded below only.
 
-        The subtraction runs in this timeline's declared representation, so a
-        child of an exact parent reports exact local positions; only the
-        bounds comparison drops to the float member, where a comparison is all
-        that is asked of it.
+        On an exact timeline the rows are decided on the parent's positions,
+        exactly, and only the rows held are shifted, since the exact lane of
+        the arithmetic reads rows in Python and a child spanning a tenth of
+        the axis must not pay for the whole of it. On a float or int
+        timeline the whole column is shifted as one kernel and decided after,
+        as a single position is.
 
         Args:
-            root_coords: Root-relative coordinate structs.
-            offset: This timeline's offset from root.
+            parent_coords: Positions on the parent (on this timeline itself
+                for its own column), null where the parent does not hold one.
+            offset: This timeline's offset on its parent; None for its own
+                column, which holds ``[0, length]`` with its end, whatever
+                its siblings do, since the positions were asked of it.
+            number_type: How *parent_coords* declare their numbers; by
+                default as this timeline declares its own.
 
         Returns:
-            Local coordinate structs, null for out-of-bounds.
+            The local coordinate structs, null where not held. They declare
+            their numbers as *parent_coords* do at offset 0 or None (the
+            cells are reused), else as this timeline does.
         """
-        if len(root_coords) == 0:
+        if number_type is None:
+            number_type = self._number_type
+        if len(parent_coords) == 0:
             return _empty_coordinates()
 
-        # Bound first, on the float member. The length scalar must reach the
-        # kernel as a float: on a quarters/beats axis its value is a Fraction,
-        # which the PyArrow compute kernel rejects.
-        shifted = pc.subtract(root_coords.field("value"), float(offset))
-        within = pc.greater_equal(shifted, 0.0)
-        extent = self._extent
-        if extent is not None:
-            # The containment rule of ``_holds_position``, on a column: the
-            # end belongs to this timeline unless a sibling starts there.
-            below_end = pc.less_equal if self._holds_own_end else pc.less
-            within = pc.and_(within, below_end(shifted, float(extent)))
+        # At offset zero the local coordinate IS the parent's, so the cells
+        # are reused rather than recomputed.
+        if offset is None or offset == 0:
+            within = self._holds_column(
+                parent_coords, number_type, end_held=True if offset is None else None
+            )
+            return _null_where(parent_coords, pc.invert(within))
 
-        # At offset zero the local coordinate IS the root coordinate, so the
-        # cells are reused rather than recomputed.
-        if offset == 0:
-            return _null_where(root_coords, pc.invert(within))
+        if self._number_type is NumberType.fraction:
+            within = self._holds_column(parent_coords, number_type, start=offset)
+            kept = pc.filter(parent_coords, within)
+            local = combine_number_columns(kept, offset, "subtract", self._number_type)
+            return pc.take(local, _positions_within(within))
 
-        # Only the rows this timeline actually covers are shifted. The exact
-        # lane of the arithmetic reads rows in Python, so a child spanning a
-        # tenth of the axis must not pay for the whole of it.
-        kept = pc.filter(root_coords, within)
-        local = combine_number_columns(kept, offset, "subtract", self._number_type)
-        return pc.take(local, _positions_within(within))
+        shifted = combine_number_columns(
+            parent_coords, offset, "subtract", self._number_type
+        )
+        within = self._holds_column(shifted, self._number_type)
+        return _null_where(shifted, pc.invert(within))
+
+    def _descendant_local_coordinates(
+        self,
+        local: pa.StructArray,
+        number_type: NumberType,
+        recursion_limit: int | None,
+    ) -> Iterator[tuple[Timeline, pa.StructArray]]:
+        """Yield every descendant with its local column, carried edge by edge.
+
+        Children in offset order, each followed by its own descendants (the
+        ``"sorted"`` order of :meth:`iter_children`); each column is derived
+        from its parent's, so the path rule of :meth:`_compute_local_coordinates`
+        holds at every depth.
+        """
+        if recursion_limit is not None and recursion_limit <= 0:
+            return
+        next_limit = None if recursion_limit is None else recursion_limit - 1
+        for child_id, child in sorted(
+            self._children.items(),
+            key=lambda item: self._child_offsets[item[0]].value,
+        ):
+            offset = self._child_offsets[child_id].value
+            child_local = child._compute_local_coordinates(
+                local, offset, number_type=number_type
+            )
+            child_type = number_type if offset == 0 else child._number_type
+            yield child, child_local
+            yield from child._descendant_local_coordinates(
+                child_local, child_type, next_limit
+            )
 
     def _resolve_conversion_maps(
         self, spec: ConversionMapsSpec
@@ -774,31 +817,28 @@ class TabularExportMixin:
         Returns:
             PyArrow table with timestamp data and field-level unit metadata.
         """
+        own = self._compute_local_coordinates(axis)
         columns: list[TimestampColumn] = [
             TimestampColumn(
                 name=self._id,
-                values=self._compute_local_coordinates(axis, offset=0),
+                values=own,
                 unit=self._unit,
                 number_type=self._number_type,
                 timeline_id=self._id,
             ),
         ]
-
-        for child_offset, child in self.iter_children(
-            recursion_limit=recursion_limit,
-            include_self=False,
-        ):
-            columns.append(
-                TimestampColumn(
-                    name=child.id,
-                    values=child._compute_local_coordinates(
-                        axis, offset=child_offset.value
-                    ),
-                    unit=child.unit,
-                    number_type=child.number_type,
-                    timeline_id=child.id,
-                )
+        columns.extend(
+            TimestampColumn(
+                name=child.id,
+                values=values,
+                unit=child.unit,
+                number_type=child.number_type,
+                timeline_id=child.id,
             )
+            for child, values in self._descendant_local_coordinates(
+                own, self._number_type, recursion_limit
+            )
+        )
 
         # C-Maps work on NumPy arrays; we convert PyArrow <-> NumPy at the boundary.
         if conversion_maps:

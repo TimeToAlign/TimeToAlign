@@ -1092,6 +1092,63 @@ _COLUMN_KERNELS: dict[str, Any] = {
     "floor_divide": lambda a, b: pc.floor(pc.divide(a, b)),
 }
 
+_COMPARISON_KERNELS: dict[str, Any] = {
+    "equal": pc.equal,
+    "less": pc.less,
+    "less_equal": pc.less_equal,
+    "greater_equal": pc.greater_equal,
+}
+
+# Wide enough for an int64 numerator or denominator; the product of two such
+# columns (precision 37 + 37 + 1) still fits decimal256's 76 digits.
+_CROSS_MULTIPLICATION_TYPE = pa.decimal256(37, 0)
+
+
+def compare_number_column(
+    column: pa.Array,
+    number: int | float | Fraction,
+    comparison: str,
+    number_type: NumberType,
+) -> pa.Array:
+    """Compare a column of storage cells with one number, as the column reads.
+
+    An ``int`` or ``fraction`` column is compared exactly, on its ratio side:
+    ``n/d`` against ``p/q`` is ``n·q`` against ``p·d``, cross-multiplied in
+    decimals wide enough that no product overflows. A ``float`` column is
+    compared on its float side, against the number as a float, which is what
+    comparing two floats means. Either way a row compares as the scalar it
+    holds would, so a column and a single position decide alike.
+
+    Args:
+        column: A ``pa.StructArray`` of :data:`RATIONAL_STRUCT_TYPE`.
+        number: The number to compare every row with.
+        comparison: ``"equal"``, ``"less"``, ``"less_equal"`` or
+            ``"greater_equal"`` (row against *number*).
+        number_type: How the column declares its numbers.
+
+    Returns:
+        A boolean array, null where the row is null.
+    """
+    if isinstance(column, pa.ChunkedArray):
+        column = column.combine_chunks()
+    kernel = _COMPARISON_KERNELS[comparison]
+    if number_type is NumberType.float:
+        compared = kernel(column.field("value"), pa.scalar(float(number)))
+    else:
+        exact = Fraction(number)
+        wide = _CROSS_MULTIPLICATION_TYPE
+        left = pc.multiply(
+            pc.cast(column.field("numerator"), wide),
+            pa.scalar(Decimal(exact.denominator), type=wide),
+        )
+        right = pc.multiply(
+            pc.cast(column.field("denominator"), wide),
+            pa.scalar(Decimal(exact.numerator), type=wide),
+        )
+        compared = kernel(left, right)
+    # A struct's own nulls do not reach its members; carry them over.
+    return pc.if_else(column.is_valid(), compared, pa.scalar(None, type=pa.bool_()))
+
 
 def _canonical_column(array: pa.Array, number_type: NumberType) -> pa.Array:
     """Extract the canonical sub-field of a storage column, nulls preserved."""

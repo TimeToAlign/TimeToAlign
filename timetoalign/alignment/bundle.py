@@ -3025,6 +3025,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             if value is not None
         ]
         processed: set[str] = set()
+        tree_reached: set[str] = set()
         units = self._warp_units()
 
         while worklist:
@@ -3066,15 +3067,19 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 worklist.append(target_id)
 
             # Every timeline reaches the others of its manifest tree (its root
-            # and the root's descendants) by exact offsets.
-            for relative_id, relative_coordinate in self._manifest_relatives(
-                node_timeline, node_coordinate
-            ).items():
-                if relative_id in coordinates:
-                    continue
-                coordinates[relative_id] = relative_coordinate
-                add_inferred_edge(node_id, relative_id)
-                worklist.append(relative_id)
+            # and the root's descendants) by exact offsets. A timeline given
+            # its coordinate that way has no relatives the first one lacked,
+            # so its tree is not walked again from it.
+            if node_id not in tree_reached:
+                for relative_id, relative_coordinate in self._manifest_relatives(
+                    node_timeline, node_coordinate
+                ).items():
+                    if relative_id in coordinates:
+                        continue
+                    coordinates[relative_id] = relative_coordinate
+                    tree_reached.add(relative_id)
+                    add_inferred_edge(node_id, relative_id)
+                    worklist.append(relative_id)
 
             # The node's units: each of its groups, or the node alone when it
             # is ungrouped, registered or not.
@@ -3937,15 +3942,17 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
 
         Which timelines appear follows the timeline's own parent-to-child
         rule (``Timeline._holds_position``, which its stamps and tables read
-        too): a timeline that is not an ancestor of the queried one appears
-        when it holds the position, ``[0, length)`` and its end where no
-        sibling starts there, so a boundary shared by two siblings belongs
-        to the one starting there. An ancestor contains the queried
-        timeline's whole span, end included; it appears when its closed span
-        ``[0, length]`` holds the position, which only leaves it out for a
-        position off the queried timeline. A length that is not known bounds
-        below only. Every timeline of the tree takes part, whatever
-        its depth and whether or not it is registered or grouped
+        too). The position is carried up to every ancestor, since an
+        ancestor contains its descendant's whole span, end included. From
+        the queried timeline and from each ancestor it is carried down only
+        into the children that hold it, ``[0, length)`` and their end where
+        no sibling starts there, and so on at every depth: a timeline
+        appears only if every timeline on the way down holds the position,
+        exactly as in the root's own stamp, so a boundary shared by two
+        siblings reaches the one starting there and its descendants, never
+        a descendant of the other. A length that is not known bounds below
+        only. Every timeline of the tree takes part, whatever its depth and
+        whether or not it is registered or grouped
         (:meth:`_known_timelines`): a middle ancestor between a registered
         root and a grouped descendant is reached like either of them.
 
@@ -3958,41 +3965,33 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             position, by id, the root first and then depth-first.
         """
         carried: dict[str, CoordinateValue] = {timeline.id: coordinate}
-        pending = [timeline]
-        while pending:
-            node = pending.pop()
-            value = carried[node.id]
-            steps: list[tuple[Timeline, Coordinate, bool]] = [
-                (child, node._child_offsets[child_id], True)
-                for child_id, child in node._children.items()
-            ]
-            parent = node._parent
-            if parent is not None:
-                steps.append((parent, parent._child_offsets[node.id], False))
-            for neighbour, offset, subtract in steps:
-                if neighbour.id not in carried:
-                    carried[neighbour.id] = shift_number(
-                        value, offset.value, subtract=subtract
-                    )
-                    pending.append(neighbour)
-        ancestors: set[str] = set()
+        reached_from = [timeline]
         node = timeline
         while node._parent is not None:
-            node = node._parent
-            ancestors.add(node.id)
-        reached: dict[str, CoordinateValue] = {}
-        for relative in _tree(node):
-            if relative is timeline:
-                continue
-            value = carried[relative.id]
-            if relative.id in ancestors:
-                length = relative.length
-                holds = 0 <= value and (length is None or value <= length.value)
-            else:
-                holds = relative._holds_position(value)
-            if holds:
-                reached[relative.id] = express_as(value, relative.number_type)
-        return reached
+            parent = node._parent
+            carried[parent.id] = shift_number(
+                carried[node.id], parent._child_offsets[node.id].value, subtract=False
+            )
+            reached_from.append(parent)
+            node = parent
+        root = node
+        pending = reached_from
+        while pending:
+            node = pending.pop()
+            for child_id, child in node._children.items():
+                if child.id in carried:
+                    continue
+                value = shift_number(
+                    carried[node.id], node._child_offsets[child_id].value, subtract=True
+                )
+                if child._holds_position(value):
+                    carried[child.id] = value
+                    pending.append(child)
+        return {
+            relative.id: express_as(carried[relative.id], relative.number_type)
+            for relative in _tree(root)
+            if relative is not timeline and relative.id in carried
+        }
 
     def _get_unit_map(self) -> dict[str, str]:
         """Build a mapping from timeline IDs to their coordinate unit strings.

@@ -334,8 +334,12 @@ timeline enters a bundle (its root comes along); it is not a condition for
 being found. Each timeline of a tree reaches every other one of that tree by the
 exact parent-child offsets, the first transfer mechanism, and a timeline appears
 in a stamp exactly when it holds the position by the timeline's own
-parent-to-child rule: `[0, length)`, plus its end where no sibling starts there.
-An ancestor of the queried timeline holds its whole span, end included.
+parent-to-child rule: `[0, length)`, plus its end where no sibling starts there,
+applied along the path — a position carried down reaches a timeline only if
+every child on the way holds it, as in the root's own stamps and tables
+(`../timelines/README.md`, `test_offset_arithmetic.py`). An ancestor of the
+queried timeline holds its whole span, end included, since it contains it; no
+span of its own is checked.
 
 Before this held, a timeline between a registered root and a grouped
 descendant (a "middle ancestor") was invisible: querying it raised `KeyError`,
@@ -1337,32 +1341,6 @@ This test validates that MatchClaims can represent the segment-to-segment corres
 - All 5 claims are intervals (not instants)
 - All claims connect the same timeline pair
 - Cumulative offsets are correct (first segment starts at 0, last ends at total length)
-
----
-
-## Offset Arithmetic Tests (`../timelines/test_offset_arithmetic.py`)
-
-### What We're Validating
-
-**Design:** Parent–child coordinate transfer uses exact offset arithmetic
-(`child_coord = parent_coord - offset`), so no floating-point drift enters a
-transfer and rational offsets compose exactly.
-
-### Key Evidence
-
-| Test | Validates |
-|------|-----------|
-| `test_exact_parent_to_child` | `_get_child_coordinate()` returns the exact result |
-| `test_exact_child_to_parent` | `_get_parent_coordinate_from_child()` returns the exact result |
-| `test_out_of_bounds_returns_none` | `None` for a coordinate outside the child span; the end of a lone child is held |
-| `test_shared_boundary_belongs_to_the_later_sibling` | Where one child ends and another starts, only the later one holds the position, in stamps and tables alike |
-| `test_unknown_child_returns_none` / `test_unknown_child_raises_keyerror` | Unknown ids keep their established return or exception |
-| `test_recursive_offset_exact` | Offsets compose through a grandchild |
-| `test_recursive_fraction_offset_exact` | Rational offsets compose without float coercion |
-| `test_timestamp_uses_offset_arithmetic` | A `TimeStamp` resolves a child through its offset |
-| `test_timestamp_out_of_bounds_returns_none` | A stamp outside the child span raises `KeyError` for the child |
-| `test_timestamp_boundary_values` | Start inclusive; the end of a child nothing follows inclusive |
-| `test_no_interpolation_maps_attribute` | A timeline holds no interpolation maps |
 
 ---
 

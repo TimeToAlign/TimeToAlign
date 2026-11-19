@@ -266,9 +266,10 @@ formatter/linter tooling. See `pyproject.toml` for the full extras hierarchy
 (`midi`, `partitura`, `music21`, `ms3`, `audio`, `graphical`, `plot`,
 `scores`, `loaders`, `tutorial`, `docs`, `testing`, `all`, `dev`).
 
-`timetoshare`, the TimeToShare package (the manifest schema, its validator,
-the model of links and schemes the library re-exports, and the registry of
-identifier schemes), is a runtime dependency listed in `[project]
+`timetoshare`, the TimeToShare package (the manifest schema, its validator
+and the rules of statements, by which the library checks the `statements`,
+`provenance` and `@context` it carries through reading and writing), is a
+runtime dependency listed in `[project]
 dependencies`, so every install above brings it. Until a release of
 TimeToShare carries the schema version the library writes, it is a git
 reference to TimeToShare's `main` branch. PyPI refuses a direct reference in a

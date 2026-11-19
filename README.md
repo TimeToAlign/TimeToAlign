@@ -19,8 +19,8 @@ pip install timetoalign         # Core only — lightweight
 ```
 
 The core install pulls in only PyArrow, pandas, NetworkX,
-typing_extensions, pydantic, and timetoshare (the TimeToShare manifest format,
-its validator and its model of links to works).  This gives you the full timeline / map /
+typing_extensions, pydantic, and timetoshare (the TimeToShare manifest format
+and its validator, which also checks a manifest's statements).  This gives you the full timeline / map /
 alignment framework but no file-format-specific loaders.  If you need loaders,
 plotting, or Jupyter support, install one of the [optional extras](#optional-dependencies)
 described below.  To run the **tutorial notebooks** (see below), for example:

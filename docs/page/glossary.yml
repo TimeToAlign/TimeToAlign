@@ -68,7 +68,10 @@ Child: |
   A timeline nested within a parent, sharing its measuring unit but defining
   its own origin. Coordinate transfer between parent and child uses exact offset
   arithmetic, applied recursively. add_child() locks a child by default; an
-  unlocked child may grow, contained by its parent like any content.
+  unlocked child may grow, contained by its parent like any content. A child
+  holds its parent's positions from its start up to its end, and its end only
+  where no sibling starts there; a nested timeline is reached only through
+  parents that all hold the position.
 
 ClaimType: |
   The semantic kind of a MatchClaim, derived from its structure rather than
@@ -544,8 +547,7 @@ TimeStamp: |
   unit conversion, get_conversion_for() for label and structured map values,
   present_timelines, and is_interpolated. A bare number is an explicit
   format="float"/"int"/"fraction" request; there is no ambient float view.
-  A child answers from its start up to its end, and at its end only where no
-  sibling starts there.
+  Which children answer follows the containment rule of Child.
 
 TimeToShare manifest: |
   The file format in which timelines, groups and bundles are exchanged,

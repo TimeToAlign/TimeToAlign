@@ -99,7 +99,10 @@ to the relevant section of the conceptual model.
     measuring unit but defining its own origin. `add_child()` locks a child
     by default, which prevents side effects from modifications. An unlocked
     child's length may change only within its parent's known length: a
-    parent never grows because a child grew.
+    parent never grows because a child grew. A child holds its parent's
+    positions from its start up to its end, and its end only where no
+    sibling starts there; a nested timeline is reached only through
+    parents that all hold the position.
     See [Nested timelines](concepts.qmd#nested-timelines).
 
 **ClaimType**
@@ -766,8 +769,8 @@ to the relevant section of the conceptual model.
     label and structured map values, `present_timelines`, and
     `is_interpolated`. A bare number is an explicit
     `format="float"/"int"/"fraction"` request; there is no ambient float view.
-    A child answers from its start up to its end, and at its end only where
-    no sibling starts there.
+    Which children answer follows the containment rule of
+    {{< glossary Child >}}.
     See [Nested timelines](concepts.qmd#nested-timelines).
 
 **TimeToShare manifest**

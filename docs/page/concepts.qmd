@@ -489,7 +489,10 @@ parent positions from its start up to, but not including, its end, and its
 end as well where no sibling starts there. A boundary two siblings share
 therefore belongs to the one starting at it, so one parent position names one
 segment, while a Child that nothing follows still answers at its own end.
-TimeStamps, timestamp tables and the MatchStamps of an AlignmentBundle all
+The rule applies along the path: a position reaches a nested timeline only
+if every timeline on the way down holds it, so a grandchild never answers
+where its own parent leaves the position to a sibling. TimeStamps, timestamp
+tables, `get_children_at()` and the MatchStamps of an AlignmentBundle all
 apply this rule, to every timeline of a tree, nested ones included.
 
 By analogy, a **TimeIntervalStamp** combines a start TimeStamp and an end

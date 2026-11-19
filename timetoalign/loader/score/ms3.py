@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import math
+import warnings
 from fractions import Fraction
 from numbers import Integral, Real
 from pathlib import Path
@@ -49,15 +50,20 @@ class Ms3Loader(ScoreLoader):
     ``auto_discover=True`` to have it locate companion facet files
     automatically.
 
-    Auto-discovery uses two strategies:
+    Auto-discovery keeps the piece name and swaps the facet, looking in two
+    places for each other facet:
 
     1. **Flat siblings** (ms3 convention): for ``name.notes.tsv``, look for
        ``name.measures.tsv``, ``name.chords.tsv``, ``name.harmonies.tsv``
        in the same directory.
     2. **Facet directories** (DCML corpus convention): if the file sits in a
-       directory whose name matches a facet (e.g., ``notes/``), look for
-       sibling directories named after the other facets and find a file
-       with the same stem there.
+       directory named after its facet (``notes/name.notes.tsv``), look in
+       the sibling directories named after the other facets
+       (``measures/name.measures.tsv``, ``chords/name.chords.tsv``,
+       ``harmonies/name.harmonies.tsv``).
+
+    A facet the piece lacks is skipped; a file for which no companion is
+    found at all raises a ``UserWarning`` and is loaded alone.
 
     TSV columns (notes.tsv gold standard):
     - mc, mn: Measure count/number
@@ -139,65 +145,68 @@ class Ms3Loader(ScoreLoader):
         return None
 
     @staticmethod
-    def _discover_companions(source: Path) -> list[Path]:
-        """Locate companion facet files for *source*.
+    def _companion_candidates(source: Path) -> dict[str, list[Path]]:
+        """Paths where each other facet of *source*'s piece may be stored.
 
-        Uses two strategies in order:
+        A facet file is named ``<piece>.<facet>.tsv`` (or ``<facet>.tsv``
+        when the piece has no name of its own). Each other facet keeps the
+        piece name and swaps the facet: ``<piece>.<other>.tsv``. It is
+        looked for in two places, in this order:
 
-        1. **Flat siblings** — for ``name.<facet>.tsv``, glob
-           ``name.*.<other_facet>.tsv`` in the same directory.
-        2. **Facet directories** — if the parent directory name equals the
-           current facet (e.g. ``notes/``), look for sibling directories
-           named after the remaining facets and find a file whose stem
-           matches.
+        1. **Flat siblings** (ms3 convention): the directory of *source*.
+        2. **Facet directories** (DCML corpus convention): when *source*
+           lies in a directory named after its facet (``notes/``), the
+           sibling directory named after the other facet (``measures/``).
 
-        Files with an ``_unfolded`` suffix are matched only to other
-        ``_unfolded`` files and vice-versa, to avoid mixing folded and
-        unfolded variants.
+        Because the piece name is kept whole, an ``_unfolded`` file is
+        matched only to ``_unfolded`` files and a folded file only to folded
+        ones.
 
         Args:
             source: Resolved path to a TSV file.
 
         Returns:
-            Companion paths (may be empty). Never includes *source* itself.
+            For each facet other than *source*'s, the candidate paths in
+            search order; empty when *source* names no facet.
         """
-        source = source.resolve()
         facet = Ms3Loader._parse_facet(source)
         if facet is None:
-            return []
+            return {}
+        # "<piece>.<facet>.tsv" -> "<piece>"; a bare "<facet>.tsv" -> "".
+        piece = source.name[: max(len(source.name) - len(f".{facet}.tsv"), 0)]
+        in_facet_directory = source.parent.name.lower() == facet
+        candidates: dict[str, list[Path]] = {}
+        for other in Ms3Loader._FACETS:
+            if other == facet:
+                continue
+            file_name = f"{piece}.{other}.tsv" if piece else f"{other}.tsv"
+            candidates[other] = [source.parent / file_name]
+            if in_facet_directory:
+                candidates[other].append(source.parent.parent / other / file_name)
+        return candidates
 
+    @staticmethod
+    def _discover_companions(source: Path) -> list[Path]:
+        """Locate companion facet files for *source*.
+
+        For each other facet, the first existing candidate of
+        `_companion_candidates` is taken, so a piece may keep some facets
+        beside its notes and others in facet directories.
+
+        Args:
+            source: Path to a TSV file.
+
+        Returns:
+            Companion paths, resolved, in facet order (may be empty). Never
+            includes *source* itself.
+        """
+        source = source.resolve()
         companions: list[Path] = []
-        other_facets = [f for f in Ms3Loader._FACETS if f != facet]
-        name_lower = source.name.lower()
-
-        # Strategy 1: flat siblings (name.facet.tsv convention)
-        # Extract the piece stem: everything before ".<facet>.tsv"
-        dot_facet = f".{facet}."
-        idx = name_lower.find(dot_facet)
-        if idx >= 0:
-            piece_stem = source.name[:idx]  # preserve original case
-            for other in other_facets:
-                candidate = source.parent / f"{piece_stem}.{other}.tsv"
-                if candidate.resolve() != source and candidate.is_file():
+        for candidates in Ms3Loader._companion_candidates(source).values():
+            for candidate in candidates:
+                if candidate.is_file() and candidate.resolve() != source:
                     companions.append(candidate.resolve())
-            if companions:
-                return companions
-
-        # Strategy 2: facet directories
-        parent_name = source.parent.name.lower()
-        if parent_name == facet:
-            grandparent = source.parent.parent
-            # Derive the expected filename in sibling facet directories.
-            # Replace the facet directory name in the stem if present,
-            # otherwise keep the original name.
-            file_stem = source.name
-            for other in other_facets:
-                sibling_dir = grandparent / other
-                if sibling_dir.is_dir():
-                    candidate = sibling_dir / file_stem
-                    if candidate.is_file():
-                        companions.append(candidate.resolve())
-
+                    break
         return companions
 
     def load(self, *sources: Path | str) -> Self:
@@ -207,6 +216,9 @@ class Ms3Loader(ScoreLoader):
         include its companion facet files (measures, chords, harmonies,
         etc.) before loading. Files that have already been loaded (or that
         appear more than once in the expanded set) are silently skipped.
+        A facet the piece does not have is not looked for further; a source
+        for which no companion at all is found raises a ``UserWarning``
+        naming the paths that were looked at, and is loaded alone.
 
         Args:
             *sources: Paths to TSV files.
@@ -227,13 +239,35 @@ class Ms3Loader(ScoreLoader):
                 continue
             seen.add(path)
             expanded.append(path)
-            for companion in self._discover_companions(path):
+            companions = self._discover_companions(path)
+            if not companions:
+                self._warn_no_companion(path)
+            for companion in companions:
                 if companion not in seen:
                     seen.add(companion)
                     expanded.append(companion)
                     logger.debug("Auto-discovered companion: %s", companion)
 
         return super().load(*expanded)
+
+    @staticmethod
+    def _warn_no_companion(source: Path) -> None:
+        """Warn that auto-discovery found no companion facet for *source*."""
+        candidates = Ms3Loader._companion_candidates(source)
+        if not candidates:
+            detail = (
+                "its file name states no facet (expected '<piece>.<facet>.tsv' "
+                f"with a facet among {list(Ms3Loader._FACETS)})"
+            )
+        else:
+            looked_at = [str(path) for paths in candidates.values() for path in paths]
+            detail = f"none of these files exists: {looked_at}"
+        warnings.warn(
+            f"auto_discover found no companion facet file for '{source}': {detail}. "
+            "It is loaded alone.",
+            UserWarning,
+            stacklevel=3,
+        )
 
     # endregion
 

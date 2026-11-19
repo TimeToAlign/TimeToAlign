@@ -14,6 +14,7 @@ loaded by `Ms3Loader` is authoritative whenever loaders are compared.
 | `test_measuremap_loader.py` | MeasureMap expansion, validation, traversal, schema, and comparison with MS3. |
 | `test_flow_csv_validation.py` | Right-open ranges, exact atomic boundaries, live Partitura boundaries, and CSV serialization. |
 | `test_partitura_exactness.py` | Exact Partitura coordinate pairs, instant nulls, flattened timelines, and agreement with Partitura's float map. |
+| `test_ms3_facets.py` | `Ms3Loader`'s companion discovery in both corpus layouts (see "MS3 facet discovery" below). |
 | `test_successors.py` | The `next` column derived from the measure columns: endings of more than one measure, Music21/Partitura parity, agreement with the ms3 TSVs (see below). |
 | `test_verovio_loader.py` | `VerovioLoader` on MEI fixtures and specimens: exact onsets, kept ids, measures as structure, ties, grace notes, repeats, movements, the physical timeline, music21 parity, Verovio's expansion against the flow controller (see below). |
 | `test_verovio_ids.py` | `VerovioLoader`'s minted timeline ids when the root's id is given (see "Ids of a given root" below). |
@@ -235,6 +236,46 @@ different on `flow_only`: it completes repeat regions by inferring boundaries.
 The 498-note Chopin gold value is asserted once per loader in
 `TestNoteCountConsistency.test_note_counts_exact_match`. The same module requires exact MIDI
 pitch equality and checks both `EnharmonicPitch` and `MidiPitch` views for all 498 events.
+
+## MS3 facet discovery
+
+`Ms3Loader(auto_discover=True)` promises the piece's other facets from one file. Each facet
+file is named `<piece>.<facet>.tsv`; a companion keeps the piece name and swaps the facet, and
+is looked for beside the file (the ms3 layout) and, when the file lies in a directory named
+after its facet, in the sibling directory of the other facet (the DCML corpus layout:
+`notes/p.notes.tsv`, `measures/p.measures.tsv`, `harmonies/p.harmonies.tsv`). Discovery used
+to look for `measures/p.notes.tsv`, so on a DCML corpus it found nothing and the notes loaded
+alone, silently: Debussy's Clair de lune came out 645/2 quarters long (its last note's end)
+instead of the notated 324, with no measure map and no harmony labels.
+
+The proof is a small piece written into `tmp_path` in each layout: three 4/4 measures (12
+quarters), one note at quarter 9 lasting one quarter (it ends at 10, short of the notated end),
+two harmony labels at 0 and 6 and no chords facet. The last label's `duration_qb` cell is left
+empty on purpose: its span can then come only from the measures facet (end 12, so 6), which the
+harmonies reader finds through the same discovery. From the notes file, in both layouts:
+
+| Assertion | Value | What it proves |
+|---|---|---|
+| loaded sources | notes, measures, harmonies, in that order, resolved | every present facet found, the absent chords skipped |
+| timeline length | exactly `Fraction(12)` | the measures facet was read; the notes alone give 10 |
+| measure map | 3 measures | the measures facet became structure |
+| labels and their spans | 2; `6`, `6` (exact) | harmonies found, and the last span reached the measures facet |
+| warnings | none | a complete discovery is silent |
+
+Both layouts give identical sources (up to directory), lengths and spans. Starting from the
+measures file of the DCML layout finds the notes and harmonies. An `_unfolded` measures file
+beside the folded one in `measures/` is never taken for the folded notes, and the reverse.
+Where a facet exists in both places the file beside the source is taken, the order the
+docstring states.
+
+When nothing is found the loader still loads the file alone, but warns: a notes file alone in
+`notes/` raises one `UserWarning` naming the source and every path it looked at (both
+candidates of each of the three other facets); a file whose name states no facet warns that it
+states none. Without `auto_discover` nothing is looked for and nothing warns.
+
+The real corpus is checked by hand only (CC BY-NC-SA, never copied here): from
+`notes/l075-03_suite_clair.notes.tsv` discovery loads all four facets, length 324 quarters, 72
+measures, 1680 notes, 150 labels.
 
 ## Coordinate exactness
 

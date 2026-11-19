@@ -1252,6 +1252,13 @@ result. The coordinate column holds the fraction strings ms3 writes; the kept ro
 built as pandas builds it, so under pandas 3 the strings arrive in a `str` column, not an
 `object` one: the conversion used to test for `object` and left every coordinate a string.
 
+Two more runs read the tie cells as text, as a TSV read with every column as `str` holds
+them: `"1"`, `"0"`, `"-1"` as in the table, and for the untied note once `""` and once
+`" "`. A text cell that is empty or holds only whitespace is an empty cell, so the kept ids
+are again exactly `["a", "b", "f"]` in both runs. Parsing the text as numbers alone would
+refuse the whitespace cell (`pd.to_numeric` cannot parse `" "`), and the untied note would
+not be kept.
+
 A tie cell outside ms3's values is not read as anything: a frame whose cells are `1` and `2`
 raises `ValueError` with exactly `Column 'tied' holds tie values other than 1, 0, -1: [2.0]`,
 so an unknown value is neither kept as an onset nor dropped silently.

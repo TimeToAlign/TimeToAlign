@@ -356,12 +356,9 @@ def prepare_abc_notes_for_matching(
         pitch_column: Column containing pitch name.
         staff_column: Column containing staff number.
         tied_column: Column containing the tie indicator (``1``, ``0``,
-            ``-1`` or empty, numeric or as text). Rows holding ``0`` or
-            ``-1`` are dropped.
-
-    Raises:
-        ValueError: If the tie column holds a value other than ``1``, ``0``,
-            ``-1`` or an empty cell.
+            ``-1`` or empty, numeric or as text; a text cell that is empty
+            or holds only whitespace is empty). Rows holding ``0`` or ``-1``
+            are dropped.
         coord_column: Column containing the unfolded coordinate (may contain
             fraction strings like ``"707/2"``).
 
@@ -371,8 +368,16 @@ def prepare_abc_notes_for_matching(
         length of its tie. Includes a ``pitch`` column (renamed from
         pitch_column) for compatibility with :func:`match_notes_by_attributes`.
         The coordinate column values are converted to float.
+
+    Raises:
+        ValueError: If the tie column holds a value other than ``1``, ``0``,
+            ``-1`` or an empty cell.
     """
-    tied = pd.to_numeric(abc_df[tied_column])
+    tied = abc_df[tied_column]
+    if not pd.api.types.is_numeric_dtype(tied):
+        # A TSV read as text holds an empty string where a note is not tied.
+        tied = tied.mask(tied.astype("string").str.strip() == "")
+    tied = pd.to_numeric(tied)
     unknown = sorted(set(tied.dropna().tolist()) - {-1, 0, 1})
     if unknown:
         raise ValueError(

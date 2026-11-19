@@ -39,6 +39,17 @@ def test_untied_notes_and_tie_starts_are_the_onsets(tie_dtype):
     assert "name" not in prepared.columns
 
 
+@pytest.mark.parametrize("blank", ["", " "], ids=["empty", "whitespace"])
+def test_blank_text_tie_cells_are_no_tie(blank):
+    frame = _frame("float64")
+    frame["tied"] = pd.array([blank, "1", "0", "0", "-1", "1", "-1"], dtype="str")
+
+    prepared = prepare_abc_notes_for_matching(frame)
+
+    assert prepared["id"].tolist() == ["a", "b", "f"]
+    assert prepared.index.tolist() == [0, 1, 2]
+
+
 def test_a_tie_value_outside_ms3s_is_refused():
     frame = _frame("float64").iloc[[1, 2]].copy()
     frame["tied"] = [1.0, 2.0]

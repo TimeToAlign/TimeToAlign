@@ -49,7 +49,7 @@
 # %%
 import copy
 
-from timetoshare import dumps
+from timetoshare import dumps, to_file_id
 
 import timetoalign as tta
 
@@ -454,7 +454,10 @@ trial.replace_link(
     reading.with_parts("has_part", [reading.parts[0], ghost, *reading.parts[2:]]),
 )
 edited = copy.deepcopy(manifest)
-edited["links"][0]["parts"][1] = {**ghost.to_dict(), "represented_by": ["#mvt_2"]}
+edited["links"][0]["parts"][1] = {
+    **ghost.to_dict(),
+    "represented_by": [to_file_id("mvt_2")],
+}
 for operation in (trial.to_dict, lambda: tta.AlignmentBundle.from_dict(edited)):
     try:
         operation()

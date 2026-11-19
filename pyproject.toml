@@ -54,7 +54,7 @@ audio = ["soundfile>=0.12", "mutagen>=1.47"]  # Audio file loading + MP3/M4A met
 graphical = ["pymupdf>=1.24", "pillow>=10.0"] # PDF/image loading & drawing
 plot = ["matplotlib>=3.5"]                    # Visualisation
 delta = ["deltalake>=0.15.0"]                 # Delta Lake columnar storage (future)
-rdf = ["rdflib>=7.0"]                         # RDF / linked-data export (future)
+rdf = ["rdflib>=7.0"]                         # MeLODy Turtle import (MelodyLoader)
 examples = ["pooch>=1.8"]                     # On-demand fetching of bundled corpora (timetoalign.testdata)
 
 # ---------------------------------------------------------------------------
@@ -64,7 +64,7 @@ scores = [                                    # All score-loader backends
     "timetoalign[partitura,music21,ms3,verovio]",
 ]
 loaders = [                                   # Every loader dependency
-    "timetoalign[midi,scores,audio,graphical]",
+    "timetoalign[midi,scores,audio,graphical,rdf]",
 ]
 tutorial = [                                  # Everything needed for the tutorial notebooks
     "timetoalign[loaders,plot,examples]",

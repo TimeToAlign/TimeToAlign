@@ -579,12 +579,21 @@ class MatchStamp(Stamp):
         """Readable cross-section showing all coordinates.
 
         Examples:
+            >>> stamp = MatchStamp(
+            ...     coordinates={
+            ...         "score": Coordinate(4, TimeUnit.quarters),
+            ...         "parts": Coordinate(4, TimeUnit.quarters),
+            ...         "audio": Coordinate(2.5, TimeUnit.seconds),
+            ...     },
+            ...     source_id="score",
+            ...     anchor_edges=[("score", "audio")],
+            ...     inferred_edges=[("score", "parts")],
+            ... )
             >>> print(stamp)
             MatchStamp (3 timelines, 2 edges)
-              ID              Coordinate   Type
-              score:clt_1      0            anchor
-              perf:dlt_1       0            anchor
-              perf:dlt_2       128          inferred
+              score   4 quarters  anchor
+              parts   4 quarters  inferred
+              audio  2.5 seconds  anchor
         """
         n_edges = self.n_explicit_edges + self.n_inferred_edges
         lines: list[str] = [
@@ -952,14 +961,42 @@ class MatchGraph:
         claims: List of all MatchClaims in this graph (synchronous and non-synchronous).
 
     Examples:
-        >>> # Build graph from claims
-        >>> graph = MatchGraph(claims=[claim1, claim2])
+        Build a graph from two claims between a score and a recording:
 
-        >>> # Extend via group membership
-        >>> extended = graph.extend_to_groups(groups)
+        >>> from timetoalign.timelines import Timeline, TimelineGroup
+        >>> def claim(quarters, seconds):
+        ...     return MatchClaim(
+        ...         timeline_a_id="score",
+        ...         timeline_b_id="audio",
+        ...         start_anchor=AlignmentAnchor(
+        ...             timeline_a_id="score",
+        ...             coordinate_a=Coordinate(quarters, TimeUnit.quarters),
+        ...             timeline_b_id="audio",
+        ...             coordinate_b=Coordinate(seconds, TimeUnit.seconds),
+        ...         ),
+        ...         is_synchronous=True,
+        ...     )
+        >>> graph = MatchGraph(claims=[claim(0, 0.0), claim(4, 2.0)])
+        >>> graph.n_nodes, graph.n_edges, graph.n_components
+        (4, 2, 2)
 
-        >>> # Get synchronized timestamps
-        >>> stamps = graph.get_stamps()
+        Extend it through the group the score shares with its parts:
+
+        >>> score = Timeline(length=8, unit=TimeUnit.quarters, uid="score")
+        >>> parts = Timeline(length=8, unit=TimeUnit.quarters, uid="parts")
+        >>> group = TimelineGroup(name="edition", timelines=[score, parts])
+        >>> extended = graph.extend_to_groups({group.id: group})
+        >>> extended.n_nodes, extended.n_edges
+        (6, 4)
+
+        One stamp per synchronized position:
+
+        >>> stamps = extended.get_stamps()
+        >>> print(stamps[1])
+        MatchStamp (3 timelines, 2 edges)
+          audio   2 seconds  anchor
+          parts  4 quarters  inferred
+          score  4 quarters  anchor
     """
 
     def __init__(

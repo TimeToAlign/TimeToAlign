@@ -31,7 +31,6 @@ import json
 import logging
 import re
 from collections.abc import Iterator, Sequence
-from decimal import Decimal
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, ClassVar
 
@@ -77,7 +76,11 @@ from timetoalign.core.retrieval import (
     format_coordinates,
     validate_key_collection,
 )
-from timetoalign.core.time import express_scalar_as, struct_to_rational
+from timetoalign.core.time import (
+    compare_number_column,
+    express_scalar_as,
+    struct_to_rational,
+)
 from timetoalign.core.timestamp import _format_coordinate
 
 if TYPE_CHECKING:
@@ -1872,23 +1875,6 @@ class MatchClaimField(SemanticField[MatchClaim]):
         "event_b_name",
     )
 
-    def __init__(
-        self,
-        raw: "StructField | None" = None,
-        *,
-        source_fields: "str | dict[str, Any] | None" = None,
-        name: str | None = None,
-        metadata: MatchMetadata | None = None,
-    ) -> None:
-        """Wrap a derived ``MatchClaim`` struct field, carrying shared metadata.
-
-        Prefer the :meth:`from_columns` / :meth:`from_claims` / :meth:`from_dict`
-        classmethods; this constructor mirrors the base ``SemanticField`` so
-        blueprint construction keeps working, plus a field-level ``metadata``.
-        """
-        super().__init__(raw, source_fields=source_fields, name=name)
-        self._metadata: MatchMetadata | None = metadata
-
     # ── construction ──────────────────────────────────────────────────────
 
     @classmethod
@@ -2503,6 +2489,23 @@ class MatchClaimField(SemanticField[MatchClaim]):
                 return None
         return first
 
+    def __init__(
+        self,
+        raw: "StructField | None" = None,
+        *,
+        source_fields: "str | dict[str, Any] | None" = None,
+        name: str | None = None,
+        metadata: MatchMetadata | None = None,
+    ) -> None:
+        """Wrap a derived ``MatchClaim`` struct field, carrying shared metadata.
+
+        Prefer the :meth:`from_columns` / :meth:`from_claims` / :meth:`from_dict`
+        classmethods; this constructor mirrors the base ``SemanticField`` so
+        blueprint construction keeps working, plus a field-level ``metadata``.
+        """
+        super().__init__(raw, source_fields=source_fields, name=name)
+        self._metadata: MatchMetadata | None = metadata
+
     # ── access ────────────────────────────────────────────────────────────
 
     def __len__(self) -> int:
@@ -2665,15 +2668,17 @@ class MatchClaimField(SemanticField[MatchClaim]):
         masks: list[pa.Array] = []
         for side in ("a", "b"):
             side_id = pc.equal(data.field(f"timeline_{side}_id"), timeline_id)
-            start = self._coordinate_comparison_mask(
-                "start_anchor", side, query, "equal"
+            start_cells = data.field("start_anchor").field(f"coordinate_{side}")
+            end_cells = data.field("end_anchor").field(f"coordinate_{side}")
+            start = compare_number_column(
+                start_cells, query.value, "equal", query.number_type
             )
             contained = pc.and_(
-                self._coordinate_comparison_mask(
-                    "start_anchor", side, query, "less_equal"
+                compare_number_column(
+                    start_cells, query.value, "less_equal", query.number_type
                 ),
-                self._coordinate_comparison_mask(
-                    "end_anchor", side, query, "greater_equal"
+                compare_number_column(
+                    end_cells, query.value, "greater_equal", query.number_type
                 ),
             )
             relevant = pc.if_else(
@@ -2977,38 +2982,6 @@ class MatchClaimField(SemanticField[MatchClaim]):
         """The stored anchor coordinate values on ``side`` (``"a"`` / ``"b"``)."""
         anchor = self._raw.data.field("start_anchor")
         return anchor.field(f"coordinate_{side}").field("value")
-
-    def _coordinate_comparison_mask(
-        self,
-        anchor_name: str,
-        side: str,
-        query: Coordinate,
-        comparison: str,
-    ) -> pa.Array:
-        """Compare one stored coordinate column to an exact typed query."""
-        coordinate = self._raw.data.field(anchor_name).field(f"coordinate_{side}")
-        if query.number_type in (NumberType.int, NumberType.fraction):
-            exact = Fraction(query.value)
-            decimal = pa.decimal256(37, 0)
-            stored_numerator = pc.cast(coordinate.field("numerator"), decimal)
-            stored_denominator = pc.cast(coordinate.field("denominator"), decimal)
-            left = pc.multiply(
-                stored_numerator,
-                pa.scalar(Decimal(exact.denominator), type=decimal),
-            )
-            right = pc.multiply(
-                stored_denominator,
-                pa.scalar(Decimal(exact.numerator), type=decimal),
-            )
-        else:
-            left = coordinate.field("value")
-            right = pa.scalar(float(query.value))
-        operations = {
-            "equal": pc.equal,
-            "less_equal": pc.less_equal,
-            "greater_equal": pc.greater_equal,
-        }
-        return operations[comparison](left, right)
 
     @staticmethod
     def _id_value_set(timeline_ids: set[str]) -> pa.Array:

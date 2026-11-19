@@ -251,6 +251,52 @@ def test_holding_timelines_appear(
     _assert_exact_types(values)
 
 
+def _siblings_bundle() -> AlignmentBundle:
+    """Build ``P`` with the adjoining children ``A`` and ``B``, each with a child.
+
+    Returns:
+        A bundle holding ``P`` alone.
+    """
+    root = Timeline(length=8, unit=TimeUnit.quarters, uid="P")
+    for child_id, offset in (("A", 0), ("B", 4)):
+        child = Timeline(length=4, unit=TimeUnit.quarters, uid=child_id)
+        root.add_child(child, offset=offset)
+        child.add_child(
+            Timeline(length=4, unit=TimeUnit.quarters, uid=f"{child_id}1"), offset=0
+        )
+    return AlignmentBundle(id="siblings").add_timeline(root)
+
+
+@pytest.mark.parametrize(
+    ("position", "expected"),
+    [
+        (Fraction(6), [("A", Fraction(6))]),
+        (Fraction(-1), [("A", Fraction(-1))]),
+        (
+            Fraction(4),
+            [
+                ("A", Fraction(4)),
+                ("P", Fraction(4)),
+                ("A1", Fraction(4)),
+                ("B", Fraction(0)),
+                ("B1", Fraction(0)),
+            ],
+        ),
+        (Fraction(0), [("A", Fraction(0)), ("P", Fraction(0)), ("A1", Fraction(0))]),
+    ],
+)
+def test_walk_up_starts_on_the_queried_timeline(
+    position: Fraction, expected: list[tuple[str, object]]
+) -> None:
+    """A position off the queried child reaches no ancestor; its own end does."""
+    bundle = _siblings_bundle()
+
+    values = _values(bundle.get_matchstamp_at(position, "A").coordinates)
+
+    assert values == expected
+    assert all(type(value) is Fraction for _, value in values)
+
+
 # endregion
 
 

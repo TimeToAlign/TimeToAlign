@@ -126,7 +126,9 @@ class ChildrenMixin:
             for child_id, offset in parent._child_offsets.items()
         )
 
-    def _holds_position(self, value: CoordinateValue) -> bool:
+    def _holds_position(
+        self, value: CoordinateValue, *, end_held: bool | None = None
+    ) -> bool:
         """Whether a position carried down from a parent lies on this timeline.
 
         The ONE containment rule for a position carried from a parent onto a
@@ -142,13 +144,25 @@ class ChildrenMixin:
         such as a section ending before its parent does, stays reachable on
         that child. A timeline of unbounded extent holds everything from 0
         on.
+
+        Args:
+            value: A position on this timeline's own axis.
+            end_held: Whether the end is held; by default as
+                :attr:`_holds_own_end` says. A position asked of this timeline
+                itself holds its end whatever its siblings do, so the span is
+                closed, ``[0, extent]``.
+
+        Returns:
+            Whether the position lies on this timeline.
         """
         if value < 0:
             return False
         extent = self._extent
         if extent is None or value < extent:
             return True
-        return value == extent and self._holds_own_end
+        return value == extent and (
+            self._holds_own_end if end_held is None else end_held
+        )
 
     def _holds_column(
         self,

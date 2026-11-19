@@ -14,7 +14,7 @@ Flat module layout (no sub-packages):
   the store builder, and Parquet metadata.
 * :mod:`timetoalign.core.enums` — ``Domain``, ``TimeUnit``, ``NumberType``,
   …
-* :mod:`timetoalign.core.ids` — ``ScopedId``, ``IdGenerator``, ``mint_id``.
+* :mod:`timetoalign.core.ids` — ``ScopedId``, ``IdGenerator``, ``mint_id``, ``mint_ids``.
 * :mod:`timetoalign.core.protocols` — pitch, harmony, and time protocols.
 * :mod:`timetoalign.core.timestamp` — ``TimeStamp``, ``TimeIntervalStamp``.
 """
@@ -137,6 +137,7 @@ from .ids import (
     IdGenerator,
     ScopedId,
     mint_id,
+    mint_ids,
     resolve_id,
     resolve_ids,
     validate_id,
@@ -366,6 +367,7 @@ __all__ = [
     "ScopedId",
     "IdGenerator",
     "mint_id",
+    "mint_ids",
     "validate_id",
     "resolve_id",
     "resolve_ids",

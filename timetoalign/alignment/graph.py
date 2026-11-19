@@ -1023,7 +1023,9 @@ class MatchGraph:
         nodes or edges.
 
         Nodes: (timeline_id, coordinate) tuples
-        Edges: Anchors with attributes (explicit, synchronous, claim_id)
+        Edges: Anchors with attributes (explicit, synchronous, claim: the
+        claim object itself, since a claim id is unique only in the scope
+        holding the claim)
 
         Returns:
             networkx Graph representing the anchor structure.
@@ -1086,7 +1088,7 @@ class MatchGraph:
             node_b,
             explicit=claim.is_explicit,
             synchronous=claim.is_synchronous,
-            claim_id=claim.id,
+            claim=claim,
         )
 
     def _get_node_keys_for_timeline(self, timeline_id: str) -> list[_GraphNode]:
@@ -1544,7 +1546,7 @@ class MatchGraph:
                     synchronous=True,
                     inferred_via="group",
                     group_id=group_id,
-                    claim_id=implicit_claim.id,
+                    claim=implicit_claim,
                 )
 
     def _find_source_claim_for_node(self, node: _GraphNode) -> MatchClaim | None:
@@ -1907,16 +1909,18 @@ class MatchGraph:
         filtered.remove_nodes_from(isolated)
 
         # Filter claims to match remaining edges
-        remaining_claim_ids = set()
-        for _, _, data in filtered.edges(data=True):
-            if "claim_id" in data:
-                remaining_claim_ids.add(data["claim_id"])
+        # By identity: claims built outside one scope may share an id.
+        remaining_claims = {
+            id(data["claim"])
+            for _, _, data in filtered.edges(data=True)
+            if "claim" in data
+        }
 
         # Keep non-synchronous claims that connect remaining timelines
         remaining_tl_ids = {node[0] for node in filtered.nodes()}
         filtered_claims = []
         for c in self._claims:
-            if c.id in remaining_claim_ids:
+            if id(c) in remaining_claims:
                 filtered_claims.append(c)
             elif (
                 not c.is_synchronous

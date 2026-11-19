@@ -10,6 +10,7 @@ Validation strategy and gold values are documented in
 
 from __future__ import annotations
 
+import json
 import re
 import time
 from fractions import Fraction
@@ -22,6 +23,7 @@ import pytest
 from timetoalign.alignment import (
     Agent,
     AlignmentAnchor,
+    AlignmentBundle,
     MatchClaim,
     MatchClaimField,
     MatchMetadata,
@@ -419,17 +421,8 @@ class TestFromClaims:
         claims = gold_field.to_claims()
         rebuilt = MatchClaimField.from_claims(claims)
         assert rebuilt.to_claims() == claims
-        # The bulk rows carry no claim id; the materialised claims carry
-        # minted ones, which the rebuilt rows keep. Every other sub-field is
-        # identical.
-        rebuilt_column = rebuilt.table.column("match_claim").combine_chunks()
-        gold_column = gold_field.table.column("match_claim").combine_chunks()
-        assert rebuilt_column.field("id").to_pylist() == [c.id for c in claims]
-        for sub_field in MatchClaimField.pa_schema:
-            if sub_field.name != "id":
-                assert rebuilt_column.field(sub_field.name).equals(
-                    gold_column.field(sub_field.name)
-                ), sub_field.name
+        assert [claim.id for claim in claims] == ["claim_1", "claim_2", "claim_3"]
+        assert rebuilt.table.equals(gold_field.table, check_metadata=True)
 
     def test_fraction_and_mixed_units_roundtrip(self) -> None:
         claim = MatchClaim.from_projection(
@@ -568,6 +561,40 @@ class TestDictRoundTrip:
         assert data["coordinate_a"] == [0.0, 0.0, 1.0]
         assert data["coordinate_b"] == [10.0, 20.0, 21.0]
 
+    def test_roundtrip_from_dict_keeps_every_row_value(self) -> None:
+        human = MatchMetadata(
+            agent=Agent(name="ann", type=AgentType.human, identifier="ann"),
+            certainty=0.5,
+        )
+        software = MatchMetadata(
+            agent=Agent(name="dtw", type=AgentType.software, identifier="v1")
+        )
+        claims = _round_trip_claims([None, human, software])
+        field = MatchClaimField.from_claims(claims)
+        data = field.to_dict()
+        assert data["id"] == ["claim_1", "midi 96", "claim_2"]
+        assert data["id_minted"] == [True, False, True]
+        assert data["is_explicit"] == [True, True, False]
+        assert data["source_claim_id"] == [None, None, "claim_source"]
+        assert data["event_a_id"] == ["note_7", "tick_96", "onset_1"]
+        assert data["event_b_id"] == ["onset_7", None, "note_1"]
+        assert data["event_b_name"] == [None, None, "C♯4"]
+        assert data["row_metadata"] == [
+            None,
+            {
+                "agent": {"name": "ann", "type": "human", "identifier": "ann"},
+                "certainty": 0.5,
+            },
+            {
+                "agent": {"name": "dtw", "type": "software", "identifier": "v1"},
+                "certainty": 1.0,
+            },
+        ]
+        assert data["metadata"] is None
+        rebuilt = MatchClaimField.from_dict(data)
+        assert rebuilt.table.equals(field.table, check_metadata=True)
+        assert rebuilt.to_claims() == claims
+
     def test_to_dict_no_metadata(self) -> None:
         field = MatchClaimField.from_columns(
             timeline_a_ids=["A"],
@@ -587,6 +614,9 @@ def _round_trip_claims(metadata: list[MatchMetadata | None]) -> list[MatchClaim]
     An exact-fraction interval claim with event ids on both sides, an
     int-coordinate projection, and an implicit float/fraction claim with an
     event name and a ``source_claim_id``; ``metadata`` gives each its own.
+    Their ids are distinct, as a scope leaves them: the interval keeps its
+    minted ``claim_1``, the projection is given ``"midi 96"``, the implicit
+    claim holds the minted ``claim_2``.
     """
     interval = MatchClaim.from_events(
         event_a={"id": "note_7", "start": Fraction(7, 3), "end": Fraction(10, 3)},
@@ -606,7 +636,7 @@ def _round_trip_claims(metadata: list[MatchMetadata | None]) -> list[MatchClaim]
         source_unit=TimeUnit.ticks,
         target_unit=TimeUnit.samples,
         metadata=metadata[1],
-    )
+    ).model_copy(update={"id": "midi 96", "id_minted": False})
     implicit = MatchClaim(
         timeline_a_id="audio",
         timeline_b_id="score",
@@ -622,8 +652,24 @@ def _round_trip_claims(metadata: list[MatchMetadata | None]) -> list[MatchClaim]
         event_b_name="C♯4",
         source_claim_id="claim_source",
         metadata=metadata[2],
-    )
+    ).model_copy(update={"id": "claim_2"})
     return [interval, projection, implicit]
+
+
+_OUT_OF_SCOPE = (
+    "MatchClaimField holds synchronous claims only; claim at index {} is "
+    "non-synchronous (NOMATCH) and is out of scope."
+)
+
+
+def _with_child(table: pa.Table, name: str, child: pa.Array) -> pa.Table:
+    """Return *table* with one sub-field of its claim column replaced."""
+    column = table.column("match_claim").combine_chunks()
+    children = [
+        child if sub.name == name else column.field(sub.name) for sub in column.type
+    ]
+    rebuilt = pa.StructArray.from_arrays(children, fields=list(column.type))
+    return pa.table({"match_claim": rebuilt}, metadata=table.schema.metadata)
 
 
 def _through_parquet(field: MatchClaimField, path: Path) -> MatchClaimField:
@@ -649,6 +695,11 @@ class TestTableRoundTrip:
         assert type(projection.start_anchor.coordinate_b.value) is int
         assert implicit.is_explicit is False
         assert implicit.start_anchor.coordinate_b.value == Fraction(1, 3)
+        assert [(c.id, c.id_minted) for c in (interval, projection, implicit)] == [
+            ("claim_1", True),
+            ("midi 96", False),
+            ("claim_2", True),
+        ]
 
     def test_shared_metadata_round_trip(self, tmp_path: Path) -> None:
         shared = MatchMetadata(
@@ -731,6 +782,56 @@ class TestTableRoundTrip:
         ):
             MatchClaimField.from_table(table)
 
+    def test_refuses_non_synchronous_row(self, gold_field: MatchClaimField) -> None:
+        table = _with_child(
+            gold_field.table, "is_synchronous", pa.array([True, False, True])
+        )
+        with pytest.raises(ValueError, match=re.escape(_OUT_OF_SCOPE.format(1))):
+            MatchClaimField.from_table(table)
+
+    def test_refuses_row_without_start_anchor(
+        self, gold_field: MatchClaimField
+    ) -> None:
+        column = gold_field.table.column("match_claim").combine_chunks()
+        anchor = column.field("start_anchor")
+        without = pa.StructArray.from_arrays(
+            [anchor.field(sub.name) for sub in anchor.type],
+            fields=list(anchor.type),
+            mask=pa.array([False, False, True]),
+        )
+        table = _with_child(gold_field.table, "start_anchor", without)
+        with pytest.raises(ValueError, match=re.escape(_OUT_OF_SCOPE.format(2))):
+            MatchClaimField.from_table(table)
+
+    def test_from_claims_refuses_alike(self) -> None:
+        nomatch = MatchClaim.nomatch(
+            event={"start": 1.0},
+            source_tl_id="A",
+            target_tl_id="B",
+            unit=TimeUnit.number,
+        )
+        with pytest.raises(ValueError, match=re.escape(_OUT_OF_SCOPE.format(0))):
+            MatchClaimField.from_claims([nomatch])
+
+    def test_refuses_metadata_stated_twice(self) -> None:
+        human = MatchMetadata(
+            agent=Agent(name="ann", type=AgentType.human, identifier="ann")
+        )
+        field = MatchClaimField.from_claims(_round_trip_claims([None, human, human]))
+        assert field.metadata is None
+        table = field.table.replace_schema_metadata(
+            {b"timetoalign:match_metadata": json.dumps(human.to_dict())}
+        )
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "A MatchClaimField table states its metadata once: this table "
+                "carries it in its schema metadata ('timetoalign:match_metadata') "
+                "and in 2 row(s)."
+            ),
+        ):
+            MatchClaimField.from_table(table)
+
     def test_refuses_other_type(self) -> None:
         table = pa.table({"match_claim": pa.array([1, 2])})
         with pytest.raises(
@@ -741,6 +842,40 @@ class TestTableRoundTrip:
             ),
         ):
             MatchClaimField.from_table(table)
+
+
+# endregion
+
+
+# region Equality
+
+
+class TestEquality:
+    """Claim equality is over the claim, never over the bundle holding it."""
+
+    def test_copy_in_a_bundle_is_equal(self) -> None:
+        claim = _round_trip_claims([None, None, None])[0]
+        copy = claim.model_copy()
+        copy.set_bundle(AlignmentBundle())
+        assert copy.bundle is not None and claim.bundle is None
+        assert claim == copy
+        assert hash(claim) == hash(copy)
+
+    def test_round_trip_outside_a_bundle(self) -> None:
+        claims = MatchClaimField.from_claims(
+            _round_trip_claims([None, None, None])
+        ).to_claims()
+        assert [claim.bundle for claim in claims] == [None, None, None]
+        assert MatchClaimField.from_claims(claims).to_claims() == claims
+
+    def test_round_trip_of_a_bundle_s_claims(self) -> None:
+        bundle = AlignmentBundle()
+        bundle.add_match_claims(_round_trip_claims([None, None, None]))
+        claims = bundle.cross_group_claims
+        assert [claim.bundle is bundle for claim in claims] == [True, True, True]
+        restored = MatchClaimField.from_claims(claims).to_claims()
+        assert [claim.bundle for claim in restored] == [None, None, None]
+        assert restored == claims
 
 
 # endregion

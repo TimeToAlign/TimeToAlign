@@ -1476,6 +1476,14 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         WarpMaps are built lazily on first ``transfer()`` or
         ``get_matchstamp_at()`` call, so adding claims is cheap.
 
+        The bundle is the scope of its claims' ids, both stores together. A
+        claim whose minted id the bundle already holds (or an earlier claim
+        of the same call) is minted again, ``claim_N`` with the smallest N
+        free; a given id the bundle already holds is refused, before any
+        claim is added. A claim that belongs to no bundle is added as
+        itself (renamed in place where its id gave way); a claim another
+        bundle holds is added as a copy, so that bundle keeps its ids.
+
         Args:
             claims: MatchClaim objects, claim tuples, or lists of claim tuples.
                 A tuple is ``(timeline_a_id, interval_a, timeline_b_id,
@@ -1483,6 +1491,10 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
 
         Returns:
             self (for method chaining)
+
+        Raises:
+            ValueError: If a claim's given id is held by another claim of
+                the bundle or given twice among the claims.
         """
         materialized = list(claims)
         flattened: list[Any] = []
@@ -1521,9 +1533,12 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 )
             )
 
-        for claim in normalized:
+        from .claims import _join_claims
+
+        joined = _join_claims(normalized, self._claim_ids(), scope="bundle")
+        for claim in joined:
             claim.set_bundle(self)
-        self.cross_group_claims.extend(normalized)
+        self.cross_group_claims.extend(joined)
         self._invalidate_warp_cache()
         return self
 
@@ -1545,16 +1560,39 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         Python-list ``cross_group_claims`` and one or more
         ``cross_group_claim_fields`` at once.
 
+        The field's ids join the bundle's as :meth:`add_match_claims` admits
+        claims: a minted id the bundle holds is minted again, a given one is
+        refused. Where an id gave way, the bundle stores a new field and the
+        one passed in is left unchanged.
+
         Args:
             claim_field: A :class:`MatchClaimField` of synchronous pairwise
                 claims.
 
         Returns:
             self (for method chaining)
+
+        Raises:
+            ValueError: If a row's given id is held by another claim of the
+                bundle.
         """
-        self.cross_group_claim_fields.append(claim_field)
+        joined = claim_field._joined(self._claim_ids(), scope="bundle")
+        self.cross_group_claim_fields.append(joined)
         self._invalidate_warp_cache()
         return self
+
+    def _claim_ids(self) -> pa.Array:
+        """The ids of every claim the bundle holds, both stores together."""
+        import pyarrow as pa
+
+        return pa.concat_arrays(
+            [
+                pa.array(
+                    [claim.id for claim in self.cross_group_claims], type=pa.string()
+                ),
+                *(claim_field._ids for claim_field in self.cross_group_claim_fields),
+            ]
+        )
 
     @property
     def n_cross_group_claims(self) -> int:

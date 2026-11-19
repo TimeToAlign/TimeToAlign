@@ -20,7 +20,6 @@ from fractions import Fraction
 import pytest
 
 from timetoalign.alignment.bundle import AlignmentBundle
-from timetoalign.alignment.claims import _reset_anchor_ids, _reset_claim_ids
 from timetoalign.core import TimeUnit
 from timetoalign.loader.alignment.matchfile import MatchfileLoader
 from timetoalign.maps.linear import ScalarMap, ShiftMap
@@ -80,13 +79,6 @@ TOTAL_MATCHED = TOTAL_MATCH_FILES * SNOTE_COUNT - TOTAL_DELETIONS  # 9875
 
 
 # region Fixtures
-
-
-@pytest.fixture(autouse=True)
-def reset_ids():
-    """Reset the claim and anchor ID generators before each test for isolation."""
-    _reset_anchor_ids()
-    _reset_claim_ids()
 
 
 @pytest.fixture

@@ -54,9 +54,9 @@ All Thoresen test data constants and shared fixtures are centralised in `tests/a
 | `thoresen_segment_claims` | `list[MatchClaim]` | 5 interval claims mapping DGT1↔DGT2 segments |
 | `dgt1_bundle` / `dgt2_bundle` | `GraphicalBundle` | Full graphical bundles (requires PyMuPDF) |
 
-### ID Reset (`autouse=True`)
+### No ID Reset
 
-The `reset_ids` fixture in `conftest.py` has `autouse=True` and resets the anchor and claim ID generators before every test. Group and bundle ids are minted statelessly (`group_N`, `bundle_N`, N the smallest free number in the scope), so they need no reset.
+Every id the alignment module mints is minted statelessly (`group_N`, `bundle_N`, `claim_N`, N the smallest free number in the scope), so no test resets a generator and no test depends on what an earlier test built.
 
 ### Migration Note
 
@@ -617,20 +617,52 @@ per-row units survive materialisation.
 The store holds **synchronous pairwise claims**: each row has
 `is_synchronous is True` and a `start_anchor`; interval claims keep their
 `end_anchor`. **NOMATCH claims** (`is_synchronous is False`, no anchors) are
-out of scope and `from_claims` raises `ValueError` on them.
+out of scope and `from_claims` raises `ValueError` on them. `from_table` reads
+rows it did not build, so it applies the same refusal over the whole column
+(vectorized, the first offending row named by index, the message identical
+to `from_claims`'s): a table with one row `is_synchronous == False`, and a
+table with one row whose `start_anchor` is null, each raise; nothing would
+otherwise stop a null coordinate from reaching `coordinate_pairs()`.
+
+`from_table` also refuses a table that carries **both** the schema-metadata
+key and per-row metadata: the field's metadata would silently replace every
+row's on read, so the table states two provenances and neither can be taken.
+The table is built by hand (a `from_claims` field with mixed metadata, its
+table given the key), since no writer produces it.
 
 ### `from_claims` keeps every claim whole
 
-`from_claims` writes each claim's `id`, `source_claim_id`, event ids and
-names, and `is_explicit` into the row, so `from_claims(claims).to_claims() ==
-claims` — pydantic equality over every field, the claim `id` included. A
-claim's `id` is minted at construction, so a row without one (the bulk
-`from_columns` path) mints a fresh id on every materialisation; storing it is
-what makes the equality hold. Metadata follows one rule: one metadata shared
-by every claim becomes the field's metadata and the rows carry none; claims
-whose metadata differ (`None` included) leave the field's metadata `None` and
-each row carries its own claim's metadata; an explicit `metadata=` replaces
-every claim's own.
+`from_claims` writes each claim's `id`, `id_minted`, `source_claim_id`, event
+ids and names, and `is_explicit` into the row, so a claim set whose ids are
+distinct comes back equal, `from_claims(claims).to_claims() == claims` —
+equality over every field, the claim `id` included. The field is a scope of
+claim ids (see "Claim Ids" below), so the one exception is stated, not
+avoided: two minted ids alike are re-minted on the way in. Metadata follows
+one rule: one metadata shared by every claim becomes the field's metadata and
+the rows carry none; claims whose metadata differ (`None` included) leave the
+field's metadata `None` and each row carries its own claim's metadata; an
+explicit `metadata=` replaces every claim's own.
+
+**Equality ignores the bundle back-reference.** A claim added to a bundle
+records it (`claim.bundle`) for `get_matchstamp()`; a materialised row has
+none. Equality is a statement about the claim, so the private back-reference
+takes no part: the round trip is asserted both on claims that belong to no
+bundle (a field's own claims) and on the claims a bundle hands out
+(`bundle.cross_group_claims`, every one with `claim.bundle is bundle`), and
+`claim == copy` is asserted for a claim and a copy differing only in it.
+
+### Dictionary round trip
+
+`to_dict` / `from_dict` carry every per-row value the table carries — claim
+`id` and `id_minted`, `source_claim_id`, event ids and names, `is_explicit`,
+per-row metadata — besides the coordinate and unit columns and the field's
+metadata. The per-row keys are not listed a second time: `from_claims`,
+`to_dict` and `from_dict` read one class-level definition. Proved with a
+`from_claims` field built from the three round-trip claims with mixed
+metadata, where each per-row column holds a distinct non-null value somewhere:
+`from_dict(to_dict())` has a table equal to the original's and its claims
+equal the original's claims. The bulk gold vector is checked too
+(`from_columns` rows now carry minted ids).
 
 ### Arrow table and Parquet round trip (`TestTableRoundTrip`)
 
@@ -671,9 +703,10 @@ The backing table has **one** column, `match_claim`, whose type is exactly
 `from_columns` fills the `timeline_a_id` / `timeline_b_id` top-level string
 sub-fields and the `start_anchor` sub-struct
 (`{timeline_a_id, coordinate_a, timeline_b_id, coordinate_b}`), sets
-`is_synchronous` / `is_explicit` to `True`, and leaves every other sub-field
+`is_synchronous` / `is_explicit` to `True`, mints the ids `claim_1` …
+`claim_n` (`id_minted` true), and leaves every other sub-field
 (`end_anchor`, `metadata`, event ids/names, `source_coordinate`,
-`source_claim_id`, `id`) null. It uses `pa.StructArray.from_arrays` and never
+`source_claim_id`) null. It uses `pa.StructArray.from_arrays` and never
 materialises a Python `MatchClaim`. The `coordinate_a` / `coordinate_b` values
 read back through the `start_anchor` sub-struct; `timeline_ids` reads the two
 top-level id sub-fields vectorized.
@@ -716,14 +749,18 @@ the metadata shape and the field's internal column layout changed.
 | `test_filter_and_combination` | `timeline_id` AND `timeline_ids` combine with logical AND |
 | `test_to_claims` | `len(f.to_claims()) == 3`, all synchronous instants |
 | `test_iter` | iteration yields 3 synchronous-instant claims |
-| `test_roundtrip_from_claims` | `from_claims(f.to_claims())` materialises `f.to_claims()` again, and its table equals `f.table` in every sub-field but `id` (the bulk rows have none; the materialised claims carry minted ones) |
+| `test_roundtrip_from_claims` | `from_claims(f.to_claims())` materialises `f.to_claims()` again, and its table equals `f.table` (ids `claim_1`–`claim_3` included) |
 | `test_roundtrip_from_dict` | `from_dict(f.to_dict()).table` equals `f.table`; metadata preserved |
+| `test_roundtrip_from_dict_keeps_every_row_value` | the mixed-metadata `from_claims` field, as specified under "Dictionary round trip" |
 | `test_getitem_injects_metadata` | a materialised claim carries the field-level metadata (struct row is null there) |
 | `test_from_claims_rejects_nomatch` | a `MatchClaim.nomatch(...)` raises `ValueError` |
 | `test_from_claims_preserves_interval` | an interval claim keeps its end anchor: both timelines' intervals equal the claim's |
 | `test_from_claims_adopts_common_metadata` | shared per-claim metadata becomes field metadata when `metadata=None` |
 | `test_from_claims_mixed_metadata_stays_none` | divergent per-claim metadata → field metadata stays `None`, and each materialised claim carries its own (`m1`, `m2`) |
 | `TestTableRoundTrip` | the Arrow table / Parquet round trip and its two refusals, as specified above |
+| `test_refuses_non_synchronous_row` / `test_refuses_row_without_start_anchor` | `from_table` names row 1 (`is_synchronous` false) / row 2 (null `start_anchor`) with `from_claims`'s message; `test_from_claims_refuses_alike` pins that message on `from_claims` |
+| `test_refuses_metadata_stated_twice` | a mixed-metadata table given the schema key raises, naming the 2 rows with metadata |
+| `TestEquality` | a claim equals (and hashes like) its copy held by a bundle; the `from_claims` round trip holds for claims outside a bundle and for a bundle's claims |
 | `test_from_columns_length_mismatch_raises` | unequal column lengths raise `ValueError` |
 | `test_empty_field` | zero-row field: `len == 0`, `timeline_ids == set()`, `to_claims() == []` |
 | `test_repr` | `repr(f) == "MatchClaimField(claims=3, timelines=3)"` |
@@ -770,6 +807,71 @@ the bundle resolves them into the set of timeline IDs that pass and hands that
 set to `within`. The **both sides must be in the set** semantics is not a
 choice: it is what `ClaimFilter.matches_claim` already applies to the Python
 list, and parity demands the two agree.
+
+---
+
+## Claim Ids (`test_claim_ids.py`)
+
+### What We're Validating
+
+A claim id names one claim in the scope that holds it, and the same input
+gives the same ids in every process. Claims persist (a `MatchClaimField`
+table written to Parquet keeps its ids), so an id minted by a counter that
+restarts with each process collides as soon as stored claims meet new ones:
+reading a stored field and building claims again gave twice the claims and
+half the distinct ids. The rule tested is the one every other id of the
+library follows (id system spec §2): `claim_N`, N the smallest number free
+in the scope; a minted id gives way when it joins a scope already holding
+it, a given id never does.
+
+- **A free claim** mints `claim_1` (its own scope is empty) and records
+  `id_minted == True`; a given id is kept verbatim, `id_minted == False`; an
+  id with a control character is refused by `validate_id`.
+- **Scopes**: a `MatchClaimField` (every constructor: `from_columns`,
+  `from_claims`, `from_dict`, `from_table`) and an `AlignmentBundle` (its
+  claim list and its fields together). Joining a scope: a minted id already
+  held there, or held by an earlier newcomer, is minted again, in row order;
+  a given id held there, or given twice, raises naming the id, before
+  anything is renamed or added.
+- **The flag is stored** (`id_minted` is a column of the claim struct), so a
+  stored minted id read back still gives way, and a stored given id is still
+  refused.
+- **Who is renamed**: a claim that belongs to no bundle joins in place (the
+  caller's object takes the new id and the bundle back-reference); a claim
+  already held by a bundle joins as a copy, so the bundle it came from keeps
+  its ids. A field whose ids all stay joins as itself; otherwise as a new
+  field, and the caller's field is unchanged.
+
+### Why this proves "beyond one process"
+
+The minted id depends only on the ids already in the scope, never on what
+was built before in the process. A second run building the same claims
+therefore gives the ids the first run stored, so the stored-and-rebuilt
+collision is reproduced in one process exactly as two processes produce it.
+One test still builds and stores a field in a subprocess and asserts its ids
+equal the in-process build, so the determinism across processes is
+observed, not inferred.
+
+### Fixture
+
+Two groups: `score` holding `score` (quarters, 16) and `score_copy`
+(quarters, 16), so `extend_to_groups` creates implicit claims; `audio`
+holding `audio` (seconds, 8.0). Stored claims, by projection
+`score ↔ audio`: (0, 0.0), (4, 2.0), (8, 4.0), (12, 6.0); new claims built
+after reading: (2, 1.0), (6, 3.0), and once more the four stored ones.
+
+### Exact Expected Values
+
+| Test | Validates |
+|------|-----------|
+| `test_free_claim_mints_claim_1` | two fresh claims are both `claim_1`, `id_minted` True; a given `"onset 7"` is kept, `id_minted` False; `"a\tb"` raises |
+| `test_field_is_a_scope` | `from_claims` of three fresh claims → `claim_1`, `claim_2`, `claim_3`; a given `claim_1` after a minted `claim_1` keeps it, the minted one becomes `claim_2`; two given `"a"` raise `claim id 'a' is given twice` |
+| `test_from_columns_mints_ids` | the gold vector's ids are `claim_1`–`claim_3`, `id_minted` all True |
+| `test_stored_and_new_claims_are_distinct` | the stored field read from Parquet keeps `claim_1`–`claim_4`; the same four built again plus the two new ones, added to the bundle, become `claim_5`–`claim_10` in order; the caller's objects carry them and `claim.bundle is bundle`; all ten ids distinct |
+| `test_graph_filter_unaffected` | a bundle of the stored field and the two new claims (`claim_1`–`claim_6`): `MatchGraph(bundle.get_match_claims()).extend_to_groups(bundle.groups)` adds implicit claims, every one `claim_1` (minted free, in no scope); `filter(explicit_only=True)` keeps exactly `claim_1`–`claim_6` and no implicit claim; `filter(timeline_ids={"score", "audio"})` keeps the same six |
+| `test_two_runs_merged` | a subprocess and this process store the same field: ids equal (`claim_1`–`claim_4`); both added to one bundle: the second becomes `claim_5`–`claim_8`, every other table value equal |
+| `test_given_id_refused_atomically` | a bundle holding a given `"a"` refuses a claim and a field with a given `"a"` (`claim id 'a' is already held by another claim of this bundle`); after each refusal the bundle holds what it held and the newcomer keeps its id and no bundle |
+| `test_held_claim_joins_as_copy` | `from_bundles` of two bundles each holding `claim_1`, `claim_2`: the merge holds `claim_1`–`claim_4`; the second source still holds `claim_1`, `claim_2`, each with `bundle` the source |
 
 ---
 

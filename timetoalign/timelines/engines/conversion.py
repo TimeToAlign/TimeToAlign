@@ -336,26 +336,39 @@ class ConversionMapsMixin:
 
         ``child_coord = parent_coord - offset``
 
-        Returns None if the child does not hold *parent_coord*
-        (:meth:`_holds_position`): outside ``[offset, offset + length)``, or
-        at the child's end where a sibling starts; a child of unknown length
-        spans everything from its offset on.
+        The position is carried down one edge at a time and reaches a
+        descendant only if every timeline on the way holds it
+        (:meth:`_holds_position`): a grandchild never shows a position its
+        own parent leaves to a sibling. Returns None where one of them does
+        not hold it: outside ``[offset, offset + length)``, or at a child's
+        end where a sibling starts; a child of unknown length spans
+        everything from its offset on.
 
         Args:
-            child_id: The child timeline ID.
-            parent_coord: Coordinate on this (parent) timeline.
+            child_id: The descendant timeline ID.
+            parent_coord: Coordinate on this (ancestor) timeline.
 
         Returns:
-            Coordinate on the child timeline, or None if out of bounds.
+            Coordinate on the descendant timeline, or None if it is not held.
         """
-        path = self._descendant_offset_path(child_id)
-        if path is None or not path[0]:
+        descendant = self._find_descendant(child_id)
+        if descendant is None or descendant is self:
             return None
-        offsets, child = path
+        path: list[Timeline] = []
+        node = descendant
+        while node is not self:
+            path.append(node)
+            node = node._parent
         child_coord = parent_coord
-        for offset in offsets:
-            child_coord = shift_number(child_coord, offset.value, subtract=True)
-        return child_coord if child._holds_position(child_coord) else None
+        parent = self
+        for node in reversed(path):
+            child_coord = shift_number(
+                child_coord, parent._child_offsets[node._id].value, subtract=True
+            )
+            if not node._holds_position(child_coord):
+                return None
+            parent = node
+        return child_coord
 
     def _get_parent_coordinate_from_child(
         self, child_id: str, child_coord: CoordinateValue
@@ -571,29 +584,6 @@ class ConversionMapsMixin:
         """
         timeline = self._find_descendant(timeline_id)
         return timeline._unit if timeline is not None else None
-
-    def _contains_coordinate(
-        self, timeline_id: str, axis: float, source_id: str | None = None
-    ) -> bool:
-        """Check whether *axis* falls within the span of a child timeline.
-
-        A child embedded at *offset* with *length* spans
-        ``[offset, offset + length)`` on this (parent) timeline.
-
-        This method is part of the TimeStampSource protocol.
-
-        Args:
-            timeline_id: Child timeline ID.
-            axis: Coordinate on the parent (source) timeline.
-            source_id: Source timeline ID (ignored for Timeline, used by TimelineGroup).
-
-        Returns:
-            True if *axis* is inside the child's span, or if
-            *timeline_id* is the source itself.
-        """
-        if timeline_id == self._id:
-            return True
-        return self._get_child_coordinate(timeline_id, axis) is not None
 
     def _convert_coordinate_to_self(self, value: CoordinateSpec) -> Coordinate:
         """Resolve one coordinate into this timeline's canonical axis.

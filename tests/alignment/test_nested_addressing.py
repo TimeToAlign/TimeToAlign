@@ -464,6 +464,62 @@ def test_warp_runs_through_the_claimed_child(
     _assert_exact_types(values)
 
 
+def test_only_registered_and_claimed_timelines_are_units() -> None:
+    """The claimed child is a unit of its own beside the two registered ones."""
+    bundle = _claimed_child_bundle()
+
+    assert bundle._warp_units() == [
+        (None, ("clt_1",)),
+        (None, ("cpt_1",)),
+        (None, ("clt_2",)),
+    ]
+
+
+def test_unclaimed_descendants_are_no_units(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A hundred unclaimed children add no unit and no transfer."""
+    root = Timeline(length=100, unit=TimeUnit.quarters, uid="score")
+    for index in range(100):
+        root.add_child(
+            Timeline(length=1, unit=TimeUnit.quarters, uid=f"bar_{index}"), index
+        )
+    recording = Timeline(length=100.0, unit=TimeUnit.seconds, uid="perf")
+    bundle = AlignmentBundle()
+    bundle.add_timeline(root, as_group="gs")
+    bundle.add_timeline(recording, as_group="gp")
+    bundle.add_match_claims(
+        [
+            MatchClaim.from_events(
+                event_a={"start": position},
+                tl_a_id="score",
+                event_b={"start": float(position)},
+                tl_b_id="perf",
+                unit_a=TimeUnit.quarters,
+                unit_b=TimeUnit.seconds,
+            )
+            for position in (0, 100)
+        ]
+    )
+    transfers: list[str] = []
+    transfer = AlignmentBundle._transfer_to_group
+
+    def counting(self: AlignmentBundle, *args: object, **kwargs: object) -> object:
+        transfers.append(str(args[1]))
+        return transfer(self, *args, **kwargs)
+
+    monkeypatch.setattr(AlignmentBundle, "_transfer_to_group", counting)
+
+    units = bundle._warp_units()
+    values = _values(bundle.get_matchstamp_at(Fraction(101, 2), "score").coordinates)
+
+    assert [members for _, members in units] == [("score",), ("perf",)]
+    assert sorted(values, key=lambda item: item[0]) == [
+        ("bar_50", Fraction(1, 2)),
+        ("perf", 50.5),
+        ("score", Fraction(101, 2)),
+    ]
+    assert transfers == ["score"]
+
+
 def test_transfer_runs_through_the_claimed_child() -> None:
     """The private transfer accepts the unregistered child on either side."""
     bundle = _claimed_child_bundle()

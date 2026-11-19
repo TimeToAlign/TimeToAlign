@@ -58,6 +58,7 @@ from timetoalign.core.retrieval import (
     validate_key_collection,
     validate_table_format,
 )
+from timetoalign.core.time import shift_number
 from timetoalign.core.timestamp import TimestampColumn, build_timestamp_table
 from timetoalign.timelines import TimelineGroup, UnknownLengthError
 from timetoalign.timelines.groups import (
@@ -66,6 +67,7 @@ from timetoalign.timelines.groups import (
     _IdScope,
     _nested,
     _root,
+    _tree,
 )
 from timetoalign.timelines.manifest import Manifest, ManifestFileMixin
 from timetoalign.timelines.statements import MutableStatementsMixin, rename_references
@@ -3880,13 +3882,21 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         """Carry a position onto every other timeline of its manifest tree.
 
         A child sits at an exact offset inside its parent, so a position on
-        any timeline of the tree is a position on the root, and from there on
-        every timeline of the tree whose closed span ``[0, length]`` contains
-        it (bounded below only where the length is unknown). Every timeline
-        of the tree takes part, whatever its depth and whether or not it is
-        registered or grouped (:meth:`_known_timelines`): a middle ancestor
-        between a registered root and a grouped descendant is reached like
-        either of them.
+        any timeline of the tree is a position on each of the others. It is
+        carried from the queried timeline along the tree's edges, one step
+        per edge: up to a parent by adding the child's offset, down to a
+        child by subtracting it (:func:`~timetoalign.core.time.shift_number`,
+        the parent-child mechanism of :class:`Timeline` itself). Going
+        through the root instead (adding the queried timeline's origin on
+        the root, subtracting the other's) is two roundings on a float axis
+        where one step is none: a child at offset 0 got another value than
+        its parent. Step by step, a zero offset is the identity, and an
+        exact axis stays exact. A timeline appears when its closed span
+        ``[0, length]`` contains the position (bounded below only where the
+        length is unknown). Every timeline of the tree takes part, whatever
+        its depth and whether or not it is registered or grouped
+        (:meth:`_known_timelines`): a middle ancestor between a registered
+        root and a grouped descendant is reached like either of them.
 
         Args:
             timeline: A timeline of one of the bundle's trees.
@@ -3896,22 +3906,29 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             The coordinates of the other timelines of the tree that reach the
             position, by id, the root first and then depth-first.
         """
-        root = _root(timeline)
-        origins: dict[str, tuple[Timeline, CoordinateValue]] = {}
-        pending: list[tuple[Timeline, CoordinateValue]] = [(root, 0)]
+        carried: dict[str, CoordinateValue] = {timeline.id: coordinate}
+        pending = [timeline]
         while pending:
-            node, origin = pending.pop()
-            origins[node.id] = (node, origin)
-            pending.extend(
-                (child, origin + node.get_child_offset(child_id).value)
-                for child_id, child in reversed(node._children.items())
-            )
-        root_coordinate = coordinate + origins[timeline.id][1]
+            node = pending.pop()
+            value = carried[node.id]
+            steps: list[tuple[Timeline, Coordinate, bool]] = [
+                (child, node._child_offsets[child_id], True)
+                for child_id, child in node._children.items()
+            ]
+            parent = node._parent
+            if parent is not None:
+                steps.append((parent, parent._child_offsets[node.id], False))
+            for neighbour, offset, subtract in steps:
+                if neighbour.id not in carried:
+                    carried[neighbour.id] = shift_number(
+                        value, offset.value, subtract=subtract
+                    )
+                    pending.append(neighbour)
         reached: dict[str, CoordinateValue] = {}
-        for relative, origin in origins.values():
+        for relative in _tree(_root(timeline)):
             if relative is timeline:
                 continue
-            value = root_coordinate - origin
+            value = carried[relative.id]
             if 0 <= value and (
                 relative.length is None or value <= relative.length.value
             ):

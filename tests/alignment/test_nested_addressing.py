@@ -449,3 +449,91 @@ def test_transfer_runs_through_the_claimed_child() -> None:
 
 
 # endregion
+
+
+# region One step per edge
+
+DRAWING_X = 101.68572501334543
+DRAWING_ROOT_X = 178.38943961314868
+
+
+def _drawing_bundle() -> AlignmentBundle:
+    """Build a page drawing whose nested child sits at offset 0 in its parent.
+
+    Returns:
+        The bundle holding the drawing's root.
+    """
+    root = Timeline(length=932.2326510101616, unit=TimeUnit.css_pixels, uid="cgt_1")
+    child = Timeline(length=855.5289364103584, unit=TimeUnit.css_pixels, uid="cgt_2")
+    grandchild = Timeline(
+        length=713.3617548979767, unit=TimeUnit.css_pixels, uid="cgt_3"
+    )
+    root.add_child(child, offset=76.70371459980326)
+    child.add_child(grandchild, offset=0)
+    bundle = AlignmentBundle(id="drawing")
+    bundle.add_timeline(root)
+    return bundle
+
+
+@pytest.mark.parametrize(
+    ("source", "position", "expected"),
+    [
+        (
+            "cgt_3",
+            DRAWING_X,
+            [("cgt_3", DRAWING_X), ("cgt_1", DRAWING_ROOT_X), ("cgt_2", DRAWING_X)],
+        ),
+        (
+            "cgt_2",
+            DRAWING_X,
+            [("cgt_2", DRAWING_X), ("cgt_1", DRAWING_ROOT_X), ("cgt_3", DRAWING_X)],
+        ),
+        (
+            "cgt_1",
+            DRAWING_ROOT_X,
+            [
+                ("cgt_1", DRAWING_ROOT_X),
+                ("cgt_2", 101.68572501334542),
+                ("cgt_3", 101.68572501334542),
+            ],
+        ),
+    ],
+)
+def test_zero_offset_is_the_identity_on_a_float_axis(
+    source: str, position: float, expected: list[tuple[str, object]]
+) -> None:
+    """A child at offset 0 and its parent name one float, whoever is queried."""
+    bundle = _drawing_bundle()
+
+    values = _values(bundle.get_matchstamp_at(position, source).coordinates)
+
+    assert values == expected
+    assert all(type(value) is float for _, value in values)
+    named = dict(values)
+    assert named["cgt_2"] == named["cgt_3"]
+
+
+def test_exact_tree_stays_exact_up_and_down() -> None:
+    """Grandchild to parent to root to uncle: every step exact."""
+    root = Timeline(length=10, unit=TimeUnit.quarters, uid="clt_1")
+    uncle = Timeline(length=4, unit=TimeUnit.quarters, uid="clt_2")
+    parent = Timeline(length=2, unit=TimeUnit.quarters, uid="clt_3")
+    grandchild = Timeline(length=1, unit=TimeUnit.quarters, uid="clt_4")
+    root.add_child(uncle, offset=Fraction(1, 3))
+    root.add_child(parent, offset=Fraction(10, 3))
+    parent.add_child(grandchild, offset=Fraction(1, 2))
+    bundle = AlignmentBundle(id="exact")
+    bundle.add_timeline(root)
+
+    values = _values(bundle.get_matchstamp_at(Fraction(1, 4), "clt_4").coordinates)
+
+    assert values == [
+        ("clt_4", Fraction(1, 4)),
+        ("clt_1", Fraction(49, 12)),
+        ("clt_2", Fraction(15, 4)),
+        ("clt_3", Fraction(3, 4)),
+    ]
+    assert all(type(value) is Fraction for _, value in values)
+
+
+# endregion

@@ -1698,6 +1698,22 @@ def coordinate_numeric_value(value: Any) -> Fraction | float:
     return float(value)
 
 
+def shift_number(value: Any, offset: Any, *, subtract: bool) -> Fraction | float:
+    """Shift a coordinate by an offset: one step between a parent and a child.
+
+    The step runs on the exact side whenever both operands have one, so it
+    stays exact on an exact axis; otherwise it is one float addition or
+    subtraction. Either way a zero offset gives back the value unchanged.
+    """
+    value_exact = exact_coordinate_value(value)
+    offset_exact = exact_coordinate_value(offset)
+    if value_exact is not None and offset_exact is not None:
+        return value_exact - offset_exact if subtract else value_exact + offset_exact
+    left = float(coordinate_numeric_value(value))
+    right = float(coordinate_numeric_value(offset))
+    return left - right if subtract else left + right
+
+
 def shift_coordinate(value: Any, offset: Any, *, subtract: bool) -> dict[str, Any]:
     """Shift a coordinate by an offset and rebuild its storage cell.
 
@@ -1706,15 +1722,7 @@ def shift_coordinate(value: Any, offset: Any, *, subtract: bool) -> dict[str, An
     coordinate, is always. Parent-to-child offsetting therefore composes
     without drifting, however deep the nesting goes.
     """
-    value_exact = exact_coordinate_value(value)
-    offset_exact = exact_coordinate_value(offset)
-    if value_exact is not None and offset_exact is not None:
-        result = value_exact - offset_exact if subtract else value_exact + offset_exact
-        return coordinate_to_struct(result)
-
-    left = float(coordinate_numeric_value(value))
-    right = float(coordinate_numeric_value(offset))
-    return coordinate_to_struct(left - right if subtract else left + right)
+    return coordinate_to_struct(shift_number(value, offset, subtract=subtract))
 
 
 def subtract_coordinates(left: Any, right: Any) -> dict[str, Any]:

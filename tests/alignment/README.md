@@ -451,6 +451,45 @@ registered; `clt_2` its child at offset 20, length 40, not registered, events
 `transfer(20, "clt_2", "cpt_1")` is `15.0` and `transfer(15.0, "cpt_1",
 "clt_2")` is `20.0`.
 
+### One Step per Edge
+
+A position is carried from the queried timeline along the tree's edges, one
+offset addition (child to parent) or subtraction (parent to child) per edge,
+exactly as a timeline converts between itself and its children. Going through the
+root instead adds the queried timeline's origin and subtracts the other's: on a
+float axis that is two roundings, so a child at offset 0 got a value differing
+from its parent's in the last digit, and two lanes of one stamp named different
+positions. What proves the walk:
+
+12. **A zero offset is the identity on a float axis.** In a drawing with a nested
+    child at offset 0, a position on the child and the same position on its parent
+    are the same float, whichever of the two is queried; and from the root both
+    get one value. The values are a real specimen's (a page drawing in CSS
+    pixels), where the sum through the root does not round back: `101.68572501334543
+    + 76.70371459980326 = 178.38943961314868`, and `178.38943961314868 −
+    76.70371459980326 = 101.68572501334542`.
+13. **An exact tree stays exact** across a path that goes up and down again
+    (grandchild → its parent → the root → an uncle), with `Fraction` results.
+
+Float fixture: `cgt_1` (css_pixels, float, length 932.2326510101616), its child
+`cgt_2` at 76.70371459980326 (length 855.5289364103584), and `cgt_2`'s child
+`cgt_3` at 0 (length 713.3617548979767); `cgt_1` registered.
+
+| query | expected coordinates (in this order) |
+|---|---|
+| `cgt_3` 101.68572501334543 | `cgt_3` 101.68572501334543, `cgt_1` 178.38943961314868, `cgt_2` 101.68572501334543 |
+| `cgt_2` 101.68572501334543 | `cgt_2` 101.68572501334543, `cgt_1` 178.38943961314868, `cgt_3` 101.68572501334543 |
+| `cgt_1` 178.38943961314868 | `cgt_1` 178.38943961314868, `cgt_2` 101.68572501334542, `cgt_3` 101.68572501334542 |
+
+From the root the value on `cgt_2` is the one subtraction the edge prescribes,
+and `cgt_3` repeats it exactly.
+
+Exact fixture: `clt_1` (quarters, length 10) with children `clt_2` at 1/3
+(length 4) and `clt_3` at 10/3 (length 2); `clt_3`'s child `clt_4` at 1/2
+(length 1); `clt_1` registered. Querying `clt_4` at 1/4 gives `clt_4` 1/4,
+`clt_1` 49/12, `clt_2` 15/4, `clt_3` 3/4 (`3/4 = 1/4 + 1/2`, `49/12 = 3/4 +
+10/3`, `15/4 = 49/12 − 1/3`), every value a `Fraction`.
+
 ---
 
 ## TimelineGroup Integration

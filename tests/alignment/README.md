@@ -324,6 +324,92 @@ ordering expectations; no tolerance or approximate comparison is used.
 
 ---
 
+## Every Timeline of a Bundle's Trees (`test_nested_addressing.py`)
+
+### What We're Validating
+
+A bundle answers for every timeline of the trees it holds, whatever its depth
+and whether or not it was added, registered or grouped. Registering is how a
+timeline enters a bundle (its root comes along); it is not a condition for
+being found. Each timeline of a tree reaches every other one of that tree by the
+exact parent-child offsets, the first transfer mechanism, and a timeline appears
+in a stamp exactly when its closed span `[0, length]` contains the position.
+
+Before this held, a timeline between a registered root and a grouped
+descendant (a "middle ancestor") was invisible: querying it raised `KeyError`,
+and stamps queried from the root, the descendant or the descendant's group
+partner left it out while including the timelines on either side of it. The
+same was true of every unregistered sibling. A test proves the rule only if it
+holds in the following cases:
+
+1. **Lookup.** `get_timeline` returns the nested timelines themselves (identity),
+   at depth one and two, while the registry is unchanged: `timeline_ids` still
+   lists only what was registered. Addressing must not enrol anything, or the
+   dictionary form would change.
+2. **The middle ancestor as query.** A query on it returns every timeline
+   reaching the position: its child, the root, the child's group partner and the
+   partner's claimed recording, each at its exact value, in a fixed order.
+3. **The middle ancestor in others' stamps.** Queries at the same instant from the
+   root, the grouped descendant and its group partner all return the same
+   coordinate set, the middle ancestor included. Four sources agreeing rules out
+   a rule that depends on where the query starts.
+4. **Spans are closed and only containing timelines appear.** At the boundary
+   between two unregistered siblings both appear, one at its end, one at its
+   start; a position covered by one child only shows that child and the root.
+   An unregistered branch with no group and no claim is reached by offsets
+   alone.
+5. **Every lane follows.** The plural getter, the key getter (`_for`), the
+   position table and the coordinate getter all give the same values as the
+   singular stamp; they share one assembly path, and the test pins each of them.
+6. **Filters select among every known timeline.** `timeline_ids`, `id_pattern`
+   and `include_units` keep exactly the nested timelines they name.
+7. **An unknown id** still raises `KeyError`, naming every timeline the bundle
+   knows: the registered ones in registration order, then each root's other
+   descendants depth-first.
+
+### Fixture
+
+- `clt_1`: root, quarters, length 1616, children at exact offsets:
+
+  | child | offset | length | span on `clt_1` |
+  |---|---|---|---|
+  | `clt_2` | 0 | 356 | `[0, 356]` |
+  | `clt_3` | 356 | 312 | `[356, 668]` |
+  | `clt_4` | 668 | 324 | `[668, 992]` |
+  | `clt_5` | 992 | 624 | `[992, 1616]` |
+
+- `clt_7`: child of `clt_4` at offset 0, length 27, so `[668, 695]` on `clt_1`.
+- `clt_6`: quarters, length 27, grouped with `clt_7` (one group, `score`).
+- `cpt_1`: seconds, length 10, ungrouped, with two instant claims to `clt_6`:
+  `0 ↔ 0.0` and `27 ↔ 9.0`.
+- Registered: `clt_7` (bringing its root `clt_1`), `clt_6`, `cpt_1`.
+  `clt_2`..`clt_5` are neither registered nor grouped.
+
+### Exact Expected Values
+
+| query | expected coordinates (in this order) |
+|---|---|
+| `clt_4` 27/2 | `clt_4` 27/2, `clt_7` 27/2, `clt_1` 1363/2, `clt_6` 27/2, `cpt_1` 4.5 |
+| `clt_1` 1363/2, `clt_7` 27/2, `clt_6` 27/2 | the same five values |
+| `clt_4` 27 | `clt_4` 27, `clt_7` 27, `clt_1` 695, `clt_6` 27, `cpt_1` 9.0 |
+| `clt_1` 668 | `clt_1` 668, `clt_7` 0, `clt_6` 0, `cpt_1` 0.0, `clt_3` 312, `clt_4` 0 |
+| `clt_1` 100 | `clt_1` 100, `clt_2` 100 |
+| `clt_5` 300 | `clt_5` 300, `clt_1` 1292 |
+
+`1363/2 = 668 + 27/2`; `cpt_1` 4.5 is the WarpMap between the two claims,
+`(27/2) / 27 · 9`, and 0.0 and 9.0 are the claims' own anchors. The order is the
+query timeline, then the registered timelines in registration order, then the
+other descendants depth-first; a filter keeps that order. Quarters values are
+`Fraction`s on every lane, seconds values floats.
+
+The key getter is pinned with an event stored on `clt_4` at 27/2: the root
+finds it among its children, so the root owns it, and the stamp is the root's
+query at 1363/2, `clt_4` included. The table at `clt_4` 27/2 has the columns
+`clt_1`, `clt_4`, `clt_6`, `clt_7`, `cpt_1`, the `clt_4` column naming its
+timeline in the field metadata.
+
+---
+
 ## TimelineGroup Integration
 
 Group behaviour — the definition, exact linear conversion, child members,

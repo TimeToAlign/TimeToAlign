@@ -27,6 +27,7 @@ Design:
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import re
@@ -772,6 +773,30 @@ class MatchClaim(BaseModel):
         if not isinstance(other, MatchClaim):
             return NotImplemented
         return type(self) is type(other) and self.__dict__ == other.__dict__
+
+    def __deepcopy__(self, memo: dict[int, Any] | None = None) -> "MatchClaim":
+        """Copy every field deeply; never copy the bundle holding the claim.
+
+        The bundle back-reference (:attr:`bundle`) records where the claim
+        is. A copy is not among that bundle's claims, so it is held by no
+        bundle and :attr:`bundle` is ``None`` -- unless the bundle itself is
+        being copied in the same operation, whose copy then holds the
+        claim's copy. Copying the bundle along with one claim would copy
+        every other claim it holds, so a deep copy would cost as much as the
+        whole alignment.
+
+        Args:
+            memo: The memo dictionary of :func:`copy.deepcopy`.
+
+        Returns:
+            The copy.
+        """
+        memo = {} if memo is None else memo
+        copied = copy.copy(self)
+        object.__setattr__(copied, "__dict__", copy.deepcopy(self.__dict__, memo))
+        held_by = self._bundle
+        copied._bundle = None if held_by is None else memo.get(id(held_by))
+        return copied
 
     @property
     def is_interval(self) -> bool:

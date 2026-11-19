@@ -17,6 +17,8 @@ from timetoalign.timelines import (
     TimelineGroup,
 )
 
+from .conftest import SCORE_DIR
+
 # region Fixtures
 
 
@@ -1319,23 +1321,13 @@ class TestTimelineGroupUnfold:
     @pytest.fixture(scope="class")
     def score_data(self):
         """Build score group + flow data for unfolding tests."""
-        from pathlib import Path
-
         from timetoalign.core.enums import FlowMode
         from timetoalign.loader.score import Ms3Loader
         from timetoalign.timelines.flow import ScoreFlowController
 
-        data_dir = (
-            Path(__file__).parent.parent
-            / "data"
-            / "score"
-            / "beethoven_op18-4iv_multimodal"
-        )
+        data_dir = SCORE_DIR / "beethoven_op18-4iv_multimodal"
         abc_dir = data_dir / "ABC"
         os_dir = data_dir / "OpenScoreSQ"
-
-        if not abc_dir.exists():
-            pytest.skip(f"Beethoven test data not found: {abc_dir}")
 
         # CLT1
         abc_loader = Ms3Loader.from_file(
@@ -1516,19 +1508,9 @@ class TestScoreLoaderCreateFlowController:
     @pytest.fixture(scope="class")
     def abc_loader(self):
         """Load the Beethoven ABC score."""
-        from pathlib import Path
-
         from timetoalign.loader.score import Ms3Loader
 
-        data_dir = (
-            Path(__file__).parent.parent
-            / "data"
-            / "score"
-            / "beethoven_op18-4iv_multimodal"
-            / "ABC"
-        )
-        if not data_dir.exists():
-            pytest.skip(f"Beethoven test data not found: {data_dir}")
+        data_dir = SCORE_DIR / "beethoven_op18-4iv_multimodal" / "ABC"
 
         return Ms3Loader.from_file(
             data_dir / "n04op18-4_04.notes.tsv",

@@ -45,9 +45,11 @@ from timetoalign.timelines.flow import (
 )
 from timetoalign.timelines.types import SegmentLine
 
+from .conftest import SCORE_DIR
+
 # region Path Constants & Specimen Configuration
 
-SCORE_DATA_DIR = Path(__file__).parent.parent / "data" / "score"
+SCORE_DATA_DIR = SCORE_DIR
 
 
 # Specimen configuration: maps specimen key to (folded_tsv_path, unfolded_tsv_path)
@@ -517,8 +519,6 @@ class TestComputeQBSections:
     def test_sequential_score_single_section(self, data_dir: Path):
         """Sequential score (Rachmaninoff): single section spanning full QB range."""
         tsv_path = data_dir / SPECIMEN_PATHS["rachmaninoff"][0]
-        if not tsv_path.exists():
-            pytest.skip(f"Test data not found: {tsv_path}")
 
         controller = _load_controller(tsv_path)
         flow = controller.compute_flow(FlowMode.default)
@@ -534,8 +534,6 @@ class TestComputeQBSections:
     def test_repeated_score_musete(self, data_dir: Path):
         """D.S. al Fine (Musete): sections repeat QB ranges."""
         tsv_path = data_dir / SPECIMEN_PATHS["musete"][0]
-        if not tsv_path.exists():
-            pytest.skip(f"Test data not found: {tsv_path}")
 
         controller = _load_controller(tsv_path)
         flow = controller.compute_flow(FlowMode.default)
@@ -548,8 +546,6 @@ class TestComputeQBSections:
     def test_repeated_score_rondeau(self, data_dir: Path):
         """Rondeau form: sections with D.S. produce correct QB ranges."""
         tsv_path = data_dir / SPECIMEN_PATHS["rondeau"][0]
-        if not tsv_path.exists():
-            pytest.skip(f"Test data not found: {tsv_path}")
 
         controller = _load_controller(tsv_path)
         flow = controller.compute_flow(FlowMode.default)
@@ -562,8 +558,6 @@ class TestComputeQBSections:
     def test_volta_score_op18(self, data_dir: Path):
         """Repeats + Volta brackets (Op.18 No.4 iv)."""
         tsv_path = data_dir / SPECIMEN_PATHS["op18_no4_mov4"][0]
-        if not tsv_path.exists():
-            pytest.skip(f"Test data not found: {tsv_path}")
 
         controller = _load_controller(tsv_path)
         flow = controller.compute_flow(FlowMode.default)
@@ -576,8 +570,6 @@ class TestComputeQBSections:
     def test_complex_split_bars_woo71(self, data_dir: Path):
         """Complex split bars (Beethoven WoO71)."""
         tsv_path = data_dir / SPECIMEN_PATHS["woo71"][0]
-        if not tsv_path.exists():
-            pytest.skip(f"Test data not found: {tsv_path}")
 
         controller = _load_controller(tsv_path)
         flow = controller.compute_flow(FlowMode.default)
@@ -590,8 +582,6 @@ class TestComputeQBSections:
     def test_flow_only_ds_dc(self, data_dir: Path):
         """D.S./D.C. with Voltas (flow_only)."""
         tsv_path = data_dir / SPECIMEN_PATHS["flow_only"][0]
-        if not tsv_path.exists():
-            pytest.skip(f"Test data not found: {tsv_path}")
 
         controller = _load_controller(tsv_path)
         flow = controller.compute_flow(FlowMode.default)
@@ -608,8 +598,6 @@ class TestComputeQBSections:
         the quarterbeats value of the corresponding mc_start in the folded TSV.
         """
         tsv_path = data_dir / SPECIMEN_PATHS["musete"][0]
-        if not tsv_path.exists():
-            pytest.skip(f"Test data not found: {tsv_path}")
 
         # Load folded TSV for gold standard quarterbeats
         df = pd.read_csv(tsv_path, sep="\t", dtype=str)
@@ -636,9 +624,6 @@ class TestComputeQBSections:
         """Every QB section has strictly positive duration."""
         for key, (folded_rel, _) in SPECIMEN_PATHS.items():
             tsv_path = data_dir / folded_rel
-            if not tsv_path.exists():
-                continue
-
             controller = _load_controller(tsv_path)
             flow = controller.compute_flow(FlowMode.default)
             qb_sections = compute_qb_sections(flow, controller)
@@ -879,18 +864,10 @@ class TestUnfoldingGoldStandard:
 
         Returns:
             (controller, flow, gold_df) tuple.
-
-        Raises:
-            pytest.skip: If test data files are missing.
         """
         folded_rel, unfolded_rel = SPECIMEN_PATHS[specimen]
         folded_path = data_dir / folded_rel
         unfolded_path = data_dir / unfolded_rel
-
-        if not folded_path.exists():
-            pytest.skip(f"Folded TSV not found: {folded_path}")
-        if not unfolded_path.exists():
-            pytest.skip(f"Unfolded TSV not found: {unfolded_path}")
 
         controller = _load_controller(folded_path)
         flow = controller.compute_flow(FlowMode.default)
@@ -1023,8 +1000,6 @@ class TestUnfoldingGoldStandard:
         """Sum of QB section durations matches gold standard total length."""
         folded_rel, _ = SPECIMEN_PATHS[specimen]
         folded_path = data_dir / folded_rel
-        if not folded_path.exists():
-            pytest.skip(f"Folded TSV not found: {folded_path}")
 
         controller = _load_controller(folded_path)
         flow = controller.compute_flow(FlowMode.default)
@@ -1181,10 +1156,6 @@ def beethoven_score_group() -> dict[str, Any]:
     """
     data_dir = SCORE_DATA_DIR
     abc_dir = data_dir / BEETHOVEN_ABC_DIR_REL
-
-    # Skip if test data is missing
-    if not abc_dir.exists():
-        pytest.skip(f"Beethoven test data not found: {abc_dir}")
 
     # CLT1
     abc_loader = Ms3Loader.from_file(

@@ -23,6 +23,7 @@ import pytest
 
 from timetoalign.core import NumberType, TimeUnit
 from timetoalign.loader.tabular import TsvLoader
+from timetoalign.testdata import ensure_data
 
 
 class Ms3TsvFixture(TsvLoader):
@@ -45,16 +46,14 @@ class Ms3TsvFixture(TsvLoader):
 
 @pytest.fixture
 def specimens_base() -> Path:
-    """Get base path for specimens (under tests/data/score/)."""
-    return Path(__file__).parent.parent.parent / "data" / "score"
+    """Get base path for specimens (the ``score`` test-data corpus)."""
+    return ensure_data("score")
 
 
 @pytest.fixture
 def beethoven_notes(specimens_base: Path) -> Path:
     """Get path to Beethoven WoO71 notes TSV."""
     path = specimens_base / "beethoven_woo71" / "WoO71.notes.tsv"
-    if not path.exists():
-        pytest.skip(f"Specimen not found: {path}")
     return path
 
 
@@ -62,8 +61,6 @@ def beethoven_notes(specimens_base: Path) -> Path:
 def beethoven_measures(specimens_base: Path) -> Path:
     """Get path to Beethoven WoO71 measures TSV."""
     path = specimens_base / "beethoven_woo71" / "WoO71.measures.tsv"
-    if not path.exists():
-        pytest.skip(f"Specimen not found: {path}")
     return path
 
 
@@ -76,8 +73,6 @@ def rachmaninoff_notes(specimens_base: Path) -> Path:
         / "score"
         / "Piano_Concerto_No._2_Opus_18_1st_Movement__Rachmaninoff.notes.tsv"
     )
-    if not path.exists():
-        pytest.skip(f"Specimen not found: {path}")
     return path
 
 

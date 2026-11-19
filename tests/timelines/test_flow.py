@@ -31,12 +31,15 @@ from timetoalign.core import TimeUnit
 from timetoalign.core.enums import FlowControlElement, FlowMode, IncompletePosition
 from timetoalign.loader.score import Ms3Loader
 from timetoalign.storage.events import EventData
+from timetoalign.testdata import ensure_data
 from timetoalign.timelines import Flow, FlowMap, MeasureUnit, ScoreFlowController
 from timetoalign.timelines.flow import (
     AtomicSection,
     PlaythroughSection,
     load_valid_flows,
 )
+
+from .conftest import SCORE_DIR
 
 # region Test Helpers
 
@@ -63,13 +66,13 @@ class _MockMeasureData(EventData):
 @pytest.fixture
 def data_dir() -> Path:
     """Path to test data directory."""
-    return Path(__file__).parent.parent / "data" / "score"
+    return SCORE_DIR
 
 
 @pytest.fixture
 def target_flows_dir() -> Path:
     """Path to target_flows directory."""
-    return Path(__file__).parent.parent / "data" / "target_flows"
+    return ensure_data("target_flows")
 
 
 @pytest.fixture
@@ -1586,8 +1589,6 @@ class TestFlowCSVLoading:
     def test_from_csv(self, target_flows_dir: Path) -> None:
         """Flow.from_csv loads a specific mode from CSV."""
         csv_path = target_flows_dir / "c05n05_musete.flow.csv"
-        if not csv_path.exists():
-            pytest.skip(f"Test data not found: {csv_path}")
 
         flow = Flow.from_csv(csv_path, FlowMode.atomic)
 
@@ -1600,8 +1601,6 @@ class TestFlowCSVLoading:
     def test_from_csv_invalid_mode_raises(self, target_flows_dir: Path) -> None:
         """Flow.from_csv raises for non-existent mode."""
         csv_path = target_flows_dir / "c05n05_musete.flow.csv"
-        if not csv_path.exists():
-            pytest.skip(f"Test data not found: {csv_path}")
 
         # MUSIC21 mode is not in the CSV, so this should raise
         with pytest.raises(ValueError, match="No entries for flow_mode"):
@@ -1610,8 +1609,6 @@ class TestFlowCSVLoading:
     def test_load_valid_flows(self, target_flows_dir: Path) -> None:
         """load_valid_flows loads all modes from CSV."""
         csv_path = target_flows_dir / "c05n05_musete.flow.csv"
-        if not csv_path.exists():
-            pytest.skip(f"Test data not found: {csv_path}")
 
         flows = load_valid_flows(csv_path)
 
@@ -1665,8 +1662,6 @@ class TestScoreFlowController:
 
     def test_get_sections(self, rachmaninoff_measures_tsv: Path) -> None:
         """ScoreFlowController.get_sections() returns atomic sections by default."""
-        if not rachmaninoff_measures_tsv.exists():
-            pytest.skip(f"Test data not found: {rachmaninoff_measures_tsv}")
 
         loader = Ms3Loader()
         loader.load(rachmaninoff_measures_tsv)
@@ -1681,8 +1676,6 @@ class TestScoreFlowController:
 
     def test_get_sections_with_mode(self, rachmaninoff_measures_tsv: Path) -> None:
         """ScoreFlowController.get_sections(mode) returns playthrough sections."""
-        if not rachmaninoff_measures_tsv.exists():
-            pytest.skip(f"Test data not found: {rachmaninoff_measures_tsv}")
 
         loader = Ms3Loader()
         loader.load(rachmaninoff_measures_tsv)
@@ -1707,8 +1700,6 @@ class TestScoreFlowController:
 
     def test_flow_has_segments(self, rachmaninoff_measures_tsv: Path) -> None:
         """Computed flow includes segments."""
-        if not rachmaninoff_measures_tsv.exists():
-            pytest.skip(f"Test data not found: {rachmaninoff_measures_tsv}")
 
         loader = Ms3Loader()
         loader.load(rachmaninoff_measures_tsv)
@@ -1741,8 +1732,6 @@ class TestExample1Rachmaninoff:
 
     def test_load_measures(self, rachmaninoff_measures_tsv: Path) -> None:
         """Can load Rachmaninoff measures."""
-        if not rachmaninoff_measures_tsv.exists():
-            pytest.skip(f"Test data not found: {rachmaninoff_measures_tsv}")
 
         loader = Ms3Loader()
         loader.load(rachmaninoff_measures_tsv)
@@ -1750,8 +1739,6 @@ class TestExample1Rachmaninoff:
 
     def test_compute_flow(self, rachmaninoff_measures_tsv: Path) -> None:
         """Flow computation for sequential score."""
-        if not rachmaninoff_measures_tsv.exists():
-            pytest.skip(f"Test data not found: {rachmaninoff_measures_tsv}")
 
         loader = Ms3Loader()
         loader.load(rachmaninoff_measures_tsv)
@@ -1767,10 +1754,6 @@ class TestExample1Rachmaninoff:
         self, rachmaninoff_measures_tsv: Path, rachmaninoff_unfolded_tsv: Path
     ) -> None:
         """Flow output matches ms3 unfolded TSV exactly."""
-        if not rachmaninoff_measures_tsv.exists():
-            pytest.skip(f"Test data not found: {rachmaninoff_measures_tsv}")
-        if not rachmaninoff_unfolded_tsv.exists():
-            pytest.skip(f"Test data not found: {rachmaninoff_unfolded_tsv}")
 
         # Load folded and compute flow
         loader = Ms3Loader()
@@ -1815,8 +1798,6 @@ class TestExample3CouperinMusete:
 
     def test_load_measures(self, musete_measures_tsv: Path) -> None:
         """Can load Musete measures."""
-        if not musete_measures_tsv.exists():
-            pytest.skip(f"Test data not found: {musete_measures_tsv}")
 
         loader = Ms3Loader()
         loader.load(musete_measures_tsv)
@@ -1825,8 +1806,6 @@ class TestExample3CouperinMusete:
 
     def test_has_flow_control(self, musete_measures_tsv: Path) -> None:
         """Musete has flow control markers."""
-        if not musete_measures_tsv.exists():
-            pytest.skip(f"Test data not found: {musete_measures_tsv}")
 
         loader = Ms3Loader()
         loader.load(musete_measures_tsv)
@@ -1837,8 +1816,6 @@ class TestExample3CouperinMusete:
 
     def test_compute_flow_unfolded_count(self, musete_measures_tsv: Path) -> None:
         """Flow computation produces correct unfolded count."""
-        if not musete_measures_tsv.exists():
-            pytest.skip(f"Test data not found: {musete_measures_tsv}")
 
         loader = Ms3Loader()
         loader.load(musete_measures_tsv)
@@ -1854,10 +1831,6 @@ class TestExample3CouperinMusete:
         self, musete_measures_tsv: Path, musete_unfolded_tsv: Path
     ) -> None:
         """Flow output matches ms3 unfolded TSV exactly."""
-        if not musete_measures_tsv.exists():
-            pytest.skip(f"Test data not found: {musete_measures_tsv}")
-        if not musete_unfolded_tsv.exists():
-            pytest.skip(f"Test data not found: {musete_unfolded_tsv}")
 
         # Load folded and compute flow
         loader = Ms3Loader()
@@ -1886,8 +1859,6 @@ class TestFlowMap:
 
     def test_create_flow_map(self, rachmaninoff_measures_tsv: Path) -> None:
         """Can create FlowMap from ScoreFlowController."""
-        if not rachmaninoff_measures_tsv.exists():
-            pytest.skip(f"Test data not found: {rachmaninoff_measures_tsv}")
 
         loader = Ms3Loader()
         loader.load(rachmaninoff_measures_tsv)
@@ -1909,8 +1880,6 @@ class TestPrintedMode:
 
     def test_printed_flow_equals_folded(self, rachmaninoff_measures_tsv: Path) -> None:
         """PRINTED mode returns same count as folded."""
-        if not rachmaninoff_measures_tsv.exists():
-            pytest.skip(f"Test data not found: {rachmaninoff_measures_tsv}")
 
         loader = Ms3Loader()
         loader.load(rachmaninoff_measures_tsv)

@@ -9,16 +9,12 @@ incorrect results from corrupt data.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 from timetoalign.testdata import ensure_data
 
-ensure_data("fixtures")
-
 # Test data paths
-CORRUPT_DIR = Path(__file__).parents[1] / "data" / "fixtures" / "corrupt"
+CORRUPT_DIR = ensure_data("fixtures") / "corrupt"
 
 
 class TestMidiLoaderErrorHandling:
@@ -44,8 +40,6 @@ class TestMidiLoaderErrorHandling:
         This catches the common case of a file that isn't actually MIDI.
         """
         invalid_file = CORRUPT_DIR / "invalid_header.mid"
-        if not invalid_file.exists():
-            pytest.skip(f"Test fixture not found: {invalid_file}")
 
         # PerformanceMidiLoader wraps all mido errors as ValueError
         # (see loader/midi/performance.py lines 106-110)
@@ -58,8 +52,6 @@ class TestMidiLoaderErrorHandling:
         This catches the case of a download that was interrupted.
         """
         truncated_file = CORRUPT_DIR / "truncated.mid"
-        if not truncated_file.exists():
-            pytest.skip(f"Test fixture not found: {truncated_file}")
 
         # PerformanceMidiLoader wraps all mido errors as ValueError
         with pytest.raises(ValueError):
@@ -71,8 +63,6 @@ class TestMidiLoaderErrorHandling:
         This catches the case of an empty or zero-byte file.
         """
         empty_file = CORRUPT_DIR / "empty.mid"
-        if not empty_file.exists():
-            pytest.skip(f"Test fixture not found: {empty_file}")
 
         # PerformanceMidiLoader wraps all mido errors as ValueError
         with pytest.raises(ValueError):
@@ -117,8 +107,6 @@ class TestScoreLoaderErrorHandling:
         This catches the case of corrupted or incomplete XML.
         """
         malformed_file = CORRUPT_DIR / "malformed.musicxml"
-        if not malformed_file.exists():
-            pytest.skip(f"Test fixture not found: {malformed_file}")
 
         # Partitura delegates to lxml, which raises XMLSyntaxError
         from lxml.etree import XMLSyntaxError
@@ -129,8 +117,6 @@ class TestScoreLoaderErrorHandling:
     def test_malformed_xml_raises_music21(self, music21_loader):
         """Malformed XML raises parsing error with Music21."""
         malformed_file = CORRUPT_DIR / "malformed.musicxml"
-        if not malformed_file.exists():
-            pytest.skip(f"Test fixture not found: {malformed_file}")
 
         # Music21 delegates to xml.etree, which raises ParseError
         from xml.etree.ElementTree import ParseError

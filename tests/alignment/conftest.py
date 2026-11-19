@@ -5,13 +5,11 @@ This module provides pytest fixtures for alignment testing, including:
 - Thoresen graphical timeline bundles (DGT1, DGT2)
 - Thoresen test data constants
 
-Test data is in tests/data/thoresen/ and comes from the published Thoresen
-example.
+Test data is the ``thoresen`` test-data corpus and comes from the published
+Thoresen example.
 """
 
 from __future__ import annotations
-
-from pathlib import Path
 
 import pytest
 
@@ -23,13 +21,11 @@ from timetoalign.timelines import (
     DiscreteGraphicalTimeline,
 )
 
-ensure_data("thoresen", "supra", "vienna_1x22", "score")
-
 # region Test Data Paths
 
-# Base path for test data (fetched on demand via pooch — see tests/_testdata.py)
-TEST_DATA_DIR = Path(__file__).parents[1] / "data"
-THORESEN_DATA_DIR = TEST_DATA_DIR / "thoresen"
+THORESEN_DATA_DIR, SUPRA_DIR, VIENNA_DIR, SCORE_DIR = ensure_data(
+    "thoresen", "supra", "vienna_1x22", "score"
+)
 
 # DGT1 (2009) - Single image with 5 horizontal systems
 DGT1_IMAGE = THORESEN_DATA_DIR / "thoresen_2009_sound-objects_p312_page1_1.jpeg"
@@ -243,9 +239,6 @@ def dgt1_bundle():
 
     from timetoalign.loader.graphical import GraphicalLoader
 
-    if not DGT1_IMAGE.exists():
-        pytest.skip(f"Test data not found: {DGT1_IMAGE}")
-
     loader = GraphicalLoader(metadata={"source": "Thoresen 2009"})
     idx = loader.add_image(DGT1_IMAGE)
 
@@ -275,11 +268,6 @@ def dgt2_bundle():
     pytest.importorskip("pymupdf")
 
     from timetoalign.loader.graphical import GraphicalLoader
-
-    # Check all images exist
-    for img_path in DGT2_IMAGES:
-        if not img_path.exists():
-            pytest.skip(f"Test data not found: {img_path}")
 
     loader = GraphicalLoader(metadata={"source": "Thoresen 2010"})
 

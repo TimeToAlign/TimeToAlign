@@ -890,7 +890,7 @@ as its string value and is coerced back to `AgentType` on read).
 
 `MatchClaimField` is a **genuine `SemanticField[MatchClaim]`** — the Field
 paired with the `MatchClaim` scalar. It holds a very large set of pairwise
-alignment claims in a **single derived struct column** instead of one frozen
+alignment claims as columns derived from the scalar instead of one frozen
 `MatchClaim` object per claim. Dense audio-to-audio alignments push this into
 the millions of claims, so the store must build vectorized (never one Python
 object per row) and materialise individual `MatchClaim` instances only on
@@ -908,8 +908,7 @@ level** (a Python attribute, `self._metadata`) and **injected on read**. This
 mirrors how `CoordinateField` carries its `unit` outside the data: the struct
 column's `metadata` sub-field is left null in the bulk path, and `__getitem__`
 injects the field-level metadata into each materialised `MatchClaim`. This
-keeps the store compact (one struct column) while the field remains a real
-SemanticField. Each anchor coordinate is stored as a nested
+keeps the store compact while the field remains a real SemanticField. Each anchor coordinate is stored as a nested
 `{value, numerator, denominator, unit}` struct so exact rational values and
 per-row units survive materialisation.
 
@@ -954,21 +953,49 @@ bundle (a field's own claims) and on the claims a bundle hands out
 
 ### Dictionary round trip
 
-`to_dict` / `from_dict` carry every per-row value the table carries — claim
-`id` and `id_minted`, `source_claim_id`, event ids and names, `is_explicit`,
-per-row metadata — besides the coordinate and unit columns and the field's
-metadata. The per-row keys are not listed a second time: `from_claims`,
-`to_dict` and `from_dict` read one class-level definition. Proved with a
-`from_claims` field built from the three round-trip claims with mixed
-metadata, where each per-row column holds a distinct non-null value somewhere:
-`from_dict(to_dict())` has a table equal to the original's and its claims
-equal the original's claims. The bulk gold vector is checked too
-(`from_columns` rows now carry minted ids).
+`to_dict()` is a rendering of the table, not a second layout:
+`{"metadata": <MatchMetadata.to_dict() or None>, "rows": [...]}` with one
+mapping per claim whose keys are the table's columns, in their order, and
+whose values are the table's cells as they are stored (a nested property is a
+nested mapping, an anchor coordinate the stored
+`{value, numerator, denominator, unit}` cell). So `to_dict()["rows"]` equals
+`field.table.to_pylist()` — the key list cannot drift from the table because
+it is not written down a second time. Proved on the mixed-metadata
+`from_claims` field of the three round-trip claims, where each per-row column
+holds a distinct non-null value somewhere: one whole row is asserted literally
+(the projection: given id `midi 96`, int `ticks`/`samples` cells with
+denominator 1, its own metadata), `from_dict(to_dict())` has a table equal to
+the original's, schema metadata included, and its claims equal the original
+claims. The bulk gold vector is checked too (`from_columns` rows carry minted
+ids, the field's metadata under `metadata`).
+
+The dictionary is what is written as YAML next to a manifest, a readable
+stand-in for the Parquet file, so its values must be plain YAML/JSON values
+(strings, ints, floats, bools, `None`, mappings, lists). This is proved by
+the YAML round trip itself: `timetoshare.loads(timetoshare.dumps(d, "yaml"))`
+equals `d`, and `from_dict` of the loaded mapping gives claims equal to the
+original claims. `from_dict` refuses a row whose keys are not exactly the
+table's columns (a missing key and an unknown key, each named), since Arrow
+would otherwise fill a missing key with null or drop an unknown one silently.
+Both readers go through one check after that, so `from_dict` also refuses a
+non-synchronous row with `from_claims`'s message
+(`test_from_dict_refuses_non_synchronous_row`, row 2).
 
 ### Arrow table and Parquet round trip (`TestTableRoundTrip`)
 
+**Layout rule.** A Field's table, as written to Parquet, has one column per
+top-level property of its scalar, each column nested as the property is. So
+the `.table` columns are exactly the top-level fields of
+`derive_arrow_struct(MatchClaim)`, in that order, and each column's type is
+that field's type (`start_anchor` a struct holding two coordinate structs,
+`metadata` a struct holding the agent struct, …). The test derives the
+expected names and types from the derived struct rather than listing them, so
+the assertion is "the table is the scalar", not a restatement of today's
+property list; and it checks one literal name list besides, so that an
+accidental change to `MatchClaim`'s fields shows up as a failing test.
+
 `MatchClaimField.from_table(table)` is the inverse of `.table`. The field's
-shared metadata lives outside the struct column, so `.table` writes it into
+shared metadata lives outside the claim columns, so `.table` writes it into
 the Arrow schema metadata under `timetoalign:match_metadata` (the JSON of
 `MatchMetadata.to_dict()`) and `from_table` reads it back; no key means
 `None`.
@@ -991,16 +1018,21 @@ exercised once:
   certainties: per row, schema metadata absent).
 
 Each case goes through an actual Parquet file in `tmp_path`
-(`pyarrow.parquet.write_table` / `read_table`), which also hands `from_table`
-a chunked column. The schema-metadata value is asserted byte-exact. The two
-refusals are asserted with their messages: a table whose columns are not
-exactly `["match_claim"]` (an extra column; a renamed column), and a
-`match_claim` column of another type.
+(`pyarrow.parquet.write_table` / `read_table`), and the file's own Parquet
+schema (`pq.read_schema`) is asserted to have the property columns, so the
+layout is checked where it is written, not only in memory. A table split into
+two chunks reads back equal. The schema-metadata value is asserted
+byte-exact. The refusals are asserted with their messages: a table whose
+columns are not exactly the property columns (an extra column; a missing
+column; the former single-column layout, one struct column `match_claim`
+holding the whole claim — refused, never converted: older files are
+regenerated), and a property column of another type.
 
 ### Internal schema (the derived `MatchClaim` struct)
 
-The backing table has **one** column, `match_claim`, whose type is exactly
-`MatchClaimField.pa_schema == derive_arrow_struct(MatchClaim)`. The vectorized
+In memory the field holds one struct array of type
+`MatchClaimField.pa_schema == derive_arrow_struct(MatchClaim)`; its table
+spells each of the struct's fields as a column. The vectorized
 `from_columns` fills the `timeline_a_id` / `timeline_b_id` top-level string
 sub-fields and the `start_anchor` sub-struct
 (`{timeline_a_id, coordinate_a, timeline_b_id, coordinate_b}`), sets
@@ -1038,7 +1070,7 @@ the metadata shape and the field's internal column layout changed.
 | `test_from_columns_length` | `len(f) == 3` |
 | `test_is_semantic_field` | `issubclass(MatchClaimField, SemanticField)` |
 | `test_pa_schema_is_derived` | `MatchClaimField.pa_schema == derive_arrow_struct(MatchClaim)` |
-| `test_table_single_struct_column` | one column `match_claim` whose type equals `pa_schema` |
+| `test_table_one_column_per_property` | the column names and types are the derived struct's fields, in order (and the literal name list) |
 | `test_timeline_ids` | `f.timeline_ids == {"A", "B", "C"}` |
 | `test_getitem_first_row` | `f[0]` is a `MatchClaim`, `A`↔`B`, synchronous instant, coords 0.0/10.0, metadata identity `is meta` |
 | `test_getitem_negative_index` | `f[-1]` → `B`, `coordinate_b == 21.0` |
@@ -1052,7 +1084,10 @@ the metadata shape and the field's internal column layout changed.
 | `test_iter` | iteration yields 3 synchronous-instant claims |
 | `test_roundtrip_from_claims` | `from_claims(f.to_claims())` materialises `f.to_claims()` again, and its table equals `f.table` (ids `claim_1`–`claim_3` included) |
 | `test_roundtrip_from_dict` | `from_dict(f.to_dict()).table` equals `f.table`; metadata preserved |
+| `test_to_dict_renders_the_table` | `to_dict()["rows"] == f.table.to_pylist()`, the keys of every row the table's columns |
 | `test_roundtrip_from_dict_keeps_every_row_value` | the mixed-metadata `from_claims` field, as specified under "Dictionary round trip" |
+| `test_yaml_round_trip` | the dictionary through `timetoshare.dumps(..., "yaml")` / `loads` is equal, and reads back to the original claims |
+| `test_from_dict_refuses_other_keys` | a row lacking `event_a_id` and a row with an extra key are refused, the keys named |
 | `test_getitem_injects_metadata` | a materialised claim carries the field-level metadata (struct row is null there) |
 | `test_from_claims_rejects_nomatch` | a `MatchClaim.nomatch(...)` raises `ValueError` |
 | `test_from_claims_preserves_interval` | an interval claim keeps its end anchor: both timelines' intervals equal the claim's |

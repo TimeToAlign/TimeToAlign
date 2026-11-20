@@ -186,8 +186,7 @@ def test_repr_html_shows_claims_not_zero_events(loader: ListenHereLoader) -> Non
 
 def test_negative_coordinate_kept(loader: ListenHereLoader) -> None:
     field = loader.get_field(MatchClaim)
-    struct = field.table.column("match_claim").combine_chunks()
-    anchor = struct.field("start_anchor")
+    anchor = field.table.column("start_anchor").combine_chunks()
     minimum = min(
         pc.min(anchor.field("coordinate_a").field("value")).as_py(),
         pc.min(anchor.field("coordinate_b").field("value")).as_py(),

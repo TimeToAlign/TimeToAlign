@@ -1,9 +1,10 @@
 """Tests for the MatchClaimField columnar claim store.
 
 MatchClaimField is a genuine ``SemanticField[MatchClaim]`` holding a set of
-synchronous-instant pairwise MatchClaims as a single derived struct column
-instead of one frozen MatchClaim object per claim, materialising individual
-claims only on demand. Field-level shared metadata is injected on read.
+synchronous-instant pairwise MatchClaims as Arrow columns, one per
+MatchClaim property, instead of one frozen MatchClaim object per claim,
+materialising individual claims only on demand. Field-level shared metadata
+is injected on read.
 Validation strategy and gold values are documented in
 ``tests/alignment/README.md`` (the "MatchClaimField Tests" section).
 """
@@ -19,6 +20,7 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
+import timetoshare
 
 from timetoalign.alignment import (
     Agent,
@@ -89,11 +91,29 @@ class TestFromColumns:
             ]
         )
 
-    def test_table_single_struct_column(self, gold_field: MatchClaimField) -> None:
+    def test_table_one_column_per_property(self, gold_field: MatchClaimField) -> None:
+        derived = derive_arrow_struct(MatchClaim)
         table = gold_field.table
-        assert table.num_columns == 1
-        assert table.column_names == ["match_claim"]
-        assert table.schema.field("match_claim").type == MatchClaimField.pa_schema
+        assert [(f.name, f.type) for f in table.schema] == [
+            (f.name, f.type) for f in derived
+        ]
+        assert table.column_names == [
+            "timeline_a_id",
+            "timeline_b_id",
+            "start_anchor",
+            "end_anchor",
+            "is_synchronous",
+            "is_explicit",
+            "metadata",
+            "source_claim_id",
+            "event_a_id",
+            "event_a_name",
+            "event_b_id",
+            "event_b_name",
+            "source_coordinate",
+            "id",
+            "id_minted",
+        ]
 
     def test_timeline_ids(self, gold_field: MatchClaimField) -> None:
         assert gold_field.timeline_ids == {"A", "B", "C"}
@@ -114,7 +134,9 @@ class TestFromColumns:
             metadata=meta,
         )
         assert len(field) == 2
-        assert field.table.schema.field("match_claim").type == MatchClaimField.pa_schema
+        assert field.table.schema.field("start_anchor").type == (
+            MatchClaimField.pa_schema.field("start_anchor").type
+        )
 
     def test_from_columns_applies_units(self) -> None:
         field = MatchClaimField.from_columns(
@@ -179,9 +201,8 @@ class TestGetItem:
         self, gold_field: MatchClaimField, meta: MatchMetadata
     ) -> None:
         """Metadata lives at field level (null in the struct) and is injected."""
-        # The struct row carries no per-row metadata.
-        struct = gold_field.table.column("match_claim").combine_chunks()
-        assert struct.field("metadata").to_pylist() == [None, None, None]
+        # The rows carry no per-row metadata.
+        assert gold_field.table.column("metadata").to_pylist() == [None, None, None]
         # The materialised claim nonetheless carries the field-level metadata.
         assert gold_field[1].metadata is meta
 
@@ -556,10 +577,30 @@ class TestDictRoundTrip:
 
     def test_to_dict_column_contents(self, gold_field: MatchClaimField) -> None:
         data = gold_field.to_dict()
-        assert data["timeline_a_id"] == ["A", "A", "B"]
-        assert data["timeline_b_id"] == ["B", "C", "C"]
-        assert data["coordinate_a"] == [0.0, 0.0, 1.0]
-        assert data["coordinate_b"] == [10.0, 20.0, 21.0]
+        assert list(data) == ["metadata", "rows"]
+        rows = data["rows"]
+        assert [row["timeline_a_id"] for row in rows] == ["A", "A", "B"]
+        assert [row["timeline_b_id"] for row in rows] == ["B", "C", "C"]
+        assert [row["start_anchor"]["coordinate_a"]["value"] for row in rows] == [
+            0.0,
+            0.0,
+            1.0,
+        ]
+        assert [row["start_anchor"]["coordinate_b"]["value"] for row in rows] == [
+            10.0,
+            20.0,
+            21.0,
+        ]
+        assert [row["id"] for row in rows] == ["claim_1", "claim_2", "claim_3"]
+
+    def test_to_dict_renders_the_table(self, gold_field: MatchClaimField) -> None:
+        data = gold_field.to_dict()
+        assert data["rows"] == gold_field.table.to_pylist()
+        assert all(list(row) == gold_field.table.column_names for row in data["rows"])
+        assert data["metadata"] == {
+            "agent": {"name": "test", "type": "software", "identifier": "manual"},
+            "certainty": 1.0,
+        }
 
     def test_roundtrip_from_dict_keeps_every_row_value(self) -> None:
         human = MatchMetadata(
@@ -572,14 +613,19 @@ class TestDictRoundTrip:
         claims = _round_trip_claims([None, human, software])
         field = MatchClaimField.from_claims(claims)
         data = field.to_dict()
-        assert data["id"] == ["claim_1", "midi 96", "claim_2"]
-        assert data["id_minted"] == [True, False, True]
-        assert data["is_explicit"] == [True, True, False]
-        assert data["source_claim_id"] == [None, None, "claim_source"]
-        assert data["event_a_id"] == ["note_7", "tick_96", "onset_1"]
-        assert data["event_b_id"] == ["onset_7", None, "note_1"]
-        assert data["event_b_name"] == [None, None, "C♯4"]
-        assert data["row_metadata"] == [
+        rows = data["rows"]
+        assert [row["id"] for row in rows] == ["claim_1", "midi 96", "claim_2"]
+        assert [row["id_minted"] for row in rows] == [True, False, True]
+        assert [row["is_explicit"] for row in rows] == [True, True, False]
+        assert [row["source_claim_id"] for row in rows] == [
+            None,
+            None,
+            "claim_source",
+        ]
+        assert [row["event_a_id"] for row in rows] == ["note_7", "tick_96", "onset_1"]
+        assert [row["event_b_id"] for row in rows] == ["onset_7", None, "note_1"]
+        assert [row["event_b_name"] for row in rows] == [None, None, "C♯4"]
+        assert [row["metadata"] for row in rows] == [
             None,
             {
                 "agent": {"name": "ann", "type": "human", "identifier": "ann"},
@@ -590,6 +636,7 @@ class TestDictRoundTrip:
                 "certainty": 1.0,
             },
         ]
+        assert rows[1] == _PROJECTION_ROW
         assert data["metadata"] is None
         rebuilt = MatchClaimField.from_dict(data)
         assert rebuilt.table.equals(field.table, check_metadata=True)
@@ -606,6 +653,86 @@ class TestDictRoundTrip:
         )
         assert field.to_dict()["metadata"] is None
         assert MatchClaimField.from_dict(field.to_dict()).metadata is None
+
+    @pytest.mark.parametrize("shared", [False, True])
+    def test_yaml_round_trip(self, shared: bool) -> None:
+        human = MatchMetadata(
+            agent=Agent(name="ann", type=AgentType.human, identifier="ann"),
+            certainty=0.5,
+        )
+        claims = _round_trip_claims([human, human, human if shared else None])
+        field = MatchClaimField.from_claims(claims)
+        assert (field.metadata == human) is shared
+        data = field.to_dict()
+        loaded = timetoshare.loads(timetoshare.dumps(data, "yaml"))
+        assert loaded == data
+        rebuilt = MatchClaimField.from_dict(loaded)
+        assert rebuilt.to_claims() == claims
+        assert rebuilt.table.equals(field.table, check_metadata=True)
+
+    def test_from_dict_refuses_other_keys(self, gold_field: MatchClaimField) -> None:
+        data = gold_field.to_dict()
+        columns = gold_field.table.column_names
+        lacking = {key: value for key, value in data["rows"][1].items()}
+        del lacking["event_a_id"]
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                f"A MatchClaimField dictionary row holds one key per MatchClaim "
+                f"property, {columns}; row 1 lacks ['event_a_id'] and has the "
+                f"unknown keys []."
+            ),
+        ):
+            MatchClaimField.from_dict(data | {"rows": [data["rows"][0], lacking]})
+        extra = data["rows"][0] | {"coordinate_a": 0.0}
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                f"A MatchClaimField dictionary row holds one key per MatchClaim "
+                f"property, {columns}; row 0 lacks [] and has the unknown keys "
+                f"['coordinate_a']."
+            ),
+        ):
+            MatchClaimField.from_dict(data | {"rows": [extra]})
+
+
+#: The projection of :func:`_round_trip_claims` as its ``to_dict`` row: int
+#: cells on ``ticks`` / ``samples`` carry denominator 1, the given id stays.
+_PROJECTION_ROW = {
+    "timeline_a_id": "midi",
+    "timeline_b_id": "pcm",
+    "start_anchor": {
+        "timeline_a_id": "midi",
+        "coordinate_a": {
+            "value": 96.0,
+            "numerator": 96,
+            "denominator": 1,
+            "unit": "ticks",
+        },
+        "timeline_b_id": "pcm",
+        "coordinate_b": {
+            "value": 44100.0,
+            "numerator": 44100,
+            "denominator": 1,
+            "unit": "samples",
+        },
+    },
+    "end_anchor": None,
+    "is_synchronous": True,
+    "is_explicit": True,
+    "metadata": {
+        "agent": {"name": "ann", "type": "human", "identifier": "ann"},
+        "certainty": 0.5,
+    },
+    "source_claim_id": None,
+    "event_a_id": "tick_96",
+    "event_a_name": None,
+    "event_b_id": None,
+    "event_b_name": None,
+    "source_coordinate": None,
+    "id": "midi 96",
+    "id_minted": False,
+}
 
 
 def _round_trip_claims(metadata: list[MatchMetadata | None]) -> list[MatchClaim]:
@@ -663,18 +790,26 @@ _OUT_OF_SCOPE = (
 
 
 def _with_child(table: pa.Table, name: str, child: pa.Array) -> pa.Table:
-    """Return *table* with one sub-field of its claim column replaced."""
-    column = table.column("match_claim").combine_chunks()
-    children = [
-        child if sub.name == name else column.field(sub.name) for sub in column.type
-    ]
-    rebuilt = pa.StructArray.from_arrays(children, fields=list(column.type))
-    return pa.table({"match_claim": rebuilt}, metadata=table.schema.metadata)
+    """Return *table* with one of its property columns replaced."""
+    return table.set_column(table.column_names.index(name), name, child)
+
+
+#: The refusal of a table whose columns are not the MatchClaim properties.
+_NOT_THE_PROPERTIES = (
+    "A MatchClaimField table holds one column per MatchClaim property, {}; "
+    "this table has the columns {}."
+)
 
 
 def _through_parquet(field: MatchClaimField, path: Path) -> MatchClaimField:
-    """Write ``field.table`` to a Parquet file and read it back."""
+    """Write ``field.table`` to a Parquet file and read it back.
+
+    The file's own schema is checked on the way: one column per property.
+    """
     pq.write_table(field.table, path)
+    assert [(f.name, f.type) for f in pq.read_schema(path)] == [
+        (f.name, f.type) for f in MatchClaimField.pa_schema
+    ]
     return MatchClaimField.from_table(pq.read_table(path))
 
 
@@ -750,37 +885,48 @@ class TestTableRoundTrip:
         assert len(restored) == 0
         assert restored.metadata is None
 
-    def test_chunked_column(self, gold_field: MatchClaimField) -> None:
-        column = gold_field.table.column("match_claim").combine_chunks()
-        chunked = pa.chunked_array([column.slice(0, 1), column.slice(1)])
-        table = pa.table(
-            {"match_claim": chunked}, metadata=gold_field.table.schema.metadata
-        )
-        assert table.column("match_claim").num_chunks == 2
-        restored = MatchClaimField.from_table(table)
+    def test_chunked_columns(self, gold_field: MatchClaimField) -> None:
+        table = gold_field.table
+        chunked = pa.concat_tables([table.slice(0, 1), table.slice(1)])
+        assert chunked.column("start_anchor").num_chunks == 2
+        restored = MatchClaimField.from_table(chunked)
         assert restored.table.equals(gold_field.table, check_metadata=True)
 
     def test_refuses_extra_column(self, gold_field: MatchClaimField) -> None:
+        columns = gold_field.table.column_names
         table = gold_field.table.append_column("extra", pa.array([1, 2, 3]))
         with pytest.raises(
             ValueError,
-            match=re.escape(
-                "A MatchClaimField table holds exactly one column named "
-                "'match_claim'; this table has the columns ['match_claim', 'extra']."
-            ),
+            match=re.escape(_NOT_THE_PROPERTIES.format(columns, [*columns, "extra"])),
         ):
             MatchClaimField.from_table(table)
 
-    def test_refuses_renamed_column(self, gold_field: MatchClaimField) -> None:
-        table = gold_field.table.rename_columns(["claims"])
+    def test_refuses_missing_column(self, gold_field: MatchClaimField) -> None:
+        columns = gold_field.table.column_names
+        table = gold_field.table.drop_columns(["id_minted"])
+        with pytest.raises(
+            ValueError,
+            match=re.escape(_NOT_THE_PROPERTIES.format(columns, columns[:-1])),
+        ):
+            MatchClaimField.from_table(table)
+
+    def test_refuses_single_column_layout(
+        self, gold_field: MatchClaimField, tmp_path: Path
+    ) -> None:
+        """The former layout, the whole claim in one struct column, is refused."""
+        table = gold_field.table
+        single = pa.table(
+            {"match_claim": table.to_struct_array()}, metadata=table.schema.metadata
+        )
+        path = tmp_path / "single.parquet"
+        pq.write_table(single, path)
         with pytest.raises(
             ValueError,
             match=re.escape(
-                "A MatchClaimField table holds exactly one column named "
-                "'match_claim'; this table has the columns ['claims']."
+                _NOT_THE_PROPERTIES.format(table.column_names, ["match_claim"])
             ),
         ):
-            MatchClaimField.from_table(table)
+            MatchClaimField.from_table(pq.read_table(path))
 
     def test_refuses_non_synchronous_row(self, gold_field: MatchClaimField) -> None:
         table = _with_child(
@@ -792,8 +938,7 @@ class TestTableRoundTrip:
     def test_refuses_row_without_start_anchor(
         self, gold_field: MatchClaimField
     ) -> None:
-        column = gold_field.table.column("match_claim").combine_chunks()
-        anchor = column.field("start_anchor")
+        anchor = gold_field.table.column("start_anchor").combine_chunks()
         without = pa.StructArray.from_arrays(
             [anchor.field(sub.name) for sub in anchor.type],
             fields=list(anchor.type),
@@ -832,6 +977,14 @@ class TestTableRoundTrip:
         ):
             MatchClaimField.from_table(table)
 
+    def test_from_dict_refuses_non_synchronous_row(
+        self, gold_field: MatchClaimField
+    ) -> None:
+        data = gold_field.to_dict()
+        data["rows"][2]["is_synchronous"] = False
+        with pytest.raises(ValueError, match=re.escape(_OUT_OF_SCOPE.format(2))):
+            MatchClaimField.from_dict(data)
+
     def test_from_dict_refuses_metadata_stated_twice(self) -> None:
         human = MatchMetadata(
             agent=Agent(name="ann", type=AgentType.human, identifier="ann")
@@ -847,13 +1000,13 @@ class TestTableRoundTrip:
         ):
             MatchClaimField.from_dict(data)
 
-    def test_refuses_other_type(self) -> None:
-        table = pa.table({"match_claim": pa.array([1, 2])})
+    def test_refuses_other_type(self, gold_field: MatchClaimField) -> None:
+        table = _with_child(gold_field.table, "is_explicit", pa.array([1, 1, 1]))
         with pytest.raises(
             ValueError,
             match=re.escape(
-                "Column 'match_claim' has type int64, which is not the "
-                "MatchClaim struct type "
+                "Column 'is_explicit' has type int64, which is not the type of "
+                "the MatchClaim property, bool."
             ),
         ):
             MatchClaimField.from_table(table)

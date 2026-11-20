@@ -20,9 +20,9 @@ Design:
     always knows its two timelines via top-level fields.
 
     ``MatchClaim`` is paired with ``MatchClaimField`` — a genuine
-    ``SemanticField[MatchClaim]`` whose single derived struct column holds a
-    large set of synchronous pairwise claims columnar, with shared
-    provenance injected on read.
+    ``SemanticField[MatchClaim]`` holding a large set of synchronous
+    pairwise claims columnar, one column per ``MatchClaim`` property, with
+    shared provenance injected on read.
 """
 
 from __future__ import annotations
@@ -1479,7 +1479,7 @@ class MatchClaim(BaseModel):
         """Reconstruct a claim from a struct-shaped Arrow row dict.
 
         This is the entry point ``SemanticField.__getitem__`` uses to
-        materialise a scalar from the backing struct column.  The row dict
+        materialise a scalar from the backing struct array.  The row dict
         carries the nested ``start_anchor`` / ``end_anchor`` / ``metadata``
         sub-dicts (or ``None`` for absent slots), so the shape is exactly the
         one :meth:`from_dict` already accepts.
@@ -1837,29 +1837,30 @@ class MatchClaimField(SemanticField[MatchClaim]):
 
     ``MatchClaimField`` is the Field paired with the :class:`MatchClaim`
     scalar.  It holds a large set of synchronous pairwise alignment
-    claims (millions of rows) in a single derived struct column instead of one
-    frozen :class:`MatchClaim` per claim.  Individual claims are materialised
+    claims (millions of rows) as Arrow columns instead of one frozen
+    :class:`MatchClaim` per claim.  Individual claims are materialised
     lazily, only when a row is indexed or iterated.
 
     Like every paired Field, its struct schema is derived from the scalar by
-    :func:`~timetoalign.core.fields.derive_arrow_struct` — so the inner column
-    type is exactly ``MatchClaimField.pa_schema``.  Shared provenance is held
-    once at field level as a single :class:`MatchMetadata` (or ``None``) and
-    **injected on read**, mirroring how
+    :func:`~timetoalign.core.fields.derive_arrow_struct` — so a row's type is
+    exactly ``MatchClaimField.pa_schema``.  Its :attr:`table` (and a Parquet
+    file written from it) has one column per top-level property of
+    :class:`MatchClaim`, each nested as the property is.  Shared provenance
+    is held once at field level as a single :class:`MatchMetadata` (or
+    ``None``) and **injected on read**, mirroring how
     :class:`~timetoalign.core.time.CoordinateField` carries its ``unit``
-    outside the data: the struct column's ``metadata`` sub-field is left null
-    in bulk, and :meth:`__getitem__` injects the field-level metadata into each
-    materialised :class:`MatchClaim`.  This keeps the store compact (one struct
-    column) while remaining a genuine SemanticField.  Only claims whose
-    metadata differ, given to :meth:`from_claims`, carry it per row.
+    outside the data: the ``metadata`` column is left null in bulk, and
+    :meth:`__getitem__` injects the field-level metadata into each
+    materialised :class:`MatchClaim`.  Only claims whose metadata differ,
+    given to :meth:`from_claims`, carry it per row.
 
     Every row represents a synchronous claim with a start anchor and an
     optional end anchor. NOMATCH claims remain outside this store because
     they carry no coordinate pair to query.
 
     Attributes:
-        table: The backing single-column :class:`pyarrow.Table` (read-only
-            property) whose one column is the derived ``MatchClaim`` struct.
+        table: The claims as a :class:`pyarrow.Table` (read-only property),
+            one column per ``MatchClaim`` property.
         metadata: Shared :class:`MatchMetadata` (or ``None``) applied to every
             materialised claim.
 
@@ -1881,14 +1882,11 @@ class MatchClaimField(SemanticField[MatchClaim]):
         ('A', 'B')
     """
 
-    #: The name of the single struct column backing every instance.
-    _COLUMN_NAME: ClassVar[str] = "match_claim"
     #: The Arrow schema-metadata key carrying the field-level metadata.
     _METADATA_KEY: ClassVar[bytes] = b"timetoalign:match_metadata"
-    #: The per-row sub-fields beside the anchors and the metadata, each read
-    #: from a claim by :meth:`from_claims`, written by :meth:`to_dict` and
-    #: read by :meth:`from_dict` under its own name; the types are the
-    #: derived struct's.
+    #: The per-row values beside the anchors and the metadata that
+    #: :meth:`from_claims` reads from each claim under its own name; the
+    #: types are the derived struct's.
     _ROW_VALUES: ClassVar[tuple[str, ...]] = (
         "id",
         "id_minted",
@@ -1917,7 +1915,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
         """Build a field directly from parallel columns (the vectorized path).
 
         This is the constructor a bulk producer (e.g. an alignment loader)
-        uses. It assembles the derived ``MatchClaim`` struct column straight
+        uses. It assembles the derived ``MatchClaim`` struct array straight
         from the parallel inputs with :meth:`pyarrow.StructArray.from_arrays`
         and **never** materialises a single :class:`MatchClaim` Python object,
         so it scales to millions of rows.
@@ -2071,10 +2069,13 @@ class MatchClaimField(SemanticField[MatchClaim]):
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "MatchClaimField":
-        """Deserialize a field from a plain dictionary.
+        """Deserialize a field from a plain dictionary (inverse of :meth:`to_dict`).
 
-        Inverse of :meth:`to_dict`: every column it writes is read back, so
-        the field's table and claims come back equal.
+        The mapping holds ``metadata`` (the field's
+        :meth:`MatchMetadata.to_dict`, or ``None``) and ``rows``: one mapping
+        per claim whose keys are the :attr:`table`'s columns and whose values
+        are its cells as stored. Rows are read as :meth:`from_table` reads
+        them, so the field's table and claims come back equal.
 
         Args:
             data: A mapping as :meth:`to_dict` writes it.
@@ -2083,9 +2084,10 @@ class MatchClaimField(SemanticField[MatchClaim]):
             A new :class:`MatchClaimField`.
 
         Raises:
-            ValueError: If the mapping carries metadata both under its key
-                ``metadata`` and in its rows (``row_metadata``), or if two
-                rows are given the same id.
+            ValueError: If a row's keys are not exactly the table's columns;
+                if a row is non-synchronous or lacks a start anchor; if the
+                mapping carries metadata both under its key ``metadata`` and
+                in its rows; or if two rows are given the same id.
         """
         metadata_dict = data.get("metadata")
         metadata = (
@@ -2093,56 +2095,39 @@ class MatchClaimField(SemanticField[MatchClaim]):
             if metadata_dict is not None
             else None
         )
-        tl_a = cls._string_array(data["timeline_a_id"])
-        tl_b = cls._string_array(data["timeline_b_id"])
-        coord_a = cls._coordinate_struct_array(data["coordinate_a"], data["unit_a"])
-        coord_b = cls._coordinate_struct_array(data["coordinate_b"], data["unit_b"])
-        end_values_a = data["end_coordinate_a"]
-        end_values_b = data["end_coordinate_b"]
-        end_units_a = data["end_unit_a"]
-        end_units_b = data["end_unit_b"]
-        end_coord_a = cls._coordinate_struct_array(end_values_a, end_units_a)
-        end_coord_b = cls._coordinate_struct_array(end_values_b, end_units_b)
-        row_metadata = data["row_metadata"]
-        per_row = cls._row_arrays(
-            {name: data[name] for name in cls._ROW_VALUES},
-            [
-                None if entry is None else MatchMetadata.from_dict(entry)
-                for entry in row_metadata
-            ],
-        )
-        cls._refuse_metadata_twice(
+        rows = data["rows"]
+        columns = cls.pa_schema.names
+        for index, row in enumerate(rows):
+            missing = [name for name in columns if name not in row]
+            unknown = [name for name in row if name not in columns]
+            if missing or unknown:
+                raise ValueError(
+                    f"A MatchClaimField dictionary row holds one key per "
+                    f"MatchClaim property, {columns}; row {index} lacks "
+                    f"{missing} and has the unknown keys {unknown}."
+                )
+        return cls._read(
+            pa.array(rows, type=cls.pa_schema),
             metadata,
-            per_row["metadata"],
             source="dictionary",
             where="under its key 'metadata'",
         )
-        struct_array = cls._build_struct_array(
-            len(tl_a),
-            tl_a,
-            tl_b,
-            coord_a,
-            coord_b,
-            end_coord_a,
-            end_coord_b,
-            per_row=per_row,
-        )
-        return cls._scoped(struct_array, metadata=metadata)
 
     @classmethod
     def from_table(cls, table: pa.Table) -> "MatchClaimField":
         """Read a field back from its Arrow table (inverse of :attr:`table`).
 
-        The table must hold exactly one column, ``match_claim``, of type
-        :attr:`pa_schema`; the column may be chunked, as it is when the table
-        was read from Parquet.  The field-level :class:`MatchMetadata`
-        travels in the table's schema metadata under the key
-        ``timetoalign:match_metadata`` (the JSON of
+        The table must hold one column per top-level property of
+        :class:`MatchClaim`, named and typed as the fields of
+        :attr:`pa_schema`, in that order; the columns may be chunked, as they
+        are when the table was read from Parquet.  The field-level
+        :class:`MatchMetadata` travels in the table's schema metadata under
+        the key ``timetoalign:match_metadata`` (the JSON of
         :meth:`MatchMetadata.to_dict`); a table without that key gives a
         field whose metadata is ``None``.  Every row is kept as stored, so
-        anything the struct column carries per row comes back unchanged;
-        the ids are admitted as :meth:`from_claims` admits them (a row
-        without one is minted one).
+        anything the columns carry per row comes back unchanged; the ids are
+        admitted as :meth:`from_claims` admits them (a row without one is
+        minted one).
 
         Args:
             table: A table as written by :attr:`table`.
@@ -2151,12 +2136,12 @@ class MatchClaimField(SemanticField[MatchClaim]):
             A new :class:`MatchClaimField`.
 
         Raises:
-            ValueError: If the table does not hold exactly one column named
-                ``match_claim``, or that column's type is not
-                :attr:`pa_schema`; if a row is non-synchronous or lacks a
-                start anchor (the rows :meth:`from_claims` refuses); if the
-                table carries metadata both in its schema metadata and in
-                its rows; or if two rows are given the same id.
+            ValueError: If the table's columns are not exactly the
+                ``MatchClaim`` properties, or a column's type is not the
+                property's; if a row is non-synchronous or lacks a start
+                anchor (the rows :meth:`from_claims` refuses); if the table
+                carries metadata both in its schema metadata and in its rows;
+                or if two rows are given the same id.
 
         Examples:
             >>> agent = Agent(name="dtw", type=AgentType.software, identifier="v1")
@@ -2170,6 +2155,8 @@ class MatchClaimField(SemanticField[MatchClaim]):
             ...     metadata=MatchMetadata(agent=agent),
             ... )
             >>> table = field.table
+            >>> table.column_names[:4]
+            ['timeline_a_id', 'timeline_b_id', 'start_anchor', 'end_anchor']
             >>> table.schema.metadata[b"timetoalign:match_metadata"]
             b'{"agent": {"name": "dtw", "type": "software", "identifier": "v1"}, "certainty": 1.0}'
             >>> restored = MatchClaimField.from_table(table)
@@ -2180,34 +2167,64 @@ class MatchClaimField(SemanticField[MatchClaim]):
             >>> restored.coordinate_pairs()[2]
             [Fraction(1, 3), Fraction(4, 3)]
         """
-        if table.column_names != [cls._COLUMN_NAME]:
+        columns = cls.pa_schema.names
+        if table.column_names != columns:
             raise ValueError(
-                f"A MatchClaimField table holds exactly one column named "
-                f"{cls._COLUMN_NAME!r}; this table has the columns "
+                f"A MatchClaimField table holds one column per MatchClaim "
+                f"property, {columns}; this table has the columns "
                 f"{table.column_names}."
             )
-        column = table.column(cls._COLUMN_NAME)
-        if column.type != cls.pa_schema:
-            raise ValueError(
-                f"Column {cls._COLUMN_NAME!r} has type {column.type}, which is "
-                f"not the MatchClaim struct type {cls.pa_schema}."
-            )
-        struct_array = column.combine_chunks()
+        for sub_field in cls.pa_schema:
+            stored = table.schema.field(sub_field.name).type
+            if stored != sub_field.type:
+                raise ValueError(
+                    f"Column {sub_field.name!r} has type {stored}, which is not "
+                    f"the type of the MatchClaim property, {sub_field.type}."
+                )
+        struct_array = pa.StructArray.from_arrays(
+            [table.column(name).combine_chunks() for name in columns],
+            fields=list(cls.pa_schema),
+        )
+        stored = (table.schema.metadata or {}).get(cls._METADATA_KEY)
+        metadata = (
+            None if stored is None else MatchMetadata.from_dict(json.loads(stored))
+        )
+        return cls._read(
+            struct_array,
+            metadata,
+            source="table",
+            where=f"in its schema metadata ({cls._METADATA_KEY.decode()!r})",
+        )
+
+    @classmethod
+    def _read(
+        cls,
+        struct_array: pa.StructArray,
+        metadata: MatchMetadata | None,
+        *,
+        source: str,
+        where: str,
+    ) -> "MatchClaimField":
+        """Admit rows read from a table or a dictionary.
+
+        Refuses what :meth:`from_claims` refuses (:meth:`_out_of_scope`) and
+        metadata stated twice (:meth:`_refuse_metadata_twice`), then admits
+        the ids (:meth:`_scoped`).
+
+        Args:
+            struct_array: The rows, of type :attr:`pa_schema`.
+            metadata: The field-level metadata the source states, if any.
+            source: What is read, for the messages (``"table"``).
+            where: Where the source states the field-level metadata.
+        """
         out_of_scope = pc.or_(
             pc.invert(pc.fill_null(struct_array.field("is_synchronous"), False)),
             pc.is_null(struct_array.field("start_anchor")),
         )
         if pc.any(out_of_scope).as_py():
             raise cls._out_of_scope(pc.index(out_of_scope, True).as_py())
-        stored = (table.schema.metadata or {}).get(cls._METADATA_KEY)
-        metadata = (
-            None if stored is None else MatchMetadata.from_dict(json.loads(stored))
-        )
         cls._refuse_metadata_twice(
-            metadata,
-            struct_array.field("metadata"),
-            source="table",
-            where=f"in its schema metadata ({cls._METADATA_KEY.decode()!r})",
+            metadata, struct_array.field("metadata"), source=source, where=where
         )
         return cls._scoped(struct_array, metadata=metadata)
 
@@ -2320,8 +2337,13 @@ class MatchClaimField(SemanticField[MatchClaim]):
         *,
         metadata: MatchMetadata | None = None,
     ) -> "MatchClaimField":
-        """Wrap a derived ``MatchClaim`` struct array as a live field."""
-        pa_field = pa.field(cls._COLUMN_NAME, cls.pa_schema)
+        """Wrap a derived ``MatchClaim`` struct array as a live field.
+
+        The in-memory struct is named as :meth:`SemanticField.from_array`
+        names a field by default; :attr:`table` spells each of its fields as
+        a column of its own.
+        """
+        pa_field = pa.field(cls.__name__.removesuffix("Field").lower(), cls.pa_schema)
         raw = StructField(struct_array, pa_field)
         return cls(raw, metadata=metadata)
 
@@ -2578,24 +2600,24 @@ class MatchClaimField(SemanticField[MatchClaim]):
 
     @property
     def table(self) -> pa.Table:
-        """The backing single-column :class:`pyarrow.Table`.
+        """The claims as a :class:`pyarrow.Table`, one column per property.
 
-        The one column is the derived :class:`MatchClaim` struct
-        (``MatchClaimField.pa_schema``).  The field-level metadata, when set,
-        travels in the schema metadata under ``timetoalign:match_metadata``
-        as the JSON of :meth:`MatchMetadata.to_dict`, so the table (and a
-        Parquet file written from it) reads back whole through
-        :meth:`from_table`.
+        The columns are the top-level properties of :class:`MatchClaim`, the
+        fields of the derived struct ``MatchClaimField.pa_schema`` in its
+        order, each nested as the property is (``start_anchor`` a struct of
+        two coordinate structs, ``metadata`` a struct holding the agent).
+        The field-level metadata, when set, travels in the schema metadata
+        under ``timetoalign:match_metadata`` as the JSON of
+        :meth:`MatchMetadata.to_dict`, so the table (and a Parquet file
+        written from it) reads back whole through :meth:`from_table`.
         """
         schema_metadata = (
             None
             if self._metadata is None
             else {self._METADATA_KEY: json.dumps(self._metadata.to_dict())}
         )
-        data = self._raw.data
-        if data is None:
-            data = pa.array([], type=self.pa_schema)
-        return pa.table({self._COLUMN_NAME: data}, metadata=schema_metadata)
+        table = pa.Table.from_struct_array(self._struct_array())
+        return table.replace_schema_metadata(schema_metadata)
 
     @property
     def metadata(self) -> MatchMetadata | None:
@@ -2729,7 +2751,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
     ) -> "MatchClaimField":
         """Return a filtered view following the unified filter API.
 
-        Every criterion is a vectorized boolean mask over the struct column;
+        Every criterion is a vectorized boolean mask over the claim columns;
         no claim is materialised and the shared metadata carries over.  All
         non-default criteria are combined with logical AND.
 
@@ -2923,56 +2945,35 @@ class MatchClaimField(SemanticField[MatchClaim]):
         return [self[i] for i in range(len(self))]
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialize to a plain dictionary (inverse of :meth:`from_dict`).
+        """Render the :attr:`table` as a plain dictionary (inverse of :meth:`from_dict`).
 
-        Every value the table carries is written: the timeline ids, the
-        coordinate and unit columns of both anchors (an exact coordinate as
-        its :class:`~fractions.Fraction`), the per-row values named in
-        :attr:`_ROW_VALUES` (claim id and whether it was minted,
-        ``is_explicit``, ``source_claim_id``, event ids and names), each
-        row's own metadata (``row_metadata``) and the field's metadata
-        (``metadata``, via :meth:`MatchMetadata.to_dict`, or ``None``).
+        ``{"metadata": ..., "rows": [...]}``: the field's metadata
+        (:meth:`MatchMetadata.to_dict`, or ``None``) and one mapping per
+        claim whose keys are the table's columns and whose values are its
+        cells as stored — a nested property a nested mapping, an anchor
+        coordinate its ``{value, numerator, denominator, unit}`` cell. Every
+        value is a string, number, boolean, ``None``, mapping or list, so the
+        dictionary can be written as JSON or YAML.
 
         Returns:
             A round-trippable mapping.
+
+        Examples:
+            >>> field = MatchClaimField.from_columns(
+            ...     ["score"], ["audio"], [Fraction(1, 3)], [0.5],
+            ...     unit_a=TimeUnit.quarters, unit_b=TimeUnit.seconds,
+            ... )
+            >>> row = field.to_dict()["rows"][0]
+            >>> row["start_anchor"]["coordinate_a"]
+            {'value': 0.3333333333333333, 'numerator': 1, 'denominator': 3, 'unit': 'quarters'}
+            >>> row["id"], row["id_minted"], row["end_anchor"]
+            ('claim_1', True, None)
         """
-        data = self._struct_array()
-        anchor = data.field("start_anchor")
-        end_anchor = data.field("end_anchor")
-        stored_a = anchor.field("coordinate_a").to_pylist()
-        stored_b = anchor.field("coordinate_b").to_pylist()
-        stored_end_a = end_anchor.field("coordinate_a").to_pylist()
-        stored_end_b = end_anchor.field("coordinate_b").to_pylist()
-
-        def storage_value(value: dict[str, Any] | None) -> CoordinateValue | None:
-            """Read one claim-coordinate storage cell (``None`` when absent)."""
-            if value is None:
-                return None
-            numerator = value["numerator"]
-            denominator = value["denominator"]
-            if numerator is not None and denominator is not None:
-                return Fraction(numerator, denominator)
-            return value["value"]
-
-        def unit(value: dict[str, Any] | None) -> str | None:
-            return None if value is None else value["unit"]
-
         return {
-            "timeline_a_id": data.field("timeline_a_id").to_pylist(),
-            "timeline_b_id": data.field("timeline_b_id").to_pylist(),
-            "coordinate_a": [storage_value(value) for value in stored_a],
-            "coordinate_b": [storage_value(value) for value in stored_b],
-            "unit_a": [unit(value) for value in stored_a],
-            "unit_b": [unit(value) for value in stored_b],
-            "end_coordinate_a": [storage_value(value) for value in stored_end_a],
-            "end_coordinate_b": [storage_value(value) for value in stored_end_b],
-            "end_unit_a": [unit(value) for value in stored_end_a],
-            "end_unit_b": [unit(value) for value in stored_end_b],
-            **{name: data.field(name).to_pylist() for name in self._ROW_VALUES},
-            "row_metadata": data.field("metadata").to_pylist(),
             "metadata": (
                 self._metadata.to_dict() if self._metadata is not None else None
             ),
+            "rows": self._struct_array().to_pylist(),
         }
 
     def _joined(self, taken: pa.Array, *, scope: str) -> "MatchClaimField":

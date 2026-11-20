@@ -204,8 +204,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
     meta: dict[str, Any] = field(default_factory=dict)
     cross_group_claims: list[MatchClaim] = field(default_factory=list)
     # Columnar claim stores added additively (e.g. by ListenHereLoader). Each
-    # holds a dense set of synchronous instant pairwise claims as a single
-    # PyArrow struct column. Queries filter these vectorized and materialise
+    # holds a dense set of synchronous instant pairwise claims as Arrow
+    # columns. Queries filter these vectorized and materialise
     # only the matched rows — a million-claim field is never exploded into a
     # Python list. The Python-list ``cross_group_claims`` path is unchanged.
     cross_group_claim_fields: list[MatchClaimField] = field(default_factory=list)
@@ -1599,9 +1599,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         """Add a columnar ``MatchClaimField`` of cross-group claims.
 
         This is the columnar counterpart of :meth:`add_match_claims`.  The
-        field is stored as-is (one PyArrow struct column) and queried
+        field is stored as-is (Arrow columns) and queried
         vectorized by :meth:`get_matchstamp_at` /
-        :meth:`_get_or_build_matchgraph`, which filter the struct column and
+        :meth:`_get_or_build_matchgraph`, which filter the claim columns and
         materialise only the handful of claims at the queried coordinate.  A
         dense whole-work field (on the order of a million claims) is therefore
         never exploded into a Python list.

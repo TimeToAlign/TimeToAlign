@@ -88,8 +88,7 @@ def _graphical_events(timeline: SegmentLine[DiscreteGraphicalTimeline]) -> pa.Ta
 
 def _projection_ids(loader: Ieee1599Loader) -> list[str]:
     """Return the side-A timeline id of every claim, in field order."""
-    column = loader.get_field(MatchClaim).table.column("match_claim")
-    return column.combine_chunks().field("timeline_a_id").to_pylist()
+    return loader.get_field(MatchClaim).table.column("timeline_a_id").to_pylist()
 
 
 def _layer_uids(loader: Ieee1599Loader) -> dict[str, set[str]]:

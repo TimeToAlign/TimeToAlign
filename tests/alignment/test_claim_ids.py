@@ -65,7 +65,7 @@ def _stored(path: Path) -> MatchClaimField:
 
 
 def _ids(field: MatchClaimField) -> list[str]:
-    return field.table.column("match_claim").combine_chunks().field("id").to_pylist()
+    return field.table.column("id").to_pylist()
 
 
 def test_free_claim_mints_claim_1() -> None:
@@ -290,11 +290,11 @@ def test_two_runs_merged(tmp_path: Path) -> None:
     assert _ids(merged_second) == ["claim_5", "claim_6", "claim_7", "claim_8"]
     assert _ids(second) == ["claim_1", "claim_2", "claim_3", "claim_4"]
     assert [claim.id_minted for claim in merged_second] == [True] * 4
-    column = merged_second.table.column("match_claim").combine_chunks()
-    stored = second.table.column("match_claim").combine_chunks()
-    for sub_field in MatchClaimField.pa_schema:
-        if sub_field.name != "id":
-            assert column.field(sub_field.name).equals(stored.field(sub_field.name))
+    merged_table = merged_second.table
+    stored = second.table
+    for name in MatchClaimField.pa_schema.names:
+        if name != "id":
+            assert merged_table.column(name).equals(stored.column(name))
 
 
 def test_given_id_refused_atomically() -> None:

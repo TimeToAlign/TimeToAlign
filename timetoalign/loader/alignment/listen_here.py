@@ -429,7 +429,7 @@ class ListenHereLoader(AlignmentLoader):
         The field is handed to the bundle with
         :meth:`~timetoalign.alignment.bundle.AlignmentBundle.add_match_claim_field`,
         not exploded into a list of :class:`MatchClaim` objects.  The bundle
-        answers ``get_matchstamp_at`` by filtering the field's struct column
+        answers ``get_matchstamp_at`` by filtering the field's claim columns
         vectorized and materialising only the handful of claims at the queried
         coordinate, so a whole-work file (on the order of a million claims)
         never builds a million Python claims.

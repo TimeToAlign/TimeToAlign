@@ -133,9 +133,10 @@ def claims_table(claims) -> pd.DataFrame:
 # positions are therefore multiples of 3/14 and of 3/20 of a quarter, such as
 # 3/20, 3/14 and 3/10 in the first quarter: exact fractions keep them apart.
 #
-# `create_timeline()` builds the logical timeline in quarters. Every movement
-# (`<mdiv>`) of the file is a child timeline holding that movement's events;
-# this score has one.
+# `create_timeline()` builds the logical timeline in quarters. A movement
+# (`<mdiv>`) of the file that is named, by its `@label`, becomes a child
+# timeline holding that movement's events. This score's one `<mdiv>` has no
+# label, so the score is a single timeline holding every event.
 
 # %%
 loader = VerovioLoader.from_file(SCORE_PATH)
@@ -152,7 +153,7 @@ notes_at(score, 0, 1)
 
 # %% [markdown]
 # An id is a key: `get_coordinate_for` gives a note's position, and
-# `get_timestamp_for` its span on the score and on its movement. The
+# `get_timestamp_for` its span on the score. The
 # timestamp of a position also shows the score's
 # {{< glossary ConversionMap display="conversion map" >}} to seconds, which
 # the loader builds from Verovio's own timing: the time Verovio renders from
@@ -233,9 +234,7 @@ claims_table(claims)
 # still builds its {{< glossary WarpMap >}} between them. A matchstamp at an
 # aligned note gives the recording's time; one at a note between two aligned
 # notes, such as the septuplet note at 3/7 of a quarter, gives a time
-# interpolated by the warp. Each stamp also holds the position on the
-# movement child, since the bundle answers for every timeline of the score's
-# tree, the child included:
+# interpolated by the warp:
 
 # %%
 bundle = AlignmentBundle(name="Out-of-the-flow Experience")

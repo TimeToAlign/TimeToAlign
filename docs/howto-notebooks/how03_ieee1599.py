@@ -256,8 +256,10 @@ field = loader.get_field(MatchClaim)
 }
 
 # %% [markdown]
-# The `MatchClaimField` remains columnar; its table has one struct column.
-# Showing its head makes that stored representation visible before any
+# The `MatchClaimField` remains columnar: its table has one column per
+# property of a `MatchClaim` (the two timeline ids, the anchors, the flags,
+# the metadata, the event ids and names, the source coordinate and the claim
+# id). Showing its head makes that stored representation visible before any
 # individual `MatchClaim` is materialised:
 
 # %%

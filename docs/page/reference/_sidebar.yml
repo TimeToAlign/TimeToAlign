@@ -115,6 +115,7 @@ website:
       - reference/PartituraLoader.qmd
       - reference/Ms3Loader.qmd
       - reference/MeasureMapLoader.qmd
+      - reference/VerovioLoader.qmd
       - reference/MidiLoader.qmd
       - reference/PerformanceMidiLoader.qmd
       - reference/ScoreMidiLoader.qmd

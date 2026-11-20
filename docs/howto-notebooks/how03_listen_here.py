@@ -45,7 +45,7 @@
 #    `get_field` API, and inspect a single claim.
 # 3. Build the {{< glossary AlignmentBundle >}}.
 # 4. The headline: place a point on one recording and read it on all the others.
-# 5. A note on scale — why the claims live in a column, not a million objects.
+# 5. A note on scale — why the claims live in columns, not a million objects.
 
 # %% [markdown]
 # ## Setup
@@ -108,7 +108,7 @@ loader.recording_keys
 # %% [markdown]
 # ---
 #
-# ## 2. The whole pairwise claim set, in a column
+# ## 2. The whole pairwise claim set, in columns
 #
 # The alignment is reached through the uniform field API:
 # `loader.get_field(MatchClaim)` returns a {{< glossary MatchClaimField >}} — a
@@ -236,11 +236,12 @@ stamp
 #
 # This is exactly why the claims live in a {{< glossary MatchClaimField >}}
 # rather than as a million individual `MatchClaim` objects. The field stores the
-# whole set as Arrow columns (the two timeline ids dictionary-encoded, each
-# coordinate as a struct of value, numerator, denominator and unit) and the
+# whole set as Arrow columns, one per property of a claim (the two timeline
+# ids as strings, each coordinate as a struct of value, numerator, denominator
+# and unit), and the
 # loader builds it **vectorised** — never
 # constructing a Python claim per row. A `MatchClaim` is materialised only when
-# a single row is indexed. `get_matchstamp_at` likewise filters the column
+# a single row is indexed. `get_matchstamp_at` likewise filters the columns
 # vectorised and materialises only the handful of claims at the queried
 # coordinate. The columnar store is what lets one `AlignmentBundle` hold a
 # whole-work, every-pair audio-to-audio graph without strain.
@@ -261,4 +262,4 @@ stamp
 # directly related. `ListenHereLoader` reads it into one
 # {{< glossary AlignmentBundle >}} in which a coordinate placed on any one
 # recording resolves, in a single query, across all the others; and the dense
-# claim set that makes that possible is held in a column, not a million objects.
+# claim set that makes that possible is held in columns, not a million objects.

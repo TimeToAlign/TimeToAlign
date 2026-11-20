@@ -148,6 +148,7 @@ Data ingestion from various file formats.
 | [PartituraLoader](PartituraLoader.qmd#timetoalign.loader.score.PartituraLoader) | Load symbolic scores using partitura. |
 | [Ms3Loader](Ms3Loader.qmd#timetoalign.loader.score.Ms3Loader) | Load symbolic scores from DCML-style TSV files. |
 | [MeasureMapLoader](MeasureMapLoader.qmd#timetoalign.loader.score.MeasureMapLoader) | Load MeasureMap JSON files into ScoreStore. |
+| [VerovioLoader](VerovioLoader.qmd#timetoalign.loader.score.VerovioLoader) | Load an engraved score through the Verovio toolkit. |
 | [MidiLoader](MidiLoader.qmd#timetoalign.loader.midi.MidiLoader) | Abstract base class for MIDI loaders. |
 | [PerformanceMidiLoader](PerformanceMidiLoader.qmd#timetoalign.loader.midi.performance.PerformanceMidiLoader) | Load performance MIDI files using mido. |
 | [ScoreMidiLoader](ScoreMidiLoader.qmd#timetoalign.loader.midi.score.ScoreMidiLoader) | Load score MIDI files using partitura or a mido fast path. |

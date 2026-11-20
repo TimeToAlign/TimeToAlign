@@ -1500,14 +1500,7 @@ class MatchClaim(BaseModel):
                 coordinate = restored.get(coordinate_name)
                 if not isinstance(coordinate, dict):
                     continue
-                numerator = coordinate.get("numerator")
-                denominator = coordinate.get("denominator")
-                value = (
-                    Fraction(numerator, denominator)
-                    if numerator is not None and denominator is not None
-                    else coordinate["value"]
-                )
-                restored[coordinate_name] = Coordinate(value, coordinate["unit"])
+                restored[coordinate_name] = _cell_coordinate(coordinate)
             payload[anchor_name] = restored
         return cls.from_dict(payload)
 
@@ -1831,6 +1824,82 @@ register_value_projector(AlignmentAnchor, "coordinate_a", _claim_coordinate_proj
 register_value_projector(AlignmentAnchor, "coordinate_b", _claim_coordinate_projector)
 register_value_projector(MatchClaim, "source_coordinate", _claim_coordinate_projector)
 
+#: The keys of a coordinate dict (:func:`coordinate_to_dict`), which is how a
+#: claim coordinate cell is written in :meth:`MatchClaimField.to_dict`.
+_COORDINATE_DICT_KEYS: tuple[str, ...] = ("unit", "number_type", "value")
+
+
+def _on_unit_default(coordinate: Coordinate) -> Coordinate:
+    """Write *coordinate* as an anchor does: on its unit's default number type."""
+    return express_scalar_as(coordinate, coordinate.unit.default_number_type)
+
+
+def _cell_coordinate(cell: dict[str, Any]) -> Coordinate:
+    """The coordinate a claim reads from a stored coordinate cell.
+
+    The ratio wins where the cell holds one, else the float; the result is
+    written on its unit's default number type, as an anchor writes it.
+    """
+    numerator = cell.get("numerator")
+    denominator = cell.get("denominator")
+    value = (
+        Fraction(numerator, denominator)
+        if numerator is not None and denominator is not None
+        else cell["value"]
+    )
+    return _on_unit_default(Coordinate(value, cell["unit"]))
+
+
+def _coordinate_paths(
+    struct_type: pa.StructType, prefix: tuple[str, ...] = ()
+) -> Iterator[tuple[str, ...]]:
+    """Yield the path of every claim coordinate cell in *struct_type*."""
+    for sub_field in struct_type:
+        path = (*prefix, sub_field.name)
+        if sub_field.type == _CLAIM_COORDINATE_TYPE:
+            yield path
+        elif pa.types.is_struct(sub_field.type):
+            yield from _coordinate_paths(sub_field.type, path)
+
+
+def _holder(row: dict[str, Any], path: tuple[str, ...]) -> dict[str, Any] | None:
+    """The mapping holding the last key of *path* in *row*, or ``None``.
+
+    ``None`` where a mapping on the way is null (an absent end anchor).
+    """
+    holder: Any = row
+    for key in path[:-1]:
+        holder = holder[key]
+        if holder is None:
+            return None
+    return holder
+
+
+def _with_children(
+    array: pa.StructArray,
+    children: dict[tuple[str, ...], pa.Array],
+    prefix: tuple[str, ...] = (),
+) -> pa.StructArray:
+    """Return *array* with the children at the given paths replaced.
+
+    Every struct on a path is rebuilt with its own validity, so a null end
+    anchor stays null.
+    """
+    arrays = []
+    for index, sub_field in enumerate(array.type):
+        path = (*prefix, sub_field.name)
+        child = array.field(index)
+        if path in children:
+            child = children[path]
+        elif any(key[: len(path)] == path for key in children):
+            child = _with_children(child, children, path)
+        arrays.append(child)
+    return pa.StructArray.from_arrays(
+        arrays,
+        fields=list(array.type),
+        mask=array.is_null() if array.null_count else None,
+    )
+
 
 class MatchClaimField(SemanticField[MatchClaim]):
     """A ``SemanticField[MatchClaim]`` columnar store for pairwise claims.
@@ -2073,9 +2142,12 @@ class MatchClaimField(SemanticField[MatchClaim]):
 
         The mapping holds ``metadata`` (the field's
         :meth:`MatchMetadata.to_dict`, or ``None``) and ``rows``: one mapping
-        per claim whose keys are the :attr:`table`'s columns and whose values
-        are its cells as stored. Rows are read as :meth:`from_table` reads
-        them, so the field's table and claims come back equal.
+        per claim whose keys are the :attr:`table`'s columns. Each coordinate
+        is a coordinate dict (``{unit, number_type, value}``), read by
+        :func:`~timetoalign.core.retrieval.coordinate_from_dict` and written
+        into its storage cell as :meth:`from_claims` writes a claim's; every
+        other cell is read as stored. A field built from claims therefore
+        comes back with an equal table and equal claims.
 
         Args:
             data: A mapping as :meth:`to_dict` writes it.
@@ -2084,10 +2156,12 @@ class MatchClaimField(SemanticField[MatchClaim]):
             A new :class:`MatchClaimField`.
 
         Raises:
-            ValueError: If a row's keys are not exactly the table's columns;
-                if a row is non-synchronous or lacks a start anchor; if the
-                mapping carries metadata both under its key ``metadata`` and
-                in its rows; or if two rows are given the same id.
+            ValueError: If a mapping, at any depth, lacks a key it must hold
+                or holds an unknown one (row, anchor, metadata, coordinate),
+                or a coordinate dict is invalid; if a row is non-synchronous
+                or lacks a start anchor; if the mapping carries metadata both
+                under its key ``metadata`` and in its rows; or if two rows are
+                given the same id.
         """
         metadata_dict = data.get("metadata")
         metadata = (
@@ -2095,23 +2169,88 @@ class MatchClaimField(SemanticField[MatchClaim]):
             if metadata_dict is not None
             else None
         )
-        rows = data["rows"]
-        columns = cls.pa_schema.names
+        rows = copy.deepcopy(data["rows"])
         for index, row in enumerate(rows):
-            missing = [name for name in columns if name not in row]
-            unknown = [name for name in row if name not in columns]
-            if missing or unknown:
-                raise ValueError(
-                    f"A MatchClaimField dictionary row holds one key per "
-                    f"MatchClaim property, {columns}; row {index} lacks "
-                    f"{missing} and has the unknown keys {unknown}."
-                )
+            cls._refuse_other_keys(row, cls.pa_schema, index)
+        cells: dict[tuple[str, ...], pa.StructArray] = {}
+        for path in _coordinate_paths(cls.pa_schema):
+            coordinates: list[Coordinate | None] = []
+            for index, row in enumerate(rows):
+                holder = _holder(row, path)
+                if holder is None or holder[path[-1]] is None:
+                    coordinates.append(None)
+                    continue
+                try:
+                    coordinate = coordinate_from_dict(holder[path[-1]])
+                except ValueError as error:
+                    raise ValueError(
+                        f"In a MatchClaimField dictionary, row {index} "
+                        f"{'.'.join(path)}: {error}"
+                    ) from error
+                coordinates.append(_on_unit_default(coordinate))
+                holder[path[-1]] = None
+            cells[path] = cls._coordinate_struct_array(
+                [None if c is None else c.value for c in coordinates],
+                [None if c is None else c.unit for c in coordinates],
+            )
         return cls._read(
-            pa.array(rows, type=cls.pa_schema),
+            _with_children(pa.array(rows, type=cls.pa_schema), cells),
             metadata,
             source="dictionary",
             where="under its key 'metadata'",
         )
+
+    @classmethod
+    def _refuse_other_keys(
+        cls,
+        value: Any,
+        struct_type: pa.StructType,
+        index: int,
+        path: tuple[str, ...] = (),
+    ) -> None:
+        """Refuse a dictionary mapping whose keys are not those it must hold.
+
+        A coordinate cell must hold the keys of a coordinate dict, any other
+        struct its fields; the check descends into every nested struct, since
+        Arrow would fill a missing key with null and drop an unknown one.
+
+        Args:
+            value: The mapping read (``None`` for a null nested struct).
+            struct_type: The struct type it is read into.
+            index: The row's index, for the message.
+            path: The keys leading from the row to the mapping (none for the
+                row itself, which may not be null).
+
+        Raises:
+            ValueError: Naming the path, the keys lacking and the unknown keys.
+        """
+        if value is None and path:
+            return
+        where = f"row {index}" + (f" {'.'.join(path)}" if path else "")
+        coordinate = struct_type == _CLAIM_COORDINATE_TYPE
+        keys = list(_COORDINATE_DICT_KEYS if coordinate else struct_type.names)
+        if not isinstance(value, dict):
+            raise ValueError(
+                f"In a MatchClaimField dictionary, {where} must be a mapping "
+                f"holding the keys {keys}, not {value!r}."
+            )
+        missing = [key for key in keys if key not in value]
+        unknown = [key for key in value if key not in keys]
+        if missing or unknown:
+            raise ValueError(
+                f"In a MatchClaimField dictionary, {where} must hold the keys "
+                f"{keys}; it lacks {missing} and has the unknown keys {unknown}."
+            )
+        if coordinate:
+            return
+        for sub_field in struct_type:
+            if pa.types.is_struct(sub_field.type):
+                cls._refuse_other_keys(
+                    value[sub_field.name],
+                    sub_field.type,
+                    index,
+                    (*path, sub_field.name),
+                )
 
     @classmethod
     def from_table(cls, table: pa.Table) -> "MatchClaimField":
@@ -2436,9 +2575,12 @@ class MatchClaimField(SemanticField[MatchClaim]):
     @staticmethod
     def _coordinate_struct_array(
         values: Sequence[int | float | Fraction] | pa.Array | pa.ChunkedArray,
-        units: TimeUnit | str | Sequence[TimeUnit | str],
+        units: TimeUnit | str | Sequence[TimeUnit | str | None],
     ) -> pa.StructArray:
-        """Build exact-value, per-row-unit coordinate storage."""
+        """Build exact-value, per-row-unit coordinate storage.
+
+        A null value takes a null cell; its unit is not read.
+        """
         if isinstance(values, pa.ChunkedArray):
             values = values.combine_chunks()
         if isinstance(values, pa.Array):
@@ -2949,11 +3091,15 @@ class MatchClaimField(SemanticField[MatchClaim]):
 
         ``{"metadata": ..., "rows": [...]}``: the field's metadata
         (:meth:`MatchMetadata.to_dict`, or ``None``) and one mapping per
-        claim whose keys are the table's columns and whose values are its
-        cells as stored — a nested property a nested mapping, an anchor
-        coordinate its ``{value, numerator, denominator, unit}`` cell. Every
-        value is a string, number, boolean, ``None``, mapping or list, so the
-        dictionary can be written as JSON or YAML.
+        claim whose keys are the table's columns. A coordinate cell is
+        written as a coordinate dict
+        (:func:`~timetoalign.core.retrieval.coordinate_to_dict`: ``unit``,
+        ``number_type``, ``value``, a Fraction as ``[numerator,
+        denominator]``), the value the materialised claim holds, as
+        :meth:`MatchClaim.to_dict` writes it; every other cell as stored, a
+        nested property a nested mapping. Every value is a string, number,
+        boolean, ``None``, mapping or list, so the dictionary can be written
+        as JSON or YAML.
 
         Returns:
             A round-trippable mapping.
@@ -2965,15 +3111,26 @@ class MatchClaimField(SemanticField[MatchClaim]):
             ... )
             >>> row = field.to_dict()["rows"][0]
             >>> row["start_anchor"]["coordinate_a"]
-            {'value': 0.3333333333333333, 'numerator': 1, 'denominator': 3, 'unit': 'quarters'}
+            {'unit': 'quarters', 'number_type': 'fraction', 'value': [1, 3]}
+            >>> row["start_anchor"]["coordinate_b"]
+            {'unit': 'seconds', 'number_type': 'float', 'value': 0.5}
             >>> row["id"], row["id_minted"], row["end_anchor"]
             ('claim_1', True, None)
         """
+        rows = self._struct_array().to_pylist()
+        paths = list(_coordinate_paths(self.pa_schema))
+        for row in rows:
+            for path in paths:
+                holder = _holder(row, path)
+                if holder is not None and holder[path[-1]] is not None:
+                    holder[path[-1]] = _coordinate_to_dict(
+                        _cell_coordinate(holder[path[-1]])
+                    )
         return {
             "metadata": (
                 self._metadata.to_dict() if self._metadata is not None else None
             ),
-            "rows": self._struct_array().to_pylist(),
+            "rows": rows,
         }
 
     def _joined(self, taken: pa.Array, *, scope: str) -> "MatchClaimField":

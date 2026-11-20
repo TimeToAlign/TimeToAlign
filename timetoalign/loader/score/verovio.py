@@ -112,12 +112,21 @@ def _pitch_label(step: str, alter: int, octave: int) -> str:
 
 @dataclass
 class _Movement:
-    """One ``<mdiv>`` of the MEI tree, in document order."""
+    """One ``<mdiv>`` of the MEI tree, in document order.
+
+    Its name is ``@label``; an ``<mdiv>`` without one (or with a blank one)
+    is unnamed and makes no timeline.
+    """
 
     xml_id: str
     n: str | None
     label: str | None
     parent: int | None
+
+    @property
+    def named(self) -> bool:
+        """Whether the ``<mdiv>`` has a name, a non-blank ``@label``."""
+        return bool(self.label and self.label.strip())
 
 
 @dataclass
@@ -197,7 +206,8 @@ class _Rendering:
     """What one load keeps for building the timelines.
 
     Event rows hold absolute positions in rendered quarters; ``movement``
-    maps each event id to the innermost ``<mdiv>`` holding it.
+    maps each event id to the innermost named ``<mdiv>`` holding it
+    (``None``: the root).
     """
 
     anchors: list[tuple[Fraction, Fraction]]
@@ -439,18 +449,21 @@ class VerovioLoader(ScoreLoader):
     constant within a measure, so linear interpolation between the entries
     reproduces its own time.
 
-    **Movements.** Every ``<mdiv>`` Verovio loads is a child timeline, in
-    document order, its id minted by the loader after the root's
-    (``score:clt_2``, ``rendered:cpt_2``, …; a number a given root id such
-    as ``score:clt_2`` holds is skipped):
-    placed at its first position, as long as its measures, named
-    by its ``label``, with ``meta`` holding ``count`` (its place among all
-    ``<mdiv>``s of the file, from 1) and its ``xml:id``, ``n`` and ``label``
-    verbatim. A nested ``<mdiv>`` is a child of its parent's timeline.
-    Events live in the innermost movement holding them, at parent − offset;
-    the root holds the measures, the flow control and the C-Map. A
-    single-movement score has its one child too. All movements are loaded
-    unless an ``mdivAll`` or ``mdivXPathQuery`` option chooses.
+    **Movements.** Every named ``<mdiv>`` Verovio loads (one with a
+    non-blank ``@label``) is a child timeline, in document order, its id
+    minted by the loader after the root's (``score:clt_2``,
+    ``rendered:cpt_2``, …; a number a given root id such as ``score:clt_2``
+    holds is skipped): placed at its first position, as long as its
+    measures, named by its ``label``, with ``meta`` holding ``count`` (its
+    place among all ``<mdiv>``s of the file, from 1), its ``xml:id``, ``n``
+    and ``label`` verbatim, and ``element`` ``"mdiv"``. A named ``<mdiv>``
+    nests under the child of its nearest named ancestor ``<mdiv>``, else
+    under the root. An unnamed ``<mdiv>`` makes no timeline: what it holds
+    belongs to the nearest named ancestor's child, else to the root, so a
+    score whose one ``<mdiv>`` has no label is the root alone. Events live in
+    the innermost named movement holding them, at parent − offset; the root
+    holds the measures, the flow control and the C-Map. All movements are
+    loaded unless an ``mdivAll`` or ``mdivXPathQuery`` option chooses.
 
     **Repeats.** The timemap is Verovio's rendering: with repeats expanded
     (Verovio's default, steered by the ``expand``, ``expandAlways`` and
@@ -646,7 +659,9 @@ class VerovioLoader(ScoreLoader):
             for row in _tempo_rows(tempo, onsets, passes, toolkit, bool(notated))
         ]
         movement = {
-            row["id"]: score.measures[row["mc"] - 1].movement
+            row["id"]: _named_holder(
+                score.movements, score.measures[row["mc"] - 1].movement
+            )
             for row in (*note_rows, *tempo_rows)
         }
         end = _qfrac(timemap[-1])
@@ -755,7 +770,8 @@ class VerovioLoader(ScoreLoader):
 
         The root carries the measures as its ``MeasureMap``, the flow
         control (or, for an expanded rendering, the FlowMaps) and the C-Map;
-        each loaded ``<mdiv>`` is a child holding its events.
+        each loaded named ``<mdiv>`` is a child holding its events, and the
+        root holds those of no named ``<mdiv>``.
 
         Args:
             uid: The timeline id. ``None`` mints ``score:clt_N``.
@@ -854,7 +870,7 @@ class VerovioLoader(ScoreLoader):
         role: str,
         meta: dict[str, Any] | None,
     ) -> Any:
-        """Build the root and one child per movement, events in the leaves.
+        """Build the root and one child per named movement, holding its events.
 
         Args:
             timeline_cls: The timeline type of the root and its children.
@@ -902,9 +918,11 @@ class VerovioLoader(ScoreLoader):
         _flag_minted(root, minted)
         nodes: dict[int | None, tuple[Timeline, Fraction]] = {None: (root, start)}
         for index, movement in enumerate(rendering.movements):
-            if index not in rendering.spans:
+            if not movement.named or index not in rendering.spans:
                 continue
-            parent, parent_start = nodes[movement.parent]
+            parent, parent_start = nodes[
+                _named_holder(rendering.movements, movement.parent)
+            ]
             span_start, span_end = (convert(p) for p in rendering.spans[index])
             child = build(
                 index,
@@ -919,6 +937,7 @@ class VerovioLoader(ScoreLoader):
                         ("xml_id", movement.xml_id),
                         ("n", movement.n),
                         ("label", movement.label),
+                        ("element", "mdiv"),
                     )
                     if value is not None
                 },
@@ -1118,6 +1137,13 @@ def _loaded_movements(score: _Score, rendered: set[str]) -> _Score:
         if tempo.measure in renumber
     ]
     return score
+
+
+def _named_holder(movements: list[_Movement], movement: int | None) -> int | None:
+    """Return the nearest named ``<mdiv>`` at or above *movement*; ``None`` is the root."""
+    while movement is not None and not movements[movement].named:
+        movement = movements[movement].parent
+    return movement
 
 
 def _measure_lengths(rendered: list[_RenderedMeasure]) -> dict[str, Fraction]:

@@ -12,9 +12,9 @@ from timetoalign.loader.score import VerovioLoader  # noqa: E402
 
 
 def _movement(n: int, pname: str) -> str:
-    """One movement of one 2/4 measure holding one half note."""
+    """One named movement of one 2/4 measure holding one half note."""
     return (
-        f'<mdiv xml:id="mdiv{n}" n="{n}"><score><scoreDef xml:id="sd{n}" '
+        f'<mdiv xml:id="mdiv{n}" n="{n}" label="{"I" * n}"><score><scoreDef xml:id="sd{n}" '
         f'meter.count="2" meter.unit="4"><staffGrp xml:id="sg{n}"><staffDef '
         f'xml:id="sdef{n}" n="1" lines="5" clef.shape="G" clef.line="2"/></staffGrp>'
         f'</scoreDef><section xml:id="s{n}"><measure xml:id="m{n}" n="1">'

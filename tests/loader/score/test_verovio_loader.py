@@ -231,6 +231,50 @@ STARTID = (
     + _TAIL
 )
 
+
+def _leaf(xml_id: str, bars: str, label: str | None = None) -> str:
+    """One 2/4 ``<mdiv>`` holding *bars*, every id unique to it, named by *label*."""
+    name = f' label="{label}"' if label is not None else ""
+    return (
+        f'<mdiv xml:id="{xml_id}"{name}><score><scoreDef xml:id="sd_{xml_id}" '
+        f'meter.count="2" meter.unit="4"><staffGrp xml:id="sg_{xml_id}"><staffDef '
+        f'xml:id="sdef_{xml_id}" n="1" lines="5" clef.shape="G" clef.line="2"/>'
+        f'</staffGrp></scoreDef><section xml:id="s_{xml_id}">{bars}</section>'
+        "</score></mdiv>"
+    )
+
+
+def _div(xml_id: str, *parts: str, label: str | None = None) -> str:
+    """One ``<mdiv>`` holding the ``<mdiv>``s *parts*, named by *label*."""
+    name = f' label="{label}"' if label is not None else ""
+    return f'<mdiv xml:id="{xml_id}"{name}>{"".join(parts)}</mdiv>'
+
+
+NAMED = _HEAD + _leaf("solo", _bar("m1", 1, "c") + _bar("m2", 2, "d"), "Rondo") + _TAIL
+SIBLINGS = (
+    _HEAD
+    + _leaf("first", _bar("m1", 1, "c") + _bar("m2", 2, "d"), "I")
+    + _leaf("second", _bar("m3", 3, "e"))
+    + _TAIL
+)
+NESTED = (
+    _HEAD
+    + _div(
+        "work",
+        _div(
+            "set",
+            _div(
+                "group",
+                _leaf("v1", _bar("m1", 1, "c") + _bar("m2", 2, "d"), "Var. 1"),
+                _leaf("v2", _bar("m3", 3, "e")),
+            ),
+            label="Variationen",
+        ),
+        _leaf("coda", _bar("m4", 4, "f")),
+    )
+    + _TAIL
+)
+
 DUPLICATE_DYNAM = REPEAT.replace(
     _TEMPO_BEAT_2,
     '<dynam xml:id="dd" staff="1" tstamp="1">p</dynam>'
@@ -244,6 +288,9 @@ FIXTURES = {
     "repeat": REPEAT,
     "repeat_endings": REPEAT_ENDINGS,
     "two_movements": TWO_MOVEMENTS,
+    "named": NAMED,
+    "siblings": SIBLINGS,
+    "nested": NESTED,
     "fast": FAST,
     "startid": STARTID,
     "duplicate_dynam": DUPLICATE_DYNAM,
@@ -311,7 +358,7 @@ def _generated_id(events: dict[str, dict], mei: dict[str, Path]) -> str:
 
 
 class TestTimeline:
-    def test_root_and_movement_child(
+    def test_unnamed_movement_makes_no_child(
         self, timeline: ContinuousLogicalTimeline, events: dict[str, dict]
     ) -> None:
         assert type(timeline) is ContinuousLogicalTimeline
@@ -319,13 +366,10 @@ class TestTimeline:
         assert str(timeline.unit) == "quarters"
         assert str(timeline.number_type) == "fraction"
         assert timeline.length.value == Fraction(9)
-        assert timeline.list_children() == ["score:clt_2"]
-        child = timeline.get_child("score:clt_2")
-        assert child.length.value == Fraction(9)
-        assert child.meta == {"count": 1, "xml_id": "mdiv1"}
-        assert len(list(timeline.get_events(include_children=False))) == 0
-        assert len(list(child.get_events(include_children=False))) == 13
-        assert {row["source_timeline"] for row in events.values()} == {"score:clt_2"}
+        assert timeline.list_children() == []
+        own = [row["id"] for row in timeline.get_events(include_children=False)]
+        assert len(own) == 13
+        assert set(own) == set(events)
 
     def test_event_types(self, events: dict[str, dict]) -> None:
         assert Counter(row["event_type"] for row in events.values()) == {
@@ -339,7 +383,7 @@ class TestTimeline:
             uid="clt_1", name="Fixture"
         )
         assert (timeline.id, timeline.name) == ("clt_1", "Fixture")
-        assert timeline.list_children() == ["score:clt_2"]
+        assert timeline.list_children() == []
 
     def test_options_recorded(self, loader: VerovioLoader) -> None:
         metadata = loader.store.metadata
@@ -537,8 +581,7 @@ class TestPhysicalTimeline:
         assert str(physical.number_type) == "fraction"
         assert physical.length.value == Fraction(9, 2)
         assert physical.meta == {"provenance": "verovio_rendered"}
-        assert physical.list_children() == ["rendered:cpt_2"]
-        assert physical.get_child("rendered:cpt_2").length.value == Fraction(9, 2)
+        assert physical.list_children() == []
         assert physical.measure_map is None
 
     def test_events_at_half_their_quarters(
@@ -776,8 +819,20 @@ class TestMovements:
         first, second = (root.get_child(c) for c in root.list_children())
         assert (first.name, first.length.value) == ("I", Fraction(4))
         assert (second.name, second.length.value) == ("II", Fraction(3))
-        assert first.meta == {"count": 1, "xml_id": "mov1", "n": "1", "label": "I"}
-        assert second.meta == {"count": 2, "xml_id": "mov2", "n": "2", "label": "II"}
+        assert first.meta == {
+            "count": 1,
+            "xml_id": "mov1",
+            "n": "1",
+            "label": "I",
+            "element": "mdiv",
+        }
+        assert second.meta == {
+            "count": 2,
+            "xml_id": "mov2",
+            "n": "2",
+            "label": "II",
+            "element": "mdiv",
+        }
         assert root.get_coordinate_for("n4").value == Fraction(4)
         assert second.get_coordinate_for("n4").value == Fraction(0)
         assert {row["id"] for row in second.get_events(include_children=False)} == {
@@ -821,22 +876,157 @@ class TestMovements:
         root = VerovioLoader.from_file(path).create_timeline()
         assert root.length.value == Fraction(129, 2)
         assert root.list_children() == ["score:clt_2"]
-        outer = root.get_child("score:clt_2")
-        assert outer.meta == {"count": 1, "xml_id": "Eroica-Variationen"}
-        assert outer.list_children() == ["score:clt_3"]
-        inner = outer.get_child("score:clt_3")
+        inner = root.get_child("score:clt_2")
+        assert (inner.name, inner.list_children()) == ("Var. XIV.", [])
         assert inner.meta == {
             "count": 2,
             "xml_id": "Var_14",
             "n": "18",
             "label": "Var. XIV.",
+            "element": "mdiv",
         }
-        assert outer.length.value == inner.length.value == Fraction(129, 2)
-        assert len(list(outer.get_events(include_children=False))) == 0
+        assert root.get_child_offset("score:clt_2").value == 0
+        assert inner.length.value == Fraction(129, 2)
+        assert len(list(root.get_events(include_children=False))) == 0
         assert Counter(
             row["event_type"] for row in inner.get_events(include_children=False)
         ) == {"Note": 297, "Rest": 36, "tempo indication": 2}
         assert len(root.measure_map.measures) == 33
+
+
+def _tree(timeline: ContinuousLogicalTimeline) -> dict:
+    """Return each timeline of the tree with its name, meta, offset, length and events.
+
+    Events are ``{id: position on that timeline}``; children nest under ``children``.
+    """
+    return {
+        "name": timeline.name,
+        "length": timeline.length.value,
+        "events": {
+            row["id"]: _q(row["start"])
+            for row in timeline.get_events(include_children=False)
+        },
+        "children": {
+            child_id: {
+                "offset": timeline.get_child_offset(child_id).value,
+                "meta": timeline.get_child(child_id).meta,
+                **_tree(timeline.get_child(child_id)),
+            }
+            for child_id in timeline.list_children()
+        },
+    }
+
+
+def _root_positions(timeline: ContinuousLogicalTimeline) -> dict[str, Fraction]:
+    """Return every event of the tree at its position on the root."""
+    return {
+        row["id"]: timeline.get_coordinate_for(row["id"]).value
+        for row in timeline.get_events(include_children=True)
+    }
+
+
+class TestNamedMovements:
+    """Only a named ``<mdiv>`` (``@label``) is a child (validation logic: README.md)."""
+
+    def test_named_single(self, mei: dict[str, Path]) -> None:
+        loader = VerovioLoader.from_file(mei["named"])
+        root = loader.create_timeline()
+        assert _tree(root) == {
+            "name": "score:clt_1",
+            "length": Fraction(4),
+            "events": {},
+            "children": {
+                "score:clt_2": {
+                    "offset": Fraction(0),
+                    "meta": {
+                        "count": 1,
+                        "xml_id": "solo",
+                        "label": "Rondo",
+                        "element": "mdiv",
+                    },
+                    "name": "Rondo",
+                    "length": Fraction(4),
+                    "events": {"m1n": Fraction(0), "m2n": Fraction(2)},
+                    "children": {},
+                }
+            },
+        }
+        physical = loader.create_physical_timeline()
+        assert physical.list_children() == ["rendered:cpt_2"]
+        child = physical.get_child("rendered:cpt_2")
+        assert (child.name, child.length.value) == ("Rondo", Fraction(2))
+        assert child.meta["element"] == "mdiv"
+
+    def test_named_and_unnamed_siblings(self, mei: dict[str, Path]) -> None:
+        root = VerovioLoader.from_file(mei["siblings"]).create_timeline()
+        assert _tree(root) == {
+            "name": "score:clt_1",
+            "length": Fraction(6),
+            "events": {"m3n": Fraction(4)},
+            "children": {
+                "score:clt_2": {
+                    "offset": Fraction(0),
+                    "meta": {
+                        "count": 1,
+                        "xml_id": "first",
+                        "label": "I",
+                        "element": "mdiv",
+                    },
+                    "name": "I",
+                    "length": Fraction(4),
+                    "events": {"m1n": Fraction(0), "m2n": Fraction(2)},
+                    "children": {},
+                }
+            },
+        }
+        assert _root_positions(root) == {
+            "m1n": Fraction(0),
+            "m2n": Fraction(2),
+            "m3n": Fraction(4),
+        }
+
+    def test_named_nested_in_unnamed(self, mei: dict[str, Path]) -> None:
+        root = VerovioLoader.from_file(mei["nested"]).create_timeline()
+        assert _tree(root) == {
+            "name": "score:clt_1",
+            "length": Fraction(8),
+            "events": {"m4n": Fraction(6)},
+            "children": {
+                "score:clt_2": {
+                    "offset": Fraction(0),
+                    "meta": {
+                        "count": 2,
+                        "xml_id": "set",
+                        "label": "Variationen",
+                        "element": "mdiv",
+                    },
+                    "name": "Variationen",
+                    "length": Fraction(6),
+                    "events": {"m3n": Fraction(4)},
+                    "children": {
+                        "score:clt_3": {
+                            "offset": Fraction(0),
+                            "meta": {
+                                "count": 4,
+                                "xml_id": "v1",
+                                "label": "Var. 1",
+                                "element": "mdiv",
+                            },
+                            "name": "Var. 1",
+                            "length": Fraction(4),
+                            "events": {"m1n": Fraction(0), "m2n": Fraction(2)},
+                            "children": {},
+                        }
+                    },
+                }
+            },
+        }
+        assert _root_positions(root) == {
+            "m1n": Fraction(0),
+            "m2n": Fraction(2),
+            "m3n": Fraction(4),
+            "m4n": Fraction(6),
+        }
 
 
 class TestIdCheck:

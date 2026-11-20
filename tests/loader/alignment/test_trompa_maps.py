@@ -34,7 +34,7 @@ SAMPLE_RATE = 44100
 MEI = """<?xml version="1.0" encoding="UTF-8"?>
 <mei xmlns="http://www.music-encoding.org/ns/mei" meiversion="5.1">
 <meiHead><fileDesc><titleStmt><title>Fixture</title></titleStmt><pubStmt/></fileDesc>
-</meiHead><music><body><mdiv xml:id="mdiv1"><score>
+</meiHead><music><body><mdiv xml:id="mdiv1" label="I"><score>
 <scoreDef xml:id="sd" meter.count="9" meter.unit="8"><staffGrp xml:id="sg">
   <staffDef xml:id="sdef1" n="1" lines="5" clef.shape="G" clef.line="2"/>
   <staffDef xml:id="sdef2" n="2" lines="5" clef.shape="F" clef.line="4"/>

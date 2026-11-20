@@ -14,21 +14,22 @@ A ``SemanticField[MatchClaim]`` columnar store for pairwise claims.
 
 ``MatchClaimField`` is the Field paired with the :class:`MatchClaim`
 scalar.  It holds a large set of synchronous pairwise alignment
-claims (millions of rows) in a single derived struct column instead of one
-frozen :class:`MatchClaim` per claim.  Individual claims are materialised
+claims (millions of rows) as Arrow columns instead of one frozen
+:class:`MatchClaim` per claim.  Individual claims are materialised
 lazily, only when a row is indexed or iterated.
 
 Like every paired Field, its struct schema is derived from the scalar by
-:func:`~timetoalign.core.fields.derive_arrow_struct` — so the inner column
-type is exactly ``MatchClaimField.pa_schema``.  Shared provenance is held
-once at field level as a single :class:`MatchMetadata` (or ``None``) and
-**injected on read**, mirroring how
+:func:`~timetoalign.core.fields.derive_arrow_struct` — so a row's type is
+exactly ``MatchClaimField.pa_schema``.  Its :attr:`table` (and a Parquet
+file written from it) has one column per top-level property of
+:class:`MatchClaim`, each nested as the property is.  Shared provenance
+is held once at field level as a single :class:`MatchMetadata` (or
+``None``) and **injected on read**, mirroring how
 :class:`~timetoalign.core.time.CoordinateField` carries its ``unit``
-outside the data: the struct column's ``metadata`` sub-field is left null
-in bulk, and :meth:`__getitem__` injects the field-level metadata into each
-materialised :class:`MatchClaim`.  This keeps the store compact (one struct
-column) while remaining a genuine SemanticField.  Only claims whose
-metadata differ, given to :meth:`from_claims`, carry it per row.
+outside the data: the ``metadata`` column is left null in bulk, and
+:meth:`__getitem__` injects the field-level metadata into each
+materialised :class:`MatchClaim`.  Only claims whose metadata differ,
+given to :meth:`from_claims`, carry it per row.
 
 Every row represents a synchronous claim with a start anchor and an
 optional end anchor. NOMATCH claims remain outside this store because
@@ -36,10 +37,10 @@ they carry no coordinate pair to query.
 
 ## Attributes {.doc-section .doc-section-attributes}
 
-| Name     | Type                                                                  | Description                                                                                                                  |
-|----------|-----------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------|
-| table    | [pa](`pyarrow`).[Table](`pyarrow.Table`)                              | The backing single-column :class:`pyarrow.Table` (read-only property) whose one column is the derived ``MatchClaim`` struct. |
-| metadata | [MatchMetadata](`timetoalign.alignment.claims.MatchMetadata`) \| None | Shared :class:`MatchMetadata` (or ``None``) applied to every materialised claim.                                             |
+| Name     | Type                                                                  | Description                                                                                          |
+|----------|-----------------------------------------------------------------------|------------------------------------------------------------------------------------------------------|
+| table    | [pa](`pyarrow`).[Table](`pyarrow.Table`)                              | The claims as a :class:`pyarrow.Table` (read-only property), one column per ``MatchClaim`` property. |
+| metadata | [MatchMetadata](`timetoalign.alignment.claims.MatchMetadata`) \| None | Shared :class:`MatchMetadata` (or ``None``) applied to every materialised claim.                     |
 
 ## Examples {.doc-section .doc-section-examples}
 
@@ -72,11 +73,11 @@ they carry no coordinate pair to query.
 | [filter](#timetoalign.alignment.MatchClaimField.filter) | Return a filtered view following the unified filter API. |
 | [from_claims](#timetoalign.alignment.MatchClaimField.from_claims) | Build a field from existing :class:`MatchClaim` objects. |
 | [from_columns](#timetoalign.alignment.MatchClaimField.from_columns) | Build a field directly from parallel columns (the vectorized path). |
-| [from_dict](#timetoalign.alignment.MatchClaimField.from_dict) | Deserialize a field from a plain dictionary. |
+| [from_dict](#timetoalign.alignment.MatchClaimField.from_dict) | Deserialize a field from a plain dictionary (inverse of :meth:`to_dict`). |
 | [from_table](#timetoalign.alignment.MatchClaimField.from_table) | Read a field back from its Arrow table (inverse of :attr:`table`). |
 | [max_coordinate](#timetoalign.alignment.MatchClaimField.max_coordinate) | The largest coordinate this field carries for ``timeline_id``. |
 | [to_claims](#timetoalign.alignment.MatchClaimField.to_claims) | Materialise every row into a list of :class:`MatchClaim` objects. |
-| [to_dict](#timetoalign.alignment.MatchClaimField.to_dict) | Serialize to a plain dictionary (inverse of :meth:`from_dict`). |
+| [to_dict](#timetoalign.alignment.MatchClaimField.to_dict) | Render the :attr:`table` as a plain dictionary (inverse of :meth:`from_dict`). |
 
 ### at { #timetoalign.alignment.MatchClaimField.at }
 
@@ -201,7 +202,7 @@ alignment.MatchClaimField.filter(
 
 Return a filtered view following the unified filter API.
 
-Every criterion is a vectorized boolean mask over the struct column;
+Every criterion is a vectorized boolean mask over the claim columns;
 no claim is materialised and the shared metadata carries over.  All
 non-default criteria are combined with logical AND.
 
@@ -296,7 +297,7 @@ alignment.MatchClaimField.from_columns(
 Build a field directly from parallel columns (the vectorized path).
 
 This is the constructor a bulk producer (e.g. an alignment loader)
-uses. It assembles the derived ``MatchClaim`` struct column straight
+uses. It assembles the derived ``MatchClaim`` struct array straight
 from the parallel inputs with :meth:`pyarrow.StructArray.from_arrays`
 and **never** materialises a single :class:`MatchClaim` Python object,
 so it scales to millions of rows.
@@ -339,10 +340,13 @@ null (the shared metadata is injected on read).
 alignment.MatchClaimField.from_dict(data)
 ```
 
-Deserialize a field from a plain dictionary.
+Deserialize a field from a plain dictionary (inverse of :meth:`to_dict`).
 
-Inverse of :meth:`to_dict`: every column it writes is read back, so
-the field's table and claims come back equal.
+The mapping holds ``metadata`` (the field's
+:meth:`MatchMetadata.to_dict`, or ``None``) and ``rows``: one mapping
+per claim whose keys are the :attr:`table`'s columns and whose values
+are its cells as stored. Rows are read as :meth:`from_table` reads
+them, so the field's table and claims come back equal.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
@@ -358,9 +362,9 @@ the field's table and claims come back equal.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                        |
-|--------|----------------------------|------------------------------------|
-|        | [ValueError](`ValueError`) | If two rows are given the same id. |
+| Name   | Type                       | Description                                                                                                                                                                                                                      |
+|--------|----------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If a row's keys are not exactly the table's columns; if a row is non-synchronous or lacks a start anchor; if the mapping carries metadata both under its key ``metadata`` and in its rows; or if two rows are given the same id. |
 
 ### from_table { #timetoalign.alignment.MatchClaimField.from_table }
 
@@ -370,16 +374,17 @@ alignment.MatchClaimField.from_table(table)
 
 Read a field back from its Arrow table (inverse of :attr:`table`).
 
-The table must hold exactly one column, ``match_claim``, of type
-:attr:`pa_schema`; the column may be chunked, as it is when the table
-was read from Parquet.  The field-level :class:`MatchMetadata`
-travels in the table's schema metadata under the key
-``timetoalign:match_metadata`` (the JSON of
+The table must hold one column per top-level property of
+:class:`MatchClaim`, named and typed as the fields of
+:attr:`pa_schema`, in that order; the columns may be chunked, as they
+are when the table was read from Parquet.  The field-level
+:class:`MatchMetadata` travels in the table's schema metadata under
+the key ``timetoalign:match_metadata`` (the JSON of
 :meth:`MatchMetadata.to_dict`); a table without that key gives a
 field whose metadata is ``None``.  Every row is kept as stored, so
-anything the struct column carries per row comes back unchanged;
-the ids are admitted as :meth:`from_claims` admits them (a row
-without one is minted one).
+anything the columns carry per row comes back unchanged; the ids are
+admitted as :meth:`from_claims` admits them (a row without one is
+minted one).
 
 #### Parameters {.doc-section .doc-section-parameters}
 
@@ -395,9 +400,9 @@ without one is minted one).
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                       |
-|--------|----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If the table does not hold exactly one column named ``match_claim``, or that column's type is not :attr:`pa_schema`; if a row is non-synchronous or lacks a start anchor (the rows :meth:`from_claims` refuses); if the table carries metadata both in its schema metadata and in its rows; or if two rows are given the same id. |
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                  |
+|--------|----------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the table's columns are not exactly the ``MatchClaim`` properties, or a column's type is not the property's; if a row is non-synchronous or lacks a start anchor (the rows :meth:`from_claims` refuses); if the table carries metadata both in its schema metadata and in its rows; or if two rows are given the same id. |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -413,6 +418,8 @@ without one is minted one).
 ...     metadata=MatchMetadata(agent=agent),
 ... )
 >>> table = field.table
+>>> table.column_names[:4]
+['timeline_a_id', 'timeline_b_id', 'start_anchor', 'end_anchor']
 >>> table.schema.metadata[b"timetoalign:match_metadata"]
 b'{"agent": {"name": "dtw", "type": "software", "identifier": "v1"}, "certainty": 1.0}'
 >>> restored = MatchClaimField.from_table(table)
@@ -471,18 +478,32 @@ is provided for convenience and round-tripping, not for hot paths.
 alignment.MatchClaimField.to_dict()
 ```
 
-Serialize to a plain dictionary (inverse of :meth:`from_dict`).
+Render the :attr:`table` as a plain dictionary (inverse of :meth:`from_dict`).
 
-Every value the table carries is written: the timeline ids, the
-coordinate and unit columns of both anchors (an exact coordinate as
-its :class:`~fractions.Fraction`), the per-row values named in
-:attr:`_ROW_VALUES` (claim id and whether it was minted,
-``is_explicit``, ``source_claim_id``, event ids and names), each
-row's own metadata (``row_metadata``) and the field's metadata
-(``metadata``, via :meth:`MatchMetadata.to_dict`, or ``None``).
+``{"metadata": ..., "rows": [...]}``: the field's metadata
+(:meth:`MatchMetadata.to_dict`, or ``None``) and one mapping per
+claim whose keys are the table's columns and whose values are its
+cells as stored — a nested property a nested mapping, an anchor
+coordinate its ``{value, numerator, denominator, unit}`` cell. Every
+value is a string, number, boolean, ``None``, mapping or list, so the
+dictionary can be written as JSON or YAML.
 
 #### Returns {.doc-section .doc-section-returns}
 
 | Name   | Type                                                | Description                |
 |--------|-----------------------------------------------------|----------------------------|
 |        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | A round-trippable mapping. |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> field = MatchClaimField.from_columns(
+...     ["score"], ["audio"], [Fraction(1, 3)], [0.5],
+...     unit_a=TimeUnit.quarters, unit_b=TimeUnit.seconds,
+... )
+>>> row = field.to_dict()["rows"][0]
+>>> row["start_anchor"]["coordinate_a"]
+{'value': 0.3333333333333333, 'numerator': 1, 'denominator': 3, 'unit': 'quarters'}
+>>> row["id"], row["id_minted"], row["end_anchor"]
+('claim_1', True, None)
+```

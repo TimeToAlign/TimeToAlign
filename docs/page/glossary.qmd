@@ -400,10 +400,12 @@ to the relevant section of the conceptual model.
 
 **MatchClaimField**
 :   A columnar, PyArrow-backed store holding a whole set of synchronous-instant
-    pairwise {{< glossary MatchClaim >}}s as Arrow columns (the two timeline ids
-    dictionary-encoded, each coordinate as a struct of `value`, `numerator`,
-    `denominator` and `unit`) rather than as one
-    frozen MatchClaim object per claim. Storing the exact ratio beside the
+    pairwise {{< glossary MatchClaim >}}s as Arrow columns, one per property
+    of a MatchClaim (the two timeline ids as strings, the anchors, the flags,
+    the metadata, the event ids and names, the source coordinate, `id` and
+    `id_minted`; each coordinate a struct of `value`, `numerator`,
+    `denominator` and `unit`), rather than as one frozen MatchClaim object
+    per claim. Storing the exact ratio beside the
     float mirror is what lets a claim's coordinate come back in its axis's
     declared number type instead of being flattened on the way through the
     column. Individual MatchClaims are materialised
@@ -413,8 +415,11 @@ to the relevant section of the conceptual model.
     topology of a whole work runs to roughly a million claims. Shared provenance
     is held once at field level; only claims whose metadata differ carry it
     per row. The `table` property gives the field as an Arrow table, the
-    shared provenance in its schema metadata, and `from_table()` reads it
-    back unchanged, from Parquet too.
+    shared provenance in its schema metadata under the key
+    `timetoalign:match_metadata`, and `from_table()` reads it back
+    unchanged, from Parquet too. `to_dict()` renders the same table as
+    `{"metadata": …, "rows": […]}`, one mapping per claim keyed by the
+    columns, and `from_dict()` reads it back.
     See [Alignment](concepts.qmd#alignment).
 
 **MatchGraph**

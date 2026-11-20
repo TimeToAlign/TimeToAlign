@@ -17,11 +17,11 @@
   "how06_parangonada.py": "79cb1cf1fa7d167a58116d0eebe1232fe485e394ea3793b42683ead75626cf2f",
   "how07_mpm_toolbox.py": "f264f1322da8a7751e255e674cf872f354fee84104d9cc544a00d49341f7055d",
   "how03_mpm_toolbox.py": "ead746d77a4a7fcf42a61e483c40e3b3688dd111e9a3584dcadc293b21991e21",
-  "how03_listen_here.py": "d33a8a2282d8122f388be6a4747d839d856ae9a46cc7fda4eb9fa551fbd72457",
+  "how03_listen_here.py": "b388818068288d00277fb669d1cae618762ac9fa43b003ca28c0ea4894a95186",
   "how03_parangonada.py": "b0439c137f253ee4b8ed379d33f385f26adbf9ca8560c878f6dda01492c95a6b",
   "how03_performance_precision.py": "c8aeb3344f554ea0894378a819092621cee23e451fcd2780eb027e17afe763cd",
   "how04_loading_csv.py": "231ff877e64204288344ffee9681b5fc15736f6b85480e39ba23c60b50df35fb",
-  "how03_ieee1599.py": "a6eb2d2b46c682545184569e654dbbe6b5077487f8655b788148f4440744aafd",
+  "how03_ieee1599.py": "3a813bdb79a62b1ff4e20957b39f20e535bf434dc0f429dbacc16714f900f5b8",
   "tut00_quickstart.py": "47ac81b46bd05df5dd50bf80c2e0a2e6b18049d93ce6ea510e7ab850f7dbf494",
   "tut01_timelines_and_coordinates.py": "3a68eb5da9861b5f7d911b5a010bab5e76407555138d315fdbff10a26a0e6680",
   "tut02_nesting_and_timestamps.py": "882d62d527c2fba180e5e19faa9ee9f19fe1d1fe725ceecb2aaffc43a1fc3bbb",
@@ -35,5 +35,5 @@
   "how04_load_anything.py": "94221401e7e2d23528aa93884dd5298e5c61ca3e388712d3c730165bfde4920a",
   "how02_group_and_bundle_files.py": "3f1c2aeb1f5e40b119ce5d703d81a1c1edeed43d9bf67be543af9fd54911e4d0",
   "how03_describe_the_work.py": "113f971216cd46af14d23d0440d9d47aaee46d15403474c1318a3788ea56419c",
-  "how03_engraved_score_alignment.py": "a7e48fc4ad5073481ce4578963ed72ddb8c5e83eca449d6afc3b27704a68fe6d"
+  "how03_engraved_score_alignment.py": "325b5fec67029a6e9b6f85d37b35492cdbf7752194cf8e95ddf89449416dbd71"
 }

@@ -18,7 +18,7 @@ A Python library for representing and aligning musical timelines.
 pip install timetoalign         # Core only — lightweight
 ```
 
-The core install pulls in only PyArrow, pandas, NetworkX,
+The core install pulls in only NumPy, PyArrow, pandas, NetworkX,
 typing_extensions, pydantic, and timetoshare (the TimeToShare manifest format
 and its validator, which also checks a manifest's statements).  This gives you the full timeline / map /
 alignment framework but no file-format-specific loaders.  If you need loaders,
@@ -52,6 +52,10 @@ Each atomic extra adds support for a single loader backend or feature.
 | `delta` | `deltalake` | Delta Lake columnar storage (future) |
 | `rdf` | `rdflib` | RDF / linked-data export (future) |
 | `examples` | `pooch` | On-demand fetching of bundled corpora |
+
+The `ms3` extra currently requires NumPy 1.x. PyArrow is restricted to versions
+before 26 because PyArrow 26 requires NumPy 2 at runtime. The core NumPy
+requirement itself does not prohibit NumPy 2 when `ms3` is not installed.
 
 #### Composite extras
 

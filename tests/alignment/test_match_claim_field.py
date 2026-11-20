@@ -11,6 +11,7 @@ Validation strategy and gold values are documented in
 
 from __future__ import annotations
 
+import copy
 import json
 import re
 import time
@@ -595,12 +596,57 @@ class TestDictRoundTrip:
 
     def test_to_dict_renders_the_table(self, gold_field: MatchClaimField) -> None:
         data = gold_field.to_dict()
-        assert data["rows"] == gold_field.table.to_pylist()
         assert all(list(row) == gold_field.table.column_names for row in data["rows"])
+        assert [_without_coordinates(row) for row in data["rows"]] == [
+            _without_coordinates(row) for row in gold_field.table.to_pylist()
+        ]
         assert data["metadata"] == {
             "agent": {"name": "test", "type": "software", "identifier": "manual"},
             "certainty": 1.0,
         }
+        claims = _round_trip_claims([None, None, None])
+        field = MatchClaimField.from_claims(claims)
+        rows = field.to_dict()["rows"]
+        assert [_without_coordinates(row) for row in rows] == [
+            _without_coordinates(row) for row in field.table.to_pylist()
+        ]
+        for index, row in enumerate(rows):
+            claim = field[index].to_dict()
+            assert row["start_anchor"] == claim["start_anchor"]
+            assert row["end_anchor"] == claim["end_anchor"]
+        assert rows[0]["end_anchor"] is not None
+
+    def test_to_dict_literal(self) -> None:
+        field = _two_claim_field()
+        assert field.to_dict() == {
+            "metadata": None,
+            "rows": [
+                _literal_row(
+                    "claim_1",
+                    ("score", "quarters", "fraction", [1, 3]),
+                    ("audio", "seconds", "float", 0.5),
+                ),
+                _literal_row(
+                    "claim_2",
+                    ("midi", "ticks", "int", 96),
+                    ("pcm", "samples", "int", 44100),
+                ),
+            ],
+        }
+        rebuilt = MatchClaimField.from_dict(field.to_dict())
+        assert rebuilt.to_claims() == field.to_claims()
+        assert rebuilt.table.equals(field.table, check_metadata=True)
+
+    def test_from_dict_reads_an_edited_value(self) -> None:
+        data = _two_claim_field().to_dict()
+        anchor = data["rows"][0]["start_anchor"]
+        anchor["coordinate_a"]["value"] = [2, 3]
+        anchor["coordinate_b"]["value"] = 0.75
+        claim = MatchClaimField.from_dict(data)[0]
+        assert claim.start_anchor.coordinate_a == Coordinate(
+            Fraction(2, 3), TimeUnit.quarters
+        )
+        assert claim.start_anchor.coordinate_b == Coordinate(0.75, TimeUnit.seconds)
 
     def test_roundtrip_from_dict_keeps_every_row_value(self) -> None:
         human = MatchMetadata(
@@ -678,9 +724,8 @@ class TestDictRoundTrip:
         with pytest.raises(
             ValueError,
             match=re.escape(
-                f"A MatchClaimField dictionary row holds one key per MatchClaim "
-                f"property, {columns}; row 1 lacks ['event_a_id'] and has the "
-                f"unknown keys []."
+                f"In a MatchClaimField dictionary, row 1 must hold the keys "
+                f"{columns}; it lacks ['event_a_id'] and has the unknown keys []."
             ),
         ):
             MatchClaimField.from_dict(data | {"rows": [data["rows"][0], lacking]})
@@ -688,34 +733,78 @@ class TestDictRoundTrip:
         with pytest.raises(
             ValueError,
             match=re.escape(
-                f"A MatchClaimField dictionary row holds one key per MatchClaim "
-                f"property, {columns}; row 0 lacks [] and has the unknown keys "
-                f"['coordinate_a']."
+                f"In a MatchClaimField dictionary, row 0 must hold the keys "
+                f"{columns}; it lacks [] and has the unknown keys ['coordinate_a']."
             ),
         ):
             MatchClaimField.from_dict(data | {"rows": [extra]})
 
+    @pytest.mark.parametrize(
+        ("path", "edit", "message"),
+        [
+            (
+                ("start_anchor", "coordinate_a"),
+                lambda mapping: mapping.pop("value"),
+                "row 0 start_anchor.coordinate_a must hold the keys "
+                "['unit', 'number_type', 'value']; it lacks ['value'] and has the "
+                "unknown keys [].",
+            ),
+            (
+                ("start_anchor", "coordinate_b"),
+                lambda mapping: mapping.update(extra=1),
+                "row 0 start_anchor.coordinate_b must hold the keys "
+                "['unit', 'number_type', 'value']; it lacks [] and has the "
+                "unknown keys ['extra'].",
+            ),
+            (
+                ("start_anchor",),
+                lambda mapping: mapping.update(unit="seconds"),
+                "row 0 start_anchor must hold the keys ['timeline_a_id', "
+                "'coordinate_a', 'timeline_b_id', 'coordinate_b']; it lacks [] "
+                "and has the unknown keys ['unit'].",
+            ),
+            (
+                ("metadata",),
+                lambda mapping: mapping.pop("certainty"),
+                "row 0 metadata must hold the keys ['agent', 'certainty']; it "
+                "lacks ['certainty'] and has the unknown keys [].",
+            ),
+        ],
+    )
+    def test_from_dict_refuses_other_nested_keys(
+        self,
+        path: tuple[str, ...],
+        edit: object,
+        message: str,
+    ) -> None:
+        human = MatchMetadata(
+            agent=Agent(name="ann", type=AgentType.human, identifier="ann"),
+            certainty=0.5,
+        )
+        field = MatchClaimField.from_claims(_round_trip_claims([human, None, None]))
+        data = field.to_dict()
+        mapping = data["rows"][0]
+        for key in path:
+            mapping = mapping[key]
+        edit(mapping)  # type: ignore[operator]
+        with pytest.raises(
+            ValueError,
+            match=re.escape(f"In a MatchClaimField dictionary, {message}"),
+        ):
+            MatchClaimField.from_dict(data)
 
-#: The projection of :func:`_round_trip_claims` as its ``to_dict`` row: int
-#: cells on ``ticks`` / ``samples`` carry denominator 1, the given id stays.
+
+#: The projection of :func:`_round_trip_claims` as its ``to_dict`` row: the
+#: ``ticks`` / ``samples`` coordinates as int coordinate dicts, the given id
+#: kept.
 _PROJECTION_ROW = {
     "timeline_a_id": "midi",
     "timeline_b_id": "pcm",
     "start_anchor": {
         "timeline_a_id": "midi",
-        "coordinate_a": {
-            "value": 96.0,
-            "numerator": 96,
-            "denominator": 1,
-            "unit": "ticks",
-        },
+        "coordinate_a": {"unit": "ticks", "number_type": "int", "value": 96},
         "timeline_b_id": "pcm",
-        "coordinate_b": {
-            "value": 44100.0,
-            "numerator": 44100,
-            "denominator": 1,
-            "unit": "samples",
-        },
+        "coordinate_b": {"unit": "samples", "number_type": "int", "value": 44100},
     },
     "end_anchor": None,
     "is_synchronous": True,
@@ -733,6 +822,88 @@ _PROJECTION_ROW = {
     "id": "midi 96",
     "id_minted": False,
 }
+
+
+#: The coordinate cells of a ``MatchClaimField`` row, as key paths.
+_COORDINATE_PATHS = (
+    ("start_anchor", "coordinate_a"),
+    ("start_anchor", "coordinate_b"),
+    ("end_anchor", "coordinate_a"),
+    ("end_anchor", "coordinate_b"),
+    ("source_coordinate",),
+)
+
+
+def _without_coordinates(row: dict) -> dict:
+    """*row* with every coordinate cell set to ``None`` (a deep copy)."""
+    row = copy.deepcopy(row)
+    for path in _COORDINATE_PATHS:
+        holder = row
+        for key in path[:-1]:
+            holder = holder[key]
+            if holder is None:
+                break
+        else:
+            holder[path[-1]] = None
+    return row
+
+
+def _two_claim_field() -> MatchClaimField:
+    """``score`` 1/3 quarters ↔ ``audio`` 0.5 s; ``midi`` 96 ticks ↔ ``pcm`` 44100 samples."""
+    pairs = [
+        (
+            ("score", Coordinate(Fraction(1, 3), TimeUnit.quarters)),
+            ("audio", Coordinate(0.5, TimeUnit.seconds)),
+        ),
+        (
+            ("midi", Coordinate(96, TimeUnit.ticks)),
+            ("pcm", Coordinate(44100, TimeUnit.samples)),
+        ),
+    ]
+    return MatchClaimField.from_claims(
+        [
+            MatchClaim(
+                timeline_a_id=a_id,
+                timeline_b_id=b_id,
+                start_anchor=AlignmentAnchor(
+                    timeline_a_id=a_id,
+                    coordinate_a=a,
+                    timeline_b_id=b_id,
+                    coordinate_b=b,
+                ),
+            )
+            for (a_id, a), (b_id, b) in pairs
+        ]
+    )
+
+
+def _literal_row(claim_id: str, a: tuple, b: tuple) -> dict:
+    """The ``to_dict`` row of an anonymous instant claim between *a* and *b*.
+
+    *a* and *b* are ``(timeline id, unit, number type, value)``.
+    """
+    return {
+        "timeline_a_id": a[0],
+        "timeline_b_id": b[0],
+        "start_anchor": {
+            "timeline_a_id": a[0],
+            "coordinate_a": {"unit": a[1], "number_type": a[2], "value": a[3]},
+            "timeline_b_id": b[0],
+            "coordinate_b": {"unit": b[1], "number_type": b[2], "value": b[3]},
+        },
+        "end_anchor": None,
+        "is_synchronous": True,
+        "is_explicit": True,
+        "metadata": None,
+        "source_claim_id": None,
+        "event_a_id": None,
+        "event_a_name": None,
+        "event_b_id": None,
+        "event_b_name": None,
+        "source_coordinate": None,
+        "id": claim_id,
+        "id_minted": True,
+    }
 
 
 def _round_trip_claims(metadata: list[MatchMetadata | None]) -> list[MatchClaim]:

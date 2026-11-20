@@ -953,30 +953,55 @@ bundle (a field's own claims) and on the claims a bundle hands out
 
 ### Dictionary round trip
 
-`to_dict()` is a rendering of the table, not a second layout:
-`{"metadata": <MatchMetadata.to_dict() or None>, "rows": [...]}` with one
-mapping per claim whose keys are the table's columns, in their order, and
-whose values are the table's cells as they are stored (a nested property is a
-nested mapping, an anchor coordinate the stored
-`{value, numerator, denominator, unit}` cell). So `to_dict()["rows"]` equals
-`field.table.to_pylist()` — the key list cannot drift from the table because
-it is not written down a second time. Proved on the mixed-metadata
-`from_claims` field of the three round-trip claims, where each per-row column
-holds a distinct non-null value somewhere: one whole row is asserted literally
-(the projection: given id `midi 96`, int `ticks`/`samples` cells with
-denominator 1, its own metadata), `from_dict(to_dict())` has a table equal to
-the original's, schema metadata included, and its claims equal the original
-claims. The bulk gold vector is checked too (`from_columns` rows carry minted
-ids, the field's metadata under `metadata`).
+`to_dict()` is the table in the one JSON form of the project, not a second
+layout: `{"metadata": <MatchMetadata.to_dict() or None>, "rows": [...]}` with
+one mapping per claim whose keys are the table's columns, in their order.
+Every cell is the table's cell as stored (a nested property a nested mapping)
+except the coordinate cells (both anchors' `coordinate_a` / `coordinate_b`,
+`source_coordinate`), which are coordinate dicts `{unit, number_type, value}`,
+a Fraction value as `[numerator, denominator]` — the form
+`MatchClaim.to_dict()` writes. The storage cell `{value, numerator,
+denominator, unit}` holds one number twice, so writing it out would let a
+reader edit one side and have the other win; the coordinate dict states it
+once. What proves the form is not a third one:
 
-The dictionary is what is written as YAML next to a manifest, a readable
-stand-in for the Parquet file, so its values must be plain YAML/JSON values
-(strings, ints, floats, bools, `None`, mappings, lists). This is proved by
-the YAML round trip itself: `timetoshare.loads(timetoshare.dumps(d, "yaml"))`
-equals `d`, and `from_dict` of the loaded mapping gives claims equal to the
-original claims. `from_dict` refuses a row whose keys are not exactly the
-table's columns (a missing key and an unknown key, each named), since Arrow
-would otherwise fill a missing key with null or drop an unknown one silently.
+- **The literal dictionary.** A two-claim field — `score` quarters `1/3` ↔
+  `audio` seconds `0.5`, and `midi` ticks `96` ↔ `pcm` samples `44100` — is
+  asserted as a whole literal (`test_to_dict_literal`): the coordinate cells
+  read `{"unit": "quarters", "number_type": "fraction", "value": [1, 3]}`,
+  `{"unit": "seconds", "number_type": "float", "value": 0.5}` and the two
+  `int` cells; nothing in the dictionary holds `numerator`/`denominator`.
+- **The same values as the claim.** For every row of the mixed-metadata
+  `from_claims` field of the three round-trip claims, each anchor of the row
+  equals the anchor of `field[i].to_dict()` — the dictionary row and the
+  claim's own dictionary cannot disagree about a position. The cells that are
+  not coordinates still equal `field.table.to_pylist()`'s, so the key list and
+  every other value come from the table, not from a list written down twice.
+  One whole row is asserted literally (the projection: given id `midi 96`,
+  int `ticks`/`samples` coordinate dicts, its own metadata).
+- **Round trip.** `from_dict(to_dict())` gives claims equal to the original
+  claims, claim by claim, and a table equal to the original's, schema metadata
+  included: a coordinate read back is written into the storage struct by the
+  builder `from_claims` uses, so a field built from claims comes back cell for
+  cell. The bulk gold vector (`from_columns`, unit `number`, floats) is
+  checked the same way. The dictionary is what is written as YAML next to a
+  manifest, a readable stand-in for the Parquet file, so its values must be
+  plain YAML/JSON values: `timetoshare.loads(timetoshare.dumps(d, "yaml"))`
+  equals `d`, and `from_dict` of the loaded mapping gives the original claims.
+- **An edit is read.** Changing an exact cell's `value` from `[1, 3]` to
+  `[2, 3]` reads the claim at `2/3` quarters, and changing a float cell's
+  `0.5` to `0.75` reads `0.75` seconds — the defect being closed is an edited
+  `value` silently ignored because a stored ratio won.
+
+`from_dict` refuses a mapping whose keys are not exactly those it must hold,
+at every depth: a row (the table's columns), an anchor (the anchor struct's
+fields), the metadata and its agent, and a coordinate dict
+(`unit`, `number_type`, `value`). A missing and an unknown key are each named
+with the path of the mapping (`row 0 start_anchor.coordinate_a`), since Arrow
+would otherwise fill a missing key with null or drop an unknown one silently
+(`test_from_dict_refuses_other_keys`: a row lacking `event_a_id`, a row with
+an extra top-level key, a coordinate lacking `value`, a coordinate with an
+extra key, an anchor with an extra key, a row metadata lacking `certainty`).
 Both readers go through one check after that, so `from_dict` also refuses a
 non-synchronous row with `from_claims`'s message
 (`test_from_dict_refuses_non_synchronous_row`, row 2).
@@ -1084,10 +1109,12 @@ the metadata shape and the field's internal column layout changed.
 | `test_iter` | iteration yields 3 synchronous-instant claims |
 | `test_roundtrip_from_claims` | `from_claims(f.to_claims())` materialises `f.to_claims()` again, and its table equals `f.table` (ids `claim_1`–`claim_3` included) |
 | `test_roundtrip_from_dict` | `from_dict(f.to_dict()).table` equals `f.table`; metadata preserved |
-| `test_to_dict_renders_the_table` | `to_dict()["rows"] == f.table.to_pylist()`, the keys of every row the table's columns |
+| `test_to_dict_renders_the_table` | every row's keys are the table's columns; its cells other than coordinates equal `f.table.to_pylist()`'s, its anchors equal `f[i].to_dict()`'s |
+| `test_to_dict_literal` | the two-claim field's whole dictionary, coordinates as coordinate dicts, as specified under "Dictionary round trip" |
+| `test_from_dict_reads_an_edited_value` | an edited exact `value` (`[2, 3]`) and an edited float `value` (`0.75`) are read as given |
 | `test_roundtrip_from_dict_keeps_every_row_value` | the mixed-metadata `from_claims` field, as specified under "Dictionary round trip" |
 | `test_yaml_round_trip` | the dictionary through `timetoshare.dumps(..., "yaml")` / `loads` is equal, and reads back to the original claims |
-| `test_from_dict_refuses_other_keys` | a row lacking `event_a_id` and a row with an extra key are refused, the keys named |
+| `test_from_dict_refuses_other_keys` | a missing or unknown key is refused at every depth (row, anchor, coordinate, metadata), the keys and the path named |
 | `test_getitem_injects_metadata` | a materialised claim carries the field-level metadata (struct row is null there) |
 | `test_from_claims_rejects_nomatch` | a `MatchClaim.nomatch(...)` raises `ValueError` |
 | `test_from_claims_preserves_interval` | an interval claim keeps its end anchor: both timelines' intervals equal the claim's |

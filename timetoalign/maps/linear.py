@@ -8,18 +8,20 @@ This module provides maps that perform affine transformations:
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from fractions import Fraction
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from numpy.typing import NDArray
 
-from ..core.enums import TimeUnit
+from ..core.enums import NumberType, TimeUnit
 from ..core.time import (
+    Coordinate,
     CoordinateValue,
-    rational_to_wire,
-    wire_to_rational,
+    number_from_json,
+    number_to_json,
 )
-from .base import ConversionMap
+from .base import CalibrationPair, ConversionMap, MeasureMapIds, _check_calibration
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -32,6 +34,21 @@ def _reciprocal(value: CoordinateValue) -> CoordinateValue:
     return 1 / value
 
 
+def _linear_form(
+    cmap: ConversionMap[Any],
+    scalar: CoordinateValue,
+    offset: CoordinateValue,
+    *,
+    minimal: bool,
+) -> dict[str, Any]:
+    """Write *cmap* as the format's ``LinearMap`` of *scalar* and *offset*."""
+    return cmap._map_object(
+        "LinearMap",
+        {"scalar": number_to_json(scalar), "offset": number_to_json(offset)},
+        minimal=minimal,
+    )
+
+
 # region LinearMap
 
 
@@ -40,9 +57,12 @@ class LinearMap(ConversionMap[CoordinateValue]):
 
     This is the most general linear map, combining scaling and offset.
 
+    The format's ``LinearMap`` type, which every affine map of the library
+    is written as.
+
     Attributes:
-        scalar: The multiplicative factor (default 1.0).
-        offset: The additive offset (default 0.0).
+        scalar: The multiplicative factor (default 1).
+        offset: The additive offset (default 0).
 
     Examples:
         >>> # Convert ticks to quarters: y = x / 480
@@ -63,15 +83,108 @@ class LinearMap(ConversionMap[CoordinateValue]):
         100.0
     """
 
+    _id_prefix: ClassVar[str] = "lmap"
+    _manifest_type: ClassVar[str | None] = "LinearMap"
+
+    @classmethod
+    def from_pairs(
+        cls,
+        pairs: Sequence[CalibrationPair],
+        *,
+        source_unit: TimeUnit | str | None,
+        value_unit: TimeUnit | str | None = None,
+        origin: CoordinateValue | Coordinate = 0,
+    ) -> Self:
+        """Build the line through the first and the last pair by position.
+
+        The positions are read from *origin* (``position - origin``). The
+        scalar is the values' difference over the positions' difference, the
+        offset what is left at the first position, both in the numbers' own
+        arithmetic: exact pairs give an exact map, which writes its results
+        as fractions where the value unit admits them, and pairs holding a
+        float give a float map, which writes floats.
+
+        Every inner pair is checked against the line through the end pairs,
+        evaluated exactly on the positions as given, before *origin* is
+        subtracted: the position at which the line reaches the pair's value
+        must be its position, exactly for an exact calibration and within
+        the error of a position computed in doubles otherwise (see
+        :meth:`ConversionMap.from_pairs`). The line is never fitted.
+
+        Args:
+            pairs: ``(position, value)`` pairs, in any order: positions as
+                numbers or coordinates, values as coordinates carrying the
+                one unit they share or as numbers in *value_unit*.
+            source_unit: The unit of the positions.
+            value_unit: The unit of the values, the map's target unit. Needed
+                when a value is a number; a coordinate value must be in it.
+            origin: Where the source axis starts, in the coordinates of the
+                positions.
+
+        Returns:
+            The map through the pairs.
+
+        Raises:
+            TypeError: If a value is a number and no *value_unit* is given.
+            ValueError: If there are fewer than two pairs, two pairs share a
+                position, a coordinate is in another unit than its axis, the
+                end pairs read one value, or an inner pair lies off the line.
+
+        Examples:
+            >>> m = LinearMap.from_pairs(
+            ...     [(0, 1), (3, 2), (6, 3)], source_unit="points", value_unit="quarters"
+            ... )
+            >>> m.scalar, m.offset
+            (Fraction(1, 3), Fraction(1, 1))
+            >>> m(1)
+            Fraction(4, 3)
+        """
+        calibration = cls._calibration_points(pairs, source_unit, value_unit, origin)
+        points = calibration.points
+        _, first_position, first_value = points[0]
+        _, last_position, last_value = points[-1]
+        first_read = first_position - calibration.origin
+        rise = last_value - first_value
+        run = (last_position - calibration.origin) - first_read
+        if isinstance(rise, (int, Fraction)) and isinstance(run, (int, Fraction)):
+            scalar = Fraction(rise) / run
+        else:
+            scalar = rise / run
+        number_type = NumberType.fraction if calibration.exact else NumberType.float
+        cmap = cls(
+            scalar=scalar,
+            offset=first_value - scalar * first_read,
+            source_unit=source_unit,
+            target_unit=calibration.value_unit,
+            output_number_type=(
+                number_type
+                if number_type in calibration.value_unit.allowed_number_types
+                else None
+            ),
+        )
+        # The line's exact inverse, through the end pairs as given.
+        position_0, value_0 = Fraction(first_position), Fraction(first_value)
+        per_value = (Fraction(last_position) - position_0) / (
+            Fraction(last_value) - value_0
+        )
+        _check_calibration(
+            calibration,
+            points[1:-1],
+            lambda value: position_0 + (Fraction(value) - value_0) * per_value,
+            "line through the first and last pair",
+        )
+        return cmap
+
     def __init__(
         self,
         *,
-        scalar: CoordinateValue = 1.0,
+        scalar: CoordinateValue = 1,
         offset: CoordinateValue = 0,
         source_unit: TimeUnit | str | None = None,
         target_unit: TimeUnit | str | None = None,
         uid: str | None = None,
         name: str | None = None,
+        output_number_type: NumberType | str | None = None,
     ) -> None:
         """Initialize a LinearMap.
 
@@ -83,20 +196,27 @@ class LinearMap(ConversionMap[CoordinateValue]):
             uid: Optional explicit ID.
             name: Human-readable name for this map. Used as field header in
                 timestamp tables. Defaults to "source_to_target".
+            output_number_type: The representation results are written in,
+                among those the target unit admits; ``None`` for the target
+                unit's default.
 
         Raises:
-            ValueError: If scalar is zero (map would not be invertible).
+            ValueError: If scalar is zero (map would not be invertible), or
+                if *output_number_type* is ``fraction`` and the scalar or
+                the offset is a float.
         """
+        if scalar == 0:
+            raise ValueError("LinearMap scalar cannot be zero (not invertible)")
+        # Set first: whether the map computes in doubles depends on them.
+        self._scalar = scalar
+        self._offset = offset
         super().__init__(
             source_unit=source_unit,
             target_unit=target_unit,
             uid=uid,
             name=name,
+            output_number_type=output_number_type,
         )
-        if scalar == 0:
-            raise ValueError("LinearMap scalar cannot be zero (not invertible)")
-        self._scalar = scalar
-        self._offset = offset
 
     @property
     def scalar(self) -> CoordinateValue:
@@ -112,6 +232,9 @@ class LinearMap(ConversionMap[CoordinateValue]):
     def is_identity(self) -> bool:
         """Whether this map is the identity transformation."""
         return self._scalar == 1 and self._offset == 0
+
+    def _parameters(self) -> tuple[CoordinateValue, ...]:
+        return (self._scalar, self._offset)
 
     def _convert_scalar(self, value: CoordinateValue, **kwargs: Any) -> CoordinateValue:
         """Apply the linear transformation: y = ax + b."""
@@ -131,6 +254,7 @@ class LinearMap(ConversionMap[CoordinateValue]):
             offset=inv_offset,
             source_unit=self._target_unit,
             target_unit=self._source_unit,
+            output_number_type=self._inverse_output_number_type(),
         )
 
     def compose_with(self, other: LinearMap) -> LinearMap:
@@ -152,21 +276,21 @@ class LinearMap(ConversionMap[CoordinateValue]):
             offset=new_offset,
             source_unit=self._source_unit,
             target_unit=other._target_unit,
+            output_number_type=other._given_output_number_type,
         )
 
-    def to_dict(self) -> dict[str, Any]:
-        """Serialize to dictionary."""
-        d = super().to_dict()
-        d["scalar"] = rational_to_wire(self._scalar)
-        d["offset"] = rational_to_wire(self._offset)
-        return d
+    def _to_manifest(self, *, minimal: bool, entries: MeasureMapIds) -> dict[str, Any]:
+        """Write the ``LinearMap`` with this map's scalar and offset."""
+        return _linear_form(self, self._scalar, self._offset, minimal=minimal)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> LinearMap:
-        """Deserialize from dictionary."""
+    def _from_manifest(
+        cls, data: dict[str, Any], measure_maps: Mapping[str, Any]
+    ) -> LinearMap:
+        """Read a ``LinearMap`` from its complete form."""
         return cls(
-            scalar=wire_to_rational(data["scalar"]) if "scalar" in data else 1.0,
-            offset=wire_to_rational(data["offset"]) if "offset" in data else 0,
+            scalar=number_from_json(data["scalar"]),
+            offset=number_from_json(data["offset"]),
             source_unit=data.get("source_unit"),
             target_unit=data.get("target_unit"),
             uid=data.get("id"),
@@ -209,12 +333,13 @@ class ScalarMap(ConversionMap[CoordinateValue]):
 
     def __init__(
         self,
-        scalar: CoordinateValue = 1.0,
+        scalar: CoordinateValue = 1,
         *,
         source_unit: TimeUnit | str | None = None,
         target_unit: TimeUnit | str | None = None,
         uid: str | None = None,
         name: str | None = None,
+        output_number_type: NumberType | str | None = None,
     ) -> None:
         """Initialize a ScalarMap.
 
@@ -226,24 +351,33 @@ class ScalarMap(ConversionMap[CoordinateValue]):
             name: Human-readable name for this map. Used as field header in
                 timestamp tables. Defaults to "source_to_target" (e.g.,
                 "pixels_to_inches").
+            output_number_type: The representation results are written in,
+                among those the target unit admits; ``None`` for the target
+                unit's default.
 
         Raises:
-            ValueError: If scalar is zero.
+            ValueError: If scalar is zero, or if *output_number_type* is
+                ``fraction`` and the scalar is a float.
         """
+        if scalar == 0:
+            raise ValueError("ScalarMap scalar cannot be zero")
+        # Set first: whether the map computes in doubles depends on it.
+        self._scalar = scalar
         super().__init__(
             source_unit=source_unit,
             target_unit=target_unit,
             uid=uid,
             name=name,
+            output_number_type=output_number_type,
         )
-        if scalar == 0:
-            raise ValueError("ScalarMap scalar cannot be zero")
-        self._scalar = scalar
 
     @property
     def scalar(self) -> CoordinateValue:
         """The multiplicative factor."""
         return self._scalar
+
+    def _parameters(self) -> tuple[CoordinateValue, ...]:
+        return (self._scalar,)
 
     def _convert_scalar(self, value: CoordinateValue, **kwargs: Any) -> CoordinateValue:
         """Apply the scaling: y = ax."""
@@ -259,24 +393,12 @@ class ScalarMap(ConversionMap[CoordinateValue]):
             scalar=_reciprocal(self._scalar),
             source_unit=self._target_unit,
             target_unit=self._source_unit,
+            output_number_type=self._inverse_output_number_type(),
         )
 
-    def to_dict(self) -> dict[str, Any]:
-        """Serialize to dictionary."""
-        d = super().to_dict()
-        d["scalar"] = rational_to_wire(self._scalar)
-        return d
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> ScalarMap:
-        """Deserialize from dictionary."""
-        return cls(
-            scalar=wire_to_rational(data["scalar"]) if "scalar" in data else 1.0,
-            source_unit=data.get("source_unit"),
-            target_unit=data.get("target_unit"),
-            uid=data.get("id"),
-            name=data.get("name"),
-        )
+    def _to_manifest(self, *, minimal: bool, entries: MeasureMapIds) -> dict[str, Any]:
+        """Write the ``LinearMap`` with this map's scalar and offset 0."""
+        return _linear_form(self, self._scalar, 0, minimal=minimal)
 
     def __repr__(self) -> str:
         parts = [f"scalar={self._scalar!r}"]
@@ -317,6 +439,7 @@ class ShiftMap(ConversionMap[CoordinateValue]):
         target_unit: TimeUnit | str | None = None,
         uid: str | None = None,
         name: str | None = None,
+        output_number_type: NumberType | str | None = None,
     ) -> None:
         """Initialize a ShiftMap.
 
@@ -327,14 +450,23 @@ class ShiftMap(ConversionMap[CoordinateValue]):
             uid: Optional explicit ID.
             name: Human-readable name for this map. Used as field header in
                 timestamp tables. Defaults to "source_to_target".
+            output_number_type: The representation results are written in,
+                among those the target unit admits; ``None`` for the target
+                unit's default.
+
+        Raises:
+            ValueError: If *output_number_type* is ``fraction`` and the
+                offset is a float.
         """
+        # Set first: whether the map computes in doubles depends on it.
+        self._offset = offset
         super().__init__(
             source_unit=source_unit,
             target_unit=target_unit,
             uid=uid,
             name=name,
+            output_number_type=output_number_type,
         )
-        self._offset = offset
 
     @property
     def offset(self) -> CoordinateValue:
@@ -345,6 +477,9 @@ class ShiftMap(ConversionMap[CoordinateValue]):
     def is_identity(self) -> bool:
         """Whether this map is the identity transformation."""
         return self._offset == 0
+
+    def _parameters(self) -> tuple[CoordinateValue, ...]:
+        return (self._offset,)
 
     def _convert_scalar(self, value: CoordinateValue, **kwargs: Any) -> CoordinateValue:
         """Apply the shift: y = x + b."""
@@ -360,24 +495,12 @@ class ShiftMap(ConversionMap[CoordinateValue]):
             offset=-self._offset,
             source_unit=self._target_unit,
             target_unit=self._source_unit,
+            output_number_type=self._inverse_output_number_type(),
         )
 
-    def to_dict(self) -> dict[str, Any]:
-        """Serialize to dictionary."""
-        d = super().to_dict()
-        d["offset"] = rational_to_wire(self._offset)
-        return d
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> ShiftMap:
-        """Deserialize from dictionary."""
-        return cls(
-            offset=wire_to_rational(data["offset"]) if "offset" in data else 0,
-            source_unit=data.get("source_unit"),
-            target_unit=data.get("target_unit"),
-            uid=data.get("id"),
-            name=data.get("name"),
-        )
+    def _to_manifest(self, *, minimal: bool, entries: MeasureMapIds) -> dict[str, Any]:
+        """Write the ``LinearMap`` with scalar 1 and this map's offset."""
+        return _linear_form(self, 1, self._offset, minimal=minimal)
 
     def __repr__(self) -> str:
         parts = [f"offset={self._offset!r}"]

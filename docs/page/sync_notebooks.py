@@ -268,6 +268,9 @@ def sync_one(
 
         with open(target_path, "w", encoding="utf-8") as f:
             json.dump(nb, f, indent=1, ensure_ascii=False)
+            # Committed files end with a newline; without this every sync
+            # leaves the published notebook needing a fixup before commit.
+            f.write("\n")
 
     return target_path
 

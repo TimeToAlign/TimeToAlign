@@ -290,6 +290,22 @@ def _format_coordinate(value: float) -> str:
     return f"{value:.1f}"
 
 
+UNKNOWN_END_LABEL = "?"
+
+
+def _display_extent(timeline: "Timeline") -> tuple[float, str]:
+    """Return the extent a display scales a timeline to, and its end label.
+
+    A known length is both the extent and the label. A timeline of unknown
+    length is drawn to its reach (the farthest coordinate its content
+    reaches) and labelled as unknown, never as 0.
+    """
+    if timeline.length is not None:
+        length = float(timeline.length.value)
+        return length, _format_coordinate(length)
+    return float(timeline.reach.value), UNKNOWN_END_LABEL
+
+
 def _elide_name(name: str, max_width: int) -> str:
     """Elide a name if it exceeds max width.
 
@@ -363,12 +379,14 @@ def _build_child_row(
     tree_chars: dict[str, str],
     n_events: int = 0,
     ancestor_is_last: tuple[bool, ...] = (),
+    exit_label: str | None = None,
 ) -> str:
     """Build a single child row with positioned bar.
 
     Args:
         child_offset: Where child starts on the root scale.
-        child_length: Length of the child.
+        child_length: Displayed extent of the child (its length, or its
+            reach when the length is unknown).
         child_name: Display name for the child.
         child_char: Timeline character for child's type.
         parent_length: Total length of the root timeline.
@@ -379,6 +397,7 @@ def _build_child_row(
         tree_chars: Tree drawing character set.
         n_events: Number of events in the child timeline.
         ancestor_is_last: Whether each ancestor is last among its siblings.
+        exit_label: Label at the child's end; defaults to its end coordinate.
 
     Returns:
         Formatted row string.
@@ -402,8 +421,8 @@ def _build_child_row(
         start_pos = int((child_offset / parent_length) * bar_width)
         end_pos = int(((child_offset + child_length) / parent_length) * bar_width)
     else:
-        start_pos = 0
-        end_pos = bar_width
+        # Everything on a zero extent sits at its origin.
+        start_pos = end_pos = 0
 
     bar_len = max(1, end_pos - start_pos)
 
@@ -415,7 +434,11 @@ def _build_child_row(
 
     # Format coordinates
     entry_coord = _format_coordinate(child_offset)
-    exit_coord = _format_coordinate(child_offset + child_length)
+    exit_coord = (
+        _format_coordinate(child_offset + child_length)
+        if exit_label is None
+        else exit_label
+    )
 
     # Append event count after exit coordinate
     events_suffix = f" ({n_events} events)" if n_events > 0 else ""
@@ -480,9 +503,11 @@ def _append_child_rows(
         is_last: bool,
     ) -> None:
         absolute_offset = root_offset + local_offset
+        extent = child._extent
         row = _build_child_row(
             child_offset=absolute_offset,
-            child_length=float(child.length.value),
+            child_length=float(child.reach.value if extent is None else extent),
+            exit_label=(None if child.length is not None else UNKNOWN_END_LABEL),
             child_name=child.name,
             child_char=_get_timeline_char(child, use_unicode),
             parent_length=root_length,
@@ -620,8 +645,8 @@ def _build_region_row(
         start_pos = int((region_start / parent_length) * bar_width)
         end_pos = int((region_end / parent_length) * bar_width)
     else:
-        start_pos = 0
-        end_pos = bar_width
+        # Everything on a zero extent sits at its origin.
+        start_pos = end_pos = 0
 
     bar_len = max(1, end_pos - start_pos)
 
@@ -769,7 +794,7 @@ def timeline_diagram(
 
     Examples:
         >>> print(timeline_diagram(my_timeline))
-        DiscreteGraphicalTimeline[dgt1:1] (11 events, 5 children)
+        DiscreteGraphicalTimeline[dgt_1:1] (11 events, 5 children)
         0 ∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶ 4835 pixels
           ├─ system_1     0   ∶∶∶∶∶∶∶                        967
           ├─ system_2   967          ∶∶∶∶∶∶∶∶               1934
@@ -829,8 +854,7 @@ def timeline_diagram(
     lines.append(prefix + header)
 
     # 2. Calculate dimensions
-    length_value = float(timeline.length.value)
-    end_label = _format_coordinate(length_value)
+    length_value, end_label = _display_extent(timeline)
     unit_label = str(timeline.unit)
 
     # Coordinate width based on largest coordinate
@@ -897,7 +921,11 @@ def timeline_diagram(
         region_info: list[tuple[float, float, str]] = []
         for region in timeline.iter_regions():
             region_info.append(
-                (float(region.start.value), float(region.end.value), region.name)
+                (
+                    float(region.start.value),
+                    float(region.end.value),
+                    region.id if region.name is None else region.name,
+                )
             )
         region_info.sort(key=lambda x: x[0])
 
@@ -960,9 +988,9 @@ def group_diagram(
 
     Examples:
         >>> print(group_diagram(my_group))
-        TimelineGroup[my_group] (2 timelines, 2 timestamps)
+        TimelineGroup[my_group] (2 timelines)
         ┌────────────────────────────────────────────────────────────┐
-        │ DiscreteGraphicalTimeline[dgt1:1] (11 events, 5 children)  │
+        │ DiscreteGraphicalTimeline[dgt_1:1] (11 events, 5 children)  │
         │ 0 ∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶ 4835 pixels    │
         │   ├─ system_1     0   ∶∶∶∶∶∶∶                    967       │
         │   └─ ...                                                   │
@@ -970,17 +998,13 @@ def group_diagram(
         │ ContinuousPhysicalTimeline[audio:1] (0 events)             │
         │ 0 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 150.0 seconds  │
         └────────────────────────────────────────────────────────────┘
-        Timestamps: 2
     """
     box = BOX_CHARS if unicode else BOX_CHARS_ASCII
 
     lines: list[str] = []
 
     # Header
-    lines.append(
-        f"TimelineGroup[{group.id}] "
-        f"({group.n_timelines} timelines, {group.n_timestamps} timestamps)"
-    )
+    lines.append(f"TimelineGroup[{group.id}] ({group.n_timelines} timelines)")
 
     # Collect content lines for all timelines
     content_lines: list[str] = []
@@ -1024,9 +1048,6 @@ def group_diagram(
     lines.append(
         box["bottom_left"] + box["horizontal"] * (box_width - 2) + box["bottom_right"]
     )
-
-    # Footer
-    lines.append(f"Timestamps: {group.n_timestamps}")
 
     return Diagram("\n".join(lines))
 
@@ -1072,12 +1093,11 @@ def bundle_diagram(
         >>> print(bundle_diagram(my_bundle))
         AlignmentBundle[thoresen_alignment]
 
-          TimelineGroup[dgt1_group] (2 timelines, 2 timestamps)
+          TimelineGroup[dgt1_group] (2 timelines)
           ┌──────────────────────────────────────────────────────┐
-          │ DiscreteGraphicalTimeline[dgt1:1] (11 events)        │
+          │ DiscreteGraphicalTimeline[dgt_1:1] (11 events)        │
           │ 0 ∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶ 4835 pixels    │
           └──────────────────────────────────────────────────────┘
-          Timestamps: 2
 
           MatchClaims: 5 segment-to-segment
     """
@@ -1101,10 +1121,10 @@ def bundle_diagram(
             lines.append("  " + line)
         lines.append("")
 
-    # Collect standalone timelines (not in any group)
-    standalone_ids = [
-        uid for uid in bundle.timelines if bundle.timeline_to_group.get(uid) is None
-    ]
+    # Collect standalone timelines (not in any group); a timeline of several
+    # groups is rendered under each of them above.
+    grouped = bundle.timeline_to_groups
+    standalone_ids = [uid for uid in bundle.timelines if uid not in grouped]
 
     if standalone_ids:
         standalone_tls = [bundle.timelines[uid] for uid in standalone_ids]
@@ -1131,7 +1151,7 @@ def bundle_diagram(
 
         # Find the maximum length across all standalone timelines
         # (for proportional bar widths)
-        max_length = max(float(tl.length.value) for tl in standalone_tls)
+        max_length = max(_display_extent(tl)[0] for tl in standalone_tls)
         if max_length <= 0:
             max_length = 1.0
 
@@ -1149,8 +1169,7 @@ def bundle_diagram(
         full_bar_width = max(full_bar_width, 10)
 
         def _render_standalone_row(tl: "Timeline") -> str:
-            length = float(tl.length.value)
-            end_label = _format_coordinate(length)
+            length, end_label = _display_extent(tl)
             tl_unit = str(tl.unit)
             line_char = _get_timeline_char(tl, unicode)
 

@@ -2,19 +2,34 @@
 
 from __future__ import annotations
 
+import copy
 from collections.abc import Iterator, Sequence
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, Literal
 
-from timetoalign.core import Coordinate, CoordinateSpec, CoordinateValue, NumberType
+import pyarrow as pa
+import pyarrow.compute as pc
+
+from timetoalign.core import (
+    Coordinate,
+    CoordinateSpec,
+    CoordinateValue,
+    NumberType,
+    TimeUnit,
+)
+from timetoalign.core.ids import mint_id, timeline_id_prefix
 from timetoalign.core.time import (
+    compare_number_column,
     coordinate_numeric_value,
+    number_to_json,
     shift_coordinate,
+    shift_number,
     subtract_coordinates,
 )
 from timetoalign.core.timestamp import ConversionMapsSpec, _format_coordinate_value
-from timetoalign.maps import ConversionMap
+from timetoalign.maps import ConversionMap, LinearMap
 
+from ..manifest import spell
 from ..regions import Region
 from .regions import _resolve_boundary_names
 
@@ -32,26 +47,242 @@ class ChildrenMixin:
         """The class used for children and slices of this timeline."""
         return type(self)
 
-    def is_segment_line(self) -> bool:
-        """Return whether children exactly and contiguously cover this timeline."""
-        if not self._children:
-            return False
-
-        expected_end: CoordinateValue = 0
-        for child_id, child in sorted(
-            self._children.items(),
-            key=lambda item: self._child_offsets[item[0]].value,
-        ):
-            offset = self._child_offsets[child_id].value
-            if offset != expected_end:
-                return False
-            expected_end = offset + child.length.value
-        return expected_end == self._length.value
-
     @property
     def n_children(self) -> int:
         """Number of direct child timelines."""
         return len(self._children)
+
+    def _is_plain_segment(self, child: "Timeline") -> bool:
+        """Whether *child* is a plain segment here: no segment line itself.
+
+        Segments are never locked: the segment line's lock governs them. A
+        segment that is itself a segment line is locked like any child.
+        """
+        return (
+            self._is_segment_line_instance() and not child._is_segment_line_instance()
+        )
+
+    def _kept_lock(self, child: "Timeline") -> bool:
+        """The lock a child read or copied into this timeline keeps.
+
+        Its own, except a plain segment's, which is lifted.
+        """
+        return child.is_locked and not self._is_plain_segment(child)
+
+    def _refuse_segment_lock(self, child: "Timeline") -> None:
+        """Refuse to lock *child* where it is a plain segment of this line.
+
+        Raises:
+            ValueError: If *child* is a plain segment here.
+        """
+        if self._is_plain_segment(child):
+            raise ValueError(
+                f"A segment is never locked: lock its segment line '{self._id}' instead."
+            )
+
+    def _child_extent(self, child_id: str) -> CoordinateValue | None:
+        """Return how far a child extends on its own axis, or None if unbounded.
+
+        A child of known length extends over its length; a child of unknown
+        length is not bounded above.
+        """
+        length = self._children[child_id].length
+        return None if length is None else length.value
+
+    @property
+    def _extent(self) -> CoordinateValue | None:
+        """This timeline's extent on its own axis, or None if unbounded.
+
+        The length where it is known; otherwise what the parent's structure
+        says about this child (a segment ends at its successor's offset).
+        """
+        if self._length is not None:
+            return self._length.value
+        parent = self._parent
+        return None if parent is None else parent._child_extent(self._id)
+
+    @property
+    def _holds_own_end(self) -> bool:
+        """Whether this timeline's end is a position on it.
+
+        It is, unless a sibling of nonzero extent starts exactly there: the
+        shared boundary belongs to the sibling that starts at it
+        (:meth:`_holds_position`). A sibling of zero length takes nothing
+        away, since nothing of it lies beyond the boundary, and a timeline of
+        zero length holds its end, which is also its start. A root holds its
+        end; so does a timeline of unbounded extent, which has none.
+        """
+        parent = self._parent
+        extent = self._extent
+        if parent is None or extent is None or extent == 0:
+            return True
+        end = shift_number(
+            parent._child_offsets[self._id].value, extent, subtract=False
+        )
+        return not any(
+            child_id != self._id
+            and offset.value == end
+            and parent._children[child_id]._extent != 0
+            for child_id, offset in parent._child_offsets.items()
+        )
+
+    def _holds_position(
+        self, value: CoordinateValue, *, end_held: bool | None = None
+    ) -> bool:
+        """Whether a position carried down from a parent lies on this timeline.
+
+        The ONE containment rule for a position carried from a parent onto a
+        child: the timeline's stamps (``_get_child_coordinate``), its tables
+        (:meth:`_holds_column`, the same rule on a column), its
+        :meth:`get_children_at` and a bundle's stamps across a tree all read
+        it. A position carried further down reaches a descendant only if
+        every timeline on the way holds it. The span is ``[0, extent)``,
+        plus the end itself where no sibling starts there
+        (:attr:`_holds_own_end`). One boundary position belongs to one of two
+        adjoining siblings, the one starting at it, so a position is never
+        counted twice across them; and the end of a child nothing follows,
+        such as a section ending before its parent does, stays reachable on
+        that child. A timeline of unbounded extent holds everything from 0
+        on.
+
+        Args:
+            value: A position on this timeline's own axis.
+            end_held: Whether the end is held; by default as
+                :attr:`_holds_own_end` says. A position asked of this timeline
+                itself holds its end whatever its siblings do, so the span is
+                closed, ``[0, extent]``.
+
+        Returns:
+            Whether the position lies on this timeline.
+        """
+        if value < 0:
+            return False
+        extent = self._extent
+        if extent is None or value < extent:
+            return True
+        return value == extent and (
+            self._holds_own_end if end_held is None else end_held
+        )
+
+    def _holds_column(
+        self,
+        positions: pa.StructArray,
+        number_type: NumberType,
+        start: CoordinateValue = 0,
+        *,
+        end_held: bool | None = None,
+    ) -> pa.Array:
+        """Apply :meth:`_holds_position` to a column of positions.
+
+        Each row is decided as the scalar rule decides the position it
+        holds, exactly on an ``int`` or ``fraction`` column
+        (:func:`~timetoalign.core.time.compare_number_column`), never through
+        a float that could put a position just inside a boundary on the
+        wrong side of it.
+
+        Args:
+            positions: Coordinate structs, null where no position arrives.
+            number_type: How *positions* declare their numbers.
+            start: Where this timeline's 0 lies on the axis of *positions*:
+                0 for positions already on this timeline, its offset for
+                positions on its parent.
+            end_held: Whether the end is held; by default as
+                :attr:`_holds_own_end` says. A timeline's own column holds
+                its end whatever its siblings do, since the positions were
+                asked of it.
+
+        Returns:
+            A boolean array, false wherever the position is not held or the
+            row is null.
+        """
+        within = compare_number_column(positions, start, "greater_equal", number_type)
+        extent = self._extent
+        if extent is not None:
+            end = shift_number(start, extent, subtract=False)
+            below = compare_number_column(positions, end, "less", number_type)
+            if self._holds_own_end if end_held is None else end_held:
+                below = pc.or_(
+                    below, compare_number_column(positions, end, "equal", number_type)
+                )
+            within = pc.and_(within, below)
+        return pc.fill_null(within, False)
+
+    def _set_length(self, length: Coordinate | None) -> None:
+        """Set this timeline's length, which its parent must contain.
+
+        The parent checks the new end (:meth:`_check_child_length`) before
+        anything changes; it never grows because a child grew. Then the
+        length is set and the parent's ``Segment`` row follows it.
+
+        Raises:
+            ValueError: If the parent cannot contain the new end.
+        """
+        parent = self._parent
+        if parent is not None:
+            parent._check_child_length(self._id, length)
+        self._length = length
+        if parent is not None:
+            parent._refresh_segment_row(self._id)
+
+    def _check_child_length(self, child_id: str, length: Coordinate | None) -> None:
+        """Check that this timeline contains a child's new length.
+
+        Nothing is checked where either end is unknown. This timeline's end
+        is its length, or, while that is unknown, what its own parent says
+        about it (a segment ends at its successor's offset).
+
+        Raises:
+            ValueError: If the child's new end lies beyond this timeline's end.
+        """
+        bound = self._extent
+        if length is None or bound is None:
+            return
+        end = self._child_offsets[child_id].value + length.value
+        if end > bound:
+            raise ValueError(
+                f"Timeline '{child_id}' cannot end at {_format_coordinate_value(end)} "
+                f"on its parent '{self._id}', which ends at "
+                f"{_format_coordinate_value(bound)}"
+            )
+
+    def _segment_row(self, child_id: str) -> dict[str, Any]:
+        """The ``Segment`` row recording a child: its offset, end and duration.
+
+        End and duration are ``None`` while the child's length is unknown.
+        """
+        offset = self._child_offsets[child_id].value
+        length = self._children[child_id].length
+        return {
+            "id": child_id,
+            "name": child_id,
+            "temporal_type": "interval",
+            "event_type": SEGMENT_EVENT_TYPE,
+            "start": offset,
+            "end": None if length is None else offset + length.value,
+            "duration": None if length is None else length.value,
+        }
+
+    def _refresh_segment_row(self, child_id: str) -> None:
+        """Rewrite a child's ``Segment`` row in place from its current length."""
+        events = self._events
+        table = events.table
+        is_row = pc.fill_null(
+            pc.and_kleene(
+                pc.equal(table.column("event_type"), SEGMENT_EVENT_TYPE),
+                pc.equal(table.column("id"), child_id),
+            ),
+            False,
+        )
+        position = pc.indices_nonzero(is_row)[0].as_py()
+        row = type(events).from_dicts(
+            [self._segment_row(child_id)], events.unit, events.number_type
+        )
+        combined = events.concat(row)
+        order = list(range(len(events)))
+        order[position] = len(events)
+        self._events = type(events)(
+            combined.table.take(order), events.unit, events.number_type
+        )
 
     def validate_child(
         self,
@@ -72,7 +303,9 @@ class ChildrenMixin:
 
         Raises:
             TypeError: If child is not a Timeline.
-            ValueError: If units don't match or child already has a parent.
+            ValueError: If units don't match, the timeline already is a child
+                of this timeline, or the offset is negative, which is not
+                supported yet.
         """
         if not isinstance(child, Timeline):
             raise TypeError(f"Child must be a Timeline, got {type(child).__name__}")
@@ -85,15 +318,14 @@ class ChildrenMixin:
                 f"For cross-domain relationships, use TimelineGroup instead."
             )
 
-        if child.id in self._children:
+        if any(existing is child for existing in self._children.values()):
             raise ValueError(f"Child '{child.id}' is already a child of this timeline")
 
-        # Validate offset
         offset_coord = self.get_coordinate_at(offset, format="coordinate")
         if offset_coord.value < 0:
             raise ValueError(
-                f"Offset cannot be negative: "
-                f"{_format_coordinate_value(float(offset_coord.value))}"
+                f"A negative child offset is not supported yet: child '{child.id}' "
+                f"has offset {spell(number_to_json(offset_coord.value))}."
             )
 
     def _convert_child_to_parent_unit(
@@ -107,8 +339,9 @@ class ChildrenMixin:
         We find a map whose ``target_unit`` matches the child's unit, invert
         it, and use it to derive a copy of the child in the parent's unit.
 
-        The derived copy receives the ID ``{child.id}[{parent.unit}]`` and
-        retains all events with converted coordinates.
+        The derived copy is named ``"{child.name} [{parent.unit}]"``, gets a
+        minted id in the parent's unit (minted again in the parent's manifest
+        when it joins), and retains all events with converted coordinates.
 
         Args:
             child: The child timeline to convert.
@@ -164,7 +397,7 @@ class ChildrenMixin:
         inverse_cmap = cmap.inverse()
 
         # Temporarily add the inverse map to the child so derive() can use it
-        child_had_map = child.get_conversion_map(self._unit) is not None
+        child_had_map = bool(child._get_unit_maps(self._unit))
         if not child_had_map:
             child.add_conversion_map(inverse_cmap)
 
@@ -174,15 +407,22 @@ class ChildrenMixin:
                 copy_events=True,
             )
         finally:
-            # Clean up: remove the temporarily added map if we added it
+            # Clean up: remove the temporarily added map if we added it.
+            # Removal is by identity, so a map the child already carried for
+            # the same unit survives.
             if not child_had_map and inverse_cmap.id in child._conversion_maps:
                 del child._conversion_maps[inverse_cmap.id]
-                # Also clean up _unit_maps
-                if self._unit in child._unit_maps:
-                    del child._unit_maps[self._unit]
+                registered = child._unit_maps.get(self._unit)
+                if registered is not None:
+                    registered[:] = [
+                        cmap for cmap in registered if cmap is not inverse_cmap
+                    ]
+                    if not registered:
+                        del child._unit_maps[self._unit]
 
-        # Assign a clear ID and name linking back to the original
-        derived._id = f"{child.id}[{self._unit}]"
+        # The name links back to the original; the id is minted, because a
+        # label is no identity.
+        derived._set_id(mint_id(timeline_id_prefix(self._unit), ()), minted=True)
         derived._name = f"{child.name or child.id} [{self._unit}]"
 
         self._logger.debug(
@@ -198,11 +438,27 @@ class ChildrenMixin:
         offset: CoordinateSpec,
         allow_expansion: bool = False,
         use_conversion_map: ConversionMapsSpec = None,
+        *,
+        locked: bool | None = None,
     ) -> None:
         """Embed a child timeline at the specified offset.
 
-        The child timeline will be locked after being added.
+        The child timeline is locked once added unless ``locked=False``, which
+        leaves its own state as it is. An unlocked child may change its
+        length, but only within this timeline's known end: this timeline
+        never grows because a child grew. A segment of a segment line is
+        never locked: the line's lock governs it, and the segment's own lock
+        is lifted when it joins. A segment line is locked like any child,
+        whether it becomes a child or a segment; unlocking it is not
+        supported yet, so ``locked=False`` is refused for a segment line that
+        is unlocked, and accepted (asking for nothing) for one already locked.
         Parent-child coordinate conversion uses exact offset arithmetic.
+
+        The child's whole subtree joins this timeline's manifest, in which
+        every id is unique across all element kinds: an element of the
+        subtree whose minted id is already held here receives a freshly
+        minted one, and an element whose given id is already held here makes
+        the call raise without changing anything.
 
         A timeline can accommodate events and other timelines, called
         Children, as long as they use the same measuring unit.
@@ -214,7 +470,8 @@ class ChildrenMixin:
         the ``child_unit -> parent_unit`` conversion. The child's events are
         copied with converted coordinates; the original child is NOT modified.
 
-        The converted child receives the ID ``{child.id}[{parent.unit}]``.
+        The converted child is named ``"{child.name} [{parent.unit}]"`` and
+        receives a minted id.
 
         Args:
             child: The timeline to embed.
@@ -231,43 +488,96 @@ class ChildrenMixin:
                 - ``str``: Look up by C-Map ID or target unit name.
                 - ``TimeUnit``: Find by target unit.
                 - ``ConversionMap``: Use directly.
+            locked: Whether to lock the child. ``None`` (the default) locks
+                every child but a plain segment, which is never locked.
+                ``False`` keeps the child's own state: an unlocked child stays
+                unlocked, a locked one stays locked; it is refused for an
+                unlocked segment line.
 
         Raises:
             TypeError: If child is not a Timeline.
-            ValueError: If units don't match (and no conversion map given)
-                or would exceed bounds.
-            RuntimeError: If this timeline is locked.
+            ValueError: If units don't match (and no conversion map given),
+                the offset is negative (not supported yet), the child is
+                already a child of this timeline, ``locked=True`` asks to lock
+                a plain segment, ``locked=False`` asks to leave a segment line
+                unlocked, an id given in the child's subtree is already
+                held in this manifest, or this timeline is locked and the child
+                would end beyond its length without ``allow_expansion``. An
+                unlocked timeline expands to fit the child instead, provided
+                its own parent contains its new end. A child of unknown
+                length has no end, so only its offset must fit; a parent of
+                unknown length has no end to exceed, unless it is a segment,
+                which ends at its successor's offset.
         """
         # Convert child's unit if a conversion map is specified
         if use_conversion_map is not None and child.unit != self._unit:
             child = self._convert_child_to_parent_unit(child, use_conversion_map)
 
+        if locked:
+            self._refuse_segment_lock(child)
+        elif (
+            locked is False
+            and child._is_segment_line_instance()
+            and not child.is_locked
+        ):
+            raise ValueError(
+                "Unlocking a segment line that is a child, a segment or a group "
+                "member is not supported yet."
+            )
+        self._embed_child(child, offset, allow_expansion, locked=locked is not False)
+
+    def _embed_child(
+        self,
+        child: Timeline,
+        offset: CoordinateSpec,
+        allow_expansion: bool = False,
+        *,
+        locked: bool,
+    ) -> None:
+        """Embed *child* as :meth:`add_child` does, taking the lock as given.
+
+        ``locked=True`` locks the child, ``False`` keeps its own state; a
+        plain segment is always left unlocked. Reading and copying embed
+        through here with the lock the child keeps (:meth:`_kept_lock`), so
+        a segment line keeps whatever lock the file or the source states.
+
+        Raises:
+            TypeError: As :meth:`add_child`.
+            ValueError: As :meth:`add_child`, but for the lock requests.
+        """
+        plain_segment = self._is_plain_segment(child)
+
         self.validate_child(child, offset)
 
         offset_coord = self.get_coordinate_at(offset, format="coordinate")
-        child_end = offset_coord.value + child.length.value
+        # A child of unknown length has no end: only its offset must fit.
+        child_end = (
+            None if child.length is None else offset_coord.value + child.length.value
+        )
+        # The whole subtree joins this manifest: a minted id held here is
+        # minted again, a given one raises before anything changes.
+        entries, rename = child._subtree_entries()
+        avoid = child._manifest_ids()
+        self._admit_entries(entries, avoid=avoid, check_only=True)
 
         # Ensure capacity
-        self._ensure_capacity(child_end, allow_expansion)
+        self._ensure_capacity(
+            offset_coord.value if child_end is None else child_end, allow_expansion
+        )
+
+        self._admit_entries(entries, rename, avoid=avoid)
 
         # Store child reference
         self._children[child.id] = child
         self._child_offsets[child.id] = offset_coord
+        child._parent = self
 
-        # Lock the child
-        child._locked = True
+        if plain_segment:
+            child._locked = False
+        elif locked:
+            child._locked = True
 
-        # Add segment event to EventData
-        segment_event = {
-            "id": child.id,
-            "name": child.id,
-            "temporal_type": "interval",
-            "event_type": SEGMENT_EVENT_TYPE,
-            "start": offset_coord.value,
-            "end": child_end,
-            "duration": child.length.value,
-        }
-        self._add_events_unchecked([segment_event])
+        self._add_events_unchecked([self._segment_row(child.id)])
 
         self._logger.debug(
             f"Added child '{child.id}' at offset "
@@ -276,7 +586,7 @@ class ChildrenMixin:
 
     def create_child(
         self,
-        length: CoordinateSpec,
+        length: CoordinateSpec | None,
         offset: CoordinateSpec = 0,
         uid: str | None = None,
         name: str | None = None,
@@ -294,7 +604,8 @@ class ChildrenMixin:
         ``child_class=Timeline`` deliberately selects the experimental base class.
 
         Args:
-            length: Child length in the parent's unit.
+            length: Child length in the parent's unit, or ``None`` when the
+                child's length is unknown.
             offset: Child start coordinate. Defaults to zero.
             uid: Unique identifier for the child. Auto-generated if None.
             name: Human-readable name for the child.
@@ -313,7 +624,8 @@ class ChildrenMixin:
             >>> type(child) is ContinuousLogicalTimeline
             True
         """
-        length = self._resolve_axis_value(length)
+        if length is not None:
+            length = self._resolve_axis_value(length)
 
         child = (child_class or self._spawn_class())(
             length=length,
@@ -323,6 +635,86 @@ class ChildrenMixin:
             name=name,
         )
         self.add_child(child, offset=offset, allow_expansion=allow_expansion)
+        return child
+
+    def create_calibrated_child(
+        self,
+        length: CoordinateSpec | None,
+        offset: CoordinateSpec,
+        calibration: Sequence[tuple[CoordinateSpec, CoordinateSpec]],
+        *,
+        value_unit: TimeUnit | str | None = None,
+        law: type[ConversionMap[Any]] = LinearMap,
+        uid: str | None = None,
+        name: str | None = None,
+    ) -> "Timeline":
+        """Create a child over a calibrated segment, with the map it reads.
+
+        A segment of this timeline is calibrated by pairs of a position and
+        the value read there in another unit, such as the labelled ticks of
+        a drawn axis. The child starts at *offset*, and *law* builds the
+        conversion map from the child's unit to the values' unit through the
+        pairs, reading each position from *offset* in this timeline's own
+        arithmetic (see :meth:`~timetoalign.maps.ConversionMap.from_pairs`).
+        The pairs are checked against the law on the positions as given,
+        where their rounding happened. The map is built before the child, so
+        a refusal leaves this timeline unchanged.
+
+        Args:
+            length: Child length in this timeline's unit, or ``None`` when
+                the child's length is unknown.
+            offset: Child start coordinate.
+            calibration: ``(position, value)`` pairs, in any order: positions
+                in this timeline's coordinates, values as coordinates
+                carrying the one unit they share or as numbers in
+                *value_unit*.
+            value_unit: The unit of the values. Needed when a value is a
+                number; a coordinate value must be in it.
+            law: The map class whose ``from_pairs`` reads the pairs.
+            uid: Unique identifier for the child. Auto-generated if None.
+            name: Human-readable name for the child.
+
+        Returns:
+            The newly created and embedded child, carrying the map.
+
+        Raises:
+            TypeError: If a value is a number and no *value_unit* is given.
+            ValueError: If a position lies outside the child, or *law*
+                refuses the pairs (fewer than two, a repeated position,
+                values in two units, a pair off the law), or the child does
+                not fit as in :meth:`create_child`.
+
+        Examples:
+            >>> from timetoalign.core import Coordinate
+            >>> from timetoalign.timelines import ContinuousGraphicalTimeline
+            >>> parent = ContinuousGraphicalTimeline(length=100, unit="points")
+            >>> child = parent.create_calibrated_child(
+            ...     80, 10, [(10, Coordinate(0, "seconds")), (90, Coordinate(4, "seconds"))]
+            ... )
+            >>> child.get_conversion_map("seconds").scalar
+            0.05
+            >>> child = parent.create_calibrated_child(
+            ...     80, 10, [(10, 0), (50, 2), (90, 4)], value_unit="seconds"
+            ... )
+            >>> child.get_conversion_map("seconds").scalar
+            0.05
+        """
+        start = self._resolve_axis_value(offset)
+        end = None if length is None else start + self._resolve_axis_value(length)
+        pairs = []
+        for index, (position, value) in enumerate(calibration):
+            at = self._resolve_axis_value(position)
+            if at < start or (end is not None and at > end):
+                raise ValueError(
+                    f"Calibration pair {index} lies at {at}, outside the child "
+                    f"from {start} to {'its unknown end' if end is None else end}."
+                )
+            pairs.append((at, value))
+        cmap = law.from_pairs(
+            pairs, source_unit=self._unit, value_unit=value_unit, origin=start
+        )
+        child = self.create_child(length, offset, uid=uid, name=name)
+        child.add_conversion_map(cmap)
         return child
 
     def create_children_from_boundaries(
@@ -374,12 +766,14 @@ class ChildrenMixin:
     ) -> None:
         """Append a child timeline at the current end of this timeline.
 
-        The child is placed at ``offset = self.length``, so successive calls
-        stack children end-to-end and expand this timeline. Because the child
+        The child is placed at ``offset = self.length`` (a segment line
+        appends after its last segment), so successive calls stack children
+        end-to-end and expand this timeline. Because the child
         is a fresh, unlocked timeline, its identity may be set here: *uid*
         becomes the child's ID (the key under which it is stored and
         retrieved) and *name* its human-readable name — both applied before
-        the child is locked by :meth:`add_child`.
+        :meth:`add_child` embeds it (locking it unless it is a plain segment
+        of a segment line).
 
         Args:
             child: The timeline to append. Must be fresh (parentless) and
@@ -392,6 +786,9 @@ class ChildrenMixin:
             TypeError: If child is not a Timeline.
             ValueError: If units don't match.
             RuntimeError: If this timeline is locked.
+            UnknownLengthError: If nothing says where to append: this
+                timeline's length is unknown, or, on a segment line, the last
+                segment's.
 
         Examples:
             >>> parent = ContinuousLogicalTimeline(length=0)
@@ -407,11 +804,32 @@ class ChildrenMixin:
             8.0
         """
         self._check_not_locked("append child")
+        end = self._append_offset()
         if uid is not None:
-            child._id = uid
+            child._set_id(uid)
         if name is not None:
             child._name = name
-        self.add_child(child, self.length, allow_expansion=True)
+        self.add_child(child, end, allow_expansion=True)
+
+    def _append_offset(self) -> Coordinate:
+        """The offset :meth:`append_child` places a child at: this timeline's end.
+
+        Raises:
+            UnknownLengthError: If this timeline's length is unknown.
+        """
+        return self._require_length("append a child")
+
+    def _rename_child(self, old_id: str, new_id: str) -> None:
+        """Re-key a child and its segment row from *old_id* to *new_id*."""
+        self._children = {
+            (new_id if key == old_id else key): child
+            for key, child in self._children.items()
+        }
+        self._child_offsets = {
+            (new_id if key == old_id else key): offset
+            for key, offset in self._child_offsets.items()
+        }
+        self._events = self._events._with_segment_renamed(old_id, new_id)
 
     def get_child(self, child_id: str) -> Timeline:
         """Retrieve a child timeline by ID.
@@ -527,7 +945,10 @@ class ChildrenMixin:
                     yield combined_offset, sub_child
 
     def _get_max_content_coordinate(self) -> CoordinateValue:
-        """Get the maximum coordinate of all content.
+        """Get the maximum coordinate that this timeline's length must cover.
+
+        Events count with their ends, children with their ends; a child of
+        unknown length counts with its offset only, since its end is not known.
 
         Returns:
             The maximum coordinate value.
@@ -541,46 +962,49 @@ class ChildrenMixin:
 
         # Check children
         for child_id, child in self._children.items():
-            offset = self._child_offsets[child_id]
-            child_end = offset.value + child.length.value
+            offset = self._child_offsets[child_id].value
+            extent = child._extent
+            child_end = offset if extent is None else offset + extent
             max_coord = max(max_coord, child_end)
 
         return max_coord
 
     def create_child_from_region(
         self,
-        region_name: str,
+        region_id: str,
         *,
         copy_events: bool = True,
         uid: str | None = None,
     ) -> "Timeline":
-        """Create a child timeline from a named region (partitioning).
+        """Create a child timeline from a region (partitioning).
 
         The child's length = region duration, offset = region start.
-        The child's class matches the parent's concrete class.
-        If copy_events, events in [start, end) are copied with adjusted
-        coordinates.
+        The child's class matches the parent's concrete class, and its name
+        is the region's name. If copy_events, events in [start, end) are
+        copied with adjusted coordinates.
 
         Args:
-            region_name: Name of an existing region.
+            region_id: Id of an existing region.
             copy_events: Copy events within the region to the child.
-            uid: Explicit child ID. Defaults to region name.
+            uid: Explicit child ID. When None, one is minted.
 
         Returns:
             The newly created and attached child timeline.
 
         Raises:
-            KeyError: If region_name not found.
+            KeyError: If region_id not found.
             RuntimeError: If timeline is locked.
 
         Examples:
             >>> tl.create_regions_by_splitting("breaks", prefix="movement")
-            >>> mov4 = tl.create_child_from_region("movement_4")
+            >>> mov4 = tl.create_child_from_region("region_4")
+            >>> mov4.name
+            'movement_4'
         """
-        region = self._regions.get(region_name)
+        region = self._regions.get(region_id)
         if region is None:
             raise KeyError(
-                f"Region '{region_name}' not found on timeline '{self._id}'. "
+                f"Region '{region_id}' not found on timeline '{self._id}'. "
                 f"Available regions: {list(self._regions.keys())}"
             )
 
@@ -590,7 +1014,7 @@ class ChildrenMixin:
             length=region.duration.value,
             unit=self._unit,
             number_type=self._number_type,
-            uid=uid or region_name,
+            uid=uid,
             name=region.name,
         )
 
@@ -602,7 +1026,7 @@ class ChildrenMixin:
 
     def create_children_from_regions(
         self,
-        region_names: Sequence[str] | None = None,
+        region_ids: Sequence[str] | None = None,
         *,
         copy_events: bool = True,
     ) -> list["Timeline"]:
@@ -612,14 +1036,14 @@ class ChildrenMixin:
         are independent.
 
         Args:
-            region_names: Region names. None = all regions in insertion order.
+            region_ids: Region ids. None = all regions in insertion order.
             copy_events: Copy events to children.
 
         Returns:
             List of child timelines in region order.
 
         Raises:
-            KeyError: If any region_name not found.
+            KeyError: If any region id is not found.
             RuntimeError: If timeline is locked.
 
         Examples:
@@ -627,12 +1051,12 @@ class ChildrenMixin:
             ...                               name_format="page_{value}")
             >>> tl.create_children_from_regions()  # All pages as children
         """
-        if region_names is None:
-            region_names = list(self._regions.keys())
+        if region_ids is None:
+            region_ids = list(self._regions.keys())
 
         result: list[Timeline] = []
-        for name in region_names:
-            child = self.create_child_from_region(name, copy_events=copy_events)
+        for region_id in region_ids:
+            child = self.create_child_from_region(region_id, copy_events=copy_events)
             result.append(child)
         return result
 
@@ -640,9 +1064,16 @@ class ChildrenMixin:
         self,
         coord: CoordinateSpec,
     ) -> list["Timeline"]:
-        """Return all children whose extent contains the given coordinate.
+        """Return all children that hold the given coordinate.
 
-        A child contains coord if offset <= coord < offset + child.length.
+        A child holds every position from its offset up to its end, and its
+        end too unless a sibling starts there: one boundary position belongs
+        to the sibling starting at it, while the end of a child nothing
+        follows stays on that child. A child of unknown length holds every
+        position from its offset on (up to its successor's offset in a
+        segment line). This is the rule the timeline's stamps and tables
+        follow, so a child listed here is a child the stamp at *coord*
+        names.
 
         Args:
             coord: The coordinate to query.
@@ -651,12 +1082,14 @@ class ChildrenMixin:
             List of child Timeline objects, ordered by offset.
             Empty list if no children contain coord.
         """
-        coord_val = float(self._resolve_axis_value(coord))
-        matching: list[tuple[float, Timeline]] = []
-        for child_id, child in self._children.items():
-            offset = float(self._child_offsets[child_id].value)
-            if offset <= coord_val < offset + float(child.length.value):
-                matching.append((offset, child))
+        value = self._resolve_axis_value(coord)
+        matching = [
+            (offset.value, self._children[child_id])
+            for child_id, offset in self._child_offsets.items()
+            if self._children[child_id]._holds_position(
+                shift_number(value, offset.value, subtract=True)
+            )
+        ]
         matching.sort(key=lambda x: x[0])
         return [child for _, child in matching]
 
@@ -712,6 +1145,52 @@ class ChildrenMixin:
         if adjusted_events:
             child.add_events(adjusted_events)
 
+    def _slice_bounds(
+        self, start: CoordinateSpec, end: CoordinateSpec
+    ) -> tuple[Any, Any]:
+        """Resolve and validate slice bounds in this timeline's number type.
+
+        The end is checked against the length only where the length is
+        known: positions on a timeline of unknown length are not bounded
+        above, so a slice may end anywhere after its start.
+
+        Raises:
+            ValueError: If start >= end, start < 0, or end lies beyond a known
+                length.
+        """
+        start_value = self._resolve_axis_value(start)
+        end_value = self._resolve_axis_value(end)
+        nt = self._number_type
+        if nt == NumberType.fraction:
+            s, e = Fraction(start_value), Fraction(end_value)
+        elif nt == NumberType.int:
+            s, e = int(start_value), int(end_value)
+        else:
+            s, e = float(start_value), float(end_value)
+
+        if s >= e:
+            raise ValueError(
+                f"start ({_format_coordinate_value(float(s))}) must be less than "
+                f"end ({_format_coordinate_value(float(e))})"
+            )
+        length = self._length
+        bound = (
+            "unknown"
+            if length is None
+            else _format_coordinate_value(float(length.value))
+        )
+        if s < 0:
+            raise ValueError(
+                f"start ({_format_coordinate_value(float(s))}) is outside timeline "
+                f"bounds [0, {bound})"
+            )
+        if length is not None and e > length.value:
+            raise ValueError(
+                f"end ({_format_coordinate_value(float(e))}) is outside timeline bounds "
+                f"[0, {bound}]"
+            )
+        return s, e
+
     def get_slice(
         self,
         start: CoordinateSpec,
@@ -747,6 +1226,7 @@ class ChildrenMixin:
 
         Raises:
             ValueError: If start >= end or either is outside timeline bounds.
+                The end is not bounded on a timeline of unknown length.
 
         Examples:
             >>> source = ContinuousLogicalTimeline(length=100)
@@ -758,36 +1238,7 @@ class ChildrenMixin:
             >>> sliced.length.value  # 40 - 20 = 20
             Fraction(20, 1)
         """
-        # Coerce to the timeline's native number type for consistent arithmetic
-        start_value = self._resolve_axis_value(start)
-        end_value = self._resolve_axis_value(end)
-        nt = self._number_type
-        if nt == NumberType.fraction:
-            s = Fraction(start_value)
-            e = Fraction(end_value)
-        elif nt == NumberType.int:
-            s = int(start_value)
-            e = int(end_value)
-        else:
-            s = float(start_value)
-            e = float(end_value)
-
-        # Validate
-        if s >= e:
-            raise ValueError(
-                f"start ({_format_coordinate_value(float(s))}) must be less than "
-                f"end ({_format_coordinate_value(float(e))})"
-            )
-        if s < 0:
-            raise ValueError(
-                f"start ({_format_coordinate_value(float(s))}) is outside timeline "
-                f"bounds [0, {_format_coordinate_value(float(self._length.value))})"
-            )
-        if e > self._length.value:
-            raise ValueError(
-                f"end ({_format_coordinate_value(float(e))}) is outside timeline bounds "
-                f"[0, {_format_coordinate_value(float(self._length.value))}]"
-            )
+        s, e = self._slice_bounds(start, end)
 
         slice_length = e - s
 
@@ -906,7 +1357,8 @@ class ChildrenMixin:
 
         For each child at offset o with length l, if [o, o+l) overlaps
         [start, end), recursively slice the child at the overlapping range.
-        The child's offset in the target is max(0, o - start).
+        The child's offset in the target is max(0, o - start); the slice of
+        a child is locked exactly when the child is.
 
         Args:
             target: The target timeline to receive sliced children.
@@ -915,11 +1367,12 @@ class ChildrenMixin:
         """
         for child_id, child in self._children.items():
             child_offset = self._child_offsets[child_id].value
-            child_end = child_offset + child.length.value
 
-            # Check overlap with [start, end)
+            # Check overlap with [start, end); a child of unknown length runs
+            # on without bound.
             overlap_start = max(child_offset, start)
-            overlap_end = min(child_end, end)
+            extent = child._extent
+            overlap_end = end if extent is None else min(child_offset + extent, end)
 
             if overlap_start >= overlap_end:
                 continue  # No overlap
@@ -939,7 +1392,12 @@ class ChildrenMixin:
 
             # Offset in the target timeline
             target_offset = overlap_start - start
-            target.add_child(sliced_child, offset=target_offset, allow_expansion=True)
+            target._embed_child(
+                sliced_child,
+                target_offset,
+                allow_expansion=True,
+                locked=target._kept_lock(child),
+            )
 
     def _copy_cmaps_to_slice(
         self,
@@ -958,9 +1416,20 @@ class ChildrenMixin:
             start: Start coordinate in source coords (for future bounded copy).
             end: End coordinate in source coords (for future bounded copy).
         """
+        # A slice does not inherit the parent's measure layer.  That layer
+        # describes a different extent, measured from a different origin,
+        # so handing it over verbatim would state bar positions the slice
+        # does not have; the slice answers with its own local structure.
+        # What a child should inherit from its parent's
+        # structure is a materialization decision, to be made where
+        # children are derived from that structure rather than here.
         for cmap_id, cmap in self._conversion_maps.items():
+            # The slice holds its own copy: a slice may join a manifest that
+            # holds the source's map, so the copy's id may be minted again.
+            copied = copy.copy(cmap)
+            copied._id_minted = True
             try:
-                target.add_conversion_map(cmap)
+                target.add_conversion_map(copied)
             except (ValueError, TypeError):
                 # Skip incompatible maps (e.g., unit mismatch after slicing)
                 self._logger.debug(

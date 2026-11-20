@@ -11,18 +11,29 @@ QuartersToFloatingMeasures(
 )
 ```
 
-Map quarters to measure coordinates (with linear interpolation).
+Map quarters to floating measures.
 
-Returns continuous measure coordinates where:
-- 1.0 = start of measure 1
-- 1.5 = halfway through measure 1
-- 2.0 = start of measure 2
+A floating measure (``fm``) writes a position as
+``<ordinal>.<how far into that bar>`` — the convention behind
+annotation tables that read ``12.5`` for the middle of the twelfth
+bar.  Two properties make it exact rather than approximate:
 
-This IS a coordinate conversion map: it converts from quarters to
-measures (TimeUnit.measures).
+* **The fractional part is anchored on the NOMINAL bar.** An
+  incomplete bar's content sits where it is notated, so a 1/8 pickup
+  in 9/8 onsets at ``0.888`` — eight ninths of the way through the
+  bar it belongs to — not at ``0.000``.
+* **Emission truncates to three decimals.** Three decimals is the
+  convention's resolution, and truncating (rather than rounding) is
+  what makes ``8/9`` read ``0.888``; it is also the rule behind the
+  ``.999`` an interval end shows when a bar is read from the right.
 
-This is useful for visualization (e.g., piano roll x-axis in measures)
-and for interpolating positions within measures.
+An fm value is a float by definition: the fractional part measures
+an uneven discretisation of logical time — bars vary in length — so
+it is not a ratio of anything, and its resolution is capped at a
+thousandth of a bar.  Converting fm back to quarters is therefore
+exact only to that resolution; the inverse interpolates linearly
+over the same knots and never tries to reconstruct what truncation
+dropped.
 
 ## Examples {.doc-section .doc-section-examples}
 
@@ -39,18 +50,12 @@ and for interpolating positions within measures.
 2.0
 ```
 
-```python
->>> # From MetricMap
->>> cmap = QuartersToFloatingMeasures.from_metric_map(meter)
-```
-
 ## Methods
 
 | Name | Description |
 | --- | --- |
 | [from_dict](#timetoalign.QuartersToFloatingMeasures.from_dict) | Deserialize from dictionary. |
-| [from_measure_data](#timetoalign.QuartersToFloatingMeasures.from_measure_data) | Create from MeasureData (loaded from TSV/JSON). |
-| [from_metric_map](#timetoalign.QuartersToFloatingMeasures.from_metric_map) | Create from a MetricMap. |
+| [from_measure_map](#timetoalign.QuartersToFloatingMeasures.from_measure_map) | Build the floating-measure lattice of a measure map. |
 | [inverse](#timetoalign.QuartersToFloatingMeasures.inverse) | Return the inverse map (measures -> quarters). |
 | [to_dict](#timetoalign.QuartersToFloatingMeasures.to_dict) | Serialize to dictionary. |
 | [to_measure_number_map](#timetoalign.QuartersToFloatingMeasures.to_measure_number_map) | Convert to non-interpolating measure number map. |
@@ -63,48 +68,45 @@ QuartersToFloatingMeasures.from_dict(data)
 
 Deserialize from dictionary.
 
-### from_measure_data { #timetoalign.QuartersToFloatingMeasures.from_measure_data }
+### from_measure_map { #timetoalign.QuartersToFloatingMeasures.from_measure_map }
 
 ```python
-QuartersToFloatingMeasures.from_measure_data(measures)
+QuartersToFloatingMeasures.from_measure_map(measure_map)
 ```
 
-Create from MeasureData (loaded from TSV/JSON).
+Build the floating-measure lattice of a measure map.
+
+One knot per measure record, placed at that bar's **virtual
+nominal downbeat** — its sounding start minus the offset at which
+its content sits inside the notated bar — carrying that bar's
+ordinal.  A final knot closes the lattice at the end of the last
+bar.  Between two knots the map is linear, so the slope inside a
+bar is exactly ``1 / nominal_length``.
+
+Ordinals count the measure records, never the printed labels:
+the first record is ``0`` when it is an anacrusis (offset
+content, shorter than its nominal bar) and ``1`` otherwise, and
+every following record adds one.  Counting runs monotonically
+through voltas — ``15a`` and ``15b`` are two bars and get two
+consecutive ordinals — and never resets.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name     | Type                                                                  | Description                      | Default    |
-|----------|-----------------------------------------------------------------------|----------------------------------|------------|
-| measures | [MeasureData](`timetoalign.loader.score.stores.measures.MeasureData`) | MeasureData with measure events. | _required_ |
+| Name        | Type                                                       | Description                                                 | Default    |
+|-------------|------------------------------------------------------------|-------------------------------------------------------------|------------|
+| measure_map | [MeasureMap](`timetoalign.timelines.structure.MeasureMap`) | Measures whose exact starts and lengths define the lattice. | _required_ |
 
 #### Returns {.doc-section .doc-section-returns}
 
-| Name   | Type                                                                                 | Description                     |
-|--------|--------------------------------------------------------------------------------------|---------------------------------|
-|        | [QuartersToFloatingMeasures](`timetoalign.maps.interval.QuartersToFloatingMeasures`) | QuartersToFloatingMeasures map. |
+| Name   | Type                                                                                 | Description                   |
+|--------|--------------------------------------------------------------------------------------|-------------------------------|
+|        | [QuartersToFloatingMeasures](`timetoalign.maps.interval.QuartersToFloatingMeasures`) | The fm map for that skeleton. |
 
-### from_metric_map { #timetoalign.QuartersToFloatingMeasures.from_metric_map }
+#### Raises {.doc-section .doc-section-raises}
 
-```python
-QuartersToFloatingMeasures.from_metric_map(meter)
-```
-
-Create from a MetricMap.
-
-Uses MN integers (or MC if MN not available) as measure numbers.
-Adds a final extrapolation point for the end of the last measure.
-
-#### Parameters {.doc-section .doc-section-parameters}
-
-| Name   | Type                                            | Description                                  | Default    |
-|--------|-------------------------------------------------|----------------------------------------------|------------|
-| meter  | [MetricMap](`timetoalign.maps.meter.MetricMap`) | MetricMap with measure boundary information. | _required_ |
-
-#### Returns {.doc-section .doc-section-returns}
-
-| Name   | Type                                                                                 | Description                     |
-|--------|--------------------------------------------------------------------------------------|---------------------------------|
-|        | [QuartersToFloatingMeasures](`timetoalign.maps.interval.QuartersToFloatingMeasures`) | QuartersToFloatingMeasures map. |
+| Name   | Type                       | Description                                                                                                                                                 |
+|--------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the skeleton has no measures, or if two records share a virtual nominal downbeat (a split bar, whose two halves cannot both anchor the same fm ordinal). |
 
 ### inverse { #timetoalign.QuartersToFloatingMeasures.inverse }
 
@@ -129,7 +131,7 @@ Return the inverse map (measures -> quarters).
 ### to_dict { #timetoalign.QuartersToFloatingMeasures.to_dict }
 
 ```python
-QuartersToFloatingMeasures.to_dict()
+QuartersToFloatingMeasures.to_dict(minimal=False)
 ```
 
 Serialize to dictionary.

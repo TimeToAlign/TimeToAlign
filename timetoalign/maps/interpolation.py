@@ -4,21 +4,19 @@ This module provides InterpolationMap, a ConversionMap that performs
 O(log n) bidirectional coordinate conversion using numpy.interp between
 explicit source/target anchor points.
 
-InterpolationMap is the internal engine used by:
-- TimelineGroup coordinate conversion
-- WarpMap alignment warping
-
+InterpolationMap is the internal engine of WarpMap alignment warping.
 Parent-child coordinate conversion in Timeline uses exact offset arithmetic
-instead.
+instead, and the members of a TimelineGroup convert linearly and exactly
+between their common start and end.
 
 InterpolationMap is a full member of the ConversionMap family: it supports
 the shared __call__/convert_array interface, inverse(), composition, and
-to_dict/from_dict serialization, while remaining a lightweight building
+to_dict serialization (as the TableMap it is), while remaining a lightweight building
 block optimized for performance. Its coordinate arrays (source_coords,
 target_coords) are read-only after construction, and inverse() caches the
 computed inverse map so repeated calls return the same instance.
 
-Design rationale (from unified_timestamp_architecture.md):
+Design rationale:
 - No table lookups for coordinate conversion - direct np.interp calls
 - Precomputed sorted arrays enable O(log n) binary search
 - Bidirectional: forward (source -> target) and inverse (target -> source)
@@ -34,8 +32,9 @@ import numpy as np
 from numpy.typing import NDArray
 from typing_extensions import Self
 
-from ..core.enums import TimeUnit
-from .base import ConversionMap
+from ..core.enums import ExtrapolationPolicy, InterpolationKind, NumberType, TimeUnit
+from .base import ConversionMap, MeasureMapIds
+from .table import _table_form
 
 module_logger = logging.getLogger(__name__)
 
@@ -96,6 +95,7 @@ class InterpolationMap(ConversionMap[float]):
         target_unit: TimeUnit | str | None = None,
         uid: str | None = None,
         name: str | None = None,
+        output_number_type: NumberType | str | None = None,
     ) -> None:
         """Initialize an InterpolationMap.
 
@@ -110,17 +110,23 @@ class InterpolationMap(ConversionMap[float]):
             target_unit: The unit of target coordinates (optional).
             uid: Optional explicit ID.
             name: Optional human-readable name.
+            output_number_type: The representation results are written in,
+                among those the target unit admits; ``None`` for ``float``,
+                which the map computes in, wherever the target unit admits
+                it, else for the target unit's default. Never ``fraction``.
 
         Raises:
             ValueError: If source_coords and target_coords have different
                 lengths, if fewer than 2 anchor points are given, or if
-                source_coords is not strictly monotonically increasing.
+                source_coords is not strictly monotonically increasing, or
+                if *output_number_type* is ``fraction``.
         """
         super().__init__(
             source_unit=source_unit,
             target_unit=target_unit,
             uid=uid,
             name=name,
+            output_number_type=output_number_type,
         )
 
         self.source_coords: NDArray[np.floating[Any]] = np.array(
@@ -146,6 +152,10 @@ class InterpolationMap(ConversionMap[float]):
             raise ValueError("source_coords must be strictly monotonically increasing")
 
         self._inverse: InterpolationMap | None = None
+
+    def _computes_in_doubles(self) -> bool:
+        """True: the map interpolates over float64 anchors, whatever its input."""
+        return True
 
     @property
     def n_anchors(self) -> int:
@@ -290,6 +300,7 @@ class InterpolationMap(ConversionMap[float]):
             target_id=self.source_id,
             source_unit=self._target_unit,
             target_unit=self._source_unit,
+            output_number_type=self._inverse_output_number_type(),
         )
         inv._inverse = self
         self._inverse = inv
@@ -330,38 +341,19 @@ class InterpolationMap(ConversionMap[float]):
 
     # region Serialization
 
-    def to_dict(self) -> dict[str, Any]:
-        """Serialize the map to a dictionary.
+    def _to_manifest(self, *, minimal: bool, entries: MeasureMapIds) -> dict[str, Any]:
+        """Write the ``TableMap`` this map is: linear between its anchors and beyond.
 
-        Returns:
-            Dictionary representation of the map.
+        The source and target timeline ids are not written: a map belongs
+        to the one timeline holding it.
         """
-        d = super().to_dict()
-        d["source_coords"] = [float(v) for v in self.source_coords]
-        d["target_coords"] = [float(v) for v in self.target_coords]
-        d["source_id"] = self.source_id
-        d["target_id"] = self.target_id
-        return d
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> InterpolationMap:
-        """Deserialize from dictionary.
-
-        Args:
-            data: Dictionary representation.
-
-        Returns:
-            A new InterpolationMap instance.
-        """
-        return cls(
-            source_coords=np.array(data["source_coords"], dtype=np.float64),
-            target_coords=np.array(data["target_coords"], dtype=np.float64),
-            source_id=data["source_id"],
-            target_id=data["target_id"],
-            source_unit=data.get("source_unit"),
-            target_unit=data.get("target_unit"),
-            uid=data.get("id"),
-            name=data.get("name"),
+        return _table_form(
+            self,
+            [float(v) for v in self.source_coords],
+            [float(v) for v in self.target_coords],
+            kind=InterpolationKind.linear,
+            extrapolate=ExtrapolationPolicy.extrapolate,
+            minimal=minimal,
         )
 
     # endregion

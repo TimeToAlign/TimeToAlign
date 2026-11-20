@@ -109,10 +109,10 @@ coordinates are incompatible.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name           | Type                 | Description                                                                                                                                                                                                                                                                                                   | Default   |
-|----------------|----------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------|
-| score_timeline | \'Timeline \| None\' | Optional pre-existing score timeline. When supplied, the bundle uses this timeline instead of the loader's internally built one. MatchClaims are NOT rebound — they still reference the internally built score timeline's uid. For correct cross-referencing, the external timeline should have the same uid. | `None`    |
-| verify         | [bool](`bool`)       | If ``True`` (default) and *score_timeline* is not ``None``, verify that internally built events are compatible with the external timeline. Set to ``False`` to skip verification (e.g. when the external timeline is known to be authoritative and you accept any coordinate differences).                    | `True`    |
+| Name           | Type                 | Description                                                                                                                                                                                                                                                                                | Default   |
+|----------------|----------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------|
+| score_timeline | \'Timeline \| None\' | Optional pre-existing score timeline. When supplied, the bundle uses this timeline instead of the loader's internally built one, whatever its id: the MatchClaims name the id of the score timeline the bundle holds. The loader's own claim list is left unchanged.                       | `None`    |
+| verify         | [bool](`bool`)       | If ``True`` (default) and *score_timeline* is not ``None``, verify that internally built events are compatible with the external timeline. Set to ``False`` to skip verification (e.g. when the external timeline is known to be authoritative and you accept any coordinate differences). | `True`    |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -156,9 +156,9 @@ Matching precedence:
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name   | Type         | Description                                                                                                 | Default    |
-|--------|--------------|-------------------------------------------------------------------------------------------------------------|------------|
-| uid    | [str](`str`) | Timeline uid (e.g. ``"score:clt1"``), role shorthand (``"score"``, ``"perf:1"``), or partial/regex pattern. | _required_ |
+| Name   | Type         | Description                                                                                                  | Default    |
+|--------|--------------|--------------------------------------------------------------------------------------------------------------|------------|
+| uid    | [str](`str`) | Timeline uid (e.g. ``"score:clt_1"``), role shorthand (``"score"``, ``"perf:1"``), or partial/regex pattern. | _required_ |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -176,10 +176,10 @@ Matching precedence:
 #### Examples {.doc-section .doc-section-examples}
 
 ```python
->>> loader.create_timeline("score")               # -> score:clt1
+>>> loader.create_timeline("score")               # -> score:clt_1
 >>> loader.create_timeline("perf:1")              # First performance
 >>> loader.create_timeline("perf:p01")            # Same shorthand
->>> loader.create_timeline(r"^perf:.*p01:dlt1$")  # Stored-ID regex
+>>> loader.create_timeline(r"^perf:.*p01:dlt_1$")  # Stored-ID regex
 ```
 
 ### create_timelines { #timetoalign.loader.alignment.matchfile.MatchfileLoader.create_timelines }

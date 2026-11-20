@@ -3,7 +3,7 @@
 This module consolidates:
 - FlowEntry NamedTuple and parse_flow_csv() (canonical parser with header validation)
 - SpecimenConfig dataclass and SPECIMENS dict (test specimen configuration)
-- Common path constants (TESTS_DATA_DIR, TARGET_FLOWS_DIR, SCORE_DATA_DIR)
+- Common path constants (TARGET_FLOWS_DIR, SCORE_DATA_DIR), resolved via ensure_data
 - Shared helper functions (find_source_file, get_loader_for_source_file)
 """
 
@@ -14,17 +14,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import NamedTuple
 
-import pytest
-
 from timetoalign.testdata import ensure_data
 
 ensure_data("score", "target_flows", "vienna_1x22", "midi", "supra")
+SCORE_DIR = ensure_data("score")
+FLOW_CONTROL_DIR = SCORE_DIR / "flow_control"
+VIENNA_DIR = ensure_data("vienna_1x22")
+PARANGONAR_DIR = ensure_data("parangonar")
 
 # region Path Constants
 
-TESTS_DATA_DIR = Path(__file__).parents[2] / "data"
-TARGET_FLOWS_DIR = TESTS_DATA_DIR / "target_flows"
-SCORE_DATA_DIR = TESTS_DATA_DIR / "score"
+TARGET_FLOWS_DIR = ensure_data("target_flows")
+SCORE_DATA_DIR = SCORE_DIR
 
 # endregion
 
@@ -226,7 +227,10 @@ SPECIMENS = {
         tsv_dir=SCORE_DATA_DIR / "flow_control" / "flow_only",
         tsv_file="out_of_the_flow_experience-flow_only.measures.tsv",
         musicxml_file="out_of_the_flow_experience-flow_only.musicxml",
-        mei_file=None,  # no MEI export exists for this specimen in any source
+        mei_file=(
+            str(SCORE_DATA_DIR / "flow_control")
+            + "/out_of_the_flow_experience-flow_only.mei"
+        ),
         mm_json_file="out_of_the_flow_experience-flow_only.measures.mm.json",
         folded_measures=15,
         unfolded_measures=30,  # ms3 count (canonical=31 but mm.json follows ms3)
@@ -426,43 +430,6 @@ def get_loader_for_source_file(source_filename: str):
             return None
 
     return None
-
-
-# endregion
-
-
-# region Collection hooks
-
-
-def pytest_collection_modifyitems(
-    config: pytest.Config, items: list[pytest.Item]
-) -> None:
-    """Deselect MEI cases for specimens that declare no MEI source.
-
-    The MEI matrix tests are parametrized over every specimen, but a specimen
-    whose ``mei_file`` is ``None`` has no MEI file in any data source, so its
-    MEI case could only skip at runtime. Dropping those cases at collection
-    time keeps the run free of vacuous skips while leaving every other
-    specimen's MEI coverage untouched.
-    """
-    mei_less = {name for name, spec in SPECIMENS.items() if spec.mei_file is None}
-    if not mei_less:
-        return
-
-    kept: list[pytest.Item] = []
-    deselected: list[pytest.Item] = []
-    for item in items:
-        callspec = getattr(item, "callspec", None)
-        specimen = callspec.params.get("specimen_name") if callspec else None
-        name = getattr(item, "originalname", None) or item.name
-        if specimen in mei_less and "_mei_" in name:
-            deselected.append(item)
-        else:
-            kept.append(item)
-
-    if deselected:
-        config.hook.pytest_deselected(items=deselected)
-        items[:] = kept
 
 
 # endregion

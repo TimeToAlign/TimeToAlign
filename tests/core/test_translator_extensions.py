@@ -323,16 +323,14 @@ class TestNoteSchemaDropsPitch:
 
 
 class TestMeasureSchema:
-    def test_time_signature_is_positional_struct(self) -> None:
+    def test_time_signature_is_string(self) -> None:
         derived = derive_arrow_struct(Measure)
         ts_type = derived.field("time_signature").type
-        assert pa.types.is_struct(ts_type)
-        ts_names = [ts_type.field(i).name for i in range(ts_type.num_fields)]
-        assert ts_names == ["_0", "_1"]
+        assert ts_type == pa.string()
 
-    def test_next_ids_is_list_of_string(self) -> None:
+    def test_next_is_list_of_string(self) -> None:
         derived = derive_arrow_struct(Measure)
-        nxt = derived.field("next_ids").type
+        nxt = derived.field("next").type
         assert pa.types.is_list(nxt)
         assert nxt.value_type == pa.string()
 
@@ -341,9 +339,9 @@ class TestMeasureSchema:
         assert derived.field("start_repeat").type == pa.bool_()
         assert derived.field("end_repeat").type == pa.bool_()
 
-    def test_nested_start_struct(self) -> None:
+    def test_exact_positions_are_rational_structs(self) -> None:
         derived = derive_arrow_struct(Measure)
-        start_type = derived.field("start").type
-        assert pa.types.is_struct(start_type)
-        sub_names = [start_type.field(i).name for i in range(start_type.num_fields)]
+        qstamp_type = derived.field("qstamp").type
+        assert pa.types.is_struct(qstamp_type)
+        sub_names = [qstamp_type.field(i).name for i in range(qstamp_type.num_fields)]
         assert sub_names == ["value", "numerator", "denominator"]

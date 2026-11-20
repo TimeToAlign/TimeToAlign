@@ -10,9 +10,12 @@ import numpy as np
 import pandas as pd
 
 from .enums import NumberType, TimeUnit
-from .time import Coordinate, IdCoordinate
+from .events import Address
+from .time import Coordinate, IdCoordinate, number_from_json, number_to_json
 
-CoordinateInput: TypeAlias = int | float | Fraction | Coordinate | IdCoordinate
+CoordinateInput: TypeAlias = (
+    int | float | Fraction | Coordinate | IdCoordinate | Address
+)
 CoordinateCollection: TypeAlias = (
     Sequence[CoordinateInput] | np.ndarray | pd.Index | pd.Series
 )
@@ -121,7 +124,7 @@ def reject_dataframe_options(format: str, **options: object) -> None:
 def is_coordinate_input(value: object) -> bool:
     """Return whether *value* is one accepted scalar coordinate input."""
     return not isinstance(value, bool) and isinstance(
-        value, (int, float, Fraction, Coordinate)
+        value, (int, float, Fraction, Coordinate, Address)
     )
 
 
@@ -445,25 +448,59 @@ def format_coordinates(
     return projected[0] if scalar else projected
 
 
-def coordinate_wire_entry(coordinate: Coordinate) -> dict[str, object]:
-    """Serialize one canonical coordinate as the v2 rational wire entry.
+def coordinate_to_dict(coordinate: Coordinate) -> dict[str, object]:
+    """Serialize one coordinate using the TimeToShare representation.
 
     Args:
         coordinate: Coordinate to serialize.
 
     Returns:
-        A typed coordinate wire dictionary.
+        A typed coordinate dictionary.
     """
-    value = coordinate.value
-    numerator: int | None = None
-    denominator: int | None = None
-    if isinstance(value, Fraction):
-        numerator = value.numerator
-        denominator = value.denominator
     return {
-        "value": float(value),
-        "numerator": numerator,
-        "denominator": denominator,
         "unit": coordinate.unit.value,
         "number_type": coordinate.number_type.name,
+        "value": number_to_json(coordinate.value),
     }
+
+
+def coordinate_from_dict(entry: Mapping[str, Any]) -> Coordinate:
+    """Restore one coordinate from the TimeToShare representation.
+
+    Args:
+        entry: Typed coordinate dictionary.
+
+    Returns:
+        The exact coordinate declared by the entry.
+    """
+    if not isinstance(entry, Mapping):
+        raise ValueError(f"coordinate must be an object, got {entry!r}")
+    for key in ("unit", "number_type", "value"):
+        if key not in entry:
+            raise ValueError(f"coordinate is missing {key!r}: {entry!r}")
+    try:
+        unit = TimeUnit(entry["unit"])
+    except (TypeError, ValueError) as error:
+        raise ValueError(
+            f"unknown coordinate unit {entry['unit']!r} for key 'unit'"
+        ) from error
+    try:
+        number_type = NumberType[entry["number_type"]]
+    except (KeyError, TypeError) as error:
+        raise ValueError(
+            f"unknown coordinate number type {entry['number_type']!r} for key 'number_type'"
+        ) from error
+    try:
+        number_from_json(entry["value"])
+    except (TypeError, ValueError) as error:
+        raise ValueError(
+            f"invalid coordinate value for key 'value': {entry['value']!r}"
+        ) from error
+    try:
+        value = number_from_json(entry["value"], number_type)
+    except ValueError as error:
+        raise ValueError(
+            f"coordinate value for key 'value' does not match declared number_type "
+            f"{number_type.name!r}: {entry['value']!r}"
+        ) from error
+    return Coordinate(value, unit, number_type=number_type)

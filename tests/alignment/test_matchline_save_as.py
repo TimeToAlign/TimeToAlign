@@ -34,15 +34,13 @@ from timetoalign.alignment.match_format import (
 from timetoalign.alignment.matchline import MatchLine
 from timetoalign.core import TimeUnit
 
+from .conftest import SCORE_DIR, VIENNA_DIR
 from .helpers import make_match_stamp as MatchStamp
 
 # region Test Data Paths
 
-VIENNA_DATA = Path(__file__).parent.parent / "data" / "vienna_1x22"
-CHOPIN_P01 = VIENNA_DATA / "Chopin_op10_no3_p01.match"
-BEETHOVEN_DATA = (
-    Path(__file__).parent.parent / "data" / "score" / "beethoven_op18-4iv_multimodal"
-)
+CHOPIN_P01 = VIENNA_DIR / "Chopin_op10_no3_p01.match"
+BEETHOVEN_DATA = SCORE_DIR / "beethoven_op18-4iv_multimodal"
 NORMAL_DIR = BEETHOVEN_DATA / "StringQuartetEEP_I_Normal"
 ABC_DIR = BEETHOVEN_DATA / "ABC"
 
@@ -451,8 +449,6 @@ class TestRoundTripMatchfileLoader:
 
     def test_roundtrip_line_counts(self, tmp_path: Path) -> None:
         """Exported file has same number of match + deletion lines as original."""
-        if not CHOPIN_P01.exists():
-            pytest.skip(f"Test data not found: {CHOPIN_P01}")
 
         # Count lines in original file
         original_content = CHOPIN_P01.read_text()
@@ -515,8 +511,6 @@ class TestRoundTripMatchfileLoader:
 
     def test_roundtrip_preserves_header_metadata(self, tmp_path: Path) -> None:
         """Exported file preserves piece, composer, performer from original."""
-        if not CHOPIN_P01.exists():
-            pytest.skip(f"Test data not found: {CHOPIN_P01}")
 
         context = _build_context_from_match_file(CHOPIN_P01)
 
@@ -553,9 +547,6 @@ class TestRoundTripHow03Notebook:
     @pytest.mark.slow
     def test_notebook_roundtrip(self, tmp_path: Path) -> None:
         """Full how03 workflow: match -> export -> reload -> verify."""
-        if not NORMAL_DIR.exists() or not ABC_DIR.exists():
-            pytest.skip("Beethoven test data not found")
-
         import pandas as pd
 
         from timetoalign.alignment import MatchLine
@@ -583,8 +574,8 @@ class TestRoundTripHow03Notebook:
             match_columns=["pitch", "staff"],
             source_coord_column="start",
             target_coord_column="quarterbeats_playthrough",
-            source_timeline_id="cpt1",
-            target_timeline_id="clt1",
+            source_timeline_id="cpt_1",
+            target_timeline_id="clt_1",
             source_unit=TimeUnit.seconds,
             target_unit=TimeUnit.quarters,
         )
@@ -592,7 +583,7 @@ class TestRoundTripHow03Notebook:
         # Build MatchLine
         score_to_perf = MatchLine.from_claims(
             match_result.match_claims,
-            source_timeline_id="clt1",
+            source_timeline_id="clt_1",
         )
 
         # Step 2: Build context and export
@@ -650,8 +641,6 @@ class TestRoundTripHow03Notebook:
         save_as(), then reload the exported file with MatchfileLoader and
         verify that the same number of synchronous claims are produced.
         """
-        if not CHOPIN_P01.exists():
-            pytest.skip(f"Test data not found: {CHOPIN_P01}")
 
         from timetoalign.loader.alignment import MatchfileLoader
 

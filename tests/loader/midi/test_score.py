@@ -148,9 +148,6 @@ class TestScoreMidiLoader:
     @pytest.mark.slow
     def test_load_beethoven_quartet(self, beethoven_score_path: Path) -> None:
         """Can load multi-part score MIDI."""
-        if not beethoven_score_path.exists():
-            pytest.skip("Test data not found")
-
         loader = ScoreMidiLoader(part_voice_assign_mode=0)
         loader.load(beethoven_score_path)
 
@@ -186,9 +183,6 @@ class TestScoreMidiLoader:
         note, so the storage class is :class:`ScoreMidiEventData`
         (not the narrower performance-side :class:`MidiEventData`).
         """
-        if not beethoven_score_path.exists():
-            pytest.skip("Test data not found")
-
         loader = ScoreMidiLoader(part_voice_assign_mode=0)
         loader.load(beethoven_score_path)
 

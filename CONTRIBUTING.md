@@ -6,6 +6,24 @@ The full **Developers' Reference** lives on the documentation site at
 - Repository layout and the seven-subpackage architecture (with the
   layered import-direction rules).
 - Environment setup, `pip install -e ".[dev]"`, pre-commit registration.
+- `timetoshare`, the TimeToShare package (the manifest schema, its validator
+  and the rules of statements, by which the library checks the `statements`,
+  `provenance` and `@context` it carries through reading and writing), is a
+  runtime dependency in `[project] dependencies`, so every install brings it. Until a release of TimeToShare carries the schema
+  version the library writes, it is a git reference to TimeToShare's `main`
+  branch; PyPI refuses a direct reference in a published package's
+  requirements, so a release of the library needs the registry range in its
+  place.
+- The test oracle `pymeasuremap` (the Measure Map reference implementation,
+  the oracle for compressed measure-map rows) lives in the `conformance`
+  dependency group (PEP 735), not in an extra, as a git reference to a fixed
+  commit. A dependency group is not part of the published distribution
+  metadata, so the reference never reaches PyPI. `pip install -e ".[dev]"`
+  does not install it; run `pip install --group conformance` (pip 25.1 or
+  later) as well, or use `tox`, which installs the group in every test
+  environment. From a checkout with the sibling repositories,
+  `pip install -e ../TimeToShare/python -e ../pyMeasureMap` installs both
+  packages from source.
 - The canonical build/test/publish flow via `tox` (envs: default, `lint`,
   `build`, `clean`, `publish`).
 - Coding standards (style, typing, Google-style docstrings, error

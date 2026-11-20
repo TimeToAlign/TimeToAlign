@@ -710,14 +710,13 @@ class TestFractionLengthTimestamps:
     A logical (quarters/beats) timeline stores its length as a ``Coordinate``
     whose ``value`` is a ``Fraction``. The bounds check inside
     ``_compute_local_coordinates`` compares the local coordinate array against
-    that length scalar through a PyArrow compute kernel, which rejects a raw
-    ``Fraction``. These tests pin that the length reaches the kernel as a float
-    so both public timestamp entry points run without raising on a
-    Fraction-length timeline.
+    that length exactly, on the ratio side of the cells. These tests pin that
+    both public timestamp entry points run on a Fraction-length timeline and
+    keep the in-bounds coordinates exact.
     """
 
     def test_compute_local_coordinates_with_fraction_length(self) -> None:
-        """The bounds kernel accepts a Fraction-valued length."""
+        """The bounds check accepts a Fraction-valued length."""
         from timetoalign.timelines.types import ContinuousLogicalTimeline
 
         tl = ContinuousLogicalTimeline(length=Fraction(9, 2))

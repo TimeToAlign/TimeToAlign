@@ -18,9 +18,9 @@ and produces a single :class:`~timetoalign.alignment.bundle.AlignmentBundle`:
 ============================  =========================================
 IEEE 1599 construct           TimeToAlign! representation
 ============================  =========================================
-``<spine>``                   ``DiscreteLogicalTimeline`` ``spine:dlt1``,
+``<spine>``                   ``DiscreteLogicalTimeline`` ``spine:dlt_1``,
                               unit ``ticks``, ``NumberType.int``
-``<logic><los>`` notes,       ONE ``DiscreteLogicalTimeline`` ``los:dlt2``,
+``<logic><los>`` notes,       ONE ``DiscreteLogicalTimeline`` ``los:dlt_2``,
 rests and lyric syllables     unit ``ticks``
 ``<notational>`` per          ONE nested ``SegmentLine`` per group: one page
 ``graphic_instance_group``    child per ``<graphic_instance>``, each holding
@@ -120,7 +120,7 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Self
+from typing import TYPE_CHECKING, Any, ClassVar, Self
 
 import numpy as np
 import pyarrow as pa
@@ -137,6 +137,7 @@ from timetoalign.display.html import code
 from timetoalign.loader.format.xml import XmlLoader
 from timetoalign.maps.interval import IntervalToConstantMap
 from timetoalign.storage.events import EventData
+from timetoalign.timelines.factory import _mint_timeline_id
 from timetoalign.timelines.types import (
     ContinuousPhysicalTimeline,
     DiscreteGraphicalTimeline,
@@ -412,6 +413,7 @@ class Ieee1599Loader(XmlLoader):
     """
 
     _default_unit = TimeUnit.ticks
+    _single_source: ClassVar[bool] = True
 
     def __init__(self) -> None:
         super().__init__(principal_tags=[])
@@ -451,17 +453,12 @@ class Ieee1599Loader(XmlLoader):
             Self, for method chaining.
 
         Raises:
-            ValueError: If more than one source is given, or if this loader
-                has already ingested a document.  One IEEE 1599 document is
-                one self-contained work with its own spine; two documents are
-                two bundles, so they need two loaders.
+            ValueError: If no source or more than one is given, or if this
+                loader already holds a document.  One IEEE 1599 document is one
+                self-contained work with its own spine; two documents are two
+                bundles, so they need two loaders.
         """
-        if len(sources) != 1:
-            raise ValueError(
-                "Ieee1599Loader ingests exactly one IEEE 1599 document per "
-                f"loader; got {len(sources)} sources."
-            )
-        self._reject_second_document()
+        self._refuse_further_source(*sources)
         self._name = Path(sources[0]).stem
         return super().load(*sources)
 
@@ -475,9 +472,9 @@ class Ieee1599Loader(XmlLoader):
             Self, for method chaining.
 
         Raises:
-            ValueError: If this loader has already ingested a document.
+            ValueError: If this loader already holds a document.
         """
-        self._reject_second_document()
+        self._refuse_further_source("an XML string")
         return super().load_string(xml_string)
 
     def load_element(self, root: ET.Element) -> Self:
@@ -490,30 +487,22 @@ class Ieee1599Loader(XmlLoader):
             Self, for method chaining.
 
         Raises:
-            ValueError: If this loader has already ingested a document.
+            ValueError: If this loader already holds a document.
         """
-        self._reject_second_document()
+        self._refuse_further_source("an XML element")
         return super().load_element(root)
 
-    def _reject_second_document(self) -> None:
-        """Guard every ingest path against a second document.
+    def _held_source(self) -> str | None:
+        """Name the held document, which a string or element gives no path.
 
-        One IEEE 1599 document is one self-contained work with its own spine;
-        a second one parsed into the same loader would suffix its timeline
-        uids onto the first one's and claim against the wrong spine, so it is
-        refused however it arrives — as a path, a string or an element.
-
-        Raises:
-            ValueError: If a document is already held.
+        Every door into the parse (a path, a string, an element) asks this,
+        so a second document is refused however it arrives: parsed into the
+        same loader, it would suffix its timeline uids onto the first one's
+        and claim against the wrong spine.
         """
         if self._spine_uid is None:
-            return
-        held = self._sources[0].name if self._sources else self._name or "a document"
-        raise ValueError(
-            f"This Ieee1599Loader already holds {held}. Each IEEE 1599 "
-            "document is a self-contained bundle: use a new loader, or call "
-            "clear() first."
-        )
+            return None
+        return super()._held_source() or "a document read from XML"
 
     def clear(self) -> None:
         """Discard the loaded document and every derived artefact."""
@@ -531,7 +520,7 @@ class Ieee1599Loader(XmlLoader):
         self._claim_field = None
         self._timeline_cache.clear()
         self._name = None
-        self._timeline_id_generator.reset()
+        self._minted_timeline_ids.clear()
 
     def _process_xml(self, root: ET.Element) -> None:
         """Parse one ``<ieee1599>`` root into curated tables and claim fields.
@@ -582,8 +571,8 @@ class Ieee1599Loader(XmlLoader):
         coordinate and the hpos sum a single integer field.  Events notated as
         simultaneous carry ``timing="0"`` and so share a coordinate.
         """
-        self._spine_uid = self._timeline_id_generator.next_id_with_role(
-            DiscreteLogicalTimeline, self._claim_role("spine")
+        self._spine_uid = _mint_timeline_id(
+            self, TimeUnit.ticks, role=self._claim_role("spine")
         )
         timing = 0
         hpos = 0
@@ -614,8 +603,8 @@ class Ieee1599Loader(XmlLoader):
         recoverable by grouping on ``event_ref`` and ordering by
         ``notehead_index``.
         """
-        self._los_uid = self._timeline_id_generator.next_id_with_role(
-            DiscreteLogicalTimeline, self._claim_role("los")
+        self._los_uid = _mint_timeline_id(
+            self, TimeUnit.ticks, role=self._claim_role("los")
         )
         los = root.find("./logic/los")
         if los is None:
@@ -819,9 +808,7 @@ class Ieee1599Loader(XmlLoader):
             description = group.get("description") or "edition"
             role = self._claim_role(description)
             spec = _EditionSpec(
-                uid=self._timeline_id_generator.next_id_with_role(
-                    DiscreteGraphicalTimeline, role
-                ),
+                uid=_mint_timeline_id(self, TimeUnit.pixels, role=role),
                 role=role,
                 description=description,
                 pages=[],
@@ -957,9 +944,7 @@ class Ieee1599Loader(XmlLoader):
             general = track.find("track_general")
             notes = None if general is None else general.find("notes")
             spec = _TrackSpec(
-                uid=self._timeline_id_generator.next_id_with_role(
-                    ContinuousPhysicalTimeline, role
-                ),
+                uid=_mint_timeline_id(self, TimeUnit.seconds, role=role),
                 role=role,
                 file_name=file_name,
                 attributes={
@@ -1346,12 +1331,12 @@ class Ieee1599Loader(XmlLoader):
 
     @property
     def spine_uid(self) -> str | None:
-        """The spine timeline's uid (``spine:dlt1``), or ``None`` if unloaded."""
+        """The spine timeline's uid (``spine:dlt_1``), or ``None`` if unloaded."""
         return self._spine_uid
 
     @property
     def los_uid(self) -> str | None:
-        """The LOS timeline's uid (``los:dlt2``), or ``None`` if unloaded."""
+        """The LOS timeline's uid (``los:dlt_2``), or ``None`` if unloaded."""
         return self._los_uid
 
     @property
@@ -1398,7 +1383,7 @@ class Ieee1599Loader(XmlLoader):
 
         bundle = AlignmentBundle(name=self._name)
         for timeline in self.create_timelines():
-            bundle.add_timeline(timeline, uid=timeline.id, as_group=timeline.id)
+            bundle.add_timeline(timeline, as_group=timeline.id)
         if self._claim_field is not None:
             bundle.add_match_claim_field(self._claim_field)
         return bundle
@@ -1503,7 +1488,8 @@ class Ieee1599Loader(XmlLoader):
         file and pixel origin, its child accolade coordinates resolve back to
         that image without consulting any sibling page. A page-file interval
         map on the edition resolves an edition coordinate to the page image
-        that contains it.
+        that contains it; it ends where the edition ends, so a coordinate at
+        or beyond the edition's length names no page.
         """
         timeline: SegmentLine[SegmentLine[DiscreteGraphicalTimeline]] = SegmentLine[
             SegmentLine[DiscreteGraphicalTimeline]
@@ -1526,14 +1512,14 @@ class Ieee1599Loader(XmlLoader):
             ]
             if not accolade_specs:
                 continue
-            page_uid = f"{spec.uid}_page{page_index}"
+            # Pages and accolades are named by position; their ids are
+            # minted in the edition's manifest.
             page: SegmentLine[DiscreteGraphicalTimeline] = SegmentLine[
                 DiscreteGraphicalTimeline
             ](
                 length=0,
                 unit=_GRAPHIC_UNIT,
                 number_type=NumberType.int,
-                uid=page_uid,
                 name=f"page_{page_index}",
                 meta={"page": page_spec.page},
             )
@@ -1542,7 +1528,6 @@ class Ieee1599Loader(XmlLoader):
                     length=max(row["end"] for row in segment_spec.rows),
                     unit=_GRAPHIC_UNIT,
                     number_type=NumberType.int,
-                    uid=f"{page_uid}_accolade{accolade_index}",
                     name=f"accolade_{accolade_index}",
                 )
                 accolade.add_events(segment_spec.rows)
@@ -1551,10 +1536,16 @@ class Ieee1599Loader(XmlLoader):
             file_names.append(page_spec.page["file_name"])
             timeline.append_segment(page)
         if boundaries:
+            end = timeline.length
             timeline.add_conversion_map(
                 IntervalToConstantMap(
                     boundaries=boundaries,
                     values=file_names,
+                    end=(
+                        end.value
+                        if end is not None and end.value > boundaries[-1]
+                        else None
+                    ),
                     source_unit=_GRAPHIC_UNIT,
                     name="file_name",
                 )

@@ -14,7 +14,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
-from timetoalign.core import Domain, NumberType, TimelineIdGenerator, TimeUnit
+from timetoalign.core import Domain, NumberType, TimeUnit
+from timetoalign.core.ids import mint_id, timeline_id_prefix
 from timetoalign.storage import EventData, EventStore, SingleStore
 from timetoalign.storage.events import (
     _register_timeline_factory as _register_data_factory,
@@ -29,13 +30,55 @@ if TYPE_CHECKING:
 module_logger = logging.getLogger(__name__)
 
 
-def _mint_timeline_id(owner: object, timeline_class: type["Timeline"]) -> str:
-    """Mint the next type-based timeline ID scoped to a data/store owner."""
-    generator = getattr(owner, "_timeline_id_generator", None)
-    if generator is None:
-        generator = TimelineIdGenerator()
-        setattr(owner, "_timeline_id_generator", generator)
-    return generator.next_id(timeline_class)
+def _mint_timeline_id(owner: object, unit: TimeUnit, *, role: str | None = None) -> str:
+    """Mint a timeline id unique among those minted for *owner* before.
+
+    The id is ``{prefix}_{N}`` with the unit's timeline prefix, led by
+    ``{role}:`` when a role is given (``spine:dlt_1``, then ``los:dlt_2``):
+    the number counts every timeline of the prefix, whatever its role.
+    *owner* is the data, store or loader whose successive timelines must not
+    share an id.
+    """
+    taken: set[str] | None = getattr(owner, "_minted_timeline_ids", None)
+    if taken is None:
+        taken = set()
+        setattr(owner, "_minted_timeline_ids", taken)
+    timeline_id = mint_id(timeline_id_prefix(unit), taken)
+    taken.add(timeline_id)
+    return timeline_id if role is None else f"{role}:{timeline_id}"
+
+
+def _root_timeline_id(
+    owner: object, unit: TimeUnit, uid: str | None, *, role: str | None = None
+) -> tuple[str, bool]:
+    """Return the id of a tree's root and whether it was minted.
+
+    The root's number is drawn from *owner*'s minted ids even when *uid*
+    names the root, so the timelines minted after it number on from it. A
+    given *uid* also takes its own number from those ids, by its part after
+    the last ``:``: the number counts every timeline of the prefix whatever
+    its role (:func:`_mint_timeline_id`), so ``score:clt_2``, ``perf:clt_2``
+    and ``clt_2`` all hold ``clt_2``, and no timeline of the tree is minted
+    the root's id. A given id of another shape reserves a number nothing is
+    minted.
+    """
+    root_id = _mint_timeline_id(owner, unit, role=role)
+    if uid is None:
+        return root_id, True
+    getattr(owner, "_minted_timeline_ids").add(uid.rpartition(":")[2])
+    return uid, False
+
+
+def _flag_minted(timeline: "Timeline", minted: bool) -> "Timeline":
+    """Record that the library minted *timeline*'s id, and return it.
+
+    A minted id is minted again when the timeline joins a scope that holds
+    it, where a given id raises; the flag must therefore survive from the
+    minting to the joining.
+    """
+    if minted:
+        timeline._set_id(timeline.id, minted=True)
+    return timeline
 
 
 def create_timeline_from_event_data(
@@ -57,8 +100,9 @@ def create_timeline_from_event_data(
     timeline_class, effective_number_type = _infer_timeline_class_and_number_type(
         data.unit, data.number_type
     )
-    if uid is None:
-        uid = _mint_timeline_id(data, timeline_class)
+    minted = uid is None
+    if minted:
+        uid = _mint_timeline_id(data, data.unit)
     coord_range = source.coordinate_range()
     length = coord_range[1] if coord_range else 0
     timeline = timeline_class(
@@ -68,7 +112,7 @@ def create_timeline_from_event_data(
         uid=uid,
     )
     timeline._events = source
-    return timeline
+    return _flag_minted(timeline, minted)
 
 
 def _infer_timeline_class_and_number_type(
@@ -221,11 +265,13 @@ def _create_grouped_timeline(
         child_coord_range = group_data.coordinate_range()
         child_length = child_coord_range[1] if child_coord_range else 0
 
+        # The group value is the child's label; its id is minted in the
+        # parent's manifest.
         child = timeline_class(
             length=child_length,
             unit=group_data.unit,
             number_type=effective_number_type,
-            uid=child_name,
+            name=child_name,
         )
         child._events = group_data
         parent.add_child(child, offset=0, allow_expansion=True)
@@ -306,17 +352,21 @@ def create_timeline_from_bundle(
     timeline_class, effective_number_type = _infer_timeline_class_and_number_type(
         first_data.unit, first_data.number_type
     )
-    if uid is None:
-        uid = _mint_timeline_id(store, timeline_class)
+    minted = uid is None
+    if minted:
+        uid = _mint_timeline_id(store, first_data.unit)
 
     # Handle group_by: create children from unique field values
     if group_by is not None:
-        return _create_grouped_timeline(
-            data_to_use,
-            group_by=group_by,
-            timeline_class=timeline_class,
-            effective_number_type=effective_number_type,
-            uid=uid,
+        return _flag_minted(
+            _create_grouped_timeline(
+                data_to_use,
+                group_by=group_by,
+                timeline_class=timeline_class,
+                effective_number_type=effective_number_type,
+                uid=uid,
+            ),
+            minted,
         )
 
     # Single data case: put events directly on the timeline (no children).
@@ -344,7 +394,7 @@ def create_timeline_from_bundle(
             f"Created timeline '{timeline.id}' with {len(merged_data)} events"
         )
 
-        return timeline
+        return _flag_minted(timeline, minted)
 
     else:
         # Multiple data: create parent with children at offset 0
@@ -367,20 +417,22 @@ def create_timeline_from_bundle(
             # Create child with corrected number_type
             child_coord_range = data.coordinate_range()
             child_length = child_coord_range[1] if child_coord_range else 0
+            # The store name is the child's label, and leads its event ids;
+            # the child's id is minted in the parent's manifest.
             child = timeline_class(
                 length=child_length,
                 unit=data.unit,
                 number_type=effective_number_type,
-                uid=name,
+                name=name,
             )
-            child._events = data.prefix_ids(child.id)
+            child._events = data.prefix_ids(name)
             parent.add_child(child, offset=0, allow_expansion=True)
 
         module_logger.debug(
             f"Created timeline '{parent.id}' with {parent.n_children} children"
         )
 
-        return parent
+        return _flag_minted(parent, minted)
 
 
 def create_timeline(
@@ -439,8 +491,9 @@ def create_timeline(
         >>> loader = PartituraLoader()
         >>> loader.load("score.musicxml")
         >>> timeline = create_timeline(loader, uid="my_score")
-        >>> notes_tl = timeline.get_child("notes")
-        >>> measures_tl = timeline.get_child("measures")
+        >>> # Each child is named after its store; its id is minted (clt_2, ...)
+        >>> children = {timeline.get_child(i).name: i for i in timeline.list_children()}
+        >>> notes_tl = timeline.get_child(children["notes"])
 
         >>> # With filters (only Notes, exclude annotations)
         >>> timeline = create_timeline(

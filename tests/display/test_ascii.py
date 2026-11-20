@@ -553,7 +553,7 @@ class TestGroupDiagram:
     """Tests for group_diagram function."""
 
     def test_basic_group_output(self) -> None:
-        """Basic group renders header, box, and footer."""
+        """Basic group renders header and box; a group has no stored-row footer."""
         from timetoalign.timelines import TimelineGroup
 
         tl = DiscreteGraphicalTimeline(length=100, uid="grp_basic")
@@ -569,8 +569,8 @@ class TestGroupDiagram:
         assert BOX_CHARS["top_left"] in result
         assert BOX_CHARS["bottom_right"] in result
 
-        # Footer
-        assert "Timestamps:" in result
+        # No footer: the stored rows are always the common start and end
+        assert result.splitlines()[-1].startswith(BOX_CHARS["bottom_left"])
 
     def test_group_with_multiple_timelines(self) -> None:
         """Group with multiple timelines shows all."""
@@ -609,12 +609,11 @@ class TestGroupDiagram:
         group = TimelineGroup(id="recursive_group", timelines=[root])
 
         assert group_diagram(group, depth=0) == (
-            "TimelineGroup[recursive_group] (1 timelines, 2 timestamps)\n"
+            "TimelineGroup[recursive_group] (1 timelines)\n"
             "┌────────────────────────────────────────────────────────────────────┐\n"
             "│ ContinuousPhysicalTimeline[group_root] (1 children)                │\n"
             "│                       0 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 100 seconds │\n"
-            "└────────────────────────────────────────────────────────────────────┘\n"
-            "Timestamps: 2"
+            "└────────────────────────────────────────────────────────────────────┘"
         )
 
 
@@ -632,7 +631,7 @@ class TestBundleDiagram:
 
         tl = DiscreteGraphicalTimeline(length=100, uid="bnd_basic")
         bundle = AlignmentBundle(id="test_bundle")
-        bundle.add_timeline(tl, uid="tl1")
+        bundle.add_timeline(tl)
 
         result = bundle_diagram(bundle)
 
@@ -652,15 +651,15 @@ class TestBundleDiagram:
         from timetoalign.alignment import AlignmentBundle, MatchClaimField
 
         bundle = AlignmentBundle(id="columnar_bundle")
-        tl_a = ContinuousPhysicalTimeline(length=1.0, uid="rec-a:cpt1")
-        tl_b = ContinuousPhysicalTimeline(length=1.0, uid="rec-b:cpt1")
-        bundle.add_timeline(tl_a, uid="rec-a:cpt1", as_group="rec-a")
-        bundle.add_timeline(tl_b, uid="rec-b:cpt1", as_group="rec-b")
+        tl_a = ContinuousPhysicalTimeline(length=1.0, uid="rec-a:cpt_1")
+        tl_b = ContinuousPhysicalTimeline(length=1.0, uid="rec-b:cpt_1")
+        bundle.add_timeline(tl_a, as_group="rec-a")
+        bundle.add_timeline(tl_b, as_group="rec-b")
 
         # Three synchronous instant claims, held columnar (never materialised).
         field = MatchClaimField.from_columns(
-            timeline_a_ids=["rec-a:cpt1"] * 3,
-            timeline_b_ids=["rec-b:cpt1"] * 3,
+            timeline_a_ids=["rec-a:cpt_1"] * 3,
+            timeline_b_ids=["rec-b:cpt_1"] * 3,
             coordinate_a=[0.0, 0.1, 0.2],
             coordinate_b=[0.0, 0.1, 0.2],
             unit_a="seconds",
@@ -686,21 +685,21 @@ class TestBundleDiagram:
         from timetoalign.core.time import Coordinate
 
         bundle = AlignmentBundle(id="mixed_bundle")
-        tl_a = ContinuousPhysicalTimeline(length=1.0, uid="rec-a:cpt1")
-        tl_b = ContinuousPhysicalTimeline(length=1.0, uid="rec-b:cpt1")
-        bundle.add_timeline(tl_a, uid="rec-a:cpt1", as_group="rec-a")
-        bundle.add_timeline(tl_b, uid="rec-b:cpt1", as_group="rec-b")
+        tl_a = ContinuousPhysicalTimeline(length=1.0, uid="rec-a:cpt_1")
+        tl_b = ContinuousPhysicalTimeline(length=1.0, uid="rec-b:cpt_1")
+        bundle.add_timeline(tl_a, as_group="rec-a")
+        bundle.add_timeline(tl_b, as_group="rec-b")
 
         # Two Python-list claims ...
         bundle.add_match_claims(
             [
                 MatchClaim(
-                    timeline_a_id="rec-a:cpt1",
-                    timeline_b_id="rec-b:cpt1",
+                    timeline_a_id="rec-a:cpt_1",
+                    timeline_b_id="rec-b:cpt_1",
                     start_anchor=AlignmentAnchor(
-                        timeline_a_id="rec-a:cpt1",
+                        timeline_a_id="rec-a:cpt_1",
                         coordinate_a=Coordinate(c, TimeUnit.seconds),
-                        timeline_b_id="rec-b:cpt1",
+                        timeline_b_id="rec-b:cpt_1",
                         coordinate_b=Coordinate(c, TimeUnit.seconds),
                     ),
                 )
@@ -710,8 +709,8 @@ class TestBundleDiagram:
         # ... plus three columnar claims → 5 total.
         bundle.add_match_claim_field(
             MatchClaimField.from_columns(
-                timeline_a_ids=["rec-a:cpt1"] * 3,
-                timeline_b_ids=["rec-b:cpt1"] * 3,
+                timeline_a_ids=["rec-a:cpt_1"] * 3,
+                timeline_b_ids=["rec-b:cpt_1"] * 3,
                 coordinate_a=[0.2, 0.3, 0.4],
                 coordinate_b=[0.2, 0.3, 0.4],
                 unit_a="seconds",
@@ -758,7 +757,7 @@ class TestDiagramMethods:
 
         tl = DiscreteGraphicalTimeline(length=100, uid="meth_bnd")
         bundle = AlignmentBundle(id="bundle_method")
-        bundle.add_timeline(tl, uid="tl1")
+        bundle.add_timeline(tl)
 
         method_result = bundle.diagram()
         func_result = bundle_diagram(bundle)
@@ -970,8 +969,8 @@ class TestTimelineDiagramWithRegions:
         tl = ContinuousLogicalTimeline(length=1000.0, uid="tl_reg_only")
         child = ContinuousLogicalTimeline(length=300.0, uid="child_r", name="child")
         tl.add_child(child, offset=0)
-        tl.create_region("section_a", 0, 500)
-        tl.create_region("section_b", 500, 1000)
+        tl.create_region(0, 500, id="section_a", name="section_a")
+        tl.create_region(500, 1000, id="section_b", name="section_b")
 
         result = timeline_diagram(tl, show={"regions"})
 
@@ -987,7 +986,7 @@ class TestTimelineDiagramWithRegions:
         tl = ContinuousLogicalTimeline(length=1000.0, uid="tl_both")
         child = ContinuousLogicalTimeline(length=300.0, uid="child_b", name="sys")
         tl.add_child(child, offset=0)
-        tl.create_region("verse", 0, 500)
+        tl.create_region(0, 500, id="verse", name="verse")
 
         result = timeline_diagram(tl, show={"regions", "children"})
 
@@ -1001,9 +1000,9 @@ class TestTimelineDiagramWithRegions:
         """Regions are sorted by start coordinate."""
         tl = ContinuousLogicalTimeline(length=1000.0, uid="tl_sort")
         # Add in reverse order
-        tl.create_region("third", 600, 1000)
-        tl.create_region("first", 0, 300)
-        tl.create_region("second", 300, 600)
+        tl.create_region(600, 1000, id="third", name="third")
+        tl.create_region(0, 300, id="first", name="first")
+        tl.create_region(300, 600, id="second", name="second")
 
         result = timeline_diagram(tl, show={"regions"})
         lines = result.split("\n")
@@ -1021,7 +1020,7 @@ class TestTimelineDiagramWithRegions:
     def test_show_none_backwards_compat(self) -> None:
         """show=None preserves exact existing behaviour (no regions)."""
         tl = ContinuousLogicalTimeline(length=1000.0, uid="tl_compat")
-        tl.create_region("hidden", 0, 500)
+        tl.create_region(0, 500, id="hidden", name="hidden")
 
         result = timeline_diagram(tl)  # show=None is default
 
@@ -1032,7 +1031,7 @@ class TestTimelineDiagramWithRegions:
     def test_regions_ascii_mode(self) -> None:
         """Regions render correctly in ASCII mode."""
         tl = ContinuousLogicalTimeline(length=1000.0, uid="tl_ascii_r")
-        tl.create_region("intro", 0, 250)
+        tl.create_region(0, 250, id="intro", name="intro")
 
         result = timeline_diagram(tl, unicode=False, show={"regions"})
 
@@ -1047,8 +1046,8 @@ class TestTimelineDiagramHeaderRegions:
     def test_header_includes_region_count(self) -> None:
         """Header line includes region count."""
         tl = ContinuousLogicalTimeline(length=1000.0, uid="tl_hdr_r")
-        tl.create_region("a", 0, 500)
-        tl.create_region("b", 500, 1000)
+        tl.create_region(0, 500, id="a", name="a")
+        tl.create_region(500, 1000, id="b", name="b")
 
         result = timeline_diagram(tl)
         first_line = result.split("\n")[0]
@@ -1067,7 +1066,7 @@ class TestDiagramMethodShowParam:
     def test_show_param_passed_through(self) -> None:
         """Timeline.diagram(show=...) produces same output as function."""
         tl = ContinuousLogicalTimeline(length=1000.0, uid="tl_meth_show")
-        tl.create_region("part", 0, 500)
+        tl.create_region(0, 500, id="part", name="part")
 
         method_result = tl.diagram(show={"regions"})
         func_result = timeline_diagram(tl, show={"regions"})
@@ -1081,7 +1080,7 @@ class TestDiagramMethodShowParam:
             length=300.0, uid="child_ov", name="child_name"
         )
         tl.add_child(child, offset=0)
-        tl.create_region("reg", 0, 500)
+        tl.create_region(0, 500, id="reg", name="reg")
 
         result = tl.diagram(show_children=False, show={"children", "regions"})
 

@@ -12,11 +12,28 @@ Modalities:
 - Discrete: Integer coordinates
 
 Specialized timelines:
-- BeatGrid: Metrical timeline with measure/beat C-Maps
 - SegmentLine: Timeline with contiguous child segments
+
+Beat grids:
+- BeatGrid: Tempo segments generating a labelled lattice of beats
+- BeatGridSegment: One tempo segment of a beat grid
+- GridBeat: One labelled beat of a grid
+
+Statements (what a bundle, a timeline or a region stands for):
+- StatementsMixin: Property–value pairs and their provenance, read side
+- MutableStatementsMixin: The same, changed in place (timeline, bundle)
+- LIBRARY_AGENT: The agent this library's importers name by default
 
 Structural components:
 - Region: Named TimeInterval (not a timeline itself)
+- MeasureMap: Immutable printed-order measure structure
+- SectionHierarchy: Section partition over one MeasureMap
+- MetricNode: One timespan in a packed metrical forest
+- Expansion: An attributed partition of a metric node
+- Reading: Provenance and vocabulary for one forest reading
+- TempoEntry: One symbolic-axis tempo or observation fact
+- TempoMap: An independent sequence of tempo facts
+- MetricHierarchy: Packed metrical forest with independent tempo maps
 
 Flow API (MeasureUnit architecture):
 - MeasureUnit: Fundamental building block (one per MeasureData row)
@@ -50,7 +67,7 @@ Public API:
 - ContinuousLogicalTimeline, DiscreteLogicalTimeline
 - ContinuousPhysicalTimeline, DiscretePhysicalTimeline
 - ContinuousGraphicalTimeline, DiscreteGraphicalTimeline
-- BeatGrid: Metrical timeline for measure/beat information
+- BeatGrid: Tempo segments generating a labelled lattice of beats
 - SegmentLine: Timeline where all children are contiguous
 - Region: Named TimeInterval for partitioning
 - create_timeline: Factory function for creating timelines from bundles/stores
@@ -59,8 +76,8 @@ Public API:
 
 from __future__ import annotations
 
-from .base import Timeline
-from .beatgrid import BeatGrid
+from .base import Timeline, UnknownLengthError
+from .beatgrid import BeatGrid, BeatGridSegment, GridBeat
 from .factory import create_timeline
 from .flow import (
     AtomicSection,
@@ -87,8 +104,19 @@ from .flow import (
     create_unfolded_timeline,
     load_valid_flows,
 )
-from .groups import GroupTimestamp, TimelineGroup
+from .groups import TimelineGroup
 from .regions import Region
+from .statements import LIBRARY_AGENT, MutableStatementsMixin, StatementsMixin
+from .structure import (
+    Expansion,
+    MeasureMap,
+    MetricHierarchy,
+    MetricNode,
+    Reading,
+    SectionHierarchy,
+    TempoEntry,
+    TempoMap,
+)
 from .types import (
     ContinuousGraphicalTimeline,
     ContinuousLogicalTimeline,
@@ -107,7 +135,7 @@ __all__ = [
     # Base
     "Timeline",
     "TimelineGroup",
-    "GroupTimestamp",
+    "UnknownLengthError",
     # Factory
     "create_timeline",
     "get_timeline_class",
@@ -123,10 +151,25 @@ __all__ = [
     "ContinuousGraphicalTimeline",
     "DiscreteGraphicalTimeline",
     # Specialized timelines
-    "BeatGrid",
     "SegmentLine",
+    # Beat grids
+    "BeatGrid",
+    "BeatGridSegment",
+    "GridBeat",
+    # Statements
+    "LIBRARY_AGENT",
+    "MutableStatementsMixin",
+    "StatementsMixin",
     # Structural components
     "Region",
+    "MeasureMap",
+    "SectionHierarchy",
+    "MetricNode",
+    "Expansion",
+    "Reading",
+    "TempoEntry",
+    "TempoMap",
+    "MetricHierarchy",
     # Flow API
     "MeasureUnit",
     # Typed MeasureUnit subclasses (Typing step)

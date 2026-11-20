@@ -1,17 +1,17 @@
 # Interval { #timetoalign.Interval }
 
 ```python
-Interval()
+Interval(start=None, end=None, unit=None, /, **data)
 ```
 
 A non-decreasing interval between two plain coordinates.
 
 ## Parameters {.doc-section .doc-section-parameters}
 
-| Name   | Type   | Description               | Default    |
-|--------|--------|---------------------------|------------|
-| start  |        | Inclusive interval start. | _required_ |
-| end    |        | Exclusive interval end.   | _required_ |
+| Name   | Type                                                                                                                   | Description               | Default   |
+|--------|------------------------------------------------------------------------------------------------------------------------|---------------------------|-----------|
+| start  | [Coordinate](`timetoalign.core.time.Coordinate`) \| [TimeScalarValue](`timetoalign.core.time.TimeScalarValue`) \| None | Inclusive interval start. | `None`    |
+| end    | [Coordinate](`timetoalign.core.time.Coordinate`) \| [TimeScalarValue](`timetoalign.core.time.TimeScalarValue`) \| None | Exclusive interval end.   | `None`    |
 
 ## Raises {.doc-section .doc-section-raises}
 

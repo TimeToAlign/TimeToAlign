@@ -55,7 +55,6 @@ for split bars, or "0" for anacrusis).
 | [from_measure_data](#timetoalign.QuartersToMeasureNumber.from_measure_data) | Create from MeasureData (loaded from TSV/JSON). |
 | [from_metric_map](#timetoalign.QuartersToMeasureNumber.from_metric_map) | Create from a MetricMap. |
 | [to_dict](#timetoalign.QuartersToMeasureNumber.to_dict) | Serialize to dictionary. |
-| [to_floating_measures](#timetoalign.QuartersToMeasureNumber.to_floating_measures) | Convert string MN labels to floating-point measure map. |
 
 ### from_dict { #timetoalign.QuartersToMeasureNumber.from_dict }
 
@@ -108,29 +107,7 @@ Create from a MetricMap.
 ### to_dict { #timetoalign.QuartersToMeasureNumber.to_dict }
 
 ```python
-QuartersToMeasureNumber.to_dict()
+QuartersToMeasureNumber.to_dict(minimal=False)
 ```
 
 Serialize to dictionary.
-
-### to_floating_measures { #timetoalign.QuartersToMeasureNumber.to_floating_measures }
-
-```python
-QuartersToMeasureNumber.to_floating_measures()
-```
-
-Convert string MN labels to floating-point measure map.
-
-Non-numeric suffixes (e.g., "a" in "19a") are stripped with a warning.
-
-#### Returns {.doc-section .doc-section-returns}
-
-| Name   | Type                                                                                 | Description                                        |
-|--------|--------------------------------------------------------------------------------------|----------------------------------------------------|
-|        | [QuartersToFloatingMeasures](`timetoalign.maps.interval.QuartersToFloatingMeasures`) | QuartersToFloatingMeasures map with interpolation. |
-
-#### Raises {.doc-section .doc-section-raises}
-
-| Name   | Type                       | Description                                   |
-|--------|----------------------------|-----------------------------------------------|
-|        | [ValueError](`ValueError`) | If any MN label cannot be parsed to a number. |

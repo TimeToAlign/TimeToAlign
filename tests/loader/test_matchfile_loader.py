@@ -10,33 +10,28 @@ This module tests the MatchfileLoader against the Vienna 1x22 dataset
 - AlignmentBundle assembly (single-file and multi-file)
 
 All counts are exact per the Zero Tolerance Validation Policy.
-See tests/data/vienna_1x22/README.md for gold standard values.
+See the README.md of the vienna_1x22 test-data corpus for gold standard values.
 """
 
 from __future__ import annotations
 
 from fractions import Fraction
-from pathlib import Path
 
 import pytest
 
-from timetoalign.alignment.bundle import AlignmentBundle, _reset_bundle_ids
-from timetoalign.alignment.claims import _reset_anchor_ids, _reset_claim_ids
+from timetoalign.alignment.bundle import AlignmentBundle
 from timetoalign.core import TimeUnit
 from timetoalign.loader.alignment.matchfile import MatchfileLoader
 from timetoalign.maps.linear import ScalarMap, ShiftMap
-from timetoalign.testdata import ensure_data
-from timetoalign.timelines.groups import _reset_group_ids
 from timetoalign.timelines.types import (
     ContinuousLogicalTimeline,
     DiscreteLogicalTimeline,
 )
 
-ensure_data("vienna_1x22", "score")
+from .conftest import VIENNA_DATA_DIR
 
 # region Test Data
 
-VIENNA_DATA_DIR = Path(__file__).parent.parent / "data" / "vienna_1x22"
 P01_MATCH = VIENNA_DATA_DIR / "Chopin_op10_no3_p01.match"
 ALL_MATCH_FILES = sorted(VIENNA_DATA_DIR.glob("*.match"))
 
@@ -84,15 +79,6 @@ TOTAL_MATCHED = TOTAL_MATCH_FILES * SNOTE_COUNT - TOTAL_DELETIONS  # 9875
 
 
 # region Fixtures
-
-
-@pytest.fixture(autouse=True)
-def reset_ids():
-    """Reset all ID generators before each test for isolation."""
-    _reset_group_ids()
-    _reset_anchor_ids()
-    _reset_claim_ids()
-    _reset_bundle_ids()
 
 
 @pytest.fixture
@@ -176,7 +162,7 @@ class TestMatchfileLoaderSingle:
     def test_score_timeline_uid(self, p01_loader: MatchfileLoader):
         """Score timeline uses the role-prefixed logical timeline ID."""
         score_tl = p01_loader.create_timeline("score")
-        assert score_tl.id == "score:clt1"
+        assert score_tl.id == "score:clt_1"
         assert score_tl.name == "Chopin_op10_no3"
 
     def test_score_timeline_note_count(self, p01_loader: MatchfileLoader):
@@ -244,7 +230,8 @@ class TestMatchfileLoaderSingle:
 
     def test_anacrusis_offset(self, p01_loader: MatchfileLoader):
         """Anacrusis offset is 0.5 (the negation of min raw onset -0.5)."""
-        assert p01_loader.anacrusis_offset == 0.5
+        assert p01_loader.anacrusis_offset == Fraction(1, 2)
+        assert type(p01_loader.anacrusis_offset) is Fraction
 
     def test_score_cmap_shift(self, p01_loader: MatchfileLoader):
         """raw_quarters ShiftMap converts normalised coords to raw partitura."""
@@ -252,7 +239,10 @@ class TestMatchfileLoaderSingle:
         shift_map = score_tl.get_conversion_map("raw_quarters")
         assert shift_map is not None
         assert isinstance(shift_map, ShiftMap)
-        assert shift_map.offset == -0.5
+        assert shift_map.offset == Fraction(-1, 2)
+        raw = shift_map(Fraction(1, 2))
+        assert raw == Fraction(0)
+        assert type(raw) is Fraction
 
     def test_score_cmap_divs(self, p01_loader: MatchfileLoader):
         """quarters_to_divs ScalarMap is attached, maps 1.0 -> 480."""
@@ -275,7 +265,7 @@ class TestMatchfileLoaderSingle:
     def test_perf_timeline_uid(self, p01_loader: MatchfileLoader):
         """Performance timeline uses a role/source/type ID."""
         perf_tl = p01_loader.create_timeline("perf:1")
-        assert perf_tl.id == "perf:Chopin_op10_no3_p01:dlt1"
+        assert perf_tl.id == "perf:Chopin_op10_no3_p01:dlt_1"
         assert perf_tl.name == "Chopin_op10_no3_p01"
 
     def test_perf_timeline_note_count(self, p01_loader: MatchfileLoader):
@@ -289,9 +279,12 @@ class TestMatchfileLoaderSingle:
         secs_map = perf_tl.get_conversion_map(TimeUnit.seconds)
         assert secs_map is not None
         assert isinstance(secs_map, ScalarMap)
-        # At 120 BPM: 480 ticks = 1 quarter = 0.5 seconds
-        expected = MIDI_CLOCK_RATE / (MIDI_CLOCK_UNITS * 1_000_000) * 480
-        assert abs(secs_map(480) - expected) < 1e-10
+        # At 120 BPM: 480 ticks = 1 quarter = 0.5 seconds, exactly
+        assert secs_map.scalar == Fraction(
+            MIDI_CLOCK_RATE, MIDI_CLOCK_UNITS * 1_000_000
+        )
+        assert secs_map.scalar == Fraction(1, 960)
+        assert secs_map(480) == 0.5
 
     def test_total_claims_count(self, p01_loader: MatchfileLoader):
         """Total MatchClaims = 454 (451 match + 3 NOMATCH)."""
@@ -339,8 +332,8 @@ class TestMatchfileLoaderSingle:
 
     def test_claims_reference_correct_timelines(self, p01_loader: MatchfileLoader):
         """All claims connect score and p01 performance timelines."""
-        score_id = "score:clt1"
-        perf_id = "perf:Chopin_op10_no3_p01:dlt1"
+        score_id = "score:clt_1"
+        perf_id = "perf:Chopin_op10_no3_p01:dlt_1"
         for claim in p01_loader._claims:
             assert claim.timeline_a_id == score_id
             assert claim.timeline_b_id == perf_id
@@ -413,22 +406,22 @@ class TestMatchfileLoaderCreateTimeline:
     def test_score_role(self, p01_loader: MatchfileLoader):
         """'score' role returns score timeline."""
         tl = p01_loader.create_timeline("score")
-        assert tl.id == "score:clt1"
+        assert tl.id == "score:clt_1"
 
     def test_perf_numeric_role(self, p01_loader: MatchfileLoader):
         """'perf:1' returns first performance timeline."""
         tl = p01_loader.create_timeline("perf:1")
-        assert tl.id == "perf:Chopin_op10_no3_p01:dlt1"
+        assert tl.id == "perf:Chopin_op10_no3_p01:dlt_1"
 
     def test_perf_uid_lookup(self, p01_loader: MatchfileLoader):
         """Full uid lookup works."""
-        tl = p01_loader.create_timeline("perf:Chopin_op10_no3_p01:dlt1")
-        assert tl.id == "perf:Chopin_op10_no3_p01:dlt1"
+        tl = p01_loader.create_timeline("perf:Chopin_op10_no3_p01:dlt_1")
+        assert tl.id == "perf:Chopin_op10_no3_p01:dlt_1"
 
     def test_score_uid_lookup(self, p01_loader: MatchfileLoader):
         """Score timeline accessible by full uid."""
-        tl = p01_loader.create_timeline("score:clt1")
-        assert tl.id == "score:clt1"
+        tl = p01_loader.create_timeline("score:clt_1")
+        assert tl.id == "score:clt_1"
 
     def test_invalid_role_raises(self, p01_loader: MatchfileLoader):
         """KeyError raised for unknown role/uid."""
@@ -464,7 +457,7 @@ class TestMatchfileLoaderCreateBundle:
     def test_bundle_score_timeline(self, p01_loader: MatchfileLoader):
         """Score timeline is in the bundle under its type-based uid."""
         bundle = p01_loader.create_bundle()
-        assert "score:clt1" in bundle.timelines
+        assert "score:clt_1" in bundle.timelines
 
     def test_bundle_cross_group_claims(self, p01_loader: MatchfileLoader):
         """Bundle has 454 cross-group claims."""
@@ -478,10 +471,10 @@ class TestMatchfileLoaderCreateBundle:
             loader.create_bundle()
 
     def test_bundle_score_in_group(self, p01_loader: MatchfileLoader):
-        """Score timeline is in the 'score' group."""
+        """Score timeline is in the group named 'score'."""
         bundle = p01_loader.create_bundle()
-        assert "score:clt1" in bundle.timeline_to_group
-        assert bundle.timeline_to_group["score:clt1"] == "score"
+        assert bundle.timeline_to_groups["score:clt_1"] == ("group_1",)
+        assert bundle.groups["group_1"].name == "score"
 
 
 # endregion
@@ -517,7 +510,7 @@ class TestMatchfileLoaderCreateTimelines:
         """Score timeline is always first."""
         tls = p01_loader.create_timelines()
         assert isinstance(tls[0], ContinuousLogicalTimeline)
-        assert tls[0].id == "score:clt1"
+        assert tls[0].id == "score:clt_1"
 
     def test_empty_before_load(self):
         """Empty list before load()."""
@@ -575,7 +568,7 @@ class TestMatchfileLoaderMulti:
 
     def test_all_claims_reference_same_score(self, all_loader: MatchfileLoader):
         """All claims reference the shared score timeline ID."""
-        score_id = "score:clt1"
+        score_id = "score:clt_1"
         for claim in all_loader._claims:
             assert claim.timeline_a_id == score_id
 
@@ -638,27 +631,46 @@ class TestMatchfileLoaderExternalScore:
         external_score = ContinuousLogicalTimeline(
             length=100.0,
             unit=TimeUnit.quarters,
-            uid="score:clt1",
+            uid="score:clt_1",
         )
 
         bundle = loader.create_bundle(score_timeline=external_score)
-        assert bundle.timelines["score:clt1"] is external_score
+        assert bundle.timelines["score:clt_1"] is external_score
 
-    def test_claims_still_reference_internal_uid(self):
-        """MatchClaims are never rebound — they reference the internal
-        score timeline's uid, which must match the external one."""
+    def test_claims_name_the_external_score_id(self):
+        """The bundle's claims name the id of the score timeline it holds.
+
+        An external score with any id works; the loader's own claim list is
+        left unchanged.
+        """
         loader = MatchfileLoader()
         loader.load(P01_MATCH)
+        internal_claims = list(loader._claims)
 
         external_score = ContinuousLogicalTimeline(
-            length=100.0,
+            length=200.0,
             unit=TimeUnit.quarters,
-            uid="score:clt1",
+            uid="my edition",
         )
 
-        bundle = loader.create_bundle(score_timeline=external_score)
+        bundle = loader.create_bundle(score_timeline=external_score, verify=False)
+
+        assert bundle.timelines["my edition"] is external_score
+        assert len(bundle.cross_group_claims) == len(internal_claims)
+        assert {claim.timeline_a_id for claim in bundle.cross_group_claims} == {
+            "my edition"
+        }
         for claim in bundle.cross_group_claims:
-            assert claim.timeline_a_id == "score:clt1"
+            for anchor in (claim.start_anchor, claim.end_anchor):
+                if anchor is not None:
+                    assert anchor.timeline_a_id == "my edition"
+        assert {claim.timeline_a_id for claim in loader._claims} == {"score:clt_1"}
+        first = next(
+            claim for claim in bundle.cross_group_claims if claim.is_synchronous
+        )
+        position = first.start_anchor.coordinate_a.value
+        stamp = bundle.get_matchstamp_at(position, "my edition")
+        assert first.timeline_b_id in stamp.present_timelines
 
     def test_compatible_external_score_accepted(self, p01_loader: MatchfileLoader):
         """External score with matching events passes verification."""
@@ -667,7 +679,7 @@ class TestMatchfileLoaderExternalScore:
         external_score = ContinuousLogicalTimeline(
             length=200.0,
             unit=TimeUnit.quarters,
-            uid="score:clt1",
+            uid="score:clt_1",
         )
         # Copy a few events from internal to external
         events = internal_score.events
@@ -686,14 +698,14 @@ class TestMatchfileLoaderExternalScore:
 
         # Should not raise
         bundle = p01_loader.create_bundle(score_timeline=external_score)
-        assert bundle.timelines["score:clt1"] is external_score
+        assert bundle.timelines["score:clt_1"] is external_score
 
     def test_incompatible_external_score_raises(self, p01_loader: MatchfileLoader):
         """External score with mismatched coordinates raises ValueError."""
         external_score = ContinuousLogicalTimeline(
             length=200.0,
             unit=TimeUnit.quarters,
-            uid="score:clt1",
+            uid="score:clt_1",
         )
         # Add an event with a known snote ID but wrong coordinate
         # Get a real snote ID from the loader's internal cache
@@ -717,7 +729,7 @@ class TestMatchfileLoaderExternalScore:
         external_score = ContinuousLogicalTimeline(
             length=200.0,
             unit=TimeUnit.quarters,
-            uid="score:clt1",
+            uid="score:clt_1",
         )
         real_id = next(iter(p01_loader._score_events))
         real_start, real_end = p01_loader._score_events[real_id]
@@ -733,18 +745,18 @@ class TestMatchfileLoaderExternalScore:
 
         # Should NOT raise with verify=False
         bundle = p01_loader.create_bundle(score_timeline=external_score, verify=False)
-        assert bundle.timelines["score:clt1"] is external_score
+        assert bundle.timelines["score:clt_1"] is external_score
 
     def test_empty_external_score_accepted(self, p01_loader: MatchfileLoader):
         """External score with no events passes verification (absence tolerated)."""
         external_score = ContinuousLogicalTimeline(
             length=100.0,
             unit=TimeUnit.quarters,
-            uid="score:clt1",
+            uid="score:clt_1",
         )
         # No events added — all lookups return None — tolerated
         bundle = p01_loader.create_bundle(score_timeline=external_score)
-        assert bundle.timelines["score:clt1"] is external_score
+        assert bundle.timelines["score:clt_1"] is external_score
 
 
 # endregion
@@ -991,7 +1003,7 @@ class TestPerPerformerDeletionCounts:
         p08_claims = [
             c
             for c in all_loader._claims
-            if c.timeline_b_id == "perf:Chopin_op10_no3_p08:dlt1"
+            if c.timeline_b_id == "perf:Chopin_op10_no3_p08:dlt_1"
         ]
         nomatch_p08 = [c for c in p08_claims if not c.is_synchronous]
         assert len(nomatch_p08) == 20
@@ -1002,7 +1014,7 @@ class TestPerPerformerDeletionCounts:
         p12_claims = [
             c
             for c in all_loader._claims
-            if c.timeline_b_id == "perf:Chopin_op10_no3_p12:dlt1"
+            if c.timeline_b_id == "perf:Chopin_op10_no3_p12:dlt_1"
         ]
         nomatch_p12 = [c for c in p12_claims if not c.is_synchronous]
         assert len(nomatch_p12) == 1
@@ -1020,7 +1032,7 @@ class TestMatchfileLoaderPerfPNNShorthand:
     def test_perf_p01_shorthand(self, p01_loader: MatchfileLoader):
         """'perf:p01' resolves to the first performance timeline."""
         tl = p01_loader.create_timeline("perf:p01")
-        assert tl.id == "perf:Chopin_op10_no3_p01:dlt1"
+        assert tl.id == "perf:Chopin_op10_no3_p01:dlt_1"
 
     @pytest.mark.slow
     def test_perf_p_shorthands_all_22(self, all_loader: MatchfileLoader):

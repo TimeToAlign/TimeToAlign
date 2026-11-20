@@ -168,6 +168,23 @@ for offset, child in parent.iter_children():
     print(f"  {child.id}: offset={offset.value}, length={child.length.value}")
 
 # %% [markdown]
+# A root timeline is unlocked unless it is built with `locked=True`, so it
+# grows to hold whatever you add. `lock()` locks it after construction, the
+# state `add_child` puts every child in: the timeline no longer grows, so
+# events and children must fit inside its length. A child that would overrun
+# it raises `ValueError`, and `append_child` refuses outright. A lock cannot
+# be lifted.
+
+# %%
+locked_before = parent.is_locked
+parent.lock()
+try:
+    parent.add_child(ContinuousPhysicalTimeline(length=40, uid="coda"), offset=80)
+except ValueError as e:
+    print(f"ValueError: {e}")
+{"locked before": locked_before, "locked after": parent.is_locked}
+
+# %% [markdown]
 # ### Nested Hierarchies
 
 # %%
@@ -184,6 +201,13 @@ piece
 
 # %% [markdown]
 # ## Serialisation
+#
+# `to_dict()` writes a TimeToShare manifest holding the timeline as its one
+# root, beside the version marker and the inline JSON-LD `@context` every
+# manifest carries. With `events=True`, the timeline's object in `timelines` also carries
+# its event rows under `events`, a key the library reads back but the
+# TimeToShare format does not define. Manifests themselves are the subject of
+# [How to Save and Load Timelines, Groups and Bundles](how02_group_and_bundle_files.ipynb).
 
 # %%
 tl = ContinuousPhysicalTimeline(length=10, uid="test")
@@ -195,7 +219,7 @@ tl.add_events(
 )
 
 data = tl.to_dict(events=True)
-{"keys": list(data.keys()), "events": len(data["events"])}
+{"keys": list(data), "events": len(data["timelines"][0]["events"])}
 
 # %%
 restored = ContinuousPhysicalTimeline.from_dict(data)

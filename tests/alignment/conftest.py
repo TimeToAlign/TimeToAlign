@@ -5,34 +5,27 @@ This module provides pytest fixtures for alignment testing, including:
 - Thoresen graphical timeline bundles (DGT1, DGT2)
 - Thoresen test data constants
 
-Test data is in tests/data/thoresen/ and comes from the published Thoresen
-example.
+Test data is the ``thoresen`` test-data corpus and comes from the published
+Thoresen example.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 from timetoalign.alignment import Agent, AlignmentAnchor, MatchClaim, MatchMetadata
-from timetoalign.alignment.bundle import _reset_bundle_ids
-from timetoalign.alignment.claims import _reset_anchor_ids, _reset_claim_ids
 from timetoalign.core import AgentType, Coordinate, TimeUnit
 from timetoalign.testdata import ensure_data
 from timetoalign.timelines import (
     ContinuousPhysicalTimeline,
     DiscreteGraphicalTimeline,
 )
-from timetoalign.timelines.groups import _reset_group_ids
-
-ensure_data("thoresen", "supra", "vienna_1x22", "score")
 
 # region Test Data Paths
 
-# Base path for test data (fetched on demand via pooch — see tests/_testdata.py)
-TEST_DATA_DIR = Path(__file__).parents[1] / "data"
-THORESEN_DATA_DIR = TEST_DATA_DIR / "thoresen"
+THORESEN_DATA_DIR, SUPRA_DIR, VIENNA_DIR, SCORE_DIR = ensure_data(
+    "thoresen", "supra", "vienna_1x22", "score"
+)
 
 # DGT1 (2009) - Single image with 5 horizontal systems
 DGT1_IMAGE = THORESEN_DATA_DIR / "thoresen_2009_sound-objects_p312_page1_1.jpeg"
@@ -142,25 +135,6 @@ AUDIO_DURATION_SECONDS = 150.0
 # endregion
 
 
-# region ID Reset Fixtures
-
-
-@pytest.fixture(autouse=True)
-def reset_ids() -> None:
-    """Reset ID generators before each test.
-
-    This ensures test isolation - each test starts with fresh IDs.
-    Resets all four generators: group, anchor, claim, and bundle.
-    """
-    _reset_group_ids()
-    _reset_anchor_ids()
-    _reset_claim_ids()
-    _reset_bundle_ids()
-
-
-# endregion
-
-
 # region Thoresen Timeline Fixtures
 
 
@@ -170,7 +144,7 @@ def dgt1_timeline() -> DiscreteGraphicalTimeline:
     return DiscreteGraphicalTimeline(
         length=DGT1_TOTAL_WIDTH,
         unit="pixels",
-        uid="dgt1",
+        uid="dgt_1",
         name="Thoresen 2009",
     )
 
@@ -181,7 +155,7 @@ def dgt2_timeline() -> DiscreteGraphicalTimeline:
     return DiscreteGraphicalTimeline(
         length=DGT2_TOTAL_WIDTH,
         unit="pixels",
-        uid="dgt2",
+        uid="dgt_2",
         name="Thoresen 2010",
     )
 
@@ -210,20 +184,20 @@ def thoresen_segment_claims() -> list[MatchClaim]:
 
     for i in range(5):
         claim = MatchClaim(
-            timeline_a_id="dgt1",
-            timeline_b_id="dgt2",
+            timeline_a_id="dgt_1",
+            timeline_b_id="dgt_2",
             start_anchor=AlignmentAnchor(
-                timeline_a_id="dgt1",
+                timeline_a_id="dgt_1",
                 coordinate_a=Coordinate(offset_dgt1, TimeUnit.pixels),
-                timeline_b_id="dgt2",
+                timeline_b_id="dgt_2",
                 coordinate_b=Coordinate(offset_dgt2, TimeUnit.pixels),
             ),
             end_anchor=AlignmentAnchor(
-                timeline_a_id="dgt1",
+                timeline_a_id="dgt_1",
                 coordinate_a=Coordinate(
                     offset_dgt1 + DGT1_SEGMENT_LENGTH, TimeUnit.pixels
                 ),
-                timeline_b_id="dgt2",
+                timeline_b_id="dgt_2",
                 coordinate_b=Coordinate(
                     offset_dgt2 + DGT2_SEGMENT_LENGTHS[i], TimeUnit.pixels
                 ),
@@ -265,9 +239,6 @@ def dgt1_bundle():
 
     from timetoalign.loader.graphical import GraphicalLoader
 
-    if not DGT1_IMAGE.exists():
-        pytest.skip(f"Test data not found: {DGT1_IMAGE}")
-
     loader = GraphicalLoader(metadata={"source": "Thoresen 2009"})
     idx = loader.add_image(DGT1_IMAGE)
 
@@ -297,11 +268,6 @@ def dgt2_bundle():
     pytest.importorskip("pymupdf")
 
     from timetoalign.loader.graphical import GraphicalLoader
-
-    # Check all images exist
-    for img_path in DGT2_IMAGES:
-        if not img_path.exists():
-            pytest.skip(f"Test data not found: {img_path}")
 
     loader = GraphicalLoader(metadata={"source": "Thoresen 2010"})
 

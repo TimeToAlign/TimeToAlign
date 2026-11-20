@@ -497,11 +497,11 @@ class ATONLoader(Loader[list[ATONHole]]):
         Examples:
             >>> loader = ATONLoader()
             >>> loader.load("analysis.txt")
-            >>> dgt1 = loader.create_timeline(uid="dgt1")
-            >>> dgt1.n_events
+            >>> dgt_1 = loader.create_timeline(uid="dgt_1")
+            >>> dgt_1.n_events
             30092
             >>> # Child inherits DiscreteGraphicalTimeline; its origin is the first hole
-            >>> dgt_holes = dgt1.create_child(
+            >>> dgt_holes = dgt_1.create_child(
             ...     length=loader.musical_length,
             ...     offset=loader.first_hole,
             ...     uid="dgt_holes",

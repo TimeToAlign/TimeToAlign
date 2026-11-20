@@ -64,7 +64,7 @@ Return the inverse map: y = x / a.
 ### to_dict { #timetoalign.ScalarMap.to_dict }
 
 ```python
-ScalarMap.to_dict()
+ScalarMap.to_dict(minimal=False)
 ```
 
 Serialize to dictionary.

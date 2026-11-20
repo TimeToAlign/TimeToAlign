@@ -6,20 +6,17 @@ All expected values are EXACT per the ZERO TOLERANCE validation policy.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pytest
 
 from timetoalign.core.events import BoundingBox
 from timetoalign.loader.graphical.aton import ATONHole, ATONLoader
+from timetoalign.testdata import ensure_data
 from timetoalign.timelines import DiscreteGraphicalTimeline
 
-# Test data directory
-TESTDATA_DIR = Path(
-    os.environ.get("TTA_TESTDATA_DIR", Path(__file__).parent.parent.parent / "data")
-)
-SUPRA_DIR = TESTDATA_DIR / "supra"
+# Test data directories
+SUPRA_DIR, FIXTURES_DIR = ensure_data("supra", "fixtures")
 ATON_FILE = SUPRA_DIR / "image" / "fd660zf8362_analysis.txt"
 
 
@@ -327,7 +324,7 @@ class TestSpecificHoleValues:
 
 # region Test: Minimal Synthetic ATON (Fast Tests)
 
-MINIMAL_ATON_FILE = TESTDATA_DIR / "fixtures" / "aton" / "minimal.aton"
+MINIMAL_ATON_FILE = FIXTURES_DIR / "aton" / "minimal.aton"
 
 
 @pytest.fixture
@@ -436,9 +433,9 @@ class TestMinimalATONTimeline:
 
     def test_create_timeline_with_uid(self, loaded_minimal_loader: ATONLoader) -> None:
         """create_timeline() accepts custom uid."""
-        timeline = loaded_minimal_loader.create_timeline(uid="dgt1")
+        timeline = loaded_minimal_loader.create_timeline(uid="dgt_1")
 
-        assert timeline.id == "dgt1"
+        assert timeline.id == "dgt_1"
 
 
 # endregion

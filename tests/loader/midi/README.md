@@ -31,7 +31,7 @@ cover.
   performance columns, and omits `voice`, `staff`, and `part_id`.
 - A program change at 0, note at 240, control change at 480, and note end at 960 produce starts
   `[0.0, 240.0, 480.0]`, ends `[None, None, 960.0]`, coordinate range `(0.0, 960.0)`, timeline
-  length 960, and group ID `perf:dlt1`.
+  length 960, and group ID `perf:dlt_1`.
 - `supra_raw.mid` produces 30,096 total events: 30,092 notes and 4 control changes. Its coordinate
   range is `(0.0, 277776.0)`, its created timeline has length 277776, and it constructs a
   `TimelineGroup` named `supra`.
@@ -72,7 +72,13 @@ nullable fields and can be constructed from dictionaries.
 metadata. Empty stores have empty data and default metadata. Extension merges each category and
 updates metadata. Mapping keys, iteration, items, lookup, membership, and length use the canonical
 `notes`, `controls` order. Summary counts are exact. Timeline conversion creates the two expected
-children at offset zero with the original note/control counts.
+children at offset zero with the original note/control counts; each child is named after its store
+and carries a minted id, so the tests find it by name.
+
+The ticks→quarters map a `MidiStore` offers divides by the file's tick resolution exactly:
+at 480 PPQ, 240 ticks answer `Fraction(1, 2)` and 960 ticks `Fraction(2, 1)`. The answer type is
+asserted, because a map built on the float `1 / 480` computes in floats and answers `0.5`, which
+compares equal to `Fraction(1, 2)`.
 
 All exact counts, ticks, schemas, IDs, and extents use equality; there are no `pytest.approx` calls
 in the MIDI-loader tests.

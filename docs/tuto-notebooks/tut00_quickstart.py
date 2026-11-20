@@ -151,7 +151,7 @@ audio_events
 # %%
 score_loader = PartituraLoader.from_file(vienna / "Chopin_op10_no3.musicxml")
 score = score_loader.create_timeline(uid="score")
-score_children = score.list_children()
+score_children = [score.get_child(child_id).name for child_id in score.list_children()]
 score_notes = score.get_events(event_type="Note")
 score_measures = score.get_events(event_type="Measure")
 note_frame = score_notes.to_dataframe(coordinates=True)
@@ -243,10 +243,10 @@ flow_preview
 
 # %% [markdown]
 # The written position at two quarters appears at two and six quarters in the
-# played order. This cell previews only repeat unfolding; the next tutorial
-# introduces metrical grids separately. Open
+# played order. This cell previews only repeat unfolding; beat grids are a
+# separate subject. Open
 # [Flow and Grids](tut07_flow_and_grids.ipynb) to model complete playthroughs
-# and metrical queries.
+# and to ask where measures and beats fall in a recording.
 
 # %% [markdown]
 # ## The Data Model

@@ -19,6 +19,9 @@ from images and PDFs. The key components are:
 
 - **IIIFManifestLoader**: Load image metadata from IIIF Presentation API manifests.
 
+- **ScoreWarpLoader**: Read the time axis drawn into a ScoreWarp SVG as a calibrated
+  child of the drawing's timeline.
+
 Examples:
     >>> from timetoalign.loader.graphical import GraphicalLoader
     >>> loader = GraphicalLoader()
@@ -57,6 +60,9 @@ from .paths import (
     VerticalLinePath,
 )
 
+# ScoreWarp SVG time axis
+from .scorewarp import ScoreWarpLoader
+
 # Segment and bundle
 from .segment import GraphicalSegment
 
@@ -82,4 +88,5 @@ __all__ = [
     "IIIFManifestLoader",
     "IIIFManifestInfo",
     "IIIFCanvasInfo",
+    "ScoreWarpLoader",
 ]

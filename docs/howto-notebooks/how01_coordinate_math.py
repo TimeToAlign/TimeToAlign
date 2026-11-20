@@ -56,7 +56,7 @@ aliases = {
     "TimeUnit.s": TimeUnit.seconds,
     "TimeUnit.ms": TimeUnit.milliseconds,
     "TimeUnit.q": TimeUnit.quarters,
-    "TimeUnit.b": TimeUnit.beats,
+    "TimeUnit.w": TimeUnit.whole_notes,
     "TimeUnit.px": TimeUnit.pixels,
     "TimeUnit.pulses": TimeUnit.ticks,
     "TimeUnit.divs": TimeUnit.ticks,
@@ -70,7 +70,7 @@ pd.Series({k: v.name for k, v in aliases.items()}, name="resolves_to")
 # |------|-------------|----------|
 # | `int` | `int` | Discrete units (samples, ticks) |
 # | `float` | `float` | Physical time (seconds) |
-# | `fraction` | `Fraction` | Exact rationals (beats, quarters) |
+# | `fraction` | `Fraction` | Exact rationals (quarters, whole notes) |
 
 # %%
 {
@@ -219,8 +219,8 @@ except TypeError as e:
 # `timeline_id`. Mixing two different timelines raises.
 
 # %%
-p = IdCoordinate(10, TimeUnit.quarters, timeline_id="clt1")
-q = IdCoordinate(4, TimeUnit.quarters, timeline_id="clt1")
+p = IdCoordinate(10, TimeUnit.quarters, timeline_id="clt_1")
+q = IdCoordinate(4, TimeUnit.quarters, timeline_id="clt_1")
 span = p - q
 
 {

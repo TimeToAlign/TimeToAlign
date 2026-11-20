@@ -7,10 +7,13 @@ WarpMap.
 
 from __future__ import annotations
 
+import re
+
 import numpy as np
 import pytest
 
 from timetoalign.core import Coordinate, TimeUnit
+from timetoalign.core.enums import NumberType
 from timetoalign.maps import ConversionMap, InterpolationMap, LinearMap
 
 
@@ -358,45 +361,6 @@ class TestInterpolationMapProperties:
         assert "2" in r  # n_anchors
 
 
-class TestInterpolationMapSerialization:
-    """Tests for to_dict / from_dict round-tripping."""
-
-    def test_round_trip(self):
-        """to_dict/from_dict preserves arrays, ids, and units."""
-        imap = InterpolationMap(
-            source_coords=np.array([0.0, 480.0, 960.0]),
-            target_coords=np.array([0.0, 0.5, 1.5]),
-            source_id="ticks",
-            target_id="seconds",
-            source_unit=TimeUnit.ticks,
-            target_unit=TimeUnit.seconds,
-            uid="imap1",
-        )
-        data = imap.to_dict()
-        restored = InterpolationMap.from_dict(data)
-
-        assert restored.id == "imap1"
-        assert restored.source_id == "ticks"
-        assert restored.target_id == "seconds"
-        assert restored.source_unit == TimeUnit.ticks
-        assert restored.target_unit == TimeUnit.seconds
-        np.testing.assert_array_equal(restored.source_coords, imap.source_coords)
-        np.testing.assert_array_equal(restored.target_coords, imap.target_coords)
-        assert restored(240.0) == 0.25
-
-    def test_registry_dispatch(self):
-        """ConversionMap.from_dict dispatches to InterpolationMap."""
-        imap = InterpolationMap(
-            source_coords=np.array([0.0, 100.0]),
-            target_coords=np.array([10.0, 110.0]),
-            source_id="child",
-            target_id="parent",
-        )
-        restored = ConversionMap.from_dict(imap.to_dict())
-        assert isinstance(restored, InterpolationMap)
-        assert restored(50.0) == 60.0
-
-
 class TestInterpolationMapReadOnlyArrays:
     """Tests for read-only coordinate arrays and inverse cache integrity."""
 
@@ -515,3 +479,51 @@ class TestMatchesSelector:
             target_id="parent:1",
         )
         assert not imap.matches_selector("nope")
+
+
+class TestInterpolationMapDeclaredOutputNumberType:
+    """The map computes in doubles, so it may declare floats, never fractions."""
+
+    @staticmethod
+    def build(**kwargs) -> InterpolationMap:
+        return InterpolationMap(
+            source_coords=[0.0, 2.0],
+            target_coords=[0.0, 1.0],
+            source_id="perf",
+            target_id="score",
+            source_unit="seconds",
+            target_unit="quarters",
+            uid="imap",
+            **kwargs,
+        )
+
+    def test_fraction_is_refused(self):
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "InterpolationMap computes in doubles and cannot be declared to "
+                "write fractions."
+            ),
+        ):
+            self.build(output_number_type="fraction")
+
+    def test_float_into_quarters_answers_the_float(self):
+        undeclared = self.build()
+        assert undeclared.output_number_type is NumberType.float
+        assert undeclared(0.5) == 0.25
+        assert type(undeclared(0.5)) is float
+        declared = self.build(output_number_type="float")
+        assert declared.output_number_type is NumberType.float
+        assert declared(0.5) == 0.25
+        assert type(declared(0.5)) is float
+
+    def test_inverse_carries_the_declaration(self):
+        inverse = self.build(output_number_type="float").inverse()
+        assert inverse.output_number_type is NumberType.float
+        assert inverse(0.25) == 0.5
+        assert type(inverse(0.25)) is float
+
+    def test_declaration_is_not_written(self):
+        assert (
+            self.build(output_number_type="float").to_dict() == self.build().to_dict()
+        )

@@ -433,10 +433,10 @@ class TestCopyOnWrite:
         cf = CoordinateField.from_field(
             arr, unit=TimeUnit.quarters, number_type=NumberType.fraction
         )
-        cf2 = cf.with_unit(TimeUnit.beats)
+        cf2 = cf.with_unit(TimeUnit.number)
 
         # Different unit
-        assert cf2.unit == TimeUnit.beats
+        assert cf2.unit == TimeUnit.number
         assert cf.unit == TimeUnit.quarters
 
         # Same data
@@ -444,7 +444,7 @@ class TestCopyOnWrite:
         coord = cf2[0]
         assert coord is not None
         assert coord.value == Fraction(1, 2)
-        assert coord.unit == TimeUnit.beats  # unit changed in returned Coordinate too
+        assert coord.unit == TimeUnit.number  # unit changed in returned Coordinate too
 
         # Same number_type
         assert cf2.number_type == NumberType.fraction

@@ -21,7 +21,9 @@ Installation & Optional Dependencies
 =====================================
 
 The core install (``pip install -e .``) is deliberately lightweight:
-only PyArrow, pandas, NetworkX, and typing_extensions are required.  This
+only PyArrow, pandas, NetworkX, typing_extensions, pydantic and timetoshare
+(the TimeToShare manifest format: its forms, files and IDs) are
+required.  This
 gives you the full timeline/map/alignment framework but **no file-format-
 specific loaders**.  Loader backends and other features are available through
 optional extras.
@@ -43,6 +45,9 @@ Install with ``pip install -e ".[<extra>]"`` from the repository root.
 +---------------+--------------------------------------+----------------------------------------------+
 | ``ms3``       | ``ms3``                              | DCML TSV score parsing (Ms3Loader)           |
 +---------------+--------------------------------------+----------------------------------------------+
+| ``verovio``   | ``verovio``                          | Engraved-score loading via Verovio           |
+|               |                                      | (VerovioLoader)                              |
++---------------+--------------------------------------+----------------------------------------------+
 | ``audio``     | ``soundfile``, ``mutagen``           | Audio file loading + MP3/M4A metadata        |
 +---------------+--------------------------------------+----------------------------------------------+
 | ``graphical`` | ``pymupdf``, ``pillow``              | PDF/image loading & drawing                  |
@@ -51,7 +56,7 @@ Install with ``pip install -e ".[<extra>]"`` from the repository root.
 +---------------+--------------------------------------+----------------------------------------------+
 | ``delta``     | ``deltalake``                        | Delta Lake columnar storage (future)         |
 +---------------+--------------------------------------+----------------------------------------------+
-| ``rdf``       | ``rdflib``                           | RDF / linked-data export (future)            |
+| ``rdf``       | ``rdflib``                           | MeLODy Turtle import (``MelodyLoader``)      |
 +---------------+--------------------------------------+----------------------------------------------+
 
 Composite extras — convenience bundles
@@ -110,7 +115,6 @@ from timetoalign.core import (
     Domain,
     EventType,
     IdCoordinate,
-    IdGenerator,
     Interval,
     IntervalField,
     NumberType,
@@ -118,7 +122,6 @@ from timetoalign.core import (
     ResolvedCoordinate,
     ScopedId,
     TimeIntervalStamp,
-    TimelineIdGenerator,
     TimeStamp,
     TimeUnit,
     resolve_coordinate_spec,
@@ -127,9 +130,13 @@ from timetoalign.maps import (
     ChainMap,
     ConstantMap,
     ConversionMap,
+    FloatingMeasureMap,
     InterpolationMap,
     IntervalToConstantMap,
     LinearMap,
+    MeasureBeatMap,
+    MeasureNumberMap,
+    MeasureRecordMap,
     PiecewiseMap,
     QuartersToFloatingMeasures,
     QuartersToMeasureNumber,
@@ -141,9 +148,24 @@ from timetoalign.maps import (
 from timetoalign.storage import DictStore, EventData, EventStore, SingleStore
 
 _DEFERRED_EXPORTS = {
+    # Foundation structure
+    "BeatPolicy": ("timetoalign.core", "BeatPolicy"),
+    "Duration": ("timetoalign.core", "Duration"),
+    "Expansion": ("timetoalign.timelines", "Expansion"),
+    "Measure": ("timetoalign.core", "Measure"),
+    "MeasureMap": ("timetoalign.timelines", "MeasureMap"),
+    "MetricHierarchy": ("timetoalign.timelines", "MetricHierarchy"),
+    "MetricNode": ("timetoalign.timelines", "MetricNode"),
+    "Reading": ("timetoalign.timelines", "Reading"),
+    "Tempo": ("timetoalign.core", "Tempo"),
+    "TempoEntry": ("timetoalign.timelines", "TempoEntry"),
+    "TempoMap": ("timetoalign.timelines", "TempoMap"),
+    "SectionHierarchy": ("timetoalign.timelines", "SectionHierarchy"),
+    "TimeSkeleton": ("timetoalign.alignment", "TimeSkeleton"),
     # Loader layer
     "AudioInfo": ("timetoalign.loader", "AudioInfo"),
     "AudioLoader": ("timetoalign.loader", "AudioLoader"),
+    "RekordboxLoader": ("timetoalign.loader", "RekordboxLoader"),
     "EepNotesLoader": ("timetoalign.loader", "EepNotesLoader"),
     "Loader": ("timetoalign.loader", "Loader"),
     "EventLoader": ("timetoalign.loader", "EventLoader"),
@@ -157,6 +179,7 @@ _DEFERRED_EXPORTS = {
     "MeasureMapLoader": ("timetoalign.loader.score", "MeasureMapLoader"),
     "Music21Loader": ("timetoalign.loader.score", "Music21Loader"),
     "PartituraLoader": ("timetoalign.loader.score", "PartituraLoader"),
+    "VerovioLoader": ("timetoalign.loader.score", "VerovioLoader"),
     "JsonLoader": ("timetoalign.loader.format", "JsonLoader"),
     "XmlLoader": ("timetoalign.loader.format", "XmlLoader"),
     "MidiLoader": ("timetoalign.loader.midi", "MidiLoader"),
@@ -172,18 +195,22 @@ _DEFERRED_EXPORTS = {
         "PerformancePrecisionLoader",
     ),
     "ListenHereLoader": ("timetoalign.loader.alignment", "ListenHereLoader"),
+    "MapsLoader": ("timetoalign.loader.alignment", "MapsLoader"),
     "GraphicalLoader": ("timetoalign.loader.graphical", "GraphicalLoader"),
     "ATONLoader": ("timetoalign.loader.graphical.aton", "ATONLoader"),
     "IIIFManifestLoader": (
         "timetoalign.loader.graphical",
         "IIIFManifestLoader",
     ),
+    "ScoreWarpLoader": ("timetoalign.loader.graphical", "ScoreWarpLoader"),
     "RepoVizzInfo": ("timetoalign.loader", "RepoVizzInfo"),
     "RepoVizzLoader": ("timetoalign.loader", "RepoVizzLoader"),
     "TiliaDictStore": ("timetoalign.loader", "TiliaDictStore"),
     "TiliaJsonLoader": ("timetoalign.loader", "TiliaJsonLoader"),
     # Timeline layer
     "BeatGrid": ("timetoalign.timelines", "BeatGrid"),
+    "BeatGridSegment": ("timetoalign.timelines", "BeatGridSegment"),
+    "GridBeat": ("timetoalign.timelines", "GridBeat"),
     "ContinuousGraphicalTimeline": (
         "timetoalign.timelines",
         "ContinuousGraphicalTimeline",
@@ -198,12 +225,12 @@ _DEFERRED_EXPORTS = {
     "DiscretePhysicalTimeline": ("timetoalign.timelines", "DiscretePhysicalTimeline"),
     "Gap": ("timetoalign.timelines", "Gap"),
     "GraphicalTimeline": ("timetoalign.timelines", "GraphicalTimeline"),
-    "GroupTimestamp": ("timetoalign.timelines", "GroupTimestamp"),
     "LogicalTimeline": ("timetoalign.timelines", "LogicalTimeline"),
     "PhysicalTimeline": ("timetoalign.timelines", "PhysicalTimeline"),
     "SegmentNameGenerator": ("timetoalign.timelines", "SegmentNameGenerator"),
     "Timeline": ("timetoalign.timelines", "Timeline"),
     "TimelineGroup": ("timetoalign.timelines", "TimelineGroup"),
+    "UnknownLengthError": ("timetoalign.timelines", "UnknownLengthError"),
     # Alignment layer
     "Agent": ("timetoalign.alignment", "Agent"),
     "AlignmentAnchor": ("timetoalign.alignment", "AlignmentAnchor"),
@@ -213,6 +240,7 @@ _DEFERRED_EXPORTS = {
     "MatchClaimField": ("timetoalign.alignment", "MatchClaimField"),
     "MatchFileContext": ("timetoalign.alignment", "MatchFileContext"),
     "MatchGraph": ("timetoalign.alignment", "MatchGraph"),
+    "MatchIntervalStamp": ("timetoalign.alignment", "MatchIntervalStamp"),
     "MatchLine": ("timetoalign.alignment", "MatchLine"),
     "MatchMetadata": ("timetoalign.alignment", "MatchMetadata"),
     "MatchStamp": ("timetoalign.alignment", "MatchStamp"),
@@ -255,6 +283,7 @@ __all__ = [
     "NumberType",
     "EventType",
     # Types
+    "BeatPolicy",
     "Coordinate",
     "CoordinateField",
     "Coord",  # Alias for Coordinate
@@ -263,16 +292,26 @@ __all__ = [
     "IntervalField",
     "CoordinateValue",
     "CoordinateSpec",
+    "Duration",
+    "Expansion",
+    "Measure",
+    "MeasureMap",
+    "MetricHierarchy",
+    "MetricNode",
+    "Reading",
+    "Tempo",
+    "TempoEntry",
+    "TempoMap",
     "OptionalCoordinate",
     "ResolvedCoordinate",
     "resolve_coordinate_spec",
+    "SectionHierarchy",
+    "TimeSkeleton",
     # Timestamps (first-class citizens)
     "TimeStamp",
     "TimeIntervalStamp",
     # IDs
     "ScopedId",
-    "IdGenerator",
-    "TimelineIdGenerator",
     # Loader - Event-based (Type 2)
     "EventData",
     "EventStore",
@@ -295,6 +334,7 @@ __all__ = [
     "MeasureMapLoader",
     "Music21Loader",
     "PartituraLoader",
+    "VerovioLoader",
     "JsonLoader",
     "XmlLoader",
     "MidiLoader",
@@ -309,9 +349,11 @@ __all__ = [
     "MpmLoader",
     "PerformancePrecisionLoader",
     "ListenHereLoader",
+    "MapsLoader",
     "GraphicalLoader",
     "ATONLoader",
     "IIIFManifestLoader",
+    "ScoreWarpLoader",
     # Timelines
     "Timeline",
     "LogicalTimeline",
@@ -324,6 +366,8 @@ __all__ = [
     "ContinuousGraphicalTimeline",
     "DiscreteGraphicalTimeline",
     "BeatGrid",
+    "BeatGridSegment",
+    "GridBeat",
     "SegmentNameGenerator",
     # Maps
     "ConstantMap",
@@ -331,6 +375,10 @@ __all__ = [
     "IntervalToConstantMap",
     "InterpolationMap",
     "LinearMap",
+    "MeasureRecordMap",
+    "MeasureNumberMap",
+    "FloatingMeasureMap",
+    "MeasureBeatMap",
     "PiecewiseMap",
     "QuartersToFloatingMeasures",
     "QuartersToMeasureNumber",
@@ -343,7 +391,6 @@ __all__ = [
     "Agent",
     "AlignmentBundle",
     "Gap",
-    "GroupTimestamp",
     "TimelineGroup",
     "AlignmentAnchor",
     "ClaimFilter",
@@ -351,6 +398,7 @@ __all__ = [
     "MatchClaimField",
     "MatchFileContext",
     "MatchGraph",
+    "MatchIntervalStamp",
     "MatchLine",
     "MatchMetadata",
     "MatchStamp",

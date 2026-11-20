@@ -13,6 +13,43 @@ vectorized loader contract directly. Row dictionaries remain covered by the
 storage constructor tests, but are intentionally not accepted by
 `Loader.load()`.
 
+## Single-source loaders
+
+A loader that reads one source sets `_single_source` on its class, and one
+check on `Loader` (called by `Loader.load`, by every `load` that overrides it,
+and by every other door into the parse) refuses a further source with one
+`ValueError` naming the loader and the source it holds. `test_loader.py` proves
+the rule on a `DummyLoader` subclass, where nothing else could refuse:
+
+* **Two in one call** are refused before either is parsed: the loader holds no
+  source afterwards, so the refusal cannot be a parse failure of the second.
+* **A second call** is refused naming the loader class and the held path, and
+  the held source and its two events are untouched.
+* **`clear()`** releases the loader: it then reads the other source, and holds
+  only that one.
+* **No source** is refused as well: a single-source loader requires its one
+  source, so `load()` with none raises `<Loader> reads one source; got none.`
+  and the loader holds nothing.
+* **Unflagged loaders** are unaffected: the plain `DummyLoader` reads two
+  sources in two calls, and an empty call loads nothing.
+
+Each flagged loader (`VerovioLoader`, `ScoreWarpLoader`, `Ieee1599Loader`,
+`MapsLoader`) has one test of its own showing the flag is set and the same
+message reaches its users. `Ieee1599Loader`, whose `load` overrides the
+template, also pins the empty call.
+
+## Verovio version compatibility validation
+
+`test_verovio_version.py` uses a self-contained MEI written under `tmp_path`,
+without corpus fixtures. A proxy changes only the toolkit's reported version;
+the real toolkit still loads the file and produces the timemap. Plain `6.4.1`,
+hyphenated `6.4.1-fbe8f46`, bracketed `6.4.1[undefined]`, and the minimum
+`4.4.0[undefined]` must all load the same two eighth notes at exact quarter
+positions `0` and `1/2`, ending at `1`. The store must retain the full reported
+version, including its suffix. Both plain and bracketed `4.3.1` must raise the
+normal minimum-version `ImportError`, with the full reported version in its
+message, rather than failing integer conversion.
+
 ## Categories
 
 | File / Subdirectory | What it validates |
@@ -33,15 +70,16 @@ storage constructor tests, but are intentionally not accepted by
 | `test_mixins.py` | `EventData` field-access mixins — three-strategy field discovery (metadata, default-column, shape-based `matches_pa_field`), `has_field`, `get_field`, `get_fields`, `get_raw`, and the convenience accessors (`get_pitch_field`, `get_harmony_field`). |
 | `test_mixins_semantic_access.py` | `SemanticFieldAccessMixin` dispatch — `get_field(ScalarClass)` pydantic-scalar dispatch, `IdCoordinate` vs `Coordinate` discrimination via metadata (`matches_pa_field` rejection contracts), `MultipleFieldsError` on ambiguity + `name=` resolution, and `get_fields_satisfying(ProtocolClass)` Protocol-based grouping (covering `GenericPitchLike` and `TimeScalarLike`). |
 | `test_field_parsers.py` | The :class:`FieldParser` hierarchy and `resolve_field_parser` universal-resolution dispatcher. Exercises the DataField blueprint mechanism: `IntField`, `FloatField`, `StringField`, `RedundantNumberField`, `DenominateNumberField`, and paired SemanticField subclasses all accept `name=` for blueprint construction and expose a uniform `emit(source, name=...)` materialisation. `CompositeFieldParser` (separator + regex strategies, dict + iterable parts) and `CallableFieldParser` (escape hatch) are exercised end-to-end. Resolution-table assertions: every entry (Python type, `pa.DataType`, raw / paired `DataField` subclass, blueprint instance, `FieldParser` instance, callable) routes to the correct producer. |
-| `test_step2_field_specs.py` | Step 2 (`field_specs`) blueprint resolution. Builds a fixture `pa.Table` and a `TabularLoader` subclass with `field_specs = [...]`, verifies that each blueprint matches its declared `source_fields=` entry, that the resulting column receives the versioned metadata blob (`field_type` = paired class name), that atomic source columns are packed into single-field structs matching the target `pa_schema`, and that unresolvable references raise `KeyError`. Exercises the two currently-supported `source_fields=` shorthands (string for single-source promotion; explicit dict for multi-sub-field mapping) and the negative cases (list shorthand rejected by `resolve_source_fields` today; live-mode SemanticField instances rejected; multi-source dict spec raises `NotImplementedError` at loader-materialisation time). |
+| `test_step2_field_specs.py` | Step 2 (`field_specs`) blueprint resolution. Builds a fixture `pa.Table` and a `TabularLoader` subclass with `field_specs = [...]`, verifies that each blueprint matches its declared `source_fields=` entry, that the resulting column receives the versioned metadata blob (`field_type` = paired class name), that atomic source columns are packed into single-field structs matching the target `pa_schema`, and that unresolvable references raise `KeyError`. Exercises the two currently-supported `source_fields=` shorthands (string for single-source promotion; explicit dict for multi-sub-field mapping) and the negative cases (list shorthand rejected by `resolve_source_fields` today; live-mode SemanticField instances rejected; multi-source dict spec raises `NotImplementedError` at loader-materialisation time; a target that cannot be built from a name alone — `CoordinateField` and its siblings carry a bound time unit — raises a `TypeError` naming that target and its storage shape, rather than letting the field's own constructor fail on an argument the caller never passed). |
 | `test_get_events_properties.py` | The four shapes accepted by `Loader.get_events(properties=...)` — `True`, `False`, a tuple of property names, and the single-string shorthand that normalises to a one-element tuple. |
 | `test_represent_pitch_once.py` | The **represent-pitch-once** contract across every pitch-bearing EventData and loader. Verifies (1) the keystone `from_dicts` / `add_events` struct-preservation fix (carried struct-dict columns become real `pa.struct` columns with `field_type` metadata, never JSON strings); (2) the uniform `_afforded_fields` mechanism that promotes a raw atomic column to its semantic view on request; (3) the per-source default pitch type (`get_pitch_field()` → SP for spelled, EP for number-only, EP for MSM with SPC additionally afforded); (4) represent-once (no EventData carries a redundant *default* pitch struct — score notes no longer afford a default EnharmonicPitch); (5) the scalar↔EventData contract for MIDI EventData; (6) on-request EP from a SP field via both routes (conversion + raw column); (7) the **multi-batch concat re-affordance** — the afforded pitch view survives `EventData.extend` / `Timeline.add_events` schema-promotion across batches (the cache is dropped so the affordance re-attaches over the concatenated table). See "Represent pitch once" below. |
 | `tabular/` | CSV / TSV / Parquet loader specifics |
 | `score/` | Music-notation loaders (Ms3, music21, Partitura) |
 | `midi/` | Score and performance MIDI loaders |
-| `graphical/` | PDF / image loaders |
+| `graphical/` | PDF / image loaders, and `ScoreWarpLoader` (a ScoreWarp SVG's drawn time axis, see below) |
 | `format/` | Cross-format loaders (JSON, XML, TTL) |
 | `physical/` | Audio loaders and time-coordinate ingestion |
+| `mei_head/`, `melody/` | The importers of descriptive metadata: an MEI header and MeLODy's Turtle as statements on a bundle, its timelines and regions |
 
 ## Exact rational coordinates
 
@@ -62,10 +100,17 @@ The score-side loader tests assert the numerator and denominator stored with
 logical coordinates, not only their floating-point convenience values. MS3
 measure starts, durations, and ends are compared with exact `Fraction`
 values from the TSV data. Matchfile score events are checked the same way for
-known normalized onsets, durations, and ends. These assertions ensure that
-rhythmic positions remain exactly addressable after they are placed in
-PyArrow event storage, while performance and recording coordinates retain
-their native numeric representation.
+known normalized onsets, durations, and ends. The maps the matchfile loader
+attaches are exact where the file is: its anacrusis offset is
+`Fraction(1, 2)` (read from the exact score onsets), so the `raw_quarters`
+ShiftMap reads `Fraction(1, 2)` quarters as `Fraction(0)`; and the
+ticks→seconds map divides the header's clock rate by its clock units
+exactly (scalar `Fraction(1, 960)`), so 480 ticks, one quarter of
+500000 µs, are `0.5` seconds by equality, not within a tolerance.
+
+These assertions ensure that rhythmic positions remain exactly addressable
+after they are placed in PyArrow event storage, while performance and
+recording coordinates retain their native numeric representation.
 
 ### MS3 coordinate validation logic
 
@@ -95,9 +140,9 @@ or NOMATCH count.
 
 Timeline identity assertions use the library's type-based grammar rather than
 source labels. Matchfile score/performance timelines are stored as
-``score:clt1`` and ``perf:<source-stem>:dlt1``; Performance Precision uses
-``score:clt1`` and ``perf:<performer-key>:cpt1``. TiLiA timelines are numbered
-``cpt1``, ``cpt2``, ... in source order. Source filenames, performer keys, and
+``score:clt_1`` and ``perf:<source-stem>:dlt_1``; Performance Precision uses
+``score:clt_1`` and ``perf:<performer-key>:cpt_1``. TiLiA timelines are numbered
+``cpt_1``, ``cpt_2``, ... in source order. Source filenames, performer keys, and
 TiLiA IDs/titles remain human-readable metadata and lookup inputs, so changing
 these expected IDs tests identity semantics without changing parsed content.
 
@@ -114,6 +159,9 @@ Tests resolve corpus paths via ``timetoalign.testdata.ensure_data("<corpus>")``
 (see ``tests/data/README.md``).  Hardcoded relative ``Path("tests/data/...")``
 constants are forbidden — they break under ``jupytext --execute`` and in CI
 container layouts.  See ``tests/data/README.md`` for the binding contract.
+``conftest.py`` resolves ``VIENNA_DATA_DIR`` this way for the tests at this
+package's top level (``test_matchfile_loader.py``), so they read the corpus
+wherever ``TTA_TESTDATA_DIR`` places it, a worktree included.
 
 ## `PerformancePrecisionLoader` validation logic
 
@@ -238,10 +286,10 @@ The per-performer ``.beats`` / ``.dyn`` files under the dataset's
 One shared **score group** ``"score"`` (the same 251 notes in two
 logical units):
 
-* ``score:clt1`` — `ContinuousLogicalTimeline`, quarters, 251 note
+* ``score:clt_1`` — `ContinuousLogicalTimeline`, quarters, 251 note
   events with ``start = onset_quarter`` (exact `Fraction`), carrying
   ``pitch`` (MIDI int) and ``voice`` (int).
-* ``score:dlt1`` — `DiscreteLogicalTimeline`, ticks (``divs``), the
+* ``score:dlt_1`` — `DiscreteLogicalTimeline`, ticks (``divs``), the
   same 251 notes with ``start = onset_div`` (int). A divs→quarters
   C-Map ``LinearMap(scalar=Fraction(1,32), offset=Fraction(-1,2))`` is
   attached (``scalar`` / ``offset`` are the constructor's real
@@ -252,12 +300,12 @@ logical units):
 Per performer, a **performance group** ``perf:<key>`` (the same
 performed notes in two physical units):
 
-* ``perf:<key>:cpt1`` — `ContinuousPhysicalTimeline`, seconds, one note
+* ``perf:<key>:cpt_1`` — `ContinuousPhysicalTimeline`, seconds, one note
   event per ``ppart.csv`` row with ``start = onset_sec`` (float),
   carrying ``pitch`` and ``velocity``; **plus** the measured beat
   features (see "Feature events" below) as ``Beat`` and ``Dynamics``
   events on the same timeline.
-* ``perf:<key>:dpt1`` — `DiscretePhysicalTimeline`, samples, the same
+* ``perf:<key>:dpt_1`` — `DiscretePhysicalTimeline`, samples, the same
   notes with ``start = round(onset_sec * sample_rate)``. A
   ``SamplesToSeconds(sample_rate=44100)`` C-Map is attached
   (``sample_rate`` read from the performer's 44100 Hz stereo ``.wav``
@@ -274,14 +322,14 @@ the other four are ``<key>_measure.{beats,dyn}``. All ten files have
 
 * ``.beats`` (7 columns) — header
   ``measure_number  beat  onset_beat  onset_sec  BPM  interp  swap``.
-  Each row becomes a ``Beat`` event on ``perf:<key>:cpt1`` at
+  Each row becomes a ``Beat`` event on ``perf:<key>:cpt_1`` at
   ``start = onset_sec``, carrying ``measure_number`` / ``beat`` /
   ``bpm`` (from ``BPM``) / ``interp`` / ``swap``. Event id
   ``<key>:beat:<i>``.
 * ``.dyn`` (6 columns) — header
   ``measure_number  beat  onset_beat  velocity_mean  velocity_max
   interp`` (**no** ``onset_sec``, **no** ``swap``). Each row becomes a
-  ``Dynamics`` event on ``perf:<key>:cpt1`` carrying ``measure_number``
+  ``Dynamics`` event on ``perf:<key>:cpt_1`` carrying ``measure_number``
   / ``beat`` / ``velocity_mean`` / ``velocity_max`` / ``interp``. Event
   id ``<key>:dyn:<i>``.
 
@@ -294,14 +342,14 @@ are *measured* per-beat features (variable tempo + dynamics from the
 recording); no tempo curve is synthesised (no ``BeatGrid.from_tempo``).
 
 The events are added to the **existing** seconds timeline (not a new
-timeline, not on ``dpt1``) via ``add_events(rows,
-allow_expansion=True)``. The ``cpt1`` schema already holds ``Note``
+timeline, not on ``dpt_1``) via ``add_events(rows,
+allow_expansion=True)``. The ``cpt_1`` schema already holds ``Note``
 columns (``pitch`` / ``velocity``); the ``Beat`` / ``Dynamics`` rows
 introduce new columns (``bpm`` / ``measure_number`` / ``beat`` /
 ``velocity_mean`` / …). Successive ``add_events`` calls grow the schema
 via ``pyarrow.concat_tables(promote_options="default")``, so the
 heterogeneous ``Note`` / ``Beat`` / ``Dynamics`` table round-trips with
-absent columns null-filled. After ingestion each ``perf:<key>:cpt1``
+absent columns null-filled. After ingestion each ``perf:<key>:cpt_1``
 holds its ppart ``Note`` events (the per-performer count above) **plus
 63 ``Beat`` and 63 ``Dynamics``** events.
 
@@ -324,15 +372,15 @@ counts, timeline count (12), and group count (6) are derived from
 One claim per ``align.csv`` row, per performer, faithfully (no
 deduplication):
 
-* **matchtype 0** → `MatchClaim.from_projection` from ``score:clt1`` to
-  ``perf:<key>:cpt1``: source coordinate = the part note's
+* **matchtype 0** → `MatchClaim.from_projection` from ``score:clt_1`` to
+  ``perf:<key>:cpt_1``: source coordinate = the part note's
   ``onset_quarter``, target coordinate = the ppart note's
   ``onset_sec``.
 * **matchtype 1** (score-only) → `MatchClaim.nomatch` with source
-  ``score:clt1`` and target ``perf:<key>:cpt1`` (source coordinate =
+  ``score:clt_1`` and target ``perf:<key>:cpt_1`` (source coordinate =
   the part note's ``onset_quarter``).
 * **matchtype 2** (performance-only) → `MatchClaim.nomatch` with source
-  ``perf:<key>:cpt1`` and target ``score:clt1`` (source coordinate =
+  ``perf:<key>:cpt_1`` and target ``score:clt_1`` (source coordinate =
   the ppart note's ``onset_sec``).
 
 Each performer's claims share a
@@ -353,12 +401,12 @@ with ``certainty=1.0`` (the per-performer key now lives in the agent's
 | **Total** |     | **1275** | **1208** | **67** |
 
 The bundle holds **12** timelines and **6** groups (1 ``score`` + 5
-``perf:<key>``). ``score:clt1`` and ``score:dlt1`` each carry 251
+``perf:<key>``). ``score:clt_1`` and ``score:dlt_1`` each carry 251
 events.
 
 **Coordinate spot-check:** Szegedi's ``align.csv`` row at ``idx 0`` is
 ``0,0,ngx1f26,n149``. It produces a synchronous claim from
-``score:clt1`` to ``perf:1966_Szegedi:cpt1`` whose source coordinate is
+``score:clt_1`` to ``perf:1966_Szegedi:cpt_1`` whose source coordinate is
 ``40.0`` (``score_q_by_id["ngx1f26"]``, an exact quarter) and whose
 target coordinate is ``38.183334`` seconds (``perf_sec_by_id["n149"]``).
 
@@ -371,7 +419,7 @@ asserts the duplicate is present in the raw ``align.csv`` so a future
 reader knows it is data, not a loader fault. The loader does **not**
 deduplicate.
 
-**C-Map round-trip:** ``SamplesToSeconds(44100)`` on a ``dpt1`` timeline
+**C-Map round-trip:** ``SamplesToSeconds(44100)`` on a ``dpt_1`` timeline
 converts ``44100`` samples to ``1.0`` seconds (and ``sample / 44100``
 generally).
 
@@ -394,24 +442,24 @@ parametrized over both specimens:
 carry a spectrogram, so the graphical axis is always present here):
 
 - a shared ``"score"`` group:
-  - ``score:dlt1`` — a ``DiscreteLogicalTimeline`` in ticks holding the
+  - ``score:dlt_1`` — a ``DiscreteLogicalTimeline`` in ticks holding the
     MSM ``Note`` events *and* every MPM markup event (``Tempo`` /
     ``Dynamics`` / ``Articulation`` / ``Asynchrony`` / any other map
     type), carrying a ticks→quarters ``TicksToQuarters(ppq)`` map;
-  - ``score:clt1`` — a ``ContinuousLogicalTimeline`` in quarters holding
+  - ``score:clt_1`` — a ``ContinuousLogicalTimeline`` in quarters holding
     the same ``Note`` events (onset ``date / ppq`` as an exact
     ``Fraction``), carrying a modelled quarters→seconds ``TableMap``;
 - a ``"perf"`` group (3 timelines):
-  - ``perf:cpt1`` — a ``ContinuousPhysicalTimeline`` in seconds, one
+  - ``perf:cpt_1`` — a ``ContinuousPhysicalTimeline`` in seconds, one
     ``Note`` event per observed onset (``milliseconds.date / 1000``);
-  - ``perf:dpt1`` — a ``DiscretePhysicalTimeline`` in samples, the same
+  - ``perf:dpt_1`` — a ``DiscretePhysicalTimeline`` in samples, the same
     onsets scaled by the sample rate, carrying ``SamplesToSeconds``;
-  - ``perf:dgt1`` — a ``DiscreteGraphicalTimeline`` in pixels: the
+  - ``perf:dgt_1`` — a ``DiscreteGraphicalTimeline`` in pixels: the
     spectrogram's frame-column x-axis (see *Spectrogram graphical axis*
     below). It carries **no events** — it is a graphical axis, not an
     event timeline — and a px→seconds ``ScalarMap``;
 - one synchronous cross-group ``MatchClaim`` per score note, projecting
-  ``score:clt1`` (quarters) onto ``perf:cpt1`` (seconds).
+  ``score:clt_1`` (quarters) onto ``perf:cpt_1`` (seconds).
 
 The bundle therefore spans all **three domains**: logical (quarters /
 ticks), physical (seconds / samples), and graphical (pixels). A test
@@ -456,17 +504,19 @@ directory). The width is read directly from the PNG IHDR header (bytes
 is added. The pinned widths are **Beethoven 26469** and **Reger 1587**
 frame columns.
 
-``perf:dgt1`` is built as ``DiscreteGraphicalTimeline(length=<png width>,
+``perf:dgt_1`` is built as ``DiscreteGraphicalTimeline(length=<png width>,
 unit=TimeUnit.pixels)`` and carries **0 events** (the columns are an axis,
-not events). Its only attachment is a px→seconds ``ScalarMap`` with scalar
-``hopSize / sample_rate`` (so ``seconds = px * hopSize / sample_rate``,
-``map(0) == 0``):
+not events). Its only attachment is a px→seconds ``ScalarMap`` with the
+exact scalar ``Fraction(hopSize, sample_rate)`` (so ``seconds = px *
+hopSize / sample_rate``, ``map(0) == 0``). Both integers are stated by the project,
+so the map computes exactly and rounds once, onto the seconds axis:
 
 - **Beethoven**: ``hopSize`` 128, sample rate 44100, scalar
-  ``128 / 44100``; ``map(1) == 128 / 44100`` and ``map(26469) ==
-  26469 * 128 / 44100`` (the audio duration in seconds).
-- **Reger**: ``hopSize`` 512, sample rate 48000, scalar ``512 / 48000``;
-  ``map(1) == 512 / 48000``.
+  ``Fraction(32, 11025)``; ``map(1) == 128 / 44100`` and ``map(26469) ==
+  26469 * 128 / 44100`` (the audio duration in seconds), each the double
+  nearest the exact value, as Python's integer division gives it.
+- **Reger**: ``hopSize`` 512, sample rate 48000, scalar
+  ``Fraction(4, 375)``; ``map(1) == 512 / 48000``.
 
 The map is pulled off the timeline via
 ``timeline.get_conversion_map(TimeUnit.seconds)`` and asserted to be a
@@ -475,7 +525,7 @@ The map is pulled off the timeline via
 concern — per-event 2-D graphical storage does not exist yet).
 
 When a project carries no ``<spectrogram>`` (or its ``.png`` is missing),
-``perf:dgt1`` is simply absent and the bundle holds 4 timelines; the
+``perf:dgt_1`` is simply absent and the bundle holds 4 timelines; the
 loader does not crash. Both specimens here have one.
 
 #### No-spectrogram fallback
@@ -483,7 +533,7 @@ loader does not crash. Both specimens here have one.
 ``_parse_spectrogram`` returns ``None`` whenever the project carries no
 ``<spectrogram>`` element (or its ``hopSize`` / ``file`` attribute is
 missing, or the referenced ``.png`` is absent / unreadable). In that case
-``perf:dgt1`` is never built: the graphical timeline reference is left
+``perf:dgt_1`` is never built: the graphical timeline reference is left
 ``None`` and the bundle simply omits the graphical domain. Both corpus
 specimens ship a complete spectrogram, so this branch never executes when
 the loader is driven against the real files — it cannot be reached by
@@ -500,14 +550,14 @@ parity) and pin the exact 4-timeline shape:
 - after ``load``, ``loader._perf_dgt is None``;
 - ``create_bundle()`` yields ``n_timelines == 4``, ``n_groups == 2``,
   ``group_ids == ["score", "perf"]``, and ``timeline_ids ==
-  [score:clt1, score:dlt1, perf:cpt1, perf:dpt1]`` (no ``perf:dgt1``);
-  the ``perf`` group holds exactly ``{perf:cpt1, perf:dpt1}``; the claim
+  [score:clt_1, score:dlt_1, perf:cpt_1, perf:dpt_1]`` (no ``perf:dgt_1``);
+  the ``perf`` group holds exactly ``{perf:cpt_1, perf:dpt_1}``; the claim
   count is unchanged (one synchronous claim per note); and the bundle's
   timeline-unit domains are exactly ``{logical, physical}`` — the
   graphical domain is **absent** (the converse of the three-domain test);
 - ``create_timelines()`` returns exactly the four non-graphical timelines
   by ``.id``;
-- ``create_timeline("perf:dgt1")`` raises ``KeyError`` (matching ``No
+- ``create_timeline("perf:dgt_1")`` raises ``KeyError`` (matching ``No
   timeline with uid``) because that timeline was never registered;
 - ``_repr_html_()`` reports ``"4 in 2 group(s) (score, perf)"`` and never
   ``"5 in 2 group(s)"``.
@@ -570,36 +620,36 @@ beat-length, spq 2.4) advances 0.5 quarter to ``map(40.0) == 24.9``.
 |----------|-----------|-------|
 | PPQ | 720 | 720 |
 | MSM notes | 251 | 92 |
-| ``score:clt1`` events (notes) | 251 | 92 |
+| ``score:clt_1`` events (notes) | 251 | 92 |
 | Tempo events (default perf) | 7 | 1 |
 | Dynamics events (default perf) | 34 | 11 |
 | Articulation events (default perf) | 207 | 80 |
 | Asynchrony events (default perf) | 0 | 0 |
 | Other markup (default perf) | 0 | 1 (Ornament) |
-| ``score:dlt1`` events (notes + markup) | 499 | 185 |
+| ``score:dlt_1`` events (notes + markup) | 499 | 185 |
 | Alignment notes | 251 | 92 |
-| ``perf:cpt1`` / ``perf:dpt1`` events | 251 | 92 |
+| ``perf:cpt_1`` / ``perf:dpt_1`` events | 251 | 92 |
 | Synchronous claims | 251 | 92 |
 | NOMATCH claims | 0 | 0 |
 | Tempo-map anchors | 8 | 2 |
 | Sample rate (Hz) | 44100 | 48000 |
-| ``perf:dgt1`` length (frame columns / pixels) | 26469 | 1587 |
-| ``perf:dgt1`` events | 0 | 0 |
+| ``perf:dgt_1`` length (frame columns / pixels) | 26469 | 1587 |
+| ``perf:dgt_1`` events | 0 | 0 |
 | Spectrogram ``hopSize`` | 128 | 512 |
-| px→seconds ``ScalarMap`` scalar | 128 / 44100 | 512 / 48000 |
+| px→seconds ``ScalarMap`` scalar | ``Fraction(32, 11025)`` | ``Fraction(4, 375)`` |
 
-The bundle holds **5 timelines** (``score:clt1`` / ``score:dlt1`` /
-``perf:cpt1`` / ``perf:dpt1`` / ``perf:dgt1``) and **2 groups**
+The bundle holds **5 timelines** (``score:clt_1`` / ``score:dlt_1`` /
+``perf:cpt_1`` / ``perf:dpt_1`` / ``perf:dgt_1``) and **2 groups**
 (``score`` / ``perf``) for both specimens; the ``perf`` group holds 3
 timelines. The timeline units across the bundle span all three
 ``Domain``s: logical, physical, and graphical.
 
-**C-Map spot-check (``TicksToQuarters``):** on ``score:dlt1``, tick
+**C-Map spot-check (``TicksToQuarters``):** on ``score:dlt_1``, tick
 ``360`` resolves to ``0.5`` quarters and ``720`` to ``1.0`` (queried via
 ``timeline.get_timestamp(tick).get_unit(TimeUnit.quarters)``).
 
 **Onset spot-check:** Beethoven note ``nbwxzb1`` has
-``milliseconds.date == 828.0190259247195``, so its ``perf:cpt1`` onset
+``milliseconds.date == 828.0190259247195``, so its ``perf:cpt_1`` onset
 and its claim target coordinate are ``828.0190259247195 / 1000.0``
 seconds (the loader divides by 1000; the test pins the same Python
 expression, so the IEEE-754 double matches exactly). Its source
@@ -617,7 +667,7 @@ pitchname ``"e"``, accidentals ``-1``, octave ``4``, date ``360`` ticks.
 **Performance selector:** Beethoven
 ``load(mpr, performance="Curzon_1971_DECCA-SXL6523_audio")`` reaches a
 different performance whose inline-numeric bpm values resolve directly —
-its ``score:dlt1`` then carries **25** Asynchrony events (vs 0 in the
+its ``score:dlt_1`` then carries **25** Asynchrony events (vs 0 in the
 default) and **123** Tempo events.
 
 ## Represent pitch once — validation logic
@@ -763,7 +813,7 @@ holds a ``times`` array whose ``i``-th entry is that recording's clock-time
 length, so together they are a dense alignment matrix.  ``ListenHereLoader``
 reads it into one audio-to-audio ``AlignmentBundle``:
 
-* one empty seconds ``ContinuousPhysicalTimeline`` (``<stem>:cpt1``) per
+* one empty seconds ``ContinuousPhysicalTimeline`` (``<stem>:cpt_1``) per
   recording, each in its **own** group named by the recording stem;
   ``length`` is that recording's stored ``duration``;
 * the **complete pairwise topology** — for every unordered pair of recordings
@@ -830,12 +880,12 @@ bundle previously left unanswered, all with exact values:
 |------|-----------|
 | `test_bundle_claim_count` | `n_cross_group_claims == 15` (spans both stores) |
 | `test_bundle_get_match_claims` | 15 claims, all synchronous |
-| `test_bundle_get_match_claims_filtered` | `timeline_id="rec-a:cpt1"` → 10; `between=("rec-a:cpt1","rec-b:cpt1")` → 5 |
+| `test_bundle_get_match_claims_filtered` | `timeline_id="rec-a:cpt_1"` → 10; `between=("rec-a:cpt_1","rec-b:cpt_1")` → 5 |
 | `test_bundle_get_claim_fields` | the vectorized accessor selects `[15]` / `[10]`, and `[]` for an unknown UID |
 | `test_bundle_matchstamp_table_per_claim` | 15 rows × 3 columns, exactly two filled cells per row |
 | `test_bundle_matchstamp_table_from_graph` | the 15 pairwise rows collapse into the 5 reference-grid cross-sections, exact coordinates, ordered by the `rec-a` coordinate |
 | `test_bundle_are_commensurable` | all recording pairs commensurable; an absent ID is not |
-| `test_bundle_transfer` | `transfer(0.02, "rec-a:cpt1", "rec-b:cpt1") == 0.01` — the `MatchLine` → `WarpMap` path over the columnar store |
+| `test_bundle_transfer` | `transfer(0.02, "rec-a:cpt_1", "rec-b:cpt_1") == 0.01` — the `MatchLine` → `WarpMap` path over the columnar store |
 | `test_bundle_diagram_reports_claim_count` | `diagram()` reports `MatchClaims: 15` |
 
 The general two-store parity contract is documented in
@@ -858,8 +908,8 @@ Committed tests use an **inline synthetic** ``alignment.json`` written to
 ```
 
 Sorted keys → ``["rec-a.mp3", "rec-b.mp3", "rec-ref.mp3"]``; stems ``rec-a`` /
-``rec-b`` / ``rec-ref``; timeline uids ``rec-a:cpt1`` / ``rec-b:cpt1`` /
-``rec-ref:cpt1``; pairs ``(a, b)``, ``(a, ref)``, ``(b, ref)``.  ``rec-b``'s
+``rec-b`` / ``rec-ref``; timeline uids ``rec-a:cpt_1`` / ``rec-b:cpt_1`` /
+``rec-ref:cpt_1``; pairs ``(a, b)``, ``(a, ref)``, ``(b, ref)``.  ``rec-b``'s
 first column is ``-0.01`` — a **negative** pre-onset warp coordinate that the
 loader keeps faithfully (never clamped or dropped).  ``peaks`` is
 waveform-display payload and is ignored.
@@ -872,19 +922,19 @@ waveform-display payload and is ignored.
   ``loader.reference == "rec-ref.mp3"``.
 * ``loader.get_field(MatchClaim)`` is a ``MatchClaimField``;
   ``loader.get_field(MatchClaimField)`` returns the same field.
-* ``get_field(MatchClaim).timeline_ids == {"rec-a:cpt1", "rec-b:cpt1",
-  "rec-ref:cpt1"}``.
+* ``get_field(MatchClaim).timeline_ids == {"rec-a:cpt_1", "rec-b:cpt_1",
+  "rec-ref:cpt_1"}``.
 * **Faithfulness:** ``pc.min`` over both coordinate columns of the field is
   exactly ``-0.01`` (negatives kept).
 * ``bundle = loader.create_bundle()``: exactly **3** timelines and **3**
   groups; timeline uids equal the set above; each timeline holds **0** events;
-  ``rec-b:cpt1`` length ``== 0.10``; the claim field is added columnar, so
+  ``rec-b:cpt_1`` length ``== 0.10``; the claim field is added columnar, so
   ``len(bundle.cross_group_claims) == 0`` and
   ``len(bundle.cross_group_claim_fields) == 1``.
-* ``bundle.get_matchstamp_at(0.045, "rec-ref:cpt1")``: ``stamp.n_timelines ==
-  3``; ``stamp.get_coordinate("rec-a:cpt1") == 0.04``;
-  ``stamp.get_coordinate("rec-b:cpt1") == 0.03``;
-  ``stamp.get_coordinate("rec-ref:cpt1") == 0.045``.  The exact float literals
+* ``bundle.get_matchstamp_at(0.045, "rec-ref:cpt_1")``: ``stamp.n_timelines ==
+  3``; ``stamp.get_coordinate("rec-a:cpt_1") == 0.04``;
+  ``stamp.get_coordinate("rec-b:cpt_1") == 0.03``;
+  ``stamp.get_coordinate("rec-ref:cpt_1") == 0.045``.  The exact float literals
   from the specimen are reused so the equality is exact.  Because the bundle's
   Python claim list is empty, this read proves the columnar path resolves the
   matchstamp without exploding the field.
@@ -904,3 +954,87 @@ waveform-display payload and is ignored.
   differing lengths);
 * ``header.ref`` is absent from ``body.audio``;
 * fewer than two recordings are present.
+
+## `ScoreWarpLoader` validation logic
+
+ScoreWarp engraves a score and shifts its elements to performance time, then
+draws a seconds axis into the SVG: a ``g.timeAxis`` group holding one
+``line.horizontalAxis``, vertical tick lines (major ticks longer than minor
+ones) and text labels, one title such as "Time (s)" and a number at every
+major tick. The loader turns that axis into a ``css_pixels`` timeline of the
+drawing with one calibrated child, the axis, whose C-Map reads seconds.
+
+### The fixture
+
+``tests/loader/graphical/test_scorewarp_loader.py`` writes a ScoreWarp-shaped
+SVG into ``tmp_path``: a root sized ``792`` × ``175`` with a viewBox, and an
+axis drawn from 76.70371459980326 to 932.2326510101616, past the viewport's
+right edge (``overflow="visible"``). It has 41 tick lines, a tick every
+1/40 of the segment; the five major ones sit at 76.70371459980326,
+290.5859487023929, 504.4681828049824, 718.350416907572 and
+932.2326510101616 under the labels "0" … "40". These are the doubles a
+drawing tool prints, so the tick spacing carries their rounding. Negative
+cases are mutated copies of the same text.
+
+### What proves the loader works
+
+* **Values are read, never derived.** Changing the label "40" to "41" must be
+  refused by the calibration check: the inner pairs no longer lie on the line
+  through the end pairs. A loader that computed the labels from the axis
+  length would accept the mutation.
+* **The drawing contains its axis.** The timeline's length is the content
+  extent, max(viewport width, the end of every line of the axis):
+  932.2326510101616, never the viewport's 792. Text extents are not counted
+  (no font metrics), a documented limit.
+* **The child is the segment.** Offset 76.70371459980326, length
+  855.5289364103584 (the double difference of the ends), named by the title
+  label, with an id minted from its unit.
+* **The loader mints every id of the tree.** Two ``create_timeline()`` calls
+  on one loader give the roots ``cgt_1`` and ``cgt_3`` with the axis
+  children ``cgt_2`` and ``cgt_4``. A child minted in its own timeline's
+  scope would give ``cgt_2`` twice, and the second root ``cgt_2`` with child
+  ``cgt_1``, since each new timeline is its own empty scope. A given root id
+  (``drawing``, after the first drawing) is kept while the loader still draws
+  the root's number, ``cgt_3``, so its child is ``cgt_4``, as
+  ``VerovioLoader`` does for a given root.
+* **A given root id of the minted shape reserves its number, with or without
+  a role.** On a fresh loader, ``uid="cgt_2"`` and ``uid="drawing:cgt_2"``
+  both give the child ``cgt_3``: the root draws ``cgt_1``, the given id
+  holds ``cgt_2``. Without the reservation the child is ``cgt_2``; reserving
+  the role-led id verbatim would not hold the number either. This is the
+  rule ``VerovioLoader`` follows (``tests/loader/score/README.md``, "Ids of a
+  given root"), one helper for both loaders.
+* **The map is the line through the pairs, in float arithmetic.** The
+  positions are floats, so the map is a float map: scalar
+  ``40 / 855.5289364103584 == 0.04675470144567245``, offset ``0.0``.
+* **The map reads the drawn tick.** The "10" tick lies at 213.88223410258962
+  on the child, where the map reads 10.000000000000002. The test recomputes
+  that value in exact rational arithmetic on the drawn doubles (the line
+  through the end ticks, evaluated at the "10" tick) and checks that it
+  rounds to the same double, so the pinned value is the drawing's own, not an
+  artefact of the map's arithmetic. The same value reaches the parent's
+  timestamp at the tick.
+* **Counts.** 41 tick lines found, 5 calibration pairs (each numeric label
+  on a tick), unit seconds from "(s)", and the root's size strings kept
+  verbatim in ``svg_size`` and the timeline's ``meta``.
+
+### Error cases
+
+``load`` raises ``ValueError`` when:
+
+* no ``g.timeAxis`` is present, or more than one;
+* a ``transform`` sits on the axis group, inside it or on an ancestor, or the
+  group lies in a nested ``<svg>`` viewport;
+* the title's unit is unknown (the message names the unit);
+* the root's ``width`` or ``height`` is in a unit other than ``px`` or none
+  (``mm`` in the test);
+
+and the calibration check refuses a label that contradicts the others (the
+"41" mutation).
+
+One loader reads one SVG. A second ``load`` raises the shared single-source
+``ValueError`` (see "Single-source loaders"), naming the held file, and leaves
+the held axis in place: the calibration still reads seconds. After
+``clear()`` the loader holds nothing (``repr`` says "not loaded") and reads
+the second file, whose title "Time (minutes)" makes its calibration read
+minutes, so the axis held is provably the new file's.

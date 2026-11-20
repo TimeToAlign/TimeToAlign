@@ -32,7 +32,6 @@ from typing_extensions import Self
 from timetoalign.core import (
     IntervalPolicy,
     NumberType,
-    TimelineIdGenerator,
     TimeUnit,
 )
 from timetoalign.core.fields import TIMETOALIGN_METADATA_KEY, field_metadata
@@ -67,11 +66,15 @@ class Loader(ABC, Generic[PayloadT]):
     :class:`ManifestLoader`, and :class:`AlignmentLoader`.
     """
 
+    #: Whether one loader reads one source only. ``load`` then refuses a second
+    #: source, in the same call or a later one, until ``clear()``.
+    _single_source: ClassVar[bool] = False
+
     def __init__(self) -> None:
         """Initialize shared loader state."""
         self._sources: list[Path] = []
         self._source_metadata: list[dict[str, Any]] = []
-        self._timeline_id_generator = TimelineIdGenerator()
+        self._minted_timeline_ids: set[str] = set()
 
     @abstractmethod
     def _load_source(self, source: Path) -> PayloadT:
@@ -95,8 +98,48 @@ class Loader(ABC, Generic[PayloadT]):
         self._sources.append(path)
         self._source_metadata.append(source_meta)
 
+    def _refuse_further_source(self, *sources: object) -> None:
+        """Refuse *sources* when a single-source loader cannot take them.
+
+        A loader whose ``_single_source`` is set reads one source; it requires
+        that source, so it refuses a call with none, more than one in one
+        call, and any while it holds one. Every door into such a loader's
+        parse calls this before parsing anything.
+
+        Raises:
+            ValueError: If the loader reads one source and *sources* are none
+                or more than one, or it already holds one.
+        """
+        if not self._single_source:
+            return
+        name = self.__class__.__name__
+        if not sources:
+            raise ValueError(f"{name} reads one source; got none.")
+        held = self._held_source()
+        if held is not None:
+            raise ValueError(
+                f"{name} reads one source and already holds {held}; use a new "
+                f"loader for {', '.join(map(str, sources))}, or call clear() first."
+            )
+        if len(sources) > 1:
+            raise ValueError(
+                f"{name} reads one source; got {len(sources)}: "
+                f"{', '.join(map(str, sources))}."
+            )
+
+    def _held_source(self) -> str | None:
+        """Name the source this loader holds, or ``None`` when it holds none."""
+        return str(self._sources[0]) if self._sources else None
+
     def load(self, *sources: Path | str) -> Self:
-        """Load and accept one or more sources through the shared template."""
+        """Load and accept one or more sources through the shared template.
+
+        Raises:
+            ValueError: If the loader reads one source and is given none or
+                more than one, or any while it holds one (after ``clear()``
+                it reads one again). Nothing is parsed then.
+        """
+        self._refuse_further_source(*sources)
         for source in sources:
             path = Path(source)
             source_meta, payload = self._unpack_source_result(self._load_source(path))
@@ -333,22 +376,21 @@ class EventLoader(Loader[LoadSourceResult]):
             >>> loader.load("notes.tsv")
             >>> timeline = loader.create_timeline(uid="my_score")
         """
-        if uid is None:
-            from timetoalign.timelines.factory import (
-                _infer_timeline_class_and_number_type,
-            )
+        from timetoalign.timelines.factory import _flag_minted, _mint_timeline_id
 
-            timeline_class, _ = _infer_timeline_class_and_number_type(
-                self._unit, self._number_type
-            )
-            uid = self._timeline_id_generator.next_id(timeline_class)
+        minted = uid is None
+        if minted:
+            uid = _mint_timeline_id(self, self._unit)
 
-        return self.store.create_timeline(
-            uid=uid,
-            store_filters=store_filters,
-            include_stores=include_stores,
-            exclude_stores=exclude_stores,
-            flatten=flatten,
+        return _flag_minted(
+            self.store.create_timeline(
+                uid=uid,
+                store_filters=store_filters,
+                include_stores=include_stores,
+                exclude_stores=exclude_stores,
+                flatten=flatten,
+            ),
+            minted,
         )
 
     def create_timelines(
@@ -1159,7 +1201,7 @@ class AlignmentLoader(Loader["AlignmentStore"]):
     AlignmentLoader is for formats that encode aligned multimodal data:
     - TiLiA JSON -> hierarchical annotations with alignments
     - Match files -> score-to-performance alignment
-    - MPM, parangonada, Listen Here!, and PerformancePrecision exports
+    - MPM, parangonada, Listen Here!, MAPS, and PerformancePrecision exports
 
     Subclasses must implement:
     - _load_source(): Parse a single source into AlignmentStore

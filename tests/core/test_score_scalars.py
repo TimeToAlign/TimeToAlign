@@ -312,21 +312,21 @@ class TestNote:
         )
         assert note.instrument is None
 
-    def test_to_dict_embeds_exact_coordinate_cells(self) -> None:
+    def test_to_dict_embeds_exact_coordinates(self) -> None:
         note = Note(
             start=Coordinate(Fraction(1, 3), TimeUnit.quarters),
             duration=Coordinate(Fraction(2, 3), TimeUnit.quarters),
         )
         data = note.to_dict()
         assert data["start"] == {
-            "value": 1 / 3,
-            "numerator": 1,
-            "denominator": 3,
+            "unit": "quarters",
+            "number_type": "fraction",
+            "value": [1, 3],
         }
         assert data["duration"] == {
-            "value": 2 / 3,
-            "numerator": 2,
-            "denominator": 3,
+            "unit": "quarters",
+            "number_type": "fraction",
+            "value": [2, 3],
         }
         restored = Note.from_row(data)
         assert restored is not None
@@ -344,125 +344,66 @@ class TestMeasure:
     """Tests for Measure scalar construction and protocol conformance."""
 
     def test_construction_basic(self) -> None:
-        """Construct Measure with mc, mn, start, duration, timesig, keysig."""
-        start = Coordinate(Fraction(0), TimeUnit.quarters)
+        """Construct a Measure Map scalar with exact lengths."""
         m = Measure(
-            id=1,
-            mn="1",
-            start=start,
-            duration=Coordinate(Fraction(2), TimeUnit.quarters),
-            time_signature=(2, 4),
-            key_signature="E",
+            id="m1",
+            count=1,
+            qstamp=Fraction(0),
+            number=1,
+            time_signature="2/4",
+            nominal_length=Fraction(2),
+            actual_length=Fraction(2),
         )
-        assert m.id == 1
-        assert m.mn == "1"
-        assert m.start == start
-        assert m.duration is not None
-        assert m.time_signature == (2, 4)
-        assert m.key_signature == "E"
+        assert m.id == "m1"
+        assert m.name == "1"
+        assert m.qstamp == 0
+        assert m.time_signature == "2/4"
 
     def test_construction_anacrusis(self) -> None:
-        """Construct Measure for an anacrusis bar (id=1, mn='0')."""
-        start = Coordinate(Fraction(0), TimeUnit.quarters)
+        """Construct an incomplete first measure without event coordinates."""
         m = Measure(
-            id=1,
-            mn="0",
-            start=start,
-            duration=Coordinate(Fraction(1, 2), TimeUnit.quarters),
-            time_signature=(2, 4),
-            key_signature="E",
+            id="m1",
+            number=0,
+            actual_length=Fraction(1, 2),
+            nominal_length=Fraction(2),
         )
-        assert m.id == 1
-        assert m.mn == "0"
+        assert m.id == "m1"
+        assert m.name == "0"
 
     def test_measurelike_conformance(self) -> None:
         """Measure satisfies MeasureLike protocol."""
-        start = Coordinate(Fraction(0), TimeUnit.quarters)
-        m = Measure(
-            id=1,
-            mn="1",
-            start=start,
-            duration=Coordinate(Fraction(2), TimeUnit.quarters),
-            time_signature=(2, 4),
-            key_signature="E",
-        )
+        m = Measure(id="m1", number=1)
         assert isinstance(m, MeasureLike)
 
-    def test_time_signature_tuple(self) -> None:
-        """time_signature returns exact (num, den) tuple."""
-        start = Coordinate(Fraction(0), TimeUnit.quarters)
-        m = Measure(
-            id=3,
-            mn="3",
-            start=start,
-            duration=Coordinate(Fraction(2), TimeUnit.quarters),
-            time_signature=(6, 8),
-            key_signature="c",
-        )
-        assert m.time_signature == (6, 8)
-        assert isinstance(m.time_signature, tuple)
+    def test_time_signature_spelling_is_lossless(self) -> None:
+        m = Measure(id="m3", time_signature="6/8")
+        assert m.time_signature == "6/8"
 
     def test_semantic_type(self) -> None:
         """Measure.semantic_type == 'Measure'."""
-        start = Coordinate(Fraction(0), TimeUnit.quarters)
-        m = Measure(
-            id=1,
-            mn="1",
-            start=start,
-            duration=Coordinate(Fraction(2), TimeUnit.quarters),
-            time_signature=(4, 4),
-            key_signature="C",
-        )
+        m = Measure()
         assert m.semantic_type == "Measure"
 
-    def test_to_dict_embeds_exact_coordinate_cells(self) -> None:
-        measure = Measure(
-            id=1,
-            mn="1",
-            start=Coordinate(Fraction(1, 3), TimeUnit.quarters),
-            end=Coordinate(Fraction(13, 3), TimeUnit.quarters),
-        )
-        data = measure.to_dict()
-        assert data["start"] == {
-            "value": 1 / 3,
-            "numerator": 1,
-            "denominator": 3,
-        }
-        assert data["end"] == {
-            "value": 13 / 3,
-            "numerator": 13,
-            "denominator": 3,
-        }
-        restored = Measure.from_row(data)
-        assert restored is not None
-        assert restored.start.value == Fraction(1, 3)
-        assert restored.end is not None
-        assert restored.end.value == Fraction(13, 3)
+    def test_serialized_id_uses_measure_map_name(self) -> None:
+        measure = Measure.model_validate({"ID": "m1", "number": 1})
+        assert measure.id == "m1"
+        assert measure.model_dump(by_alias=True)["ID"] == "m1"
 
     def test_frozen_immutable(self) -> None:
         """Measure is frozen (immutable)."""
-        start = Coordinate(Fraction(0), TimeUnit.quarters)
-        m = Measure(
-            id=1,
-            mn="1",
-            start=start,
-            duration=Coordinate(Fraction(2), TimeUnit.quarters),
-            time_signature=(2, 4),
-            key_signature="E",
-        )
+        m = Measure(id="m1")
         with pytest.raises(ValidationError) as exc_info:
-            m.id = 2  # type: ignore[misc]
+            m.id = "m2"  # type: ignore[misc]
         assert "frozen" in str(exc_info.value).lower() or isinstance(
             exc_info.value, AttributeError
         )
 
     def test_flow_control_defaults(self) -> None:
         """Flow control fields default to False/None."""
-        start = Coordinate(Fraction(0), TimeUnit.quarters)
-        m = Measure(id=1, mn="1", start=start, time_signature=(4, 4))
+        m = Measure(id="m1")
         assert m.start_repeat is False
         assert m.end_repeat is False
-        assert m.next_ids is None
+        assert m.next is None
         assert m.volta is None
 
 

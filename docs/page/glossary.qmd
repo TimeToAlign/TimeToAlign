@@ -42,6 +42,26 @@ to the relevant section of the conceptual model.
 
 ## B
 
+**BeatGrid**
+:   An ordered set of **BeatGridSegment**s and the beats they generate on a
+    seconds axis. Each segment states one stretch of a recording --- an anchor
+    instant, a tempo, a {{< glossary BeatPolicy >}}, and which beat of a bar
+    the anchor is --- and generates beats without end; the grid orders the
+    segments, bounds each by its successor's start and the last by its extent,
+    and labels the resulting beats with measure and beat numbers. Each labelled
+    beat is a **GridBeat**. A BeatGrid is *not* a
+    {{< glossary Timeline >}} and stores nothing per beat.
+    See [How to Build Beat Grids](howto/how01_beat_grids.ipynb).
+
+**BeatPolicy**
+:   How one bar is counted in beats: a grouping cycle over one counted note
+    value. A 4/4 bar is four beats of a quarter, a compound 6/8 bar two beats
+    of three eighths, an uneven (3+2+3)/8 bar three beats of unequal length.
+    Beat lengths are derived from the grouping and the division, never stored.
+    One signature admits more than one counting: a {{< glossary BeatGrid >}}'s
+    lattice reads 6/8 as six beats of an eighth, because its beat-in-bar index
+    counts the notated value rather than the felt pulse.
+
 **Break**
 :   A {{< glossary ControlEvent >}} that voids {{< glossary Contiguity >}}
     at its {{< glossary Instant >}}. TimeIntervals cannot span a Break,
@@ -49,6 +69,24 @@ to the relevant section of the conceptual model.
     See [Flow control](concepts.qmd#flow-control).
 
 ## C
+
+**Catalogue**
+:   Data shipped with the TimeToShare package that guides the writing of
+    {{< glossary statement >}}s and that tools read to offer properties
+    and values and to print pairs in words: the `prefixes` of the
+    vocabularies its patterns use, from which a written manifest's inline
+    `@context` takes those its statements use; `aliases`, namespaces read as
+    equal (`https://schema.org/` as `http://schema.org/`); the identifier
+    `systems` (Wikidata, MusicBrainz, the GND, VIAF, MeLODy with LRMoo,
+    IMSLP and others, and the fallback vocabularies that state a relation
+    where a system has no property of its own); the `verbs`, relations in
+    words (`is_a`, `performed_by`, `part_of`, …) each with a pattern per
+    system; and the `types` of thing a subject or value is. The validators
+    never consult it. `add_verb()` states a verb in one system's vocabulary,
+    and `get_rectangles()` gathers the pairs it reads as one verb about one
+    thing.
+    See [How to Describe What a Bundle and Its Timelines Stand For](howto/how03_describe_the_work.ipynb) and
+    [TimeToShare's description of a manifest](https://github.com/TimeToAlign/TimeToShare/blob/main/docs/description.md), section 10.
 
 **ChainMap**
 :   A {{< glossary MultiMap >}} that applies multiple
@@ -58,8 +96,13 @@ to the relevant section of the conceptual model.
 
 **Child**
 :   A {{< glossary Timeline >}} nested within a parent, sharing its
-    measuring unit but defining its own origin. Children are locked upon
-    insertion to prevent side effects from modifications.
+    measuring unit but defining its own origin. `add_child()` locks a child
+    by default, which prevents side effects from modifications. An unlocked
+    child's length may change only within its parent's known length: a
+    parent never grows because a child grew. A child holds its parent's
+    positions from its start up to its end, and its end only where no
+    sibling starts there; a nested timeline is reached only through
+    parents that all hold the position.
     See [Nested timelines](concepts.qmd#nested-timelines).
 
 **ClaimType**
@@ -92,6 +135,16 @@ to the relevant section of the conceptual model.
 
 **Commensurable**
 :   See {{< glossary Commensurability >}}.
+
+**Complete form**
+:   The form in which `to_dict(minimal=False)` writes a
+    {{< glossary "TimeToShare manifest" >}}: every key the format
+    defines is written, those holding their default value included (`null`,
+    `{}`, `[]`). A key whose default is its absence, such as a manifest's `id`
+    or a root timeline's `offset`, is written only when it has a value. The
+    complete and the {{< glossary "Minimal form" >}} of one object read back to
+    equal objects, and each writes back to itself.
+    See [How to Save and Load Timelines, Groups and Bundles](howto/how02_group_and_bundle_files.ipynb).
 
 **ConcatenationMap**
 :   A {{< glossary MultiMap >}} combining bounded
@@ -138,8 +191,8 @@ to the relevant section of the conceptual model.
 **DictStore**
 :   A generic `EventStore` subclass holding a `dict[str, EventData]` with
     arbitrary keys. Used internally by AlignmentLoaders to store one
-    `EventData` table per timeline-to-be (e.g., `"score:clt1"`,
-    `"perf:Chopin_op10_no3_p01:cpt1"`).
+    `EventData` table per timeline-to-be (e.g., `"score:clt_1"`,
+    `"perf:Chopin_op10_no3_p01:cpt_1"`).
     Maintains the uniform `EventStore` interface.
     See the [API reference](reference/DictStore.qmd).
 
@@ -156,6 +209,28 @@ to the relevant section of the conceptual model.
     See [Foundations](concepts.qmd#foundations).
 
 ## E
+
+**element id**
+:   The id that identifies an element of a manifest: the manifest's own, a
+    {{< glossary Timeline >}} (root or descendant),
+    {{< glossary TimelineGroup >}}, MeasureMap,
+    {{< glossary ConversionMap >}} at any nesting depth,
+    {{< glossary Region >}}, Break, {{< glossary Jump >}} or
+    {{< glossary Marker >}}. It is unique across the whole manifest and every
+    kind, so the id alone names the element. An id is whatever was given and
+    is kept verbatim: any non-empty string without a control character;
+    spaces, colons, slashes and URIs are allowed. Only an element given no id
+    gets a minted one, `{prefix}_{N}` with `N` the smallest positive integer
+    the manifest does not yet hold. The prefix names the kind: `clt`, `dlt`,
+    `cpt`, `dpt`, `cgt` or `dgt` for a timeline (continuous or discrete,
+    logical, physical or graphical), `group` for a group, `measuremap` for
+    a MeasureMap, `cmap`, `lmap`, `tmap` or `pmap` for a conversion map,
+    `region` for a Region, and `flow_marker` (a Break), `jump_from` (a Jump)
+    or `jump_to` (a Marker); a loader role leads
+    it (`score:clt_1`). When trees are joined into a group or bundle, a
+    minted id that collides is re-minted and a given id that collides raises,
+    for every kind of element. The id identifies, the `name` displays: a name
+    may be absent or repeat, and an id is never derived from it.
 
 **EndInstant**
 :   An {{< glossary Instant >}} marking the end of a
@@ -198,15 +273,6 @@ to the relevant section of the conceptual model.
     See [Derivative timelines](concepts.qmd#derivative-timelines).
 
 ## G
-
-**GroupTimestamp**
-:   A cross-section through a {{< glossary TimelineGroup >}} at a given
-    coordinate. Contains one coordinate per timeline in the group plus
-    (optionally) C-map conversion values. A {{< glossary MatchStamp >}} is
-    the union of GroupTimestamps from each participating group. Produced by
-    `TimelineGroup.get_timestamp_at()`. Exported from the package root as
-    `timetoalign.GroupTimestamp`.
-    See [Alignment](concepts.qmd#alignment).
 
 ## I
 
@@ -265,13 +331,18 @@ to the relevant section of the conceptual model.
 :   A {{< glossary ControlEvent >}} with **JumpFrom** and **JumpTo**
     {{< glossary Instant >}}s. When active, makes events at JumpTo
     contiguous with those ending at JumpFrom (e.g., repeats, *dal segno*).
+    Its `target` is the {{< glossary "element id" >}} of a
+    {{< glossary Marker >}} of the same timeline (a segno, a coda), or `None`
+    when it lands on no marker (to the start, a plain repeat); JumpTo carries
+    the destination coordinate either way.
     See [Flow control](concepts.qmd#flow-control).
 
 ## L
 
 **Length**
 :   The distance between a {{< glossary Timeline >}}'s origin and its last
-    {{< glossary Instant >}}.
+    {{< glossary Instant >}}, or `None` when it is not known (see
+    {{< glossary "Unknown length" >}}).
     See [Foundations](concepts.qmd#foundations).
 
 **Locked**
@@ -279,11 +350,24 @@ to the relevant section of the conceptual model.
     {{< glossary Instant >}}s may be added after the last time-point, so its
     length cannot change. Locking governs the coordinate axis only ---
     non-structural annotations such as {{< glossary Region >}}s may still be
-    added to a locked timeline. {{< glossary Child >}} timelines are
-    automatically locked when embedded in a parent.
+    added to a locked timeline. A timeline is locked with `locked=True`, when
+    `add_child()` embeds it as a {{< glossary Child >}} with its default
+    `locked=True`, or after construction with `lock()`; a child read from a
+    manifest keeps the manifest's `locked`. A lock cannot be lifted. A locked
+    timeline's length may still be unknown. Containment does not depend on
+    the lock: a child, locked or not, ends within its parent's known length,
+    and content or a child added into an unlocked timeline grows that
+    timeline only.
     See [Nested timelines](concepts.qmd#nested-timelines).
 
 ## M
+
+**Marker**
+:   A named position in a timeline's flow control that a
+    {{< glossary Jump >}} can target, such as a segno or a coda sign. A Marker
+    carries an {{< glossary "element id" >}}, an optional `name`, and a
+    coordinate; a Jump refers to it by its id, never by its name.
+    See [Flow control](concepts.qmd#flow-control).
 
 **Match**
 :   See {{< glossary MatchClaim >}}.
@@ -307,15 +391,21 @@ to the relevant section of the conceptual model.
     pair of timelines it connects. Four cases: (a) event-to-event,
     (b) projection, (c) {{< glossary NOMATCH >}}, (d) implicit (from group
     extension). Held individually, or columnar at scale in a
-    {{< glossary MatchClaimField >}}.
+    {{< glossary MatchClaimField >}}. Its id is given or minted: a claim
+    given none mints `claim_N`, `N` the smallest number free in the scope
+    that holds it (a MatchClaimField or an {{< glossary AlignmentBundle >}}),
+    and `id_minted` records which. Joining a scope, a minted id already held
+    there is minted again and a given one is refused.
     See [Alignment](concepts.qmd#alignment).
 
 **MatchClaimField**
 :   A columnar, PyArrow-backed store holding a whole set of synchronous-instant
-    pairwise {{< glossary MatchClaim >}}s as Arrow columns (the two timeline ids
-    dictionary-encoded, each coordinate as a struct of `value`, `numerator`,
-    `denominator` and `unit`) rather than as one
-    frozen MatchClaim object per claim. Storing the exact ratio beside the
+    pairwise {{< glossary MatchClaim >}}s as Arrow columns, one per property
+    of a MatchClaim (the two timeline ids as strings, the anchors, the flags,
+    the metadata, the event ids and names, the source coordinate, `id` and
+    `id_minted`; each coordinate a struct of `value`, `numerator`,
+    `denominator` and `unit`), rather than as one frozen MatchClaim object
+    per claim. Storing the exact ratio beside the
     float mirror is what lets a claim's coordinate come back in its axis's
     declared number type instead of being flattened on the way through the
     column. Individual MatchClaims are materialised
@@ -323,7 +413,13 @@ to the relevant section of the conceptual model.
     `from_columns()`, it is the scalable backing for dense
     {{< glossary AlignmentMatrix >}} alignments, where the complete pairwise
     topology of a whole work runs to roughly a million claims. Shared provenance
-    is held once at field level, never per row.
+    is held once at field level; only claims whose metadata differ carry it
+    per row. The `table` property gives the field as an Arrow table, the
+    shared provenance in its schema metadata under the key
+    `timetoalign:match_metadata`, and `from_table()` reads it back
+    unchanged, from Parquet too. `to_dict()` renders the same table as
+    `{"metadata": …, "rows": […]}`, one mapping per claim keyed by the
+    columns, and `from_dict()` reads it back.
     See [Alignment](concepts.qmd#alignment).
 
 **MatchGraph**
@@ -367,6 +463,21 @@ to the relevant section of the conceptual model.
     varies by producing context.
     See [Alignment](concepts.qmd#alignment).
 
+**MeasureConstituent**
+:   A measure of a measure map that is only part of its nominal measure: an
+    anacrusis, or one constituent of a split measure. It carries
+    `offset_within_measure`, the strictly positive quarter-note position at
+    which it begins inside the nominal measure, and is the only measure class
+    that does. A measure is classified as a constituent exactly when that
+    offset is stated and non-zero: a shared measure number never marks a split
+    measure, because alternative endings ("16a", "16b") share one too. A
+    measure table states the offset in its `mc_offset` column; a Measure Map
+    `.mm.json` file states none, so `MeasureMapLoader` applies the standard's
+    one convention, a first row numbered 0 that is shorter than nominal being
+    an anacrusis at offset nominal minus actual length. In a compressed
+    measure-map row the offset is the `offset_within_measure` extension,
+    written only when non-zero.
+
 **MetricMap**
 :   A table-based {{< glossary ConversionMap >}} from a quarter position to its
     measure count, built from explicit measure-boundary anchors rather than a
@@ -382,8 +493,22 @@ to the relevant section of the conceptual model.
     a beat-in-measure map to return a metrical position `{mc, beat}` from a
     quarter coordinate. Adds a reverse lookup `quarters_at(mc, beat)` (metrical
     position to quarters) and `mn_at(quarters)` (quarters to measure-number
-    label).
+    label). A TimeToShare manifest writes it as a `MeasureBeatMap` over the
+    measure map its meter map describes, each measure's count standing as its
+    number; reading the manifest returns that `MeasureBeatMap`.
     See [Conversion maps](concepts.qmd#conversion-maps).
+
+**Minimal form**
+:   The form in which every `to_dict()` writes a
+    {{< glossary "TimeToShare manifest" >}} by default (`to_dict(minimal=False)`
+    writes the {{< glossary "Complete form" >}}): every key holding its default
+    value is left out, except a timeline's `length`, which both forms write.
+    Readers supply every default left out, so a minimal manifest can be written
+    by hand; the smallest names the version and one timeline with its `id`,
+    `unit` and `length`. `to_file()` writes a manifest file in the form it was
+    read in, and in the minimal form and canonical YAML for an object not read
+    from a file.
+    See [How to Save and Load Timelines, Groups and Bundles](howto/how02_group_and_bundle_files.ipynb).
 
 **MpmLoader**
 :   Loader for an MPM-Toolbox project: a sibling `.msm` score, `.mpm` modelled
@@ -457,6 +582,24 @@ to the relevant section of the conceptual model.
     performance-only note. Reads the existing alignment; never runs an aligner.
     Returns an {{< glossary AlignmentBundle >}} via `create_bundle()`.
 
+**Provenance entry**
+:   The annotation of one {{< glossary statement >}} in the `provenance`
+    beside an element's `statements` (or inside a value node, for its own
+    pairs). It names the pair again by `property` and `value` and gives its
+    `status`: `confirmed` (the subject states the pair), `proposed` (a
+    candidate awaiting a decision) or `rejected` (a candidate examined and
+    refused, so that no tool proposes it again). It may state who stated it
+    (`stated_by`), the day (`date`), how (`method`: `manual`, `reconciled`,
+    `imported`, `inferred`), the lookup `service`, the sources it rests on
+    (`basis`), how closely the value matches (`match`) and a `note`. A
+    proposed or rejected pair is never stated; a pair without an entry is
+    stated by the manifest's publisher, and a subject has at most one entry
+    per pair. `provenance=` on `add_statement()` writes a confirmed entry;
+    `propose_statement()`, `confirm_statement()` and `reject_statement()`
+    decide; `get_provenance(status)` answers the entries.
+    See [How to Describe What a Bundle and Its Timelines Stand For](howto/how03_describe_the_work.ipynb) and
+    [TimeToShare's description of a manifest](https://github.com/TimeToAlign/TimeToShare/blob/main/docs/description.md), section 9.
+
 ## R
 
 **raw_quarters**
@@ -468,16 +611,29 @@ to the relevant section of the conceptual model.
     and `PartituraLoader` so downstream code can detect and apply the same
     shift when comparing coordinates across loaders.
 
+**Reach**
+:   The farthest coordinate on a {{< glossary Timeline >}}'s own axis that its
+    content reaches: the ends of its children (a {{< glossary Child >}} of
+    {{< glossary "Unknown length" >}} contributing its offset plus its own
+    reach), {{< glossary Region >}} ends, {{< glossary Break >}} and
+    {{< glossary Marker >}} coordinates, both ends of every
+    {{< glossary Jump >}}, and the end of the measure map. Events are not part
+    of it. A timeline without such content reaches 0. The reach is independent
+    of the length; displays use it as the extent of a timeline of unknown
+    length. Read it as `Timeline.reach`.
+
 **Region**
-:   A named part of a {{< glossary Timeline >}} defined by a
-    {{< glossary TimeInterval >}} (e.g., "Chorus", "Verse"). Regions are
-    not timelines and cannot hold events or maps directly.
+:   A part of a {{< glossary Timeline >}} defined by a
+    {{< glossary TimeInterval >}}, identified by its
+    {{< glossary "element id" >}} and displayed by its `name` (e.g.,
+    "Chorus", "Verse"). Regions are not timelines and cannot hold events or
+    maps directly.
     See [Regions](concepts.qmd#regions).
 
 **Root**
 :   The top-level {{< glossary Timeline >}} in a hierarchy of nested
-    timelines. Only the root timeline can be extended; all descendants are
-    locked.
+    timelines. No parent bounds its length; an unlocked descendant grows
+    only within its parent's known length, never pushing its parent.
     See [Nested timelines](concepts.qmd#nested-timelines).
 
 **RotationMap**
@@ -499,16 +655,43 @@ to the relevant section of the conceptual model.
     {{< glossary Segment >}}s tile its full length. A line is also an instance
     of that segment class. Any timeline can check the structure with
     `is_segment_line()` and adopt enforcement with `as_segment_line()`; a line
-    returns to an unenforced timeline with `to_timeline()`. Use
-    `create_children_from_boundaries()` for boundary-driven tiling. Appending
-    extends an unlocked line, while appending to an embedded, length-locked
-    line raises `RuntimeError`.
+    returns to an unenforced timeline with `to_timeline()`; both return a
+    copy. Use `create_children_from_boundaries()` for boundary-driven tiling.
+    Appending extends an unlocked line, while appending to a locked line
+    raises `RuntimeError`. The segments of a line of known length keep
+    ending at its length: a segment with a successor ends at the successor's
+    offset, the last one at the line's end, and changing a segment's length
+    never moves the line's end. A segment of unknown length ends at its
+    successor's offset, or, the last one, at the line's known length.
     See [Nested timelines](concepts.qmd#nested-timelines).
 
 **StartInstant**
 :   An {{< glossary Instant >}} marking the start of a
     {{< glossary TimeInterval >}}.
     See [Foundations](concepts.qmd#foundations).
+
+**Statement**
+:   A property–value pair saying what an element of a manifest stands for or
+    how that thing relates to others. Three kinds of element carry
+    `statements`: the manifest (the {{< glossary AlignmentBundle >}}),
+    which names the work it is about by `schema:about`; every
+    {{< glossary Timeline >}} at any depth, for the manifestation it is
+    the axis of; and every {{< glossary Region >}}, for the stretch it
+    marks. A group carries none, and works and expressions are values, never
+    elements. The property is `type` ("is a") or an IRI, compact
+    (`prefix:suffix`, the prefix declared by the manifest's inline
+    `@context`) or absolute; the value is a literal, a value object, a node
+    (a thing, `{id: …}`, with its own pairs) or an ordered list. A value
+    naming an element is its reference, `{id: "#cpt_1"}`; the library
+    renames it with the element and drops the pair when the element leaves
+    the manifest. Statements never nest, order or align timelines. A
+    timeline and a bundle change them in place (`add_statement()`,
+    `add_verb()`, `remove_statement()`), a frozen region returns a copy
+    (`with_statement()`, `without_statement()`); each pair may carry a
+    {{< glossary "provenance entry" >}}. `MeiHeadLoader` and
+    `MelodyLoader` import them from an MEI header and from MeLODy's Turtle.
+    See [How to Describe What a Bundle and Its Timelines Stand For](howto/how03_describe_the_work.ipynb) and
+    [TimeToShare's description of a manifest](https://github.com/TimeToAlign/TimeToShare/blob/main/docs/description.md).
 
 **SupportPolicy**
 :   How a cross-timeline {{< glossary MatchStamp >}} treats a timeline whose
@@ -562,9 +745,20 @@ to the relevant section of the conceptual model.
     See [Foundations](concepts.qmd#foundations).
 
 **TimelineGroup**
-:   A container for timelines claimed to be commensurable; placing timelines
-    in a group asserts {{< glossary Commensurability >}} regardless of
-    underlying units. Coordinates transfer via interpolation.
+:   An array of member timelines that share the same graphical start and
+    end: every member's 0 coincides with every other member's 0, and every
+    member's length with every other member's length. Placing timelines in a
+    group asserts {{< glossary Commensurability >}} regardless of their
+    units. A position in between converts linearly and exactly (`p` on
+    member A is `p · len_B / len_A` on member B) and is written in the target
+    member's number type. When only part of a timeline takes part, the member
+    is a {{< glossary Child >}} of that timeline at its exact offset; a member
+    is never placed partially. No member is an ancestor or a descendant of
+    another member of the same group, since a child sits at its offset inside
+    its parent. A group answers with the same
+    {{< glossary TimeStamp >}} class as a {{< glossary Timeline >}};
+    `to_dict()` and `from_dict()` write and read it with every timeline it
+    needs.
     See [Alignment](concepts.qmd#alignment).
 
 **TimeStamp**
@@ -572,15 +766,64 @@ to the relevant section of the conceptual model.
     capturing positions in all connected systems plus values converted by
     all attached {{< glossary ConversionMap >}}s. It stores one
     {{< glossary Coordinate >}} per timeline ID, so each entry carries its own
-    unit and number type. TimeStamp implements the
-    shared `Stamp` interface used by {{< glossary GroupTimestamp >}} and
-    {{< glossary MatchStamp >}}: a typed `axis`, `get_coordinate_for()` and
+    unit and number type. TimeStamp implements the `Stamp` interface it
+    shares with {{< glossary MatchStamp >}}: a typed `axis`,
+    `get_coordinate_for()` and
     `get_coordinates_for()` returning {{< glossary IdCoordinate >}}s by
     default, `get_unit()` for unit conversion, `get_conversion_for()` for
     label and structured map values, `present_timelines`, and
     `is_interpolated`. A bare number is an explicit
     `format="float"/"int"/"fraction"` request; there is no ambient float view.
+    Which children answer follows the containment rule of
+    {{< glossary Child >}}.
     See [Nested timelines](concepts.qmd#nested-timelines).
+
+**TimeToShare manifest**
+:   The file format in which timelines, groups and bundles are exchanged,
+    written in canonical YAML, or optionally in pretty JSON or RFC 8785 JSON,
+    one shape for all: the version marker `"timetoshare"`, an array of root
+    `timelines`, and optionally the manifest's `id`, `name` and `meta`, its
+    `groups`, its `measure_maps`, its `@context`, `statements` and
+    `provenance` (see {{< glossary statement >}}) and its `graphical`
+    (display order and styling). A single
+    timeline is a manifest of one root, a group a manifest with one group; a
+    manifest with an `id` or a `name` is named. Every manifest is an
+    alignment bundle, also one holding one timeline or one group, and a
+    manifest with neither an `id` nor a `name` is an anonymous bundle. A
+    value on a timeline's own axis (`length`, a child's `offset`, region
+    bounds, flow-control coordinates) is written bare, in the axis's number
+    type.
+    {{< glossary Timeline >}}, {{< glossary TimelineGroup >}} and
+    {{< glossary AlignmentBundle >}} write one with `to_dict()` and read one
+    with `from_dict()`, and write and read a manifest file with `to_file()`
+    and `from_file()`. The library class `TimeSkeleton` is a different
+    thing: a temporal structure shared by the timelines of one work.
+    See [How to Save and Load Timelines, Groups and Bundles](howto/how02_group_and_bundle_files.ipynb).
+
+## U
+
+**Unknown key**
+:   A key of a {{< glossary "TimeToShare manifest" >}} that the format does
+    not define, written by another application for its own use. The library
+    keeps every unknown key on the object read from the JSON object it was
+    found in and writes it back in place.
+
+**Unknown length**
+:   A timeline length of `None` (`null` in a manifest), stating that the
+    length is not known. It is a fact, never inferred from content, and any
+    timeline may have it: root, {{< glossary Child >}},
+    {{< glossary Locked >}}, group member or {{< glossary Segment >}}.
+    Positions on such a timeline are not bounded above, unless its parent
+    ends it, as a segment line ends a {{< glossary Segment >}}; an operation
+    that needs the end raises {{< glossary UnknownLengthError >}}. Setting a length
+    to or from `None` is an ordinary edit; `Timeline.is_length_known` tells
+    which case holds, and displays use the {{< glossary Reach >}}.
+
+**UnknownLengthError**
+:   The `ValueError` raised by an operation that needs the end of a timeline
+    whose length is unknown, before it changes anything. Its message names the
+    operation and the timeline; group conversion to or from such a member and
+    appending a child at such a parent's end are examples.
 
 ## W
 

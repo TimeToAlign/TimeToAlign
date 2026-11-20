@@ -9,13 +9,13 @@ A CombinationMap yields outputs from multiple C-maps at once, such as
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, ClassVar, Mapping, Sequence
 
 from numpy.typing import NDArray
 
 from ..core.enums import TimeUnit
 from ..core.time import CoordinateValue
-from .base import ConversionMap
+from .base import ConversionMap, MeasureMapIds
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -32,6 +32,11 @@ class CombinationMap(ConversionMap[dict[str, Any]]):
 
     The map is invertible only if ALL sub-maps are invertible, and even
     then, inversion is only meaningful for bijective sub-maps.
+
+    The format's ``CombinationMap`` type: ``maps`` keyed by output name.
+    The library keeps the order the outputs were given in for display; the
+    format's outputs carry no order, so a map read back lists them in the
+    manifest's key order.
 
     Attributes:
         maps: Dictionary of name -> ConversionMap.
@@ -65,6 +70,8 @@ class CombinationMap(ConversionMap[dict[str, Any]]):
         >>> coord_map(1.0)
         {'x': 110.0, 'y': 55.0}
     """
+
+    _manifest_type: ClassVar[str | None] = "CombinationMap"
 
     def __init__(
         self,
@@ -127,6 +134,7 @@ class CombinationMap(ConversionMap[dict[str, Any]]):
             uid=uid,
             name=name,
         )
+        self._admit_ids()
 
     @property
     def maps(self) -> dict[str, ConversionMap[Any]]:
@@ -148,9 +156,9 @@ class CombinationMap(ConversionMap[dict[str, Any]]):
         return False
 
     def _convert_scalar(self, value: CoordinateValue, **kwargs: Any) -> dict[str, Any]:
-        """Apply all sub-maps to a single value."""
+        """Apply all sub-maps to a single value, each with its own guard and representation."""
         return {
-            name: self._maps[name]._convert_scalar(value, **kwargs)
+            name: self._maps[name]._evaluate_nested(value, **kwargs)
             for name in self._names
         }
 
@@ -192,33 +200,45 @@ class CombinationMap(ConversionMap[dict[str, Any]]):
         """
         return self._maps[name]
 
-    def to_dict(self) -> dict[str, Any]:
-        """Serialize to dictionary."""
-        d = super().to_dict()
-        d["maps"] = {name: m.to_dict() for name, m in self._maps.items()}
-        d["names"] = self._names  # Preserve order
-        return d
+    def _to_manifest(self, *, minimal: bool, entries: MeasureMapIds) -> dict[str, Any]:
+        """Write the ``CombinationMap``: each output's map under its name."""
+        return self._map_object(
+            "CombinationMap",
+            {
+                "maps": {
+                    name: self._maps[name]._to_manifest(
+                        minimal=minimal, entries=entries
+                    )
+                    for name in self._names
+                }
+            },
+            minimal=minimal,
+        )
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> CombinationMap:
-        """Deserialize from dictionary."""
-        from .base import ConversionMap as BaseMap
+    def _from_manifest(
+        cls, data: dict[str, Any], measure_maps: Mapping[str, Any]
+    ) -> CombinationMap:
+        """Read a ``CombinationMap``, its outputs in the manifest's key order.
 
-        maps_data = data.get("maps", {})
-        names = data.get("names", list(maps_data.keys()))
-
-        # Reconstruct in order
-        maps: list[tuple[str, ConversionMap[Any]]] = []
-        for name in names:
-            if name in maps_data:
-                maps.append((name, BaseMap.from_dict(maps_data[name])))
-
+        Raises:
+            ValueError: If ``maps`` is not an object.
+        """
+        maps_data = data.get("maps")
+        if not isinstance(maps_data, dict):
+            raise ValueError("a CombinationMap's 'maps' must be an object")
         return cls(
-            maps=maps,
+            maps=[
+                (name, ConversionMap.from_dict(item, measure_maps=measure_maps))
+                for name, item in maps_data.items()
+            ],
             source_unit=data.get("source_unit"),
             uid=data.get("id"),
             name=data.get("name"),
         )
+
+    def _nested_maps(self) -> list[ConversionMap[Any]]:
+        return [self._maps[name] for name in self._names]
 
     def __repr__(self) -> str:
         return f"CombinationMap(outputs={self._names})"

@@ -6,10 +6,28 @@ into separate notes and controls data.
 
 from __future__ import annotations
 
+from fractions import Fraction
+
 import pytest
 
 from timetoalign.core import TimeUnit
 from timetoalign.loader.midi import MidiEventData, MidiStore
+from timetoalign.timelines import Timeline
+
+
+def _child_names(timeline: Timeline) -> list[str]:
+    """The names of a timeline's children, in child order."""
+    return [timeline.get_child(child_id).name for child_id in timeline.list_children()]
+
+
+def _child_named(timeline: Timeline, name: str) -> Timeline:
+    """The one child of *timeline* named *name*; child ids are minted."""
+    (child,) = [
+        timeline.get_child(child_id)
+        for child_id in timeline.list_children()
+        if timeline.get_child(child_id).name == name
+    ]
+    return child
 
 
 class TestMidiStoreFromData:
@@ -97,6 +115,21 @@ class TestMidiStoreFromData:
 
         assert store.metadata["ticks_per_beat"] == 480
         assert store.metadata["format"] == 1
+
+    def test_ticks_to_quarters_map_is_exact(self, mixed_midi_data: MidiEventData):
+        """The ticks->quarters map divides by the tick resolution exactly."""
+        store = MidiStore.from_data(mixed_midi_data, metadata={"ticks_per_beat": 480})
+        cmap = store.get_cmaps()["quarters"]
+
+        assert (cmap.source_unit, cmap.target_unit) == (
+            TimeUnit.ticks,
+            TimeUnit.quarters,
+        )
+        assert cmap.scalar == Fraction(1, 480)
+        assert type(cmap.scalar) is Fraction
+        half, two = cmap(240), cmap(960)
+        assert (half, two) == (Fraction(1, 2), Fraction(2))
+        assert type(half) is Fraction and type(two) is Fraction
 
 
 class TestMidiStoreEmpty:
@@ -347,14 +380,16 @@ class TestMidiStoreToTimeline:
         """Children are embedded at offset 0."""
         timeline = sample_store.create_timeline()
 
-        assert timeline.get_child_offset("notes").value == 0
-        assert timeline.get_child_offset("controls").value == 0
+        assert timeline.get_child_offset(_child_named(timeline, "notes").id).value == 0
+        assert (
+            timeline.get_child_offset(_child_named(timeline, "controls").id).value == 0
+        )
 
     def test_notes_child_has_correct_count(self, sample_store: MidiStore):
         """Notes child has exact event count."""
         timeline = sample_store.create_timeline()
 
-        notes_tl = timeline.get_child("notes")
+        notes_tl = _child_named(timeline, "notes")
         # Exact count: 2 notes
         assert notes_tl.n_events == 2
 
@@ -362,6 +397,6 @@ class TestMidiStoreToTimeline:
         """Controls child has exact event count."""
         timeline = sample_store.create_timeline()
 
-        controls_tl = timeline.get_child("controls")
+        controls_tl = _child_named(timeline, "controls")
         # Exact count: 1 control change
         assert controls_tl.n_events == 1

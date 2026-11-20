@@ -523,6 +523,14 @@ class TestMusic21LoaderMusicXML:
             )
 
 
+# music21's MEI reader keeps only the measures that state an ``@n``.
+_MUSIC21_MEI_DROPS_MEASURES = pytest.mark.xfail(
+    raises=AssertionError,
+    strict=True,
+    reason="music21's MEI reader drops the 5 measures without @n (10 of 15)",
+)
+
+
 @pytest.mark.filterwarnings("ignore::DeprecationWarning")
 class TestMusic21LoaderMEI:
     """Validate Music21Loader with MEI files.
@@ -531,7 +539,17 @@ class TestMusic21LoaderMEI:
     to MusicXML. The same D.S./D.C. limitations apply.
     """
 
-    @pytest.mark.parametrize("specimen_name", SPECIMENS.keys())
+    @pytest.mark.parametrize(
+        "specimen_name",
+        [
+            (
+                pytest.param(name, marks=_MUSIC21_MEI_DROPS_MEASURES)
+                if name == "flow_only"
+                else name
+            )
+            for name in SPECIMENS
+        ],
+    )
     def test_music21_mei_folded_count(self, specimen_name: str) -> None:
         """Music21Loader MEI folded measure count is correct."""
         spec = SPECIMENS[specimen_name]
@@ -583,7 +601,11 @@ class TestMusic21LoaderMEI:
             (
                 pytest.param(name, marks=pytest.mark.slow)
                 if name == "c05n05_musete"
-                else name
+                else (
+                    pytest.param(name, marks=_MUSIC21_MEI_DROPS_MEASURES)
+                    if name == "flow_only"
+                    else name
+                )
             )
             for name in SPECIMENS
         ],
@@ -760,11 +782,38 @@ class TestPartituraLoaderMusicXML:
             )
 
 
+def _strict_xfail(reason: str, raises: type[Exception] = AssertionError) -> Any:
+    return pytest.mark.xfail(raises=raises, strict=True, reason=reason)
+
+
+# Partitura's MEI importer raises before the loader sees a measure.
+_PARTITURA_MEI_DIR_WITHOUT_TSTAMP = _strict_xfail(
+    "Partitura's MEI importer raises in _find_dir_positions: a <dir> with @type "
+    "is placed by @startid and states no @tstamp",
+    raises=TypeError,
+)
+_PARTITURA_MEI_IMPORT_FAILS = {
+    "polyrhythm_only": _strict_xfail(
+        "Partitura's MEI importer raises in _handle_metersig: staff 3 states its meter "
+        "only as meter.sym='cut'",
+        raises=Exception,
+    ),
+    "c05n05_musete": _PARTITURA_MEI_DIR_WITHOUT_TSTAMP,
+    "c11n08_Rondeau": _PARTITURA_MEI_DIR_WITHOUT_TSTAMP,
+}
+
+
 @pytest.mark.filterwarnings("ignore::DeprecationWarning")
 class TestPartituraLoaderMEI:
     """Validate PartituraLoader with MEI files."""
 
-    @pytest.mark.parametrize("specimen_name", SPECIMENS.keys())
+    @pytest.mark.parametrize(
+        "specimen_name",
+        [
+            pytest.param(name, marks=_PARTITURA_MEI_IMPORT_FAILS.get(name, ()))
+            for name in SPECIMENS
+        ],
+    )
     def test_partitura_mei_folded_count(self, specimen_name: str) -> None:
         """PartituraLoader MEI folded measure count is correct."""
         spec = SPECIMENS[specimen_name]
@@ -803,6 +852,87 @@ class TestPartituraLoaderMEI:
             f"Expected: {expected}\n"
             f"Actual: {actual}"
         )
+
+
+def _verovio_flow(piece: str) -> tuple[Any, Any, Any]:
+    """Return the Verovio measure table's default flow and the target flows.
+
+    The MEI is read with ``expandNever``: the measure table is the printed
+    one either way, and Verovio 6.4.1 crashes the process when it expands
+    the repeats of the flow-control scores.
+    """
+    pytest.importorskip("verovio")
+    from timetoalign.core.enums import FlowMode
+    from timetoalign.loader.score import VerovioLoader
+    from timetoalign.timelines.flow import load_valid_flows
+
+    spec = SPECIMENS[piece]
+    loader = VerovioLoader(options={"expandNever": True}).load(
+        get_specimen_path(spec, "mei")
+    )
+    flow = loader.create_flow_controller().compute_flow(FlowMode.default)
+    return loader, flow, load_valid_flows(TARGET_FLOWS_DIR / spec.flow_csv)
+
+
+# Rachmaninoff is not loaded: Verovio 6.4.1 crashes the process on its MEI.
+VEROVIO_MATRIX = [
+    pytest.param("polyrhythm_only", id="polyrhythm_only"),
+    pytest.param("flow_only", id="flow_only"),
+    pytest.param(
+        "c05n05_musete",
+        id="c05n05_musete",
+        marks=_strict_xfail(
+            "the MEI states a D.C. at MC 31 where the target flow jumps to the segno"
+        ),
+    ),
+    pytest.param(
+        "c11n08_Rondeau",
+        id="c11n08_Rondeau",
+        marks=_strict_xfail(
+            "the MEI states its D.C.s at MCs 18 and 27 without where they end"
+        ),
+    ),
+    pytest.param(
+        "WoO71",
+        id="WoO71",
+        marks=[
+            pytest.mark.slow,
+            _strict_xfail(
+                "the MEI states no section breaks, which cut the target's sections"
+            ),
+        ],
+    ),
+    pytest.param(
+        "op18_no4_mov4_flow",
+        id="op18_no4_mov4_flow",
+        marks=_strict_xfail(
+            "the skeleton's measures have no content, so no timemap entry",
+            raises=ValueError,
+        ),
+    ),
+]
+
+
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
+class TestVerovioLoaderMEI:
+    """VerovioLoader's printed measure table unfolds to the target default flow."""
+
+    @pytest.mark.parametrize("piece", VEROVIO_MATRIX)
+    def test_verovio_mei_default_flow(self, piece: str) -> None:
+        from timetoalign.core.enums import FlowMode
+
+        loader, flow, valid = _verovio_flow(piece)
+        assert len(loader.store.measures) == SPECIMENS[piece].folded_measures
+        assert flow.is_equivalent(valid[FlowMode.default])
+
+    @pytest.mark.slow
+    def test_woo71_mc_sequence(self) -> None:
+        """WoO71's sections differ only in their cuts: the MC sequence is the target's."""
+        from timetoalign.core.enums import FlowMode
+
+        _, flow, valid = _verovio_flow("WoO71")
+        assert flow.to_mc_sequence() == valid[FlowMode.default].to_mc_sequence()
+        assert len(flow.to_mc_sequence()) == SPECIMENS["WoO71"].unfolded_measures
 
 
 class TestScoreFlowControllerReproducesTargetFlows:

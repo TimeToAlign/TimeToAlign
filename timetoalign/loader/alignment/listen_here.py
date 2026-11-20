@@ -28,7 +28,7 @@ and produces a single :class:`~timetoalign.alignment.bundle.AlignmentBundle`:
 
 * one samples
   :class:`~timetoalign.timelines.types.DiscretePhysicalTimeline`
-  (``<stem>:dpt1``) per recording, each in its **own** group, with
+  (``<stem>:dpt_1``) per recording, each in its **own** group, with
   ``length`` converted from that recording's stored ``duration``.  The recordings
   carry one point event for each source-grid time.  Its integer sample
   coordinate supports the alignment, while its ``seconds`` field preserves the
@@ -345,9 +345,9 @@ class ListenHereLoader(AlignmentLoader):
 
     @staticmethod
     def _timeline_uid(key: str) -> str:
-        """The samples-timeline uid for an audio key: ``<stem>:dpt1``."""
+        """The samples-timeline uid for an audio key: ``<stem>:dpt_1``."""
         stem = os.path.splitext(os.path.basename(key))[0]
-        return f"{stem}:dpt1"
+        return f"{stem}:dpt_1"
 
     @staticmethod
     def _human_name(stem: str) -> str:
@@ -429,7 +429,7 @@ class ListenHereLoader(AlignmentLoader):
         The field is handed to the bundle with
         :meth:`~timetoalign.alignment.bundle.AlignmentBundle.add_match_claim_field`,
         not exploded into a list of :class:`MatchClaim` objects.  The bundle
-        answers ``get_matchstamp_at`` by filtering the field's struct column
+        answers ``get_matchstamp_at`` by filtering the field's claim columns
         vectorized and materialising only the handful of claims at the queried
         coordinate, so a whole-work file (on the order of a million claims)
         never builds a million Python claims.
@@ -452,7 +452,7 @@ class ListenHereLoader(AlignmentLoader):
         for key in self._keys:
             timeline = self._make_timeline(key)
             stem = self._stems[key]
-            bundle.add_timeline(timeline, uid=timeline.id, as_group=stem)
+            bundle.add_timeline(timeline, as_group=stem)
 
         bundle.add_match_claim_field(self._claim_field)
         return bundle
@@ -470,7 +470,7 @@ class ListenHereLoader(AlignmentLoader):
         """Return a single recording's samples timeline by its uid.
 
         Args:
-            uid: A timeline uid (``"<stem>:dpt1"``).
+            uid: A timeline uid (``"<stem>:dpt_1"``).
 
         Raises:
             KeyError: If no recording matches.

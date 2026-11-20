@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from fractions import Fraction
 from pathlib import Path
 
@@ -13,16 +14,10 @@ from timetoalign.loader.score.partitura import PartituraLoader
 from timetoalign.loader.score.store import ScoreStore
 from timetoalign.testdata import ensure_data
 
-DATA_DIR = Path(__file__).parents[2] / "data" / "vienna_1x22"
-MIDI_SCORE_DIR = Path(__file__).parents[2] / "data" / "midi" / "score"
+DATA_DIR = ensure_data("vienna_1x22")
+MIDI_SCORE_DIR = ensure_data("midi") / "score"
 MS3_DIR = DATA_DIR / "ms3"
-WOO71_MEASURES = (
-    Path(__file__).parents[2]
-    / "data"
-    / "score"
-    / "beethoven_woo71"
-    / "WoO71.measures.tsv"
-)
+WOO71_MEASURES = ensure_data("score") / "beethoven_woo71" / "WoO71.measures.tsv"
 WOO71_NOTES = WOO71_MEASURES.with_name("WoO71.notes.tsv")
 
 
@@ -472,6 +467,39 @@ class TestAnacrusisOffset:
         loader.load(chopin_xml)
         assert loader.store.anacrusis_offset == 0.5
 
+    def test_partitura_offset_is_exact(self, chopin_xml):
+        """The offset is the exact ratio of the exact onsets, everywhere it is read."""
+        loader = PartituraLoader()
+        loader.load(chopin_xml)
+        for offset in (
+            loader.anacrusis_offset,
+            loader.store.anacrusis_offset,
+            loader.store.metadata["anacrusis_offset"],
+        ):
+            assert offset == Fraction(1, 2)
+            assert type(offset) is Fraction
+
+    def test_raw_quarters_shift_answers_exactly(self, chopin_xml):
+        """The anacrusis ShiftMap takes an exact offset, so it answers exactly."""
+        loader = PartituraLoader()
+        loader.load(chopin_xml)
+        shift = loader.store.create_timeline().get_conversion_map("raw_quarters")
+        assert shift.offset == Fraction(-1, 2)
+        first, second = shift(Fraction(1, 2)), shift(Fraction(3, 2))
+        assert (first, second) == (Fraction(0), Fraction(1))
+        assert type(first) is Fraction and type(second) is Fraction
+
+    def test_exact_offset_survives_parquet(self, chopin_xml, tmp_path):
+        """metadata.json writes the offset as a Fraction pair and reads it back."""
+        loader = PartituraLoader()
+        loader.load(chopin_xml)
+        loader.store.to_parquet(tmp_path)
+        written = json.loads((tmp_path / "metadata.json").read_text())
+        assert written["anacrusis_offset"] == [1, 2]
+        offset = ScoreStore.from_parquet(tmp_path).anacrusis_offset
+        assert offset == Fraction(1, 2)
+        assert type(offset) is Fraction
+
     def test_partitura_raw_plus_offset_is_zero(self, chopin_xml):
         """raw_min_onset + anacrusis_offset == 0 (the contract)."""
         loader = PartituraLoader()
@@ -510,6 +538,7 @@ class TestAnacrusisOffset:
         loader = Music21Loader()
         loader.load(chopin_xml)
         assert loader.anacrusis_offset == 0.0
+        assert type(loader.anacrusis_offset) is Fraction
 
     def test_default_offset_before_loading(self):
         """Freshly constructed loaders report anacrusis_offset == 0.0."""

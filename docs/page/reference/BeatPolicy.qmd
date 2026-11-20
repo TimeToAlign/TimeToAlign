@@ -1,0 +1,173 @@
+# BeatPolicy { #timetoalign.core.BeatPolicy }
+
+```python
+core.BeatPolicy()
+```
+
+How a bar is counted in beats: a grouping cycle over one division.
+
+A time signature says two things at once — which note value is
+counted, and how those values group into beats.  ``division`` is the
+counted value in quarters (``Fraction(1, 2)`` for an eighth), and
+``grouping`` says how many of them each successive beat spans.  A
+compound ``6/8`` bar is ``grouping=(3, 3)`` over eighths; a simple
+``4/4`` bar is ``grouping=(1, 1, 1, 1)`` over quarters; an uneven
+``(3+2+3)/8`` bar is ``grouping=(3, 2, 3)`` over eighths.
+
+The beat lengths (:attr:`rods`) are derived from that pair, never
+stored: the source encoding is what a policy holds, and every rod,
+offset and index question is answered from it.
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name      | Type                                                 | Description                                                                                               |
+|-----------|------------------------------------------------------|-----------------------------------------------------------------------------------------------------------|
+| grouping  | [tuple](`tuple`)\[[int](`int`), ...\]                | How many divisions each beat spans, in order.                                                             |
+| division  | [Fraction](`fractions.Fraction`) \| None             | The counted note value, in quarters. Given either directly or through *beat_size*, which completes it.    |
+| beat_size | [Duration](`timetoalign.core.time.Duration`) \| None | The counted value as a typed duration in whole notes or quarters. Completed from *division* when omitted. |
+| bpm       | [int](`int`) \| [float](`float`) \| None             | Optional tempo indication, in counted beats per minute.                                                   |
+| name      | [str](`str`) \| None                                 | Optional human-readable label, typically the signature the source spells.                                 |
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [from_time_signature](#timetoalign.core.BeatPolicy.from_time_signature) | Derive the default counting of a bar from its time signature. |
+| [index_at](#timetoalign.core.BeatPolicy.index_at) | Return the 1-based index of the beat containing *offset*. |
+| [offset_for](#timetoalign.core.BeatPolicy.offset_for) | Return the distance from the downbeat to beat *index*. |
+| [rod_for](#timetoalign.core.BeatPolicy.rod_for) | Return the length of beat *index* (1-based), in quarters. |
+| [uniform](#timetoalign.core.BeatPolicy.uniform) | Count *count* beats of one *division* each. |
+
+### from_time_signature { #timetoalign.core.BeatPolicy.from_time_signature }
+
+```python
+core.BeatPolicy.from_time_signature(signature)
+```
+
+Derive the default counting of a bar from its time signature.
+
+A signature ``"n/d"`` is read as compound when ``n`` is a
+multiple of three greater than three and the denominator is an
+eighth or shorter — ``6/8``, ``9/8``, ``12/16`` count in dotted
+beats of three divisions.  Everything else counts one division
+per beat.  A composite signature ``"a/d+b/d+c/d"`` spells its own
+grouping.  ``"C"`` is ``4/4`` and ``"C|"`` (also spelled
+``"cut"``) is ``2/2``.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name      | Type         | Description                                 | Default    |
+|-----------|--------------|---------------------------------------------|------------|
+| signature | [str](`str`) | The time signature as the source spells it. | _required_ |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                               | Description                                     |
+|--------|----------------------------------------------------|-------------------------------------------------|
+|        | [BeatPolicy](`timetoalign.core.events.BeatPolicy`) | The policy that counts a bar of that signature. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                                                                 |
+|--------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If *signature* cannot be read.  There is no silent fallback to ``4/4``: choosing a default for an unreadable source is a loader's decision, not a policy's. |
+
+### index_at { #timetoalign.core.BeatPolicy.index_at }
+
+```python
+core.BeatPolicy.index_at(offset)
+```
+
+Return the 1-based index of the beat containing *offset*.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name   | Type                             | Description                       | Default    |
+|--------|----------------------------------|-----------------------------------|------------|
+| offset | [Fraction](`fractions.Fraction`) | Quarters from the bar's downbeat. | _required_ |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type         | Description             |
+|--------|--------------|-------------------------|
+|        | [int](`int`) | The 1-based beat index. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                       |
+|--------|----------------------------|---------------------------------------------------|
+|        | [ValueError](`ValueError`) | If *offset* is negative or beyond the bar's span. |
+
+### offset_for { #timetoalign.core.BeatPolicy.offset_for }
+
+```python
+core.BeatPolicy.offset_for(index)
+```
+
+Return the distance from the downbeat to beat *index*.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name   | Type         | Description                                | Default    |
+|--------|--------------|--------------------------------------------|------------|
+| index  | [int](`int`) | 1-based beat index; ``1`` is the downbeat. | _required_ |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                             | Description                       |
+|--------|----------------------------------|-----------------------------------|
+|        | [Fraction](`fractions.Fraction`) | Quarters from the bar's downbeat. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                           |
+|--------|----------------------------|---------------------------------------|
+|        | [ValueError](`ValueError`) | If *index* is outside ``1..n_beats``. |
+
+### rod_for { #timetoalign.core.BeatPolicy.rod_for }
+
+```python
+core.BeatPolicy.rod_for(index)
+```
+
+Return the length of beat *index* (1-based), in quarters.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name   | Type         | Description                                | Default    |
+|--------|--------------|--------------------------------------------|------------|
+| index  | [int](`int`) | 1-based beat index; ``1`` is the downbeat. | _required_ |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                             | Description                    |
+|--------|----------------------------------|--------------------------------|
+|        | [Fraction](`fractions.Fraction`) | The beat's length in quarters. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                           |
+|--------|----------------------------|---------------------------------------|
+|        | [ValueError](`ValueError`) | If *index* is outside ``1..n_beats``. |
+
+### uniform { #timetoalign.core.BeatPolicy.uniform }
+
+```python
+core.BeatPolicy.uniform(division, count, *, name=None)
+```
+
+Count *count* beats of one *division* each.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name     | Type                             | Description                                                | Default    |
+|----------|----------------------------------|------------------------------------------------------------|------------|
+| division | [Fraction](`fractions.Fraction`) | The counted note value, in quarters.                       | _required_ |
+| count    | [int](`int`)                     | How many such beats fill the bar.                          | _required_ |
+| name     | [str](`str`) \| None             | Optional label, typically the signature the source spells. | `None`     |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                               | Description                         |
+|--------|----------------------------------------------------|-------------------------------------|
+|        | [BeatPolicy](`timetoalign.core.events.BeatPolicy`) | A policy with an all-ones grouping. |

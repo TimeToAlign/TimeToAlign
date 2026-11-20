@@ -48,12 +48,17 @@ documentation:
 - [How to Transfer Annotations Between Graphical Analyses](howto/how01_thoresen_annotation_transfer.ipynb) ---
   SegmentLine, ConstantMap, MatchClaim.from_projection, y-coordinate transfer.
 - [How to Build Beat Grids](howto/how01_beat_grids.ipynb) ---
-  BeatGrid, FloorMap, RotationMap, and measure/beat queries.
+  BeatGrid, tempo segments, beat tables, measure/beat queries, and
+  annotation-tool export.
 
 ### TimelineGroups
 
 - [How to Align a Piano Roll (SUPRA)](howto/how02_supra_piano_roll.ipynb) ---
   End-to-end alignment: IIIF images, ATON, MIDI, Audio, and Score.
+- [How to Save and Load Timelines, Groups and Bundles](howto/how02_group_and_bundle_files.ipynb) ---
+  TimeToShare manifests with `to_dict` and `from_dict`: complete and minimal
+  form, selecting one timeline or group, unknown keys kept, and a timeline of
+  unknown length.
 
 ### AlignmentBundles
 
@@ -79,6 +84,16 @@ documentation:
 - [How to Load an IEEE 1599 Document](howto/how03_ieee1599.ipynb) ---
   IEEE 1599 spine/VTU hub relating score, page images, and audio as one
   multimodal AlignmentBundle.
+- [How to Align an Engraved Score with a Recording and a Drawn Time Axis](howto/how03_engraved_score_alignment.ipynb) ---
+  VerovioLoader, MapsLoader and ScoreWarpLoader: a score in exact quarters
+  with notes by `xml:id`, a MAPS alignment as MatchClaims, a ScoreWarp time
+  axis in `css_pixels`, `create_calibrated_child`, and the bundle saved and
+  read back.
+- [How to Describe What a Bundle and Its Timelines Stand For](howto/how03_describe_the_work.ipynb) ---
+  Statements and provenance on the bundle, a timeline and a region:
+  `add_statement`, `add_verb` and rectangles, proposals, confirmation and
+  rejection, the manifest's inline `@context`, a timeline written alone, and
+  the MEI header and MeLODy imports (`MeiHeadLoader`, `MelodyLoader`).
 
 ### In-depth Topics
 

@@ -22,7 +22,8 @@ from typing import cast
 
 import pytest
 
-from timetoalign.core import Domain, IdCoordinate, NumberType, TimeUnit
+from tests.helpers import bare, filed
+from timetoalign.core import Domain, NumberType, TimeUnit, number_to_json
 from timetoalign.maps.linear import ScalarMap
 from timetoalign.timelines import (
     ContinuousGraphicalTimeline,
@@ -88,10 +89,10 @@ class TestAllTimelineTypes:
     @pytest.mark.parametrize(
         ("timeline_class", "unit", "number_type", "length"),
         [
-            (ContinuousLogicalTimeline, TimeUnit.beats, NumberType.float, 4.0),
+            (ContinuousLogicalTimeline, TimeUnit.whole_notes, NumberType.float, 4.0),
             (
                 ContinuousLogicalTimeline,
-                TimeUnit.beats,
+                TimeUnit.whole_notes,
                 NumberType.fraction,
                 Fraction(4, 1),
             ),
@@ -192,6 +193,20 @@ class TestAllTimelineTypes:
             (
                 ContinuousGraphicalTimeline,
                 TimeUnit.points,
+                NumberType.fraction,
+                Fraction(4, 1),
+            ),
+            (ContinuousGraphicalTimeline, TimeUnit.css_pixels, NumberType.float, 4.0),
+            (
+                ContinuousGraphicalTimeline,
+                TimeUnit.css_pixels,
+                NumberType.fraction,
+                Fraction(4, 1),
+            ),
+            (ContinuousGraphicalTimeline, TimeUnit.user_units, NumberType.float, 4.0),
+            (
+                ContinuousGraphicalTimeline,
+                TimeUnit.user_units,
                 NumberType.fraction,
                 Fraction(4, 1),
             ),
@@ -322,6 +337,37 @@ class TestTimelineSubclassResolution:
 
         assert result is ContinuousPhysicalTimeline
 
+    @pytest.mark.parametrize("unit", ["css_pixels", "user_units"])
+    def test_vector_graphics_units_resolve_continuous_graphical(
+        self, unit: str
+    ) -> None:
+        """CSS pixels and user units select the continuous graphical timeline."""
+        assert Timeline.resolve_subclass(unit) is ContinuousGraphicalTimeline
+        assert Timeline(length=4.0, unit=unit).id == "cgt_1"
+
+    def test_every_unit_has_exactly_one_leaf_class_of_its_kind(self) -> None:
+        """The leaf classes partition the units by domain and discreteness.
+
+        A class's kind is that of its default unit.
+        """
+        leaves = [
+            ContinuousLogicalTimeline,
+            DiscreteLogicalTimeline,
+            ContinuousPhysicalTimeline,
+            DiscretePhysicalTimeline,
+            ContinuousGraphicalTimeline,
+            DiscreteGraphicalTimeline,
+        ]
+        for unit in TimeUnit:
+            (leaf,) = [cls for cls in leaves if unit in cls._allowed_units]
+            assert leaf._default_unit.domain is unit.domain, unit
+            assert leaf._default_unit.is_discrete is unit.is_discrete, unit
+        for domain_class in (LogicalTimeline, PhysicalTimeline, GraphicalTimeline):
+            domain = domain_class._default_unit.domain
+            assert domain_class._allowed_units == {
+                unit for unit in TimeUnit if unit.domain is domain
+            }
+
     def test_unclaimed_unit_falls_back_to_base_timeline(self) -> None:
         """An unmatched unit returns the documented base Timeline fallback."""
         result = Timeline.resolve_subclass(cast(TimeUnit, object()))
@@ -346,7 +392,7 @@ class TestSerializedTypeParameters:
                 ContinuousLogicalTimeline,
                 Fraction(4, 1),
                 Fraction(1, 1),
-                TimeUnit.beats,
+                TimeUnit.whole_notes,
             ),
         ],
     )
@@ -386,10 +432,10 @@ class TestSerializedTypeParameters:
             )
             original.append_segment(segment)
 
-        data = original.to_dict(events=True)
-        restored = Timeline.from_dict(data)
+        data = bare(original.to_dict(events=True))
+        restored = Timeline.from_dict(filed(data))
 
-        assert data["class"] == f"SegmentLine[{segment_class.__name__}]"
+        assert data["timelines"][0]["is_segment_line"] is True
         assert isinstance(restored, SegmentLine)
         assert restored.segment_type is segment_class
         assert restored.n_segments == original.n_segments == 2
@@ -402,30 +448,17 @@ class TestSerializedTypeParameters:
             1,
         ]
         assert [
-            segment.to_dict(events=True)["events"][0]["id"]
+            bare(segment.to_dict(events=True))["timelines"][0]["events"][0]["id"]
             for _, _, segment in restored.iter_segments()
         ] == ["event_0", "event_1"]
         assert [
-            segment.to_dict(events=True)["events"][0]["start"]["value"]
+            bare(segment.to_dict(events=True))["timelines"][0]["events"][0]["start"]
             for _, _, segment in restored.iter_segments()
-        ] == [float(event_instant), float(event_instant)]
+        ] == [number_to_json(event_instant), number_to_json(event_instant)]
         assert [
             segment.get_conversion_map(target_unit).id
             for _, _, segment in restored.iter_segments()
         ] == ["map_0", "map_1"]
-
-    def test_parameterized_segment_line_rejects_unregistered_inner_class(self):
-        """An unknown segment type identifies both the type and full tag."""
-        data = SegmentLine[DiscreteGraphicalTimeline](length=0).to_dict()
-        data["class"] = "SegmentLine[UnregisteredSegmentTimeline]"
-
-        with pytest.raises(ValueError) as error:
-            Timeline.from_dict(data)
-
-        assert str(error.value) == (
-            "Unknown serialized timeline class 'UnregisteredSegmentTimeline' "
-            "in parameterized tag 'SegmentLine[UnregisteredSegmentTimeline]'"
-        )
 
     def test_nested_parameterized_segment_line_round_trip(self):
         """Nested SegmentLine tags restore both levels of segment type."""
@@ -483,7 +516,7 @@ class TestSerializedTypeParameters:
         line = line_class(length=0)
         assert isinstance(line, SegmentLine)
         assert isinstance(line, ContinuousPhysicalTimeline)
-        assert hasattr(line, "create_metrical_grid")
+        assert line.unit is TimeUnit.seconds
 
     @pytest.mark.parametrize(
         "parameter",
@@ -511,74 +544,31 @@ class TestSerializedTypeParameters:
         assert restored.id == "pickled"
         assert restored.n_segments == 1
 
-    def test_version_1_0_1_nested_payload_compatibility(self):
-        """A hand-captured nested payload materializes both dynamic classes."""
-        zero = {"value": 0.0, "numerator": 0, "denominator": 1}
-        ten = {"value": 10.0, "numerator": 10, "denominator": 1}
-        payload = {
-            "id": "systems",
-            "name": None,
-            "class": "SegmentLine[SegmentLine[DiscreteGraphicalTimeline]]",
-            "unit": "pixels",
-            "number_type": "int",
-            "length": ten,
-            "locked": False,
-            "meta": {},
-            "children": {
-                "system": {
-                    "offset": zero,
-                    "timeline": {
-                        "id": "system",
-                        "name": None,
-                        "class": "SegmentLine[DiscreteGraphicalTimeline]",
-                        "unit": "pixels",
-                        "number_type": "int",
-                        "length": ten,
-                        "locked": True,
-                        "meta": {},
-                        "children": {
-                            "staff": {
-                                "offset": zero,
-                                "timeline": {
-                                    "id": "staff",
-                                    "name": None,
-                                    "class": "DiscreteGraphicalTimeline",
-                                    "unit": "pixels",
-                                    "number_type": "int",
-                                    "length": ten,
-                                    "locked": True,
-                                    "meta": {},
-                                    "children": {},
-                                    "conversion_maps": [],
-                                },
-                            }
-                        },
-                        "conversion_maps": [],
-                    },
-                }
-            },
-            "conversion_maps": [],
-        }
+    def test_nested_payload_materializes_dynamic_classes(self):
+        """A hand-written nested manifest materializes both dynamic classes."""
 
-        restored = Timeline.from_dict(payload)
+        def timeline(timeline_id, flag, children):
+            return {
+                "id": timeline_id,
+                "unit": "pixels",
+                "offset": 0,
+                "length": 10,
+                "is_segment_line": flag,
+                "children": children,
+            }
+
+        systems = timeline(
+            "systems", True, [timeline("system", True, [timeline("staff", False, [])])]
+        )
+        del systems["offset"]
+
+        restored = Timeline.from_dict(
+            filed({"timetoshare": "0.2.0", "timelines": [systems]})
+        )
         inner_class = SegmentLine[DiscreteGraphicalTimeline]
 
         assert type(restored) is SegmentLine[inner_class]
         assert type(restored.get_segment_by_index(0)[1]) is inner_class
-
-    def test_continuous_graphical_pixels_legacy_payload_error(self):
-        """Legacy continuous graphical pixel payloads name their valid replacement."""
-        data = DiscreteGraphicalTimeline(length=16, uid="legacy").to_dict()
-        data["class"] = "ContinuousGraphicalTimeline"
-
-        with pytest.raises(ValueError) as error:
-            Timeline.from_dict(data)
-
-        assert str(error.value) == (
-            "Serialized ContinuousGraphicalTimeline payload uses unit 'pixels', "
-            "which is discrete-only. This payload predates unit enforcement; "
-            "use DiscreteGraphicalTimeline instead."
-        )
 
 
 # endregion
@@ -594,7 +584,7 @@ class TestLogicalTimeline:
         """LogicalTimeline accepts musical units only."""
         # Should work
         LogicalTimeline(length=4.0, unit=TimeUnit.quarters)
-        LogicalTimeline(length=4.0, unit=TimeUnit.beats)
+        LogicalTimeline(length=4.0, unit=TimeUnit.whole_notes)
         LogicalTimeline(length=4.0, unit=TimeUnit.floating_measures)
         LogicalTimeline(length=480, unit=TimeUnit.ticks)
 
@@ -1005,7 +995,7 @@ class TestToTyped:
     def test_to_typed_preserves_regions(self):
         """to_typed preserves regions."""
         tl = Timeline(length=100.0, unit=TimeUnit.seconds)
-        tl.add_region("Chorus", start=30.0, end=60.0)
+        tl.create_region(30.0, 60.0, id="Chorus", name="Chorus")
         typed = tl.to_typed()
         assert "Chorus" in typed
         region = typed.get_region("Chorus")
@@ -1063,53 +1053,6 @@ class TestCrossDomainCompatibility:
             graphical.add_child(logical, offset=0.0)
 
 
-class TestMetricalGridPlacement:
-    """The grid spans from the first beat forward at the declared tempo."""
-
-    @staticmethod
-    def _grid():
-        # 120 BPM in 4/4 is exactly 2 quarters per second; the first beat is
-        # half a second into a 180-second recording.
-        audio = ContinuousPhysicalTimeline(length=180.0)
-        return audio, audio.create_metrical_grid(
-            first_beat_at=0.5,
-            tempo_bpm=120.0,
-            beats_per_measure=4,
-        )
-
-    def test_first_beat_is_the_grid_origin(self):
-        """Second 0.5 is quarter 0 -- the offset is not discarded."""
-        audio, result = self._grid()
-
-        assert result.group.get_coordinate_at(
-            IdCoordinate(0.5, audio.unit, audio.id),
-            timeline_id=result.grid.id,
-            format="float",
-        ) == pytest.approx(0.0)
-
-    def test_seconds_to_quarters_runs_at_the_declared_tempo(self):
-        """Second 60.0 is (60.0 - 0.5) * 2 = 119 quarters."""
-        _audio, result = self._grid()
-
-        assert result.timestamp_at_seconds(60.0)["quarters"] == pytest.approx(119.0)
-
-    def test_metrical_reverse_lookup_matches_the_tempo(self):
-        """Measure 10 beat 1 is quarter 36, so second 0.5 + 18 = 18.5."""
-        _audio, result = self._grid()
-
-        assert result.seconds_at(mc=10, beat=Fraction(1, 1)) == pytest.approx(18.5)
-
-    def test_group_transfers_quarters_back_to_seconds(self):
-        """Quarter 100 is second 0.5 + 50 = 50.5."""
-        audio, result = self._grid()
-
-        assert result.group.get_coordinate_at(
-            IdCoordinate(100.0, result.grid.unit, result.grid.id),
-            timeline_id=audio.id,
-            format="float",
-        ) == pytest.approx(50.5)
-
-
 class TestTimestampTableEdgeCases:
     """Empty timelines and structured conversion maps stay exportable."""
 
@@ -1124,17 +1067,31 @@ class TestTimestampTableEdgeCases:
 
     def test_structured_conversion_map_is_not_a_column(self):
         """A map answering {"mc": ..., "beat": ...} has no column type."""
-        from timetoalign.timelines.beatgrid import BeatGrid
+        from timetoalign.maps import LinearMap
+        from timetoalign.maps.meter import MetricalPositionMap, MetricMap
 
-        grid = BeatGrid.from_tempo(tempo_bpm=120, length_seconds=60)
+        grid = ContinuousLogicalTimeline(length=Fraction(120), uid="clt_metrical")
+        grid.add_conversion_map(
+            LinearMap(
+                scalar=0.5,
+                offset=0.0,
+                source_unit=TimeUnit.quarters,
+                target_unit=TimeUnit.seconds,
+                uid="quarters_to_seconds",
+            )
+        )
+        grid.add_conversion_map(
+            MetricalPositionMap(
+                MetricMap.from_uniform(n_measures=30, quarters_per_measure=Fraction(4)),
+                uid="grid_metrical_map",
+            )
+        )
 
         names = grid.get_timestamp_table().column_names
 
-        # The three numeric unit conversions become columns; the structured
-        # MetricalPositionMap does not.
-        assert "quarters_to_beats" in names
+        # The numeric seconds conversion becomes a column; neither typed beat
+        # addresses nor the structured MetricalPositionMap do.
         assert "quarters_to_seconds" in names
-        assert "quarters_to_floating_measures" in names
         assert not any(name.endswith("_metrical_map") for name in names)
 
 

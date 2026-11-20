@@ -18,14 +18,118 @@ Validity Rationale:
 
 from __future__ import annotations
 
+import json
 import time
 from fractions import Fraction
 from typing import Any
 
 import pytest
 
-from timetoalign.core import Coordinate, NumberType, TimeUnit
-from timetoalign.timelines import ContinuousPhysicalTimeline, Timeline
+from timetoalign.core import (
+    Coordinate,
+    FlowControlElement,
+    IrregularMeasure,
+    MeasureConstituent,
+    NumberType,
+    RegularMeasure,
+    Tempo,
+    TimeUnit,
+)
+from timetoalign.maps import ScalarMap
+from timetoalign.timelines import (
+    ContinuousLogicalTimeline,
+    ContinuousPhysicalTimeline,
+    MeasureMap,
+    MetricHierarchy,
+    SegmentLine,
+    TempoEntry,
+    TempoMap,
+    Timeline,
+)
+from timetoalign.timelines.flowcontrol import Break, Jump, Marker
+
+
+def _structure_bearing_timeline() -> Timeline:
+    """Build one base timeline carrying every structural constituent."""
+    timeline = Timeline(
+        length=Fraction(4),
+        unit=TimeUnit.quarters,
+        number_type=NumberType.fraction,
+        uid="structured",
+    )
+    measure_map = MeasureMap(
+        [
+            RegularMeasure(
+                number=1, nominal_length=Fraction(1, 3), actual_length=Fraction(1, 3)
+            ),
+            IrregularMeasure(
+                number=2, nominal_length=Fraction(1), actual_length=Fraction(2, 3)
+            ),
+            MeasureConstituent(
+                number=2,
+                nominal_length=Fraction(10, 3),
+                actual_length=Fraction(3),
+                offset_within_measure=Fraction(1, 3),
+            ),
+        ]
+    )
+    timeline.add_measure_map(measure_map)
+    timeline.add_metric_hierarchy(
+        MetricHierarchy(
+            measure_map=measure_map,
+            tempo_maps=(
+                TempoMap(
+                    kind="tempo_indication",
+                    entries=(
+                        TempoEntry(
+                            at=Coordinate(Fraction(0), "quarters"),
+                            tempo=Tempo(bpm=Fraction(120), text="triple"),
+                        ),
+                    ),
+                    provenance={},
+                ),
+            ),
+        )
+    )
+    timeline.create_region(
+        Fraction(1, 3), Fraction(4, 3), id="opening", name="opening", meta={"n": 1}
+    )
+    timeline.flow_control.add_break(
+        Break(
+            Coordinate(Fraction(4, 3), TimeUnit.quarters),
+            control_type=FlowControlElement.section_break,
+            label="boundary",
+        )
+    )
+    segno = timeline.flow_control.add_marker(
+        Marker(
+            Coordinate(Fraction(1, 3), TimeUnit.quarters),
+            name="segno",
+            control_type=FlowControlElement.segno,
+        )
+    )
+    timeline.flow_control.add_jump(
+        Jump(
+            Coordinate(Fraction(10, 3), TimeUnit.quarters),
+            Coordinate(Fraction(1, 3), TimeUnit.quarters),
+            control_type=FlowControlElement.repeat_end,
+            repeat_count=2,
+            target=segno.id,
+            label="repeat",
+        )
+    )
+    timeline.add_child(
+        ContinuousLogicalTimeline(length=Fraction(4), uid="whole"), offset=0
+    )
+    timeline.add_conversion_map(
+        ScalarMap(
+            scalar=480,
+            source_unit=TimeUnit.quarters,
+            target_unit=TimeUnit.ticks,
+        )
+    )
+    return timeline
+
 
 # region Construction Tests
 
@@ -64,37 +168,14 @@ class TestTimelineConstruction:
         assert tl.id == "my_custom_id"
 
     def test_timeline_auto_generated_id(self):
-        """Timeline generates unique ID if none provided."""
-        tl1 = Timeline()
-        tl2 = Timeline()
-        assert tl1.id != tl2.id
-        assert tl1.id.startswith("tl:")
-
-    def test_timeline_with_id_prefix(self):
-        """Timeline uses custom id_prefix for auto-generation."""
-        tl = Timeline(id_prefix="score")
-        assert tl.id.startswith("score:")
+        """A timeline without a given id mints its unit's prefix, every time."""
+        assert Timeline().id == "cpt_1"
+        assert Timeline().id == "cpt_1"
 
     def test_timeline_locked_on_creation(self):
         """Timeline can be created in locked state."""
         tl = Timeline(locked=True)
         assert tl.is_locked
-
-    def test_duplicate_subclass_tag_is_rejected(self) -> None:
-        """A different class cannot replace an existing serialized tag."""
-
-        class RegistryCollision(Timeline):
-            pass
-
-        expected = (
-            "Timeline tag 'RegistryCollision' is already registered to "
-            f"{RegistryCollision!r}; cannot register "
-            "<class 'tests.timelines.test_base.RegistryCollision'>."
-        )
-        with pytest.raises(ValueError) as exc_info:
-            type("RegistryCollision", (Timeline,), {})
-
-        assert str(exc_info.value) == expected
 
     def test_timeline_with_metadata(self):
         """Timeline stores metadata."""
@@ -405,6 +486,94 @@ class TestLocking:
                 ]
             )
 
+    @staticmethod
+    def _quarters(length: int, uid: str | None = None) -> ContinuousLogicalTimeline:
+        return ContinuousLogicalTimeline(length=length, unit="quarters", uid=uid)
+
+    def test_lock_locks_a_root_built_unlocked(self) -> None:
+        """A root built unlocked is locked by lock()."""
+        root = self._quarters(8, "score")
+        assert root.is_locked is False
+
+        root.lock()
+
+        assert root.is_locked is True
+
+    def test_locked_root_refuses_growth(self) -> None:
+        """A root locked once built refuses to grow, but holds a child that fits."""
+        root = self._quarters(8, "score")
+        root.lock()
+
+        with pytest.raises(RuntimeError) as appended:
+            root.append_child(self._quarters(2, "tail"))
+        assert str(appended.value) == (
+            "Cannot append child on locked timeline 'score': its length is fixed."
+        )
+        with pytest.raises(ValueError) as added:
+            root.add_child(self._quarters(4, "late"), 6)
+        assert str(added.value) == (
+            "Adding content ending at 10 exceeds timeline length 8. "
+            "Timeline is locked. Use allow_expansion=True to override."
+        )
+
+        root.add_child(self._quarters(4, "fits"), 4)
+
+        assert root.list_children() == ["fits"]
+        assert root.length == Coordinate(8, TimeUnit.quarters)
+
+    def test_locked_root_round_trips_locked(self) -> None:
+        """The dict form of a root locked once built carries the lock."""
+        root = self._quarters(8, "score")
+        root.add_child(self._quarters(4, "coda"), 4)
+        root.lock()
+        data = root.to_dict()
+
+        rebuilt = Timeline.from_dict(data)
+
+        assert data["timelines"][0]["locked"] is True
+        assert rebuilt.is_locked is True
+        assert rebuilt.to_dict() == data
+
+    def test_segment_line_locked_once_built(self) -> None:
+        """A segment line locked after its segments keeps them and refuses more."""
+        line = SegmentLine[ContinuousLogicalTimeline](
+            length=0, unit="quarters", uid="form"
+        )
+        for uid, length in (("a", 4), ("b", 2), ("c", 6)):
+            line.append_segment(self._quarters(length, uid))
+
+        line.lock()
+
+        assert line.is_locked is True
+        assert line.list_segments() == ["a", "b", "c"]
+        assert line.length == Coordinate(12, TimeUnit.quarters)
+        assert line.is_segment_line() is True
+        with pytest.raises(RuntimeError) as appended:
+            line.append_segment(self._quarters(1, "d"))
+        assert str(appended.value) == (
+            "Cannot append child on locked timeline 'form': its length is fixed."
+        )
+        data = line.to_dict()
+        rebuilt = Timeline.from_dict(data)
+        assert type(rebuilt) is SegmentLine[ContinuousLogicalTimeline]
+        assert rebuilt.is_locked is True
+        assert rebuilt.list_segments() == ["a", "b", "c"]
+        assert rebuilt.to_dict() == data
+
+    def test_lock_is_idempotent(self) -> None:
+        """Locking a child, or a root twice, leaves it locked and raises nothing."""
+        root = self._quarters(8, "score")
+        child = self._quarters(4, "coda")
+        root.add_child(child, 4)
+        assert child.is_locked is True
+
+        child.lock()
+        root.lock()
+        root.lock()
+
+        assert child.is_locked is True
+        assert root.is_locked is True
+
 
 # endregion
 
@@ -418,23 +587,34 @@ class TestSerialization:
     def test_to_dict_basic(self):
         """to_dict includes all timeline properties."""
         tl = Timeline(length=10.0, unit=TimeUnit.seconds, uid="test_tl")
-        data = tl.to_dict()
+        (data,) = tl.to_dict(minimal=False)["timelines"]
 
-        assert data["id"] == "test_tl"
-        assert data["class"] == "Timeline"
+        assert data["id"] == "#test_tl"
         assert data["unit"] == "seconds"
-        assert data["length"] == {
-            "value": 10.0,
-            "numerator": None,
-            "denominator": None,
-        }
+        assert data["length"] == 10.0
         assert data["locked"] is False
+        assert data["is_segment_line"] is False
+        assert set(data) == {
+            "id",
+            "name",
+            "is_segment_line",
+            "unit",
+            "number_type",
+            "length",
+            "locked",
+            "meta",
+            "children",
+            "conversion_maps",
+            "regions",
+            "flow_control",
+        }
+        assert "events" not in data
 
     def test_to_dict_with_events(self, mixed_event_rows: list[dict[str, Any]]):
         """to_dict(events=True) includes events."""
         tl = Timeline(length=10.0)
         tl.add_events(mixed_event_rows)
-        data = tl.to_dict(events=True)
+        (data,) = tl.to_dict(events=True)["timelines"]
 
         assert len(data["events"]) == 7
 
@@ -444,14 +624,10 @@ class TestSerialization:
         child = Timeline(length=5.0, uid="child")
         parent.add_child(child, offset=10.0)
 
-        data = parent.to_dict()
-        assert "child" in data["children"]
-        assert data["children"]["child"]["offset"] == {
-            "value": 10.0,
-            "numerator": None,
-            "denominator": None,
-        }
-        assert data["children"]["child"]["timeline"]["id"] == "child"
+        (data,) = parent.to_dict()["timelines"]
+        (child_data,) = data["children"]
+        assert child_data["id"] == "#child"
+        assert child_data["offset"] == 10.0
 
     def test_from_dict_roundtrip(self, mixed_event_rows: list[dict[str, Any]]):
         """from_dict reconstructs timeline from to_dict output."""
@@ -479,16 +655,111 @@ class TestSerialization:
         restored_child = restored.get_child("child")
         assert restored_child.length.value == 5.0
 
-    def test_concrete_subclass_rejects_mismatched_class_tag(self):
-        """A concrete receiver cannot deserialize another timeline class."""
-        from timetoalign.timelines import ContinuousPhysicalTimeline
+    def test_the_unit_decides_the_class(self):
+        """The base class reads a seconds timeline as continuous physical."""
+        restored = Timeline.from_dict(Timeline(length=10.0, uid="source").to_dict())
+
+        assert type(restored) is ContinuousPhysicalTimeline
+
+    def test_concrete_subclass_rejects_another_unit_class(self):
+        """A concrete receiver cannot read a timeline its unit puts in another class."""
+        from timetoalign.timelines import ContinuousLogicalTimeline
 
         data = Timeline(length=10.0, uid="source").to_dict()
+        with pytest.raises(ValueError) as refused:
+            ContinuousLogicalTimeline.from_dict(data)
+        assert str(refused.value) == (
+            "timeline 'source' of the manifest is a ContinuousPhysicalTimeline, "
+            "not a ContinuousLogicalTimeline"
+        )
+
+    def test_structure_bearing_timeline_json_round_trip(self) -> None:
+        original = _structure_bearing_timeline()
+        payload = json.loads(json.dumps(original.to_dict()))
+        restored = Timeline.from_dict(payload)
+        assert restored.to_dict() == payload
+        assert restored.measure_map == original.measure_map
+        assert restored.measure_map[2].offset_within_measure == Fraction(1, 3)
+        assert original.metric_hierarchy is not None
+        assert restored.metric_hierarchy is None
+        assert restored.get_region("opening") == original.get_region("opening")
+        assert restored.flow_control.breaks == original.flow_control.breaks
+        assert restored.flow_control.jumps == original.flow_control.jumps
+        assert restored.flow_control.markers == original.flow_control.markers
+        assert (
+            restored.get_child("whole").to_dict()
+            == original.get_child("whole").to_dict()
+        )
+        assert [cmap.to_dict() for cmap in restored._conversion_maps.values()] == [
+            cmap.to_dict() for cmap in original._conversion_maps.values()
+        ]
+
+    def test_each_authored_structure_slot_accepts_only_one_value(self) -> None:
+        timeline = _structure_bearing_timeline()
+        assert timeline.measure_map is not None
+        assert timeline.metric_hierarchy is not None
+        with pytest.raises(ValueError, match="already has a measure map"):
+            timeline.add_measure_map(timeline.measure_map)
+        with pytest.raises(ValueError, match="already has a metric hierarchy"):
+            timeline.add_metric_hierarchy(timeline.metric_hierarchy)
+
+    def test_timeline_refuses_hierarchy_without_map_different_map_or_other_unit(
+        self,
+    ) -> None:
+        owned = MeasureMap([RegularMeasure(actual_length=Fraction(4))])
+        hierarchy = MetricHierarchy(measure_map=owned)
+
+        without_map = Timeline(length=Fraction(4), unit=TimeUnit.quarters)
+        with pytest.raises(ValueError, match="requires.*measure map"):
+            without_map.add_metric_hierarchy(hierarchy)
+
+        different_map = MeasureMap(
+            [
+                RegularMeasure(actual_length=Fraction(2)),
+                RegularMeasure(actual_length=Fraction(2)),
+            ]
+        )
+        mismatched = Timeline(length=Fraction(4), unit=TimeUnit.quarters)
+        mismatched.add_measure_map(owned)
+        with pytest.raises(ValueError, match="different measure map"):
+            mismatched.add_metric_hierarchy(MetricHierarchy(measure_map=different_map))
+
+        other_unit = Timeline(length=4.0, unit=TimeUnit.seconds)
         with pytest.raises(
-            ValueError,
-            match="Timeline.*ContinuousPhysicalTimeline",
+            ValueError, match="Timeline unit 'seconds' does not reach the quarter notes"
         ):
-            ContinuousPhysicalTimeline.from_dict(data)
+            other_unit.add_measure_map(owned)
+
+    @pytest.mark.parametrize("conversion", ["typed", "segment", "timeline"])
+    def test_same_extent_conversion_carries_structure(self, conversion: str) -> None:
+        source = _structure_bearing_timeline()
+        if conversion == "typed":
+            converted = source.to_typed()
+        else:
+            segment_line = source.as_segment_line()
+            converted = (
+                segment_line if conversion == "segment" else segment_line.to_timeline()
+            )
+        assert converted is not source
+        assert converted.measure_map is source.measure_map
+        assert converted.metric_hierarchy is source.metric_hierarchy
+        assert converted.flow_control is not source.flow_control
+        assert converted.flow_control.to_dict() == source.flow_control.to_dict()
+
+    def test_slice_does_not_inherit_authored_structure(self) -> None:
+        source = _structure_bearing_timeline()
+        sliced = source.get_slice(Fraction(1, 3), Fraction(4, 3))
+        assert sliced.measure_map is None
+        assert sliced.metric_hierarchy is None
+        assert sliced.flow_control.to_dict() == []
+
+    def test_segment_line_finalization_preserves_restored_structure(self) -> None:
+        segment_line = _structure_bearing_timeline().as_segment_line()
+        restored = Timeline.from_dict(json.loads(json.dumps(segment_line.to_dict())))
+        assert isinstance(restored, SegmentLine)
+        assert restored.measure_map == segment_line.measure_map
+        assert restored.metric_hierarchy is None
+        assert restored.flow_control.to_dict() == segment_line.flow_control.to_dict()
 
 
 # endregion
@@ -543,7 +814,7 @@ class TestMagicMethods:
     def test_contains_region_by_name(self):
         """__contains__ checks regions by string name."""
         tl = Timeline(length=100.0)
-        tl.add_region("Chorus", start=30, end=60)
+        tl.create_region(30, 60, id="Chorus", name="Chorus")
 
         assert "Chorus" in tl
         assert "Bridge" not in tl
@@ -553,7 +824,7 @@ class TestMagicMethods:
         from timetoalign.timelines import Region
 
         tl = Timeline(length=100.0)
-        tl.add_region("Chorus", start=30, end=60)
+        tl.create_region(30, 60, id="Chorus", name="Chorus")
 
         region = tl.get_region("Chorus")
         assert region in tl
@@ -568,7 +839,7 @@ class TestMagicMethods:
     def test_contains_checks_regions_and_children(self):
         """__contains__ with string checks both regions and children."""
         tl = Timeline(length=100.0)
-        tl.add_region("Chorus", start=30, end=60)
+        tl.create_region(30, 60, id="Chorus", name="Chorus")
         child = Timeline(length=5.0, uid="my_child")
         tl.add_child(child, offset=0)
 

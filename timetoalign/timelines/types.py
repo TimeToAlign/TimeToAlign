@@ -10,170 +10,49 @@ and provides sensible defaults.
 
 Additionally provides:
 - SegmentLine: A timeline where all children are contiguous (Segments)
-- Convenience methods for creating metrical timelines via TimelineGroups
-  (NOT as children, per TTA specification that children must share parent's unit)
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from fractions import Fraction
-from typing import TYPE_CHECKING, Any, ClassVar, Iterator, Literal
+from typing import Any, ClassVar, Iterator
 
 from timetoalign.core import (
     Coordinate,
     CoordinateSpec,
-    IdCoordinate,
-    NumberType,
+    Domain,
     TimeUnit,
 )
+from timetoalign.core.timestamp import _format_coordinate_value
 
-from .base import Timeline
-
-if TYPE_CHECKING:
-    from timetoalign.maps.meter import MetricalPositionMap, MetricMap
-    from timetoalign.timelines.groups import TimelineGroup
-
-
-# region MetricalResult
-
-
-@dataclass
-class MetricalResult:
-    """Result of creating a metrical timeline from a physical timeline.
-
-    Children must share the parent's unit. Cross-domain relationships
-    (physical-logical) are established via TimelineGroups with bidirectional
-    C-Maps, not parent-child embedding.
-
-    Attributes:
-        grid: The created ContinuousLogicalTimeline (in quarters).
-        group: TimelineGroup connecting the physical and logical timelines.
-        physical_timeline: The original physical timeline.
-        meter_map: The MetricMap providing measure boundaries.
-        metrical_map: The MetricalPositionMap for {mc, beat} lookups.
-    """
-
-    grid: ContinuousLogicalTimeline
-    group: TimelineGroup
-    physical_timeline: ContinuousPhysicalTimeline
-    meter_map: MetricMap
-    metrical_map: MetricalPositionMap
-
-    def timestamp_at_seconds(self, seconds: float) -> dict[str, Any]:
-        """Get timestamp with metrical info at a given second.
-
-        Args:
-            seconds: Coordinate on the physical timeline.
-
-        Returns:
-            Dictionary with 'seconds', 'quarters', 'mc', 'beat', 'mn' keys.
-        """
-        ts = self.group.get_timestamp_at(seconds, self.physical_timeline.id)
-        try:
-            quarters = ts.get_coordinate_for(self.grid.id, format="float")
-        except KeyError:
-            return {
-                "seconds": seconds,
-                "quarters": None,
-                "mc": None,
-                "beat": None,
-                "mn": None,
-            }
-
-        position = self.metrical_map(quarters)
-        return {
-            "seconds": seconds,
-            "quarters": quarters,
-            "mc": position["mc"],
-            "beat": position["beat"],
-            "mn": self.meter_map.get_mn(position["mc"]),
-        }
-
-    def seconds_at(self, mc: int, beat: Fraction | float = Fraction(1, 1)) -> float:
-        """Get seconds coordinate for a given measure and beat.
-
-        Args:
-            mc: Measure count (1-indexed).
-            beat: Beat within measure (1-indexed). Default: beat 1.
-
-        Returns:
-            Coordinate in seconds on the physical timeline.
-
-        Raises:
-            ValueError: If the measure/beat position is outside the aligned range.
-        """
-        quarters = self.metrical_map.quarters_at(mc, beat)
-        result = self.group.get_coordinate_at(
-            IdCoordinate(float(quarters), self.grid.unit, self.grid.id),
-            timeline_id=self.physical_timeline.id,
-            format="float",
-        )
-        assert isinstance(result, float)
-        return result
-
-
-# endregion
+from .base import Timeline, UnknownLengthError
 
 # region Unit Sets by Domain
 
-# Logical domain units (symbolic/musical time)
-LOGICAL_UNITS: frozenset[TimeUnit] = frozenset(
-    {
-        TimeUnit.beats,
-        TimeUnit.quarters,
-        TimeUnit.floating_measures,
-        TimeUnit.ticks,
-        TimeUnit.number,
-    }
-)
+# Every set is derived from TimeUnit's own domain and discreteness, so the
+# unit vocabulary is listed once, in ``timetoalign.core.enums``.
 
-# Physical domain units (acoustic/real time)
-PHYSICAL_UNITS: frozenset[TimeUnit] = frozenset(
-    {
-        TimeUnit.seconds,
-        TimeUnit.milliseconds,
-        TimeUnit.minutes,
-        TimeUnit.samples,
-        TimeUnit.frames,
-    }
-)
 
-# Graphical domain units (visual/spatial)
-GRAPHICAL_UNITS: frozenset[TimeUnit] = frozenset(
-    {
-        TimeUnit.pixels,
-        TimeUnit.meters,
-        TimeUnit.centimeters,
-        TimeUnit.millimeters,
-        TimeUnit.inches,
-        TimeUnit.points,
-    }
-)
+def _units(domain: Domain, *, discrete: bool | None = None) -> frozenset[TimeUnit]:
+    """Return the units of *domain*, optionally only the (non-)discrete ones."""
+    return frozenset(
+        unit
+        for unit in TimeUnit
+        if unit.domain is domain and (discrete is None or unit.is_discrete is discrete)
+    )
 
-# Continuous vs discrete unit categorization
-CONTINUOUS_LOGICAL_UNITS: frozenset[TimeUnit] = frozenset(
-    {TimeUnit.beats, TimeUnit.quarters, TimeUnit.floating_measures, TimeUnit.number}
-)
-DISCRETE_LOGICAL_UNITS: frozenset[TimeUnit] = frozenset({TimeUnit.ticks})
 
-CONTINUOUS_PHYSICAL_UNITS: frozenset[TimeUnit] = frozenset(
-    {TimeUnit.seconds, TimeUnit.milliseconds, TimeUnit.minutes}
-)
-DISCRETE_PHYSICAL_UNITS: frozenset[TimeUnit] = frozenset(
-    {TimeUnit.samples, TimeUnit.frames}
-)
+LOGICAL_UNITS: frozenset[TimeUnit] = _units(Domain.logical)
+PHYSICAL_UNITS: frozenset[TimeUnit] = _units(Domain.physical)
+GRAPHICAL_UNITS: frozenset[TimeUnit] = _units(Domain.graphical)
 
-CONTINUOUS_GRAPHICAL_UNITS: frozenset[TimeUnit] = frozenset(
-    {
-        TimeUnit.meters,
-        TimeUnit.centimeters,
-        TimeUnit.millimeters,
-        TimeUnit.inches,
-        TimeUnit.points,
-    }
+CONTINUOUS_LOGICAL_UNITS: frozenset[TimeUnit] = _units(Domain.logical, discrete=False)
+DISCRETE_LOGICAL_UNITS: frozenset[TimeUnit] = _units(Domain.logical, discrete=True)
+CONTINUOUS_PHYSICAL_UNITS: frozenset[TimeUnit] = _units(Domain.physical, discrete=False)
+DISCRETE_PHYSICAL_UNITS: frozenset[TimeUnit] = _units(Domain.physical, discrete=True)
+CONTINUOUS_GRAPHICAL_UNITS: frozenset[TimeUnit] = _units(
+    Domain.graphical, discrete=False
 )
-DISCRETE_GRAPHICAL_UNITS: frozenset[TimeUnit] = frozenset({TimeUnit.pixels})
+DISCRETE_GRAPHICAL_UNITS: frozenset[TimeUnit] = _units(Domain.graphical, discrete=True)
 
 # endregion
 
@@ -213,10 +92,11 @@ class GraphicalTimeline(Timeline):
     """A timeline representing graphical/spatial coordinates.
 
     Graphical timelines measure visual positions for score
-    visualization and plotting. They can be in pixels or
-    physical measurements.
+    visualization and plotting. They can be in pixels, physical
+    measurements, CSS pixels, or a document's own user units.
 
-    Allowed units: pixels, meters, centimeters, millimeters, inches, points.
+    Allowed units: pixels, meters, centimeters, millimeters, inches, points,
+    css_pixels, user_units.
     """
 
     _allowed_units: ClassVar[frozenset[TimeUnit]] = GRAPHICAL_UNITS
@@ -253,484 +133,10 @@ class ContinuousPhysicalTimeline(PhysicalTimeline):
     Default unit: seconds.
     Default number type: float.
     Allowed units: seconds, milliseconds, minutes (NOT samples/frames).
-
-    Provides convenience methods for creating metrical timelines
-    connected via TimelineGroups (per TTA specification, children must
-    share the parent's unit; cross-domain relationships use groups).
     """
 
     _allowed_units: ClassVar[frozenset[TimeUnit]] = CONTINUOUS_PHYSICAL_UNITS
     _default_unit: ClassVar[TimeUnit] = TimeUnit.seconds
-
-    def create_metrical_grid(
-        self,
-        first_beat_at: float,
-        tempo_bpm: float,
-        beats_per_measure: int = 4,
-        beat_unit: Fraction = Fraction(1, 4),
-        end_at: float | None = None,
-        start_mc: int = 1,
-        start_mn: str = "1",
-        anacrusis_quarters: Fraction | None = None,
-        measure_type: Literal["none", "events", "children"] = "none",
-        beat_type: Literal["none", "instants", "intervals", "segments"] = "none",
-        name: str | None = None,
-    ) -> MetricalResult:
-        """Create a metrical grid timeline with automatic beat/measure computation.
-
-        This is the primary convenience method for users who have an audio file
-        and know: (1) tempo, (2) meter, and (3) where the first beat is.
-        They do NOT need to know the total length in quarters - the library
-        computes that automatically.
-
-        A timeline can accommodate other timelines as Children when they use
-        the same measuring unit. Therefore, a logical timeline (quarters)
-        cannot be a child of a physical timeline (seconds). Instead, this
-        method creates a standalone ContinuousLogicalTimeline and connects it
-        to this physical timeline via a TimelineGroup with bidirectional linear
-        interpolation.
-
-        The returned MetricalResult provides convenient access to:
-        - The created grid (ContinuousLogicalTimeline in quarters)
-        - The TimelineGroup connecting physical and logical coordinates
-        - Methods for timestamp queries with metrical information
-
-        Args:
-            first_beat_at: Coordinate (in seconds) of the first beat.
-            tempo_bpm: Tempo in beats per minute.
-            beats_per_measure: Number of beats per measure. Default 4.
-            beat_unit: Note value of one beat. Default 1/4 (quarter note).
-                      Use Fraction(1, 8) for eighth-note beats (e.g., 6/8 time).
-            end_at: Coordinate (in seconds) where the grid ends.
-                   If None, extends to the end of the physical timeline.
-            start_mc: MC (measure count) of the first measure. Default 1.
-            start_mn: MN (measure number label) of the first measure.
-                     Default "1". Use "0" for anacrusis (pickup measure).
-            anacrusis_quarters: If set, the first measure is shorter (pickup).
-                               Specified in quarter notes.
-            measure_type: How to represent measures in the grid:
-                        - "none": No measure entities (default)
-                        - "events": Create Measure as IntervalEvents
-                        - "children": Create each measure as a Child timeline
-            beat_type: How to represent beats in the grid:
-                        - "none": No beat entities (default)
-                        - "instants": Create Beat as InstantEvents
-                        - "intervals": Create Beat as IntervalEvents (with duration)
-                        - "segments": Create a SegmentLine with beat Segments
-            name: Human-readable name for the grid timeline.
-
-        Returns:
-            MetricalResult containing the grid, group, and accessor methods.
-
-        Raises:
-            ValueError: If first_beat_at is negative or after end_at.
-
-        Examples:
-            >>> # Audio file at 120 BPM, 4/4, first beat at 0.5 seconds
-            >>> audio = ContinuousPhysicalTimeline(length=180.0)
-            >>> result = audio.create_metrical_grid(
-            ...     first_beat_at=0.5,
-            ...     tempo_bpm=120.0,
-            ...     beats_per_measure=4,
-            ... )
-            >>> # Query metrical info at 60 seconds
-            >>> result.timestamp_at_seconds(60.0)
-            {'seconds': 60.0, 'quarters': 119.0, 'mc': 30, 'beat': Fraction(4, 1), 'mn': '30'}
-
-            >>> # Find where measure 10, beat 1 is
-            >>> result.seconds_at(mc=10, beat=Fraction(1, 1))
-            18.5
-
-            >>> # Access the group for typed coordinate retrieval
-            >>> result.group.get_coordinate_at(
-            ...     IdCoordinate(100.0, result.grid.unit, result.grid.id),
-            ...     timeline_id=audio.id,
-            ...     format="float",
-            ... )
-            50.5
-
-            >>> # With anacrusis (pickup beat)
-            >>> result = audio.create_metrical_grid(
-            ...     first_beat_at=0.25,
-            ...     tempo_bpm=100.0,
-            ...     beats_per_measure=3,
-            ...     start_mn="0",
-            ...     anacrusis_quarters=Fraction(1, 1),  # 1 beat pickup
-            ... )
-        """
-        from timetoalign.maps import LinearMap
-        from timetoalign.maps.meter import MetricalPositionMap, MetricMap
-        from timetoalign.timelines.groups import TimelineGroup
-
-        # Validate inputs
-        if first_beat_at < 0:
-            raise ValueError(f"first_beat_at must be non-negative, got {first_beat_at}")
-
-        # Determine end coordinate
-        if end_at is None:
-            end_at = float(self._length.value)
-        elif end_at <= first_beat_at:
-            raise ValueError(
-                f"end_at ({end_at}) must be after first_beat_at ({first_beat_at})"
-            )
-
-        # Calculate duration in seconds
-        duration_seconds = end_at - first_beat_at
-
-        # Calculate quarters per second from tempo
-        # BPM = beats per minute
-        # quarters_per_beat = beat_unit * 4 (since 4 quarters = 1 whole note)
-        # beats_per_second = BPM / 60
-        # quarters_per_second = beats_per_second * quarters_per_beat
-        quarters_per_beat = Fraction(beat_unit) * 4
-        beats_per_second = tempo_bpm / 60.0
-        quarters_per_second = float(quarters_per_beat) * beats_per_second
-
-        # Calculate total quarters
-        total_quarters = duration_seconds * quarters_per_second
-
-        # Calculate number of measures (accounting for anacrusis if present)
-        quarters_per_measure = quarters_per_beat * beats_per_measure
-
-        if anacrusis_quarters is not None:
-            # First measure is shorter
-            remaining_quarters = total_quarters - float(anacrusis_quarters)
-            n_full_measures = int(remaining_quarters // float(quarters_per_measure))
-            n_measures = 1 + n_full_measures  # anacrusis + full measures
-        else:
-            n_measures = int(total_quarters // float(quarters_per_measure))
-            if n_measures == 0:
-                n_measures = 1  # At least one measure
-
-        # Create the MetricMap
-        meter_map = MetricMap.from_uniform(
-            n_measures=n_measures,
-            quarters_per_measure=quarters_per_measure,
-            start_mc=start_mc,
-            start_mn=start_mn,
-            anacrusis_quarters=anacrusis_quarters,
-        )
-
-        # Compute actual length from meter map
-        length_quarters = meter_map.total_length
-
-        # Create the logical timeline (NOT a child - standalone timeline)
-        grid = ContinuousLogicalTimeline(
-            length=length_quarters,
-            unit=TimeUnit.quarters,
-            number_type=NumberType.fraction,
-            name=name or f"meter_{self.id}",
-        )
-
-        # Add the MetricalPositionMap to the grid
-        metrical_map = MetricalPositionMap(meter_map)
-        grid.add_conversion_map(metrical_map)
-        grid.add_conversion_map(meter_map)
-
-        # Add tempo C-Map: quarters -> seconds (relative to grid's origin)
-        # seconds = quarters / quarters_per_second
-        tempo_map = LinearMap(
-            scalar=1.0 / quarters_per_second,
-            offset=0.0,
-            source_unit=TimeUnit.quarters,
-            target_unit=TimeUnit.seconds,
-            uid=f"{grid.id}_tempo_map",
-        )
-        grid.add_conversion_map(tempo_map)
-
-        # Materialize measures if requested
-        if measure_type == "events":
-            self._materialize_measures_as_events(grid, meter_map)
-        elif measure_type == "children":
-            self._materialize_measures_as_children(grid, meter_map)
-
-        # Materialize beats if requested
-        if beat_type == "instants":
-            self._materialize_beats_as_instants(grid, meter_map, quarters_per_beat)
-        elif beat_type == "intervals":
-            self._materialize_beats_as_intervals(grid, meter_map, quarters_per_beat)
-        elif beat_type == "segments":
-            self._materialize_beats_as_segments(grid, meter_map, quarters_per_beat)
-
-        # Create TimelineGroup to connect physical and logical timelines
-        # Per TTA: Cross-domain relationships use groups, not parent-child
-        group = TimelineGroup()
-
-        # The physical timeline joins first and so defines the group's own
-        # coordinate space; start/end on that first member would be inert.
-        group.add_timeline(self)
-
-        # The grid is what needs placing: its [0, length_quarters] spans from
-        # the first beat forward at exactly the declared tempo. Deriving the
-        # end from length_quarters rather than reusing end_at matters because
-        # the meter map holds whole measures only -- stretching that shortened
-        # grid across the full window would silently alter the tempo.
-        grid_end_seconds = first_beat_at + float(length_quarters) / quarters_per_second
-        group.add_timeline(
-            grid,
-            start=first_beat_at,
-            end=grid_end_seconds,
-        )
-
-        return MetricalResult(
-            grid=grid,
-            group=group,
-            physical_timeline=self,
-            meter_map=meter_map,
-            metrical_map=metrical_map,
-        )
-
-    def _materialize_measures_as_events(
-        self,
-        grid: ContinuousLogicalTimeline,
-        meter_map: MetricMap,
-    ) -> int:
-        """Create Measure IntervalEvents in the grid timeline."""
-        events = []
-        for i in range(meter_map.n_measures):
-            info = meter_map.get_measure_info(meter_map._mcs[i])
-            if info is None:
-                continue
-
-            events.append(
-                {
-                    "id": f"measure_{info['mc']}",
-                    "name": f"M{info['mn']}",
-                    "temporal_type": "interval",
-                    "event_type": "Measure",
-                    "start": info["start"],
-                    "end": info["end"],
-                    "mc": info["mc"],
-                    "mn": info["mn"],
-                }
-            )
-
-        if events:
-            grid.add_events(events)
-        return len(events)
-
-    def _materialize_measures_as_children(
-        self,
-        grid: ContinuousLogicalTimeline,
-        meter_map: MetricMap,
-    ) -> int:
-        """Create each measure as a Child timeline of the grid.
-
-        Per TTA specification, children share the parent's unit (quarters),
-        so this is a valid nesting.
-        """
-        for i in range(meter_map.n_measures):
-            info = meter_map.get_measure_info(meter_map._mcs[i])
-            if info is None:
-                continue
-
-            # Create a child timeline for this measure
-            measure_child = ContinuousLogicalTimeline(
-                length=info["length"],
-                unit=TimeUnit.quarters,
-                number_type=NumberType.fraction,
-                name=f"M{info['mn']}",
-            )
-
-            # Add as child at the measure's start offset
-            grid.add_child(measure_child, offset=info["start"])
-
-        return meter_map.n_measures
-
-    def _materialize_beats_as_instants(
-        self,
-        grid: ContinuousLogicalTimeline,
-        meter_map: MetricMap,
-        quarters_per_beat: Fraction,
-    ) -> int:
-        """Create Beat InstantEvents in the grid timeline."""
-        events = []
-        position = Fraction(0, 1)
-        beat_num = 0
-
-        while position < meter_map.total_length:
-            mc = meter_map(float(position))
-            beat = meter_map.beat_in_measure(position)
-            is_downbeat = beat == Fraction(1, 1)
-
-            events.append(
-                {
-                    "id": f"beat_{beat_num}",
-                    "temporal_type": "instant",
-                    "event_type": "Beat",
-                    "instant": position,
-                    "mc": mc,
-                    "mn": meter_map.get_mn(mc),
-                    "beat": str(beat),  # Store as string to preserve Fraction
-                    "is_downbeat": is_downbeat,
-                }
-            )
-
-            position += quarters_per_beat
-            beat_num += 1
-
-        if events:
-            grid.add_events(events)
-        return len(events)
-
-    def _materialize_beats_as_intervals(
-        self,
-        grid: ContinuousLogicalTimeline,
-        meter_map: MetricMap,
-        quarters_per_beat: Fraction,
-    ) -> int:
-        """Create Beat IntervalEvents (with duration) in the grid timeline."""
-        events = []
-        position = Fraction(0, 1)
-        beat_num = 0
-
-        while position < meter_map.total_length:
-            mc = meter_map(float(position))
-            beat = meter_map.beat_in_measure(position)
-            is_downbeat = beat == Fraction(1, 1)
-            end_pos = position + quarters_per_beat
-
-            # Clamp to total length
-            if end_pos > meter_map.total_length:
-                end_pos = meter_map.total_length
-
-            events.append(
-                {
-                    "id": f"beat_{beat_num}",
-                    "temporal_type": "interval",
-                    "event_type": "Beat",
-                    "start": position,
-                    "end": end_pos,
-                    "mc": mc,
-                    "mn": meter_map.get_mn(mc),
-                    "beat": str(beat),
-                    "is_downbeat": is_downbeat,
-                }
-            )
-
-            position += quarters_per_beat
-            beat_num += 1
-
-        if events:
-            grid.add_events(events)
-        return len(events)
-
-    def _materialize_beats_as_segments(
-        self,
-        grid: ContinuousLogicalTimeline,
-        meter_map: MetricMap,
-        quarters_per_beat: Fraction,
-    ) -> int:
-        """Create beats as a SegmentLine (contiguous Child timelines).
-
-        Per TTA Table 2, Segments are Children that are contiguous with their
-        siblings, forming a SegmentLine.
-        """
-        position = Fraction(0, 1)
-        beat_num = 0
-
-        while position < meter_map.total_length:
-            mc = meter_map(float(position))
-            beat = meter_map.beat_in_measure(position)
-            end_pos = position + quarters_per_beat
-
-            # Clamp to total length
-            if end_pos > meter_map.total_length:
-                end_pos = meter_map.total_length
-
-            segment_length = end_pos - position
-            if segment_length <= 0:
-                break
-
-            # Create a Segment (Child timeline) for this beat
-            beat_segment = ContinuousLogicalTimeline(
-                length=segment_length,
-                unit=TimeUnit.quarters,
-                number_type=NumberType.fraction,
-                name=f"Beat_{mc}_{beat}",
-            )
-
-            # Add as child at the beat's start offset (contiguous placement)
-            grid.add_child(beat_segment, offset=position)
-
-            position = end_pos
-            beat_num += 1
-
-        return beat_num
-
-    def create_metrical_region(
-        self,
-        region_name: str,
-        tempo_bpm: float,
-        beats_per_measure: int = 4,
-        beat_unit: Fraction = Fraction(1, 4),
-        start_mc: int = 1,
-        start_mn: str = "1",
-        anacrusis_quarters: Fraction | None = None,
-        measure_type: Literal["none", "events", "children"] = "none",
-        beat_type: Literal["none", "instants", "intervals", "segments"] = "none",
-    ) -> MetricalResult:
-        """Create a metrical grid for an existing region.
-
-        This method creates a metrical grid that corresponds to a named region
-        on this physical timeline. Per TTA Table 2, regions are named parts of
-        a timeline defined by a TimeInterval. This method creates the metrical
-        structure for that region.
-
-        Args:
-            region_name: Name of an existing region on this timeline.
-            tempo_bpm: Tempo in beats per minute.
-            beats_per_measure: Number of beats per measure. Default 4.
-            beat_unit: Note value of one beat. Default 1/4 (quarter note).
-            start_mc: MC (measure count) of the first measure. Default 1.
-            start_mn: MN (measure number label) of the first measure.
-            anacrusis_quarters: If set, the first measure is shorter (pickup).
-            measure_type: How to represent measures:
-                        - "none": No measure entities (default)
-                        - "events": Create Measure as IntervalEvents
-                        - "children": Create each measure as a Child timeline
-            beat_type: How to represent beats:
-                        - "none": No beat entities (default)
-                        - "instants": Create Beat as InstantEvents
-                        - "intervals": Create Beat as IntervalEvents
-                        - "segments": Create a SegmentLine with beat Segments
-
-        Returns:
-            MetricalResult containing the grid, group, and accessor methods.
-
-        Raises:
-            KeyError: If the region does not exist.
-
-        Examples:
-            >>> audio = ContinuousPhysicalTimeline(length=300.0)
-            >>> audio.add_region("verse", start=10.0, end=50.0)
-            Region('verse', 10.0-50.0 seconds)
-            >>> result = audio.create_metrical_region(
-            ...     region_name="verse",
-            ...     tempo_bpm=100.0,
-            ...     beats_per_measure=4,
-            ... )
-            >>> result.timestamp_at_seconds(25.0)
-            {'seconds': 25.0, 'quarters': 25.0, 'mc': 7, 'beat': Fraction(2, 1), 'mn': '7'}
-        """
-        region = self.get_region(region_name)  # Raises KeyError if not found
-
-        start = float(region.start.value)
-        end = float(region.end.value)
-
-        return self.create_metrical_grid(
-            first_beat_at=start,
-            tempo_bpm=tempo_bpm,
-            beats_per_measure=beats_per_measure,
-            beat_unit=beat_unit,
-            end_at=end,
-            start_mc=start_mc,
-            start_mn=start_mn,
-            anacrusis_quarters=anacrusis_quarters,
-            measure_type=measure_type,
-            beat_type=beat_type,
-            name=f"meter_{region_name}",
-        )
 
 
 class ContinuousGraphicalTimeline(GraphicalTimeline):
@@ -741,21 +147,12 @@ class ContinuousGraphicalTimeline(GraphicalTimeline):
 
     Default unit: centimeters.
     Default number type: float.
-    Allowed units: meters, centimeters, millimeters, inches, points.
+    Allowed units: meters, centimeters, millimeters, inches, points,
+    css_pixels, user_units.
     """
 
     _allowed_units: ClassVar[frozenset[TimeUnit]] = CONTINUOUS_GRAPHICAL_UNITS
     _default_unit: ClassVar[TimeUnit] = TimeUnit.centimeters
-
-    @classmethod
-    def _validate_serialized_payload(cls, data: dict[str, Any]) -> None:
-        """Explain legacy graphical payloads that predate unit validation."""
-        if data.get("unit") == str(TimeUnit.pixels):
-            raise ValueError(
-                "Serialized ContinuousGraphicalTimeline payload uses unit 'pixels', "
-                "which is discrete-only. This payload predates unit enforcement; "
-                "use DiscreteGraphicalTimeline instead."
-            )
 
 
 # endregion
@@ -826,13 +223,45 @@ class SegmentLineMixin:
         self._segment_order: list[str] = []
 
     @classmethod
-    def _from_dict_initial_length(cls, data: dict[str, Any]) -> int:
+    def _from_dict_initial_length(cls, length: Coordinate | None) -> int:
         """Start empty so restored segments can be appended contiguously."""
         return 0
 
-    def _finalize_from_dict(self, data: dict[str, Any]) -> None:
-        """Restore the serialized length after rebuilding the segments."""
-        self._length = self._make_coordinate(Timeline._from_dict_initial_length(data))
+    def _finalize_from_dict(self, length: Coordinate | None) -> None:
+        """Check that the rebuilt segments end exactly at the serialized length.
+
+        The check runs between known values: a serialized length of ``None``
+        is restored as unknown, and a last segment of unknown length ends at
+        the serialized length, which must not precede its offset.
+
+        Raises:
+            ValueError: If the segments end short of, or beyond, the length.
+        """
+        if length is None:
+            self._length = None
+            return
+        end = length.value
+        last_id = self._segment_order[-1] if self._segment_order else None
+        if last_id is not None and self._children[last_id].length is None:
+            last_offset = self._child_offsets[last_id].value
+            if end < last_offset:
+                raise ValueError(
+                    f"Segment line {self.id!r} has a last segment starting at "
+                    f"{_format_coordinate_value(float(last_offset))}, beyond its "
+                    f"length {_format_coordinate_value(float(end))}"
+                )
+            self._length = self._make_coordinate(end)
+            return
+        if self._length.value != end:
+            raise ValueError(
+                f"Segment line {self.id!r} has segments ending at "
+                f"{_format_coordinate_value(float(self._length.value))}, but its "
+                f"length is {_format_coordinate_value(float(end))}"
+            )
+
+    def _is_segment_line_instance(self) -> bool:
+        """Whether this timeline is a SegmentLine (the dictionary's flag)."""
+        return True
 
     @property
     def segment_type(self) -> type[Timeline] | None:
@@ -841,10 +270,61 @@ class SegmentLineMixin:
 
     @property
     def class_name(self) -> str:
-        """Return the dynamic class name or a bare line's inferred wire tag."""
+        """Return the dynamic class name or a bare line's inferred dictionary tag."""
         if type(self) is SegmentLine and self._segment_type is not None:
             return f"SegmentLine[{self._segment_type.__name__}]"
         return type(self).__name__
+
+    def _child_extent(self, child_id: str) -> Any:
+        """A segment of unknown length ends at its successor's offset.
+
+        The last one ends at the line's length, unbounded while that is
+        unknown too.
+        """
+        extent = super()._child_extent(child_id)
+        if extent is not None:
+            return extent
+        index = self._segment_order.index(child_id)
+        if index + 1 < len(self._segment_order):
+            end = self._child_offsets[self._segment_order[index + 1]].value
+        elif self._length is not None:
+            end = self._length.value
+        else:
+            return None
+        return end - self._child_offsets[child_id].value
+
+    def _check_child_length(self, child_id: str, length: Coordinate | None) -> None:
+        """Keep the segments contiguous and ending at the line's known length.
+
+        A segment with a successor must end at the successor's offset, or be
+        of unknown length and end there. The last segment must end at the
+        line's length, or be of unknown length and end there; a line of
+        unknown length has no end to keep. Successors never move, and the
+        line never changes its length because a segment did.
+
+        Raises:
+            ValueError: If the new length breaks contiguity, or would move the
+                last segment's end away from the line's known length.
+        """
+        index = self._segment_order.index(child_id)
+        if length is None:
+            return
+        end = self._child_offsets[child_id].value + length.value
+        if index + 1 < len(self._segment_order):
+            successor = self._segment_order[index + 1]
+            boundary = self._child_offsets[successor].value
+            where = f"its successor '{successor}' starts at"
+        elif self._length is not None:
+            boundary = self._length.value
+            where = f"the line '{self.id}' ends at"
+        else:
+            return
+        if end != boundary:
+            raise ValueError(
+                f"SegmentLine requires contiguous segments. Segment "
+                f"'{child_id}' cannot end at {_format_coordinate_value(end)}: "
+                f"{where} {_format_coordinate_value(boundary)}."
+            )
 
     def validate_child(
         self,
@@ -864,7 +344,22 @@ class SegmentLineMixin:
                 )
 
         offset_val = self._resolve_axis_value(offset)
-        expected_offset = self.length.value if self._segment_order else 0
+        if not self._segment_order:
+            expected_offset = 0
+        else:
+            last_id = self._segment_order[-1]
+            last_offset = self._child_offsets[last_id].value
+            last_length = self._children[last_id].length
+            if last_length is None:
+                # A segment of unknown length ends at its successor's offset.
+                if offset_val < last_offset:
+                    raise ValueError(
+                        f"SegmentLine requires contiguous segments. Segment "
+                        f"'{last_id}' of unknown length starts at {last_offset}, "
+                        f"so its successor cannot start at {offset_val}."
+                    )
+                return
+            expected_offset = last_offset + last_length.value
 
         if offset_val != expected_offset:
             raise ValueError(
@@ -878,13 +373,64 @@ class SegmentLineMixin:
         child: Timeline,
         offset: CoordinateSpec,
         allow_expansion: bool = False,
+        *,
+        locked: bool | None = None,
     ) -> None:
-        """Add a validated segment and record its insertion order."""
-        super().add_child(child, offset, allow_expansion)
+        """Add a validated segment and record its insertion order.
+
+        A segment is never locked, unless it is itself a segment line, which
+        is locked like any child: ``locked=True`` is refused for a plain
+        segment, and ``locked=False`` for a segment that is an unlocked
+        segment line, since unlocking one is not supported yet.
+
+        The line ends where its last segment ends, so a growing line whose
+        new last segment is of unknown length has an unknown length too.
+        """
+        super().add_child(child, offset, allow_expansion, locked=locked)
+
+    def _embed_child(
+        self,
+        child: Timeline,
+        offset: CoordinateSpec,
+        allow_expansion: bool = False,
+        *,
+        locked: bool,
+    ) -> None:
+        """Embed a segment as :meth:`add_child` does, taking the lock as given."""
+        super()._embed_child(child, offset, allow_expansion, locked=locked)
 
         if self._segment_type is None:
             self._segment_type = type(child)
         self._segment_order.append(child.id)
+        if child.length is None and (allow_expansion or not self._locked):
+            self._set_length(None)
+
+    def _append_offset(self) -> Coordinate:
+        """Append after the last segment, at 0 on an empty line.
+
+        The line's own length need not be known.
+
+        Raises:
+            UnknownLengthError: If the last segment's length is unknown, so
+                that nothing says where it ends.
+        """
+        if not self._segment_order:
+            return self._make_coordinate(0)
+        last_id = self._segment_order[-1]
+        last = self._children[last_id]
+        if last.length is None:
+            raise UnknownLengthError(last.id, f"append a segment to '{self.id}'")
+        return self._make_coordinate(
+            self._child_offsets[last_id].value + last.length.value
+        )
+
+    def _rename_child(self, old_id: str, new_id: str) -> None:
+        """Re-key a segment, keeping its place in the segment order."""
+        super()._rename_child(old_id, new_id)
+        self._segment_order = [
+            new_id if segment_id == old_id else segment_id
+            for segment_id in self._segment_order
+        ]
 
     def append_segment(
         self,
@@ -909,7 +455,7 @@ class SegmentLineMixin:
                 continue
             if seg_coord.value >= 0:
                 segment = self._children[seg_id]
-                if seg_coord.value <= segment.length.value:
+                if segment.length is None or seg_coord.value <= segment.length.value:
                     seg_ts = segment.get_timestamp_at(seg_coord.value)
                     return (i, segment, seg_ts)
 
@@ -961,31 +507,7 @@ class SegmentLineMixin:
         copy_cmaps: bool = True,
     ) -> "Timeline":
         """Extract a slice while preserving the parameterized line class."""
-        # Coerce to native number type
-        start_value = self._resolve_axis_value(start)
-        end_value = self._resolve_axis_value(end)
-        nt = self._number_type
-        if nt == NumberType.fraction:
-            s = Fraction(start_value)
-            e = Fraction(end_value)
-        elif nt == NumberType.int:
-            s = int(start_value)
-            e = int(end_value)
-        else:
-            s = float(start_value)
-            e = float(end_value)
-
-        # Validate
-        if s >= e:
-            raise ValueError(f"start ({s}) must be less than end ({e})")
-        if s < 0:
-            raise ValueError(
-                f"start ({s}) is outside timeline bounds " f"[0, {self._length.value})"
-            )
-        if e > self._length.value:
-            raise ValueError(
-                f"end ({e}) is outside timeline bounds " f"[0, {self._length.value}]"
-            )
+        s, e = self._slice_bounds(start, end)
 
         sliced = type(self)(
             length=0,
@@ -1009,7 +531,7 @@ class SegmentLineMixin:
         # the caller gets a correctly-sized timeline.
         expected_length = e - s
         if sliced._length.value < expected_length:
-            sliced._length = Coordinate(expected_length, self._unit)
+            sliced._length = sliced._make_coordinate(expected_length)
 
         return sliced
 
@@ -1024,44 +546,22 @@ class SegmentLineMixin:
         return Timeline.resolve_subclass(self.unit, self.number_type)
 
     def to_timeline(self) -> Timeline:
-        """Return the parameter timeline type without segment enforcement."""
+        """Return the parameter timeline type without segment enforcement.
+
+        The result is a copy holding copies of the segments, so a change to it
+        never reaches this line. The plain segments it holds as children are
+        unlocked, as they were on the line.
+        """
         target_class = self.segment_type
         if target_class is None:
             target_class = Timeline.resolve_subclass(self.unit, self.number_type)
-
-        initial_length = (
-            0 if issubclass(target_class, SegmentLineMixin) else self._length.value
+        return self._recast(
+            target_class,
+            [
+                (child_id, child._copy_tree())
+                for child_id, child in self._children.items()
+            ],
         )
-        timeline = target_class(
-            length=initial_length,
-            unit=self._unit,
-            number_type=self._number_type,
-            uid=self._id,
-            name=self._name,
-            locked=False,
-            meta=dict(self._meta) if self._meta else None,
-        )
-        events = [
-            dict(event)
-            for event in self._events
-            if event.get("event_type") != "Segment"
-        ]
-        if events:
-            timeline._add_events_unchecked(events)
-        timeline._external_references = self._external_references
-        for child_id, child in self._children.items():
-            timeline.add_child(
-                child,
-                offset=self._child_offsets[child_id],
-                allow_expansion=isinstance(timeline, SegmentLineMixin),
-            )
-        for cmap in self._conversion_maps.values():
-            timeline.add_conversion_map(cmap)
-        timeline._regions.update(self._regions)
-        timeline._flow_maps.update(self._flow_maps)
-        timeline._length = timeline._make_coordinate(self._length.value)
-        timeline._locked = self._locked
-        return timeline
 
 
 class SegmentLine(SegmentLineMixin, Timeline):
@@ -1241,12 +741,40 @@ def get_timeline_class(
 
 
 def __getattr__(name: str) -> Any:
-    """Materialize a serialized dynamic class requested by pickle."""
+    """Materialize a parameterized SegmentLine class requested by pickle.
+
+    Pickle addresses a parameterized class by its name
+    (``SegmentLine[DiscreteGraphicalTimeline]``); the parameter is resolved
+    among the timeline classes by name, recursively for a nested line.
+    """
     if name.startswith("SegmentLine[") and name.endswith("]"):
         try:
-            resolved = Timeline._resolve_serialized_class_hierarchy(name)
-        except (TypeError, ValueError) as error:
+            return SegmentLine[
+                _timeline_class_named(name.removeprefix("SegmentLine[")[:-1])
+            ]
+        except (TypeError, LookupError) as error:
             raise AttributeError(name) from error
-        if resolved.__name__ == name:
-            return resolved
     raise AttributeError(name)
+
+
+def _timeline_class_named(name: str) -> type[Timeline]:
+    """Return the timeline class named *name*, a parameterized line included.
+
+    Raises:
+        LookupError: If no timeline class, or several, have the name.
+    """
+    if name.startswith("SegmentLine[") and name.endswith("]"):
+        return SegmentLine[
+            _timeline_class_named(name.removeprefix("SegmentLine[")[:-1])
+        ]
+
+    def descendants(base: type[Timeline]) -> list[type[Timeline]]:
+        return [
+            base,
+            *(cls for sub in base.__subclasses__() for cls in descendants(sub)),
+        ]
+
+    matches = {cls for cls in descendants(Timeline) if cls.__name__ == name}
+    if len(matches) != 1:
+        raise LookupError(name)
+    return matches.pop()

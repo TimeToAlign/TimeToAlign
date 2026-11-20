@@ -346,7 +346,7 @@ def unfold_via_flowmap(
                 name=gap_name,
             )
             result.add_child(filler, start, allow_expansion=True)
-            result.create_region(gap_name, start, end)
+            result.create_region(start, end, name=gap_name)
             continue
 
         n_spans += 1
@@ -361,10 +361,10 @@ def unfold_via_flowmap(
             truncate_events=True,
             include_children=include_children,
         )
-        slice_tl._id = section_name
+        slice_tl._set_id(section_name)
         slice_tl._name = section_name
         result.add_child(slice_tl, start, allow_expansion=True)
-        result.create_region(section_name, start, end)
+        result.create_region(start, end, name=section_name)
 
     # --- Add FlowMaps ---
     result.add_flow_map(forward_map.inverse(), id="source")

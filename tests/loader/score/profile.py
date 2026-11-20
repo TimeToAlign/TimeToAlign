@@ -1,9 +1,10 @@
 """Profiling script for Symbolic Score Loaders."""
 
 import timeit
-from pathlib import Path
 
-DATA_DIR = Path(__file__).parents[2] / "data" / "vienna_1x22"
+from timetoalign.testdata import ensure_data
+
+DATA_DIR = ensure_data("vienna_1x22")
 MS3_DIR = DATA_DIR / "ms3"
 CHOPIN_XML = DATA_DIR / "Chopin_op10_no3.musicxml"
 CHOPIN_TSV = MS3_DIR / "chopin_op10_no3.notes.tsv"

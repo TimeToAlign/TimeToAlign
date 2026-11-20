@@ -44,10 +44,10 @@ class TestPerformanceMidiLoader:
         loader.load(supra_raw_path)
 
         assert loader.events.summary()["coordinate_range"] == (0.0, 277776.0)
-        timeline = loader.create_timeline(uid="supra:dlt1")
+        timeline = loader.create_timeline(uid="supra:dlt_1")
         assert timeline.length.value == 277776
         group = TimelineGroup(id="supra", timelines=[timeline])
-        assert group.timeline_ids == ["supra:dlt1"]
+        assert group.timeline_ids == ["supra:dlt_1"]
 
     def test_note_pairing(self, tmp_path: Path) -> None:
         """Loader correctly pairs note_on and note_off."""
@@ -137,7 +137,7 @@ class TestPerformanceMidiLoader:
         assert ends.to_pylist() == [None, None, 960.0]
         assert loader.events.summary()["coordinate_range"] == (0.0, 960.0)
 
-        timeline = loader.create_timeline(uid="perf:dlt1")
+        timeline = loader.create_timeline(uid="perf:dlt_1")
         assert timeline.length.value == 960
         group = TimelineGroup(id="perf", timelines=[timeline])
-        assert group.timeline_ids == ["perf:dlt1"]
+        assert group.timeline_ids == ["perf:dlt_1"]

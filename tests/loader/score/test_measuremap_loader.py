@@ -14,19 +14,22 @@ ZERO TOLERANCE VALIDATION POLICY:
 
 from __future__ import annotations
 
+import json
 from fractions import Fraction
 from pathlib import Path
 
 import pytest
 
-# Specimen data paths - all under tests/data/score/
-TESTS_DATA_DIR = Path(__file__).parents[2] / "data" / "score"
-BEETHOVEN_WOO71_DIR = TESTS_DATA_DIR / "beethoven_woo71"
+from timetoalign.testdata import ensure_data
+from timetoalign.timelines import MeasureMap
+
+SCORE_DATA_DIR = ensure_data("score")
+BEETHOVEN_WOO71_DIR = SCORE_DATA_DIR / "beethoven_woo71"
 BEETHOVEN_MM_JSON = BEETHOVEN_WOO71_DIR / "WoO71.measures.mm.json"
 BEETHOVEN_MEASURES_TSV = BEETHOVEN_WOO71_DIR / "WoO71.measures.tsv"
 BEETHOVEN_UNFOLDED_TSV = BEETHOVEN_WOO71_DIR / "WoO71_unfolded.measures.tsv"
 
-FLOW_CONTROL_DIR = TESTS_DATA_DIR / "flow_control" / "flow_only"
+FLOW_CONTROL_DIR = SCORE_DATA_DIR / "flow_control" / "flow_only"
 FLOW_MM_JSON = (
     FLOW_CONTROL_DIR / "out_of_the_flow_experience-flow_only.measures.mm.json"
 )
@@ -76,6 +79,16 @@ class TestMeasureMapLoaderBasic:
         """Loader initializes correctly."""
         assert measuremap_loader.unit.value == "quarters"
 
+    def test_file_without_nominal_length_names_path_and_first_row(
+        self, measuremap_loader, tmp_path: Path
+    ) -> None:
+        path = tmp_path / "no_nominal.mm.json"
+        path.write_text(
+            json.dumps([{"number": 1, "actual_length": 3}]), encoding="utf-8"
+        )
+        with pytest.raises(ValueError, match=r"no_nominal\.mm\.json.*row 1"):
+            measuremap_loader.load(path)
+
     @pytest.mark.skipif(not specimens_available(), reason="Specimen files not found")
     def test_load_beethoven_mm_json(self, measuremap_loader):
         """Load Beethoven WoO71 MeasureMap JSON."""
@@ -107,13 +120,13 @@ class TestMeasureMapExpansion:
             {"time_signature": "4/4"},  # First bar, defaults fill in
             {"number": 10},  # 10 bars total
         ]
-        expanded = measuremap_loader._expand_measuremap(compressed)
+        expanded = MeasureMap.expand_rows(compressed)
 
-        assert len(expanded) == 2
+        assert len(expanded) == 10
         assert expanded[0]["count"] == 1
         assert expanded[0]["time_signature"] == "4/4"
-        assert expanded[1]["count"] == 2
-        assert expanded[1]["number"] == 10
+        assert [row["number"] for row in expanded] == list(range(1, 11))
+        assert expanded[-1]["count"] == 10
 
     def test_expand_with_anacrusis(self, measuremap_loader):
         """Expand MeasureMap with anacrusis (pickup measure)."""
@@ -122,7 +135,7 @@ class TestMeasureMapExpansion:
             {"number": 1},  # M1
             {"number": 2},  # M2
         ]
-        expanded = measuremap_loader._expand_measuremap(compressed)
+        expanded = MeasureMap.expand_rows(compressed)
 
         assert len(expanded) == 3
         assert expanded[0]["number"] == 0  # Anacrusis
@@ -139,7 +152,7 @@ class TestMeasureMapExpansion:
             {"end_repeat": True, "next": [2, 5]},  # :||
             {},  # After repeat
         ]
-        expanded = measuremap_loader._expand_measuremap(compressed)
+        expanded = MeasureMap.expand_rows(compressed)
 
         assert len(expanded) == 5
         assert expanded[1]["start_repeat"] is True
@@ -191,9 +204,7 @@ class TestMeasureMapTraversal:
             {},
             {},
         ]
-        measuremap_loader._expanded_data = measuremap_loader._expand_measuremap(
-            compressed
-        )
+        measuremap_loader._expanded_data = MeasureMap.expand_rows(compressed)
 
         traversal = measuremap_loader.compute_default_traversal()
         assert traversal == [1, 2, 3]
@@ -208,9 +219,7 @@ class TestMeasureMapTraversal:
             {"end_repeat": True, "next": [2, 5]},  # MC 4: :|| go to 2 or 5
             {},  # MC 5: after repeat
         ]
-        measuremap_loader._expanded_data = measuremap_loader._expand_measuremap(
-            compressed
-        )
+        measuremap_loader._expanded_data = MeasureMap.expand_rows(compressed)
 
         traversal = measuremap_loader.compute_default_traversal()
         # Expected: 1, 2, 3, 4, 2, 3, 4, 5
@@ -335,9 +344,7 @@ class TestMeasureDataSchema:
 
     def test_flow_control_summary(self):
         """get_flow_control_summary works correctly."""
-        from timetoalign.core.time import (
-            coordinate_to_struct,
-        )
+        from timetoalign.core.time import coordinate_to_struct
         from timetoalign.loader.score.stores import MeasureData
 
         # Use coordinate_to_struct for temporal fields (schema expects struct type)
@@ -388,3 +395,86 @@ class TestFlowControlSpecimen:
         assert len(measures) == 15  # flow_only specimen has exactly 15 measures
         summary = measures.get_flow_control_summary()
         assert summary["has_repeats"], "Flow control specimen should have repeats"
+
+
+class TestAnacrusisConvention:
+    """The loader's one conversion: a short first row numbered 0 is an anacrusis."""
+
+    @staticmethod
+    def _first_measure(tmp_path: Path, rows: list[dict[str, object]]):
+        from timetoalign.loader.score import MeasureMapLoader
+
+        path = tmp_path / "rows.mm.json"
+        path.write_text(json.dumps(rows), encoding="utf-8")
+        timeline = MeasureMapLoader().load(path).create_timeline()
+        return timeline.measure_map
+
+    def test_short_first_row_numbered_zero_is_a_constituent(self, tmp_path):
+        from timetoalign.core import MeasureConstituent
+
+        measure_map = self._first_measure(
+            tmp_path,
+            [
+                {"count": 1, "number": 0, "time_signature": "4/4", "actual_length": 1},
+                {"count": 3},
+            ],
+        )
+        assert type(measure_map[0]) is MeasureConstituent
+        assert measure_map[0].offset_within_measure == Fraction(3)
+        assert measure_map.to_rows()[0]["offset_within_measure"] == [3, 1]
+
+    def test_the_convention_names_number_zero_only(self, tmp_path):
+        from timetoalign.core import IrregularMeasure
+
+        measure_map = self._first_measure(
+            tmp_path,
+            [
+                {"count": 1, "number": 1, "time_signature": "4/4", "actual_length": 1},
+                {"count": 3},
+            ],
+        )
+        assert type(measure_map[0]) is IrregularMeasure
+        assert "offset_within_measure" not in measure_map.to_rows()[0]
+
+    def test_a_stated_offset_is_kept(self, tmp_path):
+        measure_map = self._first_measure(
+            tmp_path,
+            [
+                {
+                    "count": 1,
+                    "number": 0,
+                    "time_signature": "4/4",
+                    "actual_length": 1,
+                    "offset_within_measure": 2,
+                },
+                {"count": 2},
+            ],
+        )
+        assert measure_map[0].offset_within_measure == Fraction(2)
+
+    def test_a_later_short_row_numbered_zero_is_not_split(self, tmp_path):
+        from timetoalign.core import IrregularMeasure, MeasureConstituent
+
+        measure_map = self._first_measure(
+            tmp_path,
+            [
+                {"count": 1, "number": 0, "time_signature": "4/4", "actual_length": 1},
+                {"count": 2, "number": 0, "actual_length": 3},
+            ],
+        )
+        assert [type(measure) for measure in measure_map] == [
+            MeasureConstituent,
+            IrregularMeasure,
+        ]
+
+    @pytest.mark.skipif(not specimens_available(), reason="Specimen files not found")
+    def test_corpus_anacrusis_matches_the_measure_table(self):
+        from timetoalign.core import MeasureConstituent
+        from timetoalign.loader.score import MeasureMapLoader, Ms3Loader
+
+        from_json = MeasureMapLoader().load(BEETHOVEN_MM_JSON).create_timeline()
+        from_table = Ms3Loader().load(BEETHOVEN_MEASURES_TSV).create_timeline()
+        first = from_json.measure_map[0]
+        assert type(first) is MeasureConstituent
+        assert first.offset_within_measure == Fraction(1)
+        assert from_table.measure_map[0].offset_within_measure == Fraction(1)

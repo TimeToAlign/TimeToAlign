@@ -8,12 +8,19 @@ Design principles:
 - Events stored in PyArrow-based EventData (no flyweight pattern)
 - Children stored as direct object references AND as segment events
 - Unit validation at add-time prevents coordinate type mismatches
-- Locking mechanism prevents modification when embedded as child
+- A locked timeline's length is fixed; an embedded child's length changes
+  only within its parent's known length
 """
 
 from __future__ import annotations
 
+import copy
 import logging
+import weakref
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from dataclasses import replace
+from fractions import Fraction
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, ClassVar, Iterator, Literal
 
 from typing_extensions import Self
@@ -25,11 +32,30 @@ from timetoalign.core import (
     Domain,
     NumberType,
     TimeUnit,
-    rational_to_wire,
-    wire_to_rational,
+)
+from timetoalign.core.ids import (
+    _OpenObject,
+    _plan_admissions,
+    mint_id,
+    quote_id,
+    timeline_id_prefix,
+    validate_id,
+)
+from timetoalign.core.time import (
+    express_as,
+    express_scalar_as,
+    number_from_json,
+    number_to_json,
+    struct_to_rational,
 )
 from timetoalign.core.timestamp import _format_coordinate_value
-from timetoalign.maps import ConversionMap
+from timetoalign.maps import (
+    ChainMap,
+    ConversionMap,
+    LinearMap,
+    MeasureRecordMap,
+    ScalarMap,
+)
 from timetoalign.storage import EventData
 
 from .engines import (
@@ -39,6 +65,7 @@ from .engines import (
     ExternalReferencesMixin,
     RegionsMixin,
     SegmentsMixin,
+    SkeletonsMixin,
     TabularExportMixin,
 )
 from .engines import children as _children_engine
@@ -46,15 +73,39 @@ from .engines import conversion as _conversion_engine
 from .engines import (
     empty_external_reference_table,
 )
+from .flowcontrol import FlowControlRegistry
+from .manifest import (
+    Manifest,
+    ManifestFileMixin,
+    axis_value_from_json,
+    axis_value_to_json,
+    check_children_fit,
+    listed,
+    matches_any,
+    read_id,
+    read_list,
+    read_meta,
+    read_name,
+    require_object,
+    select,
+)
 from .regions import Region
+from .statements import (
+    STATE_KEYS,
+    MutableStatementsMixin,
+    needed_prefixes,
+    read_statement_state,
+    statement_holders,
+)
+from .structure import MeasureMap, MetricHierarchy
 
 if TYPE_CHECKING:
     from timetoalign.display.ascii import Diagram
 
-module_logger = logging.getLogger(__name__)
+    from .groups import _IdScope
+    from .manifest import MeasureMapEntries
 
-# Module-level counter for unique ID generation
-_TIMELINE_COUNTER: dict[str, int] = {}
+module_logger = logging.getLogger(__name__)
 
 # region Constants
 
@@ -67,6 +118,62 @@ TraversalOrder = Literal["sorted", "depth_first", "breadth_first"]
 # endregion
 
 
+def _is_record_map_on(cmap: ConversionMap[Any], unit: TimeUnit) -> bool:
+    """Whether *cmap* reads a timeline's measure map on an axis of *unit*.
+
+    It does as a ``MeasureRecordMap`` on a quarters axis, or as a
+    ``ChainMap`` of a ``LinearMap`` from *unit* to quarters and a
+    ``MeasureRecordMap``.
+    """
+    if isinstance(cmap, MeasureRecordMap):
+        return unit is TimeUnit.quarters
+    if not isinstance(cmap, ChainMap) or len(cmap.maps) != 2:
+        return False
+    first, last = cmap.maps
+    return (
+        isinstance(last, MeasureRecordMap)
+        and isinstance(first, (LinearMap, ScalarMap))
+        and first.source_unit is unit
+        and first.target_unit is TimeUnit.quarters
+    )
+
+
+def _refuse_negative_length(length: Coordinate, timeline_id: str) -> Coordinate:
+    """Return *length*, raising ``ValueError`` if it is negative."""
+    if length.value < 0:
+        raise ValueError(
+            f"length {_format_coordinate_value(length.value)} of '{timeline_id}' "
+            "is negative"
+        )
+    return length
+
+
+class UnknownLengthError(ValueError):
+    """An operation needs the end of a timeline whose length is unknown.
+
+    A length of ``None`` states that the length is not known. Operations that
+    do not need the end work on such a timeline; an operation that needs it
+    raises this error before it changes anything.
+
+    Attributes:
+        timeline_id: The id of the timeline whose length is unknown.
+        operation: What could not be done without the end.
+    """
+
+    def __init__(self, timeline_id: str, operation: str) -> None:
+        """Name the timeline and the operation that needs its end.
+
+        Args:
+            timeline_id: The id of the timeline whose length is unknown.
+            operation: What could not be done, as a verb phrase.
+        """
+        self.timeline_id = timeline_id
+        self.operation = operation
+        super().__init__(
+            f"Cannot {operation}: the length of timeline '{timeline_id}' is unknown"
+        )
+
+
 class Timeline(
     EventsMixin,
     ExternalReferencesMixin,
@@ -75,6 +182,10 @@ class Timeline(
     TabularExportMixin,
     RegionsMixin,
     SegmentsMixin,
+    SkeletonsMixin,
+    MutableStatementsMixin,
+    ManifestFileMixin,
+    _OpenObject,
 ):
     """A positive coordinate axis with events and nested child timelines.
 
@@ -111,10 +222,13 @@ class Timeline(
         number_type: The numeric type for coordinates (int, float, Fraction).
         domain: The temporal domain (derived from unit).
         origin: The start coordinate (always 0).
-        length: The end coordinate.
-        is_locked: Whether the timeline can be modified.
+        length: The end coordinate, or ``None`` when the length is unknown.
+        is_locked: Whether the timeline's length is fixed.
         is_discrete: Whether the timeline uses discrete coordinates.
         is_continuous: Whether the timeline uses continuous coordinates.
+        statements: What the timeline stands for, as property–value pairs,
+            with their :attr:`provenance` (see
+            :mod:`~timetoalign.timelines.statements`).
 
     Examples:
         >>> # Preferred: use concrete subclasses
@@ -144,83 +258,43 @@ class Timeline(
     # EventData class to use (subclasses can override for domain-specific data)
     _event_data_class: ClassVar[type[EventData]] = EventData
 
-    # Serialized class tag -> timeline subclass. Timeline itself is handled
-    # directly; every subclass registers automatically when defined.
-    _registry: ClassVar[dict[str, type["Timeline"]]] = {}
+    # The keys of a timeline object, in the order the dictionary form writes
+    # them; ``events`` and ``external_references`` only when requested.
+    _dict_keys: ClassVar[tuple[str, ...]] = (
+        "id",
+        "name",
+        "unit",
+        "number_type",
+        "offset",
+        "length",
+        "locked",
+        "is_segment_line",
+        "meta",
+        "children",
+        "conversion_maps",
+        "regions",
+        "flow_control",
+        *STATE_KEYS,
+        "events",
+        "external_references",
+    )
+    # Where a root's origin lies on its unit's absolute axis (a manifest
+    # root's ``offset``), or None. Stored and written back only.
+    _root_offset: Coordinate | None = None
 
-    def __init_subclass__(cls, **kwargs: Any) -> None:
-        """Register a timeline subclass under its serialized class tag."""
-        super().__init_subclass__(**kwargs)
-        tag = cls.__name__
-        registered = Timeline._registry.get(tag)
-        if registered is not None and registered is not cls:
-            raise ValueError(
-                f"Timeline tag {tag!r} is already registered to {registered!r}; "
-                f"cannot register {cls!r}."
-            )
-        Timeline._registry[tag] = cls
-
-    @classmethod
-    def _resolve_serialized_class_hierarchy(cls, class_tag: str) -> type["Timeline"]:
-        """Resolve a serialized class tag, materializing parameters recursively."""
-        registered = (
-            Timeline
-            if class_tag == Timeline.__name__
-            else Timeline._registry.get(class_tag)
-        )
-        if registered is not None:
-            return registered
-
-        bracket_start = class_tag.find("[")
-        if bracket_start == -1:
-            raise ValueError(f"Unknown serialized timeline class '{class_tag}'")
-
-        outer_tag = class_tag[:bracket_start]
-        if not outer_tag or not class_tag.endswith("]"):
-            raise ValueError(f"Unknown serialized timeline class '{class_tag}'")
-
-        depth = 0
-        for index, char in enumerate(class_tag[bracket_start:], start=bracket_start):
-            if char == "[":
-                depth += 1
-            elif char == "]":
-                depth -= 1
-                if depth == 0 and index != len(class_tag) - 1:
-                    raise ValueError(f"Unknown serialized timeline class '{class_tag}'")
-                if depth < 0:
-                    raise ValueError(f"Unknown serialized timeline class '{class_tag}'")
-        if depth != 0:
-            raise ValueError(f"Unknown serialized timeline class '{class_tag}'")
-
-        outer_class = Timeline._resolve_serialized_class_hierarchy(outer_tag)
-        from .types import SegmentLine
-
-        if outer_class is not SegmentLine:
-            raise ValueError(
-                f"Serialized timeline class '{outer_class.__name__}' "
-                "does not accept type parameters"
-            )
-
-        inner_start = bracket_start + 1
-        inner_tag = class_tag[inner_start:-1]
-        try:
-            inner_class = Timeline._resolve_serialized_class_hierarchy(inner_tag)
-        except ValueError as error:
-            raise ValueError(f"{error} in parameterized tag '{class_tag}'") from error
-
-        return SegmentLine[inner_class]
+    # The manifest this timeline was read from as a whole, written back
+    # around it; None for a timeline not read from a manifest.
+    _manifest: Manifest | None = None
 
     @classmethod
-    def _from_dict_initial_length(cls, data: dict[str, Any]) -> CoordinateValue:
-        """Return the length to use while reconstructing a payload."""
-        return wire_to_rational(data["length"])
+    def _from_dict_initial_length(
+        cls, length: Coordinate | None
+    ) -> CoordinateValue | None:
+        """Return the length to construct with while rebuilding a timeline."""
+        return None if length is None else length.value
 
-    def _finalize_from_dict(self, data: dict[str, Any]) -> None:
+    def _finalize_from_dict(self, length: Coordinate | None) -> None:
         """Restore state that must be set after children are added."""
-
-    @classmethod
-    def _validate_serialized_payload(cls, data: dict[str, Any]) -> None:
-        """Validate compatibility rules specific to serialized payloads."""
 
     # endregion
 
@@ -228,10 +302,9 @@ class Timeline(
 
     def __init__(
         self,
-        length: CoordinateValue = 0,
+        length: CoordinateValue | None = 0,
         unit: TimeUnit | str | None = None,
         number_type: NumberType | str | None = None,
-        id_prefix: str = "tl",
         uid: str | None = None,
         name: str | None = None,
         locked: bool = False,
@@ -241,17 +314,21 @@ class Timeline(
 
         Args:
             length: The length (end coordinate) of the timeline. Default 0.
+                ``None`` states that the length is unknown; positions on such
+                a timeline are not bounded above.
             unit: The time unit for coordinates. Defaults to class default.
             number_type: The number type for coordinates. Defaults to the
                 one the unit itself uses.
-            id_prefix: Prefix for auto-generated ID. Default "tl".
-            uid: Explicit unique identifier. Overrides auto-generation.
+            uid: Explicit identifier, kept verbatim. When None, the id is
+                minted from the unit (``clt_1``, ``dpt_1``, ...).
             name: Human-readable name for display (distinct from uid).
-            locked: If True, timeline cannot expand. Default False.
+            locked: If True, the length is fixed, known or not, and the
+                timeline cannot expand. Default False.
             meta: Additional metadata dictionary.
 
         Raises:
-            ValueError: If unit or number_type is not allowed for this class.
+            ValueError: If unit or number_type is not allowed for this class,
+                or if *uid* is not a valid id.
             TypeError: If length is not a valid coordinate value.
         """
         # Resolve unit
@@ -267,18 +344,18 @@ class Timeline(
         # Resolve number_type -- the unit decides what it can be.
         self._number_type = unit.resolve_number_type(number_type)
 
-        # Generate or use provided ID
-        if uid is not None:
-            self._id = uid
-        else:
-            # Use module-level counter for truly unique IDs
-            if id_prefix not in _TIMELINE_COUNTER:
-                _TIMELINE_COUNTER[id_prefix] = 0
-            _TIMELINE_COUNTER[id_prefix] += 1
-            self._id = f"{id_prefix}:{_TIMELINE_COUNTER[id_prefix]}"
+        # A given id is kept; otherwise one is minted in an empty scope and
+        # re-minted if it collides when this timeline joins a manifest.
+        self._id_minted = uid is None
+        self._id = (
+            mint_id(timeline_id_prefix(unit), ()) if uid is None else validate_id(uid)
+        )
+        self._parent: Timeline | None = None
+        # The groups and bundles this timeline joined, held weakly: their
+        # trees share one id scope with this timeline's tree while they live.
+        self._scopes: list[weakref.ref[_IdScope]] = []
 
-        # Initialize length as Coordinate
-        self._length = self._make_coordinate(length)
+        self._length = self._make_length(length)
 
         # State
         self._locked = locked
@@ -307,11 +384,29 @@ class Timeline(
         # A Region is a named part of a timeline defined by a TimeInterval.
         self._regions: dict[str, Region] = {}
 
+        # Authored structure and control events belong to this exact extent.
+        # The measure map is held by the conversion map reading it on this
+        # axis: a MeasureRecordMap, or a ChainMap of a LinearMap to quarters
+        # and a MeasureRecordMap.
+        self._measure_record_map: ConversionMap[Any] | None = None
+        self._metric_hierarchy: MetricHierarchy | None = None
+        self._adopt_flow_control(
+            FlowControlRegistry(unit=self._unit, number_type=self._number_type)
+        )
+
         # FlowMap storage (coordinate transformations for flow control)
         # Timelines store FlowMaps (not FlowControllers).
         # FlowMaps enable unfold/fold coordinate conversion for timelines
         # that have flow control (repeats, jumps, etc.).
         self._flow_maps = {}
+
+        # Shared temporal structures enroll timelines through TimeSkeleton.
+        self._skeleton_attachments: list[Any] = []
+
+        # What the timeline stands for: its statements and provenance as the
+        # file writes them, and the prefixes they need beyond the catalogue's.
+        self._statement_state: dict[str, Any] = {}
+        self._prefixes: dict[str, str] = {}
 
         # Logger
         self._logger = module_logger.getChild(self._id)
@@ -358,8 +453,7 @@ class Timeline(
            specific domain).
 
         Further-derived subclasses participate in the lookup and can be
-        selected when they are the most specific matching candidate, such as
-        a specialized ``BeatGrid`` subclass.
+        selected when they are the most specific matching candidate.
 
         Falls back to the base ``Timeline`` if no subclass claims the unit.
 
@@ -535,6 +629,10 @@ class Timeline(
         """The class name of this timeline."""
         return self.__class__.__name__
 
+    def _is_segment_line_instance(self) -> bool:
+        """Whether this timeline is a SegmentLine (the dictionary's flag)."""
+        return False
+
     # endregion
 
     # region Properties - Coordinate Type
@@ -601,22 +699,31 @@ class Timeline(
         return self._make_coordinate(0)
 
     @property
-    def length(self) -> Coordinate:
-        """The end coordinate (length of the timeline)."""
+    def length(self) -> Coordinate | None:
+        """The end coordinate (length of the timeline), ``None`` when unknown."""
         return self._length
 
     @length.setter
-    def length(self, value: CoordinateSpec) -> None:
-        """Set the timeline length.
+    def length(self, value: CoordinateSpec | None) -> None:
+        """Set the timeline length, or ``None`` to state that it is unknown.
 
         Args:
-            value: New length value.
+            value: New length value, or ``None``.
+
+        A child's new end must lie within its parent's known length, which
+        never grows with it; a segment must keep ending at its successor's
+        offset, the last one at the line's known length.
 
         Raises:
             RuntimeError: If timeline is locked.
-            ValueError: If new length is less than current content.
+            ValueError: If new length is less than current content, or the
+                parent cannot contain the new end.
         """
         self._check_not_locked("set length")
+
+        if value is None:
+            self._set_length(None)
+            return
 
         new_length = self.get_coordinate_at(value, format="coordinate")
 
@@ -629,7 +736,12 @@ class Timeline(
                 f"content extends to {_format_coordinate_value(float(max_content))}"
             )
 
-        self._length = new_length
+        self._set_length(new_length)
+
+    @property
+    def is_length_known(self) -> bool:
+        """Whether this timeline's length is known (not ``None``)."""
+        return self._length is not None
 
     @property
     def start(self) -> Coordinate:
@@ -637,9 +749,55 @@ class Timeline(
         return self.origin
 
     @property
-    def end(self) -> Coordinate:
-        """Alias for length."""
+    def end(self) -> Coordinate | None:
+        """Alias for length: ``None`` when the length is unknown."""
         return self._length
+
+    @property
+    def reach(self) -> Coordinate:
+        """The farthest coordinate on this axis that the content reaches.
+
+        Content means the children's ends, region ends, break and marker
+        coordinates, both ends of every jump, and the end of the measure map.
+        A child of unknown length contributes its offset plus its own reach.
+        Events are not part of it. A timeline without such content reaches
+        ``0``. The reach is independent of the length, known or not; displays
+        use it as the extent of a timeline whose length is unknown.
+
+        Examples:
+            >>> tl = ContinuousLogicalTimeline(length=None)
+            >>> tl.create_region(2, 6).end.value
+            Fraction(6, 1)
+            >>> tl.reach
+            Coordinate(Fraction(6, 1), quarters)
+        """
+        candidates: list[CoordinateValue] = [0]
+        for child_id, child in self._children.items():
+            offset = self._child_offsets[child_id].value
+            extent = child._extent
+            candidates.append(
+                offset + (child.reach.value if extent is None else extent)
+            )
+        for region in self._regions.values():
+            candidates.append(region.end.value)
+        registry = self._flow_control
+        candidates.extend(item.coordinate.value for item in registry.breaks)
+        candidates.extend(item.coordinate.value for item in registry.markers)
+        for jump in registry.jumps:
+            candidates.extend((jump.from_coordinate.value, jump.to_coordinate.value))
+        measure_map = self.measure_map
+        if measure_map is not None:
+            for measure in measure_map:
+                if measure.qstamp is None:
+                    continue
+                candidates.append(
+                    self._from_quarters(
+                        measure.qstamp
+                        if measure.actual_length is None
+                        else measure.qstamp + measure.actual_length
+                    )
+                )
+        return self._make_coordinate(express_as(max(candidates), self._number_type))
 
     # endregion
 
@@ -647,13 +805,533 @@ class Timeline(
 
     @property
     def is_locked(self) -> bool:
-        """Whether this timeline is locked (cannot expand)."""
+        """Whether this timeline's length is fixed, known or not."""
         return self._locked
 
     @property
     def meta(self) -> dict[str, Any]:
         """Metadata dictionary."""
         return dict(self._meta)
+
+    @property
+    def root_offset(self) -> Coordinate | None:
+        """Where a root's origin lies on its unit's absolute axis, or None.
+
+        A manifest root may carry an ``offset``, negative included: a
+        recording whose origin is a point in absolute time, for example.
+        :meth:`from_dict` keeps it here and :meth:`to_dict` writes it back;
+        no coordinate, conversion, child placement or containment reads it.
+        """
+        return self._root_offset
+
+    @property
+    def measure_map(self) -> MeasureMap | None:
+        """Authored measure structure, absent on fresh and derived slices.
+
+        A measure map's positions are quarters; on an axis in other units
+        the timeline reaches it through a ``LinearMap`` to quarters (see
+        :meth:`add_measure_map`).
+        """
+        record = self._measure_record_map
+        if record is None:
+            return None
+        if isinstance(record, ChainMap):
+            record = record.maps[-1]
+        return record.measure_map
+
+    @property
+    def metric_hierarchy(self) -> MetricHierarchy | None:
+        """Authored metric structure, absent on fresh and derived slices."""
+        return self._metric_hierarchy
+
+    @property
+    def flow_control(self) -> FlowControlRegistry:
+        """Axis-bound breaks, jumps, and markers."""
+        return self._flow_control
+
+    # endregion
+
+    # region Manifest Identity
+
+    def _adopt_flow_control(self, registry: FlowControlRegistry) -> None:
+        """Make *registry* this timeline's, admitting its ids into the manifest."""
+        self._flow_control = registry
+        registry._admit = self._admit_element_id
+
+    def _set_id(self, new_id: str, *, minted: bool = False) -> None:
+        """Give this timeline a new id, renaming it under its parent.
+
+        Every statement of the timeline's manifest naming the old id names
+        the new one (:meth:`_rename_references`).
+        """
+        validate_id(new_id)
+        old_id = self._id
+        if self._parent is not None and new_id != old_id:
+            self._parent._rename_child(old_id, new_id)
+        self._id = new_id
+        self._id_minted = minted
+        self._rename_references(old_id, new_id)
+
+    def _identity_entries(self) -> list[tuple[str, bool, str, str]]:
+        """Return ``(id, minted, prefix, description)`` for this timeline and
+        every element it holds itself (its children excluded), in the order
+        timeline, conversion maps (each followed by the maps nested in it),
+        regions, breaks, markers, jumps."""
+        owner = f"of timeline {quote_id(self._id)}"
+        return [
+            (
+                self._id,
+                self._id_minted,
+                timeline_id_prefix(self._unit),
+                f"timeline {quote_id(self._id)}",
+            ),
+            *(
+                entry
+                for cmap in self._all_conversion_maps()
+                for entry in cmap._identity_entries(f" {owner}")
+            ),
+            *(
+                (
+                    element.id,
+                    element._minted,
+                    element._id_prefix,
+                    f"{element._id_prefix} {quote_id(element.id)} {owner}",
+                )
+                for element in (
+                    *self._regions.values(),
+                    *self._flow_control._elements(),
+                )
+            ),
+        ]
+
+    def _reassign_element_id(self, old_id: str, new_id: str) -> None:
+        """Store the element of this timeline with *old_id* under a minted id.
+
+        Every statement of the timeline's manifest naming the old id names
+        the new one.
+        """
+        held_map = next(
+            (
+                nested
+                for cmap in self._all_conversion_maps()
+                for nested in cmap._map_tree()
+                if nested.id == old_id
+            ),
+            None,
+        )
+        if old_id == self._id:
+            self._set_id(new_id, minted=True)
+        elif old_id in self._regions:
+            self._rename_region(old_id, new_id)
+        else:
+            if old_id in self._conversion_maps:
+                self._rename_conversion_map(old_id, new_id)
+            elif held_map is not None:
+                held_map._id = new_id
+            else:
+                self._flow_control._reassign_id(old_id, new_id)
+            self._rename_references(old_id, new_id)
+
+    def _tree_ids(self) -> dict[str, str]:
+        """Map every id of this timeline's tree to its holder's description.
+
+        The tree is the root timeline above this one and all its
+        descendants, each with its maps, regions and flow-control elements.
+        """
+        root = self
+        while root._parent is not None:
+            root = root._parent
+        return {
+            element_id: description
+            for timeline in (root, *(child for _, child in root._iter_descendants()))
+            for element_id, _minted, _prefix, description in timeline._identity_entries()
+        }
+
+    def _join_scope(self, container: _IdScope) -> None:
+        """Record that this timeline joined *container*, a group or a bundle."""
+        if not any(ref() is container for ref in self._scopes):
+            self._scopes.append(weakref.ref(container))
+
+    def _leave_scope(self, container: _IdScope) -> None:
+        """Record that this timeline left *container*."""
+        self._scopes = [
+            ref for ref in self._scopes if ref() is not None and ref() is not container
+        ]
+
+    def _scope_containers(self) -> list[_IdScope]:
+        """Return the live groups and bundles any timeline of this tree joined."""
+        root = self
+        while root._parent is not None:
+            root = root._parent
+        containers: list[_IdScope] = []
+        for timeline in (root, *(child for _, child in root._iter_descendants())):
+            for ref in timeline._scopes:
+                container = ref()
+                if container is not None and not any(
+                    held is container for held in containers
+                ):
+                    containers.append(container)
+        return containers
+
+    def _manifest_ids(self) -> dict[str, str]:
+        """Map every id of this timeline's manifest to its holder's description.
+
+        The manifest is this timeline's tree and, while the tree is held by
+        groups or bundles, every tree those hold, with each group's and
+        bundle's given id: an id is unique within it across all element
+        kinds. A minted group id is left out, since a given id that takes it
+        mints the group again (:meth:`_settle_scope`).
+        """
+        ids = self._tree_ids()
+        for container in self._scope_containers():
+            for element_id, description in container._scope_ids().items():
+                ids.setdefault(element_id, description)
+        return ids
+
+    def _settle_scope(self, given: set[str], joining: Sequence[_IdScope] = ()) -> None:
+        """Mint again every minted group id that the *given* ids now take.
+
+        A statement naming a group minted again names its new id, except
+        in a tree joining: there the old id names the tree's own element.
+
+        Args:
+            given: The given ids that joined this timeline's manifest.
+            joining: Groups and bundles the tree is joining, not yet
+                recorded on it; when given, this timeline's tree is the one
+                joining.
+        """
+        newcomer = self._tree_root() if joining else None
+        containers = [
+            *joining,
+            *(
+                container
+                for container in self._scope_containers()
+                if not any(scope is container for scope in joining)
+            ),
+        ]
+        for container in containers:
+            container._yield_minted_ids(given, containers, newcomer)
+
+    def _admit_entries(
+        self,
+        entries: Sequence[tuple[str, bool, str, str]],
+        rename: Callable[[int, str], None] | None = None,
+        *,
+        avoid: Iterable[str] = (),
+        check_only: bool = False,
+    ) -> list[str]:
+        """Admit elements into this timeline's manifest under ids of their own.
+
+        Every element joining the manifest joins here: an element added to
+        this timeline, a map with the maps nested in it, a child's whole
+        subtree. The elements are planned together (a given id the manifest
+        holds raises, a minted one is minted again), the elements minted
+        again are renamed, and every minted group id that a given id now
+        takes is minted again (:meth:`_settle_scope`).
+
+        Args:
+            entries: ``(id, minted, prefix, description)`` of each joining
+                element, in the order they claim their ids.
+            rename: Called with an element's index and its new id for each
+                element minted again; without it, the caller stores the
+                elements under the ids returned.
+            avoid: Further ids no id minted again may take.
+            check_only: Raise as admitting would, but change nothing.
+
+        Returns:
+            The id each element joins under, in the order of *entries*.
+
+        Raises:
+            ValueError: If a given id is already held, in the manifest or by
+                another joining element. Nothing has changed then.
+        """
+        plan = _plan_admissions(entries, self._manifest_ids(), avoid=avoid)
+        if not check_only:
+            if rename is not None:
+                for index, new_id in plan.items():
+                    rename(index, new_id)
+            self._settle_scope(
+                {
+                    element_id
+                    for element_id, minted, _prefix, _desc in entries
+                    if not minted
+                }
+            )
+        return [plan.get(index, entry[0]) for index, entry in enumerate(entries)]
+
+    def _admit_element_id(
+        self, element_id: str, *, minted: bool, prefix: str, element: str
+    ) -> str:
+        """Return the id under which an element joins this timeline's manifest.
+
+        Raises:
+            ValueError: If the element's given id is already taken.
+        """
+        (admitted,) = self._admit_entries(
+            [
+                (
+                    element_id,
+                    minted,
+                    prefix,
+                    f"{element} of timeline {quote_id(self._id)}",
+                )
+            ]
+        )
+        return admitted
+
+    def _admit_map(self, cmap: ConversionMap[Any]) -> None:
+        """Admit *cmap* and every map nested in it into this timeline's manifest.
+
+        Raises:
+            ValueError: If a given id of the map's tree is already held in the
+                manifest or in the tree, or the tree nests one map twice.
+        """
+        owner = f" of timeline {quote_id(self._id)}"
+        tree = cmap._unique_map_tree(owner)
+
+        def rename(index: int, new_id: str) -> None:
+            tree[index]._id = new_id
+
+        self._admit_entries(cmap._identity_entries(owner), rename)
+
+    def _subtree_entries(
+        self,
+    ) -> tuple[list[tuple[str, bool, str, str]], Callable[[int, str], None]]:
+        """Return the identity entries of this timeline and its descendants.
+
+        Returns:
+            The entries, in the order of :meth:`_identity_entries`, timeline
+            by timeline from this one down; and the rename that stores the
+            element of an entry, by its index, under a new id.
+        """
+        joining = [
+            (timeline, entry)
+            for timeline in (self, *(t for _, t in self._iter_descendants()))
+            for entry in timeline._identity_entries()
+        ]
+
+        def rename(index: int, new_id: str) -> None:
+            owner, (old_id, *_) = joining[index]
+            owner._reassign_element_id(old_id, new_id)
+
+        return [entry for _, entry in joining], rename
+
+    # endregion
+
+    # region References in statements
+
+    def _statement_holder_name(self) -> str:
+        """Return the timeline as a message names it."""
+        return f"timeline {quote_id(self._id)}"
+
+    def _rename_statement_references(self, renamed: Mapping[str, str | None]) -> None:
+        """Rename the elements this timeline's statements and its regions' name."""
+        super()._rename_statement_references(renamed)
+        self._regions = {
+            region_id: region._with_references_renamed(renamed)
+            for region_id, region in self._regions.items()
+        }
+
+    def _take_prefixes(self, declared: Mapping[str, str]) -> None:
+        """Keep the prefixes of *declared* that this timeline's statements and
+        each of its regions' need beyond the catalogue's."""
+        self._prefixes = needed_prefixes(self._statement_state, declared)
+        self._regions = {
+            region_id: (
+                region._with_statement_state(
+                    prefixes=needed_prefixes(region._statement_state, declared)
+                )
+                if region._statement_state
+                else region
+            )
+            for region_id, region in self._regions.items()
+        }
+
+    def _tree_root(self) -> Timeline:
+        """Return the root of this timeline's tree."""
+        root = self
+        while root._parent is not None:
+            root = root._parent
+        return root
+
+    def _statement_holders(self) -> list[Any]:
+        """Return everything holding statements in this timeline's manifest.
+
+        The manifest is the timeline's tree and every tree the groups and
+        bundles holding it hold (:meth:`_manifest_ids`): each timeline of
+        those trees (each with its regions), the manifest each of their
+        roots was read from as a whole, and what holds the statements of
+        each group's and bundle's own manifest
+        (``_IdScope._statements_holder``).
+        """
+        containers = self._scope_containers()
+        roots: list[Timeline] = [self._tree_root()]
+        for container in containers:
+            for member in container._scope_members():
+                root = member._tree_root()
+                if not any(seen is root for seen in roots):
+                    roots.append(root)
+        return statement_holders(roots, containers)
+
+    def _rename_references(self, old_id: str, new_id: str) -> None:
+        """Make every statement of this timeline's manifest naming *old_id*
+        name *new_id*, the id the same element holds now."""
+        if old_id == new_id:
+            return
+        for holder in self._statement_holders():
+            holder._rename_statement_references({old_id: new_id})
+
+    def _drop_references(self, ids: Iterable[str]) -> None:
+        """Leave the elements of *ids* that left this timeline's manifest out
+        of the statements of its tree.
+
+        Each id of *ids* the manifest (:meth:`_manifest_ids`) no longer holds
+        is dropped from the statements of the tree's timelines and regions
+        and of the manifest its root was read from as a whole: a value
+        naming it leaves its list, with its provenance entry, and a
+        ``basis`` or ``stated_by`` item naming it leaves its list.
+        """
+        gone = set(ids).difference(self._manifest_ids())
+        if not gone:
+            return
+        renamed: dict[str, str | None] = dict.fromkeys(gone)
+        for holder in statement_holders([self._tree_root()], ()):
+            holder._rename_statement_references(renamed)
+
+    # endregion
+
+    # region Authored Structure
+
+    def add_measure_map(
+        self, measure_map: MeasureMap, *, to_quarters: LinearMap | None = None
+    ) -> Self:
+        """Attach the timeline's single authored measure map.
+
+        A measure map's positions are quarters. On a quarters axis the map is
+        read as it is; on a ``whole_notes`` axis through the ``LinearMap``
+        that multiplies by 4, unless *to_quarters* gives another; on a ticks
+        axis through *to_quarters*, which says how many ticks a quarter
+        holds. The timeline holds the map in a :class:`MeasureRecordMap`,
+        chained after that ``LinearMap`` on an axis other than quarters,
+        which its manifest writes among the conversion maps.
+
+        Args:
+            measure_map: Immutable measure structure to attach.
+            to_quarters: The ``LinearMap`` from this timeline's unit to
+                quarters, on an axis in whole notes or ticks.
+
+        Returns:
+            This timeline after attachment.
+
+        Raises:
+            ValueError: If the timeline already carries a measure map, its
+                unit is none of quarters, whole notes and ticks, a ticks
+                timeline is given no *to_quarters*, or *to_quarters* is given
+                on a quarters axis or does not lead from this unit to
+                quarters.
+        """
+        if self._measure_record_map is not None:
+            raise ValueError(f"Timeline {self._id!r} already has a measure map")
+        record = MeasureRecordMap(measure_map)
+        if self._unit is TimeUnit.quarters:
+            if to_quarters is not None:
+                raise ValueError(
+                    f"Timeline {self._id!r} is on the quarter-note axis: its measure "
+                    "map needs no LinearMap to quarters"
+                )
+            self._set_measure_record_map(record)
+            return self
+        if to_quarters is None and self._unit is TimeUnit.whole_notes:
+            to_quarters = LinearMap(
+                scalar=4,
+                source_unit=TimeUnit.whole_notes,
+                target_unit=TimeUnit.quarters,
+            )
+        if self._unit not in (TimeUnit.whole_notes, TimeUnit.ticks):
+            raise ValueError(
+                f"Timeline unit {self._unit.value!r} does not reach the quarter notes "
+                "a measure map is anchored on: give it a quarters, whole_notes or "
+                "ticks timeline"
+            )
+        if to_quarters is None:
+            raise ValueError(
+                f"Timeline {self._id!r} is in ticks: give the LinearMap from ticks to "
+                "quarters (to_quarters=) its measure map is read through"
+            )
+        self._set_measure_record_map(ChainMap([to_quarters, record]))
+        return self
+
+    def _set_measure_record_map(self, cmap: ConversionMap[Any]) -> None:
+        """Hold *cmap* as the map reading this timeline's measure map.
+
+        Raises:
+            ValueError: If *cmap* is neither a ``MeasureRecordMap`` on a
+                quarters axis nor a ``ChainMap`` of a ``LinearMap`` from this
+                timeline's unit to quarters and a ``MeasureRecordMap``, or its
+                given id is already held in the manifest.
+        """
+        if not _is_record_map_on(cmap, self._unit):
+            raise ValueError(
+                f"Timeline {self._id!r} reads a measure map through a "
+                "MeasureRecordMap on quarters, or a ChainMap of a LinearMap from "
+                f"{self._unit.value!r} to quarters and a MeasureRecordMap"
+            )
+        self._admit_map(cmap)
+        self._measure_record_map = cmap
+
+    def _from_quarters(self, value: CoordinateValue) -> CoordinateValue:
+        """Return a position of the measure map, in quarters, on this axis."""
+        record = self._measure_record_map
+        if not isinstance(record, ChainMap):
+            return value
+        to_quarters = record.maps[0]
+        offset = getattr(to_quarters, "offset", 0)
+        return (Fraction(value) - offset) / Fraction(to_quarters.scalar)
+
+    def _all_conversion_maps(self) -> list[ConversionMap[Any]]:
+        """Every conversion map this timeline holds, its measure map's included."""
+        maps = list(self._conversion_maps.values())
+        if self._measure_record_map is not None:
+            maps.append(self._measure_record_map)
+        return maps
+
+    def add_metric_hierarchy(self, metric_hierarchy: MetricHierarchy) -> Self:
+        """Attach the timeline's single measure-anchored metric hierarchy.
+
+        Args:
+            metric_hierarchy: Hierarchy anchored on this timeline's measure map.
+
+        Returns:
+            This timeline after attachment.
+
+        Raises:
+            ValueError: If the timeline has no matching measure map, is not on
+                the quarter-note axis, or already carries a hierarchy.
+        """
+        if self._metric_hierarchy is not None:
+            raise ValueError(f"Timeline {self._id!r} already has a metric hierarchy")
+        if self.measure_map is None:
+            raise ValueError("A metric hierarchy requires the timeline's measure map")
+        if metric_hierarchy.measure_map != self.measure_map:
+            raise ValueError(
+                "The metric hierarchy is anchored on a different measure map"
+            )
+        self._require_quarters_axis("metric hierarchy")
+        if isinstance(self._measure_record_map, ChainMap):
+            raise ValueError(
+                f"Timeline {self._id!r} reads its measure map through a LinearMap: "
+                "a metric hierarchy is anchored on a measure map read as it is"
+            )
+        self._metric_hierarchy = metric_hierarchy
+        return self
+
+    def _require_quarters_axis(self, structure: str) -> None:
+        """Refuse quarter-anchored structure on any other axis."""
+        if self.unit is not TimeUnit.quarters:
+            raise ValueError(
+                f"Timeline unit {self.unit.value!r} does not match {structure} "
+                f"unit {TimeUnit.quarters.value!r}"
+            )
 
     # endregion
 
@@ -678,7 +1356,32 @@ class Timeline(
                     f"expected '{self._unit}'"
                 )
             return value
-        return Coordinate(value, self._unit)
+        return Coordinate(value, self._unit, number_type=self._number_type)
+
+    def _make_length(
+        self, value: CoordinateValue | Coordinate | None
+    ) -> Coordinate | None:
+        """Create a length on this axis; ``None`` (unknown) passes through.
+
+        Raises:
+            ValueError: If the length is negative.
+        """
+        if value is None:
+            return None
+        return _refuse_negative_length(self._make_coordinate(value), self._id)
+
+    def _require_length(self, operation: str) -> Coordinate:
+        """Return the length, raising when an operation needs an unknown one.
+
+        Args:
+            operation: What needs the end, as a verb phrase for the message.
+
+        Raises:
+            UnknownLengthError: If the length is unknown.
+        """
+        if self._length is None:
+            raise UnknownLengthError(self._id, operation)
+        return self._length
 
     def make_coordinate(self, value: CoordinateValue) -> Coordinate:
         """Create a Coordinate in this timeline's unit.
@@ -697,6 +1400,38 @@ class Timeline(
 
     # region Lock Management
 
+    def lock(self) -> None:
+        """Lock this timeline so that it can no longer expand.
+
+        The timeline enters the state ``locked=True`` gives at construction:
+        content and children must fit its length, and appending refuses. A
+        root that grows by appending, such as a segment line, is locked this
+        way once built. Locking a locked timeline changes nothing. A lock
+        cannot be lifted. A segment of a segment line is never locked: its
+        line's lock governs it.
+
+        Raises:
+            ValueError: If this timeline is a segment that is no segment line
+                itself.
+
+        Examples:
+            >>> from timetoalign.timelines import (
+            ...     ContinuousLogicalTimeline,
+            ...     SegmentLine,
+            ... )
+            >>> line = SegmentLine[ContinuousLogicalTimeline](length=0, unit="quarters")
+            >>> line.append_segment(ContinuousLogicalTimeline(length=4, unit="quarters"))
+            >>> line.append_segment(ContinuousLogicalTimeline(length=2, unit="quarters"))
+            >>> line.is_locked
+            False
+            >>> line.lock()
+            >>> line.is_locked
+            True
+        """
+        if self._parent is not None:
+            self._parent._refuse_segment_lock(self)
+        self._locked = True
+
     def _check_not_locked(self, operation: str) -> None:
         """Raise RuntimeError if timeline is locked.
 
@@ -708,8 +1443,8 @@ class Timeline(
         """
         if self._locked:
             raise RuntimeError(
-                f"Cannot {operation} on locked timeline '{self._id}'. "
-                "Timelines are locked when embedded as children."
+                f"Cannot {operation} on locked timeline '{self._id}': "
+                "its length is fixed."
             )
 
     # endregion
@@ -724,7 +1459,7 @@ class Timeline(
                 value.get("numerator") is not None
                 and value.get("denominator") is not None
             ):
-                return wire_to_rational(value)
+                return struct_to_rational(value)
             return value["value"]
         return value
 
@@ -762,7 +1497,7 @@ class Timeline(
             "unit": str(self._unit),
             "number_type": str(self._number_type),
             "domain": str(self.domain),
-            "length": self._length.value,
+            "length": None if self._length is None else self._length.value,
             "is_locked": self._locked,
             "n_events": self.n_events,
             "n_children": self.n_children,
@@ -770,7 +1505,12 @@ class Timeline(
         }
 
     def _segment_line_structure_error(self) -> str | None:
-        """Return the first exact contiguity error, if any."""
+        """Return the first exact contiguity error, if any.
+
+        Contiguity is checked between known values: a child of unknown length
+        ends at its successor's offset, and the last child's end is compared
+        with the timeline's length only when both are known.
+        """
         if not self._children:
             return f"Timeline '{self._id}' has no children"
 
@@ -778,11 +1518,11 @@ class Timeline(
             self._children.items(),
             key=lambda item: self._child_offsets[item[0]].value,
         )
-        expected: CoordinateValue = 0
+        expected: CoordinateValue | None = 0
         previous_id: str | None = None
         for child_id, child in ordered:
             actual = self._child_offsets[child_id].value
-            if actual != expected:
+            if expected is not None and actual != expected:
                 expected_display = _format_coordinate_value(float(expected))
                 actual_display = _format_coordinate_value(float(actual))
                 if previous_id is None:
@@ -794,9 +1534,11 @@ class Timeline(
                     f"Children '{previous_id}' and '{child_id}' are not contiguous: "
                     f"expected offset {expected_display}, got {actual_display}"
                 )
-            expected = actual + child.length.value
+            expected = None if child.length is None else actual + child.length.value
             previous_id = child_id
 
+        if expected is None or self._length is None:
+            return None
         if expected != self._length.value:
             return (
                 f"Child '{previous_id}' and timeline end are not contiguous: "
@@ -810,7 +1552,12 @@ class Timeline(
         return self._segment_line_structure_error() is None
 
     def as_segment_line(self) -> "Timeline":
-        """Cast a structurally contiguous hierarchy to a parameterized line."""
+        """Cast a structurally contiguous hierarchy to a parameterized line.
+
+        The line is a copy holding copies of the children, so a change to it
+        never reaches this tree; everything else is carried over as by
+        :meth:`to_typed`.
+        """
         from .types import SegmentLine, SegmentLineMixin
 
         if isinstance(self, SegmentLineMixin):
@@ -832,31 +1579,10 @@ class Timeline(
                     f"expected {child_class.__name__}, got {type(child).__name__}"
                 )
 
-        segment_line = SegmentLine[child_class](
-            length=0,
-            unit=self._unit,
-            number_type=self._number_type,
-            uid=self._id,
-            name=self._name,
-            locked=False,
-            meta=dict(self._meta) if self._meta else None,
+        return self._recast(
+            SegmentLine[child_class],
+            [(child_id, child._copy_tree()) for child_id, child in ordered],
         )
-        events = [
-            dict(event)
-            for event in self._events
-            if event.get("event_type") != SEGMENT_EVENT_TYPE
-        ]
-        if events:
-            segment_line._add_events_unchecked(events)
-        segment_line._external_references = self._external_references
-        for _, child in ordered:
-            segment_line.append_segment(child)
-        for cmap in self._conversion_maps.values():
-            segment_line.add_conversion_map(cmap)
-        segment_line._regions.update(self._regions)
-        segment_line._flow_maps.update(self._flow_maps)
-        segment_line._locked = self._locked
-        return segment_line
 
     # endregion
 
@@ -865,156 +1591,495 @@ class Timeline(
     def to_dict(
         self,
         *,
+        minimal: bool = True,
         events: bool = False,
         external_references: bool = False,
     ) -> dict[str, Any]:
-        """Convert timeline to a dictionary for serialization.
+        """Write a TimeToShare manifest holding this timeline as its one root.
 
-        The default output describes the timeline's structure only: the
-        ``"events"`` and ``"external_references"`` keys are **absent**
-        unless explicitly requested, which keeps the payload small for the
-        common case of persisting a hierarchy rather than its contents.
+        The timeline object is the timeline's structure: its axis, children,
+        conversion maps, regions and flow control, and its statements and
+        provenance (see :mod:`~timetoalign.timelines.statements`). Its measure map is a
+        ``MeasureRecordMap`` among the conversion maps (chained after a
+        ``LinearMap`` to quarters on an axis in whole notes or ticks) naming
+        an entry of the manifest's ``measure_maps``, which also holds every
+        measure map a measure view names; equal measure maps share one entry.
+        The metric hierarchy has no manifest form and is not written. Every
+        conversion map is written as one of the format's map types (see
+        :meth:`ConversionMap.to_dict <timetoalign.maps.ConversionMap.to_dict>`).
+        The library's class is not written: the unit decides it. A value on
+        the timeline's own axis — ``length``, a child's ``offset``, region
+        ``start``/``end``, a flow-control element's ``coordinate`` — is
+        written bare, represented as the axis's number type selects (``8``,
+        ``8.0``, ``[8, 1]``); a ``length`` of None is written ``null``.
+        ``"events"`` and ``"external_references"`` are written only on
+        request.
 
-        Coordinate-valued members — ``length`` and every child
-        ``offset`` — are emitted as the canonical rational wire dict
-        (:func:`~timetoalign.core.rational_to_wire`), so the result is
-        JSON-serializable whatever the timeline's number type, and
-        ``Fraction`` coordinates survive the round trip exactly.
+        By default every key at its default value is left out, except
+        ``length`` (the minimal form); with ``minimal=False`` every optional
+        key is written, its default value included (the complete form). Keys
+        the library does not know, kept when the timeline was read, are
+        written back. A timeline read from a manifest as a whole writes that
+        manifest's ``id``, ``name``, ``meta``, statements, ``graphical``
+        and unknown keys back around it. :meth:`to_file` writes the
+        manifest as a file. Every manifest carries its inline JSON-LD
+        ``@context``: the format's terms and the prefixes its statements use.
+
+        The manifest is written whole and valid wherever the timeline
+        belongs: a value naming a timeline or region this manifest leaves
+        out (another timeline of the bundle) is left out with its
+        provenance.
+
+        Collections are written in one canonical order, independent of the
+        order in which their content was added, so equal timelines give equal
+        text: ``children`` by offset, then id; ``conversion_maps`` by id;
+        ``regions`` by start, then end, then id; ``flow_control`` (breaks,
+        markers and jumps in one array, see
+        :meth:`FlowControlRegistry.to_dict
+        <timetoalign.timelines.flowcontrol.FlowControlRegistry.to_dict>`) by
+        coordinate, then id; ``measure_maps`` by id. Values compare exactly and ids by
+        Unicode code point. The timeline's own storage is not reordered, and
+        :meth:`from_dict` accepts any order.
 
         Args:
-            events: If True, include an ``"events"`` key holding this
-                timeline's event rows.
-            external_references: If True, include an
-                ``"external_references"`` key holding the reference table
-                as a list of row dicts (``access_points`` as a nested list
-                of ``{"uri": ..., "kind": ...}`` dicts). Included even
-                when the table is empty.
+            minimal: If False, write every optional key, its default value
+                included.
+            events: If True, write an ``"events"`` key on every timeline
+                object holding its event rows.
+            external_references: If True, write an ``"external_references"``
+                key on every timeline object holding the reference table as
+                a list of row dicts (``access_points`` as a nested list of
+                ``{"uri": ..., "kind": ...}`` dicts), even when it is empty.
 
         Returns:
-            A JSON-serializable dictionary representation of the timeline.
+            A JSON-serializable manifest ``{"timetoshare": "0.2.0", ...,
+            "timelines": [timeline]}``, every ID written ``#`` followed by
+            the ID, as a manifest file writes it.
+
+        Raises:
+            ValueError: If a conversion map has no TimeToShare form or
+                cannot be written losslessly, a jump cannot name the marker
+                it lands on, a measure map's given id is held by another
+                measure map or by a timeline, group or the manifest, two
+                timelines or regions use one prefix for two namespaces, or
+                the statements written break a rule of the format, in
+                TimeToShare's words (``#/timelines/0/statements/dcterms:source/0/id:
+                '#ghost' names no element of this manifest``).
 
         Examples:
-            >>> "events" in tl.to_dict()
-            False
-            >>> "events" in tl.to_dict(events=True)
+            >>> from timetoshare import FORMAT_CONTEXT
+            >>> from timetoalign.timelines import ContinuousLogicalTimeline
+            >>> score = ContinuousLogicalTimeline(length=8, uid="piece")
+            >>> score.to_dict() == {
+            ...     "@context": dict(FORMAT_CONTEXT),
+            ...     "timetoshare": "0.2.0",
+            ...     "timelines": [{"id": "#piece", "unit": "quarters", "length": [8, 1]}],
+            ... }
             True
         """
-        children_data = {}
-        for child_id, child in self._children.items():
-            children_data[child_id] = {
-                "offset": rational_to_wire(self._child_offsets[child_id].value),
-                "timeline": child.to_dict(
-                    events=events,
-                    external_references=external_references,
-                ),
-            }
-
-        data: dict[str, Any] = {
-            "id": self._id,
-            "name": self._name,
-            "class": self.class_name,
-            "unit": str(self._unit),
-            "number_type": str(self._number_type),
-            "length": rational_to_wire(self._length.value),
-            "locked": self._locked,
-            "meta": self._meta,
-            "children": children_data,
-            "conversion_maps": [
-                cmap.to_dict() for cmap in self._conversion_maps.values()
-            ],
-        }
-
-        if events:
-            data["events"] = list(self._events)
-        if external_references:
-            data["external_references"] = self._external_references.to_pylist()
-
-        return data
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> Self:
-        """Create a Timeline from a dictionary.
-
-        Every rational wire dict in *data* — ``length``, the child
-        ``offset``s, and the event coordinate structs — is decoded by
-        :func:`~timetoalign.core.wire_to_rational`, so an exact ratio
-        comes back as a ``Fraction`` and an inexact one as a ``float``.
-        Feeding the result back through :meth:`to_dict` with the same
-        flags reproduces the input dictionary.
-
-        The ``"events"`` and ``"external_references"`` keys are optional:
-        a dictionary produced without them reconstructs a timeline with
-        zero events and an empty reference table. External references are
-        restored without event validation, so a payload carrying
-        references but no events round-trips intact.
-
-        Args:
-            data: Dictionary from to_dict().
-
-        Returns:
-            A new Timeline instance.
-        """
-        class_tag = data.get("class")
-        if not isinstance(class_tag, str):
-            raise ValueError("Serialized timeline is missing a string 'class' tag")
-
-        timeline_class = Timeline._resolve_serialized_class_hierarchy(class_tag)
-        if timeline_class is not cls and issubclass(timeline_class, cls):
-            return timeline_class.from_dict(data)
-
-        if timeline_class is not cls:
-            raise ValueError(
-                f"Serialized timeline class '{class_tag}' does not match "
-                f"receiving subclass '{cls.__name__}'"
-            )
-
-        cls._validate_serialized_payload(data)
-
-        timeline = cls(
-            length=cls._from_dict_initial_length(data),
-            unit=data["unit"],
-            number_type=data["number_type"],
-            uid=data["id"],
-            name=data.get("name"),
-            locked=False,
-            meta=data.get("meta"),
+        manifest = self._manifest if self._manifest is not None else Manifest()
+        return manifest.write(
+            [self],
+            minimal=minimal,
+            events=events,
+            external_references=external_references,
         )
 
-        # Add events (filter out segment events - they'll be recreated).
-        # Event coordinates arrive as rational wire dicts; decode them
-        # back to the numbers the EventData builder expects.
+    def _to_timeline_object(
+        self,
+        *,
+        events: bool,
+        external_references: bool,
+        offset: Coordinate | None,
+        entries: MeasureMapEntries,
+    ) -> dict[str, Any]:
+        """Write the timeline object, the timeline's own JSON object, in the complete form.
+
+        The manifest's writer puts the manifest in the form asked for.
+
+        Args:
+            events: Write the event rows.
+            external_references: Write the external reference table.
+            offset: The ``offset`` to write (a child's placement on its
+                parent, a root's origin), or None to write none.
+            entries: The measure maps of the manifest written, whose ids
+                the measure views name.
+        """
+        children = [
+            child._to_timeline_object(
+                events=events,
+                external_references=external_references,
+                offset=self._child_offsets[child_id],
+                entries=entries,
+            )
+            for child_id, child in sorted(
+                self._children.items(),
+                key=lambda item: (self._child_offsets[item[0]].value, item[0]),
+            )
+        ]
+        entries.own = self.measure_map
+        conversion_maps = [
+            cmap._to_manifest(minimal=False, entries=entries)
+            for cmap in sorted(self._all_conversion_maps(), key=lambda cmap: cmap.id)
+        ]
+        # A jump_to written where a jump lands on none takes a minted id,
+        # which no element written later may take.
+        flow_control = self._flow_control.to_dict(minimal=False, taken=entries.taken)
+        for element in flow_control:
+            entries.taken.setdefault(
+                element["id"],
+                f"{element['type']} {quote_id(element['id'])} of timeline "
+                f"{quote_id(self._id)}",
+            )
+        fields: dict[str, Any] = {
+            "id": self._id,
+            "name": self._name,
+            "unit": str(self._unit),
+            "number_type": str(self._number_type),
+        }
+        if offset is not None:
+            fields["offset"] = axis_value_to_json(offset)
+        fields.update(
+            {
+                "length": (
+                    None if self.length is None else axis_value_to_json(self.length)
+                ),
+                "locked": self._locked,
+                "is_segment_line": self._is_segment_line_instance(),
+                "meta": copy.deepcopy(self._meta),
+                "children": children,
+                "conversion_maps": conversion_maps,
+                "regions": [
+                    replace(
+                        region,
+                        start=express_scalar_as(region.start, self._number_type),
+                        end=express_scalar_as(region.end, self._number_type),
+                    ).to_dict(minimal=False)
+                    for region in sorted(
+                        self._regions.values(),
+                        key=lambda region: (
+                            region.start.value,
+                            region.end.value,
+                            region.id,
+                        ),
+                    )
+                ],
+                "flow_control": flow_control,
+                **copy.deepcopy(self._statement_state),
+            }
+        )
+        if events:
+            fields["events"] = self._event_rows_to_json()
+        if external_references:
+            fields["external_references"] = self._external_references.to_pylist()
+        return self._dict_form(fields, minimal=False)
+
+    def _event_rows_to_json(self) -> list[dict[str, Any]]:
+        """Return the event rows with their coordinates as JSON numbers."""
+        event_rows: list[dict[str, Any]] = []
+        for stored_event in self._events:
+            event = dict(stored_event)
+            for coord_col in ("instant", "start", "end", "duration"):
+                value = event.get(coord_col)
+                if value is None or not isinstance(value, dict):
+                    continue
+                if self.number_type == NumberType.float:
+                    event[coord_col] = number_to_json(value["value"])
+                elif self.number_type == NumberType.int:
+                    event[coord_col] = number_to_json(int(struct_to_rational(value)))
+                else:
+                    event[coord_col] = number_to_json(struct_to_rational(value))
+            event_rows.append(event)
+        return event_rows
+
+    @classmethod
+    def from_dict(
+        cls,
+        data: dict[str, Any],
+        *,
+        timeline_id: str | None = None,
+        name: str | None = None,
+    ) -> Timeline:
+        """Read a timeline from a TimeToShare manifest.
+
+        Without *timeline_id* and *name*, a manifest holding one root
+        timeline and no group is read as a whole: its root is returned, and
+        the manifest's own keys are kept so that :meth:`to_dict` writes the
+        manifest back. An argument naming a timeline of the manifest, root
+        or descendant, selects it; given both, they must name the same
+        timeline. Only arguments naming no timeline override the root's id
+        and name, and only in a manifest of one root and no group; the new
+        id must not be held by any element of the manifest, and the
+        statements naming the root name it by its new id.
+
+        A timeline selected leaves the rest of the manifest behind: a value
+        of a statement of its tree naming a timeline or region of the rest
+        is dropped, with its provenance.
+
+        The class comes from the unit (each unit belongs to exactly one
+        class) and ``is_segment_line``. Every optional key may be left out
+        and reads as its default; a ``number_type`` left out is the unit's
+        own (``int`` for ticks, samples, frames and pixels, ``fraction`` for
+        quarters and whole_notes, ``float`` otherwise). A value on the
+        timeline's own axis is read as its number type decides, whatever its
+        lexical form (``2.0`` on an ``int`` axis is 2, ``[1, 8.0]`` on a
+        ``fraction`` axis is 1/8); a ``length`` of ``null`` reads as None. A root's ``offset`` is kept
+        as :attr:`root_offset`. Keys the library does not know are kept on
+        the object read from the JSON object they were found in, and written
+        back.
+
+        Args:
+            data: A TimeToShare manifest.
+            timeline_id: The id to select, or, when no timeline has it and
+                the manifest holds one root and no group, the id the root
+                takes.
+            name: The name to select, or, when no timeline has it and the
+                manifest holds one root and no group, the name the root
+                takes.
+
+        Returns:
+            The timeline read.
+
+        Raises:
+            ValueError: If *data* is no TimeToShare manifest of version
+                0.2.0, is malformed, holds a value represented otherwise than
+                its axis selects, if the selection matches no timeline or
+                several, or if the id the root would take is already held in
+                the manifest; the message names the problem, or the
+                manifest's timelines.
+
+        Examples:
+            >>> from timetoalign.timelines import Timeline
+            >>> piece = Timeline.from_dict(
+            ...     {
+            ...         "timetoshare": "0.2.0",
+            ...         "timelines": [{"id": "#piece", "unit": "quarters", "length": [32, 1]}],
+            ...     }
+            ... )
+            >>> type(piece).__name__, piece.length
+            ('ContinuousLogicalTimeline', Coordinate(Fraction(32, 1), quarters))
+        """
+        manifest, content = Manifest.read(data)
+        whole = len(content.roots) == 1 and not content.groups
+        timelines = list(content.timelines.values())
+        if timeline_id is None and name is None:
+            if not whole:
+                raise ValueError(
+                    "the manifest holds several timelines or groups: give timeline_id or "
+                    f"name to select one; its timelines: {listed(content.candidates())}"
+                )
+            timeline = content.roots[0]
+        elif whole and not matches_any(timelines, id=timeline_id, name=name):
+            timeline = content.roots[0]
+            if timeline_id is not None:
+                if timeline_id in content.ids:
+                    raise ValueError(
+                        f"root timeline {quote_id(timeline.id)} cannot take the id "
+                        f"{quote_id(timeline_id)}: it is already held by "
+                        f"{content.ids[timeline_id]}"
+                    )
+                # The manifest's statements name the root by its new id too.
+                timeline._manifest = manifest
+                timeline._set_id(timeline_id)
+            if name is not None:
+                timeline._name = name
+        else:
+            timeline = select(
+                timelines,
+                id=timeline_id,
+                name=name,
+                what="timeline",
+                names=content.candidates(),
+            )
+        if whole and timeline is content.roots[0]:
+            timeline._manifest = manifest
+        else:
+            # The rest of the manifest is left out: no statement names it.
+            timeline._drop_references(content.ids)
+        if not isinstance(timeline, cls):
+            raise ValueError(
+                f"timeline {timeline.id!r} of the manifest is a {type(timeline).__name__}, "
+                f"not a {cls.__name__}"
+            )
+        return timeline
+
+    @classmethod
+    def _from_timeline_object(
+        cls,
+        data: dict[str, Any],
+        *,
+        is_root: bool = True,
+        measure_maps: Mapping[str, MeasureMap] = MappingProxyType({}),
+    ) -> Timeline:
+        """Rebuild a timeline from its timeline object.
+
+        A ``MeasureRecordMap`` among its conversion maps, or a ``ChainMap``
+        of a ``LinearMap`` from the timeline's unit to quarters and a
+        ``MeasureRecordMap``, holds the timeline's measure map; the library
+        keeps one measure map per timeline.
+
+        Args:
+            data: The timeline object.
+            is_root: Whether the timeline is a root: a root reads its
+                ``offset`` as :attr:`root_offset`, a child's ``offset`` is
+                read by its parent.
+            measure_maps: The manifest's measure maps by id, which its
+                measure views name.
+
+        Raises:
+            ValueError: If the object is malformed, or holds more than one
+                map reading a measure map as the timeline's.
+        """
+        from .types import SegmentLine, SegmentLineMixin, get_timeline_class
+
+        require_object(data, "a timeline", ("id", "unit", "length"))
+        timeline_id = read_id(data["id"], "a timeline")
+        what = f"timeline {timeline_id!r}"
+        try:
+            unit = TimeUnit(data["unit"])
+        except (TypeError, ValueError) as error:
+            raise ValueError(f"{what} has an unknown unit {data['unit']!r}") from error
+        number_type = unit.default_number_type
+        if "number_type" in data:
+            try:
+                number_type = NumberType[data["number_type"]]
+            except (KeyError, TypeError) as error:
+                raise ValueError(
+                    f"{what} has an unknown number_type {data['number_type']!r}"
+                ) from error
+        is_segment_line = data.get("is_segment_line", False)
+        locked = data.get("locked", False)
+        for key, value in (("is_segment_line", is_segment_line), ("locked", locked)):
+            if not isinstance(value, bool):
+                raise ValueError(f"{what} has a non-boolean {key!r}")
+        length = (
+            None
+            if data["length"] is None
+            else _refuse_negative_length(
+                axis_value_from_json(
+                    data["length"],
+                    key="length",
+                    owner=timeline_id,
+                    unit=unit,
+                    number_type=number_type,
+                ),
+                timeline_id,
+            )
+        )
+
+        placed: list[tuple[Coordinate, Timeline]] = []
+        for child_data in read_list(data, "children", what):
+            require_object(child_data, f"a child of {what}", ("offset",))
+            child = Timeline._from_timeline_object(
+                child_data, is_root=False, measure_maps=measure_maps
+            )
+            offset = axis_value_from_json(
+                child_data["offset"],
+                key="offset",
+                owner=child.id,
+                unit=unit,
+                number_type=number_type,
+            )
+            placed.append((offset, child))
+
+        timeline_class = get_timeline_class(
+            unit.domain.value, discrete=unit.is_discrete
+        )
+        if is_segment_line:
+            segment_types = {type(child) for _, child in placed}
+            if len(segment_types) > 1:
+                names = sorted(segment_type.__name__ for segment_type in segment_types)
+                raise ValueError(
+                    f"Segment line {what} has segments of mixed classes: {names}"
+                )
+            segment_type = segment_types.pop() if segment_types else timeline_class
+            innermost = segment_type
+            while issubclass(innermost, SegmentLineMixin):
+                innermost = innermost._segment_type
+            if innermost is not timeline_class:
+                raise ValueError(
+                    f"Segment line {what} is a {timeline_class.__name__} but its "
+                    f"segments are {innermost.__name__!r}"
+                )
+            timeline_class = SegmentLine[segment_type]
+
+        timeline = timeline_class(
+            length=timeline_class._from_dict_initial_length(length),
+            unit=unit,
+            number_type=number_type,
+            uid=timeline_id,
+            name=read_name(data, what),
+            locked=False,
+            meta=read_meta(data, what),
+        )
+
+        # Event coordinates arrive as JSON numbers; decode them back to the
+        # numbers the EventData builder expects. Segment events are recreated
+        # by the children.
         events = []
-        for e in data.get("events", []):
-            if e.get("event_type") == SEGMENT_EVENT_TYPE:
+        for row in read_list(data, "events", what):
+            if row.get("event_type") == SEGMENT_EVENT_TYPE:
                 continue
-            event = dict(e)
+            event = dict(row)
             for coord_col in ("instant", "start", "end", "duration"):
                 if event.get(coord_col) is not None:
-                    event[coord_col] = wire_to_rational(event[coord_col])
+                    event[coord_col] = number_from_json(event[coord_col])
             events.append(event)
-
         if events:
             timeline._add_events_unchecked(events)
-
-        # Restore incoming external references. Validation is skipped: the
-        # payload may legitimately carry references without events.
+        # Validation is skipped: references may legitimately come without events.
         references = data.get("external_references")
         if references:
             timeline.add_external_references(references, validate=False)
 
-        # Add children
-        for child_id, child_data in data.get("children", {}).items():
-            child = Timeline.from_dict(child_data["timeline"])
-            timeline.add_child(child, offset=wire_to_rational(child_data["offset"]))
+        # Reading never changes a length: a child must fit the written one.
+        check_children_fit(data, number_type)
+        # A segment line's segments in offset order, so that they append
+        # contiguously whatever order the object lists them in.
+        if is_segment_line:
+            placed.sort(key=lambda item: item[0].value)
+        for offset, child in placed:
+            timeline._embed_child(child, offset, locked=timeline._kept_lock(child))
 
-        # Add conversion maps
-        for map_data in data.get("conversion_maps", []):
-            cmap = ConversionMap.from_dict(map_data)
-            timeline.add_conversion_map(cmap)
+        records = []
+        for map_data in read_list(data, "conversion_maps", what):
+            cmap = ConversionMap.from_dict(map_data, measure_maps=measure_maps)
+            if _is_record_map_on(cmap, unit):
+                records.append(cmap)
+            else:
+                timeline.add_conversion_map(cmap)
+        if len(records) > 1:
+            raise ValueError(
+                f"{what} holds {len(records)} MeasureRecordMaps "
+                f"{[record.id for record in records]}: the library keeps one measure "
+                "map per timeline"
+            )
+        if records:
+            timeline._set_measure_record_map(records[0])
+        for region_data in read_list(data, "regions", what):
+            timeline.add_region(
+                Region.from_dict(region_data, unit=unit, number_type=number_type)
+            )
+        timeline.flow_control._absorb(
+            FlowControlRegistry.from_dict(
+                read_list(data, "flow_control", what),
+                unit=unit,
+                number_type=number_type,
+            )
+        )
 
-        timeline._finalize_from_dict(data)
-        timeline._locked = data.get("locked", False)
-
+        timeline._finalize_from_dict(length)
+        timeline._locked = locked
+        if is_root and "offset" in data:
+            timeline._root_offset = axis_value_from_json(
+                data["offset"],
+                key="offset",
+                owner=timeline_id,
+                unit=unit,
+                number_type=number_type,
+            )
+        timeline._statement_state = read_statement_state(data)
+        timeline._keep_unknown_keys(data)
         return timeline
 
     def _typed_class(self) -> type["Timeline"]:
@@ -1035,8 +2100,10 @@ class Timeline(
         when working with generic ``Timeline`` instances that should carry
         domain-specific type information.
 
-        Events, external references, conversion maps, regions, flow maps, and
-        metadata are preserved. Children are recursively re-typed.
+        Events, external references, conversion maps, regions, flow maps,
+        metadata, the root offset and the keys the timeline was read
+        with are preserved. Children are recursively re-typed copies, so a change to
+        the result never reaches the source tree.
 
         Returns:
             A Timeline instance of the appropriate typed subclass, or ``self``
@@ -1055,24 +2122,65 @@ class Timeline(
             >>> cpt.to_typed() is cpt
             True
         """
+        if self._is_typed_tree():
+            return self
+        return self._typed_copy()
+
+    def _is_typed_tree(self) -> bool:
+        """Whether this timeline and every descendant are of their typed class."""
+        return type(self) is self._typed_class() and all(
+            child._is_typed_tree() for child in self._children.values()
+        )
+
+    def _typed_copy(self) -> "Timeline":
+        """Copy this tree, each timeline re-instantiated as its typed class."""
+        return self._recast(
+            self._typed_class(),
+            [
+                (child_id, child._typed_copy())
+                for child_id, child in self._children.items()
+            ],
+        )
+
+    def _copy_tree(self) -> "Timeline":
+        """Copy this timeline and its descendants, sharing no timeline with them."""
+        return self._recast(
+            type(self),
+            [
+                (child_id, child._copy_tree())
+                for child_id, child in self._children.items()
+            ],
+        )
+
+    def _recast(
+        self,
+        target_class: type["Timeline"],
+        children: list[tuple[str, "Timeline"]],
+    ) -> "Timeline":
+        """Copy this timeline as a *target_class*, embedding *children* instead of its own.
+
+        Everything the timeline holds is carried over: events, external
+        references, conversion maps, regions, flow maps, measure map, metric
+        hierarchy, a copy of its flow control, its length and lock, its root
+        offset, the keys it was read with, a copy of its statements and
+        prefixes and a copy of the manifest it was read from.
+        Each entry of *children* pairs a child's id with the timeline to embed
+        in its place, at its offset and with its lock state; the caller passes
+        copies, so that a change to the result never reaches this tree.
+
+        Args:
+            target_class: The class of the copy.
+            children: ``(child id, timeline to embed)`` pairs, a segment
+                line's in offset order.
+
+        Returns:
+            The copy, without a parent.
+        """
         from .types import SegmentLineMixin
 
-        target_class = self._typed_class()
-        typed_children = {
-            child_id: child.to_typed() for child_id, child in self._children.items()
-        }
-
-        if type(self) is target_class and all(
-            typed_children[child_id] is child
-            for child_id, child in self._children.items()
-        ):
-            return self
-
-        initial_length: CoordinateValue = (
-            0 if issubclass(target_class, SegmentLineMixin) else self._length.value
-        )
-        typed = target_class(
-            length=initial_length,
+        is_line = issubclass(target_class, SegmentLineMixin)
+        copied = target_class(
+            length=0 if is_line else self._length,
             unit=self._unit,
             number_type=self._number_type,
             uid=self._id,
@@ -1080,45 +2188,40 @@ class Timeline(
             locked=False,
             meta=dict(self._meta) if self._meta else None,
         )
-
-        # Transfer events (use internal method to skip validation overhead)
-        if self._events is not None and len(self._events) > 0:
-            events = []
-            for event in self._events:
-                if event.get("event_type") == SEGMENT_EVENT_TYPE:
-                    continue
-                events.append(dict(event))
-            if events:
-                typed._add_events_unchecked(events)
-
-        # Transfer external references (Arrow tables are immutable, so the
-        # table object can be shared between the two timelines)
-        typed._external_references = self._external_references
-
-        # Transfer recursively typed children
-        for child_id, child in typed_children.items():
-            offset = self._child_offsets[child_id]
-            typed.add_child(
+        events = [
+            dict(event)
+            for event in self._events
+            if event.get("event_type") != SEGMENT_EVENT_TYPE
+        ]
+        if events:
+            copied._add_events_unchecked(events)
+        # Arrow tables are immutable, so the table object can be shared.
+        copied._external_references = self._external_references
+        for child_id, child in children:
+            copied._embed_child(
                 child,
-                offset=offset,
-                allow_expansion=isinstance(typed, SegmentLineMixin),
+                self._child_offsets[child_id],
+                allow_expansion=is_line,
+                locked=copied._kept_lock(child),
             )
-
-        # Transfer conversion maps
         for cmap in self._conversion_maps.values():
-            typed.add_conversion_map(cmap)
-
-        # Transfer regions
-        for region in self._regions.values():
-            typed._regions[region.name] = region
-
-        # Transfer flow maps
-        for flow_id, flow_map in self._flow_maps.items():
-            typed._flow_maps[flow_id] = flow_map
-
-        typed._length = typed._make_coordinate(self._length.value)
-        typed._locked = self._locked
-        return typed
+            copied.add_conversion_map(cmap)
+        copied._regions.update(self._regions)
+        copied._flow_maps.update(self._flow_maps)
+        copied._measure_record_map = self._measure_record_map
+        copied._metric_hierarchy = self._metric_hierarchy
+        copied._adopt_flow_control(self._flow_control.copy())
+        copied._id_minted = self._id_minted
+        copied._length = self._length
+        copied._locked = self._locked
+        copied._root_offset = self._root_offset
+        copied._unknown_keys = copy.deepcopy(dict(self._unknown_keys))
+        copied._statement_state = copy.deepcopy(self._statement_state)
+        copied._prefixes = dict(self._prefixes)
+        # A copy of the envelope, so that renaming what the copy's
+        # statements name never reaches the source's.
+        copied._manifest = copy.copy(self._manifest)
+        return copied
 
     # endregion
 
@@ -1157,7 +2260,7 @@ class Timeline(
 
         Examples:
             >>> print(timeline.diagram())
-            DiscreteGraphicalTimeline[dgt1:1] (11 events, 5 children)
+            DiscreteGraphicalTimeline[dgt_1:1] (11 events, 5 children)
             0 ∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶ 4835 pixels
               ├─ system_1     0   ∶∶∶∶∶∶∶                        967
               ├─ system_2   967          ∶∶∶∶∶∶∶∶               1934
@@ -1183,11 +2286,21 @@ class Timeline(
         """Return total number of events (excluding segments)."""
         return self.n_events
 
+    def __getstate__(self) -> dict[str, Any]:
+        """Return the state to pickle, without the weak references to scopes.
+
+        A group or bundle pickled with this timeline records itself again
+        when it is unpickled.
+        """
+        state = self.__dict__.copy()
+        state["_scopes"] = []
+        return state
+
     def __repr__(self) -> str:
         """Return string representation."""
         parts = [
             f"id={self._id!r}",
-            f"length={self._length.value}",
+            f"length={'unknown' if self._length is None else self._length.value}",
             f"unit={self._unit}",
             f"events={self.n_events}",
             f"children={self.n_children}",
@@ -1213,15 +2326,15 @@ class Timeline(
         return self.diagram()._repr_html_()
 
     def __contains__(self, item: str | Region | Timeline) -> bool:
-        """Check if a region name, child ID, or timeline is part of this timeline.
+        """Check if a region ID, child ID, or timeline is part of this timeline.
 
         Checks all noun types uniformly:
-        - ``"name" in tl`` checks regions AND children.
+        - ``"some_id" in tl`` checks region ids AND child ids.
         - ``some_timeline in tl`` checks if it's a child (by identity).
-        - ``some_region in tl`` checks if a region with that name exists.
+        - ``some_region in tl`` checks if a region with that id exists.
         """
         if isinstance(item, Region):
-            return item.name in self._regions
+            return item.id in self._regions
         if isinstance(item, Timeline):
             return item.id in self._children
         # String: check regions first, then children

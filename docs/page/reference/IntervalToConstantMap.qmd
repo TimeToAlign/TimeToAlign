@@ -80,7 +80,7 @@ IntervalToConstantMap is not invertible.
 ### to_dict { #timetoalign.IntervalToConstantMap.to_dict }
 
 ```python
-IntervalToConstantMap.to_dict()
+IntervalToConstantMap.to_dict(minimal=False)
 ```
 
 Serialize to dictionary.

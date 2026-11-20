@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import logging
 import math
+import warnings
 from fractions import Fraction
 from numbers import Integral, Real
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from typing_extensions import Self
 
@@ -33,6 +34,9 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+if TYPE_CHECKING:
+    from timetoalign.timelines import ContinuousLogicalTimeline, MeasureMap
+
 
 class Ms3Loader(ScoreLoader):
     """Load symbolic scores from DCML-style TSV files.
@@ -46,15 +50,20 @@ class Ms3Loader(ScoreLoader):
     ``auto_discover=True`` to have it locate companion facet files
     automatically.
 
-    Auto-discovery uses two strategies:
+    Auto-discovery keeps the piece name and swaps the facet, looking in two
+    places for each other facet:
 
     1. **Flat siblings** (ms3 convention): for ``name.notes.tsv``, look for
        ``name.measures.tsv``, ``name.chords.tsv``, ``name.harmonies.tsv``
        in the same directory.
     2. **Facet directories** (DCML corpus convention): if the file sits in a
-       directory whose name matches a facet (e.g., ``notes/``), look for
-       sibling directories named after the other facets and find a file
-       with the same stem there.
+       directory named after its facet (``notes/name.notes.tsv``), look in
+       the sibling directories named after the other facets
+       (``measures/name.measures.tsv``, ``chords/name.chords.tsv``,
+       ``harmonies/name.harmonies.tsv``).
+
+    A facet the piece lacks is skipped; a file for which no companion is
+    found at all raises a ``UserWarning`` and is loaded alone.
 
     TSV columns (notes.tsv gold standard):
     - mc, mn: Measure count/number
@@ -83,6 +92,7 @@ class Ms3Loader(ScoreLoader):
         """
         super().__init__(*args, **kwargs)
         self._auto_discover = auto_discover
+        self._section_counts: list[int] = []
 
     @classmethod
     def from_file(cls, *paths: Path | str, auto_discover: bool = False) -> "Ms3Loader":
@@ -135,65 +145,68 @@ class Ms3Loader(ScoreLoader):
         return None
 
     @staticmethod
-    def _discover_companions(source: Path) -> list[Path]:
-        """Locate companion facet files for *source*.
+    def _companion_candidates(source: Path) -> dict[str, list[Path]]:
+        """Paths where each other facet of *source*'s piece may be stored.
 
-        Uses two strategies in order:
+        A facet file is named ``<piece>.<facet>.tsv`` (or ``<facet>.tsv``
+        when the piece has no name of its own). Each other facet keeps the
+        piece name and swaps the facet: ``<piece>.<other>.tsv``. It is
+        looked for in two places, in this order:
 
-        1. **Flat siblings** — for ``name.<facet>.tsv``, glob
-           ``name.*.<other_facet>.tsv`` in the same directory.
-        2. **Facet directories** — if the parent directory name equals the
-           current facet (e.g. ``notes/``), look for sibling directories
-           named after the remaining facets and find a file whose stem
-           matches.
+        1. **Flat siblings** (ms3 convention): the directory of *source*.
+        2. **Facet directories** (DCML corpus convention): when *source*
+           lies in a directory named after its facet (``notes/``), the
+           sibling directory named after the other facet (``measures/``).
 
-        Files with an ``_unfolded`` suffix are matched only to other
-        ``_unfolded`` files and vice-versa, to avoid mixing folded and
-        unfolded variants.
+        Because the piece name is kept whole, an ``_unfolded`` file is
+        matched only to ``_unfolded`` files and a folded file only to folded
+        ones.
 
         Args:
             source: Resolved path to a TSV file.
 
         Returns:
-            Companion paths (may be empty). Never includes *source* itself.
+            For each facet other than *source*'s, the candidate paths in
+            search order; empty when *source* names no facet.
         """
-        source = source.resolve()
         facet = Ms3Loader._parse_facet(source)
         if facet is None:
-            return []
+            return {}
+        # "<piece>.<facet>.tsv" -> "<piece>"; a bare "<facet>.tsv" -> "".
+        piece = source.name[: max(len(source.name) - len(f".{facet}.tsv"), 0)]
+        in_facet_directory = source.parent.name.lower() == facet
+        candidates: dict[str, list[Path]] = {}
+        for other in Ms3Loader._FACETS:
+            if other == facet:
+                continue
+            file_name = f"{piece}.{other}.tsv" if piece else f"{other}.tsv"
+            candidates[other] = [source.parent / file_name]
+            if in_facet_directory:
+                candidates[other].append(source.parent.parent / other / file_name)
+        return candidates
 
+    @staticmethod
+    def _discover_companions(source: Path) -> list[Path]:
+        """Locate companion facet files for *source*.
+
+        For each other facet, the first existing candidate of
+        `_companion_candidates` is taken, so a piece may keep some facets
+        beside its notes and others in facet directories.
+
+        Args:
+            source: Path to a TSV file.
+
+        Returns:
+            Companion paths, resolved, in facet order (may be empty). Never
+            includes *source* itself.
+        """
+        source = source.resolve()
         companions: list[Path] = []
-        other_facets = [f for f in Ms3Loader._FACETS if f != facet]
-        name_lower = source.name.lower()
-
-        # Strategy 1: flat siblings (name.facet.tsv convention)
-        # Extract the piece stem: everything before ".<facet>.tsv"
-        dot_facet = f".{facet}."
-        idx = name_lower.find(dot_facet)
-        if idx >= 0:
-            piece_stem = source.name[:idx]  # preserve original case
-            for other in other_facets:
-                candidate = source.parent / f"{piece_stem}.{other}.tsv"
-                if candidate.resolve() != source and candidate.is_file():
+        for candidates in Ms3Loader._companion_candidates(source).values():
+            for candidate in candidates:
+                if candidate.is_file() and candidate.resolve() != source:
                     companions.append(candidate.resolve())
-            if companions:
-                return companions
-
-        # Strategy 2: facet directories
-        parent_name = source.parent.name.lower()
-        if parent_name == facet:
-            grandparent = source.parent.parent
-            # Derive the expected filename in sibling facet directories.
-            # Replace the facet directory name in the stem if present,
-            # otherwise keep the original name.
-            file_stem = source.name
-            for other in other_facets:
-                sibling_dir = grandparent / other
-                if sibling_dir.is_dir():
-                    candidate = sibling_dir / file_stem
-                    if candidate.is_file():
-                        companions.append(candidate.resolve())
-
+                    break
         return companions
 
     def load(self, *sources: Path | str) -> Self:
@@ -203,6 +216,9 @@ class Ms3Loader(ScoreLoader):
         include its companion facet files (measures, chords, harmonies,
         etc.) before loading. Files that have already been loaded (or that
         appear more than once in the expanded set) are silently skipped.
+        A facet the piece does not have is not looked for further; a source
+        for which no companion at all is found raises a ``UserWarning``
+        naming the paths that were looked at, and is loaded alone.
 
         Args:
             *sources: Paths to TSV files.
@@ -223,13 +239,35 @@ class Ms3Loader(ScoreLoader):
                 continue
             seen.add(path)
             expanded.append(path)
-            for companion in self._discover_companions(path):
+            companions = self._discover_companions(path)
+            if not companions:
+                self._warn_no_companion(path)
+            for companion in companions:
                 if companion not in seen:
                     seen.add(companion)
                     expanded.append(companion)
                     logger.debug("Auto-discovered companion: %s", companion)
 
         return super().load(*expanded)
+
+    @staticmethod
+    def _warn_no_companion(source: Path) -> None:
+        """Warn that auto-discovery found no companion facet for *source*."""
+        candidates = Ms3Loader._companion_candidates(source)
+        if not candidates:
+            detail = (
+                "its file name states no facet (expected '<piece>.<facet>.tsv' "
+                f"with a facet among {list(Ms3Loader._FACETS)})"
+            )
+        else:
+            looked_at = [str(path) for paths in candidates.values() for path in paths]
+            detail = f"none of these files exists: {looked_at}"
+        warnings.warn(
+            f"auto_discover found no companion facet file for '{source}': {detail}. "
+            "It is loaded alone.",
+            UserWarning,
+            stacklevel=3,
+        )
 
     # endregion
 
@@ -242,13 +280,23 @@ class Ms3Loader(ScoreLoader):
         Returns:
             ScoreStore with populated data.
         """
-        try:
-            import ms3
-        except ImportError:
-            raise ImportError("Ms3Loader requires 'ms3'. Install with pip install ms3")
-
-        df = ms3.load_tsv(str(source))
         fname = source.name.lower()
+
+        if "measures" in fname:
+            if pd is None:
+                raise ImportError(
+                    "Ms3Loader requires pandas to read measures TSV files"
+                )
+            df = pd.read_csv(source, sep="\t")
+        else:
+            try:
+                import ms3
+            except ImportError:
+                raise ImportError(
+                    "Ms3Loader requires 'ms3' for non-measure facets. "
+                    "Install with pip install ms3"
+                )
+            df = ms3.load_tsv(str(source))
 
         # Determine category from filename
         if "measures" in fname:
@@ -528,9 +576,13 @@ class Ms3Loader(ScoreLoader):
             # EnharmonicPitch view on request, redundant with specific_pitch).
             midi = int(row["midi"]) if pd.notna(row.get("midi")) else None
 
-            # Pitch - Specific (canonical pydantic-derived shape)
+            octave_val = int(row["octave"]) if pd.notna(row.get("octave")) else None
+            tpc_val = int(row["tpc"]) if pd.notna(row.get("tpc")) else None
+
+            # Pitch - Specific (canonical pydantic-derived shape). A spelling
+            # without an octave states no specific pitch.
             specific_pitch = None
-            if pd.notna(row.get("name")):
+            if pd.notna(row.get("name")) and octave_val is not None:
                 name = str(row["name"])
                 step = name[0].upper() if name else "C"
                 alter = 0
@@ -539,24 +591,23 @@ class Ms3Loader(ScoreLoader):
                         name[1:].count("#") - name[1:].count("b") - name[1:].count("-")
                     )
 
-                octave = int(row["octave"]) if pd.notna(row.get("octave")) else 4
-
                 specific_pitch = {
                     "step": step,
                     "alter": alter,
-                    "octave": octave,
+                    "octave": octave_val,
                     "cents": 0.0,
                 }
 
-            octave_val = int(row["octave"]) if pd.notna(row.get("octave")) else None
-            tpc_val = int(row["tpc"]) if pd.notna(row.get("tpc")) else None
-
             # Attributes
-            tied = int(row["tied"]) if pd.notna(row.get("tied")) else 0
+            # ms3: 1 tie start, 0 tie middle, -1 tie end; an empty cell is
+            # no tie and stays null.
+            tied = int(row["tied"]) if pd.notna(row.get("tied")) else None
             gracenote = (
                 str(row["gracenote"]) if pd.notna(row.get("gracenote")) else None
             )
-            chord_id = int(row["chord_id"]) if pd.notna(row.get("chord_id")) else None
+            chord_id = (
+                str(int(row["chord_id"])) if pd.notna(row.get("chord_id")) else None
+            )
 
             voice = int(row["voice"]) if pd.notna(row.get("voice")) else None
             staff = int(row["staff"]) if pd.notna(row.get("staff")) else None
@@ -640,8 +691,81 @@ class Ms3Loader(ScoreLoader):
             },
         )
 
+    @property
+    def measure_map(self) -> MeasureMap:
+        """The immutable measure structure parsed from a measures TSV.
+
+        Each access constructs a new ``MeasureMap`` from the measure store.
+        """
+        if len(self.store.measures) == 0:
+            raise ValueError("No measures TSV has been loaded")
+        from timetoalign.timelines import MeasureMap
+
+        return MeasureMap.from_measure_data(self.store.measures)
+
+    def create_timeline(
+        self,
+        uid: str | None = None,
+        name: str | None = None,
+        *,
+        flatten: bool = False,
+        **kwargs: Any,
+    ) -> ContinuousLogicalTimeline:
+        """Create a score timeline and, by default, attach parsed structure.
+
+        Known limitation: a score whose measures are **split** — two
+        records sharing one notated downbeat, as when a bar is divided
+        across a repeat sign — has no floating-measure lattice, because
+        the two halves cannot both anchor the same ordinal. The timeline
+        then carries no ``floating_measures`` conversion; every other
+        conversion, and the measure structure itself, is unaffected. No
+        approximate lattice is built in its place, since an fm reading
+        those measures do not support is worse than no fm reading.
+        """
+        from timetoalign.alignment import TimeSkeleton
+        from timetoalign.timelines import ContinuousLogicalTimeline, SectionHierarchy
+
+        has_measures = len(self.store.measures) > 0
+        if has_measures and all(
+            len(store) == 0
+            for store in (self.store.notes, self.store.controls, self.store.annotations)
+        ):
+            timeline = ContinuousLogicalTimeline(
+                length=0,
+                unit=TimeUnit.quarters,
+                number_type=NumberType.fraction,
+                uid=uid,
+                name=name,
+            )
+            self._populate_timeline_structure(timeline)
+            for cmap in self.store.get_cmaps().values():
+                timeline.add_conversion_map(cmap)
+        else:
+            excluded = list(kwargs.pop("exclude_stores", []) or [])
+            if "measures" not in excluded:
+                excluded.append("measures")
+            timeline = super().create_timeline(
+                uid=uid,
+                exclude_stores=excluded,
+                flatten=flatten,
+                **kwargs,
+            )
+            if name is not None:
+                timeline.name = name
+
+        if timeline.measure_map is not None:
+            notated_length = timeline.measure_map.total_actual_length or Fraction(0)
+            timeline.length = max(timeline.length.value, notated_length)
+            if not flatten:
+                counts = self._section_counts or [len(timeline.measure_map)]
+                hierarchy = SectionHierarchy.from_measure_map(
+                    timeline.measure_map, counts=counts
+                )
+                TimeSkeleton(hierarchy).attach(timeline)
+        return timeline
+
     def _load_measures(self, df: pd.DataFrame, source: Path) -> ScoreStore:
-        """Load measures TSV into MeasureData.
+        """Parse a measures TSV as an immutable measure map.
 
         Parses ms3/DCML measures.tsv format with columns:
         - mc, mn: Measure count/number
@@ -665,7 +789,11 @@ class Ms3Loader(ScoreLoader):
             source: Path to source file.
 
         Returns:
-            ScoreStore with populated MeasureData.
+            ScoreStore retaining the source facts needed by legacy flow readers.
+
+        Raises:
+            ValueError: If a row states no ``mc``, or neither ``act_dur`` nor
+                ``duration_qb`` (the measure's length). Neither is invented.
         """
         import pandas as pd
 
@@ -673,10 +801,13 @@ class Ms3Loader(ScoreLoader):
             return ScoreStore.empty()
 
         measure_rows = []
+        table = f"The measures table {source.name!r}"
 
-        for idx, row in df.iterrows():
+        for position, (_, row) in enumerate(df.iterrows(), start=1):
             # ===== Core Identity =====
-            mc = int(row["mc"]) if pd.notna(row.get("mc")) else idx + 1
+            if not self._has_value(row.get("mc")):
+                raise ValueError(f"{table} states no mc in row {position}")
+            mc = int(row["mc"])
             mn = str(row.get("mn", mc)) if pd.notna(row.get("mn")) else str(mc)
 
             # Parse MN as integer (strip suffix if present)
@@ -688,14 +819,20 @@ class Ms3Loader(ScoreLoader):
             # ===== Temporal (with quarterbeats_all_endings fallback) =====
             qb = self._resolve_quarterbeats(row)
 
+            # act_dur (whole notes, exact) or duration_qb (quarters, derived)
+            if self._parse_fraction(row.get("act_dur")) is None and not (
+                self._has_value(row.get("duration_qb"))
+            ):
+                raise ValueError(
+                    f"{table} states no length of mc {mc} (row {position}): "
+                    "neither act_dur nor duration_qb holds a value"
+                )
             dur_qb = self._resolve_duration(row, "act_dur")
-
-            # act_dur is often a fraction string like "1/2" for half a bar
-            act_dur = row.get("act_dur")
-            if self._has_value(act_dur):
-                actual_length = float(dur_qb) if dur_qb is not None else None
-            else:
-                actual_length = float(dur_qb) if dur_qb is not None else 0.0
+            if dur_qb is None:
+                raise ValueError(
+                    f"{table} states no readable length of mc {mc} (row {position})"
+                )
+            actual_length = float(dur_qb)
 
             # mc_offset for split bars
             mc_offset = (
@@ -813,14 +950,9 @@ class Ms3Loader(ScoreLoader):
                         if qb is not None
                         else coordinate_to_struct(0)
                     ),
-                    "duration": (
-                        coordinate_to_struct(dur_qb)
-                        if dur_qb is not None
-                        else coordinate_to_struct(0)
-                    ),
+                    "duration": coordinate_to_struct(dur_qb),
                     "end": coordinate_to_struct(
-                        (qb if qb is not None else Fraction(0))
-                        + (dur_qb if dur_qb is not None else Fraction(0))
+                        (qb if qb is not None else Fraction(0)) + dur_qb
                     ),
                     "nominal_length": nominal_length,
                     "actual_length": actual_length,
@@ -855,6 +987,16 @@ class Ms3Loader(ScoreLoader):
             unit=TimeUnit.quarters,
             number_type=NumberType.fraction,
         )
+        section_ends = [
+            int(row["mc"])
+            for row in measure_rows
+            if "section" in str(row.get("breaks") or "").lower()
+        ]
+        previous = 0
+        self._section_counts = []
+        for end in [*section_ends, len(measure_rows)]:
+            self._section_counts.append(end - previous)
+            previous = end
 
         return ScoreStore(
             notes=NoteEventData.empty(),

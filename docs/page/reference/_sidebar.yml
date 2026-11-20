@@ -21,10 +21,8 @@ website:
       - reference/ColumnNaming.qmd
       - reference/ColumnRole.qmd
       - reference/ScopedId.qmd
-      - reference/IdGenerator.qmd
       - reference/TimeStamp.qmd
       - reference/TimeIntervalStamp.qmd
-      - reference/GroupTimestamp.qmd
       section: Core Types
     - contents:
       - reference/Timeline.qmd
@@ -37,9 +35,16 @@ website:
       - reference/LogicalTimeline.qmd
       - reference/PhysicalTimeline.qmd
       - reference/GraphicalTimeline.qmd
-      - reference/BeatGrid.qmd
       - reference/SegmentLine.qmd
+      - reference/UnknownLengthError.qmd
       section: Timelines
+    - contents:
+      - reference/BeatGrid.qmd
+      - reference/BeatGridSegment.qmd
+      - reference/GridBeat.qmd
+      - reference/BeatPolicy.qmd
+      - reference/policy_for_metro.qmd
+      section: Beat Grids
     - contents:
       - reference/Flow.qmd
       - reference/FlowMap.qmd
@@ -86,7 +91,6 @@ website:
       - reference/MatchFileContext.qmd
       - reference/NoteRecord.qmd
       - reference/SnoteRecord.qmd
-      - reference/TimelineIdGenerator.qmd
       section: Alignment
     - contents:
       - reference/Loader.qmd
@@ -111,6 +115,7 @@ website:
       - reference/PartituraLoader.qmd
       - reference/Ms3Loader.qmd
       - reference/MeasureMapLoader.qmd
+      - reference/VerovioLoader.qmd
       - reference/MidiLoader.qmd
       - reference/PerformanceMidiLoader.qmd
       - reference/ScoreMidiLoader.qmd

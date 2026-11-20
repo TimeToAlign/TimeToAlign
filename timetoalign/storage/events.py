@@ -42,7 +42,7 @@ from timetoalign.core.fields import field_metadata
 from timetoalign.core.time import (
     build_number_struct_array,
     coordinate_to_struct,
-    is_rational_wire,
+    number_from_json,
     struct_to_coordinate,
     struct_to_rational,
 )
@@ -206,11 +206,6 @@ def _build_extra_field_schema(
         sample = _first_non_null(processed_rows, name)
 
         if isinstance(sample, dict):
-            if is_rational_wire(sample):
-                for row in processed_rows:
-                    value = row.get(name)
-                    if is_rational_wire(value):
-                        row[name] = coordinate_to_struct(value)
             # Infer the struct type from the carried dicts and keep it as a
             # real struct column.  Stamp paired-class metadata when the
             # shape is a known SemanticField so the affordance round-trips.
@@ -746,8 +741,10 @@ class EventData(SemanticFieldAccessMixin):
             val = processed.get(coord_col)
             if val is not None:
                 if isinstance(val, dict):
-                    if is_rational_wire(val) or "value" not in val:
+                    if "value" not in val:
                         processed[coord_col] = coordinate_to_struct(val)
+                elif isinstance(val, list):
+                    processed[coord_col] = coordinate_to_struct(number_from_json(val))
                 else:
                     processed[coord_col] = coordinate_to_struct(val)
             elif coord_col not in processed:
@@ -1551,7 +1548,7 @@ class EventData(SemanticFieldAccessMixin):
 
         Prepends ``prefix:`` to every event ID. Used when events are placed
         onto a timeline so that IDs become globally unique and informative,
-        e.g. ``clt1:note:000001``.
+        e.g. ``clt_1:note:000001``.
 
         If the IDs already start with the prefix, they are left unchanged.
 
@@ -1573,6 +1570,33 @@ class EventData(SemanticFieldAccessMixin):
         idx = self._table.schema.get_field_index("id")
         new_table = self._table.set_column(idx, self._table.schema.field(idx), new_ids)
         return self.__class__(new_table, self._unit, self._number_type)
+
+    def _with_segment_renamed(self, old_id: str, new_id: str) -> "EventData":
+        """Return a copy whose segment row for child *old_id* names *new_id*.
+
+        A timeline records each child as one ``Segment`` row whose ``id`` and
+        ``name`` are the child's id; this keeps that row in step when the
+        child's id changes.
+        """
+        table = self._table
+        names = table.schema.names
+        if "event_type" not in names or "id" not in names:
+            return self
+        mask = pc.fill_null(
+            pc.and_kleene(
+                pc.equal(table.column("event_type"), "Segment"),
+                pc.equal(table.column("id"), old_id),
+            ),
+            False,
+        )
+        for column in ("id", "name"):
+            if column not in names:
+                continue
+            idx = names.index(column)
+            values = table.column(idx)
+            renamed = pc.if_else(mask, pa.scalar(new_id, values.type), values)
+            table = table.set_column(idx, table.schema.field(idx), renamed)
+        return self.__class__(table, self._unit, self._number_type)
 
     # endregion
 

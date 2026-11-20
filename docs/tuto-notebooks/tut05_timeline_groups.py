@@ -20,10 +20,10 @@
 #
 # You will put a Rachmaninoff score and performance
 # into one {{< glossary TimelineGroup >}}, keeping the events loaded from both
-# MIDI files as {{< glossary Event >}}s on two {{< glossary Timeline >}}s. The
-# group's first stored pair links score tick 0 to performance
-# tick 0, and its last pair links the two endpoints; for a score position
-# between those pairs, you will ask the group for the corresponding performance
+# MIDI files as {{< glossary Event >}}s on two {{< glossary Timeline >}}s. Every
+# member of a group shares one start and one end: score tick 0 is performance
+# tick 0, and the score's end is the performance's end. For a score position
+# between them, you will ask the group for the corresponding performance
 # {{< glossary Coordinate >}} and see that the answer was interpolated.
 #
 # ## Before you start
@@ -37,9 +37,7 @@ from timetoalign import (
     ContinuousLogicalTimeline,
     ContinuousPhysicalTimeline,
     Coordinate,
-    GroupTimestamp,
     IdCoordinate,
-    InterpolationMap,
     PerformanceMidiLoader,
     ScoreMidiLoader,
     TimelineGroup,
@@ -83,8 +81,10 @@ source_facts
 # ## Building a group
 #
 # Create an empty group, then add the two loaded timelines. Membership declares
-# their {{< glossary Commensurability >}}: the group may relate positions on
-# one member to positions on the other.
+# their {{< glossary Commensurability >}}: by definition, every member's 0
+# coincides with every other member's 0 and every member's length with every
+# other member's length, so the group relates any position on one member to a
+# position on the other.
 
 # %%
 group = TimelineGroup(id="rachmaninoff-score-performance")
@@ -110,14 +110,15 @@ group_facts
 # in the next tutorial.
 
 # %% [markdown]
-# ## Between the stored pairs
+# ## Between the start and the end
 #
-# Adding the second member makes an `InterpolationMap` between each direction
-# of the pair. `get_coordinate_at` applies that map: name the source axis by
-# wrapping the value in an `IdCoordinate`, and name the axis you want the
-# answer on with `timeline_id`. This interpolation is the second of three
-# coordinate-transfer mechanisms in the series, after the exact parent/child
-# offsets introduced in
+# A position between the shared start and end converts linearly: position `p`
+# on one member is `p · len_B / len_A` on the other, computed exactly and then
+# written the way the target member writes numbers. `get_coordinate_at` applies
+# it: name the source axis by wrapping the value in an `IdCoordinate`, and name
+# the axis you want the answer on with `timeline_id`. This linear interpolation
+# is the second of three coordinate-transfer mechanisms in the series, after
+# the exact parent/child offsets introduced in
 # [Nesting and Timestamps](tut02_nesting_and_timestamps.ipynb).
 
 # %%
@@ -130,7 +131,8 @@ performance_position = group.get_coordinate_at(
     timeline_id=performance.id,
 )
 map_example = {
-    "map class": InterpolationMap,
+    "score length": score.length,
+    "performance length": performance.length,
     "score coordinate": score_position,
     "performance coordinate": performance_position,
 }
@@ -139,11 +141,9 @@ map_example
 # %% [markdown]
 # The answer comes back as an `IdCoordinate`, not a bare number, so the target
 # unit, the integer required by the {{< glossary Discrete >}} performance
-# timeline, and the timeline the value belongs to all remain visible.
-# `TimelineGroup` does not expose its pairwise map through a public accessor;
-# the coordinate getters are the public way to use it. With only endpoint
-# pairs, the map uses one constant ratio and cannot represent rubato,
-# fermatas, or other local timing differences.
+# timeline, and the timeline the value belongs to all remain visible. The
+# ratio of the two lengths is the whole relation: one constant ratio cannot
+# represent rubato, fermatas, or other local timing differences.
 
 # %% [markdown]
 # ## Transferring one coordinate
@@ -164,9 +164,12 @@ stamp_view
 
 # %% [markdown]
 # Both values are unit-bearing coordinates. `is_interpolated` is true because
-# score tick 6000 is between the stored start and end pairs rather than on one
-# of them; the flag describes how the answer was obtained, not how accurately
-# two endpoints model expressive timing.
+# score tick 6000 lies between the shared start and end rather than on one of
+# them; the flag describes how the answer was obtained, not how accurately
+# two endpoints model expressive timing. The group answers with the same
+# `TimeStamp` type a single timeline returns, so everything you learned about
+# stamps in [Nesting and Timestamps](tut02_nesting_and_timestamps.ipynb)
+# applies unchanged.
 
 # %% [markdown]
 # ## Transferring several coordinates
@@ -216,44 +219,41 @@ batch_frame
 # cells are coordinate structs instead.
 
 # %% [markdown]
-# ## The row view
+# ## The shared start
 #
-# `get_timestamp_at_index` retrieves one stored pair by row number. Its result
-# is a {{< glossary GroupTimestamp >}}, the second of three stamp types
-# introduced across the series, and a view over a boundary row rather than a
-# newly estimated position.
+# At the shared start, every member stands at 0. A stamp asked for there is
+# not interpolated: the start and the end are the two positions the group
+# stores.
 
 # %%
-boundary_row = group.get_timestamp_at_index(0)
-assert isinstance(boundary_row, GroupTimestamp)
-boundary_view = {
-    score.id: boundary_row.get_coordinate(score.id),
-    performance.id: boundary_row.get_coordinate(performance.id),
-    "is_interpolated": boundary_row.is_interpolated,
+start_stamp = group.get_timestamp_at(Coordinate(0, TimeUnit.ticks), score.id)
+start_view = {
+    score.id: start_stamp.get_coordinate(score.id),
+    performance.id: start_stamp.get_coordinate(performance.id),
+    "is_interpolated": start_stamp.is_interpolated,
 }
-boundary_view
+start_view
 
 # %% [markdown]
-# The mapping displays both unit-bearing coordinates at row zero and shows
-# `is_interpolated` as false. Use this row view when you need a stored boundary
-# and its coordinates on every member.
+# The mapping displays both unit-bearing coordinates at the start and shows
+# `is_interpolated` as false.
 
 # %% [markdown]
 # ## The whole table
 #
-# Asked without a position, `get_timestamp_table` materializes all stored pairs
-# at once. This is useful when you want to inspect or export the group's
-# complete tabular view.
+# Asked without a position, `get_timestamp_table` materializes the stored rows
+# at once: the shared start and the shared end, each member at 0 and at its own
+# length.
 
 # %%
-assert boundary_view["is_interpolated"] is False
+assert start_view["is_interpolated"] is False
 assert len(batch_frame) == 3
 group_frame = group.get_timestamp_table(format="dataframe", units=True)
 group_frame
 
 # %% [markdown]
-# The two rows are the stored start and end pairs; the three-row batch above
-# contained requested positions, not three stored boundaries. The tick columns
+# The two rows are the shared start and end; the three-row batch above
+# contained requested positions, not three stored rows. The tick columns
 # hold integers, because ticks are a {{< glossary Discrete >}} unit and a
 # column is re-expressed in its axis's declared type just as a scalar accessor
 # is. The columnar view and the scalar accessors agree; neither is a
@@ -262,8 +262,8 @@ group_frame
 # %% [markdown]
 # ## The represented range
 #
-# `get_interval_for` reports the part of one member represented in the group.
-# Query the loaded score to compare that range with its full extent.
+# `get_interval_for` reports a member's range in the group. Every member spans
+# the whole group, so the range is the member's own axis from 0 to its length.
 
 # %%
 score_range = group.get_interval_for(score.id)
@@ -275,7 +275,7 @@ range_view = {
 range_view
 
 # %% [markdown]
-# The range runs from zero to the same endpoint carried by the score's
+# The range runs from zero to the endpoint carried by the score's
 # unit-bearing `length`. `get_interval_for` returns one {{< glossary Interval >}}
 # rather than a pair of numbers, so both endpoints keep the tick unit and the
 # integer representation a {{< glossary Discrete >}} axis requires, and the
@@ -284,84 +284,79 @@ range_view
 # reported, never returned as an empty value.
 
 # %% [markdown]
-# ## Locking a group
-#
-# Marking a group {{< glossary Locked >}} records that its represented extent
-# should not be extended accidentally. A lock does not prevent changes within
-# the represented range; it protects the group's endpoint when adding a member
-# would extend that range. Such an intentional extension requires
-# `allow_extension=True`. In the current API, an end outside a member's
-# represented range fails boundary validation before the lock is considered,
-# so there is no executable lock-specific example here.
-
-# %% [markdown]
 # ## Partial alignment
 #
-# A member need not cover the whole reference timeline. In this small,
-# deliberately constructed example, a 40-second recording covers only score
-# quarters 8 through 16; quarter 8 is a stored pair, while quarter 25/2 lies
-# between stored pairs.
+# A member always spans the whole group, so when a recording covers only part
+# of a score, the part is what joins the group: a child of the score, which
+# carries the part's exact offset. In this small, deliberately constructed
+# example, a 40-second recording covers only score quarters 8 through 16.
 
 # %%
-assert group.is_locked is False
 partial_score = ContinuousLogicalTimeline.from_events(
     [{"id": "score-end", "event_type": "Boundary", "instant": Fraction(16)}],
     uid="sixteen-quarter-score",
+)
+second_half = partial_score.create_child(
+    length=Fraction(8), offset=Fraction(8), uid="second-half"
 )
 second_half_recording = ContinuousPhysicalTimeline.from_events(
     [{"id": "recording-end", "event_type": "Boundary", "instant": 40.0}],
     uid="second-half-recording",
 )
-partial_group = TimelineGroup(id="second-half-only")
-partial_group.add_timeline(partial_score)
-partial_group.add_timeline(
-    second_half_recording,
-    start=IdCoordinate(Fraction(8), TimeUnit.quarters, partial_score.id),
-    end=IdCoordinate(Fraction(16), TimeUnit.quarters, partial_score.id),
+partial_group = TimelineGroup(
+    id="second-half-only", timelines=[second_half, second_half_recording]
 )
+partial_group.timeline_ids
 
+# %% [markdown]
+# The group holds the second half and the recording; the score itself is no
+# member. A score position reaches the recording in two steps, each a
+# mechanism you already know: the exact offset carries it onto the child, and
+# the group carries the child's position onto the recording.
+
+# %%
 second_half_boundary = Coordinate(Fraction(8), TimeUnit.quarters)
 between_pairs = Coordinate(Fraction(25, 2), TimeUnit.quarters)
-boundary_stamp = partial_group.get_timestamp_at(second_half_boundary, partial_score.id)
-between_stamp = partial_group.get_timestamp_at(between_pairs, partial_score.id)
+
+
+def recording_position(score_position: Coordinate) -> dict:
+    """Carry a score position onto the child, then across the group."""
+    on_child = partial_score.get_timestamp_at(score_position).get_coordinate(
+        second_half.id
+    )
+    stamp = partial_group.get_timestamp_at(on_child)
+    return {
+        "on the child": on_child,
+        "on the recording": stamp.get_coordinate(second_half_recording.id),
+        "is_interpolated": stamp.is_interpolated,
+    }
+
+
 partial_checks = {
-    "boundary score": boundary_stamp.get_coordinate(partial_score.id),
-    "boundary performance": partial_group.get_coordinate_at(
-        IdCoordinate(
-            second_half_boundary.value, second_half_boundary.unit, partial_score.id
-        ),
-        timeline_id=second_half_recording.id,
-    ),
-    "boundary is_interpolated": boundary_stamp.is_interpolated,
-    "between-pairs score": between_stamp.get_coordinate(partial_score.id),
-    "between-pairs performance": partial_group.get_coordinate_at(
-        IdCoordinate(between_pairs.value, between_pairs.unit, partial_score.id),
-        timeline_id=second_half_recording.id,
-    ),
-    "between-pairs is_interpolated": between_stamp.is_interpolated,
+    "quarter 8": recording_position(second_half_boundary),
+    "quarter 25/2": recording_position(between_pairs),
 }
 partial_checks
 
 # %% [markdown]
-# Quarter 8 is the stored start and maps to 0 seconds, so its flag is false.
-# The exact rational quarter 25/2 survives the coordinate-returning accessor
-# without reconstruction, maps to 22.5 seconds, and has a true interpolation
-# flag. With no further stored pairs, the group cannot measure how far this
-# straight-line estimate departs from the performed rubato.
+# Quarter 8 is the child's 0, the shared start of the group, and maps to 0
+# seconds, so its flag is false. Quarter 25/2 is the child's exact 9/2, which
+# maps to 22.5 seconds and has a true interpolation flag. With no further
+# stored positions, the group cannot measure how far this straight-line
+# estimate departs from the performed rubato.
 
 # %% [markdown]
 # ## What you learned
 #
 # - You can load event-bearing score and performance timelines and compare their extents.
 # - You can build a group, inspect its members, and establish commensurability.
-# - You can use the group's interpolation through `get_coordinate_at`.
+# - You can use the group's linear conversion through `get_coordinate_at`.
 # - You can transfer one coordinate and identify an interpolated answer.
 # - You can transfer a batch of discrete coordinates and tabulate the same query.
-# - You can retrieve a stored pair as a unit-bearing row view.
-# - You can inspect the full boundary table and read one typed value per cell.
+# - You can read the shared start as a stamp that is not interpolated.
+# - You can inspect the stored start and end rows and read one typed value per cell.
 # - You can query a member's represented range.
-# - You can explain what a group lock protects and when an extension must be made explicit.
-# - You can align a recording to only a named part of a score.
+# - You can align a recording to only part of a score by grouping it with a child.
 #
 # ## Next
 #

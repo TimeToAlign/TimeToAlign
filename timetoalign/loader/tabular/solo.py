@@ -6,8 +6,10 @@ event in a polyphonic performance, with six columns:
 
 ==  ==============================================================
 0   ``position`` — ``"<measure_number>+<numerator>/<denominator>"``;
-    integer measure number followed by a literal ``+`` and a
-    fractional offset within the measure (in quarters).
+    measure-number label followed by a literal ``+`` and a
+    fractional offset within the measure, counted **in whole
+    notes** (``3/8`` is three eighths of a whole note, i.e. 3/2
+    quarters).
 1   ``duration`` — quarter-note duration as a fraction
     (``"3/4"``, ``"0/1"`` for note-off).
 2   ``channel`` — MIDI channel (integer).
@@ -26,8 +28,9 @@ Example::
 ``field_specs`` (Step 2) pipeline end-to-end:
 
 * Step 1 splits the composite ``position`` column into a
-  ``measure_number`` + ``mn_onset`` struct via
-  :class:`CompositeFieldParser`; the ``duration`` column is parsed by
+  ``measure_number`` (a lossless ``{mc, mn, volta}`` measure label,
+  of which a ``.solo`` file states only the label) + ``mn_onset``
+  struct via :class:`CompositeFieldParser`; the ``duration`` column is parsed by
   a :class:`DenominateNumberField` blueprint bound to
   ``TimeUnit.quarters``.
 * Step 2 promotes the integer ``pitch`` column to an
@@ -66,23 +69,28 @@ class SoloLoader(CsvLoader):
     canonical ``duration`` column is also produced by Step 1 (as a
     :class:`DenominateNumberField` bound to ``TimeUnit.quarters``).
 
-    The loader does NOT (currently) reconcile measure-number into a
-    flat-quarter coordinate — measures are second-order time units
-    and resolution against a :class:`MetricMap` is out of scope.  The
-    ``start`` coordinate is therefore left null; callers that need
-    flat-quarter onsets should consume ``mn_onset`` directly and
-    consult their measure map.
+    The loader does NOT reconcile the measure-number label into a
+    flat-quarter coordinate — measures are second-order time units and
+    resolving them needs a measure map this loader does not have.  The
+    canonical ``start`` coordinate therefore carries the raw
+    within-measure offset (``mn_onset``) and nothing else: it is a
+    position *inside its measure*, not a position in the piece, and the
+    ``quarters`` label on it names the axis the offset will land on once
+    a measure map places the bar.  Callers that need flat-quarter
+    onsets must read ``measure_number`` and ``mn_onset`` together and
+    resolve the pair against their measure map — which is what
+    :class:`~timetoalign.loader.alignment.performance_precision.PerformancePrecisionLoader`
+    does, converting the whole-note offset to quarters on the way.
     """
 
     # Header-less, tab-delimited.
     delimiter: ClassVar[str] = "\t"
     header_row: ClassVar[int] = -1  # sentinel for "no header"
 
-    # No canonical start/end/duration: the start coordinate is
-    # second-order (measure_number + onset within measure).  We route
-    # the canonical start through the synthesised "mn_onset" raw
-    # column produced by column_specs, leaving measure resolution to
-    # downstream consumers.
+    # The start coordinate is second-order (measure_number + onset
+    # within the measure). We route the canonical start through the
+    # synthesised "mn_onset" raw column produced by column_specs and
+    # leave measure resolution to downstream consumers.
     id_column: ClassVar[str | None] = None  # auto-generated
     name_column: ClassVar[str | None] = None
     start_column: ClassVar[str] = "mn_onset"

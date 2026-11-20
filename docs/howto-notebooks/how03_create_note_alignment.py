@@ -35,7 +35,7 @@
 # ```python
 # result = match_notes_by_attributes(perf_df, score_df, ["pitch", "staff"], ...)
 # bundle.add_match_claims(result.match_claims)
-# stamp = bundle.get_matchstamp_at(78.0, "clt1")  # quarterbeat 78 -> seconds
+# stamp = bundle.get_matchstamp_at(78.0, "clt_1")  # quarterbeat 78 -> seconds
 # ```
 
 # %% [markdown]
@@ -82,8 +82,11 @@ abc_df = pd.read_csv(ABC_DIR / "n04op18-4_04_unfolded.notes.tsv", sep="\t")
 # %% [markdown]
 # ## 3. Prepare & Match Notes
 #
-# Before matching, we filter out rests and tied notes, and explode chords
-# into individual pitches.
+# Before matching, we drop the rests of the performance notes and explode
+# their chords into individual pitches. Of the score notes we keep those that
+# sound anew: a note without a tie, or the first note of a tie. The notes a
+# tie continues or ends prolong a sound already started, so a tied sound is
+# matched at its first note.
 
 # %%
 eep_prepared = prepare_eep_notes_for_matching(eep_df)
@@ -102,8 +105,8 @@ match_result = match_notes_by_attributes(
     match_columns=["pitch", "staff"],
     source_coord_column="start",
     target_coord_column="quarterbeats_playthrough",
-    source_timeline_id="cpt1",  # performance timeline (seconds)
-    target_timeline_id="clt1",  # score timeline (quarterbeats)
+    source_timeline_id="cpt_1",  # performance timeline (seconds)
+    target_timeline_id="clt_1",  # score timeline (quarterbeats)
     source_unit=TimeUnit.seconds,
     target_unit=TimeUnit.quarters,
 )
@@ -119,7 +122,7 @@ match_result.summary()
 
 # %%
 # Create the performance timeline (seconds)
-perf_tl = eep_loader.create_timeline(uid="cpt1")
+perf_tl = eep_loader.create_timeline(uid="cpt_1")
 
 perf_group = TimelineGroup(
     id="performance",
@@ -134,7 +137,7 @@ score_loader = Ms3Loader.from_file(
     ABC_DIR / "n04op18-4_04.notes.tsv",
     ABC_DIR / "n04op18-4_04.measures.tsv",
 )
-clt1 = score_loader.create_timeline(uid="clt1")
+clt1 = score_loader.create_timeline(uid="clt_1")
 
 score_group = TimelineGroup(
     id="score",
@@ -165,12 +168,15 @@ match_result.match_claims[0]
 
 # %%
 # Query from the score side: quarterbeat 78 (a matched note onset)
-stamp = bundle.get_matchstamp_at(78.0, "clt1")
+stamp = bundle.get_matchstamp_at(78.0, "clt_1")
 stamp
 
 # %%
 # The stamp shows coordinates on both timelines
-{"score_qb": stamp.get_coordinate("clt1"), "perf_seconds": stamp.get_coordinate("cpt1")}
+{
+    "score_qb": stamp.get_coordinate("clt_1"),
+    "perf_seconds": stamp.get_coordinate("cpt_1"),
+}
 
 # %% [markdown]
 # ### Reverse lookup: performance to score
@@ -181,11 +187,11 @@ stamp
 # %%
 # Find the score position for a performance coordinate (~100 seconds)
 # Using 100.3583 which is an exact matched coordinate
-stamp_rev = bundle.get_matchstamp_at(100.3583, "cpt1")
+stamp_rev = bundle.get_matchstamp_at(100.3583, "cpt_1")
 
 {
-    "perf_seconds": stamp_rev.get_coordinate("cpt1"),
-    "score_qb": stamp_rev.get_coordinate("clt1"),
+    "perf_seconds": stamp_rev.get_coordinate("cpt_1"),
+    "score_qb": stamp_rev.get_coordinate("clt_1"),
 }
 
 # %% [markdown]
@@ -200,7 +206,7 @@ stamp_rev = bundle.get_matchstamp_at(100.3583, "cpt1")
 # Performance-to-score: source is performance, sorted by performance time
 perf_to_score = MatchLine.from_claims(
     match_result.match_claims,
-    source_timeline_id="cpt1",
+    source_timeline_id="cpt_1",
 )
 perf_to_score
 
@@ -208,7 +214,7 @@ perf_to_score
 # Score-to-performance: source is score, sorted by score position
 score_to_perf = MatchLine.from_claims(
     match_result.match_claims,
-    source_timeline_id="clt1",
+    source_timeline_id="clt_1",
 )
 score_to_perf
 
@@ -225,7 +231,7 @@ score_to_perf
 
 # %%
 # Extract typed anchors — each carries both timeline IDs and both coordinates
-anchors = score_to_perf.get_alignment_anchors("cpt1")
+anchors = score_to_perf.get_alignment_anchors("cpt_1")
 
 {
     "n_anchors": len(anchors),
@@ -286,13 +292,13 @@ perf_tl.add_conversion_map(
 
 # %%
 # Default: conversion_maps=False, so none of the enabled maps show up.
-bundle.get_matchstamp_at(78.0, "clt1")
+bundle.get_matchstamp_at(78.0, "clt_1")
 
 # %%
 # conversion_maps=True adds one row per enabled map, each evaluated at its
 # own timeline's coordinate — ticks and floating measures from the score's
 # loader-provided maps, milliseconds from the one just added.
-bundle.get_matchstamp_at(78.0, "clt1", conversion_maps=True)
+bundle.get_matchstamp_at(78.0, "clt_1", conversion_maps=True)
 
 # %% [markdown]
 # The same flag adds a derived column to `get_matchstamp_table()` — one
@@ -301,7 +307,7 @@ bundle.get_matchstamp_at(78.0, "clt1", conversion_maps=True)
 # but never as a table column.
 
 # %%
-bundle.get_matchstamp_table([78.0], "clt1", conversion_maps=True).column_names
+bundle.get_matchstamp_table([78.0], "clt_1", conversion_maps=True).column_names
 
 # %% [markdown]
 # ## Summary

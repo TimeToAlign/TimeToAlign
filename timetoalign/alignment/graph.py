@@ -3,6 +3,7 @@
 This module implements the mid-level graph structure for alignment:
 
 - MatchStamp: Cross-group timestamp at a single coordinate
+- MatchIntervalStamp: Combined endpoint resolutions for an interval query
 - MatchGraph: Graph of MatchClaims yielding MatchStamps
 
 The hierarchy is:
@@ -25,7 +26,6 @@ Design:
 from __future__ import annotations
 
 import logging
-import math
 from dataclasses import dataclass, field
 from fractions import Fraction
 from types import SimpleNamespace
@@ -33,28 +33,43 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import networkx as nx
 import pandas as pd
+import pyarrow as pa
 
-from timetoalign.alignment.claims import AlignmentAnchor, MatchClaim
+from timetoalign.alignment.claims import (
+    _CLAIM_ID_PREFIX,
+    AlignmentAnchor,
+    MatchClaim,
+)
 from timetoalign.alignment.filters import ClaimFilter
 from timetoalign.core.enums import Domain, NumberType, TimeUnit
+from timetoalign.core.ids import mint_ids
 from timetoalign.core.retrieval import (
     CoordinateCollection,
     CoordinateFormat,
     CoordinateInput,
     CoordinateResult,
+    KeyCollection,
     Rounding,
-    coordinate_wire_entry,
+    coordinate_from_dict,
+    coordinate_to_dict,
     dispatch_retrieval,
     format_coordinates,
     number_type_for_converted_unit,
     validate_coordinate_collection,
+    validate_key_collection,
 )
-from timetoalign.core.time import Coordinate, CoordinateValue, IdCoordinate
+from timetoalign.core.time import (
+    Coordinate,
+    CoordinateValue,
+    IdCoordinate,
+    Interval,
+)
 from timetoalign.core.timestamp import (
     ConversionMapsSpec,
     Stamp,
     _format_stamp_value,
 )
+from timetoalign.timelines.groups import _groups_by_timeline
 
 if TYPE_CHECKING:
     from timetoalign.alignment.bundle import AlignmentBundle
@@ -92,6 +107,8 @@ class MatchStamp(Stamp):
         is_interpolated: Whether the stamp used interpolated transfer.
         conversion_maps: Conversion maps available to unit lookup and display.
             Opt-in: defaults to ``False``.
+        interval_claims: The interval claims covering the queried position,
+            in relevance order: the claims themselves, never copies.
 
     Examples:
         >>> stamp = MatchStamp(
@@ -113,9 +130,19 @@ class MatchStamp(Stamp):
     source: "AlignmentBundle | None" = None
     is_interpolated: bool = False
     conversion_maps: ConversionMapsSpec = False
+    interval_claims: list[MatchClaim] = field(default_factory=list)
 
     def __post_init__(self) -> None:
-        """Isolate mutable containers from callers and serialized data."""
+        """Isolate mutable containers from callers and serialized data.
+
+        The coordinate dict and the edge and claim lists are the stamp's own;
+        the claims in the list are not copied. A claim is frozen (only a
+        free claim joining a bundle takes the id the bundle gives it, and
+        stays the same claim), so sharing it cannot let the caller change
+        what the stamp says; the stamp names the claims that answered, not
+        copies of them, which would cost a copy of every claim at every
+        retrieval.
+        """
         if not isinstance(self.source_id, str) or not self.source_id:
             raise ValueError("MatchStamp source_id must be a non-empty timeline ID")
         if self.source_id not in self.coordinates:
@@ -141,6 +168,114 @@ class MatchStamp(Stamp):
         )
         object.__setattr__(
             self, "inferred_edges", [tuple(edge) for edge in self.inferred_edges]
+        )
+        normalized_claims: list[MatchClaim] = []
+        for claim in self.interval_claims:
+            if not isinstance(claim, MatchClaim) or not claim.is_interval:
+                raise TypeError(
+                    "MatchStamp interval_claims must contain interval MatchClaim values"
+                )
+            normalized_claims.append(claim)
+        object.__setattr__(self, "interval_claims", normalized_claims)
+
+    def _interval_candidate_rows(
+        self,
+    ) -> list[tuple[MatchClaim, str, Coordinate | None]]:
+        """Return every interval claim's mapped counterpart candidate."""
+        if not self.interval_claims or self.source is None:
+            return []
+        query = self.coordinates[self.source_id]
+        rows: list[tuple[MatchClaim, str, Coordinate | None]] = []
+        for claim in self.interval_claims:
+            target_id, coordinate, _ = self.source._interval_claim_candidate(
+                claim, self.source_id, query
+            )
+            rows.append((claim, target_id, coordinate))
+        return rows
+
+    def _ambiguous_interval_candidates(
+        self,
+    ) -> dict[str, list[tuple[MatchClaim, Coordinate | None]]]:
+        """Return per-timeline candidates that do not define one coordinate."""
+        grouped: dict[str, list[tuple[MatchClaim, Coordinate | None]]] = {}
+        for claim, timeline_id, coordinate in self._interval_candidate_rows():
+            grouped.setdefault(timeline_id, []).append((claim, coordinate))
+        ambiguous: dict[str, list[tuple[MatchClaim, Coordinate | None]]] = {}
+        for timeline_id, candidates in grouped.items():
+            values = [coordinate for _, coordinate in candidates]
+            if any(coordinate is None for coordinate in values):
+                ambiguous[timeline_id] = candidates
+                continue
+            unique = []
+            for coordinate in values:
+                if coordinate not in unique:
+                    unique.append(coordinate)
+            if len(unique) != 1:
+                ambiguous[timeline_id] = candidates
+        return ambiguous
+
+    @staticmethod
+    def _claim_candidate_text(
+        index: int,
+        claim: MatchClaim,
+        timeline_id: str,
+        coordinate: Coordinate | None,
+    ) -> str:
+        """Format one claim candidate for display and diagnostics."""
+        value = (
+            "MISSING (no single coordinate)"
+            if coordinate is None
+            else _format_stamp_value(coordinate.value, coordinate.unit.value)
+        )
+        return (
+            f"claim {index} {claim.timeline_a_id}<->{claim.timeline_b_id}: "
+            f"{timeline_id}={value}"
+        )
+
+    def get_coordinate_for(
+        self,
+        timeline_id: str,
+        *,
+        format: CoordinateFormat = "id_coordinate",
+        rounding: Rounding = "round",
+    ) -> CoordinateResult | pd.Series:
+        """Return one coordinate, rejecting per-claim ambiguity atomically."""
+        if timeline_id not in self.coordinates:
+            candidates = self._ambiguous_interval_candidates().get(timeline_id)
+            if candidates:
+                details = "; ".join(
+                    self._claim_candidate_text(index, claim, timeline_id, coordinate)
+                    for index, (claim, coordinate) in enumerate(candidates, 1)
+                )
+                raise ValueError(
+                    f"Timeline {timeline_id!r} has multiple interval-claim "
+                    f"candidates: {details}"
+                )
+        return super().get_coordinate_for(timeline_id, format=format, rounding=rounding)
+
+    def get_coordinates_for(
+        self,
+        timeline_ids: KeyCollection,
+        *,
+        format: CoordinateFormat = "id_coordinate",
+        rounding: Rounding = "round",
+    ) -> list[CoordinateResult] | pd.Series:
+        """Return coordinates after validating every requested timeline."""
+        keys, _ = validate_key_collection(timeline_ids)
+        ambiguous = self._ambiguous_interval_candidates()
+        for timeline_id in keys:
+            candidates = ambiguous.get(timeline_id)
+            if candidates:
+                details = "; ".join(
+                    self._claim_candidate_text(index, claim, timeline_id, coordinate)
+                    for index, (claim, coordinate) in enumerate(candidates, 1)
+                )
+                raise ValueError(
+                    f"Timeline {timeline_id!r} has multiple interval-claim "
+                    f"candidates: {details}"
+                )
+        return super().get_coordinates_for(
+            timeline_ids, format=format, rounding=rounding
         )
 
     @property
@@ -337,6 +472,9 @@ class MatchStamp(Stamp):
             source=self.source,
             is_interpolated=self.is_interpolated,
             conversion_maps=self.conversion_maps,
+            interval_claims=(
+                self.interval_claims if self.source_id in filtered_coords else []
+            ),
         )
 
     def to_dict(
@@ -359,17 +497,12 @@ class MatchStamp(Stamp):
         if format == "graph":
             return {
                 "coordinates": {
-                    timeline_id: coordinate_wire_entry(coordinate)
+                    timeline_id: coordinate_to_dict(coordinate)
                     for timeline_id, coordinate in self.coordinates.items()
                 },
                 "anchor_edges": list(self.anchor_edges),
                 "inferred_edges": list(self.inferred_edges),
             }
-
-        def _bundle_uid(timeline_id: str) -> str:
-            if self.source is None:
-                return timeline_id
-            return self.source._timeline_id_to_uid.get(timeline_id, timeline_id)
 
         if format not in ("flat", "prefix", "nested"):
             raise ValueError(
@@ -382,42 +515,42 @@ class MatchStamp(Stamp):
                 "to resolve timeline groups"
             )
 
+        # A timeline of several groups is listed under each of them; a
+        # standalone one under its own id.
+        membership = {} if self.source is None else self.source.timeline_to_groups
         grouped: dict[str, dict[str, dict[str, object]]] = {}
         for timeline_id, coordinate in self.coordinates.items():
-            wire = coordinate_wire_entry(coordinate)
-            bundle_uid = _bundle_uid(timeline_id)
-            if self.source is None:
-                grouped.setdefault(bundle_uid, {})[timeline_id] = wire
-                continue
-
-            group_id = self.source.timeline_to_group.get(bundle_uid, bundle_uid)
-            grouped.setdefault(group_id, {})[bundle_uid] = wire
+            coordinate_data = coordinate_to_dict(coordinate)
+            for group_id in membership.get(timeline_id, (timeline_id,)):
+                grouped.setdefault(group_id, {})[timeline_id] = coordinate_data
 
         if format == "flat":
             return {
-                f"{timeline_id} ({wire['unit']})": wire
+                f"{timeline_id} ({coordinate_data['unit']})": coordinate_data
                 for timeline_coordinates in grouped.values()
-                for timeline_id, wire in timeline_coordinates.items()
+                for timeline_id, coordinate_data in timeline_coordinates.items()
             }
 
         if format == "nested":
             return {
                 group_id: {
-                    f"{timeline_id} ({wire['unit']})": wire
-                    for timeline_id, wire in timeline_coordinates.items()
+                    f"{timeline_id} ({coordinate_data['unit']})": coordinate_data
+                    for timeline_id, coordinate_data in timeline_coordinates.items()
                 }
                 for group_id, timeline_coordinates in grouped.items()
             }
 
         result: dict[str, dict[str, object]] = {}
         for group_id, timeline_coordinates in grouped.items():
-            for timeline_id, wire in timeline_coordinates.items():
-                result[f"{group_id}/{timeline_id} ({wire['unit']})"] = wire
+            for timeline_id, coordinate_data in timeline_coordinates.items():
+                result[f"{group_id}/{timeline_id} ({coordinate_data['unit']})"] = (
+                    coordinate_data
+                )
         return result
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "MatchStamp":
-        """Deserialize a graph-shaped typed wire dictionary.
+        """Deserialize a graph-shaped typed coordinate dictionary.
 
         Args:
             data: Graph-shaped stamp payload.
@@ -426,67 +559,10 @@ class MatchStamp(Stamp):
             A canonical typed match stamp.
         """
         coordinates: dict[str, Coordinate] = {}
-        for timeline_id, wire in data["coordinates"].items():
-            if not isinstance(wire, dict):
-                raise TypeError(
-                    "MatchStamp coordinate leaves must be wire dictionaries"
-                )
-            number_type = wire["number_type"]
-            if number_type == "fraction":
-                numerator = wire["numerator"]
-                denominator = wire["denominator"]
-                if (
-                    isinstance(numerator, bool)
-                    or not isinstance(numerator, int)
-                    or isinstance(denominator, bool)
-                    or not isinstance(denominator, int)
-                ):
-                    raise ValueError(
-                        "Fraction wire entries require integer ratio members"
-                    )
-                value: CoordinateValue = Fraction(numerator, denominator)
-                mirror = wire["value"]
-                if (
-                    isinstance(mirror, bool)
-                    or not isinstance(mirror, (int, float))
-                    or not math.isfinite(float(mirror))
-                    or float(mirror) != float(value)
-                ):
-                    raise ValueError("Fraction wire entry has an invalid float mirror")
-            elif number_type == "int":
-                mirror = wire["value"]
-                if (
-                    isinstance(mirror, bool)
-                    or not isinstance(mirror, (int, float))
-                    or not math.isfinite(float(mirror))
-                    or not float(mirror).is_integer()
-                ):
-                    raise ValueError(
-                        "Integer wire entry requires an integral finite mirror"
-                    )
-                if wire["numerator"] is not None or wire["denominator"] is not None:
-                    raise ValueError("Integer wire entry ratio members must be null")
-                value = int(mirror)
-            elif number_type == "float":
-                if wire["numerator"] is not None or wire["denominator"] is not None:
-                    raise ValueError("Float wire entry ratio members must be null")
-                mirror = wire["value"]
-                if (
-                    isinstance(mirror, bool)
-                    or not isinstance(mirror, (int, float))
-                    or not math.isfinite(float(mirror))
-                ):
-                    raise ValueError(
-                        "Float wire entry requires a finite numeric mirror"
-                    )
-                value = float(mirror)
-            else:
-                raise ValueError(f"Unknown wire number_type {number_type!r}")
-            coordinates[timeline_id] = Coordinate(
-                value,
-                TimeUnit(wire["unit"]),
-                number_type=number_type,
-            )
+        for timeline_id, coordinate_data in data["coordinates"].items():
+            if not isinstance(coordinate_data, dict):
+                raise TypeError("MatchStamp coordinate leaves must be dictionaries")
+            coordinates[timeline_id] = coordinate_from_dict(coordinate_data)
         if not coordinates:
             raise ValueError("MatchStamp payload must contain at least one coordinate")
         return cls(
@@ -497,23 +573,38 @@ class MatchStamp(Stamp):
         )
 
     def __repr__(self) -> str:
-        tl_list = ", ".join(
+        entries = [
             f"{timeline_id}="
             f"{_format_stamp_value(coordinate.value, coordinate.unit.value)}"
             for timeline_id, coordinate in self.coordinates.items()
+        ]
+        entries.extend(
+            self._claim_candidate_text(index, claim, timeline_id, coordinate)
+            for index, (claim, timeline_id, coordinate) in enumerate(
+                self._interval_candidate_rows(), 1
+            )
         )
-        return f"MatchStamp({tl_list})"
+        return f"MatchStamp({', '.join(entries)})"
 
     def __str__(self) -> str:
         """Readable cross-section showing all coordinates.
 
         Examples:
+            >>> stamp = MatchStamp(
+            ...     coordinates={
+            ...         "score": Coordinate(4, TimeUnit.quarters),
+            ...         "parts": Coordinate(4, TimeUnit.quarters),
+            ...         "audio": Coordinate(2.5, TimeUnit.seconds),
+            ...     },
+            ...     source_id="score",
+            ...     anchor_edges=[("score", "audio")],
+            ...     inferred_edges=[("score", "parts")],
+            ... )
             >>> print(stamp)
             MatchStamp (3 timelines, 2 edges)
-              ID              Coordinate   Type
-              score:clt1      0            anchor
-              perf:dlt1       0            anchor
-              perf:dlt2       128          inferred
+              score   4 quarters  anchor
+              parts   4 quarters  inferred
+              audio  2.5 seconds  anchor
         """
         n_edges = self.n_explicit_edges + self.n_inferred_edges
         lines: list[str] = [
@@ -551,6 +642,23 @@ class MatchStamp(Stamp):
 
         for label, value, suffix in self._conversion_rows():
             entries.append((label, _format_stamp_value(value, suffix), ""))
+
+        for index, (claim, timeline_id, coordinate) in enumerate(
+            self._interval_candidate_rows(), 1
+        ):
+            entries.append(
+                (
+                    f"{claim.timeline_a_id}<->{claim.timeline_b_id}",
+                    (
+                        "MISSING"
+                        if coordinate is None
+                        else _format_stamp_value(
+                            coordinate.value, coordinate.unit.value
+                        )
+                    ),
+                    f"interval claim {index} ({timeline_id})",
+                )
+            )
 
         if entries:
             max_id = max(len(e[0]) for e in entries)
@@ -620,6 +728,22 @@ class MatchStamp(Stamp):
                 f"<td style='color: #666;'><em>cmap</em></td></tr>"
             )
 
+        for index, (claim, timeline_id, coordinate) in enumerate(
+            self._interval_candidate_rows(), 1
+        ):
+            label = html_mod.escape(f"{claim.timeline_a_id}<->{claim.timeline_b_id}")
+            value = (
+                "MISSING"
+                if coordinate is None
+                else _format_stamp_value(coordinate.value, coordinate.unit.value)
+            )
+            rows.append(
+                f"<tr><td style='color: #666;'>{label}</td>"
+                f"<td style='text-align: right;'>{html_mod.escape(value)}</td>"
+                f"<td style='color: #666;'><em>interval claim {index} "
+                f"({html_mod.escape(timeline_id)})</em></td></tr>"
+            )
+
         badge = (
             f" <span style='background: #e3f2fd; padding: 0 4px; "
             f"border-radius: 3px; font-size: 0.8em;'>"
@@ -651,6 +775,182 @@ class MatchStamp(Stamp):
 # endregion
 
 
+# region MatchIntervalStamp
+
+
+@dataclass(frozen=True, slots=True)
+class MatchIntervalStamp:
+    """Two coordinate match stamps combined for an interval query."""
+
+    source_id: str
+    interval: Interval
+    start_stamp: MatchStamp
+    end_stamp: MatchStamp
+
+    def __post_init__(self) -> None:
+        """Validate the queried interval and endpoint resolutions."""
+        if not isinstance(self.source_id, str) or not self.source_id:
+            raise ValueError(
+                "MatchIntervalStamp source_id must be a non-empty timeline ID"
+            )
+        if type(self.interval) is not Interval:
+            raise TypeError("MatchIntervalStamp interval must be an Interval")
+        if (
+            type(self.start_stamp) is not MatchStamp
+            or type(self.end_stamp) is not MatchStamp
+        ):
+            raise TypeError("MatchIntervalStamp endpoints must be MatchStamp values")
+        if self.source_id not in self.start_stamp.coordinates:
+            raise ValueError("MatchIntervalStamp start does not contain its source")
+        if self.source_id not in self.end_stamp.coordinates:
+            raise ValueError("MatchIntervalStamp end does not contain its source")
+        canonical = Interval(
+            self.interval.start,
+            self.interval.end,
+        )
+        object.__setattr__(self, "interval", canonical)
+
+    def __repr__(self) -> str:
+        """Render one resolved endpoint pair per present timeline."""
+        entries = "; ".join(
+            f"{timeline_id}={self._pair_text(timeline_id)}"
+            for timeline_id in self.present_timelines
+        )
+        return f"MatchIntervalStamp({entries})"
+
+    def __str__(self) -> str:
+        """Render a readable table of resolved endpoint pairs."""
+        lines = [f"MatchIntervalStamp ({len(self.present_timelines)} timelines)"]
+        entries = [
+            (timeline_id, self._pair_text(timeline_id))
+            for timeline_id in self.present_timelines
+        ]
+        max_id = max(len(timeline_id) for timeline_id, _ in entries)
+        for timeline_id, pair in entries:
+            lines.append(f"  {timeline_id:<{max_id}}  {pair}")
+        return "\n".join(lines)
+
+    @property
+    def axis(self) -> Interval:
+        """Return the canonical queried interval."""
+        return self.interval
+
+    @property
+    def start(self) -> MatchStamp:
+        """Return the full start-endpoint resolution."""
+        return self.start_stamp
+
+    @property
+    def end(self) -> MatchStamp:
+        """Return the full end-endpoint resolution."""
+        return self.end_stamp
+
+    @property
+    def present_timelines(self) -> list[str]:
+        """Return source-first endpoint timeline order."""
+        ordered = [self.source_id]
+        ordered.extend(
+            timeline_id
+            for timeline_id in self.start_stamp.present_timelines
+            if timeline_id not in ordered
+        )
+        ordered.extend(
+            timeline_id
+            for timeline_id in self.end_stamp.present_timelines
+            if timeline_id not in ordered
+        )
+        return ordered
+
+    def _pair_text(self, timeline_id: str) -> str:
+        """Format one timeline's two resolved sides."""
+        start = self.start_stamp.coordinates.get(timeline_id)
+        end = self.end_stamp.coordinates.get(timeline_id)
+        start_text = (
+            "MISSING"
+            if start is None
+            else _format_stamp_value(start.value, start.unit.value)
+        )
+        end_text = (
+            "MISSING" if end is None else _format_stamp_value(end.value, end.unit.value)
+        )
+        return f"[{start_text}, {end_text}]"
+
+    def get_interval_for(self, timeline_id: str) -> Interval:
+        """Return one complete, ordered resolved interval."""
+        if timeline_id not in self.present_timelines:
+            raise KeyError(
+                f"Unknown timeline ID {timeline_id!r} on MatchIntervalStamp. "
+                f"Available timelines: {self.present_timelines}"
+            )
+        start = self.start_stamp.coordinates.get(timeline_id)
+        end = self.end_stamp.coordinates.get(timeline_id)
+        if start is None:
+            raise ValueError(f"Timeline {timeline_id!r} has a missing start endpoint")
+        if end is None:
+            raise ValueError(f"Timeline {timeline_id!r} has a missing end endpoint")
+        if start.value > end.value:
+            raise ValueError(
+                f"Timeline {timeline_id!r} has reversed endpoints: "
+                f"start {start.value!r} exceeds end {end.value!r}"
+            )
+        return Interval(start, end)
+
+    def to_dict(self) -> dict[str, dict[str, Any | None]]:
+        """Serialize endpoint coverage with typed leaves and null missing sides."""
+        result: dict[str, dict[str, Any | None]] = {}
+        for timeline_id in self.present_timelines:
+            start = self.start_stamp.coordinates.get(timeline_id)
+            end = self.end_stamp.coordinates.get(timeline_id)
+            result[timeline_id] = {
+                "start": None if start is None else coordinate_to_dict(start),
+                "end": None if end is None else coordinate_to_dict(end),
+            }
+        return result
+
+    def _repr_html_(self) -> str:
+        """Return an HTML table of resolved endpoint pairs."""
+        import html as html_mod
+
+        rows = []
+        for timeline_id in self.present_timelines:
+            start = self.start_stamp.coordinates.get(timeline_id)
+            end = self.end_stamp.coordinates.get(timeline_id)
+            start_text = (
+                "MISSING"
+                if start is None
+                else _format_stamp_value(start.value, start.unit.value)
+            )
+            end_text = (
+                "MISSING"
+                if end is None
+                else _format_stamp_value(end.value, end.unit.value)
+            )
+            rows.append(
+                f"<tr><td>{html_mod.escape(timeline_id)}</td>"
+                f"<td style='text-align: right;'>{html_mod.escape(start_text)}</td>"
+                f"<td style='text-align: right;'>{html_mod.escape(end_text)}</td>"
+                f"</tr>"
+            )
+        badge = (
+            f" <span style='background: #e3f2fd; padding: 0 4px; "
+            f"border-radius: 3px; font-size: 0.8em;'>"
+            f"{len(self.present_timelines)} timelines</span>"
+        )
+        return (
+            f"<div style='font-family: monospace;'>"
+            f"<strong>MatchIntervalStamp</strong>{badge}"
+            f"<table style='border-collapse: collapse; margin-top: 4px;'>"
+            f"<thead><tr style='border-bottom: 1px solid #ccc;'>"
+            f"<th style='text-align: left; padding: 2px 8px;'>ID</th>"
+            f"<th style='text-align: right; padding: 2px 8px;'>Start</th>"
+            f"<th style='text-align: right; padding: 2px 8px;'>End</th>"
+            f"</tr></thead><tbody>{''.join(rows)}</tbody></table></div>"
+        )
+
+
+# endregion
+
+
 # region MatchGraph
 
 
@@ -672,14 +972,42 @@ class MatchGraph:
         claims: List of all MatchClaims in this graph (synchronous and non-synchronous).
 
     Examples:
-        >>> # Build graph from claims
-        >>> graph = MatchGraph(claims=[claim1, claim2])
+        Build a graph from two claims between a score and a recording:
 
-        >>> # Extend via group membership
-        >>> extended = graph.extend_to_groups(groups, timeline_to_group)
+        >>> from timetoalign.timelines import Timeline, TimelineGroup
+        >>> def claim(quarters, seconds):
+        ...     return MatchClaim(
+        ...         timeline_a_id="score",
+        ...         timeline_b_id="audio",
+        ...         start_anchor=AlignmentAnchor(
+        ...             timeline_a_id="score",
+        ...             coordinate_a=Coordinate(quarters, TimeUnit.quarters),
+        ...             timeline_b_id="audio",
+        ...             coordinate_b=Coordinate(seconds, TimeUnit.seconds),
+        ...         ),
+        ...         is_synchronous=True,
+        ...     )
+        >>> graph = MatchGraph(claims=[claim(0, 0.0), claim(4, 2.0)])
+        >>> graph.n_nodes, graph.n_edges, graph.n_components
+        (4, 2, 2)
 
-        >>> # Get synchronized timestamps
-        >>> stamps = graph.get_stamps()
+        Extend it through the group the score shares with its parts:
+
+        >>> score = Timeline(length=8, unit=TimeUnit.quarters, uid="score")
+        >>> parts = Timeline(length=8, unit=TimeUnit.quarters, uid="parts")
+        >>> group = TimelineGroup(name="edition", timelines=[score, parts])
+        >>> extended = graph.extend_to_groups({group.id: group})
+        >>> extended.n_nodes, extended.n_edges
+        (6, 4)
+
+        One stamp per synchronized position:
+
+        >>> stamps = extended.get_stamps()
+        >>> print(stamps[1])
+        MatchStamp (3 timelines, 2 edges)
+          audio   2 seconds  anchor
+          parts  4 quarters  inferred
+          score  4 quarters  anchor
     """
 
     def __init__(
@@ -749,7 +1077,12 @@ class MatchGraph:
         nodes or edges.
 
         Nodes: (timeline_id, coordinate) tuples
-        Edges: Anchors with attributes (explicit, synchronous, claim_id)
+        Edges: Anchors with attributes (explicit, synchronous, claim_id, and
+        claim: the claim object itself, which selects claims, since a claim
+        id is unique only in the scope holding the claim: the explicit
+        claims keep the ids of the scopes they come from, so two free claims
+        may share one, while :meth:`extend_to_groups` mints the implicit
+        claims' ids among those of the graph's claims)
 
         Returns:
             networkx Graph representing the anchor structure.
@@ -813,6 +1146,7 @@ class MatchGraph:
             explicit=claim.is_explicit,
             synchronous=claim.is_synchronous,
             claim_id=claim.id,
+            claim=claim,
         )
 
     def _get_node_keys_for_timeline(self, timeline_id: str) -> list[_GraphNode]:
@@ -1105,9 +1439,8 @@ class MatchGraph:
     def extend_to_groups(
         self,
         groups: dict[str, "TimelineGroup"],
-        timeline_to_group: dict[str, str],
-        include_inferred: bool = True,
         *,
+        include_inferred: bool = True,
         timeline_ids: set[str] | None = None,
         id_pattern: str | None = None,
         include_domains: set[Domain] | None = None,
@@ -1115,15 +1448,21 @@ class MatchGraph:
     ) -> "MatchGraph":
         """Extend anchors to full group timestamps via implicit claims.
 
-        For each coordinate in the graph, if it belongs to a Group,
-        computes the equivalent coordinate for every other member of that
-        Group and adds an implicit ``MatchClaim`` (case d) plus the
-        corresponding edge. Filters control which timelines receive
-        implicit claims.
+        For each coordinate in the graph, computes the equivalent coordinate
+        for every other member of every group its timeline belongs to and
+        adds an implicit ``MatchClaim`` (case d) plus the corresponding edge.
+        Membership is read from *groups* alone, and a timeline may belong to
+        several. A coordinate reached this way is extended in turn through
+        the other groups of its timeline, so a timeline shared by two groups
+        carries a coordinate from the members of one to the members of the
+        other. Filters control which timelines receive implicit claims; a
+        timeline they exclude receives no coordinate, so no extension passes
+        through it. The implicit claims' ids are minted among the ids of
+        this graph's claims (``claim_N``, the smallest N free, in the order
+        the claims are made), so each names one claim of the extended graph.
 
         Args:
             groups: Dict of group_id -> TimelineGroup.
-            timeline_to_group: Dict of timeline_id -> group_id.
             include_inferred: Whether to add inferred edges.
             timeline_ids: Only extend to these timeline IDs.
             id_pattern: Regex filter for timeline IDs.
@@ -1139,85 +1478,42 @@ class MatchGraph:
         # Create a copy of the graph
         extended = nx.Graph(self._graph)
         implicit_claims: list[MatchClaim] = []
+        membership = _groups_by_timeline(groups)
 
-        for node in list(self._graph.nodes()):
-            timeline_id, coord = node
-
-            # Check if timeline belongs to a group
-            group_id = timeline_to_group.get(timeline_id)
-            if not group_id:
-                continue
-
-            group = groups.get(group_id)
-            if not group:
-                continue
-
-            # Find the source claim for traceability
-            source_claim = self._find_source_claim_for_node(node)
-
-            # Add inferred edges to all other timelines in group
-            for other_tl_id in group.timeline_ids:
-                if other_tl_id == timeline_id:
-                    continue
-
-                # Apply filters
-                if not self._passes_filters(
-                    other_tl_id,
-                    timelines={
-                        member_id: group.get_timeline(member_id)
-                        for member_id in group.timeline_ids
-                    },
+        # Every graph node, then every node the extension adds, each with the
+        # group it was reached through (whose members it has already reached)
+        # and the explicit claim it traces back to (looked up when a graph
+        # node is extended).
+        pending: list[tuple[_GraphNode, str | None, MatchClaim | None]] = [
+            (node, None, None) for node in self._graph.nodes()
+        ]
+        position = 0
+        while position < len(pending):
+            node, reached_through, source_claim = pending[position]
+            position += 1
+            group_ids = [
+                group_id
+                for group_id in membership.get(node[0], ())
+                if group_id != reached_through
+            ]
+            if group_ids and reached_through is None:
+                source_claim = self._find_source_claim_for_node(node)
+            for group_id in group_ids:
+                self._extend_through_group(
+                    extended,
+                    implicit_claims,
+                    pending,
+                    node,
+                    group_id,
+                    groups[group_id],
+                    source_claim,
                     timeline_ids=timeline_ids,
                     id_pattern=id_pattern,
                     include_domains=include_domains,
                     include_units=include_units,
-                ):
-                    continue
+                )
 
-                # Convert coordinate to other timeline
-                try:
-                    source_timeline = group.get_timeline(timeline_id)
-                    other_coord = group.get_coordinate_at(
-                        IdCoordinate(
-                            coord,
-                            source_timeline.unit,
-                            timeline_id,
-                            number_type=source_timeline.number_type,
-                        ),
-                        timeline_id=other_tl_id,
-                        format="coordinate",
-                    )
-                except (KeyError, ValueError):
-                    continue
-                assert isinstance(other_coord, Coordinate)
-
-                other_value = float(other_coord.value)
-                other_node: _GraphNode = (other_tl_id, other_value)
-
-                # Add implicit edge if not already connected
-                if not extended.has_edge(node, other_node):
-                    # Create an implicit MatchClaim (case d)
-                    implicit_claim = MatchClaim.implicit(
-                        tl_a_id=timeline_id,
-                        coord_a=coord,
-                        tl_b_id=other_tl_id,
-                        coord_b=other_value,
-                        unit_a=group.get_timeline(timeline_id).unit,
-                        unit_b=group.get_timeline(other_tl_id).unit,
-                        source_claim=source_claim,
-                    )
-                    implicit_claims.append(implicit_claim)
-
-                    extended.add_edge(
-                        node,
-                        other_node,
-                        explicit=False,
-                        synchronous=True,
-                        inferred_via="group",
-                        group_id=group_id,
-                        claim_id=implicit_claim.id,
-                    )
-
+        self._mint_implicit_claim_ids(extended, implicit_claims)
         all_claims = list(self._claims) + implicit_claims
         return MatchGraph._from_graph(
             extended,
@@ -1227,6 +1523,123 @@ class MatchGraph:
             source=self._source,
             source_id=self._source_id,
         )
+
+    def _mint_implicit_claim_ids(
+        self, extended: nx.Graph, implicit_claims: list[MatchClaim]
+    ) -> None:
+        """Mint the ids of the implicit claims in this graph's scope.
+
+        Each implicit claim is made free, so all of them hold ``claim_1``;
+        they are given ``claim_N``, the N the smallest numbers the graph's
+        claims leave free, in the order they were made, and every edge
+        carrying one takes its new id. Their ``source_claim_id`` names a
+        claim of the graph and is left as it is.
+
+        Args:
+            extended: The extended graph, whose edges carry the claims.
+            implicit_claims: The claims the extension made, in order.
+        """
+        if not implicit_claims:
+            return
+        fresh = mint_ids(
+            _CLAIM_ID_PREFIX,
+            pa.array([claim.id for claim in self._claims], type=pa.string()),
+            len(implicit_claims),
+        )
+        for claim, claim_id in zip(implicit_claims, fresh.to_pylist(), strict=True):
+            # A claim just made, held by nothing else: renamed in place.
+            object.__setattr__(claim, "id", claim_id)
+        for _, _, data in extended.edges(data=True):
+            claim = data.get("claim")
+            if claim is not None:
+                data["claim_id"] = claim.id
+
+    def _extend_through_group(
+        self,
+        extended: nx.Graph,
+        implicit_claims: list[MatchClaim],
+        pending: list[tuple[_GraphNode, str | None, MatchClaim | None]],
+        node: _GraphNode,
+        group_id: str,
+        group: "TimelineGroup",
+        source_claim: MatchClaim | None,
+        *,
+        timeline_ids: set[str] | None,
+        id_pattern: str | None,
+        include_domains: set[Domain] | None,
+        include_units: set[TimeUnit] | None,
+    ) -> None:
+        """Link one node to the other members of one of its groups.
+
+        Adds an implicit claim and an edge per member the filters admit, and
+        queues every node it creates for extension through its own other
+        groups.
+        """
+        timeline_id, coord = node
+        for other_tl_id in group.timeline_ids:
+            if other_tl_id == timeline_id:
+                continue
+
+            # Apply filters
+            if not self._passes_filters(
+                other_tl_id,
+                timelines={
+                    member_id: group.get_timeline(member_id)
+                    for member_id in group.timeline_ids
+                },
+                timeline_ids=timeline_ids,
+                id_pattern=id_pattern,
+                include_domains=include_domains,
+                include_units=include_units,
+            ):
+                continue
+
+            # Convert coordinate to other timeline
+            try:
+                source_timeline = group.get_timeline(timeline_id)
+                other_coord = group.get_coordinate_at(
+                    IdCoordinate(
+                        coord,
+                        source_timeline.unit,
+                        timeline_id,
+                        number_type=source_timeline.number_type,
+                    ),
+                    timeline_id=other_tl_id,
+                    format="coordinate",
+                )
+            except (KeyError, ValueError):
+                continue
+            assert isinstance(other_coord, Coordinate)
+
+            other_value = float(other_coord.value)
+            other_node: _GraphNode = (other_tl_id, other_value)
+            if other_node not in extended:
+                pending.append((other_node, group_id, source_claim))
+
+            # Add implicit edge if not already connected
+            if not extended.has_edge(node, other_node):
+                # Create an implicit MatchClaim (case d)
+                implicit_claim = MatchClaim.implicit(
+                    tl_a_id=timeline_id,
+                    coord_a=coord,
+                    tl_b_id=other_tl_id,
+                    coord_b=other_value,
+                    unit_a=group.get_timeline(timeline_id).unit,
+                    unit_b=group.get_timeline(other_tl_id).unit,
+                    source_claim=source_claim,
+                )
+                implicit_claims.append(implicit_claim)
+
+                extended.add_edge(
+                    node,
+                    other_node,
+                    explicit=False,
+                    synchronous=True,
+                    inferred_via="group",
+                    group_id=group_id,
+                    claim_id=implicit_claim.id,
+                    claim=implicit_claim,
+                )
 
     def _find_source_claim_for_node(self, node: _GraphNode) -> MatchClaim | None:
         """Find the first explicit synchronous claim that contains this node.
@@ -1588,16 +2001,18 @@ class MatchGraph:
         filtered.remove_nodes_from(isolated)
 
         # Filter claims to match remaining edges
-        remaining_claim_ids = set()
-        for _, _, data in filtered.edges(data=True):
-            if "claim_id" in data:
-                remaining_claim_ids.add(data["claim_id"])
+        # By identity: claims built outside one scope may share an id.
+        remaining_claims = {
+            id(data["claim"])
+            for _, _, data in filtered.edges(data=True)
+            if "claim" in data
+        }
 
         # Keep non-synchronous claims that connect remaining timelines
         remaining_tl_ids = {node[0] for node in filtered.nodes()}
         filtered_claims = []
         for c in self._claims:
-            if c.id in remaining_claim_ids:
+            if id(c) in remaining_claims:
                 filtered_claims.append(c)
             elif (
                 not c.is_synchronous

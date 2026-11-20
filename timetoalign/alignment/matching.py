@@ -341,7 +341,13 @@ def prepare_abc_notes_for_matching(
     tied_column: str = "tied",
     coord_column: str = "quarterbeats_playthrough",
 ) -> pd.DataFrame:
-    """Prepare unfolded ABC notes for matching: drop tied notes, parse fractions.
+    """Prepare unfolded ABC notes for matching: keep sounding onsets, parse fractions.
+
+    ms3's tie column holds ``1`` where a note is tied to the following one,
+    ``-1`` where it is tied to by the previous one, ``0`` where both hold and
+    nothing where the note is not tied. A note sounds anew only when it is
+    not tied or starts a tie, so those rows are kept; the continuation and the
+    end of a tie prolong a sound already started and are dropped.
 
     Args:
         abc_df: DataFrame from ms3-loaded unfolded notes TSV with columns
@@ -349,29 +355,43 @@ def prepare_abc_notes_for_matching(
             ``quarterbeats_playthrough`` (unfolded coordinate).
         pitch_column: Column containing pitch name.
         staff_column: Column containing staff number.
-        tied_column: Column containing tie indicator. Rows with values >= 0
-            are tied continuations and should be dropped.
+        tied_column: Column containing the tie indicator (``1``, ``0``,
+            ``-1`` or empty, numeric or as text; a text cell that is empty
+            or holds only whitespace is empty). Rows holding ``0`` or ``-1``
+            are dropped.
         coord_column: Column containing the unfolded coordinate (may contain
             fraction strings like ``"707/2"``).
 
     Returns:
-        DataFrame with tied notes removed, ready for matching.
-        Includes a ``pitch`` column (renamed from pitch_column) for
-        compatibility with :func:`match_notes_by_attributes`.
+        DataFrame of the sounding onsets, re-indexed from 0, ready for
+        matching. A kept tie start carries its own notated duration, not the
+        length of its tie. Includes a ``pitch`` column (renamed from
+        pitch_column) for compatibility with :func:`match_notes_by_attributes`.
         The coordinate column values are converted to float.
-    """
-    from fractions import Fraction
 
-    # Drop tied notes: tied >= 0 means this note is tied FROM a previous note
-    drop_mask = abc_df[tied_column].fillna(-1) < 0
-    note_onsets = abc_df[drop_mask].copy()
+    Raises:
+        ValueError: If the tie column holds a value other than ``1``, ``0``,
+            ``-1`` or an empty cell.
+    """
+    tied = abc_df[tied_column]
+    if not pd.api.types.is_numeric_dtype(tied):
+        # A TSV read as text holds an empty string where a note is not tied.
+        tied = tied.mask(tied.astype("string").str.strip() == "")
+    tied = pd.to_numeric(tied)
+    unknown = sorted(set(tied.dropna().tolist()) - {-1, 0, 1})
+    if unknown:
+        raise ValueError(
+            f"Column {tied_column!r} holds tie values other than 1, 0, -1: {unknown}"
+        )
+    sounds_anew = tied.isna() | (tied.fillna(0) == 1)
+    note_onsets = abc_df[sounds_anew.to_numpy(dtype=bool)].copy()
 
     # Rename pitch column to "pitch" for matching compatibility
     if pitch_column != "pitch":
         note_onsets = note_onsets.rename(columns={pitch_column: "pitch"})
 
     # Convert coordinate column from fraction strings to float
-    if note_onsets[coord_column].dtype == object:
+    if not pd.api.types.is_numeric_dtype(note_onsets[coord_column]):
         note_onsets[coord_column] = note_onsets[coord_column].apply(
             lambda x: float(Fraction(str(x)))
         )

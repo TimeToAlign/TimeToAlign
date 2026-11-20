@@ -29,6 +29,7 @@ The ``TwelveTETPitchMixin`` is a concrete mixin (not a Protocol) that adds
 
 from __future__ import annotations
 
+from fractions import Fraction
 from typing import Protocol, TypeVar, runtime_checkable
 
 from .enums import Domain, NumberType, TimeUnit
@@ -347,81 +348,21 @@ class NoteLike(IntervalEventLike, Protocol):
 
 
 @runtime_checkable
-class MeasureLike(IntervalEventLike, Protocol):
-    """Protocol for measure boundary events.
+class MeasureLike(Protocol):
+    """Structural protocol for Measure Map measure scalars."""
 
-    Aligned with the MeasureMap specification.  Temporal fields
-    (``start``, ``end``, ``duration``) come from ``IntervalEventLike``.
-
-    The ``id`` field is the unique measure identifier (called ``ID``
-    in MeasureMap, ``mc`` in DCML).  It is monotonically increasing
-    and 1-indexed.
-
-    Attributes:
-        id: Measure identifier (monotonically increasing, 1-indexed).
-            Called ``ID`` in MeasureMap, ``mc`` in DCML.
-        mn: Measure Number label (may have suffix, e.g. ``"19a"``).
-        time_signature: Tuple of (numerator, denominator).
-        key_signature: Key signature string, or ``None``.
-        nominal_length: Expected duration from time signature.
-        actual_length: Real duration (may differ for anacrusis).
-        start_repeat: Whether this bar has a repeat start marker.
-        end_repeat: Whether this bar has a repeat end marker.
-        next_ids: Possible successor identifiers, or ``None``.  Stored as
-            stringified ``ScopedId`` values (the canonical ``scope:local``
-            form) for faithful round-tripping through pa.list_(string).
-        volta: Ending number (1, 2, ...), or ``None``.
-    """
-
-    @property
-    def id(self) -> int:
-        """Measure identifier (monotonically increasing, 1-indexed)."""
-        ...
-
-    @property
-    def mn(self) -> str:
-        """Measure Number label."""
-        ...
-
-    @property
-    def time_signature(self) -> tuple[int, int]:
-        """Time signature as (numerator, denominator)."""
-        ...
-
-    @property
-    def key_signature(self) -> str | None:
-        """Key signature string, or ``None``."""
-        ...
-
-    @property
-    def nominal_length(self) -> float | None:
-        """Expected duration from time signature, or ``None``."""
-        ...
-
-    @property
-    def actual_length(self) -> float | None:
-        """Real duration (may differ for anacrusis), or ``None``."""
-        ...
-
-    @property
-    def start_repeat(self) -> bool:
-        """Whether this bar has a repeat start marker (``||:``)."""
-        ...
-
-    @property
-    def end_repeat(self) -> bool:
-        """Whether this bar has a repeat end marker (``:||``)."""
-        ...
-
-    @property
-    def next_ids(self) -> tuple[str, ...] | None:
-        """Possible successor identifiers as stringified ``ScopedId``, or ``None``."""
-        ...
-
-    @property
-    def volta(self) -> int | None:
-        """Ending number (1, 2, ...), or ``None``."""
-        ...
+    id: str | None
+    count: int | None
+    qstamp: Fraction | None
+    number: int | None
+    name: str | None
+    time_signature: str | None
+    nominal_length: Fraction | None
+    actual_length: Fraction | None
+    start_repeat: bool
+    end_repeat: bool
+    next: tuple[str, ...] | None
+    volta: int | None
 
 
 # endregion Measure Protocol

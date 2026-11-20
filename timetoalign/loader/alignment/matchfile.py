@@ -67,6 +67,33 @@ MATCH_META = MatchMetadata(
 # region MatchfileLoader
 
 
+def _with_timeline_id(claim: MatchClaim, old_id: str, new_id: str) -> MatchClaim:
+    """Return *claim* naming *new_id* wherever it names *old_id*.
+
+    Only the timeline identities change; coordinates and events are kept.
+    """
+    if old_id == new_id or old_id not in claim.timelines:
+        return claim
+
+    def renamed(timeline_id: str) -> str:
+        return new_id if timeline_id == old_id else timeline_id
+
+    updates: dict[str, Any] = {
+        "timeline_a_id": renamed(claim.timeline_a_id),
+        "timeline_b_id": renamed(claim.timeline_b_id),
+    }
+    for name in ("start_anchor", "end_anchor"):
+        anchor = getattr(claim, name)
+        if anchor is not None:
+            updates[name] = anchor.model_copy(
+                update={
+                    "timeline_a_id": renamed(anchor.timeline_a_id),
+                    "timeline_b_id": renamed(anchor.timeline_b_id),
+                }
+            )
+    return claim.model_copy(update=updates)
+
+
 class MatchfileLoader(AlignmentLoader):
     """Load Vienna Match (.match) alignment files via partitura.
 
@@ -147,8 +174,7 @@ class MatchfileLoader(AlignmentLoader):
         self._score_events: dict[str, tuple[Fraction, Fraction]] = {}
 
         # Anacrusis offset (computed from first file)
-        self._anacrusis_offset: float = 0.0
-        self._anacrusis_offset_exact = Fraction(0)
+        self._anacrusis_offset = Fraction(0)
 
         # Header info from first file
         self._midi_clock_units: int | None = None
@@ -168,11 +194,12 @@ class MatchfileLoader(AlignmentLoader):
         self._source_metadata.append(source_meta)
 
     @property
-    def anacrusis_offset(self) -> float:
+    def anacrusis_offset(self) -> Fraction:
         """The anacrusis offset applied to raw score coordinates.
 
-        Equals ``-min(raw_onsets)`` from the first loaded file. Zero if
-        no anacrusis or if no files have been loaded.
+        Equals ``-min(raw_onsets)`` from the first loaded file, exact as the
+        file states the onsets. Zero if no anacrusis or if no files have
+        been loaded.
         """
         return self._anacrusis_offset
 
@@ -397,10 +424,9 @@ class MatchfileLoader(AlignmentLoader):
         if is_first_file:
             raw_onsets = [exact_score_coords[sid][0] for sid in score_by_id]
             min_onset = min(raw_onsets)
-            self._anacrusis_offset_exact = -min_onset if min_onset < 0 else Fraction(0)
-            self._anacrusis_offset = float(self._anacrusis_offset_exact)
+            self._anacrusis_offset = -min_onset if min_onset < 0 else Fraction(0)
 
-        offset = self._anacrusis_offset_exact
+        offset = self._anacrusis_offset
 
         # Step 1: Verify or add score events to the shared timeline
         if is_first_file:
@@ -412,7 +438,7 @@ class MatchfileLoader(AlignmentLoader):
             self._score_timeline = ContinuousLogicalTimeline(
                 length=timeline_length,
                 unit=self._score_unit,
-                uid="score:clt1",
+                uid="score:clt_1",
                 name=piece_name,
             )
 
@@ -437,7 +463,7 @@ class MatchfileLoader(AlignmentLoader):
             # Attach ShiftMap to convert normalised TTA coordinates back
             # to raw partitura coordinates (for display in timestamps).
             # Since normalised = raw + offset, raw = normalised - offset.
-            if self._normalize_anacrusis and offset != 0.0:
+            if self._normalize_anacrusis and offset != 0:
                 shift_map = ShiftMap(
                     offset=-offset,
                     source_unit=self._score_unit,
@@ -499,13 +525,13 @@ class MatchfileLoader(AlignmentLoader):
         perf_tl = DiscreteLogicalTimeline(
             length=perf_max,
             unit=TimeUnit.ticks,
-            uid=f"perf:{perf_stem}:dlt1",
+            uid=f"perf:{perf_stem}:dlt_1",
             name=perf_stem,
         )
         perf_tl.add_events(perf_event_dicts)
 
         # Attach ticks_to_seconds ScalarMap
-        seconds_per_tick = midi_clock_rate / (midi_clock_units * 1_000_000)
+        seconds_per_tick = Fraction(midi_clock_rate, midi_clock_units * 1_000_000)
         ticks_to_secs = ScalarMap(
             scalar=seconds_per_tick,
             source_unit=TimeUnit.ticks,
@@ -702,10 +728,9 @@ class MatchfileLoader(AlignmentLoader):
         Args:
             score_timeline: Optional pre-existing score timeline. When
                 supplied, the bundle uses this timeline instead of the
-                loader's internally built one. MatchClaims are NOT
-                rebound — they still reference the internally built
-                score timeline's uid. For correct cross-referencing,
-                the external timeline should have the same uid.
+                loader's internally built one, whatever its id: the
+                MatchClaims name the id of the score timeline the bundle
+                holds. The loader's own claim list is left unchanged.
             verify: If ``True`` (default) and *score_timeline* is not
                 ``None``, verify that internally built events are
                 compatible with the external timeline. Set to ``False``
@@ -754,12 +779,19 @@ class MatchfileLoader(AlignmentLoader):
                 )
 
         bundle = AlignmentBundle()
-        bundle.add_timeline(actual_score, uid="score:clt1", as_group="score")
+        bundle.add_timeline(actual_score, as_group="score")
 
         for perf_tl in self._performance_timelines:
             bundle.add_timeline(perf_tl)
 
-        bundle.add_match_claims(self._claims)
+        # The claims were built against the loader's own score timeline; they
+        # name whichever score timeline the bundle actually holds.
+        bundle.add_match_claims(
+            [
+                _with_timeline_id(claim, self._score_timeline.id, actual_score.id)
+                for claim in self._claims
+            ]
+        )
 
         return bundle
 
@@ -775,7 +807,7 @@ class MatchfileLoader(AlignmentLoader):
         6. Partial/regex match on any timeline uid.
 
         Args:
-            uid: Timeline uid (e.g. ``"score:clt1"``), role
+            uid: Timeline uid (e.g. ``"score:clt_1"``), role
                 shorthand (``"score"``, ``"perf:1"``), or partial/regex
                 pattern.
 
@@ -787,10 +819,10 @@ class MatchfileLoader(AlignmentLoader):
             RuntimeError: If ``load()`` has not been called yet.
 
         Examples:
-            >>> loader.create_timeline("score")               # -> score:clt1
+            >>> loader.create_timeline("score")               # -> score:clt_1
             >>> loader.create_timeline("perf:1")              # First performance
             >>> loader.create_timeline("perf:p01")            # Same shorthand
-            >>> loader.create_timeline(r"^perf:.*p01:dlt1$")  # Stored-ID regex
+            >>> loader.create_timeline(r"^perf:.*p01:dlt_1$")  # Stored-ID regex
         """
         if self._score_timeline is None:
             raise RuntimeError(

@@ -22,15 +22,22 @@ classifiers = [
 ]
 
 # Core dependencies — kept minimal so that `pip install timetoalign` is lightweight.
-# Only the data backbone (PyArrow, pandas), graph library (NetworkX), and
-# typing backports are required.  All file-format-specific loaders pull in
-# their dependencies through the optional extras below.
+# Only the data backbone (NumPy, PyArrow, pandas), graph library (NetworkX), typing
+# backports and the TimeToShare model of links (timetoshare) are required.
+# All file-format-specific loaders pull in their dependencies through the
+# optional extras below.
 dependencies = [
-    "pyarrow>=14.0",
+    # PyArrow 26 requires NumPy 2 at runtime; ms3 currently requires NumPy <2.
+    "pyarrow>=14.0,<26",
+    "numpy>=1.26.4",
     "pandas>=2.0",
     "networkx>=3.0",
     "typing_extensions>=4.0",
     "pydantic>=2.7,<3",
+    # The manifest format: links and schemes, their validator and the registry of
+    # identifier schemes. Its development branch until a release carries schema
+    # 0.2.0, then the registry range.
+    "timetoshare @ git+https://github.com/TimeToAlign/TimeToShare.git@main#subdirectory=python",
 ]
 
 [project.optional-dependencies]
@@ -44,21 +51,22 @@ partitura = [
 ]                                             # Score parsing via partitura (PartituraLoader, ScoreMidiLoader)
 music21 = ["music21>=9.0"]                    # Score parsing via music21 (Music21Loader)
 ms3 = ["ms3>=2.6.0"]                          # DCML TSV score parsing (Ms3Loader)
+verovio = ["verovio>=4.4"]                    # Engraved-score loading via Verovio (VerovioLoader)
 audio = ["soundfile>=0.12", "mutagen>=1.47"]  # Audio file loading + MP3/M4A metadata
 graphical = ["pymupdf>=1.24", "pillow>=10.0"] # PDF/image loading & drawing
 plot = ["matplotlib>=3.5"]                    # Visualisation
 delta = ["deltalake>=0.15.0"]                 # Delta Lake columnar storage (future)
-rdf = ["rdflib>=7.0"]                         # RDF / linked-data export (future)
+rdf = ["rdflib>=7.0"]                         # MeLODy Turtle import (MelodyLoader)
 examples = ["pooch>=1.8"]                     # On-demand fetching of bundled corpora (timetoalign.testdata)
 
 # ---------------------------------------------------------------------------
 # Composite extras — convenience bundles
 # ---------------------------------------------------------------------------
 scores = [                                    # All score-loader backends
-    "timetoalign[partitura,music21,ms3]",
+    "timetoalign[partitura,music21,ms3,verovio]",
 ]
 loaders = [                                   # Every loader dependency
-    "timetoalign[midi,scores,audio,graphical]",
+    "timetoalign[midi,scores,audio,graphical,rdf]",
 ]
 tutorial = [                                  # Everything needed for the tutorial notebooks
     "timetoalign[loaders,plot,examples]",
@@ -73,7 +81,7 @@ docs = [                                      # Documentation site building
 all = [                                       # All runtime features
     "timetoalign[tutorial,delta,rdf]",
 ]
-testing = [                                   # Test-suite execution (used by `tox -e py3xx`)
+testing = [                                   # Test-suite execution (used by `tox -e py3xx`, with the `conformance` group)
     "timetoalign[all,examples]",
     "pytest>=7.0",
     "pytest-cov>=4.0",
@@ -88,6 +96,18 @@ dev = [                                       # Testing + docs + lint/format too
     "tox>=4.0",
 ]
 
+[dependency-groups]
+# Test oracles the suite needs beside the `testing` extra, as git references;
+# a dependency group (PEP 735) is not part of the distribution metadata, so
+# none reaches a published Requires-Dist. Install with
+# `pip install --group conformance` (pip >= 25.1); tox installs it for every
+# test environment. The TimeToShare package, the oracle for manifests, is a
+# runtime dependency above.
+conformance = [
+    "pymeasuremap @ git+https://github.com/measure-map/pyMeasureMap.git@ddcfec3",
+    # Measure Map reference implementation, the test oracle for compressed rows; registry pin once a release carries compress
+]
+
 [project.urls]
 Homepage = "https://github.com/timetoalign/timetoalign"
 Documentation = "https://timetoalign.github.io/"
@@ -97,6 +117,11 @@ Changelog = "https://github.com/timetoalign/timetoalign/blob/main/CHANGELOG.md"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+# The git reference to timetoshare until its release; PyPI refuses a direct
+# reference in Requires-Dist, so a release needs the registry range first.
+allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["timetoalign"]

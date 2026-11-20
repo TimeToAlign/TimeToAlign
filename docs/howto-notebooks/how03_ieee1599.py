@@ -256,8 +256,10 @@ field = loader.get_field(MatchClaim)
 }
 
 # %% [markdown]
-# The `MatchClaimField` remains columnar; its table has one struct column.
-# Showing its head makes that stored representation visible before any
+# The `MatchClaimField` remains columnar: its table has one column per
+# property of a `MatchClaim` (the two timeline ids, the anchors, the flags,
+# the metadata, the event ids and names, the source coordinate and the claim
+# id). Showing its head makes that stored representation visible before any
 # individual `MatchClaim` is materialised:
 
 # %%
@@ -330,8 +332,8 @@ unmapped.to_pandas()
 #
 # | What the bundle expresses | How |
 # |---|---|
-# | The spine, a cumulative VTU axis | `spine:dlt1`, `DiscreteLogicalTimeline`, ``ticks`` |
-# | Notes, rests, lyrics at spine coordinates | `los:dlt2`, verbatim `duration_num`/`duration_den` |
+# | The spine, a cumulative VTU axis | `spine:dlt_1`, `DiscreteLogicalTimeline`, ``ticks`` |
+# | Notes, rests, lyrics at spine coordinates | `los:dlt_2`, verbatim `duration_num`/`duration_den` |
 # | Engraved editions, page-image boxes | one nested `SegmentLine` per edition:
 # |   4 page segments carrying 18 accolades, an `IntervalToConstantMap` to page images, ``pixels`` |
 # | Audio recordings | one `ContinuousPhysicalTimeline` per track, ``seconds`` |

@@ -32,14 +32,14 @@ from timetoalign.core import Coordinate, TimeUnit
 
 @pytest.fixture
 def claim_score_perf1() -> MatchClaim:
-    """Synchronous instant claim: score:clt1 <-> perf:dlt1."""
+    """Synchronous instant claim: score:clt_1 <-> perf:dlt_1."""
     return MatchClaim(
-        timeline_a_id="score:clt1",
-        timeline_b_id="perf:dlt1",
+        timeline_a_id="score:clt_1",
+        timeline_b_id="perf:dlt_1",
         start_anchor=AlignmentAnchor(
-            timeline_a_id="score:clt1",
+            timeline_a_id="score:clt_1",
             coordinate_a=Coordinate(0.0, TimeUnit.number),
-            timeline_b_id="perf:dlt1",
+            timeline_b_id="perf:dlt_1",
             coordinate_b=Coordinate(0.0, TimeUnit.number),
         ),
         is_synchronous=True,
@@ -48,14 +48,14 @@ def claim_score_perf1() -> MatchClaim:
 
 @pytest.fixture
 def claim_score_perf5() -> MatchClaim:
-    """Synchronous instant claim: score:clt1 <-> perf:dlt5."""
+    """Synchronous instant claim: score:clt_1 <-> perf:dlt_5."""
     return MatchClaim(
-        timeline_a_id="score:clt1",
-        timeline_b_id="perf:dlt5",
+        timeline_a_id="score:clt_1",
+        timeline_b_id="perf:dlt_5",
         start_anchor=AlignmentAnchor(
-            timeline_a_id="score:clt1",
+            timeline_a_id="score:clt_1",
             coordinate_a=Coordinate(10.0, TimeUnit.number),
-            timeline_b_id="perf:dlt5",
+            timeline_b_id="perf:dlt_5",
             coordinate_b=Coordinate(1280.0, TimeUnit.number),
         ),
         is_synchronous=True,
@@ -64,24 +64,24 @@ def claim_score_perf5() -> MatchClaim:
 
 @pytest.fixture
 def claim_nomatch() -> MatchClaim:
-    """Non-synchronous (NOMATCH) claim: score:clt1 <-> perf:dlt5."""
+    """Non-synchronous (NOMATCH) claim: score:clt_1 <-> perf:dlt_5."""
     return MatchClaim(
-        timeline_a_id="score:clt1",
-        timeline_b_id="perf:dlt5",
+        timeline_a_id="score:clt_1",
+        timeline_b_id="perf:dlt_5",
         is_synchronous=False,
     )
 
 
 @pytest.fixture
 def claim_audio_video() -> MatchClaim:
-    """Synchronous instant claim: audio:cpt1 <-> video:dgt1."""
+    """Synchronous instant claim: audio:cpt_1 <-> video:dgt_1."""
     return MatchClaim(
-        timeline_a_id="audio:cpt1",
-        timeline_b_id="video:dgt1",
+        timeline_a_id="audio:cpt_1",
+        timeline_b_id="video:dgt_1",
         start_anchor=AlignmentAnchor(
-            timeline_a_id="audio:cpt1",
+            timeline_a_id="audio:cpt_1",
             coordinate_a=Coordinate(45.0, TimeUnit.number),
-            timeline_b_id="video:dgt1",
+            timeline_b_id="video:dgt_1",
             coordinate_b=Coordinate(1350.0, TimeUnit.number),
         ),
         is_synchronous=True,
@@ -123,10 +123,10 @@ class TestClaimFilterCreation:
     def test_from_kwargs(self):
         """from_kwargs creates equivalent filter."""
         f = ClaimFilter.from_kwargs(
-            timeline_id="score:clt1",
+            timeline_id="score:clt_1",
             synchronous_only=True,
         )
-        assert f.timeline_id == "score:clt1"
+        assert f.timeline_id == "score:clt_1"
         assert f.synchronous_only is True
 
     def test_repr_empty(self):
@@ -136,9 +136,9 @@ class TestClaimFilterCreation:
 
     def test_repr_with_fields(self):
         """Repr shows only non-default fields."""
-        f = ClaimFilter(timeline_id="score:clt1", synchronous_only=True)
+        f = ClaimFilter(timeline_id="score:clt_1", synchronous_only=True)
         r = repr(f)
-        assert "timeline_id='score:clt1'" in r
+        assert "timeline_id='score:clt_1'" in r
         assert "synchronous_only=True" in r
         assert "nomatch_only" not in r
 
@@ -154,24 +154,24 @@ class TestClaimFilterExactId:
 
     def test_matches_claim_a_side(self, claim_score_perf1):
         """Matches when timeline_id is on side A."""
-        f = ClaimFilter(timeline_id="score:clt1")
+        f = ClaimFilter(timeline_id="score:clt_1")
         assert f.matches_claim(claim_score_perf1) is True
 
     def test_matches_claim_b_side(self, claim_score_perf1):
         """Matches when timeline_id is on side B."""
-        f = ClaimFilter(timeline_id="perf:dlt1")
+        f = ClaimFilter(timeline_id="perf:dlt_1")
         assert f.matches_claim(claim_score_perf1) is True
 
     def test_no_match(self, claim_score_perf1):
         """Does not match unrelated timeline."""
-        f = ClaimFilter(timeline_id="perf:dlt99")
+        f = ClaimFilter(timeline_id="perf:dlt_99")
         assert f.matches_claim(claim_score_perf1) is False
 
     def test_matches_timeline(self):
         """matches_timeline for exact ID."""
-        f = ClaimFilter(timeline_id="score:clt1")
-        assert f.matches_timeline("score:clt1") is True
-        assert f.matches_timeline("perf:dlt1") is False
+        f = ClaimFilter(timeline_id="score:clt_1")
+        assert f.matches_timeline("score:clt_1") is True
+        assert f.matches_timeline("perf:dlt_1") is False
 
 
 # endregion
@@ -185,21 +185,21 @@ class TestClaimFilterIdSet:
 
     def test_matches_any(self, claim_score_perf1, claim_audio_video):
         """Matches if any ID in the set is involved."""
-        f = ClaimFilter(timeline_ids={"perf:dlt1", "audio:cpt1"})
+        f = ClaimFilter(timeline_ids={"perf:dlt_1", "audio:cpt_1"})
         assert f.matches_claim(claim_score_perf1) is True
         assert f.matches_claim(claim_audio_video) is True
 
     def test_no_match(self, claim_score_perf5):
         """Does not match when neither timeline is in the set."""
-        f = ClaimFilter(timeline_ids={"perf:dlt1", "audio:cpt1"})
+        f = ClaimFilter(timeline_ids={"perf:dlt_1", "audio:cpt_1"})
         assert f.matches_claim(claim_score_perf5) is False
 
     def test_matches_timeline(self):
         """matches_timeline for set of IDs."""
-        f = ClaimFilter(timeline_ids={"score:clt1", "perf:dlt1"})
-        assert f.matches_timeline("score:clt1") is True
-        assert f.matches_timeline("perf:dlt1") is True
-        assert f.matches_timeline("perf:dlt5") is False
+        f = ClaimFilter(timeline_ids={"score:clt_1", "perf:dlt_1"})
+        assert f.matches_timeline("score:clt_1") is True
+        assert f.matches_timeline("perf:dlt_1") is True
+        assert f.matches_timeline("perf:dlt_5") is False
 
 
 # endregion
@@ -219,21 +219,21 @@ class TestClaimFilterRegex:
 
     def test_suffix_pattern(self, claim_score_perf1, claim_score_perf5):
         """Regex suffix pattern matches."""
-        f = ClaimFilter(id_pattern=r"dlt1$")
+        f = ClaimFilter(id_pattern=r"dlt_1$")
         assert f.matches_claim(claim_score_perf1) is True
         assert f.matches_claim(claim_score_perf5) is False
 
     def test_complex_pattern(self, claim_score_perf1, claim_score_perf5):
         """Regex range pattern."""
-        f = ClaimFilter(id_pattern=r"dlt[1-3]$")
+        f = ClaimFilter(id_pattern=r"dlt_[1-3]$")
         assert f.matches_claim(claim_score_perf1) is True  # dlt1
         assert f.matches_claim(claim_score_perf5) is False  # dlt5
 
     def test_matches_timeline(self):
         """matches_timeline with regex."""
         f = ClaimFilter(id_pattern=r"^perf:")
-        assert f.matches_timeline("perf:dlt1") is True
-        assert f.matches_timeline("score:clt1") is False
+        assert f.matches_timeline("perf:dlt_1") is True
+        assert f.matches_timeline("score:clt_1") is False
 
 
 # endregion
@@ -247,17 +247,17 @@ class TestClaimFilterBetween:
 
     def test_matches_exact_pair(self, claim_score_perf1):
         """Matches when both timelines are the pair."""
-        f = ClaimFilter(between=("score:clt1", "perf:dlt1"))
+        f = ClaimFilter(between=("score:clt_1", "perf:dlt_1"))
         assert f.matches_claim(claim_score_perf1) is True
 
     def test_matches_reversed_pair(self, claim_score_perf1):
         """Matches regardless of order (connects_both is set-based)."""
-        f = ClaimFilter(between=("perf:dlt1", "score:clt1"))
+        f = ClaimFilter(between=("perf:dlt_1", "score:clt_1"))
         assert f.matches_claim(claim_score_perf1) is True
 
     def test_no_match(self, claim_score_perf1):
         """Does not match wrong pair."""
-        f = ClaimFilter(between=("score:clt1", "perf:dlt5"))
+        f = ClaimFilter(between=("score:clt_1", "perf:dlt_5"))
         assert f.matches_claim(claim_score_perf1) is False
 
 
@@ -302,7 +302,7 @@ class TestClaimFilterCombined:
 
     def test_id_and_synchronous(self, all_claims):
         """timeline_id + synchronous_only narrows results."""
-        f = ClaimFilter(timeline_id="score:clt1", synchronous_only=True)
+        f = ClaimFilter(timeline_id="score:clt_1", synchronous_only=True)
         results = [c for c in all_claims if f.matches_claim(c)]
         # claim_score_perf1, claim_score_perf5 are synchronous + involve score
         # claim_nomatch involves score but is not synchronous
@@ -310,17 +310,17 @@ class TestClaimFilterCombined:
 
     def test_id_and_nomatch(self, all_claims):
         """timeline_id + nomatch_only narrows results."""
-        f = ClaimFilter(timeline_id="score:clt1", nomatch_only=True)
+        f = ClaimFilter(timeline_id="score:clt_1", nomatch_only=True)
         results = [c for c in all_claims if f.matches_claim(c)]
         # Only claim_nomatch: involves score + non-synchronous
         assert len(results) == 1
 
     def test_pattern_and_between(self, all_claims):
         """id_pattern + between narrows to specific pair with pattern."""
-        f = ClaimFilter(id_pattern=r"^perf:", between=("score:clt1", "perf:dlt1"))
+        f = ClaimFilter(id_pattern=r"^perf:", between=("score:clt_1", "perf:dlt_1"))
         results = [c for c in all_claims if f.matches_claim(c)]
         assert len(results) == 1
-        assert results[0].timeline_b_id == "perf:dlt1"
+        assert results[0].timeline_b_id == "perf:dlt_1"
 
     def test_empty_filter_matches_all(self, all_claims):
         """Empty filter matches every claim."""

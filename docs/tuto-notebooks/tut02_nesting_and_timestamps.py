@@ -240,7 +240,10 @@ grandchild_round_trip
 #
 # When children tile their parent with no gaps or overlaps, the hierarchy is a
 # {{< glossary SegmentLine >}}. Every parent position then belongs to exactly
-# one child, so lookup is unambiguous.
+# one child, so lookup is unambiguous. One rule makes it so: a child holds its
+# parent's positions from its start up to its end, and its end only where no
+# sibling starts there. A boundary two children share belongs to the one
+# starting at it, and the last child keeps its parent's end.
 
 # %%
 piece_is_segment_line = piece.is_segment_line()
@@ -270,10 +273,13 @@ segment_line_view
 #
 # A {{< glossary Region >}} names a range without adding another coordinate
 # system. A child is a timeline with its own coordinates; a region is a name
-# for an interval of this timeline's coordinates.
+# for an interval of this timeline's coordinates. Like every element of a
+# timeline, a region has an `id` that identifies it and an optional `name`
+# for display: give the id yourself, or let the timeline mint `region_1`,
+# `region_2`, and so on.
 
 # %%
-transition = piece.create_region("transition", Fraction(8), Fraction(11))
+transition = piece.create_region(Fraction(8), Fraction(11), id="transition")
 large_regions = piece.create_regions_from_boundaries(
     [Fraction(0), Fraction(8), Fraction(16), Fraction(20)],
     names=["first part", "second part", "final part"],
@@ -286,13 +292,15 @@ region_view = {
     "one region": named_transition,
     "boundary regions": large_regions,
     "regions at the position": regions_here,
-    "all names": listed_regions,
+    "all ids": listed_regions,
     "count": region_count,
 }
 region_view
 
 # %% [markdown]
-# The queried position belongs to both `transition` and `second part`, because
+# The three boundary regions were given names only, so their ids were minted;
+# `get_region` and `list_regions` work with ids. The queried position belongs to
+# both `transition` and the region named `second part`, because
 # regions may overlap. Rule of thumb: choose a child when the span needs local
 # coordinates of its own; choose a region when a name on the current axis is
 # enough.
@@ -328,14 +336,17 @@ timestamp_view
 
 # %% [markdown]
 # `present_timelines` lists every timeline the stamp holds a coordinate for —
-# the piece, the active movement, and the active grandchild phrase. One
+# the piece, the active movement, and the active grandchild phrase. The
+# position reaches the phrase through the movement: a nested timeline answers
+# only when every timeline on the way down holds the position. One
 # retrieval method serves them all, and `format=` decides what comes back:
 # `format="float"` gives the bare number `5.5`, while the default returns an
 # `IdCoordinate` carrying the exact `Fraction`, the unit, and the timeline the
 # value belongs to. Neither is more true than the other; asking for a bare
 # number is a request you make explicitly rather than a second lane the stamp
-# keeps open. This is the first of three point-stamp types introduced across
-# the series.
+# keeps open. This is the first of two point-stamp types introduced across
+# the series: a group of timelines answers with this same `TimeStamp`, and
+# bundles add the `MatchStamp`.
 
 # %% [markdown]
 # ## Reversing a conversion map

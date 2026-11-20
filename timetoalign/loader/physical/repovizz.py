@@ -734,13 +734,18 @@ class RepoVizzLoader(ManifestLoader):
                             break
 
             if audio_timeline:
-                from timetoalign.storage.store import SingleStore
+                from timetoalign.timelines.factory import (
+                    create_timeline_from_event_data,
+                )
 
-                # Create notes timeline from stored notes EventData
-                notes_data = self._store.notes
+                # Create the notes timeline from the stored notes EventData.
+                # "notes" is its name; its event ids keep the group-led
+                # prefix; its id is minted when it joins the audio timeline.
                 notes_id_prefix = id or (category or "group")
-                notes_store = SingleStore(notes_data, name="notes")
-                notes_tl = notes_store.create_timeline(uid=f"{notes_id_prefix}_notes")
+                notes_tl = create_timeline_from_event_data(
+                    self._store.notes.prefix_ids(f"{notes_id_prefix}_notes")
+                )
+                notes_tl.name = "notes"
 
                 # Add as child with automatic unit conversion (seconds -> samples)
                 audio_timeline.add_child(notes_tl, offset=0, use_conversion_map=True)

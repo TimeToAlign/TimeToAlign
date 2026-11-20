@@ -11,8 +11,8 @@ and measure terms, supporting cross-domain alignment and human-readable output.
 
 from __future__ import annotations
 
-import re
-import warnings
+import bisect
+import math
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, Generic, Sequence, TypeVar
 
@@ -20,19 +20,28 @@ import numpy as np
 from numpy.typing import NDArray
 
 from timetoalign.core.enums import ExtrapolationPolicy, InterpolationKind, TimeUnit
-from timetoalign.core.time import (
-    CoordinateValue,
-    rational_to_wire,
-    wire_to_rational,
-)
-from timetoalign.maps.base import ConversionMap
-from timetoalign.maps.table import TableMap
+from timetoalign.core.time import CoordinateValue, number_to_json
+from timetoalign.maps.base import ConversionMap, MeasureMapIds
+from timetoalign.maps.composite import _piecewise_form
+from timetoalign.maps.constant import ConstantMap, _constant_to_json
+from timetoalign.maps.table import TableMap, _table_form
 
 if TYPE_CHECKING:
     from typing_extensions import Self
 
     from timetoalign.loader.score.stores.measures import MeasureData
+    from timetoalign.maps.measures import FloatingMeasureMap
     from timetoalign.maps.meter import MetricMap
+    from timetoalign.timelines.structure import MeasureMap
+
+
+def _as_exact(value: CoordinateValue) -> Fraction:
+    """Return *value* as the exact ratio it already is, without guessing one."""
+    if isinstance(value, Fraction):
+        return value
+    if isinstance(value, int):
+        return Fraction(value)
+    return Fraction(float(value))
 
 
 # Type variable for IntervalToConstantMap output type
@@ -50,6 +59,14 @@ class IntervalToConstantMap(ConversionMap[T], Generic[T]):
 
     Values can be any type (string, int, float, etc.). This is NOT a coordinate
     conversion map when values are non-numeric (e.g., string labels).
+
+    Without an ``end`` the map is total: a position before the first boundary
+    takes the first value, and the last interval has no end. With an ``end``
+    the map is defined on ``[boundaries[0], end)`` only, the form a manifest
+    can hold for labels: a ``PiecewiseMap`` of ``ConstantMap``s. Without an
+    ``end``, a map of numbers is written as a ``TableMap`` of kind
+    ``previous`` (a ``ConstantMap`` for a single boundary), and a map of
+    labels with more than one boundary cannot be written.
 
     This is useful for:
     - Measure number lookup (quarters -> MN label)
@@ -78,6 +95,7 @@ class IntervalToConstantMap(ConversionMap[T], Generic[T]):
         *,
         boundaries: Sequence[CoordinateValue],
         values: Sequence[T],
+        end: CoordinateValue | None = None,
         source_unit: TimeUnit | str | None = None,
         target_unit: TimeUnit | str | None = None,
         uid: str | None = None,
@@ -88,6 +106,8 @@ class IntervalToConstantMap(ConversionMap[T], Generic[T]):
         Args:
             boundaries: Interval start positions. Must be strictly increasing.
             values: Value for each interval. Must have same length as boundaries.
+            end: Where the last interval ends, or None for no end. Given, the
+                map is defined on ``[boundaries[0], end)`` only.
             source_unit: The unit of input coordinates (optional).
             target_unit: The unit of output values (optional). Use None for
                 non-coordinate outputs like string labels.
@@ -98,14 +118,8 @@ class IntervalToConstantMap(ConversionMap[T], Generic[T]):
             ValueError: If boundaries and values have different lengths.
             ValueError: If boundaries are not strictly increasing.
             ValueError: If fewer than 1 boundary is provided.
+            ValueError: If *end* does not lie after the last boundary.
         """
-        super().__init__(
-            source_unit=source_unit,
-            target_unit=target_unit,
-            uid=uid,
-            name=name,
-        )
-
         if len(boundaries) != len(values):
             raise ValueError(
                 f"boundaries and values must have same length, "
@@ -126,6 +140,43 @@ class IntervalToConstantMap(ConversionMap[T], Generic[T]):
             diffs = np.diff(self._boundaries)
             if not np.all(diffs > 0):
                 raise ValueError("boundaries must be strictly monotonically increasing")
+        if end is not None and not float(end) > self._boundaries[-1]:
+            raise ValueError(
+                f"end {end} must lie after the last boundary {self._boundaries_original[-1]}"
+            )
+        self._end = end
+        # With an end, the ConstantMap of each interval its form nests. Set
+        # first: the base reads the nested maps once, at construction.
+        self._pieces = [
+            ConstantMap(value=value, source_unit=source_unit, target_unit=target_unit)
+            for value in (self._values if end is not None else ())
+        ]
+        super().__init__(
+            source_unit=source_unit,
+            target_unit=target_unit,
+            uid=uid,
+            name=name,
+        )
+        self._admit_ids()
+
+    @property
+    def end(self) -> CoordinateValue | None:
+        """Where the last interval ends, or None when it has no end."""
+        return self._end
+
+    def _check_domain(self, low: float, high: float) -> None:
+        """Refuse positions outside ``[boundaries[0], end)`` when the map has an end.
+
+        Raises:
+            ValueError: If *low* or *high* lies outside the domain.
+        """
+        if self._end is not None and (
+            low < self._boundaries[0] or high >= float(self._end)
+        ):
+            raise ValueError(
+                f"Value outside the intervals [{self._boundaries_original[0]}, "
+                f"{self._end}) of {type(self).__name__} {self._id!r}"
+            )
 
     @property
     def boundaries(self) -> NDArray[np.floating[Any]]:
@@ -142,12 +193,16 @@ class IntervalToConstantMap(ConversionMap[T], Generic[T]):
         """IntervalToConstantMap is NOT invertible (many-to-one)."""
         return False
 
+    def _parameters(self) -> list[T]:
+        return self._values
+
     def _convert_scalar(self, value: CoordinateValue, **kwargs: Any) -> T:
         """Find the value for a given coordinate.
 
         Uses binary search for O(log n) lookup.
         """
         x = float(value)
+        self._check_domain(x, x)
 
         # Find rightmost boundary <= x
         idx = int(np.searchsorted(self._boundaries, x, side="right")) - 1
@@ -163,6 +218,8 @@ class IntervalToConstantMap(ConversionMap[T], Generic[T]):
         Note: Returns object array if values are non-numeric (e.g., strings).
         """
         x = values.astype(np.float64)
+        if x.size:
+            self._check_domain(float(np.min(x)), float(np.max(x)))
 
         # Binary search for each value
         indices = np.searchsorted(self._boundaries, x, side="right") - 1
@@ -181,23 +238,51 @@ class IntervalToConstantMap(ConversionMap[T], Generic[T]):
             "IntervalToConstantMap is not invertible: many coordinates map to same value"
         )
 
-    def to_dict(self) -> dict[str, Any]:
-        """Serialize to dictionary."""
-        d = super().to_dict()
-        d["boundaries"] = [rational_to_wire(v) for v in self._boundaries_original]
-        d["values"] = list(self._values)
-        return d
+    def _nested_maps(self) -> list[ConversionMap[Any]]:
+        return self._pieces
 
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> IntervalToConstantMap[Any]:
-        """Deserialize from dictionary."""
-        return cls(
-            boundaries=[wire_to_rational(v) for v in data["boundaries"]],
-            values=data["values"],
-            source_unit=data.get("source_unit"),
-            target_unit=data.get("target_unit"),
-            uid=data.get("id"),
-            name=data.get("name"),
+    def _to_manifest(self, *, minimal: bool, entries: MeasureMapIds) -> dict[str, Any]:
+        """Write the step function in the form converting exactly as it does.
+
+        With an ``end``, a ``PiecewiseMap`` of ``ConstantMap``s over the
+        intervals; without, a ``ConstantMap`` for one boundary, else a
+        ``TableMap`` of kind ``previous`` clamping at both ends.
+
+        Raises:
+            ValueError: If the map holds labels, several boundaries and no
+                ``end``: its last interval has no end a manifest can state.
+        """
+        if self._end is not None:
+            return _piecewise_form(
+                self,
+                [*self._boundaries_original, self._end],
+                [
+                    p._to_manifest(minimal=minimal, entries=entries)
+                    for p in self._pieces
+                ],
+                minimal=minimal,
+            )
+        if len(self._values) == 1:
+            return self._map_object(
+                "ConstantMap",
+                {"value": _constant_to_json(self._values[0])},
+                minimal=minimal,
+            )
+        if not all(
+            isinstance(v, (int, float, Fraction)) and not isinstance(v, bool)
+            for v in self._values
+        ):
+            raise self._no_form(
+                "a step function of labels needs an end for its last interval "
+                "(give end=)"
+            )
+        return _table_form(
+            self,
+            self._boundaries_original,
+            self._values,
+            kind=InterpolationKind.previous,
+            extrapolate=ExtrapolationPolicy.constant,
+            minimal=minimal,
         )
 
     def to_table_map(
@@ -212,7 +297,9 @@ class IntervalToConstantMap(ConversionMap[T], Generic[T]):
             kind: Interpolation kind. Default is "previous" (step function).
 
         Returns:
-            TableMap with the same boundaries and values.
+            TableMap with the same boundaries and values, each number as
+            given, and one more anchor one unit past the last boundary
+            holding the last value.
 
         Raises:
             TypeError: If values are not numeric.
@@ -220,16 +307,11 @@ class IntervalToConstantMap(ConversionMap[T], Generic[T]):
         if not all(isinstance(v, (int, float, Fraction)) for v in self._values):
             raise TypeError("to_table_map() requires numeric values")
 
-        # Need at least 2 points for TableMap; add extrapolation point
-        x_values = list(self._boundaries)
-        y_values = [float(v) for v in self._values]
-
-        # Add final extrapolation point (extend last interval)
-        if len(x_values) >= 1:
-            # Use final value extending one unit beyond last boundary
-            final_x = x_values[-1] + 1.0
-            x_values.append(final_x)
-            y_values.append(y_values[-1])
+        # The numbers as given: a float anchor would make the table map
+        # compute in doubles where this map's numbers are exact. A table map
+        # needs two anchors, so the last interval is extended by one unit.
+        x_values = [*self._boundaries_original, self._boundaries_original[-1] + 1]
+        y_values = [*self._values, self._values[-1]]
 
         return TableMap(
             x_values=x_values,
@@ -251,6 +333,26 @@ class IntervalToConstantMap(ConversionMap[T], Generic[T]):
 
 
 # endregion
+
+
+def _is_decimal_integer(label: object) -> bool:
+    """Whether *label* spells an integer the way ``str(int)`` does."""
+    try:
+        return isinstance(label, str) and str(int(label)) == label
+    except ValueError:
+        return False
+
+
+def _numbers_measures(
+    measure_map: MeasureMap, starts: Sequence[Fraction], numbers: Sequence[int]
+) -> bool:
+    """Whether *measure_map*'s measures start at *starts* and carry *numbers*."""
+    records = measure_map.measures
+    return len(records) == len(starts) and all(
+        record.qstamp == start
+        and (record.number if record.number is not None else record.count) == number
+        for record, start, number in zip(records, starts, numbers)
+    )
 
 
 # region QuartersToMeasureNumber
@@ -310,6 +412,8 @@ class QuartersToMeasureNumber(IntervalToConstantMap[str]):
             uid=uid,
             name=name or "quarters_to_mn",
         )
+        # The default name is derived for display; only a given one is written.
+        self._name_given = name is not None
 
     @property
     def mns(self) -> list[str]:
@@ -372,61 +476,49 @@ class QuartersToMeasureNumber(IntervalToConstantMap[str]):
 
         return cls(boundaries=boundaries, mns=mns)
 
-    def to_floating_measures(self) -> QuartersToFloatingMeasures:
-        """Convert string MN labels to floating-point measure map.
+    def _to_manifest(self, *, minimal: bool, entries: MeasureMapIds) -> dict[str, Any]:
+        """Write the ``MeasureNumberMap`` of the measures these labels number.
 
-        Non-numeric suffixes (e.g., "a" in "19a") are stripped with a warning.
-
-        Returns:
-            QuartersToFloatingMeasures map with interpolation.
+        Each label must be a measure number spelled as a decimal integer,
+        which the view answers as that integer. The view names the
+        timeline's measure map when its measures start at the boundaries
+        and carry these numbers, and otherwise a measure map of its own:
+        one measure per boundary, the first at 0, the last of unknown
+        length.
 
         Raises:
-            ValueError: If any MN label cannot be parsed to a number.
+            ValueError: If a label is no decimal integer, the source unit is
+                not quarters, or the first boundary is not 0.
         """
-        y_values: list[float] = []
-        stripped_any = False
-
-        for mn in self._values:
-            s = str(mn)
-            # Extract leading numeric part (including negative and decimals)
-            match = re.match(r"^-?\d+\.?\d*", s)
-            if match:
-                numeric = float(match.group())
-                if match.group() != s:
-                    stripped_any = True
-                y_values.append(numeric)
-            else:
-                raise ValueError(f"Cannot convert MN '{s}' to numeric measure")
-
-        if stripped_any:
-            warnings.warn(
-                "Non-numeric suffixes were stripped from MN labels; "
-                "converting back will lose this information.",
-                UserWarning,
-                stacklevel=2,
-            )
-
-        return QuartersToFloatingMeasures(
-            x_values=self._boundaries_original,
-            y_values=y_values,
-            source_unit=self._source_unit,
-        )
-
-    def to_dict(self) -> dict[str, Any]:
-        """Serialize to dictionary."""
-        d = super().to_dict()
-        d["type"] = "QuartersToMeasureNumber"
-        return d
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> QuartersToMeasureNumber:
-        """Deserialize from dictionary."""
-        return cls(
-            boundaries=[wire_to_rational(v) for v in data["boundaries"]],
-            mns=[str(v) for v in data["values"]],
-            source_unit=data.get("source_unit", TimeUnit.quarters),
-            uid=data.get("id"),
-            name=data.get("name"),
+        if self._source_unit is not TimeUnit.quarters:
+            raise self._no_form("a measure view reads quarters")
+        numbers = []
+        for label in self._values:
+            if not _is_decimal_integer(label):
+                raise self._no_form(f"its label {label!r} is not a measure number")
+            numbers.append(int(label))
+        starts = [_as_exact(b) for b in self._boundaries_original]
+        own = entries.own
+        if own is not None and _numbers_measures(own, starts, numbers):
+            measure_map_id = entries.id_of(own)
+        else:
+            if starts[0] != 0:
+                raise self._no_form(
+                    f"its first measure starts at {starts[0]}, not at 0"
+                )
+            rows: list[dict[str, Any]] = []
+            for index, (start, number) in enumerate(zip(starts, numbers), start=1):
+                row: dict[str, Any] = {
+                    "count": index,
+                    "qstamp": number_to_json(start),
+                    "number": number,
+                }
+                if index < len(starts):
+                    row["actual_length"] = number_to_json(starts[index] - start)
+                rows.append(row)
+            measure_map_id = entries.id_of_rows(rows)
+        return self._map_object(
+            "MeasureNumberMap", {"measure_map": measure_map_id}, minimal=minimal
         )
 
     def __repr__(self) -> str:
@@ -441,18 +533,29 @@ class QuartersToMeasureNumber(IntervalToConstantMap[str]):
 
 
 class QuartersToFloatingMeasures(TableMap):
-    """Map quarters to measure coordinates (with linear interpolation).
+    """Map quarters to floating measures.
 
-    Returns continuous measure coordinates where:
-    - 1.0 = start of measure 1
-    - 1.5 = halfway through measure 1
-    - 2.0 = start of measure 2
+    A floating measure (``fm``) writes a position as
+    ``<ordinal>.<how far into that bar>`` — the convention behind
+    annotation tables that read ``12.5`` for the middle of the twelfth
+    bar.  Two properties make it exact rather than approximate:
 
-    This IS a coordinate conversion map: it converts from quarters to
-    measures (TimeUnit.measures).
+    * **The fractional part is anchored on the NOMINAL bar.** An
+      incomplete bar's content sits where it is notated, so a 1/8 pickup
+      in 9/8 onsets at ``0.888`` — eight ninths of the way through the
+      bar it belongs to — not at ``0.000``.
+    * **Emission truncates to three decimals.** Three decimals is the
+      convention's resolution, and truncating (rather than rounding) is
+      what makes ``8/9`` read ``0.888``; it is also the rule behind the
+      ``.999`` an interval end shows when a bar is read from the right.
 
-    This is useful for visualization (e.g., piano roll x-axis in measures)
-    and for interpolating positions within measures.
+    An fm value is a float by definition: the fractional part measures
+    an uneven discretisation of logical time — bars vary in length — so
+    it is not a ratio of anything, and its resolution is capped at a
+    thousandth of a bar.  Converting fm back to quarters is therefore
+    exact only to that resolution; the inverse interpolates linearly
+    over the same knots and never tries to reconstruct what truncation
+    dropped.
 
     Examples:
         >>> cmap = QuartersToFloatingMeasures(
@@ -465,10 +568,10 @@ class QuartersToFloatingMeasures(TableMap):
         1.5
         >>> cmap(4.0)    # Start of M2
         2.0
-
-        >>> # From MetricMap
-        >>> cmap = QuartersToFloatingMeasures.from_metric_map(meter)
     """
+
+    #: Fractional resolution of a floating measure: one thousandth of a bar.
+    RESOLUTION: int = 1000
 
     def __init__(
         self,
@@ -483,10 +586,11 @@ class QuartersToFloatingMeasures(TableMap):
         """Initialize a QuartersToFloatingMeasures map.
 
         Args:
-            x_values: Measure start positions in quarters.
-            y_values: Measure coordinates (1.0, 2.0, ...) at each start.
+            x_values: Knot positions in quarters — each bar's *nominal*
+                downbeat, plus the end of the last bar.
+            y_values: The measure ordinal at each knot.
             source_unit: Source unit (default: quarters).
-            target_unit: Target unit (default: measures).
+            target_unit: Target unit (default: floating measures).
             uid: Optional explicit ID.
             name: Human-readable name (default: "quarters_to_measures").
         """
@@ -500,111 +604,146 @@ class QuartersToFloatingMeasures(TableMap):
             uid=uid,
         )
         self._name = name or "quarters_to_measures"
+        self._name_given = name is not None
+        self._x_exact = [_as_exact(v) for v in self._x_original]
+        self._y_exact = [_as_exact(v) for v in self._y_original]
 
     @classmethod
-    def from_metric_map(cls, meter: MetricMap) -> QuartersToFloatingMeasures:
-        """Create from a MetricMap.
+    def from_measure_map(cls, measure_map: MeasureMap) -> FloatingMeasureMap:
+        """Build the floating-measure lattice of a measure map.
 
-        Uses MN integers (or MC if MN not available) as measure numbers.
-        Adds a final extrapolation point for the end of the last measure.
+        One knot per measure record, placed at that bar's **virtual
+        nominal downbeat** — its sounding start minus the offset at which
+        its content sits inside the notated bar — carrying that bar's
+        ordinal.  A final knot closes the lattice at the end of the last
+        bar.  Between two knots the map is linear, so the slope inside a
+        bar is exactly ``1 / nominal_length``.
 
-        Args:
-            meter: MetricMap with measure boundary information.
-
-        Returns:
-            QuartersToFloatingMeasures map.
-        """
-        x_values: list[Fraction] = list(meter._starts_frac)
-        y_values: list[float] = []
-
-        # Convert MN labels to floats
-        for i, mn in enumerate(meter._mns):
-            try:
-                # Try parsing MN as numeric (strip non-numeric suffix)
-                match = re.match(r"^-?\d+\.?\d*", str(mn))
-                if match:
-                    y_values.append(float(match.group()))
-                else:
-                    # Fall back to MC (1-indexed)
-                    y_values.append(float(meter._mcs[i]))
-            except (ValueError, TypeError):
-                # Fall back to MC
-                y_values.append(float(meter._mcs[i]))
-
-        # Add final extrapolation point
-        final_x = meter.total_length
-        final_y = y_values[-1] + 1.0
-        x_values.append(final_x)
-        y_values.append(final_y)
-
-        return cls(x_values=x_values, y_values=y_values)
-
-    @classmethod
-    def from_measure_data(cls, measures: MeasureData) -> QuartersToFloatingMeasures:
-        """Create from MeasureData (loaded from TSV/JSON).
+        Ordinals count the measure records, never the printed labels:
+        the first record is ``0`` when it is an anacrusis (offset
+        content, shorter than its nominal bar) and ``1`` otherwise, and
+        every following record adds one.  Counting runs monotonically
+        through voltas — ``15a`` and ``15b`` are two bars and get two
+        consecutive ordinals — and never resets.
 
         Args:
-            measures: MeasureData with measure events.
+            measure_map: Measures whose exact starts and lengths define the lattice.
 
         Returns:
-            QuartersToFloatingMeasures map.
+            The fm map for that skeleton: a :class:`FloatingMeasureMap`,
+            which remembers the measure map it reads.
+
+        Raises:
+            ValueError: If the skeleton has no measures, or if two
+                records share a virtual nominal downbeat (a split bar,
+                whose two halves cannot both anchor the same fm ordinal).
         """
-        if len(measures) == 0:
-            raise ValueError("MeasureData is empty")
+        from timetoalign.maps.measures import FloatingMeasureMap
 
-        x_values: list[float] = []
+        return FloatingMeasureMap(measure_map)
+
+    @staticmethod
+    def _lattice(measure_map: MeasureMap) -> tuple[list[Fraction], list[float]]:
+        """Return the knots and ordinals of a measure map's lattice.
+
+        Raises:
+            ValueError: As :meth:`from_measure_map`.
+        """
+        records = measure_map.measures
+        if not records:
+            raise ValueError("A floating-measure lattice requires at least one measure")
+
+        first = records[0]
+        first_offset = getattr(first, "offset_within_measure", Fraction(0))
+        is_anacrusis = (
+            first_offset > 0
+            and first.actual_length is not None
+            and first.nominal_length is not None
+            and first.actual_length < first.nominal_length
+        )
+        ordinal = 0 if is_anacrusis else 1
+
+        x_values: list[Fraction] = []
         y_values: list[float] = []
+        for record in records:
+            if record.qstamp is None or record.actual_length is None:
+                raise ValueError(
+                    "A floating-measure lattice requires exact qstamp and actual_length values"
+                )
+            offset = getattr(record, "offset_within_measure", Fraction(0))
+            x_values.append(record.qstamp - offset)
+            y_values.append(float(ordinal))
+            ordinal += 1
 
-        for event in measures:
-            start = event.get("start")
-            mn = event.get("mn")
-            mc = event.get("mc")
+        last = records[-1]
+        assert last.qstamp is not None and last.actual_length is not None
+        x_values.append(last.qstamp + last.actual_length)
+        y_values.append(float(ordinal))
 
-            # Handle coordinate struct format
-            if isinstance(start, dict) and "value" in start:
-                start_val = float(start["value"])
-            elif start is not None:
-                start_val = float(start)
-            else:
-                continue
+        for previous, current in zip(x_values, x_values[1:]):
+            if current <= previous:
+                raise ValueError(
+                    f"Two measures have the same nominal downbeat {previous}; a split measure "
+                    "cannot anchor two floating-measure ordinals"
+                )
 
-            # Determine measure number (prefer MN, fall back to MC)
-            mn_val: float
-            if mn is not None:
-                try:
-                    match = re.match(r"^-?\d+\.?\d*", str(mn))
-                    if match:
-                        mn_val = float(match.group())
-                    else:
-                        mn_val = (
-                            float(mc) if mc is not None else float(len(y_values) + 1)
-                        )
-                except (ValueError, TypeError):
-                    mn_val = float(mc) if mc is not None else float(len(y_values) + 1)
-            elif mc is not None:
-                mn_val = float(mc)
-            else:
-                mn_val = float(len(y_values) + 1)
+        return x_values, y_values
 
-            x_values.append(start_val)
-            y_values.append(mn_val)
+    def _convert_scalar(self, value: CoordinateValue, **kwargs: Any) -> float:
+        """Read one quarter position as a floating measure.
 
-        # Add final extrapolation point
-        # Get duration of last measure from our collected y_values
-        # Use the spacing between last two measures as estimate, or default to 4
-        if len(x_values) >= 2:
-            # Estimate duration as spacing between last two measure starts
-            last_duration = x_values[-1] - x_values[-2]
-            final_x = x_values[-1] + last_duration
-        else:
-            # Assume 4 quarters if only one measure
-            final_x = x_values[-1] + 4.0
+        The lattice is walked in exact arithmetic — the knots are bar
+        boundaries, which are ratios — and only the final emission
+        becomes a float, truncated to the convention's three decimals.
 
-        final_y = y_values[-1] + 1.0
-        x_values.append(final_x)
-        y_values.append(final_y)
+        Args:
+            value: A position in quarters.
+            **kwargs: Unused.
 
-        return cls(x_values=x_values, y_values=y_values)
+        Returns:
+            The floating-measure reading.
+        """
+        return self._truncate(self._interpolate_exact(_as_exact(value)))
+
+    def _convert_array(self, values: NDArray[Any], **kwargs: Any) -> NDArray[Any]:
+        """Read a column of quarter positions as floating measures.
+
+        The column takes the same exact walk as a single position: the
+        knots are ratios, so interpolating in floating point and
+        truncating afterwards would drop a whole thousandth wherever the
+        float landed a few units below an exact boundary.  Reading a
+        column must answer what reading its entries one at a time
+        answers, so this walks element by element in exact arithmetic
+        and truncates each reading itself.
+
+        Args:
+            values: A column of positions in quarters.
+            **kwargs: Unused.
+
+        Returns:
+            The floating-measure readings.
+        """
+        readings = [
+            self._truncate(self._interpolate_exact(_as_exact(value)))
+            for value in np.asarray(values).tolist()
+        ]
+        return np.asarray(readings, dtype=np.float64)
+
+    def _interpolate_exact(self, value: Fraction) -> Fraction:
+        """Interpolate linearly between the exact knots, extrapolating at the ends."""
+        xs, ys = self._x_exact, self._y_exact
+        index = bisect.bisect_right(xs, value) - 1
+        if index < 0:
+            index = 0
+        elif index >= len(xs) - 1:
+            index = len(xs) - 2
+        span = xs[index + 1] - xs[index]
+        slope = (ys[index + 1] - ys[index]) / span
+        return ys[index] + slope * (value - xs[index])
+
+    def _truncate(self, value: Fraction) -> float:
+        """Cut an exact reading down to the convention's three decimals."""
+        return math.floor(value * self.RESOLUTION) / self.RESOLUTION
 
     def inverse(self) -> TableMap:
         """Return the inverse map (measures -> quarters).
@@ -668,23 +807,77 @@ class QuartersToFloatingMeasures(TableMap):
             source_unit=self._source_unit,
         )
 
-    def to_dict(self) -> dict[str, Any]:
-        """Serialize to dictionary."""
-        d = super().to_dict()
-        d["type"] = "QuartersToFloatingMeasures"
-        return d
+    def _to_manifest(self, *, minimal: bool, entries: MeasureMapIds) -> dict[str, Any]:
+        """Write the ``FloatingMeasureMap`` of the measure map this lattice reads.
 
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> QuartersToFloatingMeasures:
-        """Deserialize from dictionary."""
-        return cls(
-            x_values=[wire_to_rational(v) for v in data["x_values"]],
-            y_values=[float(wire_to_rational(v)) for v in data["y_values"]],
-            source_unit=data.get("source_unit", TimeUnit.quarters),
-            target_unit=data.get("target_unit", TimeUnit.floating_measures),
-            uid=data.get("id"),
-            name=data.get("name"),
+        The view names the timeline's measure map when its lattice is this
+        one, and otherwise a measure map of its own, built from the knots:
+        one measure per pair of knots, the first an anacrusis when the
+        ordinals start at 0.
+
+        Raises:
+            ValueError: If the units are not quarters and floating measures,
+                or the knots are no measure lattice.
+        """
+        if (self._source_unit, self._target_unit) != (
+            TimeUnit.quarters,
+            TimeUnit.floating_measures,
+        ):
+            raise self._no_form("a measure view reads quarters as floating measures")
+        own = entries.own
+        if own is not None and self._is_lattice_of(own):
+            measure_map_id = entries.id_of(own)
+        else:
+            measure_map_id = entries.id_of_rows(self._lattice_rows())
+        return self._map_object(
+            "FloatingMeasureMap", {"measure_map": measure_map_id}, minimal=minimal
         )
+
+    def _is_lattice_of(self, measure_map: MeasureMap) -> bool:
+        """Whether *measure_map*'s lattice has this map's knots and ordinals."""
+        try:
+            x_values, y_values = self._lattice(measure_map)
+        except ValueError:
+            return False
+        return (
+            x_values == self._x_exact
+            and [_as_exact(y) for y in y_values] == self._y_exact
+        )
+
+    def _lattice_rows(self) -> list[dict[str, Any]]:
+        """Return the Measure Map rows of the measures whose lattice this is.
+
+        Raises:
+            ValueError: If the ordinals do not count up by one from 0 or 1,
+                or the first knot is neither 0 under ordinal 1 nor before 0
+                under ordinal 0 (an anacrusis, whose bar the second knot ends
+                after 0).
+        """
+        xs, ys = self._x_exact, self._y_exact
+        first = ys[0]
+        if first not in (0, 1) or ys != [first + index for index in range(len(ys))]:
+            raise self._no_form(
+                "its ordinals do not count measures up by one from 0 or 1"
+            )
+        if first == 1 and xs[0] != 0:
+            raise self._no_form(f"its first downbeat lies at {xs[0]}, not at 0")
+        if first == 0 and not xs[0] < 0 < xs[1]:
+            raise self._no_form(
+                f"its anacrusis bar [{xs[0]}, {xs[1]}) does not contain 0"
+            )
+        rows: list[dict[str, Any]] = []
+        for index, (start, end) in enumerate(zip(xs, xs[1:]), start=1):
+            qstamp = max(start, Fraction(0))
+            row: dict[str, Any] = {
+                "count": index,
+                "qstamp": number_to_json(qstamp),
+                "nominal_length": number_to_json(end - start),
+                "actual_length": number_to_json(end - qstamp),
+            }
+            if start < 0:
+                row["offset_within_measure"] = number_to_json(-start)
+            rows.append(row)
+        return rows
 
     def __repr__(self) -> str:
         n = len(self._x) - 1  # Exclude extrapolation point

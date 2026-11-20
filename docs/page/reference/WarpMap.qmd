@@ -314,9 +314,10 @@ map. The resulting timeline:
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                           |
-|--------|----------------------------|-----------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If ``source_timeline.id`` does not match ``self.source_timeline_id``. |
+| Name   | Type                                       | Description                                                                                                                                     |
+|--------|--------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`)                 | If ``source_timeline.id`` does not match ``self.source_timeline_id``.                                                                           |
+|        | [UnknownLengthError](`UnknownLengthError`) | If the length of the source timeline or of any of its descendants is unknown: its extent can be neither checked against the support nor warped. |
 
 ### to_dict { #timetoalign.alignment.WarpMap.to_dict }
 

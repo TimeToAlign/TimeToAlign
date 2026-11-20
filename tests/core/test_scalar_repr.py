@@ -111,9 +111,15 @@ class TestShallowScalarRepr:
     """MeasureNumber and Id: short repr, pretty str."""
 
     def test_measure_number(self):
-        mn = MeasureNumber(value=16)
-        assert repr(mn) == "MeasureNumber(16)"
+        mn = MeasureNumber(mn="16")
+        assert repr(mn) == "MeasureNumber(mn='16')"
         assert str(mn) == "16"
+
+    def test_measure_number_carries_its_source_facts(self):
+        """A split-bar label keeps its suffix, its count and its volta."""
+        mn = MeasureNumber(mn="237b", mc=261, volta=2)
+        assert repr(mn) == "MeasureNumber(mn='237b', mc=261, volta=2)"
+        assert str(mn) == "237b"
 
     def test_id(self):
         i = Id(value="n0")
@@ -190,5 +196,5 @@ class TestNoteAndMeasureStr:
         assert str(rest) == "rest @0 quarters+1 quarters"
 
     def test_measure(self):
-        m = Measure(id=1, mn="16", start=Coordinate(0.0, TimeUnit.quarters))
+        m = Measure(id="m16", number=16)
         assert str(m) == "16"

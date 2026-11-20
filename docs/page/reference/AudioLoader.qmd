@@ -7,13 +7,13 @@ loader.AudioLoader()
 Load audio file metadata for creating physical timelines.
 
 AudioLoader extracts metadata from audio files without loading the actual
-sample data. This is efficient for creating DiscretePhysicalTimelines
-that represent audio files in the TimeToAlign! framework.
+sample data. This is efficient for creating seconds-based physical
+timelines that represent audio files in the TimeToAlign! framework.
 
 The loader automatically:
 - Detects the best available backend (soundfile > mutagen > wave)
 - Extracts sample count, sample rate, channels, and format info
-- Provides methods to create timelines with appropriate C-maps
+- Provides a timeline constructor over a continuous seconds axis
 
 Supported formats depend on installed backends:
 - soundfile: WAV, FLAC, OGG, AIFF, and many more (via libsndfile)
@@ -37,16 +37,9 @@ Supported formats depend on installed backends:
 >>> # Create a timeline
 >>> timeline = loader.create_timeline(uid="my_audio")
 >>> timeline.unit
-<TimeUnit.samples: 'samples'>
+<TimeUnit.seconds: 'seconds'>
 >>> timeline.length
-Coordinate(7938048, samples)
-```
-
-```python
->>> # The timeline has a SamplesToSeconds C-map attached
->>> from timetoalign.core import TimeUnit
->>> timeline.get_timestamp_at(44100).get_unit(TimeUnit.seconds)
-1.0
+Coordinate(180.0, seconds)
 ```
 
 ## Attributes {.doc-section .doc-section-attributes}
@@ -60,7 +53,7 @@ Coordinate(7938048, samples)
 | Name | Description |
 | --- | --- |
 | [create_samples_to_seconds_map](#timetoalign.loader.AudioLoader.create_samples_to_seconds_map) | Create a SamplesToSeconds conversion map for this audio. |
-| [create_timeline](#timetoalign.loader.AudioLoader.create_timeline) | Create a DiscretePhysicalTimeline from the loaded audio. |
+| [create_timeline](#timetoalign.loader.AudioLoader.create_timeline) | Create a continuous seconds timeline from the loaded audio. |
 | [from_file](#timetoalign.loader.AudioLoader.from_file) | Load an audio file and return the loader (convenience constructor). |
 
 ### create_samples_to_seconds_map { #timetoalign.loader.AudioLoader.create_samples_to_seconds_map }
@@ -89,26 +82,26 @@ Create a SamplesToSeconds conversion map for this audio.
 loader.AudioLoader.create_timeline(uid=None, name=None, attach_cmap=True)
 ```
 
-Create a DiscretePhysicalTimeline from the loaded audio.
+Create a continuous seconds timeline from the loaded audio.
 
 The timeline is created with:
-- unit=TimeUnit.samples
-- length=n_samples
-- Optionally, a SamplesToSeconds C-map for coordinate conversion
+- unit=TimeUnit.seconds
+- length=duration_seconds
+- float coordinates
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name        | Type                 | Description                                                 | Default   |
-|-------------|----------------------|-------------------------------------------------------------|-----------|
-| uid         | [str](`str`) \| None | Unique identifier for the timeline. If None, uses filename. | `None`    |
-| name        | [str](`str`) \| None | Human-readable name. If None, uses filename.                | `None`    |
-| attach_cmap | [bool](`bool`)       | If True, attach a SamplesToSeconds conversion map.          | `True`    |
+| Name        | Type                 | Description                                                                               | Default   |
+|-------------|----------------------|-------------------------------------------------------------------------------------------|-----------|
+| uid         | [str](`str`) \| None | Unique identifier for the timeline. If None, uses filename.                               | `None`    |
+| name        | [str](`str`) \| None | Human-readable name. If None, uses filename.                                              | `None`    |
+| attach_cmap | [bool](`bool`)       | Accepted for loader-call compatibility; seconds need no sample-to-seconds conversion map. | `True`    |
 
 #### Returns {.doc-section .doc-section-returns}
 
-| Name   | Type                         | Description                                             |
-|--------|------------------------------|---------------------------------------------------------|
-|        | \'DiscretePhysicalTimeline\' | A DiscretePhysicalTimeline representing the audio file. |
+| Name   | Type                           | Description                                                 |
+|--------|--------------------------------|-------------------------------------------------------------|
+|        | \'ContinuousPhysicalTimeline\' | A continuous physical timeline representing the audio file. |
 
 #### Raises {.doc-section .doc-section-raises}
 
@@ -122,14 +115,7 @@ The timeline is created with:
 >>> loader = AudioLoader().load("song.wav")
 >>> timeline = loader.create_timeline()
 >>> timeline.unit
-<TimeUnit.samples: 'samples'>
-```
-
-```python
->>> # Convert sample coordinates to seconds
->>> from timetoalign.core import TimeUnit
->>> timeline.get_timestamp_at(44100).get_unit(TimeUnit.seconds)
-1.0
+<TimeUnit.seconds: 'seconds'>
 ```
 
 ### from_file { #timetoalign.loader.AudioLoader.from_file }

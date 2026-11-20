@@ -1,988 +1,895 @@
-"""BeatGrid: a metrical timeline measured in quarter notes.
+"""Beat grids: tempo segments that generate a labelled lattice of beats.
 
-BeatGrid is the timeline-shaped face of musical meter. It is a
-ContinuousLogicalTimeline whose measure and beat structure is carried by an
-attached meter-map family: MetricMap supplies measure boundaries,
-BeatInMeasureMap supplies beat-in-measure conversion, and MetricalPositionMap
-combines those values.
+A :class:`BeatGridSegment` states the facts an analysis program records
+about one stretch of a recording — where its anchor beat sits, how fast
+it runs, how its beats group into bars, and which beat of a bar the
+anchor is.  Those facts generate beats forever; a :class:`BeatGrid`
+assembles the segments in time order, bounds each one by its successor,
+and labels the resulting beats with measure and beat numbers.
 
-BeatGrid and MetricMap converge as metrical conversion becomes more capable.
-MetricMap already represents irregular measures, anacrusis, and meter changes
-through ``from_boundaries()``; that richer structure is intended to flow into
-BeatGrid over time. BeatGrid keeps the timeline responsibilities of events,
-regions, hierarchy, and cross-domain conversion while exposing metrical queries
-on an exact quarter-note axis.
+The grid is the arithmetic engine behind measure structures read from
+DJ-software exports: it answers "which second is bar 449?" and "which
+bar and beat is second 4329.7?", and it integrates exact quarter-note
+lengths across tempo changes.
 """
 
 from __future__ import annotations
 
+import csv
+from dataclasses import dataclass, replace
 from fractions import Fraction
-from typing import TYPE_CHECKING, Any, ClassVar
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Iterable, Iterator, Literal
 
-import numpy as np
-
-from timetoalign.core import (
-    CoordinateSpec,
-    NumberType,
-    TimeUnit,
-    rational_to_wire,
-    wire_to_rational,
-)
-from timetoalign.maps import ConversionMap, LinearMap
-from timetoalign.maps.meter import BeatInMeasureMap, MetricalPositionMap, MetricMap
-
-from .base import SEGMENT_EVENT_TYPE, Timeline
-from .types import ContinuousLogicalTimeline
+from timetoalign.core import BeatPolicy, Coordinate, IdCoordinate, TimeUnit
 
 if TYPE_CHECKING:
-    from numpy.typing import NDArray
+    import pandas as pd
+
+#: Accepted spellings of a position or duration in seconds.
+SecondsSpec = int | float | Fraction | str | Coordinate | IdCoordinate
 
 
-class BeatGrid(ContinuousLogicalTimeline):
-    """A metrical timeline whose native coordinate axis is quarter notes.
+def _as_fraction(value: Any, *, what: str) -> Fraction:
+    """Read a raw number exactly.
 
-    BeatGrid delegates measure-boundary lookup to its attached MetricMap,
-    beat-in-measure lookup to its attached BeatInMeasureMap, and combined
-    measure/beat lookup to its attached MetricalPositionMap. Its public beat
-    queries also apply ``beat_unit`` so that a musical beat need not equal a
-    quarter note.
+    Floats convert through :class:`~fractions.Fraction` directly, so a
+    float contributes the exact binary value it holds and nothing
+    tidier; guessing a rounder ratio would claim a precision the number
+    never had.
 
-    BeatGrid and MetricMap are converging representations of meter. BeatGrid
-    provides the Timeline interface; MetricMap provides an increasingly rich
-    conversion model. Irregular measures, anacrusis, and meter changes modeled
-    by ``MetricMap.from_boundaries()`` are intended to become available through
-    BeatGrid as that model develops.
+    Args:
+        value: An ``int``, ``float``, ``Fraction`` or decimal string.
+        what: What is being read, for the error message.
+
+    Returns:
+        The value as an exact rational.
+
+    Raises:
+        TypeError: If *value* is of a type the grid cannot read as a
+            number.
+        ValueError: If *value* is a string that does not spell one
+            (raised by :class:`~fractions.Fraction` itself).
+    """
+    if isinstance(value, Fraction):
+        return value
+    if isinstance(value, bool):
+        raise TypeError(f"{what} must be a number, got {value!r}")
+    if isinstance(value, (int, float, str)):
+        return Fraction(value)
+    raise TypeError(f"{what} must be a number, got {type(value).__name__}")
+
+
+def _as_seconds(value: SecondsSpec, *, what: str = "A position") -> Fraction:
+    """Read a position on the seconds axis exactly.
+
+    Args:
+        value: A raw number, a :class:`~timetoalign.core.Coordinate` or an
+            :class:`~timetoalign.core.IdCoordinate`.
+        what: What is being read, for the error message.
+
+    Returns:
+        The position in seconds, as an exact rational.
+
+    Raises:
+        ValueError: If a coordinate carries a unit other than seconds.
+        TypeError: If *value* is not a number the grid can read.
+    """
+    if isinstance(value, (Coordinate, IdCoordinate)):
+        if value.unit is not TimeUnit.seconds:
+            raise ValueError(
+                f"{what} on a beat grid is measured in "
+                f"{TimeUnit.seconds.value!r}, not {value.unit.value!r}"
+            )
+        return _as_fraction(value.value, what=what)
+    return _as_fraction(value, what=what)
+
+
+@dataclass(frozen=True)
+class BeatGridSegment:
+    """One tempo segment of a beat grid: an anchor beat and how it repeats.
+
+    The segment stores only what a source states. Beat and bar lengths,
+    and the first downbeat, are derived from those facts rather than
+    stored beside them.
 
     Attributes:
-        beats_per_measure: Number of beats per measure.
-        beat_unit: The note value of one beat (e.g., Fraction(1, 4) for quarter note).
-        start_measure: The number of the first measure (default 1).
-        quarters_per_measure: Derived: quarters per measure.
+        start: Seconds at which the anchor beat sounds.
+        bpm: Beats per minute; one beat is one tick of the lattice.
+        policy: How the lattice beats group into bars. ``policy.name``
+            carries the meter as the source spells it.
+        battito: The 1-based beat-in-bar index of the anchor beat.
+        end: Exclusive bound in seconds, or ``None`` for a segment that
+            generates beats without end.
+    """
 
-    C-Maps (automatically created):
-        - quarters -> mc (MetricMap): Integer measure count.
-        - quarters -> beat (BeatInMeasureMap): Beat position as Fraction.
-        - quarters -> {mc, beat} (MetricalPositionMap): Combined output.
+    start: Fraction
+    bpm: Fraction
+    policy: BeatPolicy
+    battito: int
+    end: Fraction | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "start", _as_fraction(self.start, what="A grid start"))
+        object.__setattr__(self, "bpm", _as_fraction(self.bpm, what="A grid tempo"))
+        if self.end is not None:
+            object.__setattr__(self, "end", _as_fraction(self.end, what="A grid bound"))
+        if self.bpm <= 0:
+            raise ValueError(f"A grid tempo must be positive, got {self.bpm}")
+        if not 1 <= self.battito <= self.policy.n_beats:
+            raise ValueError(
+                f"Anchor beat {self.battito} is outside 1..{self.policy.n_beats} "
+                f"for policy {self.policy}"
+            )
+        if self.end is not None and self.end <= self.start:
+            raise ValueError(
+                f"A grid segment starting at {self.start} cannot end at {self.end}"
+            )
+
+    def __repr__(self) -> str:
+        bound = "unbounded" if self.end is None else f"end={self.end}"
+        return (
+            f"BeatGridSegment(start={self.start}, {bound}, bpm={self.bpm}, "
+            f"policy={self.policy}, battito={self.battito})"
+        )
+
+    @property
+    def beat_seconds(self) -> Fraction:
+        """Length of one lattice beat, in seconds."""
+        return Fraction(60) / self.bpm
+
+    @property
+    def bar_seconds(self) -> Fraction:
+        """Length of one bar of this policy, in seconds."""
+        return self.beat_seconds * self.policy.n_beats
+
+    @property
+    def quarters_per_second(self) -> Fraction:
+        """Quarter notes sounding per second in this segment.
+
+        One bar lasts :attr:`bar_seconds` and is notated
+        ``policy.span`` quarters, so the two divide. On the one-beat-per-
+        division lattices a grid export states, that is the same as
+        ``division x bpm / 60``.
+        """
+        return self.policy.span / self.bar_seconds
+
+    @property
+    def first_downbeat(self) -> Fraction:
+        """Seconds of the first beat 1 this segment generates."""
+        if self.battito == 1:
+            return self.start
+        return self.start + (self.policy.n_beats - self.battito + 1) * self.beat_seconds
+
+
+@dataclass(frozen=True)
+class GridBeat:
+    """One beat of a grid, labelled in both numbering schemes.
+
+    Attributes:
+        seconds: Where the beat sounds, as the exact ratio the grid's
+            arithmetic produced. This is what the grid computes with and
+            what a caller integrating tempi or deriving anchors reads.
+        segment: 0-based index of the segment that generated it.
+        measure: Measure number counted across the whole grid. Beats
+            before the grid's first downbeat carry ``0``.
+        segment_measure: Measure number restarted at each segment. Beats
+            before the segment's first downbeat carry ``0``.
+        beat: 1-based beat-in-measure index under its segment's policy.
+        instant: Derived from :attr:`seconds`: the same position as a
+            float-typed seconds :class:`~timetoalign.core.Coordinate`,
+            built as :meth:`BeatGrid.seconds_at` builds its answer, so
+            the two directions of the grid compare equal.
+        is_downbeat: Derived: whether this beat opens a measure, that is
+            whether :attr:`beat` is ``1``.
+    """
+
+    seconds: Fraction
+    segment: int
+    measure: int
+    segment_measure: int
+    beat: int
+
+    @property
+    def instant(self) -> Coordinate:
+        """Where the beat sounds, as a published seconds coordinate.
+
+        The seconds axis is float-declared, and this is built exactly as
+        :meth:`BeatGrid.seconds_at` builds its answer, so the two
+        directions of the grid compare equal whenever they name the same
+        moment. Exactness stays in :attr:`seconds`, which is where the
+        grid does its arithmetic.
+        """
+        return Coordinate(float(self.seconds), TimeUnit.seconds)
+
+    @property
+    def is_downbeat(self) -> bool:
+        """Whether this beat opens a measure."""
+        return self.beat == 1
+
+
+class BeatGrid:
+    """A sequence of tempo segments and the beats they generate.
+
+    Segments are given as they are stated — typically without an end,
+    each one generating beats forever. The grid puts them in time order
+    and bounds each by the next one's start; the last segment is bounded
+    by *extent*, or generates without end when no extent is given.
 
     Examples:
         >>> from fractions import Fraction
-        >>> # A beat grid for 4/4 time, 222 measures of 888 quarter notes
-        >>> grid = BeatGrid(
-        ...     length=Fraction(888, 1),
-        ...     beats_per_measure=4,
-        ... )
-
-        Measure count comes back as an integer and beat position as an exact
-        Fraction:
-
-        >>> grid.measure_at(100)
-        26
-        >>> grid.beat_at(100)
-        Fraction(1, 1)
-        >>> grid.metrical_position(100)
-        {'mc': 26, 'beat': Fraction(1, 1), 'mn': '26'}
-
-        A grid measures in quarters, so it cannot be a child of a timeline
-        measuring in seconds — that relationship is a TimelineGroup, which
-        ``ContinuousPhysicalTimeline.create_metrical_grid`` builds for you.
-
-        >>> # Create from tempo
-        >>> grid2 = BeatGrid.from_tempo(
-        ...     tempo_bpm=120.0,
-        ...     beats_per_measure=4,
-        ...     length_quarters=Fraction(888, 1),
-        ... )
+        >>> grid = BeatGrid.from_tempo(120, extent=8)
+        >>> [str(beat.seconds) for beat in grid.iter_beats()][:5]
+        ['0', '1/2', '1', '3/2', '2']
+        >>> grid.seconds_at(2)
+        Coordinate(2.0, seconds)
+        >>> grid.position_at(2.75).instant
+        Coordinate(2.5, seconds)
+        >>> grid.position_at(2.75).instant == grid.seconds_at(2, 2)
+        True
     """
-
-    # Force quarters unit and Fraction number type
-    _default_unit: ClassVar[TimeUnit] = TimeUnit.quarters
-
-    # Instance attributes (set in __init__ or from_tempo)
-    _beats_per_measure: int
-    _beat_unit: Fraction
-    _start_measure: int
-    _start_mn: str
-    _anacrusis_quarters: Fraction | None
-    _quarters_per_beat: Fraction
-    _quarters_per_measure: Fraction
-    _n_measures: int
-    _meter_map: MetricMap
-    _beat_map: BeatInMeasureMap
-    _metrical_map: MetricalPositionMap
-
-    # Optional attributes (only set when using from_tempo)
-    _tempo_bpm: float | None
-    _start_seconds: float
-    _tempo_map: LinearMap | None
-
-    def _spawn_class(self) -> type[Timeline]:
-        """Return the plain logical class used for children and slices.
-
-        BeatGrid initialization does not accept ``unit`` or ``number_type``
-        arguments, so generic child construction cannot instantiate
-        ``type(self)``. Children and slices are logical material rather than
-        independent metrical grids.
-        """
-        return ContinuousLogicalTimeline
-
-    def __init__(
-        self,
-        length: Fraction | int,
-        beats_per_measure: int = 4,
-        beat_unit: Fraction = Fraction(1, 4),
-        start_measure: int = 1,
-        start_mn: str | None = None,
-        anacrusis_quarters: Fraction | None = None,
-        uid: str | None = None,
-        name: str | None = None,
-    ) -> None:
-        """Initialize a BeatGrid.
-
-        Args:
-            length: Length in quarter notes (Fraction or int).
-            beats_per_measure: Number of beats per measure. Default 4.
-            beat_unit: Note value of one beat. Default Fraction(1, 4) (quarter note).
-                       Use Fraction(1, 8) for eighth-note beats (e.g., 6/8 time).
-            start_measure: MC (measure count) of the first measure. Default 1.
-            start_mn: MN (measure number label) of the first measure.
-                     Default: same as start_measure. Use "0" for anacrusis.
-            anacrusis_quarters: If set, the first measure is shorter (pickup).
-            uid: Explicit unique identifier.
-            name: Human-readable name.
-
-        Raises:
-            ValueError: If beats_per_measure < 1 or beat_unit <= 0.
-        """
-        if beats_per_measure < 1:
-            raise ValueError(f"beats_per_measure must be >= 1, got {beats_per_measure}")
-        if beat_unit <= 0:
-            raise ValueError(f"beat_unit must be positive, got {beat_unit}")
-
-        # Convert length to Fraction
-        if isinstance(length, int):
-            length = Fraction(length, 1)
-
-        # Initialize parent
-        super().__init__(
-            length=length,
-            unit=TimeUnit.quarters,
-            number_type=NumberType.fraction,
-            uid=uid,
-            name=name,
-        )
-
-        # Store metrical parameters
-        self._beats_per_measure = beats_per_measure
-        self._beat_unit = Fraction(beat_unit)
-        self._start_measure = start_measure
-        self._start_mn = start_mn if start_mn is not None else str(start_measure)
-        self._anacrusis_quarters = anacrusis_quarters
-
-        # Calculate quarters per measure/beat
-        # beat_unit is the fraction of a whole note that equals one beat
-        # quarters_per_beat = beat_unit * 4 (since 4 quarters = 1 whole note)
-        self._quarters_per_beat = self._beat_unit * 4
-        self._quarters_per_measure = self._quarters_per_beat * beats_per_measure
-
-        # Calculate number of measures
-        if anacrusis_quarters is not None:
-            remaining = length - anacrusis_quarters
-            n_full = int(remaining // self._quarters_per_measure)
-            self._n_measures = 1 + n_full
-        else:
-            self._n_measures = int(length // self._quarters_per_measure)
-            if self._n_measures == 0:
-                self._n_measures = 1
-
-        # Initialize optional tempo attributes (set by from_tempo())
-        self._tempo_bpm = None
-        self._start_seconds = 0.0
-        self._tempo_map = None
-
-        # Create and attach metrical C-Maps using the new MetricMap infrastructure
-        self._setup_metrical_cmaps()
-
-    @property
-    def beats_per_measure(self) -> int:
-        """Number of beats per measure."""
-        return self._beats_per_measure
-
-    @property
-    def beat_unit(self) -> Fraction:
-        """Note value of one beat (fraction of whole note)."""
-        return self._beat_unit
-
-    @property
-    def start_measure(self) -> int:
-        """MC (measure count) of the first measure."""
-        return self._start_measure
-
-    @property
-    def start_mn(self) -> str:
-        """MN (measure number label) of the first measure."""
-        return self._start_mn
-
-    @property
-    def quarters_per_measure(self) -> Fraction:
-        """Quarter notes per measure."""
-        return self._quarters_per_measure
-
-    @property
-    def quarters_per_beat(self) -> Fraction:
-        """Quarter notes per beat."""
-        return self._quarters_per_beat
-
-    @property
-    def n_measures(self) -> int:
-        """Number of complete measures in this grid."""
-        return self._n_measures
-
-    def _setup_metrical_cmaps(self) -> None:
-        """Create and attach the metrical conversion maps using MetricMap."""
-        # Create the MetricMap with uniform measure lengths
-        self._meter_map = MetricMap.from_uniform(
-            n_measures=self._n_measures,
-            quarters_per_measure=self._quarters_per_measure,
-            start_mc=self._start_measure,
-            start_mn=self._start_mn,
-            anacrusis_quarters=self._anacrusis_quarters,
-            uid=f"{self.id}_meter_map",
-        )
-        self.add_conversion_map(self._meter_map)
-
-        # Create the BeatInMeasureMap
-        self._beat_map = BeatInMeasureMap(
-            self._meter_map,
-            uid=f"{self.id}_beat_map",
-        )
-        self.add_conversion_map(self._beat_map)
-
-        # Create the MetricalPositionMap (combination of both)
-        self._metrical_map = MetricalPositionMap(
-            self._meter_map,
-            uid=f"{self.id}_metrical_map",
-        )
-        self.add_conversion_map(self._metrical_map)
-
-    def _resolve_quarter_value(
-        self, quarters: CoordinateSpec
-    ) -> int | float | Fraction:
-        """Resolve a public query coordinate to the native quarter-note axis."""
-        if isinstance(quarters, np.generic):
-            quarters = quarters.item()
-        return self._resolve_axis_value(quarters)
-
-    def measure_at(self, quarters: CoordinateSpec) -> int:
-        """Get the measure count (MC) at a given quarter-note position.
-
-        Args:
-            quarters: Position in quarter notes.
-
-        Returns:
-            The measure count (integer, 1-indexed by default).
-        """
-        quarter_value = self._resolve_quarter_value(quarters)
-        return self._meter_map(float(quarter_value))
-
-    def mn_at(self, quarters: CoordinateSpec) -> str | None:
-        """Get the measure number label (MN) at a given quarter-note position.
-
-        Args:
-            quarters: Position in quarter notes.
-
-        Returns:
-            The measure number label (string like "1", "0", "1a").
-        """
-        quarter_value = self._resolve_quarter_value(quarters)
-        mc = self._meter_map(float(quarter_value))
-        return self._meter_map.get_mn(mc)
-
-    def beat_at(self, quarters: CoordinateSpec) -> Fraction:
-        """Get the beat position within the measure at a given quarter-note position.
-
-        Args:
-            quarters: Position in quarter notes.
-
-        Returns:
-            The beat position as Fraction (1-indexed, e.g., Fraction(3, 2) for beat 1.5).
-        """
-        quarter_value = self._resolve_quarter_value(quarters)
-        mc = self._meter_map(float(quarter_value))
-        measure = self._meter_map.get_measure_info(mc)
-        if measure is None:
-            raise ValueError(f"MC {mc} not found in meter map")
-        return (
-            Fraction(quarter_value) - measure["start"]
-        ) / self._quarters_per_beat + 1
-
-    def metrical_position(self, quarters: CoordinateSpec) -> dict[str, Any]:
-        """Get the full metrical position (mc and beat) at a given quarter position.
-
-        Args:
-            quarters: Position in quarter notes.
-
-        Returns:
-            Dictionary with 'mc' (int), 'beat' (Fraction), and 'mn' (str) keys.
-        """
-        quarter_value = self._resolve_quarter_value(quarters)
-        mc = self._meter_map(float(quarter_value))
-        beat = self.beat_at(quarter_value)
-        return {"mc": mc, "beat": beat, "mn": self._meter_map.get_mn(mc)}
-
-    def quarter_at(
-        self, measure: int, beat: float | Fraction = Fraction(1, 1)
-    ) -> Fraction:
-        """Get the quarter-note position for a given measure and beat.
-
-        Args:
-            measure: Measure count (MC, uses start_measure as reference).
-            beat: Beat within the measure (1-indexed). Default Fraction(1, 1).
-
-        Returns:
-            Position in quarter notes.
-
-        Raises:
-            ValueError: If measure < start_measure or beat < 1.
-        """
-        measure_info = self._meter_map.get_measure_info(measure)
-        if measure_info is None:
-            raise ValueError(f"MC {measure} not found in meter map")
-        return measure_info["start"] + (Fraction(beat) - 1) * self._quarters_per_beat
-
-    def to_dict(
-        self,
-        *,
-        events: bool = False,
-        external_references: bool = False,
-    ) -> dict[str, Any]:
-        """Convert the grid and its construction parameters to a dictionary.
-
-        The three metrical maps created by ``__init__`` (meter, beat-in-
-        measure, and metrical-position maps) are excluded from the
-        serialized ``conversion_maps`` list, since ``from_dict`` rebuilds
-        them from the construction parameters instead. Any other attached
-        conversion map (for example, a tempo map from ``from_tempo`` or a
-        user-attached map) is serialized normally.
-
-        Args:
-            events: If True, include the ``"events"`` key (beat events and
-                any other events added to the grid).
-            external_references: If True, include the
-                ``"external_references"`` key, even when empty.
-
-        Returns:
-            A dictionary representation that reconstructs the attached meter maps.
-        """
-        data = super().to_dict(
-            events=events,
-            external_references=external_references,
-        )
-        meter_map_ids = {self._meter_map.id, self._beat_map.id, self._metrical_map.id}
-        data["conversion_maps"] = [
-            map_data
-            for map_data in data["conversion_maps"]
-            if map_data.get("id") not in meter_map_ids
-        ]
-        data["beats_per_measure"] = self._beats_per_measure
-        data["beat_unit"] = rational_to_wire(self._beat_unit)
-        data["start_measure"] = self._start_measure
-        data["start_mn"] = self._start_mn
-        data["anacrusis_quarters"] = (
-            rational_to_wire(self._anacrusis_quarters)
-            if self._anacrusis_quarters is not None
-            else None
-        )
-        data["tempo_bpm"] = self._tempo_bpm
-        data["start_seconds"] = self._start_seconds
-        return data
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> BeatGrid:
-        """Create a BeatGrid from a serialized dictionary.
-
-        The constructor recreates the meter-map family; the serialized
-        ``conversion_maps`` list contains only the maps attached beyond that
-        family (for example, a ``from_tempo`` tempo map or a user-attached
-        map), so every entry is restored via ``ConversionMap.from_dict``.
-
-        Args:
-            data: Dictionary created by :meth:`to_dict`.
-
-        Returns:
-            The reconstructed BeatGrid.
-        """
-        class_tag = data.get("class")
-        if class_tag != cls.__name__:
-            raise ValueError(
-                f"Serialized timeline class '{class_tag}' does not match "
-                f"receiving subclass '{cls.__name__}'"
-            )
-
-        anacrusis = data.get("anacrusis_quarters")
-        grid = cls(
-            length=Fraction(wire_to_rational(data["length"])),
-            beats_per_measure=data["beats_per_measure"],
-            beat_unit=Fraction(wire_to_rational(data["beat_unit"])),
-            start_measure=data["start_measure"],
-            start_mn=data["start_mn"],
-            anacrusis_quarters=(
-                Fraction(wire_to_rational(anacrusis)) if anacrusis is not None else None
-            ),
-            uid=data["id"],
-            name=data.get("name"),
-        )
-        grid._locked = data.get("locked", False)
-        grid._meta = dict(data.get("meta") or {})
-
-        events = []
-        for serialized_event in data.get("events", []):
-            if serialized_event.get("event_type") == SEGMENT_EVENT_TYPE:
-                continue
-            event = dict(serialized_event)
-            for coord_col in ("instant", "start", "end", "duration"):
-                if event.get(coord_col) is not None:
-                    event[coord_col] = wire_to_rational(event[coord_col])
-            events.append(event)
-        if events:
-            grid._add_events_unchecked(events)
-
-        references = data.get("external_references")
-        if references:
-            grid.add_external_references(references, validate=False)
-
-        for child_data in data.get("children", {}).values():
-            child = Timeline.from_dict(child_data["timeline"])
-            grid.add_child(child, offset=wire_to_rational(child_data["offset"]))
-
-        for map_data in data.get("conversion_maps", []):
-            cmap = ConversionMap.from_dict(map_data)
-            grid.add_conversion_map(cmap)
-            if cmap.target_unit == TimeUnit.seconds:
-                grid._tempo_map = cmap  # type: ignore[assignment]
-
-        tempo_bpm = data.get("tempo_bpm")
-        if tempo_bpm is not None:
-            grid._tempo_bpm = tempo_bpm
-            grid._start_seconds = data.get("start_seconds", 0.0)
-
-        return grid
-
-    # region Vectorized Accessors
-
-    @property
-    def n_beats(self) -> int:
-        """Total number of beats in this grid."""
-        return int(float(self._length.value) / float(self._quarters_per_beat))
-
-    def beat_quarters(self) -> "NDArray[np.floating[Any]]":
-        """All beat positions in quarters. Vectorized O(1).
-
-        Returns:
-            numpy array of beat positions in quarter notes.
-
-        Examples:
-            >>> grid = BeatGrid(length=16, beats_per_measure=4)
-            >>> grid.beat_quarters()
-            array([ 0.,  1.,  2.,  3.,  4.,  5.,  6.,  7.,  8.,  9., 10., 11., 12.,
-                   13., 14., 15.])
-        """
-        return np.arange(self.n_beats, dtype=np.float64) * float(
-            self._quarters_per_beat
-        )
-
-    def measure_quarters(self) -> "NDArray[np.floating[Any]]":
-        """All measure start positions in quarters. Vectorized O(1).
-
-        Returns:
-            numpy array of measure start positions in quarter notes.
-
-        Examples:
-            >>> grid = BeatGrid(length=16, beats_per_measure=4)
-            >>> grid.measure_quarters()
-            array([ 0.,  4.,  8., 12.])
-        """
-        return np.arange(self._n_measures, dtype=np.float64) * float(
-            self._quarters_per_measure
-        )
-
-    def beat_seconds(self) -> "NDArray[np.floating[Any]]":
-        """All beat times in seconds. Vectorized O(1).
-
-        Requires the grid to have been created with from_tempo() and start_seconds,
-        or to have a tempo_map attached.
-
-        Returns:
-            numpy array of beat times in seconds.
-
-        Raises:
-            RuntimeError: If no tempo information is available.
-
-        Examples:
-            >>> grid = BeatGrid.from_tempo(tempo_bpm=120, length_seconds=60, start_seconds=0.5)
-            >>> grid.beat_seconds()[:4]
-            array([0.5, 1. , 1.5, 2. ])
-        """
-        if not hasattr(self, "_tempo_bpm") or self._tempo_bpm is None:
-            raise RuntimeError(
-                "beat_seconds() requires tempo. Use from_tempo() to create the grid."
-            )
-        start = getattr(self, "_start_seconds", 0.0)
-        beat_duration = 60.0 / self._tempo_bpm * float(self._quarters_per_beat)
-        return start + np.arange(self.n_beats, dtype=np.float64) * beat_duration
-
-    def measure_seconds(self) -> "NDArray[np.floating[Any]]":
-        """All measure start times in seconds. Vectorized O(1).
-
-        Requires the grid to have been created with from_tempo() and start_seconds,
-        or to have a tempo_map attached.
-
-        Returns:
-            numpy array of measure start times in seconds.
-
-        Raises:
-            RuntimeError: If no tempo information is available.
-
-        Examples:
-            >>> grid = BeatGrid.from_tempo(tempo_bpm=120, beats_per_measure=4,
-            ...                            length_seconds=60, start_seconds=0.5)
-            >>> grid.measure_seconds()[:4]
-            array([0.5, 2.5, 4.5, 6.5])
-        """
-        if not hasattr(self, "_tempo_bpm") or self._tempo_bpm is None:
-            raise RuntimeError(
-                "measure_seconds() requires tempo. Use from_tempo() to create the grid."
-            )
-        start = getattr(self, "_start_seconds", 0.0)
-        measure_duration = 60.0 / self._tempo_bpm * float(self._quarters_per_measure)
-        return start + np.arange(self._n_measures, dtype=np.float64) * measure_duration
-
-    def downbeat_seconds(self) -> "NDArray[np.floating[Any]]":
-        """Alias for measure_seconds(). All downbeat times in seconds."""
-        return self.measure_seconds()
-
-    def measure_at_seconds(self, seconds: float) -> int:
-        """Get the measure number at a given time in seconds.
-
-        Args:
-            seconds: Time position in seconds.
-
-        Returns:
-            Measure count (MC, 1-indexed by default).
-
-        Raises:
-            RuntimeError: If no tempo information is available.
-            ValueError: If seconds is before the first beat.
-        """
-        if not hasattr(self, "_tempo_bpm") or self._tempo_bpm is None:
-            raise RuntimeError(
-                "measure_at_seconds() requires tempo. Use from_tempo() to create the grid."
-            )
-        start = getattr(self, "_start_seconds", 0.0)
-        if seconds < start:
-            raise ValueError(f"seconds ({seconds}) is before first beat ({start})")
-
-        measure_duration = 60.0 / self._tempo_bpm * float(self._quarters_per_measure)
-        measure_index = int((seconds - start) / measure_duration)
-        return self._start_measure + min(measure_index, self._n_measures - 1)
-
-    def beat_at_seconds(self, seconds: float) -> int:
-        """Get the beat number within the measure at a given time in seconds.
-
-        Args:
-            seconds: Time position in seconds.
-
-        Returns:
-            Beat number (1-indexed).
-
-        Raises:
-            RuntimeError: If no tempo information is available.
-            ValueError: If seconds is before the first beat.
-        """
-        if not hasattr(self, "_tempo_bpm") or self._tempo_bpm is None:
-            raise RuntimeError(
-                "beat_at_seconds() requires tempo. Use from_tempo() to create the grid."
-            )
-        start = getattr(self, "_start_seconds", 0.0)
-        if seconds < start:
-            raise ValueError(f"seconds ({seconds}) is before first beat ({start})")
-
-        beat_duration = 60.0 / self._tempo_bpm * float(self._quarters_per_beat)
-        beat_index = int((seconds - start) / beat_duration)
-        beat_in_measure = (beat_index % self._beats_per_measure) + 1
-        return beat_in_measure
-
-    # endregion
-
-    def materialize_beats(
-        self,
-        include_downbeats_only: bool = False,
-    ) -> int:
-        """Add Beat events to this timeline at each beat position.
-
-        Args:
-            include_downbeats_only: If True, only create events for beat 1 (downbeats).
-
-        Returns:
-            Number of beat events created.
-        """
-        events = []
-        position = Fraction(0, 1)
-
-        while position < self._length.value:
-            beat = self.beat_at(position)
-            mc = self.measure_at(position)
-            mn = self.mn_at(position)
-
-            # Check if we should include this beat
-            is_downbeat = beat == Fraction(1, 1)
-            if include_downbeats_only and not is_downbeat:
-                position += self._quarters_per_beat
-                continue
-
-            events.append(
-                {
-                    "id": f"beat_{len(events)}",
-                    "temporal_type": "instant",
-                    "event_type": "Beat",
-                    "instant": position,
-                    "mc": mc,
-                    "mn": mn,
-                    "beat": str(beat),  # Store as string to preserve Fraction
-                    "is_downbeat": is_downbeat,
-                }
-            )
-
-            position += self._quarters_per_beat
-
-        if events:
-            self.add_events(events)
-
-        return len(events)
-
-    def materialize_measures(self) -> int:
-        """Add Measure events to this timeline at each measure boundary.
-
-        Creates IntervalEvents for each complete measure.
-
-        Returns:
-            Number of measure events created.
-        """
-        events = []
-
-        for i in range(self._n_measures):
-            mc = self._meter_map._mcs[i]
-            info = self._meter_map.get_measure_info(int(mc))
-            if info is None:
-                continue
-
-            events.append(
-                {
-                    "id": f"measure_{info['mc']}",
-                    "name": f"M{info['mn']}",
-                    "temporal_type": "interval",
-                    "event_type": "Measure",
-                    "start": info["start"],
-                    "end": info["end"],
-                    "mc": info["mc"],
-                    "mn": info["mn"],
-                }
-            )
-
-        if events:
-            self.add_events(events)
-
-        return len(events)
 
     @classmethod
     def from_tempo(
         cls,
-        tempo_bpm: float,
-        beats_per_measure: int = 4,
-        beat_unit: Fraction = Fraction(1, 4),
-        length_seconds: float | None = None,
-        length_quarters: Fraction | int | None = None,
-        start_seconds: float = 0.0,
-        start_measure: int = 1,
-        start_mn: str | None = None,
-        anacrusis_quarters: Fraction | None = None,
-        uid: str | None = None,
-        name: str | None = None,
-    ) -> BeatGrid:
-        """Create a BeatGrid from tempo information.
-
-        You must provide either length_seconds or length_quarters.
-
-        Args:
-            tempo_bpm: Tempo in beats per minute.
-            beats_per_measure: Number of beats per measure. Default 4.
-            beat_unit: Note value of one beat. Default 1/4 (quarter note).
-            length_seconds: Duration in seconds (converted using tempo).
-                If start_seconds > 0, this should be the TOTAL audio duration;
-                the grid will span from start_seconds to length_seconds.
-            length_quarters: Duration in quarter notes.
-            start_seconds: Offset in seconds where the first beat occurs.
-                Default 0.0. Used by beat_seconds() and measure_seconds().
-            start_measure: MC of the first measure. Default 1.
-            start_mn: MN label of the first measure. Default: same as start_measure.
-            anacrusis_quarters: If set, first measure is shorter (pickup).
-            uid: Explicit unique identifier.
-            name: Human-readable name.
-
-        Returns:
-            A new BeatGrid instance with vectorized accessors for beat/measure times.
-
-        Raises:
-            ValueError: If neither length_seconds nor length_quarters is provided.
-            ValueError: If both length_seconds and length_quarters are provided.
-
-        Examples:
-            >>> # Audio track: 279 seconds, first beat at 0.092s, 160 BPM, 4/4
-            >>> grid = BeatGrid.from_tempo(
-            ...     tempo_bpm=160.0,
-            ...     beats_per_measure=4,
-            ...     length_seconds=279.0,
-            ...     start_seconds=0.092,
-            ... )
-            >>> grid.n_measures  # complete measures only; the 186th is partial
-            185
-            >>> grid.beat_seconds()[:4]
-            array([0.092, 0.467, 0.842, 1.217])
-            >>> grid.measure_seconds()[:4]
-            array([0.092, 1.592, 3.092, 4.592])
-        """
-        if length_seconds is None and length_quarters is None:
-            raise ValueError("Must provide either length_seconds or length_quarters")
-        if length_seconds is not None and length_quarters is not None:
-            raise ValueError("Cannot provide both length_seconds and length_quarters")
-
-        # Calculate length in quarters
-        if length_quarters is not None:
-            if isinstance(length_quarters, int):
-                length = Fraction(length_quarters, 1)
-            else:
-                length = length_quarters
-        else:
-            # Convert seconds to quarters using tempo
-            # If start_seconds is provided, grid spans from start_seconds to length_seconds
-            effective_duration = length_seconds - start_seconds
-            if effective_duration <= 0:
-                raise ValueError(
-                    f"length_seconds ({length_seconds}) must be greater than "
-                    f"start_seconds ({start_seconds})"
-                )
-            quarters_per_beat = Fraction(beat_unit) * 4
-            beats_per_second = tempo_bpm / 60.0
-            quarters_per_second = float(quarters_per_beat) * beats_per_second
-            # tempo_bpm is a measurement, so the length it implies is one
-            # too. Quarters accept float as readily as fraction; dressing
-            # this up as a ratio would claim a precision the tempo never had.
-            length = effective_duration * quarters_per_second
-
-        grid = cls(
-            length=length,
-            beats_per_measure=beats_per_measure,
-            beat_unit=beat_unit,
-            start_measure=start_measure,
-            start_mn=start_mn,
-            anacrusis_quarters=anacrusis_quarters,
-            uid=uid,
-            name=name,
-        )
-
-        # Store tempo and start offset for vectorized accessors
-        grid._tempo_bpm = tempo_bpm
-        grid._start_seconds = start_seconds
-
-        # Create a tempo C-Map: quarters -> seconds
-        quarters_per_beat = Fraction(beat_unit) * 4
-        beats_per_second = tempo_bpm / 60.0
-        quarters_per_second = float(quarters_per_beat) * beats_per_second
-
-        tempo_map = LinearMap(
-            scalar=1.0 / quarters_per_second,
-            offset=0.0,
-            source_unit=TimeUnit.quarters,
-            target_unit=TimeUnit.seconds,
-            uid=f"{grid.id}_tempo_map",
-        )
-        grid.add_conversion_map(tempo_map)
-        grid._tempo_map = tempo_map
-
-        return grid
-
-    @property
-    def tempo_bpm(self) -> float | None:
-        """Tempo in BPM, if created via from_tempo()."""
-        return getattr(self, "_tempo_bpm", None)
-
-    @property
-    def meter_map(self) -> MetricMap:
-        """The underlying MetricMap (for advanced access)."""
-        return self._meter_map
-
-    def export_to_csv(  # type: ignore[override]
-        self,
-        filepath: str,
+        bpm: int | float | Fraction | str,
         *,
-        format: str = "default",
-        labels: str = "beats",
-        **kwargs: Any,
-    ) -> int:
-        """Export BeatGrid data to a CSV file.
-
-        Extends the base Timeline.export_to_csv() with special formats for
-        audio annotation tools.
+        metro: str = "4/4",
+        start: SecondsSpec = 0,
+        battito: int = 1,
+        extent: SecondsSpec | None = None,
+        policy: BeatPolicy | None = None,
+    ) -> BeatGrid:
+        """Build a single-segment grid from one tempo statement.
 
         Args:
-            filepath: Output CSV file path.
-            format: Output format. Options:
-                - "default": Standard timestamp table (inherited behavior).
-                - "sonic_visualiser": Sonic Visualiser / Audacity label track.
-                  Two fields (TIME, LABEL) with header row.
-                - "tilia": Tilia beat track format.
-                  Four fields (time, measure, beat, is_first_in_measure).
-            labels: What to export when using "sonic_visualiser" format:
-                - "beats": All beat positions with labels like "M1B1", "M1B2".
-                - "measures": Measure start positions with labels like "M1", "M2".
-                - "both": Both beats and measures.
-            **kwargs: Additional arguments passed to base export_to_csv() when
-                using "default" format.
+            bpm: Beats per minute of the lattice.
+            metro: Meter as ``"n/d"``, read as ``n`` beats of ``4/d``
+                quarters. Ignored when *policy* is given.
+            start: Seconds of the anchor beat.
+            battito: 1-based beat-in-bar index of the anchor beat.
+            extent: Exclusive bound in seconds. ``None`` leaves the grid
+                unbounded, generating beats without end.
+            policy: An explicit counting policy, overriding *metro*.
 
         Returns:
-            Number of rows written.
+            The one-segment grid.
+        """
+        segment = BeatGridSegment(
+            start=_as_seconds(start, what="A grid start"),
+            bpm=_as_fraction(bpm, what="A grid tempo"),
+            policy=(
+                policy
+                if policy is not None
+                else BeatPolicy.from_time_signature(metro).as_divisions()
+            ),
+            battito=battito,
+        )
+        bound = None if extent is None else _as_seconds(extent, what="A grid extent")
+        return cls([segment], extent=bound)
+
+    def __init__(
+        self,
+        segments: Iterable[BeatGridSegment],
+        *,
+        extent: SecondsSpec | None = None,
+    ) -> None:
+        """Assemble tempo segments into one grid.
+
+        **Segments abut**: one runs until the next one opens, and the
+        last until the grid's extent. A segment stating no ``end`` is
+        bounded accordingly; a segment stating one must state that same
+        bound, because a shorter or longer end would leave a gap or an
+        overlap the lattice has no way to represent.
+
+        Args:
+            segments: The segments, in any order. An ``end`` of ``None``
+                is filled with the successor's ``start``, or with
+                *extent* for the last segment.
+            extent: Exclusive bound of the whole grid, in seconds.
+                ``None`` leaves the grid unbounded.
 
         Raises:
-            RuntimeError: If format requires tempo but none is available.
-            ValueError: If format is not recognized.
-
-        Examples:
-            >>> import tempfile
-            >>> from pathlib import Path
-            >>> out = Path(tempfile.mkdtemp())
-            >>> grid = BeatGrid.from_tempo(tempo_bpm=120, length_seconds=60)
-
-            The beat-oriented formats write one row per beat:
-
-            >>> grid.export_to_csv(out / "beats.csv", format="sonic_visualiser")
-            120
-            >>> grid.export_to_csv(out / "beats.csv", format="tilia")
-            120
-
-            The default format writes the timestamp table instead, which holds
-            one row per event -- this grid was built without materialised beats,
-            so it has none:
-
-            >>> grid.export_to_csv(out / "data.csv", format="default")
-            0
+            ValueError: If no segments are given, if two segments share a
+                start, if a segment states an ``end`` other than the one
+                the grid bounds it at, or if *extent* does not lie after
+                the last segment's start.
         """
-        if format == "default":
-            return super().export_to_csv(filepath, **kwargs)
-
-        if format not in ("sonic_visualiser", "tilia"):
-            raise ValueError(
-                f"Unknown format '{format}'. "
-                "Use 'default', 'sonic_visualiser', or 'tilia'."
-            )
-
-        # Both formats require tempo for seconds conversion
-        if not hasattr(self, "_tempo_bpm") or self._tempo_bpm is None:
-            raise RuntimeError(
-                f"export_to_csv() with format='{format}' requires tempo. "
-                "Use BeatGrid.from_tempo() to create the grid."
-            )
-
-        if format == "tilia":
-            return self._export_tilia(filepath)
-
-        # sonic_visualiser format
-        return self._export_sonic_visualiser(filepath, labels)
-
-    def _export_sonic_visualiser(self, filepath: str, labels: str) -> int:
-        """Export in Sonic Visualiser format (TIME, LABEL fields with header)."""
-        import pandas as pd
-
-        dfs = []
-
-        if labels in ("beats", "both"):
-            times = self.beat_seconds()
-            n_times = len(times)
-            n_measures_needed = (
-                n_times + self._beats_per_measure - 1
-            ) // self._beats_per_measure
-            measures = np.repeat(
-                np.arange(self._start_measure, self._start_measure + n_measures_needed),
-                self._beats_per_measure,
-            )[:n_times]
-            beats = np.tile(
-                np.arange(1, self._beats_per_measure + 1), n_measures_needed
-            )[:n_times]
-            dfs.append(
-                pd.DataFrame(
-                    {
-                        "TIME": np.round(times, 6),
-                        "LABEL": [f"M{m}B{b}" for m, b in zip(measures, beats)],
-                    }
+        ordered = sorted(segments, key=lambda segment: segment.start)
+        if not ordered:
+            raise ValueError("A beat grid requires at least one segment")
+        for previous, current in zip(ordered, ordered[1:]):
+            if current.start == previous.start:
+                raise ValueError(
+                    f"Two grid segments start at {current.start}; each segment "
+                    "must open at a distinct instant"
                 )
-            )
-
-        if labels in ("measures", "both"):
-            times = self.measure_seconds()
-            dfs.append(
-                pd.DataFrame(
-                    {
-                        "TIME": np.round(times, 6),
-                        "LABEL": [
-                            f"M{m}"
-                            for m in range(
-                                self._start_measure,
-                                self._start_measure + len(times),
-                            )
-                        ],
-                    }
+        self._extent = None if extent is None else _as_seconds(extent, what="An extent")
+        bounds = [segment.start for segment in ordered[1:]] + [self._extent]
+        bounded: list[BeatGridSegment] = []
+        for segment, bound in zip(ordered, bounds):
+            if segment.end is not None and segment.end != bound:
+                stated = "the grid's extent" if bound is None else f"{bound}"
+                raise ValueError(
+                    f"The grid segment starting at {segment.start} states "
+                    f"end={segment.end}, but the grid bounds it at {stated}; "
+                    "grid segments abut, so a stated end must equal the next "
+                    "segment's start"
                 )
+            bounded.append(
+                segment if segment.end is not None else replace(segment, end=bound)
             )
+        self._segments = tuple(bounded)
+        self._beats: tuple[GridBeat, ...] | None = None
 
-        if not dfs:
-            raise ValueError(
-                f"Unknown labels '{labels}'. Use 'beats', 'measures', or 'both'."
-            )
-
-        df = pd.concat(dfs, ignore_index=True) if len(dfs) > 1 else dfs[0]
-        df = df.sort_values("TIME").reset_index(drop=True)
-        df.to_csv(filepath, index=False)
-        return len(df)
-
-    def _export_tilia(self, filepath: str) -> int:
-        """Export in Tilia format (time, measure, beat, is_first_in_measure)."""
-        import pandas as pd
-
-        times = self.beat_seconds()
-        n_times = len(times)
-        n_measures_needed = (
-            n_times + self._beats_per_measure - 1
-        ) // self._beats_per_measure
-        measures = np.repeat(
-            np.arange(self._start_measure, self._start_measure + n_measures_needed),
-            self._beats_per_measure,
-        )[:n_times]
-        beats = np.tile(np.arange(1, self._beats_per_measure + 1), n_measures_needed)[
-            :n_times
-        ]
-
-        df = pd.DataFrame(
-            {
-                "time": np.round(times, 6),
-                "measure": measures,
-                "beat": beats,
-                "is_first_in_measure": beats == 1,
-            }
-        )
-        df.to_csv(filepath, index=False)
-        return len(df)
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, BeatGrid):
+            return NotImplemented
+        return self._segments == other._segments and self._extent == other._extent
 
     def __repr__(self) -> str:
+        plural = "" if self.n_segments == 1 else "s"
+        if self._extent is None:
+            return f"BeatGrid({self.n_segments} segment{plural}, unbounded)"
         return (
-            f"BeatGrid(length={self._length.value}, "
-            f"beats_per_measure={self._beats_per_measure}, "
-            f"measures={self.n_measures})"
+            f"BeatGrid({self.n_segments} segment{plural}, extent={self._extent}, "
+            f"{self.n_measures} measures)"
+        )
+
+    @property
+    def segments(self) -> tuple[BeatGridSegment, ...]:
+        """The segments in time order, each bounded by its successor."""
+        return self._segments
+
+    @property
+    def extent(self) -> Fraction | None:
+        """Exclusive bound of the grid in seconds, or ``None``."""
+        return self._extent
+
+    @property
+    def n_segments(self) -> int:
+        """How many tempo segments the grid holds."""
+        return len(self._segments)
+
+    @property
+    def n_measures(self) -> int:
+        """How many measures the grid's beats fall into.
+
+        A grid opening off the downbeat counts the beats before its first
+        downbeat as measure ``0``, so they add one measure to the total.
+
+        Raises:
+            ValueError: If the grid is unbounded.
+        """
+        beats = self._all_beats()
+        return beats[-1].measure + (1 if beats[0].measure == 0 else 0)
+
+    def iter_beats(self, *, stop: SecondsSpec | None = None) -> Iterator[GridBeat]:
+        """Yield the grid's beats in time order.
+
+        Args:
+            stop: Exclusive bound in seconds. An unbounded grid generates
+                beats without end, so a caller iterating one must give a
+                stop.
+
+        Yields:
+            Every beat the grid states, labelled in both numbering
+            schemes.
+        """
+        bound = None if stop is None else _as_seconds(stop, what="A stop")
+        if self._extent is not None:
+            for beat in self._all_beats():
+                if bound is not None and beat.seconds >= bound:
+                    return
+                yield beat
+            return
+        yield from self._generate(stop=bound)
+
+    def segment_at(self, seconds: SecondsSpec) -> int:
+        """Return the index of the segment sounding at *seconds*.
+
+        Args:
+            seconds: A position on the grid's seconds axis.
+
+        Returns:
+            The 0-based index of the segment whose half-open span
+            contains the position.
+
+        Raises:
+            ValueError: If the position lies before the first segment or
+                at/after the grid's extent.
+        """
+        position = _as_seconds(seconds)
+        self._require_within(position)
+        for index in reversed(range(len(self._segments))):
+            if self._segments[index].start <= position:
+                return index
+        raise AssertionError  # pragma: no cover - guarded by _require_within
+
+    def seconds_at(
+        self,
+        measure: int,
+        beat: int | float | Fraction = 1,
+        *,
+        policy: BeatPolicy | None = None,
+    ) -> Coordinate:
+        """Return the instant of a measure and beat, in seconds.
+
+        Args:
+            measure: Measure number in the grid's own numbering.
+            beat: Beat within that measure, 1-based. A fractional beat
+                interpolates between the beats on either side of it.
+            policy: Read the beat index under this counting instead of
+                the grid's own lattice — the beat becomes a quarter-note
+                offset from the downbeat, converted back through the
+                segments' tempi.
+
+        Returns:
+            The instant, as a seconds coordinate.
+
+        Raises:
+            ValueError: If the measure or beat is not one the grid
+                states, or if the position falls outside the measure.
+        """
+        return Coordinate(
+            float(self._instant_of(measure, beat, policy)), TimeUnit.seconds
+        )
+
+    def segment_seconds_at(
+        self,
+        measure: int,
+        beat: int | float | Fraction = 1,
+        *,
+        policy: BeatPolicy | None = None,
+    ) -> Coordinate:
+        """Return the instant of a measure and beat within its segment.
+
+        Args:
+            measure: Measure number in the grid's own numbering.
+            beat: Beat within that measure, 1-based.
+            policy: Read the beat index under this counting instead of
+                the grid's own lattice.
+
+        Returns:
+            Seconds since the start of the segment containing the
+            instant.
+
+        Raises:
+            ValueError: If the measure or beat is not one the grid
+                states.
+        """
+        instant = self._instant_of(measure, beat, policy)
+        segment = self._segments[self.segment_at(instant)]
+        return Coordinate(float(instant - segment.start), TimeUnit.seconds)
+
+    def position_at(
+        self,
+        seconds: SecondsSpec,
+        *,
+        policy: BeatPolicy | None = None,
+    ) -> GridBeat:
+        """Return the beat sounding at *seconds*.
+
+        The beat whose span contains the position, that is the last beat
+        at or before it.
+
+        Args:
+            seconds: A position on the grid's seconds axis.
+            policy: Read the beat index under this counting instead of
+                the grid's own lattice. The measure numbering and the
+                segment are unaffected.
+
+        Returns:
+            The beat, carrying both measure numberings.
+
+        Raises:
+            ValueError: If the position lies before the grid's first beat
+                or at/after its extent, or if *policy* does not reach the
+                position within its measure.
+        """
+        position = _as_seconds(seconds)
+        self._require_within(position)
+        found: GridBeat | None = None
+        for beat in self.iter_beats(stop=position + 1):
+            if beat.seconds > position:
+                break
+            found = beat
+        if found is None:
+            first = self._segments[0].start
+            raise ValueError(
+                f"Position {position} lies before the grid's first beat at {first}"
+            )
+        if policy is None:
+            return found
+        downbeat = self._require_downbeat_of(found.measure)
+        return replace(
+            found, beat=policy.index_at(self.quarters_between(downbeat, position))
+        )
+
+    def quarters_between(
+        self,
+        start_seconds: SecondsSpec,
+        end_seconds: SecondsSpec,
+    ) -> Fraction:
+        """Integrate exact quarter-note length over a seconds interval.
+
+        Each segment contributes its own tempo. **The domain is
+        ``[0, extent]``** — ``[0, inf)`` on an unbounded grid — closed at
+        both ends, so the extent itself may be named even though no beat
+        sounds there. A grid that opens late still reads the seconds
+        before it, at its first segment's tempo: that stretch carries the
+        anchor the floating-measure lattice hangs on. Outside the domain
+        the grid states no tempo, and this raises rather than
+        extrapolating, exactly as the seconds direction does.
+
+        Args:
+            start_seconds: Where the interval opens.
+            end_seconds: Where the interval closes.
+
+        Returns:
+            The interval's length in quarter notes, exactly.
+
+        Raises:
+            ValueError: If the interval runs backwards, or if either end
+                lies outside the grid's domain.
+        """
+        start = _as_seconds(start_seconds, what="An interval start")
+        end = _as_seconds(end_seconds, what="An interval end")
+        if end < start:
+            raise ValueError(f"Interval [{start}, {end}] runs backwards")
+        self._require_in_domain(start, what="An interval start")
+        self._require_in_domain(end, what="An interval end")
+
+        active = self._segments[0]
+        for segment in self._segments:
+            if segment.start > start:
+                break
+            active = segment
+
+        cursor = start
+        quarters = Fraction(0)
+        for segment in self._segments:
+            if segment.start <= start:
+                continue
+            if segment.start >= end:
+                break
+            quarters += (segment.start - cursor) * active.quarters_per_second
+            cursor = segment.start
+            active = segment
+        return quarters + (end - cursor) * active.quarters_per_second
+
+    def get_beat_table(
+        self,
+        *,
+        segment: int | None = None,
+        numbering: Literal["set", "segment"] = "set",
+    ) -> pd.DataFrame:
+        """Render the grid's beats as a table.
+
+        Args:
+            segment: Restrict the table to one segment's beats.
+            numbering: Whether the ``measure`` column counts across the
+                whole grid (``"set"``) or restarts per segment
+                (``"segment"``).
+
+        Returns:
+            One row per beat with the columns ``seconds``, ``segment``,
+            ``segment_seconds``, ``measure`` and ``beat``.
+
+        Raises:
+            ValueError: If the grid is unbounded, if *segment* names no
+                segment, or if *numbering* is not one of the two
+                spellings.
+        """
+        import pandas as pd
+
+        if self._extent is None:
+            raise ValueError("Cannot tabulate an unbounded beat grid")
+        if numbering not in ("set", "segment"):
+            raise ValueError(
+                f"Unknown numbering {numbering!r}. Use 'set' or 'segment'."
+            )
+        if segment is not None and not 0 <= segment < len(self._segments):
+            raise ValueError(
+                f"Segment {segment} is outside 0..{len(self._segments) - 1}"
+            )
+        beats = [
+            beat
+            for beat in self._all_beats()
+            if segment is None or beat.segment == segment
+        ]
+        starts = [self._segments[beat.segment].start for beat in beats]
+        return pd.DataFrame(
+            {
+                "seconds": [float(beat.seconds) for beat in beats],
+                "segment": [beat.segment for beat in beats],
+                "segment_seconds": [
+                    float(beat.seconds - start) for beat, start in zip(beats, starts)
+                ],
+                "measure": [
+                    beat.measure if numbering == "set" else beat.segment_measure
+                    for beat in beats
+                ],
+                "beat": [beat.beat for beat in beats],
+            }
+        )
+
+    def export_to_csv(
+        self,
+        filepath: str | Path,
+        *,
+        format: Literal["sonic_visualiser", "tilia"],  # noqa: A002
+        labels: Literal["beats", "measures", "both"] = "beats",
+    ) -> int:
+        """Write the grid's beats in an audio tool's annotation format.
+
+        Args:
+            filepath: Where to write the file.
+            format: ``"sonic_visualiser"`` writes a ``TIME``/``LABEL``
+                label track; ``"tilia"`` writes a beat track with
+                ``time``, ``measure``, ``beat`` and
+                ``is_first_in_measure``.
+            labels: For the label track, whether to mark every beat
+                (``"M1B2"``), only the downbeats (``"M1"``), or both.
+
+        Returns:
+            How many rows were written.
+
+        Raises:
+            ValueError: If *format* or *labels* is not recognised, or if
+                the grid is unbounded.
+        """
+        if format not in ("sonic_visualiser", "tilia"):
+            raise ValueError(
+                f"Unknown format {format!r}. Use 'sonic_visualiser' or 'tilia'."
+            )
+        if labels not in ("beats", "measures", "both"):
+            raise ValueError(
+                f"Unknown labels {labels!r}. Use 'beats', 'measures', or 'both'."
+            )
+        table = self.get_beat_table()
+        if format == "tilia":
+            rows = [
+                (row.seconds, row.measure, row.beat, row.beat == 1)
+                for row in table.itertuples()
+            ]
+            header = ["time", "measure", "beat", "is_first_in_measure"]
+        else:
+            marked = []
+            for row in table.itertuples():
+                if labels in ("beats", "both"):
+                    marked.append((row.seconds, f"M{row.measure}B{row.beat}"))
+                if labels in ("measures", "both") and row.beat == 1:
+                    marked.append((row.seconds, f"M{row.measure}"))
+            rows = sorted(marked, key=lambda entry: entry[0])
+            header = ["TIME", "LABEL"]
+
+        with Path(filepath).open("w", encoding="utf-8", newline="") as handle:
+            writer = csv.writer(handle)
+            writer.writerow(header)
+            writer.writerows(rows)
+        return len(rows)
+
+    def _all_beats(self) -> tuple[GridBeat, ...]:
+        """Return every beat of a bounded grid, computed once."""
+        if self._beats is None:
+            if self._extent is None:
+                raise ValueError(
+                    "An unbounded beat grid generates beats without end; give the "
+                    "grid an extent, or iterate it with a stop"
+                )
+            self._beats = tuple(self._generate(stop=None))
+        return self._beats
+
+    def _generate(self, *, stop: Fraction | None) -> Iterator[GridBeat]:
+        """Generate the grid's beats, applying the boundary rule.
+
+        Rekordbox rounds a grid's anchor to three decimals and, when a
+        later grid's anchor is moved to the right, freezes the beats to
+        its left without inserting a fill-in. A beat generated a few
+        milliseconds before the next segment's anchor is therefore that
+        anchor beat displaced, not a beat of its own: the next segment
+        takes precedence and the generated beat is dropped.
+
+        A beat of segment *k* is dropped when it falls within HALF of
+        segment *k*'s beat duration before the next segment's start; at
+        exactly half a beat it is kept. This is a heuristic — what the
+        source program does for anchor displacements beyond half a beat
+        has not been studied. It applies at segment boundaries only,
+        never at the end of the grid.
+        """
+        measure = 0
+        last = len(self._segments) - 1
+        for index, segment in enumerate(self._segments):
+            end = segment.end
+            beat_seconds = segment.beat_seconds
+            n_beats = segment.policy.n_beats
+            segment_measure = 0
+            step = 0
+            while True:
+                instant = segment.start + step * beat_seconds
+                if end is not None and instant >= end:
+                    break
+                if stop is not None and instant >= stop:
+                    return
+                if index < last:
+                    assert end is not None
+                    if (end - instant) * 2 < beat_seconds:
+                        break
+                beat = ((segment.battito - 1 + step) % n_beats) + 1
+                if beat == 1:
+                    measure += 1
+                    segment_measure += 1
+                yield GridBeat(instant, index, measure, segment_measure, beat)
+                step += 1
+
+    def _require_in_domain(self, position: Fraction, *, what: str) -> None:
+        """Raise unless *position* lies in the grid's tempo domain.
+
+        The domain runs from zero to the extent inclusive — the span over
+        which the grid states a tempo, which is wider than the span over
+        which it sounds beats.
+        """
+        if position < 0:
+            raise ValueError(f"{what} at {position} lies before zero")
+        if self._extent is not None and position > self._extent:
+            raise ValueError(
+                f"{what} at {position} lies beyond the grid's extent {self._extent}"
+            )
+
+    def _require_within(self, position: Fraction) -> None:
+        """Raise unless *position* lies inside the grid's span."""
+        first = self._segments[0].start
+        if position < first:
+            raise ValueError(
+                f"Position {position} lies before the grid, which opens at {first}"
+            )
+        if self._extent is not None and position >= self._extent:
+            raise ValueError(
+                f"Position {position} lies at or after the grid's extent "
+                f"{self._extent}"
+            )
+
+    def _require_downbeat_of(self, measure: int) -> Fraction:
+        """Return the instant opening *measure*, raising when it has none.
+
+        A caller policy measures a quarter-note offset from the
+        downbeat, so a measure the grid never opens — the partial one
+        before a grid's first downbeat — cannot be read under one.
+        """
+        downbeat = self._downbeat_of(measure)
+        if downbeat is None:
+            raise ValueError(
+                f"Measure {measure} has no downbeat in this grid, so a beat index "
+                "cannot be read under a supplied policy"
+            )
+        return downbeat
+
+    def _downbeat_of(self, measure: int) -> Fraction | None:
+        """Return the instant opening *measure*, or ``None`` when it has none."""
+        for beat in self.iter_beats():
+            if beat.measure > measure:
+                return None
+            if beat.measure == measure and beat.beat == 1:
+                return beat.seconds
+        return None
+
+    def _beats_of_measure(self, measure: int) -> dict[int, list[Fraction]]:
+        """Return the instants of a measure's beats, by beat index.
+
+        A measure interrupted by a segment that re-anchors mid-bar can
+        state one index more than once — the new segment resumes counting
+        from its own anchor while the measure stays open — so every
+        instant is kept rather than the last one winning.
+        """
+        found: dict[int, list[Fraction]] = {}
+        for beat in self.iter_beats():
+            if beat.measure > measure:
+                break
+            if beat.measure == measure:
+                found.setdefault(beat.beat, []).append(beat.seconds)
+        if not found:
+            raise ValueError(f"Measure {measure} is not one this grid states")
+        return found
+
+    def _instant_of(
+        self,
+        measure: int,
+        beat: int | float | Fraction,
+        policy: BeatPolicy | None,
+    ) -> Fraction:
+        """Resolve a measure and beat to an exact instant in seconds."""
+        index = _as_fraction(beat, what="A beat index")
+        if index < 1:
+            raise ValueError(f"Beat index {index} is below the downbeat")
+        whole = int(index)
+        remainder = index - whole
+        if policy is not None:
+            return self._instant_under_policy(measure, whole, remainder, policy)
+        instants = self._beats_of_measure(measure)
+        start = self._unique_beat(instants, measure, whole)
+        if remainder == 0:
+            return start
+        following = self._unique_beat(instants, measure, whole + 1)
+        return start + remainder * (following - start)
+
+    @staticmethod
+    def _unique_beat(
+        instants: dict[int, list[Fraction]], measure: int, index: int
+    ) -> Fraction:
+        """Return the one instant a measure states for a beat index.
+
+        Args:
+            instants: The measure's beats, by index.
+            measure: The measure being addressed, for the error message.
+            index: The 1-based beat index.
+
+        Returns:
+            The instant that beat sounds at.
+
+        Raises:
+            ValueError: If the measure states that index no times or more
+                than once. An ambiguous address is not resolved by
+                picking one of the candidates.
+        """
+        candidates = instants.get(index, [])
+        if not candidates:
+            raise ValueError(
+                f"Measure {measure} has no beat {index}. Available beats: "
+                f"{sorted(instants)}"
+            )
+        if len(candidates) > 1:
+            spelled = ", ".join(str(candidate) for candidate in candidates)
+            raise ValueError(
+                f"Measure {measure} states beat {index} at more than one instant: "
+                f"{spelled}. A segment re-anchoring inside the measure restarts "
+                "its count, so this address names no single beat"
+            )
+        return candidates[0]
+
+    def _instant_under_policy(
+        self,
+        measure: int,
+        whole: int,
+        remainder: Fraction,
+        policy: BeatPolicy,
+    ) -> Fraction:
+        """Resolve a beat index read under a caller's counting policy."""
+        downbeat = self._require_downbeat_of(measure)
+        offset = policy.offset_for(whole) + remainder * policy.rod_for(whole)
+        instant = self._seconds_after(downbeat, offset)
+        limit = self._downbeat_of(measure + 1)
+        if limit is None:
+            limit = self._extent
+        if limit is not None and instant >= limit:
+            raise ValueError(
+                f"Beat {whole + remainder} of measure {measure} falls at {instant}, "
+                f"at or beyond {limit}"
+            )
+        return instant
+
+    def _seconds_after(self, start: Fraction, quarters: Fraction) -> Fraction:
+        """Return the instant *quarters* after *start*, across tempo changes.
+
+        The inverse of :meth:`quarters_between` and bounded the same way:
+        a result past the grid's extent raises rather than extrapolating,
+        because beyond it the grid states no tempo.
+        """
+        if quarters == 0:
+            return start
+        remaining = quarters
+        cursor = start
+        first = self.segment_at(start)
+        for segment in self._segments[first:]:
+            rate = segment.quarters_per_second
+            if segment.end is None:
+                return cursor + remaining / rate
+            available = (segment.end - cursor) * rate
+            if remaining <= available:
+                return cursor + remaining / rate
+            remaining -= available
+            cursor = segment.end
+        raise ValueError(
+            f"{quarters} quarters after {start} lies beyond the grid's extent "
+            f"{self._extent}"
         )

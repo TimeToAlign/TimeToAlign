@@ -5,21 +5,51 @@ from __future__ import annotations
 import logging
 from abc import abstractmethod
 from datetime import datetime, timezone
+from fractions import Fraction
+from numbers import Integral
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
+import pyarrow as pa
 from typing_extensions import Self
 
 from timetoalign.core import TimeUnit
 from timetoalign.loader.base import EventLoader
 
 from .store import ScoreStore
+from .stores.measures import MeasureData
 from .stores.notes import NoteEventData
 
 if TYPE_CHECKING:
+    from timetoalign.timelines import MeasureMap, Timeline
     from timetoalign.timelines.flow import ScoreFlowController, SegmentNameGenerator
 
 module_logger = logging.getLogger(__name__)
+
+
+def _coordinate_struct(value: Fraction | float) -> dict[str, Any]:
+    """Return a coordinate struct without inventing a ratio for a float."""
+    if isinstance(value, Fraction):
+        return {
+            "value": float(value),
+            "numerator": value.numerator,
+            "denominator": value.denominator,
+        }
+    return {"value": float(value), "numerator": None, "denominator": None}
+
+
+def _struct_coordinate_value(struct: dict[str, Any]) -> Fraction | float:
+    """Read a coordinate pair, falling back to its value-only projection."""
+    numerator = struct.get("numerator")
+    denominator = struct.get("denominator")
+    if (
+        isinstance(numerator, Integral)
+        and not isinstance(numerator, bool)
+        and isinstance(denominator, Integral)
+        and not isinstance(denominator, bool)
+    ):
+        return Fraction(int(numerator), int(denominator))
+    return float(struct["value"])
 
 
 class ScoreLoader(EventLoader):
@@ -32,6 +62,180 @@ class ScoreLoader(EventLoader):
 
     _default_unit = TimeUnit.quarters
     _event_data_class = NoteEventData
+
+    @classmethod
+    def _with_successors(cls, measures: MeasureData) -> MeasureData:
+        """Return *measures* with ``next`` derived where the source states none.
+
+        A measure table read from a format that lists successors (an ms3
+        TSV, a Measure Map) keeps them. Otherwise each part's successors are
+        derived from its repeat, volta and navigation columns by
+        :meth:`_successors`.
+        """
+        if len(measures) == 0 or any(
+            value is not None for value in measures.column_values("next")
+        ):
+            return measures
+        rows = list(measures)
+        parts: dict[Any, list[int]] = {}
+        for index, row in enumerate(rows):
+            parts.setdefault(row.get("part_id"), []).append(index)
+        successors: list[str | None] = [None] * len(rows)
+        for indices in parts.values():
+            for index, following in zip(
+                indices, cls._successors([rows[i] for i in indices])
+            ):
+                if following is not None:
+                    successors[index] = ", ".join(str(mc) for mc in following)
+        table = measures.table
+        position = table.schema.get_field_index("next")
+        table = table.set_column(
+            position, table.schema.field(position), pa.array(successors, pa.string())
+        )
+        return type(measures)(table, measures.unit, measures.number_type)
+
+    @staticmethod
+    def _successors(rows: list[dict[str, Any]]) -> list[list[int] | None]:
+        """Derive each measure's successor MCs from its flow-control columns.
+
+        Reads ``mc``, ``start_repeat``, ``end_repeat``, ``volta``, ``markers``
+        and ``jump_bwd`` of one part's rows in MC order; ``None`` means the
+        following measure. The rules, later ones taking precedence:
+
+        * A repeat end goes back to the nearest open repeat start; without
+          one, to the measure after the last ending or repeat end before it,
+          else to the first measure. Outside an ending it also continues to
+          the following measure (``-1`` after the last).
+        * An ending is a run of measures with a volta number (a lower number
+          than the previous one opens a new run). The measure before it
+          continues to the first measure of each volta; with one volta only,
+          also past the run. The last measure of every volta but the highest
+          continues past the run unless it ends a repeat, which goes back to
+          the run's repeat start.
+        * A D.S. or D.C. (``jump_bwd``) continues to the measure carrying the
+          named marker, ``start`` naming the first measure, in place of the
+          measure's onward successors; a repeat end keeps its way back.
+        * A Fine (a ``fine`` marker or flag, or ``jump_fwd`` naming ``fine``)
+          also ends the piece (``-1``).
+
+        Args:
+            rows: One part's measure rows in MC order.
+
+        Returns:
+            One successor list (or ``None``) per row.
+        """
+        count = len(rows)
+        mcs = [row["mc"] for row in rows]
+        voltas = [row.get("volta") for row in rows]
+        successors: list[list[int] | None] = [None] * count
+
+        def following(index: int) -> int:
+            return mcs[index + 1] if index + 1 < count else -1
+
+        endings: list[dict[int, list[int]]] = []
+        ending_of: dict[int, int] = {}
+        for index, volta in enumerate(voltas):
+            if volta is None:
+                continue
+            previous = voltas[index - 1] if index > 0 else None
+            if previous is None or volta < previous:
+                endings.append({})
+            endings[-1].setdefault(volta, []).append(index)
+            ending_of[index] = len(endings) - 1
+
+        open_starts: list[int] = []
+        ending_starts: dict[int, int] = {}
+        back: dict[int, int] = {}
+        boundary = 0
+        for index, row in enumerate(rows):
+            if row.get("start_repeat"):
+                open_starts.append(index)
+            ending = ending_of.get(index)
+            if row.get("end_repeat"):
+                if ending in ending_starts:
+                    start = ending_starts[ending]
+                else:
+                    start = open_starts.pop() if open_starts else boundary
+                if ending is None:
+                    successors[index] = [mcs[start], following(index)]
+                else:
+                    ending_starts[ending] = start
+                    successors[index] = [mcs[start]]
+                back[index] = mcs[start]
+                boundary = index + 1
+            elif ending is not None and ending_of.get(index + 1) != ending:
+                boundary = index + 1
+
+        for ending in endings:
+            numbers = sorted(ending)
+            first = ending[numbers[0]][0]
+            last = max(index for indices in ending.values() for index in indices)
+            exit_mc = following(last)
+            if first > 0:
+                fork = [mcs[ending[number][0]] for number in numbers]
+                successors[first - 1] = fork + [exit_mc] if len(numbers) == 1 else fork
+            for number in numbers[:-1]:
+                end = ending[number][-1]
+                if not rows[end].get("end_repeat"):
+                    successors[end] = [exit_mc]
+
+        names = [
+            {name.strip() for name in (row.get("markers") or "").split("&")} - {""}
+            for row in rows
+        ]
+        marked: dict[str, int] = {}
+        for row, row_names in zip(rows, names):
+            for name in row_names:
+                marked.setdefault(name, row["mc"])
+        for index, row in enumerate(rows):
+            target = row.get("jump_bwd")
+            if target in ("start", "firstMeasure"):
+                target_mc = mcs[0]
+            elif target in marked:
+                target_mc = marked[target]
+            else:
+                continue
+            successors[index] = [*([back[index]] if index in back else []), target_mc]
+        for index, row in enumerate(rows):
+            if (
+                row.get("fine")
+                or row.get("jump_fwd") == "fine"
+                or "fine" in names[index]
+            ):
+                edges = successors[index] or [following(index)]
+                if -1 not in edges:
+                    successors[index] = [*edges, -1]
+        return successors
+
+    @staticmethod
+    def _normalise_anacrusis(
+        note_rows: list[dict[str, Any]], *other_rows: list[dict[str, Any]]
+    ) -> Fraction | float:
+        """Shift every row so that the earliest note onset is 0; return the shift.
+
+        A timeline starts at 0, while a parser may place the notes of an
+        anacrusis at negative quarter positions. The shift is minus the
+        earliest ``quarterbeats`` of *note_rows* when that is negative, else
+        0, and is added to the ``quarterbeats`` of every row of *note_rows*
+        and *other_rows* (measures, controls, annotations), in place. Exact
+        positions stay exact: the shift is a ``Fraction`` unless the earliest
+        onset is stated only as a float, and a shifted cell keeps its ratio
+        whenever the sum has one. The loader exposes the shift as its
+        ``anacrusis_offset`` and stores it in the ``ScoreStore`` metadata.
+        """
+        onsets = [
+            _struct_coordinate_value(row["quarterbeats"])
+            for row in note_rows
+            if row.get("quarterbeats") is not None
+        ]
+        earliest: Fraction | float = min(onsets, default=Fraction(0))
+        offset: Fraction | float = -earliest if earliest < 0 else Fraction(0)
+        if offset:
+            for rows in (note_rows, *other_rows):
+                for row in rows:
+                    position = _struct_coordinate_value(row["quarterbeats"])
+                    row["quarterbeats"] = _coordinate_struct(position + offset)
+        return offset
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -86,12 +290,18 @@ class ScoreLoader(EventLoader):
 
         Returns:
             Self, for method chaining.
+
+        Raises:
+            ValueError: If the loader reads one source and is given none or
+                more than one, or any while it holds one.
         """
+        self._refuse_further_source(*sources)
         for source in sources:
             path = Path(source)
 
             # Load store from source
             loaded_store = self._load_source(path)
+            loaded_store.measures = self._with_successors(loaded_store.measures)
 
             # Update metadata
             meta = loaded_store.metadata.copy()
@@ -110,6 +320,39 @@ class ScoreLoader(EventLoader):
         """Clear all loaded sources and store data."""
         super().clear()
         self._store = ScoreStore.empty()
+
+    def create_timeline(self, uid: str | None = None, **kwargs: Any) -> Timeline:
+        """Create a score timeline with measure and flow-control structure."""
+        timeline = super().create_timeline(uid=uid, **kwargs)
+        self._populate_timeline_structure(timeline)
+        return timeline
+
+    def _measure_map(self) -> MeasureMap:
+        """Return the measure map the loaded measure table describes."""
+        from timetoalign.timelines import MeasureMap
+
+        return MeasureMap.from_measure_data(self._store.measures)
+
+    def _populate_timeline_structure(self, timeline: Timeline) -> None:
+        """Attach structure derivable from a non-empty measure store.
+
+        The measure store must describe one measure map in printed order. A
+        store whose measures cannot form that map is a defect of the source,
+        not a lossy reading of it: an unfolded measures table repeats printed
+        measure counts and therefore measure ids. Such a store raises instead
+        of producing a timeline without its measure structure.
+
+        Raises:
+            ValueError: If the stored measures cannot form a ``MeasureMap``.
+        """
+        if len(self._store.measures) == 0:
+            return
+
+        timeline.add_measure_map(self._measure_map())
+
+        timeline.flow_control._absorb(
+            self.create_flow_controller().get_flow_control_registry()
+        )
 
     # region Flow Control
 

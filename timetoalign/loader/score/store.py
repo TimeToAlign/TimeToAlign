@@ -6,9 +6,11 @@ import json
 import logging
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+from fractions import Fraction
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from timetoalign.core.time import number_from_json, number_to_json
 from timetoalign.loader.score.stores.annotations import AnnotationEventData
 from timetoalign.loader.score.stores.controls import ControlEventData
 from timetoalign.loader.score.stores.measures import MeasureData
@@ -48,12 +50,14 @@ class ScoreStore(EventStore):
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @property
-    def anacrusis_offset(self) -> float:
+    def anacrusis_offset(self) -> Fraction | float:
         """Quarter-beat shift applied by the loader to normalise anacrusis.
 
         Equal to ``-min(raw_partitura_onset)`` (or the music21 equivalent)
-        across all notes in the source file.  Zero when the score has no
-        anacrusis (i.e. the first note starts at or after beat 0).
+        across all notes in the source file, as exact as the loader read the
+        onsets: a ``Fraction``, or a ``float`` where the source states a
+        float.  Zero when the score has no anacrusis (i.e. the first note
+        starts at or after beat 0).
 
         This value is stored in :attr:`metadata` under the key
         ``"anacrusis_offset"`` by both ``PartituraLoader`` and
@@ -66,7 +70,7 @@ class ScoreStore(EventStore):
         is ``raw → TTA`` (add offset); the ``InverseMap`` converts back
         (subtract offset).
         """
-        return float(self.metadata.get("anacrusis_offset", 0.0))
+        return self.metadata.get("anacrusis_offset", Fraction(0))
 
     @classmethod
     def empty(cls) -> ScoreStore:
@@ -121,9 +125,12 @@ class ScoreStore(EventStore):
 
         # Persist store-level metadata (e.g. anacrusis_offset)
         meta_path = directory / "metadata.json"
-        # Serialise only JSON-safe values from self.metadata.
+        # Serialise only JSON-safe values from self.metadata; the anacrusis
+        # offset in its JSON number form, so an exact offset stays exact.
         serialisable = {}
         for k, v in self.metadata.items():
+            if k == "anacrusis_offset":
+                v = number_to_json(v)
             try:
                 json.dumps(v)
                 serialisable[k] = v
@@ -173,6 +180,10 @@ class ScoreStore(EventStore):
         metadata: dict[str, Any] = {}
         if meta_path.exists():
             metadata = json.loads(meta_path.read_text())
+        if "anacrusis_offset" in metadata:
+            metadata["anacrusis_offset"] = number_from_json(
+                metadata["anacrusis_offset"]
+            )
 
         return cls(
             notes=facets["notes"],
@@ -245,7 +256,7 @@ class ScoreStore(EventStore):
 
             # Attach ShiftMap for anacrusis if present
             offset = self.anacrusis_offset
-            if offset != 0.0:
+            if offset != 0:
                 from timetoalign.maps import ShiftMap
 
                 shift_map = ShiftMap(
@@ -267,6 +278,14 @@ class ScoreStore(EventStore):
         - "seconds": quarters -> seconds (if tempo markings available)
         - "measures": quarters -> measures (if measure data available)
 
+        Known limitation: a score whose measures are **split** — two
+        records sharing one notated downbeat, as when a bar is divided
+        across a repeat sign — has no floating-measure lattice, because
+        the two halves cannot both anchor the same ordinal. The
+        ``"measures"`` entry is then simply absent; no approximate
+        lattice is built in its place, since an fm reading those measures
+        do not support is worse than no fm reading.
+
         Args:
             ppq: Pulses per quarter note for ticks conversion. Defaults to 480.
 
@@ -284,6 +303,7 @@ class ScoreStore(EventStore):
         """
         from timetoalign.maps import ScalarMap
         from timetoalign.maps.interval import QuartersToFloatingMeasures
+        from timetoalign.timelines.structure import MeasureMap
 
         cmaps: dict[str, ConversionMap] = {}
 
@@ -299,14 +319,20 @@ class ScoreStore(EventStore):
         if tempo_events:
             cmaps["seconds"] = self._create_tempo_map(tempo_events)
 
-        # Measure map (if measures are present)
+        # Floating-measure conversion is derived from the structure described
+        # by the rows, never from printed labels.
         if len(self.measures) > 0:
             try:
-                cmaps["measures"] = QuartersToFloatingMeasures.from_measure_data(
-                    self.measures
+                measure_map = MeasureMap.from_measure_data(self.measures)
+                cmaps["measures"] = QuartersToFloatingMeasures.from_measure_map(
+                    measure_map
                 )
             except ValueError:
-                # MeasureData might be present but invalid for map creation
+                # A structure the fm lattice cannot express — split bars
+                # share one notated downbeat and cannot anchor two
+                # ordinals. Leave the conversion absent (documented above):
+                # an fm reading these measures do not support is worse than
+                # no fm reading.
                 pass
 
         return cmaps

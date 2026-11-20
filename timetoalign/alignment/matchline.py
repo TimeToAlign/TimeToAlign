@@ -446,7 +446,6 @@ class MatchLine:
         source_timeline_id: str,
         *,
         groups: dict[str, TimelineGroup] | None = None,
-        timeline_to_group: dict[str, str] | None = None,
         timeline_ids: set[str] | None = None,
         id_pattern: str | None = None,
         include_domains: set[Domain] | None = None,
@@ -462,10 +461,9 @@ class MatchLine:
             claims: List of MatchClaims to resolve.
             source_timeline_id: The timeline whose coordinates define
                 the ordering.
-            groups: Dict of group_id -> TimelineGroup for group extension.
-                If None, no group extension is performed.
-            timeline_to_group: Dict of timeline_id -> group_id.  Required
-                if ``groups`` is provided.
+            groups: Dict of group_id -> TimelineGroup for group extension
+                (see :meth:`MatchGraph.extend_to_groups`). If None, no group
+                extension is performed.
             timeline_ids: Only extend to these timeline IDs.
             id_pattern: Regex filter for timeline IDs.
             include_domains: Only extend to timelines in these domains.
@@ -476,10 +474,9 @@ class MatchLine:
         """
         graph = MatchGraph(claims)
 
-        if groups is not None and timeline_to_group is not None:
+        if groups is not None:
             graph = graph.extend_to_groups(
-                groups=groups,
-                timeline_to_group=timeline_to_group,
+                groups,
                 timeline_ids=timeline_ids,
                 id_pattern=id_pattern,
                 include_domains=include_domains,

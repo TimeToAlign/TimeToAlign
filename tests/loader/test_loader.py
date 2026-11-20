@@ -248,3 +248,69 @@ class TestLoaderMetadata:
         assert "path" in source_meta
         assert "loaded_at" in source_meta
         assert "format" in source_meta
+
+
+class SingleSourceDummyLoader(DummyLoader):
+    """A DummyLoader that reads one source."""
+
+    _single_source = True
+
+
+class TestSingleSource:
+    """One rule refuses a further source on every single-source loader."""
+
+    @pytest.fixture
+    def sources(self, tmp_path: Path) -> tuple[Path, Path]:
+        first, second = tmp_path / "first.dummy", tmp_path / "second.dummy"
+        first.write_bytes(b"dummy")
+        second.write_bytes(b"dummy")
+        return first, second
+
+    def test_two_in_one_call_are_refused_before_parsing(
+        self, sources: tuple[Path, Path]
+    ) -> None:
+        loader = SingleSourceDummyLoader()
+        with pytest.raises(ValueError) as raised:
+            loader.load(*sources)
+        assert str(raised.value) == (
+            f"SingleSourceDummyLoader reads one source; got 2: {sources[0]}, "
+            f"{sources[1]}."
+        )
+        assert loader.sources == []
+        assert len(loader) == 0
+
+    def test_a_second_call_is_refused(self, sources: tuple[Path, Path]) -> None:
+        first, second = sources
+        loader = SingleSourceDummyLoader().load(first)
+        with pytest.raises(ValueError) as raised:
+            loader.load(second)
+        assert str(raised.value) == (
+            f"SingleSourceDummyLoader reads one source and already holds {first}; "
+            f"use a new loader for {second}, or call clear() first."
+        )
+        assert loader.sources == [first]
+        assert len(loader) == 2
+
+    def test_clear_releases_the_loader(self, sources: tuple[Path, Path]) -> None:
+        first, second = sources
+        loader = SingleSourceDummyLoader().load(first)
+        loader.clear()
+        assert loader.load(second).sources == [second]
+        assert len(loader) == 2
+
+    def test_no_source_is_refused(self) -> None:
+        loader = SingleSourceDummyLoader()
+        with pytest.raises(ValueError) as raised:
+            loader.load()
+        assert (
+            str(raised.value) == "SingleSourceDummyLoader reads one source; got none."
+        )
+        assert loader.sources == []
+        assert len(loader) == 0
+
+    def test_unflagged_loaders_read_many(self, sources: tuple[Path, Path]) -> None:
+        first, second = sources
+        loader = DummyLoader().load(first).load(second)
+        assert loader.sources == [first, second]
+        assert len(loader) == 4
+        assert DummyLoader().load().sources == []

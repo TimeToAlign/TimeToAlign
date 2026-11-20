@@ -43,7 +43,7 @@ def _coord(value: float) -> Coordinate:
 
 def _region(name: str, start: float, end: float) -> Region:
     """A named region spanning ``[start, end)`` in quarters."""
-    return Region(name, start=_coord(start), end=_coord(end))
+    return Region(_coord(start), _coord(end), id=name, name=name)
 
 
 # endregion
@@ -68,8 +68,8 @@ class TestAsInterval:
     """`_as_interval` recognises each descriptor shape → exact (start, end, label).
 
     Each descriptor also carries a best-effort identity ``label``: a region
-    name for a ``str`` descriptor or a ``Region``, the ``name``/``id`` for a
-    ``Timeline``, and ``None`` for a bare coordinate pair or a nameless event.
+    id for a ``str`` descriptor or a ``Region``, the ``id`` for a
+    ``Timeline``, and ``None`` for a bare coordinate pair or an id-less event.
     """
 
     def test_pair_of_raw_ints(self) -> None:
@@ -85,16 +85,13 @@ class TestAsInterval:
             None,
         )
 
-    def test_region_label_is_its_name(self) -> None:
-        assert _as_interval(_region("A8_1", 0, 123)) == (
-            Fraction(0),
-            Fraction(123),
-            "A8_1",
-        )
+    def test_region_label_is_its_id(self) -> None:
+        region = Region(_coord(0), _coord(123), id="A8_1", name="Opening")
+        assert _as_interval(region) == (Fraction(0), Fraction(123), "A8_1")
 
-    def test_timeline_is_an_interval_labelled_by_name(self) -> None:
-        tl = ContinuousLogicalTimeline(length=200)
-        assert _as_interval(tl) == (Fraction(0), Fraction(200), tl.name)
+    def test_timeline_is_an_interval_labelled_by_id(self) -> None:
+        tl = ContinuousLogicalTimeline(length=200, name="Score")
+        assert _as_interval(tl) == (Fraction(0), Fraction(200), "clt_1")
 
     def test_interval_event_has_no_label(self) -> None:
         note = Note(start=_coord(0), end=_coord(123))
@@ -318,8 +315,8 @@ class TestTimelineCreateFlowMap:
     @pytest.fixture
     def child(self) -> ContinuousLogicalTimeline:
         tl = ContinuousLogicalTimeline(length=252)
-        tl.create_region("A8_1", start=0, end=123)
-        tl.create_region("A8_2", start=129, end=252)
+        tl.create_region(0, 123, id="A8_1", name="A8_1")
+        tl.create_region(129, 252, id="A8_2", name="A8_2")
         return tl
 
     def test_by_region_names_attaches(self, child: ContinuousLogicalTimeline) -> None:
@@ -405,8 +402,8 @@ class TestTimelineApplyFlow:
     def source(self) -> ContinuousLogicalTimeline:
         """A folded timeline with two played spans, events, and a nested child."""
         tl = ContinuousLogicalTimeline(length=252)
-        tl.create_region("A8_1", start=0, end=123)
-        tl.create_region("A8_2", start=129, end=252)
+        tl.create_region(0, 123, id="A8_1", name="A8_1")
+        tl.create_region(129, 252, id="A8_2", name="A8_2")
         tl.add_events(
             [
                 {"id": "e10", "event_type": "Note", "instant": 10},
@@ -483,9 +480,11 @@ class TestTimelineApplyFlow:
 
     def test_regions_in_target_coords(self, source: ContinuousLogicalTimeline) -> None:
         result = source.apply_flow("A8")
-        assert result.list_regions() == ["A8_1", "A8_2"]
-        r1 = result.get_region("A8_1")
-        r2 = result.get_region("A8_2")
+        # Each region carries its section's name and a minted id.
+        assert result.list_regions() == ["region_1", "region_2"]
+        assert [r.name for r in result.iter_regions()] == ["A8_1", "A8_2"]
+        r1 = result.get_region("region_1")
+        r2 = result.get_region("region_2")
         assert r1.start.value == Fraction(0)
         assert r1.end.value == Fraction(123)
         assert r2.start.value == Fraction(123)
@@ -527,13 +526,15 @@ class TestTimelineApplyFlow:
         self, source: ContinuousLogicalTimeline
     ) -> None:
         # A played span visited twice: the second occurrence is suffixed
-        # "-rend2" so every child and Region has a unique name.
+        # "-rend2" so every child has a unique id and every Region a unique
+        # name.
         source.create_flow_map(["A8_1", "A8_1"], id="rep")
         result = source.apply_flow("rep")
         assert result.list_children() == ["A8_1", "A8_1-rend2"]
-        assert result.list_regions() == ["A8_1", "A8_1-rend2"]
-        r1 = result.get_region("A8_1")
-        r2 = result.get_region("A8_1-rend2")
+        assert result.list_regions() == ["region_1", "region_2"]
+        assert [r.name for r in result.iter_regions()] == ["A8_1", "A8_1-rend2"]
+        r1 = result.get_region("region_1")
+        r2 = result.get_region("region_2")
         assert (r1.start.value, r1.end.value) == (Fraction(0), Fraction(123))
         assert (r2.start.value, r2.end.value) == (Fraction(123), Fraction(246))
 

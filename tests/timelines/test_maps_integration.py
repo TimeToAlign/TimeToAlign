@@ -29,8 +29,19 @@ class TestMapIntegration:
         tl = Timeline(unit=TimeUnit.seconds)
         cmap = ScalarMap(scalar=1.0, source_unit="ticks")  # Mismatch
 
-        with pytest.raises(ValueError, match="does not match"):
+        with pytest.raises(ValueError) as refused:
             tl.add_conversion_map(cmap)
+        assert str(refused.value) == (
+            "Map source unit 'ticks' does not match timeline unit 'seconds'"
+        )
+        assert tl.n_conversion_maps == 0
+
+    def test_a_map_without_source_unit_attaches_to_any_unit(self):
+        for unit in (TimeUnit.seconds, TimeUnit.ticks, TimeUnit.quarters):
+            tl = Timeline(unit=unit)
+            cmap = ScalarMap(scalar=2)
+            tl.add_conversion_map(cmap)
+            assert tl.get_conversion_map(cmap.id) is cmap
 
     def test_get_conversion_map(self):
         tl = Timeline(unit=TimeUnit.seconds)
@@ -87,9 +98,9 @@ class TestMapIntegration:
         tl.add_conversion_map(cmap)
 
         data = tl.to_dict()
-        assert "conversion_maps" in data
-        assert len(data["conversion_maps"]) == 1
-        assert data["conversion_maps"][0]["id"] == "cmap1"
+        (timeline_data,) = data["timelines"]
+        assert len(timeline_data["conversion_maps"]) == 1
+        assert timeline_data["conversion_maps"][0]["id"] == "#cmap1"
 
         # Round trip
         restored = Timeline.from_dict(data)
@@ -117,7 +128,7 @@ class TestTableMapHonesty:
         )
         tl.add_conversion_map(tmap)
 
-        assert tl._unit_maps[TimeUnit.seconds] is tmap
+        assert tl._unit_maps[TimeUnit.seconds] == [tmap]
 
         ts = tl.get_timestamp(2)
         assert ts.get_unit(TimeUnit.seconds, format="float") == 0.0

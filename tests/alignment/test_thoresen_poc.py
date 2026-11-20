@@ -167,13 +167,13 @@ class TestThoresenGroupSetup:
     def test_dgt1_group_structure(self, dgt1_group: TimelineGroup) -> None:
         """DGT1 group has reference + audio timelines."""
         assert dgt1_group.n_timelines == 2
-        assert "dgt1" in dgt1_group
+        assert "dgt_1" in dgt1_group
         assert "audio" in dgt1_group
 
     def test_dgt2_group_structure(self, dgt2_group: TimelineGroup) -> None:
         """DGT2 group has reference timeline."""
         assert dgt2_group.n_timelines == 1
-        assert "dgt2" in dgt2_group
+        assert "dgt_2" in dgt2_group
 
     def test_pixel_to_second_conversion(self, dgt1_group: TimelineGroup) -> None:
         """DGT1 pixels convert correctly to seconds."""
@@ -182,7 +182,7 @@ class TestThoresenGroupSetup:
         # and the answer is that pixel's position, not the half-pixel's.
         mid_pixels = DGT1_TOTAL_WIDTH / 2
         mid_seconds = dgt1_group.get_coordinate_at(
-            IdCoordinate(mid_pixels, TimeUnit.pixels, "dgt1"),
+            IdCoordinate(mid_pixels, TimeUnit.pixels, "dgt_1"),
             timeline_id="audio",
             format="coordinate",
         )
@@ -193,12 +193,12 @@ class TestThoresenGroupSetup:
 
         # Endpoints
         assert dgt1_group.get_coordinate_at(
-            IdCoordinate(0, TimeUnit.pixels, "dgt1"),
+            IdCoordinate(0, TimeUnit.pixels, "dgt_1"),
             timeline_id="audio",
             format="coordinate",
         ) == Coordinate(Fraction(0), TimeUnit.seconds)
         assert dgt1_group.get_coordinate_at(
-            IdCoordinate(DGT1_TOTAL_WIDTH, TimeUnit.pixels, "dgt1"),
+            IdCoordinate(DGT1_TOTAL_WIDTH, TimeUnit.pixels, "dgt_1"),
             timeline_id="audio",
             format="coordinate",
         ) == Coordinate(Fraction(AUDIO_DURATION_SECONDS), TimeUnit.seconds)
@@ -225,7 +225,7 @@ class TestThoresenSegmentClaims:
     ) -> None:
         """All claims connect DGT1 and DGT2."""
         for claim in thoresen_segment_claims:
-            assert claim.connects_both("dgt1", "dgt2")
+            assert claim.connects_both("dgt_1", "dgt_2")
 
     def test_claims_are_contiguous(
         self, thoresen_segment_claims: list[MatchClaim]
@@ -234,7 +234,7 @@ class TestThoresenSegmentClaims:
         # Check DGT1 side
         prev_end = 0.0
         for claim in thoresen_segment_claims:
-            interval = claim.get_interval_for("dgt1")
+            interval = claim.get_interval_for("dgt_1")
             assert interval.start.value == prev_end
             prev_end = interval.end.value
         assert prev_end == DGT1_TOTAL_WIDTH
@@ -242,7 +242,7 @@ class TestThoresenSegmentClaims:
         # Check DGT2 side
         prev_end = 0.0
         for claim in thoresen_segment_claims:
-            interval = claim.get_interval_for("dgt2")
+            interval = claim.get_interval_for("dgt_2")
             assert interval.start.value == prev_end
             prev_end = interval.end.value
         assert prev_end == DGT2_TOTAL_WIDTH
@@ -382,16 +382,16 @@ class TestThoresenGraphicalBundles:
 
     def test_bundles_create_correct_timelines(self, dgt1_bundle, dgt2_bundle) -> None:
         """Bundles create timelines matching the fixtures."""
-        dgt1_tl = dgt1_bundle.create_timeline(uid="dgt1", name="Thoresen 2009")
-        dgt2_tl = dgt2_bundle.create_timeline(uid="dgt2", name="Thoresen 2010")
+        dgt1_tl = dgt1_bundle.create_timeline(uid="dgt_1", name="Thoresen 2009")
+        dgt2_tl = dgt2_bundle.create_timeline(uid="dgt_2", name="Thoresen 2010")
 
         # timeline.length is a Coordinate object, compare the value
         assert dgt1_tl.length.value == DGT1_TOTAL_WIDTH
         assert dgt2_tl.length.value == DGT2_TOTAL_WIDTH
 
         # These should match the fixtures created at the top of this file
-        assert dgt1_tl.id == "dgt1"
-        assert dgt2_tl.id == "dgt2"
+        assert dgt1_tl.id == "dgt_1"
+        assert dgt2_tl.id == "dgt_2"
 
 
 # endregion

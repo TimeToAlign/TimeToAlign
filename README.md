@@ -18,8 +18,9 @@ A Python library for representing and aligning musical timelines.
 pip install timetoalign         # Core only — lightweight
 ```
 
-The core install pulls in only PyArrow, pandas, NetworkX,
-typing_extensions, and pydantic.  This gives you the full timeline / map /
+The core install pulls in only NumPy, PyArrow, pandas, NetworkX,
+typing_extensions, pydantic, and timetoshare (the TimeToShare manifest format
+and its validator, which also checks a manifest's statements).  This gives you the full timeline / map /
 alignment framework but no file-format-specific loaders.  If you need loaders,
 plotting, or Jupyter support, install one of the [optional extras](#optional-dependencies)
 described below.  To run the **tutorial notebooks** (see below), for example:
@@ -51,6 +52,10 @@ Each atomic extra adds support for a single loader backend or feature.
 | `delta` | `deltalake` | Delta Lake columnar storage (future) |
 | `rdf` | `rdflib` | RDF / linked-data export (future) |
 | `examples` | `pooch` | On-demand fetching of bundled corpora |
+
+The `ms3` extra currently requires NumPy 1.x. PyArrow is restricted to versions
+before 26 because PyArrow 26 requires NumPy 2 at runtime. The core NumPy
+requirement itself does not prohibit NumPy 2 when `ms3` is not installed.
 
 #### Composite extras
 
@@ -100,6 +105,7 @@ install with the `dev` extra:
 ```bash
 git clone https://github.com/timetoalign/timetoalign.git
 pip install -e "./timetoalign[dev]"      # Editable install + everything + dev tooling
+cd timetoalign && pip install --group conformance   # Test oracle (pip >= 25.1)
 ```
 
 ## Quick Start
@@ -203,10 +209,10 @@ tox -e lint
 |---|---|
 | AlignmentAnchor | A set of TimeStamps corresponding to matched events, representing their temporal equivalence across timelines. From a MatchClaim for TimeIntervalEvents, the library derives a start anchor and end anchor. |
 | AlignmentBundle | The primary container object that manages a collection of timelines, their groupings, and transfers between them. |
-| BeatGrid | A specialized *ContinuousLogicalTimeline* representing metrical structure (measures and beats) using quarter notes as the underlying coordinate unit. |
+| BeatGrid | An ordered set of tempo segments and the beats they generate on a seconds axis. Each BeatGridSegment states an anchor instant, a tempo, a BeatPolicy and the anchor's beat-in-bar index, and generates beats without end; the grid bounds each segment by its successor and labels the beats with measure and beat numbers. Not a Timeline: nothing is stored per beat. |
 | Break | A control event that voids contiguity at its Instant. TimeIntervals cannot span a Break, and Breaks cannot be inserted into existing TimeIntervals. |
 | ChainMap | A composed ConversionMap that applies multiple ConversionMaps in sequence, creating a conversion path from source to target unit. |
-| Child | A timeline nested within a parent timeline, sharing the same measuring unit. Children are locked upon insertion to prevent side effects from modifications. |
+| Child | A timeline nested within a parent timeline, sharing the same measuring unit. `add_child()` locks a child by default to prevent side effects from modifications; an unlocked child may grow, contained by its parent. |
 | CombinationMap | A ConversionMap that yields outputs from multiple ConversionMaps simultaneously, such as (x, y) coordinate pairs. |
 | Commensurable | Two timelines are commensurable when connected by a match path or ConversionMap chain, enabling coordinate translation between them. |
 | Composite map | An umbrella concept for ConversionMaps composed from other maps, including ChainMap, CombinationMap, and PiecewiseMap. |
@@ -219,7 +225,6 @@ tox -e lint
 | Event | Anything associated with a timeline via Instants. An InstantEvent has zero duration; a TimeIntervalEvent has duration defined by start and end coordinates. |
 | FlowControlElement | A taxonomy of control events distinguishing between structural markers (e.g., *repeat_start*, *double_barline*) and jump instructions (e.g., *dal_segno*, *to_coda*). |
 | FlowMap | A sequence of TimeIntervals representing a specific traversal path through a timeline, handling Jumps and repeats. |
-| GroupTimestamp | A view object representing a synchronized instant across all commensurable timelines within a *TimelineGroup*. |
 | IdCoordinate | A coordinate specification that explicitly includes the unique identifier of the timeline to which it belongs, preventing ambiguity in multi-timeline contexts. |
 | Instant | Associates a coordinate with a signification such as "start of event e". Instants sharing a coordinate are synchronous. |
 | InterpolationMap | A *ConversionMap* that performs coordinate conversion via linear interpolation between a set of known correspondence points. |
@@ -240,7 +245,7 @@ tox -e lint
 | Synchrony | Strict synchrony: Instants sharing identical coordinates. Pragmatic synchrony: Instants binned together based on a threshold (e.g., for quantisation). |
 | Time interval | Defined by a StartInstant and EndInstant; left-inclusive and right-exclusive [s, e). The EndInstant's coordinate must be >= the StartInstant's. |
 | Timeline | A positive coordinate axis minimally defined by its origin and measuring unit. Accommodates events and potentially Children. |
-| TimelineGroup | A container for a set of commensurable timelines that are bijectively mapped to each other (e.g., via linear interpolation) and share a common timestamp table. |
+| TimelineGroup | An array of commensurable timelines that share the same start and end: every member's 0 coincides with every other's, and so does every member's length; positions in between convert linearly and exactly. A part of a timeline takes part as its Child. |
 | TimeStamp | A cross-section through a timeline hierarchy, comprising the root coordinate, synchronous Child coordinates, and all ConversionMap results. |
 | WarpMap | A derived timeline where coordinates are re-adjusted based on AlignmentAnchors to align with another timeline. |
 

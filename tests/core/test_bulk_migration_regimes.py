@@ -432,51 +432,39 @@ class TestNoteRegimes:
 
 class TestMeasureRegimes:
     def test_construction(self) -> None:
-        c = Coordinate(0.0, TimeUnit.quarters)
-        m = Measure(id=1, mn="1", start=c, time_signature=(4, 4))
-        assert m.id == 1
-        assert m.time_signature == (4, 4)
-        assert m.next_ids is None
+        m = Measure(id="m1", number=1, time_signature="4/4")
+        assert m.id == "m1"
+        assert m.time_signature == "4/4"
+        assert m.next is None
 
-    def test_next_ids_coerced_from_scopedids(self) -> None:
-        from timetoalign.core.ids import ScopedId
-
-        c = Coordinate(0.0, TimeUnit.quarters)
-        m = Measure(
-            id=1,
-            mn="1",
-            start=c,
-            next_ids=(ScopedId("score", "m2"), ScopedId("", "m3")),
-        )
-        assert m.next_ids == ("score:m2", "m3")
+    def test_next_ids_are_stringified(self) -> None:
+        m = Measure(id="m1", next=("m2", "m3"))
+        assert m.next == ("m2", "m3")
 
     def test_next_ids_strings_pass_through(self) -> None:
-        c = Coordinate(0.0, TimeUnit.quarters)
-        m = Measure(id=1, mn="1", start=c, next_ids=("a", "b"))
-        assert m.next_ids == ("a", "b")
+        m = Measure(id="m1", next=("a", "b"))
+        assert m.next == ("a", "b")
 
     def test_model_construct(self) -> None:
         # regime: internal round-trip
-        c = Coordinate(0.0, TimeUnit.quarters)
-        m = Measure.model_construct(
-            id=1, mn="1", start=c, time_signature=(4, 4), next_ids=None
-        )
-        assert m.id == 1
+        m = Measure.model_construct(id="m1", number=1, time_signature="4/4", next=None)
+        assert m.id == "m1"
 
     def test_model_validate(self) -> None:
         # regime: trust boundary — nested Coordinate + tuple validation.
         m = Measure.model_validate(
             {
-                "id": 2,
-                "mn": "2",
-                "start": {"value": 4.0, "unit": "quarters"},
-                "time_signature": [3, 8],
-                "next_ids": ["m3"],
+                "ID": "m2",
+                "number": 2,
+                "qstamp": "4",
+                "time_signature": "3/8",
+                "next": ["m3"],
             }
         )
-        assert m.id == 2
-        assert m.time_signature == (3, 8)
-        assert m.next_ids == ("m3",)
+        assert m.id == "m2"
+        assert m.qstamp == Fraction(4)
+        assert m.time_signature == "3/8"
+        assert m.next == ("m3",)
 
 
 # ---------------------------------------------------------------------------
@@ -507,15 +495,12 @@ class TestNestedBuild:
         assert "pitch" not in names
 
     def test_measure_bulk_with_time_signature_and_next_ids(self) -> None:
-        c = Coordinate(0.0, TimeUnit.quarters)
-        m0 = Measure(id=1, mn="1", start=c, time_signature=(4, 4), next_ids=("a", "b"))
-        m1 = Measure(id=2, mn="2", start=c, time_signature=(3, 8), next_ids=None)
+        m0 = Measure(id="m1", number=1, time_signature="4/4", next=("a", "b"))
+        m1 = Measure(id="m2", number=2, time_signature="3/8", next=None)
         arr = build_struct_array(Measure, [m0, m1])
         assert len(arr) == 2
-        ts = arr.field("time_signature")
-        assert ts.field("_0").to_pylist() == [4, 3]
-        assert ts.field("_1").to_pylist() == [4, 8]
-        assert arr.field("next_ids").to_pylist() == [["a", "b"], None]
+        assert arr.field("time_signature").to_pylist() == ["4/4", "3/8"]
+        assert arr.field("next").to_pylist() == [["a", "b"], None]
 
 
 class TestSchemaFieldNameCoverage:

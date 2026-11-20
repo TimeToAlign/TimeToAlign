@@ -6,21 +6,72 @@ with interpolation for values between them.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Sequence
+from bisect import bisect_right
+from collections.abc import Mapping
+from fractions import Fraction
+from numbers import Rational
+from typing import TYPE_CHECKING, Any, ClassVar, Sequence
 
 import numpy as np
 from numpy.typing import NDArray
 
-from ..core.enums import ExtrapolationPolicy, InterpolationKind, TimeUnit
+from ..core.enums import ExtrapolationPolicy, InterpolationKind, NumberType, TimeUnit
 from ..core.time import (
     CoordinateValue,
-    rational_to_wire,
-    wire_to_rational,
+    number_from_json,
+    number_to_json,
 )
-from .base import ConversionMap
+from .base import ConversionMap, MeasureMapIds
 
 if TYPE_CHECKING:
     from typing_extensions import Self
+
+
+_KINDS = (InterpolationKind.linear, InterpolationKind.previous)
+"""The interpolation kinds the format defines."""
+
+_EXTRAPOLATION_WRITTEN = {
+    ExtrapolationPolicy.error: "none",
+    ExtrapolationPolicy.nan: "none",
+    ExtrapolationPolicy.constant: "constant",
+    ExtrapolationPolicy.extrapolate: "linear",
+}
+"""How each extrapolation policy is written: outside the anchors, an error
+and a NaN are both undefined values."""
+
+_EXTRAPOLATION_READ = {
+    "none": ExtrapolationPolicy.error,
+    "constant": ExtrapolationPolicy.constant,
+    "linear": ExtrapolationPolicy.extrapolate,
+}
+"""The extrapolation policy each written value reads as."""
+
+
+def _table_form(
+    cmap: ConversionMap[Any],
+    x_values: Sequence[Any],
+    y_values: Sequence[Any],
+    *,
+    kind: InterpolationKind,
+    extrapolate: ExtrapolationPolicy,
+    minimal: bool,
+) -> dict[str, Any]:
+    """Write *cmap* as the format's ``TableMap`` over the given anchors."""
+    return cmap._map_object(
+        "TableMap",
+        {
+            "x_values": [number_to_json(v) for v in x_values],
+            "y_values": [number_to_json(v) for v in y_values],
+            "kind": kind.value,
+            "extrapolate": _EXTRAPOLATION_WRITTEN[extrapolate],
+        },
+        minimal=minimal,
+    )
+
+
+def _is_exact(value: Any) -> bool:
+    """Whether *value* is an exact number: an ``int`` or a ``Fraction``."""
+    return isinstance(value, Rational)
 
 
 class TableMap(ConversionMap[CoordinateValue]):
@@ -53,11 +104,14 @@ class TableMap(ConversionMap[CoordinateValue]):
         >>> tempo_map(720)  # Interpolate: 1.0 sec
         1.0
 
-        >>> # Inverse map
+        >>> # Inverse map, landing on the ticks axis, which writes whole ticks
         >>> inverse = tempo_map.inverse()
         >>> inverse(1.0)
-        720.0
+        720
     """
+
+    _id_prefix: ClassVar[str] = "tmap"
+    _manifest_type: ClassVar[str | None] = "TableMap"
 
     def __init__(
         self,
@@ -70,6 +124,7 @@ class TableMap(ConversionMap[CoordinateValue]):
         target_unit: TimeUnit | str | None = None,
         uid: str | None = None,
         name: str | None = None,
+        output_number_type: NumberType | str | None = None,
     ) -> None:
         """Initialize a TableMap.
 
@@ -83,19 +138,18 @@ class TableMap(ConversionMap[CoordinateValue]):
             target_unit: The unit of output coordinates.
             uid: Optional explicit ID.
             name: Human-readable name for this map. Defaults to the map's ID.
+            output_number_type: The representation results are written in,
+                among those the target unit admits; ``None`` for the target
+                unit's default.
 
         Raises:
             ValueError: If x_values and y_values have different lengths.
             ValueError: If x_values are not strictly increasing.
             ValueError: If fewer than 2 points are provided.
+            ValueError: If the target unit does not admit *output_number_type*.
+            ValueError: If *output_number_type* is ``fraction`` and an
+                anchor is a float.
         """
-        super().__init__(
-            source_unit=source_unit,
-            target_unit=target_unit,
-            uid=uid,
-            name=name,
-        )
-
         # Validate inputs
         if len(x_values) != len(y_values):
             raise ValueError(
@@ -104,6 +158,18 @@ class TableMap(ConversionMap[CoordinateValue]):
             )
         if len(x_values) < 2:
             raise ValueError("TableMap requires at least 2 anchor points")
+
+        # Store original values for serialization (may have Fractions). Set
+        # first: whether the map computes in doubles depends on them.
+        self._x_original = list(x_values)
+        self._y_original = list(y_values)
+        super().__init__(
+            source_unit=source_unit,
+            target_unit=target_unit,
+            uid=uid,
+            name=name,
+            output_number_type=output_number_type,
+        )
 
         # Convert to numpy arrays (float64 for interpolation)
         self._x = np.array([float(v) for v in x_values], dtype=np.float64)
@@ -114,9 +180,14 @@ class TableMap(ConversionMap[CoordinateValue]):
         if not np.all(x_diff > 0):
             raise ValueError("x_values must be strictly monotonically increasing")
 
-        # Store original values for serialization (may have Fractions)
-        self._x_original = list(x_values)
-        self._y_original = list(y_values)
+        # Exact anchors (every one an int or a Fraction) interpolate exactly
+        # for an exact input; one float among them keeps the float path.
+        self._exact: tuple[list[Fraction], list[Fraction]] | None = None
+        if all(_is_exact(v) for v in (*self._x_original, *self._y_original)):
+            self._exact = (
+                [Fraction(v) for v in self._x_original],
+                [Fraction(v) for v in self._y_original],
+            )
 
         # Parse enum values
         self._kind = InterpolationKind(kind) if isinstance(kind, str) else kind
@@ -177,8 +248,21 @@ class TableMap(ConversionMap[CoordinateValue]):
         """Maximum y value."""
         return float(np.max(self._y))
 
+    def _parameters(self) -> list[CoordinateValue]:
+        return [*self._x_original, *self._y_original]
+
     def _convert_scalar(self, value: CoordinateValue, **kwargs: Any) -> CoordinateValue:
-        """Convert a single value using interpolation."""
+        """Convert a single value using interpolation.
+
+        Linear interpolation and linear extrapolation are exact when the input
+        and every anchor are exact (``int`` or ``Fraction``): the result is the
+        ``Fraction`` ``y0 + (x - x0) * (y1 - y0) / (x1 - x0)``. A float input
+        or a float anchor computes in floats.
+        """
+        if self._exact is not None and _is_exact(value):
+            exact = self._interpolate_exactly(Fraction(value), *self._exact)
+            if exact is not None:
+                return exact
         x = float(value)
 
         # Handle out of bounds
@@ -190,10 +274,11 @@ class TableMap(ConversionMap[CoordinateValue]):
             return float(np.interp(x, self._x, self._y))
 
         if self._kind == InterpolationKind.previous:
-            # index of rightmost value <= x
+            # index of rightmost value <= x; no arithmetic is involved, so the
+            # anchor value is answered as stored.
             idx = np.searchsorted(self._x, x, side="right") - 1
             idx = max(0, min(idx, len(self._x) - 1))
-            return float(self._y[idx])
+            return self._y_original[idx]
 
         if self._kind == InterpolationKind.next:
             # index of leftmost value >= x
@@ -217,6 +302,26 @@ class TableMap(ConversionMap[CoordinateValue]):
 
         # Fallback (should not be reached)
         return float(np.interp(x, self._x, self._y))
+
+    def _interpolate_exactly(
+        self, x: Fraction, xs: list[Fraction], ys: list[Fraction]
+    ) -> Fraction | None:
+        """The exact linear result at *x*, or ``None`` where no arithmetic applies.
+
+        ``None`` leaves the step kinds and the policies other than linear
+        extrapolation outside the anchors to the float path, which answers
+        them without arithmetic on the anchors.
+        """
+        inside = xs[0] <= x <= xs[-1]
+        if self._kind != InterpolationKind.linear or (
+            not inside and self._extrapolate != ExtrapolationPolicy.extrapolate
+        ):
+            return None
+        # the segment [xs[i], xs[i + 1]] holding x; outside the anchors, the
+        # first or the last segment
+        i = min(max(bisect_right(xs, x) - 1, 0), len(xs) - 2)
+        x0, x1, y0, y1 = xs[i], xs[i + 1], ys[i], ys[i + 1]
+        return y0 + (x - x0) * (y1 - y0) / (x1 - x0)
 
     def _convert_array(self, values: NDArray[Any], **kwargs: Any) -> NDArray[Any]:
         """Convert an array using vectorized interpolation."""
@@ -270,8 +375,8 @@ class TableMap(ConversionMap[CoordinateValue]):
             )
         elif self._extrapolate == ExtrapolationPolicy.constant:
             if x < self._x[0]:
-                return float(self._y[0])
-            return float(self._y[-1])
+                return self._y_original[0]
+            return self._y_original[-1]
         elif self._extrapolate == ExtrapolationPolicy.nan:
             return float("nan")
         else:
@@ -306,6 +411,7 @@ class TableMap(ConversionMap[CoordinateValue]):
                 extrapolate=self._extrapolate,
                 source_unit=self._target_unit,
                 target_unit=self._source_unit,
+                output_number_type=self._inverse_output_number_type(),
             )
         else:
             return self.__class__(
@@ -315,25 +421,50 @@ class TableMap(ConversionMap[CoordinateValue]):
                 extrapolate=self._extrapolate,
                 source_unit=self._target_unit,
                 target_unit=self._source_unit,
+                output_number_type=self._inverse_output_number_type(),
             )
 
-    def to_dict(self) -> dict[str, Any]:
-        """Serialize to dictionary."""
-        d = super().to_dict()
-        d["x_values"] = [rational_to_wire(v) for v in self._x_original]
-        d["y_values"] = [rational_to_wire(v) for v in self._y_original]
-        d["kind"] = self._kind.name
-        d["extrapolate"] = self._extrapolate.name
-        return d
+    def _to_manifest(self, *, minimal: bool, entries: MeasureMapIds) -> dict[str, Any]:
+        """Write the ``TableMap``; ``error`` and ``nan`` both write ``none``.
+
+        Raises:
+            ValueError: If the kind is ``nearest`` or ``next``, which the
+                format does not define.
+        """
+        if self._kind not in _KINDS:
+            raise self._no_form(
+                f"the format defines no TableMap of kind {self._kind.value!r}"
+            )
+        return _table_form(
+            self,
+            self._x_original,
+            self._y_original,
+            kind=self._kind,
+            extrapolate=self._extrapolate,
+            minimal=minimal,
+        )
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> TableMap:
-        """Deserialize from dictionary."""
+    def _from_manifest(
+        cls, data: dict[str, Any], measure_maps: Mapping[str, Any]
+    ) -> TableMap:
+        """Read a ``TableMap`` from its complete form.
+
+        Raises:
+            ValueError: If ``kind`` or ``extrapolate`` names no value the
+                format defines.
+        """
+        kind = data["kind"]
+        if kind not in {member.value for member in _KINDS}:
+            raise ValueError(f"a TableMap has an unknown kind {kind!r}")
+        extrapolate = data["extrapolate"]
+        if extrapolate not in _EXTRAPOLATION_READ:
+            raise ValueError(f"a TableMap has an unknown extrapolate {extrapolate!r}")
         return cls(
-            x_values=[wire_to_rational(v) for v in data["x_values"]],
-            y_values=[wire_to_rational(v) for v in data["y_values"]],
-            kind=data.get("kind", "linear"),
-            extrapolate=data.get("extrapolate", "extrapolate"),
+            x_values=[number_from_json(v) for v in data["x_values"]],
+            y_values=[number_from_json(v) for v in data["y_values"]],
+            kind=kind,
+            extrapolate=_EXTRAPOLATION_READ[extrapolate],
             source_unit=data.get("source_unit"),
             target_unit=data.get("target_unit"),
             uid=data.get("id"),

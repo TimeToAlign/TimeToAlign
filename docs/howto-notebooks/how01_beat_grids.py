@@ -16,568 +16,372 @@
 # %% [markdown]
 # # How to Build Beat Grids
 #
-# This tutorial shows how to add beat and measure information to audio tracks
-# when you know the tempo and first-beat offset.
+# You have a recording, you know its tempo, and you know the second at which a
+# beat sounds. You want the beat and measure times, and you want them in a file
+# an annotation program can open.
 #
-# **The Common Problem:**
-#
-# > "I have an audio file. I know the tempo and when the first beat occurs.
-# > I want to export the beat times for Audacity."
-#
-# **The TimeToAlign! Solution:**
-#
-# ```python
-# grid = BeatGrid.from_tempo(tempo_bpm=120, length_seconds=180, start_seconds=0.5)
-# grid.export_to_csv("beats.txt", format="sonic_visualiser")  # Done!
-# ```
-#
-# **Learning Objectives:**
-#
-# 1. Create a BeatGrid from tempo + first-beat offset
-# 2. Get all beat/measure times as numpy arrays
-# 3. Export to Audacity-compatible CSV
-# 4. Query individual time positions for measure/beat
-# 5. (Advanced) Create BeatGrids from score measure data
-#
-# **Prerequisites:**
-# - how01_coordinate_math.ipynb (Timelines, Coordinates)
-# - No prerequisites for Part 1 (the simple case)
-
-# %% [markdown]
-# ## Setup
+# A {{< glossary BeatGrid >}} is the arithmetic for that. It stores only what a
+# source states — where an anchor beat sits, how fast the music runs, how beats
+# group into bars, and which beat of a bar the anchor is — and generates every
+# beat from those facts. It is not a {{< glossary Timeline >}}: nothing is
+# stored per beat, so a grid can cover a whole DJ set as cheaply as a bar.
 
 # %%
-import os
 from fractions import Fraction
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
-import numpy as np
-import pandas as pd
-
-from timetoalign import AudioLoader, BeatGrid
-from timetoalign.testdata import ensure_data
-
-AUDIO_DIR = ensure_data("audio") / "hard_techno"
+from timetoalign import BeatGrid, BeatGridSegment, BeatPolicy, policy_for_metro
 
 # %% [markdown]
-# ---
+# ## One tempo statement, one grid
 #
-# ## TL;DR: Three Lines to Beatgrid Your Audio
+# `BeatGrid.from_tempo()` states a tempo in beats per minute, the meter as the
+# source spells it, the second at which the anchor beat sounds, and which beat
+# of the bar that anchor is. `extent` bounds the grid — for a recording, its
+# duration.
 #
-# If you already know what you're doing, here's the pattern:
+# Positions are read **exactly**. A decimal string spells the decimal it looks
+# like; a float contributes the exact binary value it holds, which is a
+# different and much longer rational. Pass a string or a `Fraction` wherever
+# the decimal is the fact.
 
 # %%
+grid = BeatGrid.from_tempo(160, metro="4/4", start="0.092", extent="212.48")
+grid
 
-# Create beatgrid: 120 BPM, 4/4, 3-minute track, first beat at 0.5 seconds
-grid = BeatGrid.from_tempo(tempo_bpm=120, length_seconds=180, start_seconds=0.5)
+# %% [markdown]
+# The grid holds one segment: the four stated facts, plus the `end` the grid
+# gave it from `extent`.
 
-# Get all beat times in seconds (numpy array)
-beat_times = grid.beat_seconds()
+# %%
+segment = grid.segments[0]
+segment
 
-# Quick look at what we have
+# %% [markdown]
+# Beat length, bar length and the first downbeat are **derived** from those
+# facts rather than stored beside them, so they cannot fall out of step with
+# the tempo. `metro="4/4"` reads as four beats of one quarter each; the grid's
+# lattice ticks once per counted value, so `"6/8"` would be six beats of an
+# eighth, not two dotted ones.
+#
+# The derived values come back as exact rationals — `23/250` *is* 0.092, and
+# `3/8` of a second *is* one beat at 160 BPM.
+
+# %%
 {
-    "Total beats": len(beat_times),
-    "Total measures": grid.n_measures,
-    "First 4 beats (seconds)": beat_times[:4].round(3).tolist(),
-    "First 4 measures (seconds)": grid.measure_seconds()[:4].round(3).tolist(),
+    "beat length (s)": segment.beat_seconds,
+    "bar length (s)": segment.bar_seconds,
+    "quarters per second": segment.quarters_per_second,
+    "first downbeat (s)": segment.first_downbeat,
+    "measures in the grid": grid.n_measures,
 }
 
 # %% [markdown]
-# ---
+# ## The beat table
 #
-# ## Part 1: Audio Beatgrids - The Simple Case
-#
-# You have audio files. You know the tempo and when the first beat occurs.
-# You want to generate a complete list of beat and measure times.
-#
-# ### 1.1 The Use Case
-#
-# Let's work with three techno tracks that all have:
-# - **Tempo**: 160 BPM (constant throughout)
-# - **Time Signature**: 4/4
-# - **Known first-beat offset** (measured by ear or beat detection)
+# `get_beat_table()` renders every beat the grid generates, one row each. It is
+# the only table the grid builds; the export formats below are renderings of
+# it.
 
 # %%
-# Our test tracks - tempo is constant 160 BPM
-TEMPO_BPM = 160.0
-BEATS_PER_MEASURE = 4
+beats = grid.get_beat_table()
+beats.head(8)
 
-# Load audio files to get accurate durations
-# First-beat offsets are measured by ear or beat detection
-TRACK_FILES = {
-    "Ao Céu": {"file": "Ao Céu.m4a", "first_beat": 0.092},
-    "Bye Bye": {"file": "Bye Bye.m4a", "first_beat": 0.035},
-    "Bass Kick": {"file": "Bass Kick.mp3", "first_beat": 0.061},
+# %% [markdown]
+# `seconds` is the beat's instant, `segment_seconds` the same instant measured
+# from the start of its segment, `measure` and `beat` its label. **Downbeats
+# are the rows whose `beat` is 1** — there is no separate downbeat lane,
+# because there is nothing a second one could know.
+
+# %%
+downbeats = beats[beats["beat"] == 1]
+downbeats.head(4)
+
+# %%
+{
+    "beats": len(beats),
+    "downbeats": len(downbeats),
+    "measures the grid counts": grid.n_measures,
 }
 
-# Create loaders and extract durations from actual audio files
-TRACKS = {}
-for name, info in TRACK_FILES.items():
-    loader = AudioLoader.from_file(AUDIO_DIR / info["file"])
-    TRACKS[name] = {
-        "loader": loader,
-        "duration": loader.duration_seconds,
-        "first_beat": info["first_beat"],
+# %% [markdown]
+# ## Asking in both directions
+#
+# `seconds_at(measure, beat)` goes from a label to an instant and returns a
+# {{< glossary Coordinate >}} in seconds. A fractional beat interpolates
+# between the two beats around it.
+
+# %%
+{
+    "measure 2, beat 1": grid.seconds_at(2),
+    "measure 2, beat 3": grid.seconds_at(2, 3),
+    "measure 2, beat 2 1/2": grid.seconds_at(2, Fraction(5, 2)),
+}
+
+# %% [markdown]
+# `position_at(seconds)` goes the other way and returns a `GridBeat`: the beat
+# whose span contains the position, that is the last beat at or before it. It
+# holds the exact ratio the grid computed on `seconds`.
+
+# %%
+here = grid.position_at(60)
+here
+
+# %%
+{
+    "queried second": 60,
+    "beat sounding there": here.instant,
+    "measure": here.measure,
+    "beat": here.beat,
+    "opens a measure": here.is_downbeat,
+    "label back to seconds": grid.seconds_at(here.measure, here.beat),
+    "the two directions agree": here.instant
+    == grid.seconds_at(here.measure, here.beat),
+}
+
+# %% [markdown]
+# The label round-trips: `position_at` names a beat, `seconds_at` on that
+# beat's label returns the same {{< glossary Coordinate >}}, and the two
+# compare equal. A beat keeps both readings and they are for different jobs:
+# `instant` is the published seconds coordinate you display and compare, while
+# `seconds` is the exact `Fraction` the grid computed with — reach for it when
+# a position feeds further arithmetic.
+#
+# `quarters_between()` answers the notated question instead of the clock one —
+# how many quarter notes sound between two instants:
+
+# %%
+grid.quarters_between("0.092", "212.48")
+
+# %% [markdown]
+# ## Counting the bar differently
+#
+# The grid counts in its own lattice. Pass a {{< glossary BeatPolicy >}} to
+# read the same instant under another counting: the beat index becomes a
+# quarter-note offset from the downbeat, converted back through the segments'
+# tempi. The measure numbering is unaffected.
+#
+# A 4/4 lattice beat is one quarter, so the grid's beat 3 sits two quarters
+# after the downbeat — which a counting in eighths calls beat 5. Both spellings
+# name the same instant.
+#
+# `BeatPolicy.uniform(division, count)` counts `count` beats of `division`
+# quarters each; the name is for display.
+
+# %%
+eighths = BeatPolicy.uniform(Fraction(1, 2), 8, name="eighths")
+{
+    "grid's own beat index at 60 s": grid.position_at(60).beat,
+    "same instant counted in eighths": grid.position_at(60, policy=eighths).beat,
+    "measure 2, beat 3 of the grid": grid.seconds_at(2, 3),
+    "measure 2, eighth 5": grid.seconds_at(2, 5, policy=eighths),
+}
+
+# %% [markdown]
+# ## A tempo change mid-recording
+#
+# One segment states one tempo. A recording that changes tempo — a live set, a
+# DJ transition, an analyst re-anchoring a drifting grid — is several segments
+# in **one** grid. Build each `BeatGridSegment` from what that stretch states
+# and hand them to `BeatGrid` together.
+#
+# Each segment carries the policy its own stretch is counted under.
+# `policy_for_metro()` builds one from a meter string, applying the same
+# lattice reading `from_tempo(metro=…)` does. (`BeatPolicy.from_time_signature()`
+# makes the other choice, reading `6/8` as two dotted beats; that is notated
+# meter, not a grid's lattice.)
+
+# %%
+four_four = policy_for_metro("4/4")
+opening = BeatGridSegment(start=0, bpm=120, policy=four_four, battito=1)
+faster = BeatGridSegment(start=30, bpm=128, policy=four_four, battito=3)
+
+live = BeatGrid([opening, faster], extent=60)
+live
+
+# %% [markdown]
+# You state segments without an end; the grid orders them and bounds each one
+# by the next one's start, the last by `extent`.
+
+# %%
+live.segments
+
+# %% [markdown]
+# ### Two readings of one lattice
+#
+# `numbering="set"` counts measures across the whole grid; `numbering="segment"`
+# restarts the count at each segment. They are two labellings of the same
+# beats, so they can be read side by side.
+
+# %%
+whole_grid = live.get_beat_table()
+per_segment = live.get_beat_table(numbering="segment")
+both = whole_grid.assign(segment_measure=per_segment["measure"])
+both[(both["seconds"] >= 28.5) & (both["seconds"] <= 33)]
+
+# %% [markdown]
+# The second segment anchors at 30 s on **beat 3**. Under `"set"` numbering
+# those two beats finish measure 15, the measure the first segment opened —
+# the count never restarts. Under `"segment"` numbering they are that segment's
+# measure **0**, the partial bar before its own first downbeat, and measure 1
+# opens at 30.9375 s.
+#
+# A measure interrupted this way states some beat indices twice, once on either
+# side of the re-anchor: measure 15 sounds a beat 3 at 29 s under the first
+# segment and another at 30 s under the second. That label therefore names no
+# single instant, and `seconds_at` refuses it rather than picking one — it
+# names the candidates instead, so you can choose which count you meant.
+
+# %%
+try:
+    live.seconds_at(15, 3)
+except ValueError as error:
+    ambiguous = str(error)
+ambiguous
+
+# %% [markdown]
+# Read such a stretch from the table, where both rows are visible. The
+# unambiguous labels around it answer as usual, and `segment=` restricts the
+# table to one segment's beats:
+
+# %%
+live.get_beat_table(segment=1, numbering="segment").head(6)
+
+# %% [markdown]
+# ### Where one segment stops and the next begins
+#
+# `position_at` reports which segment is sounding, and `segment_seconds_at`
+# gives an instant relative to its segment's start rather than to the
+# recording:
+
+# %%
+{
+    "just before the change": live.position_at(29.9),
+    "at the change": live.position_at(30),
+    "segment sounding at 45 s": live.segment_at(45),
+    "measure 20 in the recording": live.seconds_at(20),
+    "measure 20 within its segment": live.segment_seconds_at(20),
+}
+
+# %% [markdown]
+# `quarters_between()` integrates each segment's own tempo rather than
+# averaging them, so it stays exact across the change. The second before the
+# change carries 2 quarters at 120 BPM and the second after carries 32/15 at
+# 128 BPM — a total no single tempo produces:
+
+# %%
+{
+    "29 s to 31 s, across the change": live.quarters_between(29, 31),
+    "29 s to 30 s, at 120 BPM": live.quarters_between(29, 30),
+    "30 s to 31 s, at 128 BPM": live.quarters_between(30, 31),
+}
+
+# %% [markdown]
+# A generated beat that falls within **half a beat** before the next segment's
+# start is that segment's anchor beat displaced, not a beat of its own, so the
+# grid drops it. Exports that round an anchor to milliseconds would otherwise
+# produce a phantom bar at every re-anchor. At exactly half a beat the beat is
+# kept, and the rule never applies at the end of the grid.
+
+# %%
+nudged = BeatGridSegment(start="30.02", bpm=120, policy=four_four, battito=1)
+snapped = BeatGrid([opening, nudged], extent=32).get_beat_table()
+snapped[(snapped["seconds"] >= 29) & (snapped["seconds"] <= 31)]
+
+# %% [markdown]
+# The beat the first segment would have generated at 30.0 s is 0.02 s before
+# the re-anchor, well within half of its 0.5 s beat, so measure 16 opens at
+# 30.02 s and no bar is invented.
+
+# %% [markdown]
+# ## Exporting to an annotation program
+#
+# `export_to_csv()` writes the beat table in the shape a program expects and
+# returns the number of rows written.
+#
+# | `format` | Opens in | Columns |
+# |---|---|---|
+# | `"sonic_visualiser"` | Sonic Visualiser, Audacity | `TIME`, `LABEL` |
+# | `"tilia"` | TiLiA | `time`, `measure`, `beat`, `is_first_in_measure` |
+#
+# For the label track, `labels=` chooses what gets marked: every beat
+# (`"beats"`, the default, labelled `M1B2`), only the downbeats (`"measures"`,
+# labelled `M1`), or `"both"`.
+
+# %%
+with TemporaryDirectory() as export_dir:
+    label_track = Path(export_dir) / "live_beats.csv"
+    downbeat_track = Path(export_dir) / "live_downbeats.csv"
+    tilia_track = Path(export_dir) / "live_tilia.csv"
+
+    rows_written = {
+        "every beat": live.export_to_csv(label_track, format="sonic_visualiser"),
+        "downbeats only": live.export_to_csv(
+            downbeat_track, format="sonic_visualiser", labels="measures"
+        ),
+        "TiLiA beat track": live.export_to_csv(tilia_track, format="tilia"),
     }
-    print(f"{name}: {loader.duration_seconds:.3f}s ({loader.format})")
-
-# %% [markdown]
-# ### 1.2 Creating the BeatGrid
-#
-# The `BeatGrid.from_tempo()` factory method does all the work:
-
-# %%
-# Create a beatgrid for "Ao Céu"
-ao_ceu = TRACKS["Ao Céu"]
-grid = BeatGrid.from_tempo(
-    tempo_bpm=TEMPO_BPM,
-    beats_per_measure=BEATS_PER_MEASURE,
-    length_seconds=ao_ceu["duration"],
-    start_seconds=ao_ceu["first_beat"],  # When the first beat occurs
-)
+    label_lines = label_track.read_text(encoding="utf-8").splitlines()[:4]
+    downbeat_lines = downbeat_track.read_text(encoding="utf-8").splitlines()[:4]
+    tilia_lines = tilia_track.read_text(encoding="utf-8").splitlines()[:4]
 
 {
-    "Track": "Ao Céu",
-    "Duration": f'{ao_ceu["duration"]:.3f} seconds',
-    "First beat at": f'{ao_ceu["first_beat"]} seconds',
-    "Total measures": grid.n_measures,
-    "Total beats": grid.n_beats,
+    "rows written": rows_written,
+    "label track": label_lines,
+    "downbeat track": downbeat_lines,
+    "TiLiA track": tilia_lines,
 }
 
 # %% [markdown]
-# ### 1.3 Getting Beat Times
+# The files are written for real and read back here; the temporary directory
+# leaves nothing behind.
+
+# %% [markdown]
+# ## A grid without an extent
 #
-# The `beat_seconds()` method returns a numpy array of ALL beat times.
+# `extent` is optional. Left out, the grid generates beats without end — the
+# case for a live feed, or for a tempo you want to project past the material
+# you have. Consume it with `iter_beats(stop=…)`.
 
 # %%
-# Get all beat times
-beats = grid.beat_seconds()
-
+open_ended = BeatGrid.from_tempo(120, metro="4/4")
 {
-    "Array shape": beats.shape,
-    "First 8 beats (seconds)": beats[:8].round(3).tolist(),
-    "Last 4 beats (seconds)": beats[-4:].round(3).tolist(),
+    "extent": open_ended.extent,
+    "first six beats (s)": [beat.seconds for beat in open_ended.iter_beats(stop=3)],
 }
 
 # %% [markdown]
-# ### 1.4 Getting Measure (Downbeat) Times
-#
-# Use `measure_seconds()` for downbeat times only:
+# Questions that need every beat — `get_beat_table()` and `n_measures` — cannot
+# be answered without an end, and say so rather than guessing one:
 
 # %%
-# Get all measure start times (downbeats)
-measures = grid.measure_seconds()
-
-{
-    "Total measures": len(measures),
-    "First 4 measures (seconds)": measures[:4].round(3).tolist(),
-    "Last 4 measures (seconds)": measures[-4:].round(3).tolist(),
-}
+try:
+    open_ended.get_beat_table()
+except ValueError as error:
+    message = str(error)
+message
 
 # %% [markdown]
-# ### 1.5 Verifying the Math
-#
-# At 160 BPM:
-# - One beat = 60/160 = 0.375 seconds
-# - One measure (4 beats) = 1.5 seconds
-#
-# Let's verify the beat spacing is constant:
-
-# %%
-# Check beat intervals
-intervals = np.diff(beats)
-expected_interval = 60.0 / TEMPO_BPM  # 0.375 seconds
-
-{
-    "Expected beat interval": f"{expected_interval} seconds",
-    "Actual intervals (first 8)": list(intervals[:8].round(4)),
-    "All intervals equal?": np.allclose(intervals, expected_interval),
-}
-
-# %% [markdown]
-# ---
-#
-# ## Part 2: Exporting Beat Grids
-#
-# BeatGrid supports multiple export formats for different annotation tools:
-#
-# | Format | Tool | Columns |
-# |--------|------|---------|
-# | `sonic_visualiser` | Sonic Visualiser, Audacity | TIME, LABEL |
-# | `tilia` | Tilia | time, measure, beat, is_first_in_measure |
-#
-# ### 2.1 Export Formats
-
-# %%
-# Preview: Sonic Visualiser format (TIME, LABEL)
-times = grid.beat_seconds()[:8]
-measures = np.repeat(np.arange(1, 3), grid.beats_per_measure)
-beats = np.tile(np.arange(1, grid.beats_per_measure + 1), 2)
-
-pd.DataFrame(
-    {
-        "TIME": np.round(times, 6),
-        "LABEL": [f"M{m}B{b}" for m, b in zip(measures, beats)],
-    }
-)
-
-# %%
-# Preview: Tilia format (time, measure, beat, is_first_in_measure)
-pd.DataFrame(
-    {
-        "time": np.round(times, 6),
-        "measure": measures,
-        "beat": beats,
-        "is_first_in_measure": beats == 1,
-    }
-)
-
-# %% [markdown]
-# ### 2.2 Batch Export to Multiple Formats
-
-# %%
-# Create outputs directory
-os.makedirs("outputs", exist_ok=True)
-
-# Process all three tracks and export to both formats
-results = []
-
-for name, info in TRACKS.items():
-    grid = BeatGrid.from_tempo(
-        tempo_bpm=TEMPO_BPM,
-        beats_per_measure=BEATS_PER_MEASURE,
-        length_seconds=info["duration"],
-        start_seconds=info["first_beat"],
-    )
-
-    # Export to both formats
-    base_name = name.lower().replace(" ", "_")
-    sv_file = f"outputs/{base_name}_beats.csv"
-    tilia_file = f"outputs/{base_name}_beats_tilia.csv"
-
-    n_sv = grid.export_to_csv(sv_file, format="sonic_visualiser")
-    n_tilia = grid.export_to_csv(tilia_file, format="tilia")
-
-    results.append(
-        {
-            "Track": name,
-            "Measures": grid.n_measures,
-            "Beats": n_sv,
-            "Sonic Visualiser": sv_file,
-            "Tilia": tilia_file,
-        }
-    )
-
-pd.DataFrame(results)
-
-# %% [markdown]
-# ---
-#
-# ## Part 3: Point Queries
-#
-# Sometimes you need to ask: "What measure/beat is this time position?"
-#
-# ### 3.1 Query by Time (Seconds)
-
-# %%
-# Create grid for "Ao Céu" using loaded audio duration
-ao_ceu = TRACKS["Ao Céu"]
-grid = BeatGrid.from_tempo(
-    tempo_bpm=TEMPO_BPM,
-    beats_per_measure=BEATS_PER_MEASURE,
-    length_seconds=ao_ceu["duration"],
-    start_seconds=ao_ceu["first_beat"],
-)
-
-# Query specific time positions
-test_times = [0.092, 1.0, 60.0, 120.0, 200.0]
-
-queries = []
-for t in test_times:
-    queries.append(
-        {
-            "Time (s)": t,
-            "Measure": grid.measure_at_seconds(t),
-            "Beat": grid.beat_at_seconds(t),
-        }
-    )
-
-pd.DataFrame(queries)
-
-# %% [markdown]
-# ### 3.2 Query by Quarter-Note Position
-#
-# If you're working with MIDI or score data, you may have coordinates in
-# quarter notes. BeatGrid handles these directly:
-
-# %%
-# Query positions in quarters
-test_quarters = [0, 4, 100, 400]
-
-queries = []
-for q in test_quarters:
-    pos = grid.metrical_position(q)
-    queries.append(
-        {
-            "Quarters": q,
-            "Measure (MC)": pos["mc"],
-            "Beat": str(pos["beat"]),
-            "Label (MN)": pos["mn"],
-        }
-    )
-
-pd.DataFrame(queries)
-
-# %% [markdown]
-# ---
-#
-# ## Part 4: Different Time Signatures
-#
-# BeatGrid supports any time signature via `beats_per_measure` and `beat_unit`.
-#
-# ### 4.1 Waltz (3/4 Time)
-
-# %%
-# A waltz at 90 BPM, 5 minutes long
-waltz = BeatGrid.from_tempo(
-    tempo_bpm=90.0,
-    beats_per_measure=3,  # 3 beats per measure
-    length_seconds=300.0,
-    start_seconds=0.0,
-)
-
-{
-    "Time signature": "3/4",
-    "Tempo": "90 BPM",
-    "Duration": "5 minutes",
-    "Total measures": waltz.n_measures,
-    "Total beats": waltz.n_beats,
-    "Seconds per measure": f"{60/90 * 3:.2f}",
-}
-
-# %% [markdown]
-# ### 4.2 Compound Meter (6/8 Time)
-#
-# For 6/8, you have 6 eighth-note beats per measure.
-# Use `beat_unit=Fraction(1, 8)` to indicate eighth-note beats:
-
-# %%
-# 6/8 time at 120 BPM (where the beat is an eighth note)
-compound = BeatGrid.from_tempo(
-    tempo_bpm=120.0,
-    beats_per_measure=6,
-    beat_unit=Fraction(1, 8),  # Eighth note = 1 beat
-    length_seconds=60.0,
-    start_seconds=0.0,
-)
-
-{
-    "Time signature": "6/8",
-    "Beat unit": "eighth note",
-    "Quarters per measure": float(compound.quarters_per_measure),
-    "Quarters per beat": float(compound.quarters_per_beat),
-    "Total measures": compound.n_measures,
-    "First 6 beats (seconds)": compound.beat_seconds()[:6].round(3).tolist(),
-}
-
-# %% [markdown]
-# ---
-#
-# ## Part 5: Score-Based Beatgrids (Advanced)
-#
-# When working with classical music that has complex meter changes, repeats,
-# and pickup measures, you need to create BeatGrids from score data rather
-# than simple tempo information.
-#
-# ### 5.1 The Use Case: Beethoven String Quartet
-#
-# Consider Beethoven's String Quartet Op. 18 No. 4, 4th movement:
-# - Has **repeat structures** (needs unfolding for audio alignment)
-# - **Pickup measure** (anacrusis)
-# - **2/2 time signature** throughout
-#
-# We have a recording: `StringQuartetEEP_I_Normal_mono.mp3`
-#
-# The score data is available in TSV format with:
-# - Measure coordinates in quarterbeats
-# - Flow control information (repeats, voltas)
-# - Unfolded versions for performance alignment
-
-# %%
-# This is the score data structure we're working with
-# (From: tests/data/score/beethoven_op18-4iv_multimodal/ABC/)
-
-BEETHOVEN_MEASURES = """
-mc	mn	quarterbeats	duration_qb	timesig	repeats
-1	0	0	1.0	2/2	start
-2	1	1	4.0	2/2
-...
-9	8	29	3.0	2/2	end
-10	8	32	1.0	2/2	start
-...
-"""
-
-# The unfolded version has ~291 measures (with repeats expanded)
-UNFOLDED_TOTAL_QUARTERS = 1116
-UNFOLDED_MEASURES = 291
-
-# %% [markdown]
-# ### 5.2 Creating BeatGrid from Score (API Draft)
-#
-# **Note**: This API is a draft for future implementation. The pattern shows
-# how TimeToAlign! will support creating BeatGrids from rich score metadata.
-
-# %%
-# API DRAFT: Creating BeatGrid from score measures
-#
-# This functionality is planned for the Score Integration milestone.
-# The code below shows the intended API design.
-
-# --- FUTURE API ---
-#
-# from timetoalign.loader import MeasureMapLoader
-#
-# # Load measure map from score TSV
-# loader = MeasureMapLoader.from_file(
-#     "tests/data/score/beethoven_op18-4iv_multimodal/ABC/n04op18-4_04_flow_unfolded.measures.tsv"
-# )
-#
-# # Create BeatGrid with the actual meter structure
-# grid = loader.create_beatgrid(
-#     tempo_bpm=120.0,  # Performance tempo (from audio analysis or metadata)
-#     start_seconds=0.5,  # First beat offset
-# )
-#
-# # The grid now has the exact measure structure from the score
-# # Including partial measures, meter changes, etc.
-# grid.n_measures  # -> 291 (unfolded)
-# grid.n_beats     # -> based on actual time signatures
-#
-# # Export to Audacity with score measure labels
-# beatgrid_to_audacity_csv(grid, "beethoven_op18-4iv_beats.txt")
-# --- END FUTURE API ---
-
-# For now, we can approximate with uniform measures
-approx_grid = BeatGrid.from_tempo(
-    tempo_bpm=120.0,  # Assumed tempo
-    beats_per_measure=4,  # 2/2 = 4 quarter beats per measure
-    length_seconds=540.0,  # ~9 minutes (estimated)
-    start_seconds=0.5,
-    name="Beethoven Op.18/4-iv (approximate)",
-)
-
-{
-    "Track": "StringQuartetEEP_I_Normal_mono.mp3",
-    "Approximate measures": approx_grid.n_measures,
-    "Approximate beats": approx_grid.n_beats,
-    "Note": "Use MeasureMapLoader for exact score structure",
-}
-
-# %% [markdown]
-# ### 5.3 Why Score-Based BeatGrids Matter
-#
-# For simple steady-tempo music, `BeatGrid.from_tempo()` works perfectly.
-# But classical music often has:
-#
-# | Feature | Simple BeatGrid | Score-Based BeatGrid |
-# |---------|-----------------|----------------------|
-# | Constant tempo | Yes | Yes |
-# | Tempo changes | No | Yes (via tempo track) |
-# | Repeats/Voltas | No | Yes (unfolded) |
-# | Anacrusis | Limited | Full support |
-# | Measure labels | M1, M2... | 0, 1a, 1b, 2... |
-# | Time sig changes | No | Yes |
-#
-# The Score-Based approach gives you **ground truth** measure structure from
-# the score, ensuring your beat markers match what musicians see on the page.
-
-# %% [markdown]
-# ---
-#
 # ## Summary
 #
-# > "BeatGrid.from_tempo() generates beat and measure times for audio with
-# > known tempo and first-beat offset. Export to Audacity with one line."
+# | Task | Call |
+# |---|---|
+# | Grid from one tempo statement | `BeatGrid.from_tempo(bpm, metro=…, start=…, extent=…)` |
+# | Grid from several tempo statements | `BeatGrid([segment, …], extent=…)` |
+# | One stated stretch | `BeatGridSegment(start=…, bpm=…, policy=…, battito=…)` |
+# | A policy for the meter a source spells | `policy_for_metro("4/4")` |
+# | Every beat as a table | `grid.get_beat_table(segment=…, numbering=…)` |
+# | Downbeats | the table's rows where `beat == 1` |
+# | Label to instant | `grid.seconds_at(measure, beat)` |
+# | Label to instant within its segment | `grid.segment_seconds_at(measure, beat)` |
+# | Instant to label | `grid.position_at(seconds)` |
+# | Notated distance across tempo changes | `grid.quarters_between(a, b)` |
+# | Another counting of the bar | the `policy=` argument, a `BeatPolicy` |
+# | Beats of an unbounded grid | `grid.iter_beats(stop=…)` |
+# | Annotation file | `grid.export_to_csv(path, format=…, labels=…)` |
 #
-# **Key API:**
-#
-# | Method | Returns | Use Case |
-# |--------|---------|----------|
-# | `BeatGrid.from_tempo()` | BeatGrid | Create from tempo + offset |
-# | `.beat_seconds()` | numpy array | All beat times |
-# | `.measure_seconds()` | numpy array | All measure/downbeat times |
-# | `.n_beats` | int | Total beat count |
-# | `.n_measures` | int | Total measure count |
-# | `.measure_at_seconds(t)` | int | Measure number at time t |
-# | `.beat_at_seconds(t)` | int | Beat-in-measure at time t |
-# | `.export_to_csv()` | int | Export to Audacity/Sonic Visualiser |
-#
-# **Common Patterns:**
-#
-# ```python
-# # Pattern 1: Simple audio beatgrid
-# grid = BeatGrid.from_tempo(tempo_bpm=120, length_seconds=180, start_seconds=0.5)
-# beats = grid.beat_seconds()
-#
-# # Pattern 2: Export to Audacity (one line!)
-# grid.export_to_csv("beats.txt", format="sonic_visualiser")
-#
-# # Pattern 3: Different time signatures
-# grid_3_4 = BeatGrid.from_tempo(tempo_bpm=90, beats_per_measure=3, ...)
-# grid_6_8 = BeatGrid.from_tempo(tempo_bpm=120, beats_per_measure=6,
-#                                 beat_unit=Fraction(1, 8), ...)
-# ```
-
-# %% [markdown]
-# ---
-#
-# ## Exercises
-#
-# ### Exercise 1: Your Own Track
-#
-# Pick an audio track you know the tempo of. Create a BeatGrid and export
-# the first 32 beats to an Audacity-compatible format.
-
-# %%
-# Your solution here:
-# my_grid = BeatGrid.from_tempo(
-#     tempo_bpm=...,
-#     length_seconds=...,
-#     start_seconds=...,
-# )
-# ...
-
-# %% [markdown]
-# ### Exercise 2: Tempo Change Workaround
-#
-# For a track that changes tempo at 60 seconds (from 120 to 140 BPM),
-# create two BeatGrids and concatenate their beat arrays.
-#
-# Hint: Use `np.concatenate()` on the beat_seconds() arrays.
-
-# %%
-# Your solution here:
-# grid1 = BeatGrid.from_tempo(tempo_bpm=120, length_seconds=60, start_seconds=0)
-# grid2 = BeatGrid.from_tempo(tempo_bpm=140, length_seconds=120, start_seconds=60)
-# all_beats = np.concatenate([grid1.beat_seconds(), grid2.beat_seconds()])
-# ...
-
-# %% [markdown]
-# ### Exercise 3: Custom Labels
-#
-# Use `grid.beat_seconds()` and `grid.measure_at_seconds()` to create a
-# custom export with time signature in the labels (e.g., "M1 (4/4)").
-
-# %%
-# Your solution here:
-# times = grid.measure_seconds()
-# labels = [f"M{i} (4/4)" for i in range(1, len(times) + 1)]
-# ...
-
-# %% [markdown]
-# ---
-#
-# ## Next Steps
-#
-# - **Tutorial 07**: TimelineGroups - Connect beatgrids to other timelines
-# - **Tutorial 08**: SUPRA Piano Roll - See beatgrids in a complete alignment workflow
-# - **Score Integration**: MeasureMapLoader for complex scores
+# A grid does not have to be written by hand. Where a loader reads tempo
+# statements out of a file, the `TimeSkeleton` it builds for that track carries
+# the grid its measures came from, and `skeleton.create_beatgrid()` returns
+# that grid — the same object, with the same surface as everything above.

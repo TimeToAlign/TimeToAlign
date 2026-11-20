@@ -21,8 +21,9 @@
 #
 # You will build a folded {{< glossary Timeline >}}, describe its played order,
 # and obtain an unfolded timeline that preserves the route back to the page.
-# You will also build a metrical grid whose measures and beats can be queried in
-# either direction and exported for annotation software.
+# You will also build a {{< glossary BeatGrid >}} whose measures and beats can
+# be queried in either direction, survive a tempo change, and be exported for
+# annotation software.
 
 # %% [markdown]
 # ## Before you start
@@ -40,8 +41,9 @@ from tempfile import TemporaryDirectory
 
 from timetoalign import (
     BeatGrid,
+    BeatGridSegment,
+    BeatPolicy,
     ContinuousLogicalTimeline,
-    ContinuousPhysicalTimeline,
     Ms3Loader,
 )
 from timetoalign.testdata import ensure_data
@@ -89,32 +91,33 @@ page_and_performance
 # %% [markdown]
 # ## Naming the played spans
 #
-# A {{< glossary Region >}} gives a stable name to a span of the written score.
-# We reuse `create_region` from the nesting tutorial.
+# A {{< glossary Region >}} gives a stable id to a span of the written score.
+# We reuse `create_region` from the nesting tutorial, giving each span its letter
+# as its id.
 
 # %%
 created_regions = [
-    written_score.create_region(name, start, end)
-    for name, (start, end) in span_bounds.items()
+    written_score.create_region(start, end, id=span_id)
+    for span_id, (start, end) in span_bounds.items()
 ]
 opening_region = created_regions[0]
 closing_region = created_regions[2]
 named_spans = written_score.list_regions()
 region_overview = {
     "opening span": opening_region,
-    "region names": named_spans,
+    "region ids": named_spans,
 }
 region_overview
 
 # %% [markdown]
-# Each region keeps its quarter-valued start and end. These names now let the
+# Each region keeps its quarter-valued start and end. These ids now let the
 # played route refer to legible musical spans rather than unexplained numbers.
 
 # %% [markdown]
 # ## Building the map
 #
 # A {{< glossary FlowMap >}} records how folded spans are placed in played
-# order. `create_flow_map(intervals)` accepts a name, a Region, a `(start, end)`
+# order. `create_flow_map(intervals)` accepts a region id, a Region, a `(start, end)`
 # pair, a Timeline, or an iterable mixing any of those shapes.
 
 # %%
@@ -195,7 +198,7 @@ fold_report
 # %%
 unfolded_score = written_score.apply_flow("played")
 unfolded_children = unfolded_score.list_children()
-unfolded_regions = unfolded_score.list_regions()
+unfolded_regions = {region.id: region.name for region in unfolded_score.iter_regions()}
 reverse_map = unfolded_score.get_flow_map("source")
 unfolded_overview = {
     "same concrete type": type(unfolded_score) is type(written_score),
@@ -206,9 +209,11 @@ unfolded_overview = {
 unfolded_overview
 
 # %% [markdown]
-# The second visit to A is named `A-rend2`; further visits would use `-rend3`
-# and so on. Matching regions cover the spans in unfolded coordinates; those
-# named intervals are what make the route invertible through the `source` map.
+# Each child takes the id of the span it plays; the second visit to A is
+# `A-rend2`, and further visits would use `-rend3` and so on. Matching regions
+# cover the spans in unfolded coordinates: their ids are minted, and their names
+# repeat the children's. Those named intervals are what make the route
+# invertible through the `source` map.
 
 # %% [markdown]
 # ## Inspecting repeat events
@@ -238,6 +243,38 @@ repeat_events
 # These six rows form three repeat-start and repeat-end pairs. The `next`
 # column shows the encoded destinations; each repeat end has both a backward
 # destination and the following written measure.
+
+# %% [markdown]
+# ## Ids and names of flow-control elements
+#
+# Every element of a timeline (a region, a break, a jump, a marker) has an `id`
+# that identifies it, unique across everything you save together in one
+# manifest (timelines, children, groups, maps and these elements alike), and a
+# name or label for display. A loader gives ids where the source has none, with one
+# prefix per kind of flow-control element: `flow_marker_1` for a break,
+# `jump_from_1` for a jump and `jump_to_1` for a marker a jump lands on. A short
+# score with a *Fine*, a segno and a coda shows all three kinds.
+
+# %%
+flow_dir = score_data / "flow_control" / "flow_only"
+flow_score = Ms3Loader.from_file(
+    flow_dir / "out_of_the_flow_experience-flow_only.measures.tsv",
+).create_timeline(uid="flow_only")
+flow_elements = flow_score.flow_control
+element_ids = {
+    "regions": {region.id: region.name for region in written_score.iter_regions()},
+    "breaks": {brk.id: brk.name for brk in flow_elements.breaks},
+    "jumps": {jump.id: jump.label for jump in flow_elements.jumps},
+    "markers": {marker.id: marker.name for marker in flow_elements.markers},
+    "jump targets": {jump.id: jump.target for jump in flow_elements.jumps},
+}
+element_ids
+
+# %% [markdown]
+# The written score's regions carry the ids you gave and no names. A jump
+# that lands on a marker names that marker's id as its `target`; these repeats
+# and the *Da Capo* land on no marker, so their targets are `None`, and each
+# jump still carries its destination coordinate.
 
 # %% [markdown]
 # ## Computing and checking the route
@@ -296,114 +333,141 @@ segment_report
 # SegmentLine keeps those segments as children of one timeline.
 
 # %% [markdown]
-# ## Metre as a queryable grid
+# ## Beats as a queryable grid
 #
-# A `BeatGrid` represents metre on an exact quarter-note axis. `from_tempo`
-# supplies a uniform tempo, meter, and duration, after which positions can be
-# queried in either direction.
+# A {{< glossary BeatGrid >}} answers where beats and measures fall in a
+# recording. It is not a timeline: it stores one tempo statement — the anchor
+# instant, the tempo, the meter, and which beat of a bar the anchor is — and
+# generates every beat from it. `extent` bounds the grid, normally with the
+# length of the audio.
 
 # %%
-grid = BeatGrid.from_tempo(
-    tempo_bpm=120,
-    beats_per_measure=3,
-    length_seconds=12.0,
-    uid="three_four_grid",
-)
-quarter_position = grid.make_coordinate(Fraction(6))
-measure_number = grid.measure_at(quarter_position)
-beat_number = grid.beat_at(quarter_position)
-inverse_quarter = grid.quarter_at(
-    measure=2,
-    beat=Fraction(3, 2),
-)
-inverse_coordinate = grid.make_coordinate(inverse_quarter)
-grid_query = {
-    "quarter position": quarter_position,
-    "measure": measure_number,
-    "beat": beat_number,
-    "quarter_at value": inverse_quarter,
-    "as grid coordinate": inverse_coordinate,
+grid = BeatGrid.from_tempo(120, metro="3/4", start=0, extent=12)
+grid_overview = {
+    "the grid": grid,
+    "one stated segment": grid.segments[0],
+    "beat length in seconds": grid.segments[0].beat_seconds,
+    "measures generated": grid.n_measures,
 }
-grid_query
+grid_overview
 
 # %% [markdown]
-# Six quarters is the start of measure 3 in this 3/4 grid. The inverse query
-# returns the exact `Fraction(7, 2)`; `make_coordinate` gives that value the
-# grid's quarter unit without changing it.
+# At 120 BPM a beat lasts half a second, so a 3/4 bar lasts one and a half and
+# twelve seconds hold eight measures. Nothing was stored per beat to say so.
 
 # %% [markdown]
-# ## Vectorised accessors
+# ## Both directions
 #
-# `beat_seconds()` and `measure_seconds()` provide NumPy arrays for bulk work.
-# The same grid can write label tracks for Sonic Visualiser or Audacity.
+# `seconds_at(measure, beat)` turns a label into a
+# {{< glossary Coordinate >}} in seconds; `position_at(seconds)` turns a
+# position into the beat sounding there.
 
 # %%
-beat_times = grid.beat_seconds()
-measure_times = grid.measure_seconds()
+labelled_instant = grid.seconds_at(3, 2)
+sounding_beat = grid.position_at(6.25)
+direction_report = {
+    "measure 3, beat 2": labelled_instant,
+    "beat sounding at 6.25 seconds": sounding_beat,
+    "that beat's own instant": sounding_beat.instant,
+    "its measure": sounding_beat.measure,
+    "it opens a measure": sounding_beat.is_downbeat,
+    "quarters in the whole grid": grid.quarters_between(0, 12),
+}
+direction_report
+
+# %% [markdown]
+# `position_at` names the last beat at or before the position, so a query
+# between two beats answers with the earlier one — 6.25 seconds sounds within
+# the downbeat of measure 5. `quarters_between` measures notated length rather
+# than clock time.
+#
+# A beat carries its position twice, for two jobs. `seconds` is the exact ratio
+# the grid computed with, which is what the beat's display leads with; `instant`
+# is that position as a seconds {{< glossary Coordinate >}} — the same value
+# `seconds_at` returns for the beat's own label, so the two directions meet.
+
+# %% [markdown]
+# ## The beat table and its exports
+#
+# `get_beat_table()` renders every beat the grid states. It is the only table
+# the grid builds, and the annotation-file exports are renderings of it.
+# Downbeats are the rows whose `beat` is 1.
+
+# %%
+beat_table = grid.get_beat_table()
+downbeat_rows = beat_table[beat_table["beat"] == 1]
 with TemporaryDirectory() as temporary_dir:
     export_path = Path(temporary_dir) / "beats.csv"
     exported_rows = grid.export_to_csv(
-        str(export_path),
+        export_path,
         format="sonic_visualiser",
     )
     exported_text = export_path.read_text(encoding="utf-8")
     first_export_lines = exported_text.splitlines()[:4]
-vector_report = {
-    "first beat times": beat_times[:6],
-    "first measure times": measure_times[:4],
+table_report = {
+    "first beats": beat_table.head(4),
+    "beats": len(beat_table),
+    "downbeats": len(downbeat_rows),
     "rows written": exported_rows,
     "first CSV lines": first_export_lines,
 }
-vector_report
+table_report
 
 # %% [markdown]
-# The arrays are measured in seconds, matching the annotation file's first
-# column. The temporary export is genuinely written and read back; it leaves no
-# tutorial artefact behind.
+# The exported first column is measured in seconds, matching the annotation
+# file's own convention. The temporary export is genuinely written and read
+# back; it leaves no tutorial artefact behind.
 
 # %% [markdown]
-# ## Grids on a timeline
+# ## When the tempo changes
 #
-# A physical timeline can create a metrical grid for its full extent or for one
-# named region. Each result links seconds and quarters in a
-# {{< glossary TimelineGroup >}}.
+# One segment states one tempo. A recording that changes tempo is several
+# `BeatGridSegment`s in one grid: you state each segment without an end, and
+# the grid orders them and bounds each by the next one's start. A
+# `BeatPolicy` says how the lattice beats group into bars.
 
 # %%
-audio_timeline = ContinuousPhysicalTimeline.from_events(
-    [
-        {
-            "id": "audio_end",
-            "temporal_type": "instant",
-            "event_type": "Boundary",
-            "instant": 12.0,
-        }
+three_four = BeatPolicy.uniform(Fraction(1), 3, name="3/4")
+opening = BeatGridSegment(start=0, bpm=120, policy=three_four, battito=1)
+faster = BeatGridSegment(start=6, bpm=180, policy=three_four, battito=1)
+changing = BeatGrid([opening, faster], extent=12)
+across_the_change = changing.get_beat_table()
+change_report = {
+    "bounded segments": changing.segments,
+    "measures generated": changing.n_measures,
+    "around the change": across_the_change[
+        (across_the_change["seconds"] >= 5) & (across_the_change["seconds"] <= 7)
     ],
-    uid="audio_excerpt",
-)
-audio_region = audio_timeline.create_region("analysis_window", 2.0, 8.0)
-whole_metre = audio_timeline.create_metrical_grid(
-    first_beat_at=0.0,
-    tempo_bpm=120,
-    beats_per_measure=4,
-)
-region_metre = audio_timeline.create_metrical_region(
-    "analysis_window",
-    tempo_bpm=120,
-    beats_per_measure=4,
-)
-whole_grid = whole_metre.grid
-region_grid = region_metre.grid
-metrical_overview = {
-    "source region": audio_region,
-    "whole-grid length": whole_grid.length,
-    "region-grid length": region_grid.length,
+    "quarters from 5 to 7 seconds": changing.quarters_between(5, 7),
 }
-metrical_overview
+change_report
 
 # %% [markdown]
-# `create_metrical_grid` covers all twelve seconds, whereas
-# `create_metrical_region` limits the grid to the six-second analysis window.
-# Their logical lengths are shown as quarter-valued coordinates.
+# The grid gave the first segment the second one's start as its end. Beats last
+# half a second before six seconds and a third of a second after, so the two
+# seconds around the change hold five quarters — a count no single tempo
+# produces, because `quarters_between` integrates each segment's own tempo
+# instead of averaging them.
+
+# %% [markdown]
+# ## Two numberings of one lattice
+#
+# `numbering="set"` counts measures across the whole grid; `numbering="segment"`
+# restarts the count at each segment. They label the same beats, so you can read
+# them side by side.
+
+# %%
+per_segment = changing.get_beat_table(numbering="segment")
+both_numberings = across_the_change.assign(segment_measure=per_segment["measure"])
+numbering_report = both_numberings[
+    (both_numberings["seconds"] >= 5) & (both_numberings["seconds"] <= 7)
+]
+numbering_report
+
+# %% [markdown]
+# The faster segment opens measure 5 of the recording and measure 1 of its own
+# count. Use whichever the receiving tool expects: a whole-recording annotation
+# wants the running count, a per-section analysis the restarted one.
 
 # %% [markdown]
 # ## What you learned
@@ -417,9 +481,11 @@ metrical_overview
 # - You can inspect repeat events retained by a score loader.
 # - You can compute a score route and obtain non-raising flow diagnostics.
 # - You can create a segment line from flow-section boundaries.
-# - You can query measure and beat positions while preserving rational quarters.
-# - You can access grid positions as arrays and export a real annotation CSV.
-# - You can create metrical grids for a complete timeline or one named region.
+# - You can build a beat grid from one tempo statement and bound it with an extent.
+# - You can turn a measure and beat into an instant, and an instant back into a beat.
+# - You can render every beat as a table and export a real annotation CSV.
+# - You can combine several tempo segments into one grid that changes tempo.
+# - You can read a grid's measures counted across the whole grid or per segment.
 
 # %% [markdown]
 # ## Next

@@ -12,9 +12,15 @@ routes the canonical start coordinate through the synthesised
 canonical ``duration`` column is also produced by Step 1 (as a
 :class:`DenominateNumberField` bound to ``TimeUnit.quarters``).
 
-The loader does NOT (currently) reconcile measure-number into a
-flat-quarter coordinate — measures are second-order time units
-and resolution against a :class:`MetricMap` is out of scope.  The
-``start`` coordinate is therefore left null; callers that need
-flat-quarter onsets should consume ``mn_onset`` directly and
-consult their measure map.
+The loader does NOT reconcile the measure-number label into a
+flat-quarter coordinate — measures are second-order time units and
+resolving them needs a measure map this loader does not have.  The
+canonical ``start`` coordinate therefore carries the raw
+within-measure offset (``mn_onset``) and nothing else: it is a
+position *inside its measure*, not a position in the piece, and the
+``quarters`` label on it names the axis the offset will land on once
+a measure map places the bar.  Callers that need flat-quarter
+onsets must read ``measure_number`` and ``mn_onset`` together and
+resolve the pair against their measure map — which is what
+:class:`~timetoalign.loader.alignment.performance_precision.PerformancePrecisionLoader`
+does, converting the whole-note offset to quarters on the way.

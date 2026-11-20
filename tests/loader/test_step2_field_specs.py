@@ -17,7 +17,9 @@ Validation logic is documented in ``tests/loader/README.md`` (the
 
 * Error paths: live-mode SemanticField raises ``TypeError``; multi-
   source dict blueprint raises ``NotImplementedError``; unresolvable
-  references raise ``KeyError``.
+  references raise ``KeyError``; a target class that cannot be built
+  from a name alone raises a ``TypeError`` naming that target and its
+  storage shape.
 
 * The three ``source_fields=`` shorthands accepted by SemanticField
   (string / single-element list / explicit dict) are exercised at
@@ -33,6 +35,7 @@ from pathlib import Path
 import pytest
 
 from timetoalign.core import (
+    CoordinateField,
     EnharmonicPitch,
     EnharmonicPitchField,
     Id,
@@ -138,8 +141,8 @@ class TestFieldSpecsHappyPath:
         loader = MeasureNumberLoader.from_file(csv_file_pitches)
         events = loader.events
         mn = events.get_field(MeasureNumber)
-        assert mn[0] == MeasureNumber(value=60)
-        assert mn[2] == MeasureNumber(value=64)
+        assert mn[0] == MeasureNumber(mn="60")
+        assert mn[2] == MeasureNumber(mn="64")
 
 
 # ---------------------------------------------------------------------------
@@ -245,6 +248,29 @@ class TestFieldSpecsNegativePaths:
 
         loader = LoaderWithDictBlueprint()
         with pytest.raises(NotImplementedError, match="source_fields"):
+            loader.load(csv_file_pitches)
+
+    def test_target_without_a_packing_rule_names_itself(
+        self, csv_file_pitches: Path
+    ) -> None:
+        """A plain column cannot fill a target that needs more than a name.
+
+        ``CoordinateField`` carries a bound time unit, so there is no way
+        to ask it to read a bare source column. The loader says which
+        target it could not pack into and what shape that target stores,
+        instead of letting the field's own constructor fail on an
+        argument the caller never passed.
+        """
+
+        class BadLoader(CsvLoader):
+            id_column = "id"
+            start_column = "start"
+            end_column = "end"
+            column_specs = {"midi_pitch": int}
+            field_specs = [CoordinateField(source_fields="midi_pitch")]
+
+        loader = BadLoader()
+        with pytest.raises(TypeError, match="CoordinateField.*no packing rule"):
             loader.load(csv_file_pitches)
 
 

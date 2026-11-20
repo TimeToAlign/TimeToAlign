@@ -31,6 +31,8 @@ from timetoalign.timelines import (
     Timeline,
 )
 
+from .conftest import MIDI_PERFORMANCE_DIR, MIDI_SCORE_DIR, VIENNA_DIR
+
 # Try to import loaders (they may not all be available)
 try:
     from timetoalign.loader.midi import (
@@ -42,16 +44,6 @@ try:
     HAS_MIDI_LOADERS = True
 except ImportError:
     HAS_MIDI_LOADERS = False
-
-
-# region Test Data Paths
-
-TEST_DATA_DIR = Path(__file__).parent.parent / "data"
-MIDI_PERFORMANCE_DIR = TEST_DATA_DIR / "midi" / "performance"
-MIDI_SCORE_DIR = TEST_DATA_DIR / "midi" / "score"
-VIENNA_DIR = TEST_DATA_DIR / "vienna_1x22"
-
-# endregion
 
 
 # region EventData Integration Tests
@@ -174,16 +166,12 @@ class TestMidiLoaderIntegration:
     def performance_midi_path(self) -> Path:
         """Path to a MIDI performance file."""
         path = VIENNA_DIR / "Chopin_op10_no3_p01.mid"
-        if not path.exists():
-            pytest.skip(f"Test data not found: {path}")
         return path
 
     @pytest.fixture
     def score_midi_path(self) -> Path:
         """Path to a MIDI score file."""
         path = MIDI_SCORE_DIR / "beethoven_mtd.mid"
-        if not path.exists():
-            pytest.skip(f"Test data not found: {path}")
         return path
 
     def test_timeline_from_performance_midi(self, performance_midi_path: Path):

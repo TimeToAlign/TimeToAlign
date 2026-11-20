@@ -1,0 +1,32 @@
+# policy_for_metro { #timetoalign.timelines.policy_for_metro }
+
+```python
+timelines.policy_for_metro(metro)
+```
+
+Read a grid's meter string as one beat per counted note value.
+
+A beat-grid lattice ticks once per counted value, so ``"6/8"`` is six
+beats of an eighth each — the reading a grid's beat-in-bar index
+follows.  It is deliberately not
+:meth:`~timetoalign.core.BeatPolicy.from_time_signature`, which reads
+``6/8`` as two dotted beats and would put the anchor index outside
+the bar.
+
+## Parameters {.doc-section .doc-section-parameters}
+
+| Name   | Type         | Description                                   | Default    |
+|--------|--------------|-----------------------------------------------|------------|
+| metro  | [str](`str`) | The meter as the source spells it, ``"n/d"``. | _required_ |
+
+## Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                        | Description                                                 |
+|--------|---------------------------------------------|-------------------------------------------------------------|
+|        | [BeatPolicy](`timetoalign.core.BeatPolicy`) | A policy of ``n`` beats of ``4/d`` quarters, named *metro*. |
+
+## Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                |
+|--------|----------------------------|----------------------------|
+|        | [ValueError](`ValueError`) | If *metro* cannot be read. |

@@ -1,73 +1,163 @@
-"""Region: Named TimeInterval for timeline partitioning.
+"""Region: an identified TimeInterval for timeline partitioning.
 
-This module provides the Region class, which represents a named part of a
+This module provides the Region class, which represents a part of a
 timeline defined by a TimeInterval. Regions are NOT timelines themselves -
 they cannot hold events or C-maps.
 
-A Region is a named part of a timeline that is defined by a TimeInterval.
-Regions are useful for referring to parts of a timeline by name.
-
+A region is identified by its ``id`` and displayed by its optional ``name``.
 Use ``Timeline.create_child_from_region()`` to create a Child timeline
 from a Region.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any
+import datetime
+from collections.abc import Mapping, Sequence
+from copy import deepcopy
+from dataclasses import dataclass, field, replace
+from fractions import Fraction
+from typing import Any, ClassVar
 
-from timetoalign.core import Coordinate, TimeUnit
+from timetoshare import Catalogue
+
+from timetoalign.core import Coordinate, IdCoordinate, NumberType, TimeUnit
+from timetoalign.core.ids import _IdentifiedElement, quote_id
 from timetoalign.core.time import Duration, Interval
+
+from .manifest import (
+    axis_value_from_json,
+    axis_value_to_json,
+    read_id,
+    read_meta,
+    read_name,
+    require_object,
+)
+from .statements import (
+    STATE_KEYS,
+    NodePath,
+    StatementsMixin,
+    read_statement_state,
+    renamed_state,
+)
 
 # region Region
 
 
 @dataclass(frozen=True)
-class Region:
-    """A named part of a timeline defined by a TimeInterval.
-
-    Regions are useful for referring to parts of a timeline by name.
+class Region(_IdentifiedElement, StatementsMixin):
+    """An identified part of a timeline defined by a TimeInterval.
 
     IMPORTANT: Regions are NOT timelines. They cannot hold events or C-maps.
-    Use ``Timeline.create_child_from_region(name)`` to create a Child
+    Use ``Timeline.create_child_from_region(region_id)`` to create a Child
     timeline from a Region.
 
+    A region is frozen: :meth:`with_statement` and its siblings return a
+    copy holding other statements (see
+    :mod:`~timetoalign.timelines.statements`), and a timeline stores a
+    changed copy in the region's place with
+    :meth:`Timeline.replace_region <timetoalign.timelines.Timeline.replace_region>`.
+
     Attributes:
-        name: The region's name (e.g., "Chorus", "Verse").
         start: Start coordinate of the region.
         end: End coordinate of the region.
+        name: Optional display name (e.g., "Chorus"); names may repeat.
         meta: Additional metadata (e.g., traversal order labels).
+        id: The region's id; minted as ``region_{N}`` when not given.
 
     Examples:
         >>> from timetoalign import Coordinate, TimeUnit
         >>> start = Coordinate(16.0, TimeUnit.quarters)
         >>> end = Coordinate(32.0, TimeUnit.quarters)
-        >>> region = Region("Chorus", start=start, end=end)
+        >>> region = Region(start, end, name="Chorus")
+        >>> region.id
+        'region_1'
         >>> region.duration
         Duration(Fraction(16, 1), quarters)
         >>> region.as_interval
         Interval(start=Coordinate(Fraction(16, 1), quarters), \
 end=Coordinate(Fraction(32, 1), quarters))
 
-        A region names part of a timeline; turning it into a Child timeline
+        A region marks part of a timeline; turning it into a Child timeline
         goes through the timeline that owns it:
 
         >>> from timetoalign import ContinuousLogicalTimeline
         >>> tl = ContinuousLogicalTimeline(length=64)
-        >>> tl.create_region("Chorus", start=16, end=32)
-        Region('Chorus', 16-32 quarters)
-        >>> chorus_child = tl.create_child_from_region("Chorus")
+        >>> tl.create_region(16, 32, id="chorus", name="Chorus")
+        Region('chorus', name='Chorus', 16-32 quarters)
+        >>> chorus_child = tl.create_child_from_region("chorus")
         >>> chorus_child.length
         Coordinate(Fraction(16, 1), quarters)
     """
 
-    name: str
+    _id_prefix: ClassVar[str] = "region"
+    _dict_keys: ClassVar[tuple[str, ...]] = (
+        "id",
+        "name",
+        "start",
+        "end",
+        "meta",
+        *STATE_KEYS,
+    )
+    _manifest_path: ClassVar[tuple[str, ...]] = ("timelines", "regions")
+
     start: Coordinate
     end: Coordinate
+    name: str | None = None
     meta: dict[str, Any] = field(default_factory=dict)
+    # The region's statements and provenance as the file writes them, and
+    # the prefixes they need beyond the catalogue's; compared.
+    _statement_state: Mapping[str, Any] = field(
+        default_factory=dict, kw_only=True, repr=False
+    )
+    _prefixes: Mapping[str, str] = field(default_factory=dict, kw_only=True, repr=False)
+
+    @classmethod
+    def from_dict(
+        cls,
+        data: dict[str, Any],
+        *,
+        unit: TimeUnit,
+        number_type: NumberType,
+    ) -> Region:
+        """Restore a region from its object in a timeline's ``regions``.
+
+        ``start`` and ``end`` are bare values on the timeline's axis, which
+        *unit* and *number_type* describe; ``name``, ``meta``,
+        ``statements`` and ``provenance`` may be left out. Keys the library
+        does not know are kept and written back. The prefixes the statements
+        need are the manifest's, which its reader sets.
+
+        Args:
+            data: The region object.
+            unit: The unit of the timeline holding the region.
+            number_type: The number type of that timeline.
+
+        Raises:
+            ValueError: If the object is malformed or a value is represented
+                otherwise than the axis selects.
+        """
+        require_object(data, "a region", ("id", "start", "end"))
+        region_id = read_id(data["id"], "a region")
+        bounds = {
+            key: axis_value_from_json(
+                data[key], key=key, owner=region_id, unit=unit, number_type=number_type
+            )
+            for key in ("start", "end")
+        }
+        what = f"region {region_id!r}"
+        region = cls(
+            id=region_id,
+            name=read_name(data, what),
+            meta=read_meta(data, what),
+            _statement_state=read_statement_state(data),
+            **bounds,
+        )
+        region._keep_unknown_keys(data)
+        return region
 
     def __post_init__(self) -> None:
-        """Validate region bounds and units."""
+        """Mint or validate the id, then validate region bounds and units."""
+        super().__post_init__()
         if self.end.value < self.start.value:
             raise ValueError(
                 f"Region end ({self.end.value}) cannot be before "
@@ -94,7 +184,9 @@ end=Coordinate(Fraction(32, 1), quarters))
         """The region's extent as a typed :class:`Interval`."""
         return Interval(start=self.start, end=self.end)
 
-    def contains(self, coord: float) -> bool:
+    def contains(
+        self, coord: int | float | Fraction | Coordinate | IdCoordinate
+    ) -> bool:
         """Check if a coordinate is within this region (left-inclusive).
 
         Following TTA convention, intervals are [start, end) - left-inclusive,
@@ -105,8 +197,20 @@ end=Coordinate(Fraction(32, 1), quarters))
 
         Returns:
             True if start <= coord < end.
+
+        Raises:
+            ValueError: If a coordinate object's unit differs from the region's.
         """
-        return self.start.value <= coord < self.end.value
+        if isinstance(coord, Coordinate):
+            if coord.unit is not self.unit:
+                raise ValueError(
+                    f"Coordinate unit {coord.unit} does not match region unit "
+                    f"{self.unit}"
+                )
+            value = coord.value
+        else:
+            value = coord
+        return self.start.value <= value < self.end.value
 
     def overlaps(self, other: Region) -> bool:
         """Check if this region overlaps with another.
@@ -119,11 +223,211 @@ end=Coordinate(Fraction(32, 1), quarters))
         """
         return self.start.value < other.end.value and other.start.value < self.end.value
 
+    def _dict_fields(self) -> dict[str, Any]:
+        """Return the region's keys; ``name`` and ``meta`` are optional,
+        ``statements`` and ``provenance`` written only when not empty."""
+        return {
+            "id": self.id,
+            "name": self.name,
+            "start": axis_value_to_json(self.start),
+            "end": axis_value_to_json(self.end),
+            "meta": deepcopy(self.meta),
+            **deepcopy(dict(self._statement_state)),
+        }
+
+    # region Statements, copy-on-write
+
+    def _statement_holder_name(self) -> str:
+        """Return the region as a message names it."""
+        return f"region {quote_id(self.id)}"
+
+    def _with_statement_state(
+        self,
+        state: Mapping[str, Any] | None = None,
+        prefixes: Mapping[str, str] | None = None,
+    ) -> Region:
+        """Return a copy holding *state* and *prefixes* (None keeps them)."""
+        return replace(
+            self,
+            _statement_state=self._statement_state if state is None else dict(state),
+            _prefixes=self._prefixes if prefixes is None else dict(prefixes),
+        )
+
+    def _with_references_renamed(self, renamed: Mapping[str, str | None]) -> Region:
+        """Return the region with the elements its statements name renamed.
+
+        The region itself where its statements name none of them (see
+        :func:`~timetoalign.timelines.statements.renamed_state`).
+        """
+        if not self._statement_state:
+            return self
+        state = renamed_state(self._statement_state, renamed)
+        if state == self._statement_state:
+            return self
+        return self._with_statement_state(state)
+
+    def with_statement(
+        self,
+        property: str,
+        value: Any,
+        *,
+        node: NodePath = (),
+        provenance: Mapping[str, Any] | None = None,
+    ) -> Region:
+        """Return a copy stating the pair ``(property, value)``; this region is left as it is.
+
+        See :meth:`MutableStatementsMixin.add_statement
+        <timetoalign.timelines.MutableStatementsMixin.add_statement>`.
+
+        Examples:
+            >>> from timetoalign import Coordinate, TimeUnit
+            >>> intro = Region(Coordinate(0, TimeUnit.quarters), Coordinate(12, TimeUnit.quarters))
+            >>> described = intro.with_statement("rdfs:comment", "the opening")
+            >>> intro.statements, described.statements
+            ({}, {'rdfs:comment': ['the opening']})
+        """
+        return self._with_statement_state(
+            self._state_with_statement(
+                property, value, node=node, provenance=provenance
+            )
+        )
+
+    def without_statement(
+        self, property: str, value: Any, *, node: NodePath = ()
+    ) -> Region:
+        """Return a copy without the pair ``(property, value)`` and its confirmed entry.
+
+        See :meth:`MutableStatementsMixin.remove_statement
+        <timetoalign.timelines.MutableStatementsMixin.remove_statement>`.
+        """
+        return self._with_statement_state(
+            self._state_without_statement(property, value, node=node)
+        )
+
+    def with_proposal(
+        self,
+        property: str,
+        value: Any,
+        *,
+        stated_by: str | Sequence[str],
+        method: str,
+        date: str | datetime.date | None = None,
+        service: str | None = None,
+        basis: Sequence[str] = (),
+        match: str | None = None,
+        note: str | None = None,
+        node: NodePath = (),
+    ) -> Region:
+        """Return a copy proposing the pair ``(property, value)``.
+
+        See :meth:`MutableStatementsMixin.propose_statement
+        <timetoalign.timelines.MutableStatementsMixin.propose_statement>`.
+        """
+        return self._with_statement_state(
+            self._state_with_proposal(
+                property,
+                value,
+                stated_by=stated_by,
+                method=method,
+                date=date,
+                service=service,
+                basis=basis,
+                match=match,
+                note=note,
+                node=node,
+            )
+        )
+
+    def with_confirmation(
+        self,
+        property: str,
+        value: Any,
+        *,
+        stated_by: str | Sequence[str],
+        date: str | datetime.date | None = None,
+        node: NodePath = (),
+    ) -> Region:
+        """Return a copy with a proposed or rejected pair confirmed and stated.
+
+        See :meth:`MutableStatementsMixin.confirm_statement
+        <timetoalign.timelines.MutableStatementsMixin.confirm_statement>`.
+        """
+        return self._with_statement_state(
+            self._state_with_confirmation(
+                property, value, stated_by=stated_by, date=date, node=node
+            )
+        )
+
+    def with_rejection(
+        self,
+        property: str,
+        value: Any,
+        *,
+        stated_by: str | Sequence[str],
+        date: str | datetime.date | None = None,
+        note: str | None = None,
+        node: NodePath = (),
+    ) -> Region:
+        """Return a copy with the pair rejected.
+
+        See :meth:`MutableStatementsMixin.reject_statement
+        <timetoalign.timelines.MutableStatementsMixin.reject_statement>`.
+        """
+        return self._with_statement_state(
+            self._state_with_rejection(
+                property, value, stated_by=stated_by, date=date, note=note, node=node
+            )
+        )
+
+    def with_verb(
+        self,
+        verb: str,
+        system: str,
+        value: str,
+        *,
+        label: str | None = None,
+        slots: Mapping[str, Any] | None = None,
+        alternative: int = 0,
+        provenance: Mapping[str, Any] | None = None,
+        catalogue: Catalogue | None = None,
+    ) -> Region:
+        """Return a copy stating a verb of the catalogue in one system's vocabulary.
+
+        See :meth:`MutableStatementsMixin.add_verb
+        <timetoalign.timelines.MutableStatementsMixin.add_verb>`.
+        """
+        return self._with_statement_state(
+            self._state_with_verb(
+                verb,
+                system,
+                value,
+                label=label,
+                slots=slots,
+                alternative=alternative,
+                provenance=provenance,
+                catalogue=catalogue,
+            )
+        )
+
+    def with_prefix(self, name: str, namespace: str) -> Region:
+        """Return a copy declaring a prefix its statements may use.
+
+        See :meth:`MutableStatementsMixin.add_prefix
+        <timetoalign.timelines.MutableStatementsMixin.add_prefix>`.
+        """
+        return self._with_statement_state(prefixes=self._prefixes_with(name, namespace))
+
+    # endregion
+
     def __repr__(self) -> str:
-        return f"Region({self.name!r}, {self.start.value}-{self.end.value} {self.unit})"
+        label = (
+            repr(self.id) if self.name is None else f"{self.id!r}, name={self.name!r}"
+        )
+        return f"Region({label}, {self.start.value}-{self.end.value} {self.unit})"
 
     def __str__(self) -> str:
-        return f"{self.name}: [{self.start.value}, {self.end.value}) {self.unit}"
+        label = self.id if self.name is None else f"{self.name} ({self.id})"
+        return f"{label}: [{self.start.value}, {self.end.value}) {self.unit}"
 
 
 # endregion

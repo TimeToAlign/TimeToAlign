@@ -6,7 +6,6 @@ import numpy as np
 
 from timetoalign.core import TimeUnit
 from timetoalign.maps import (
-    ConversionMap,
     QuartersToTicks,
     SamplesToSeconds,
     SecondsToSamples,
@@ -51,25 +50,6 @@ class TestTicksToQuarters:
         q2t = t2q.inverse()
         assert q2t(1.0) == 480.0
         assert q2t(2.0) == 960.0
-
-    def test_serialization(self) -> None:
-        """Test to_dict and from_dict."""
-        t2q = TicksToQuarters(ppq=960)
-        d = t2q.to_dict()
-        assert d["type"] == "TicksToQuarters"
-        assert d["ppq"] == 960
-
-        restored = TicksToQuarters.from_dict(d)
-        assert restored.ppq == 960
-        assert restored(960) == 1.0
-
-    def test_deserialize_via_base(self) -> None:
-        """Test deserialization via ConversionMap.from_dict."""
-        t2q = TicksToQuarters(ppq=480)
-        d = t2q.to_dict()
-        restored = ConversionMap.from_dict(d)
-        assert isinstance(restored, TicksToQuarters)
-        assert restored(480) == 1.0
 
 
 # endregion
@@ -144,16 +124,6 @@ class TestSamplesToSeconds:
         s2s = SamplesToSeconds(sample_rate=48000)
         assert s2s(48000) == 1.0
         assert s2s.sample_rate == 48000
-
-    def test_serialization(self) -> None:
-        """Test to_dict and from_dict."""
-        s2s = SamplesToSeconds(sample_rate=48000)
-        d = s2s.to_dict()
-        assert d["type"] == "SamplesToSeconds"
-        assert d["sample_rate"] == 48000
-
-        restored = SamplesToSeconds.from_dict(d)
-        assert restored.sample_rate == 48000
 
 
 # endregion

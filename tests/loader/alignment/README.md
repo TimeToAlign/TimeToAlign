@@ -1,8 +1,8 @@
 # Alignment-loader tests
 
-This directory holds the corpus-driven tests for loaders in
-`timetoalign.loader.alignment` that need their own fixtures and their own
-validation write-up.  The older alignment-loader tests still live one level up
+This directory holds the tests for loaders in `timetoalign.loader.alignment`
+that need their own fixtures and their own validation write-up, driven by a
+corpus or by small files the tests write themselves.  The older alignment-loader tests still live one level up
 in `tests/loader/` (`test_matchfile_loader.py`, `test_listen_here_loader.py`,
 …); see `tests/loader/README.md` for those.
 
@@ -15,6 +15,7 @@ module level so the corpus is materialised once, before collection.
 |------|-------------------|
 | `test_ieee1599.py` | `Ieee1599Loader` against all six IEEE 1599 specimens — spine delta accumulation, the four projection layers, verbatim media references, and the spine-hub claim topology. Zero-tolerance counts and coordinates (see below). |
 | `test_ieee1599_structural.py` | The `<structural>` layer of the gymnopédie specimen — the segment ↔ Petri-net-place resolution and the `external_references` rows it produces on the spine. Exact row counts and exact resolutions (see below). |
+| `test_trompa_maps.py` | `MapsLoader` on a MEI score and a MAPS file the tests write — one claim per listed `xml:id`, both sides of every claim, retrieval through a bundle on a samples and on a seconds performance, and every refusal (see below). |
 
 Fast lane: gymnopédie, animals, khomus.  The three large specimens
 (pazzariello, serie, bach) carry `@pytest.mark.slow` and run under
@@ -79,10 +80,10 @@ what `event_ref` resolves against.
 
 | layer | timeline | unit |
 |---|---|---|
-| `<spine>` | `spine:dlt1` (`DiscreteLogicalTimeline`) | ticks, int |
-| `<los>` notes/rests/lyrics | `los:dlt2` (`DiscreteLogicalTimeline`) | ticks, int |
-| each `<graphic_instance_group>` | `<role>:dgt<n>` (`SegmentLine[SegmentLine[DiscreteGraphicalTimeline]]`) | pixels, int |
-| each `<track>` | `<role>:cpt<n>` (`ContinuousPhysicalTimeline`) | seconds, float |
+| `<spine>` | `spine:dlt_1` (`DiscreteLogicalTimeline`) | ticks, int |
+| `<los>` notes/rests/lyrics | `los:dlt_2` (`DiscreteLogicalTimeline`) | ticks, int |
+| each `<graphic_instance_group>` | `<role>:dgt_<n>` (`SegmentLine[SegmentLine[DiscreteGraphicalTimeline]]`) | pixels, int |
+| each `<track>` | `<role>:cpt_<n>` (`ContinuousPhysicalTimeline`) | seconds, float |
 
 Roles are asserted exactly, because they encode the sanitisation rule
 (accent folding, lowercasing, every run outside `[a-z0-9_]` collapsing to one
@@ -110,9 +111,14 @@ asserted to survive per page in `edition.meta["pages"]`.
 
 An edition nests two levels, because a page is the unit that owns a pixel
 origin: the edition line's segments are its pages (one per
-`<graphic_instance>`, uid `<edition>_page<n>`), and a page's segments are the
-accolades engraved on it (uid `<edition>_page<n>_accolade<k>`, numbered within
-their page).  Accolades are found by the half-span rule — within a page, a
+`<graphic_instance>`, named `page_<n>`), and a page's segments are the
+accolades engraved on it (named `accolade_<k>`, numbered within their page).
+Positions are names, not ids: page and accolade ids are minted in the
+edition's manifest, and the gymnopédie test pins both (pages `dgt_1`, `dgt_7`,
+`dgt_12`, `dgt_18`; the first page's accolades `dgt_2` … `dgt_5`). The order
+of minting follows the library's join rule — a page's subtree is planned as a
+whole when it joins the edition — which is why the numbers are not
+consecutive across pages.  Accolades are found by the half-span rule — within a page, a
 drop in `upper_left_x` greater than half that page's observed x-span starts a
 new accolade — and every page restarts the rule, so an accolade never straddles
 two images.  The nesting is asserted three ways: the page/accolade counts of
@@ -125,7 +131,8 @@ is `page_offset + accolade_offset + upper_left_x`; page-local x coordinates
 overlap between pages and are disambiguated by that offset, never by the raw
 box.  Claims therefore carry edition coordinates, and the edition's
 `IntervalToConstantMap` named `file_name` maps any edition coordinate back to
-the page image containing it.
+the page image containing it; it ends at the edition's length, so that a
+manifest can hold it (a `PiecewiseMap` of `ConstantMap`s).
 
 Graphic events are interval events from `upper_left_x` to `lower_right_x`, with
 the integer `bbox` struct, the page `file_name` and `position_in_group` as
@@ -172,7 +179,7 @@ object per row.  The three layers are measured in ticks, pixels and seconds
 respectively, which one field can hold because the coordinate storage carries a
 unit *per row*; the tests materialise the first claim of each layer and assert
 its `coordinate_a.unit` (ticks / pixels / seconds) against `coordinate_b.unit`
-(always ticks, always `spine:dlt1`).  Per-layer row counts are recovered by
+(always ticks, always `spine:dlt_1`).  Per-layer row counts are recovered by
 counting the field's `timeline_a_id` column against the loader's `los_uid` /
 `edition_uids` / `track_uids`, which is what the arithmetic above is asserted
 through.  The bundle holds exactly one claim field and its per-claim Python
@@ -340,10 +347,163 @@ The loader accepts exactly one document (one spine, one bundle) and refuses a
 second by whichever door it arrives at — `load()`, and equally the inherited
 `load_string()` and `load_element()`, which would otherwise re-enter the parse
 and suffix a second document's timelines onto the first's.  All three raise the
-same `ValueError`, and a test drives each of them.  `create_timeline(uid)`
+loaders' shared single-source `ValueError` (`tests/loader/README.md`,
+"Single-source loaders"), whose message names the held file, and a test drives
+each of them; two paths in one call are refused before either is parsed.  `create_timeline(uid)`
 builds once and returns the cached timeline,
 `create_timelines(id_pattern=...)` filters by uid regex, `create_group()`
 returns `None`, and `get_field(MatchClaim)` follows the selector pattern: both
 `MatchClaim` and `MatchClaimField` resolve to the document's single claim
 field, anything else raises `TypeError`, and calling it before `load()` raises
 `RuntimeError`.
+
+## `MapsLoader` validation logic
+
+No corpus: the tests write a two-measure MEI score and the MAPS JSON for it
+into `tmp_path`, so every expected value below is read off the fixture by hand.
+The score is loaded with `VerovioLoader` (the test module is skipped without
+`verovio`).
+
+### The score
+
+Two staves, one 9/8 measure followed by a second, so a measure lasts 9/2
+quarters and onsets fall on halves of a quarter: what proves that the score
+side is the score's own exact position, not a float. Attacks, in quarters:
+
+| quarter | staff 1 | staff 2 |
+|---|---|---|
+| 1/2 | chord `ch1a`, `ch1b`, `ch1c` | `b1` |
+| 3/2 | `n2` | `b2` |
+| 3 | `n3` (tie start) | `b3` |
+| 9/2 | `n4` (tie end) | `b4` |
+| 6 | `n5` | |
+| 13/2 | `n6` | |
+| 15/2 | `n7` | `b5` |
+
+Both staves open with an eighth rest, so the first attack is at 1/2 and a
+quarter before it exists on the score. `n4` continues `n3` and is not an
+attack: the MAPS file has no row for it, and nothing in the loader needs one.
+
+### The MAPS file
+
+Seven rows, one per attack time, every onset a dyadic number of seconds whose
+product with 44100 is a whole sample:
+
+| obs_num | obs_mean_onset (s) | xml_id | sample at 44100 Hz |
+|---|---|---|---|
+| 1 | 0.5 | `ch1a`, `ch1b`, `ch1c`, `b1` | 22050 |
+| 2 | 1.25 | `n2`, `b2` | 55125 |
+| 3 | 2.0 | `n3`, `b3` | 88200 |
+| 4 | 3.5 | `b4` | 154350 |
+| 5 | 4.25 | `n5` | 187425 |
+| 6 | 4.5 | `n6` | 198450 |
+| 7 | 5 | `n7`, `b5` | 220500 |
+
+Row 7's onset is written as the JSON integer `5`, the one way a JSON number
+can differ from a float, to show it is accepted and read as 5.0 seconds.
+
+### The file as trompa-align writes it
+
+trompa-align's writers (`scripts/trompa_align.py`, `scripts/trompa-align.R` in
+https://github.com/trompamusic/trompa-align) state a note on one side only in
+two ways: a score note the performance misses gets onset `-1` (the
+note-alignment file marks the missing performance note `*`, read as `-1`),
+grouped like any other onset and so sorted first; a performed note not in the
+score gets the id `trompa-align_inserted_` + its spelled pitch, `#` written
+`s`, appended after the sorted rows; the Python writer gives that id as a bare
+string. The second fixture follows that shape, eleven rows:
+
+| obs_num | obs_mean_onset (s) | xml_id | what it states |
+|---|---|---|---|
+| 1 | -1 | `n4` | score note not performed |
+| 2–8 | the seven rows above | | as above |
+| 9 | 5.5 | `n7` | `n7` played a second time |
+| 10 | 2.75 | `"trompa-align_inserted_Cs4"` (bare string) | performed note not in the score |
+| 11 | 4.75 | `trompa-align_inserted_Cs4` (in a list) | a second one of that pitch |
+
+`n4` is the tie end, which a performance never re-attacks: a natural note to
+be missing. Row 9 repeats `n7` (a repeat played against an unrepeated
+score); rows 10 and 11 share one id, as two inserted notes of one pitch do.
+trompa-align itself keeps one row per score id (the closest candidate), so
+row 9 stands for a file another tool wrote or edited; the loader keeps it as
+stated all the same.
+
+### What is asserted, and why it proves the loader
+
+* **Rows verbatim.** `rows` holds the seven dicts as the file states them, and
+  `len(loader) == 7`.
+* **One claim per listed id.** 4 + 2 + 2 + 1 + 1 + 1 + 2 = 13 claims, in row
+  order and within a row in the file's id order. A loader making one claim per
+  row would give 7; one per chord or per distinct score position would give 7
+  as well, so the count alone tells them apart.
+* **Both sides of every claim.** For each claim: the score timeline's id and
+  the event's `xml:id` as `event_a_id`; the score coordinate, a `Fraction` in
+  quarters, equal to the table above (`Fraction(1, 2)` for all four ids of
+  row 1, `Fraction(15, 2)` for row 7); the performance timeline's id and the
+  performance coordinate as the file states it, in **seconds**, a float equal
+  to the row's onset. On the samples timeline the claim still says seconds:
+  the loader does not convert, the bundle does.
+* **Through the bundle, on a samples timeline** (`DiscretePhysicalTimeline`
+  in samples with `SamplesToSeconds(44100)`; the bundle is `create_bundle`'s): `get_matchstamp_at(q)` on the
+  score gives, on the performance, the integer sample of the table for each
+  anchor quarter, with `is_interpolated` false. At quarter 15/4, halfway
+  between the anchors at 3 (88200) and 9/2 (154350), the WarpMap gives 121275,
+  with `is_interpolated` true. These values exist only if the bundle converted
+  the seconds of the claims through the timeline's C-Map: the claims never
+  name a sample.
+* **Through the bundle, on a seconds timeline**: the same queries give the
+  onsets themselves (0.5 … 5.0) and 2.75 halfway.
+* **Before the first anchor**: quarter 1/4 lies on the score but before the
+  first anchor (1/2); under the bundle's default `omit` policy the stamp holds
+  the score and its one child alone, so the performance does not resolve. The
+  child is `score:clt_2`, the movement `mdiv1` (named `I`, so it is a child) holding the
+  notes, at offset 0 over
+  the whole score: it covers 1/4, so the score's offsets carry the query onto
+  it at 1/4.
+* **Every stated row, kept** (second fixture). `rows` is the eleven dicts
+  verbatim, the bare string included. The claims are 17 = 1 + 13 + 1 + 2, in
+  row order:
+  * claim 1, a NOMATCH from the score: not synchronous, no anchor, timeline
+    a the score and b the performance, `event_a_id` `n4`, `source_coordinate`
+    `Fraction(9, 2)` quarters, the note's own score position (a loader
+    dropping the row would give 16 claims; one placing it at -1 s would give
+    an anchor);
+  * claims 2–14, the thirteen synchronous claims of the first fixture;
+  * claim 15, synchronous, `n7` at quarter `Fraction(15, 2)` and 5.5 s: the
+    repeated id gives its own claim, not a refusal and not a merge;
+  * claims 16 and 17, NOMATCH from the performance: timeline a the
+    performance and b the score, `event_a_id` `trompa-align_inserted_Cs4`
+    verbatim, `source_coordinate` 2.75 and 4.75 seconds, as floats.
+* **The kinds are logged.** One INFO record names the file and the counts,
+  14 score notes at a time of the recording, 1 not performed, 2 performed
+  notes not in the score; one WARNING names `n7` in rows 8 and 9. The exact
+  messages are asserted, so a wrong count shows.
+* **`create_bundle`** builds what users would otherwise assemble by hand: the
+  bundle is named after the file (`stated`), holds the score in group
+  `score` and the performance in group `performance`, and carries the 17
+  claims of `create_match_claims`. On a samples timeline it answers the same
+  anchors as the hand-built bundle of the first fixture (quarter 3/2 →
+  sample 55125, 15/4 → 121275 interpolated): the NOMATCH claims add no
+  anchor, so the WarpMap is unchanged by them.
+
+### Refusals
+
+Each refusal raises before anything is created; each test changes one thing
+in an otherwise valid fixture, so the refusal can only come from that change.
+
+* **An id not on the score**: a row naming `zz9` → `KeyError` naming the id
+  and its `obs_num`.
+* **No path to seconds**: a samples timeline without a C-Map, and a quarters
+  timeline without one → `ValueError`.
+* **Malformed rows** (`load`): `obs_num` not consecutive from 1 (`1, 2, 4`),
+  a missing key, an onset that is a string or a boolean, an empty `xml_id`
+  list, an empty id in a list or as a bare string, a top level that is not a
+  list → `ValueError` naming the row. None of these is a row trompa-align
+  writes.
+* **An inserted id at a negative onset** → `ValueError` naming the row: it
+  states a note on neither the score nor the recording, which no writer
+  means.
+* **A second source** → the loaders' shared single-source `ValueError`
+  (`tests/loader/README.md`, "Single-source loaders"), naming the held file:
+  one MAPS file aligns one performance. The held rows stay; after `clear()`
+  the loader reads the other file.

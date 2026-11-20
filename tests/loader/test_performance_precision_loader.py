@@ -45,7 +45,7 @@ PERFORMERS = [
     "Chopin_Rubinstein",
 ]
 
-SCORE_TL_ID = "score:clt1"
+SCORE_TL_ID = "score:clt_1"
 
 
 @pytest.fixture
@@ -200,7 +200,7 @@ def test_total_claim_counts(bundle) -> None:
 
 
 def _performer_claims(bundle, performer_key: str) -> list[MatchClaim]:
-    perf_tl_id = f"perf:{performer_key}:cpt1"
+    perf_tl_id = f"perf:{performer_key}:cpt_1"
     return [c for c in bundle.cross_group_claims if c.timeline_b_id == perf_tl_id]
 
 
@@ -296,8 +296,8 @@ def test_create_timeline_by_score_role(loader: PerformancePrecisionLoader) -> No
 def test_create_timeline_by_performer_uid(
     loader: PerformancePrecisionLoader,
 ) -> None:
-    tl = loader.create_timeline("perf:Chopin_Ashkenazy:cpt1")
-    assert tl.id == "perf:Chopin_Ashkenazy:cpt1"
+    tl = loader.create_timeline("perf:Chopin_Ashkenazy:cpt_1")
+    assert tl.id == "perf:Chopin_Ashkenazy:cpt_1"
     assert tl.name == "Chopin_Ashkenazy"
 
 

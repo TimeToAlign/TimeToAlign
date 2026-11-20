@@ -6,15 +6,15 @@ Flat module layout (no sub-packages):
   ``Duration`` and their Id-variants (``IdCoordinate``, ``IdDuration``),
   plus the paired ``CoordinateField`` / ``IdCoordinateField`` /
   ``DurationField`` / ``IdDurationField`` field wrappers.
-* :mod:`timetoalign.core.events` — pitch / harmony / Note / Measure
-  scalars and their paired Fields.
+* :mod:`timetoalign.core.events` — pitch, harmony, event, and tempo-marking
+  scalars with their paired Fields.
 * :mod:`timetoalign.core.fields` — ``DataField`` / ``SemanticField``
   hierarchy (including the raw ``NumberField`` / ``RedundantNumberField`` /
   ``DenominateNumberField`` branch), the pydantic → PyArrow translator,
   the store builder, and Parquet metadata.
 * :mod:`timetoalign.core.enums` — ``Domain``, ``TimeUnit``, ``NumberType``,
   …
-* :mod:`timetoalign.core.ids` — ``ScopedId``, ``IdGenerator``.
+* :mod:`timetoalign.core.ids` — ``ScopedId``, ``mint_id``, ``mint_ids``.
 * :mod:`timetoalign.core.protocols` — pitch, harmony, and time protocols.
 * :mod:`timetoalign.core.timestamp` — ``TimeStamp``, ``TimeIntervalStamp``.
 """
@@ -43,6 +43,13 @@ from .enums import (
 )
 from .events import (
     FIGBASS_TO_INVERSION,
+    Address,
+    Beat,
+    BeatField,
+    BeatPolicy,
+    BeatPolicyField,
+    CadenzaMeasure,
+    CadenzaMeasureField,
     DcmlHarmony,
     DcmlHarmonyField,
     DcmlStorageSchema,
@@ -50,6 +57,7 @@ from .events import (
     EnharmonicPitchClass,
     EnharmonicPitchClassField,
     EnharmonicPitchField,
+    Gap,
     GenericPitch,
     GenericPitchClass,
     GenericPitchClassField,
@@ -60,9 +68,16 @@ from .events import (
     Id,
     IdField,
     Inversion,
+    IrregularMeasure,
+    IrregularMeasureField,
     Measure,
+    MeasureConstituent,
+    MeasureConstituentField,
     MeasureField,
+    MeasureId,
+    MeasureIdAddress,
     MeasureNumber,
+    MeasureNumberAddress,
     MeasureNumberField,
     MidiEvent,
     MidiEventField,
@@ -72,6 +87,8 @@ from .events import (
     NoteField,
     PitchBasedHarmony,
     PitchBasedHarmonyField,
+    RegularMeasure,
+    RegularMeasureField,
     RomanNumeralHarmony,
     RomanNumeralHarmonyField,
     RomanNumeralSchema,
@@ -81,6 +98,12 @@ from .events import (
     SpecificPitchClass,
     SpecificPitchClassField,
     SpecificPitchField,
+    SplitIrregularMeasure,
+    SplitIrregularMeasureField,
+    SplitRegularMeasure,
+    SplitRegularMeasureField,
+    Tempo,
+    TempoField,
     WesternTertianHarmony,
     WesternTertianHarmonyField,
     WesternTertianSchema,
@@ -110,7 +133,14 @@ from .fields import (
     register_value_projector,
     resolve_source_fields,
 )
-from .ids import IdGenerator, ScopedId, TimelineIdGenerator, resolve_id, resolve_ids
+from .ids import (
+    ScopedId,
+    mint_id,
+    mint_ids,
+    resolve_id,
+    resolve_ids,
+    validate_id,
+)
 from .retrieval import (
     TABLE_FORMATS,
     TableFormat,
@@ -153,19 +183,19 @@ from .time import (
     express_as,
     express_scalar_as,
     infer_number_type,
-    is_rational_wire,
+    is_fraction_json,
     number_cell,
+    number_from_json,
+    number_to_json,
     parse_number,
     quantize_to_unit,
     rational_to_struct,
-    rational_to_wire,
     resolve_coordinate_spec,
     shift_coordinate,
     struct_to_coordinate,
     struct_to_rational,
     subtract_coordinates,
     to_canonical,
-    wire_to_rational,
 )
 from .timestamp import (
     TimeIntervalStamp,
@@ -241,18 +271,18 @@ __all__ = [
     "coordinate_to_struct",
     "derive_arrow_schema",
     "derive_arrow_struct",
-    "is_rational_wire",
+    "is_fraction_json",
     "metadata_blob_for_model",
     "metadata_blob_from_dict",
     "parquet_metadata_for_model",
     "parse_metadata_blob",
     "rational_to_struct",
-    "rational_to_wire",
+    "number_to_json",
     "register_value_projector",
     "resolve_source_fields",
     "struct_to_rational",
     "struct_to_coordinate",
-    "wire_to_rational",
+    "number_from_json",
     # Pitch scalars + paired Fields
     "EnharmonicPitch",
     "EnharmonicPitchClass",
@@ -289,10 +319,33 @@ __all__ = [
     # Event scalars + paired Fields
     "Id",
     "IdField",
+    "Address",
+    "Beat",
+    "BeatField",
+    "BeatPolicy",
+    "BeatPolicyField",
+    "CadenzaMeasure",
+    "CadenzaMeasureField",
+    "Gap",
+    "IrregularMeasure",
+    "IrregularMeasureField",
     "Measure",
+    "MeasureConstituent",
+    "MeasureConstituentField",
     "MeasureField",
+    "MeasureId",
+    "MeasureIdAddress",
     "MeasureNumber",
+    "MeasureNumberAddress",
     "MeasureNumberField",
+    "RegularMeasure",
+    "RegularMeasureField",
+    "SplitIrregularMeasure",
+    "SplitIrregularMeasureField",
+    "SplitRegularMeasure",
+    "SplitRegularMeasureField",
+    "Tempo",
+    "TempoField",
     "MidiEvent",
     "MidiEventField",
     "Note",
@@ -311,8 +364,9 @@ __all__ = [
     "reject_dataframe_options",
     # IDs
     "ScopedId",
-    "IdGenerator",
-    "TimelineIdGenerator",
+    "mint_id",
+    "mint_ids",
+    "validate_id",
     "resolve_id",
     "resolve_ids",
     "DenominateNumber",

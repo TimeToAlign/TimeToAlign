@@ -56,7 +56,6 @@ alignment.MatchLine.from_claims(
     source_timeline_id,
     *,
     groups=None,
-    timeline_to_group=None,
     timeline_ids=None,
     id_pattern=None,
     include_domains=None,
@@ -72,16 +71,15 @@ coordinate on the source timeline.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name               | Type                                                                                                  | Description                                                                                      | Default    |
-|--------------------|-------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------|------------|
-| claims             | [list](`list`)\[[MatchClaim](`timetoalign.alignment.claims.MatchClaim`)\]                             | List of MatchClaims to resolve.                                                                  | _required_ |
-| source_timeline_id | [str](`str`)                                                                                          | The timeline whose coordinates define the ordering.                                              | _required_ |
-| groups             | [dict](`dict`)\[[str](`str`), [TimelineGroup](`timetoalign.timelines.groups.TimelineGroup`)\] \| None | Dict of group_id -> TimelineGroup for group extension. If None, no group extension is performed. | `None`     |
-| timeline_to_group  | [dict](`dict`)\[[str](`str`), [str](`str`)\] \| None                                                  | Dict of timeline_id -> group_id.  Required if ``groups`` is provided.                            | `None`     |
-| timeline_ids       | [set](`set`)\[[str](`str`)\] \| None                                                                  | Only extend to these timeline IDs.                                                               | `None`     |
-| id_pattern         | [str](`str`) \| None                                                                                  | Regex filter for timeline IDs.                                                                   | `None`     |
-| include_domains    | [set](`set`)\[[Domain](`timetoalign.core.enums.Domain`)\] \| None                                     | Only extend to timelines in these domains.                                                       | `None`     |
-| include_units      | [set](`set`)\[[TimeUnit](`timetoalign.core.enums.TimeUnit`)\] \| None                                 | Only extend to timelines with these units.                                                       | `None`     |
+| Name               | Type                                                                                                  | Description                                                                                                                                | Default    |
+|--------------------|-------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| claims             | [list](`list`)\[[MatchClaim](`timetoalign.alignment.claims.MatchClaim`)\]                             | List of MatchClaims to resolve.                                                                                                            | _required_ |
+| source_timeline_id | [str](`str`)                                                                                          | The timeline whose coordinates define the ordering.                                                                                        | _required_ |
+| groups             | [dict](`dict`)\[[str](`str`), [TimelineGroup](`timetoalign.timelines.groups.TimelineGroup`)\] \| None | Dict of group_id -> TimelineGroup for group extension (see :meth:`MatchGraph.extend_to_groups`). If None, no group extension is performed. | `None`     |
+| timeline_ids       | [set](`set`)\[[str](`str`)\] \| None                                                                  | Only extend to these timeline IDs.                                                                                                         | `None`     |
+| id_pattern         | [str](`str`) \| None                                                                                  | Regex filter for timeline IDs.                                                                                                             | `None`     |
+| include_domains    | [set](`set`)\[[Domain](`timetoalign.core.enums.Domain`)\] \| None                                     | Only extend to timelines in these domains.                                                                                                 | `None`     |
+| include_units      | [set](`set`)\[[TimeUnit](`timetoalign.core.enums.TimeUnit`)\] \| None                                 | Only extend to timelines with these units.                                                                                                 | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 

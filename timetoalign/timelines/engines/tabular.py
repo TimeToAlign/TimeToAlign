@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any
 
@@ -47,6 +47,7 @@ from timetoalign.maps import ConversionMap
 
 if TYPE_CHECKING:
     from timetoalign.core.enums import ColumnNaming
+    from timetoalign.timelines.base import Timeline
 
 
 def _empty_coordinates() -> pa.StructArray:
@@ -131,9 +132,8 @@ class TabularExportMixin:
         access to all equivalent coordinates across children and C-Map units.
         The axis is written in this timeline's declared ``number_type``, so a
         query of ``9.5`` on a fraction-canonical timeline gives an axis of
-        ``Fraction(19, 2)``.
-
-        Uses InterpolationMaps for O(log n) coordinate conversion.
+        ``Fraction(19, 2)``. Descendants are reached by exact offset
+        arithmetic.
 
         Args:
             at: Coordinate value. Can be:
@@ -276,12 +276,12 @@ class TabularExportMixin:
         Examples:
             >>> from timetoalign.timelines import Timeline
             >>> parent = Timeline(length=20, unit=TimeUnit.seconds, uid="timeline:1")
-            >>> child = Timeline(length=15, unit=TimeUnit.seconds, uid="child:1")
+            >>> child = Timeline(length=15, unit=TimeUnit.seconds, uid="cpt_2")
             >>> parent.add_child(child, offset=0)
             >>> interval = parent.get_interval_stamp(0.0, 10.0)
             >>> interval.duration
             Duration(10.0, seconds)
-            >>> interval.get_interval("child:1")
+            >>> interval.get_interval("cpt_2")
             Interval(start=Coordinate(0.0, seconds), end=Coordinate(10.0, seconds))
         """
         start_stamp = self.get_timestamp_at(
@@ -337,17 +337,17 @@ class TabularExportMixin:
         Examples:
             >>> from timetoalign.timelines import Timeline
             >>> parent = Timeline(length=20, unit=TimeUnit.seconds, uid="timeline:1")
-            >>> child = Timeline(length=10, unit=TimeUnit.seconds, uid="clt1")
+            >>> child = Timeline(length=10, unit=TimeUnit.seconds, uid="clt_1")
             >>> parent.add_child(child, offset=5)
             >>> parent.add_events([{"event_type": "Note", "instant": 5.0}])
             >>> child.add_events(
-            ...     [{"id": "clt1:note:000001", "event_type": "Note", "start": 0.0, "end": 2.5}]
+            ...     [{"id": "clt_1:note:000001", "event_type": "Note", "start": 0.0, "end": 2.5}]
             ... )
             >>> ts = parent.get_timestamp_for("note:000001")
             >>> ts.axis  # For instant events
             IdCoordinate(5.0, seconds, 'timeline:1')
 
-            >>> ts = parent.get_timestamp_for("clt1:note:000001")
+            >>> ts = parent.get_timestamp_for("clt_1:note:000001")
             >>> ts.start.axis  # For interval events
             IdCoordinate(5.0, seconds, 'timeline:1')
             >>> ts.end.axis
@@ -413,12 +413,12 @@ class TabularExportMixin:
         Examples:
             >>> from timetoalign.core import TimeUnit
             >>> from timetoalign.timelines import Timeline
-            >>> timeline = Timeline(length=60, unit=TimeUnit.seconds, uid="tl:1")
+            >>> timeline = Timeline(length=60, unit=TimeUnit.seconds, uid="cpt_1")
             >>> timeline.add_events(
             ...     [{"id": "beat:1", "instant": 0.0}, {"id": "beat:2", "instant": 55.0}]
             ... )
             >>> stamps = timeline.get_timestamps_for(["beat:1", "beat:2"])
-            >>> [stamp.get_coordinate_for("tl:1", format="float") for stamp in stamps]
+            >>> [stamp.get_coordinate_for("cpt_1", format="float") for stamp in stamps]
             [0.0, 55.0]
 
         See Also:
@@ -580,6 +580,8 @@ class TabularExportMixin:
     ) -> pa.StructArray:
         """Collect timeline boundary coordinates (start=0, end=length).
 
+        A timeline of unknown length contributes its start only.
+
         Recursively collects boundary coordinates from this timeline
         and all children, applying cumulative offsets.
 
@@ -595,8 +597,11 @@ class TabularExportMixin:
         declared = self._number_type if number_type is None else number_type
 
         # This timeline's boundaries, computed in Python so an exact length on
-        # an exact offset stays exact.
-        arrays = [_coordinate_column([offset, offset + self._length.value], declared)]
+        # an exact offset stays exact. An unknown length has no end boundary.
+        bounds = (
+            [offset] if self._length is None else [offset, offset + self._length.value]
+        )
+        arrays = [_coordinate_column(bounds, declared)]
 
         # Recurse into children
         if recursion_limit is None or recursion_limit > 0:
@@ -617,49 +622,96 @@ class TabularExportMixin:
 
     def _compute_local_coordinates(
         self,
-        root_coords: pa.StructArray,
-        offset: int | float | Fraction = 0,
+        parent_coords: pa.StructArray,
+        offset: int | float | Fraction | None = None,
+        *,
+        number_type: NumberType | None = None,
     ) -> pa.StructArray:
-        """Compute local coordinates from root coordinates.
+        """Carry a column of positions one edge down, onto this timeline.
 
-        Offset subtraction with bounds checking. Coordinates outside
-        ``[0, length]`` are replaced with null.
+        A row keeps its position where this timeline holds it
+        (:meth:`_holds_column`, the rule of ``_holds_position`` on a column)
+        and is null elsewhere: outside ``[0, length)``, at its end where a
+        sibling starts there, and wherever the parent's own column is null,
+        so a position reaches a descendant only through every timeline on
+        the way, as it does in the timeline's stamps. A timeline of unknown
+        length is bounded below only.
 
-        The subtraction runs in this timeline's declared representation, so a
-        child of an exact parent reports exact local positions; only the
-        bounds comparison drops to the float member, where a comparison is all
-        that is asked of it.
+        On an exact timeline the rows are decided on the parent's positions,
+        exactly, and only the rows held are shifted, since the exact lane of
+        the arithmetic reads rows in Python and a child spanning a tenth of
+        the axis must not pay for the whole of it. On a float or int
+        timeline the whole column is shifted as one kernel and decided after,
+        as a single position is.
 
         Args:
-            root_coords: Root-relative coordinate structs.
-            offset: This timeline's offset from root.
+            parent_coords: Positions on the parent (on this timeline itself
+                for its own column), null where the parent does not hold one.
+            offset: This timeline's offset on its parent; None for its own
+                column, which holds ``[0, length]`` with its end, whatever
+                its siblings do, since the positions were asked of it.
+            number_type: How *parent_coords* declare their numbers; by
+                default as this timeline declares its own.
 
         Returns:
-            Local coordinate structs, null for out-of-bounds.
+            The local coordinate structs, null where not held. They declare
+            their numbers as *parent_coords* do at offset 0 or None (the
+            cells are reused), else as this timeline does.
         """
-        if len(root_coords) == 0:
+        if number_type is None:
+            number_type = self._number_type
+        if len(parent_coords) == 0:
             return _empty_coordinates()
 
-        # Bound first, on the float member. The length scalar must reach the
-        # kernel as a float: on a quarters/beats axis its value is a Fraction,
-        # which the PyArrow compute kernel rejects.
-        shifted = pc.subtract(root_coords.field("value"), float(offset))
-        within = pc.and_(
-            pc.greater_equal(shifted, 0.0),
-            pc.less_equal(shifted, float(self._length.value)),
+        # At offset zero the local coordinate IS the parent's, so the cells
+        # are reused rather than recomputed.
+        if offset is None or offset == 0:
+            within = self._holds_column(
+                parent_coords, number_type, end_held=True if offset is None else None
+            )
+            return _null_where(parent_coords, pc.invert(within))
+
+        if self._number_type is NumberType.fraction:
+            within = self._holds_column(parent_coords, number_type, start=offset)
+            kept = pc.filter(parent_coords, within)
+            local = combine_number_columns(kept, offset, "subtract", self._number_type)
+            return pc.take(local, _positions_within(within))
+
+        shifted = combine_number_columns(
+            parent_coords, offset, "subtract", self._number_type
         )
+        within = self._holds_column(shifted, self._number_type)
+        return _null_where(shifted, pc.invert(within))
 
-        # At offset zero the local coordinate IS the root coordinate, so the
-        # cells are reused rather than recomputed.
-        if offset == 0:
-            return _null_where(root_coords, pc.invert(within))
+    def _descendant_local_coordinates(
+        self,
+        local: pa.StructArray,
+        number_type: NumberType,
+        recursion_limit: int | None,
+    ) -> Iterator[tuple[Timeline, pa.StructArray]]:
+        """Yield every descendant with its local column, carried edge by edge.
 
-        # Only the rows this timeline actually covers are shifted. The exact
-        # lane of the arithmetic reads rows in Python, so a child spanning a
-        # tenth of the axis must not pay for the whole of it.
-        kept = pc.filter(root_coords, within)
-        local = combine_number_columns(kept, offset, "subtract", self._number_type)
-        return pc.take(local, _positions_within(within))
+        Children in offset order, each followed by its own descendants (the
+        ``"sorted"`` order of :meth:`iter_children`); each column is derived
+        from its parent's, so the path rule of :meth:`_compute_local_coordinates`
+        holds at every depth.
+        """
+        if recursion_limit is not None and recursion_limit <= 0:
+            return
+        next_limit = None if recursion_limit is None else recursion_limit - 1
+        for child_id, child in sorted(
+            self._children.items(),
+            key=lambda item: self._child_offsets[item[0]].value,
+        ):
+            offset = self._child_offsets[child_id].value
+            child_local = child._compute_local_coordinates(
+                local, offset, number_type=number_type
+            )
+            child_type = number_type if offset == 0 else child._number_type
+            yield child, child_local
+            yield from child._descendant_local_coordinates(
+                child_local, child_type, next_limit
+            )
 
     def _resolve_conversion_maps(
         self, spec: ConversionMapsSpec
@@ -765,31 +817,28 @@ class TabularExportMixin:
         Returns:
             PyArrow table with timestamp data and field-level unit metadata.
         """
+        own = self._compute_local_coordinates(axis)
         columns: list[TimestampColumn] = [
             TimestampColumn(
                 name=self._id,
-                values=self._compute_local_coordinates(axis, offset=0),
+                values=own,
                 unit=self._unit,
                 number_type=self._number_type,
                 timeline_id=self._id,
             ),
         ]
-
-        for child_offset, child in self.iter_children(
-            recursion_limit=recursion_limit,
-            include_self=False,
-        ):
-            columns.append(
-                TimestampColumn(
-                    name=child.id,
-                    values=child._compute_local_coordinates(
-                        axis, offset=child_offset.value
-                    ),
-                    unit=child.unit,
-                    number_type=child.number_type,
-                    timeline_id=child.id,
-                )
+        columns.extend(
+            TimestampColumn(
+                name=child.id,
+                values=values,
+                unit=child.unit,
+                number_type=child.number_type,
+                timeline_id=child.id,
             )
+            for child, values in self._descendant_local_coordinates(
+                own, self._number_type, recursion_limit
+            )
+        )
 
         # C-Maps work on NumPy arrays; we convert PyArrow <-> NumPy at the boundary.
         if conversion_maps:
@@ -960,27 +1009,27 @@ class TabularExportMixin:
         Examples:
             >>> from timetoalign.core import IdCoordinate, TimeUnit
             >>> from timetoalign.timelines import Timeline
-            >>> parent = Timeline(length=60, unit=TimeUnit.seconds, uid="tl:1")
-            >>> child = Timeline(length=10, unit=TimeUnit.seconds, uid="child:1")
+            >>> parent = Timeline(length=60, unit=TimeUnit.seconds, uid="cpt_1")
+            >>> child = Timeline(length=10, unit=TimeUnit.seconds, uid="cpt_2")
             >>> parent.add_child(child, offset=50)
             >>> parent.add_events([{"id": "beat:1", "instant": 0.0}])
             >>> parent.get_timestamp_table().column_names
-            ['tl:1', 'child:1']
+            ['cpt_1', 'cpt_2']
 
             Every column names the timeline it belongs to; metadata lives in
             the versioned blob:
 
             >>> from timetoalign.core.fields import field_metadata
-            >>> field_metadata(parent.get_timestamp_table().schema.field("tl:1"))["unit"]
+            >>> field_metadata(parent.get_timestamp_table().schema.field("cpt_1"))["unit"]
             'seconds'
 
             A child position is placed on the parent axis automatically:
 
-            >>> coords = [IdCoordinate(v, TimeUnit.seconds, "child:1") for v in (0.0, 5.0)]
+            >>> coords = [IdCoordinate(v, TimeUnit.seconds, "cpt_2") for v in (0.0, 5.0)]
             >>> parent.get_timestamp_table(coords, format="dataframe", units=False)
-               tl:1  child:1
-            0  50.0      0.0
-            1  55.0      5.0
+               cpt_1  cpt_2
+            0   50.0    0.0
+            1   55.0    5.0
         """
         validate_table_format(format)
         reject_dataframe_options(
@@ -1091,11 +1140,11 @@ class TabularExportMixin:
         Examples:
             >>> from timetoalign.core import TimeUnit
             >>> from timetoalign.timelines import Timeline
-            >>> parent = Timeline(length=60, unit=TimeUnit.seconds, uid="tl:1")
-            >>> child = Timeline(length=10, unit=TimeUnit.seconds, uid="child:1")
+            >>> parent = Timeline(length=60, unit=TimeUnit.seconds, uid="cpt_1")
+            >>> child = Timeline(length=10, unit=TimeUnit.seconds, uid="cpt_2")
             >>> parent.add_child(child, offset=50)
             >>> parent.get_boundary_table().column_names
-            ['tl:1', 'child:1']
+            ['cpt_1', 'cpt_2']
 
             Cells are coordinate structs, so read them through the frame lane
             rather than ``to_pandas()`` — the latter hands back one dict per
@@ -1107,10 +1156,10 @@ class TabularExportMixin:
             ...     format="dataframe",
             ...     units=False,
             ... )
-               tl:1  child:1
-            0   0.0      NaN
-            1  50.0      0.0
-            2  60.0     10.0
+               cpt_1  cpt_2
+            0    0.0    NaN
+            1   50.0    0.0
+            2   60.0   10.0
         """
         table = self.get_timestamp_table(
             self._collect_boundary_coordinates(recursion_limit=recursion_limit),
@@ -1164,7 +1213,7 @@ class TabularExportMixin:
             >>> from pathlib import Path
             >>> from timetoalign.core import TimeUnit
             >>> from timetoalign.timelines import Timeline
-            >>> timeline = Timeline(length=60, unit=TimeUnit.seconds, uid="tl:1")
+            >>> timeline = Timeline(length=60, unit=TimeUnit.seconds, uid="cpt_1")
             >>> timeline.add_events(
             ...     [{"id": "beat:1", "instant": 0.0}, {"id": "beat:2", "instant": 55.0}]
             ... )

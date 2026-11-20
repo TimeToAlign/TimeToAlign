@@ -25,9 +25,8 @@ from inspect import Parameter, signature
 
 import pytest
 
-from timetoalign.core import Coordinate, NumberType, TimeUnit, rational_to_wire
+from timetoalign.core import Coordinate, NumberType, TimeUnit, number_to_json
 from timetoalign.timelines import (
-    BeatGrid,
     ContinuousGraphicalTimeline,
     ContinuousLogicalTimeline,
     ContinuousPhysicalTimeline,
@@ -78,12 +77,16 @@ class TestChildValidation:
             parent.validate_child(child, offset=10.0)
 
     def test_validate_child_rejects_negative_offset(self):
-        """Negative offsets are rejected."""
+        """A negative offset is refused as not supported yet."""
         parent = Timeline(length=20.0)
-        child = Timeline(length=5.0)
+        child = Timeline(length=5.0, uid="neg")
 
-        with pytest.raises(ValueError, match="negative"):
+        with pytest.raises(ValueError) as error:
             parent.validate_child(child, offset=-1.0)
+
+        assert str(error.value) == (
+            "A negative child offset is not supported yet: child 'neg' has offset -1.0."
+        )
 
 
 # endregion
@@ -201,8 +204,7 @@ class TestAppendChild:
             parent.append_child(child, uid="replacement_id", name="Replacement")
 
         assert str(error.value) == (
-            "Cannot append child on locked timeline 'locked_parent'. "
-            "Timelines are locked when embedded as children."
+            "Cannot append child on locked timeline 'locked_parent': its length is fixed."
         )
         assert child.id == "original_id"
         assert child.name == "Original"
@@ -240,8 +242,7 @@ class TestAppendChild:
             segment_line.append_segment(ContinuousLogicalTimeline(length=4))
 
         assert str(error.value) == (
-            "Cannot append child on locked timeline 'embedded_line'. "
-            "Timelines are locked when embedded as children."
+            "Cannot append child on locked timeline 'embedded_line': its length is fixed."
         )
 
 
@@ -263,8 +264,8 @@ class TestAddChildDurationExactness:
         )
         parent.add_child(child, offset=Fraction(0, 1))
 
-        duration = parent.to_dict(events=True)["events"][0]["duration"]
-        assert duration == rational_to_wire(Fraction(2, 1))
+        duration = parent.to_dict(events=True)["timelines"][0]["events"][0]["duration"]
+        assert duration == number_to_json(Fraction(2, 1))
 
     def test_non_integral_fraction_length_duration_is_exact(self):
         """A Fraction(7, 3) child length round-trips as an exact ratio."""
@@ -281,8 +282,8 @@ class TestAddChildDurationExactness:
         )
         parent.add_child(child, offset=Fraction(0, 1))
 
-        duration = parent.to_dict(events=True)["events"][0]["duration"]
-        assert duration == rational_to_wire(Fraction(7, 3))
+        duration = parent.to_dict(events=True)["timelines"][0]["events"][0]["duration"]
+        assert duration == number_to_json(Fraction(7, 3))
 
 
 class TestCreateChild:
@@ -324,25 +325,6 @@ class TestCreateChild:
 
         assert child.length.value == 2.0
         assert parent.get_child_offset("coordinate_child").value == 3.0
-
-    def test_beatgrid_create_child_returns_plain_logical_timeline(self) -> None:
-        """BeatGrid children contain logical material rather than another grid."""
-        grid = BeatGrid(length=Fraction(16, 1))
-
-        child = grid.create_child(length=Fraction(4, 1), uid="measure")
-
-        assert type(child) is ContinuousLogicalTimeline
-        assert child.length.value == Fraction(4, 1)
-        assert grid.get_child_offset("measure").value == Fraction(0, 1)
-
-    def test_beatgrid_get_slice_returns_plain_logical_timeline(self) -> None:
-        """BeatGrid slicing succeeds without invoking its specialized constructor."""
-        grid = BeatGrid(length=Fraction(16, 1))
-
-        sliced = grid.get_slice(Fraction(4, 1), Fraction(8, 1))
-
-        assert type(sliced) is ContinuousLogicalTimeline
-        assert sliced.length.value == Fraction(4, 1)
 
 
 class TestCreateChildrenFromBoundaries:
@@ -739,12 +721,12 @@ class TestAddChildWithConversionMap:
         parent.add_child(child, offset=0, use_conversion_map=True)
 
         assert parent.n_children == 1
-        converted = parent.get_child("notes[samples]")
+        converted = parent.get_child("dpt_1")
         assert converted.unit == TimeUnit.samples
         assert converted.length.value == 441000.0
 
     def test_converted_child_has_correct_id_and_name(self):
-        """Converted child ID is '{original}[{parent_unit}]'."""
+        """A converted child's id is minted; its name links to the original."""
         from timetoalign.maps.convenience import SamplesToSeconds
 
         parent = Timeline(length=441000, unit=TimeUnit.samples, uid="audio")
@@ -756,9 +738,9 @@ class TestAddChildWithConversionMap:
 
         parent.add_child(child, offset=0, use_conversion_map=True)
 
-        converted = parent.get_child("my_notes[samples]")
-        assert converted.id == "my_notes[samples]"
-        assert "samples" in converted.name
+        converted = parent.get_child("dpt_1")
+        assert converted.id == "dpt_1"
+        assert converted.name == "my_notes [samples]"
 
     def test_converted_child_events_have_correct_coordinates(self):
         """Event coordinates are converted from child unit to parent unit."""
@@ -778,7 +760,7 @@ class TestAddChildWithConversionMap:
 
         parent.add_child(child, offset=0, use_conversion_map=True)
 
-        converted = parent.get_child("notes[samples]")
+        converted = parent.get_child("dpt_1")
         events = list(converted._events)
         assert len(events) == 1
         event = events[0]
@@ -825,7 +807,8 @@ class TestAddChildWithConversionMap:
         parent.add_child(child, offset=0, use_conversion_map="seconds")
 
         assert parent.n_children == 1
-        assert "notes[samples]" in parent
+        assert "dpt_1" in parent
+        assert parent.get_child("dpt_1").name == "notes [samples]"
 
     def test_use_conversion_map_by_cmap_object(self):
         """use_conversion_map accepts a ConversionMap object directly."""
@@ -910,7 +893,7 @@ class TestAddChildWithConversionMap:
 
         parent.add_child(child, offset=0, use_conversion_map=True)
 
-        converted = parent.get_child("notes[samples]")
+        converted = parent.get_child("dpt_1")
         assert converted.is_locked
         assert not child.is_locked
 

@@ -352,9 +352,10 @@ class EventStore(ABC):
                 are empty.
 
         Examples:
-            >>> # Default: each data as a child
+            >>> # Default: each data as a child, named after it, its id minted
             >>> timeline = store.create_timeline(uid="my_score")
-            >>> notes = timeline.get_child("notes")
+            >>> children = {timeline.get_child(i).name: i for i in timeline.list_children()}
+            >>> notes = timeline.get_child(children["notes"])
 
             >>> # Filtered: only Note events, exclude annotations
             >>> timeline = store.create_timeline(

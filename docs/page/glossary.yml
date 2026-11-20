@@ -25,9 +25,40 @@ AlignmentMatrix: |
   score-to-performance correspondence. Read by ListenHereLoader, with the
   complete pairwise claim set held in a MatchClaimField.
 
+BeatGrid: |
+  An ordered set of BeatGridSegments and the beats they generate on a seconds
+  axis. Each segment states one stretch of a recording — an anchor instant, a
+  tempo, a BeatPolicy, and which beat of a bar the anchor is — and generates
+  beats without end; the grid orders the segments, bounds each by its
+  successor's start and the last by its extent, and labels the resulting beats
+  with measure and beat numbers. A BeatGrid is not a Timeline and stores
+  nothing per beat.
+
+BeatPolicy: |
+  How one bar is counted in beats: a grouping cycle over one counted note
+  value. A 4/4 bar is four beats of a quarter, a compound 6/8 bar two beats of
+  three eighths, an uneven (3+2+3)/8 bar three beats of unequal length. Beat
+  lengths are derived from the grouping and the division, never stored. One
+  signature admits more than one counting: a BeatGrid's lattice reads 6/8 as
+  six beats of an eighth, because its beat-in-bar index counts the notated
+  value rather than the felt pulse.
+
 Break: |
   A control event that voids contiguity at its Instant. TimeIntervals cannot span
   a Break, and Breaks cannot be inserted into existing TimeIntervals.
+
+Catalogue: |
+  Data shipped with the TimeToShare package that guides the writing of
+  statements and that tools read to offer properties and values and to print
+  pairs in words: the prefixes of the vocabularies its patterns use, from
+  which a written manifest's inline @context takes those its statements use;
+  aliases, namespaces read as equal; the identifier systems (Wikidata,
+  MusicBrainz, the GND, VIAF, MeLODy with LRMoo, IMSLP and others, and the
+  fallback vocabularies); the verbs, relations in words (is_a, performed_by,
+  part_of, ...) each with a pattern per system; and the types of thing a
+  subject or value is. The validators never consult it. add_verb() states a
+  verb in one system's vocabulary, and get_rectangles() gathers the pairs it
+  reads as one verb about one thing.
 
 ChainMap: |
   A MultiMap that applies multiple ConversionMaps in sequence, creating a conversion
@@ -36,7 +67,11 @@ ChainMap: |
 Child: |
   A timeline nested within a parent, sharing its measuring unit but defining
   its own origin. Coordinate transfer between parent and child uses exact offset
-  arithmetic, applied recursively. Children are locked upon insertion.
+  arithmetic, applied recursively. add_child() locks a child by default; an
+  unlocked child may grow, contained by its parent like any content. A child
+  holds its parent's positions from its start up to its end, and its end only
+  where no sibling starts there; a nested timeline is reached only through
+  parents that all hold the position.
 
 ClaimType: |
   The semantic kind of a MatchClaim, derived from its structure rather than
@@ -62,6 +97,14 @@ Commensurability: |
 
 Commensurable: |
   See Commensurability.
+
+Complete form: |
+  The form in which to_dict(minimal=False) writes a TimeToShare manifest:
+  every key the format defines is written, those holding their default value
+  included (null, {}, []). A key whose default is its absence, such as a
+  manifest's id or a root timeline's offset, is written only when it has a
+  value. The complete and the minimal form of one object read back to equal
+  objects, and each writes back to itself.
 
 ConcatenationMap: |
   A MultiMap combining bounded ConversionMaps such that each coordinate region is
@@ -111,13 +154,6 @@ FlowMap: |
   Timeline.create_flow_map(intervals) resolves region names against the
   timeline's own Regions, attaches the FlowMap, and returns it.
 
-GroupTimestamp: |
-  A cross-section through a TimelineGroup at a given coordinate. Contains
-  one coordinate per timeline in the group plus (optionally) C-map conversion
-  values. A MatchStamp is the union of GroupTimestamps from each participating
-  group. Produced by TimelineGroup.get_timestamp_at(). Exported from the
-  package root as timetoalign.GroupTimestamp.
-
 DictStore: |
   A generic EventStore subclass holding a dict[str, EventData] with arbitrary
   keys. Used internally by AlignmentLoaders to store one EventData table per
@@ -133,6 +169,25 @@ Domain: |
   One of three temporal categories: Graphical (visual/spatial), Logical
   (symbolic/musical), or Physical (audio/sound). Each domain has both
   discrete and continuous timeline variants.
+
+element id: |
+  The id that identifies an element of a manifest: the manifest's own, a
+  timeline (root or descendant), TimelineGroup, MeasureMap, ConversionMap at
+  any nesting depth, Region, Break, Jump or Marker. It is unique across the
+  whole manifest and every kind, so the id alone names the element. An id is
+  whatever was given and is kept verbatim: any non-empty string without a
+  control character; spaces, colons, slashes and URIs are allowed. Only an
+  element given no id gets a minted one, {prefix}_{N} with N the smallest
+  positive integer the manifest does not yet hold. The prefix names the kind:
+  clt, dlt, cpt, dpt, cgt or dgt for a timeline (continuous or discrete,
+  logical, physical or graphical), group for a group, measuremap for a
+  MeasureMap, cmap, lmap, tmap or pmap for a conversion map, region for a
+  Region, and flow_marker (a Break), jump_from (a Jump) or jump_to (a
+  Marker); a loader role leads it (score:clt_1). When trees are
+  joined into a group or bundle, a minted id that collides is re-minted and a
+  given id that collides raises, for every kind of element. The id
+  identifies, the name displays: a name may be absent or repeat, and an id is
+  never derived from it.
 
 EndAnchor: "The second AlignmentAnchor of a synchronous interval MatchClaim, derived from the end coordinates."
 
@@ -186,21 +241,32 @@ InverseMap: "The reverse transformation of a bijective ConversionMap."
 Jump: |
   A control event with JumpFrom and JumpTo Instants. When active, makes events
   at JumpTo contiguous with those ending at JumpFrom (e.g., repeats, dal segno).
+  Its target is the element id of a Marker of the same timeline (a segno, a
+  coda), or None when it lands on no marker (to the start, a plain repeat);
+  JumpTo carries the destination coordinate either way.
 
 JumpFrom: "The originating Instant of a Jump control event."
 
 JumpTo: "The destination Instant of a Jump control event."
 
 Length: |
-  The distance between a timeline's origin and its last Instant. A locked
-  timeline cannot extend its length.
+  The distance between a timeline's origin and its last Instant, or None when
+  it is not known (see Unknown length). A locked timeline cannot extend its
+  length.
 
 Locked: |
   A timeline state that fixes its coordinate axis: no Instants may be added
   after the last time-point, so its length cannot change. Locking governs the
   coordinate axis only — non-structural annotations such as Regions may still be
-  added to a locked timeline. Child timelines are automatically locked when
-  embedded in a parent.
+  added to a locked timeline. A timeline is locked with locked=True, when
+  add_child() embeds it with its default locked=True, or after construction
+  with lock(); a child read from a manifest keeps the manifest's locked. A
+  lock cannot be lifted. A locked timeline's length may still be unknown.
+
+Marker: |
+  A named position in a timeline's flow control that a Jump can target, such
+  as a segno or a coda sign. A Marker carries an element id, an optional
+  name, and a coordinate; a Jump refers to it by its id, never by its name.
 
 MatchfileLoader: |
   Loader for Vienna Match (.match) alignment files. Uses the standard two-step
@@ -217,18 +283,29 @@ MatchClaim: |
   commitment). Always knows which pair of timelines it connects. Four cases:
   (a) event-to-event, (b) projection, (c) NOMATCH, (d) implicit (from group
   extension). Held individually, or columnar at scale in a MatchClaimField.
+  Its id is given or minted: a claim given none mints claim_N, N the smallest
+  number free in the scope that holds it (a MatchClaimField or an
+  AlignmentBundle), and id_minted records which. Joining a scope, a minted id
+  already held there is minted again and a given one is refused.
 
 MatchClaimField: |
   A columnar, PyArrow-backed store holding a whole set of synchronous-instant
-  pairwise MatchClaims as Arrow columns (the two timeline ids dictionary-encoded,
-  each coordinate as a struct of value, numerator, denominator and unit) rather
-  than as one frozen MatchClaim object per claim. Storing the exact ratio beside
+  pairwise MatchClaims as Arrow columns, one per property of a MatchClaim (the
+  two timeline ids as strings, the anchors, the flags, the metadata, the event
+  ids and names, the source coordinate, id and id_minted; each coordinate a
+  struct of value, numerator, denominator and unit), rather than as one frozen
+  MatchClaim object per claim. Storing the exact ratio beside
   the float mirror is what lets a claim's coordinate come back in its axis's
   declared number type instead of being flattened on the way through the column. Individual MatchClaims are materialised on demand when a row is indexed
   or iterated. Built vectorized via from_columns(), it is the scalable backing
   for dense alignment matrices, where the complete pairwise topology of a whole
   work runs to roughly a million claims. Shared provenance is held once at field
-  level, never per row.
+  level; only claims whose metadata differ carry it per row. The table property
+  gives the field as an Arrow table, the shared provenance in its schema
+  metadata under the key timetoalign:match_metadata, and from_table() reads it
+  back unchanged, from Parquet too. to_dict() renders the same table as
+  {"metadata": …, "rows": […]}, one mapping per claim keyed by the columns, and
+  from_dict() reads it back.
 
 MatchGraph: |
   An auxiliary structure formed by extending MatchClaims through shared
@@ -253,6 +330,15 @@ MatchStamp: |
   present_timelines lists available timelines, and is_interpolated identifies
   interpolation fallback.
 
+MeasureConstituent: |
+  A measure of a measure map that is only part of its nominal measure: an
+  anacrusis, or one constituent of a split measure. It carries
+  offset_within_measure, the strictly positive quarter-note position at which
+  it begins inside the nominal measure. A measure is a constituent exactly when
+  that offset is stated and non-zero; a shared measure number never marks a
+  split measure. MeasureMapLoader reads a first row numbered 0 that is shorter
+  than nominal as an anacrusis at offset nominal minus actual length.
+
 MetricMap: |
   A table-based ConversionMap from a quarter position to its measure count,
   built from explicit measure-boundary anchors rather than a uniform measure
@@ -265,7 +351,19 @@ MetricalPositionMap: |
   A CombinationMap pairing a MetricMap with a beat-in-measure map to return a
   metrical position {mc, beat} from a quarter coordinate. Adds a reverse lookup
   quarters_at(mc, beat) (metrical position → quarters) and mn_at(quarters)
-  (quarters → measure-number label).
+  (quarters → measure-number label). A TimeToShare manifest writes it as a
+  MeasureBeatMap over the measure map its meter map describes, each measure's
+  count standing as its number.
+
+Minimal form: |
+  The form in which every to_dict() writes a TimeToShare manifest by default
+  (to_dict(minimal=False) writes the complete form): every key holding its
+  default value is left out, except a timeline's length, which both forms
+  write. Readers supply every default left out, so a minimal manifest can be
+  written by hand; the smallest names the version and one timeline with its
+  id, unit and length. to_file() writes a manifest file in the form it was
+  read in, and in the minimal form and canonical YAML for an object not read
+  from a file.
 
 MpmLoader: |
   Loader for an MPM-Toolbox project: a sibling .msm score, .mpm modelled
@@ -319,9 +417,29 @@ Parent: |
   its children must share the same measuring unit. Coordinate transfer uses
   exact offset arithmetic.
 
+Provenance entry: |
+  The annotation of one statement in the provenance beside an element's
+  statements (or inside a value node, for its own pairs). It names the pair
+  again by property and value and gives its status: confirmed (the subject
+  states the pair), proposed (a candidate awaiting a decision) or rejected (a
+  candidate examined and refused, so that no tool proposes it again). It may
+  state who stated it, the day, how (manual, reconciled, imported, inferred),
+  the lookup service, the sources it rests on, how closely the value matches
+  and a note. A proposed or rejected pair is never stated; a pair without an
+  entry is stated by the manifest's publisher.
+
+Reach: |
+  The farthest coordinate on a timeline's own axis that its content reaches:
+  the ends of its children (a child of unknown length contributing its offset
+  plus its own reach), region ends, break and marker coordinates, both ends of
+  every jump, and the end of the measure map. Events are not part of it. A
+  timeline without such content reaches 0. The reach is independent of the
+  length; displays use it as the extent of a timeline of unknown length.
+
 Region: |
-  A named part of a timeline defined by a TimeInterval (e.g., "Chorus", "Verse").
-  Regions are not timelines and cannot hold events or maps directly.
+  A part of a timeline defined by a TimeInterval, identified by its element id
+  and displayed by its name (e.g., "Chorus", "Verse"). Regions are not
+  timelines and cannot hold events or maps directly.
 
 raw_quarters: |
   The conventional name for the ShiftMap attached to a score timeline. The
@@ -332,8 +450,9 @@ raw_quarters: |
   the same shift when comparing coordinates across loaders.
 
 Root: |
-  The top-level timeline in a hierarchy of nested timelines. Only the root
-  timeline can be extended; all descendants are locked.
+  The top-level timeline in a hierarchy of nested timelines. No parent bounds
+  its length; an unlocked descendant grows within its parent's length, or
+  grows an unlocked parent with it.
 
 RotationMap: |
   A periodic ConversionMap that wraps coordinates cyclically. Used for
@@ -351,14 +470,26 @@ SegmentLine: |
   can check this structure with is_segment_line() and adopt enforcement with
   as_segment_line(); a line returns to an unenforced timeline with
   to_timeline(). create_children_from_boundaries() creates boundary-driven
-  tilings. Appending extends an unlocked line, while appending to an embedded,
-  length-locked line raises RuntimeError.
+  tilings. Appending extends an unlocked line, while appending to a locked
+  line raises RuntimeError.
 
 StartAnchor: "The first AlignmentAnchor of a synchronous MatchClaim, derived from the start coordinates."
 
 StartInstant: |
   An Instant marking the start of a TimeInterval. Implies the presence of a
   corresponding EndInstant with coordinate >= StartInstant's coordinate.
+
+Statement: |
+  A property-value pair saying what an element of a manifest stands for or
+  how that thing relates to others. The manifest (the bundle), which names the
+  work it is about by schema:about, every timeline at any depth, for the
+  manifestation it is the axis of, and every region, for the stretch it marks,
+  carry statements; a group carries none, and works and expressions are
+  values, never elements. The property is type ("is a") or an IRI, compact
+  with a prefix of the manifest's inline @context or absolute; the value is a
+  literal, a value object, a node (a thing with its own pairs) or an ordered
+  list. A value naming an element is its reference, {id: "#cpt_1"}.
+  Statements never nest, order or align timelines.
 
 SupportPolicy: |
   How a cross-timeline MatchStamp treats a timeline whose transferred coordinate
@@ -377,9 +508,18 @@ Synchrony: |
   Instants binned together based on a threshold (e.g., for quantisation).
 
 TimelineGroup: |
-  A container for timelines claimed to be commensurable; placing timelines in
-  a group asserts commensurability regardless of underlying units. Coordinates
-  transfer via interpolation.
+  An array of member timelines that share the same graphical start and end:
+  every member's 0 coincides with every other member's 0, and every member's
+  length with every other member's length. Placing timelines in a group
+  asserts commensurability regardless of their units. A position in between
+  converts linearly and exactly (p on member A is p · len_B / len_A on member
+  B) and is written in the target member's number type. When only part of a
+  timeline takes part, the member is a child of that timeline at its exact
+  offset; a member is never placed partially. No member is an ancestor or a
+  descendant of another member of the same group, since a child sits at its
+  offset inside its parent. A group answers with the same TimeStamp class as a
+  Timeline; to_dict() and from_dict() write and read it with every timeline it
+  needs.
 
 TimeInterval: |
   Defined by a StartInstant and EndInstant; left-inclusive and right-exclusive
@@ -406,12 +546,49 @@ TimeStamp: |
   A cross-section through a timeline or group at a given coordinate, capturing
   positions in all connected systems plus values converted by all attached
   C-maps. It stores one Coordinate per timeline ID, so each entry carries its
-  own unit and number type. TimeStamp implements the shared Stamp interface
-  used by GroupTimestamp and MatchStamp: a typed axis, get_coordinate_for()
+  own unit and number type. TimeStamp implements the Stamp interface
+  it shares with MatchStamp: a typed axis, get_coordinate_for()
   and get_coordinates_for() returning IdCoordinates by default, get_unit() for
   unit conversion, get_conversion_for() for label and structured map values,
   present_timelines, and is_interpolated. A bare number is an explicit
   format="float"/"int"/"fraction" request; there is no ambient float view.
+  Which children answer follows the containment rule of Child.
+
+TimeToShare manifest: |
+  The file format in which timelines, groups and bundles are exchanged,
+  written in canonical YAML, or optionally in pretty JSON or RFC 8785 JSON,
+  one shape for all: the version marker "timetoshare", an array of root
+  timelines, and optionally the manifest's id, name and meta, its groups, its
+  measure maps, its @context, statements and provenance and its
+  graphical (display order and styling). A single timeline is a manifest
+  of one root, a group a manifest with one group; a manifest with an id or a
+  name is named. Every manifest is an alignment bundle, also one holding one
+  timeline or one group, and a manifest with neither an id nor a name is an
+  anonymous bundle. A value on a timeline's own axis (length, a child's offset,
+  region bounds, flow-control coordinates) is written bare, in the axis's
+  number type. Timeline, TimelineGroup and AlignmentBundle write one with
+  to_dict() and read one with from_dict(), and write and read a manifest
+  file with to_file() and from_file(). The library class TimeSkeleton is
+  a different thing: a temporal structure shared by the timelines of one work.
+
+Unknown key: |
+  A key of a TimeToShare manifest that the format does not define, written
+  by another application for its own use. The library keeps every unknown key
+  on the object read from the JSON object it was found in and writes it back
+  in place.
+
+Unknown length: |
+  A timeline length of None (null in a manifest), stating that the length is
+  not known. It is a fact, never inferred from content, and any timeline may
+  have it: root, child, locked, group member or segment. Positions on such a
+  timeline are not bounded above; an operation that needs the end raises
+  UnknownLengthError. Setting a length to or from None is an ordinary edit.
+
+UnknownLengthError: |
+  The ValueError raised by an operation that needs the end of a timeline whose
+  length is unknown, before it changes anything. Its message names the
+  operation and the timeline; group conversion to or from such a member and
+  appending a child at such a parent's end are examples.
 
 WarpMap: |
   An interpolation-based coordinate mapping derived from a MatchLine; enables

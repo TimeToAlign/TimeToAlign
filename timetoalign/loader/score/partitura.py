@@ -16,7 +16,7 @@ with suppressed_backend_warnings():
 
 from timetoalign.core import NumberType, TimeUnit
 
-from .base import ScoreLoader
+from .base import ScoreLoader, _coordinate_struct
 from .store import ScoreStore
 from .stores import (
     AnnotationEventData,
@@ -48,31 +48,6 @@ _CONTROL_EVENT_TYPES = (
     pts.Direction,
     pts.Slur,
 )
-
-
-def _coordinate_struct(value: Fraction | float) -> dict[str, Any]:
-    """Return a coordinate struct without inventing a ratio for a float."""
-    if isinstance(value, Fraction):
-        return {
-            "value": float(value),
-            "numerator": value.numerator,
-            "denominator": value.denominator,
-        }
-    return {"value": float(value), "numerator": None, "denominator": None}
-
-
-def _struct_coordinate_value(struct: dict[str, Any]) -> Fraction | float:
-    """Read a coordinate pair, falling back to its value-only projection."""
-    numerator = struct.get("numerator")
-    denominator = struct.get("denominator")
-    if (
-        isinstance(numerator, Integral)
-        and not isinstance(numerator, bool)
-        and isinstance(denominator, Integral)
-        and not isinstance(denominator, bool)
-    ):
-        return Fraction(int(numerator), int(denominator))
-    return float(struct["value"])
 
 
 class PartituraLoader(ScoreLoader):
@@ -110,15 +85,17 @@ class PartituraLoader(ScoreLoader):
         """
         super().__init__(**kwargs)
         self._force_note_ids = force_note_ids
-        self._anacrusis_offset: float = 0.0
+        self._anacrusis_offset: Fraction | float = Fraction(0)
 
     @property
-    def anacrusis_offset(self) -> float:
+    def anacrusis_offset(self) -> Fraction | float:
         """Quarter-beat shift applied to normalise anacrusis coordinates.
 
         Equal to ``-min(raw_partitura_onset)`` across all notes in the most
-        recently loaded source.  Zero when the score has no anacrusis (i.e.
-        the first note starts at or after beat 0).
+        recently loaded source, a ``Fraction`` when the onsets are exact and
+        a ``float`` only when partitura states the earliest one as a float.
+        Zero when the score has no anacrusis (i.e. the first note starts at
+        or after beat 0).
 
         Use this value to convert a raw partitura coordinate ``c`` to the TTA
         coordinate stored on the resulting timeline: ``tta_coord = c + offset``.
@@ -337,12 +314,8 @@ class PartituraLoader(ScoreLoader):
                 cached_beat_coordinate(m_start)
 
             # ===== Extract Flow Control from part.repeats =====
-            # repeat_blocks: list of (start_mc, after_mc) tuples.
-            # after_mc is the first MC *after* the repeat (partitura's rep.end.t
-            # maps to the downbeat of the continuation, not the last bar inside).
             repeat_start_mcs: set[int] = set()
             repeat_end_mcs: set[int] = set()  # last MC inside each repeat
-            repeat_blocks: list[tuple[int, int]] = []  # (start_mc, after_mc)
 
             if hasattr(part, "repeats") and part.repeats:
                 for rep in part.repeats:
@@ -372,31 +345,15 @@ class PartituraLoader(ScoreLoader):
                     )
 
                     if rep.end:
-                        # Determine whether rep.end.t falls on a measure *start*
-                        # (meaning there is a continuation measure after the repeat)
-                        # or on a measure *end* (the piece ends with this repeat).
-                        #
-                        # bisect_left gives the insertion index for rep.end.t; if
-                        # measure_starts[idx] == rep.end.t the time is exactly on
-                        # a measure downbeat → the repeat ends before that measure.
-                        # Otherwise rep.end.t is a bar-end and the last bar is idx (0-indexed).
-                        end_idx = bisect.bisect_left(measure_starts, rep.end.t)
-                        if (
-                            end_idx < len(measure_starts)
-                            and measure_starts[end_idx] == rep.end.t
-                        ):
-                            # rep.end.t is the downbeat of the continuation measure.
-                            after_mc = end_idx + 1  # 1-indexed MC of the continuation
-                            last_mc_in_repeat = after_mc - 1
-                        else:
-                            # rep.end.t is the end of the last bar (piece ends here).
-                            last_mc_in_repeat = (
-                                end_idx  # 1-indexed: end_idx == last 0-index + 1 → MC
-                            )
-                            after_mc = last_mc_in_repeat + 1  # virtual "after" MC
+                        # rep.end.t is the downbeat of the measure after the
+                        # repeat or, when the piece ends with it, the end of
+                        # the last bar; either way the number of measure starts
+                        # before it is the 1-indexed MC of the repeat's last bar.
+                        last_mc_in_repeat = bisect.bisect_left(
+                            measure_starts, rep.end.t
+                        )
 
                         repeat_end_mcs.add(last_mc_in_repeat)
-                        repeat_blocks.append((start_mc, after_mc))
 
                         qb_end = cached_beat_coordinate(rep.end.t)
                         control_rows.append(
@@ -421,13 +378,11 @@ class PartituraLoader(ScoreLoader):
                         )
 
             # ===== Extract Endings (Volta) and other flow control markers =====
-            # ending_mcs: MC -> volta number (first MC of each ending).
-            # ending_after_mcs: MC -> first MC after each ending (from Ending.end.t).
+            # ending_mcs: MC -> volta number, for every MC an ending spans.
             # Navigation directions in implicit X-measures are attached to the
             # preceding playable row in the measure-table convention. Target
             # markers remain on their own row.
-            ending_mcs: dict[int, int] = {}  # start MC -> volta number
-            ending_after_mcs: dict[int, int] = {}  # start MC -> first MC after ending
+            ending_mcs: dict[int, int] = {}  # MC -> volta number
             marker_names: dict[int, str] = {}
             jump_bwd: dict[int, str] = {}
             jump_fwd: dict[int, str] = {}
@@ -449,9 +404,16 @@ class PartituraLoader(ScoreLoader):
                         num = int(ending_num)
                     except (TypeError, ValueError):
                         num = 1
-                    ending_mcs[marker_mc] = num
-                    if obj.end:
-                        ending_after_mcs[marker_mc] = get_mc(obj.end.t)
+                    # Like a repeat end, obj.end.t is the downbeat after the
+                    # ending's last bar, so the measure starts before it count
+                    # up to that bar's MC.
+                    last_mc = (
+                        max(marker_mc, bisect.bisect_left(measure_starts, obj.end.t))
+                        if obj.end is not None
+                        else marker_mc
+                    )
+                    for ending_mc in range(marker_mc, last_mc + 1):
+                        ending_mcs[ending_mc] = num
                 elif isinstance(
                     obj,
                     (
@@ -522,72 +484,13 @@ class PartituraLoader(ScoreLoader):
                 if target == "segno" and fine_mcs:
                     play_until[marker_mc] = "fine"
 
-            # ===== Derive next[] for each measure from repeat/volta structure =====
-            # next_mc_map: MC -> list of possible successor MCs (in visitation order).
-            # An absent entry means "next sequential MC" (or -1 for the last bar).
-            #
-            # Repeat structure remains active when navigation markers are present;
-            # the marker fields below let ScoreFlowController combine the two kinds of
-            # flow control.
-            next_mc_map: dict[int, list[int]] = {}
-            num_measures = len(measures)
-
             # Directions in implicit X-measures execute after the preceding
             # playable measure; other directions stay on their own row.
             jump_rows = {}
             for mc, target in jump_bwd.items():
                 row_mc = mc - 1 if mc in implicit_mcs else mc
-                if 1 <= row_mc <= num_measures:
+                if 1 <= row_mc <= len(measures):
                     jump_rows[row_mc] = (target, play_until.get(mc))
-
-            for rep_start_mc, rep_after_mc in repeat_blocks:
-                # Collect volta-1 start MCs inside this repeat block.
-                volta1_starts = sorted(
-                    mc
-                    for mc, v in ending_mcs.items()
-                    if v == 1 and rep_start_mc <= mc < rep_after_mc
-                )
-                volta2_starts = sorted(
-                    mc
-                    for mc, v in ending_mcs.items()
-                    if v == 2 and rep_start_mc <= mc < rep_after_mc
-                )
-
-                if not volta1_starts:
-                    # Simple repeat (no voltas): the last bar inside the repeat
-                    # gets next = [rep_start_mc, rep_after_mc].
-                    last_in_rep = rep_after_mc - 1
-                    if last_in_rep >= 1 and last_in_rep <= num_measures:
-                        next_mc_map[last_in_rep] = [rep_start_mc, rep_after_mc]
-                else:
-                    # Volta repeat: identify the fork bar and the volta-1 end bar.
-                    first_v1_mc = volta1_starts[0]
-                    first_v2_mc = volta2_starts[0] if volta2_starts else rep_after_mc
-                    fork_mc = first_v1_mc - 1
-
-                    # Fork bar: choose volta 1 (first visit) or volta 2 (second visit).
-                    if fork_mc >= 1:
-                        next_mc_map[fork_mc] = [first_v1_mc, first_v2_mc]
-
-                    # The last MC of volta 1 jumps unconditionally back to repeat start.
-                    last_v1_mc = rep_after_mc - 1
-                    if last_v1_mc >= 1 and last_v1_mc <= num_measures:
-                        next_mc_map[last_v1_mc] = [rep_start_mc]
-
-            # The flow controller uses a non-sequential next edge to identify
-            # the origin of a D.S. or D.C. jump.  Keep the typed instruction in
-            # the dedicated fields, and mirror its destination here so it is
-            # executable during traversal.
-            segno_mc = next(
-                (mc for mc, name in marker_names.items() if name == "segno"), None
-            )
-            for mc, (target, _until) in jump_rows.items():
-                if mc > num_measures:
-                    continue
-                if target == "segno" and segno_mc is not None:
-                    next_mc_map[mc] = [segno_mc]
-                elif target == "start":
-                    next_mc_map[mc] = [1]
 
             # Process Measures
             for i, m in enumerate(measures):
@@ -595,12 +498,6 @@ class PartituraLoader(ScoreLoader):
                 qb_end = cached_beat_coordinate(m.end.t)
                 dur = qb_end - qb_start
                 mc = i + 1
-
-                # Resolve next: use pre-computed map, or default sequential.
-                if mc in next_mc_map:
-                    mc_next: list[int] | None = next_mc_map[mc]
-                else:
-                    mc_next = None  # default: next sequential MC (handled by ScoreFlowController)
 
                 measure_rows.append(
                     {
@@ -618,7 +515,6 @@ class PartituraLoader(ScoreLoader):
                         "start_repeat": mc in repeat_start_mcs,
                         "end_repeat": mc in repeat_end_mcs,
                         "volta": ending_mcs.get(mc),
-                        "next": mc_next,
                         "markers": marker_names.get(mc),
                         "jump_bwd": jump_rows.get(mc, (None, None))[0],
                         "jump_fwd": jump_fwd.get(
@@ -717,7 +613,7 @@ class PartituraLoader(ScoreLoader):
                         "tpc": tpc,
                         "octave": octave,
                         "velocity": 64,
-                        "tied": 0,
+                        "tied": None,
                         "gracenote": (
                             "grace" if isinstance(obj, pts.GraceNote) else None
                         ),
@@ -779,31 +675,10 @@ class PartituraLoader(ScoreLoader):
                     }
                 )
 
-        # ── Anacrusis normalisation ───────────────────────────────────────────
-        # TTA timelines always start at coordinate 0.  When partitura reports
-        # negative quarter-beat onsets (anacrusis notes), we shift all event
-        # coordinates so the earliest onset becomes 0.0.
-        #
-        # The shift is applied uniformly to notes, measures, controls, and
-        # annotations.  Its value is exposed via self.anacrusis_offset and
-        # stored in the ScoreStore metadata so that any loader that needs to
-        # compare raw partitura values against stored TTA coordinates can apply
-        # the same correction.
-        all_onsets = [
-            _struct_coordinate_value(r["quarterbeats"])
-            for r in note_rows
-            if r.get("quarterbeats") is not None
-        ]
-        min_qb: Fraction | float = min(all_onsets, default=Fraction(0))
-        offset: Fraction | float = -min_qb if min_qb < 0 else Fraction(0)
-        self._anacrusis_offset = float(offset)
-
-        if offset:
-            for rows in (note_rows, measure_rows, control_rows, annotation_rows):
-                for r in rows:
-                    old_qb = _struct_coordinate_value(r["quarterbeats"])
-                    new_qb = old_qb + offset
-                    r["quarterbeats"] = _coordinate_struct(new_qb)
+        offset = self._normalise_anacrusis(
+            note_rows, measure_rows, control_rows, annotation_rows
+        )
+        self._anacrusis_offset = offset
 
         # Build data
         notes_data = getattr(NoteEventData, "from_" + "dicts")(
@@ -853,6 +728,6 @@ class PartituraLoader(ScoreLoader):
                 "parser": "partitura",
                 "source": str(source),
                 "has_rests": has_rests,
-                "anacrusis_offset": float(offset),
+                "anacrusis_offset": offset,
             },
         )

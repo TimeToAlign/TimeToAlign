@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from .audio import AudioInfo, AudioLoader
 from .eep_notes import EepNotesLoader
+from .rekordbox import RekordboxLoader
 from .repovizz import RepoVizzInfo, RepoVizzLoader
 
 __all__ = [
@@ -29,4 +30,5 @@ __all__ = [
     "RepoVizzLoader",
     "RepoVizzInfo",
     "EepNotesLoader",
+    "RekordboxLoader",
 ]

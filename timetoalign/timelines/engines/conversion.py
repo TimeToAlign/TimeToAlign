@@ -30,8 +30,8 @@ from timetoalign.core.retrieval import (
     validate_coordinate_collection,
     validate_key_collection,
 )
-from timetoalign.core.time import coordinate_numeric_value, exact_coordinate_value
-from timetoalign.maps import ConversionMap, InterpolationMap
+from timetoalign.core.time import shift_number
+from timetoalign.maps import ConversionMap, OutputNumberTypeError
 
 if TYPE_CHECKING:
     from ..base import Timeline
@@ -57,24 +57,51 @@ class ConversionMapsMixin:
         and ``extrapolate`` policy directly, and analytical maps (e.g.
         ``ScalarMap``, ``LinearMap``) are likewise stored directly.
 
+        Several maps may target the same unit — a piece can carry two
+        readings of the same axis — and nothing is ever displaced:
+        the unit registry holds a list, stamps and tables show every
+        reading, and scalar lookup refuses to guess between them
+        unless the caller names one.
+
+        The map's id must be unique in this timeline's manifest: a minted id
+        already held there is replaced by a freshly minted one (on the map
+        itself), a given one raises.
+
         Args:
             cmap: The ConversionMap to add.
 
         Raises:
-            ValueError: If the map's source unit is incompatible.
+            ValueError: If the map's source unit is incompatible, the map is
+                already attached, or its given id is already held in this
+                timeline's manifest.
         """
         if cmap.source_unit is not None and cmap.source_unit != self._unit:
             raise ValueError(
                 f"Map source unit '{cmap.source_unit}' does not match "
                 f"timeline unit '{self._unit}'"
             )
+        if any(attached is cmap for attached in self._conversion_maps.values()):
+            raise ValueError(
+                f"Conversion map '{cmap.id}' is already attached to timeline "
+                f"'{self._id}'. Attached map ids: {list(self._conversion_maps)}"
+            )
+        self._admit_map(cmap)
         self._conversion_maps[cmap.id] = cmap
 
         # Register in the unified timestamp system for unit-based lookup
         if cmap.target_unit is not None:
-            self._unit_maps[cmap.target_unit] = cmap
+            self._unit_maps.setdefault(cmap.target_unit, []).append(cmap)
 
         self._logger.debug(f"Added conversion map '{cmap.id}'")
+
+    def _rename_conversion_map(self, old_id: str, new_id: str) -> None:
+        """Store the attached map *old_id* under the minted id *new_id*."""
+        cmap = self._conversion_maps[old_id]
+        cmap._id = new_id
+        self._conversion_maps = {
+            (new_id if key == old_id else key): attached
+            for key, attached in self._conversion_maps.items()
+        }
 
     def get_conversion_map(
         self, target_unit: TimeUnit | str
@@ -82,8 +109,10 @@ class ConversionMapsMixin:
         """Get a conversion map by target unit **or** by name/id.
 
         When *target_unit* is a valid `TimeUnit` value (or an alias such as
-        ``"seconds"``), the method returns the first attached map whose
-        ``target_unit`` matches.
+        ``"seconds"``), the method returns the attached map targeting that
+        unit — and raises when several do, because picking one of two
+        readings of the same axis is the caller's decision, not this
+        method's.
 
         When *target_unit* is a string that does **not** correspond to any
         ``TimeUnit`` member, the method falls back to a name-based lookup:
@@ -99,6 +128,9 @@ class ConversionMapsMixin:
         Returns:
             A matching ``ConversionMap``, or ``None`` if not found.
 
+        Raises:
+            ValueError: If several attached maps target the requested unit.
+
         Examples:
             >>> timeline.get_conversion_map(TimeUnit.seconds)
             ScalarMap(...)
@@ -111,10 +143,7 @@ class ConversionMapsMixin:
         except ValueError:
             pass
         else:
-            for cmap in self._conversion_maps.values():
-                if cmap.target_unit == target:
-                    return cmap
-            return None
+            return self._get_unit_map(target)
 
         # Fallback: name/id-based lookup (target_unit is a plain string)
         name = str(target_unit)
@@ -234,24 +263,17 @@ class ConversionMapsMixin:
             )
 
         # Convert length
-        derived_length = cmap(self._length.value)
+        derived_length = None if self._length is None else cmap(self._length.value)
 
         # Determine appropriate Timeline class for target domain
         from ..types import get_timeline_class
 
         target_domain = target.domain.name.lower()
-        # Determine discrete vs continuous based on target unit
-        # Ticks, samples, frames, pixels are discrete
-        discrete_units = {
-            TimeUnit.ticks,
-            TimeUnit.samples,
-            TimeUnit.frames,
-            TimeUnit.pixels,
-        }
-        is_discrete = target in discrete_units
 
         try:
-            derived_class = get_timeline_class(target_domain, discrete=is_discrete)
+            derived_class = get_timeline_class(
+                target_domain, discrete=target.is_discrete
+            )
         except ValueError:
             # Fallback to base Timeline if domain lookup fails
             derived_class = Timeline
@@ -314,32 +336,38 @@ class ConversionMapsMixin:
 
         ``child_coord = parent_coord - offset``
 
-        Returns None if *parent_coord* falls outside the child's
-        ``[offset, offset + length)`` span.
+        The position is carried down one edge at a time and reaches a
+        descendant only if every timeline on the way holds it
+        (:meth:`_holds_position`): a grandchild never shows a position its
+        own parent leaves to a sibling. Returns None where one of them does
+        not hold it: outside ``[offset, offset + length)``, or at a child's
+        end where a sibling starts; a child of unknown length spans
+        everything from its offset on.
 
         Args:
-            child_id: The child timeline ID.
-            parent_coord: Coordinate on this (parent) timeline.
+            child_id: The descendant timeline ID.
+            parent_coord: Coordinate on this (ancestor) timeline.
 
         Returns:
-            Coordinate on the child timeline, or None if out of bounds.
+            Coordinate on the descendant timeline, or None if it is not held.
         """
-        path = self._descendant_offset_path(child_id)
-        if path is None or not path[0]:
+        descendant = self._find_descendant(child_id)
+        if descendant is None or descendant is self:
             return None
-        offsets, child = path
+        path: list[Timeline] = []
+        node = descendant
+        while node is not self:
+            path.append(node)
+            node = node._parent
         child_coord = parent_coord
-        for offset in offsets:
-            child_exact = exact_coordinate_value(child_coord)
-            offset_exact = exact_coordinate_value(offset.value)
-            child_coord = (
-                child_exact - offset_exact
-                if child_exact is not None and offset_exact is not None
-                else float(coordinate_numeric_value(child_coord)) - float(offset.value)
+        parent = self
+        for node in reversed(path):
+            child_coord = shift_number(
+                child_coord, parent._child_offsets[node._id].value, subtract=True
             )
-        child_length = child.length.value
-        if child_coord < 0 or (child_length > 0 and child_coord >= child_length):
-            return None
+            if not node._holds_position(child_coord):
+                return None
+            parent = node
         return child_coord
 
     def _get_parent_coordinate_from_child(
@@ -364,55 +392,69 @@ class ConversionMapsMixin:
             raise KeyError(child_id)
         parent_coord = child_coord
         for offset in reversed(path[0]):
-            parent_exact = exact_coordinate_value(parent_coord)
-            offset_exact = exact_coordinate_value(offset.value)
-            parent_coord = (
-                parent_exact + offset_exact
-                if parent_exact is not None and offset_exact is not None
-                else float(coordinate_numeric_value(parent_coord)) + float(offset.value)
-            )
+            parent_coord = shift_number(parent_coord, offset.value, subtract=False)
         return parent_coord
 
-    def _get_interpolation_map(
-        self, target_id: str, source_id: str | None = None
-    ) -> InterpolationMap | None:
-        """Get InterpolationMap for coordinate conversion to target.
+    def _get_unit_maps(self, unit: TimeUnit) -> list[ConversionMap[Any]]:
+        """Get every map registered for a unit, in attachment order.
 
-        This method is part of the `TimeStampSource` protocol.
-
-        For parent-child relationships, returns None: child coordinates are
-        resolved via exact offset arithmetic in ``_get_child_coordinate()``
-        instead. InterpolationMaps are only used by `TimelineGroup` for
-        inter-member conversions and, for unit-based conversions, by
-        ``_get_unit_map`` (which returns whichever ConversionMap type was
-        registered, not necessarily an InterpolationMap).
-
-        Args:
-            target_id: Target timeline ID.
-            source_id: Source timeline ID (ignored for Timeline, always self).
-
-        Returns:
-            None. Child conversion uses offset arithmetic.
-        """
-        return None
-
-    def _get_unit_map(self, unit: TimeUnit) -> ConversionMap[Any] | None:
-        """Get a map for unit-based conversion.
-
-        Returns whichever ``ConversionMap`` was registered by
-        :meth:`add_conversion_map` for this unit, called directly regardless
-        of its concrete type (``TableMap``, ``ScalarMap``, ``LinearMap``,
-        ...).
-
-        This method is part of the TimeStampSource protocol.
+        A stamp or table shows all the readings an axis has, while scalar
+        lookup must choose between them.
 
         Args:
             unit: Target unit.
 
         Returns:
-            A map for conversion, or None if no C-Map available.
+            The attached maps targeting *unit*; empty when there are none.
         """
-        return self._unit_maps.get(unit)
+        return list(self._unit_maps.get(unit, ()))
+
+    def _get_unit_map(
+        self, unit: TimeUnit, *, name: str | None = None
+    ) -> ConversionMap[Any] | None:
+        """Get the one map for unit-based conversion, refusing to guess.
+
+        Returns whichever ``ConversionMap`` was registered by
+        :meth:`add_conversion_map` for this unit, called directly regardless
+        of its concrete type (``TableMap``, ``ScalarMap``, ``LinearMap``,
+        ...).  When several maps target the unit, an unnamed request is
+        ambiguous and raises rather than picking by attachment order.
+
+        This method is part of the TimeStampSource protocol.
+
+        Args:
+            unit: Target unit.
+            name: Which of several same-unit maps to take, by id or by
+                name.  Required only when there is more than one.
+
+        Returns:
+            A map for conversion, or None if no C-Map available.
+
+        Raises:
+            ValueError: If several maps target *unit* and no *name* is given.
+            KeyError: If *name* matches no map targeting *unit*.
+        """
+        candidates = self._unit_maps.get(unit, ())
+        if not candidates:
+            return None
+        if name is None:
+            if len(candidates) > 1:
+                listed = ", ".join(f"{cmap.id} ({cmap.name})" for cmap in candidates)
+                raise ValueError(
+                    f"Timeline '{self._id}' has {len(candidates)} conversion maps "
+                    f"targeting '{unit}'; name the one you mean. Candidates: {listed}"
+                )
+            return candidates[0]
+        for cmap in candidates:
+            if cmap.id == name:
+                return cmap
+        for cmap in candidates:
+            if cmap.name == name:
+                return cmap
+        raise KeyError(
+            f"No conversion map named '{name}' targets '{unit}' on timeline "
+            f"'{self._id}'. Available: {[cmap.id for cmap in candidates]}"
+        )
 
     def _get_unit_map_for_timeline(
         self, timeline_id: str, unit: TimeUnit
@@ -427,6 +469,15 @@ class ConversionMapsMixin:
         if timeline is None:
             return None
         return timeline._get_unit_map(unit)
+
+    def _get_unit_maps_for_timeline(
+        self, timeline_id: str, unit: TimeUnit
+    ) -> list[ConversionMap[Any]]:
+        """Get every unit C-Map attached to this timeline or any descendant."""
+        timeline = self._find_descendant(timeline_id)
+        if timeline is None:
+            return []
+        return timeline._get_unit_maps(unit)
 
     def _get_number_type_for_timeline(self, timeline_id: str) -> NumberType | None:
         """Get the numeric representation used by this timeline or a descendant."""
@@ -534,29 +585,6 @@ class ConversionMapsMixin:
         timeline = self._find_descendant(timeline_id)
         return timeline._unit if timeline is not None else None
 
-    def _contains_coordinate(
-        self, timeline_id: str, axis: float, source_id: str | None = None
-    ) -> bool:
-        """Check whether *axis* falls within the span of a child timeline.
-
-        A child embedded at *offset* with *length* spans
-        ``[offset, offset + length)`` on this (parent) timeline.
-
-        This method is part of the TimeStampSource protocol.
-
-        Args:
-            timeline_id: Child timeline ID.
-            axis: Coordinate on the parent (source) timeline.
-            source_id: Source timeline ID (ignored for Timeline, used by TimelineGroup).
-
-        Returns:
-            True if *axis* is inside the child's span, or if
-            *timeline_id* is the source itself.
-        """
-        if timeline_id == self._id:
-            return True
-        return self._get_child_coordinate(timeline_id, axis) is not None
-
     def _convert_coordinate_to_self(self, value: CoordinateSpec) -> Coordinate:
         """Resolve one coordinate into this timeline's canonical axis.
 
@@ -567,7 +595,9 @@ class ConversionMapsMixin:
             A coordinate expressed in this timeline's native unit.
 
         Raises:
-            ValueError: If a timeline ID is unknown or no unit conversion path exists.
+            ValueError: If a timeline ID is unknown, no unit conversion path
+                exists, or the path is a C-Map declared to write fractions and
+                *value* is a float, which it cannot resolve exactly.
         """
         resolved = resolve_coordinate_spec(value)
         owner_id = resolved.timeline_id or self._id
@@ -606,16 +636,21 @@ class ConversionMapsMixin:
                     f"No invertible C-Map available to convert coordinate from unit "
                     f"'{resolved.unit}' to '{self._unit}' on timeline '{self._id}'"
                 ) from None
-            native_value = inverse_map(resolved.value)
+            try:
+                native_value = inverse_map(resolved.value)
+            except OutputNumberTypeError as error:
+                # A map declared to write fractions computes exactly and
+                # refuses a float: the query has no exact path to this axis.
+                raise ValueError(
+                    f"C-Map '{unit_map.id}' ('{unit_map.source_unit}' to "
+                    f"'{unit_map.target_unit}') is declared to write fractions and "
+                    f"computes exactly, so it cannot resolve the float "
+                    f"{resolved.value!r} {resolved.unit} on timeline '{self._id}': "
+                    f"pass an int or a Fraction."
+                ) from error
 
         for offset in reversed(offsets):
-            native_exact = exact_coordinate_value(native_value)
-            offset_exact = exact_coordinate_value(offset.value)
-            native_value = (
-                native_exact + offset_exact
-                if native_exact is not None and offset_exact is not None
-                else float(coordinate_numeric_value(native_value)) + float(offset.value)
-            )
+            native_value = shift_number(native_value, offset.value, subtract=False)
 
         # Expressed on THIS timeline's axis, in the type it declares -- which
         # may differ from its unit's default when the caller chose otherwise.

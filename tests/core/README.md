@@ -14,7 +14,52 @@ This directory contains tests for the `timetoalign.core` module, which provides 
 | `core/protocols.py` | Complete |
 | `core/timestamp.py` | Complete |
 
+## Metrical and realization scalars
+
+The scalar tests establish the arithmetic vocabulary on which anchored metric
+readings rely. Exact time-signature specimens (``6/8``, ``4/4``, common time,
+cut time, and an additive eighth-note signature) pin grouping, division,
+derived rods, beat count, span, and source spelling. Re-expressing each as
+counted divisions produces one unit group per division, preserves its exact
+division and name, and is idempotent. This rules out a meter reader that
+forgets source grouping or silently substitutes a default.
+
+A policy authored with both ``division`` and ``beat_size`` is accepted only
+when the two exact quantities agree in quarters. A contradictory quarter and
+whole-note pair must fail validation, while the matching pair constructs and
+survives JSON unchanged. Testing every time-signature shape through both
+round-trip equality and a second serialization proves that completion cannot
+turn a policy into a different value.
+
+Tempo specimens cover integer, float, decimal-string, and ``Fraction`` rates,
+including ramps. Their exact stored fractions and JSON Fraction pairs are
+asserted directly; positive-rate validation is checked at both ramp ends. A
+ramp mean must lie strictly inside its span and cannot exist without a target
+rate. Construction rejects exact values outside signed 64-bit storage before
+serialization, while the largest permitted denominator survives.
+These cases rule out delayed serialization failures and invented ramp meaning.
+
+Negative-level beats demonstrate groove below the pulse, while a zero beat
+index remains invalid. Address storage contains no skeleton identifier.
+Measure-map and forest values are deliberately absent from the paired-field
+registry: they are immutable timeline structure, not event columns. Tempo and
+BeatPolicy remain event scalars, so this separation rules out attaching
+semantic-field machinery to node levels, spans, reading ids, or expansion
+membership.
+
 ## Test Files
+
+### `test_number_json.py` - Exact JSON numbers
+
+The JSON number forms are validated before their behavior is pinned. Integers
+remain JSON integers, floats remain JSON numbers, and `Fraction` values become
+`[numerator, denominator]`. Boolean values and invalid Fraction pairs are
+refused. A declared number type decides the reading, never the lexical form:
+a Fraction member written as an integral float (`[1, 8.0]`, as a JavaScript
+writer may respell it) is read as that integer whatever the number type, and
+`is_fraction_json` recognises such a pair, while a non-integral member
+(`[1, 8.5]`), a boolean member and a denominator below 1 stay refused. The
+tests name one case for each rule, asserting the value and its Python type.
 
 ### `test_fraction_field_arithmetic.py` - Exact Coordinate Arithmetic
 
@@ -251,7 +296,7 @@ is where int64 lives. Both are asserted.
 above governs the constructor, and the identical rule governs every other
 route a value can take onto this axis — see "Number type is preserved
 everywhere" below. `Coordinate(9.5, quarters)` and
-`timeline.get_timestamp(9.5).get_coordinate_for("clt1", format="coordinate")`
+`timeline.get_timestamp(9.5).get_coordinate_for("clt_1", format="coordinate")`
 both give a `Coordinate` containing `Fraction(19, 2)`; there is one answer per
 axis, not one per entry point.
 
@@ -267,7 +312,7 @@ that happens.
 
 ```python
 Coordinate(9.5, quarters)                          # Fraction(19, 2)
-timeline.get_timestamp(9.5).get_coordinate_for("clt1", format="coordinate")
+timeline.get_timestamp(9.5).get_coordinate_for("clt_1", format="coordinate")
 ```
 
 The two agree, and that is the property worth having: a caller reasoning
@@ -385,9 +430,9 @@ carries coordinate structs.
 
 | Axis | stamp getter | published frame |
 |---|---|---|
-| `dgt1` pixels (`int`) | `0`, `12473` | `0`, `12473` |
-| `cpt1` seconds (`float`) | `0.0`, `37.5` | `0.0`, `37.5` |
-| `clt1` quarters (`fraction`) | `Fraction(0, 1)`, `Fraction(19, 2)` | same |
+| `dgt_1` pixels (`int`) | `0`, `12473` | `0`, `12473` |
+| `cpt_1` seconds (`float`) | `0.0`, `37.5` | `0.0`, `37.5` |
+| `clt_1` quarters (`fraction`) | `Fraction(0, 1)`, `Fraction(19, 2)` | same |
 | `pixels_to_beats` C-Map column | — | `Fraction(12473, 4)` |
 | `quarters_to_seconds` C-Map column | — | `38.0` |
 
@@ -816,11 +861,21 @@ ValidationError)` — the concrete class, not a bare `Exception`.
 
 3. **TimeUnit Enum** (18 tests)
    - Physical units: `seconds`, `milliseconds`, `samples`, `frames`
-   - Logical units: `quarters`, `beats`, `measures`, `ticks`
+   - Logical units: `quarters`, `floating_measures`, `ticks`, `number`
    - Graphical units: `pixels`, `points`, `inches`, `millimeters`
    - Alias support (`q`, `ms`, `px`, etc.)
    - `domain` property mapping
    - `is_discrete` property
+   - The vector-graphics units `css_pixels` (the CSS pixel, 1/96 in) and
+     `user_units` (a document's own coordinate system, such as an SVG
+     viewBox): each is graphical and not discrete, defaults to `float` and
+     admits exactly `float` and `fraction`, as `points` does. `uu` is the
+     abbreviation of `user_units` (`get_abbreviations()` lists exactly `uu`
+     for it, and `TimeUnit("uu")` and `TimeUnit.uu` are `TimeUnit.user_units`);
+     `css_pixels` has none (`get_abbreviations()` lists none), and `px` stays
+     the alias of the discrete `pixels` (`TimeUnit("px") is TimeUnit.pixels`):
+     reading a CSS pixel as a discrete pixel would change the timeline class
+     and the number type.
 
 4. **NumberType Enum** (8 tests)
    - Values: `int`, `float`, `fraction`
@@ -840,9 +895,86 @@ The enum types enforce TimeToAlign's domain model:
 
 ---
 
+### `test_addresses.py` - Typed measure and beat keys
+
+**Purpose:** Validates the `Address` hierarchy — the typed keys that name a
+measure or a beat rather than a position on a coordinate axis — and the
+storage shape of the ones that are column payloads.
+
+**Why these specimens.** Every value below is a real spelling from an
+alignment or score source, chosen because it is exactly where a looser design
+loses information:
+
+* `"12+3/8"` is the performance-alignment spelling of "bar 12, three eighths
+  in". The offset fraction counts **whole notes**, so the gold value is
+  `3/8 × 4 = 3/2` quarters — a factor of four away from the reading that takes
+  the fraction for quarters, which is why the conversion is pinned as an exact
+  `Fraction` and not as `0.375`. The parsed key is a
+  `MeasureNumberAddress(mn="12", at=Coordinate(Fraction(3, 2), quarters))`;
+  a wrong answer here would place every note of a performance a dotted quarter
+  off its bar.
+* `"12a"` has no `+`, so it parses to a bare `MeasureNumber` and keeps its
+  suffix. A parser that stripped the `a` would merge the two halves of a split
+  bar into one address, which is the failure the label type exists to prevent.
+* `MeasureId(value=13)` versus `MeasureId(value="m-0023")`: strictness is the
+  whole point. `13` is a **position** — the thirteenth measure-like unit — and
+  `"m-0023"` is an **identifier** looked up against the measures' own ids. A
+  model that coerced `"13"` to `13` would silently turn an MEI `xml:id` into a
+  count, so `MeasureId.count("13")` must raise rather than convert.
+* `classify_dispatch_input(Address)` returning `"coordinate"` is the runtime
+  half of the retrieval grid: an address names a structural position, so it
+  belongs on the `_at` getters rather than the string-key `_for` getters.
+* The Field round trip uses `"237b"` — the printed label of the second half of
+  the split bar that is measure count 261 in Beethoven's WoO 71. The storage
+  struct also carries optional rendition, skeleton, and section qualifiers;
+  the round trip asserts the source facts because a
+  struct that stored only an integer could not hold this label at all.
+
+**Zero tolerance:** every offset is asserted as an exact `Fraction`, every
+label as the exact string the source prints.
+
+---
+
+### `test_beat_policy.py` - How a bar is counted in beats
+
+**Purpose:** Validates that a time signature is read into the two facts it
+actually states — which note value is counted, and how those values group into
+beats — and that every derived quantity follows from that pair.
+
+**Why grouping + division rather than stored beat lengths.** A `6/8` bar is
+not "six beats of an eighth"; it is two beats of three eighths. Storing the
+rods directly would lose which encoding produced them, so `BeatPolicy`
+stores `grouping` and `division` and derives the rest. The specimens:
+
+* `from_time_signature("6/8")` → `grouping=(3, 3)`, `division=1/2` quarters,
+  so `rods == (Fraction(3, 2), Fraction(3, 2))`. Reading `6/8` as six beats
+  would give six rods of `1/2` — a different metrical claim, and one that puts
+  "beat 3" in a different place.
+* `from_time_signature("4/4")` → four rods of one quarter each. Simple meters
+  count one division per beat, so the compound rule must not fire; `4 % 3 != 0`
+  keeps it off, and the `n > 3 and d >= 8` guard keeps `3/8` simple.
+* `from_time_signature("3/8+2/8+3/8")` → `grouping=(3, 2, 3)` over eighths, so
+  `rods == (Fraction(3, 2), Fraction(1), Fraction(3, 2))` and
+  `offset_for(3) == Fraction(3, 2) + Fraction(1) == Fraction(5, 2)`. This is
+  the Don Giovanni-style uneven bar: any implementation that averages the
+  grouping puts beat 3 at `5/3` instead of `5/2`.
+* `uniform(Fraction(1, 2), 6)` is the override policy — counting a `3/4` bar in
+  eighths — and gives six rods of `1/2` summing to the same three quarters.
+  The same bar, counted two ways, must still span the same time.
+* An unreadable signature raises. There is deliberately no silent fall back to
+  `4/4`: choosing a default for a source that states nothing is a loader's
+  decision, and a policy that guessed would report a metre the source never
+  gave.
+
+**Zero tolerance:** every rod, offset and span is an exact `Fraction`.
+
+---
+
 ### `test_ids.py` - Scoped ID System
 
-**Purpose:** Validates the `ScopedId` and `IdGenerator` classes for unique identification.
+**Purpose:** Validates the `ScopedId` class and the stateless generator of
+manifest element ids. There is no process-wide id counter: `IdGenerator` is
+deleted, so no test of one exists.
 
 **Test Categories:**
 
@@ -864,23 +996,38 @@ The enum types enforce TimeToAlign's domain model:
    - `nested()` for hierarchical scopes
    - `is_scoped` property
 
-5. **IdGenerator Creation** (2 tests)
-   - Creation with scope
-   - Empty scope allowed
-
-6. **IdGenerator get_or_create** (9 tests)
-   - Wrapping external IDs
-   - Auto-generation with type hints
-   - Counter incrementation
-   - Independent counters per type hint
-
-7. **IdGenerator State** (5 tests)
-   - `count` property
-   - `has_seen()` lookup
-   - `reset()` and `reset_counters()` methods
-
-8. **IdGenerator Empty Scope** (2 tests)
-   - Unscoped ID generation
+5. **The manifest id generator** (`mint_id`, `validate_id`,
+   `timeline_id_prefix`)
+   - `mint_id(prefix, taken)` answers `{prefix}_{N}` with N the smallest
+     positive integer not taken: `("clt", ())` → `clt_1`;
+     `("clt", {"clt_1", "clt_3"})` → `clt_2`; `("clt", {"clt_2"})` →
+     `clt_1`; with a role, `("score:clt", {"score:clt_1"})` →
+     `score:clt_2`. Called twice with the same arguments it answers the same
+     id, because it keeps no state. It is the library's only id generator:
+     an element held by no scope mints from an empty taken set, so every
+     free `MatchClaim` is `claim_1`, every free `Region` `region_1` and
+     every `TimeSkeleton` built without an id `skeleton_1` (the skeleton
+     case is tested in `tests/alignment/test_skeleton.py`).
+   - `mint_ids(prefix, taken, count)` is the same rule for many ids at once
+     (claim scopes admit whole columns): it must answer exactly what
+     `mint_id` answers called `count` times with each answer added to the
+     taken set. Checked against that loop: `("claim", ["claim_2", "x"], 3)`
+     → `claim_1`, `claim_3`, `claim_4`; nulls in `taken` are ignored; a
+     `count` of 0 answers an empty array; taken `claim_1`…`claim_5` with
+     `count` 2 → `claim_6`, `claim_7`.
+   - An id is free: any non-empty string without a control character.
+     `validate_id` returns unchanged `"performance"`, `"a"`, `"Bass Kick"`,
+     `"score:clt_7"`, `"a/b"` (a slash), `"intro to part 2"` (spaces), the
+     URI `"https://example.org/op35#m1"`, and words that name the parts
+     and facets of a drawn timeline (`"start"`, `"card"`, `"markers_1"`,
+     `"regions_12"`), since an address is an object naming its id, facet
+     and part apart, never a string composed of ids. It raises exactly `Invalid id '<id>': an id
+     must be non-empty and contain no control character` (the id spelled by
+     `repr`) for `""`, `"a\tb"`, `"a\nb"`, `"\x00"` and `"\x1f"`, the last
+     control character, and the same message for a non-string (`3`).
+   - `timeline_id_prefix` maps one unit of each kind to its prefix:
+     quarters `clt`, ticks `dlt`, seconds `cpt`, samples `dpt`, centimeters
+     `cgt`, pixels `dgt`.
 
 **Validity Rationale:**
 
@@ -904,7 +1051,9 @@ The ID system ensures:
 
 2. **TimeStampWithChildren** (6 tests)
    - Child coordinate resolution via `get_coordinate_for("child:id")`
-   - Boundary handling: left-inclusive, right-exclusive `[offset, offset+length)`
+   - Boundary handling: a child holds `[offset, offset+length)` and its end where
+     no sibling starts there; a lone child's end is on the child, a boundary two
+     children share belongs to the one starting at it
    - Out-of-range axes raise `KeyError` (no extrapolation)
    - Multiple children with staggered offsets
    - `to_dict()` materialization
@@ -916,7 +1065,7 @@ The ID system ensures:
    - Unit access through `get_unit()`
    - Missing C-Map raises `KeyError`
    - Missing C-Map raises ValueError
-   - `to_dict()` emits typed wire entries only for stored timeline coordinates;
+    - `to_dict()` emits typed dictionaries only for stored timeline coordinates;
      conversion-map values are retrieved verbatim with `get_conversion_for()`
    - C-Map conversion values assert exact `==`, not `pytest.approx`: the
      `TableMap` anchors (e.g. `[0,960]->[0,2]`, `[0,20]->[0,10]`) are exactly
@@ -989,7 +1138,7 @@ The unified TimeStamp architecture enables:
 ts = timeline.get_timestamp(30.0)
 ts.axis                              # Typed IdCoordinate
 ts.get_coordinate_for("child:1")    # Typed coordinate; absent axes raise KeyError
-ts.to_dict()                         # Typed coordinate wire entries
+ts.to_dict()                         # Typed coordinate dictionaries
 print(ts)                  # Full cross-section display
 
 # Interval stamps
@@ -1002,9 +1151,11 @@ print(interval)            # Two-column (start, end) display with '-' for out-of
 **Design Notes:**
 
 - **Child bounds checking**: `TimeStamp.get_coordinate_for(child_id)` raises
-  `KeyError` when the queried coordinate falls outside the child's
-  `[offset, offset+length)` span, per the TTA
-  left-inclusive, right-exclusive interval convention.
+  `KeyError` when the child does not hold the queried coordinate: outside its
+  `[offset, offset+length)` span, or at its end where a sibling starts. The end
+  of a child nothing follows is held, so a section ending before its parent
+  still answers its own end; a shared boundary is held once, by the sibling
+  starting there, so one parent position never names two siblings.
 - **TimeIntervalStamp.__str__**: Shows a `-` when one endpoint is out of range for a
   child, making it easy to see events that straddle children.
 
@@ -1241,54 +1392,42 @@ between two key spellings to recover an exact ratio.
 
 ---
 
-### `test_wire_format.py` - The rational wire dict
+### `test_number_json.py` - JSON numbers and coordinates
 
-**Purpose:** Pins the JSON wire format shared by every `to_dict` in the
-library, and its boundary with the Arrow storage cell.
+**Purpose:** Pins the TimeToShare JSON forms and their boundary with Arrow
+storage cells. `number_to_json` and `number_from_json` round-trip each native
+number exactly: an `int` is a JSON integer, a `float` is a JSON number, and a
+`Fraction` is `[numerator, denominator]` with a strictly positive denominator.
+The tests reject booleans, zero and negative denominators, and pairs of the
+wrong length. `is_fraction_json` accepts only valid two-item pairs of
+integral members.
 
-**Two shapes that look alike and are not the same thing.** A storage cell lives
-in a column whose metadata declares which of its two sides is authoritative, so
-the cell itself never has to say; both sides are always populated. A JSON value
-— a map's offset, a claim's coordinate, a serialized timeline length — stands
-alone with no schema beside it, so it carries its own answer instead:
+Coordinates on another timeline's axis are `{ "unit", "number_type", "value"
+}`; their number type selects the value representation, and a decoded
+coordinate restores its declared Python type. A timeline's length and its
+children's offsets lie on its own axis and are written as the bare value: the
+tests prove that a written timeline is a JSON fixpoint whatever its number
+type, that a length and an offset come back exactly in the axis's type, and
+that a bare value represented otherwise than the axis selects is refused with
+a message naming what to write. Arrow storage remains a separate, three-member
+column representation and is not serialized as JSON.
 
-```json
-{"value": 3.3333333333333335, "numerator": 10, "denominator": 3}
-```
-
-`rational_to_wire` writes it and `wire_to_rational` reads it. A `Fraction`
-keeps its exact ratio; anything else encodes as `{"value": x, "numerator":
-null, "denominator": null}` and decodes back to a plain `float`. In the wire
-dict — and **only** there — a null ratio is the marker of inexactness.
-
-The tests assert both halves of that boundary, because collapsing them is the
-tempting mistake in either direction: giving the wire dict a mandatory ratio
-would turn every serialized float into an exact dyadic on read-back and change
-what round-trips out of maps, timelines and claims; giving the storage cell an
-optional one would put readers back to sniffing rows for a fact the schema
-already knows.
-
-Integer-valued float ratio members found in artifacts written by earlier
-releases decode losslessly as integers; ratio members with a fractional part
-are rejected and never rounded. `is_rational_wire` recognises the shape for the
-few slots (a `ConstantMap` value) whose payload is genuinely open-ended.
-
-There is exactly one encoding. `Fraction` objects are never emitted raw, and
-the `"n/d"` strings the maps used to write are gone — `wire_to_rational`
-rejects a string rather than parsing it, so a stale payload fails at the
-boundary instead of decoding into a plausible wrong number.
+Every conversion-map class that has a manifest form — all but the two
+periodic maps, whose refusal `tests/maps/README.md` pins — contributes one
+live instance (an `IntervalToConstantMap` of labels given its `end`, the
+four measure views over one two-bar measure map): its `to_dict()` is
+JSON-safe and keeps exact Fractions, its name is written only when given
+(`null` in the complete form, left out of the minimal form it writes by
+default), and a custom name round-trips through `ConversionMap.from_dict`, a view
+given the measure map it names.
 
 ### Coordinate cell rendering
 
-`Coordinate.to_dict()` and `Duration.to_dict()` emit the **storage cell**, so
-both sides are populated whatever the value's kind: an integer, a `Fraction`
-and a float all come back with a `value`, a `numerator` and a `denominator`.
-A float's ratio members are the exact dyadic of the double, which is a fact
-about the double rather than a guess about what it meant. Null members appear
-only in the JSON wire dict, which is a different encoding with a different
-job — see `test_wire_format.py` above. Tests compare the complete
-dictionaries and verify that `Note.to_dict()` and `Measure.to_dict()` embed
-those cells unchanged.
+`Coordinate.to_dict()` and `Duration.to_dict()` emit Arrow storage cells, so
+their three stored members remain available for table and Parquet use. Public
+JSON payloads use the number and coordinate forms above instead. Tests compare
+the complete dictionaries and verify that `Note.to_dict()` and `Measure.to_dict()`
+embed storage cells unchanged.
 
 ---
 

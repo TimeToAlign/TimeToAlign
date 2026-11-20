@@ -17,7 +17,7 @@ loader.AudioInfo(
 Metadata for an audio file.
 
 This dataclass holds all relevant information about an audio file
-that is needed to create a DiscretePhysicalTimeline.
+that is needed to create a continuous physical timeline.
 
 ## Attributes {.doc-section .doc-section-attributes}
 

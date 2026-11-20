@@ -5,7 +5,7 @@ from __future__ import annotations
 from fractions import Fraction
 
 from timetoalign.core import NumberType, TimeUnit
-from timetoalign.timelines import BeatGrid, ContinuousPhysicalTimeline, Timeline
+from timetoalign.timelines import ContinuousLogicalTimeline, Timeline
 
 
 def _rational_pair(event: dict, field: str) -> Fraction:
@@ -14,22 +14,45 @@ def _rational_pair(event: dict, field: str) -> Fraction:
     return Fraction(coordinate["numerator"], coordinate["denominator"])
 
 
-def test_beatgrid_materialization_stores_exact_coordinates() -> None:
-    """Beat and measure rows retain their exact quarter-note coordinates."""
-    grid = BeatGrid(
+def test_generated_metrical_events_store_exact_coordinates() -> None:
+    """Beat and measure rows retain their exact quarter-note coordinates.
+
+    Six eighth-note beats fill one 6/8 bar of three quarters. Every beat
+    lands on a multiple of ``1/2``, a ratio no float represents exactly,
+    so a lane that rounded on the way into storage would be visible in
+    the stored numerator/denominator pair.
+    """
+    grid = ContinuousLogicalTimeline(
         length=Fraction(3, 1),
-        beats_per_measure=6,
-        beat_unit=Fraction(1, 8),
+        unit=TimeUnit.quarters,
+        number_type=NumberType.fraction,
+        uid="six_eight",
+    )
+    beat_length = Fraction(1, 2)
+    grid.add_events(
+        [
+            {
+                "id": f"beat_{index}",
+                "temporal_type": "interval",
+                "event_type": "Beat",
+                "start": index * beat_length,
+                "end": (index + 1) * beat_length,
+            }
+            for index in range(6)
+        ]
+        + [
+            {
+                "id": "measure_1",
+                "temporal_type": "interval",
+                "event_type": "Measure",
+                "start": Fraction(0),
+                "end": Fraction(3),
+            }
+        ]
     )
 
-    grid.materialize_beats()
-    grid.materialize_measures()
-
-    beats = grid.get_events(event_type="Beat")
-    measures = grid.get_events(event_type="Measure")
-
-    beat_rows = list(beats)
-    measure_rows = list(measures)
+    beat_rows = list(grid.get_events(event_type="Beat"))
+    measure_rows = list(grid.get_events(event_type="Measure"))
 
     assert [_rational_pair(event, "start") for event in beat_rows] == [
         Fraction(0),
@@ -39,33 +62,10 @@ def test_beatgrid_materialization_stores_exact_coordinates() -> None:
         Fraction(2),
         Fraction(5, 2),
     ]
+    assert _rational_pair(beat_rows[3], "end") == Fraction(2)
     assert [
         (_rational_pair(event, "start"), _rational_pair(event, "end"))
         for event in measure_rows
-    ] == [(Fraction(0), Fraction(3))]
-
-
-def test_physical_timeline_metrical_generation_stores_exact_coordinates() -> None:
-    """Metrical events generated from a physical timeline retain exact positions."""
-    audio = ContinuousPhysicalTimeline(length=6.0)
-    result = audio.create_metrical_grid(
-        first_beat_at=0.0,
-        end_at=6.0,
-        tempo_bpm=60.0,
-        beats_per_measure=6,
-        beat_unit=Fraction(1, 8),
-        beat_type="intervals",
-        measure_type="events",
-    )
-
-    beats = list(result.grid.get_events(event_type="Beat"))
-    measures = list(result.grid.get_events(event_type="Measure"))
-
-    assert _rational_pair(beats[3], "start") == Fraction(3, 2)
-    assert _rational_pair(beats[3], "end") == Fraction(2)
-    assert [
-        (_rational_pair(event, "start"), _rational_pair(event, "end"))
-        for event in measures
     ] == [(Fraction(0), Fraction(3))]
 
 

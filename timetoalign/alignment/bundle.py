@@ -9,17 +9,19 @@ Across groups, transfer is mediated by
 the ``MatchClaim`` -> ``MatchLine`` -> ``WarpMap`` pipeline.
 WarpMaps are built lazily and cached for repeated queries.
 
-TimelineGroup uses a timestamp-based architecture. The bundle uses
-the add_timeline() API internally.
+A bundle is its timelines and its groups. Every timeline is registered
+under its own ``id``. The bundle's trees, groups and given id make one
+manifest, in which every id is unique whatever element holds it.
 """
 
 from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from fractions import Fraction
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pandas as pd
 
@@ -28,7 +30,7 @@ from timetoalign.core import (
     CoordinateSpec,
     CoordinateValue,
     IdCoordinate,
-    IdGenerator,
+    Interval,
     SupportPolicy,
     TimeUnit,
     express_as,
@@ -37,6 +39,7 @@ from timetoalign.core import (
     resolve_id,
 )
 from timetoalign.core.enums import NumberType
+from timetoalign.core.ids import _OpenObject, mint_id, quote_id, validate_id
 from timetoalign.core.retrieval import (
     CoordinateCollection,
     CoordinateFormat,
@@ -45,23 +48,33 @@ from timetoalign.core.retrieval import (
     KeyCollection,
     Rounding,
     TableFormat,
+    collection_values,
     dispatch_retrieval,
     format_coordinates,
     is_coordinate_input,
-    is_key_input,
     reject_dataframe_options,
-    resolve_coordinate_collection,
     resolve_key_collection,
     validate_coordinate_collection,
     validate_key_collection,
     validate_table_format,
 )
+from timetoalign.core.time import shift_number
 from timetoalign.core.timestamp import TimestampColumn, build_timestamp_table
-from timetoalign.timelines import TimelineGroup
+from timetoalign.timelines import TimelineGroup, UnknownLengthError
+from timetoalign.timelines.groups import (
+    _groups_by_timeline,
+    _held_ids,
+    _IdScope,
+    _nested,
+    _root,
+    _tree,
+)
+from timetoalign.timelines.manifest import Manifest, ManifestFileMixin
+from timetoalign.timelines.statements import MutableStatementsMixin, rename_references
 
-from .claims import MatchClaim, MatchClaimField
+from .claims import AlignmentAnchor, MatchClaim, MatchClaimField
 from .filters import ClaimFilter
-from .graph import MatchGraph, MatchStamp
+from .graph import MatchGraph, MatchIntervalStamp, MatchStamp
 from .matchline import MatchLine
 from .warpmap import AmbiguousWarpMapError, WarpMap
 
@@ -77,15 +90,6 @@ if TYPE_CHECKING:
     from timetoalign.timelines import Timeline
 
 module_logger = logging.getLogger(__name__)
-
-# Module-level ID generator for bundles
-_bundle_id_generator = IdGenerator(scope="bundle")
-
-
-def _reset_bundle_ids() -> None:
-    """Reset the module-level ID generator. For testing only."""
-    global _bundle_id_generator
-    _bundle_id_generator = IdGenerator(scope="bundle")
 
 
 def _resolve_coordinate_and_timeline(
@@ -125,7 +129,7 @@ def _resolve_coordinate_and_timeline(
 
 
 @dataclass
-class AlignmentBundle:
+class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _OpenObject):
     """The primary entry point for all alignment workflows.
 
     An AlignmentBundle manages timelines and their alignment relationships.
@@ -145,16 +149,26 @@ class AlignmentBundle:
     coordinate transfer results.
 
     Attributes:
-        id: Unique identifier for this bundle.
+        id: Unique identifier for this bundle, ``bundle_N`` unless given.
         name: Optional human-readable name.
-        timelines: Dictionary mapping bundle UIDs to Timeline objects.
-        groups: Dictionary mapping group IDs to TimelineGroup objects.
-        timeline_to_group: Mapping from bundle UID to its containing group ID.
+        timelines: Dictionary mapping timeline IDs to Timeline objects: every
+            timeline added, and the root of every one that is a child. The
+            other descendants of these roots are not listed, yet every
+            getter answers for them as for the listed ones.
+        groups: Dictionary mapping group IDs to TimelineGroup objects. The
+            groups are the one statement of membership; a timeline may be a
+            member of several (see :attr:`timeline_to_groups`).
         cross_group_claims: MatchClaims connecting timelines across groups
             (the per-claim Python-list store).
         cross_group_claim_fields: Columnar ``MatchClaimField`` stores of dense
             synchronous-instant pairwise claims, queried vectorized without
             materialising the full claim list.
+        styling: The members of the manifest's ``graphical`` other than
+            ``order`` (``styles``, ``rules``, ``timestamps`` and any
+            other), kept as given and never interpreted.
+        statements: What the manifest stands for, as property–value pairs,
+            with their :attr:`provenance` (see
+            :mod:`~timetoalign.timelines.statements`).
 
     Note:
         The two claim stores are interchangeable as far as queries are
@@ -164,30 +178,34 @@ class AlignmentBundle:
         queries stay vectorized, and ``get_claim_fields()`` is the accessor
         that keeps them that way.
 
-    Note:
-        The bundle maintains a UID mapping layer. Users interact with bundle UIDs
-        (e.g., "tl1", "tl2"), while groups internally use the actual timeline.id.
-        The bundle translates between these two namespaces transparently.
-
     Examples:
+        >>> from timetoalign.alignment import AlignmentBundle
+        >>> from timetoalign.timelines.types import (
+        ...     ContinuousLogicalTimeline,
+        ...     ContinuousPhysicalTimeline,
+        ... )
         >>> bundle = AlignmentBundle()
-        >>> bundle.add_timeline(score_timeline, uid="score")
-        >>> bundle.add_timeline(audio_timeline, uid="audio", grouped_with="score")
-        >>> stamp = bundle.get_matchstamp_at(100.0, "score")
-        >>> stamp.get_coordinate_for("audio", format="float")
+        >>> _ = bundle.add_timeline(ContinuousLogicalTimeline(length=200))
+        >>> _ = bundle.add_timeline(
+        ...     ContinuousPhysicalTimeline(length=91.0), grouped_with="clt_1"
+        ... )
+        >>> stamp = bundle.get_matchstamp_at(100, "clt_1")
+        >>> stamp.get_coordinate_for("cpt_1", format="float")
         45.5
     """
+
+    _scope_kind: ClassVar[str] = "bundle"
+    _writes_minted_id: ClassVar[bool] = False
 
     id: str = field(default="")
     name: str | None = None
     timelines: dict[str, "Timeline"] = field(default_factory=dict)
     groups: dict[str, TimelineGroup] = field(default_factory=dict)
-    timeline_to_group: dict[str, str] = field(default_factory=dict)
     meta: dict[str, Any] = field(default_factory=dict)
     cross_group_claims: list[MatchClaim] = field(default_factory=list)
     # Columnar claim stores added additively (e.g. by ListenHereLoader). Each
-    # holds a dense set of synchronous instant pairwise claims as a single
-    # PyArrow struct column. Queries filter these vectorized and materialise
+    # holds a dense set of synchronous instant pairwise claims as Arrow
+    # columns. Queries filter these vectorized and materialise
     # only the matched rows — a million-claim field is never exploded into a
     # Python list. The Python-list ``cross_group_claims`` path is unchanged.
     cross_group_claim_fields: list[MatchClaimField] = field(default_factory=list)
@@ -198,10 +216,17 @@ class AlignmentBundle:
     # timeline; a per-call ``support_policy`` argument overrides it.
     support_policy: SupportPolicy = SupportPolicy.omit
 
-    # Mapping from bundle UID to actual timeline.id (used by groups)
-    _uid_to_timeline_id: dict[str, str] = field(default_factory=dict, repr=False)
-    # Reverse mapping from timeline.id to bundle UID
-    _timeline_id_to_uid: dict[str, str] = field(default_factory=dict, repr=False)
+    # The members of the manifest's ``graphical`` other than ``order``,
+    # kept as given and never interpreted.
+    styling: dict[str, Any] = field(default_factory=dict)
+
+    # The manifest's statements and provenance as the file writes them, and
+    # the prefixes they need beyond the catalogue's.
+    _statement_state: dict[str, Any] = field(
+        default_factory=dict, init=False, repr=False
+    )
+    _prefixes: dict[str, str] = field(default_factory=dict, init=False, repr=False)
+
     # Cached WarpMaps: (source_tl_id, target_tl_id) -> WarpMap | None
     # None values are cached as negative results to avoid repeated expensive
     # MatchLine construction for unreachable timeline pairs.
@@ -214,11 +239,32 @@ class AlignmentBundle:
         default_factory=dict, repr=False
     )
     # Cached MatchGraphs: (timeline_id, coordinate) -> MatchGraph
-    _matchgraph_cache: dict[tuple[str, float], MatchGraph] = field(
+    _matchgraph_cache: dict[tuple[str, CoordinateValue], MatchGraph] = field(
         default_factory=dict, repr=False
+    )
+    # The listed cross-group claims by each timeline they name, in store
+    # order; None until first read after the claims changed.
+    _claims_by_timeline: dict[str, list[MatchClaim]] | None = field(
+        default=None, repr=False, compare=False
     )
     # Hash of cross_group_claims list at time of last cache build
     _cache_claims_hash: int = field(default=0, repr=False)
+
+    # Whether the id was minted rather than given.
+    _id_minted: bool = field(default=False, init=False, repr=False, compare=False)
+    # Whether the manifest read held a ``graphical`` object, written back
+    # even with every member at its default.
+    _has_graphical: bool = field(default=False, init=False, repr=False, compare=False)
+    # The band orders of the manifest read, keyed by timeline id, kept as
+    # given beside the styling and written back with their timelines.
+    _band_orders: dict[str, Any] = field(
+        default_factory=dict, init=False, repr=False, compare=False
+    )
+    # The measure maps of the manifest read that no timeline names, written
+    # back with the ones the timelines name.
+    _measure_maps: list[Any] = field(
+        default_factory=list, init=False, repr=False, compare=False
+    )
 
     # Internal logger
     _logger: logging.Logger = field(
@@ -226,10 +272,91 @@ class AlignmentBundle:
     )
 
     def __post_init__(self) -> None:
-        """Initialize ID and logger after dataclass creation."""
+        """Mint or validate the ID and set up the logger."""
+        # A minted id is never written to a manifest.
+        self._id_minted = not self.id
         if not self.id:
-            self.id = _bundle_id_generator.create(type_hint="AlignmentBundle")
+            self.id = mint_id("bundle", ())
+        else:
+            validate_id(self.id)
+        self.support_policy = SupportPolicy(self.support_policy)
         self._logger = module_logger.getChild(self.id)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "AlignmentBundle":
+        """Read a bundle from any TimeToShare manifest.
+
+        The manifest's ``id`` becomes the bundle's (a manifest without ``id``,
+        named or anonymous, gives a bundle whose minted id :meth:`to_dict`
+        never writes), its ``name`` and ``meta`` the bundle's. Every root timeline is rebuilt;
+        each group is rebuilt from its ``Group`` object, its members resolved
+        among the roots and all their descendants and ordered by its
+        ``graphical.order`` entry (``members`` order without one).
+        ``graphical``'s other keys are kept as :attr:`styling`, and the
+        entries of ``graphical.order`` keyed by a timeline, its band orders,
+        are kept too, both unread. The manifest's statements and provenance
+        become the bundle's, with the prefixes of its ``@context`` they need.
+        Every root no group names joins
+        ungrouped. A timeline several groups name is a member of each, one
+        object shared by them. Keys the library does not know are kept on the
+        object read from the JSON object they were found in, and written back.
+
+        Args:
+            data: A TimeToShare manifest.
+
+        Returns:
+            The rebuilt bundle, without MatchClaims.
+
+        Raises:
+            ValueError: If *data* is no TimeToShare manifest of version
+                0.2.0 or is malformed: a timeline id occurring twice, a group
+                id occurring twice or equal to a timeline id, a member naming
+                no timeline of ``"timelines"``, a group naming one member
+                twice, a member that is an ancestor or descendant of another
+                member of its group, an order that is no permutation of its
+                group's members or names no group or timeline. The message
+                names the problem.
+
+        Examples:
+            >>> from fractions import Fraction
+            >>> from timetoalign.alignment import AlignmentBundle
+            >>> from timetoalign.timelines.types import (
+            ...     ContinuousLogicalTimeline,
+            ...     ContinuousPhysicalTimeline,
+            ... )
+            >>> bundle = AlignmentBundle(name="study")
+            >>> _ = bundle.add_timeline(
+            ...     ContinuousLogicalTimeline(length=Fraction(16)), as_group="score"
+            ... )
+            >>> _ = bundle.add_timeline(ContinuousPhysicalTimeline(length=40.0))
+            >>> data = bundle.to_dict()
+            >>> AlignmentBundle.from_dict(data).to_dict() == data
+            True
+        """
+        manifest, content = Manifest.read(data)
+        bundle = cls(
+            id=manifest.id or "",
+            name=manifest.name,
+            meta=manifest.meta,
+            styling=manifest.styling,
+        )
+        bundle._unknown_keys = manifest._unknown_keys
+        bundle._has_graphical = manifest.has_graphical
+        bundle._band_orders = manifest.band_orders
+        bundle._measure_maps = manifest.measure_maps
+        bundle._set_statement_state(manifest.statement_state, manifest.prefixes)
+        for group_data in content.groups:
+            group_id = group_data.get("id") if isinstance(group_data, dict) else None
+            group = TimelineGroup._from_group_object(
+                group_data,
+                content.timelines,
+                content.order.get(group_id) if isinstance(group_id, str) else None,
+            )
+            bundle.add_group(group)
+        for root in content.roots:
+            if bundle.timelines.get(root.id) is not root:
+                bundle.add_timeline(root)
+        return bundle
 
     @classmethod
     def from_bundles(
@@ -242,17 +369,30 @@ class AlignmentBundle:
         """Merge multiple bundles' groups, standalone timelines, and claims.
 
         Registers every group and standalone timeline from each source
-        bundle into a new bundle, preserving each source's bundle-UID
-        namespace, and carries over every cross-group ``MatchClaim`` (both
-        the per-claim list and any columnar ``MatchClaimField`` stores)
-        unchanged. Groups from different source bundles remain distinct —
-        merging does not itself align timelines across bundles. Add
-        cross-group MatchClaims (e.g. via :meth:`create_match_claims`)
-        afterwards to align them.
+        bundle into a new bundle, and carries over every cross-group
+        ``MatchClaim`` (both the per-claim list and any columnar
+        ``MatchClaimField`` stores) unchanged. The statements of the
+        timelines and regions travel with them, and their prefixes; the
+        source bundles' own statements describe their manifests and are not
+        carried. Each source group is entered as
+        a new group with the same members, name and meta, each member keeping
+        its own lock; a minted group id is minted again in the merged bundle,
+        a given one is kept, and a statement of any tree carried from the
+        same source bundle — a member's or an ungrouped root's — naming it
+        names its new id. Groups from
+        different source bundles remain distinct — merging does not itself
+        align timelines across bundles. Add cross-group MatchClaims (e.g. via
+        :meth:`create_match_claims`) afterwards to align them.
+
+        Known limit: the timelines are not copied, the merged bundle shares
+        them with the source bundles. A source bundle whose group was minted
+        again in the merged one therefore no longer writes: the statements
+        of its trees name that group by its new id, which the source bundle
+        does not hold, and its ``to_dict`` raises.
 
         Args:
             bundles: The bundles to merge, in order.
-            id: Explicit ID for the merged bundle. Auto-generated if omitted.
+            id: Explicit ID for the merged bundle. Minted if omitted.
             name: Optional human-readable name for the merged bundle.
 
         Returns:
@@ -260,22 +400,59 @@ class AlignmentBundle:
             timeline, and cross-group claim from ``bundles``.
 
         Raises:
-            ValueError: If two source bundles share a group ID, or a
-                timeline UID collision would occur across bundles.
+            ValueError: If two source bundles share a given group ID, a
+                given timeline ID collision would occur across bundles.
 
         Examples:
+            >>> from timetoalign.alignment import AlignmentBundle
+            >>> from timetoalign.timelines.types import (
+            ...     ContinuousLogicalTimeline,
+            ...     ContinuousPhysicalTimeline,
+            ... )
+            >>> score_bundle = AlignmentBundle()
+            >>> _ = score_bundle.add_timeline(ContinuousLogicalTimeline(length=16), as_group="score")
+            >>> audio_bundle = AlignmentBundle()
+            >>> _ = audio_bundle.add_timeline(
+            ...     ContinuousPhysicalTimeline(length=40.0), as_group="audio"
+            ... )
             >>> merged = AlignmentBundle.from_bundles([score_bundle, audio_bundle])
-            >>> merged.groups.keys() == score_bundle.groups.keys() | audio_bundle.groups.keys()
+            >>> merged.n_groups == score_bundle.n_groups + audio_bundle.n_groups
             True
+            >>> sorted(merged.timelines)
+            ['clt_1', 'cpt_1']
         """
         merged = cls(id=id, name=name)
         for bundle in bundles:
-            uid_map = {tl.id: bundle_uid for bundle_uid, tl in bundle.timelines.items()}
+            held = merged._roots()
+            carried = [
+                root
+                for root in bundle._roots()
+                if not any(root is seen for seen in held)
+            ]
+            rebuilt_groups: list[tuple[str, TimelineGroup]] = []
             for group in bundle.groups.values():
-                merged.add_group(group, uid_map=uid_map)
-            for bundle_uid, timeline in bundle.timelines.items():
-                if bundle_uid not in bundle.timeline_to_group:
-                    merged.add_timeline(timeline, uid=bundle_uid)
+                rebuilt = TimelineGroup(
+                    id=None if group._id_minted else group.id,
+                    name=group.name,
+                    meta=group.meta,
+                )
+                # A member keeps its own lock: merging locks nothing.
+                for member in group:
+                    rebuilt._admit_member(member)
+                merged._take_group(rebuilt)
+                rebuilt_groups.append((group.id, rebuilt))
+            grouped = bundle.timeline_to_groups
+            for timeline_id, timeline in bundle.timelines.items():
+                if timeline_id in grouped:
+                    continue
+                if merged.timelines.get(timeline.id) is timeline:
+                    continue
+                merged.add_timeline(timeline)
+            # Every tree carried from the bundle names its groups by their
+            # new ids, all renamed at once.
+            rename_references(
+                carried, (), {old: rebuilt.id for old, rebuilt in rebuilt_groups}
+            )
             merged.add_match_claims(bundle.cross_group_claims)
             for claim_field in bundle.cross_group_claim_fields:
                 merged.add_match_claim_field(claim_field)
@@ -287,11 +464,8 @@ class AlignmentBundle:
         self,
         timeline: "Timeline",
         *,
-        uid: str | None = None,
         grouped_with: str | None = None,
         as_group: str | None = None,
-        start: CoordinateSpec | None = None,
-        end: CoordinateSpec | None = None,
     ) -> "AlignmentBundle":
         """Add a timeline, optionally grouped with an existing timeline.
 
@@ -299,193 +473,360 @@ class AlignmentBundle:
         Timelines can be standalone or grouped with existing timelines.
         Group membership makes timelines commensurable through
         interpolation; it does not by itself assert any MatchClaim
-        between them.
+        between them. A member spans its whole group (see
+        :class:`~timetoalign.timelines.TimelineGroup`); to let only part of a
+        timeline participate, add the child covering that part.
+
+        A timeline is registered under its own ``id``. An ungrouped
+        participant is always a root: a child added without ``grouped_with``
+        or ``as_group`` registers its ROOT, and the child stays reachable as
+        the root's descendant (exactly what the dictionary form restores). A
+        child added to a group joins it, and its root joins the bundle as
+        well, ungrouped unless it is grouped itself.
+
+        A timeline may be a member of several groups: one already in the
+        bundle, grouped or not, joins a further group through
+        ``grouped_with`` or ``as_group``.
 
         Args:
             timeline: The Timeline to add.
-            uid: Optional explicit ID. If None, uses timeline.id.
-            grouped_with: ID of an existing timeline to share a group with.
-                If provided, both timelines become part of the same group.
+            grouped_with: ID of a timeline of the bundle's trees to share a
+                group with, registered or nested in one; it is registered as
+                a member. If provided, both timelines become part of the same
+                group.
                 If the target timeline is not yet in a group, a new group
-                is created with the target as reference.
-            as_group: Name for the group if creating a new one.
-            start: Where this timeline's 0-origin starts in the group.
-                - CoordinateSpec: Coordinate in the grouped_with timeline
-                - IdCoordinate: Coordinate with explicit timeline_id (preferred)
-                - float: Coordinate in the grouped_with timeline
-                - None: Use group's current start (default for linear alignment)
-            end: Where this timeline's end (length) aligns in the group.
-                - Same options as start
-                - None: Use group's current end (default for linear alignment)
+                is created with the target as its first member. A target in
+                several groups is refused, since the group to join would be a
+                guess.
+            as_group: Name of the group if a new one is created. The new
+                group's id is minted, ``group_N``.
 
         Returns:
             self (for method chaining)
 
         Raises:
-            ValueError: If uid already exists in bundle.
-            KeyError: If grouped_with references a non-existent timeline.
+            ValueError: If the timeline is already in the bundle while no
+                group is requested, or already in the group it would join; if
+                ``grouped_with`` names a timeline of several groups; if a
+                given id of its manifest tree — of any timeline, conversion
+                map, region or flow-control element of it — is held by
+                another element of the bundle's trees (a minted id held there
+                is minted again instead), by a group or by the bundle.
+            KeyError: If grouped_with names no timeline of the bundle's trees,
+                naming every timeline the bundle knows.
 
         Examples:
             Linear (full-extent) alignment:
 
-                >>> bundle.add_timeline(audio, uid="dgt1")
-                >>> bundle.add_timeline(midi, uid="dlt1", grouped_with="dgt1")
-
-            Partial alignment (SUPRA piano roll) using IdCoordinate:
-
-                >>> from timetoalign import IdCoordinate, TimeUnit
-                >>> bundle.add_timeline(image, uid="dgt1")  # Full image
-                >>> bundle.add_timeline(
-                ...     holes,
-                ...     uid="dgt1_holes",
-                ...     grouped_with="dgt1",
-                ...     start=IdCoordinate(15343.0, TimeUnit.pixels, "dgt1"),
-                ...     end=IdCoordinate(293119.0, TimeUnit.pixels, "dgt1"),
+                >>> from timetoalign.alignment import AlignmentBundle
+                >>> from timetoalign.timelines.types import (
+                ...     ContinuousPhysicalTimeline,
+                ...     DiscreteGraphicalTimeline,
+                ...     DiscreteLogicalTimeline,
                 ... )
+                >>> bundle = AlignmentBundle()
+                >>> _ = bundle.add_timeline(DiscreteGraphicalTimeline(length=4000))
+                >>> _ = bundle.add_timeline(
+                ...     DiscreteLogicalTimeline(length=960), grouped_with="dgt_1"
+                ... )
+                >>> bundle.groups["group_1"].timeline_ids
+                ['dgt_1', 'dlt_1']
+
+            Partial alignment: the participating part is a child.
+
+                >>> image = DiscreteGraphicalTimeline(length=300000)
+                >>> holes = DiscreteGraphicalTimeline(length=277776)
+                >>> image.add_child(holes, offset=15343)
+                >>> audio = ContinuousPhysicalTimeline(length=600.0)
+                >>> bundle = AlignmentBundle()
+                >>> _ = bundle.add_timeline(audio, as_group="roll")
+                >>> _ = bundle.add_timeline(holes, grouped_with="cpt_1")
+                >>> sorted(bundle.timelines), bundle.timeline_to_groups
+                (['cpt_1', 'dgt_1', 'dgt_2'], {'cpt_1': ('group_1',), 'dgt_2': ('group_1',)})
         """
-        # Determine the bundle UID to use
-        bundle_uid = uid if uid is not None else timeline.id
-
-        if bundle_uid in self.timelines:
-            raise ValueError(f"Timeline '{bundle_uid}' already exists in bundle")
-
-        # Store the UID mapping (bundle_uid -> actual timeline.id)
-        actual_tl_id = timeline.id
-        self._uid_to_timeline_id[bundle_uid] = actual_tl_id
-        self._timeline_id_to_uid[actual_tl_id] = bundle_uid
-
-        # Store timeline with bundle UID as key
-        self.timelines[bundle_uid] = timeline
-
-        if grouped_with is not None:
-            # Join the group of an existing timeline
-            if grouped_with not in self.timelines:
-                raise KeyError(
-                    f"Cannot group with '{grouped_with}': not in bundle. "
-                    f"Available timelines: {list(self.timelines.keys())}"
-                )
-
-            # Get or create group for the target timeline
-            if grouped_with in self.timeline_to_group:
-                group_id = self.timeline_to_group[grouped_with]
-                group = self.groups[group_id]
-            else:
-                # Create new group with target as first timeline
-                target_timeline = self.timelines[grouped_with]
-                group_id = as_group or f"group_{grouped_with}"
-                group = TimelineGroup(id=group_id, name=as_group)
-                group.add_timeline(target_timeline)
-                self.groups[group_id] = group
-                self.timeline_to_group[grouped_with] = group_id
-
-            # Process start/end parameters for partial alignment.
-            start_spec = self._convert_boundary_spec(start, grouped_with)
-            end_spec = self._convert_boundary_spec(end, grouped_with)
-
-            # Add current timeline to the group with optional partial alignment
-            group.add_timeline(timeline, start=start_spec, end=end_spec)
-            self.timeline_to_group[bundle_uid] = group_id
-
-            self._logger.debug(
-                f"Added timeline '{bundle_uid}' (internal: {actual_tl_id}) "
-                f"grouped with '{grouped_with}' in group '{group_id}'"
-                f"{' with partial alignment' if start is not None or end is not None else ''}"
+        if grouped_with is None and as_group is None:
+            # An ungrouped participant is a root: a child joins through its
+            # root and stays reachable as the root's descendant.
+            timeline = _root(timeline)
+        # The timeline to group with may be any timeline of the bundle's
+        # trees, registered or nested in one.
+        target = (
+            self._require_known_timeline(grouped_with, role="Timeline to group with")
+            if grouped_with is not None
+            else None
+        )
+        registered = self.timelines.get(timeline.id) is timeline
+        if registered and grouped_with is None and as_group is None:
+            raise ValueError(f"Timeline '{timeline.id}' already exists in bundle")
+        target_groups = (
+            self.get_groups_for_timeline(grouped_with)
+            if grouped_with is not None
+            else ()
+        )
+        if len(target_groups) > 1:
+            raise ValueError(
+                f"Cannot group with {quote_id(grouped_with)}: it is a member of "
+                f"several groups {[group.id for group in target_groups]}, so the group "
+                "to join is ambiguous"
             )
-
-        elif as_group is not None:
-            # Create standalone group with this timeline
-            group = TimelineGroup(id=as_group, name=as_group, timelines=[timeline])
-            self.groups[as_group] = group
-            self.timeline_to_group[bundle_uid] = as_group
-
-            self._logger.debug(
-                f"Added timeline '{bundle_uid}' as first timeline in new group '{as_group}'"
-            )
-
+        group: TimelineGroup | None = None
+        if target_groups:
+            # The group refuses a member it holds already and nesting, and
+            # admits the newcomer into every bundle holding it, this one
+            # included, before anything changes.
+            (group,) = target_groups
+            group.add_timeline(timeline)
         else:
-            # Standalone timeline (not in any group yet)
-            self._logger.debug(f"Added standalone timeline '{bundle_uid}'")
+            if target is not None and _nested(target, timeline):
+                raise ValueError(
+                    f"Timeline {quote_id(timeline.id)} cannot be grouped with "
+                    f"{quote_id(grouped_with)}: one is nested in the other, and a parent "
+                    "and its child cannot share one start and end"
+                )
+            if not registered:
+                self._admit(timeline)
+            if target is not None or as_group is not None:
+                founders = [timeline] if target is None else [target, timeline]
+                group = TimelineGroup(name=as_group, timelines=founders)
+                group.id = self._free_group_id(group)
+                self._hold_group(group)
+                if target is not None:
+                    # A member is registered, a nested one too.
+                    self._register(target)
 
+        self._register(timeline)
+        if group is not None:
+            self._logger.debug(f"Added timeline '{timeline.id}' to group '{group.id}'")
+        else:
+            self._logger.debug(f"Added standalone timeline '{timeline.id}'")
         return self
 
-    def add_group(
-        self,
-        group: TimelineGroup,
-        *,
-        uid_map: dict[str, str] | None = None,
-    ) -> "AlignmentBundle":
+    def add_group(self, group: TimelineGroup) -> "AlignmentBundle":
         """Add a pre-built TimelineGroup with all its timelines at once.
 
         This is the bulk-registration counterpart of ``add_timeline(..., as_group=...)``.
-        It registers the group and every timeline it already contains into the
-        bundle's bookkeeping (UID mapping, timeline registry, group registry).
+        It registers the group and every timeline it contains — each under
+        its own ``id``, with the root of every member that is a child — into
+        the bundle's timeline and group registries. A member may already be a
+        member of another group of the bundle: a timeline may belong to
+        several groups. A group whose minted id the bundle holds already is
+        minted again, and the statements of the trees joining with it, and
+        of the manifest it was read from, name it by its new id; a tree the
+        bundle held already names the bundle's own elements and is left as
+        it is.
 
         Args:
             group: A ``TimelineGroup`` that already contains timelines.
-            uid_map: Optional mapping from timeline.id to desired bundle UID.
-                If not provided, each timeline's ``id`` is used as its bundle UID.
 
         Returns:
             self (for method chaining)
 
         Raises:
-            ValueError: If the group ID already exists in the bundle, or
-                if any timeline UID would collide with an existing one.
+            ValueError: If the group's given ID is already held in the bundle
+                (a minted one is minted again instead), or if a given id of a
+                member's manifest tree is held by another element of the
+                bundle's trees (a minted id held there is minted again
+                instead), by a group or by the bundle.
 
         Examples:
-            Add a recording group with 5 DPTs:
+            Add a recording group with three DPTs:
 
-                >>> grp = TimelineGroup(id="normal", timelines=[dpt1, dpt2, dpt3])
-                >>> bundle.add_group(grp)
-
-            With custom UIDs:
-
-                >>> bundle.add_group(grp, uid_map={"dpt:1": "audio", "dpt:2": "midi"})
+                >>> from timetoalign.alignment import AlignmentBundle
+                >>> from timetoalign.timelines import TimelineGroup
+                >>> from timetoalign.timelines.types import DiscretePhysicalTimeline
+                >>> grp = TimelineGroup(
+                ...     timelines=[DiscretePhysicalTimeline(length=44100) for _ in range(3)]
+                ... )
+                >>> bundle = AlignmentBundle().add_group(grp)
+                >>> sorted(bundle.timelines), list(bundle.groups)
+                (['dpt_1', 'dpt_2', 'dpt_3'], ['group_1'])
         """
-        if group.id in self.groups:
-            raise ValueError(f"Group '{group.id}' already exists in bundle")
-
-        # Validate UIDs before mutating state
-        uid_map = uid_map or {}
-        planned_uids: list[tuple[str, str]] = []  # (bundle_uid, actual_tl_id)
-        for tl_id in group.timeline_ids:
-            bundle_uid = uid_map.get(tl_id, tl_id)
-            if bundle_uid in self.timelines:
-                raise ValueError(
-                    f"Timeline '{bundle_uid}' already exists in bundle "
-                    f"(from group '{group.id}' timeline '{tl_id}')"
-                )
-            planned_uids.append((bundle_uid, tl_id))
-
-        # Register the group
-        self.groups[group.id] = group
-
-        # Register each timeline
-        for bundle_uid, actual_tl_id in planned_uids:
-            tl = group.get_timeline(actual_tl_id)
-            self.timelines[bundle_uid] = tl
-            self._uid_to_timeline_id[bundle_uid] = actual_tl_id
-            self._timeline_id_to_uid[actual_tl_id] = bundle_uid
-            self.timeline_to_group[bundle_uid] = group.id
-
-        self._logger.debug(
-            f"Added group '{group.id}' with {len(planned_uids)} timelines"
-        )
-
+        old_id = group.id
+        held = self._roots()
+        joining = [
+            root
+            for root in group._member_roots()
+            if not any(root is seen for seen in held)
+        ]
+        self._take_group(group)
+        # The trees joining name the group by the id it had; the trees the
+        # bundle held name its own elements.
+        rename_references(joining, [group], {old_id: group.id})
         return self
 
-    def get_timeline(self, uid: str) -> "Timeline":
-        """Get a timeline by ID.
+    def _take_group(self, group: TimelineGroup) -> None:
+        """Admit *group* and its members, the group under an id of its own.
+
+        The statements naming the group are left as they are.
+
+        Raises:
+            ValueError: As :meth:`add_group`; nothing has changed then.
+        """
+        if any(held is group for held in self.groups.values()):
+            raise ValueError(f"Group {quote_id(group.id)} already exists in bundle")
+        members = list(group)
+        # Check every member and the group id before anything changes.
+        for member in members:
+            if self.timelines.get(member.id) is not member:
+                self._admit(member, check_only=True)
+        group.id = self._free_group_id(group)
+
+        for member in members:
+            if self.timelines.get(member.id) is not member:
+                self._admit(member)
+        group._rekey_members()
+
+        self._hold_group(group)
+        for member in members:
+            self._register(member)
+
+        self._logger.debug(f"Added group '{group.id}' with {len(members)} timelines")
+
+    def _admit(self, timeline: "Timeline", *, check_only: bool = False) -> None:
+        """Admit a timeline's manifest tree into the bundle's id scope.
+
+        Every id is unique in the bundle, whatever element holds it. A given
+        group id and the bundle's given id are reserved; a minted group id
+        that a newcomer's given id takes is minted again for the group.
+
+        Args:
+            timeline: The timeline joining the bundle.
+            check_only: Raise as admitting would, but change nothing.
+
+        Raises:
+            ValueError: If a given id of the tree is held by another element
+                of the bundle's trees, a group with a given id or the bundle
+                (minted ids held there are minted again instead).
+        """
+        self._admit_tree(timeline, check_only=check_only)
+
+    def _scope_members(self) -> list["Timeline"]:
+        """Return the registered timelines."""
+        return list(self.timelines.values())
+
+    def _sub_scopes(self) -> dict[str, TimelineGroup]:
+        """Return the groups, keyed by id."""
+        return self.groups
+
+    def _roots(self) -> list["Timeline"]:
+        """Return the root of every tree the bundle holds, once each."""
+        roots: dict[str, Timeline] = {}
+        for timeline in self.timelines.values():
+            root = _root(timeline)
+            roots.setdefault(root.id, root)
+        return list(roots.values())
+
+    def _known_timelines(self) -> dict[str, "Timeline"]:
+        """Return every timeline the bundle answers for, by id.
+
+        A bundle knows every timeline of its trees, whatever its depth and
+        whether or not it was added, registered or grouped: the registered
+        timelines first, in registration order, then every other descendant
+        of each root, depth-first. Registering is how a tree enters the
+        bundle, never a condition for finding one of its timelines; the
+        registry itself (:attr:`timelines`) is unchanged by a lookup.
+
+        Every getter addresses timelines through this mapping (or
+        :meth:`_known_timeline` for one exact id), and a stamp reaches each
+        of them from any other timeline of its tree by exact offsets
+        (:meth:`_manifest_relatives`).
+        """
+        known: dict[str, Timeline] = dict(self.timelines)
+        for root in self._roots():
+            for _, descendant in root._iter_descendants():
+                known.setdefault(descendant.id, descendant)
+        return known
+
+    def _known_timeline(self, timeline_id: str) -> "Timeline | None":
+        """Return the timeline of the bundle's trees with this exact id, else None.
+
+        The same rule as :meth:`_known_timelines`, answered from the registry
+        first so the common case walks no tree.
+        """
+        held = self.timelines.get(timeline_id)
+        if held is not None:
+            return held
+        return self._known_timelines().get(timeline_id)
+
+    def _require_known_timeline(
+        self, timeline_id: str, *, role: str = "Timeline"
+    ) -> "Timeline":
+        """Return the timeline of the bundle's trees with this exact id.
+
+        Args:
+            timeline_id: The exact id of a timeline of the bundle's trees.
+            role: How the message names the timeline (``"Source timeline"``).
+
+        Raises:
+            KeyError: If no timeline of the bundle's trees has this id, naming
+                every timeline the bundle knows (:meth:`_known_timelines`).
+        """
+        held = self._known_timeline(timeline_id)
+        if held is None:
+            raise KeyError(
+                f"{role} '{timeline_id}' not in bundle. "
+                f"Available timelines: {list(self._known_timelines())}"
+            )
+        return held
+
+    def _statements_holder(self) -> "AlignmentBundle":
+        """Return the bundle: it holds the statements of its manifest itself."""
+        return self
+
+    def _statement_holder_name(self) -> str:
+        """Return the bundle as a message names it."""
+        return f"bundle {quote_id(self.id)}"
+
+    def _register(self, timeline: "Timeline") -> None:
+        """Register a timeline, and its root when it is a child."""
+        self.timelines[timeline.id] = timeline
+        timeline._join_scope(self)
+        root = _root(timeline)
+        if self.timelines.get(root.id) is not root:
+            self.timelines[root.id] = root
+            root._join_scope(self)
+
+    def _hold_group(self, group: TimelineGroup) -> None:
+        """Hold *group* under its id and record the bundle on it."""
+        self.groups[group.id] = group
+        group._hold_in(self)
+
+    def _free_group_id(self, group: TimelineGroup) -> str:
+        """Return an id for *group* that no element of the bundle holds.
+
+        A free id is kept and a minted one that is held is minted again.
+
+        Raises:
+            ValueError: If the group's given id is held in the bundle.
+        """
+        held = self._scope_ids()
+        if group.id not in held and group.id not in self.groups:
+            return group.id
+        if not group._id_minted:
+            if group.id in self.groups:
+                raise ValueError(f"Group {quote_id(group.id)} already exists in bundle")
+            raise ValueError(
+                f"group {quote_id(group.id)} cannot join bundle {quote_id(self.id)}: "
+                f"its id {quote_id(group.id)} is already held by {held[group.id]}"
+            )
+        return mint_id("group", set(held) | set(self.groups) | set(_held_ids(group)))
+
+    def get_timeline(self, timeline_id: str) -> "Timeline":
+        """Get a timeline of the bundle's trees by ID.
+
+        Every timeline of the trees the bundle holds is found, registered or
+        not and at any depth; registered timelines come first when a pattern
+        matches several.
 
         Supports partial string and regex matching:
-        1. Exact match: If ``uid`` matches an ID exactly, returns it.
-        2. Substring match: If ``uid`` is a substring of exactly one ID,
+        1. Exact match: If ``timeline_id`` matches an ID exactly, returns it.
+        2. Substring match: If ``timeline_id`` is a substring of exactly one ID,
            returns that timeline. If multiple match, returns the first and warns.
-        3. Regex match: If ``uid`` is a valid regex, matches via
+        3. Regex match: If ``timeline_id`` is a valid regex, matches via
            ``re.search()``. Same first-match logic with warning.
 
         Args:
-            uid: The timeline's unique identifier, or a partial/regex pattern.
+            timeline_id: The timeline's unique identifier, or a partial/regex pattern.
 
         Returns:
             The Timeline object.
@@ -494,25 +835,39 @@ class AlignmentBundle:
             KeyError: If no timeline matches the pattern.
 
         Examples:
-            >>> bundle.get_timeline("clt1")          # Exact match
-            >>> bundle.get_timeline("score")         # Substring match
-            >>> bundle.get_timeline(r"^perf:")       # Regex match
+            >>> from timetoalign.alignment import AlignmentBundle
+            >>> from timetoalign.timelines.types import (
+            ...     ContinuousLogicalTimeline,
+            ...     ContinuousPhysicalTimeline,
+            ... )
+            >>> bundle = AlignmentBundle()
+            >>> _ = bundle.add_timeline(ContinuousLogicalTimeline(length=16, uid="score:clt_1"))
+            >>> _ = bundle.add_timeline(ContinuousPhysicalTimeline(length=40.0, uid="perf:cpt_1"))
+            >>> bundle.get_timeline("score:clt_1").id  # Exact match
+            'score:clt_1'
+            >>> bundle.get_timeline("score").id  # Substring match
+            'score:clt_1'
+            >>> bundle.get_timeline(r"^perf:").id  # Regex match
+            'perf:cpt_1'
         """
-        resolved_id = resolve_id(uid, list(self.timelines.keys()))
-        return self.timelines[resolved_id]
+        held = self.timelines.get(timeline_id)
+        if held is not None:
+            return held
+        known = self._known_timelines()
+        return known[resolve_id(timeline_id, list(known))]
 
-    def get_group(self, uid: str) -> TimelineGroup:
+    def get_group(self, group_id: str) -> TimelineGroup:
         """Get a group by ID.
 
         Supports partial string and regex matching:
-        1. Exact match: If ``uid`` matches an ID exactly, returns it.
-        2. Substring match: If ``uid`` is a substring of exactly one ID,
+        1. Exact match: If ``group_id`` matches an ID exactly, returns it.
+        2. Substring match: If ``group_id`` is a substring of exactly one ID,
            returns that group. If multiple match, returns the first and warns.
-        3. Regex match: If ``uid`` is a valid regex, matches via
+        3. Regex match: If ``group_id`` is a valid regex, matches via
            ``re.search()``. Same first-match logic with warning.
 
         Args:
-            uid: The group's unique identifier, or a partial/regex pattern.
+            group_id: The group's unique identifier, or a partial/regex pattern.
 
         Returns:
             The TimelineGroup object.
@@ -521,25 +876,119 @@ class AlignmentBundle:
             KeyError: If no group matches the pattern.
 
         Examples:
-            >>> bundle.get_group("score")            # Substring match
-            >>> bundle.get_group(r"^perf")           # Regex match
+            >>> from timetoalign.alignment import AlignmentBundle
+            >>> from timetoalign.timelines.types import (
+            ...     ContinuousLogicalTimeline,
+            ...     ContinuousPhysicalTimeline,
+            ... )
+            >>> bundle = AlignmentBundle()
+            >>> _ = bundle.add_timeline(ContinuousLogicalTimeline(length=16), as_group="score")
+            >>> _ = bundle.add_timeline(ContinuousPhysicalTimeline(length=40.0), as_group="audio")
+            >>> bundle.get_group("group_1").timeline_ids  # Exact match
+            ['clt_1']
+            >>> bundle.get_group(r"_2$").timeline_ids  # Regex match
+            ['cpt_1']
         """
-        resolved_id = resolve_id(uid, list(self.groups.keys()))
+        resolved_id = resolve_id(group_id, list(self.groups.keys()))
         return self.groups[resolved_id]
 
     def get_group_for_timeline(self, timeline_id: str) -> TimelineGroup | None:
-        """Get the group containing a timeline.
+        """Get the one group containing a timeline.
 
         Args:
             timeline_id: The timeline's unique identifier.
 
         Returns:
             The TimelineGroup containing the timeline, or None if standalone.
+
+        Raises:
+            ValueError: If the timeline is a member of several groups; use
+                :meth:`get_groups_for_timeline` for all of them.
         """
-        group_id = self.timeline_to_group.get(timeline_id)
-        if group_id is None:
-            return None
-        return self.groups.get(group_id)
+        groups = self.get_groups_for_timeline(timeline_id)
+        if len(groups) > 1:
+            raise ValueError(
+                f"Timeline {timeline_id!r} is a member of several groups "
+                f"{[group.id for group in groups]}; use get_groups_for_timeline"
+            )
+        return groups[0] if groups else None
+
+    def get_groups_for_timeline(self, timeline_id: str) -> tuple[TimelineGroup, ...]:
+        """Get every group containing a timeline, sorted by group id.
+
+        Args:
+            timeline_id: The timeline's unique identifier.
+
+        Returns:
+            The groups holding the timeline; empty if it is standalone.
+        """
+        return tuple(
+            self.groups[group_id]
+            for group_id in self.timeline_to_groups.get(timeline_id, ())
+        )
+
+    def _shared_group(self, timeline_a: str, timeline_b: str) -> TimelineGroup | None:
+        """Return the first group, by sorted id, holding both timelines.
+
+        Members of one group share one start and one end, so every group two
+        timelines share converts between them alike; the first stands for all.
+        """
+        membership = self.timeline_to_groups
+        shared = set(membership.get(timeline_a, ())) & set(
+            membership.get(timeline_b, ())
+        )
+        return self.groups[min(shared)] if shared else None
+
+    def _warp_units(self) -> list[tuple[TimelineGroup | None, tuple[str, ...]]]:
+        """Return the units a matchstamp warps between, each with its members.
+
+        Every group is one unit, and so is every other registered timeline,
+        with ``None`` for its group: it is warped from and into exactly as a
+        group of that one member would be. A timeline of the bundle's trees
+        that is neither registered nor grouped (:meth:`_known_timelines`) is
+        a unit of its own only when a claim names it.
+
+        A claim names the timeline it was made on: claims on a child build
+        that child's ``MatchLine``, never its root's, so the root's offsets
+        carry a position to the child (:meth:`_manifest_relatives`) but only
+        the child's unit warps it on through those claims. A unit no claim
+        reaches warps nothing, so a descendant no claim names is left out
+        rather than tried on every step of the closure.
+        """
+        membership = self.timeline_to_groups
+        claimed: set[str] = set()
+        for claim in self.cross_group_claims:
+            claimed.update(claim.timelines)
+        for claim_field in self.cross_group_claim_fields:
+            claimed.update(claim_field.timeline_ids)
+        units: list[tuple[TimelineGroup | None, tuple[str, ...]]] = [
+            (group, tuple(group.timeline_ids)) for group in self.groups.values()
+        ]
+        units.extend(
+            (None, (timeline_id,))
+            for timeline_id in self._known_timelines()
+            if timeline_id not in membership
+            and (timeline_id in self.timelines or timeline_id in claimed)
+        )
+        return units
+
+    def _group_component(self, timeline_id: str) -> set[str]:
+        """Return the timelines reached from one through shared groups.
+
+        A timeline of several groups joins them: every member of a group it
+        belongs to is reached, and so on through those members' groups. The
+        timeline itself is included.
+        """
+        membership = self.timeline_to_groups
+        reached = {timeline_id}
+        pending = [timeline_id]
+        while pending:
+            for group_id in membership.get(pending.pop(), ()):
+                for member_id in self.groups[group_id].timeline_ids:
+                    if member_id not in reached:
+                        reached.add(member_id)
+                        pending.append(member_id)
+        return reached
 
     def get_timelines(self, ids: list[str]) -> list["Timeline"]:
         """Get multiple timelines by their IDs.
@@ -558,11 +1007,21 @@ class AlignmentBundle:
             KeyError: If any timeline ID is not found.
 
         Examples:
+            >>> from timetoalign.alignment import AlignmentBundle
+            >>> from timetoalign.timelines.types import (
+            ...     ContinuousLogicalTimeline,
+            ...     ContinuousPhysicalTimeline,
+            ...     DiscretePhysicalTimeline,
+            ... )
+            >>> bundle = AlignmentBundle()
+            >>> _ = bundle.add_timeline(ContinuousLogicalTimeline(length=16, uid="score"))
+            >>> _ = bundle.add_timeline(ContinuousPhysicalTimeline(length=40.0, uid="audio"))
+            >>> _ = bundle.add_timeline(DiscretePhysicalTimeline(length=88200, uid="midi"))
             >>> timelines = bundle.get_timelines(["score", "audio", "midi"])
-            >>> len(timelines)
-            3
+            >>> [timeline.id for timeline in timelines]
+            ['score', 'audio', 'midi']
         """
-        return [self.get_timeline(uid) for uid in ids]
+        return [self.get_timeline(timeline_id) for timeline_id in ids]
 
     @property
     def n_timelines(self) -> int:
@@ -591,47 +1050,35 @@ class AlignmentBundle:
         return list(self.timelines.keys())
 
     @property
+    def timeline_to_groups(self) -> dict[str, tuple[str, ...]]:
+        """Every grouped timeline's id, mapped to the ids of its groups.
+
+        Read from :attr:`groups`, the one statement of membership. A
+        timeline may be a member of several groups; its group ids are
+        sorted. A standalone timeline is absent.
+
+        Examples:
+            >>> from timetoalign.alignment import AlignmentBundle
+            >>> from timetoalign.timelines import TimelineGroup
+            >>> from timetoalign.timelines.types import (
+            ...     ContinuousLogicalTimeline,
+            ...     ContinuousPhysicalTimeline,
+            ... )
+            >>> score = ContinuousLogicalTimeline(length=16, uid="score")
+            >>> audio = ContinuousPhysicalTimeline(length=40.0, uid="audio")
+            >>> video = ContinuousPhysicalTimeline(length=40.0, uid="video")
+            >>> bundle = AlignmentBundle()
+            >>> _ = bundle.add_group(TimelineGroup(id="g1", timelines=[score, audio]))
+            >>> _ = bundle.add_group(TimelineGroup(id="g2", timelines=[score, video]))
+            >>> bundle.timeline_to_groups
+            {'score': ('g1', 'g2'), 'audio': ('g1',), 'video': ('g2',)}
+        """
+        return _groups_by_timeline(self.groups)
+
+    @property
     def group_ids(self) -> list[str]:
         """List of all group IDs in the bundle."""
         return list(self.groups.keys())
-
-    def _convert_boundary_spec(
-        self,
-        spec: CoordinateSpec | None,
-        grouped_with: str,
-    ) -> CoordinateSpec | None:
-        """Convert a boundary specification from bundle UIDs to timeline IDs.
-
-        Args:
-            spec: The boundary specification (start or end).
-                - CoordinateSpec: Uses the grouped_with timeline as context
-                - IdCoordinate: Uses timeline_id attribute as bundle UID
-                - float: Coordinate in the grouped_with timeline
-                - None: Use defaults
-            grouped_with: The bundle UID of the grouped_with timeline.
-
-        Returns:
-            The converted specification for use with TimelineGroup.add_timeline().
-            IdCoordinate is converted to have the actual timeline ID.
-        """
-        if spec is None:
-            return None
-
-        if isinstance(spec, IdCoordinate):
-            # IdCoordinate: convert bundle UID to actual timeline ID
-            bundle_uid = spec.timeline_id
-            if bundle_uid not in self._uid_to_timeline_id:
-                raise KeyError(
-                    f"Timeline '{bundle_uid}' not found in bundle. "
-                    f"Available: {list(self._uid_to_timeline_id.keys())}"
-                )
-            actual_tl_id = self._uid_to_timeline_id[bundle_uid]
-            return spec.with_timeline(actual_tl_id)
-
-        resolved = resolve_coordinate_spec(spec)
-        actual_tl_id = self._uid_to_timeline_id[grouped_with]
-        unit = resolved.unit or self.timelines[actual_tl_id].unit
-        return IdCoordinate(resolved.value, unit, actual_tl_id)
 
     # endregion
 
@@ -659,68 +1106,61 @@ class AlignmentBundle:
 
         Args:
             coord: The coordinate value to transfer.
-            from_timeline: Bundle UID of the source timeline.
-            to_timeline: Bundle UID of the target timeline.
+            from_timeline: ID of the source timeline.
+            to_timeline: ID of the target timeline.
 
         Returns:
             The transferred coordinate, or None if no path exists.
 
         Raises:
-            KeyError: If either timeline is not in the bundle.
+            KeyError: If either id names no timeline of the bundle's trees.
         """
-        if from_timeline not in self.timelines:
-            raise KeyError(
-                f"Source timeline '{from_timeline}' not in bundle. "
-                f"Available timelines: {list(self.timelines.keys())}"
-            )
-        if to_timeline not in self.timelines:
-            raise KeyError(
-                f"Target timeline '{to_timeline}' not in bundle. "
-                f"Available timelines: {list(self.timelines.keys())}"
-            )
+        source_timeline = self._require_known_timeline(
+            from_timeline, role="Source timeline"
+        )
+        self._require_known_timeline(to_timeline, role="Target timeline")
 
-        coord_value, _resolved_timeline_id, unit = _resolve_coordinate_and_timeline(
+        coord_value, _resolved_timeline_id, _unit = _resolve_coordinate_and_timeline(
             coord, from_timeline
         )
-        if unit is not None:
-            coord = float(
-                self.get_timeline(from_timeline)
-                .get_coordinate_at(Coordinate(coord_value, unit), format="coordinate")
-                .value
-            )
+        if isinstance(coord, IdCoordinate):
+            query_input = coord.to_coordinate()
+        elif isinstance(coord, Coordinate):
+            query_input = coord
         else:
-            coord = float(coord_value)
+            query_input = Coordinate(
+                coord_value,
+                source_timeline.unit,
+                number_type=source_timeline.number_type,
+            )
+        query_coordinate = source_timeline.get_coordinate_at(
+            query_input,
+            format="coordinate",
+        )
+        assert isinstance(query_coordinate, Coordinate)
+        coord = float(query_coordinate.value)
 
         # Same timeline: no conversion needed
         if from_timeline == to_timeline:
             return coord
 
-        # Check if both are in the same group
-        from_group_id = self.timeline_to_group.get(from_timeline)
-        to_group_id = self.timeline_to_group.get(to_timeline)
-
-        if from_group_id is not None and from_group_id == to_group_id:
-            # Same group: direct conversion via group
-            # Translate bundle UIDs to actual timeline IDs used by the group
-            group = self.groups[from_group_id]
-            actual_from_id = self._uid_to_timeline_id[from_timeline]
-            actual_to_id = self._uid_to_timeline_id[to_timeline]
+        # Within a group: direct conversion. Every group the two share
+        # converts alike, so the first by id serves.
+        group = self._shared_group(from_timeline, to_timeline)
+        if group is not None:
             converted = group.get_coordinate_at(
                 IdCoordinate(
                     coord,
                     self.get_timeline(from_timeline).unit,
-                    actual_from_id,
+                    from_timeline,
                 ),
-                timeline_id=actual_to_id,
+                timeline_id=to_timeline,
                 format="float",
             )
             return float(converted)
 
         # Cross-group transfer via MatchLine/WarpMap pipeline
-        actual_from_id = self._uid_to_timeline_id[from_timeline]
-        actual_to_id = self._uid_to_timeline_id[to_timeline]
-
-        warp = self._get_or_build_warp_map(actual_from_id, actual_to_id)
+        warp = self._get_or_build_warp_map(from_timeline, to_timeline)
         if warp is not None:
             try:
                 return warp._interpolate_float(coord)
@@ -734,13 +1174,12 @@ class AlignmentBundle:
                 )
                 return None
 
-        # Try indirect via SOURCE group: convert within source, then warp
-        if from_group_id is not None:
-            source_group = self.groups[from_group_id]
+        # Try indirect via a SOURCE group: convert within it, then warp
+        for source_group in self.get_groups_for_timeline(from_timeline):
             for src_other_tl_id in source_group.timeline_ids:
-                if src_other_tl_id == actual_from_id:
+                if src_other_tl_id == from_timeline:
                     continue
-                warp = self._get_or_build_warp_map(src_other_tl_id, actual_to_id)
+                warp = self._get_or_build_warp_map(src_other_tl_id, to_timeline)
                 if warp is None:
                     continue
                 try:
@@ -748,7 +1187,7 @@ class AlignmentBundle:
                         IdCoordinate(
                             coord,
                             self.get_timeline(from_timeline).unit,
-                            actual_from_id,
+                            from_timeline,
                         ),
                         timeline_id=src_other_tl_id,
                         format="coordinate",
@@ -758,30 +1197,34 @@ class AlignmentBundle:
                 except Exception:
                     continue
 
-        # Try indirect via TARGET group: warp to reachable group member,
-        # then convert within the target group.
-        if to_group_id is not None:
-            target_group = self.groups[to_group_id]
+        # Try indirect via a TARGET group: warp to a reachable group member,
+        # then convert within that group.
+        for target_group in self.get_groups_for_timeline(to_timeline):
             for tgt_other_tl_id in target_group.timeline_ids:
-                if tgt_other_tl_id == actual_to_id:
+                if tgt_other_tl_id == to_timeline:
                     continue
-                warp = self._get_or_build_warp_map(actual_from_id, tgt_other_tl_id)
+                warp = self._get_or_build_warp_map(from_timeline, tgt_other_tl_id)
                 if warp is None:
                     continue
                 try:
                     warped = warp._interpolate_float(coord)
-                    target_source = self.get_timeline(
-                        self._timeline_id_to_uid.get(tgt_other_tl_id, tgt_other_tl_id)
-                    )
+                    target_source = self.get_timeline(tgt_other_tl_id)
                     result = target_group.get_coordinate_at(
                         IdCoordinate(warped, target_source.unit, tgt_other_tl_id),
-                        timeline_id=actual_to_id,
+                        timeline_id=to_timeline,
                         format="coordinate",
                     )
                     assert isinstance(result, Coordinate)
                     return float(result.value)
                 except Exception:
                     continue
+
+        # A single exact claim cannot construct a WarpMap, but it is still a
+        # direct reachability edge. Reuse the match-stamp closure for that
+        # exact-anchor case, including chains through standalone timelines.
+        stamp = self.get_matchstamp_at(query_coordinate, from_timeline)
+        if isinstance(stamp, MatchStamp) and to_timeline in stamp.coordinates:
+            return float(stamp.coordinates[to_timeline].value)
 
         self._logger.debug(
             "No transfer path between '%s' and '%s'",
@@ -842,12 +1285,14 @@ class AlignmentBundle:
     def are_commensurable(self, timeline_a: str, timeline_b: str) -> bool:
         """Check if two timelines can be connected via transfer.
 
-        Two timelines are commensurable if they share the same group
-        or if a cross-group path exists via MatchClaims.
+        Two timelines are commensurable if groups connect them — they share
+        a group, or a chain of groups sharing members leads from one to the
+        other — or if a synchronous MatchClaim connects the timelines so
+        connected to each.
 
         Args:
-            timeline_a: First timeline ID (bundle UID).
-            timeline_b: Second timeline ID (bundle UID).
+            timeline_a: First timeline ID.
+            timeline_b: Second timeline ID.
 
         Returns:
             True if coordinates can be transferred between them.
@@ -855,27 +1300,16 @@ class AlignmentBundle:
         if timeline_a == timeline_b:
             return True
 
-        group_a = self.timeline_to_group.get(timeline_a)
-        group_b = self.timeline_to_group.get(timeline_b)
-
-        # Same group: commensurable
-        if group_a is not None and group_a == group_b:
+        group_a_tl_ids = self._group_component(timeline_a)
+        if timeline_b in group_a_tl_ids:
             return True
 
         # Check for cross-group path via claims
         if self.n_cross_group_claims == 0:
             return False
 
-        actual_a = self._uid_to_timeline_id.get(timeline_a, timeline_a)
-        actual_b = self._uid_to_timeline_id.get(timeline_b, timeline_b)
-
-        # Check if any synchronous claim connects groups containing a and b
-        group_a_tl_ids = (
-            set(self.groups[group_a].timeline_ids) if group_a else {actual_a}
-        )
-        group_b_tl_ids = (
-            set(self.groups[group_b].timeline_ids) if group_b else {actual_b}
-        )
+        # Check if any synchronous claim connects the groups reaching a and b
+        group_b_tl_ids = self._group_component(timeline_b)
 
         for claim in self.cross_group_claims:
             if not claim.is_synchronous or claim.start_anchor is None:
@@ -944,16 +1378,36 @@ class AlignmentBundle:
             ValueError: If event dicts are missing required keys, an event
                 id string doesn't resolve to an existing event, or both
                 ``event_a`` and ``event_b`` are ``None``.
+            KeyError: If a timeline id names no timeline of the bundle's
+                trees. A nested timeline is found whether or not it was
+                registered.
 
         Examples:
+            >>> from timetoalign.alignment import AlignmentBundle
+            >>> from timetoalign.timelines.types import (
+            ...     ContinuousLogicalTimeline,
+            ...     ContinuousPhysicalTimeline,
+            ... )
+            >>> score = ContinuousLogicalTimeline(length=16, uid="score")
+            >>> score.add_events(
+            ...     [
+            ...         {"id": "note:000010", "event_type": "Note", "instant": 4},
+            ...         {"id": "note:000099", "event_type": "Note", "instant": 8},
+            ...     ]
+            ... )
+            >>> audio = ContinuousPhysicalTimeline(length=60.0, uid="audio")
+            >>> audio.add_events([{"id": "note:000042", "event_type": "Note", "instant": 50.5}])
+            >>> bundle = AlignmentBundle()
+            >>> _ = bundle.add_timeline(score, as_group="score")
+            >>> _ = bundle.add_timeline(audio, as_group="audio")
             >>> pairs = [
-            ...     ({"start": 0.0}, "score", {"start": 45.5}, "audio"),
+            ...     ({"start": 0}, "score", {"start": 45.5}, "audio"),
             ...     ("note:000010", "score", "note:000042", "audio"),
             ...     ("note:000099", "score", None, "audio"),  # NOMATCH
             ... ]
             >>> claims = bundle.create_match_claims(pairs, agent="manual_alignment")
-            >>> len(claims)
-            3
+            >>> [claim.is_synchronous for claim in claims]
+            [True, True, False]
         """
         from timetoalign.core import AgentType
 
@@ -961,8 +1415,8 @@ class AlignmentBundle:
 
         claims = []
         for event_a, tl_a, event_b, tl_b in event_pairs:
-            timeline_a = self.timelines[self._timeline_id_to_uid.get(tl_a, tl_a)]
-            timeline_b = self.timelines[self._timeline_id_to_uid.get(tl_b, tl_b)]
+            timeline_a = self._require_known_timeline(tl_a)
+            timeline_b = self._require_known_timeline(tl_b)
             event_a = self._resolve_event(event_a, timeline_a, tl_a)
             event_b = self._resolve_event(event_b, timeline_b, tl_b)
 
@@ -1053,7 +1507,7 @@ class AlignmentBundle:
 
     def add_match_claims(
         self,
-        claims: list[MatchClaim],
+        claims: Any,
     ) -> "AlignmentBundle":
         """Add MatchClaims connecting timelines across different groups.
 
@@ -1065,16 +1519,76 @@ class AlignmentBundle:
         WarpMaps are built lazily on first ``transfer()`` or
         ``get_matchstamp_at()`` call, so adding claims is cheap.
 
+        The bundle is the scope of its claims' ids, both stores together. A
+        claim whose minted id the bundle already holds (or an earlier claim
+        of the same call) is minted again, ``claim_N`` with the smallest N
+        free; a given id the bundle already holds is refused, before any
+        claim is added. A claim's ``source_claim_id`` naming a claim of the
+        same call whose id gave way takes the new id with it. A claim that
+        belongs to no bundle is added as itself (renamed in place where its
+        id or its ``source_claim_id`` changed); a claim another bundle holds
+        is added as a copy, so that bundle keeps its ids.
+
+        A claim's hash follows its id, so a claim renamed in place hashes
+        differently afterwards: one kept in a set or as a dictionary key
+        before it was added is no longer found there, and is looked up
+        again by the claim object or its new id.
+
         Args:
-            claims: List of MatchClaim objects.  Each synchronous claim
-                connects two timelines via its ``start_anchor``.
+            claims: MatchClaim objects, claim tuples, or lists of claim tuples.
+                A tuple is ``(timeline_a_id, interval_a, timeline_b_id,
+                interval_b)``.
 
         Returns:
             self (for method chaining)
+
+        Raises:
+            ValueError: If a claim's given id is held by another claim of
+                the bundle or given twice among the claims.
         """
-        for claim in claims:
+        materialized = list(claims)
+        flattened: list[Any] = []
+        for item in materialized:
+            if isinstance(item, list):
+                flattened.extend(item)
+            else:
+                flattened.append(item)
+
+        normalized: list[MatchClaim] = []
+        for item in flattened:
+            if isinstance(item, MatchClaim):
+                normalized.append(item)
+                continue
+            if not isinstance(item, tuple) or len(item) != 4:
+                raise TypeError("Claims must be MatchClaims or four-item claim tuples")
+            timeline_a_id, interval_a, timeline_b_id, interval_b = item
+            start_anchor = AlignmentAnchor(
+                timeline_a_id=str(timeline_a_id),
+                coordinate_a=interval_a.start,
+                timeline_b_id=str(timeline_b_id),
+                coordinate_b=interval_b.start,
+            )
+            end_anchor = AlignmentAnchor(
+                timeline_a_id=str(timeline_a_id),
+                coordinate_a=interval_a.end,
+                timeline_b_id=str(timeline_b_id),
+                coordinate_b=interval_b.end,
+            )
+            normalized.append(
+                MatchClaim(
+                    timeline_a_id=str(timeline_a_id),
+                    timeline_b_id=str(timeline_b_id),
+                    start_anchor=start_anchor,
+                    end_anchor=end_anchor,
+                )
+            )
+
+        from .claims import _join_claims
+
+        joined = _join_claims(normalized, self._claim_ids(), scope="bundle")
+        for claim in joined:
             claim.set_bundle(self)
-        self.cross_group_claims.extend(claims)
+        self.cross_group_claims.extend(joined)
         self._invalidate_warp_cache()
         return self
 
@@ -1085,9 +1599,9 @@ class AlignmentBundle:
         """Add a columnar ``MatchClaimField`` of cross-group claims.
 
         This is the columnar counterpart of :meth:`add_match_claims`.  The
-        field is stored as-is (one PyArrow struct column) and queried
+        field is stored as-is (Arrow columns) and queried
         vectorized by :meth:`get_matchstamp_at` /
-        :meth:`_get_or_build_matchgraph`, which filter the struct column and
+        :meth:`_get_or_build_matchgraph`, which filter the claim columns and
         materialise only the handful of claims at the queried coordinate.  A
         dense whole-work field (on the order of a million claims) is therefore
         never exploded into a Python list.
@@ -1096,14 +1610,30 @@ class AlignmentBundle:
         Python-list ``cross_group_claims`` and one or more
         ``cross_group_claim_fields`` at once.
 
+        The field's ids join the bundle's as :meth:`add_match_claims` admits
+        claims: a minted id the bundle holds is minted again, a given one is
+        refused, and a row's ``source_claim_id`` naming a row whose id gave
+        way takes the new id with it. Where an id gave way, the bundle stores
+        a new field and the one passed in is left unchanged.
+
+        A claim's hash follows its id, so a claim read from the field passed
+        in no longer equals the bundle's claim of that row where the row's
+        id gave way: one kept in a set or as a dictionary key before is
+        looked up again among the bundle's claims.
+
         Args:
-            claim_field: A :class:`MatchClaimField` of synchronous instant
-                pairwise claims.
+            claim_field: A :class:`MatchClaimField` of synchronous pairwise
+                claims.
 
         Returns:
             self (for method chaining)
+
+        Raises:
+            ValueError: If a row's given id is held by another claim of the
+                bundle.
         """
-        self.cross_group_claim_fields.append(claim_field)
+        joined = claim_field._joined(self._claim_ids(), scope="bundle")
+        self.cross_group_claim_fields.append(joined)
         self._invalidate_warp_cache()
         return self
 
@@ -1120,27 +1650,38 @@ class AlignmentBundle:
             len(claim_field) for claim_field in self.cross_group_claim_fields
         )
 
-    def _actual_timeline_lookup(self) -> dict[str, "Timeline"]:
-        """Build an actual timeline ID to timeline metadata lookup."""
-        return {
-            actual_timeline_id: self.timelines[bundle_uid]
-            for bundle_uid, actual_timeline_id in self._uid_to_timeline_id.items()
-        }
+    def _claim_ids(self) -> pa.Array:
+        """The ids of every claim the bundle holds, both stores together."""
+        import pyarrow as pa
 
-    def _actual_id_pattern(self, id_pattern: str | None) -> str | None:
-        """Translate a public UID regex into an exact actual-ID regex."""
+        return pa.concat_arrays(
+            [
+                pa.array(
+                    [claim.id for claim in self.cross_group_claims], type=pa.string()
+                ),
+                *(claim_field._ids for claim_field in self.cross_group_claim_fields),
+            ]
+        )
+
+    def _known_id_pattern(self, id_pattern: str | None) -> str | None:
+        """Narrow a timeline-id regex to the timelines the bundle knows.
+
+        Claims may name timelines the bundle does not hold; a pattern only
+        ever selects among the known ones (:meth:`_known_timelines`), so it
+        is rewritten as an exact alternation of the known ids it matches.
+        """
         if id_pattern is None:
             return None
 
-        public_pattern = re.compile(id_pattern)
-        actual_ids = {
-            actual_timeline_id
-            for bundle_uid, actual_timeline_id in self._uid_to_timeline_id.items()
-            if public_pattern.search(bundle_uid)
+        pattern = re.compile(id_pattern)
+        matched = {
+            timeline_id
+            for timeline_id in self._known_timelines()
+            if pattern.search(timeline_id)
         }
-        if not actual_ids:
+        if not matched:
             return r"(?!)"
-        alternatives = "|".join(re.escape(timeline_id) for timeline_id in actual_ids)
+        alternatives = "|".join(re.escape(timeline_id) for timeline_id in matched)
         return rf"^(?:{alternatives})\Z"
 
     def get_match_claims(
@@ -1172,12 +1713,12 @@ class AlignmentBundle:
         the query first.
 
         Args:
-            timeline_id: Return claims involving this bundle UID.
-            timeline_ids: Return claims involving any of these bundle UIDs.
-            id_pattern: Regex pattern matched against bundle UIDs via
+            timeline_id: Return claims involving this timeline ID.
+            timeline_ids: Return claims involving any of these timeline IDs.
+            id_pattern: Regex pattern matched against timeline IDs via
                 ``re.search()``. Example: ``r"^perf:"`` matches all
                 performance timelines.
-            between: Return claims connecting exactly these two bundle UIDs
+            between: Return claims connecting exactly these two timeline IDs
                 (order-independent).
             synchronous_only: Exclude non-synchronous (NOMATCH) claims.
             nomatch_only: Return only non-synchronous (NOMATCH) claims.
@@ -1188,20 +1729,50 @@ class AlignmentBundle:
             Filtered list of MatchClaims.
 
         Examples:
+            A score aligned with two performances, one of which skips a
+            note::
+
+                >>> from timetoalign.alignment import AlignmentBundle
+                >>> from timetoalign.timelines.types import (
+                ...     ContinuousLogicalTimeline,
+                ...     DiscreteLogicalTimeline,
+                ... )
+                >>> bundle = AlignmentBundle()
+                >>> _ = bundle.add_timeline(
+                ...     ContinuousLogicalTimeline(length=16, uid="score:clt_1"), as_group="score"
+                ... )
+                >>> for n in (1, 5):
+                ...     _ = bundle.add_timeline(
+                ...         DiscreteLogicalTimeline(length=7680, uid=f"perf:dlt_{n}"),
+                ...         as_group=f"perf_{n}",
+                ...     )
+                >>> _ = bundle.create_match_claims(
+                ...     [
+                ...         ({"start": 0}, "score:clt_1", {"start": 0}, "perf:dlt_1"),
+                ...         ({"start": 8}, "score:clt_1", {"start": 3840}, "perf:dlt_1"),
+                ...         ({"start": 0}, "score:clt_1", {"start": 0}, "perf:dlt_5"),
+                ...         ({"start": 8}, "score:clt_1", None, "perf:dlt_5"),  # NOMATCH
+                ...     ]
+                ... )
+
             Get all synchronous claims for a performer::
 
                 >>> claims = bundle.get_match_claims(
-                ...     id_pattern=r"dlt1$", synchronous_only=True
+                ...     id_pattern=r"dlt_1$", synchronous_only=True
                 ... )
+                >>> len(claims)
+                2
 
             Get NOMATCH claims for a specific pair::
 
                 >>> nomatches = bundle.get_match_claims(
-                ...     between=("score:clt1", "perf:dlt5"),
+                ...     between=("score:clt_1", "perf:dlt_5"),
                 ...     nomatch_only=True,
                 ... )
+                >>> len(nomatches)
+                1
         """
-        filt = self._actual_claim_filter(
+        filt = self._claim_filter(
             timeline_id=timeline_id,
             timeline_ids=timeline_ids,
             id_pattern=id_pattern,
@@ -1214,7 +1785,7 @@ class AlignmentBundle:
         if filt is None:
             return []
 
-        timeline_lookup = self._actual_timeline_lookup()
+        timeline_lookup = self._known_timelines()
         claims = [
             c
             for c in self.cross_group_claims
@@ -1252,10 +1823,10 @@ class AlignmentBundle:
         ``nomatch_only`` returns nothing.
 
         Args:
-            timeline_id: Keep claims involving this bundle UID.
-            timeline_ids: Keep claims involving any of these bundle UIDs.
-            id_pattern: Regex matched against bundle UIDs via ``re.search()``.
-            between: Keep claims connecting exactly these two bundle UIDs
+            timeline_id: Keep claims involving this timeline ID.
+            timeline_ids: Keep claims involving any of these timeline IDs.
+            id_pattern: Regex matched against timeline IDs via ``re.search()``.
+            between: Keep claims connecting exactly these two timeline IDs
                 (order-independent).
             synchronous_only: No-op (every stored claim is synchronous).
             nomatch_only: Returns an empty list.
@@ -1266,11 +1837,33 @@ class AlignmentBundle:
             Filtered ``MatchClaimField`` objects, empty stores dropped.
 
         Examples:
-            >>> fields = bundle.get_claim_fields(timeline_id="rec-a:cpt1")
+            >>> from timetoalign.alignment import AlignmentBundle, MatchClaimField
+            >>> from timetoalign.timelines.types import (
+            ...     ContinuousLogicalTimeline,
+            ...     ContinuousPhysicalTimeline,
+            ... )
+            >>> bundle = AlignmentBundle()
+            >>> _ = bundle.add_timeline(
+            ...     ContinuousLogicalTimeline(length=16, uid="score:clt_1"), as_group="score"
+            ... )
+            >>> _ = bundle.add_timeline(
+            ...     ContinuousPhysicalTimeline(length=40.0, uid="rec-a:cpt_1"), as_group="rec-a"
+            ... )
+            >>> _ = bundle.add_match_claim_field(
+            ...     MatchClaimField.from_columns(
+            ...         ["score:clt_1"] * 3,
+            ...         ["rec-a:cpt_1"] * 3,
+            ...         [0, 8, 16],
+            ...         [0.0, 20.0, 40.0],
+            ...         unit_a="quarters",
+            ...         unit_b="seconds",
+            ...     )
+            ... )
+            >>> fields = bundle.get_claim_fields(timeline_id="rec-a:cpt_1")
             >>> sum(len(f) for f in fields)
-            66780
+            3
         """
-        filt = self._actual_claim_filter(
+        filt = self._claim_filter(
             timeline_id=timeline_id,
             timeline_ids=timeline_ids,
             id_pattern=id_pattern,
@@ -1282,9 +1875,9 @@ class AlignmentBundle:
         )
         if filt is None:
             return []
-        return self._filtered_claim_fields(filt, self._actual_timeline_lookup())
+        return self._filtered_claim_fields(filt, self._known_timelines())
 
-    def _actual_claim_filter(
+    def _claim_filter(
         self,
         *,
         timeline_id: str | None,
@@ -1296,49 +1889,31 @@ class AlignmentBundle:
         include_domains: set["Domain"] | None,
         include_units: set["TimeUnit"] | None,
     ) -> ClaimFilter | None:
-        """Translate public-UID filter kwargs into an actual-ID ``ClaimFilter``.
+        """Build the ``ClaimFilter`` for the timelines the bundle knows.
 
-        Claims are keyed on actual timeline IDs while the public query API
-        speaks bundle UIDs, so every ID-shaped criterion is translated here
-        once, for both claim stores.
+        Every ID-shaped criterion selects among the bundle's known timelines
+        (:meth:`_known_timelines`), once, for both claim stores.
 
         Returns:
-            The translated filter, or ``None`` when a required UID is unknown
-            to the bundle and no claim can possibly match.
+            The filter, or ``None`` when a required timeline is unknown to the
+            bundle and no claim can possibly match.
         """
-        if timeline_id is not None and timeline_id not in self._uid_to_timeline_id:
+        known = self._known_timelines()
+        if timeline_id is not None and timeline_id not in known:
             return None
         if between is not None and any(
-            bundle_uid not in self._uid_to_timeline_id for bundle_uid in between
+            between_id not in known for between_id in between
         ):
             return None
-
-        actual_timeline_ids = (
-            {
-                self._uid_to_timeline_id[bundle_uid]
-                for bundle_uid in timeline_ids
-                if bundle_uid in self._uid_to_timeline_id
-            }
-            if timeline_ids is not None
-            else None
-        )
-        actual_between = (
-            (
-                self._uid_to_timeline_id[between[0]],
-                self._uid_to_timeline_id[between[1]],
-            )
-            if between is not None
-            else None
-        )
         return ClaimFilter.from_kwargs(
-            timeline_id=(
-                self._uid_to_timeline_id[timeline_id]
-                if timeline_id is not None
+            timeline_id=timeline_id,
+            timeline_ids=(
+                {selected for selected in timeline_ids if selected in known}
+                if timeline_ids is not None
                 else None
             ),
-            timeline_ids=actual_timeline_ids,
-            id_pattern=self._actual_id_pattern(id_pattern),
-            between=actual_between,
+            id_pattern=self._known_id_pattern(id_pattern),
+            between=between,
             synchronous_only=synchronous_only,
             nomatch_only=nomatch_only,
             include_domains=include_domains,
@@ -1350,7 +1925,7 @@ class AlignmentBundle:
         filt: ClaimFilter,
         timeline_lookup: dict[str, "Timeline"],
     ) -> list[MatchClaimField]:
-        """Apply an actual-ID ``ClaimFilter`` to every columnar claim store.
+        """Apply a ``ClaimFilter`` to every columnar claim store.
 
         The domain/unit criteria are resolved into a set of passing timeline
         IDs (the fields hold IDs, not timeline metadata); everything else maps
@@ -1386,19 +1961,111 @@ class AlignmentBundle:
         Fraction, which is the argument-type inference the boundary rule
         exists to remove.
         """
-        bundle_uid = self._timeline_id_to_uid.get(timeline_id, timeline_id)
-        timeline = self.timelines.get(bundle_uid)
-        if timeline is not None:
-            return express_as(coordinate, timeline.number_type)
-        unit = self._get_unit_map().get(bundle_uid)
-        if unit is None:
+        timeline = self._known_timeline(timeline_id)
+        if timeline is None:
             return coordinate
-        return express_as(coordinate, unit.default_number_type)
+        return express_as(coordinate, timeline.number_type)
+
+    @staticmethod
+    def _claim_is_relevant_at(
+        claim: MatchClaim, timeline_id: str, coordinate: Coordinate
+    ) -> bool:
+        """Return whether one native-unit claim is relevant to a query."""
+        if not claim.is_synchronous or claim.start_anchor is None:
+            return False
+        if timeline_id not in claim.timelines:
+            return False
+        if claim.is_interval:
+            interval = claim.get_interval_for(timeline_id)
+            return interval.start.value <= coordinate.value <= interval.end.value
+        stored = claim.start_anchor.get_coordinate_for(timeline_id, format="coordinate")
+        assert isinstance(stored, Coordinate)
+        return stored.value == coordinate.value
+
+    def _relevant_claims_at(
+        self, timeline_id: str, coordinate: Coordinate
+    ) -> list[MatchClaim]:
+        """Find relevant claims in deterministic store and row order.
+
+        Only a claim naming the timeline can be relevant to a position on it,
+        so only those are expressed in native units and compared: a timeline
+        no claim names (a loader's category child, an unfolded span) costs
+        nothing, however many claims the bundle holds.
+        """
+        relevant: list[MatchClaim] = []
+        for raw_claim in self._claims_naming(timeline_id):
+            claim = self._claim_in_native_units(raw_claim)
+            if self._claim_is_relevant_at(claim, timeline_id, coordinate):
+                relevant.append(claim)
+        for claim_field in self.cross_group_claim_fields:
+            for raw_claim in claim_field.at(timeline_id, coordinate):
+                claim = self._claim_in_native_units(raw_claim)
+                if self._claim_is_relevant_at(claim, timeline_id, coordinate):
+                    relevant.append(claim)
+        return relevant
+
+    def _interval_claim_candidate(
+        self,
+        claim: MatchClaim,
+        queried_timeline_id: str,
+        query: Coordinate,
+    ) -> tuple[str, Coordinate | None, bool]:
+        """Map one query through an interval claim onto its counterpart axis.
+
+        Exact endpoints are returned directly. Interior arithmetic stays in the
+        operands' numeric domain, then crosses the counterpart timeline's axis
+        boundary exactly once. A point on the queried side paired with a
+        nonzero counterpart interval has no single mapped coordinate.
+
+        Returns:
+            Counterpart timeline ID, mapped coordinate or ``None``, and whether
+            the query is one of the claim's stored anchors.
+        """
+        if not claim.is_interval or queried_timeline_id not in claim.timelines:
+            raise ValueError("Interval claim does not contain the queried timeline")
+        queried_interval = claim.get_interval_for(queried_timeline_id)
+        counterpart_id = (
+            claim.timeline_b_id
+            if queried_timeline_id == claim.timeline_a_id
+            else claim.timeline_a_id
+        )
+        counterpart_interval = claim.get_interval_for(counterpart_id)
+        query_value = query.value
+        queried_start = queried_interval.start.value
+        queried_end = queried_interval.end.value
+        counterpart_start = counterpart_interval.start.value
+        counterpart_end = counterpart_interval.end.value
+        is_anchor = query_value == queried_start or query_value == queried_end
+
+        if queried_start == queried_end:
+            if counterpart_start != counterpart_end:
+                return counterpart_id, None, is_anchor
+            mapped = counterpart_start
+        elif query_value == queried_start:
+            mapped = counterpart_start
+        elif query_value == queried_end:
+            mapped = counterpart_end
+        else:
+            mapped = counterpart_start + (
+                (query_value - queried_start) / (queried_end - queried_start)
+            ) * (counterpart_end - counterpart_start)
+
+        timeline = self.get_timeline(counterpart_id)
+        canonical = self._axis_on(mapped, counterpart_id)
+        return (
+            counterpart_id,
+            Coordinate(
+                canonical,
+                timeline.unit,
+                number_type=timeline.number_type,
+            ),
+            is_anchor,
+        )
 
     def _get_or_build_matchgraph(
         self,
         timeline_id: str,
-        coordinate: float,
+        coordinate: CoordinateValue,
     ) -> MatchGraph:
         """Get or build the MatchGraph containing (timeline_id, coordinate).
 
@@ -1423,31 +2090,13 @@ class AlignmentBundle:
         if key in self._matchgraph_cache:
             return self._matchgraph_cache[key]
 
-        # Find ALL claims that touch this coordinate on this timeline.
-        # Scan the per-claim Python list as before (small for the other
-        # alignment loaders) ...
-        relevant_claims: list[MatchClaim] = []
-        for raw_claim in self.cross_group_claims:
-            c = self._claim_in_native_units(raw_claim)
-            if not c.is_synchronous or c.start_anchor is None:
-                continue
-            anchor = c.start_anchor
-            if (
-                anchor.timeline_a_id == timeline_id
-                and anchor.coordinate_a.value == coordinate
-            ) or (
-                anchor.timeline_b_id == timeline_id
-                and anchor.coordinate_b.value == coordinate
-            ):
-                relevant_claims.append(c)
-
-        # ... then query each columnar field vectorized, materialising only
-        # the matched rows (never the whole field).
-        for claim_field in self.cross_group_claim_fields:
-            relevant_claims.extend(
-                self._claim_in_native_units(claim)
-                for claim in claim_field.at(timeline_id, coordinate).to_claims()
-            )
+        timeline = self.get_timeline(timeline_id)
+        query = Coordinate(coordinate, timeline.unit, number_type=timeline.number_type)
+        relevant_claims = [
+            claim
+            for claim in self._relevant_claims_at(timeline_id, query)
+            if not claim.is_interval
+        ]
 
         if not relevant_claims:
             raise ValueError(
@@ -1457,32 +2106,13 @@ class AlignmentBundle:
 
         # Build graph — transitive closure connects all timelines at
         # this coordinate
-        unit_map = self._get_unit_map()
-        graph_units = dict(unit_map)
-        graph_units.update(
-            {
-                self._uid_to_timeline_id.get(bundle_uid, bundle_uid): unit
-                for bundle_uid, unit in unit_map.items()
-            }
-        )
         mg = MatchGraph(
             claims=relevant_claims,
-            units=graph_units,
+            units=self._get_unit_map(),
             axis=self._axis_on(coordinate, timeline_id),
             source=self,
             source_id=timeline_id,
         )
-
-        # Interval claims add both their start- and end-anchor edges,
-        # which usually live on separate connected components. Restrict
-        # to the component containing the queried node so that
-        # ``get_matchstamp()`` returns a single, well-defined stamp.
-        components = mg.split_components()
-        target = (timeline_id, coordinate)
-        for component in components:
-            if target in component._graph.nodes():
-                mg = component
-                break
 
         # Cache keyed by ALL nodes in the graph
         for node in mg._graph.nodes():
@@ -1499,11 +2129,11 @@ class AlignmentBundle:
         format: CoordinateFormat = "id_coordinate",
         rounding: Rounding = "round",
     ) -> CoordinateResult | pd.Series:
-        """Resolve one coordinate onto a requested public bundle UID axis.
+        """Resolve one coordinate onto a requested timeline axis.
 
         Args:
             at: Raw, plain, or ID-bearing coordinate input.
-            timeline_id: Requested result bundle UID.
+            timeline_id: Requested result timeline ID.
             format: Requested coordinate output format.
             rounding: Integral projection mode.
 
@@ -1516,38 +2146,38 @@ class AlignmentBundle:
         ):
             raise TypeError("get_coordinate_at requires one scalar coordinate input")
         if isinstance(at, IdCoordinate):
-            source_uid = at.timeline_id
-            result_uid = timeline_id or source_uid
+            source_id = at.timeline_id
+            result_id = timeline_id or source_id
         else:
             if timeline_id is None:
                 raise ValueError(
                     "timeline_id is required for raw or plain bundle coordinate queries"
                 )
-            source_uid = timeline_id
-            result_uid = timeline_id
-        if source_uid not in self.timelines:
-            raise KeyError(f"Unknown source bundle UID {source_uid!r} in {self.id!r}")
-        if result_uid not in self.timelines:
-            raise KeyError(f"Unknown result bundle UID {result_uid!r} in {self.id!r}")
-        if source_uid == result_uid:
+            source_id = timeline_id
+            result_id = timeline_id
+        if self._known_timeline(source_id) is None:
+            raise KeyError(f"Unknown source timeline ID {source_id!r} in {self.id!r}")
+        if self._known_timeline(result_id) is None:
+            raise KeyError(f"Unknown result timeline ID {result_id!r} in {self.id!r}")
+        if source_id == result_id:
             plain = at.to_coordinate() if isinstance(at, IdCoordinate) else at
-            result = self.get_timeline(result_uid).get_coordinate_at(
+            result = self.get_timeline(result_id).get_coordinate_at(
                 plain,
-                timeline_id=self.get_timeline(result_uid).id,
+                timeline_id=self.get_timeline(result_id).id,
                 format="coordinate",
                 rounding=rounding,
             )
             assert isinstance(result, Coordinate)
-            identified = IdCoordinate.from_coordinate(result, result_uid)
+            identified = IdCoordinate.from_coordinate(result, result_id)
             return format_coordinates(
                 [identified],
                 format=format,
                 rounding=rounding,
                 scalar=True,
-                series_name=result_uid,
+                series_name=result_id,
             )
-        stamp = self.get_matchstamp_at(at, source_uid)
-        return stamp.get_coordinate_for(result_uid, format=format, rounding=rounding)
+        stamp = self.get_matchstamp_at(at, source_id)
+        return stamp.get_coordinate_for(result_id, format=format, rounding=rounding)
 
     def get_coordinates_at(
         self,
@@ -1557,11 +2187,11 @@ class AlignmentBundle:
         format: CoordinateFormat = "id_coordinate",
         rounding: Rounding = "round",
     ) -> list[CoordinateResult] | pd.Series:
-        """Resolve a coordinate collection onto one bundle UID axis.
+        """Resolve a coordinate collection onto one timeline axis.
 
         Args:
             at: Coordinate positions to resolve atomically.
-            timeline_id: Requested result bundle UID.
+            timeline_id: Requested result timeline ID.
             format: Requested coordinate output format.
             rounding: Integral projection mode.
 
@@ -1571,8 +2201,8 @@ class AlignmentBundle:
         values, index = validate_coordinate_collection(at)
         if not values and timeline_id is None:
             raise ValueError("timeline_id is required for an empty bundle query")
-        if timeline_id is not None and timeline_id not in self.timelines:
-            raise KeyError(f"Unknown result bundle UID {timeline_id!r} in {self.id!r}")
+        if timeline_id is not None and self._known_timeline(timeline_id) is None:
+            raise KeyError(f"Unknown result timeline ID {timeline_id!r} in {self.id!r}")
         results: list[IdCoordinate] = []
         for value in values:
             result = self.get_coordinate_at(
@@ -1606,10 +2236,10 @@ class AlignmentBundle:
         )
 
     def _event_owners(self, key: str) -> list[str]:
-        """Return public UIDs whose registered timeline owns an event key."""
+        """Return the IDs of the registered timelines owning an event key."""
         return [
-            uid
-            for uid, timeline in self.timelines.items()
+            timeline_id
+            for timeline_id, timeline in self.timelines.items()
             if timeline.get_event(key) is not None
         ]
 
@@ -1625,7 +2255,7 @@ class AlignmentBundle:
 
         Args:
             key: Event ID with exactly one owning registered timeline.
-            timeline_id: Requested result UID, or the owner by default.
+            timeline_id: Requested result timeline ID, or the owner by default.
             format: Requested coordinate output format.
             rounding: Integral projection mode.
 
@@ -1672,7 +2302,7 @@ class AlignmentBundle:
 
         Args:
             keys: Event IDs to resolve atomically.
-            timeline_id: Requested result UID, or each owner by default.
+            timeline_id: Requested result timeline ID, or each owner by default.
             format: Requested coordinate output format.
             rounding: Integral projection mode.
 
@@ -1718,7 +2348,7 @@ class AlignmentBundle:
 
         Args:
             at: Scalar or plural coordinate position or event key.
-            timeline_id: Requested public result UID when required.
+            timeline_id: Requested result timeline ID when required.
             format: Requested coordinate output format.
             rounding: Integral projection mode.
 
@@ -1737,7 +2367,7 @@ class AlignmentBundle:
 
     def get_matchstamp_at(
         self,
-        at: CoordinateSpec,
+        at: CoordinateSpec | Interval,
         timeline_id: str | None = None,
         *,
         support_policy: "SupportPolicy | str | None" = None,
@@ -1746,20 +2376,21 @@ class AlignmentBundle:
         id_pattern: str | None = None,
         include_domains: set["Domain"] | None = None,
         include_units: set["TimeUnit"] | None = None,
-    ) -> MatchStamp:
-        """Get a cross-group MatchStamp at a coordinate on a timeline.
+    ) -> MatchStamp | MatchIntervalStamp:
+        """Get a cross-group match stamp for a position on a timeline.
 
-        This is the primary interface for cross-domain coordinate transfer.
-        Given a coordinate on one timeline, returns coordinates on ALL
-        connected timelines across ALL groups.
+        Coordinate input is the primary interface for cross-domain coordinate
+        transfer and returns coordinates on every connected timeline. Interval
+        input resolves its endpoints through that same coordinate lane and
+        combines the two results.
 
-        The stamp is the **transitive cross-group union** reachable from the
-        query. Exact-anchor coordinates from the coordinate's MatchGraph are
-        overlaid first (exact wins over interpolated), then the assembly walks
-        outward across groups to closure: every reached timeline expands into
-        its own group (by interpolation) and warps into not-yet-reached groups
-        (by WarpMap). ``is_interpolated`` is ``False`` exactly when the query
-        node itself carries an explicit anchor.
+        A coordinate stamp is the **transitive cross-group union** reachable
+        from the query. Exact-anchor coordinates from the coordinate's
+        MatchGraph are overlaid first (exact wins over interpolated), then the
+        assembly walks outward across groups to closure: every reached timeline
+        expands into its own group (by interpolation) and warps into
+        not-yet-reached groups (by WarpMap). ``is_interpolated`` is ``False``
+        exactly when the query node itself carries an explicit anchor.
 
         A timeline whose transferred coordinate falls outside alignment
         support — the entering coordinate lies outside the transferring
@@ -1768,13 +2399,14 @@ class AlignmentBundle:
         ever yields a negative coordinate or one beyond a timeline's length.
 
         Args:
-            at: The query coordinate. Can be:
+            at: The query position. Can be:
 
                 - int/float/Fraction: Raw value, ``timeline_id`` required.
                 - Coordinate: Value with unit, ``timeline_id`` required.
                 - IdCoordinate: Value with unit AND timeline_id
                   (``timeline_id`` param optional).
-            timeline_id: Bundle UID of the source timeline. Required unless
+                - Interval: Two coordinate positions, ``timeline_id`` required.
+            timeline_id: ID of the source timeline. Required unless
                 ``at`` is an ``IdCoordinate``, in which case the
                 coordinate's own ``timeline_id`` is used.
             support_policy: How to treat out-of-support timelines
@@ -1785,27 +2417,88 @@ class AlignmentBundle:
                 coordinate is never dropped, clamped, or altered.
             conversion_maps: C-map conversions available through unit lookup
                 and display. Opt-in: defaults to ``False``.
-            timeline_ids: Only include these bundle UIDs in the result.
-            id_pattern: Regex filter for bundle UIDs in the result.
+            timeline_ids: Only include these timeline IDs in the result.
+            id_pattern: Regex filter for timeline IDs in the result.
             include_domains: Only these domains in the result.
             include_units: Only these units in the result.
 
         Returns:
-            MatchStamp spanning all connected timelines.
+            A coordinate query returns a MatchStamp. An Interval query returns
+            a MatchIntervalStamp combining its independently resolved endpoint
+            MatchStamps.
 
         Raises:
-            TypeError: If ``at`` is not int/float/Fraction/Coordinate/
-                IdCoordinate.
+            TypeError: If ``at`` is not a supported coordinate or Interval.
             ValueError: If timeline_id is None and ``at`` is not an
                 IdCoordinate.
             KeyError: If timeline_id is not in the bundle.
 
         Examples:
-            >>> ms = bundle.get_matchstamp_at(10.0, "score:clt1")
-            >>> ms.n_timelines
-            23  # score + 22 performers
+            >>> from timetoalign.alignment import AlignmentBundle
+            >>> from timetoalign.timelines.types import (
+            ...     ContinuousLogicalTimeline,
+            ...     ContinuousPhysicalTimeline,
+            ... )
+            >>> bundle = AlignmentBundle()
+            >>> _ = bundle.add_timeline(
+            ...     ContinuousLogicalTimeline(length=16, uid="score:clt_1"), as_group="score"
+            ... )
+            >>> for n, seconds in ((1, 40.0), (2, 32.0)):
+            ...     _ = bundle.add_timeline(
+            ...         ContinuousPhysicalTimeline(length=seconds, uid=f"perf:cpt_{n}"),
+            ...         as_group=f"perf_{n}",
+            ...     )
+            ...     _ = bundle.create_match_claims(
+            ...         [
+            ...             ({"start": 0}, "score:clt_1", {"start": 0.0}, f"perf:cpt_{n}"),
+            ...             ({"start": 16}, "score:clt_1", {"start": seconds}, f"perf:cpt_{n}"),
+            ...         ]
+            ...     )
+            >>> ms = bundle.get_matchstamp_at(10, "score:clt_1")
+            >>> ms.n_timelines  # score + 2 performers
+            3
+            >>> ms.get_coordinate_for("perf:cpt_2", format="float")
+            20.0
         """
-        coordinate_value, timeline_id, unit = _resolve_coordinate_and_timeline(
+        if isinstance(at, Interval):
+            if timeline_id is None:
+                raise ValueError(
+                    "timeline_id is required unless coordinate is an IdCoordinate"
+                )
+            start_stamp = self.get_matchstamp_at(
+                at.start,
+                timeline_id,
+                support_policy=support_policy,
+                conversion_maps=conversion_maps,
+                timeline_ids=timeline_ids,
+                id_pattern=id_pattern,
+                include_domains=include_domains,
+                include_units=include_units,
+            )
+            end_stamp = self.get_matchstamp_at(
+                at.end,
+                timeline_id,
+                support_policy=support_policy,
+                conversion_maps=conversion_maps,
+                timeline_ids=timeline_ids,
+                id_pattern=id_pattern,
+                include_domains=include_domains,
+                include_units=include_units,
+            )
+            assert type(start_stamp) is MatchStamp
+            assert type(end_stamp) is MatchStamp
+            queried_interval = Interval(
+                start_stamp.coordinates[timeline_id],
+                end_stamp.coordinates[timeline_id],
+            )
+            return MatchIntervalStamp(
+                source_id=timeline_id,
+                interval=queried_interval,
+                start_stamp=start_stamp,
+                end_stamp=end_stamp,
+            )
+
+        coordinate_value, timeline_id, _unit = _resolve_coordinate_and_timeline(
             at, timeline_id
         )
         if timeline_id is None:
@@ -1813,30 +2506,58 @@ class AlignmentBundle:
                 "timeline_id is required unless coordinate is an IdCoordinate"
             )
 
-        if (
-            timeline_id not in self.timelines
-            and timeline_id not in self._timeline_id_to_uid
-        ):
-            raise KeyError(
-                f"Timeline '{timeline_id}' not in bundle. "
-                f"Available timelines: {list(self.timelines.keys())}"
+        source_timeline = self._require_known_timeline(timeline_id)
+        known = self._known_timelines()
+        if isinstance(at, IdCoordinate):
+            query_input = at.to_coordinate()
+        elif isinstance(at, Coordinate):
+            query_input = at
+        else:
+            query_input = Coordinate(
+                coordinate_value,
+                source_timeline.unit,
+                number_type=source_timeline.number_type,
+            )
+        query_coordinate = source_timeline.get_coordinate_at(
+            query_input,
+            format="coordinate",
+        )
+        assert isinstance(query_coordinate, Coordinate)
+        queried = query_coordinate.value
+
+        relevant_claims = self._relevant_claims_at(timeline_id, query_coordinate)
+        interval_claims = [claim for claim in relevant_claims if claim.is_interval]
+        candidate_groups: dict[
+            str, list[tuple[MatchClaim, Coordinate | None, bool]]
+        ] = {}
+        for claim in interval_claims:
+            target_id, candidate, is_anchor = self._interval_claim_candidate(
+                claim, timeline_id, query_coordinate
+            )
+            candidate_groups.setdefault(target_id, []).append(
+                (claim, candidate, is_anchor)
             )
 
-        bundle_uid = self._timeline_id_to_uid.get(timeline_id, timeline_id)
-        actual_timeline_id = self._uid_to_timeline_id.get(bundle_uid, timeline_id)
-        # The query's own position is known exactly; only the graph and warp
-        # lanes below need it as a double. Keeping the exact value here is
-        # what lets the source timeline's own cell report the ratio that was
-        # asked for instead of the dyadic of its double -- the transferred
-        # cells are genuinely interpolated and stay re-expressed from float.
-        queried: CoordinateValue = (
-            self.get_timeline(bundle_uid)
-            .get_coordinate_at(Coordinate(coordinate_value, unit), format="coordinate")
-            .value
-            if unit is not None
-            else coordinate_value
-        )
-        coordinate = float(queried)
+        interval_coordinates: dict[str, CoordinateValue] = {}
+        interval_anchor_edges: list[tuple[str, str]] = []
+        interval_inferred_edges: list[tuple[str, str]] = []
+        for target_id, candidates in candidate_groups.items():
+            values = [candidate for _, candidate, _ in candidates]
+            if any(candidate is None for candidate in values):
+                continue
+            unique: list[Coordinate] = []
+            for candidate in values:
+                assert candidate is not None
+                if candidate not in unique:
+                    unique.append(candidate)
+            if len(unique) != 1:
+                continue
+            interval_coordinates[target_id] = unique[0].value
+            edge = (timeline_id, target_id)
+            if any(is_anchor for _, _, is_anchor in candidates):
+                interval_anchor_edges.append(edge)
+            else:
+                interval_inferred_edges.append(edge)
 
         policy = (
             self.support_policy
@@ -1846,52 +2567,54 @@ class AlignmentBundle:
 
         coordinates, anchor_edges, inferred_edges, query_has_anchor = (
             self._assemble_matchstamp(
-                coordinate,
-                actual_timeline_id,
+                queried,
+                timeline_id,
                 support_policy=policy,
                 conversion_maps=conversion_maps,
+                interval_coordinates=interval_coordinates,
+                interval_anchor_edges=interval_anchor_edges,
+                interval_inferred_edges=interval_inferred_edges,
+                interval_withheld=set(candidate_groups).difference(
+                    interval_coordinates
+                ),
+                query_has_interval_anchor=any(
+                    query_coordinate.value
+                    in (
+                        claim.get_interval_for(timeline_id).start.value,
+                        claim.get_interval_for(timeline_id).end.value,
+                    )
+                    for claim in interval_claims
+                ),
             )
         )
 
-        source_uid = self._timeline_id_to_uid.get(timeline_id, timeline_id)
-        public_values = {
-            self._timeline_id_to_uid.get(coordinate_id, coordinate_id): value
+        values = {
+            coordinate_id: value
             for coordinate_id, value in coordinates.items()
             if value is not None
         }
-        declared = [uid for uid in self.timelines if uid in public_values]
-        ordered_ids = [source_uid]
-        ordered_ids.extend(uid for uid in declared if uid != source_uid)
-        ordered_ids.extend(sorted(set(public_values).difference(ordered_ids)))
+        declared = [held for held in known if held in values]
+        ordered_ids = [timeline_id]
+        ordered_ids.extend(held for held in declared if held != timeline_id)
+        ordered_ids.extend(sorted(set(values).difference(ordered_ids)))
         typed_coordinates: dict[str, Coordinate] = {}
-        for public_uid in ordered_ids:
-            value = queried if public_uid == source_uid else public_values[public_uid]
-            timeline = self.get_timeline(public_uid)
-            typed_coordinates[public_uid] = Coordinate(
+        for ordered_id in ordered_ids:
+            value = queried if ordered_id == timeline_id else values[ordered_id]
+            timeline = self.get_timeline(ordered_id)
+            typed_coordinates[ordered_id] = Coordinate(
                 value,
                 timeline.unit,
                 number_type=timeline.number_type,
             )
         stamp = MatchStamp(
             coordinates=typed_coordinates,
-            source_id=source_uid,
-            anchor_edges=[
-                (
-                    self._timeline_id_to_uid.get(a, a),
-                    self._timeline_id_to_uid.get(b, b),
-                )
-                for a, b in anchor_edges
-            ],
-            inferred_edges=[
-                (
-                    self._timeline_id_to_uid.get(a, a),
-                    self._timeline_id_to_uid.get(b, b),
-                )
-                for a, b in inferred_edges
-            ],
+            source_id=timeline_id,
+            anchor_edges=list(anchor_edges),
+            inferred_edges=list(inferred_edges),
             source=self,
             is_interpolated=not query_has_anchor,
             conversion_maps=conversion_maps,
+            interval_claims=list(interval_claims),
         )
 
         # Apply post-hoc filtering if requested
@@ -1902,27 +2625,22 @@ class AlignmentBundle:
             or include_units is not None
         )
         if has_filter:
-            actual_timeline_ids = (
-                {
-                    self._uid_to_timeline_id[bundle_uid]
-                    for bundle_uid in timeline_ids
-                    if bundle_uid in self._uid_to_timeline_id
-                }
-                if timeline_ids is not None
-                else None
-            )
             filt = ClaimFilter.from_kwargs(
-                timeline_ids=actual_timeline_ids,
-                id_pattern=self._actual_id_pattern(id_pattern),
+                timeline_ids=(
+                    {selected for selected in timeline_ids if selected in known}
+                    if timeline_ids is not None
+                    else None
+                ),
+                id_pattern=self._known_id_pattern(id_pattern),
                 include_domains=include_domains,
                 include_units=include_units,
             )
-            filter_timelines = self._actual_timeline_lookup()
+            filter_timelines = known
             filtered_coords = {
                 tl_id: coord
                 for tl_id, coord in stamp.coordinates.items()
                 if filt.matches_timeline(
-                    self._uid_to_timeline_id.get(tl_id, tl_id),
+                    tl_id,
                     timelines=filter_timelines,
                 )
             }
@@ -1947,6 +2665,9 @@ class AlignmentBundle:
                 source=stamp.source,
                 is_interpolated=stamp.is_interpolated,
                 conversion_maps=stamp.conversion_maps,
+                interval_claims=(
+                    stamp.interval_claims if stamp.source_id in filtered_coords else []
+                ),
             )
 
         return stamp
@@ -1960,7 +2681,7 @@ class AlignmentBundle:
 
     def get_matchstamps_at(
         self,
-        at: CoordinateCollection,
+        at: CoordinateCollection | Sequence[CoordinateInput | Interval],
         timeline_id: str | None = None,
         *,
         support_policy: "SupportPolicy | str | None" = None,
@@ -1969,37 +2690,64 @@ class AlignmentBundle:
         id_pattern: str | None = None,
         include_domains: set["Domain"] | None = None,
         include_units: set["TimeUnit"] | None = None,
-    ) -> list[MatchStamp]:
-        """Get cross-group MatchStamps at a collection of coordinates.
+    ) -> list[MatchStamp | MatchIntervalStamp]:
+        """Get cross-group MatchStamps at a collection of positions.
 
         Every element is resolved through :meth:`get_matchstamp_at`, so each
         one yields exactly one full transitive cross-section, and input order
         is preserved.
 
         Args:
-            at: Coordinate positions to resolve. Each element is a raw
+            at: Coordinate or Interval positions to resolve. Each element is a raw
                 ``int``/``float``/``Fraction`` or ``Coordinate`` (needing
-                ``timeline_id``) or an ``IdCoordinate`` (carrying its own).
-            timeline_id: Bundle UID of the source timeline.
+                ``timeline_id``), an ``IdCoordinate`` (carrying its own), or an
+                ``Interval`` (needing ``timeline_id``).
+            timeline_id: ID of the source timeline.
             support_policy: How to treat out-of-support timelines.
             conversion_maps: C-map conversions available through the stamps.
-            timeline_ids: Only include these bundle UIDs in each result.
-            id_pattern: Regex filter for bundle UIDs in each result.
+            timeline_ids: Only include these timeline IDs in each result.
+            id_pattern: Regex filter for timeline IDs in each result.
             include_domains: Only these domains in each result.
             include_units: Only these units in each result.
 
         Returns:
-            One MatchStamp per input coordinate; an empty collection gives an
-            empty list.
+            One stamp per input position. Coordinate elements produce
+            MatchStamps and Interval elements produce MatchIntervalStamps.
 
         Examples:
-            >>> stamps = bundle.get_matchstamps_at([0.0, 50.0], "score:clt1")
-            >>> stamps[1].get_coordinate_for("score:clt1", format="float")
+            >>> from timetoalign.alignment import AlignmentBundle
+            >>> from timetoalign.timelines.types import (
+            ...     ContinuousLogicalTimeline,
+            ...     ContinuousPhysicalTimeline,
+            ... )
+            >>> bundle = AlignmentBundle()
+            >>> _ = bundle.add_timeline(
+            ...     ContinuousLogicalTimeline(length=100, uid="score:clt_1"), as_group="score"
+            ... )
+            >>> _ = bundle.add_timeline(
+            ...     ContinuousPhysicalTimeline(length=200.0, uid="perf:cpt_1"), as_group="perf"
+            ... )
+            >>> _ = bundle.create_match_claims(
+            ...     [
+            ...         ({"start": 0}, "score:clt_1", {"start": 0.0}, "perf:cpt_1"),
+            ...         ({"start": 100}, "score:clt_1", {"start": 200.0}, "perf:cpt_1"),
+            ...     ]
+            ... )
+            >>> stamps = bundle.get_matchstamps_at([0, 50], "score:clt_1")
+            >>> stamps[1].get_coordinate_for("score:clt_1", format="float")
             50.0
+            >>> stamps[1].get_coordinate_for("perf:cpt_1", format="float")
+            100.0
         """
-        stamps, _ = resolve_coordinate_collection(
-            at,
-            lambda value: self.get_matchstamp_at(
+        values, _ = collection_values(at)
+        for position, value in enumerate(values):
+            if not is_coordinate_input(value) and not isinstance(value, Interval):
+                raise TypeError(
+                    f"Matchstamp collection element {position} has unsupported "
+                    f"type {type(value).__name__}"
+                )
+        return [
+            self.get_matchstamp_at(
                 value,
                 timeline_id,
                 support_policy=support_policy,
@@ -2008,9 +2756,9 @@ class AlignmentBundle:
                 id_pattern=id_pattern,
                 include_domains=include_domains,
                 include_units=include_units,
-            ),
-        )
-        return stamps
+            )
+            for value in values
+        ]
 
     def get_matchstamp_for(
         self,
@@ -2028,12 +2776,12 @@ class AlignmentBundle:
 
         Args:
             key: Event ID with exactly one owning registered timeline.
-            timeline_id: Bundle UID the stamp is anchored on; by default the
+            timeline_id: ID of the timeline the stamp is anchored on; by default the
                 event's owner.
             support_policy: How to treat out-of-support timelines.
             conversion_maps: C-map conversions available through the stamp.
-            timeline_ids: Only include these bundle UIDs in the result.
-            id_pattern: Regex filter for bundle UIDs in the result.
+            timeline_ids: Only include these timeline IDs in the result.
+            id_pattern: Regex filter for timeline IDs in the result.
             include_domains: Only these domains in the result.
             include_units: Only these units in the result.
 
@@ -2045,8 +2793,29 @@ class AlignmentBundle:
             ValueError: If several registered timelines own it.
 
         Examples:
+            >>> from timetoalign.alignment import AlignmentBundle
+            >>> from timetoalign.timelines.types import (
+            ...     ContinuousLogicalTimeline,
+            ...     ContinuousPhysicalTimeline,
+            ... )
+            >>> score = ContinuousLogicalTimeline(length=16, uid="score:clt_1")
+            >>> score.add_events([{"id": "note:000001", "event_type": "Note", "instant": 4}])
+            >>> bundle = AlignmentBundle()
+            >>> _ = bundle.add_timeline(score, as_group="score")
+            >>> _ = bundle.add_timeline(
+            ...     ContinuousPhysicalTimeline(length=40.0, uid="perf:cpt_1"), as_group="perf"
+            ... )
+            >>> _ = bundle.create_match_claims(
+            ...     [
+            ...         ({"start": 0}, "score:clt_1", {"start": 0.0}, "perf:cpt_1"),
+            ...         ({"start": 16}, "score:clt_1", {"start": 40.0}, "perf:cpt_1"),
+            ...     ]
+            ... )
             >>> ms = bundle.get_matchstamp_for("note:000001")
             >>> ms.get_coordinate_for(ms.source_id)  # the event's own owner axis
+            IdCoordinate(Fraction(4, 1), quarters, 'score:clt_1')
+            >>> ms.get_coordinate_for("perf:cpt_1", format="float")
+            10.0
         """
         if not isinstance(key, str):
             raise TypeError("get_matchstamp_for requires an event-ID string")
@@ -2085,12 +2854,12 @@ class AlignmentBundle:
 
         Args:
             keys: Event IDs to resolve, each with exactly one owner.
-            timeline_id: Bundle UID every stamp is anchored on; by default
+            timeline_id: ID of the timeline every stamp is anchored on; by default
                 each event's own owner.
             support_policy: How to treat out-of-support timelines.
             conversion_maps: C-map conversions available through the stamps.
-            timeline_ids: Only include these bundle UIDs in each result.
-            id_pattern: Regex filter for bundle UIDs in each result.
+            timeline_ids: Only include these timeline IDs in each result.
+            id_pattern: Regex filter for timeline IDs in each result.
             include_domains: Only these domains in each result.
             include_units: Only these units in each result.
 
@@ -2119,7 +2888,14 @@ class AlignmentBundle:
 
     def get_matchstamp(
         self,
-        at: CoordinateInput | CoordinateCollection | str | KeyCollection,
+        at: (
+            CoordinateInput
+            | Interval
+            | CoordinateCollection
+            | Sequence[CoordinateInput | Interval]
+            | str
+            | KeyCollection
+        ),
         timeline_id: str | None = None,
         *,
         support_policy: "SupportPolicy | str | None" = None,
@@ -2128,16 +2904,16 @@ class AlignmentBundle:
         id_pattern: str | None = None,
         include_domains: set["Domain"] | None = None,
         include_units: set["TimeUnit"] | None = None,
-    ) -> MatchStamp | list[MatchStamp]:
+    ) -> MatchStamp | MatchIntervalStamp | list[MatchStamp | MatchIntervalStamp]:
         """Dispatch a positional or event-key match-stamp query.
 
         Args:
-            at: Scalar or plural coordinate position or event key.
-            timeline_id: Bundle UID the query is expressed on.
+            at: Scalar or plural coordinate or Interval position, or event key.
+            timeline_id: ID of the timeline the query is expressed on.
             support_policy: How to treat out-of-support timelines.
             conversion_maps: C-map conversions available through the stamps.
-            timeline_ids: Only include these bundle UIDs in each result.
-            id_pattern: Regex filter for bundle UIDs in each result.
+            timeline_ids: Only include these timeline IDs in each result.
+            id_pattern: Regex filter for timeline IDs in each result.
             include_domains: Only these domains in each result.
             include_units: Only these units in each result.
 
@@ -2145,37 +2921,59 @@ class AlignmentBundle:
             The selected precise-getter result.
 
         Raises:
-            TypeError: If ``at`` mixes keys and coordinates or is an
+            TypeError: If ``at`` mixes keys with position forms or is an
                 unsupported runtime form.
         """
-        return dispatch_retrieval(
-            self,
-            "get_matchstamp",
-            "get_matchstamps",
-            at,
-            timeline_id,
-            support_policy=support_policy,
-            conversion_maps=conversion_maps,
-            timeline_ids=timeline_ids,
-            id_pattern=id_pattern,
-            include_domains=include_domains,
-            include_units=include_units,
+        options = {
+            "support_policy": support_policy,
+            "conversion_maps": conversion_maps,
+            "timeline_ids": timeline_ids,
+            "id_pattern": id_pattern,
+            "include_domains": include_domains,
+            "include_units": include_units,
+        }
+        if isinstance(at, str):
+            return self.get_matchstamp_for(at, timeline_id, **options)
+        if is_coordinate_input(at) or isinstance(at, Interval):
+            return self.get_matchstamp_at(at, timeline_id, **options)
+        values, _ = collection_values(at)
+        if all(isinstance(value, str) for value in values):
+            return self.get_matchstamps_for(values, timeline_id, **options)
+        if all(
+            is_coordinate_input(value) or isinstance(value, Interval)
+            for value in values
+        ):
+            return self.get_matchstamps_at(values, timeline_id, **options)
+        raise TypeError(
+            "Matchstamp dispatcher collections must contain only string keys or "
+            "coordinate and Interval positions"
         )
 
     def _assemble_matchstamp(
         self,
-        coordinate: float,
+        coordinate: CoordinateValue,
         actual_timeline_id: str,
         *,
         support_policy: SupportPolicy,
         conversion_maps: "ConversionMapsSpec",
-    ) -> tuple[dict[str, float], list[tuple[str, str]], list[tuple[str, str]], bool]:
+        interval_coordinates: dict[str, CoordinateValue] | None = None,
+        interval_anchor_edges: list[tuple[str, str]] | None = None,
+        interval_inferred_edges: list[tuple[str, str]] | None = None,
+        interval_withheld: set[str] | None = None,
+        query_has_interval_anchor: bool = False,
+    ) -> tuple[
+        dict[str, CoordinateValue | None],
+        list[tuple[str, str]],
+        list[tuple[str, str]],
+        bool,
+    ]:
         """Assemble the transitive cross-group union reachable from a query.
 
         Seeds from the query node, overlays exact-anchor coordinates from the
         query's MatchGraph (exact wins over interpolated), then walks outward
         across groups to closure: every reached timeline expands into its own
         group (interpolation) and warps into not-yet-reached groups (WarpMap),
+        an ungrouped timeline warping from and into a group of its own,
         each transferred coordinate governed by ``support_policy``. The query
         timeline's own coordinate is never dropped, clamped, or altered.
 
@@ -2184,13 +2982,23 @@ class AlignmentBundle:
             actual_timeline_id: Actual timeline id of the query.
             support_policy: How out-of-support transfers are handled.
             conversion_maps: C-map spec forwarded to group timestamps.
+            interval_coordinates: Unambiguous interval-derived seed values.
+            interval_anchor_edges: Interval-claim edges reached at an anchor.
+            interval_inferred_edges: Interval-claim edges reached in an interior.
+            interval_withheld: Timelines the query's interval claims map to
+                no single coordinate. Each stays unresolved unless an exact
+                anchor of the query's MatchGraph gives it a coordinate, which
+                then wins; no interpolation or warp fills it, so no transfer
+                collapses the claims' alternatives into one value.
+            query_has_interval_anchor: Whether an interval claim explicitly
+                anchors the query position.
 
         Returns:
             ``(coordinates, anchor_edges, inferred_edges, query_has_anchor)``.
             ``query_has_anchor`` is True when the query node carries an
             explicit anchor (making the stamp non-interpolated).
         """
-        coordinates: dict[str, float] = {}
+        coordinates: dict[str, CoordinateValue | None] = {}
         anchor_edges: list[tuple[str, str]] = []
         inferred_edges: list[tuple[str, str]] = []
 
@@ -2217,23 +3025,39 @@ class AlignmentBundle:
                 raise
             mg = None
 
-        query_has_anchor = mg is not None
+        query_has_anchor = mg is not None or query_has_interval_anchor
         if query_has_anchor:
-            graph_stamp = mg.get_matchstamp()
-            coordinates.update(
-                {
-                    timeline_id: float(stored.value)
-                    for timeline_id, stored in graph_stamp.coordinates.items()
-                }
-            )
-            anchor_edges.extend(graph_stamp.anchor_edges)
-            inferred_edges.extend(graph_stamp.inferred_edges)
+            if mg is not None:
+                graph_stamp = mg.get_matchstamp()
+                coordinates.update(
+                    {
+                        timeline_id: stored.value
+                        for timeline_id, stored in graph_stamp.coordinates.items()
+                    }
+                )
+                anchor_edges.extend(graph_stamp.anchor_edges)
+                inferred_edges.extend(graph_stamp.inferred_edges)
+        for timeline_id, value in (interval_coordinates or {}).items():
+            coordinates.setdefault(timeline_id, value)
+        for timeline_id in interval_withheld or ():
+            coordinates.setdefault(timeline_id, None)
+        for edge in interval_anchor_edges or []:
+            if edge not in anchor_edges and edge[::-1] not in anchor_edges:
+                anchor_edges.append(edge)
+        for edge in interval_inferred_edges or []:
+            add_inferred_edge(*edge)
         # The query timeline's coordinate is authoritative and never altered.
         coordinates[actual_timeline_id] = coordinate
 
         # 2. Transitive closure across groups (BFS worklist).
-        worklist: list[str] = list(coordinates.keys())
+        worklist: list[str] = [
+            timeline_id
+            for timeline_id, value in coordinates.items()
+            if value is not None
+        ]
         processed: set[str] = set()
+        tree_reached: set[str] = set()
+        units = self._warp_units()
 
         while worklist:
             node_id = worklist.pop()
@@ -2241,59 +3065,95 @@ class AlignmentBundle:
                 continue
             processed.add(node_id)
             node_coordinate = coordinates[node_id]
-            node_uid = self._timeline_id_to_uid.get(node_id, node_id)
-            group_id = self.timeline_to_group.get(node_uid)
-            if group_id is None:
-                continue
-            source_group = self.groups.get(group_id)
-            if source_group is None:
-                continue
+            assert node_coordinate is not None
+            node_timeline = self.get_timeline(node_id)
 
-            # 2a. Within-group interpolation to the node's own group members.
-            if len(source_group.timeline_ids) > 1:
-                grouped = self._get_group_timestamp(
-                    source_group,
-                    node_coordinate,
+            # Direct instant claims are reachability edges in their own right.
+            # This precedes group handling so standalone timelines participate
+            # in the same transitive closure.
+            query = Coordinate(
+                node_coordinate,
+                node_timeline.unit,
+                number_type=node_timeline.number_type,
+            )
+            for claim in self._relevant_claims_at(node_id, query):
+                if claim.is_interval:
+                    continue
+                anchor = claim.start_anchor
+                assert anchor is not None
+                if anchor.timeline_a_id == node_id:
+                    target_id = anchor.timeline_b_id
+                    target_coordinate = anchor.coordinate_b.value
+                else:
+                    target_id = anchor.timeline_a_id
+                    target_coordinate = anchor.coordinate_a.value
+                if (node_id, target_id) not in anchor_edges and (
+                    target_id,
                     node_id,
-                    conversion_maps=conversion_maps,
-                )
-                for member_uid, member_coordinate in grouped.items():
-                    member_id = self._uid_to_timeline_id.get(member_uid, member_uid)
-                    if member_id in coordinates or member_coordinate is None:
-                        continue
-                    resolved = self._resolve_group_member_coordinate(
-                        member_id, float(member_coordinate), support_policy
-                    )
-                    if resolved is None:
-                        continue
-                    coordinates[member_id] = resolved
-                    add_inferred_edge(node_id, member_id)
-                    worklist.append(member_id)
-
-            # 2b. Cross-group warp into every not-yet-reached group.
-            for other_group_id, other_group in self.groups.items():
-                if other_group_id == group_id:
-                    continue
-                if all(
-                    self._uid_to_timeline_id.get(member_uid, member_uid) in coordinates
-                    for member_uid in other_group.timeline_ids
-                ):
-                    continue
-                transferred = self._transfer_to_group(
-                    node_coordinate,
-                    node_id,
-                    source_group,
-                    other_group,
-                    support_policy,
-                )
-                if transferred is None:
-                    continue
-                target_id, target_coordinate = transferred
+                ) not in anchor_edges:
+                    anchor_edges.append((node_id, target_id))
                 if target_id in coordinates:
                     continue
                 coordinates[target_id] = target_coordinate
-                add_inferred_edge(node_id, target_id)
                 worklist.append(target_id)
+
+            # Every timeline reaches the others of its manifest tree (its root
+            # and the root's descendants) by exact offsets. A timeline given
+            # its coordinate that way has no relatives the first one lacked,
+            # so its tree is not walked again from it.
+            if node_id not in tree_reached:
+                for relative_id, relative_coordinate in self._manifest_relatives(
+                    node_timeline, node_coordinate
+                ).items():
+                    if relative_id in coordinates:
+                        continue
+                    coordinates[relative_id] = relative_coordinate
+                    tree_reached.add(relative_id)
+                    add_inferred_edge(node_id, relative_id)
+                    worklist.append(relative_id)
+
+            # The node's units: each of its groups, or the node alone when it
+            # is ungrouped, registered or not.
+            for source_group, _ in (unit for unit in units if node_id in unit[1]):
+                # 2a. Within-group conversion to the members of each group of
+                # the node: exact, and always within each member, since
+                # members share one start and one end.
+                if source_group is not None and len(source_group.timeline_ids) > 1:
+                    grouped = self._get_group_timestamp(
+                        source_group,
+                        node_coordinate,
+                        node_id,
+                        conversion_maps=conversion_maps,
+                    )
+                    for member_id, member_coordinate in grouped.items():
+                        if member_id in coordinates or member_coordinate is None:
+                            continue
+                        coordinates[member_id] = member_coordinate
+                        add_inferred_edge(node_id, member_id)
+                        worklist.append(member_id)
+
+                # 2b. Cross-group warp into every not-yet-reached unit the
+                # node is no member of.
+                for _, target_ids in units:
+                    if node_id in target_ids:
+                        continue
+                    if all(member_id in coordinates for member_id in target_ids):
+                        continue
+                    transferred = self._transfer_to_group(
+                        float(node_coordinate),
+                        node_id,
+                        source_group,
+                        target_ids,
+                        support_policy,
+                    )
+                    if transferred is None:
+                        continue
+                    target_id, target_coordinate = transferred
+                    if target_id in coordinates:
+                        continue
+                    coordinates[target_id] = target_coordinate
+                    add_inferred_edge(node_id, target_id)
+                    worklist.append(target_id)
 
         return coordinates, anchor_edges, inferred_edges, query_has_anchor
 
@@ -2331,11 +3191,31 @@ class AlignmentBundle:
             entries (filtered out).
 
         Examples:
+            >>> from timetoalign.alignment import AlignmentBundle
+            >>> from timetoalign.timelines.types import (
+            ...     ContinuousLogicalTimeline,
+            ...     ContinuousPhysicalTimeline,
+            ... )
+            >>> bundle = AlignmentBundle()
+            >>> _ = bundle.add_timeline(
+            ...     ContinuousLogicalTimeline(length=16, uid="score:clt_1"), as_group="score"
+            ... )
+            >>> for n, seconds in ((1, 40.0), (2, 32.0)):
+            ...     _ = bundle.add_timeline(
+            ...         ContinuousPhysicalTimeline(length=seconds, uid=f"perf:cpt_{n}"),
+            ...         as_group=f"perf_{n}",
+            ...     )
+            ...     _ = bundle.create_match_claims(
+            ...         [
+            ...             ({"start": 0}, "score:clt_1", {"start": 0.0}, f"perf:cpt_{n}"),
+            ...             ({"start": 16}, "score:clt_1", {"start": seconds}, f"perf:cpt_{n}"),
+            ...         ]
+            ...     )
             >>> stamps = bundle.get_matchstamps()
-            >>> len(stamps)
-            100
-            >>> stamps[0].n_timelines
-            23
+            >>> len(stamps)  # one per claim
+            4
+            >>> stamps[0].n_timelines  # score + 2 performers
+            3
         """
         if claims is None:
             claims = self.get_match_claims()
@@ -2352,7 +3232,15 @@ class AlignmentBundle:
 
     def get_matchstamp_table(
         self,
-        at: CoordinateInput | CoordinateCollection | str | KeyCollection | None = None,
+        at: (
+            CoordinateInput
+            | Interval
+            | CoordinateCollection
+            | Sequence[CoordinateInput | Interval]
+            | str
+            | KeyCollection
+            | None
+        ) = None,
         timeline_id: str | None = None,
         *,
         claims: list[MatchClaim] | None = None,
@@ -2394,7 +3282,9 @@ class AlignmentBundle:
                 :meth:`get_matchstamp_at`, one row each in input order. Each
                 element is a raw ``int``/``float``/``Fraction`` or
                 ``Coordinate`` (needing ``timeline_id``) or an ``IdCoordinate``
-                (carrying its own timeline). Mutually exclusive with ``claims``.
+                (carrying its own timeline). An ``Interval`` also needs
+                ``timeline_id`` and has no table form. Mutually exclusive with
+                ``claims``.
             timeline_id: Source timeline for the ``at`` batch; may be
                 ``None`` when every element is an ``IdCoordinate`` or an event
                 ID. Ignored on the ``claims`` path.
@@ -2423,8 +3313,13 @@ class AlignmentBundle:
 
         Raises:
             ValueError: If both ``claims`` and ``at`` are given, on an unknown
-                ``format``, or when a DataFrame-shaping option is supplied for
-                an Arrow result.
+                ``format``, when a DataFrame-shaping option is supplied for
+                an Arrow result, or when an ``at`` position resolves to
+                ambiguous interval-derived coordinates — several candidates
+                for one timeline, as legato note ends and spread chords
+                produce where a match file gives one interval claim per note.
+            NotImplementedError: If ``at`` holds an ``Interval``; there is no
+                interval table form.
 
         Note:
             Collapsed rows are ordered by the coordinate on the
@@ -2435,14 +3330,34 @@ class AlignmentBundle:
             well-formed alignment never does) keeps the smaller one.
 
         Examples:
+            >>> from timetoalign.alignment import AlignmentBundle
+            >>> from timetoalign.timelines.types import (
+            ...     ContinuousLogicalTimeline,
+            ...     ContinuousPhysicalTimeline,
+            ... )
+            >>> bundle = AlignmentBundle()
+            >>> _ = bundle.add_timeline(
+            ...     ContinuousLogicalTimeline(length=16, uid="score:clt_1"), as_group="score"
+            ... )
+            >>> for n, seconds in ((1, 40.0), (2, 32.0)):
+            ...     _ = bundle.add_timeline(
+            ...         ContinuousPhysicalTimeline(length=seconds, uid=f"perf:cpt_{n}"),
+            ...         as_group=f"perf_{n}",
+            ...     )
+            ...     _ = bundle.create_match_claims(
+            ...         [
+            ...             ({"start": 0}, "score:clt_1", {"start": 0.0}, f"perf:cpt_{n}"),
+            ...             ({"start": 16}, "score:clt_1", {"start": seconds}, f"perf:cpt_{n}"),
+            ...         ]
+            ...     )
             >>> table = bundle.get_matchstamp_table()
-            >>> table.num_rows
-            100
+            >>> table.num_rows  # one per claim
+            4
             >>> table.column_names
-            ['score:clt1', 'perf:dlt1', 'perf:dlt2', ...]
-            >>> bundle.get_matchstamp_table(from_graph=True).num_rows
-            25
-            >>> bundle.get_matchstamp_table([0.0, 50.0], "score:clt1").num_rows
+            ['perf:cpt_1', 'perf:cpt_2', 'score:clt_1']
+            >>> bundle.get_matchstamp_table(from_graph=True).num_rows  # one per instant
+            2
+            >>> bundle.get_matchstamp_table([0, 8], "score:clt_1").num_rows
             2
         """
         validate_table_format(format)
@@ -2450,19 +3365,26 @@ class AlignmentBundle:
         if at is not None:
             if claims is not None:
                 raise ValueError("Pass either claims or at, not both")
-            stamps = (
-                self.get_matchstamps_for(
-                    [at] if isinstance(at, str) else at,
-                    timeline_id,
-                    conversion_maps=conversion_maps,
-                )
-                if is_key_input(at)
-                else self.get_matchstamps_at(
-                    [at] if is_coordinate_input(at) else at,
-                    timeline_id,
-                    conversion_maps=conversion_maps,
-                )
+            resolved = self.get_matchstamp(
+                at,
+                timeline_id,
+                conversion_maps=conversion_maps,
             )
+            stamps = resolved if isinstance(resolved, list) else [resolved]
+            if any(isinstance(stamp, MatchIntervalStamp) for stamp in stamps):
+                raise NotImplementedError(
+                    "get_matchstamp_table does not support Interval queries; "
+                    "there is no interval table form"
+                )
+            for stamp in stamps:
+                assert isinstance(stamp, MatchStamp)
+                ambiguous = stamp._ambiguous_interval_candidates()
+                if ambiguous:
+                    raise ValueError(
+                        "get_matchstamp_table cannot materialize ambiguous "
+                        "interval-derived coordinates for timelines "
+                        f"{list(ambiguous)}"
+                    )
             rows = [dict(stamp.coordinates) for stamp in stamps]
             all_tl_ids: set[str] = set()
             for row in rows:
@@ -2596,23 +3518,34 @@ class AlignmentBundle:
         field_lists: dict[str, list[Coordinate | None]] = {
             tl_id: [None] * n_rows for tl_id in sorted(all_tl_ids)
         }
+        known = self._known_timelines()
+        axes: dict[str, Timeline] = {}
+
+        def cell(tl_id: str, value: Coordinate | float | None) -> Coordinate | None:
+            """Write one cell on its timeline's axis, resolving the axis once."""
+            timeline = axes.get(tl_id)
+            if timeline is None:
+                timeline = known[tl_id] if tl_id in known else self.get_timeline(tl_id)
+                axes[tl_id] = timeline
+            return self._canonical_table_coordinate(timeline, value)
+
         for position, row in enumerate(rows):
             for tl_id, value in row.items():
                 column = field_lists.get(tl_id)
                 if column is not None:
-                    column[position] = self._canonical_table_coordinate(tl_id, value)
+                    column[position] = cell(tl_id, value)
 
         offset = len(rows)
         for ids_a, ids_b, coordinates_a, coordinates_b in bulk_columns:
             for position in range(len(ids_a)):
                 column = field_lists.get(ids_a[position])
                 if column is not None:
-                    column[offset + position] = self._canonical_table_coordinate(
+                    column[offset + position] = cell(
                         ids_a[position], coordinates_a[position]
                     )
                 column = field_lists.get(ids_b[position])
                 if column is not None:
-                    column[offset + position] = self._canonical_table_coordinate(
+                    column[offset + position] = cell(
                         ids_b[position], coordinates_b[position]
                     )
             offset += len(ids_a)
@@ -2664,8 +3597,8 @@ class AlignmentBundle:
                 None,
             )
             if exemplar is None:
-                if name in self.timelines:
-                    timeline = self.get_timeline(name)
+                if name in known:
+                    timeline = known[name]
                     unit = timeline.unit
                     number_type = timeline.number_type
                 else:
@@ -2680,29 +3613,26 @@ class AlignmentBundle:
                     values=coordinates,
                     unit=unit,
                     number_type=number_type,
-                    timeline_id=name if name in self.timelines else None,
+                    timeline_id=name if name in known else None,
                 )
             )
         return build_timestamp_table(columns)
 
+    @staticmethod
     def _canonical_table_coordinate(
-        self, timeline_id: str, value: Coordinate | float | None
+        timeline: "Timeline", value: Coordinate | float | None
     ) -> Coordinate | None:
         """Return one match-stamp table cell in its timeline's canonical type.
 
         Args:
-            timeline_id: Public bundle timeline UID.
+            timeline: The timeline the cell's column belongs to.
             value: Stored coordinate or a numeric value from a columnar claim.
 
         Returns:
             Canonical coordinate, or ``None`` for an absent cell.
-
-        Raises:
-            KeyError: If ``timeline_id`` is not registered in the bundle.
         """
         if value is None:
             return None
-        timeline = self.get_timeline(timeline_id)
         raw_value = value.value if isinstance(value, Coordinate) else value
         return Coordinate(
             raw_value,
@@ -2795,7 +3725,40 @@ class AlignmentBundle:
         self._warp_map_cache.clear()
         self._matchline_cache.clear()
         self._matchgraph_cache.clear()
+        self._claims_by_timeline = None
         self._cache_claims_hash = 0
+
+    def _refresh_claim_caches(self) -> None:
+        """Drop the caches built from the claims when either store changed.
+
+        The hash moves when EITHER store changes: it folds in the total claim
+        count and the identity of each columnar store alongside the list's
+        own identity.
+        """
+        claims_hash = id(self.cross_group_claims) + self.n_cross_group_claims
+        for claim_field in self.cross_group_claim_fields:
+            claims_hash += id(claim_field)
+        if claims_hash != self._cache_claims_hash:
+            self._warp_map_cache.clear()
+            self._matchline_cache.clear()
+            self._claims_by_timeline = None
+            self._cache_claims_hash = claims_hash
+
+    def _claims_naming(self, timeline_id: str) -> list[MatchClaim]:
+        """Return the listed cross-group claims naming a timeline, in store order.
+
+        The index is built once per state of the claim stores; it holds the
+        claims as stored, since a claim's timelines do not change when its
+        coordinates are expressed in native units.
+        """
+        self._refresh_claim_caches()
+        if self._claims_by_timeline is None:
+            index: dict[str, list[MatchClaim]] = {}
+            for claim in self.cross_group_claims:
+                for named in dict.fromkeys(claim.timelines):
+                    index.setdefault(named, []).append(claim)
+            self._claims_by_timeline = index
+        return self._claims_by_timeline.get(timeline_id, [])
 
     def _claim_in_native_units(self, claim: MatchClaim) -> MatchClaim:
         """Return a claim whose anchors use each timeline's native axis.
@@ -2809,8 +3772,7 @@ class AlignmentBundle:
         """
 
         def _native(timeline_id: str, coordinate: Coordinate) -> Coordinate:
-            bundle_uid = self._timeline_id_to_uid.get(timeline_id, timeline_id)
-            timeline = self.timelines.get(bundle_uid)
+            timeline = self._known_timeline(timeline_id)
             if timeline is None:
                 return coordinate
             if coordinate.unit == TimeUnit.number:
@@ -2864,11 +3826,12 @@ class AlignmentBundle:
         MatchStamp display (``get_matchstamp_at``).
 
         Args:
-            source_tl_id: Actual timeline ID (not bundle UID) of the source.
+            source_tl_id: ID of the source timeline.
 
         Returns:
             MatchLine for the source, or None if construction fails.
         """
+        self._refresh_claim_caches()
         if source_tl_id in self._matchline_cache:
             return self._matchline_cache[source_tl_id]
 
@@ -2877,10 +3840,20 @@ class AlignmentBundle:
         # field is cut to its source slice — for R recordings that is 2/R of
         # the rows — before anything is materialised, and the resulting
         # MatchLine is then cached per source.
-        claims = list(self.cross_group_claims)
+        field_claims: list[MatchClaim] = []
         for claim_field in self.cross_group_claim_fields:
-            claims.extend(claim_field.connecting(source_tl_id).to_claims())
-        claims = [self._claim_in_native_units(claim) for claim in claims]
+            field_claims.extend(claim_field.connecting(source_tl_id).to_claims())
+        # A MatchLine keeps only the stamps holding its source, and a graph
+        # node exists only where a claim names a timeline, so a source no
+        # claim names has an empty line: it is not built from every claim of
+        # the bundle to find that out.
+        if not field_claims and not self._claims_naming(source_tl_id):
+            self._matchline_cache[source_tl_id] = None
+            return None
+        claims = [
+            self._claim_in_native_units(claim)
+            for claim in [*self.cross_group_claims, *field_claims]
+        ]
 
         try:
             match_line = MatchLine.from_claims(
@@ -2911,8 +3884,8 @@ class AlignmentBundle:
         when ``add_match_claims()`` is called.
 
         Args:
-            source_tl_id: Actual timeline ID (not bundle UID) of the source.
-            target_tl_id: Actual timeline ID (not bundle UID) of the target.
+            source_tl_id: ID of the source timeline.
+            target_tl_id: ID of the target timeline.
 
         Returns:
             WarpMap for the pair, or None if insufficient data.
@@ -2920,17 +3893,7 @@ class AlignmentBundle:
         if self.n_cross_group_claims == 0:
             return None
 
-        # Check cache validity. The hash must move when EITHER store changes,
-        # so it folds in the total claim count and the identity of each
-        # columnar store alongside the list's own identity.
-        claims_hash = id(self.cross_group_claims) + self.n_cross_group_claims
-        for claim_field in self.cross_group_claim_fields:
-            claims_hash += id(claim_field)
-        if claims_hash != self._cache_claims_hash:
-            self._warp_map_cache.clear()
-            self._matchline_cache.clear()
-            self._cache_claims_hash = claims_hash
-
+        self._refresh_claim_caches()
         cache_key = (source_tl_id, target_tl_id)
         if cache_key in self._warp_map_cache:
             return self._warp_map_cache[cache_key]
@@ -2977,24 +3940,26 @@ class AlignmentBundle:
     def _get_group_timestamp(
         self,
         group: TimelineGroup,
-        coordinate: float,
+        coordinate: CoordinateValue,
         timeline_id: str,
         *,
         conversion_maps: "ConversionMapsSpec" = True,
-    ) -> dict[str, float | None]:
-        """Get timestamp within a group, mapped to bundle UIDs.
+    ) -> dict[str, CoordinateValue | None]:
+        """Get the group members' exact coordinates at a position on one member.
 
         Args:
             group: The TimelineGroup.
             coordinate: Coordinate in the source timeline's native unit,
                 or in a unit convertible via C-Map (see
                 ``_resolve_claim_coordinate``).
-            timeline_id: Actual timeline ID (not bundle UID).
+            timeline_id: ID of the member the coordinate is on.
 
         Returns:
-            Dict mapping bundle UIDs to coordinates.
+            Dict mapping member IDs to coordinates, each in its member's
+            declared number type; a position outside the source member gives
+            the source alone.
         """
-        result: dict[str, float | None] = {}
+        result: dict[str, CoordinateValue | None] = {}
 
         try:
             ts = group.get_timestamp_at(
@@ -3003,32 +3968,115 @@ class AlignmentBundle:
                 conversion_maps=conversion_maps,
             )
             for tl_id in group.timeline_ids:
-                bundle_uid = self._timeline_id_to_uid.get(tl_id, tl_id)
                 try:
-                    coord = ts.get_coordinate_for(tl_id, format="float")
+                    coord = ts.get_coordinate_for(tl_id, format="coordinate")
                 except KeyError:
-                    coord = None
-                result[bundle_uid] = coord
+                    result[tl_id] = None
+                    continue
+                assert isinstance(coord, Coordinate)
+                result[tl_id] = coord.value
+        except UnknownLengthError:
+            # Converting between members needs both lengths; that is not a
+            # position outside the source member, so it is not swallowed.
+            raise
         except Exception as e:
             self._logger.debug(
                 f"Failed to get group timestamp at {coordinate} on {timeline_id}: {e}"
             )
             # Return what we can: source coordinate at least
-            bundle_uid = self._timeline_id_to_uid.get(timeline_id, timeline_id)
-            result[bundle_uid] = coordinate
+            result[timeline_id] = coordinate
 
         return result
 
-    def _get_unit_map(self) -> dict[str, str]:
-        """Build a mapping from bundle UIDs to their coordinate unit strings.
+    def _manifest_relatives(
+        self, timeline: "Timeline", coordinate: CoordinateValue
+    ) -> dict[str, CoordinateValue]:
+        """Carry a position onto every other timeline of its manifest tree.
+
+        A child sits at an exact offset inside its parent, so a position on
+        any timeline of the tree is a position on each of the others. It is
+        carried from the queried timeline along the tree's edges, one step
+        per edge: up to a parent by adding the child's offset, down to a
+        child by subtracting it (:func:`~timetoalign.core.time.shift_number`,
+        the parent-child mechanism of :class:`Timeline` itself). Going
+        through the root instead (adding the queried timeline's origin on
+        the root, subtracting the other's) is two roundings on a float axis
+        where one step is none: a child at offset 0 got another value than
+        its parent. Step by step, a zero offset is the identity, and an
+        exact axis stays exact.
+
+        Which timelines appear follows the timeline's own parent-to-child
+        rule (``Timeline._holds_position``, which its stamps and tables read
+        too). The walk starts only from a position on the queried timeline,
+        closed ``[0, length]``: its own end is its own whatever its siblings
+        do, since the position was asked of it. From there the position is
+        carried up to every ancestor, since an ancestor contains its
+        descendant's whole span, end included. A position outside the queried
+        timeline lies on no ancestor and reaches no relative: none is
+        returned, and the stamp holds the queried timeline with whatever the
+        other mechanisms reach, as a timeline's own stamp and a group's
+        answer outside their span. From the queried timeline and from each
+        ancestor it is carried down only into the children that hold it, ``[0, length)`` and their end where
+        no sibling starts there, and so on at every depth: a timeline
+        appears only if every timeline on the way down holds the position,
+        exactly as in the root's own stamp, so a boundary shared by two
+        siblings reaches the one starting there and its descendants, never
+        a descendant of the other. A length that is not known bounds below
+        only. Every timeline of the tree takes part, whatever its depth and
+        whether or not it is registered or grouped
+        (:meth:`_known_timelines`): a middle ancestor between a registered
+        root and a grouped descendant is reached like either of them.
+
+        Args:
+            timeline: A timeline of one of the bundle's trees.
+            coordinate: A position on it.
 
         Returns:
-            Dict mapping bundle UIDs to unit strings (e.g. "samples", "quarters").
+            The coordinates of the other timelines of the tree that reach the
+            position, by id, the root first and then depth-first; empty for a
+            position outside the queried timeline.
+        """
+        if not timeline._holds_position(coordinate, end_held=True):
+            return {}
+        carried: dict[str, CoordinateValue] = {timeline.id: coordinate}
+        reached_from = [timeline]
+        node = timeline
+        while node._parent is not None:
+            parent = node._parent
+            carried[parent.id] = shift_number(
+                carried[node.id], parent._child_offsets[node.id].value, subtract=False
+            )
+            reached_from.append(parent)
+            node = parent
+        root = node
+        pending = reached_from
+        while pending:
+            node = pending.pop()
+            for child_id, child in node._children.items():
+                if child.id in carried:
+                    continue
+                value = shift_number(
+                    carried[node.id], node._child_offsets[child_id].value, subtract=True
+                )
+                if child._holds_position(value):
+                    carried[child.id] = value
+                    pending.append(child)
+        return {
+            relative.id: express_as(carried[relative.id], relative.number_type)
+            for relative in _tree(root)
+            if relative is not timeline and relative.id in carried
+        }
+
+    def _get_unit_map(self) -> dict[str, str]:
+        """Build a mapping from timeline IDs to their coordinate unit strings.
+
+        Returns:
+            Dict mapping timeline IDs to unit strings (e.g. "samples", "quarters").
         """
         unit_map: dict[str, str] = {}
-        for tl_uid, tl in self.timelines.items():
+        for timeline_id, tl in self._known_timelines().items():
             if hasattr(tl, "unit") and tl.unit is not None:
-                unit_map[tl_uid] = str(tl.unit)
+                unit_map[timeline_id] = str(tl.unit)
         return unit_map
 
     def _get_conversion_maps_for_timeline(
@@ -3036,58 +4084,37 @@ class AlignmentBundle:
     ) -> "list[ConversionMap[Any]]":
         """Get every conversion map attached to a timeline in the bundle.
 
-        Accepts an actual timeline id or a bundle UID. Returns C-Maps of all
+        Returns C-Maps of all
         kinds (including unitless label/structured maps), so MatchStamp display
         surfaces them — the bundle-level counterpart of the TimelineGroup method
         of the same name.
         """
-        bundle_uid = self._timeline_id_to_uid.get(timeline_id, timeline_id)
-        tl = self.timelines.get(bundle_uid)
+        tl = self._known_timeline(timeline_id)
         if tl is None:
             return []
         return list(tl._conversion_maps.values())
 
-    def _timeline_length(self, timeline_id: str) -> float | None:
-        """Return a timeline's length in its native unit, or None."""
-        bundle_uid = self._timeline_id_to_uid.get(timeline_id, timeline_id)
-        tl = self.timelines.get(bundle_uid)
+    def _timeline_length(self, timeline_id: str) -> CoordinateValue | None:
+        """Return a timeline's exact length in its native unit, or None."""
+        tl = self._known_timeline(timeline_id)
         if tl is None or tl.length is None:
             return None
-        return float(tl.length.value)
+        return tl.length.value
 
-    def _clip_to_length(self, timeline_id: str, coordinate: float) -> float:
-        """Clip a coordinate into ``[0, length]`` for a target timeline."""
-        out = 0.0 if coordinate < 0.0 else coordinate
-        length = self._timeline_length(timeline_id)
-        if length is not None and out > length:
-            out = length
-        return out
+    def _clip_to_length(
+        self, timeline_id: str, coordinate: CoordinateValue
+    ) -> CoordinateValue:
+        """Clip a coordinate into ``[0, length]`` for a target timeline.
 
-    def _resolve_group_member_coordinate(
-        self, member_id: str, coordinate: float, support_policy: SupportPolicy
-    ) -> float | None:
-        """Apply the support policy to a within-group interpolated coordinate.
-
-        Group-internal transfer has no anchor hull, so support is judged only
-        by ``[0, length]``. ``omit`` drops an out-of-range member; ``clamp`` and
-        ``extrapolate`` both clip it into range (there is nothing to extrapolate
-        past a group's own start or end).
-
-        Args:
-            member_id: Actual timeline id of the group member.
-            coordinate: The interpolated coordinate on that member.
-            support_policy: The active policy.
-
-        Returns:
-            The (possibly clipped) coordinate, or None when omitted.
+        A clipped coordinate is the timeline's own exact bound, never a float
+        rendering of it. A timeline of unknown length is bounded below only.
         """
-        length = self._timeline_length(member_id)
-        within = coordinate >= 0.0 and (length is None or coordinate <= length)
-        if within:
-            return coordinate
-        if support_policy is SupportPolicy.omit:
-            return None
-        return self._clip_to_length(member_id, coordinate)
+        if coordinate < 0:
+            return 0
+        length = self._timeline_length(timeline_id)
+        if length is not None and coordinate > length:
+            return length
+        return coordinate
 
     def _transfer_coordinate(
         self,
@@ -3095,7 +4122,7 @@ class AlignmentBundle:
         entering: float,
         target_tl_id: str,
         support_policy: SupportPolicy,
-    ) -> float | None:
+    ) -> CoordinateValue | None:
         """Warp one coordinate into a target timeline under a support policy.
 
         The coordinate is out of support when it lies outside the source hull
@@ -3139,8 +4166,8 @@ class AlignmentBundle:
         self,
         coordinate: float,
         source_tl_id: str,
-        source_group: TimelineGroup,
-        target_group: TimelineGroup,
+        source_group: TimelineGroup | None,
+        target_ids: Sequence[str],
         support_policy: SupportPolicy,
     ) -> tuple[str, float] | None:
         """Transfer a coordinate from one group to another via WarpMap.
@@ -3151,20 +4178,22 @@ class AlignmentBundle:
         Each transfer is governed by ``support_policy``
         (see :meth:`_transfer_coordinate`); a transfer omitted under the
         ``omit`` policy is skipped so another timeline in the target group may
-        still be reached.
+        still be reached. An ungrouped timeline is a group of its own on
+        either side (see :meth:`_warp_units`).
 
         Args:
             coordinate: Source coordinate.
-            source_tl_id: Source timeline ID (actual, not bundle UID).
-            source_group: Source group.
-            target_group: Target group.
+            source_tl_id: Source timeline ID.
+            source_group: Source group, or None when the source is ungrouped.
+            target_ids: The target group's members, or the one ungrouped
+                target timeline.
             support_policy: How out-of-support transfers are handled.
 
         Returns:
             ``(target_timeline_id, transferred_coordinate)`` or ``None``.
         """
         # Try direct: source_tl_id -> any timeline in target group
-        for target_tl_id in target_group.timeline_ids:
+        for target_tl_id in target_ids:
             warp = self._get_or_build_warp_map(source_tl_id, target_tl_id)
             if warp is None:
                 continue
@@ -3180,17 +4209,19 @@ class AlignmentBundle:
             if transferred is not None:
                 return (target_tl_id, transferred)
 
+        if source_group is None:
+            return None
+
         # Try indirect: convert within source group, then warp
         for src_other_tl_id in source_group.timeline_ids:
             if src_other_tl_id == source_tl_id:
                 continue
             # Convert within source group
             try:
-                source_uid = self._timeline_id_to_uid.get(source_tl_id, source_tl_id)
                 intermediate = source_group.get_coordinate_at(
                     IdCoordinate(
                         coordinate,
-                        self.get_timeline(source_uid).unit,
+                        self.get_timeline(source_tl_id).unit,
                         source_tl_id,
                     ),
                     timeline_id=src_other_tl_id,
@@ -3201,7 +4232,7 @@ class AlignmentBundle:
                 continue
 
             # Try WarpMap from intermediate to target group
-            for target_tl_id in target_group.timeline_ids:
+            for target_tl_id in target_ids:
                 warp = self._get_or_build_warp_map(src_other_tl_id, target_tl_id)
                 if warp is None:
                     continue
@@ -3233,16 +4264,16 @@ class AlignmentBundle:
             Dictionary with bundle information.
         """
         timeline_info = {}
+        membership = self.timeline_to_groups
         for tl_id in sorted(self.timelines.keys()):
             tl = self.timelines[tl_id]
-            group_id = self.timeline_to_group.get(tl_id)
             timeline_info[tl_id] = {
                 "name": tl.name,
                 "length": (
                     float(tl.length.value) if hasattr(tl.length, "value") else tl.length
                 ),
                 "unit": str(tl.unit) if hasattr(tl, "unit") else None,
-                "group": group_id,
+                "groups": list(membership.get(tl_id, ())),
             }
 
         group_info = {}
@@ -3263,6 +4294,87 @@ class AlignmentBundle:
             "groups": group_info,
             "meta": self.meta,
         }
+
+    def to_dict(
+        self,
+        *,
+        minimal: bool = True,
+        events: bool = False,
+        external_references: bool = False,
+    ) -> dict[str, Any]:
+        """Write the bundle as a TimeToShare manifest.
+
+        The manifest carries the bundle's ``id`` only when one was given
+        (a minted id is never written), its ``name`` and ``meta``, every
+        root timeline of the bundle — every registered timeline that is no
+        child, which includes the root of each one that is — as
+        :meth:`Timeline.to_dict <timetoalign.timelines.Timeline.to_dict>`
+        writes it, sorted by id, and the groups sorted by id, each naming its
+        members by id. ``graphical.order`` keeps every group's member order
+        under its id and, unchanged, the band order read with the manifest
+        of every timeline written, beside the members of :attr:`styling`. A
+        root no group names is ungrouped. The bundle's statements and
+        provenance are the manifest's, and the manifest carries its inline
+        JSON-LD ``@context`` with the prefixes its statements use.
+        MatchClaims are not written; the
+        support policy is a setting of the bundle, not part of the manifest.
+
+        Args:
+            minimal: If False, write every optional key, its default value
+                included (the complete form); by default every key at its
+                default value is left out (the minimal form).
+            events: Write every timeline's event rows.
+            external_references: Write every timeline's external references.
+
+        Returns:
+            ``{"@context": {...}, "timetoshare": "0.2.0", "id"?, "name",
+            "meta", "timelines": [...], "groups": [...], "measure_maps":
+            [...], "statements"?, "provenance"?, "graphical"?: {"order":
+            {...}, ...}}``.
+
+        Examples:
+            >>> from fractions import Fraction
+            >>> from timetoalign.alignment import AlignmentBundle
+            >>> from timetoalign.timelines.types import (
+            ...     ContinuousLogicalTimeline,
+            ...     ContinuousPhysicalTimeline,
+            ... )
+            >>> bundle = AlignmentBundle()
+            >>> _ = bundle.add_timeline(
+            ...     ContinuousLogicalTimeline(length=Fraction(16)), as_group="score"
+            ... )
+            >>> _ = bundle.add_timeline(
+            ...     ContinuousPhysicalTimeline(length=40.0), grouped_with="clt_1"
+            ... )
+            >>> data = bundle.to_dict()
+            >>> "id" in data, [timeline["id"] for timeline in data["timelines"]]
+            (False, ['#clt_1', '#cpt_1'])
+            >>> data["groups"]
+            [{'id': '#group_1', 'name': 'score', 'members': ['#clt_1', '#cpt_1']}]
+            >>> data["graphical"]["order"]
+            {'#group_1': ['#clt_1', '#cpt_1']}
+        """
+        groups = [self.groups[group_id] for group_id in sorted(self.groups)]
+        manifest = Manifest(
+            id=None if self._id_minted else self.id,
+            name=self.name,
+            meta=self.meta,
+            statement_state=self._statement_state,
+            prefixes=self._prefixes,
+            styling=self.styling,
+            band_orders=self._band_orders,
+            has_graphical=self._has_graphical,
+            measure_maps=self._measure_maps,
+        )
+        manifest._unknown_keys = self._unknown_keys
+        return manifest.write(
+            self._roots(),
+            groups=[group._to_group_object() for group in groups],
+            order={group.id: group.timeline_ids for group in groups},
+            minimal=minimal,
+            events=events,
+            external_references=external_references,
+        )
 
     def __repr__(self) -> str:
         name_str = f", name={self.name!r}" if self.name else ""
@@ -3313,17 +4425,29 @@ class AlignmentBundle:
             ValueError: If ``depth`` is a negative integer.
 
         Examples:
-            >>> print(bundle.diagram())
+            >>> from timetoalign.alignment import AlignmentBundle
+            >>> from timetoalign.timelines.types import (
+            ...     ContinuousPhysicalTimeline,
+            ...     DiscreteGraphicalTimeline,
+            ... )
+            >>> bundle = AlignmentBundle(id="thoresen_alignment")
+            >>> _ = bundle.add_timeline(DiscreteGraphicalTimeline(length=4835), as_group="image")
+            >>> _ = bundle.add_timeline(
+            ...     ContinuousPhysicalTimeline(length=60.0), grouped_with="dgt_1"
+            ... )
+            >>> print(bundle.diagram(width=60))
             AlignmentBundle[thoresen_alignment]
-
-              TimelineGroup[dgt1_group] (2 timelines, 2 timestamps)
-              ┌──────────────────────────────────────────────────────┐
-              │ DiscreteGraphicalTimeline[dgt1:1] (11 events)        │
-              │ 0 ∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶ 4835 pixels    │
-              └──────────────────────────────────────────────────────┘
-              Timestamps: 2
-
-              MatchClaims: 5
+            <BLANKLINE>
+              TimelineGroup[group_1] (2 timelines)
+              ┌──────────────────────────────────────────────────────────┐
+              │ DiscreteGraphicalTimeline[dgt_1]                         │
+              │                       0 ∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶ 4835 pixels │
+              │                                                          │
+              │ ContinuousPhysicalTimeline[cpt_1]                        │
+              │                       0 ~~~~~~~~~~~~~~~~~~~~ 60 seconds  │
+              └──────────────────────────────────────────────────────────┘
+            <BLANKLINE>
+              MatchClaims: 0
         """
         from timetoalign.display.ascii import bundle_diagram
 

@@ -25,12 +25,28 @@ from timetoalign.timelines import (
     ContinuousLogicalTimeline,
     ContinuousPhysicalTimeline,
     DiscreteLogicalTimeline,
+    Timeline,
     create_timeline,
 )
 from timetoalign.timelines.factory import _infer_timeline_class
 
 if TYPE_CHECKING:
     pass
+
+
+def _child_names(timeline: Timeline) -> list[str]:
+    """The names of a timeline's children, in child order."""
+    return [timeline.get_child(child_id).name for child_id in timeline.list_children()]
+
+
+def _child_named(timeline: Timeline, name: str) -> Timeline:
+    """The one child of *timeline* named *name*; child ids are minted."""
+    (child,) = [
+        timeline.get_child(child_id)
+        for child_id in timeline.list_children()
+        if timeline.get_child(child_id).name == name
+    ]
+    return child
 
 
 # region Test Helper: DictStore
@@ -248,8 +264,8 @@ class TestCreateTimelineFromStore:
         assert timeline.id == "test"
         # DictStore has 2 data sources -> 2 children
         assert timeline.n_children == 2
-        assert "notes" in timeline
-        assert "measures" in timeline
+        assert "notes" in _child_names(timeline)
+        assert "measures" in _child_names(timeline)
 
     def test_store_filters_applied(self, single_store: SingleStore):
         """store_filters excludes filtered events (single store case)."""
@@ -271,7 +287,7 @@ class TestCreateTimelineFromStore:
         )
 
         # Multi-store: children created
-        child = timeline.get_child("notes")
+        child = _child_named(timeline, "notes")
         # Exact count: 2 notes (all notes pass filter)
         assert child.n_events == 2
 
@@ -292,9 +308,10 @@ class TestCreateTimelineFromStore:
         timeline = multi_store.create_timeline()
 
         assert type(timeline) is DiscreteLogicalTimeline
-        assert list(timeline._children) == ["notes", "measures"]
-        assert timeline.get_child("notes").n_events == 2
-        assert timeline.get_child("measures").n_events == 1
+        assert list(timeline._children) == ["dlt_2", "dlt_3"]
+        assert _child_names(timeline) == ["notes", "measures"]
+        assert _child_named(timeline, "notes").n_events == 2
+        assert _child_named(timeline, "measures").n_events == 1
 
     def test_store_surface_include_filter_selects_one_data_table(
         self, multi_store: DictStore
@@ -360,9 +377,9 @@ class TestCreateTimelineIncludeExclude:
 
         # Only notes and measures included
         assert timeline.n_children == 2
-        assert "notes" in timeline
-        assert "measures" in timeline
-        assert "controls" not in timeline
+        assert "notes" in _child_names(timeline)
+        assert "measures" in _child_names(timeline)
+        assert "controls" not in _child_names(timeline)
 
     def test_exclude_stores_removes_children(self, multi_store: DictStore):
         """exclude_stores removes specified data."""
@@ -372,9 +389,9 @@ class TestCreateTimelineIncludeExclude:
         )
 
         # Controls excluded
-        assert "notes" in timeline
-        assert "measures" in timeline
-        assert "controls" not in timeline
+        assert "notes" in _child_names(timeline)
+        assert "measures" in _child_names(timeline)
+        assert "controls" not in _child_names(timeline)
 
     def test_empty_after_filtering_raises(self, multi_store: DictStore):
         """ValueError if all data filtered out."""
@@ -526,14 +543,14 @@ class TestTimelineChildrenStructure:
         """Children are locked after being added to parent."""
         timeline = multi_store.create_timeline()
 
-        child = timeline.get_child("notes")
+        child = _child_named(timeline, "notes")
         assert child.is_locked
 
     def test_children_maintain_own_coordinates(self, multi_store: DictStore):
         """Children maintain their own 0-based coordinate system."""
         timeline = multi_store.create_timeline()
 
-        child = timeline.get_child("notes")
+        child = _child_named(timeline, "notes")
 
         # Child's origin is always 0
         assert child.origin.value == 0

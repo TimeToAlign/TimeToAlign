@@ -9,6 +9,8 @@ timelines.AtomicSection(
     section_type='default',
     typed_measures=None,
     groups=None,
+    measure_map=None,
+    name=None,
 )
 ```
 

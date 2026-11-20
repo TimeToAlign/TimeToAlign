@@ -497,68 +497,147 @@ def rational_to_struct(value: Any) -> dict[str, Any]:
     return number_cell(value, NumberType.fraction)
 
 
-# -- JSON wire format -------------------------------------------------------
-#
-# Storage cells and JSON payloads look alike but answer different questions.
-# A storage cell lives in a column whose metadata declares which side is
-# canonical, so the cell itself need not say.  A JSON value — a map's offset,
-# a claim's coordinate, a serialized timeline length — stands alone with no
-# schema beside it, so it carries its own answer: an exact value writes its
-# ratio, an inexact one writes null members and is read back as a float.
-# Keep the two encoders apart; merging them would either strip the storage
-# cell of its mirror or turn every serialized float into a ratio on read-back.
+# -- JSON number form -------------------------------------------------------
 
 
-def rational_to_wire(value: Fraction | int | float) -> dict[str, Any]:
-    """Encode a number as the self-describing JSON wire dict.
+def number_to_json(value: int | float | Fraction) -> int | float | list[int]:
+    """Encode a Python number using the TimeToShare JSON representation.
 
-    * A ``Fraction`` writes its exact ratio alongside the float projection.
-    * Anything else writes ``{"value": float(x), "numerator": None,
-      "denominator": None}`` — the null ratio is what tells
-      :func:`wire_to_rational` to hand back a plain ``float``.
+    Integers and floats retain their JSON scalar forms. Exact fractions use
+    their numerator and strictly positive denominator as a two-item list.
+
+    Args:
+        value: Number to encode.
+
+    Returns:
+        A JSON integer, JSON number, or exact Fraction pair.
 
     Raises:
-        TypeError: If *value* is not a real number.
+        TypeError: If *value* is not an accepted Python number.
+        ValueError: If a number cannot be represented as JSON or int64.
     """
     if isinstance(value, bool) or not isinstance(value, (int, float, Fraction)):
-        raise TypeError(f"cannot encode {type(value).__name__} as a rational")
-    if not isinstance(value, Fraction):
-        return {"value": float(value), "numerator": None, "denominator": None}
-    return {
-        "value": float(value),
-        "numerator": _require_int64(value.numerator, "numerator", value),
-        "denominator": _require_int64(value.denominator, "denominator", value),
-    }
+        raise TypeError(f"cannot encode {value!r} as a JSON number")
+    if isinstance(value, int):
+        return _require_int64(value, "integer", value)
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError(f"cannot encode non-finite JSON number {value!r}")
+        return value
+    return [
+        _require_int64(value.numerator, "numerator", value),
+        _require_int64(value.denominator, "denominator", value),
+    ]
 
 
-def is_rational_wire(value: Any) -> bool:
-    """Return True if *value* is shaped like a rational wire dict."""
-    return isinstance(value, dict) and set(value) == {
-        "value",
-        "numerator",
-        "denominator",
-    }
+def _integral_member(component: object) -> int | None:
+    """The integer a Fraction member denotes, or None if it denotes none.
+
+    A member is an integer, or a float with no fractional part: a JSON round
+    trip through JavaScript may respell ``8`` as ``8.0``, which still denotes
+    the integer 8. A boolean denotes no integer.
+    """
+    if isinstance(component, bool):
+        return None
+    if isinstance(component, int):
+        return component
+    if (
+        isinstance(component, float)
+        and math.isfinite(component)
+        and component.is_integer()
+    ):
+        return int(component)
+    return None
 
 
-def wire_to_rational(wire: dict[str, Any]) -> Fraction | float:
-    """Decode a JSON wire dict back to a Python number.
+def is_fraction_json(value: object) -> bool:
+    """Return whether *value* is a valid JSON Fraction pair.
 
-    An exact ratio comes back a ``Fraction``, an inexact value a ``float``.
+    Both members denote integers (an integral float such as ``8.0`` counts),
+    and the denominator is strictly positive.
+    """
+    if not isinstance(value, list) or len(value) != 2:
+        return False
+    members = [_integral_member(component) for component in value]
+    return None not in members and members[1] > 0
+
+
+def number_from_json(
+    data: Any, number_type: NumberType | None = None
+) -> int | float | Fraction:
+    """Decode one TimeToShare JSON number.
+
+    Without *number_type* the JSON form decides: an integer is an ``int``, a
+    number with a fractional part or exponent is a ``float``, a pair is a
+    ``Fraction``. A declared *number_type* decides how the value is read,
+    never its lexical form, because a JSON round trip (JavaScript does not
+    tell ``2.0`` from ``2``) may respell any number: under ``int`` an
+    integral JSON number reads as that integer, under ``float`` an integer
+    reads as the float it equals exactly, and under ``fraction`` a pair is
+    read. A Fraction member may be an integral float (``[1, 8.0]`` is 1/8)
+    whatever the number type. Still refused: a non-integral value under
+    ``int``, a non-integral Fraction member, a denominator below 1, a pair
+    under ``int`` or ``float``, and a bare number under ``fraction``.
+
+    Args:
+        data: JSON scalar or Fraction pair to decode.
+        number_type: The number type that decides the reading, or ``None``
+            to let the JSON form decide.
+
+    Returns:
+        The corresponding Python ``int``, ``float``, or ``Fraction``.
 
     Raises:
-        TypeError: If *wire* is not a dict.
-        ValueError: If the dict carries neither a ratio nor a usable value.
+        TypeError: If *data* is not a JSON value type.
+        ValueError: If *data* is not a valid JSON number representation, or
+            not one *number_type* admits.
     """
-    if not isinstance(wire, dict):
-        raise TypeError(
-            f"expected a rational wire dict, got {type(wire).__name__}: {wire!r}"
+    if isinstance(data, bool) or data is None or isinstance(data, (str, dict)):
+        raise ValueError(f"invalid JSON number {data!r}")
+    if isinstance(data, int):
+        value: int | float | Fraction = _require_int64(data, "integer", data)
+    elif isinstance(data, float):
+        if not math.isfinite(data):
+            raise ValueError(f"invalid JSON number {data!r}")
+        value = data
+    elif isinstance(data, list):
+        if len(data) != 2:
+            raise ValueError(f"invalid JSON Fraction {data!r}: expected two items")
+        numerator, denominator = (_integral_member(component) for component in data)
+        if numerator is None or denominator is None:
+            raise ValueError(
+                f"invalid JSON Fraction {data!r}: components must be integers"
+            )
+        if denominator <= 0:
+            raise ValueError(
+                f"invalid JSON Fraction {data!r}: denominator must be strictly positive"
+            )
+        value = Fraction(
+            _require_int64(numerator, "numerator", data),
+            _require_int64(denominator, "denominator", data),
         )
-    if wire.get("numerator") is not None and wire.get("denominator") is not None:
-        return struct_to_rational(wire)
-    value = wire.get("value")
-    if value is None or isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise ValueError(f"rational wire dict has no usable 'value': {wire!r}")
-    return float(value)
+    else:
+        raise TypeError(f"invalid JSON number {data!r} of type {type(data).__name__}")
+    if number_type is None:
+        return value
+    if (
+        number_type is NumberType.int
+        and isinstance(value, float)
+        and value.is_integer()
+    ):
+        return _require_int64(int(value), "integer", data)
+    if number_type is NumberType.float and type(value) is int and float(value) == value:
+        return float(value)
+    expected = {
+        NumberType.int: int,
+        NumberType.float: float,
+        NumberType.fraction: Fraction,
+    }[number_type]
+    if type(value) is not expected:
+        raise ValueError(
+            f"JSON number {data!r} is not a {number_type.name} representation"
+        )
+    return value
 
 
 # -- the one array builder --------------------------------------------------
@@ -1012,6 +1091,63 @@ _COLUMN_KERNELS: dict[str, Any] = {
     "divide": pc.divide,
     "floor_divide": lambda a, b: pc.floor(pc.divide(a, b)),
 }
+
+_COMPARISON_KERNELS: dict[str, Any] = {
+    "equal": pc.equal,
+    "less": pc.less,
+    "less_equal": pc.less_equal,
+    "greater_equal": pc.greater_equal,
+}
+
+# Wide enough for an int64 numerator or denominator; the product of two such
+# columns (precision 37 + 37 + 1) still fits decimal256's 76 digits.
+_CROSS_MULTIPLICATION_TYPE = pa.decimal256(37, 0)
+
+
+def compare_number_column(
+    column: pa.Array,
+    number: int | float | Fraction,
+    comparison: str,
+    number_type: NumberType,
+) -> pa.Array:
+    """Compare a column of storage cells with one number, as the column reads.
+
+    An ``int`` or ``fraction`` column is compared exactly, on its ratio side:
+    ``n/d`` against ``p/q`` is ``n·q`` against ``p·d``, cross-multiplied in
+    decimals wide enough that no product overflows. A ``float`` column is
+    compared on its float side, against the number as a float, which is what
+    comparing two floats means. Either way a row compares as the scalar it
+    holds would, so a column and a single position decide alike.
+
+    Args:
+        column: A ``pa.StructArray`` of :data:`RATIONAL_STRUCT_TYPE`.
+        number: The number to compare every row with.
+        comparison: ``"equal"``, ``"less"``, ``"less_equal"`` or
+            ``"greater_equal"`` (row against *number*).
+        number_type: How the column declares its numbers.
+
+    Returns:
+        A boolean array, null where the row is null.
+    """
+    if isinstance(column, pa.ChunkedArray):
+        column = column.combine_chunks()
+    kernel = _COMPARISON_KERNELS[comparison]
+    if number_type is NumberType.float:
+        compared = kernel(column.field("value"), pa.scalar(float(number)))
+    else:
+        exact = Fraction(number)
+        wide = _CROSS_MULTIPLICATION_TYPE
+        left = pc.multiply(
+            pc.cast(column.field("numerator"), wide),
+            pa.scalar(Decimal(exact.denominator), type=wide),
+        )
+        right = pc.multiply(
+            pc.cast(column.field("denominator"), wide),
+            pa.scalar(Decimal(exact.numerator), type=wide),
+        )
+        compared = kernel(left, right)
+    # A struct's own nulls do not reach its members; carry them over.
+    return pc.if_else(column.is_valid(), compared, pa.scalar(None, type=pa.bool_()))
 
 
 def _canonical_column(array: pa.Array, number_type: NumberType) -> pa.Array:
@@ -1613,10 +1749,26 @@ def coordinate_numeric_value(value: Any) -> Fraction | float:
     if exact is not None:
         return exact
     if isinstance(value, dict):
-        return wire_to_rational(value)
+        return struct_to_rational(value)
     if hasattr(value, "value"):
         return value.value
     return float(value)
+
+
+def shift_number(value: Any, offset: Any, *, subtract: bool) -> Fraction | float:
+    """Shift a coordinate by an offset: one step between a parent and a child.
+
+    The step runs on the exact side whenever both operands have one, so it
+    stays exact on an exact axis; otherwise it is one float addition or
+    subtraction. Either way a zero offset gives back the value unchanged.
+    """
+    value_exact = exact_coordinate_value(value)
+    offset_exact = exact_coordinate_value(offset)
+    if value_exact is not None and offset_exact is not None:
+        return value_exact - offset_exact if subtract else value_exact + offset_exact
+    left = float(coordinate_numeric_value(value))
+    right = float(coordinate_numeric_value(offset))
+    return left - right if subtract else left + right
 
 
 def shift_coordinate(value: Any, offset: Any, *, subtract: bool) -> dict[str, Any]:
@@ -1627,15 +1779,7 @@ def shift_coordinate(value: Any, offset: Any, *, subtract: bool) -> dict[str, An
     coordinate, is always. Parent-to-child offsetting therefore composes
     without drifting, however deep the nesting goes.
     """
-    value_exact = exact_coordinate_value(value)
-    offset_exact = exact_coordinate_value(offset)
-    if value_exact is not None and offset_exact is not None:
-        result = value_exact - offset_exact if subtract else value_exact + offset_exact
-        return coordinate_to_struct(result)
-
-    left = float(coordinate_numeric_value(value))
-    right = float(coordinate_numeric_value(offset))
-    return coordinate_to_struct(left - right if subtract else left + right)
+    return coordinate_to_struct(shift_number(value, offset, subtract=subtract))
 
 
 def subtract_coordinates(left: Any, right: Any) -> dict[str, Any]:
@@ -3474,6 +3618,47 @@ class Interval(BaseModel):
 
     start: Coordinate
     end: Coordinate
+
+    def __init__(
+        self,
+        start: Coordinate | TimeScalarValue | None = None,
+        end: Coordinate | TimeScalarValue | None = None,
+        unit: TimeUnit | str | None = None,
+        /,
+        **data: Any,
+    ) -> None:
+        if start is not None or end is not None or unit is not None:
+            if "start" in data or "end" in data:
+                raise TypeError(
+                    f"{type(self).__name__} received conflicting positional "
+                    "and keyword arguments"
+                )
+            resolved_unit = TimeUnit(unit) if unit is not None else None
+            endpoints: list[Coordinate] = []
+            for label, value in (("start", start), ("end", end)):
+                if isinstance(value, Coordinate):
+                    if resolved_unit is not None and value.unit != resolved_unit:
+                        raise ValueError(
+                            f"Interval {label} unit {value.unit} does not match "
+                            f"requested unit {resolved_unit}"
+                        )
+                    endpoints.append(value)
+                    continue
+                if value is None:
+                    raise TypeError(f"Interval {label} must be provided")
+                if resolved_unit is None:
+                    raise TypeError(
+                        "Raw Interval endpoints require a TimeUnit or abbreviation"
+                    )
+                endpoints.append(
+                    Coordinate(
+                        value,
+                        resolved_unit,
+                        number_type=resolved_unit.default_number_type,
+                    )
+                )
+            data = {"start": endpoints[0], "end": endpoints[1], **data}
+        super().__init__(**data)
 
     @field_validator("start", "end", mode="before")
     @classmethod

@@ -8,21 +8,52 @@ This module provides maps that are composed of other maps:
 from __future__ import annotations
 
 import bisect
-from typing import TYPE_CHECKING, Any, Sequence
+from collections.abc import Mapping
+from fractions import Fraction
+from typing import TYPE_CHECKING, Any, ClassVar, Sequence
 
 import numpy as np
 from numpy.typing import NDArray
 
-from ..core.enums import TimeUnit
+from ..core.enums import NumberType, TimeUnit
 from ..core.time import (
     CoordinateValue,
-    rational_to_wire,
-    wire_to_rational,
+    number_from_json,
+    number_to_json,
 )
-from .base import ConversionMap
+from .base import ConversionMap, MeasureMapIds
 
 if TYPE_CHECKING:
     from typing_extensions import Self
+
+
+def _read_maps(
+    data: Mapping[str, Any], key: str, measure_maps: Mapping[str, Any]
+) -> list[ConversionMap[Any]]:
+    """Read the array of maps under *key*.
+
+    Raises:
+        ValueError: If the value is not an array, or a map is malformed.
+    """
+    items = data.get(key)
+    if not isinstance(items, list):
+        raise ValueError(f"a {data.get('type')}'s {key!r} must be an array")
+    return [ConversionMap.from_dict(item, measure_maps=measure_maps) for item in items]
+
+
+def _piecewise_form(
+    cmap: ConversionMap[Any],
+    breaks: Sequence[CoordinateValue],
+    maps: list[dict[str, Any]],
+    *,
+    minimal: bool,
+) -> dict[str, Any]:
+    """Write *cmap* as the format's ``PiecewiseMap`` of *breaks* and written *maps*."""
+    return cmap._map_object(
+        "PiecewiseMap",
+        {"breaks": [number_to_json(b) for b in breaks], "maps": maps},
+        minimal=minimal,
+    )
 
 
 # region ChainMap
@@ -34,6 +65,8 @@ class ChainMap(ConversionMap[CoordinateValue]):
     The maps are applied in sequence from first to last.
     The output unit of one map must match the input unit of the next
     (if specified).
+
+    The format's ``ChainMap`` type: ``maps`` in the order they apply.
 
     Attributes:
         maps: The sequence of maps to apply.
@@ -47,12 +80,15 @@ class ChainMap(ConversionMap[CoordinateValue]):
         1000.0
     """
 
+    _manifest_type: ClassVar[str | None] = "ChainMap"
+
     def __init__(
         self,
         maps: Sequence[ConversionMap[Any]],
         *,
         uid: str | None = None,
         name: str | None = None,
+        output_number_type: NumberType | str | None = None,
     ) -> None:
         """Initialize a ChainMap.
 
@@ -60,6 +96,9 @@ class ChainMap(ConversionMap[CoordinateValue]):
             maps: Sequence of maps. Must not be empty.
             uid: Optional explicit ID.
             name: Human-readable name for this map. Defaults to the map's ID.
+            output_number_type: The representation results are written in,
+                among those the target unit admits; ``None`` for the target
+                unit's default.
 
         Raises:
             ValueError: If maps is empty.
@@ -83,13 +122,16 @@ class ChainMap(ConversionMap[CoordinateValue]):
                     f"but Map {next_map.id} expects {next_map.source_unit}"
                 )
 
+        # Set first: whether the chain computes in doubles depends on them.
+        self._maps = list(maps)
         super().__init__(
             source_unit=maps[0].source_unit,
             target_unit=maps[-1].target_unit,
             uid=uid,
             name=name,
+            output_number_type=output_number_type,
         )
-        self._maps = list(maps)
+        self._admit_ids()
 
     @property
     def maps(self) -> list[ConversionMap[Any]]:
@@ -102,36 +144,17 @@ class ChainMap(ConversionMap[CoordinateValue]):
         return all(m.is_invertible for m in self._maps)
 
     def _convert_scalar(self, value: CoordinateValue, **kwargs: Any) -> CoordinateValue:
-        """Apply maps in sequence."""
+        """Apply maps in sequence, each with its own guard and representation."""
         result = value
         for m in self._maps:
-            # We explicitly handle scalar/coordinate conversion in the base __call__
-            # so we can use the internal _convert_scalar or __call__ of sub-maps.
-            # Since maps can return T or NDArray, and we want scalar here,
-            # we rely on the map's behavior.
-            # Note: sub-maps might be flexible, so we pass kwargs.
-            if isinstance(m, ConversionMap):
-                # We're inside _convert_scalar, so we have a raw value.
-                # Sub-maps expect raw value or Coordinate.
-                # We pass the raw value.
-                if hasattr(m, "_convert_scalar"):
-                    result = m._convert_scalar(result, **kwargs)
-                else:
-                    # Fallback to public interface if not our subclass (unlikely)
-                    result = m(result, **kwargs)
-            else:
-                # Should not happen given typing, but safe fallback
-                result = m(result)
+            result = m._evaluate_nested(result, **kwargs)
         return result
 
     def _convert_array(self, values: NDArray[Any], **kwargs: Any) -> NDArray[Any]:
         """Apply maps in sequence to array."""
         result = values
         for m in self._maps:
-            if hasattr(m, "_convert_array"):
-                result = m._convert_array(result, **kwargs)
-            else:
-                result = m(result, **kwargs)
+            result = m._convert_array(result, **kwargs)
         return result
 
     def inverse(self) -> Self:
@@ -144,27 +167,37 @@ class ChainMap(ConversionMap[CoordinateValue]):
             raise NotImplementedError("ChainMap is not invertible")
 
         inv_maps = [m.inverse() for m in reversed(self._maps)]
-        return self.__class__(inv_maps, uid=f"inv_{self.id}")
+        return self.__class__(
+            inv_maps,
+            uid=f"inv_{self.id}",
+            output_number_type=self._inverse_output_number_type(),
+        )
 
-    def to_dict(self) -> dict[str, Any]:
-        """Serialize to dictionary."""
-        d = super().to_dict()
-        d["maps"] = [m.to_dict() for m in self._maps]
-        return d
+    def _to_manifest(self, *, minimal: bool, entries: MeasureMapIds) -> dict[str, Any]:
+        """Write the ``ChainMap`` with each member's own form."""
+        return self._map_object(
+            "ChainMap",
+            {
+                "maps": [
+                    m._to_manifest(minimal=minimal, entries=entries) for m in self._maps
+                ]
+            },
+            minimal=minimal,
+        )
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> ChainMap:
-        """Deserialize from dictionary."""
-        from .base import ConversionMap
-
-        maps_data = data.get("maps", [])
-        maps = [ConversionMap.from_dict(m_data) for m_data in maps_data]
-
+    def _from_manifest(
+        cls, data: dict[str, Any], measure_maps: Mapping[str, Any]
+    ) -> ChainMap:
+        """Read a ``ChainMap``, its members in the order they apply."""
         return cls(
-            maps=maps,
+            maps=_read_maps(data, "maps", measure_maps),
             uid=data.get("id"),
             name=data.get("name"),
         )
+
+    def _nested_maps(self) -> list[ConversionMap[Any]]:
+        return self._maps
 
     def __repr__(self) -> str:
         return f"ChainMap(steps={len(self._maps)})"
@@ -191,6 +224,9 @@ class PiecewiseMap(ConversionMap[CoordinateValue]):
         maps: Maps for each interval. len(maps) must be len(breaks) - 1.
     """
 
+    _id_prefix: ClassVar[str] = "pmap"
+    _manifest_type: ClassVar[str | None] = "PiecewiseMap"
+
     def __init__(
         self,
         *,
@@ -200,6 +236,7 @@ class PiecewiseMap(ConversionMap[CoordinateValue]):
         target_unit: TimeUnit | str | None = None,
         uid: str | None = None,
         name: str | None = None,
+        output_number_type: NumberType | str | None = None,
     ) -> None:
         """Initialize a PiecewiseMap.
 
@@ -210,6 +247,9 @@ class PiecewiseMap(ConversionMap[CoordinateValue]):
             target_unit: Output unit.
             uid: Explicit ID.
             name: Human-readable name for this map. Defaults to the map's ID.
+            output_number_type: The representation results are written in,
+                among those the target unit admits; ``None`` for the target
+                unit's default.
 
         Raises:
             ValueError: If lengths mismatch or breaks are not sorted.
@@ -226,16 +266,19 @@ class PiecewiseMap(ConversionMap[CoordinateValue]):
         if not all(x < y for x, y in zip(breaks_float, breaks_float[1:])):
             raise ValueError("Breaks must be strictly increasing")
 
+        # Set first: whether the map computes in doubles depends on them.
+        self._maps = list(maps)
         super().__init__(
             source_unit=source_unit,
             target_unit=target_unit,
             uid=uid,
             name=name,
+            output_number_type=output_number_type,
         )
 
         self._breaks = np.array(breaks_float, dtype=np.float64)
         self._breaks_orig = list(breaks)
-        self._maps = list(maps)
+        self._admit_ids()
 
     @property
     def breaks(self) -> NDArray[np.floating[Any]]:
@@ -247,52 +290,40 @@ class PiecewiseMap(ConversionMap[CoordinateValue]):
         """The maps for each interval."""
         return list(self._maps)
 
-    def _get_map_index(self, x: float) -> int:
-        """Find the interval index for x."""
-        # bisect_right returns insertion point to maintain order.
-        # breaks=[0, 10, 20]
-        # x=5 -> idx=1 -> map 0 (intervals are 0-10, 10-20)
-        # x=10 -> idx=2 -> map 1
-        # x=20 -> idx=3 -> out of bounds (unless we handle inclusive end)
+    def _get_map_index(
+        self, value: CoordinateValue, allow_upper_bound: bool = False
+    ) -> int:
+        """Find the index of the interval ``[breaks[i], breaks[i+1])`` holding *value*.
 
-        # Using searchsorted equivalent logic
-        # We want index i such that breaks[i] <= x < breaks[i+1]
+        The comparison runs in the input's own arithmetic: an int or a
+        Fraction is compared exactly with the breaks as given, a float with
+        the breaks as floats. A break given as a Fraction no float
+        represents therefore splits exact inputs where it lies.
 
-        if x < self._breaks[0] or x >= self._breaks[-1]:
-            raise ValueError(
-                f"Value {x} out of bounds [{self._breaks[0]}, {self._breaks[-1]})"
-            )
+        Args:
+            value: The input.
+            allow_upper_bound: Assign the last break to the last interval
+                (used for inversion).
 
-        idx = bisect.bisect_right(self._breaks, x) - 1
-        return max(0, min(idx, len(self._maps) - 1))
+        Raises:
+            ValueError: If *value* lies outside ``[breaks[0], breaks[-1])``.
+        """
+        if isinstance(value, (int, Fraction)):
+            breaks: Sequence[Any] = self._breaks_orig
+        else:
+            breaks, value = self._breaks, float(value)
+        if allow_upper_bound and value == breaks[-1]:
+            return len(self._maps) - 1
+        if value < breaks[0] or value >= breaks[-1]:
+            raise ValueError(f"Value {value} out of bounds [{breaks[0]}, {breaks[-1]})")
+        return bisect.bisect_right(breaks, value) - 1
 
     def _convert_scalar(
         self, value: CoordinateValue, allow_upper_bound: bool = False, **kwargs: Any
     ) -> CoordinateValue:
-        """Convert scalar by selecting the appropriate map."""
-        x = float(value)
-
-        # Check bounds
-        if x < self._breaks[0]:
-            raise ValueError(
-                f"Value {x} out of bounds [{self._breaks[0]}, {self._breaks[-1]})"
-            )
-
-        # Special case for upper bound if allowed (used for inversion)
-        if allow_upper_bound and x == self._breaks[-1]:
-            idx = len(self._maps) - 1
-        elif x >= self._breaks[-1]:
-            raise ValueError(
-                f"Value {x} out of bounds [{self._breaks[0]}, {self._breaks[-1]})"
-            )
-        else:
-            idx = self._get_map_index(x)
-
-        m = self._maps[idx]
-
-        if hasattr(m, "_convert_scalar"):
-            return m._convert_scalar(value, **kwargs)
-        return m(value, **kwargs)
+        """Convert scalar by the map of the interval holding it."""
+        m = self._maps[self._get_map_index(value, allow_upper_bound)]
+        return m._evaluate_nested(value, **kwargs)
 
     def _convert_array(self, values: NDArray[Any], **kwargs: Any) -> NDArray[Any]:
         """Convert array by processing chunks."""
@@ -319,15 +350,7 @@ class PiecewiseMap(ConversionMap[CoordinateValue]):
             if not np.any(mask):
                 continue
 
-            subset = values[mask]
-            m = self._maps[idx]
-
-            if hasattr(m, "_convert_array"):
-                converted = m._convert_array(subset, **kwargs)
-            else:
-                converted = m(subset, **kwargs)
-
-            result[mask] = converted
+            result[mask] = self._maps[idx]._convert_array(values[mask], **kwargs)
 
         return result
 
@@ -359,31 +382,40 @@ class PiecewiseMap(ConversionMap[CoordinateValue]):
             source_unit=self._target_unit,
             target_unit=self._source_unit,
             uid=f"inv_{self.id}",
+            output_number_type=self._inverse_output_number_type(),
         )
 
-    def to_dict(self) -> dict[str, Any]:
-        """Serialize to dictionary."""
-        d = super().to_dict()
-        d["breaks"] = [rational_to_wire(b) for b in self._breaks_orig]
-        d["maps"] = [m.to_dict() for m in self._maps]
-        return d
+    def _to_manifest(self, *, minimal: bool, entries: MeasureMapIds) -> dict[str, Any]:
+        """Write the ``PiecewiseMap``: its breaks and each interval's map."""
+        return _piecewise_form(
+            self,
+            self._breaks_orig,
+            [m._to_manifest(minimal=minimal, entries=entries) for m in self._maps],
+            minimal=minimal,
+        )
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> PiecewiseMap:
-        """Deserialize from dictionary."""
-        from .base import ConversionMap
+    def _from_manifest(
+        cls, data: dict[str, Any], measure_maps: Mapping[str, Any]
+    ) -> PiecewiseMap:
+        """Read a ``PiecewiseMap``, one map per interval between its breaks.
 
-        maps_data = data.get("maps", [])
-        maps = [ConversionMap.from_dict(m_data) for m_data in maps_data]
-
+        Raises:
+            ValueError: If ``breaks`` or ``maps`` is not an array.
+        """
+        if not isinstance(data.get("breaks"), list):
+            raise ValueError("a PiecewiseMap's 'breaks' must be an array")
         return cls(
-            breaks=[wire_to_rational(b) for b in data.get("breaks", [])],
-            maps=maps,
+            breaks=[number_from_json(b) for b in data["breaks"]],
+            maps=_read_maps(data, "maps", measure_maps),
             source_unit=data.get("source_unit"),
             target_unit=data.get("target_unit"),
             uid=data.get("id"),
             name=data.get("name"),
         )
+
+    def _nested_maps(self) -> list[ConversionMap[Any]]:
+        return self._maps
 
     def __repr__(self) -> str:
         return f"PiecewiseMap(regions={len(self._maps)})"

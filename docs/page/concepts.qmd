@@ -5,7 +5,7 @@ toc-depth: 4
 ---
 
 This page presents the complete conceptual model underlying TimeToAlign!.
-The accompanying [TISMIR manuscript](https://anonymous.example.com) introduces
+The accompanying [TISMIR article](https://transactions.ismir.net/articles/10.5334/tismir.296) introduces
 these concepts through five worked examples; this page serves as the
 authoritative reference for formal definitions and visual conventions.
 
@@ -350,7 +350,7 @@ The implementation organises C-maps into families:
 | **Straight line** | Generates *(x, y)* pairs for a line | horizontal system in an image |
 | **Discretisation** | Rounds continuous to discrete | seconds to samples |
 | **Periodic** (RotationMap) | Wraps coordinates cyclically | repeating ostinato |
-| **Metric-aware** (FloorMap, MetricMap) | Beat and measure structure | BeatGrid |
+| **Metric-aware** (FloorMap, MetricMap) | Beat and measure structure | quarters to measure number |
 
 : Families of ConversionMaps in the `timetoalign` library. {#tbl-cmap-families}
 
@@ -393,10 +393,11 @@ same measuring unit. Constraints mirror those for TimeIntervalEvents:
 
 - A Child cannot span an existing {{< glossary Break >}} in the parent
   (unless explicitly adopted).
-- A Child may only extend the parent's length when the parent is not
-  locked.
-- Once added, a Child's length is **locked** to prevent side effects.
-- Only the top-level ("root") timeline can be extended.
+- Adding a Child may extend the parent's length only when the parent is not
+  locked, and only within the parent's own parent's known length.
+- Once added, a Child's length is **locked** by default to prevent side
+  effects. An unlocked Child's length may change only within its parent's
+  known length: a parent never grows because a Child grew.
 
 Children introduce **relative coordinate systems** within a parent. A Child's
 local origin is mapped to a specific coordinate of the parent; its local
@@ -454,9 +455,9 @@ Four operations are associated with Children:
   spanning the full parent produce the structure accepted by
   `as_segment_line()`.
 - **Concatenation**: `append_child(child, name=..., uid=...)` adds a Child at
-  an unlocked parent's EndInstant and extends that parent. Embedded timelines
-  are length-locked, so appending to one raises `RuntimeError`; nested
-  structures are assembled from the inside out.
+  an unlocked parent's EndInstant and extends that parent. `add_child()`
+  locks the timelines it embeds by default, so appending to one raises
+  `RuntimeError`; nested structures are assembled from the inside out.
 
 | Property | Region | Child | Segment |
 |----------|--------|-------|---------|
@@ -482,6 +483,17 @@ A TimeStamp is a cross-section through a timeline hierarchy at a given
 coordinate. It answers the question: "At coordinate *c* of the root
 timeline, what are the local coordinates in each Child, and what do all
 C-maps produce?"
+
+Which Children answer follows one containment rule. A Child holds the
+parent positions from its start up to, but not including, its end, and its
+end as well where no sibling starts there. A boundary two siblings share
+therefore belongs to the one starting at it, so one parent position names one
+segment, while a Child that nothing follows still answers at its own end.
+The rule applies along the path: a position reaches a nested timeline only
+if every timeline on the way down holds it, so a grandchild never answers
+where its own parent leaves the position to a sibling. TimeStamps, timestamp
+tables, `get_children_at()` and the MatchStamps of an AlignmentBundle all
+apply this rule, to every timeline of a tree, nested ones included.
 
 By analogy, a **TimeIntervalStamp** combines a start TimeStamp and an end
 TimeStamp, representing the cross-section of an interval through the
@@ -666,7 +678,7 @@ differing default is a per-context parameter setting, not a break in stamp
 uniformity: a MatchStamp exposes the identical `Stamp` interface ---
 `get_coordinate_for()`, `get_coordinates_for()`, the `get_coordinate()`
 dispatcher, `get_unit()`, `get_conversion_for()`, `present_timelines`,
-`is_interpolated`, `to_dict()` --- as a `TimeStamp` or `GroupTimestamp`, so a
+`is_interpolated`, `to_dict()` --- as a `TimeStamp`, so a
 stamp from any source keeps the same structure and behaviour regardless of
 which keyword defaults were used to produce it.
 :::
@@ -731,7 +743,8 @@ via offset arithmetic, interpolation, and {{< glossary WarpMap >}}s.
 The AlignmentBundle provides coordinate transfer at two levels:
 
 - **Within a group**: delegates to `TimelineGroup.get_timestamp_at()`,
-  which uses pairwise interpolation.
+  which converts linearly and exactly between members that share one start
+  and one end.
 - **Across groups**: constructs a {{< glossary MatchLine >}} from the
   cross-group claims, generates {{< glossary WarpMap >}}s on demand, and
   uses those WarpMaps for coordinate transfer.
@@ -764,9 +777,10 @@ The model implements three tiers of coordinate transfer:
 1. **Offset arithmetic** for parent--child relationships: a child's
    coordinate is the parent's coordinate minus the child's offset.
    Exact and lossless.
-2. **Interpolation** within {{< glossary TimelineGroup >}}s: timelines
-   of potentially different units (e.g., seconds and samples) are
-   connected via pairwise linear interpolation.
+2. **Interpolation** within {{< glossary TimelineGroup >}}s: members of
+   potentially different units (e.g., seconds and samples) share one start
+   and one end, so a position converts linearly and exactly, from each
+   member's 0 and length.
 3. **WarpMap** for cross-group alignment: derived from a
    {{< glossary MatchLine >}}, a WarpMap materialises a complete copy
    of a source timeline warped to a target timeline's coordinates.
@@ -784,7 +798,7 @@ the model.
 
 ## Five Demonstration Scenarios
 
-The TISMIR manuscript demonstrates the model through five worked examples
+The TISMIR article demonstrates the model through five worked examples
 of increasing complexity. Each is accompanied by real-world data in the
 specimen collection and (where applicable) a tutorial notebook.
 
@@ -796,7 +810,7 @@ specimen collection and (where applicable) a tutorial notebook.
 | 4 | **Beethoven**: Multimodal alignment across 23 timelines | FlowMap (unfolding at scale), AlignmentBundle, AlignmentAnchor, WarpMap, MatchLine | `specimens/beethoven_op18-4_iv/` |
 | 5 | **Hendrix**: Studying the genesis of a rock song across three versions | MatchClaim (conceptual/synchronous), MatchGraph, NOMATCH, MatchStamp, certainty metadata | `specimens/hendrix/` |
 
-: The five demonstration scenarios from the TISMIR manuscript. {#tbl-scenarios}
+: The five demonstration scenarios from the TISMIR article. {#tbl-scenarios}
 
-For details, see the manuscript and the tutorial notebooks (links to be
-added when the tutorials are integrated into this site).
+For details, see the [TISMIR article](https://transactions.ismir.net/articles/10.5334/tismir.296) and the
+[how-to guides](howto.qmd).

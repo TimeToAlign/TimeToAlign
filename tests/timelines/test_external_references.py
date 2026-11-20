@@ -34,19 +34,26 @@ from timetoalign.timelines.engines.external_references import (
 
 # region Helpers
 
-#: Keys every ``to_dict()`` payload carries, whatever the flags.
+#: Keys every timeline object of ``to_dict(minimal=False)`` carries, whatever the flags.
 STRUCTURAL_KEYS = {
     "id",
     "name",
-    "class",
     "unit",
     "number_type",
     "length",
+    "is_segment_line",
     "locked",
     "meta",
     "children",
     "conversion_maps",
+    "regions",
+    "flow_control",
 }
+
+
+def _object(timeline: Timeline, **flags: bool) -> dict[str, Any]:
+    """The complete timeline object ``to_dict`` writes for *timeline*, its one root."""
+    return timeline.to_dict(minimal=False, **flags)["timelines"][0]
 
 
 def _timeline(uid: str = "spine", length: float = 10.0) -> Timeline:
@@ -505,45 +512,45 @@ class TestToDictFlags:
     """Both content keys are opt-in and otherwise absent."""
 
     def test_default_output_has_exactly_the_structural_keys(self) -> None:
-        assert set(_timeline().to_dict()) == STRUCTURAL_KEYS
+        assert set(_object(_timeline())) == STRUCTURAL_KEYS
 
     def test_default_output_omits_events(self) -> None:
-        assert "events" not in _timeline().to_dict()
+        assert "events" not in _object(_timeline())
 
     def test_default_output_omits_external_references(self) -> None:
         timeline = _timeline().add_external_references([_reference_row()])
-        assert "external_references" not in timeline.to_dict()
+        assert "external_references" not in _object(timeline)
 
     def test_events_flag_adds_only_the_events_key(self) -> None:
         timeline = _timeline().add_external_references([_reference_row()])
-        assert set(timeline.to_dict(events=True)) == STRUCTURAL_KEYS | {"events"}
+        assert set(_object(timeline, events=True)) == STRUCTURAL_KEYS | {"events"}
 
     def test_events_flag_emits_every_event(self) -> None:
-        data = _timeline().to_dict(events=True)
+        data = _object(_timeline(), events=True)
         assert [event["id"] for event in data["events"]] == ["e1", "e2"]
 
     def test_external_references_flag_adds_only_that_key(self) -> None:
         timeline = _timeline().add_external_references([_reference_row()])
-        assert set(timeline.to_dict(external_references=True)) == STRUCTURAL_KEYS | {
+        assert set(_object(timeline, external_references=True)) == STRUCTURAL_KEYS | {
             "external_references"
         }
 
     def test_both_flags_add_both_keys(self) -> None:
         timeline = _timeline().add_external_references([_reference_row()])
         assert set(
-            timeline.to_dict(events=True, external_references=True)
+            _object(timeline, events=True, external_references=True)
         ) == STRUCTURAL_KEYS | {
             "events",
             "external_references",
         }
 
     def test_an_empty_reference_table_is_emitted_as_an_empty_list(self) -> None:
-        data = _timeline().to_dict(external_references=True)
+        data = _object(_timeline(), external_references=True)
         assert data["external_references"] == []
 
     def test_reference_rows_serialize_as_plain_dicts(self) -> None:
         timeline = _timeline().add_external_references([_reference_row()])
-        data = timeline.to_dict(external_references=True)
+        data = _object(timeline, external_references=True)
         assert data["external_references"] == [
             {
                 "event_id": "e1",
@@ -557,7 +564,7 @@ class TestToDictFlags:
 
     def test_the_reference_payload_is_json_safe(self) -> None:
         timeline = _timeline().add_external_references([_reference_row()])
-        data = timeline.to_dict(events=True, external_references=True)
+        data = _object(timeline, events=True, external_references=True)
         assert (
             json.loads(json.dumps(data))["external_references"]
             == data["external_references"]
@@ -565,22 +572,19 @@ class TestToDictFlags:
 
     def test_the_flags_do_not_disturb_the_structural_values(self) -> None:
         timeline = _timeline().add_external_references([_reference_row()])
-        plain = timeline.to_dict()
-        rich = timeline.to_dict(events=True, external_references=True)
+        plain = _object(timeline)
+        rich = _object(timeline, events=True, external_references=True)
         assert {key: rich[key] for key in STRUCTURAL_KEYS} == plain
 
-    def test_the_rational_wire_format_is_untouched(self) -> None:
+    def test_the_fraction_json_format_is_untouched(self) -> None:
         timeline = Timeline(
             length=Fraction(10, 3),
             unit=TimeUnit.quarters,
             number_type=NumberType.fraction,
             uid="rational",
         )
-        assert timeline.to_dict(events=True, external_references=True)["length"] == {
-            "value": 10 / 3,
-            "numerator": 10,
-            "denominator": 3,
-        }
+        data = _object(timeline, events=True, external_references=True)
+        assert data["length"] == [10, 3]
 
 
 class TestToDictChildForwarding:
@@ -589,8 +593,8 @@ class TestToDictChildForwarding:
     @staticmethod
     def _levels(data: dict[str, Any]) -> list[dict[str, Any]]:
         """Return the payloads of ``parent``, ``child``, and ``grandchild``."""
-        child = data["children"]["child"]["timeline"]
-        grandchild = child["children"]["grandchild"]["timeline"]
+        (child,) = data["children"]
+        (grandchild,) = child["children"]
         return [data, child, grandchild]
 
     @pytest.mark.parametrize(
@@ -609,18 +613,20 @@ class TestToDictChildForwarding:
         external_references: bool,
         expected_extra: set[str],
     ) -> None:
-        data = _hierarchy().to_dict(
-            events=events, external_references=external_references
+        data = _object(
+            _hierarchy(), events=events, external_references=external_references
         )
         assert [set(level) for level in self._levels(data)] == [
-            STRUCTURAL_KEYS | expected_extra
-        ] * 3
+            STRUCTURAL_KEYS | expected_extra,
+            STRUCTURAL_KEYS | expected_extra | {"offset"},
+            STRUCTURAL_KEYS | expected_extra | {"offset"},
+        ]
 
     def test_child_events_are_the_child_s_own(self) -> None:
         # The trailing ``grandchild`` row is the segment event that
         # ``add_child`` records; it is regenerated by ``from_dict``.
-        data = _hierarchy().to_dict(events=True)
-        child = data["children"]["child"]["timeline"]
+        data = _object(_hierarchy(), events=True)
+        (child,) = data["children"]
         assert [event["id"] for event in child["events"]] == [
             "e1",
             "e2",
@@ -634,7 +640,7 @@ class TestToDictChildForwarding:
             [_reference_row("e2", "child-ref")]
         )
 
-        data = parent.to_dict(external_references=True)
+        data = _object(parent, external_references=True)
         emitted = [
             [row["external_id"] for row in level["external_references"]]
             for level in self._levels(data)

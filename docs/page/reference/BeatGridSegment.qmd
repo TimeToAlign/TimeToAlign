@@ -1,0 +1,21 @@
+# BeatGridSegment { #timetoalign.timelines.BeatGridSegment }
+
+```python
+timelines.BeatGridSegment(start, bpm, policy, battito, end=None)
+```
+
+One tempo segment of a beat grid: an anchor beat and how it repeats.
+
+The segment stores only what a source states. Beat and bar lengths,
+and the first downbeat, are derived from those facts rather than
+stored beside them.
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name    | Type                                        | Description                                                                                       |
+|---------|---------------------------------------------|---------------------------------------------------------------------------------------------------|
+| start   | [Fraction](`fractions.Fraction`)            | Seconds at which the anchor beat sounds.                                                          |
+| bpm     | [Fraction](`fractions.Fraction`)            | Beats per minute; one beat is one tick of the lattice.                                            |
+| policy  | [BeatPolicy](`timetoalign.core.BeatPolicy`) | How the lattice beats group into bars. ``policy.name`` carries the meter as the source spells it. |
+| battito | [int](`int`)                                | The 1-based beat-in-bar index of the anchor beat.                                                 |
+| end     | [Fraction](`fractions.Fraction`) \| None    | Exclusive bound in seconds, or ``None`` for a segment that generates beats without end.           |

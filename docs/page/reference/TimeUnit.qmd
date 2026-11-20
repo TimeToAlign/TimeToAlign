@@ -14,8 +14,6 @@ Aliases are provided for common abbreviations.
 | Name | Description |
 | --- | --- |
 | [allowed_number_types](#timetoalign.TimeUnit.allowed_number_types) | The numeric representations this unit accepts. |
-| [b](#timetoalign.TimeUnit.b) | beats |
-| [beats](#timetoalign.TimeUnit.beats) | beats |
 | [centimeters](#timetoalign.TimeUnit.centimeters) | centimeters |
 | [cm](#timetoalign.TimeUnit.cm) | centimeters |
 | [default_number_type](#timetoalign.TimeUnit.default_number_type) | The numeric representation this unit uses unless told otherwise. |
@@ -43,6 +41,8 @@ Aliases are provided for common abbreviations.
 | [samples](#timetoalign.TimeUnit.samples) | samples |
 | [seconds](#timetoalign.TimeUnit.seconds) | seconds |
 | [ticks](#timetoalign.TimeUnit.ticks) | ticks (MIDI's time unit) |
+| [w](#timetoalign.TimeUnit.w) | whole notes |
+| [whole_note](#timetoalign.TimeUnit.whole_note) | whole notes |
 
 ## Methods
 

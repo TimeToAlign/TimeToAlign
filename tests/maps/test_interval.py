@@ -1,17 +1,21 @@
 """Tests for interval-to-constant and quarters-to-measures maps."""
 
+from __future__ import annotations
+
 from fractions import Fraction
 
 import numpy as np
 import pytest
 
-from timetoalign.core.enums import InterpolationKind
+from timetoalign.core import Measure, MeasureConstituent
+from timetoalign.core.enums import InterpolationKind, NumberType
 from timetoalign.maps.interval import (
     IntervalToConstantMap,
     QuartersToFloatingMeasures,
     QuartersToMeasureNumber,
 )
 from timetoalign.maps.meter import MetricMap
+from timetoalign.timelines import MeasureMap
 
 
 class TestIntervalToConstantMap:
@@ -114,6 +118,39 @@ class TestIntervalToConstantMap:
         assert table_map(4) == 2
         assert table_map(6) == 2
 
+    def test_to_table_map_keeps_exact_numbers(self):
+        m = IntervalToConstantMap(
+            boundaries=[0, Fraction(3, 2)],
+            values=[Fraction(1, 3), Fraction(2, 3)],
+            source_unit="quarters",
+            target_unit="quarters",
+        )
+        table_map = m.to_table_map()
+        # The manifest writes a Fraction as a pair, an int as an integer.
+        form = table_map.to_dict()
+        assert form["x_values"] == [0, [3, 2], [5, 2]]
+        assert type(form["x_values"][0]) is int
+        assert form["y_values"] == [[1, 3], [2, 3], [2, 3]]
+        assert table_map.output_number_type is NumberType.fraction
+        assert table_map(Fraction(3, 2)) == Fraction(2, 3)
+        assert type(table_map(Fraction(3, 2))) is Fraction
+        linear = m.to_table_map(kind=InterpolationKind.linear)
+        assert linear(Fraction(3, 4)) == Fraction(1, 2)
+        assert type(linear(Fraction(3, 4))) is Fraction
+
+    def test_to_table_map_keeps_float_numbers(self):
+        m = IntervalToConstantMap(
+            boundaries=[0.0, 1.5],
+            values=[0.25, 0.5],
+            source_unit="quarters",
+            target_unit="quarters",
+        )
+        table_map = m.to_table_map()
+        form = table_map.to_dict()
+        assert form["x_values"] == [0.0, 1.5, 2.5]
+        assert all(type(x) is float for x in form["x_values"])
+        assert table_map.output_number_type is NumberType.float
+
     def test_to_table_map_non_numeric_raises(self):
         """to_table_map raises TypeError for non-numeric values."""
         m = IntervalToConstantMap(
@@ -124,21 +161,6 @@ class TestIntervalToConstantMap:
         with pytest.raises(TypeError, match="numeric values"):
             m.to_table_map()
 
-    def test_serialization(self):
-        """to_dict and from_dict roundtrip."""
-        m = IntervalToConstantMap(
-            boundaries=[0, 4, 8],
-            values=["A", "B", "C"],
-            source_unit="quarters",
-            # No target_unit - this map returns labels, not coordinates
-        )
-
-        d = m.to_dict()
-        m2 = IntervalToConstantMap.from_dict(d)
-
-        assert list(m2.boundaries) == [0, 4, 8]
-        assert m2.values == ["A", "B", "C"]
-
     def test_inverse_raises(self):
         """inverse() raises NotImplementedError."""
         m = IntervalToConstantMap(
@@ -148,6 +170,48 @@ class TestIntervalToConstantMap:
 
         with pytest.raises(NotImplementedError):
             m.inverse()
+
+
+class TestFloatParameters:
+    """The values are the step function's parameters; its boundaries are not."""
+
+    @staticmethod
+    def _step(values, end=None):
+        return IntervalToConstantMap(
+            boundaries=[0.0, 1.5],
+            values=values,
+            end=end,
+            source_unit="quarters",
+            target_unit="quarters",
+        )
+
+    @pytest.mark.parametrize("end", [None, 3])
+    def test_float_values_answer_floats(self, end):
+        m = self._step([0.1, 0.5], end=end)
+        assert m.output_number_type is NumberType.float
+        result = m(1)
+        assert result == 0.1
+        assert type(result) is float
+
+    def test_float_values_agree_with_the_table_map(self):
+        m = self._step([0.1, 0.5])
+        table_result = m.to_table_map()(1)
+        assert table_result == 0.1
+        assert type(table_result) is float
+        assert type(m(1)) is type(table_result)
+
+    @pytest.mark.parametrize("end", [None, 3])
+    def test_exact_values_stay_exact_over_float_boundaries(self, end):
+        m = self._step([Fraction(1, 10), Fraction(1, 2)], end=end)
+        assert m.output_number_type is NumberType.fraction
+        result = m(1)
+        assert result == Fraction(1, 10)
+        assert type(result) is Fraction
+
+    def test_labels_are_no_parameters(self):
+        m = IntervalToConstantMap(boundaries=[0.0, 1.5], values=["A", "B"])
+        assert m(1) == "A"
+        assert m(2) == "B"
 
 
 class TestQuartersToMeasureNumber:
@@ -233,57 +297,6 @@ class TestQuartersToMeasureNumber:
         assert m(1) == "1"
         assert m(5) == "2"
 
-    def test_to_floating_measures(self):
-        """Convert to QuartersToFloatingMeasures."""
-        m = QuartersToMeasureNumber(
-            boundaries=[0, 4, 8, 12],
-            mns=["1", "2", "3", "4"],
-        )
-
-        fm = m.to_floating_measures()
-
-        assert fm(0) == 1.0
-        assert fm(2) == 1.5  # Halfway through M1
-        assert fm(4) == 2.0
-        assert fm(6) == 2.5
-
-    def test_to_floating_measures_strips_suffix(self):
-        """to_floating_measures strips non-numeric suffixes with warning."""
-        m = QuartersToMeasureNumber(
-            boundaries=[0, 2, 4],
-            mns=["19a", "19b", "20"],
-        )
-
-        with pytest.warns(UserWarning, match="Non-numeric suffixes"):
-            fm = m.to_floating_measures()
-
-        assert fm(0) == 19.0
-        assert fm(2) == 19.0  # Both 19a and 19b become 19
-        assert fm(4) == 20.0
-
-    def test_to_floating_measures_invalid_mn_raises(self):
-        """to_floating_measures raises ValueError for non-numeric MN."""
-        m = QuartersToMeasureNumber(
-            boundaries=[0, 4],
-            mns=["A", "B"],  # Not numeric at all
-        )
-
-        with pytest.raises(ValueError, match="Cannot convert"):
-            m.to_floating_measures()
-
-    def test_serialization(self):
-        """to_dict and from_dict roundtrip."""
-        m = QuartersToMeasureNumber(
-            boundaries=[0, 4, 8],
-            mns=["1", "2", "3"],
-        )
-
-        d = m.to_dict()
-        assert d["type"] == "QuartersToMeasureNumber"
-
-        m2 = QuartersToMeasureNumber.from_dict(d)
-        assert m2.mns == ["1", "2", "3"]
-
 
 class TestQuartersToFloatingMeasures:
     """Tests for QuartersToFloatingMeasures."""
@@ -343,37 +356,58 @@ class TestQuartersToFloatingMeasures:
         # Before first measure (negative)
         assert m(-4) == 0.0
 
-    def test_from_metric_map(self):
-        """Create from MetricMap."""
-        meter = MetricMap.from_uniform(
-            n_measures=4,
-            quarters_per_measure=Fraction(4, 1),
-            start_mc=1,
-            start_mn="1",
+    def test_from_measure_map(self):
+        """Build the lattice from exact measure lengths."""
+        measure_map = MeasureMap(
+            Measure(
+                id=f"m{count}",
+                number=count,
+                nominal_length=Fraction(4),
+                actual_length=Fraction(4),
+            )
+            for count in range(1, 5)
         )
 
-        m = QuartersToFloatingMeasures.from_metric_map(meter)
+        m = QuartersToFloatingMeasures.from_measure_map(measure_map)
 
         assert m(0) == 1.0
         assert m(2) == 1.5
         assert m(4) == 2.0
         assert m(8) == 3.0
 
-    def test_from_metric_map_anacrusis(self):
-        """Create from MetricMap with anacrusis (MN=0)."""
-        meter = MetricMap.from_uniform(
-            n_measures=4,
-            quarters_per_measure=Fraction(4, 1),
-            anacrusis_quarters=Fraction(1, 1),
-            start_mc=1,
-            start_mn="0",
+    def test_from_measure_map_anacrusis(self):
+        """A pickup is measure 0, and its content sits where it is notated.
+
+        The pickup is one quarter of a four-quarter bar, so it occupies the
+        LAST quarter of the nominal bar 0: its notated downbeat is a virtual
+        -3 quarters, and its onset reads three quarters of the way through
+        bar 0.
+        """
+        measure_map = MeasureMap(
+            [
+                MeasureConstituent(
+                    id="m1",
+                    number=0,
+                    nominal_length=Fraction(4),
+                    actual_length=Fraction(1),
+                    offset_within_measure=Fraction(3),
+                ),
+                *[
+                    Measure(
+                        id=f"m{count}",
+                        number=count - 1,
+                        nominal_length=Fraction(4),
+                        actual_length=Fraction(4),
+                    )
+                    for count in range(2, 5)
+                ],
+            ]
         )
 
-        m = QuartersToFloatingMeasures.from_metric_map(meter)
+        m = QuartersToFloatingMeasures.from_measure_map(measure_map)
 
-        # Anacrusis is MN=0
-        assert m(0) == 0.0
-        assert m(0.5) == 0.5  # Halfway through anacrusis
+        assert m(0) == 0.75
+        assert m(0.5) == 0.875  # Halfway through the sounding pickup
         assert m(1) == 1.0  # Start of M1
         assert m(5) == 2.0  # Start of M2
 
@@ -430,22 +464,6 @@ class TestQuartersToFloatingMeasures:
         result = m.convert_array(values)
 
         np.testing.assert_array_equal(result, [1.0, 1.5, 2.0, 2.5, 3.0])
-
-    def test_serialization(self):
-        """to_dict and from_dict roundtrip."""
-        m = QuartersToFloatingMeasures(
-            x_values=[0, 4, 8, 12],
-            y_values=[1.0, 2.0, 3.0, 4.0],
-        )
-
-        d = m.to_dict()
-        assert d["type"] == "QuartersToFloatingMeasures"
-
-        m2 = QuartersToFloatingMeasures.from_dict(d)
-
-        # Verify roundtrip
-        assert m2(2) == 1.5
-        assert m2(6) == 2.5
 
 
 class TestScoreStoreIntegration:

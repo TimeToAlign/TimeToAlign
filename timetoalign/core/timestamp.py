@@ -4,9 +4,9 @@ This module provides Stamp, TimeStamp, and TimeIntervalStamp, the unified mechan
 for coordinate resolution across both Timeline (with children) and
 TimelineGroup (with member timelines).
 
-Design rationale (from unified_timestamp_architecture.md):
+Design rationale:
 - TimeStamp is a lightweight view object that computes coordinates on access
-- InterpolationMap gives TimelineGroup members O(log n) coordinate conversion
+- TimelineGroup members convert linearly between their common start and end
 - Every attached C-Map (whatever its concrete type) is called directly via
   the shared ConversionMap interface, so unit-based conversions honor each
   map's own interpolation kind and extrapolation policy
@@ -44,7 +44,7 @@ from .retrieval import (
     KeyCollection,
     Rounding,
     classify_dispatch_input,
-    coordinate_wire_entry,
+    coordinate_to_dict,
     format_coordinates,
     number_type_for_converted_unit,
     validate_key_collection,
@@ -63,9 +63,6 @@ if TYPE_CHECKING:
     import pyarrow as pa
 
     from ..core.enums import ColumnNaming
-    from ..maps.interpolation import InterpolationMap
-else:
-    from ..maps.interpolation import InterpolationMap
 
 module_logger = logging.getLogger(__name__)
 
@@ -224,26 +221,18 @@ class TimeStampSource(Protocol):
         """Unique identifier."""
         ...
 
-    def _get_interpolation_map(
-        self, target_id: str, source_id: str | None = None
-    ) -> "InterpolationMap | None":
-        """Get InterpolationMap for coordinate conversion to target.
-
-        Args:
-            target_id: Target timeline/entity ID.
-            source_id: Source timeline ID (optional, for multi-source containers).
-
-        Returns:
-            InterpolationMap for conversion, or None if not available.
-        """
-        ...
-
     def _get_unit_map(self, unit: "TimeUnit") -> "Any":
-        """Get a map for unit-based conversion (InterpolationMap or ConversionMap)."""
+        """Get a map for unit-based conversion."""
         ...
 
     def _get_unit_map_for_timeline(self, timeline_id: str, unit: "TimeUnit") -> "Any":
         """Get a unit map associated with a specific timeline."""
+        ...
+
+    def _get_unit_maps_for_timeline(
+        self, timeline_id: str, unit: "TimeUnit"
+    ) -> "list[Any]":
+        """Get every unit map associated with a specific timeline."""
         ...
 
     def _get_related_timeline_ids(self) -> list[str]:
@@ -281,27 +270,6 @@ class TimeStampSource(Protocol):
 
         Returns:
             The TimeUnit for the timeline, or None if not found.
-        """
-        ...
-
-    def _contains_coordinate(
-        self, timeline_id: str, axis: float, source_id: str | None = None
-    ) -> bool:
-        """Check whether *axis* falls within the span of a related timeline.
-
-        For a child embedded at *offset* with *length*, the span on the
-        parent is ``[offset, offset + length)``.  Returns ``True`` for
-        the source timeline itself and for any related timeline whose
-        span includes *axis*.
-
-        Args:
-            timeline_id: The related timeline to check.
-            axis: The coordinate on the source timeline.
-            source_id: The source timeline ID (required for TimelineGroup,
-                optional for Timeline where it defaults to the parent).
-
-        Returns:
-            True if *axis* is inside the related timeline's span.
         """
         ...
 
@@ -446,13 +414,13 @@ class Stamp(ABC):
         )
 
     def to_dict(self) -> dict[str, dict[str, object]]:
-        """Serialize stored coordinates as typed rational wire entries.
+        """Serialize stored coordinates as typed coordinate dictionaries.
 
         Returns:
-            Timeline IDs mapped to canonical coordinate wire entries.
+            Timeline IDs mapped to canonical coordinate dictionaries.
         """
         return {
-            timeline_id: coordinate_wire_entry(coordinate)
+            timeline_id: coordinate_to_dict(coordinate)
             for timeline_id, coordinate in self.coordinates.items()
         }
 
@@ -570,7 +538,7 @@ class Stamp(ABC):
 class TimeStamp(Stamp):
     """A synchronized instant across a timeline hierarchy.
 
-    Lightweight object that computes coordinates on access via InterpolationMaps.
+    Lightweight view object over typed coordinates.
     Works identically for Timeline (with children) and TimelineGroup (with members).
 
     The TimeStamp represents a cross-section through the timeline structure at
@@ -581,8 +549,6 @@ class TimeStamp(Stamp):
         axis: The root/reference coordinate value.
         source: The Timeline or TimelineGroup this timestamp belongs to.
         source_id: ID of the source (for serialization).
-        row_index: If from a table row, the index. ``-1`` if interpolated and
-            ``None`` for a direct query on the source axis.
 
     Examples:
         >>> ts = timeline.get_timestamp_at(5.0)
@@ -599,7 +565,6 @@ class TimeStamp(Stamp):
     coordinates: dict[str, Coordinate]
     source_id: str
     source: TimeStampSource | None = field(default=None)
-    row_index: int | None = field(default=None)
     is_interpolated: bool = field(default=False)
     conversion_maps: ConversionMapsSpec = field(default=True)
 
@@ -799,10 +764,10 @@ class TimeStamp(Stamp):
 
         requested = spec if isinstance(spec, list) else [spec]
         maps = [
-            self.source._get_unit_map_for_timeline(timeline_id, unit)
+            cmap
             for timeline_id in self._surfaceable_ids()
+            for cmap in self.source._get_unit_maps_for_timeline(timeline_id, unit)
         ]
-        maps = [cmap for cmap in maps if cmap is not None]
 
         for allowed in requested:
             if isinstance(allowed, TimeUnit) and allowed == unit:
@@ -1309,7 +1274,7 @@ def timestamp_table_to_dataframe(
         >>> table = timeline.get_timestamp_table()
         >>> df = timestamp_table_to_dataframe(table, units=True)
         >>> df.columns
-        Index(['axis (pixels)', 'dgt1 (pixels)', 'pixels_to_inches (inches)'])
+        Index(['axis (pixels)', 'dgt_1 (pixels)', 'pixels_to_inches (inches)'])
 
         >>> # Use IDs instead of names
         >>> from timetoalign import ColumnNaming

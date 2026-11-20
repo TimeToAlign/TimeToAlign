@@ -437,13 +437,12 @@ class TabularLoader(EventLoader):
                 )
 
             blueprint_cls = type(blueprint)
-            target_schema = blueprint_cls.pa_schema
             data_arr = columns[source_name]
 
             # Pack atomic source into a single-field struct matching the
             # target schema when needed.
             packed_arr = self._pack_field_spec_source(
-                data_arr, target_schema, source_name, blueprint_cls.__name__
+                data_arr, blueprint_cls, source_name
             )
             if packed_arr is not None:
                 columns[source_name] = packed_arr
@@ -489,45 +488,47 @@ class TabularLoader(EventLoader):
     @staticmethod
     def _pack_field_spec_source(
         data_arr: Any,
-        target_schema: pa.StructType | None,
+        blueprint_cls: type[SemanticField[Any]],
         source_name: str,
-        target_cls_name: str,
     ) -> pa.Array | None:
         """Pack an atomic source array into a target struct shape.
 
-        Returns the packed array, or ``None`` when no packing is
-        required (the source already matches).  Currently handles the
-        single-sub-field case (``{<name>: <atomic>}``) used by
-        :class:`EnharmonicPitchField` (``{midi_number}``) and
-        :class:`IdField` (``{value}``) and other single-value structs.
+        The packing rule belongs to the target field class — it is the
+        one that knows which of its sub-fields a plain source column
+        fills — so this defers to that class's blueprint
+        :meth:`~timetoalign.core.SemanticField.from_array`.
+
+        Args:
+            data_arr: The source column.
+            blueprint_cls: The paired Field class being promoted to.
+            source_name: The source column's name.
+
+        Returns:
+            The packed array, or ``None`` when no packing is required
+            (the source already matches the target shape).
 
         Raises:
-            TypeError: When the source dtype and target sub-field type
-                are incompatible and no automatic packing exists.
+            TypeError: When the target field class states no packing
+                rule for a plain source column.
         """
-        if target_schema is None:
+        if blueprint_cls.pa_schema is None:
             return None
         if not isinstance(data_arr, (pa.Array, pa.ChunkedArray)):
             data_arr = pa.array(data_arr)
         if pa.types.is_struct(data_arr.type):
-            if data_arr.type == target_schema:
-                return None
-            # Shape mismatch on a struct source — leave as-is; the
-            # downstream EventData.get_field discovery will surface a
-            # clear error if needed.
+            # A struct source is already in some shape of its own; a
+            # mismatch surfaces downstream in EventData.get_field.
             return None
-        # Atomic source.  Target must have exactly one sub-field.
-        if target_schema.num_fields != 1:
+        if not blueprint_cls.supports_plain_blueprint():
             raise TypeError(
                 f"field_specs cannot pack atomic source {source_name!r} into "
-                f"multi-field target {target_cls_name} (pa_schema has "
-                f"{target_schema.num_fields} sub-fields)"
+                f"target {blueprint_cls.__name__} ({blueprint_cls.pa_schema}): "
+                f"that field "
+                f"class needs more than a name to exist and states no packing "
+                f"rule for a plain source column"
             )
-        sub_field = target_schema.field(0)
-        sub_type = sub_field.type
-        if data_arr.type != sub_type:
-            data_arr = data_arr.cast(sub_type)
-        return pa.StructArray.from_arrays([data_arr], fields=list(target_schema))
+        packed = blueprint_cls(name=source_name).from_array(data_arr)
+        return packed.data
 
     # endregion
 

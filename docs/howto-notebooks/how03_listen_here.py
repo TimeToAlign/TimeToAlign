@@ -45,7 +45,7 @@
 #    `get_field` API, and inspect a single claim.
 # 3. Build the {{< glossary AlignmentBundle >}}.
 # 4. The headline: place a point on one recording and read it on all the others.
-# 5. A note on scale — why the claims live in a column, not a million objects.
+# 5. A note on scale — why the claims live in columns, not a million objects.
 
 # %% [markdown]
 # ## Setup
@@ -108,7 +108,7 @@ loader.recording_keys
 # %% [markdown]
 # ---
 #
-# ## 2. The whole pairwise claim set, in a column
+# ## 2. The whole pairwise claim set, in columns
 #
 # The alignment is reached through the uniform field API:
 # `loader.get_field(MatchClaim)` returns a {{< glossary MatchClaimField >}} — a
@@ -186,7 +186,7 @@ print(bundle.diagram())
 # from roughly the middle of the work, read off the reference recording's clock.
 
 # %%
-reference_uid = f"{os.path.splitext(loader.reference)[0]}:dpt1"
+reference_uid = f"{os.path.splitext(loader.reference)[0]}:dpt_1"
 
 reference_claims = field.connecting(reference_uid)
 mid_claim = reference_claims[len(reference_claims) // 2]
@@ -236,11 +236,12 @@ stamp
 #
 # This is exactly why the claims live in a {{< glossary MatchClaimField >}}
 # rather than as a million individual `MatchClaim` objects. The field stores the
-# whole set as Arrow columns (the two timeline ids dictionary-encoded, each
-# coordinate as a struct of value, numerator, denominator and unit) and the
+# whole set as Arrow columns, one per property of a claim (the two timeline
+# ids as strings, each coordinate as a struct of value, numerator, denominator
+# and unit), and the
 # loader builds it **vectorised** — never
 # constructing a Python claim per row. A `MatchClaim` is materialised only when
-# a single row is indexed. `get_matchstamp_at` likewise filters the column
+# a single row is indexed. `get_matchstamp_at` likewise filters the columns
 # vectorised and materialises only the handful of claims at the queried
 # coordinate. The columnar store is what lets one `AlignmentBundle` hold a
 # whole-work, every-pair audio-to-audio graph without strain.
@@ -250,15 +251,15 @@ stamp
 #
 # | What the bundle expresses | How |
 # |---|---|
-# | One recording per group | `<stem>:dpt1` samples timeline, one point event per grid column, recording-length |
+# | One recording per group | `<stem>:dpt_1` samples timeline, one point event per grid column, recording-length |
 # | The whole pairwise alignment | a columnar {{< glossary MatchClaimField >}} via `get_field(MatchClaim)` |
 # | One claim, materialised | `field[i]` → a synchronous instant {{< glossary MatchClaim >}} |
 # | The reference recording | `loader.reference` — the grid origin, but just another recording |
-# | A point placed everywhere | `bundle.get_matchstamp_at(coord, "<stem>:dpt1")` → every recording at once |
+# | A point placed everywhere | `bundle.get_matchstamp_at(coord, "<stem>:dpt_1")` → every recording at once |
 #
 # A single file encodes an entire audio-to-audio {{< glossary MatchGraph >}} —
 # every recording of one work warped onto a shared reference grid, every pair
 # directly related. `ListenHereLoader` reads it into one
 # {{< glossary AlignmentBundle >}} in which a coordinate placed on any one
 # recording resolves, in a single query, across all the others; and the dense
-# claim set that makes that possible is held in a column, not a million objects.
+# claim set that makes that possible is held in columns, not a million objects.

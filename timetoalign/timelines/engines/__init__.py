@@ -12,6 +12,7 @@ from .external_references import (
 )
 from .regions import RegionsMixin
 from .segments import SegmentsMixin
+from .skeletons import SkeletonsMixin
 from .tabular import TabularExportMixin
 
 __all__ = [
@@ -22,6 +23,7 @@ __all__ = [
     "ExternalReferencesMixin",
     "RegionsMixin",
     "SegmentsMixin",
+    "SkeletonsMixin",
     "TabularExportMixin",
     "empty_external_reference_table",
 ]

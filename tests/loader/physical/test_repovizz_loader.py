@@ -13,6 +13,7 @@ from timetoalign.core import TimeUnit
 from timetoalign.loader.physical.repovizz import RepoVizzInfo, RepoVizzLoader
 from timetoalign.loader.physical.repovizz_catalogue import CatalogueEntry
 from timetoalign.loader.physical.repovizz_store import RepovizzDictStore
+from timetoalign.testdata import ensure_data
 from timetoalign.timelines import DiscretePhysicalTimeline, TimelineGroup
 
 # region Test Data Paths
@@ -21,12 +22,7 @@ from timetoalign.timelines import DiscretePhysicalTimeline, TimelineGroup
 @pytest.fixture(scope="module")
 def multimodal_dir() -> Path:
     """Path to the multimodal test data directory."""
-    return (
-        Path(__file__).parent.parent.parent
-        / "data"
-        / "score"
-        / "beethoven_op18-4iv_multimodal"
-    )
+    return ensure_data("score") / "beethoven_op18-4iv_multimodal"
 
 
 @pytest.fixture(scope="module")

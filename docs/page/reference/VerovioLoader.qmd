@@ -1,0 +1,252 @@
+# VerovioLoader { #timetoalign.loader.score.VerovioLoader }
+
+```python
+loader.score.VerovioLoader(options=None, **kwargs)
+```
+
+Load an engraved score through the Verovio toolkit.
+
+Any format Verovio reads (MEI, MusicXML, Humdrum, ABC, PAE, …) yields
+one score as Verovio renders it: its timemap is taken verbatim, and
+nothing is computed from the notated rhythm.
+
+* :meth:`create_timeline` gives the logical timeline: one
+  ``ContinuousLogicalTimeline`` in quarters, positions the timemap's exact
+  ``qfrac`` (``useFractions``), with a quarters → seconds C-Map.
+* :meth:`create_physical_timeline` gives the same events on Verovio's
+  rendered time: one ``ContinuousPhysicalTimeline`` in seconds, positions
+  the timemap's integer milliseconds ``tstamp`` as
+  ``Fraction(tstamp, 1000)``, with the inverse C-Map. It is time
+  synthesised from the score's tempo, not a performance.
+
+The C-Map is one ``TableMap`` through every timemap entry
+(:meth:`create_quarters_to_seconds_map`). Verovio holds the tempo
+constant within a measure, so linear interpolation between the entries
+reproduces its own time.
+
+**Movements.** Every named ``<mdiv>`` Verovio loads (one with a
+non-blank ``@label``) is a child timeline, in document order, its id
+minted by the loader after the root's (``score:clt_2``,
+``rendered:cpt_2``, …; a number a given root id such as ``score:clt_2``
+holds is skipped): placed at its first position, as long as its
+measures, named by its ``label``, with ``meta`` holding ``count`` (its
+place among all ``<mdiv>``s of the file, from 1), its ``xml:id``, ``n``
+and ``label`` verbatim, and ``element`` ``"mdiv"``. A named ``<mdiv>``
+nests under the child of its nearest named ancestor ``<mdiv>``, else
+under the root. An unnamed ``<mdiv>`` makes no timeline: what it holds
+belongs to the nearest named ancestor's child, else to the root, so a
+score whose one ``<mdiv>`` has no label is the root alone. Events live in
+the innermost named movement holding them, at parent − offset; the root
+holds the measures, the flow control and the C-Map. All movements are
+loaded unless an ``mdivAll`` or ``mdivXPathQuery`` option chooses.
+
+**Repeats.** The timemap is Verovio's rendering: with repeats expanded
+(Verovio's default, steered by the ``expand``, ``expandAlways`` and
+``expandNever`` options), a repeated passage appears once per pass.
+Event ``id`` is the rendered id (``…-rend2`` from the second pass on);
+field ``notated_id`` is the element's id in the notated score (equal to
+``id`` when nothing is expanded), read with ``getNotatedIdForElement``
+for ids the notated tree does not hold. The store's measure table is the
+printed one (one row per ``<measure>`` in document order, lengths as
+rendered, positions on the folded axis), carrying the repeat barlines,
+endings and ``<repeatMark>``s (segno, coda, Fine, D.S., D.C.), from which
+:meth:`create_flow_controller` derives the repeat structure. Without an
+expansion the timeline carries that table as its ``MeasureMap`` and its
+flow control. With an expansion the
+timeline is already unfolded: its ``MeasureMap`` lists the rendered
+measures (row id = rendered id, name = ``@n``) without flow control, and
+two FlowMaps state the playback order of the printed measures:
+``"forward_verovio"`` (printed → rendered) and ``"source"`` (its inverse).
+
+**Ids.** Every event keeps its element's ``xml:id`` verbatim. Verovio
+generates ids only where the source has none, from a random seed unless
+told otherwise; the loader seeds them from the input's checksum
+(``xmlIdChecksum``), so a generated id is stable for one Verovio version
+and one input. A user ``xmlIdSeed`` wins and is logged. After loading,
+every ``xml:id`` of ``getMEI()`` is checked for uniqueness, because
+Verovio's generator does not test it: a duplicate held by an element
+the loader reads raises, any other is logged and listed in the store
+metadata under ``"duplicate_ids"``.
+
+Sources of each value:
+
+* **Positions** come from the timemap with ``useFractions``. The
+  timemap's float ``qstamp`` is a cross-check: the float nearest to each
+  exact position must equal it, else the load raises.
+* **Membership** (movement, measure, staff, layer), ``<tie>`` elements
+  and tempo text come from the MEI tree that ``getMEI()`` returns, read
+  with the standard library's XML parser.
+* **MIDI pitch** comes from ``getMIDIValuesForElement``.
+
+Events: one interval event per note (``event_type`` ``"Note"``) and per
+rest (``"Rest"``) from onset to offset, and one instant event per
+``<tempo>`` and pass (``"tempo indication"``, its ``text`` verbatim).
+``mc``, ``mn`` name the printed measure; ``mc_onset`` is the position in
+the rendered pass of it, in quarters, on the logical timeline only.
+``voice`` is the ``<layer>`` number, ``chord_id`` the ``xml:id`` of the
+note's ``<chord>``. A
+tied note's continuation is an event of its own; field ``tie`` (``i``,
+``m``, ``t``, verbatim from ``@tie`` or from the ``<tie>`` elements
+naming the note) tells attacks from continuations. Field ``grace`` is
+the ``@grace`` of the note, its chord or its ``<graceGrp>``, verbatim.
+``<space>`` elements are not events. The note ``staff`` is the staff
+the note is drawn on: a cross-staff chord's ``@staff``, else its
+``<staff>``.
+
+## Known issues {.doc-section .doc-section-known-issues}
+
+Grace notes and arpeggiated notes sit where Verovio performs them,
+not at their notated onsets. An unaccented grace note takes a short
+fixed span before its principal note (or delays the principal note
+at a measure start), an accented one takes a share of the principal
+note and delays it, and the notes of an arpeggio are rolled one
+after the other. The controls are MEI attributes (``@grace``,
+``@grace.time``, ``graceGrp/@attach``, ``arpeg/@order``); the
+loader does not undo them.
+A ``<tie>`` whose ``endid`` names no element of the file (a tie
+leaving an excerpt) is logged and listed in the store metadata under
+``"dangling_ties"``; its start note keeps ``tie = "i"`` and nothing
+is invented for the missing end. Verovio prints its own warning to
+the process's standard error; ``getLog()`` stays empty.
+A measure without content has no length in Verovio's timemap and no
+entry of its own; such a score raises, naming the measures.
+Verovio 6.4.1's expansion leaves out the measures of ``<ending>``s
+it cannot place (both endings, and no repeat of their passage, after
+another repeat). Their lengths are read from a second rendering
+with ``expandNever``; their events are not in the rendered
+timelines. They are logged and listed in the store metadata under
+``"omitted_measures"``.
+Verovio's expansion does not follow D.S. and D.C. marks; the
+printed measure table states them.
+``expandAlways`` writes the expansion into the MEI tree, which then
+no longer states the printed score; it raises.
+Verovio 6.4.1 crashes the process in ``renderToTimemap`` when it
+expands the repeats of some files; ``expandNever`` reads them.
+
+## Examples {.doc-section .doc-section-examples}
+
+```python
+>>> loader = VerovioLoader.from_file("score.mei")
+>>> timeline = loader.create_timeline()
+>>> seconds = loader.create_physical_timeline()
+```
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [clear](#timetoalign.loader.score.VerovioLoader.clear) | Clear the loaded score. |
+| [create_physical_timeline](#timetoalign.loader.score.VerovioLoader.create_physical_timeline) | Create the score's timeline in Verovio's rendered seconds. |
+| [create_quarters_to_seconds_map](#timetoalign.loader.score.VerovioLoader.create_quarters_to_seconds_map) | Create the C-Map from Verovio's quarters to its rendered seconds. |
+| [create_timeline](#timetoalign.loader.score.VerovioLoader.create_timeline) | Create the score's logical timeline in quarters. |
+
+### clear { #timetoalign.loader.score.VerovioLoader.clear }
+
+```python
+loader.score.VerovioLoader.clear()
+```
+
+Clear the loaded score.
+
+### create_physical_timeline { #timetoalign.loader.score.VerovioLoader.create_physical_timeline }
+
+```python
+loader.score.VerovioLoader.create_physical_timeline(
+    uid=None,
+    name=None,
+    attach_cmap=True,
+)
+```
+
+Create the score's timeline in Verovio's rendered seconds.
+
+The same events, movements and ids as :meth:`create_timeline`, each
+position the timemap's ``tstamp`` as ``Fraction(tstamp, 1000)``
+seconds (a position between entries, such as a tempo indication's,
+through the C-Map). ``meta["provenance"]`` is
+``"verovio_rendered"``. Measures stay on the logical timeline: a
+quarter-based ``MeasureMap`` has no place on a seconds axis.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name        | Type                 | Description                                         | Default   |
+|-------------|----------------------|-----------------------------------------------------|-----------|
+| uid         | [str](`str`) \| None | The timeline id. ``None`` mints ``rendered:cpt_N``. | `None`    |
+| name        | [str](`str`) \| None | The timeline's display name.                        | `None`    |
+| attach_cmap | [bool](`bool`)       | If True, attach the seconds → quarters C-Map.       | `True`    |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                                             | Description                                              |
+|--------|----------------------------------------------------------------------------------|----------------------------------------------------------|
+|        | [ContinuousPhysicalTimeline](`timetoalign.timelines.ContinuousPhysicalTimeline`) | A ``ContinuousPhysicalTimeline`` in seconds, number type |
+|        | [ContinuousPhysicalTimeline](`timetoalign.timelines.ContinuousPhysicalTimeline`) | ``Fraction``.                                            |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                                                       |
+|--------|----------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If no score has been loaded, or if two timemap entries share one ``tstamp`` (less than 1 ms apart), which leaves their order in seconds unstated. |
+
+### create_quarters_to_seconds_map { #timetoalign.loader.score.VerovioLoader.create_quarters_to_seconds_map }
+
+```python
+loader.score.VerovioLoader.create_quarters_to_seconds_map()
+```
+
+Create the C-Map from Verovio's quarters to its rendered seconds.
+
+One linear ``TableMap`` with an anchor ``(qfrac, tstamp / 1000)`` at
+every timemap entry, undefined outside the score. Its results are
+written as ``Fraction`` seconds, and so are its inverse's quarters:
+the map is exact both ways.
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                    | Description                          |
+|--------|-----------------------------------------|--------------------------------------|
+|        | [TableMap](`timetoalign.maps.TableMap`) | The quarters → seconds ``TableMap``. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                  |
+|--------|----------------------------|------------------------------|
+|        | [ValueError](`ValueError`) | If no score has been loaded. |
+
+### create_timeline { #timetoalign.loader.score.VerovioLoader.create_timeline }
+
+```python
+loader.score.VerovioLoader.create_timeline(
+    uid=None,
+    name=None,
+    attach_cmap=True,
+)
+```
+
+Create the score's logical timeline in quarters.
+
+The root carries the measures as its ``MeasureMap``, the flow
+control (or, for an expanded rendering, the FlowMaps) and the C-Map;
+each loaded named ``<mdiv>`` is a child holding its events, and the
+root holds those of no named ``<mdiv>``.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name        | Type                 | Description                                      | Default   |
+|-------------|----------------------|--------------------------------------------------|-----------|
+| uid         | [str](`str`) \| None | The timeline id. ``None`` mints ``score:clt_N``. | `None`    |
+| name        | [str](`str`) \| None | The timeline's display name.                     | `None`    |
+| attach_cmap | [bool](`bool`)       | If True, attach the quarters → seconds C-Map.    | `True`    |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                                           | Description                                              |
+|--------|--------------------------------------------------------------------------------|----------------------------------------------------------|
+|        | [ContinuousLogicalTimeline](`timetoalign.timelines.ContinuousLogicalTimeline`) | A ``ContinuousLogicalTimeline`` in quarters, number type |
+|        | [ContinuousLogicalTimeline](`timetoalign.timelines.ContinuousLogicalTimeline`) | ``Fraction``, as long as the timemap.                    |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                  |
+|--------|----------------------------|------------------------------|
+|        | [ValueError](`ValueError`) | If no score has been loaded. |

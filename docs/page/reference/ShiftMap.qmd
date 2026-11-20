@@ -58,7 +58,7 @@ Return the inverse map: y = x - b.
 ### to_dict { #timetoalign.ShiftMap.to_dict }
 
 ```python
-ShiftMap.to_dict()
+ShiftMap.to_dict(minimal=False)
 ```
 
 Serialize to dictionary.

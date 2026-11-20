@@ -68,6 +68,10 @@ DATA_DIR = ensure_data("hendrix")
 # file with hierarchy timelines encoding the form analysis.  We load each
 # file and extract the first hierarchy timeline (`HIERARCHY_TIMELINE_0`),
 # which contains the section-level annotations (Intro, Verse, Bridge, etc.).
+#
+# Each file is loaded on its own, so each loader mints the same id, `cpt_1`,
+# for its timeline. The version name becomes the timeline's `name`; the ids are
+# told apart when the timelines join one bundle.
 
 # %%
 names = ["Studio", "Demo2", "Demo1"]
@@ -76,6 +80,7 @@ timelines = {}
 for name in names:
     loader = TiliaJsonLoader.from_file(DATA_DIR / f"Hendrix_Merman_{name}.json")
     tl = loader.create_timeline(uid="HIERARCHY_TIMELINE_0")
+    tl.name = name
     timelines[name] = tl
 
 timelines
@@ -101,15 +106,18 @@ df
 # %% [markdown]
 # ## 3. Create the AlignmentBundle
 #
-# We add each hierarchy timeline to a single {{< glossary AlignmentBundle >}},
-# assigning human-readable IDs that match the column names in `match_data.csv`.
+# We add each hierarchy timeline to a single {{< glossary AlignmentBundle >}}.
+# A bundle holds a timeline id once, so the loader-minted `cpt_1` held by the
+# first version is minted again for the others: the versions become `cpt_1`,
+# `cpt_2` and `cpt_3`. Their names still match the column names in
+# `match_data.csv`, and the claims below name each version by its id.
 
 # %%
 bundle = AlignmentBundle(name="Hendrix Song Genesis")
 for name, tl in timelines.items():
-    bundle.add_timeline(tl, uid=name)
+    bundle.add_timeline(tl)
 
-bundle
+{name: tl.id for name, tl in timelines.items()}
 
 # %% [markdown]
 # ## 4. Build MatchClaims from the Match Table
@@ -175,8 +183,8 @@ for _, row in df.iterrows():
             nomatch_claims.append(
                 MatchClaim.nomatch(
                     event=present_ev,
-                    source_tl_id=present_tl,
-                    target_tl_id=absent_tl,
+                    source_tl_id=timelines[present_tl].id,
+                    target_tl_id=timelines[absent_tl].id,
                     unit=timelines[present_tl].unit,
                     metadata=metadata,
                 )
@@ -191,9 +199,9 @@ for _, row in df.iterrows():
         if is_synchronous:
             claim = MatchClaim.from_events(
                 event_a=ev_a,
-                tl_a_id=tl_a_name,
+                tl_a_id=timelines[tl_a_name].id,
                 event_b=ev_b,
-                tl_b_id=tl_b_name,
+                tl_b_id=timelines[tl_b_name].id,
                 unit_a=timelines[tl_a_name].unit,
                 unit_b=timelines[tl_b_name].unit,
                 end_coord_key="end",
@@ -203,8 +211,8 @@ for _, row in df.iterrows():
             sync_claims.append(claim)
         else:
             claim = MatchClaim(
-                timeline_a_id=tl_a_name,
-                timeline_b_id=tl_b_name,
+                timeline_a_id=timelines[tl_a_name].id,
+                timeline_b_id=timelines[tl_b_name].id,
                 is_synchronous=False,
                 metadata=metadata,
             )

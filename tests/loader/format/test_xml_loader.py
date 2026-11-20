@@ -10,40 +10,22 @@ See Also:
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pyarrow as pa
 import pytest
 
 from timetoalign.loader.format.xml import XmlLoader
 from timetoalign.storage.store import DictStore
+from timetoalign.testdata import ensure_data
 
 # region Test data paths
 
-DATA_ROOT = Path(__file__).resolve().parents[2] / "data"
-
-# RepoVizz XML manifest path (in dashboard specimens)
-REPO_ROOT = Path(__file__).resolve().parents[4]
-REPOVIZZ_XML_PATH = (
-    REPO_ROOT
-    / "dashboard"
-    / "specimens"
+# RepoVizz XML manifest of the Beethoven Op. 18 No. 4 iv multimodal specimen
+XML_PATH = (
+    ensure_data("score")
     / "beethoven_op18-4iv_multimodal"
     / "StringQuartetEEP_I_Normal"
     / "StringQuartetEEP_I_Normal.xml"
 )
-
-# Alternative: test data location (if copied)
-ALT_XML_PATH = (
-    DATA_ROOT
-    / "score"
-    / "beethoven_op18-4iv_multimodal"
-    / "StringQuartetEEP_I_Normal"
-    / "StringQuartetEEP_I_Normal.xml"
-)
-
-# Use whichever path exists
-XML_PATH = REPOVIZZ_XML_PATH if REPOVIZZ_XML_PATH.exists() else ALT_XML_PATH
 
 # endregion
 
@@ -129,9 +111,7 @@ def auto_detect_loader() -> XmlLoader:
 
 @pytest.fixture
 def repovizz_loader() -> XmlLoader:
-    """XmlLoader for RepoVizz manifest (if available)."""
-    if not XML_PATH.exists():
-        pytest.skip(f"RepoVizz XML not found: {XML_PATH}")
+    """XmlLoader for RepoVizz manifest."""
     loader = XmlLoader(principal_tags=["Audio", "Signal", "Annotation"])
     loader.load(XML_PATH)
     return loader
@@ -140,8 +120,6 @@ def repovizz_loader() -> XmlLoader:
 @pytest.fixture
 def repovizz_auto_loader() -> XmlLoader:
     """XmlLoader with auto-detection on RepoVizz manifest."""
-    if not XML_PATH.exists():
-        pytest.skip(f"RepoVizz XML not found: {XML_PATH}")
     loader = XmlLoader()
     loader.load(XML_PATH)
     return loader
@@ -296,15 +274,14 @@ class TestTextContent:
 # endregion
 
 
-# region RepoVizz XML tests (skip if not available)
+# region RepoVizz XML tests
 
 
 class TestRepoVizzXml:
     """RepoVizz XML manifest: Audio, Signal, Annotation elements."""
 
     def test_file_exists(self) -> None:
-        if not XML_PATH.exists():
-            pytest.skip(f"RepoVizz XML not found: {XML_PATH}")
+        assert XML_PATH.is_file()
 
     def test_audio_elements_count(self, repovizz_loader: XmlLoader) -> None:
         """Should find 6 Audio elements (2 ambient + 4 pickups)."""

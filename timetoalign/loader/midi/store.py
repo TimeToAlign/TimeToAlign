@@ -166,9 +166,10 @@ class MidiStore(EventStore):
             >>> cmaps = store.get_cmaps()
             >>> quarters_map = cmaps.get("quarters")
             >>> if quarters_map:
-            ...     quarters = quarters_map(960)  # 2.0 quarters at 480 PPQ
+            ...     quarters = quarters_map(960)  # Fraction(2, 1) at 480 PPQ
         """
-        from timetoalign.maps import ScalarMap, TableMap
+        from timetoalign.maps import TableMap
+        from timetoalign.maps.convenience import TicksToQuarters
 
         cmaps: dict[str, ConversionMap] = {}
 
@@ -177,12 +178,8 @@ class MidiStore(EventStore):
         if ppq is None:
             return cmaps
 
-        # Always available if we have PPQ: ticks -> quarters
-        cmaps["quarters"] = ScalarMap(
-            scalar=1 / ppq,
-            source_unit="ticks",
-            target_unit="quarters",
-        )
+        # Always available if we have PPQ: ticks -> quarters, exact
+        cmaps["quarters"] = TicksToQuarters(ppq=ppq)
 
         # Check for tempo events to build ticks -> seconds map
         # Tempo events would be stored in controls as TempoChange events

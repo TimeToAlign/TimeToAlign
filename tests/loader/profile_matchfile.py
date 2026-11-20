@@ -23,8 +23,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from timetoalign.loader.alignment.matchfile import MatchfileLoader  # noqa: E402
+from timetoalign.testdata import ensure_data  # noqa: E402
 
-VIENNA_DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "vienna_1x22"
+VIENNA_DATA_DIR = ensure_data("vienna_1x22")
 ALL_MATCH_FILES = sorted(VIENNA_DATA_DIR.glob("*.match"))
 P01_MATCH = VIENNA_DATA_DIR / "Chopin_op10_no3_p01.match"
 

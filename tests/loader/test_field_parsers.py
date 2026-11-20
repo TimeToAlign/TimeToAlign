@@ -176,8 +176,8 @@ class TestSemanticFieldBlueprint:
         assert bp.is_empty is True
         result = bp.from_array(pa.array([1, 2, 16]))
         assert isinstance(result, MeasureNumberField)
-        assert result[0] == MeasureNumber(value=1)
-        assert result[2] == MeasureNumber(value=16)
+        assert result[0] == MeasureNumber(mn="1")
+        assert result[2] == MeasureNumber(mn="16")
 
     def test_id_blueprint_packs_string(self) -> None:
         bp = IdField(name="note_id")

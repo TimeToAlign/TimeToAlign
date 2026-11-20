@@ -36,12 +36,42 @@ TSV columns (notes.tsv gold standard):
 - tpc, midi, name, octave: Pitch info
 - tied, gracenote, chord_id: Note attributes
 
+## Attributes
+
+| Name | Description |
+| --- | --- |
+| [measure_map](#timetoalign.loader.score.Ms3Loader.measure_map) | The immutable measure structure parsed from a measures TSV. |
+
 ## Methods
 
 | Name | Description |
 | --- | --- |
+| [create_timeline](#timetoalign.loader.score.Ms3Loader.create_timeline) | Create a score timeline and, by default, attach parsed structure. |
 | [from_file](#timetoalign.loader.score.Ms3Loader.from_file) | Create a loader and load TSV files in one step. |
 | [load](#timetoalign.loader.score.Ms3Loader.load) | Load one or more TSV source files. |
+
+### create_timeline { #timetoalign.loader.score.Ms3Loader.create_timeline }
+
+```python
+loader.score.Ms3Loader.create_timeline(
+    uid=None,
+    name=None,
+    *,
+    flatten=False,
+    **kwargs,
+)
+```
+
+Create a score timeline and, by default, attach parsed structure.
+
+Known limitation: a score whose measures are **split** — two
+records sharing one notated downbeat, as when a bar is divided
+across a repeat sign — has no floating-measure lattice, because
+the two halves cannot both anchor the same ordinal. The timeline
+then carries no ``floating_measures`` conversion; every other
+conversion, and the measure structure itself, is unaffected. No
+approximate lattice is built in its place, since an fm reading
+those measures do not support is worse than no fm reading.
 
 ### from_file { #timetoalign.loader.score.Ms3Loader.from_file }
 

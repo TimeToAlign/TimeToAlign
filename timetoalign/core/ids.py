@@ -1,14 +1,15 @@
 """Identity management for TTA objects.
 
-This module provides scoped IDs that preserve source provenance,
-generators for creating unique IDs within a scope, and utilities
-for resolving partial/regex ID patterns.
+This module provides scoped IDs that preserve source provenance, the one
+stateless generator of minted IDs, and utilities for resolving
+partial/regex ID patterns.
 
 Includes:
 - ScopedId: An identifier with scope:local format.
-- IdGenerator: General-purpose unique ID generation within a scope.
-- TimelineIdGenerator: Generates systematic timeline IDs based on type
-  (e.g., ``clt1``, ``dlt2``, ``score:clt1``, ``perf:dlt3``).
+- mint_id: The one generator of minted ids, ``{prefix}_{N}``
+  (e.g., ``clt_1``, ``region_2``, ``score:clt_1``); ``mint_ids`` mints many
+  at once by the same rule.
+- validate_id: The rule every given id obeys.
 - resolve_id: Resolve a partial string or regex to a single ID.
 - resolve_ids: Resolve a pattern to all matching IDs.
 """
@@ -16,11 +17,18 @@ Includes:
 from __future__ import annotations
 
 import re
+from collections.abc import Container, Iterable, Mapping, Sequence
+from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, ClassVar
+from types import MappingProxyType
+from typing import Any, ClassVar
 
-if TYPE_CHECKING:
-    pass
+import numpy as np
+import pyarrow as pa
+import pyarrow.compute as pc
+import timetoshare
+
+from .enums import TimeUnit
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,243 +142,328 @@ class ScopedId:
         return bool(self.scope)
 
 
-@dataclass
-class IdGenerator:
-    """Generates unique IDs within a given scope.
+# region Manifest element ids
 
-    Supports both:
-    1. Wrapping external IDs with the scope
-    2. Generating new IDs when none provided
-
-    Tracks seen IDs to detect collisions.
-
-    Attributes:
-        scope: The scope to apply to all generated/wrapped IDs
-
-    Examples:
-        >>> gen = IdGenerator("midi")
-
-        >>> gen.get_or_create("n42")  # Wrap external ID
-        'midi:n42'
-
-        >>> gen.get_or_create(None, type_hint="note")  # Generate
-        'midi:note_1'
-
-        >>> gen.get_or_create(None, type_hint="note")  # Generate next
-        'midi:note_2'
-    """
-
-    scope: str
-
-    # Internal state
-    _counters: dict[str, int] = field(default_factory=dict)
-    _seen: set[str] = field(default_factory=set)
-
-    def get_or_create(
-        self,
-        external_id: str | None = None,
-        type_hint: str = "event",
-    ) -> str:
-        """Get a scoped ID string.
-
-        Args:
-            external_id: The ID from the source, if any. Will be wrapped
-                        with the scope but otherwise preserved.
-            type_hint: A prefix for generated IDs if external_id is None.
-
-        Returns:
-            A string in "scope:local_id" format (or just "local_id" if
-            scope is empty).
-        """
-        if external_id is not None and str(external_id).strip():
-            # Wrap external ID
-            local = str(external_id).strip()
-        else:
-            # Generate new ID
-            counter = self._counters.get(type_hint, 0) + 1
-            self._counters[type_hint] = counter
-            local = f"{type_hint}_{counter}"
-
-        # Create scoped ID
-        scoped = ScopedId(self.scope, local)
-        full_id = str(scoped)
-
-        # Track for collision detection (we don't raise, just track)
-        self._seen.add(full_id)
-
-        return full_id
-
-    def create(self, type_hint: str = "event") -> str:
-        """Generate a new unique ID (no external ID)."""
-        return self.get_or_create(None, type_hint=type_hint)
-
-    def wrap(self, external_id: str) -> str:
-        """Wrap an external ID with the scope."""
-        return self.get_or_create(external_id)
-
-    def reset(self) -> None:
-        """Reset all counters and seen IDs."""
-        self._counters.clear()
-        self._seen.clear()
-
-    def reset_counters(self) -> None:
-        """Reset counters but keep seen IDs (for continuation)."""
-        self._counters.clear()
-
-    @property
-    def count(self) -> int:
-        """Total number of IDs generated/wrapped."""
-        return len(self._seen)
-
-    def has_seen(self, id_str: str) -> bool:
-        """Check if an ID has been generated/wrapped by this generator."""
-        return id_str in self._seen
+_REFUSED_ID_CHARACTERS = re.compile(r"[\x00-\x1f]")
 
 
-# Mapping from timeline class name to type-based prefix.
-_TIMELINE_TYPE_PREFIXES: dict[str, str] = {
-    "ContinuousLogicalTimeline": "clt",
-    "DiscreteLogicalTimeline": "dlt",
-    "ContinuousPhysicalTimeline": "cpt",
-    "DiscretePhysicalTimeline": "dpt",
-    "ContinuousGraphicalTimeline": "cgt",
-    "DiscreteGraphicalTimeline": "dgt",
-}
+def validate_id(element_id: str) -> str:
+    """Return *element_id* if it is a valid given id, else raise.
 
+    An id is any non-empty string without a control character (U+0000 to
+    U+001F, which an XML attribute cannot carry). Whitespace, slashes,
+    colons, dots, URIs and unicode are permitted.
 
-@dataclass
-class TimelineIdGenerator:
-    """Generates systematic timeline IDs based on type.
+    Args:
+        element_id: The id to check.
 
-    Timeline IDs follow the pattern ``{prefix}{N}`` where prefix
-    encodes the timeline type (domain + continuity) and N is a
-    1-indexed counter scoped to this generator instance.
+    Returns:
+        The same id.
 
-    When a role is specified, the ID becomes ``{role}:{prefix}{N}``
-    (e.g., ``score:clt1``, ``perf:dlt3``).
-
-    The counter N is scoped per prefix per generator. Each generator
-    instance maintains its own counter state, so different loaders
-    do not interfere with each other.
-
-    Attributes:
-        _counters: Per-prefix counter state.
-        _id_to_meta: Maps generated IDs to metadata dicts for lookup.
+    Raises:
+        ValueError: If the id is no string, is empty or contains a control
+            character.
 
     Examples:
-        >>> gen = TimelineIdGenerator()
-        >>> gen.next_id("ContinuousLogicalTimeline")
-        'clt1'
-        >>> gen.next_id("ContinuousLogicalTimeline")
-        'clt2'
-        >>> gen.next_id("DiscreteLogicalTimeline")
-        'dlt1'
-        >>> gen.next_id_with_role("DiscreteLogicalTimeline", "perf")
-        'perf:dlt2'
+        >>> validate_id("Bass Kick")
+        'Bass Kick'
+        >>> validate_id("a/b")
+        'a/b'
+        >>> validate_id("a\\tb")
+        Traceback (most recent call last):
+        ...
+        ValueError: Invalid id 'a\\tb': an id must be non-empty and contain no control character
     """
+    if (
+        not isinstance(element_id, str)
+        or not element_id
+        or (_REFUSED_ID_CHARACTERS.search(element_id))
+    ):
+        raise ValueError(
+            f"Invalid id {element_id!r}: an id must be non-empty and contain no "
+            "control character"
+        )
+    return element_id
 
-    _counters: dict[str, int] = field(default_factory=dict)
-    _id_to_meta: dict[str, dict[str, object]] = field(default_factory=dict)
 
-    def _get_prefix(self, timeline_type: type | str) -> str:
-        """Resolve the prefix for a timeline type.
+def quote_id(element_id: str) -> str:
+    """Return *element_id* in single quotes, as a message names an element.
 
-        Args:
-            timeline_type: A timeline class or its name as a string.
+    An id is quoted as it is, an apostrophe included, so that every message
+    names an element alike (:func:`validate_id` alone shows the ``repr``,
+    which makes a refused control character visible).
 
-        Returns:
-            The type-based prefix (e.g., 'clt', 'dlt').
+    Examples:
+        >>> quote_id("Bach's")
+        "'Bach's'"
+    """
+    return f"'{element_id}'"
 
-        Raises:
-            ValueError: If the timeline type is not recognised.
-        """
-        if isinstance(timeline_type, str):
-            type_name = timeline_type
-        else:
-            type_name = timeline_type.__name__
 
-        prefix = _TIMELINE_TYPE_PREFIXES.get(type_name)
-        if prefix is None:
-            # Fallback: try to resolve from base Timeline
-            if type_name == "Timeline":
-                return "tl"
-            raise ValueError(
-                f"Unknown timeline type '{type_name}'. "
-                f"Expected one of: {', '.join(_TIMELINE_TYPE_PREFIXES.keys())}"
+def mint_id(prefix: str, taken: Container[str]) -> str:
+    """Mint ``{prefix}_{N}`` with N the smallest positive integer not taken.
+
+    This is the one id generator of the library. It holds no state: the same
+    prefix and the same taken ids always give the same id, whatever was built
+    before in the process.
+
+    Args:
+        prefix: The type prefix, optionally led by a role
+            (``"clt"``, ``"region"``, ``"score:clt"``).
+        taken: The ids already held in the scope the new id must be unique in.
+
+    Returns:
+        The minted id.
+
+    Examples:
+        >>> mint_id("clt", ())
+        'clt_1'
+        >>> mint_id("clt", {"clt_1", "clt_3"})
+        'clt_2'
+        >>> mint_id("score:clt", {"score:clt_1"})
+        'score:clt_2'
+    """
+    number = 1
+    while f"{prefix}_{number}" in taken:
+        number += 1
+    return f"{prefix}_{number}"
+
+
+def mint_ids(prefix: str, taken: pa.Array, count: int) -> pa.Array:
+    """Mint *count* ids ``{prefix}_{N}``, the N the smallest numbers not taken.
+
+    The columnar sibling of :func:`mint_id`, by the same rule and as
+    stateless: minting one id after another into a growing taken set gives
+    exactly these ids, in this order.
+
+    Args:
+        prefix: The type prefix (``"claim"``).
+        taken: The ids already held in the scope (a string array; nulls are
+            ignored).
+        count: How many ids to mint.
+
+    Returns:
+        A string array of *count* ids, ascending by number.
+
+    Examples:
+        >>> mint_ids("claim", pa.array(["claim_2", "x"]), 3).to_pylist()
+        ['claim_1', 'claim_3', 'claim_4']
+        >>> len(mint_ids("claim", pa.array([], pa.string()), 0))
+        0
+    """
+    occupied = pc.unique(pc.drop_null(pc.cast(taken, pa.string())))
+    numbers = pa.array(np.arange(1, count + len(occupied) + 1, dtype=np.int64))
+    candidates = pc.binary_join_element_wise(
+        f"{prefix}_", pc.cast(numbers, pa.string()), ""
+    )
+    free = candidates.filter(pc.invert(pc.is_in(candidates, value_set=occupied)))
+    return free.slice(0, count)
+
+
+def timeline_id_prefix(unit: TimeUnit) -> str:
+    """Return the id prefix of a timeline measured in *unit*.
+
+    The prefix encodes the unit's discreteness and domain: ``clt``, ``dlt``,
+    ``cpt``, ``dpt``, ``cgt``, ``dgt``.
+
+    Examples:
+        >>> timeline_id_prefix(TimeUnit.quarters)
+        'clt'
+        >>> timeline_id_prefix(TimeUnit.samples)
+        'dpt'
+    """
+    return f"{'d' if unit.is_discrete else 'c'}{unit.domain.value[0]}t"
+
+
+def _admit_id(
+    element_id: str,
+    *,
+    minted: bool,
+    prefix: str,
+    taken: Mapping[str, str],
+    element: str,
+    scope: str = "",
+) -> str:
+    """Return the id under which an element joins a scope.
+
+    An id the scope does not hold is kept. A taken id that was minted is
+    minted again in the scope; a taken id that was given raises.
+
+    Args:
+        element_id: The element's current id.
+        minted: Whether the id was minted rather than given.
+        prefix: The prefix to mint with.
+        taken: Every id of the scope, mapped to a description of its holder.
+        element: A description of the joining element, for the error.
+        scope: A description of the scope (``"group 'g'"``), for the error,
+            or empty for the manifest of a timeline.
+
+    Raises:
+        ValueError: If a given id is already taken.
+    """
+    if element_id not in taken:
+        return element_id
+    if minted:
+        return mint_id(prefix, taken)
+    raise ValueError(
+        f"{element} cannot join{' ' + scope if scope else ''}: its id "
+        f"{quote_id(element_id)} is already held by {taken[element_id]}"
+    )
+
+
+def _plan_admissions(
+    entries: Sequence[tuple[str, bool, str, str]],
+    taken: Mapping[str, str],
+    *,
+    scope: str = "",
+    avoid: Iterable[str] = (),
+) -> dict[int, str]:
+    """Plan the ids under which several elements join a scope together.
+
+    A given id is kept; it must be held neither in the scope nor by another
+    joining element. A minted id held in the scope, given to a joining
+    element or kept by a joining element before it is minted again. Nothing
+    is changed: every check precedes the plan, which maps the index of each
+    element to mint again to its new id.
+
+    Args:
+        entries: ``(id, minted, prefix, description)`` of each joining
+            element, in the order they claim their ids.
+        taken: Every id of the scope, mapped to a description of its holder.
+        scope: A description of the scope, for the error.
+        avoid: Further ids no id minted again may take: those of the other
+            scopes the elements belong to already.
+
+    Raises:
+        ValueError: If a given id is already held, in the scope or by
+            another joining element.
+    """
+    claimed = dict(taken)
+    for element_id, minted, prefix, element in entries:
+        if not minted:
+            _admit_id(
+                element_id,
+                minted=False,
+                prefix=prefix,
+                taken=claimed,
+                element=element,
+                scope=scope,
             )
-        return prefix
+            claimed[element_id] = element
+    occupied = set(claimed) | set(avoid) | {entry[0] for entry in entries}
+    plan: dict[int, str] = {}
+    for index, (element_id, minted, prefix, element) in enumerate(entries):
+        if not minted:
+            continue
+        if element_id in claimed:
+            element_id = plan[index] = mint_id(prefix, occupied)
+            occupied.add(element_id)
+        claimed[element_id] = element
+    return plan
 
-    def next_id(
+
+class _OpenObject:
+    """An object with a dictionary form that keeps the keys it does not read.
+
+    A TimeToShare object may carry keys its reader does not know. The
+    reader keeps them on the object read from the JSON object they were
+    found in (:meth:`_keep_unknown_keys`), and the writer writes them back
+    after its own keys (:meth:`_dict_form`). A subclass lists its known keys
+    in ``_dict_keys`` and names in ``_manifest_path`` where its JSON object
+    lies in a manifest. The writer builds the complete form, every known key
+    written; the minimal form is TimeToShare's (:func:`_minimal_at`).
+    """
+
+    _dict_keys: ClassVar[tuple[str, ...]] = ()
+    _manifest_path: ClassVar[tuple[str, ...]] = ()
+    _unknown_keys: Mapping[str, Any] = MappingProxyType({})
+
+    def _keep_unknown_keys(
+        self, data: Mapping[str, Any], known: Container[str] | None = None
+    ) -> None:
+        """Keep a copy of every key of *data* outside *known* (``_dict_keys``)."""
+        known = self._dict_keys if known is None else known
+        unknown = {
+            key: deepcopy(value) for key, value in data.items() if key not in known
+        }
+        object.__setattr__(self, "_unknown_keys", unknown)
+
+    def _dict_form(
         self,
-        timeline_type: type | str,
+        fields: Mapping[str, Any],
         *,
-        meta: dict[str, object] | None = None,
-    ) -> str:
-        """Generate the next ID for a given timeline type.
+        minimal: bool,
+    ) -> dict[str, Any]:
+        """Return *fields*, then the unknown keys kept.
+
+        *fields* is the complete form. With *minimal*, the object is written
+        in TimeToShare's minimal form at its ``_manifest_path``.
+        """
+        written = dict(fields)
+        written.update(deepcopy(dict(self._unknown_keys)))
+        return _minimal_at(written, self._manifest_path) if minimal else written
+
+
+def _minimal_at(value: dict[str, Any], path: tuple[str, ...]) -> dict[str, Any]:
+    """Return *value*, a JSON object at *path* of a manifest, in its minimal form.
+
+    The minimal form is the one :func:`timetoshare.minimal` writes: the
+    object is placed as the first entry of each array *path* names, from a
+    bare manifest down (``()`` is the manifest itself), and taken back out.
+    A timeline holding it states no unit, so no own-axis value is respelled.
+    """
+    holder: Any = value
+    for key in reversed(path):
+        holder = {key: [holder]}
+    result = timetoshare.minimal(holder)
+    for key in path:
+        result = result[key][0]
+    return result
+
+
+@dataclass(frozen=True)
+class _IdentifiedElement(_OpenObject):
+    """Identity shared by the frozen elements of a timeline manifest.
+
+    A subclass names its kind in ``_id_prefix``. Constructed without an
+    ``id``, an element mints ``{prefix}_1`` (its own scope is empty) and
+    remembers that the id was minted, so that a collision when it joins a
+    timeline re-mints it rather than raising. A given id is validated and
+    kept verbatim. The minted flag is private and never serialized.
+    """
+
+    _id_prefix: ClassVar[str]
+
+    id: str = field(default=None, kw_only=True)  # type: ignore[assignment]
+    _minted: bool = field(default=False, kw_only=True, repr=False, compare=False)
+    # A field, so that a copy made with ``dataclasses.replace`` keeps it.
+    _unknown_keys: Mapping[str, Any] = field(
+        default_factory=dict, kw_only=True, repr=False, compare=False
+    )
+
+    def __post_init__(self) -> None:
+        if self.id is None:
+            object.__setattr__(self, "id", mint_id(self._id_prefix, ()))
+            object.__setattr__(self, "_minted", True)
+        else:
+            validate_id(self.id)
+
+    def to_dict(self, *, minimal: bool = True) -> dict[str, Any]:
+        """Return this element as its JSON object, coordinates as bare values.
 
         Args:
-            timeline_type: A timeline class or class name string.
-            meta: Optional metadata to associate with this ID.
-
-        Returns:
-            An ID like ``clt1``, ``dlt2``, etc.
+            minimal: Write the minimal form (the default): every key at its
+                default value left out, in nested objects too. With False,
+                the complete form: every key written, its default included.
         """
-        prefix = self._get_prefix(timeline_type)
-        counter = self._counters.get(prefix, 0) + 1
-        self._counters[prefix] = counter
-        tid = f"{prefix}{counter}"
-        if meta:
-            self._id_to_meta[tid] = dict(meta)
-        return tid
+        return self._dict_form(self._dict_fields(), minimal=minimal)
 
-    def next_id_with_role(
-        self,
-        timeline_type: type | str,
-        role: str,
-        *,
-        meta: dict[str, object] | None = None,
-    ) -> str:
-        """Generate the next ID with a role prefix.
+    def _dict_fields(self) -> dict[str, Any]:
+        """Return the element's keys in written order, in the complete form."""
+        raise NotImplementedError
 
-        The role is prepended as ``{role}:{prefix}{N}``.
 
-        Args:
-            timeline_type: A timeline class or class name string.
-            role: The role prefix (e.g., 'score', 'perf').
-            meta: Optional metadata to associate with this ID.
-
-        Returns:
-            An ID like ``score:clt1``, ``perf:dlt3``.
-        """
-        prefix = self._get_prefix(timeline_type)
-        counter = self._counters.get(prefix, 0) + 1
-        self._counters[prefix] = counter
-        tid = f"{role}:{prefix}{counter}"
-        if meta:
-            self._id_to_meta[tid] = dict(meta)
-        return tid
-
-    def get_meta(self, timeline_id: str) -> dict[str, object] | None:
-        """Retrieve metadata associated with a generated ID.
-
-        Args:
-            timeline_id: A previously generated timeline ID.
-
-        Returns:
-            The metadata dict, or None if no metadata was stored.
-        """
-        return self._id_to_meta.get(timeline_id)
-
-    def reset(self) -> None:
-        """Reset all counters and metadata."""
-        self._counters.clear()
-        self._id_to_meta.clear()
-
-    @property
-    def count(self) -> int:
-        """Total number of IDs generated."""
-        return sum(self._counters.values())
-
+# endregion
 
 # region ID Resolution Utilities
 
@@ -391,16 +484,16 @@ def resolve_ids(pattern: str, available_ids: list[str]) -> list[str]:
         List of matching IDs (may be empty).
 
     Examples:
-        >>> resolve_ids("clt1", ["clt1", "clt2", "dlt1"])
-        ['clt1']
+        >>> resolve_ids("clt_1", ["clt_1", "clt_2", "dlt_1"])
+        ['clt_1']
 
-        >>> resolve_ids("clt", ["clt1", "clt2", "dlt1"])
-        ['clt1', 'clt2']
+        >>> resolve_ids("clt", ["clt_1", "clt_2", "dlt_1"])
+        ['clt_1', 'clt_2']
 
-        >>> resolve_ids(r"^clt\\d+$", ["clt1", "clt2", "dlt1"])
-        ['clt1', 'clt2']
+        >>> resolve_ids(r"^clt_\\d+$", ["clt_1", "clt_2", "dlt_1"])
+        ['clt_1', 'clt_2']
 
-        >>> resolve_ids("xyz", ["clt1", "clt2"])
+        >>> resolve_ids("xyz", ["clt_1", "clt_2"])
         []
     """
     if not pattern or not available_ids:
@@ -454,16 +547,16 @@ def resolve_id(
         KeyError: If no ID matches the pattern.
 
     Examples:
-        >>> resolve_id("clt1", ["clt1", "clt2", "dlt1"])
-        'clt1'
+        >>> resolve_id("clt_1", ["clt_1", "clt_2", "dlt_1"])
+        'clt_1'
 
-        >>> resolve_id("clt", ["clt1", "clt2", "dlt1"])  # warns
-        'clt1'
+        >>> resolve_id("clt", ["clt_1", "clt_2", "dlt_1"])  # warns
+        'clt_1'
 
-        >>> resolve_id("xyz", ["clt1", "clt2"])
+        >>> resolve_id("xyz", ["clt_1", "clt_2"])
         Traceback (most recent call last):
             ...
-        KeyError: "No ID matches pattern 'xyz'. Available: clt1, clt2"
+        KeyError: "No ID matches pattern 'xyz'. Available: clt_1, clt_2"
     """
     import warnings
 

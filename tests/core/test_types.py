@@ -691,8 +691,8 @@ class TestCoordinateNumericProtocols:
     def test_float_in_tuple_construction(self) -> None:
         """float(coord) can be used in tuple construction."""
         c = Coordinate(15343, TimeUnit.pixels)
-        result = (float(c), "dgt1")
-        assert result == (15343.0, "dgt1")
+        result = (float(c), "dgt_1")
+        assert result == (15343.0, "dgt_1")
 
     def test_float_in_arithmetic_with_numbers(self) -> None:
         """float(coord) enables arithmetic with plain numbers."""

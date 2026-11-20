@@ -67,13 +67,12 @@
 
 # %%
 
-from timetoalign import IdCoordinate, Ms3Loader, TimelineGroup, TimeUnit
+from timetoalign import Coordinate, IdCoordinate, Ms3Loader, TimelineGroup, TimeUnit
 from timetoalign.loader.graphical.aton import ATONLoader
 from timetoalign.loader.midi import PerformanceMidiLoader
 from timetoalign.loader.physical import AudioLoader
 from timetoalign.maps import ScalarMap
 from timetoalign.testdata import ensure_data
-from timetoalign.timelines import ContinuousPhysicalTimeline
 
 DATA_DIR = ensure_data("supra")
 
@@ -121,7 +120,7 @@ assert aton_loader.image_dimensions["height"] == 299400
 # image with holes at absolute coordinates.
 
 # %%
-dgt1 = aton_loader.create_timeline(uid="dgt1", name="Piano Roll Image (WM 990)")
+dgt1 = aton_loader.create_timeline(uid="dgt_1", name="Piano Roll Image (WM 990)")
 dgt1
 
 # %% [markdown]
@@ -218,18 +217,18 @@ timestamps_df = dgt1.get_timestamp_table(format="dataframe")
 # **Why ~20,680 timestamps?**
 #
 # The timestamp table has one row per **unique** event coordinate in the hierarchy:
-# - Parent timeline (dgt1) contains 30,092 hole events at absolute pixel coordinates
+# - Parent timeline (dgt_1) contains 30,092 hole events at absolute pixel coordinates
 # - But many holes share the same pixel row (multiple notes at one time position)
 # - After de-duplication: ~20,676 unique coordinates plus 4 boundary coordinates
 #
 # Each row shows the coordinate in **all** coordinate systems simultaneously,
 # and every column is named for the timeline or C-Map it belongs to:
-# - `dgt1 (pixels)`: The root (parent) coordinate in pixels
+# - `dgt_1 (pixels)`: The root (parent) coordinate in pixels
 # - `dgt_holes (pixels)`: **Relative** coordinate in child timeline (first hole = 0, NaN if outside)
 # - C-Map columns: Physical units with names like "pixels_to_inches (inches)"
 #
 # There is no separate `axis` column. The coordinate the query was made on is
-# already the `dgt1` column, so a second column repeating it under a generic
+# already the `dgt_1` column, so a second column repeating it under a generic
 # name carried no information the row did not already hold.
 
 # %%
@@ -312,31 +311,19 @@ dlt2_exp
 # %% [markdown]
 # ### E.3: DPT1 - Audio (MP3)
 #
-# **Note:** MP3 loading requires `mutagen` or `soundfile`. If not installed,
-# we use a mock timeline with the known duration from the README.
+# **Note:** MP3 loading requires the audio extra
+# (`pip install "timetoalign[audio]"`). The timeline is in samples, the file's
+# own axis, with a `SamplesToSeconds` C-Map attached.
 
 # %%
-try:
-    audio_loader = AudioLoader.from_file(MP3_PATH)
-    dpt1_audio = audio_loader.create_timeline(uid="dpt1_audio")
-    audio_duration = audio_loader.duration_seconds
-    audio_info = {
-        "DPT1 (Audio)": dpt1_audio.id,
-        "Sample rate": f"{audio_loader.sample_rate:,} Hz",
-        "Duration": f"{audio_duration:.2f} seconds",
-    }
-except ValueError as e:
-    print(f"Note: MP3 loading unavailable ({e}). Using mock timeline.")
-    audio_duration = 573.0
-    dpt1_audio = ContinuousPhysicalTimeline(
-        length=audio_duration,
-        unit=TimeUnit.seconds,
-        uid="dpt1_audio",
-    )
-    audio_info = {
-        "DPT1 (Audio)": dpt1_audio.id,
-        "Duration": f"{audio_duration:.2f} seconds (from README)",
-    }
+audio_loader = AudioLoader.from_file(MP3_PATH)
+dpt1_audio = audio_loader.create_timeline(uid="dpt1_audio")
+audio_info = {
+    "DPT1 (Audio)": dpt1_audio.id,
+    "Samples": f"{audio_loader.n_samples:,}",
+    "Sample rate": f"{audio_loader.sample_rate:,} Hz",
+    "Duration": f"{audio_loader.duration_seconds:.2f} seconds",
+}
 
 dpt1_audio
 
@@ -435,7 +422,7 @@ else:
 #     |
 #     +-- dlt2_exp (MIDI ticks)
 #     |
-#     +-- dpt1_audio (seconds)
+#     +-- dpt1_audio (samples)
 #     |
 #     +-- clt1_score (quarterbeats)
 # ```
@@ -457,9 +444,10 @@ group
 #
 # ## Part G: Group Timestamps - The Heart of Alignment
 #
-# **This is the key feature!** The TimelineGroup maintains a timestamp table
-# where each row represents a synchronized point across ALL timelines.
-# Coordinate transfer uses these timestamps via interpolation.
+# **This is the key feature!** Every member of a TimelineGroup spans the
+# whole group: the group stores two synchronized points across ALL timelines,
+# the shared start and the shared end. Coordinate transfer converts linearly
+# between them.
 
 # %%
 # Get the full timestamp table
@@ -468,7 +456,7 @@ group_timestamps
 
 # %% [markdown]
 # Each row shows the **same musical moment** in all coordinate systems.
-# Column names include units (e.g., "dgt_holes (pixels)", "dpt1_audio (seconds)").
+# Column names include units (e.g., "dgt_holes (pixels)", "dpt1_audio (samples)").
 
 # %% [markdown]
 # ---
@@ -579,8 +567,10 @@ parent_df
 # We can query the group from ANY member timeline. Just display the timestamp!
 
 # %%
-# Query at 100 seconds in the audio - timestamp shows ALL peer timelines
-audio_100s = group.get_timestamp_at(100.0, "dpt1_audio")
+# Query at 100 seconds in the audio - its C-Map goes from samples to seconds,
+# and the query takes its inverse onto the samples axis; the timestamp shows ALL
+# peer timelines
+audio_100s = group.get_timestamp_at(Coordinate(100.0, TimeUnit.seconds), "dpt1_audio")
 audio_100s
 
 # %%
@@ -603,6 +593,11 @@ start_ts
 # End of music
 end_ts = group.get_timestamp_at(int(aton_loader.musical_length.value), "dgt_holes")
 end_ts
+
+# %% [markdown]
+# The end stamp lists the nested timelines that reach the end of the music
+# (`dlt_1`, `dlt_4`, `clt_3`) and leaves out those that end earlier: a child
+# holds its own end where no sibling starts there.
 
 # %% [markdown]
 # ### I.3: Round-Trip Verification
@@ -678,7 +673,7 @@ print(f"  Score diff: {abs(via_score - test_coord)} pixels")
 #                           |
 #                           +-- dlt2_exp (MIDI expressive: ticks)
 #                           |
-#                           +-- dpt1_audio (Audio: seconds)
+#                           +-- dpt1_audio (Audio: samples)
 #                           |
 #                           +-- clt1_score (Score: quarterbeats)
 #                                 |-- notes (5,577 events)
@@ -690,5 +685,6 @@ print(f"  Score diff: {abs(via_score - test_coord)} pixels")
 # %% [markdown]
 # ## Next Steps
 #
-# - **how01_beat_grids.ipynb**: Work with BeatGrid, FloorMap, and RotationMap
+# - **how01_beat_grids.ipynb**: Build a BeatGrid from tempo statements and
+#   export its beats for an annotation program
 # - **Advanced**: Implement WarpMap for non-linear alignment (expressive timing)

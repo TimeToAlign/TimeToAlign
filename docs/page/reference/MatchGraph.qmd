@@ -39,7 +39,7 @@ is NOT a global graph; MatchGraphs are created on demand.
 
 ```python
 >>> # Extend via group membership
->>> extended = graph.extend_to_groups(groups, timeline_to_group)
+>>> extended = graph.extend_to_groups(groups)
 ```
 
 ```python
@@ -71,9 +71,8 @@ is NOT a global graph; MatchGraphs are created on demand.
 ```python
 alignment.MatchGraph.extend_to_groups(
     groups,
-    timeline_to_group,
-    include_inferred=True,
     *,
+    include_inferred=True,
     timeline_ids=None,
     id_pattern=None,
     include_domains=None,
@@ -83,23 +82,27 @@ alignment.MatchGraph.extend_to_groups(
 
 Extend anchors to full group timestamps via implicit claims.
 
-For each coordinate in the graph, if it belongs to a Group,
-computes the equivalent coordinate for every other member of that
-Group and adds an implicit ``MatchClaim`` (case d) plus the
-corresponding edge. Filters control which timelines receive
-implicit claims.
+For each coordinate in the graph, computes the equivalent coordinate
+for every other member of every group its timeline belongs to and
+adds an implicit ``MatchClaim`` (case d) plus the corresponding edge.
+Membership is read from *groups* alone, and a timeline may belong to
+several. A coordinate reached this way is extended in turn through
+the other groups of its timeline, so a timeline shared by two groups
+carries a coordinate from the members of one to the members of the
+other. Filters control which timelines receive implicit claims; a
+timeline they exclude receives no coordinate, so no extension passes
+through it.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name              | Type                                                                  | Description                                | Default    |
-|-------------------|-----------------------------------------------------------------------|--------------------------------------------|------------|
-| groups            | [dict](`dict`)\[[str](`str`), \'TimelineGroup\'\]                     | Dict of group_id -> TimelineGroup.         | _required_ |
-| timeline_to_group | [dict](`dict`)\[[str](`str`), [str](`str`)\]                          | Dict of timeline_id -> group_id.           | _required_ |
-| include_inferred  | [bool](`bool`)                                                        | Whether to add inferred edges.             | `True`     |
-| timeline_ids      | [set](`set`)\[[str](`str`)\] \| None                                  | Only extend to these timeline IDs.         | `None`     |
-| id_pattern        | [str](`str`) \| None                                                  | Regex filter for timeline IDs.             | `None`     |
-| include_domains   | [set](`set`)\[[Domain](`timetoalign.core.enums.Domain`)\] \| None     | Only extend to timelines in these domains. | `None`     |
-| include_units     | [set](`set`)\[[TimeUnit](`timetoalign.core.enums.TimeUnit`)\] \| None | Only extend to timelines with these units. | `None`     |
+| Name             | Type                                                                  | Description                                | Default    |
+|------------------|-----------------------------------------------------------------------|--------------------------------------------|------------|
+| groups           | [dict](`dict`)\[[str](`str`), \'TimelineGroup\'\]                     | Dict of group_id -> TimelineGroup.         | _required_ |
+| include_inferred | [bool](`bool`)                                                        | Whether to add inferred edges.             | `True`     |
+| timeline_ids     | [set](`set`)\[[str](`str`)\] \| None                                  | Only extend to these timeline IDs.         | `None`     |
+| id_pattern       | [str](`str`) \| None                                                  | Regex filter for timeline IDs.             | `None`     |
+| include_domains  | [set](`set`)\[[Domain](`timetoalign.core.enums.Domain`)\] \| None     | Only extend to timelines in these domains. | `None`     |
+| include_units    | [set](`set`)\[[TimeUnit](`timetoalign.core.enums.TimeUnit`)\] \| None | Only extend to timelines with these units. | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 

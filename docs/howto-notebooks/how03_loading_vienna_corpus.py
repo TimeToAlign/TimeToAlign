@@ -113,8 +113,8 @@ all_timelines = loader.create_timelines()
 # different event count because some pianists omit notes (deletions).
 #
 # Individual timelines are accessed by role shorthand. The stored score UID is
-# `score:clt1`; performance UIDs are `perf:<stem>:cpt1` (for example,
-# `perf:Chopin_op10_no3_p01:cpt1`). The shorthand remains convenient for
+# `score:clt_1`; performance UIDs are `perf:<stem>:dlt_1` (for example,
+# `perf:Chopin_op10_no3_p01:dlt_1`). The shorthand remains convenient for
 # lookup:
 
 # %%

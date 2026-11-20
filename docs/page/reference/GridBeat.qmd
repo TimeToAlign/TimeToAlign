@@ -1,0 +1,19 @@
+# GridBeat { #timetoalign.timelines.GridBeat }
+
+```python
+timelines.GridBeat(seconds, segment, measure, segment_measure, beat)
+```
+
+One beat of a grid, labelled in both numbering schemes.
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name            | Type                                        | Description                                                                                                                                                                                                              |
+|-----------------|---------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| seconds         | [Fraction](`fractions.Fraction`)            | Where the beat sounds, as the exact ratio the grid's arithmetic produced. This is what the grid computes with and what a caller integrating tempi or deriving anchors reads.                                             |
+| segment         | [int](`int`)                                | 0-based index of the segment that generated it.                                                                                                                                                                          |
+| measure         | [int](`int`)                                | Measure number counted across the whole grid. Beats before the grid's first downbeat carry ``0``.                                                                                                                        |
+| segment_measure | [int](`int`)                                | Measure number restarted at each segment. Beats before the segment's first downbeat carry ``0``.                                                                                                                         |
+| beat            | [int](`int`)                                | 1-based beat-in-measure index under its segment's policy.                                                                                                                                                                |
+| instant         | [Coordinate](`timetoalign.core.Coordinate`) | Derived from :attr:`seconds`: the same position as a float-typed seconds :class:`~timetoalign.core.Coordinate`, built as :meth:`BeatGrid.seconds_at` builds its answer, so the two directions of the grid compare equal. |
+| is_downbeat     | [bool](`bool`)                              | Derived: whether this beat opens a measure, that is whether :attr:`beat` is ``1``.                                                                                                                                       |

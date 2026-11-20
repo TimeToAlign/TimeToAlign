@@ -417,7 +417,6 @@ class TestUnitOwnsTheRepresentation:
             (TimeUnit.frames, NumberType.int),
             (TimeUnit.pixels, NumberType.int),
             (TimeUnit.quarters, NumberType.fraction),
-            (TimeUnit.beats, NumberType.fraction),
             (TimeUnit.floating_measures, NumberType.float),
             (TimeUnit.seconds, NumberType.float),
             (TimeUnit.milliseconds, NumberType.float),
@@ -719,11 +718,11 @@ class TestConversionRowsAgreeWithGetUnit:
             DiscreteGraphicalTimeline,
         )
 
-        quarters_axis = ContinuousLogicalTimeline(length=Fraction(100), uid="clt1")
+        quarters_axis = ContinuousLogicalTimeline(length=Fraction(100), uid="clt_1")
         for scalar, target in (
             (Fraction(7104000, 3278347), TimeUnit.pixels),
             (Fraction(3278347, 7350), TimeUnit.seconds),
-            (Fraction(1, 3), TimeUnit.beats),
+            (Fraction(1, 3), TimeUnit.number),
         ):
             quarters_axis.add_conversion_map(
                 LinearMap(
@@ -772,7 +771,7 @@ class TestConversionRowsAgreeWithGetUnit:
         assert from_fraction_axis._conversion_rows() == [
             ("pixels", 2, "pixels"),
             ("seconds", 446.03360544217685, "seconds"),
-            ("beats", Fraction(1, 3), "beats"),
+            ("number", 0.3333333333333333, "number"),
         ]
         assert from_int_axis._conversion_rows() == [
             ("seconds", 446.03360544217685, "seconds"),
@@ -796,7 +795,7 @@ class TestConversionRowsAgreeWithGetUnit:
         assert from_fraction_axis.get_conversion_for("pixels") == 2
         assert from_fraction_axis.get_conversion_for("seconds") == 446.03360544217685
         assert from_int_axis.get_conversion_for("seconds") == 446.03360544217685
-        assert from_fraction_axis.get_conversion_for("beats") == Fraction(1, 3)
+        assert from_fraction_axis.get_conversion_for("number") == 0.3333333333333333
 
     def test_rendered_text_shows_the_row_values(self) -> None:
         """Both display lanes print the same numbers the rows carry."""
@@ -805,7 +804,7 @@ class TestConversionRowsAgreeWithGetUnit:
         text = str(from_fraction_axis)
         assert "  pixels   2 pixels" in text
         assert "  seconds  446.03360544217685 seconds" in text
-        assert "  beats    1/3 beats" in text
+        assert "  number   0.3333333333333333 number" in text
 
         html = from_int_axis._repr_html_()
         assert "446.03360544217685 seconds" in html
@@ -859,11 +858,14 @@ class TestMapCallsWriteTheirTargetAxis:
             start_mc=1,
             start_mn="1",
         )
-        floors = FloorMap(4.0, base=1, target_unit=TimeUnit.floating_measures)
+        floors = FloorMap(4.0, base=1, target_unit=TimeUnit.number)
 
-        assert meter.target_unit is TimeUnit.floating_measures
+        # A measure count names no axis at all, so the map declares no
+        # target unit and still answers a whole number.
+        assert meter.target_unit is None
         assert meter(4.0) == 2
         assert type(meter(4.0)) is int
+        assert floors.target_unit is TimeUnit.number
         assert floors(5.0) == 2
         assert type(floors(5.0)) is int
 

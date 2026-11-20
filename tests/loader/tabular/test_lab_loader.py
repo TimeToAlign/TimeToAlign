@@ -1,6 +1,6 @@
 """Tests for LabLoader.
 
-Tests use synthetic .lab files in tests/data/fixtures/lab/.
+Tests use the synthetic .lab files of the ``fixtures`` test-data corpus.
 All expected values are EXACT per the ZERO TOLERANCE validation policy.
 """
 
@@ -12,9 +12,10 @@ import pytest
 
 from timetoalign.core import TimeUnit
 from timetoalign.loader.tabular import LabLoader
+from timetoalign.testdata import ensure_data
 
 # Test data directory
-LAB_FIXTURES_DIR = Path(__file__).parent.parent.parent / "data" / "fixtures" / "lab"
+LAB_FIXTURES_DIR = ensure_data("fixtures") / "lab"
 
 
 # region Fixtures
@@ -231,15 +232,15 @@ class TestTimelineCreation:
         timeline = loaded_regions_loader.create_timeline()
 
         assert timeline is not None
-        assert timeline.id == "cpt1"
+        assert timeline.id == "cpt_1"
         assert timeline.unit == TimeUnit.seconds
         assert timeline.n_events == 6
 
     def test_create_timeline_with_uid(self, loaded_regions_loader: LabLoader) -> None:
         """create_timeline() accepts custom uid."""
-        timeline = loaded_regions_loader.create_timeline(uid="cpt1")
+        timeline = loaded_regions_loader.create_timeline(uid="cpt_1")
 
-        assert timeline.id == "cpt1"
+        assert timeline.id == "cpt_1"
 
     def test_create_timelines(self, loaded_regions_loader: LabLoader) -> None:
         """create_timelines() returns list with one timeline."""

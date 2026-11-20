@@ -1,8 +1,18 @@
 """Tests for core/ids.py."""
 
+from typing import Any
+
+import pyarrow as pa
 import pytest
 
-from timetoalign.core.ids import IdGenerator, ScopedId, TimelineIdGenerator
+from timetoalign.core import TimeUnit
+from timetoalign.core.ids import (
+    ScopedId,
+    mint_id,
+    mint_ids,
+    timeline_id_prefix,
+    validate_id,
+)
 
 
 class TestScopedIdCreation:
@@ -158,328 +168,108 @@ class TestScopedIdMethods:
         assert sid.is_scoped is False
 
 
-class TestIdGeneratorCreation:
-    """Tests for IdGenerator instantiation."""
-
-    def test_idgenerator_creation(self) -> None:
-        """Can create IdGenerator with scope."""
-        gen = IdGenerator("test")
-        assert gen.scope == "test"
-        assert gen.count == 0
-
-    def test_idgenerator_empty_scope(self) -> None:
-        """Can create IdGenerator with empty scope."""
-        gen = IdGenerator("")
-        assert gen.scope == ""
+# region Manifest id generator
 
 
-class TestIdGeneratorGetOrCreate:
-    """Tests for IdGenerator.get_or_create() method."""
+class TestMintId:
+    """mint_id answers the smallest free {prefix}_{N}, statelessly."""
 
-    def test_wrap_external_id(self) -> None:
-        """get_or_create with external ID wraps it."""
-        gen = IdGenerator("midi")
-        result = gen.get_or_create("n42")
-        assert result == "midi:n42"
+    @pytest.mark.parametrize(
+        ("prefix", "taken", "expected"),
+        [
+            ("clt", (), "clt_1"),
+            ("clt", {"clt_1", "clt_3"}, "clt_2"),
+            ("clt", {"clt_2"}, "clt_1"),
+            ("score:clt", {"score:clt_1"}, "score:clt_2"),
+        ],
+    )
+    def test_smallest_free_number(
+        self, prefix: str, taken: set[str], expected: str
+    ) -> None:
+        assert mint_id(prefix, taken) == expected
 
-    def test_wrap_external_id_strips_whitespace(self) -> None:
-        """External IDs are stripped of whitespace."""
-        gen = IdGenerator("midi")
-        result = gen.get_or_create("  n42  ")
-        assert result == "midi:n42"
-
-    def test_generate_id_no_external(self) -> None:
-        """get_or_create without external ID generates one."""
-        gen = IdGenerator("midi")
-        result = gen.get_or_create(None, type_hint="note")
-        assert result == "midi:note_1"
-
-    def test_generate_id_increments(self) -> None:
-        """Generated IDs increment counter."""
-        gen = IdGenerator("midi")
-        r1 = gen.get_or_create(None, type_hint="note")
-        r2 = gen.get_or_create(None, type_hint="note")
-        r3 = gen.get_or_create(None, type_hint="note")
-        assert r1 == "midi:note_1"
-        assert r2 == "midi:note_2"
-        assert r3 == "midi:note_3"
-
-    def test_generate_id_different_types(self) -> None:
-        """Different type hints have independent counters."""
-        gen = IdGenerator("midi")
-        n1 = gen.get_or_create(None, type_hint="note")
-        r1 = gen.get_or_create(None, type_hint="rest")
-        n2 = gen.get_or_create(None, type_hint="note")
-        assert n1 == "midi:note_1"
-        assert r1 == "midi:rest_1"
-        assert n2 == "midi:note_2"
-
-    def test_generate_id_default_type_hint(self) -> None:
-        """Default type hint is 'event'."""
-        gen = IdGenerator("midi")
-        result = gen.get_or_create(None)
-        assert result == "midi:event_1"
-
-    def test_empty_external_id_generates(self) -> None:
-        """Empty string external ID triggers generation."""
-        gen = IdGenerator("midi")
-        result = gen.get_or_create("", type_hint="note")
-        assert result == "midi:note_1"
-
-    def test_whitespace_only_external_id_generates(self) -> None:
-        """Whitespace-only external ID triggers generation."""
-        gen = IdGenerator("midi")
-        result = gen.get_or_create("   ", type_hint="note")
-        assert result == "midi:note_1"
+    def test_no_state_between_calls(self) -> None:
+        assert mint_id("region", ()) == "region_1"
+        assert mint_id("region", ()) == "region_1"
 
 
-class TestIdGeneratorConvenienceMethods:
-    """Tests for IdGenerator convenience methods."""
+class TestMintIds:
+    """mint_ids answers what mint_id answers, one id after another."""
 
-    def test_create(self) -> None:
-        """create() is shorthand for get_or_create(None)."""
-        gen = IdGenerator("midi")
-        result = gen.create(type_hint="note")
-        assert result == "midi:note_1"
+    @staticmethod
+    def _one_by_one(prefix: str, taken: list[str | None], count: int) -> list[str]:
+        held = {value for value in taken if value is not None}
+        minted = []
+        for _ in range(count):
+            minted.append(mint_id(prefix, held))
+            held.add(minted[-1])
+        return minted
 
-    def test_wrap(self) -> None:
-        """wrap() is shorthand for get_or_create(external_id)."""
-        gen = IdGenerator("midi")
-        result = gen.wrap("n42")
-        assert result == "midi:n42"
-
-
-class TestIdGeneratorState:
-    """Tests for IdGenerator state management."""
-
-    def test_count_tracks_ids(self) -> None:
-        """count property tracks total IDs generated/wrapped."""
-        gen = IdGenerator("midi")
-        assert gen.count == 0
-        gen.get_or_create("n1")
-        assert gen.count == 1
-        gen.get_or_create(None, type_hint="note")
-        assert gen.count == 2
-
-    def test_has_seen(self) -> None:
-        """has_seen() checks if ID was generated/wrapped."""
-        gen = IdGenerator("midi")
-        gen.get_or_create("n42")
-        assert gen.has_seen("midi:n42") is True
-        assert gen.has_seen("midi:n99") is False
-
-    def test_reset(self) -> None:
-        """reset() clears counters and seen IDs."""
-        gen = IdGenerator("midi")
-        gen.get_or_create(None, type_hint="note")
-        gen.get_or_create("n42")
-        assert gen.count == 2
-
-        gen.reset()
-        assert gen.count == 0
-        assert gen.has_seen("midi:n42") is False
-        # Counter also resets
-        result = gen.get_or_create(None, type_hint="note")
-        assert result == "midi:note_1"
-
-    def test_reset_counters(self) -> None:
-        """reset_counters() clears counters but keeps seen IDs."""
-        gen = IdGenerator("midi")
-        gen.get_or_create(None, type_hint="note")
-        gen.get_or_create("n42")
-
-        gen.reset_counters()
-        # Counter resets
-        result = gen.get_or_create(None, type_hint="note")
-        assert result == "midi:note_1"
-        # But seen IDs are kept
-        assert gen.has_seen("midi:n42") is True
+    @pytest.mark.parametrize(
+        ("taken", "count", "expected"),
+        [
+            (["claim_2", "x"], 3, ["claim_1", "claim_3", "claim_4"]),
+            (["claim_1", None], 1, ["claim_2"]),
+            (["claim_1"], 0, []),
+            ([f"claim_{n}" for n in range(1, 6)], 2, ["claim_6", "claim_7"]),
+        ],
+    )
+    def test_same_as_minting_one_by_one(
+        self, taken: list[str | None], count: int, expected: list[str]
+    ) -> None:
+        minted = mint_ids("claim", pa.array(taken, type=pa.string()), count)
+        assert minted.to_pylist() == expected
+        assert expected == self._one_by_one("claim", taken, count)
 
 
-class TestIdGeneratorEmptyScope:
-    """Tests for IdGenerator with empty scope."""
+class TestValidateId:
+    """An id is any non-empty string without a control character."""
 
-    def test_empty_scope_wrap(self) -> None:
-        """Empty scope produces unscoped IDs when wrapping."""
-        gen = IdGenerator("")
-        result = gen.get_or_create("n42")
-        assert result == "n42"
+    @pytest.mark.parametrize(
+        "given",
+        [
+            "performance",
+            "a",
+            "Bass Kick",
+            "score:clt_7",
+            "a/b",
+            "intro to part 2",
+            "https://example.org/op35#m1",
+            "start",
+            "card",
+            "markers_1",
+            "regions_12",
+        ],
+    )
+    def test_accepted(self, given: str) -> None:
+        assert validate_id(given) == given
 
-    def test_empty_scope_generate(self) -> None:
-        """Empty scope produces unscoped IDs when generating."""
-        gen = IdGenerator("")
-        result = gen.create(type_hint="note")
-        assert result == "note_1"
-
-
-# region TimelineIdGenerator
-
-
-class TestTimelineIdGeneratorBasic:
-    """Tests for TimelineIdGenerator creation and basic operation."""
-
-    def test_creation(self) -> None:
-        """Can create a TimelineIdGenerator."""
-        gen = TimelineIdGenerator()
-        assert gen.count == 0
-
-    def test_next_id_clt(self) -> None:
-        """Generates correct prefix for ContinuousLogicalTimeline."""
-        gen = TimelineIdGenerator()
-        assert gen.next_id("ContinuousLogicalTimeline") == "clt1"
-
-    def test_next_id_dlt(self) -> None:
-        """Generates correct prefix for DiscreteLogicalTimeline."""
-        gen = TimelineIdGenerator()
-        assert gen.next_id("DiscreteLogicalTimeline") == "dlt1"
-
-    def test_next_id_cpt(self) -> None:
-        """Generates correct prefix for ContinuousPhysicalTimeline."""
-        gen = TimelineIdGenerator()
-        assert gen.next_id("ContinuousPhysicalTimeline") == "cpt1"
-
-    def test_next_id_dpt(self) -> None:
-        """Generates correct prefix for DiscretePhysicalTimeline."""
-        gen = TimelineIdGenerator()
-        assert gen.next_id("DiscretePhysicalTimeline") == "dpt1"
-
-    def test_next_id_cgt(self) -> None:
-        """Generates correct prefix for ContinuousGraphicalTimeline."""
-        gen = TimelineIdGenerator()
-        assert gen.next_id("ContinuousGraphicalTimeline") == "cgt1"
-
-    def test_next_id_dgt(self) -> None:
-        """Generates correct prefix for DiscreteGraphicalTimeline."""
-        gen = TimelineIdGenerator()
-        assert gen.next_id("DiscreteGraphicalTimeline") == "dgt1"
-
-    def test_next_id_base_timeline(self) -> None:
-        """Base Timeline class uses 'tl' prefix."""
-        gen = TimelineIdGenerator()
-        assert gen.next_id("Timeline") == "tl1"
-
-    def test_unknown_type_raises(self) -> None:
-        """Unknown timeline type raises ValueError."""
-        gen = TimelineIdGenerator()
-        with pytest.raises(ValueError, match="Unknown timeline type"):
-            gen.next_id("FancyTimeline")
-
-
-class TestTimelineIdGeneratorCounters:
-    """Tests for counter increment and scoping."""
-
-    def test_counter_increments_per_prefix(self) -> None:
-        """Counter increments per prefix, not globally."""
-        gen = TimelineIdGenerator()
-        assert gen.next_id("ContinuousLogicalTimeline") == "clt1"
-        assert gen.next_id("ContinuousLogicalTimeline") == "clt2"
-        assert gen.next_id("DiscreteLogicalTimeline") == "dlt1"
-        assert gen.next_id("ContinuousLogicalTimeline") == "clt3"
-        assert gen.next_id("DiscreteLogicalTimeline") == "dlt2"
-
-    def test_count_tracks_total(self) -> None:
-        """count property returns sum of all counters."""
-        gen = TimelineIdGenerator()
-        gen.next_id("ContinuousLogicalTimeline")
-        gen.next_id("DiscreteLogicalTimeline")
-        gen.next_id("ContinuousLogicalTimeline")
-        assert gen.count == 3
-
-    def test_reset_clears_state(self) -> None:
-        """reset() clears counters and metadata."""
-        gen = TimelineIdGenerator()
-        gen.next_id("ContinuousLogicalTimeline")
-        gen.next_id("DiscreteLogicalTimeline")
-        gen.reset()
-        assert gen.count == 0
-        assert gen.next_id("ContinuousLogicalTimeline") == "clt1"
-        assert gen.next_id("DiscreteLogicalTimeline") == "dlt1"
-
-
-class TestTimelineIdGeneratorRoles:
-    """Tests for role-based ID generation."""
-
-    def test_next_id_with_role(self) -> None:
-        """Role prefix is prepended."""
-        gen = TimelineIdGenerator()
-        assert (
-            gen.next_id_with_role("ContinuousLogicalTimeline", "score") == "score:clt1"
+    @pytest.mark.parametrize("given", ["", "a\tb", "a\nb", "\x00", "\x1f", 3])
+    def test_refused(self, given: Any) -> None:
+        with pytest.raises(ValueError) as refused:
+            validate_id(given)
+        assert str(refused.value) == (
+            f"Invalid id {given!r}: an id must be non-empty and contain no "
+            "control character"
         )
 
-    def test_role_and_plain_share_counter(self) -> None:
-        """Role and plain IDs share the same prefix counter."""
-        gen = TimelineIdGenerator()
-        assert gen.next_id("DiscreteLogicalTimeline") == "dlt1"
-        assert gen.next_id_with_role("DiscreteLogicalTimeline", "perf") == "perf:dlt2"
-        assert gen.next_id_with_role("DiscreteLogicalTimeline", "perf") == "perf:dlt3"
 
-    def test_vienna_pattern(self) -> None:
-        """Simulates the Vienna 1x22 pattern: 1 score + 22 performers."""
-        gen = TimelineIdGenerator()
-        score_id = gen.next_id_with_role("ContinuousLogicalTimeline", "score")
-        assert score_id == "score:clt1"
-
-        perf_ids = []
-        for _ in range(22):
-            perf_ids.append(gen.next_id_with_role("DiscreteLogicalTimeline", "perf"))
-        assert perf_ids[0] == "perf:dlt1"
-        assert perf_ids[21] == "perf:dlt22"
-        assert gen.count == 23
-
-
-class TestTimelineIdGeneratorMetadata:
-    """Tests for metadata association."""
-
-    def test_meta_stored_and_retrieved(self) -> None:
-        """Metadata is stored and can be retrieved by ID."""
-        gen = TimelineIdGenerator()
-        tid = gen.next_id_with_role(
-            "DiscreteLogicalTimeline",
-            "perf",
-            meta={"performer": "p01", "filename": "Chopin_op10_no3_p01.match"},
-        )
-        assert tid == "perf:dlt1"
-        meta = gen.get_meta(tid)
-        assert meta is not None
-        assert meta["performer"] == "p01"
-        assert meta["filename"] == "Chopin_op10_no3_p01.match"
-
-    def test_no_meta_returns_none(self) -> None:
-        """get_meta returns None for IDs without metadata."""
-        gen = TimelineIdGenerator()
-        tid = gen.next_id("ContinuousLogicalTimeline")
-        assert gen.get_meta(tid) is None
-
-    def test_meta_cleared_on_reset(self) -> None:
-        """reset() clears metadata."""
-        gen = TimelineIdGenerator()
-        tid = gen.next_id("ContinuousLogicalTimeline", meta={"x": 1})
-        gen.reset()
-        assert gen.get_meta(tid) is None
-
-    def test_accepts_class_objects(self) -> None:
-        """Can pass actual class objects, not just strings."""
-        from timetoalign.timelines import (
-            ContinuousLogicalTimeline,
-            DiscreteLogicalTimeline,
-        )
-
-        gen = TimelineIdGenerator()
-        assert gen.next_id(ContinuousLogicalTimeline) == "clt1"
-        assert gen.next_id(DiscreteLogicalTimeline) == "dlt1"
-
-    def test_accepts_class_objects_with_role(self) -> None:
-        """Can pass actual class objects to next_id_with_role."""
-        from timetoalign.timelines import ContinuousLogicalTimeline
-
-        gen = TimelineIdGenerator()
-        assert gen.next_id_with_role(ContinuousLogicalTimeline, "score") == "score:clt1"
+@pytest.mark.parametrize(
+    ("unit", "prefix"),
+    [
+        (TimeUnit.quarters, "clt"),
+        (TimeUnit.ticks, "dlt"),
+        (TimeUnit.seconds, "cpt"),
+        (TimeUnit.samples, "dpt"),
+        (TimeUnit.centimeters, "cgt"),
+        (TimeUnit.pixels, "dgt"),
+    ],
+)
+def test_timeline_id_prefix(unit: TimeUnit, prefix: str) -> None:
+    assert timeline_id_prefix(unit) == prefix
 
 
 # endregion
-
-
-# region resolve_id and resolve_ids
 
 
 class TestResolveIds:
@@ -489,36 +279,36 @@ class TestResolveIds:
         """Exact match returns single-element list."""
         from timetoalign.core import resolve_ids
 
-        ids = ["clt1", "clt2", "dlt1"]
-        assert resolve_ids("clt1", ids) == ["clt1"]
+        ids = ["clt_1", "clt_2", "dlt_1"]
+        assert resolve_ids("clt_1", ids) == ["clt_1"]
 
     def test_substring_match(self) -> None:
         """Substring match returns all containing IDs."""
         from timetoalign.core import resolve_ids
 
-        ids = ["clt1", "clt2", "dlt1", "score:clt1"]
+        ids = ["clt_1", "clt_2", "dlt_1", "score:clt_1"]
         result = resolve_ids("clt", ids)
-        assert set(result) == {"clt1", "clt2", "score:clt1"}
+        assert set(result) == {"clt_1", "clt_2", "score:clt_1"}
 
     def test_regex_match(self) -> None:
         """Regex match uses re.search."""
         from timetoalign.core import resolve_ids
 
-        ids = ["score:clt1", "perf:dlt1", "perf:dlt2"]
-        assert resolve_ids(r"^perf:", ids) == ["perf:dlt1", "perf:dlt2"]
+        ids = ["score:clt_1", "perf:dlt_1", "perf:dlt_2"]
+        assert resolve_ids(r"^perf:", ids) == ["perf:dlt_1", "perf:dlt_2"]
 
     def test_no_match_returns_empty(self) -> None:
         """No match returns empty list."""
         from timetoalign.core import resolve_ids
 
-        ids = ["clt1", "clt2"]
+        ids = ["clt_1", "clt_2"]
         assert resolve_ids("xyz", ids) == []
 
     def test_empty_pattern_returns_empty(self) -> None:
         """Empty pattern returns empty list."""
         from timetoalign.core import resolve_ids
 
-        assert resolve_ids("", ["clt1", "clt2"]) == []
+        assert resolve_ids("", ["clt_1", "clt_2"]) == []
 
     def test_empty_ids_returns_empty(self) -> None:
         """Empty ID list returns empty list."""
@@ -530,7 +320,7 @@ class TestResolveIds:
         """Invalid regex pattern returns empty list (no substring match)."""
         from timetoalign.core import resolve_ids
 
-        ids = ["clt1", "clt2"]
+        ids = ["clt_1", "clt_2"]
         # This is an invalid regex but not a substring match
         assert resolve_ids("[invalid", ids) == []
 
@@ -542,15 +332,15 @@ class TestResolveId:
         """Exact match returns immediately."""
         from timetoalign.core import resolve_id
 
-        ids = ["clt1", "clt2", "dlt1"]
-        assert resolve_id("clt1", ids) == "clt1"
+        ids = ["clt_1", "clt_2", "dlt_1"]
+        assert resolve_id("clt_1", ids) == "clt_1"
 
     def test_single_substring_match(self) -> None:
         """Single substring match returns that ID."""
         from timetoalign.core import resolve_id
 
-        ids = ["score:clt1", "perf:dlt1"]
-        assert resolve_id("score", ids) == "score:clt1"
+        ids = ["score:clt_1", "perf:dlt_1"]
+        assert resolve_id("score", ids) == "score:clt_1"
 
     def test_multiple_match_returns_first_and_warns(self) -> None:
         """Multiple matches return first and emit warning."""
@@ -558,11 +348,11 @@ class TestResolveId:
 
         from timetoalign.core import resolve_id
 
-        ids = ["clt1", "clt2", "dlt1"]
+        ids = ["clt_1", "clt_2", "dlt_1"]
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             result = resolve_id("clt", ids)
-            assert result == "clt1"
+            assert result == "clt_1"
             assert len(w) == 1
             assert "matches 2 IDs" in str(w[0].message)
 
@@ -572,18 +362,18 @@ class TestResolveId:
 
         from timetoalign.core import resolve_id
 
-        ids = ["clt1", "clt2", "dlt1"]
+        ids = ["clt_1", "clt_2", "dlt_1"]
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             result = resolve_id("clt", ids, warn_multiple=False)
-            assert result == "clt1"
+            assert result == "clt_1"
             assert len(w) == 0
 
     def test_no_match_raises_keyerror(self) -> None:
         """No match raises KeyError with helpful message."""
         from timetoalign.core import resolve_id
 
-        ids = ["clt1", "clt2"]
+        ids = ["clt_1", "clt_2"]
         with pytest.raises(KeyError, match="No ID matches pattern"):
             resolve_id("xyz", ids)
 
@@ -591,9 +381,9 @@ class TestResolveId:
         """Regex pattern resolves correctly."""
         from timetoalign.core import resolve_id
 
-        ids = ["score:clt1", "perf:dlt1", "perf:dlt2"]
+        ids = ["score:clt_1", "perf:dlt_1", "perf:dlt_2"]
         result = resolve_id(r"^perf:", ids, warn_multiple=False)
-        assert result == "perf:dlt1"
+        assert result == "perf:dlt_1"
 
 
 # endregion

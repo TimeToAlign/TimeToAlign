@@ -22,12 +22,14 @@ classifiers = [
 ]
 
 # Core dependencies — kept minimal so that `pip install timetoalign` is lightweight.
-# Only the data backbone (PyArrow, pandas), graph library (NetworkX), typing
+# Only the data backbone (NumPy, PyArrow, pandas), graph library (NetworkX), typing
 # backports and the TimeToShare model of links (timetoshare) are required.
 # All file-format-specific loaders pull in their dependencies through the
 # optional extras below.
 dependencies = [
-    "pyarrow>=14.0",
+    # PyArrow 26 requires NumPy 2 at runtime; ms3 currently requires NumPy <2.
+    "pyarrow>=14.0,<26",
+    "numpy>=1.26.4",
     "pandas>=2.0",
     "networkx>=3.0",
     "typing_extensions>=4.0",

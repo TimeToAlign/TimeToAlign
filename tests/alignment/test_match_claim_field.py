@@ -17,9 +17,11 @@ from fractions import Fraction
 from pathlib import Path
 
 import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 import pytest
 import timetoshare
+from timetoshare import DEFAULT_BELIEFS
 
 from timetoalign.alignment import (
     AlignmentAnchor,
@@ -31,7 +33,6 @@ from timetoalign.alignment import (
 )
 from timetoalign.core import Coordinate, NumberType, TimeUnit
 from timetoalign.core.fields import SemanticField, derive_arrow_struct
-from timetoalign.core.provenance import DEFAULT_BELIEFS
 from timetoalign.core.time import COORDINATE_CELL_TYPE
 from timetoalign.timelines.types import (
     ContinuousLogicalTimeline,
@@ -588,8 +589,8 @@ class TestBeliefFilter:
         with pytest.raises(
             ValueError,
             match=re.escape(
-                "The belief filter keeps the states ['true', 'undecided', "
-                "'unlikely', 'false'], not ['not_false']"
+                "'not_false' is no belief state: write 'true', 'undecided', "
+                "'unlikely' or 'false'"
             ),
         ):
             gold_field.filter(believer=believer, beliefs=["not_false"])
@@ -1359,6 +1360,148 @@ class TestParquetFile:
         assert sorted(path.name for path in tmp_path.iterdir()) == [
             "match_claims.parquet"
         ]
+
+
+# endregion
+
+
+# region A null coordinate
+
+
+class TestNullCoordinateRefused:
+    """An anchor holding a null coordinate is refused by every reader.
+
+    A non-finite number becomes a null cell; TimeToShare refuses such a table
+    (``invalid_coordinate``), so no reader admits it and no writer writes it.
+    """
+
+    START_A = (
+        "MatchClaim table row 0 start_anchor.coordinate_a: the coordinate is null."
+    )
+
+    @staticmethod
+    def _nulled(table: pa.Table, anchor: str, side: str, row: int) -> pa.Table:
+        """*table* with one coordinate cell of one anchor set to null."""
+        column = table.column(anchor).combine_chunks()
+        children = [column.field(i) for i in range(column.type.num_fields)]
+        index = column.type.get_field_index(f"coordinate_{side}")
+        child = children[index]
+        children[index] = pc.if_else(
+            pa.array([i == row for i in range(len(child))]),
+            pa.nulls(len(child), child.type),
+            child,
+        )
+        nulled = pa.StructArray.from_arrays(
+            children, fields=list(column.type), mask=column.is_null()
+        )
+        return _with_child(table, anchor, nulled)
+
+    @staticmethod
+    def _nan_claim(**kwargs) -> MatchClaim:
+        return MatchClaim(
+            timeline_a_id="B",
+            timeline_b_id="C",
+            is_synchronous=True,
+            event_a_id="b",
+            event_b_id="c",
+            start_anchor=AlignmentAnchor(
+                timeline_a_id="B",
+                coordinate_a=Coordinate(float("nan"), TimeUnit.seconds),
+                timeline_b_id="C",
+                coordinate_b=Coordinate(1.5, TimeUnit.seconds),
+            ),
+            **kwargs,
+        )
+
+    def test_from_claims(self) -> None:
+        with pytest.raises(ValueError, match=re.escape(self.START_A)):
+            MatchClaimField.from_claims([self._nan_claim(id="x")])
+
+    def test_from_claims_an_end_anchor(self) -> None:
+        interval = MatchClaim(
+            id="y",
+            timeline_a_id="A",
+            timeline_b_id="B",
+            is_synchronous=True,
+            event_a_id="a",
+            event_b_id="b",
+            start_anchor=AlignmentAnchor(
+                timeline_a_id="A",
+                coordinate_a=Coordinate(Fraction(1), TimeUnit.quarters),
+                timeline_b_id="B",
+                coordinate_b=Coordinate(1.0, TimeUnit.seconds),
+            ),
+            end_anchor=AlignmentAnchor(
+                timeline_a_id="A",
+                coordinate_a=Coordinate(Fraction(2), TimeUnit.quarters),
+                timeline_b_id="B",
+                coordinate_b=Coordinate(float("nan"), TimeUnit.seconds),
+            ),
+        )
+        nomatch = MatchClaim(
+            id="z",
+            timeline_a_id="A",
+            timeline_b_id="B",
+            is_synchronous=False,
+            event_a_id="a",
+        )
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "MatchClaim table row 1 end_anchor.coordinate_b: the coordinate "
+                "is null."
+            ),
+        ):
+            MatchClaimField.from_claims([nomatch, interval])
+
+    def test_from_columns(self) -> None:
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "MatchClaim table row 1 start_anchor.coordinate_b: the coordinate "
+                "is null."
+            ),
+        ):
+            MatchClaimField.from_columns(
+                ["A", "A", "B"],
+                ["B", "C", "C"],
+                ["a0", "a0", "b1"],
+                ["b0", "c0", "c1"],
+                [0, 0, 1],
+                [10.0, float("nan"), 21.0],
+                timelines=GOLD_AXES,
+            )
+
+    def test_from_dict(self, gold_field: MatchClaimField) -> None:
+        data = gold_field.to_dict()
+        data["rows"][0]["start_anchor"]["coordinate_a"] = None
+        with pytest.raises(ValueError, match=re.escape(self.START_A)):
+            MatchClaimField.from_dict(data)
+
+    def test_from_table(self, gold_field: MatchClaimField) -> None:
+        table = self._nulled(gold_field.table, "start_anchor", "a", 0)
+        with pytest.raises(ValueError, match=re.escape(self.START_A)):
+            MatchClaimField.from_table(table)
+
+    def test_from_package_table_and_parquet(
+        self, gold_field: MatchClaimField, tmp_path: Path
+    ) -> None:
+        table = self._nulled(gold_field.package_table, "start_anchor", "a", 0)
+        with pytest.raises(ValueError, match=re.escape(self.START_A)):
+            MatchClaimField.from_package_table(table)
+        pq.write_table(table, tmp_path / "match_claims.parquet")
+        with pytest.raises(ValueError, match=re.escape(self.START_A)):
+            MatchClaimField.from_parquet(tmp_path)
+
+    def test_a_nomatch_row_is_no_problem(self) -> None:
+        nomatch = MatchClaim(
+            id="z",
+            timeline_a_id="A",
+            timeline_b_id="B",
+            is_synchronous=False,
+            event_a_id="a",
+        )
+        assert MatchClaimField.from_claims([nomatch]).to_claims() == [nomatch]
 
 
 # endregion

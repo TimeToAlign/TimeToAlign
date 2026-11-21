@@ -1046,9 +1046,9 @@ by calling the package):
 - **Refusals change nothing.** The belief `"maybe"` is refused by the
   library's `Belief` scalar (a `ValueError` whose one error is the
   `literal_error` at `belief`); the filter states `["not_false"]` with the
-  `belief_mask` message `The belief filter keeps the states ['true',
-  'undecided', 'unlikely', 'false'], not ['not_false']` (even without a
-  believer); a `date=` without `actor=` with `a
+  message of TimeToShare's `check_belief_filter`, which `belief_mask` asks,
+  `'not_false' is no belief state: write 'true', 'undecided', 'unlikely'
+  or 'false'` (even without a believer); a `date=` without `actor=` with `a
   date dates the belief of the actor stating the pair; give actor=`; and
   a candidate of a stated pair with the package's `'wdt:P2550' already has
   this value; a stated pair is no candidate`. The holder's `statements`

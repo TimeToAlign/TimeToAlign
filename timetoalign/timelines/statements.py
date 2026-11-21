@@ -91,17 +91,22 @@ from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from typing import Any, Final
 
 import timetoshare
-from timetoshare import FORMAT_CONTEXT, Catalogue, Rectangle, load_catalogue
+from timetoshare import (
+    DEFAULT_BELIEFS,
+    FORMAT_CONTEXT,
+    BeliefState,
+    Catalogue,
+    Rectangle,
+    check_belief_filter,
+    load_catalogue,
+)
 from typing_extensions import Self
 
 from ..core.provenance import (
-    DEFAULT_BELIEFS,
     Belief,
-    BeliefState,
     BeliefValue,
     Provenance,
     belief_mask,
-    check_belief_filter,
     provenance_array,
 )
 

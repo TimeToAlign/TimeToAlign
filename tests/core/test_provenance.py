@@ -10,18 +10,19 @@ import re
 
 import pyarrow as pa
 import pytest
+import timetoshare
 from pydantic import ValidationError
+from timetoshare import DEFAULT_BELIEFS
 
+from timetoalign.core import provenance
 from timetoalign.core.fields import derive_arrow_struct
 from timetoalign.core.provenance import (
-    DEFAULT_BELIEFS,
     Belief,
     BeliefField,
     Provenance,
     ProvenanceField,
     actor_iri,
     belief_mask,
-    check_belief_filter,
     provenance_array,
 )
 
@@ -281,16 +282,16 @@ class TestBeliefFilter:
         with pytest.raises(
             ValueError,
             match=re.escape(
-                "The belief filter keeps the states ['true', 'undecided', "
-                "'unlikely', 'false'], not ['not_false']"
+                "'not_false' is no belief state: write 'true', 'undecided', "
+                "'unlikely' or 'false'"
             ),
         ):
             belief_mask(provenance_array(_ROWS), "jo", ["not_false"])  # type: ignore[list-item]
         with pytest.raises(
             ValueError,
             match=re.escape(
-                "The belief filter takes a collection of states, not the string "
-                "'false': write ['false']."
+                "the belief filter takes a collection of states, not the string "
+                "'false': write ['false']"
             ),
         ):
             belief_mask(provenance_array(_ROWS), "jo", "false")
@@ -399,27 +400,10 @@ class TestActorsCompareAsIris:
         assert mask(false_pair, ["true"], context=None) == [True, True]
 
     def test_one_check_of_the_states(self) -> None:
-        assert check_belief_filter(["true", "unlikely"]) == frozenset(
-            {"true", "unlikely"}
-        )
-        assert check_belief_filter(("true", "true")) == frozenset({"true"})
-        assert check_belief_filter([]) == frozenset()
-        with pytest.raises(
-            ValueError,
-            match=re.escape(
-                "The belief filter takes a collection of states, not the string "
-                "'true': write ['true']."
-            ),
-        ):
-            check_belief_filter("true")
-        with pytest.raises(
-            ValueError,
-            match=re.escape(
-                "The belief filter keeps the states ['true', 'undecided', "
-                "'unlikely', 'false'], not ['maybe']"
-            ),
-        ):
-            check_belief_filter(["maybe", "true"])
+        """The states are TimeToShare's, checked by TimeToShare's one check."""
+        assert provenance.check_belief_filter is timetoshare.check_belief_filter
+        assert provenance.DEFAULT_BELIEFS is timetoshare.DEFAULT_BELIEFS
+        assert timetoshare.BELIEF_STATES == ("true", "undecided", "unlikely", "false")
 
 
 class TestField:

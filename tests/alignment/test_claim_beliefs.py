@@ -33,8 +33,7 @@ WD_Q42 = "wd:Q42"
 
 SHARED = Provenance(method="imported", service="https://example.org/aligner")
 REFUSED_WORD = (
-    "The belief filter keeps the states ['true', 'undecided', 'unlikely', "
-    "'false'], not ['maybe']"
+    "'maybe' is no belief state: write 'true', 'undecided', 'unlikely' or 'false'"
 )
 
 

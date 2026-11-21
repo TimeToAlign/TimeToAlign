@@ -24,7 +24,9 @@ from timetoalign.core.time import (
     cell_coordinate,
     cells_from_package,
     coordinate_cells,
+    numbers_from_package,
     package_cells,
+    package_numbers,
 )
 
 SPELLED_OUT = pa.struct(
@@ -418,6 +420,92 @@ class TestPackageForm:
                 "and a float (null, null, x) with x finite"
             )
         assert message == f"Test row 0: {problem}"
+
+    def test_an_unreduced_fraction_is_written_in_lowest_terms(self) -> None:
+        memory = pa.array(
+            [
+                {"value": 0.5, "numerator": 2, "denominator": 4},
+                {"value": -1.5, "numerator": -6, "denominator": 4},
+                {"value": 0.0, "numerator": 0, "denominator": 5},
+                {"value": 3.0, "numerator": 3, "denominator": 1},
+                {"value": 0.5, "numerator": 1, "denominator": 2},
+                None,
+            ],
+            RATIONAL_STRUCT_TYPE,
+        )
+        number_types = pa.array(
+            ["fraction", "fraction", "fraction", "int", "float", None]
+        )
+        assert package_numbers(memory, number_types).to_pylist() == [
+            {"numerator": 1, "denominator": 2, "value": None},
+            {"numerator": -3, "denominator": 2, "value": None},
+            {"numerator": 0, "denominator": 1, "value": None},
+            {"numerator": 3, "denominator": None, "value": None},
+            {"numerator": None, "denominator": None, "value": 0.5},
+            None,
+        ]
+
+    def test_a_fraction_not_in_lowest_terms_is_refused(self) -> None:
+        written = pa.array(
+            [
+                _package_cell(1, 2, None, "fraction", "quarters"),
+                _package_cell(2, 4, None, "fraction", "quarters"),
+            ],
+            PACKAGE_COORDINATE_CELL_TYPE,
+        )
+        with pytest.raises(ValueError) as raised:
+            cells_from_package(written, where="Test")
+        assert str(raised.value) == (
+            "Test row 1: the fraction cell (numerator, denominator, value) holds "
+            "(2, 4, null), not in lowest terms (1, 2, null)"
+        )
+
+    @pytest.mark.parametrize(
+        ("numerator", "denominator", "lowest"),
+        [(0, 2, "(0, 1, null)"), (-2, 4, "(-1, 2, null)")],
+        ids=["zero", "negative"],
+    )
+    def test_zero_and_negative_fractions_in_lowest_terms(
+        self, numerator: int, denominator: int, lowest: str
+    ) -> None:
+        written = pa.array(
+            [_package_cell(numerator, denominator, None, "fraction", "quarters")],
+            PACKAGE_COORDINATE_CELL_TYPE,
+        )
+        with pytest.raises(ValueError) as raised:
+            cells_from_package(written, where="Test")
+        assert str(raised.value) == (
+            f"Test row 0: the fraction cell (numerator, denominator, value) holds "
+            f"({numerator}, {denominator}, null), not in lowest terms {lowest}"
+        )
+
+    def test_fractions_in_lowest_terms_are_read(self) -> None:
+        written = pa.array(
+            [
+                _package_cell(n, d, None, "fraction", "quarters")
+                for n, d in ((-1, 2), (0, 1), (4, 1))
+            ],
+            PACKAGE_COORDINATE_CELL_TYPE,
+        )
+        read = cells_from_package(written)
+        assert [cell_coordinate(cell) for cell in read.to_pylist()] == [
+            Coordinate(Fraction(-1, 2), "quarters"),
+            Coordinate(Fraction(0), "quarters"),
+            Coordinate(Fraction(4), "quarters"),
+        ]
+
+    def test_a_fractions_float_is_correctly_rounded(self) -> None:
+        numerator = 1152921504606847009  # past 2**53
+        assert float(numerator) / 3.0 == 3.843071682022823e17
+        written = pa.array(
+            [{"numerator": numerator, "denominator": 3, "value": None}],
+            PACKAGE_NUMBER_TYPE,
+        )
+        read = numbers_from_package(written, pa.array(["fraction"]))
+        assert read.to_pylist() == [
+            {"value": 3.843071682022824e17, "numerator": numerator, "denominator": 3}
+        ]
+        assert read.to_pylist()[0]["value"] == float(Fraction(numerator, 3))
 
     def test_no_cell_is_converted_one_by_one(
         self, monkeypatch: pytest.MonkeyPatch

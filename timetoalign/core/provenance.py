@@ -35,22 +35,13 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+from timetoshare import DEFAULT_BELIEFS, BeliefState, check_belief_filter
 from timetoshare.statements import MATCHES, METHODS, expand_iri
 
 from .fields import SemanticField, data_shaped, install_paired_field_registry
 
 BeliefValue = Literal["true", "false", "unlikely"]
 """What an actor believes of an item."""
-
-BeliefState = Literal["true", "undecided", "unlikely", "false"]
-"""An item's state for one actor: the actor's belief, or ``"undecided"`` where
-the actor holds no belief on the item."""
-
-BELIEF_STATES: tuple[BeliefState, ...] = ("true", "undecided", "unlikely", "false")
-"""The four states of the belief filter, in that order."""
-
-DEFAULT_BELIEFS: tuple[BeliefState, ...] = ("true", "undecided", "unlikely")
-"""The states the belief filter keeps by default: every state but ``"false"``."""
 
 _CRITICAL_FIRST: tuple[BeliefValue, ...] = ("false", "unlikely", "true")
 """The beliefs, the most critical first: one row holding two beliefs of one
@@ -94,47 +85,6 @@ def actor_iri(actor: str, context: Mapping[str, Any] | None = None) -> str:
         'orcid:0000-0001'
     """
     return expand_iri(context, actor) or actor
-
-
-def check_belief_filter(beliefs: Collection[str]) -> frozenset[BeliefState]:
-    """The states a belief filter keeps, checked: the set *beliefs* names.
-
-    The one check every filter taking ``beliefs=`` makes. The set it returns
-    is how the filter is compared and cached: two collections naming the same
-    states are one filter.
-
-    Args:
-        beliefs: A collection of :data:`BeliefState` words (a list, a tuple, a
-            set); empty keeps nothing a believer is asked about.
-
-    Returns:
-        The states, as a frozen set.
-
-    Raises:
-        ValueError: If *beliefs* is a single string, or names a word that is
-            no :data:`BeliefState`.
-
-    Examples:
-        >>> sorted(check_belief_filter(["true", "unlikely"]))
-        ['true', 'unlikely']
-        >>> check_belief_filter("true")
-        Traceback (most recent call last):
-        ...
-        ValueError: The belief filter takes a collection of states, not the string 'true': write ['true'].
-    """
-    if isinstance(beliefs, str):
-        raise ValueError(
-            f"The belief filter takes a collection of states, not the string "
-            f"{beliefs!r}: write [{beliefs!r}]."
-        )
-    states = frozenset(beliefs)
-    unknown = sorted(str(state) for state in states if state not in BELIEF_STATES)
-    if unknown:
-        raise ValueError(
-            f"The belief filter keeps the states {list(BELIEF_STATES)}, not "
-            f"{unknown}"
-        )
-    return states  # type: ignore[return-value]
 
 
 # region Belief

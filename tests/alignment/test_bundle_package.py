@@ -794,3 +794,14 @@ class TestTimeToShareFixturePackage:
             source=bundle,
         )
         assert [claim.id for claim in kept] == [claim.id for claim in graph.claims]
+        # Every case is read under the fixture manifest's own @context (the
+        # seventh names its believer by a compact IRI only it expands).
+        context = timetoshare.loads(
+            (_TABLES / "manifest.yaml").read_text(encoding="utf-8")
+        )["@context"]
+        table = bundle.match_claim_table.filter(
+            believer=case["believer"], beliefs=case["beliefs"], context=context
+        )
+        assert table.table.column("id").to_pylist() == [
+            claim.id for claim in graph.claims
+        ]

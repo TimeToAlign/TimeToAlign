@@ -774,20 +774,32 @@ class TestBundleClaimFilters:
         assert bundle.get_match_claims(include_units={TimeUnit.seconds}) == [claims[2]]
         assert bundle.get_match_claims(include_units={TimeUnit.pixels}) == []
 
-    def test_matchstamp_timeline_ids_filter_stamp_keys(self) -> None:
-        """Post-hoc stamp filtering keeps exactly the selected timeline IDs."""
+    def test_within_keeps_claims_whose_both_timelines_are_in_the_set(self) -> None:
+        """``within`` requires both sides; ``timeline_ids`` either side."""
+        bundle, claims = _make_claim_filter_bundle()
+        pair = {"score", "audio"}
+
+        assert bundle.get_match_claims(within=pair) == [claims[0]]
+        assert bundle.get_match_claims(timeline_ids=pair) == claims
+        assert bundle.get_claim_field(within=pair).to_claims() == [claims[0]]
+        seconds = {TimeUnit.seconds}
+        assert bundle.get_match_claims(within=pair, include_units=seconds) == []
+        assert bundle.get_match_claims(
+            within={"audio", "other"}, include_units=seconds
+        ) == [claims[2]]
+
+    def test_matchstamp_within_filters_stamp_keys(self) -> None:
+        """Post-hoc stamp filtering keeps exactly the timelines ``within`` names."""
         bundle, _ = _make_claim_filter_bundle()
 
-        stamp = bundle.get_matchstamp_at(
-            0.0,
-            "score",
-            timeline_ids={"score", "audio"},
-        )
+        stamp = bundle.get_matchstamp_at(0.0, "score", within={"score", "audio"})
 
         assert stamp.coordinates == {
             "score": Coordinate(Fraction(0, 1), TimeUnit.quarters),
             "audio": Coordinate(0.0, TimeUnit.seconds),
         }
+        with pytest.raises(TypeError, match="timeline_ids"):
+            bundle.get_matchstamp_at(0.0, "score", timeline_ids={"score"})
 
 
 # endregion
@@ -1377,25 +1389,38 @@ class TestCreateMatchClaims:
                 ]
             )
         assert str(raised.value) == (
-            "The event ID 'n1' is held by 2 events of timeline 'score' and its "
-            "descendants (on 'c', 'd'), so it names no one event: name the "
-            "timeline holding the event instead."
+            "The event ID 'n1' is held by 2 events of descendants of timeline "
+            "'score' (on 'c', 'd') and not by the timeline itself, so it names "
+            "no one event: name the timeline holding the event instead."
         )
         assert (len(score.events), len(c.events), len(audio.events)) == counts
         assert len(bundle.match_claim_table) == 0
-
-    def test_an_id_the_timeline_and_a_child_hold_names_no_event(self) -> None:
-        bundle, score, *_ = self._nested()
-        score.add_events([{"id": "n3", "start": 3}])
-        with pytest.raises(ValueError) as raised:
-            bundle.create_match_claims([("n3", "score", "o1", "audio")])
-        assert str(raised.value) == (
-            "The event ID 'n3' is held by 2 events of timeline 'score' and its "
-            "descendants (on 'score', 'd'), so it names no one event: name the "
-            "timeline holding the event instead."
+        # The advice works: each descendant answers for its own event.
+        on_c, on_d = bundle.create_match_claims(
+            [("n1", "c", "o1", "audio"), ("n1", "d", "o1", "audio")]
         )
-        (claim,) = bundle.create_match_claims([("n3", "d", "o1", "audio")])
-        assert claim.start_anchor.coordinate_a == Coordinate(2, TimeUnit.quarters)
+        assert on_c.start_anchor.coordinate_a == Coordinate(1, TimeUnit.quarters)
+        assert on_d.start_anchor.coordinate_a == Coordinate(1, TimeUnit.quarters)
+        assert (on_c.timeline_a_id, on_d.timeline_a_id) == ("c", "d")
+
+    def test_the_timelines_own_event_answers_for_its_id(self) -> None:
+        bundle, score, *_ = self._nested()
+        score.add_events([{"id": "n3", "start": 3}, {"id": "n1", "start": 7}])
+        own_n3, d_n3, own_n1 = bundle.create_match_claims(
+            [
+                ("n3", "score", "o1", "audio"),
+                ("n3", "d", "o1", "audio"),
+                ("n1", "score", "o1", "audio"),
+            ]
+        )
+        assert own_n3.start_anchor.coordinate_a == Coordinate(3, TimeUnit.quarters)
+        assert d_n3.start_anchor.coordinate_a == Coordinate(2, TimeUnit.quarters)
+        assert own_n1.start_anchor.coordinate_a == Coordinate(7, TimeUnit.quarters)
+        assert [claim.event_a_id for claim in (own_n3, d_n3, own_n1)] == [
+            "n3",
+            "n3",
+            "n1",
+        ]
 
     def test_a_side_without_start_adds_nothing(self) -> None:
         bundle, score_tl, _, audio_tl, _ = _make_cross_group_bundle()

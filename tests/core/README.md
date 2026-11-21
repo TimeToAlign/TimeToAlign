@@ -860,15 +860,16 @@ shape and holds exactly the number written.
 
 **The package form** (`TestPackageForm`). A package writes a number once:
 the member its number type names holds it, the others are null — an int
-`(n, null, null)`, a fraction `(n, d ≥ 1, null)`, a float `(null, null, x)`
-with x finite — so a float is never also a ratio and an int has no
-denominator. One encoder/decoder pair (`package_numbers` /
+`(n, null, null)`, a fraction `(n, d ≥ 1, null)` in lowest terms, a float
+`(null, null, x)` with x finite — so a float is never also a ratio, an int
+has no denominator, and a fraction has one spelling. One encoder/decoder pair (`package_numbers` /
 `numbers_from_package`, with `package_cells` / `cells_from_package` for a
 cell that names its axis) converts at the file boundary; memory keeps both
 sides. What would show it broken: a mirror left in the file, a side not
 filled again on reading (an int read with a null denominator, a float
-without its ratio), a malformed cell read as some number, a wrong row
-named. Evidence:
+without its ratio), a malformed cell read as some number, a fraction read
+or written in two spellings, a fraction's float not the one memory holds,
+a wrong row named. Evidence:
 
 - **The types.** `PACKAGE_NUMBER_TYPE` is `struct<numerator: int64,
   denominator: int64, value: double>` and `PACKAGE_COORDINATE_CELL_TYPE`
@@ -878,7 +879,11 @@ named. Evidence:
   `{1, 3, null, "quarters", "fraction"}`, null, `{null, null, 0.1,
   "seconds", "float"}`, `{139776, null, null, "samples", "int"}`, `{2, 3,
   null, "quarters", "fraction"}`; a fraction cell holding `4/1` keeps its
-  denominator `1` (it is a fraction).
+  denominator `1` (it is a fraction). A memory number column holding the
+  unreduced ratio `2/4` (value `0.5`), `-6/4` and `0/5` as fractions is
+  written `(1, 2, null)`, `(-3, 2, null)`, `(0, 1, null)` (the same values
+  in their one spelling, not a guessed ratio), and its int and float rows
+  are written as they stand.
 - **Read back whole.** `cells_from_package` of that column equals the
   memory column built by `coordinate_cells` (`equals`, every member, the
   float's ratio `3602879701896397/36028797018963968` and the int's
@@ -897,6 +902,18 @@ named. Evidence:
   value) holds (3, 1, null), where an int is (n, null, null), a fraction
   (n, d >= 1, null) and a float (null, null, x) with x finite`); a null
   cell is no problem.
+- **A fraction not in lowest terms is refused** (TimeToShare's rule):
+  `(2, 4, null)` after a reduced `(1, 2, null)` gives exactly `Test row 1:
+  the fraction cell (numerator, denominator, value) holds (2, 4, null), not
+  in lowest terms (1, 2, null)`; `(0, 2, null)` (zero is `0/1`) and
+  `(-2, 4, null)` are refused alike, while `(-1, 2, null)`, `(0, 1, null)`
+  and `(4, 1, null)` read.
+- **A fraction's float is correctly rounded.** `(1152921504606847009, 3,
+  null)`, whose numerator is past `2**53`, reads with value `3.843071682022824e+17`, which is `float(Fraction(n,
+  3))` and which a float64 division of the two members does not give
+  (`3.843071682022823e+17`); the ratio keeps the exact numerator. So a
+  position read from a file and the same position built in memory share
+  the float key that orders and deduplicates them.
 - **Vectorized.** With the per-row cell encoder (`number_cell`) replaced
   by one that fails, `cells_from_package` and `package_cells` of 1,000
   cells still give the same cells.
@@ -1686,16 +1703,19 @@ What proves the entry is the format's and holds nothing else:
   `["unlikely"]` `[True, True]`, `["true"]` `[False, False]`. Without the
   context the two spellings are two actors, so `ex:ana` reads its own
   belief: `["true"]` `[True, True]` on the first pair.
-- **One check of the states.** `check_belief_filter` takes a collection of
-  the four states and answers it as a frozen set (`["true", "unlikely"]` →
-  `{"true", "unlikely"}`; a repeated state counts once; `[]` is the empty
-  set). It refuses a single string, which would read as its characters
-  (`"true"`: `The belief filter takes a collection of states, not the string
-  'true': write ['true'].`), and a word that is no state (`["maybe",
-  "true"]`: `The belief filter keeps the states ['true', 'undecided',
-  'unlikely', 'false'], not ['maybe']`; the former words `not_false` alike);
-  `belief_mask` refuses through it with those messages (and so do
-  `ClaimFilter` and `believed`, `test_claim_beliefs.py`).
+- **One check of the states, TimeToShare's.** The four states, the default
+  and the check are TimeToShare's (`timetoshare.BELIEF_STATES`,
+  `DEFAULT_BELIEFS`, `check_belief_filter`): the library holds no copy, so
+  `provenance.check_belief_filter is timetoshare.check_belief_filter` and
+  `provenance.DEFAULT_BELIEFS is timetoshare.DEFAULT_BELIEFS`, and the
+  states are `("true", "undecided", "unlikely", "false")`. The check's own
+  cases are TimeToShare's tests; here `belief_mask` refuses through it
+  with TimeToShare's messages: a single string, which would read as its
+  characters (`"false"`: `the belief filter takes a collection of states,
+  not the string 'false': write ['false']`), and a word that is no state
+  (`["not_false"]`: `'not_false' is no belief state: write 'true',
+  'undecided', 'unlikely' or 'false'`); so do `ClaimFilter` and `believed`
+  (`test_claim_beliefs.py`).
 - **Dictionary.** `to_dict` leaves absent keys out (an entry of `service`
   alone is `{"service": ...}`; a belief without a note has no `note` key),
   writes lists for `stated_by`, `basis` and `beliefs`, and `from_dict` gives

@@ -3442,7 +3442,10 @@ class Projection(ScalarVocabulary, BaseModel):
     Storage struct (derived): ``{id, start, duration, projection_of}``, the
     two positions as coordinate cells
     (:data:`~timetoalign.core.time.COORDINATE_CELL_TYPE`), each naming its
-    unit and number type, as the Projections table of a package holds them.
+    unit and number type, both sides of the number filled. A package's
+    Projections table writes them otherwise: the timeline's unit and number
+    type once per row, each number once, as its number type says
+    (:func:`~timetoalign.timelines.manifest.projection_table`).
 
     Examples:
         >>> from timetoalign.core import Coordinate, TimeUnit
@@ -3559,8 +3562,11 @@ class ProjectionField(SemanticField[Projection]):
     """Paired Field for :class:`Projection`.
 
     Every position is a coordinate cell naming its own unit and number type,
-    so one field holds Projections of any timelines, as a package's
-    Projections table does (it adds the ``timeline_id`` column).
+    so one field holds Projections of any timelines. A package's Projections
+    table holds them in another form: a ``timeline_id`` column, the
+    timeline's unit and number type once per row, each number written once
+    (:func:`~timetoalign.timelines.manifest.projection_table`,
+    :func:`~timetoalign.timelines.manifest.read_projection_table`).
     """
 
     @classmethod

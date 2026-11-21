@@ -255,9 +255,9 @@ def test_two_free_claims_become_distinct() -> None:
     assert (first.id, second.id) == (None, None)
 
     graph = MatchGraph([first, second])
-    kept = graph.filter(timeline_ids={"score", "audio"}).claims
+    kept = graph.filter(within={"score", "audio"}).claims
     assert len(kept) == 1 and kept[0] is first
-    kept = graph.filter(timeline_ids={"score", "score_copy"}).claims
+    kept = graph.filter(within={"score", "score_copy"}).claims
     assert len(kept) == 1 and kept[0] is second
     edge_ids = [data["claim_id"] for _, _, data in graph._graph.edges(data=True)]
     assert edge_ids == [None, None]
@@ -268,9 +268,7 @@ def test_two_free_claims_become_distinct() -> None:
     bundle = _bundle()
     bundle.add_match_claims([first, second])
     assert (first.id, second.id) == ("claim_1", "claim_2")
-    kept = MatchGraph(bundle.get_match_claims()).filter(
-        timeline_ids={"score", "score_copy"}
-    )
+    kept = MatchGraph(bundle.get_match_claims()).filter(within={"score", "score_copy"})
     assert [claim.id for claim in kept.claims] == ["claim_2"]
 
 
@@ -322,7 +320,7 @@ def test_graph_filter_unaffected(tmp_path: Path) -> None:
     ]
     assert kept.inferred_edges == []
 
-    kept = graph.filter(timeline_ids={"score", "audio"})
+    kept = graph.filter(within={"score", "audio"})
     assert sorted(claim.id for claim in kept.claims) == [
         f"claim_{n}" for n in range(1, 7)
     ]

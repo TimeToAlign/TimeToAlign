@@ -31,6 +31,7 @@ from timetoalign.alignment import (
 )
 from timetoalign.core import Coordinate, NumberType, TimeUnit
 from timetoalign.core.fields import SemanticField, derive_arrow_struct
+from timetoalign.core.time import COORDINATE_CELL_TYPE
 from timetoalign.timelines.types import (
     ContinuousLogicalTimeline,
     ContinuousPhysicalTimeline,
@@ -84,8 +85,9 @@ def _every_kind(provenance: list[Provenance | None]) -> list[MatchClaim]:
     An exact-fraction interval claim (``c1``), an int claim between two
     discrete timelines (``midi 96``, event names), a float on a ``quarters``
     timeline declaring ``float`` (``c3``), a NOMATCH claim (``c4``), a
-    conceptual claim (``c5``) and an implicit claim made from ``c1`` (its id
-    minted, ``claim_1``); ``provenance`` gives the first five their own.
+    conceptual claim (``c5``) and an implicit claim made from ``c1`` (the id
+    ``claim_1`` minted, as a graph mints it); ``provenance`` gives the first
+    five their own.
     """
     interval = MatchClaim.from_events(
         {"id": "note_7", "start": Fraction(7, 3), "end": Fraction(10, 3)},
@@ -135,7 +137,7 @@ def _every_kind(provenance: list[Provenance | None]) -> list[MatchClaim]:
         "score",
         Coordinate(Fraction(1, 3), TimeUnit.quarters),
         source_claim=interval,
-    )
+    ).model_copy(update={"id": "claim_1", "id_minted": True})
     return [interval, discrete, float_quarters, nomatch, conceptual, implicit]
 
 
@@ -173,6 +175,11 @@ class TestFromColumns:
                 pa.field("number_type", pa.string()),
             ]
         )
+        assert coordinate_type == COORDINATE_CELL_TYPE
+        assert (
+            MatchClaimField.pa_schema.field("source_coordinate").type
+            == COORDINATE_CELL_TYPE
+        )
 
     def test_table_one_column_per_property(self, gold_field: MatchClaimField) -> None:
         derived = derive_arrow_struct(MatchClaim)
@@ -187,8 +194,8 @@ class TestFromColumns:
             "end_anchor",
             "is_synchronous",
             "is_explicit",
-            "certainty",
             "provenance",
+            "certainty",
             "source_claim_id",
             "event_a_id",
             "event_a_name",
@@ -198,6 +205,30 @@ class TestFromColumns:
             "id",
             "id_minted",
         ]
+
+    def test_float_cells_carry_their_exact_ratio(
+        self, gold_field: MatchClaimField
+    ) -> None:
+        anchors = gold_field.table.column("start_anchor").to_pylist()
+        assert [
+            (cell["value"], cell["numerator"], cell["denominator"], cell["number_type"])
+            for cell in (anchor["coordinate_b"] for anchor in anchors)
+        ] == [(10.0, 10, 1, "float"), (20.0, 20, 1, "float"), (21.0, 21, 1, "float")]
+        tenth = MatchClaimField.from_columns(
+            timeline_a_ids=["A"],
+            timeline_b_ids=["B"],
+            event_a_ids=["a"],
+            event_b_ids=["b"],
+            coordinate_a=[0],
+            coordinate_b=[0.1],
+            timelines=GOLD_AXES,
+        )
+        cell = tenth.table.column("start_anchor").to_pylist()[0]["coordinate_b"]
+        assert (cell["numerator"], cell["denominator"]) == (
+            3602879701896397,
+            36028797018963968,
+        )
+        assert tenth[0].start_anchor.coordinate_b == Coordinate(0.1, TimeUnit.seconds)
 
     def test_timeline_ids(self, gold_field: MatchClaimField) -> None:
         assert gold_field.timeline_ids == {"A", "B", "C"}
@@ -1065,7 +1096,7 @@ class TestTableRoundTrip:
         field = MatchClaimField.from_claims(claims)
         assert field.provenance == SOFTWARE
         assert field.table.schema.metadata == {
-            b"timetoalign:provenance": (
+            b"timetoshare:provenance": (
                 b'{"method": "inferred", "service": "https://example.org/dtw"}'
             )
         }
@@ -1149,7 +1180,29 @@ class TestTableRoundTrip:
             (
                 "timeline_b_id",
                 ["B", "C", "A"],
-                "MatchClaim table row 2 has a start anchor on other timelines.",
+                "MatchClaim table row 2 has a start anchor not joining its timeline "
+                "A and timeline B in that order.",
+            ),
+            (
+                "timeline_a_id",
+                ["B", "A", "B"],
+                "MatchClaim table row 0 connects a timeline with itself.",
+            ),
+            (
+                "source_coordinate",
+                [
+                    None,
+                    {
+                        "value": 0.0,
+                        "numerator": 0,
+                        "denominator": 1,
+                        "unit": "quarters",
+                        "number_type": "fraction",
+                    },
+                    None,
+                ],
+                "MatchClaim table row 1 holds a source_coordinate and is not a "
+                "NOMATCH MatchClaim.",
             ),
         ],
     )
@@ -1159,6 +1212,63 @@ class TestTableRoundTrip:
         table_type = gold_field.table.schema.field(column).type
         table = _with_child(gold_field.table, column, pa.array(values, type=table_type))
         with pytest.raises(ValueError, match=re.escape(message)):
+            MatchClaimField.from_table(table)
+
+    def test_swapped_timelines_refused(self, gold_field: MatchClaimField) -> None:
+        table = gold_field.table
+        table = _with_child(table, "timeline_a_id", pa.array(["B", "A", "B"]))
+        table = _with_child(table, "timeline_b_id", pa.array(["A", "C", "C"]))
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "MatchClaim table row 0 has a start anchor not joining its timeline "
+                "A and timeline B in that order."
+            ),
+        ):
+            MatchClaimField.from_table(table)
+
+    def test_null_certainty_read(self, gold_field: MatchClaimField) -> None:
+        table = _with_child(
+            gold_field.table, "certainty", pa.array([None, 0.5, 1.0], pa.float64())
+        )
+        assert [claim.certainty for claim in MatchClaimField.from_table(table)] == [
+            None,
+            0.5,
+            1.0,
+        ]
+
+    def test_one_timeline_on_two_axes_refused(self) -> None:
+        field = MatchClaimField.from_columns(
+            timeline_a_ids=["A", "A"],
+            timeline_b_ids=["B", "C"],
+            event_a_ids=["a0", "a1"],
+            event_b_ids=["b0", "c0"],
+            coordinate_a=[0, 1],
+            coordinate_b=[10.0, 44100],
+            timelines={**GOLD_AXES, "C": ("samples", "int")},
+        )
+        table = _with_child(field.table, "timeline_b_id", pa.array(["B", "B"]))
+        anchor = table.column("start_anchor").combine_chunks()
+        renamed = pa.StructArray.from_arrays(
+            [
+                (
+                    pa.array(["B", "B"])
+                    if sub.name == "timeline_b_id"
+                    else anchor.field(sub.name)
+                )
+                for sub in anchor.type
+            ],
+            fields=list(anchor.type),
+        )
+        table = _with_child(table, "start_anchor", renamed)
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "The MatchClaim table holds coordinates of timeline 'B' in seconds "
+                "(float) and samples (int): the coordinates of one timeline are on "
+                "its one axis."
+            ),
+        ):
             MatchClaimField.from_table(table)
 
     def test_refuses_row_without_start_anchor(
@@ -1194,13 +1304,13 @@ class TestTableRoundTrip:
             _every_kind([None, HUMAN, HUMAN, None, None])
         )
         table = field.table.replace_schema_metadata(
-            {b"timetoalign:provenance": json.dumps(HUMAN.to_dict())}
+            {b"timetoshare:provenance": json.dumps(HUMAN.to_dict())}
         )
         with pytest.raises(
             ValueError,
             match=re.escape(
                 "A MatchClaimField table states its provenance once: this table "
-                "carries it in its schema metadata ('timetoalign:provenance') "
+                "carries it in its schema metadata ('timetoshare:provenance') "
                 "and in 2 row(s)."
             ),
         ):
@@ -1211,7 +1321,7 @@ class TestParquetFile:
     """``to_parquet`` / ``from_parquet`` and the succession rule."""
 
     def test_round_trip_through_the_file(self, tmp_path: Path) -> None:
-        claims = _every_kind([None, HUMAN, SOFTWARE, None, HUMAN])
+        claims = _every_kind([None, HUMAN, SOFTWARE, None, HUMAN])[:5]
         field = MatchClaimField.from_claims(claims)
         path = field.to_parquet(tmp_path)
         assert path == tmp_path / "match_claims.parquet"
@@ -1234,6 +1344,23 @@ class TestParquetFile:
         assert restored.provenance == SHARED
         assert restored.table.equals(gold_field.table, check_metadata=True)
 
+    def test_implicit_claims_stay_out_of_the_file(self, tmp_path: Path) -> None:
+        field = MatchClaimField.from_claims(_every_kind(NONE6))
+        message = (
+            "MatchClaim table row 5 is an implicit MatchClaim, which is derived and "
+            "never {}: the file holds the MatchClaims stated."
+        )
+        with pytest.raises(
+            ValueError, match=re.escape(message.format("written to a file"))
+        ):
+            field.to_parquet(tmp_path)
+        assert list(tmp_path.iterdir()) == []
+        pq.write_table(field.table, tmp_path / "match_claims.parquet")
+        with pytest.raises(
+            ValueError, match=re.escape(message.format("read from a file"))
+        ):
+            MatchClaimField.from_parquet(tmp_path)
+
     def test_empty_field_through_the_file(self, tmp_path: Path) -> None:
         restored = MatchClaimField.from_parquet(
             MatchClaimField.from_claims([]).to_parquet(tmp_path)
@@ -1241,7 +1368,7 @@ class TestParquetFile:
         assert (len(restored), restored.provenance) == (0, None)
 
     def test_succession(self, tmp_path: Path) -> None:
-        claims = _every_kind([None, HUMAN, SOFTWARE, None, HUMAN])
+        claims = _every_kind([None, HUMAN, SOFTWARE, None, HUMAN])[:5]
         MatchClaimField.from_claims(claims).to_parquet(tmp_path)
 
         believed = list(claims)

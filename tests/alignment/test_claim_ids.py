@@ -37,7 +37,7 @@ def _claims(
 ) -> list[MatchClaim]:
     """Fresh claims between a ``score`` note and an ``audio`` onset at each pair.
 
-    Without *ids* every claim mints its own ``claim_1``.
+    Without *ids* every claim holds none until a scope mints it one.
     """
     return [
         MatchClaim.from_events(
@@ -92,11 +92,11 @@ def _columns() -> MatchClaimField:
 # region Field part
 
 
-def test_free_claim_mints_claim_1() -> None:
+def test_free_claim_holds_no_id() -> None:
     first, second = _claims(NEW)
     assert [(c.id, c.id_minted) for c in (first, second)] == [
-        ("claim_1", True),
-        ("claim_1", True),
+        (None, False),
+        (None, False),
     ]
     named = MatchClaim.from_dict(
         first.to_dict() | {"id": "onset 7", "id_minted": False}
@@ -111,10 +111,11 @@ def test_field_is_a_scope() -> None:
     assert _ids(field) == ["s0", "s1", "s2"]
     assert [claim.id_minted for claim in field] == [False, False, False]
 
-    with pytest.raises(
-        ValueError, match=re.escape("claim id 'claim_1' is held by 2 claims")
-    ):
-        MatchClaimField.from_claims(_claims(NEW))
+    free = _claims(NEW)
+    field = MatchClaimField.from_claims(free)
+    assert _ids(field) == ["claim_1", "claim_2"]
+    assert [claim.id_minted for claim in field] == [True, True]
+    assert [claim.id for claim in free] == [None, None]
     with pytest.raises(ValueError, match=re.escape("claim id 'a' is held by 2 claims")):
         MatchClaimField.from_claims(_claims(NEW, ["a", "a"]))
 
@@ -240,7 +241,7 @@ def test_stored_and_new_claims_are_distinct(tmp_path: Path) -> None:
     assert _ids(stored) == ["claim_1", "claim_2", "claim_3", "claim_4"]
 
     rebuilt = _claims(STORED) + _claims(NEW)
-    assert {claim.id for claim in rebuilt} == {"claim_1"}
+    assert {claim.id for claim in rebuilt} == {None}
     bundle = _bundle()
     bundle.add_match_claim_field(stored)
     bundle.add_match_claims(rebuilt)
@@ -395,7 +396,7 @@ def test_given_id_refused_atomically() -> None:
     with pytest.raises(ValueError, match=message):
         bundle.add_match_claims([newcomer, given])
     assert bundle.cross_group_claims == [held]
-    assert (newcomer.id, newcomer.bundle) == ("claim_1", None)
+    assert (newcomer.id, newcomer.bundle) == (None, None)
     assert (given.id, given.bundle) == ("a", None)
 
     field = MatchClaimField.from_claims([given])

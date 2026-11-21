@@ -840,9 +840,19 @@ converts. A `Coordinate` already in the timeline's unit is **not** rewritten:
 a `float` quarters coordinate on a `fraction` timeline is refused by the
 check, which is what keeps one position from appearing as two coordinates.
 
+**The rules of TimeToShare's MatchClaim table hold for the scalar.** A
+MatchClaim connects two timelines: one naming the same timeline twice is
+refused (`A MatchClaim connects two timelines; both sides are 'tl1'.`). Each
+anchor joins the claim's timeline A and timeline B **in that order**, the
+order of the table's cells: an anchor written the other way round, and an
+end anchor on another pair of timelines, are refused with the message naming
+both pairs. Only a NOMATCH claim holds a `source_coordinate`; a synchronous
+claim given one is refused.
+
 **Certainty and provenance.** `certainty` is the claim's own property,
 `1.0` by default, refused outside `[0, 1]` (`Certainty must be in [0, 1],
-got -0.1`), the boundaries `0.0` and `1.0` accepted. `provenance` holds a
+got -0.1`), the boundaries `0.0` and `1.0` accepted, and `None` accepted as
+a certainty not stated (TimeToShare's table allows a null cell). `provenance` holds a
 `Provenance` (tests of the entry itself: `tests/core/README.md`,
 `test_provenance.py`); `to_dict` writes it as `Provenance.to_dict()` (absent
 keys left out) and `from_dict` reads it back equal, asserted on a whole
@@ -850,11 +860,10 @@ literal dictionary of one claim.
 
 **The matchstamp query uses the claim's own coordinate.**
 `get_matchstamp()` asks the bundle at the start anchor's coordinate **for the
-claim's timeline A**, as an `IdCoordinate`. The evidence is a claim whose
-anchor is written the other way round (`perf` first, `score` second): the
-stamp reads `score` 8 quarters and `perf` 20.0 seconds, where reading the
-anchor's first coordinate as timeline A's position would have asked the
-score at 20.
+claim's timeline A**, as an `IdCoordinate`: the stamp of a `score` (8
+quarters) ↔ `perf` (20.0 seconds) claim reads `score` 8 quarters and `perf`
+20.0 seconds, from the bundle's graph and reduced alike; the same claim with
+its anchor written the other way round is refused before any query.
 
 ### Key Evidence
 
@@ -862,7 +871,11 @@ score at 20.
 |------|-----------|
 | `test_instant_creation` | Single anchor → `is_interval == False`, timeline IDs are top-level |
 | `test_interval_creation` | Two anchors → `is_interval == True`; both ends read back per timeline |
-| `test_mismatched_anchors_raises` | **Critical invariant**: Start and end anchors must connect same timeline pair |
+| `test_auto_generated_and_explicit_id` | a claim made without an id holds `None`, `id_minted` False; a given id is kept |
+| `test_mismatched_anchors_raises` | **Critical invariant**: an end anchor on another pair of timelines is refused, naming both pairs |
+| `test_anchor_timeline_mismatch_raises` | an anchor on other timelines, and one in the wrong order, are refused with the message naming both pairs |
+| `test_one_timeline_twice_refused` | a claim naming one timeline on both sides is refused |
+| `test_source_coordinate_only_on_nomatch` | a synchronous claim with a `source_coordinate` is refused |
 | `test_synchronous_requires_anchor` | a synchronous claim without anchors is refused |
 | `test_non_synchronous_rejects_anchor` | a non-synchronous claim with anchors is refused |
 | `test_explicit_claim_names_its_events` | a synchronous claim naming one event, or none, and a non-synchronous claim naming none are refused with the exact messages; an implicit claim naming none is accepted |
@@ -874,9 +887,9 @@ score at 20.
 | `test_nomatch_source_coordinate_is_checked` | a NOMATCH `source_coordinate` checked on its event's timeline (side b here); refused there in another number type; refused where that side's axis is not given |
 | `test_nomatch_factory` | `nomatch()` has no anchors, `is_synchronous=False`, the event's start on its timeline's axis; the other timeline may be given by id |
 | `test_implicit_factory` | `implicit()` records `source_claim_id` for traceability |
-| `test_certainty_validation` / `test_certainty_boundaries` | the range rule and its two boundaries |
+| `test_certainty_validation` / `test_certainty_boundaries` | the range rule, its two boundaries and `None` |
 | `test_to_dict_literal_with_provenance` | one claim with a given id, a certainty and a provenance holding a belief, as a whole literal; `from_dict` gives it back equal |
-| `test_matchstamp_query_reads_the_claim_s_timeline` | the swapped-anchor claim's stamp, as above |
+| `test_matchstamp_query_reads_the_claim_s_timeline` | the claim's stamp, and the refusal of its swapped anchor, as above |
 
 ### NOMATCH Coordinate Preservation & Repr
 
@@ -910,7 +923,7 @@ def test_mismatched_anchors_raises(self):
     start = AlignmentAnchor(timeline_a_id="tl1", ..., timeline_b_id="tl2", ...)
     end = AlignmentAnchor(timeline_a_id="tl1", ..., timeline_b_id="tl3", ...)  # Different!
 
-    with pytest.raises(ValueError, match="must connect same timelines"):
+    with pytest.raises(ValueError, match="An anchor of a MatchClaim joins ..."):
         MatchClaim(timeline_a_id="tl1", timeline_b_id="tl2",
                    start_anchor=start, end_anchor=end)
 ```
@@ -959,12 +972,23 @@ The field's struct schema is **derived from the scalar** by
 A provenance shared by every row is a single `Provenance | None` held **once
 at field level** and **injected on read**: the `provenance` column is left
 null, and `__getitem__` gives each materialised claim the field's
-provenance. Each coordinate is stored as a
-`{value, numerator, denominator, unit, number_type}` cell: the number type
-decides which side holds the number (`value` for a float, the ratio for an
-int or a fraction), so a coordinate comes back in the number type it was
-written in, never the unit's default — a `quarters` timeline declaring
-`float` keeps its floats.
+provenance. Each coordinate is stored as the library's one coordinate cell
+(`core/time.py`, `COORDINATE_CELL_TYPE`, which is TimeToShare's
+`COORDINATE_TYPE`) `{value, numerator, denominator, unit, number_type}`,
+both sides of the number filled on every cell: a float's ratio is its exact
+dyadic (`0.1` seconds holds `3602879701896397/36028797018963968`, `21.0`
+holds `21/1`), never a guessed ratio. The number type decides which side is
+read, so a coordinate comes back in the number type it was written in, never
+the unit's default — a `quarters` timeline declaring `float` keeps its
+floats.
+
+**The table is TimeToShare's table type.** The columns, their types and
+their order are TimeToShare's `MATCH_CLAIM_SCHEMA` (`provenance` before
+`certainty`), asserted equal schema to schema; `from_table` reads the
+columns by name, so a table holding them in another order is read the same.
+The shared provenance travels under TimeToShare's key
+`timetoshare:provenance`. The conformance test (below) reads TimeToShare's
+own fixture table and writes it back unchanged.
 
 ### Every kind of MatchClaim is a row
 
@@ -975,8 +999,16 @@ anchors). No column leaves the table; `metadata` became `provenance`, and
 could be, vectorized, naming the first offending row (`MatchClaim table row
 {i} ...`): a synchronous row without a start anchor, a non-synchronous row
 with an anchor, an explicit synchronous row not naming an event on each side,
-an explicit non-synchronous row naming none, an anchor on other timelines than
-the row's, a certainty outside `[0, 1]`. What proves the kinds are first-class
+an explicit non-synchronous row naming none, an anchor not joining the row's
+timeline A and timeline B in that order (other timelines, or the two
+swapped), a row naming one timeline twice, a `source_coordinate` on a row
+that is not a NOMATCH claim, a certainty outside `[0, 1]` (a null certainty
+is read, as TimeToShare allows it). Across rows, the coordinates of one
+timeline are on one axis: a table holding `audio` in `seconds (float)` in
+one row and in `samples (int)` in another is refused, naming the timeline
+and both axes, though no timelines are given. These are the rules
+TimeToShare's table check applies, so a table the library reads is one
+TimeToShare accepts. What proves the kinds are first-class
 is the round trip of a field holding all of them (an event match, an interval
 claim, a NOMATCH claim with its `source_coordinate`, a conceptual claim, an
 implicit claim) claim by claim, through the dictionary and through Parquet,
@@ -1079,9 +1111,16 @@ fields shows up as a failing test.
 
 `MatchClaimField.from_table(table)` is the inverse of `.table`. The shared
 provenance lives outside the claim columns, in the Arrow schema metadata
-under `timetoalign:provenance` (the JSON of `Provenance.to_dict()`, asserted
+under `timetoshare:provenance` (the JSON of `Provenance.to_dict()`, asserted
 byte-exact); no key means `None`. A table stating provenance both there and
 in rows is refused with its count of rows.
+
+**The file holds statements.** An implicit claim is derived by a
+`MatchGraph` and never stated, so `to_parquet` refuses a field holding one
+(`MatchClaim table row 0 is an implicit MatchClaim, which is derived and
+never written to a file: ...`) and `from_parquet` refuses a file holding one;
+the file is left as it was. A failed write leaves no temporary file beside
+it.
 
 `to_parquet(path)` / `from_parquet(path)` write and read the canonical
 `match_claims.parquet` (a directory takes that file name). A round trip
@@ -1091,8 +1130,8 @@ alike — so the field holds one claim per stored representation: exact
 `Fraction` coordinates on `quarters` (`7/3`, `10/3`), `int` coordinates on
 `ticks` / `samples` (`96`, `44100`), `float` on `seconds` (`1.25`, `2.5`), a
 `float` on a `quarters` timeline declaring `float` (`1.5`), an interval claim,
-a NOMATCH claim, a conceptual claim, an implicit claim with a
-`source_claim_id`, row provenance with beliefs and a shared provenance.
+a NOMATCH claim, a conceptual claim, a claim with a `source_claim_id`, row
+provenance with beliefs and a shared provenance.
 
 **The succession rule.** Writing over an existing file is allowed only when
 the new table succeeds it: every id of the old table is in the new one with
@@ -1134,8 +1173,9 @@ timeline.
 |------|-----------|
 | `test_from_columns_length` | `len(f) == 3` |
 | `test_is_semantic_field` | `issubclass(MatchClaimField, SemanticField)` |
-| `test_pa_schema_is_derived` | `pa_schema == derive_arrow_struct(MatchClaim)`; the coordinate cell is `{value, numerator, denominator, unit, number_type}` |
-| `test_table_one_column_per_property` | the column names and types are the derived struct's fields, in order (and the literal name list) |
+| `test_pa_schema_is_derived` | `pa_schema == derive_arrow_struct(MatchClaim)`; the coordinate cell is `COORDINATE_CELL_TYPE`, `{value, numerator, denominator, unit, number_type}` |
+| `test_table_one_column_per_property` | the column names and types are the derived struct's fields, in order (and the literal name list, `provenance` before `certainty`) |
+| `test_float_cells_carry_their_exact_ratio` | the gold vector's float cells hold `10/1`, `20/1`, `21/1`, and `0.1` seconds its exact dyadic |
 | `test_timeline_ids` | `f.timeline_ids == {"A", "B", "C"}` |
 | `test_from_columns_writes_each_row_on_its_axis` | row 0 `A` is `Fraction(0)` quarters, row 2 `B` `1.0` seconds, the events named, `certainty` 1.0 |
 | `test_from_columns_end_columns` | an end on both sides makes the row an interval claim, a null end an instant |
@@ -1193,16 +1233,18 @@ persist (the MatchClaim table written to Parquet keeps its ids), and a stored
 id is what a manifest's named MatchStamp records, so renaming a claim when it
 joins a table would break every reference to it. The rule tested:
 
-- **A free claim** mints `claim_1` (its own scope is empty) and records
-  `id_minted == True`; a given id is kept verbatim, `id_minted == False`; an
-  id with a control character is refused by `validate_id`.
+- **A free claim** made without an id holds `None` (`id_minted == False`)
+  until the first scope it joins mints one; a given id is kept verbatim,
+  `id_minted == False`; an id with a control character is refused by
+  `validate_id`.
 - **A field is a scope** (every constructor: `from_columns`, `from_claims`,
   `from_dict`, `from_table`, `from_parquet`): a row without an id is minted
   one, `claim_N` with N the smallest number free (minting gives a first id,
   it renames nothing); an id held by two rows is refused, **whether given or
-  minted** (`claim id 'claim_1' is held by 2 claims`), before anything is
-  built. No id is ever re-minted, so two free claims, both `claim_1`, cannot
-  share a table: they are given ids.
+  minted** (`claim id 'a' is held by 2 claims`), before anything is built.
+  No id is ever re-minted. Two free claims, both without an id, share a
+  table as `claim_1`, `claim_2`; the claim objects keep `None` (a field
+  holds rows, not the objects).
 - **The flag is stored** (`id_minted` is a column of the claim struct): a
   row read back keeps its id and its flag.
 
@@ -1217,8 +1259,8 @@ determinism across processes is observed, not inferred.
 
 | Test | Validates |
 |------|-----------|
-| `test_free_claim_mints_claim_1` | two fresh claims are both `claim_1`, `id_minted` True; a given `"onset 7"` is kept, `id_minted` False; `"a\tb"` raises |
-| `test_field_is_a_scope` | `from_claims` of claims given `s0`–`s2` keeps them; two free claims (both `claim_1`) are refused (`claim id 'claim_1' is held by 2 claims`), and two claims given `"a"` likewise (`... 'a' is held by 2 claims`) |
+| `test_free_claim_holds_no_id` | two fresh claims both hold `None`, `id_minted` False; a given `"onset 7"` is kept, `id_minted` False; `"a\tb"` raises |
+| `test_field_is_a_scope` | `from_claims` of claims given `s0`–`s2` keeps them; two free claims become `claim_1`, `claim_2`, `id_minted` True, the objects still `None`; two claims given `"a"` are refused (`claim id 'a' is held by 2 claims`) |
 | `test_from_columns_mints_ids` | the gold vector's ids are `claim_1`–`claim_3`, `id_minted` all True |
 | `test_null_ids_are_minted_around_held_ones` | a table whose rows hold `claim_2`, null, `x`, null reads back as `claim_2`, `claim_1`, `x`, `claim_3`, the minted flags `False`, `True`, `False`, `True` |
 | `test_two_runs_store_the_same_ids` | a subprocess and this process store the same field to Parquet: ids `claim_1`–`claim_4` and the tables equal |
@@ -1228,12 +1270,54 @@ determinism across processes is observed, not inferred.
 | Test | Validates |
 |------|-----------|
 | `test_two_free_claims_become_distinct` | two free claims, `score ↔ audio` (0, 0.0) and `score ↔ score_copy` (4, 4), both `claim_1`: a graph built from them filters by object, so `filter(timeline_ids={"score", "audio"})` keeps the first alone and `{"score", "score_copy"}` the second alone, while both edges still carry `claim_id == "claim_1"`; `from_claims` stores them as `claim_1`, `claim_2` and leaves the objects unchanged; a bundle renames the second in place to `claim_2`, and a graph of the bundle's claims keeps `claim_2` for `{"score", "score_copy"}` |
-| `test_stored_and_new_claims_are_distinct` | the stored field read from Parquet keeps `claim_1`–`claim_4`; the same four built again plus the two new ones, added to the bundle, become `claim_5`–`claim_10` in order; the caller's objects carry them and `claim.bundle is bundle`; all ten ids distinct |
+| `test_stored_and_new_claims_are_distinct` | the stored field read from Parquet keeps `claim_1`–`claim_4`; the same four built again plus the two new ones, all without an id, added to the bundle, are given `claim_5`–`claim_10` in order; the caller's objects carry them and `claim.bundle is bundle`; all ten ids distinct |
 | `test_graph_filter_unaffected` | a bundle of the stored field and the two new claims (`claim_1`–`claim_6`): `MatchGraph(bundle.get_match_claims()).extend_to_groups(bundle.groups)` adds six implicit claims, `claim_7`–`claim_12` in the order made, `id_minted` True; every edge's `claim_id` equals its claim's id and the twelve are distinct; each implicit claim's `source_claim_id` is one of `claim_1`–`claim_6`, the explicit claim whose `score` coordinate it carries; `filter(explicit_only=True)` keeps exactly `claim_1`–`claim_6` and no implicit claim; `filter(timeline_ids={"score", "audio"})` keeps the same six |
 | `test_references_follow_reminted_ids` | `from_claims` of a free projection `score ↔ audio` (0, 0.0) and the implicit claim made from it (`source_claim_id` `claim_1`) stores `claim_1`, `claim_2`, the reference `claim_1` kept (the first row keeps the id); added to a bundle already holding `claim_1`, `claim_2`, the rows become `claim_3`, `claim_4` and the second row's `source_claim_id` `claim_3`; the same two claims as objects, added by `add_match_claims` to such a bundle, become `claim_3`, `claim_4` in place, the implicit one's `source_claim_id` `claim_3`; a bundle holding a given `"anchor"` and a minted `claim_1` takes an implicit claim made from `"anchor"`: its id becomes `claim_2` and its `source_claim_id` stays `"anchor"` (a reference to no re-minted newcomer) |
 | `test_two_runs_merged` | a subprocess and this process store the same field: ids equal (`claim_1`–`claim_4`); both added to one bundle: the second becomes `claim_5`–`claim_8`, every other table value equal |
-| `test_given_id_refused_atomically` | a bundle holding a given `"a"` refuses a claim and a field with a given `"a"` (`claim id 'a' is already held by another claim of this bundle`); after each refusal the bundle holds what it held and the newcomer keeps its id and no bundle |
+| `test_given_id_refused_atomically` | a bundle holding a given `"a"` refuses a claim and a field with a given `"a"` (`claim id 'a' is already held by another claim of this bundle`); after each refusal the bundle holds what it held and the newcomer keeps its id (`None` for the one made without) and no bundle |
 | `test_held_claim_joins_as_copy` | `from_bundles` of two bundles each holding `claim_1`, `claim_2`: the merge holds `claim_1`–`claim_4`; the second source still holds `claim_1`, `claim_2`, each with `bundle` the source |
+
+---
+
+## The MatchClaim table is TimeToShare's (`test_timetoshare_conformance.py`)
+
+### What We're Validating
+
+The library writes and reads the MatchClaim table that TimeToShare defines
+(`timetoshare.tables`): one table type in both repositories, so a file the
+library writes passes TimeToShare's check and a file TimeToShare holds is
+read by the library value for value. A comparison with the library's own
+expectations would prove nothing here — the two could agree with each other
+and both differ from the format — so every assertion is against
+TimeToShare's own artifacts:
+
+- **Schema.** `MatchClaimField.pa_schema`, as a schema, equals TimeToShare's
+  `MATCH_CLAIM_SCHEMA` (names, types and order); the coordinate cell equals
+  its `COORDINATE_TYPE`; the provenance key is its `PROVENANCE_METADATA_KEY`.
+- **The fixture table, read and written back.** TimeToShare's fixture
+  `fixtures/tables/<version>/match_claims.parquet` is read with
+  `MatchClaimField.from_parquet`: fifteen claims, `claim_1`–`claim_15` none
+  minted, thirteen `event_match`, one `nomatch` (`claim_12`, its
+  `source_coordinate` 9 quarters), one `conceptual` (`claim_14`); rows with a
+  null `beliefs` read. Written back with `to_parquet`, the file read again
+  `equals` the fixture's table, schema metadata included; the claims
+  materialised and stored again with `from_claims` give the same table. Both
+  are content identity, so a dropped, retyped or rewritten cell fails.
+- **Columns by name.** The fixture's columns in reverse order read to the
+  same claims.
+- **What the library writes, TimeToShare accepts.** A field from
+  `from_columns` over a fraction `quarters`, an int `samples` and a float
+  `seconds` timeline (a float `0.1` among the cells), with a shared
+  provenance, and a field from `from_claims` holding an interval claim, a
+  NOMATCH claim and a conceptual claim, each give `match_claim_problems(...)
+  == []`; the float cells hold their exact ratios, and TimeToShare's
+  `row_provenance` reads the shared provenance on every row.
+
+**Where the fixture comes from.** The test locates TimeToShare's checkout as
+the sibling of this repository (`../TimeToShare`, the layout of the parent
+project) and reads the fixture there; where no sibling checkout holds the
+fixture, the test is skipped with that reason. The schema assertions need
+only the installed `timetoshare` and always run.
 
 ---
 

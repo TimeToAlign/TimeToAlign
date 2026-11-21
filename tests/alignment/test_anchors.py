@@ -256,8 +256,8 @@ class TestMatchClaim:
         self, basic_anchor: AlignmentAnchor
     ) -> None:
         assert (_claim(basic_anchor).id, _claim(basic_anchor).id_minted) == (
-            "claim_1",
-            True,
+            None,
+            False,
         )
         given = _claim(basic_anchor, id="my_claim")
         assert (given.id, given.id_minted) == ("my_claim", False)
@@ -265,19 +265,60 @@ class TestMatchClaim:
     def test_mismatched_anchors_raises(self) -> None:
         start = _anchor("tl1", _number(0.0), "tl2", _number(0.0))
         end = _anchor("tl1", _number(100.0), "tl3", _number(100.0))
-        with pytest.raises(ValueError, match="must connect same timelines"):
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "An anchor of a MatchClaim joins its timeline A and its timeline B "
+                "in that order: the claim joins 'tl1' and 'tl2', the anchor 'tl1' "
+                "and 'tl3'."
+            ),
+        ):
             _claim(start, end_anchor=end)
 
     def test_anchor_timeline_mismatch_raises(self) -> None:
         anchor = _anchor("tl1", _number(0.0), "tl2", _number(0.0))
-        with pytest.raises(ValueError, match="must match claim timelines"):
+        for timeline_a, timeline_b in (("tl1", "tl3"), ("tl2", "tl1")):
+            with pytest.raises(
+                ValueError,
+                match=re.escape(
+                    f"the claim joins '{timeline_a}' and '{timeline_b}', the "
+                    f"anchor 'tl1' and 'tl2'."
+                ),
+            ):
+                MatchClaim(
+                    timeline_a_id=timeline_a,
+                    timeline_b_id=timeline_b,
+                    start_anchor=anchor,
+                    event_a_id="a",
+                    event_b_id="b",
+                )
+
+    def test_one_timeline_twice_refused(self) -> None:
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "A MatchClaim connects two timelines; both sides are 'tl1'."
+            ),
+        ):
             MatchClaim(
                 timeline_a_id="tl1",
-                timeline_b_id="tl3",
-                start_anchor=anchor,
+                timeline_b_id="tl1",
+                is_synchronous=False,
                 event_a_id="a",
                 event_b_id="b",
             )
+
+    def test_source_coordinate_only_on_nomatch(
+        self, basic_anchor: AlignmentAnchor
+    ) -> None:
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "Only a NOMATCH MatchClaim has a source_coordinate: the "
+                "coordinates of any other claim are its anchors'."
+            ),
+        ):
+            _claim(basic_anchor, source_coordinate=Coordinate(100, TimeUnit.quarters))
 
     def test_synchronous_requires_anchor(self) -> None:
         with pytest.raises(ValueError, match="require a start_anchor"):
@@ -364,6 +405,7 @@ class TestCertaintyAndProvenance:
     def test_certainty_boundaries(self, basic_anchor: AlignmentAnchor) -> None:
         assert _claim(basic_anchor, certainty=0.0).certainty == 0.0
         assert _claim(basic_anchor, certainty=1.0).certainty == 1.0
+        assert _claim(basic_anchor, certainty=None).certainty is None
 
     def test_to_dict_literal_with_provenance(self) -> None:
         provenance = Provenance(
@@ -885,27 +927,40 @@ class TestMatchstampQuery:
         perf = ContinuousPhysicalTimeline(length=40.0, uid="perf")
         bundle.add_timeline(score, as_group="score")
         bundle.add_timeline(perf, as_group="perf")
-        swapped = MatchClaim(
+        with pytest.raises(ValueError, match="An anchor of a MatchClaim joins"):
+            MatchClaim(
+                timeline_a_id="score",
+                timeline_b_id="perf",
+                start_anchor=_anchor(
+                    "perf",
+                    Coordinate(20.0, TimeUnit.seconds),
+                    "score",
+                    Coordinate(8, TimeUnit.quarters),
+                ),
+                event_a_id="note_8",
+                event_b_id="onset_8",
+            )
+        claim = MatchClaim(
             timeline_a_id="score",
             timeline_b_id="perf",
             start_anchor=_anchor(
-                "perf",
-                Coordinate(20.0, TimeUnit.seconds),
                 "score",
                 Coordinate(8, TimeUnit.quarters),
+                "perf",
+                Coordinate(20.0, TimeUnit.seconds),
             ),
             event_a_id="note_8",
             event_b_id="onset_8",
         ).check_on_timelines(score, perf)
-        bundle.add_match_claims([swapped])
-        stamp = swapped.get_matchstamp()
+        bundle.add_match_claims([claim])
+        stamp = claim.get_matchstamp()
         assert stamp.get_coordinate_for("score", format="coordinate") == Coordinate(
             8, TimeUnit.quarters
         )
         assert stamp.get_coordinate_for("perf", format="coordinate") == Coordinate(
             20.0, TimeUnit.seconds
         )
-        reduced = swapped.get_matchstamp(from_graph=False)
+        reduced = claim.get_matchstamp(from_graph=False)
         assert reduced.get_coordinate_for("score", format="coordinate") == Coordinate(
             8, TimeUnit.quarters
         )

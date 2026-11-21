@@ -213,6 +213,8 @@ _DEFERRED_EXPORTS = {
     "BeatGrid": ("timetoalign.timelines", "BeatGrid"),
     "BeatGridSegment": ("timetoalign.timelines", "BeatGridSegment"),
     "GridBeat": ("timetoalign.timelines", "GridBeat"),
+    "Integrity": ("timetoalign.timelines", "Integrity"),
+    "Resource": ("timetoalign.timelines", "Resource"),
     "ContinuousGraphicalTimeline": (
         "timetoalign.timelines",
         "ContinuousGraphicalTimeline",
@@ -391,6 +393,8 @@ __all__ = [
     "AlignmentBundle",
     "Gap",
     "TimelineGroup",
+    "Resource",
+    "Integrity",
     "AlignmentAnchor",
     "Belief",
     "ClaimFilter",

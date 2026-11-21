@@ -43,7 +43,7 @@ from timetoalign.core import (
     resolve_coordinate_spec,
 )
 from timetoalign.core.fields import SemanticField, field_metadata
-from timetoalign.core.ids import _id_column, mint_ids
+from timetoalign.core.ids import id_column, mint_ids
 from timetoalign.core.time import (
     build_number_struct_array,
     coordinate_to_struct,
@@ -125,7 +125,7 @@ def mint_event_ids(
     types = pc.cast(event_types, pa.string())
     types = pc.if_else(pc.equal(pc.fill_null(types, ""), ""), "Event", types)
     prefixes = pc.utf8_lower(types)
-    held = _id_column(taken)
+    held = id_column(taken)
     ids = pa.nulls(len(prefixes), pa.string())
     for prefix in pc.unique(prefixes).to_pylist():
         rows = pc.equal(prefixes, prefix)

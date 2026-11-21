@@ -10,6 +10,7 @@ from fractions import Fraction
 
 import pyarrow as pa
 import pytest
+from timetoshare.tables import COORDINATE_TYPE
 
 from timetoalign.core.time import (
     COORDINATE_CELL_TYPE,
@@ -76,11 +77,7 @@ class TestCellType:
         assert COORDINATE_CELL_TYPE == SPELLED_OUT
 
     def test_the_cell_type_is_timetoshares(self) -> None:
-        tables = pytest.importorskip(
-            "timetoshare.tables",
-            reason="the installed timetoshare has no tables module",
-        )
-        assert COORDINATE_CELL_TYPE == tables.COORDINATE_TYPE
+        assert COORDINATE_CELL_TYPE == COORDINATE_TYPE
 
 
 class TestCoordinateCells:

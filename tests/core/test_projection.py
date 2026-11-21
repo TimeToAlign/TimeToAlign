@@ -12,6 +12,12 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 from pydantic import ValidationError
+from timetoshare.tables import (
+    PROJECTION_COLUMNS,
+    PROJECTION_SCHEMA,
+    fixture_path,
+    projection_problems,
+)
 
 from timetoalign.core import (
     Coordinate,
@@ -296,14 +302,8 @@ class TestAxesPerCell:
 
 
 def _fixture_projections() -> pa.Table:
-    """TimeToShare's fixture Projections table, or a skip."""
-    tables = pytest.importorskip(
-        "timetoshare.tables", reason="the installed timetoshare has no tables module"
-    )
-    path = tables.fixture_path("projections.parquet")
-    if not path.is_file():
-        pytest.skip(f"TimeToShare's fixture Projections table is absent: {path}")
-    return pq.read_table(path)
+    """TimeToShare's fixture Projections table, shipped with the installed package."""
+    return pq.read_table(fixture_path("projections.parquet"))
 
 
 #: The Projections of TimeToShare's fixture table, in row order.
@@ -367,7 +367,6 @@ class TestTimeToShareFixture:
 
     def test_the_field_with_its_timelines_is_a_valid_projections_table(self) -> None:
         table = _fixture_projections()
-        tables = pytest.importorskip("timetoshare.tables")
         field = ProjectionField.from_projections(FIXTURE_PROJECTIONS)
         written = pa.Table.from_arrays(
             [
@@ -377,7 +376,7 @@ class TestTimeToShareFixture:
                 field.data.field("duration"),
                 field.data.field("projection_of"),
             ],
-            schema=tables.PROJECTION_SCHEMA,
+            schema=PROJECTION_SCHEMA,
         )
-        assert tables.projection_problems(written) == []
-        assert written.equals(table.select(tables.PROJECTION_COLUMNS))
+        assert projection_problems(written) == []
+        assert written.equals(table.select(PROJECTION_COLUMNS))

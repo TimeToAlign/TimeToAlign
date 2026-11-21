@@ -16,7 +16,7 @@ Loader Taxonomy:
         - AudioLoader: Audio file -> DiscretePhysicalTimeline (samples)
         - IIIFManifestLoader: IIIF manifest -> Graphical dimensions
 
-    **AlignmentLoader** - Returns AlignmentStore (events + C-maps + matches):
+    **AlignmentLoader** - Returns AlignmentStore (events + C-maps):
         - MatchfileLoader: Score-to-performance alignment
         - MapsLoader: MAPS score-to-performance alignment (MatchClaims)
         - TiliaJsonLoader: TiLiA hierarchical annotations
@@ -28,7 +28,6 @@ Classes:
     EventStore: Abstract base class for collections of EventData.
     SingleStore: Store wrapper for a single EventData.
     AlignmentStore: Container for aligned multimodal data.
-    MatchData: Container for alignment matches.
     ManifestData: Container for manifest/metadata.
     Loader: Abstract base class for event-based loaders.
     ManifestLoader: Abstract base class for manifest loaders.

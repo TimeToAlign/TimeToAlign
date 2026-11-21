@@ -12,7 +12,7 @@ from timetoalign.loader import (
     ManifestData,
     ManifestLoader,
 )
-from timetoalign.storage import AlignmentStore, EventData, MatchData, SingleStore
+from timetoalign.storage import AlignmentStore, EventData, SingleStore
 
 # region ManifestData Tests
 
@@ -136,111 +136,6 @@ class TestManifestLoader:
 # endregion
 
 
-# region MatchData Tests
-
-
-class TestMatchData:
-    """Tests for MatchData."""
-
-    def test_empty(self):
-        """Test creating empty MatchData."""
-        matches = MatchData.empty()
-        assert len(matches) == 0
-
-    def test_from_dicts(self):
-        """Test creating MatchData from dictionaries."""
-        matches = MatchData.from_dicts(
-            [
-                {
-                    "match_id": "m1",
-                    "source_event_id": "e1",
-                    "source_domain": "logical",
-                    "source_coordinate": {
-                        "value": 0.0,
-                        "numerator": 0,
-                        "denominator": 1,
-                    },
-                    "target_event_id": "e2",
-                    "target_domain": "physical",
-                    "target_coordinate": {
-                        "value": 1.5,
-                        "numerator": None,
-                        "denominator": None,
-                    },
-                    "confidence": 0.95,
-                    "agent": "test",
-                    "method": "manual",
-                },
-            ]
-        )
-
-        assert len(matches) == 1
-
-    def test_extend(self):
-        """Test extending MatchData."""
-        m1 = MatchData.from_dicts(
-            [
-                {
-                    "match_id": "m1",
-                    "source_event_id": None,
-                    "source_domain": "logical",
-                    "source_coordinate": None,
-                    "target_event_id": None,
-                    "target_domain": "physical",
-                    "target_coordinate": None,
-                    "confidence": None,
-                    "agent": None,
-                    "method": None,
-                }
-            ]
-        )
-        m2 = MatchData.from_dicts(
-            [
-                {
-                    "match_id": "m2",
-                    "source_event_id": None,
-                    "source_domain": "graphical",
-                    "source_coordinate": None,
-                    "target_event_id": None,
-                    "target_domain": "physical",
-                    "target_coordinate": None,
-                    "confidence": None,
-                    "agent": None,
-                    "method": None,
-                }
-            ]
-        )
-
-        m1.extend(m2)
-        assert len(m1) == 2
-
-    def test_iteration(self):
-        """Test iterating over matches."""
-        matches = MatchData.from_dicts(
-            [
-                {
-                    "match_id": f"m{i}",
-                    "source_event_id": None,
-                    "source_domain": "logical",
-                    "source_coordinate": None,
-                    "target_event_id": None,
-                    "target_domain": "physical",
-                    "target_coordinate": None,
-                    "confidence": None,
-                    "agent": None,
-                    "method": None,
-                }
-                for i in range(5)
-            ]
-        )
-
-        ids = [m["match_id"] for m in matches]
-        assert ids == ["m0", "m1", "m2", "m3", "m4"]
-
-
-# endregion
-
-
 # region AlignmentStore Tests
 
 
@@ -252,7 +147,6 @@ class TestAlignmentStore:
         store = AlignmentStore.empty()
 
         assert store.event_count == 0
-        assert store.match_count == 0
         assert store.cmap_count == 0
 
     def test_with_events(self):
@@ -278,67 +172,9 @@ class TestAlignmentStore:
         store = AlignmentStore(
             events=SingleStore(events, name="beats"),
             cmaps=[],
-            matches=MatchData.empty(),
         )
 
         assert store.event_count == 2
-
-    def test_get_matches_for_event(self):
-        """Test retrieving matches for a specific event."""
-        events = EventData.from_dicts(
-            [
-                {
-                    "id": "e1",
-                    "temporal_type": "instant",
-                    "event_type": "Beat",
-                    "start": 0.0,
-                }
-            ],
-            unit=TimeUnit.seconds,
-        )
-
-        matches = MatchData.from_dicts(
-            [
-                {
-                    "match_id": "m1",
-                    "source_event_id": "e1",
-                    "source_domain": "logical",
-                    "source_coordinate": None,
-                    "target_event_id": "e2",
-                    "target_domain": "physical",
-                    "target_coordinate": None,
-                    "confidence": None,
-                    "agent": None,
-                    "method": None,
-                },
-                {
-                    "match_id": "m2",
-                    "source_event_id": "e3",
-                    "source_domain": "logical",
-                    "source_coordinate": None,
-                    "target_event_id": "e1",
-                    "target_domain": "physical",
-                    "target_coordinate": None,
-                    "confidence": None,
-                    "agent": None,
-                    "method": None,
-                },
-            ]
-        )
-
-        store = AlignmentStore(
-            events=SingleStore(events, name="events"),
-            cmaps=[],
-            matches=matches,
-        )
-
-        # e1 is involved in both matches (as source in m1, as target in m2)
-        e1_matches = store.get_matches_for_event("e1")
-        assert len(e1_matches) == 2
-
-        # e3 is only in m2
-        e3_matches = store.get_matches_for_event("e3")
-        assert len(e3_matches) == 1
 
     def test_summary(self):
         """Test summary generation."""
@@ -355,7 +191,6 @@ class TestAlignmentStore:
             },
             "facts": {
                 "event_count": 0,
-                "match_count": 0,
                 "cmap_count": 0,
                 "domains": ["physical"],
                 "store_names": ["events"],
@@ -391,7 +226,6 @@ class TestAlignmentLoader:
                 return AlignmentStore(
                     events=SingleStore(events, name="events"),
                     cmaps=[],
-                    matches=MatchData.empty(),
                 )
 
         path = tmp_path / "test.xml"

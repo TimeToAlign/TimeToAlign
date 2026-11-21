@@ -55,7 +55,7 @@ message, rather than failing integer conversion.
 | File / Subdirectory | What it validates |
 |---------------------|-------------------|
 | `test_loader.py` | Generic loader smoke tests and contract checks |
-| `test_base_loaders.py` | The `EventLoader` / `ManifestLoader` / `AlignmentLoader` ABCs |
+| `test_base_loaders.py` | The `EventLoader` / `ManifestLoader` / `AlignmentLoader` ABCs; `AlignmentStore` holds events, C-Maps and metadata only (exact `event_count`, `cmap_count`, the whole `summary()` dict): MatchClaims live in the MatchClaim table, never in a store |
 | `test_bundle.py` | `AlignmentBundle` produced by alignment loaders |
 | `test_error_handling.py` | Faulty-input behaviour across loaders |
 | `test_interval_policy.py` | Half-open interval semantics on event ingestion. Duration recomputed from `start`/`end` under the `warn`/`strict` "both present" branch stays an exact `Fraction` (not a rounded float) when both endpoints carry exact ratios; falls back to float subtraction otherwise. All recomputed endpoints/durations are asserted with exact `==` (zero tolerance): the integer/half operands round-trip bit-exactly, and the one genuinely-float fallback (`3.0 - 1/3`, mixed exact/float operands) is pinned against the identical Python expression, so no `pytest.approx` remains in this file. |

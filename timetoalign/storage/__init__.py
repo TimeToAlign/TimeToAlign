@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from .events import EventData, mint_event_ids
 from .mixins import MultipleFieldsError, SemanticFieldAccessMixin
-from .store import AlignmentStore, DictStore, EventStore, MatchData, SingleStore
+from .store import AlignmentStore, DictStore, EventStore, SingleStore
 
 __all__ = [
     "EventData",
@@ -12,7 +12,6 @@ __all__ = [
     "EventStore",
     "SingleStore",
     "DictStore",
-    "MatchData",
     "AlignmentStore",
     "SemanticFieldAccessMixin",
     "MultipleFieldsError",

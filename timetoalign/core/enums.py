@@ -384,45 +384,35 @@ class ClaimType(FancyStrEnum):
 
     A claim's kind is never stored; it is read from whether the claim is
     explicit, whether it is synchronous, and how many of its two sides name an
-    event. The members span every shape a pairwise claim can take:
+    event. An explicit MatchClaim always names two events, or one event and
+    the NOMATCH sentinel on the other side; a side without an event of its own
+    is given a Projection event first, never a bare coordinate.
 
     Members:
-        event_match: Two identified events on different timelines correspond,
-            temporally anchored.
-        projection: One identified event corresponds to a bare coordinate on
-            the other timeline (which names no event of its own).
-        nomatch: An identified event has no counterpart on the other timeline.
-        anchor: Two anonymous coordinates correspond, with no event identity on
-            either side.
+        event_match: Two events on different timelines correspond, temporally
+            anchored.
+        nomatch: An event has no counterpart on the other timeline.
         implicit: A correspondence inferred by graph extension rather than
             directly asserted.
-        conceptual: A structural correspondence with no temporal commitment —
-            no anchors and no single orphaned event.
+        conceptual: Two events correspond structurally, with no temporal
+            commitment (no anchors).
     """
 
     event_match = auto()
-    """Two identified events correspond, temporally anchored."""
+    """Two events correspond, temporally anchored."""
     event = event_match
     """Alias for event_match."""
 
-    projection = auto()
-    """One identified event corresponds to a bare coordinate on the other timeline."""
-
     nomatch = auto()
-    """An identified event has no counterpart on the other timeline."""
+    """An event has no counterpart on the other timeline."""
     nomat = nomatch
     """Alias for nomatch."""
-
-    anchor = auto()
-    """Two anonymous coordinates correspond (no event identity)."""
-    anon = anchor
-    """Alias for anchor."""
 
     implicit = auto()
     """An inferred (not directly asserted) correspondence."""
 
     conceptual = auto()
-    """A structural correspondence with no temporal commitment (no anchors)."""
+    """Two events correspond with no temporal commitment (no anchors)."""
 
 
 class EventType(FancyStrEnum):

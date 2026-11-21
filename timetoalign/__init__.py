@@ -126,6 +126,7 @@ from timetoalign.core import (
     TimeUnit,
     resolve_coordinate_spec,
 )
+from timetoalign.core.provenance import Belief, Provenance
 from timetoalign.maps import (
     ChainMap,
     ConstantMap,
@@ -232,7 +233,6 @@ _DEFERRED_EXPORTS = {
     "TimelineGroup": ("timetoalign.timelines", "TimelineGroup"),
     "UnknownLengthError": ("timetoalign.timelines", "UnknownLengthError"),
     # Alignment layer
-    "Agent": ("timetoalign.alignment", "Agent"),
     "AlignmentAnchor": ("timetoalign.alignment", "AlignmentAnchor"),
     "AlignmentBundle": ("timetoalign.alignment", "AlignmentBundle"),
     "ClaimFilter": ("timetoalign.alignment", "ClaimFilter"),
@@ -242,7 +242,6 @@ _DEFERRED_EXPORTS = {
     "MatchGraph": ("timetoalign.alignment", "MatchGraph"),
     "MatchIntervalStamp": ("timetoalign.alignment", "MatchIntervalStamp"),
     "MatchLine": ("timetoalign.alignment", "MatchLine"),
-    "MatchMetadata": ("timetoalign.alignment", "MatchMetadata"),
     "MatchStamp": ("timetoalign.alignment", "MatchStamp"),
     "NoteRecord": ("timetoalign.alignment", "NoteRecord"),
     "SnoteRecord": ("timetoalign.alignment", "SnoteRecord"),
@@ -388,11 +387,11 @@ __all__ = [
     "TableMap",
     "ChainMap",
     # Alignment
-    "Agent",
     "AlignmentBundle",
     "Gap",
     "TimelineGroup",
     "AlignmentAnchor",
+    "Belief",
     "ClaimFilter",
     "MatchClaim",
     "MatchClaimField",
@@ -400,9 +399,9 @@ __all__ = [
     "MatchGraph",
     "MatchIntervalStamp",
     "MatchLine",
-    "MatchMetadata",
     "MatchStamp",
     "NoteRecord",
+    "Provenance",
     "SnoteRecord",
     "WarpMap",
 ]

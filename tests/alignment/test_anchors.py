@@ -1,137 +1,98 @@
-"""Tests for Agent, AlignmentAnchor, MatchClaim, and MatchMetadata scalars.
+"""Tests for the AlignmentAnchor and MatchClaim scalars.
 
-The whole claim family is now frozen pydantic v2 models. ``MatchMetadata`` is
-``{agent: Agent, certainty: float}`` — the old free-form ``decision_criteria``
-/ ``created_at`` / ``notes`` / ``algorithm_params`` fields are gone. Anchor
-coordinates are unit-bearing ``Coordinate`` values.
+Validation strategy and exact values: ``tests/alignment/README.md`` (the
+"AlignmentAnchor Tests" and "MatchClaim Tests" sections). The provenance entry
+a claim holds is tested for itself in ``tests/core/test_provenance.py``.
 """
 
 from __future__ import annotations
 
 import json
+import re
 from fractions import Fraction
 
 import pytest
 from pydantic import ValidationError
 
-from timetoalign.alignment import Agent, AlignmentAnchor, MatchClaim, MatchMetadata
-from timetoalign.core import AgentType, Coordinate, IdCoordinate, TimeUnit
+from timetoalign.alignment import (
+    AlignmentAnchor,
+    AlignmentBundle,
+    Belief,
+    MatchClaim,
+    Provenance,
+)
+from timetoalign.core import Coordinate, IdCoordinate, NumberType, TimeUnit
+from timetoalign.maps import SamplesToSeconds
+from timetoalign.timelines.types import (
+    ContinuousLogicalTimeline,
+    ContinuousPhysicalTimeline,
+    DiscreteLogicalTimeline,
+    DiscretePhysicalTimeline,
+)
 
 # region Fixtures
+
+SCORE = ContinuousLogicalTimeline(length=200, uid="score:1")
+RECORDING = ContinuousPhysicalTimeline(length=100.0, uid="recording:1")
+MIDI = DiscreteLogicalTimeline(length=10_000, uid="midi")
+FLOAT_SCORE = ContinuousLogicalTimeline(
+    length=16, uid="float_score", number_type="float"
+)
+
+
+def _wav() -> DiscretePhysicalTimeline:
+    """A 44,100 Hz samples timeline with its C-Map to seconds."""
+    wav = DiscretePhysicalTimeline(length=44_100 * 60, uid="wav")
+    wav.add_conversion_map(SamplesToSeconds(sample_rate=44_100))
+    return wav
+
+
+def _anchor(
+    a: str, coordinate_a: Coordinate, b: str, coordinate_b: Coordinate
+) -> AlignmentAnchor:
+    return AlignmentAnchor(
+        timeline_a_id=a,
+        coordinate_a=coordinate_a,
+        timeline_b_id=b,
+        coordinate_b=coordinate_b,
+    )
+
+
+def _number(value: float) -> Coordinate:
+    return Coordinate(value, TimeUnit.number)
 
 
 @pytest.fixture
 def basic_anchor() -> AlignmentAnchor:
-    """Create a basic alignment anchor."""
-    return AlignmentAnchor(
-        timeline_a_id="score:1",
-        coordinate_a=Coordinate(100.0, TimeUnit.quarters),
-        timeline_b_id="recording:1",
-        coordinate_b=Coordinate(45.5, TimeUnit.seconds),
+    """A score quarter paired with a recording second."""
+    return _anchor(
+        "score:1",
+        Coordinate(100, TimeUnit.quarters),
+        "recording:1",
+        Coordinate(45.5, TimeUnit.seconds),
     )
 
 
-@pytest.fixture
-def basic_agent() -> Agent:
-    """Create a basic software agent."""
-    return Agent(
-        name="test_user",
-        type=AgentType.software,
-        identifier="manual_alignment",
+def _claim(anchor: AlignmentAnchor, **fields: object) -> MatchClaim:
+    """An explicit synchronous claim on *anchor* between two named events."""
+    return MatchClaim(
+        timeline_a_id=anchor.timeline_a_id,
+        timeline_b_id=anchor.timeline_b_id,
+        start_anchor=anchor,
+        event_a_id="a1",
+        event_b_id="b1",
+        **fields,
     )
 
 
-@pytest.fixture
-def basic_metadata(basic_agent: Agent) -> MatchMetadata:
-    """Create basic match metadata."""
-    return MatchMetadata(agent=basic_agent)
-
-
-# endregion
-
-
-# region Agent & MatchMetadata Tests
-
-
-class TestMatchMetadata:
-    """Tests for the Agent and MatchMetadata pydantic scalars."""
-
-    def test_agent_type_members(self) -> None:
-        """AgentType has exactly the two members human and software."""
-        assert {member.name for member in AgentType} == {"human", "software"}
-        assert str(AgentType.human) == "human"
-        assert str(AgentType.software) == "software"
-
-    def test_basic_creation(self, basic_agent: Agent) -> None:
-        """Test creating metadata with required fields."""
-        meta = MatchMetadata(agent=basic_agent)
-
-        assert meta.agent is basic_agent
-        assert meta.agent.name == "test_user"
-        assert meta.certainty == 1.0  # default
-
-    def test_agent_roundtrip(self, basic_agent: Agent) -> None:
-        """Agent.to_dict / from_dict reconstructs identically."""
-        d = basic_agent.to_dict()
-        assert d == {
-            "name": "test_user",
-            "type": "software",
-            "identifier": "manual_alignment",
-        }
-        restored = Agent.from_dict(d)
-        assert restored == basic_agent
-        assert restored.type is AgentType.software
-
-    def test_metadata_roundtrip(self, basic_metadata: MatchMetadata) -> None:
-        """MatchMetadata.to_dict / from_dict round-trips the nested Agent."""
-        d = basic_metadata.to_dict()
-        assert d == {
-            "agent": {
-                "name": "test_user",
-                "type": "software",
-                "identifier": "manual_alignment",
-            },
-            "certainty": 1.0,
-        }
-        restored = MatchMetadata.from_dict(d)
-        assert restored == basic_metadata
-
-    def test_certainty_validation(self, basic_agent: Agent) -> None:
-        """Test certainty must be in [0, 1]."""
-        with pytest.raises(ValidationError, match="Certainty must be in"):
-            MatchMetadata(agent=basic_agent, certainty=-0.1)
-
-        with pytest.raises(ValidationError, match="Certainty must be in"):
-            MatchMetadata(agent=basic_agent, certainty=1.1)
-
-    def test_certainty_boundaries(self, basic_agent: Agent) -> None:
-        """Test certainty boundary values are valid."""
-        meta_0 = MatchMetadata(agent=basic_agent, certainty=0.0)
-        meta_1 = MatchMetadata(agent=basic_agent, certainty=1.0)
-        assert meta_0.certainty == 0.0
-        assert meta_1.certainty == 1.0
-
-    def test_to_dict(self, basic_metadata: MatchMetadata) -> None:
-        """Test serialization to dictionary."""
-        d = basic_metadata.to_dict()
-
-        assert d["agent"]["name"] == "test_user"
-        assert d["agent"]["type"] == "software"
-        assert d["certainty"] == 1.0
-        assert set(d) == {"agent", "certainty"}
-
-    def test_from_dict_roundtrip(self, basic_metadata: MatchMetadata) -> None:
-        """Test serialization round-trip."""
-        d = basic_metadata.to_dict()
-        restored = MatchMetadata.from_dict(d)
-
-        assert restored.agent == basic_metadata.agent
-        assert restored.certainty == basic_metadata.certainty
-
-    def test_frozen_model(self, basic_metadata: MatchMetadata) -> None:
-        """Test that MatchMetadata is immutable."""
-        with pytest.raises(ValidationError):
-            basic_metadata.certainty = 0.5  # type: ignore
+#: The check's refusal, for a coordinate of the given description.
+def _off_axis(where: str, unit: str, number_type: str, timeline: str, axis: str) -> str:
+    return (
+        f"{where} is in {unit} ({number_type}), but timeline '{timeline}' counts in "
+        f"{axis}: a MatchClaim's coordinates are on its timelines' own axes. "
+        f"Convert a position through the timeline's C-Map before the MatchClaim "
+        f"is made."
+    )
 
 
 # endregion
@@ -141,17 +102,10 @@ class TestMatchMetadata:
 
 
 class TestAlignmentAnchor:
-    """Tests for AlignmentAnchor dataclass (pure coordinate pair)."""
+    """Tests for AlignmentAnchor (pure coordinate pair)."""
 
     def test_basic_creation(self) -> None:
-        """Test creating an anchor with required fields."""
-        anchor = AlignmentAnchor(
-            timeline_a_id="tl1",
-            coordinate_a=Coordinate(10.0, TimeUnit.number),
-            timeline_b_id="tl2",
-            coordinate_b=Coordinate(20.0, TimeUnit.number),
-        )
-
+        anchor = _anchor("tl1", _number(10.0), "tl2", _number(20.0))
         assert anchor.timeline_a_id == "tl1"
         assert anchor.coordinate_a.value == 10.0
         assert anchor.timeline_b_id == "tl2"
@@ -167,937 +121,95 @@ class TestAlignmentAnchor:
                 coordinate_b=20.0,
             )
 
-    def test_no_id_field(self) -> None:
-        """Test that AlignmentAnchor has no id field."""
-        anchor = AlignmentAnchor(
-            timeline_a_id="tl1",
-            coordinate_a=Coordinate(0.0, TimeUnit.number),
-            timeline_b_id="tl2",
-            coordinate_b=Coordinate(0.0, TimeUnit.number),
-        )
+    def test_no_id_or_claim_fields(self) -> None:
+        anchor = _anchor("tl1", _number(0.0), "tl2", _number(0.0))
         assert not hasattr(anchor, "id")
-
-    def test_no_claim_fields(self) -> None:
-        """Test that AlignmentAnchor has no is_explicit or is_synchronous."""
-        anchor = AlignmentAnchor(
-            timeline_a_id="tl1",
-            coordinate_a=Coordinate(0.0, TimeUnit.number),
-            timeline_b_id="tl2",
-            coordinate_b=Coordinate(0.0, TimeUnit.number),
-        )
         assert not hasattr(anchor, "is_explicit")
         assert not hasattr(anchor, "is_synchronous")
 
-    def test_timelines_property(self, basic_anchor: AlignmentAnchor) -> None:
-        """Test timelines property."""
+    def test_timelines_and_coordinates(self, basic_anchor: AlignmentAnchor) -> None:
         assert basic_anchor.timelines == ("score:1", "recording:1")
-
-    def test_coordinates_property(self, basic_anchor: AlignmentAnchor) -> None:
-        """Test coordinates property."""
         assert basic_anchor.coordinates == (
-            Coordinate(100.0, TimeUnit.quarters),
+            Coordinate(100, TimeUnit.quarters),
             Coordinate(45.5, TimeUnit.seconds),
         )
 
     def test_get_coordinate_for(self, basic_anchor: AlignmentAnchor) -> None:
-        """Test getting coordinate for specific timeline."""
-        score_coordinate = basic_anchor.get_coordinate_for(
+        assert basic_anchor.get_coordinate_for(
             "score:1", format="coordinate"
+        ) == Coordinate(100, TimeUnit.quarters)
+        assert basic_anchor.get_coordinate_for("recording:1") == IdCoordinate(
+            45.5, TimeUnit.seconds, "recording:1"
         )
-        recording_coordinate = basic_anchor.get_coordinate_for(
-            "recording:1", format="coordinate"
-        )
-        assert score_coordinate == Coordinate(100.0, TimeUnit.quarters)
-        assert recording_coordinate == Coordinate(45.5, TimeUnit.seconds)
         with pytest.raises(KeyError):
             basic_anchor.get_coordinate_for("other")
 
-    def test_get_coordinate_for_preserves_fraction_and_unit(self) -> None:
-        anchor = AlignmentAnchor(
-            timeline_a_id="score",
-            coordinate_a=Coordinate(Fraction(7, 3), TimeUnit.quarters),
-            timeline_b_id="audio",
-            coordinate_b=Coordinate(1.25, TimeUnit.seconds),
-        )
-        coordinate = anchor.get_coordinate_for("score")
-        assert coordinate is not None
-        assert coordinate.value == Fraction(7, 3)
-        assert coordinate.unit is TimeUnit.quarters
-
     def test_connects(self, basic_anchor: AlignmentAnchor) -> None:
-        """Test connects method."""
         assert basic_anchor.connects("score:1") is True
         assert basic_anchor.connects("recording:1") is True
         assert basic_anchor.connects("other") is False
-
-    def test_connects_both(self, basic_anchor: AlignmentAnchor) -> None:
-        """Test connects_both method."""
-        assert basic_anchor.connects_both("score:1", "recording:1") is True
         assert basic_anchor.connects_both("recording:1", "score:1") is True
         assert basic_anchor.connects_both("score:1", "other") is False
 
     def test_to_dict(self, basic_anchor: AlignmentAnchor) -> None:
-        """Test serialization to dictionary."""
-        d = basic_anchor.to_dict()
-
-        assert d["timeline_a_id"] == "score:1"
-        # quarters count in exact ratios, so the anchor holds one and the
-        # dictionary records it. seconds are a measurement and stay float.
-        assert d["coordinate_a"] == {
-            "unit": "quarters",
-            "number_type": "fraction",
-            "value": [100, 1],
+        assert basic_anchor.to_dict() == {
+            "timeline_a_id": "score:1",
+            "coordinate_a": {
+                "unit": "quarters",
+                "number_type": "fraction",
+                "value": [100, 1],
+            },
+            "timeline_b_id": "recording:1",
+            "coordinate_b": {"unit": "seconds", "number_type": "float", "value": 45.5},
         }
-        assert d["timeline_b_id"] == "recording:1"
-        assert d["coordinate_b"] == {
-            "unit": "seconds",
-            "number_type": "float",
-            "value": 45.5,
-        }
-        # No is_explicit, is_synchronous, or id in dict
-        assert "is_explicit" not in d
-        assert "is_synchronous" not in d
-        assert "id" not in d
 
     def test_from_dict_roundtrip(self, basic_anchor: AlignmentAnchor) -> None:
-        """Test serialization round-trip."""
-        d = basic_anchor.to_dict()
-        restored = AlignmentAnchor.from_dict(d)
+        assert AlignmentAnchor.from_dict(basic_anchor.to_dict()) == basic_anchor
 
-        assert restored.timeline_a_id == basic_anchor.timeline_a_id
-        assert restored.coordinate_a == basic_anchor.coordinate_a
-        assert restored.timeline_b_id == basic_anchor.timeline_b_id
-        assert restored.coordinate_b == basic_anchor.coordinate_b
+    def test_coordinates_kept_as_given(self) -> None:
+        """The anchor rewrites no coordinate: the timeline, not the unit, decides."""
+        anchor = _anchor(
+            "audio",
+            Coordinate(Fraction(25, 2), TimeUnit.seconds),
+            "float_score",
+            Coordinate(1.5, TimeUnit.quarters, number_type=NumberType.float),
+        )
+        assert anchor.coordinate_a.value == Fraction(25, 2)
+        assert anchor.coordinate_a.number_type is NumberType.fraction
+        assert anchor.coordinate_b.value == 1.5
+        assert anchor.coordinate_b.number_type is NumberType.float
+        assert repr(anchor) == (
+            "AlignmentAnchor(audio@25/2 seconds <-> float_score@1.5 quarters)"
+        )
+        assert anchor.to_dict()["coordinate_a"] == {
+            "unit": "seconds",
+            "number_type": "fraction",
+            "value": [25, 2],
+        }
+        assert anchor.to_dict()["coordinate_b"] == {
+            "unit": "quarters",
+            "number_type": "float",
+            "value": 1.5,
+        }
+        assert AlignmentAnchor.from_dict(anchor.to_dict()) == anchor
 
     def test_frozen_model(self, basic_anchor: AlignmentAnchor) -> None:
-        """Test that AlignmentAnchor is immutable (frozen pydantic model)."""
         with pytest.raises(ValidationError):
             basic_anchor.coordinate_a = 200.0  # type: ignore
 
     def test_repr(self, basic_anchor: AlignmentAnchor) -> None:
-        """Test string representation."""
-        r = repr(basic_anchor)
-        assert "AlignmentAnchor" in r
-        assert "score:1" in r
-        assert "recording:1" in r
+        assert repr(basic_anchor) == (
+            "AlignmentAnchor(score:1@100 quarters <-> recording:1@45.5 seconds)"
+        )
+        assert str(basic_anchor) == repr(basic_anchor)
+        assert basic_anchor._repr_html_() == (
+            "<div style='font-family: monospace;'><strong>AlignmentAnchor</strong>("
+            "score:1@100 quarters &lt;-&gt; recording:1@45.5 seconds)</div>"
+        )
 
     def test_value_equality(self) -> None:
-        """Test that anchors with same values are equal (value objects)."""
-        a1 = AlignmentAnchor(
-            timeline_a_id="tl1",
-            coordinate_a=Coordinate(10.0, TimeUnit.number),
-            timeline_b_id="tl2",
-            coordinate_b=Coordinate(20.0, TimeUnit.number),
-        )
-        a2 = AlignmentAnchor(
-            timeline_a_id="tl1",
-            coordinate_a=Coordinate(10.0, TimeUnit.number),
-            timeline_b_id="tl2",
-            coordinate_b=Coordinate(20.0, TimeUnit.number),
-        )
-        assert a1 == a2
-
-
-# endregion
-
-
-# region MatchClaim Tests
-
-
-class TestMatchClaim:
-    """Tests for MatchClaim dataclass (top-level timeline IDs)."""
-
-    def test_instant_creation(self, basic_anchor: AlignmentAnchor) -> None:
-        """Test creating instant match (single anchor)."""
-        claim = MatchClaim(
-            timeline_a_id="score:1",
-            timeline_b_id="recording:1",
-            start_anchor=basic_anchor,
-        )
-
-        assert claim.is_interval is False
-        assert claim.start_anchor is basic_anchor
-        assert claim.end_anchor is None
-        assert claim.timeline_a_id == "score:1"
-        assert claim.timeline_b_id == "recording:1"
-
-    def test_interval_creation(self) -> None:
-        """Test creating interval match (two anchors)."""
-        start = AlignmentAnchor(
-            timeline_a_id="dgt_1",
-            coordinate_a=Coordinate(0.0, TimeUnit.number),
-            timeline_b_id="dgt_2",
-            coordinate_b=Coordinate(0.0, TimeUnit.number),
-        )
-        end = AlignmentAnchor(
-            timeline_a_id="dgt_1",
-            coordinate_a=Coordinate(975.0, TimeUnit.number),
-            timeline_b_id="dgt_2",
-            coordinate_b=Coordinate(866.0, TimeUnit.number),
-        )
-        claim = MatchClaim(
-            timeline_a_id="dgt_1",
-            timeline_b_id="dgt_2",
-            start_anchor=start,
-            end_anchor=end,
-        )
-
-        assert claim.is_interval is True
-        assert claim.start_anchor is start
-        assert claim.end_anchor is end
-
-    def test_auto_generated_id(self, basic_anchor: AlignmentAnchor) -> None:
-        """Without an id, a claim mints ``claim_1`` in its own empty scope."""
-        claim = MatchClaim(
-            timeline_a_id="score:1",
-            timeline_b_id="recording:1",
-            start_anchor=basic_anchor,
-        )
-        assert (claim.id, claim.id_minted) == ("claim_1", True)
-
-    def test_explicit_id(self, basic_anchor: AlignmentAnchor) -> None:
-        """Test explicit ID is preserved."""
-        claim = MatchClaim(
-            timeline_a_id="score:1",
-            timeline_b_id="recording:1",
-            start_anchor=basic_anchor,
-            id="my_claim",
-        )
-        assert (claim.id, claim.id_minted) == ("my_claim", False)
-
-    def test_mismatched_anchors_raises(self) -> None:
-        """Test error when anchors connect different timelines."""
-        start = AlignmentAnchor(
-            timeline_a_id="tl1",
-            coordinate_a=Coordinate(0.0, TimeUnit.number),
-            timeline_b_id="tl2",
-            coordinate_b=Coordinate(0.0, TimeUnit.number),
-        )
-        end = AlignmentAnchor(
-            timeline_a_id="tl1",
-            coordinate_a=Coordinate(100.0, TimeUnit.number),
-            timeline_b_id="tl3",  # Different!
-            coordinate_b=Coordinate(100.0, TimeUnit.number),
-        )
-
-        with pytest.raises(ValueError, match="must connect same timelines"):
-            MatchClaim(
-                timeline_a_id="tl1",
-                timeline_b_id="tl2",
-                start_anchor=start,
-                end_anchor=end,
-            )
-
-    def test_synchronous_requires_anchor(self) -> None:
-        """Test that synchronous claims require a start_anchor."""
-        with pytest.raises(ValueError, match="require a start_anchor"):
-            MatchClaim(
-                timeline_a_id="tl1",
-                timeline_b_id="tl2",
-                start_anchor=None,
-                is_synchronous=True,
-            )
-
-    def test_non_synchronous_rejects_anchor(self) -> None:
-        """Test that non-synchronous claims must not have anchors."""
-        anchor = AlignmentAnchor(
-            timeline_a_id="tl1",
-            coordinate_a=Coordinate(0.0, TimeUnit.number),
-            timeline_b_id="tl2",
-            coordinate_b=Coordinate(0.0, TimeUnit.number),
-        )
-        with pytest.raises(ValueError, match="must not have anchors"):
-            MatchClaim(
-                timeline_a_id="tl1",
-                timeline_b_id="tl2",
-                start_anchor=anchor,
-                is_synchronous=False,
-            )
-
-    def test_non_synchronous_claim(self) -> None:
-        """Test creating a non-synchronous claim (no anchors)."""
-        claim = MatchClaim(
-            timeline_a_id="tl1",
-            timeline_b_id="tl2",
-            is_synchronous=False,
-        )
-        assert claim.start_anchor is None
-        assert claim.end_anchor is None
-        assert claim.anchors == []
-        assert claim.timeline_a_id == "tl1"
-        assert claim.timeline_b_id == "tl2"
-
-    def test_anchor_timeline_mismatch_raises(self) -> None:
-        """Test error when anchor timelines don't match claim timelines."""
-        anchor = AlignmentAnchor(
-            timeline_a_id="tl1",
-            coordinate_a=Coordinate(0.0, TimeUnit.number),
-            timeline_b_id="tl2",
-            coordinate_b=Coordinate(0.0, TimeUnit.number),
-        )
-        with pytest.raises(ValueError, match="must match claim timelines"):
-            MatchClaim(
-                timeline_a_id="tl1",
-                timeline_b_id="tl3",  # Doesn't match anchor
-                start_anchor=anchor,
-            )
-
-    def test_timelines_property(self, basic_anchor: AlignmentAnchor) -> None:
-        """Test timelines property."""
-        claim = MatchClaim(
-            timeline_a_id="score:1",
-            timeline_b_id="recording:1",
-            start_anchor=basic_anchor,
-        )
-        assert claim.timelines == ("score:1", "recording:1")
-
-    def test_get_coordinates_for_instant(self, basic_anchor: AlignmentAnchor) -> None:
-        """Test get_coordinates_for with instant match."""
-        claim = MatchClaim(
-            timeline_a_id="score:1",
-            timeline_b_id="recording:1",
-            start_anchor=basic_anchor,
-        )
-
-        start = claim.get_coordinate_for("score:1")
-        assert start.value == 100.0
-
-    def test_get_coordinates_for_interval(self) -> None:
-        """Test get_coordinates_for with interval match."""
-        start = AlignmentAnchor(
-            timeline_a_id="dgt_1",
-            coordinate_a=Coordinate(0.0, TimeUnit.number),
-            timeline_b_id="dgt_2",
-            coordinate_b=Coordinate(0.0, TimeUnit.number),
-        )
-        end = AlignmentAnchor(
-            timeline_a_id="dgt_1",
-            coordinate_a=Coordinate(975.0, TimeUnit.number),
-            timeline_b_id="dgt_2",
-            coordinate_b=Coordinate(866.0, TimeUnit.number),
-        )
-        claim = MatchClaim(
-            timeline_a_id="dgt_1",
-            timeline_b_id="dgt_2",
-            start_anchor=start,
-            end_anchor=end,
-        )
-
-        interval = claim.get_interval_for("dgt_1")
-        assert interval.start.value == 0.0
-        assert interval.end.value == 975.0
-
-        interval = claim.get_interval_for("dgt_2")
-        assert interval.start.value == 0.0
-        assert interval.end.value == 866.0
-
-    def test_get_coordinates_invalid_timeline(
-        self, basic_anchor: AlignmentAnchor
-    ) -> None:
-        """Test error when getting coordinates for non-connected timeline."""
-        claim = MatchClaim(
-            timeline_a_id="score:1",
-            timeline_b_id="recording:1",
-            start_anchor=basic_anchor,
-        )
-
-        with pytest.raises(KeyError, match="other"):
-            claim.get_coordinate_for("other")
-
-    def test_get_coordinates_non_synchronous_raises(self) -> None:
-        """Test error when getting coordinates from non-synchronous claim."""
-        claim = MatchClaim(
-            timeline_a_id="tl1",
-            timeline_b_id="tl2",
-            is_synchronous=False,
-        )
-        with pytest.raises(ValueError, match="no anchors"):
-            claim.get_coordinate_for("tl1")
-
-    def test_connects(self, basic_anchor: AlignmentAnchor) -> None:
-        """Test connects method."""
-        claim = MatchClaim(
-            timeline_a_id="score:1",
-            timeline_b_id="recording:1",
-            start_anchor=basic_anchor,
-        )
-
-        assert claim.connects("score:1") is True
-        assert claim.connects("recording:1") is True
-        assert claim.connects("other") is False
-
-    def test_connects_both(self, basic_anchor: AlignmentAnchor) -> None:
-        """Test connects_both method."""
-        claim = MatchClaim(
-            timeline_a_id="score:1",
-            timeline_b_id="recording:1",
-            start_anchor=basic_anchor,
-        )
-
-        assert claim.connects_both("score:1", "recording:1") is True
-        assert claim.connects_both("score:1", "other") is False
-
-    def test_anchors_property_instant(self, basic_anchor: AlignmentAnchor) -> None:
-        """Test anchors property for instant match."""
-        claim = MatchClaim(
-            timeline_a_id="score:1",
-            timeline_b_id="recording:1",
-            start_anchor=basic_anchor,
-        )
-        assert claim.anchors == [basic_anchor]
-
-    def test_anchors_property_interval(self) -> None:
-        """Test anchors property for interval match."""
-        start = AlignmentAnchor(
-            timeline_a_id="tl1",
-            coordinate_a=Coordinate(0.0, TimeUnit.number),
-            timeline_b_id="tl2",
-            coordinate_b=Coordinate(0.0, TimeUnit.number),
-        )
-        end = AlignmentAnchor(
-            timeline_a_id="tl1",
-            coordinate_a=Coordinate(100.0, TimeUnit.number),
-            timeline_b_id="tl2",
-            coordinate_b=Coordinate(100.0, TimeUnit.number),
-        )
-        claim = MatchClaim(
-            timeline_a_id="tl1",
-            timeline_b_id="tl2",
-            start_anchor=start,
-            end_anchor=end,
-        )
-
-        assert claim.anchors == [start, end]
-
-    def test_anchors_property_non_synchronous(self) -> None:
-        """Test anchors property for non-synchronous claim returns empty list."""
-        claim = MatchClaim(
-            timeline_a_id="tl1",
-            timeline_b_id="tl2",
-            is_synchronous=False,
-        )
-        assert claim.anchors == []
-
-    def test_with_metadata(
-        self, basic_anchor: AlignmentAnchor, basic_metadata: MatchMetadata
-    ) -> None:
-        """Test creating claim with metadata."""
-        claim = MatchClaim(
-            timeline_a_id="score:1",
-            timeline_b_id="recording:1",
-            start_anchor=basic_anchor,
-            metadata=basic_metadata,
-        )
-
-        assert claim.metadata is basic_metadata
-        assert claim.metadata.agent.name == "test_user"
-
-    def test_instant_factory(self) -> None:
-        """Test instant match via direct construction."""
-        claim = MatchClaim(
-            timeline_a_id="score",
-            timeline_b_id="recording",
-            start_anchor=AlignmentAnchor(
-                timeline_a_id="score",
-                coordinate_a=Coordinate(0.0, TimeUnit.number),
-                timeline_b_id="recording",
-                coordinate_b=Coordinate(0.0, TimeUnit.number),
-            ),
-        )
-
-        assert claim.is_interval is False
-        assert claim.timeline_a_id == "score"
-        assert claim.timeline_b_id == "recording"
-        assert claim.start_anchor.coordinate_a.value == 0.0
-
-    def test_interval_factory(self) -> None:
-        """Test interval match via direct construction."""
-        claim = MatchClaim(
-            timeline_a_id="dgt_1",
-            timeline_b_id="dgt_2",
-            start_anchor=AlignmentAnchor(
-                timeline_a_id="dgt_1",
-                coordinate_a=Coordinate(0.0, TimeUnit.number),
-                timeline_b_id="dgt_2",
-                coordinate_b=Coordinate(0.0, TimeUnit.number),
-            ),
-            end_anchor=AlignmentAnchor(
-                timeline_a_id="dgt_1",
-                coordinate_a=Coordinate(975.0, TimeUnit.number),
-                timeline_b_id="dgt_2",
-                coordinate_b=Coordinate(866.0, TimeUnit.number),
-            ),
-        )
-
-        assert claim.is_interval is True
-        assert claim.timeline_a_id == "dgt_1"
-        assert claim.timeline_b_id == "dgt_2"
-        interval = claim.get_interval_for("dgt_1")
-        assert interval.start.value == 0.0
-        assert interval.end.value == 975.0
-
-    def test_from_events_factory(self) -> None:
-        """Test from_events() factory method (case a: event-based)."""
-        claim = MatchClaim.from_events(
-            event_a={"start": 100.0},
-            tl_a_id="score",
-            event_b={"start": 45.5},
-            tl_b_id="recording",
-            unit_a=TimeUnit.number,
-            unit_b=TimeUnit.number,
-        )
-
-        assert claim.is_synchronous is True
-        assert claim.timeline_a_id == "score"
-        assert claim.timeline_b_id == "recording"
-        assert claim.start_anchor is not None
-        assert claim.start_anchor.coordinate_a.value == 100.0
-        assert claim.start_anchor.coordinate_b.value == 45.5
-
-    def test_from_events_with_interval(self) -> None:
-        """Test from_events() with end coordinate (case a: interval)."""
-        claim = MatchClaim.from_events(
-            event_a={"start": 0.0, "end": 100.0},
-            tl_a_id="tl1",
-            event_b={"start": 0.0, "end": 200.0},
-            tl_b_id="tl2",
-            unit_a=TimeUnit.number,
-            unit_b=TimeUnit.number,
-            end_coord_key="end",
-        )
-
-        assert claim.is_interval is True
-        assert claim.end_anchor is not None
-        assert claim.end_anchor.coordinate_a.value == 100.0
-        assert claim.end_anchor.coordinate_b.value == 200.0
-
-    def test_from_projection_factory(self) -> None:
-        """Test from_projection() factory method (case b: projection)."""
-        claim = MatchClaim.from_projection(
-            event={"start": 100.0},
-            source_tl_id="score",
-            target_tl_id="recording",
-            target_coord=45.5,
-            source_unit=TimeUnit.number,
-            target_unit=TimeUnit.number,
-        )
-
-        assert claim.is_synchronous is True
-        assert claim.timeline_a_id == "score"
-        assert claim.timeline_b_id == "recording"
-        assert claim.start_anchor is not None
-        assert claim.start_anchor.coordinate_a.value == 100.0
-        assert claim.start_anchor.coordinate_b.value == 45.5
-
-    def test_coordinate_inputs_supply_units(self) -> None:
-        """Coordinate and IdCoordinate inputs make explicit units optional."""
-        projected = MatchClaim.from_projection(
-            event={"start": 100.0},
-            source_tl_id="score",
-            target_tl_id="recording",
-            target_coord=IdCoordinate(45.5, TimeUnit.seconds, "recording"),
-            source_unit=TimeUnit.number,
-        )
-        implicit = MatchClaim.implicit(
-            tl_a_id="score",
-            coord_a=Coordinate(100.0, TimeUnit.quarters),
-            tl_b_id="recording",
-            coord_b=IdCoordinate(45.5, TimeUnit.seconds, "recording"),
-        )
-
-        assert projected.start_anchor.coordinate_b == IdCoordinate(
-            45.5, TimeUnit.seconds, "recording"
-        )
-        assert implicit.start_anchor.coordinate_a == Coordinate(
-            100.0, TimeUnit.quarters
-        )
-        assert implicit.start_anchor.coordinate_b == IdCoordinate(
-            45.5, TimeUnit.seconds, "recording"
-        )
-
-    def test_coordinate_input_mismatches_raise(self) -> None:
-        """Conflicting units and timeline IDs are rejected."""
-        with pytest.raises(ValueError, match="unit"):
-            MatchClaim.implicit(
-                tl_a_id="score",
-                coord_a=Coordinate(100.0, TimeUnit.quarters),
-                tl_b_id="recording",
-                coord_b=45.5,
-                unit_a=TimeUnit.seconds,
-                unit_b=TimeUnit.seconds,
-            )
-        with pytest.raises(ValueError, match="timeline_id"):
-            MatchClaim.from_projection(
-                event={"start": 100.0},
-                source_tl_id="score",
-                target_tl_id="recording",
-                target_coord=IdCoordinate(45.5, TimeUnit.seconds, "other"),
-                source_unit=TimeUnit.number,
-            )
-        with pytest.raises(ValueError, match="explicit unit"):
-            MatchClaim.from_projection(
-                event={"start": 100.0},
-                source_tl_id="score",
-                target_tl_id="recording",
-                target_coord=Coordinate(45.5, TimeUnit.seconds),
-                source_unit=TimeUnit.number,
-                target_unit=TimeUnit.frames,
-            )
-
-    def test_fraction_claim_dict_is_json_safe_and_exact(self) -> None:
-        """Fraction coordinates serialize to JSON and restore exactly."""
-        claim = MatchClaim(
-            timeline_a_id="score",
-            timeline_b_id="recording",
-            start_anchor=AlignmentAnchor(
-                timeline_a_id="score",
-                coordinate_a=Coordinate(Fraction(7, 3), TimeUnit.quarters),
-                timeline_b_id="recording",
-                coordinate_b=Coordinate(2.0, TimeUnit.seconds),
-            ),
-        )
-
-        serialized = claim.to_dict()
-        json.dumps(serialized)
-        restored = MatchClaim.from_dict(serialized)
-
-        assert restored.start_anchor.coordinate_a.value == Fraction(7, 3)
-
-    def test_nomatch_factory(self) -> None:
-        """Test nomatch() factory method (case c: no match)."""
-        claim = MatchClaim.nomatch(
-            event={"start": 100.0},
-            source_tl_id="score",
-            target_tl_id="recording",
-            unit=TimeUnit.number,
-        )
-
-        assert claim.is_synchronous is False
-        assert claim.start_anchor is None
-        assert claim.end_anchor is None
-        assert claim.timeline_a_id == "score"
-        assert claim.timeline_b_id == "recording"
-        assert claim.anchors == []
-
-    def test_implicit_factory(self) -> None:
-        """Test implicit() factory method (case d: inferred)."""
-        claim = MatchClaim.implicit(
-            tl_a_id="tl1",
-            coord_a=100.0,
-            tl_b_id="tl2",
-            unit_a=TimeUnit.number,
-            unit_b=TimeUnit.number,
-            coord_b=200.0,
-        )
-
-        assert claim.is_synchronous is True
-        assert claim.is_explicit is False
-        assert claim.start_anchor is not None
-        assert claim.start_anchor.coordinate_a.value == 100.0
-        assert claim.timeline_a_id == "tl1"
-        assert claim.timeline_b_id == "tl2"
-
-    def test_implicit_with_source_claim(self) -> None:
-        """Test implicit() tracks the source claim."""
-        source = MatchClaim(
-            timeline_a_id="tl1",
-            timeline_b_id="tl2",
-            start_anchor=AlignmentAnchor(
-                timeline_a_id="tl1",
-                coordinate_a=Coordinate(100.0, TimeUnit.number),
-                timeline_b_id="tl2",
-                coordinate_b=Coordinate(200.0, TimeUnit.number),
-            ),
-        )
-        implicit = MatchClaim.implicit(
-            tl_a_id="tl1",
-            coord_a=100.0,
-            tl_b_id="tl3",
-            unit_a=TimeUnit.number,
-            unit_b=TimeUnit.number,
-            coord_b=300.0,
-            source_claim=source,
-        )
-
-        assert implicit.source_claim_id == source.id
-
-    def test_to_dict_instant(self, basic_anchor: AlignmentAnchor) -> None:
-        """Test serialization of instant match."""
-        claim = MatchClaim(
-            timeline_a_id="score:1",
-            timeline_b_id="recording:1",
-            start_anchor=basic_anchor,
-        )
-        d = claim.to_dict()
-
-        assert "id" in d
-        assert "timeline_a_id" in d
-        assert "timeline_b_id" in d
-        assert "start_anchor" in d
-        assert d["end_anchor"] is None
-        assert d["is_explicit"] is True
-        assert d["is_synchronous"] is True
-
-    def test_to_dict_interval(self) -> None:
-        """Test serialization of interval match."""
-        claim = MatchClaim(
-            timeline_a_id="tl1",
-            timeline_b_id="tl2",
-            start_anchor=AlignmentAnchor(
-                timeline_a_id="tl1",
-                coordinate_a=Coordinate(0.0, TimeUnit.number),
-                timeline_b_id="tl2",
-                coordinate_b=Coordinate(0.0, TimeUnit.number),
-            ),
-            end_anchor=AlignmentAnchor(
-                timeline_a_id="tl1",
-                coordinate_a=Coordinate(100.0, TimeUnit.number),
-                timeline_b_id="tl2",
-                coordinate_b=Coordinate(100.0, TimeUnit.number),
-            ),
-        )
-        d = claim.to_dict()
-
-        assert d["start_anchor"] is not None
-        assert d["end_anchor"] is not None
-
-    def test_from_dict_roundtrip_instant(self, basic_anchor: AlignmentAnchor) -> None:
-        """Test serialization round-trip for instant match."""
-        claim = MatchClaim(
-            timeline_a_id="score:1",
-            timeline_b_id="recording:1",
-            start_anchor=basic_anchor,
-        )
-        d = claim.to_dict()
-        restored = MatchClaim.from_dict(d)
-
-        assert restored.id == claim.id
-        assert restored.is_interval is False
-        assert restored.timeline_a_id == claim.timeline_a_id
-
-    def test_from_dict_roundtrip_interval(self) -> None:
-        """Test serialization round-trip for interval match."""
-        claim = MatchClaim(
-            timeline_a_id="tl1",
-            timeline_b_id="tl2",
-            start_anchor=AlignmentAnchor(
-                timeline_a_id="tl1",
-                coordinate_a=Coordinate(0.0, TimeUnit.number),
-                timeline_b_id="tl2",
-                coordinate_b=Coordinate(0.0, TimeUnit.number),
-            ),
-            end_anchor=AlignmentAnchor(
-                timeline_a_id="tl1",
-                coordinate_a=Coordinate(100.0, TimeUnit.number),
-                timeline_b_id="tl2",
-                coordinate_b=Coordinate(200.0, TimeUnit.number),
-            ),
-            metadata=MatchMetadata(
-                agent=Agent(name="test", type=AgentType.software, identifier="test")
-            ),
-        )
-        d = claim.to_dict()
-        restored = MatchClaim.from_dict(d)
-
-        assert restored.id == claim.id
-        assert restored.is_interval is True
-        assert restored.metadata is not None
-        assert restored.metadata.agent.name == "test"
-
-    def test_from_dict_roundtrip_non_synchronous(self) -> None:
-        """Test serialization round-trip for non-synchronous claim."""
-        claim = MatchClaim(
-            timeline_a_id="tl1",
-            timeline_b_id="tl2",
-            is_synchronous=False,
-        )
-        d = claim.to_dict()
-        restored = MatchClaim.from_dict(d)
-
-        assert restored.is_synchronous is False
-        assert restored.start_anchor is None
-        assert restored.timeline_a_id == "tl1"
-        assert restored.timeline_b_id == "tl2"
-
-    def test_frozen_model(self, basic_anchor: AlignmentAnchor) -> None:
-        """Test that MatchClaim is immutable (frozen pydantic model)."""
-        claim = MatchClaim(
-            timeline_a_id="score:1",
-            timeline_b_id="recording:1",
-            start_anchor=basic_anchor,
-        )
-        with pytest.raises(ValidationError):
-            claim.is_explicit = False  # type: ignore
-
-    def test_repr_instant(self, basic_anchor: AlignmentAnchor) -> None:
-        """Test string representation of instant match."""
-        claim = MatchClaim(
-            timeline_a_id="score:1",
-            timeline_b_id="recording:1",
-            start_anchor=basic_anchor,
-        )
-        r = repr(claim)
-
-        assert "instant" in r
-        assert "score:1" in r
-        assert "recording:1" in r
-
-    def test_repr_interval(self) -> None:
-        """Test string representation of interval match."""
-        claim = MatchClaim(
-            timeline_a_id="dgt_1",
-            timeline_b_id="dgt_2",
-            start_anchor=AlignmentAnchor(
-                timeline_a_id="dgt_1",
-                coordinate_a=Coordinate(0.0, TimeUnit.number),
-                timeline_b_id="dgt_2",
-                coordinate_b=Coordinate(0.0, TimeUnit.number),
-            ),
-            end_anchor=AlignmentAnchor(
-                timeline_a_id="dgt_1",
-                coordinate_a=Coordinate(975.0, TimeUnit.number),
-                timeline_b_id="dgt_2",
-                coordinate_b=Coordinate(866.0, TimeUnit.number),
-            ),
-        )
-        assert repr(claim) == (
-            "MatchClaim(interval: dgt_1[0 number-975 number] <-> "
-            "dgt_2[0 number-866 number] [ANCHOR])"
-        )
-
-    def test_repr_non_synchronous(self) -> None:
-        """A NOMATCH claim (orphaned event) renders the NOMATCH flag.
-
-        The orphaned event is named on exactly one side, so the claim is a
-        genuine NOMATCH; the flag word must appear and never 'non-synchronous'.
-        """
-        claim = MatchClaim(
-            timeline_a_id="tl1",
-            timeline_b_id="tl2",
-            is_synchronous=False,
-            event_a_id="e_orphan",
-        )
-        r = repr(claim)
-        assert "NOMATCH" in r
-        assert "non-synchronous" not in r
-        assert "tl1" in r
-        assert "tl2" in r
-
-    def test_repr_nomatch_with_coordinate_exact(self) -> None:
-        """NOMATCH claim from nomatch() renders the source coordinate exactly.
-
-        The event names the orphaned note (``id``), so the claim classifies as
-        a genuine NOMATCH rather than a conceptual correspondence.
-        """
-        claim = MatchClaim.nomatch(
-            event={"id": "orphan", "start": 188.8},
-            source_tl_id="score:clt_1",
-            target_tl_id="perf:Chopin_Ashkenazy",
-            unit=TimeUnit.number,
-        )
-        assert claim.source_coordinate.value == 188.8
-        assert repr(claim) == (
-            "MatchClaim(score:clt_1@188.8 number <-> "
-            "perf:Chopin_Ashkenazy [NOMATCH])"
-        )
-
-    def test_repr_nomatch_without_coordinate(self) -> None:
-        """NOMATCH claim with no 'start' falls back to bare timeline_a."""
-        claim = MatchClaim.nomatch(
-            event={"id": "orphan"},
-            source_tl_id="score:clt_1",
-            target_tl_id="perf:Chopin_Ashkenazy",
-            unit=TimeUnit.number,
-        )
-        assert claim.source_coordinate is None
-        assert repr(claim) == (
-            "MatchClaim(score:clt_1 <-> perf:Chopin_Ashkenazy [NOMATCH])"
-        )
-
-    def test_nomatch_source_coordinate_roundtrip(self) -> None:
-        """to_dict()/from_dict() preserves source_coordinate for a NOMATCH claim."""
-        claim = MatchClaim.nomatch(
-            event={"start": 188.8},
-            source_tl_id="score:clt_1",
-            target_tl_id="perf:Chopin_Ashkenazy",
-            unit=TimeUnit.number,
-        )
-        restored = MatchClaim.from_dict(claim.to_dict())
-        assert restored == claim
-        assert restored.source_coordinate.value == 188.8
-
-    def test_repr_synchronous_instant_with_units(self) -> None:
-        """An event-match instant repr shows unit-bearing coordinates.
-
-        Two identified events on either side make this an event_match, which
-        carries no badge — the common case must stay free of NOMATCH or any
-        other kind tag.
-        """
-        claim = MatchClaim(
-            timeline_a_id="score:1",
-            timeline_b_id="recording:1",
-            start_anchor=AlignmentAnchor(
-                timeline_a_id="score:1",
-                coordinate_a=Coordinate(100.0, TimeUnit.number),
-                timeline_b_id="recording:1",
-                coordinate_b=Coordinate(45.5, TimeUnit.number),
-            ),
-            event_a_id="a1",
-            event_b_id="b1",
-        )
-        assert claim.source_coordinate is None
-        assert repr(claim) == (
-            "MatchClaim(instant: score:1@100 number <-> recording:1@45.5 number)"
-        )
-
-    def test_exact_rational_rendering(self) -> None:
-        """Claims render each coordinate the way its own axis writes numbers.
-
-        Both halves are handed an exact ratio, and the two axes answer
-        differently because they declare different representations: quarters
-        keep ``415/24``, seconds -- which are float-canonical -- report
-        ``12.5``. An anchor coordinate is a position on a named timeline, so
-        the axis decides, not the caller; this is the same rule that makes a
-        claim and its matchstamp agree about one position.
-        """
-        anchor = AlignmentAnchor(
-            timeline_a_id="audio",
-            coordinate_a=Coordinate(Fraction(25, 2), TimeUnit.seconds),
-            timeline_b_id="score",
-            coordinate_b=Coordinate(Fraction(415, 24), TimeUnit.quarters),
-        )
-        claim = MatchClaim(
-            timeline_a_id="audio",
-            timeline_b_id="score",
-            start_anchor=anchor,
-        )
-
-        assert repr(claim) == (
-            "MatchClaim(instant: audio@12.5 seconds <-> "
-            "score@415/24 quarters [ANCHOR])"
-        )
-        assert str(claim) == (
-            "MatchClaim (synchronous, instant)\n"
-            "  Timeline A:  audio  @12.5 seconds\n"
-            "  Timeline B:  score  @415/24 quarters"
-        )
-        assert claim._repr_html_() == (
-            "<div style='font-family: monospace;'><strong>MatchClaim</strong> "
-            "<span style='background: #fff3e0; padding: 0 4px; border-radius: 3px; "
-            "font-size: 0.8em;'>ANCHOR</span><table style='border-collapse: collapse; "
-            "margin-top: 4px;'><tbody><tr><td>Timeline A</td><td><strong>audio"
-            "</strong></td><td>@12.5 seconds</td></tr><tr><td>Timeline B</td><td>"
-            "<strong>score</strong></td><td>@415/24 quarters</td></tr></tbody></table>"
-            "<div style='margin-top: 4px; color: #666; font-size: 0.85em;'>Try: "
-            "<code>claim.get_matchstamp()</code></div></div>"
-        )
-        assert repr(anchor) == (
-            "AlignmentAnchor(audio@12.5 seconds <-> score@415/24 quarters)"
-        )
-        assert str(anchor) == repr(anchor)
-        assert anchor._repr_html_() == (
-            "<div style='font-family: monospace;'><strong>AlignmentAnchor</strong>("
-            "audio@12.5 seconds &lt;-&gt; score@415/24 quarters)</div>"
+        assert _anchor("tl1", _number(10.0), "tl2", _number(20.0)) == _anchor(
+            "tl1", _number(10.0), "tl2", _number(20.0)
         )
 
     @pytest.mark.parametrize(
@@ -1110,92 +222,744 @@ class TestMatchClaim:
     def test_integer_and_float_coordinate_rendering(
         self, coordinate: Coordinate, expected: str
     ) -> None:
-        """Integer discrete and float coordinates retain their display type and unit."""
-        anchor = AlignmentAnchor(
-            timeline_a_id="a",
-            coordinate_a=coordinate,
-            timeline_b_id="b",
-            coordinate_b=coordinate,
-        )
-
+        anchor = _anchor("a", coordinate, "b", coordinate)
         assert repr(anchor) == f"AlignmentAnchor(a@{expected} <-> b@{expected})"
 
 
 # endregion
 
 
-# region Integration Tests
+# region MatchClaim: structure
+
+
+class TestMatchClaim:
+    """Direct construction: anchors, events, ids."""
+
+    def test_instant_creation(self, basic_anchor: AlignmentAnchor) -> None:
+        claim = _claim(basic_anchor)
+        assert claim.is_interval is False
+        assert claim.start_anchor is basic_anchor
+        assert claim.end_anchor is None
+        assert claim.timelines == ("score:1", "recording:1")
+        assert claim.anchors == [basic_anchor]
+
+    def test_interval_creation(self) -> None:
+        start = _anchor("dgt_1", _number(0.0), "dgt_2", _number(0.0))
+        end = _anchor("dgt_1", _number(975.0), "dgt_2", _number(866.0))
+        claim = _claim(start, end_anchor=end)
+        assert claim.is_interval is True
+        assert claim.anchors == [start, end]
+        assert claim.get_interval_for("dgt_1").end.value == 975.0
+        assert claim.get_interval_for("dgt_2").end.value == 866.0
+
+    def test_auto_generated_and_explicit_id(
+        self, basic_anchor: AlignmentAnchor
+    ) -> None:
+        assert (_claim(basic_anchor).id, _claim(basic_anchor).id_minted) == (
+            "claim_1",
+            True,
+        )
+        given = _claim(basic_anchor, id="my_claim")
+        assert (given.id, given.id_minted) == ("my_claim", False)
+
+    def test_mismatched_anchors_raises(self) -> None:
+        start = _anchor("tl1", _number(0.0), "tl2", _number(0.0))
+        end = _anchor("tl1", _number(100.0), "tl3", _number(100.0))
+        with pytest.raises(ValueError, match="must connect same timelines"):
+            _claim(start, end_anchor=end)
+
+    def test_anchor_timeline_mismatch_raises(self) -> None:
+        anchor = _anchor("tl1", _number(0.0), "tl2", _number(0.0))
+        with pytest.raises(ValueError, match="must match claim timelines"):
+            MatchClaim(
+                timeline_a_id="tl1",
+                timeline_b_id="tl3",
+                start_anchor=anchor,
+                event_a_id="a",
+                event_b_id="b",
+            )
+
+    def test_synchronous_requires_anchor(self) -> None:
+        with pytest.raises(ValueError, match="require a start_anchor"):
+            MatchClaim(
+                timeline_a_id="tl1", timeline_b_id="tl2", event_a_id="a", event_b_id="b"
+            )
+
+    def test_non_synchronous_rejects_anchor(self) -> None:
+        anchor = _anchor("tl1", _number(0.0), "tl2", _number(0.0))
+        with pytest.raises(ValueError, match="must not have anchors"):
+            _claim(anchor, is_synchronous=False)
+
+    def test_explicit_claim_names_its_events(
+        self, basic_anchor: AlignmentAnchor
+    ) -> None:
+        both = (
+            "A synchronous MatchClaim names an event on each side (event_a_id and "
+            "event_b_id). Give a side without an event of its own a Projection event "
+            "first, never a bare coordinate."
+        )
+        for events in ({}, {"event_a_id": "a1"}, {"event_b_id": "b1"}):
+            with pytest.raises(ValidationError, match=re.escape(both)):
+                MatchClaim(
+                    timeline_a_id="score:1",
+                    timeline_b_id="recording:1",
+                    start_anchor=basic_anchor,
+                    **events,
+                )
+        with pytest.raises(
+            ValidationError,
+            match=re.escape(
+                "A MatchClaim names its events: a NOMATCH claim one event (the other "
+                "side None, the NOMATCH sentinel), a conceptual claim two."
+            ),
+        ):
+            MatchClaim(timeline_a_id="a", timeline_b_id="b", is_synchronous=False)
+        implicit = MatchClaim(
+            timeline_a_id="score:1",
+            timeline_b_id="recording:1",
+            start_anchor=basic_anchor,
+            is_explicit=False,
+        )
+        assert (implicit.event_a_id, implicit.event_b_id) == (None, None)
+
+    def test_get_coordinate_for(self, basic_anchor: AlignmentAnchor) -> None:
+        claim = _claim(basic_anchor)
+        assert claim.get_coordinate_for("score:1") == IdCoordinate(
+            100, TimeUnit.quarters, "score:1"
+        )
+        with pytest.raises(KeyError, match="other"):
+            claim.get_coordinate_for("other")
+        nomatch = MatchClaim.nomatch({"id": "x"}, SCORE, RECORDING)
+        with pytest.raises(ValueError, match="no anchors"):
+            nomatch.get_coordinate_for("score:1")
+
+    def test_connects(self, basic_anchor: AlignmentAnchor) -> None:
+        claim = _claim(basic_anchor)
+        assert claim.connects("score:1") is True
+        assert claim.connects("other") is False
+        assert claim.connects_both("recording:1", "score:1") is True
+        assert claim.connects_both("score:1", "other") is False
+
+    def test_frozen_model(self, basic_anchor: AlignmentAnchor) -> None:
+        with pytest.raises(ValidationError):
+            _claim(basic_anchor).is_explicit = False  # type: ignore
+
+
+# endregion
+
+
+# region MatchClaim: certainty and provenance
+
+
+class TestCertaintyAndProvenance:
+    def test_certainty_validation(self, basic_anchor: AlignmentAnchor) -> None:
+        assert _claim(basic_anchor).certainty == 1.0
+        for certainty in (-0.1, 1.1):
+            with pytest.raises(
+                ValidationError,
+                match=re.escape(f"Certainty must be in [0, 1], got {certainty}"),
+            ):
+                _claim(basic_anchor, certainty=certainty)
+
+    def test_certainty_boundaries(self, basic_anchor: AlignmentAnchor) -> None:
+        assert _claim(basic_anchor, certainty=0.0).certainty == 0.0
+        assert _claim(basic_anchor, certainty=1.0).certainty == 1.0
+
+    def test_to_dict_literal_with_provenance(self) -> None:
+        provenance = Provenance(
+            stated_by=("https://orcid.org/0000-0001",),
+            method="manual",
+            beliefs=(Belief(actor="jo", belief="unlikely", date="2026-11-21"),),
+        )
+        claim = MatchClaim.from_events(
+            {"id": "note_7", "name": "C♯4", "start": Fraction(7, 3)},
+            SCORE,
+            {"id": "onset_7", "start": 1.25},
+            RECORDING,
+            certainty=0.75,
+            provenance=provenance,
+            id="c7",
+        )
+        data = claim.to_dict()
+        assert data == {
+            "id": "c7",
+            "id_minted": False,
+            "timeline_a_id": "score:1",
+            "timeline_b_id": "recording:1",
+            "start_anchor": {
+                "timeline_a_id": "score:1",
+                "coordinate_a": {
+                    "unit": "quarters",
+                    "number_type": "fraction",
+                    "value": [7, 3],
+                },
+                "timeline_b_id": "recording:1",
+                "coordinate_b": {
+                    "unit": "seconds",
+                    "number_type": "float",
+                    "value": 1.25,
+                },
+            },
+            "end_anchor": None,
+            "is_explicit": True,
+            "is_synchronous": True,
+            "certainty": 0.75,
+            "provenance": {
+                "stated_by": ["https://orcid.org/0000-0001"],
+                "method": "manual",
+                "beliefs": [
+                    {"actor": "jo", "belief": "unlikely", "date": "2026-11-21"}
+                ],
+            },
+            "event_a_id": "note_7",
+            "event_a_name": "C♯4",
+            "event_b_id": "onset_7",
+            "event_b_name": None,
+            "source_coordinate": None,
+        }
+        json.dumps(data)
+        assert MatchClaim.from_dict(data) == claim
+
+
+# endregion
+
+
+# region MatchClaim: coordinates on the timelines
+
+
+class TestFromEvents:
+    """``from_events`` places every coordinate on its timeline's axis."""
+
+    def test_from_events_places_numbers_on_the_axes(self) -> None:
+        claim = MatchClaim.from_events(
+            {"id": "n8", "name": "Note C4", "start": 8},
+            SCORE,
+            {"id": "t96", "start": 96},
+            MIDI,
+        )
+        assert claim.start_anchor.coordinate_a == Coordinate(
+            Fraction(8, 1), TimeUnit.quarters
+        )
+        assert type(claim.start_anchor.coordinate_b.value) is int
+        assert claim.start_anchor.coordinate_b == Coordinate(96, TimeUnit.ticks)
+        assert (claim.event_a_id, claim.event_a_name, claim.event_b_id) == (
+            "n8",
+            "Note C4",
+            "t96",
+        )
+        cell = MatchClaim.from_events(
+            {"id": "n1", "start": 1},
+            SCORE,
+            {"id": "o1", "start": {"value": 2.5, "numerator": 5, "denominator": 2}},
+            RECORDING,
+        )
+        assert cell.start_anchor.coordinate_b.value == 2.5
+        assert cell.start_anchor.coordinate_b.number_type is NumberType.float
+
+    def test_from_events_interval_and_conceptual(self) -> None:
+        interval = MatchClaim.from_events(
+            {"id": "a", "start": 0, "end": Fraction(1, 2)},
+            SCORE,
+            {"id": "b", "start": 0, "end": 261},
+            MIDI,
+            end_coord_key="end",
+        )
+        assert interval.get_interval_for("score:1").end == Coordinate(
+            Fraction(1, 2), TimeUnit.quarters
+        )
+        assert interval.get_interval_for("midi").end == Coordinate(261, TimeUnit.ticks)
+        conceptual = MatchClaim.from_events(
+            {"id": "a", "start": 0},
+            SCORE,
+            {"id": "b", "start": 0},
+            MIDI,
+            is_synchronous=False,
+        )
+        assert (conceptual.is_synchronous, conceptual.anchors) == (False, [])
+
+    def test_from_events_converts_another_unit(self) -> None:
+        wav = _wav()
+        claim = MatchClaim.from_events(
+            {"id": "n1", "start": Fraction(1, 2)},
+            SCORE,
+            {"id": "o1", "start": Coordinate(3.16952381, TimeUnit.seconds)},
+            wav,
+        )
+        assert type(claim.start_anchor.coordinate_b.value) is int
+        assert claim.start_anchor.coordinate_b == Coordinate(139776, TimeUnit.samples)
+        as_dict = MatchClaim.from_events(
+            {"id": "n1", "start": 1},
+            SCORE,
+            {
+                "id": "o1",
+                "start": {
+                    "unit": "seconds",
+                    "number_type": "float",
+                    "value": 19.278367347,
+                },
+            },
+            wav,
+        )
+        assert as_dict.start_anchor.coordinate_b == Coordinate(850176, TimeUnit.samples)
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "start_anchor.coordinate_b names timeline 'other', not 'wav'"
+            ),
+        ):
+            MatchClaim.from_events(
+                {"id": "n1", "start": 1},
+                SCORE,
+                {"id": "o1", "start": IdCoordinate(3.0, TimeUnit.seconds, "other")},
+                wav,
+            )
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "No C-Map available to convert coordinate from unit 'seconds' to "
+                "'quarters' on timeline 'score:1'"
+            ),
+        ):
+            MatchClaim.from_events(
+                {"id": "n1", "start": Coordinate(3.0, TimeUnit.seconds)},
+                SCORE,
+                {"id": "o1", "start": 3},
+                wav,
+            )
+
+    def test_from_events_refuses_another_number_type(self) -> None:
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                _off_axis(
+                    "start_anchor.coordinate_a",
+                    "quarters",
+                    "float",
+                    "score:1",
+                    "quarters (fraction)",
+                )
+            ),
+        ):
+            MatchClaim.from_events(
+                {
+                    "id": "n1",
+                    "start": Coordinate(0.5, TimeUnit.quarters, number_type="float"),
+                },
+                SCORE,
+                {"id": "o1", "start": 3},
+                MIDI,
+            )
+        kept = MatchClaim.from_events(
+            {
+                "id": "n1",
+                "start": Coordinate(0.5, TimeUnit.quarters, number_type="float"),
+            },
+            FLOAT_SCORE,
+            {"id": "o1", "start": 3},
+            MIDI,
+        )
+        assert kept.start_anchor.coordinate_a.number_type is NumberType.float
+
+    def test_from_events_requires_event_ids(self) -> None:
+        for event_a, event_b, side in (
+            ({"start": 0}, {"id": "b", "start": 0}, "event_a"),
+            ({"id": "a", "start": 0}, {"start": 0}, "event_b"),
+        ):
+            with pytest.raises(
+                ValueError,
+                match=re.escape(
+                    f"{side} names no event id: a MatchClaim names the events it "
+                    f"matches. Give a side without an event of its own a Projection "
+                    f"event first, never a bare coordinate."
+                ),
+            ):
+                MatchClaim.from_events(event_a, SCORE, event_b, MIDI)
+
+
+class TestCheckOnTimelines:
+    """The one check: every coordinate in its timeline's unit and number type."""
+
+    def test_check_on_timelines(self) -> None:
+        wav = _wav()
+        seconds_on_samples = _claim(
+            _anchor(
+                "score:1",
+                Coordinate(Fraction(1, 2), TimeUnit.quarters),
+                "wav",
+                Coordinate(3.16952381, TimeUnit.seconds),
+            )
+        )
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                _off_axis(
+                    "start_anchor.coordinate_b",
+                    "seconds",
+                    "float",
+                    "wav",
+                    "samples (int)",
+                )
+            ),
+        ):
+            seconds_on_samples.check_on_timelines(SCORE, wav)
+        assert (
+            seconds_on_samples.check_on_timelines(SCORE, ("seconds", "float"))
+            is seconds_on_samples
+        )
+
+        fraction_on_float = _claim(
+            _anchor(
+                "float_score",
+                Coordinate(Fraction(1, 3), TimeUnit.quarters),
+                "midi",
+                Coordinate(96, TimeUnit.ticks),
+            )
+        )
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                _off_axis(
+                    "start_anchor.coordinate_a",
+                    "quarters",
+                    "fraction",
+                    "float_score",
+                    "quarters (float)",
+                )
+            ),
+        ):
+            fraction_on_float.check_on_timelines(FLOAT_SCORE, MIDI)
+        assert (
+            fraction_on_float.check_on_timelines(("quarters", "fraction"), MIDI)
+            is fraction_on_float
+        )
+
+        with pytest.raises(
+            ValueError,
+            match=re.escape("timeline_b is 'wav', but the MatchClaim names 'midi'"),
+        ):
+            fraction_on_float.check_on_timelines(FLOAT_SCORE, wav)
+
+    def test_nomatch_source_coordinate_is_checked(self) -> None:
+        nomatch = MatchClaim(
+            timeline_a_id="recording:1",
+            timeline_b_id="score:1",
+            is_synchronous=False,
+            event_b_id="n9",
+            source_coordinate=Coordinate(Fraction(27, 2), TimeUnit.quarters),
+        )
+        assert nomatch.check_on_timelines(RECORDING, SCORE) is nomatch
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                _off_axis(
+                    "source_coordinate",
+                    "quarters",
+                    "fraction",
+                    "float_score",
+                    "quarters (float)",
+                )
+            ),
+        ):
+            nomatch.model_copy(
+                update={"timeline_b_id": "float_score"}
+            ).check_on_timelines(RECORDING, FLOAT_SCORE)
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "source_coordinate is on timeline 'score:1', whose axis is not given"
+            ),
+        ):
+            nomatch.check_on_timelines(RECORDING, None)
+
+
+class TestNomatchAndImplicit:
+    def test_nomatch_factory(self) -> None:
+        claim = MatchClaim.nomatch(
+            {"id": "orphan", "name": "E5", "start": Fraction(27, 2)},
+            SCORE,
+            "perf:Chopin_Ashkenazy",
+            certainty=0.5,
+        )
+        assert (claim.is_synchronous, claim.anchors, claim.certainty) == (
+            False,
+            [],
+            0.5,
+        )
+        assert (claim.timeline_a_id, claim.timeline_b_id) == (
+            "score:1",
+            "perf:Chopin_Ashkenazy",
+        )
+        assert (claim.event_a_id, claim.event_a_name, claim.event_b_id) == (
+            "orphan",
+            "E5",
+            None,
+        )
+        assert claim.source_coordinate == Coordinate(Fraction(27, 2), TimeUnit.quarters)
+        with pytest.raises(ValueError, match=re.escape("event names no event id")):
+            MatchClaim.nomatch({"start": 1}, SCORE, RECORDING)
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                _off_axis(
+                    "source_coordinate",
+                    "quarters",
+                    "float",
+                    "score:1",
+                    "quarters (fraction)",
+                )
+            ),
+        ):
+            MatchClaim.nomatch(
+                {
+                    "id": "x",
+                    "start": Coordinate(1.5, TimeUnit.quarters, number_type="float"),
+                },
+                SCORE,
+                RECORDING,
+            )
+
+    def test_implicit_factory(self) -> None:
+        source = _claim(_anchor("tl1", _number(100.0), "tl2", _number(200.0)), id="src")
+        implicit = MatchClaim.implicit(
+            tl_a_id="tl1",
+            coord_a=100.0,
+            tl_b_id="tl3",
+            unit_a=TimeUnit.number,
+            unit_b=TimeUnit.number,
+            coord_b=300.0,
+            source_claim=source,
+        )
+        assert (implicit.is_synchronous, implicit.is_explicit) == (True, False)
+        assert implicit.source_claim_id == "src"
+        assert implicit.start_anchor.coordinate_b == _number(300.0)
+
+    def test_implicit_coordinate_inputs(self) -> None:
+        implicit = MatchClaim.implicit(
+            tl_a_id="score",
+            coord_a=Coordinate(100, TimeUnit.quarters),
+            tl_b_id="recording",
+            coord_b=IdCoordinate(45.5, TimeUnit.seconds, "recording"),
+        )
+        assert implicit.start_anchor.coordinate_b == IdCoordinate(
+            45.5, TimeUnit.seconds, "recording"
+        )
+        with pytest.raises(ValueError, match="unit"):
+            MatchClaim.implicit(
+                "score",
+                Coordinate(100, TimeUnit.quarters),
+                "recording",
+                45.5,
+                unit_a=TimeUnit.seconds,
+                unit_b=TimeUnit.seconds,
+            )
+
+
+# endregion
+
+
+# region Serialisation and display
+
+
+class TestSerialisationAndDisplay:
+    def test_from_dict_roundtrips(self, basic_anchor: AlignmentAnchor) -> None:
+        instant = _claim(basic_anchor)
+        assert MatchClaim.from_dict(instant.to_dict()) == instant
+        interval = _claim(
+            _anchor("tl1", _number(0.0), "tl2", _number(0.0)),
+            end_anchor=_anchor("tl1", _number(100.0), "tl2", _number(200.0)),
+            provenance=Provenance(service="https://example.org/aligner"),
+        )
+        assert MatchClaim.from_dict(interval.to_dict()) == interval
+        conceptual = MatchClaim(
+            timeline_a_id="tl1",
+            timeline_b_id="tl2",
+            is_synchronous=False,
+            event_a_id="a",
+            event_b_id="b",
+        )
+        assert MatchClaim.from_dict(conceptual.to_dict()) == conceptual
+
+    def test_repr_interval(self) -> None:
+        claim = _claim(
+            _anchor("dgt_1", _number(0.0), "dgt_2", _number(0.0)),
+            end_anchor=_anchor("dgt_1", _number(975.0), "dgt_2", _number(866.0)),
+        )
+        assert repr(claim) == (
+            "MatchClaim(interval: dgt_1[0 number-975 number] <-> "
+            "dgt_2[0 number-866 number])"
+        )
+
+    def test_repr_non_synchronous(self) -> None:
+        claim = MatchClaim(
+            timeline_a_id="tl1",
+            timeline_b_id="tl2",
+            is_synchronous=False,
+            event_a_id="e_orphan",
+        )
+        assert repr(claim) == "MatchClaim(tl1 <-> tl2 [NOMATCH])"
+
+    def test_repr_nomatch_with_coordinate_exact(self) -> None:
+        claim = MatchClaim.nomatch(
+            {"id": "orphan", "start": 188.8},
+            ContinuousPhysicalTimeline(length=300.0, uid="score:clt_1"),
+            "perf:Chopin_Ashkenazy",
+        )
+        assert claim.source_coordinate == Coordinate(188.8, TimeUnit.seconds)
+        assert repr(claim) == (
+            "MatchClaim(score:clt_1@188.8 seconds <-> perf:Chopin_Ashkenazy [NOMATCH])"
+        )
+
+    def test_repr_nomatch_without_coordinate(self) -> None:
+        claim = MatchClaim.nomatch({"id": "orphan"}, SCORE, "perf:Chopin_Ashkenazy")
+        assert claim.source_coordinate is None
+        assert repr(claim) == "MatchClaim(score:1 <-> perf:Chopin_Ashkenazy [NOMATCH])"
+
+    def test_nomatch_source_coordinate_roundtrip(self) -> None:
+        claim = MatchClaim.nomatch(
+            {"id": "x", "start": Fraction(27, 2)}, SCORE, RECORDING
+        )
+        restored = MatchClaim.from_dict(claim.to_dict())
+        assert restored == claim
+        assert restored.source_coordinate == Coordinate(
+            Fraction(27, 2), TimeUnit.quarters
+        )
+
+    def test_repr_synchronous_instant_with_units(self) -> None:
+        claim = _claim(_anchor("score:1", _number(100.0), "recording:1", _number(45.5)))
+        assert claim.source_coordinate is None
+        assert repr(claim) == (
+            "MatchClaim(instant: score:1@100 number <-> recording:1@45.5 number)"
+        )
+
+    def test_str_shows_certainty_provenance_and_beliefs(self) -> None:
+        claim = MatchClaim.from_events(
+            {"id": "e001", "name": "Intro", "start": 0, "end": Fraction(1, 2)},
+            SCORE,
+            {"id": "e042", "name": "Intro", "start": 0, "end": 261},
+            MIDI,
+            end_coord_key="end",
+            certainty=0.9,
+            provenance=Provenance(
+                stated_by=("ana", "jo"),
+                method="imported",
+                beliefs=(
+                    Belief(actor="ana", belief="true", date="2026-11-21"),
+                    Belief(actor="jo", belief="false", date="2026-11-22"),
+                ),
+            ),
+        )
+        assert str(claim) == (
+            "MatchClaim (synchronous, interval)\n"
+            "  Timeline A:  score:1  [0 quarters -- 1/2 quarters]\n"
+            '  Event A:     e001 "Intro"\n'
+            "  Timeline B:  midi  [0 ticks -- 261 ticks]\n"
+            '  Event B:     e042 "Intro"\n'
+            "  Certainty:   0.9\n"
+            "  Provenance:  stated_by=ana jo, method=imported\n"
+            "  Beliefs:     ana true (2026-11-21); jo false (2026-11-22)"
+        )
+        assert claim._repr_html_() == (
+            "<div style='font-family: monospace;'><strong>MatchClaim</strong> "
+            "<span style='background: #e3f2fd; padding: 0 4px; border-radius: 3px; "
+            "font-size: 0.8em;'>synchronous, interval</span><table "
+            "style='border-collapse: collapse; margin-top: 4px;'><tbody><tr><td>"
+            "Timeline A</td><td><strong>score:1</strong></td><td>[0 quarters &ndash; "
+            "1/2 quarters]</td></tr><tr style='color: #555; font-size: 0.9em;'><td>"
+            'Event A</td><td>e001</td><td>"Intro"</td></tr><tr><td>Timeline B</td>'
+            "<td><strong>midi</strong></td><td>[0 ticks &ndash; 261 ticks]</td></tr>"
+            "<tr style='color: #555; font-size: 0.9em;'><td>Event B</td><td>e042</td>"
+            "<td>\"Intro\"</td></tr><tr style='color: #666;'><td>Certainty</td>"
+            "<td colspan='2'>0.9</td></tr><tr style='color: #666;'><td>Provenance</td>"
+            "<td colspan='2'>stated_by=ana jo, method=imported</td></tr><tr "
+            "style='color: #666;'><td>Beliefs</td><td colspan='2'>ana true "
+            "(2026-11-21); jo false (2026-11-22)</td></tr></tbody></table><div "
+            "style='margin-top: 4px; color: #666; font-size: 0.85em;'>Try: <code>"
+            "claim.get_matchstamp()</code></div></div>"
+        )
+
+
+class TestMatchstampQuery:
+    def test_matchstamp_query_reads_the_claim_s_timeline(self) -> None:
+        bundle = AlignmentBundle()
+        score = ContinuousLogicalTimeline(length=16, uid="score")
+        perf = ContinuousPhysicalTimeline(length=40.0, uid="perf")
+        bundle.add_timeline(score, as_group="score")
+        bundle.add_timeline(perf, as_group="perf")
+        swapped = MatchClaim(
+            timeline_a_id="score",
+            timeline_b_id="perf",
+            start_anchor=_anchor(
+                "perf",
+                Coordinate(20.0, TimeUnit.seconds),
+                "score",
+                Coordinate(8, TimeUnit.quarters),
+            ),
+            event_a_id="note_8",
+            event_b_id="onset_8",
+        ).check_on_timelines(score, perf)
+        bundle.add_match_claims([swapped])
+        stamp = swapped.get_matchstamp()
+        assert stamp.get_coordinate_for("score", format="coordinate") == Coordinate(
+            8, TimeUnit.quarters
+        )
+        assert stamp.get_coordinate_for("perf", format="coordinate") == Coordinate(
+            20.0, TimeUnit.seconds
+        )
+        reduced = swapped.get_matchstamp(from_graph=False)
+        assert reduced.get_coordinate_for("score", format="coordinate") == Coordinate(
+            8, TimeUnit.quarters
+        )
+
+
+# endregion
+
+
+# region Integration
 
 
 class TestClaimIntegration:
-    """Integration tests for alignment claims."""
-
     def test_thoresen_segment_claims(self) -> None:
-        """Test creating segment claims similar to Thoresen PoC.
+        """Five interval claims between the segments of two page images.
 
-        Creates 5 interval matches for segment correspondence:
-        - DGT1 segments: 5 equal (975 px each)
-        - DGT2 segments: 5 varying (866, 867, 867, 864, 864)
+        DGT1 segments are five of 975 px; DGT2 segments 866, 867, 867, 864, 864.
         """
-        segment_lengths_dgt1 = [975, 975, 975, 975, 975]
-        segment_lengths_dgt2 = [866, 867, 867, 864, 864]
-
+        dgt_1 = DiscreteLogicalTimeline(length=4875, uid="dgt_1")
+        dgt_2 = DiscreteLogicalTimeline(length=4328, uid="dgt_2")
+        lengths_1 = [975, 975, 975, 975, 975]
+        lengths_2 = [866, 867, 867, 864, 864]
+        provenance = Provenance(
+            stated_by=("https://example.org/analyst",), method="manual"
+        )
         claims = []
-        offset_dgt1 = 0
-        offset_dgt2 = 0
-
+        start_1 = start_2 = 0
         for i in range(5):
-            claim = MatchClaim(
-                timeline_a_id="dgt_1",
-                timeline_b_id="dgt_2",
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id="dgt_1",
-                    coordinate_a=Coordinate(float(offset_dgt1), TimeUnit.number),
-                    timeline_b_id="dgt_2",
-                    coordinate_b=Coordinate(float(offset_dgt2), TimeUnit.number),
-                ),
-                end_anchor=AlignmentAnchor(
-                    timeline_a_id="dgt_1",
-                    coordinate_a=Coordinate(
-                        float(offset_dgt1 + segment_lengths_dgt1[i]), TimeUnit.number
-                    ),
-                    timeline_b_id="dgt_2",
-                    coordinate_b=Coordinate(
-                        float(offset_dgt2 + segment_lengths_dgt2[i]), TimeUnit.number
-                    ),
-                ),
-                metadata=MatchMetadata(
-                    agent=Agent(
-                        name="analyst",
-                        type=AgentType.human,
-                        identifier="segment_correspondence",
-                    ),
-                ),
+            claims.append(
+                MatchClaim.from_events(
+                    {
+                        "id": f"seg_1_{i}",
+                        "start": start_1,
+                        "end": start_1 + lengths_1[i],
+                    },
+                    dgt_1,
+                    {
+                        "id": f"seg_2_{i}",
+                        "start": start_2,
+                        "end": start_2 + lengths_2[i],
+                    },
+                    dgt_2,
+                    end_coord_key="end",
+                    provenance=provenance,
+                    id=f"segment_{i + 1}",
+                )
             )
-            claims.append(claim)
+            start_1 += lengths_1[i]
+            start_2 += lengths_2[i]
 
-            offset_dgt1 += segment_lengths_dgt1[i]
-            offset_dgt2 += segment_lengths_dgt2[i]
-
-        # Verify
-        assert len(claims) == 5
-        assert all(c.is_interval for c in claims)
-        assert all(c.connects_both("dgt_1", "dgt_2") for c in claims)
-
-        # Check first segment
-        interval = claims[0].get_interval_for("dgt_1")
-        assert interval.start.value == 0.0
-        assert interval.end.value == 975.0
-
-        interval = claims[0].get_interval_for("dgt_2")
-        assert interval.start.value == 0.0
-        assert interval.end.value == 866.0
-
-        # Check last segment ends at total length
-        end_dgt1 = claims[4].get_interval_for("dgt_1").end
-        end_dgt2 = claims[4].get_interval_for("dgt_2").end
-        assert end_dgt1.value == 4875.0
-        assert end_dgt2.value == 4328.0
+        assert all(claim.is_interval for claim in claims)
+        assert claims[0].get_interval_for("dgt_2").end.value == 866
+        assert claims[4].get_interval_for("dgt_1").end.value == 4875
+        assert claims[4].get_interval_for("dgt_2").end.value == 4328
+        assert {claim.provenance for claim in claims} == {provenance}
 
 
 # endregion

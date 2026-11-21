@@ -2074,13 +2074,12 @@ def test_a_timestamp_display_is_written_in_canonical_order_with_its_default(
     read = reader(data)
 
     default = ["wedge", "name", "cross_section"]
+    flags = {"matchstamp": False, "groupstamp": False}
     assert bare(read.to_dict(minimal=False))["graphical"]["timestamps"] == [
-        _stamp(1, display=default, matchstamp=False),
-        _stamp(2, display=default, matchstamp=False),
-        _stamp(3, display=["wedge", "name"], matchstamp=False),
-        _stamp(
-            4, display=["wedge", "coordinate", "flag"], note={"x": 1}, matchstamp=False
-        ),
+        _stamp(1, display=default, **flags),
+        _stamp(2, display=default, **flags),
+        _stamp(3, display=["wedge", "name"], **flags),
+        _stamp(4, display=["wedge", "coordinate", "flag"], note={"x": 1}, **flags),
     ]
     assert bare(read.to_dict(minimal=True))["graphical"]["timestamps"] == [
         _stamp(1),
@@ -2091,6 +2090,73 @@ def test_a_timestamp_display_is_written_in_canonical_order_with_its_default(
     assert data == kept
 
 
+GROUPSTAMP_REFUSAL = (
+    "#/graphical/timestamps/0/groupstamp: 'timestamp_1' is a groupstamp, but its "
+    "timeline '{timeline}' is a member of no group and lies in none"
+)
+
+
+@pytest.mark.parametrize(
+    "reader",
+    [reading(Timeline.from_dict), reading(AlignmentBundle.from_dict)],
+    ids=["timeline", "bundle"],
+)
+def test_a_groupstamp_lying_in_no_group_is_refused_on_reading(reader: Any) -> None:
+    data = {
+        "timetoshare": "0.2.0",
+        "timelines": [{"id": "r", "unit": "quarters", "length": [4, 1]}],
+        "graphical": {"timestamps": [_stamp(1, groupstamp=True)]},
+    }
+
+    with pytest.raises(ValueError) as refusal:
+        reader(data)
+
+    assert str(refusal.value) == GROUPSTAMP_REFUSAL.format(timeline="r")
+
+
+def test_a_groupstamp_on_a_member_s_child_is_read_and_written_back() -> None:
+    stamp = {**_stamp(1, groupstamp=True), "timeline": "c"}
+    data = {
+        "timetoshare": "0.2.0",
+        "timelines": [
+            {
+                "id": "r",
+                "unit": "quarters",
+                "length": [4, 1],
+                "children": [
+                    {"id": "c", "unit": "quarters", "length": [2, 1], "offset": [1, 1]}
+                ],
+            }
+        ],
+        "groups": [{"id": "g", "members": ["r"]}],
+        "graphical": {"timestamps": [stamp]},
+    }
+
+    read = reading(AlignmentBundle.from_dict)(data)
+
+    assert bare(read.to_dict())["graphical"]["timestamps"] == [stamp]
+
+
+def test_a_groupstamp_whose_group_lost_its_timeline_is_refused_on_writing() -> None:
+    stamp = {**_stamp(1, groupstamp=True), "timeline": "s"}
+    data = {
+        "timetoshare": "0.2.0",
+        "timelines": [
+            {"id": "r", "unit": "quarters", "length": [4, 1]},
+            {"id": "s", "unit": "quarters", "length": [4, 1]},
+        ],
+        "groups": [{"id": "g", "members": ["r", "s"]}],
+        "graphical": {"timestamps": [stamp]},
+    }
+    bundle = reading(AlignmentBundle.from_dict)(data)
+    bundle.groups["g"].remove_timeline("s")
+
+    with pytest.raises(ValueError) as refusal:
+        bundle.to_dict()
+
+    assert str(refusal.value) == GROUPSTAMP_REFUSAL.format(timeline="s")
+
+
 STYLING_CASES = {
     "styles_default": ({"styles": {}}, {}),
     "rules_default": ({"rules": []}, {}),
@@ -2098,6 +2164,10 @@ STYLING_CASES = {
     "matchstamps_default": ({"matchstamps": []}, {}),
     "matchstamp_flag_default": (
         {"timestamps": [_stamp(1, matchstamp=False)]},
+        {"timestamps": [_stamp(1)]},
+    ),
+    "groupstamp_flag_default": (
+        {"timestamps": [_stamp(1, groupstamp=False)]},
         {"timestamps": [_stamp(1)]},
     ),
     "display_default": (

@@ -386,6 +386,79 @@ def check_matchstamps(data: Mapping[str, Any]) -> None:
         raise problems[0]
 
 
+def check_groupstamps(data: Mapping[str, Any]) -> None:
+    """Refuse a manifest holding a groupstamp that lies in no group.
+
+    A named timestamp with ``groupstamp: true`` draws its line across the
+    frame of each group its timeline lies in, so the format requires that
+    timeline to lie in one: a timeline lies in a group when it or one of its
+    ancestors is listed in the group's ``members`` (a member's descendants
+    are drawn inside the member's card); an ancestor of a member lies in no
+    group through it. A match timestamp is left to :func:`check_matchstamps`
+    (it is never a groupstamp), and a timestamp naming no timeline of the
+    manifest, like the rest of ``graphical.timestamps``, is kept unread. A
+    manifest is checked as it is read and as it is written. *data* holds
+    bare IDs.
+
+    Raises:
+        timetoshare.SchemaValidationError: The first groupstamp lying in no
+            group, a ``ValueError``: ``#/graphical/timestamps/0/groupstamp:
+            'timestamp_1' is a groupstamp, but its timeline 'clt_1' is a
+            member of no group and lies in none``.
+    """
+    graphical = data.get("graphical")
+    timestamps = graphical.get("timestamps") if isinstance(graphical, Mapping) else None
+    flagged = [
+        (index, timestamp)
+        for index, timestamp in enumerate(
+            timestamps if isinstance(timestamps, list) else []
+        )
+        if isinstance(timestamp, Mapping)
+        and timestamp.get("groupstamp") is True
+        and timestamp.get("matchstamp") is not True
+    ]
+    if not flagged:
+        return
+    members = {
+        member
+        for group in _object_entries(data, "groups")
+        for member in (
+            group["members"] if isinstance(group.get("members"), list) else []
+        )
+        if isinstance(member, str)
+    }
+    lying: dict[str, bool] = {}
+    pending = [(root, False) for root in _object_entries(data, "timelines")]
+    while pending:
+        timeline, inside = pending.pop()
+        identifier = timeline.get("id")
+        inside = inside or identifier in members
+        if isinstance(identifier, str):
+            lying[identifier] = lying.get(identifier, False) or inside
+        pending.extend(
+            (child, inside) for child in _object_entries(timeline, "children")
+        )
+    for index, timestamp in flagged:
+        identifier = timestamp.get("timeline")
+        if isinstance(identifier, str) and lying.get(identifier) is False:
+            raise timetoshare.SchemaValidationError(
+                "groupstamp",
+                ("graphical", "timestamps", index, "groupstamp"),
+                f"'{timestamp.get('id')}' is a groupstamp, but its timeline "
+                f"'{identifier}' is a member of no group and lies in none",
+            )
+
+
+def _object_entries(owner: Mapping[str, Any], key: str) -> list[Mapping[str, Any]]:
+    """The objects of the list *owner* holds under *key*; none where it holds no list."""
+    value = owner.get(key)
+    return (
+        [entry for entry in value if isinstance(entry, Mapping)]
+        if isinstance(value, list)
+        else []
+    )
+
+
 def _leave_out_unwritten(
     fields: dict[str, Any], roots: list[Timeline], written: set[str]
 ) -> dict[str, Any]:
@@ -920,7 +993,8 @@ class Manifest(_OpenObject):
     of its ``graphical`` other than ``order``
     (``styling``) and the band orders of its timelines (``band_orders``),
     both kept as given and never interpreted (the named MatchStamps among
-    the styling are checked, :func:`check_matchstamps`), whether it holds
+    the styling are checked, :func:`check_matchstamps`, and so are the
+    groupstamps, :func:`check_groupstamps`), whether it holds
     ``graphical`` at all, the measure maps no timeline names, and every key
     the library does not read.
 
@@ -983,7 +1057,8 @@ class Manifest(_OpenObject):
         every object of the library holds them. The statements and their
         provenance are checked first, then the named MatchStamps, by
         TimeToShare's rules (:func:`check_statements`,
-        :func:`check_matchstamps`). The measure maps are read next, then
+        :func:`check_matchstamps`), then the groupstamps
+        (:func:`check_groupstamps`). The measure maps are read next, then
         every root timeline is rebuilt, its conversion maps reading the
         measure maps they name, and every timeline of the roots' trees is
         indexed by id. Every id is unique across the manifest: the
@@ -1012,7 +1087,8 @@ class Manifest(_OpenObject):
                 without its ``#`` (:func:`bare_ids`), or is malformed:
                 statements or provenance breaking a rule of the format (the
                 first problem, a ``timetoshare.SchemaValidationError``), named
-                MatchStamps breaking one (:func:`check_matchstamps`), an id
+                MatchStamps breaking one (:func:`check_matchstamps`), a
+                groupstamp lying in no group (:func:`check_groupstamps`), an id
                 held twice anywhere in the manifest (see
                 :func:`unique_ids`), a ``graphical.order`` that is no object
                 or names no group or timeline; a resource that is malformed,
@@ -1032,6 +1108,7 @@ class Manifest(_OpenObject):
         bare = bare_ids(data)
         check_statements(data)
         check_matchstamps(data)
+        check_groupstamps(bare)
         own = {
             key: value
             for key, value in data.get("@context", {}).items()
@@ -1168,9 +1245,9 @@ class Manifest(_OpenObject):
         and the *table_prefixes*, each standing for the namespace the holders
         using it declare, else the catalogue's (:meth:`_prefix_table`); a
         prefix neither uses is not written, declared or not. The statements and provenance
-        written, and the named MatchStamps, are checked as a manifest read
-        is, so that a manifest whose statements or MatchStamps break a rule
-        of the format is never emitted.
+        written, the named MatchStamps and the groupstamps are checked as a
+        manifest read is, so that a manifest whose statements, MatchStamps
+        or groupstamps break a rule of the format is never emitted.
 
         Args:
             roots: The root timelines.
@@ -1198,7 +1275,10 @@ class Manifest(_OpenObject):
                 'clt_1' and for 'http://b.example/' on timeline 'clt_2'``), or
                 the statements written break a rule of the format (the first
                 problem, a ``timetoshare.SchemaValidationError``): a value
-                naming an element of no manifest of the roots, for instance.
+                naming an element of no manifest of the roots, for instance;
+                or a groupstamp kept with the styling lies in no group
+                written (:func:`check_groupstamps`), its group's member
+                removed, for instance.
         """
         trees = [
             timeline
@@ -1277,6 +1357,7 @@ class Manifest(_OpenObject):
         if order or self.styling or self.has_graphical:
             fields["graphical"] = {"order": order, **copy.deepcopy(self.styling)}
         built = self._dict_form(fields, minimal=False)
+        check_groupstamps(built)
         result = timetoshare.minimal(built) if minimal else timetoshare.complete(built)
         result = timetoshare.with_context(timetoshare.with_file_ids(result), prefixes)
         declared = {

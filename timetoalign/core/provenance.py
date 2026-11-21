@@ -26,14 +26,14 @@ from __future__ import annotations
 
 import datetime
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any, Literal
 
 import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
-from timetoshare.statements import MATCHES, METHODS
+from timetoshare.statements import MATCHES, METHODS, expand_iri
 
 from .fields import SemanticField, data_shaped, install_paired_field_registry
 
@@ -350,20 +350,32 @@ def belief_mask(
     provenance: pa.Array | pa.ChunkedArray | None,
     believer: str | None,
     belief: BeliefFilter = "not_false",
+    *,
+    context: Mapping[str, Any] | None = None,
 ) -> pa.BooleanArray:
     """The belief filter: per row, whether it is kept for *believer*.
 
     The one place the filter is decided; every consumer of provenance (a
-    claim, a :class:`ProvenanceField`, a MatchClaim table) asks it.
-    Vectorized over the beliefs: no entry is materialised.
+    claim, a :class:`ProvenanceField`, a MatchClaim table, the statements of
+    a holder) asks it. Vectorized over the beliefs: no entry is materialised.
+
+    Actors compare as the IRIs they stand for under *context*, as
+    TimeToShare compares them (:func:`timetoshare.expand_iri`), so a compact
+    and an absolute IRI of one actor name the same actor; an actor that
+    expands to nothing (a compact IRI whose prefix *context* does not
+    declare) compares as written.
 
     Args:
         provenance: A struct array of ``ProvenanceField.pa_schema`` (null
             where a row states no provenance).
-        believer: The actor whose beliefs filter; ``None`` keeps every row.
+        believer: The actor whose beliefs filter, an IRI (compact or
+            absolute); ``None`` keeps every row.
         belief: ``"not_false"`` keeps every row the believer does not believe
             ``false`` (no belief, ``true`` and ``unlikely`` pass); ``"true"``
             keeps only the rows the believer believes ``true``.
+        context: The JSON-LD context whose prefixes expand compact IRIs, the
+            believer's and the actors' alike; ``None`` declares no prefix
+            (absolute IRIs and the URI schemes still compare as IRIs).
 
     Returns:
         A boolean array, one value per row, never null.
@@ -388,12 +400,32 @@ def belief_mask(
     owners = pc.cast(pc.list_parent_indices(beliefs), pa.int64())
     wanted = "false" if belief == "not_false" else "true"
     held = pc.and_(
-        pc.equal(stated.field("actor"), believer),
+        _names_actor(stated.field("actor"), believer, context),
         pc.equal(stated.field("belief"), wanted),
     )
     rows = owners.filter(pc.fill_null(held, False))
     found = pc.is_in(pa.array(np.arange(n, dtype=np.int64)), value_set=rows)
     return pc.invert(found) if belief == "not_false" else found
+
+
+def _names_actor(
+    actors: pa.Array, believer: str, context: Mapping[str, Any] | None
+) -> pa.BooleanArray:
+    """Per actor, whether it is *believer*, both compared as expanded IRIs.
+
+    Each distinct actor is expanded once (:func:`timetoshare.expand_iri`,
+    falling back to the text as written), so the cost follows the number of
+    actors, not of beliefs.
+    """
+
+    def iri(actor: str) -> str:
+        return expand_iri(context, actor) or actor
+
+    distinct = pc.unique(actors)
+    names = pa.array([iri(actor) for actor in distinct.to_pylist()], pa.string())
+    return pc.equal(
+        pc.take(names, pc.index_in(actors, value_set=distinct)), iri(believer)
+    )
 
 
 # endregion

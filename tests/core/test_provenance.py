@@ -266,6 +266,43 @@ class TestBeliefFilter:
         assert belief_mask(chunked, "jo").to_pylist() == [True, True, False, True, True]
 
 
+_ANA = "https://example.org/people/ana"
+_CONTEXT = {"ex": "https://example.org/people/"}
+
+#: One actor written compact and absolute, and an actor of an undeclared prefix.
+_IRI_ROWS: list[Provenance | None] = [
+    Provenance(method="manual", beliefs=(_belief("ex:ana", "false"),)),
+    Provenance(method="manual", beliefs=(_belief(_ANA, "false"),)),
+    Provenance(method="manual", beliefs=(_belief(_ANA, "true"),)),
+    Provenance(method="manual", beliefs=(_belief("wd:Q1", "false"),)),
+]
+
+
+class TestActorsCompareAsIris:
+    @pytest.mark.parametrize(
+        ("believer", "belief", "context", "expected"),
+        [
+            ("ex:ana", "not_false", _CONTEXT, [False, False, True, True]),
+            (_ANA, "not_false", _CONTEXT, [False, False, True, True]),
+            (_ANA, "true", _CONTEXT, [False, False, True, False]),
+            ("ex:ana", "true", _CONTEXT, [False, False, True, False]),
+            ("ex:ana", "not_false", None, [False, True, True, True]),
+            (_ANA, "not_false", None, [True, False, True, True]),
+            ("wd:Q1", "not_false", _CONTEXT, [True, True, True, False]),
+        ],
+    )
+    def test_expanded_under_the_context(
+        self,
+        believer: str,
+        belief: str,
+        context: dict[str, str] | None,
+        expected: list[bool],
+    ) -> None:
+        column = provenance_array(_IRI_ROWS)
+        mask = belief_mask(column, believer, belief, context=context)
+        assert mask.to_pylist() == expected
+
+
 class TestField:
     def test_rows_read_back(self) -> None:
         field = ProvenanceField.from_provenances(_ROWS)

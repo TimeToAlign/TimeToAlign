@@ -1079,7 +1079,16 @@ class SemanticField(DataField, FieldVocabulary, Generic[T]):
         return self._raw
 
     def __getattr__(self, name: str) -> Any:
-        """Delegate attribute access to the wrapped raw field."""
+        """Delegate attribute access to the wrapped raw field.
+
+        ``_raw`` itself and dunder names are never delegated: they are looked
+        up on an instance whose ``__init__`` has not run (``copy`` and
+        ``pickle`` build one with ``__new__`` and then ask for
+        ``__setstate__``), where delegating would ask for the missing
+        ``_raw`` again without end.
+        """
+        if name == "_raw" or (name.startswith("__") and name.endswith("__")):
+            raise AttributeError(name)
         return getattr(self._raw, name)
 
     def __repr__(self) -> str:

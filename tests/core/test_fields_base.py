@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import copy
+import pickle
 from typing import Any
 
 import pyarrow as pa
 import pytest
 
+from timetoalign.alignment import AlignmentBundle, MatchClaimField
 from timetoalign.core.enums import TimeUnit
 from timetoalign.core.fields import (
     MapField,
@@ -264,6 +267,37 @@ class TestSemanticField:
         raw = sf.value
         assert isinstance(raw, StructField)
         assert raw.field_names == ["value", "numerator"]
+
+    @pytest.mark.parametrize("name", ["_raw", "__setstate__", "__deepcopy__"])
+    def test_uninitialised_instance_delegates_nothing(self, name: str) -> None:
+        """``_raw`` and dunder names are not delegated before ``__init__`` runs."""
+        bare = _TestSemanticField.__new__(_TestSemanticField)
+        with pytest.raises(AttributeError, match=f"^{name}$"):
+            getattr(bare, name)
+
+    @pytest.mark.parametrize(
+        "duplicate",
+        [copy.deepcopy, lambda field: pickle.loads(pickle.dumps(field))],
+        ids=["deepcopy", "pickle"],
+    )
+    def test_copy_and_pickle(self, duplicate: Any) -> None:
+        """A copied field is its class, equal row for row, with its own raw field."""
+        sf = self._make_semantic_field()
+        copied = duplicate(sf)
+        assert type(copied) is _TestSemanticField
+        assert copied.to_pyarrow().to_pylist() == [{"value": 1.0, "numerator": 10}]
+        assert copied.field_names == ["value", "numerator"]
+        assert copied.value is not sf.value
+
+    def test_deepcopy_of_a_bundle(self) -> None:
+        """A bundle holding its MatchClaim table as a field deep-copies."""
+        bundle = AlignmentBundle(id="x")
+        copied = copy.deepcopy(bundle)
+        assert copied == bundle
+        assert copied is not bundle
+        assert type(copied.match_claim_table) is MatchClaimField
+        assert len(copied.match_claim_table) == 0
+        assert copied.match_claim_table is not bundle.match_claim_table
 
 
 # ---------------------------------------------------------------------------

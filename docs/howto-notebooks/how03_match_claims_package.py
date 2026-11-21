@@ -318,7 +318,7 @@ pq.read_table(package / "match_claims.parquet").select(
 # `duration` for a span), and the event it stands for, if any. Each row
 # states its timeline's unit and number type once, and writes each number
 # once, as that number type says: an int as its numerator alone, a fraction
-# as numerator and denominator in lowest terms, a float as its value alone.
+# as numerator and denominator, a float as its value alone.
 
 # %%
 pq.read_table(package / "projections.parquet").to_pylist()

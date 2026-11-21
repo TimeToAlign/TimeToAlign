@@ -866,15 +866,16 @@ shape and holds exactly the number written.
 
 **The package form** (`TestPackageForm`). A package writes a number once:
 the member its number type names holds it, the others are null — an int
-`(n, null, null)`, a fraction `(n, d ≥ 1, null)` in lowest terms, a float
-`(null, null, x)` with x finite — so a float is never also a ratio, an int
-has no denominator, and a fraction has one spelling. One encoder/decoder pair (`package_numbers` /
+`(n, null, null)`, a fraction `(n, d ≥ 1, null)`, a float
+`(null, null, x)` with x finite — so a float is never also a ratio and an
+int has no denominator. One encoder/decoder pair (`package_numbers` /
 `numbers_from_package`, with `package_cells` / `cells_from_package` for a
 cell that names its axis) converts at the file boundary; memory keeps both
 sides. What would show it broken: a mirror left in the file, a side not
 filled again on reading (an int read with a null denominator, a float
-without its ratio), a malformed cell read as some number, a fraction read
-or written in two spellings, a fraction's float not the one memory holds,
+without its ratio), a malformed cell read as some number, an unreduced
+fraction refused or read as another value than its reduced form, a
+fraction rewritten on writing, a fraction's float not the one memory holds,
 a wrong row named. Evidence:
 
 - **The types.** `PACKAGE_NUMBER_TYPE` is `struct<numerator: int64,
@@ -885,11 +886,11 @@ a wrong row named. Evidence:
   `{1, 3, null, "quarters", "fraction"}`, null, `{null, null, 0.1,
   "seconds", "float"}`, `{139776, null, null, "samples", "int"}`, `{2, 3,
   null, "quarters", "fraction"}`; a fraction cell holding `4/1` keeps its
-  denominator `1` (it is a fraction). A memory number column holding the
-  unreduced ratio `2/4` (value `0.5`), `-6/4` and `0/5` as fractions is
-  written `(1, 2, null)`, `(-3, 2, null)`, `(0, 1, null)` (the same values
-  in their one spelling, not a guessed ratio), and its int and float rows
-  are written as they stand.
+  denominator `1` (it is a fraction). The encoder writes what memory
+  holds and nothing else: a memory number column holding `2/4` (value
+  `0.5`), `-6/4` and `0/5` as fractions is written `(2, 4, null)`,
+  `(-6, 4, null)`, `(0, 5, null)`, and its int and float rows are written
+  as they stand (a ratio a `Fraction` builds is reduced already).
 - **Read back whole.** `cells_from_package` of that column equals the
   memory column built by `coordinate_cells` (`equals`, every member, the
   float's ratio `3602879701896397/36028797018963968` and the int's
@@ -908,12 +909,16 @@ a wrong row named. Evidence:
   value) holds (3, 1, null), where an int is (n, null, null), a fraction
   (n, d >= 1, null) and a float (null, null, x) with x finite`); a null
   cell is no problem.
-- **A fraction not in lowest terms is refused** (TimeToShare's rule):
-  `(2, 4, null)` after a reduced `(1, 2, null)` gives exactly `Test row 1:
-  the fraction cell (numerator, denominator, value) holds (2, 4, null), not
-  in lowest terms (1, 2, null)`; `(0, 2, null)` (zero is `0/1`) and
-  `(-2, 4, null)` are refused alike, while `(-1, 2, null)`, `(0, 1, null)`
-  and `(4, 1, null)` read.
+- **An unreduced fraction is read, as its reduced form.** Any fraction is
+  a valid cell: `(2, 4, null)`, `(-2, 4, null)`, `(0, 2, null)` and
+  `(-6, 4, null)` read without error as exactly the memory cells of
+  `1/2`, `-1/2`, `0/1` and `-3/2` (numerator, denominator and float each
+  equal to those of the reduced cells `(1, 2, null)`, `(-1, 2, null)`,
+  `(0, 1, null)`, `(-3, 2, null)` read alike), so `cell_coordinate` gives
+  `Coordinate(Fraction(1, 2), "quarters")` for both spellings and an
+  unreduced cell compares equal to its reduced form wherever cells are
+  compared; `(-1, 2, null)`, `(0, 1, null)` and `(4, 1, null)` read as
+  `-1/2`, `0` and `4`.
 - **A fraction's float is correctly rounded.** `(1152921504606847009, 3,
   null)`, whose numerator is past `2**53`, reads with value `3.843071682022824e+17`, which is `float(Fraction(n,
   3))` and which a float64 division of the two members does not give

@@ -352,7 +352,7 @@ class TestTiliaAlignmentBundle:
 
     def test_bundle_has_no_claims(self, bruckner_loader: TiliaJsonLoader) -> None:
         bundle = bruckner_loader.create_bundle()
-        assert len(bundle.cross_group_claims) == 0
+        assert len(bundle.match_claim_table) == 0
 
 
 # endregion

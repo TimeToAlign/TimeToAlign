@@ -574,13 +574,13 @@ class TestStructCells:
         assert frame["clt_2 (quarters)"].tolist()[1] == Fraction(0)
         assert frame["clt_2 (quarters)"].tolist()[2] == Fraction(1, 3)
 
-    def test_authored_ratio_survives_the_claim_table(self) -> None:
-        """The claim table gives the ratio the anchors were given, however added.
+    def test_authored_ratio_survives_the_match_claim_table(self) -> None:
+        """The MatchClaim table keeps the ratio the anchors were given, however added.
 
         Claims added one by one and claims added as a columnar
-        ``MatchClaimField`` land in the same MatchClaim table, which is read
-        column by column in bulk: the exact numerator and denominator must
-        survive that read, not only the float member.
+        ``MatchClaimField`` land in the same MatchClaim table, which the
+        matchstamp table reads column by column in bulk: the exact numerator
+        and denominator must survive that read, not only the float member.
         """
         for from_graph in (False, True):
             per_claim = _ratio_bundle(columnar=False).get_matchstamp_table(

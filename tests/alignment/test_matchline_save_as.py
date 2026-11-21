@@ -557,6 +557,10 @@ class TestRoundTripHow03Notebook:
             prepare_eep_notes_for_matching,
         )
         from timetoalign.loader.physical.eep_notes import EepNotesLoader
+        from timetoalign.timelines import (
+            ContinuousLogicalTimeline,
+            ContinuousPhysicalTimeline,
+        )
 
         # Step 1: Load and match (same as how03)
         eep_loader = EepNotesLoader()
@@ -574,10 +578,12 @@ class TestRoundTripHow03Notebook:
             match_columns=["pitch", "staff"],
             source_coord_column="start",
             target_coord_column="quarterbeats_playthrough",
-            source_timeline_id="cpt_1",
-            target_timeline_id="clt_1",
-            source_unit=TimeUnit.seconds,
-            target_unit=TimeUnit.quarters,
+            source_timeline=ContinuousPhysicalTimeline(
+                uid="cpt_1", unit=TimeUnit.seconds
+            ),
+            target_timeline=ContinuousLogicalTimeline(
+                uid="clt_1", unit=TimeUnit.quarters
+            ),
         )
 
         # Build MatchLine

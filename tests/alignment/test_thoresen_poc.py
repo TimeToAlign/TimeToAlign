@@ -21,7 +21,7 @@ from fractions import Fraction
 import pytest
 
 from timetoalign.alignment import MatchClaim
-from timetoalign.core import Coordinate, IdCoordinate, TimeUnit
+from timetoalign.core import Coordinate, IdCoordinate, Provenance, TimeUnit
 from timetoalign.timelines import (
     ContinuousPhysicalTimeline,
     DiscreteGraphicalTimeline,
@@ -73,7 +73,7 @@ EVENT_H_GROUND_TRUTH_END_SEC = (
 
 # region Fixtures
 # Timeline fixtures (dgt1_timeline, dgt2_timeline, audio_timeline) and
-# thoresen_thoresen_segment_claims are provided by conftest.py.
+# thoresen_segment_claims are provided by conftest.py.
 
 
 @pytest.fixture
@@ -247,12 +247,20 @@ class TestThoresenSegmentClaims:
             prev_end = interval.end.value
         assert prev_end == DGT2_TOTAL_WIDTH
 
-    def test_claim_metadata(self, thoresen_segment_claims: list[MatchClaim]) -> None:
-        """Claims have proper provenance metadata."""
+    def test_claim_provenance(self, thoresen_segment_claims: list[MatchClaim]) -> None:
+        """Claims state how they were made: by hand, from the analysis."""
         for claim in thoresen_segment_claims:
-            assert claim.metadata is not None
-            assert claim.metadata.agent.name == "thoresen_analysis"
-            assert claim.metadata.agent.identifier == "segment_correspondence"
+            assert claim.provenance == Provenance(
+                method="manual", note="thoresen_analysis segment_correspondence"
+            )
+
+    def test_claims_name_the_segments(
+        self, thoresen_segment_claims: list[MatchClaim]
+    ) -> None:
+        """Each claim names the segment events it matches, in order."""
+        assert [(c.event_a_id, c.event_b_id) for c in thoresen_segment_claims] == [
+            (f"system_{i}", f"page_{i}") for i in range(1, 6)
+        ]
 
 
 # endregion

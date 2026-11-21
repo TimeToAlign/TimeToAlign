@@ -16,10 +16,7 @@ from __future__ import annotations
 
 import pytest
 
-from timetoalign.alignment import (
-    AlignmentAnchor,
-    MatchClaim,
-)
+from timetoalign.alignment import MatchClaim
 from timetoalign.alignment.graph import MatchGraph
 from timetoalign.alignment.matchline import MatchLine
 from timetoalign.core import Coordinate, TimeUnit
@@ -29,9 +26,45 @@ from timetoalign.timelines import (
     TimelineGroup,
 )
 
+from .helpers import event_id
 from .helpers import make_match_stamp as MatchStamp
+from .helpers import match_claim
 
 # region Fixtures
+
+
+def _claim(
+    timeline_a: str,
+    value_a: float | int,
+    timeline_b: str,
+    value_b: float | int,
+    *,
+    unit_a: TimeUnit = TimeUnit.number,
+    unit_b: TimeUnit = TimeUnit.number,
+) -> MatchClaim:
+    """A synchronous instant claim between two fixture events.
+
+    A MatchLine reads claims without their timelines, so dimensionless
+    positions serve; a claim on a pixel timeline states pixels.
+    """
+    return match_claim(
+        timeline_a,
+        Coordinate(value_a, unit_a),
+        timeline_b,
+        Coordinate(value_b, unit_b),
+    )
+
+
+def _nomatch(timeline_id: str, value: float, other_timeline_id: str) -> MatchClaim:
+    """A NOMATCH claim: the event at *value* has no counterpart on the other side."""
+    coordinate = Coordinate(value, TimeUnit.number)
+    return MatchClaim(
+        timeline_a_id=timeline_id,
+        timeline_b_id=other_timeline_id,
+        is_synchronous=False,
+        event_a_id=event_id(timeline_id, coordinate),
+        source_coordinate=coordinate,
+    )
 
 
 def _anchor_values(
@@ -259,36 +292,9 @@ class TestFromClaims:
     def test_from_claims_ordering(self) -> None:
         """from_claims() produces stamps ordered by source coordinate."""
         claims = [
-            MatchClaim(
-                timeline_a_id="tl_a",
-                timeline_b_id="tl_b",
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id="tl_a",
-                    coordinate_a=Coordinate(200.0, TimeUnit.number),
-                    timeline_b_id="tl_b",
-                    coordinate_b=Coordinate(100.0, TimeUnit.number),
-                ),
-            ),
-            MatchClaim(
-                timeline_a_id="tl_a",
-                timeline_b_id="tl_b",
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id="tl_a",
-                    coordinate_a=Coordinate(0.0, TimeUnit.number),
-                    timeline_b_id="tl_b",
-                    coordinate_b=Coordinate(0.0, TimeUnit.number),
-                ),
-            ),
-            MatchClaim(
-                timeline_a_id="tl_a",
-                timeline_b_id="tl_b",
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id="tl_a",
-                    coordinate_a=Coordinate(100.0, TimeUnit.number),
-                    timeline_b_id="tl_b",
-                    coordinate_b=Coordinate(50.0, TimeUnit.number),
-                ),
-            ),
+            _claim("tl_a", 200.0, "tl_b", 100.0),
+            _claim("tl_a", 0.0, "tl_b", 0.0),
+            _claim("tl_a", 100.0, "tl_b", 50.0),
         ]
         line = MatchLine.from_claims(claims, source_timeline_id="tl_a")
 
@@ -300,36 +306,9 @@ class TestFromClaims:
     def test_from_claims_coordinate_pairs(self) -> None:
         """from_claims() yields correct coordinate pairs."""
         claims = [
-            MatchClaim(
-                timeline_a_id="tl_a",
-                timeline_b_id="tl_b",
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id="tl_a",
-                    coordinate_a=Coordinate(0.0, TimeUnit.number),
-                    timeline_b_id="tl_b",
-                    coordinate_b=Coordinate(0.0, TimeUnit.number),
-                ),
-            ),
-            MatchClaim(
-                timeline_a_id="tl_a",
-                timeline_b_id="tl_b",
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id="tl_a",
-                    coordinate_a=Coordinate(100.0, TimeUnit.number),
-                    timeline_b_id="tl_b",
-                    coordinate_b=Coordinate(50.0, TimeUnit.number),
-                ),
-            ),
-            MatchClaim(
-                timeline_a_id="tl_a",
-                timeline_b_id="tl_b",
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id="tl_a",
-                    coordinate_a=Coordinate(200.0, TimeUnit.number),
-                    timeline_b_id="tl_b",
-                    coordinate_b=Coordinate(100.0, TimeUnit.number),
-                ),
-            ),
+            _claim("tl_a", 0.0, "tl_b", 0.0),
+            _claim("tl_a", 100.0, "tl_b", 50.0),
+            _claim("tl_a", 200.0, "tl_b", 100.0),
         ]
         line = MatchLine.from_claims(claims, source_timeline_id="tl_a")
         pairs = _anchor_values(line, "tl_b")
@@ -345,7 +324,7 @@ class TestFromClaims:
         )
 
         # 5 intervals produce 6 unique boundary coordinates on dgt1
-        # (0, 78, 268, 561, 801, 967), yielding exactly 6 stamps.
+        # (0, 967, 1934, 2901, 3868, 4835), yielding exactly 6 stamps.
         assert line.n_stamps == 6
         assert "dgt_2" in line.target_timeline_ids()
 
@@ -368,36 +347,9 @@ class TestFromClaims:
         group.add_timeline(audio)
 
         claims = [
-            MatchClaim(
-                timeline_a_id="dgt_1",
-                timeline_b_id="external",
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id="dgt_1",
-                    coordinate_a=Coordinate(0.0, TimeUnit.number),
-                    timeline_b_id="external",
-                    coordinate_b=Coordinate(0.0, TimeUnit.number),
-                ),
-            ),
-            MatchClaim(
-                timeline_a_id="dgt_1",
-                timeline_b_id="external",
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id="dgt_1",
-                    coordinate_a=Coordinate(500.0, TimeUnit.number),
-                    timeline_b_id="external",
-                    coordinate_b=Coordinate(25.0, TimeUnit.number),
-                ),
-            ),
-            MatchClaim(
-                timeline_a_id="dgt_1",
-                timeline_b_id="external",
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id="dgt_1",
-                    coordinate_a=Coordinate(1000.0, TimeUnit.number),
-                    timeline_b_id="external",
-                    coordinate_b=Coordinate(50.0, TimeUnit.number),
-                ),
-            ),
+            _claim("dgt_1", 0, "external", 0.0, unit_a=TimeUnit.pixels),
+            _claim("dgt_1", 500, "external", 25.0, unit_a=TimeUnit.pixels),
+            _claim("dgt_1", 1000, "external", 50.0, unit_a=TimeUnit.pixels),
         ]
 
         line = MatchLine.from_claims(
@@ -417,37 +369,16 @@ class TestFromClaims:
         assert pairs[0] == (0.0, 0.0)
         assert pairs[1] == (500.0, 50.0)
         assert pairs[2] == (1000.0, 100.0)
-        assert all(isinstance(value, float) for pair in pairs for value in pair)
+        # Each value is on its timeline's axis: pixels are integers, seconds floats.
+        assert all(type(source) is int for source, _ in pairs)
+        assert all(type(target) is float for _, target in pairs)
 
     def test_from_claims_non_synchronous_excluded(self) -> None:
         """Non-synchronous claims do not produce stamps."""
         claims = [
-            MatchClaim(
-                timeline_a_id="tl_a",
-                timeline_b_id="tl_b",
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id="tl_a",
-                    coordinate_a=Coordinate(0.0, TimeUnit.number),
-                    timeline_b_id="tl_b",
-                    coordinate_b=Coordinate(0.0, TimeUnit.number),
-                ),
-            ),
-            MatchClaim.nomatch(
-                event={"start": 100.0},
-                source_tl_id="tl_a",
-                target_tl_id="tl_b",
-                unit=TimeUnit.number,
-            ),
-            MatchClaim(
-                timeline_a_id="tl_a",
-                timeline_b_id="tl_b",
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id="tl_a",
-                    coordinate_a=Coordinate(200.0, TimeUnit.number),
-                    timeline_b_id="tl_b",
-                    coordinate_b=Coordinate(100.0, TimeUnit.number),
-                ),
-            ),
+            _claim("tl_a", 0.0, "tl_b", 0.0),
+            _nomatch("tl_a", 100.0, "tl_b"),
+            _claim("tl_a", 200.0, "tl_b", 100.0),
         ]
         line = MatchLine.from_claims(claims, source_timeline_id="tl_a")
 
@@ -473,52 +404,16 @@ class TestFromGraphs:
         # Graph 1: tl_a@0 <-> tl_b@0, tl_a@100 <-> tl_b@50
         graph1 = MatchGraph(
             [
-                MatchClaim(
-                    timeline_a_id="tl_a",
-                    timeline_b_id="tl_b",
-                    start_anchor=AlignmentAnchor(
-                        timeline_a_id="tl_a",
-                        coordinate_a=Coordinate(0.0, TimeUnit.number),
-                        timeline_b_id="tl_b",
-                        coordinate_b=Coordinate(0.0, TimeUnit.number),
-                    ),
-                ),
-                MatchClaim(
-                    timeline_a_id="tl_a",
-                    timeline_b_id="tl_b",
-                    start_anchor=AlignmentAnchor(
-                        timeline_a_id="tl_a",
-                        coordinate_a=Coordinate(100.0, TimeUnit.number),
-                        timeline_b_id="tl_b",
-                        coordinate_b=Coordinate(50.0, TimeUnit.number),
-                    ),
-                ),
+                _claim("tl_a", 0.0, "tl_b", 0.0),
+                _claim("tl_a", 100.0, "tl_b", 50.0),
             ]
         )
 
         # Graph 2: tl_a@200 <-> tl_b@100, tl_a@300 <-> tl_b@150
         graph2 = MatchGraph(
             [
-                MatchClaim(
-                    timeline_a_id="tl_a",
-                    timeline_b_id="tl_b",
-                    start_anchor=AlignmentAnchor(
-                        timeline_a_id="tl_a",
-                        coordinate_a=Coordinate(200.0, TimeUnit.number),
-                        timeline_b_id="tl_b",
-                        coordinate_b=Coordinate(100.0, TimeUnit.number),
-                    ),
-                ),
-                MatchClaim(
-                    timeline_a_id="tl_a",
-                    timeline_b_id="tl_b",
-                    start_anchor=AlignmentAnchor(
-                        timeline_a_id="tl_a",
-                        coordinate_a=Coordinate(300.0, TimeUnit.number),
-                        timeline_b_id="tl_b",
-                        coordinate_b=Coordinate(150.0, TimeUnit.number),
-                    ),
-                ),
+                _claim("tl_a", 200.0, "tl_b", 100.0),
+                _claim("tl_a", 300.0, "tl_b", 150.0),
             ]
         )
 
@@ -537,30 +432,12 @@ class TestFromGraphs:
         # Both graphs have a stamp at tl_a@100
         graph1 = MatchGraph(
             [
-                MatchClaim(
-                    timeline_a_id="tl_a",
-                    timeline_b_id="tl_b",
-                    start_anchor=AlignmentAnchor(
-                        timeline_a_id="tl_a",
-                        coordinate_a=Coordinate(100.0, TimeUnit.number),
-                        timeline_b_id="tl_b",
-                        coordinate_b=Coordinate(50.0, TimeUnit.number),
-                    ),
-                ),
+                _claim("tl_a", 100.0, "tl_b", 50.0),
             ]
         )
         graph2 = MatchGraph(
             [
-                MatchClaim(
-                    timeline_a_id="tl_a",
-                    timeline_b_id="tl_c",
-                    start_anchor=AlignmentAnchor(
-                        timeline_a_id="tl_a",
-                        coordinate_a=Coordinate(100.0, TimeUnit.number),
-                        timeline_b_id="tl_c",
-                        coordinate_b=Coordinate(25.0, TimeUnit.number),
-                    ),
-                ),
+                _claim("tl_a", 100.0, "tl_c", 25.0),
             ]
         )
 
@@ -576,42 +453,15 @@ class TestFromGraphs:
         # Graph 1: stamp at tl_a@100 with 2 timelines
         graph1 = MatchGraph(
             [
-                MatchClaim(
-                    timeline_a_id="tl_a",
-                    timeline_b_id="tl_b",
-                    start_anchor=AlignmentAnchor(
-                        timeline_a_id="tl_a",
-                        coordinate_a=Coordinate(100.0, TimeUnit.number),
-                        timeline_b_id="tl_b",
-                        coordinate_b=Coordinate(50.0, TimeUnit.number),
-                    ),
-                ),
+                _claim("tl_a", 100.0, "tl_b", 50.0),
             ]
         )
 
         # Graph 2: stamp at tl_a@100 with 3 timelines (chain A->B->C)
         graph2 = MatchGraph(
             [
-                MatchClaim(
-                    timeline_a_id="tl_a",
-                    timeline_b_id="tl_b",
-                    start_anchor=AlignmentAnchor(
-                        timeline_a_id="tl_a",
-                        coordinate_a=Coordinate(100.0, TimeUnit.number),
-                        timeline_b_id="tl_b",
-                        coordinate_b=Coordinate(50.0, TimeUnit.number),
-                    ),
-                ),
-                MatchClaim(
-                    timeline_a_id="tl_b",
-                    timeline_b_id="tl_c",
-                    start_anchor=AlignmentAnchor(
-                        timeline_a_id="tl_b",
-                        coordinate_a=Coordinate(50.0, TimeUnit.number),
-                        timeline_b_id="tl_c",
-                        coordinate_b=Coordinate(25.0, TimeUnit.number),
-                    ),
-                ),
+                _claim("tl_a", 100.0, "tl_b", 50.0),
+                _claim("tl_b", 50.0, "tl_c", 25.0),
             ]
         )
 
@@ -629,28 +479,8 @@ class TestFromGraphs:
             offset = i * 100.0
             graph = MatchGraph(
                 [
-                    MatchClaim(
-                        timeline_a_id="score",
-                        timeline_b_id="audio",
-                        start_anchor=AlignmentAnchor(
-                            timeline_a_id="score",
-                            coordinate_a=Coordinate(offset, TimeUnit.number),
-                            timeline_b_id="audio",
-                            coordinate_b=Coordinate(offset * 0.45, TimeUnit.number),
-                        ),
-                    ),
-                    MatchClaim(
-                        timeline_a_id="score",
-                        timeline_b_id="audio",
-                        start_anchor=AlignmentAnchor(
-                            timeline_a_id="score",
-                            coordinate_a=Coordinate(offset + 100.0, TimeUnit.number),
-                            timeline_b_id="audio",
-                            coordinate_b=Coordinate(
-                                (offset + 100.0) * 0.45, TimeUnit.number
-                            ),
-                        ),
-                    ),
+                    _claim("score", offset, "audio", offset * 0.45),
+                    _claim("score", offset + 100.0, "audio", (offset + 100.0) * 0.45),
                 ]
             )
             graphs.append(graph)
@@ -677,26 +507,8 @@ class TestFromGraphs:
     def test_from_graphs_single_graph(self) -> None:
         """from_graphs() with single graph is equivalent to from_claims."""
         claims = [
-            MatchClaim(
-                timeline_a_id="tl_a",
-                timeline_b_id="tl_b",
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id="tl_a",
-                    coordinate_a=Coordinate(0.0, TimeUnit.number),
-                    timeline_b_id="tl_b",
-                    coordinate_b=Coordinate(0.0, TimeUnit.number),
-                ),
-            ),
-            MatchClaim(
-                timeline_a_id="tl_a",
-                timeline_b_id="tl_b",
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id="tl_a",
-                    coordinate_a=Coordinate(100.0, TimeUnit.number),
-                    timeline_b_id="tl_b",
-                    coordinate_b=Coordinate(50.0, TimeUnit.number),
-                ),
-            ),
+            _claim("tl_a", 0.0, "tl_b", 0.0),
+            _claim("tl_a", 100.0, "tl_b", 50.0),
         ]
         graph = MatchGraph(claims)
 
@@ -781,21 +593,19 @@ class TestMatchLineIntegration:
             source_timeline_id="dgt_1",
         )
 
-        # Should produce stamps at segment boundaries
-        assert line.n_stamps >= 2
-        assert "dgt_2" in line.target_timeline_ids()
+        # One stamp per segment boundary: 6 on each side.
+        assert line.n_stamps == 6
+        assert line.target_timeline_ids() == {"dgt_2"}
 
-        # Get coordinate pairs
-        pairs = _anchor_values(line, "dgt_2")
-        assert len(pairs) >= 2
-
-        # First pair should be (0.0, 0.0)
-        assert pairs[0] == (0.0, 0.0)
-
-        # Last pair should be at the end boundaries
-        last_src, last_tgt = pairs[-1]
-        assert last_src == 4835.0
-        assert last_tgt == 4328.0
+        # DGT1: 5 x 967 px; DGT2: [866, 867, 867, 864, 864] px.
+        assert _anchor_values(line, "dgt_2") == [
+            (0, 0),
+            (967, 866),
+            (1934, 1733),
+            (2901, 2600),
+            (3868, 3464),
+            (4835, 4328),
+        ]
 
     def test_matchline_with_group_extension_coordinate_pairs(self) -> None:
         """MatchLine from group-extended claims has correct coordinate pairs."""
@@ -808,25 +618,16 @@ class TestMatchLineIntegration:
 
         # Two claims: boundaries of a single segment
         claims = [
-            MatchClaim(
-                timeline_a_id="dgt_1",
-                timeline_b_id="dgt_2",
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id="dgt_1",
-                    coordinate_a=Coordinate(0.0, TimeUnit.number),
-                    timeline_b_id="dgt_2",
-                    coordinate_b=Coordinate(0.0, TimeUnit.number),
-                ),
+            _claim(
+                "dgt_1", 0, "dgt_2", 0, unit_a=TimeUnit.pixels, unit_b=TimeUnit.pixels
             ),
-            MatchClaim(
-                timeline_a_id="dgt_1",
-                timeline_b_id="dgt_2",
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id="dgt_1",
-                    coordinate_a=Coordinate(1000.0, TimeUnit.number),
-                    timeline_b_id="dgt_2",
-                    coordinate_b=Coordinate(800.0, TimeUnit.number),
-                ),
+            _claim(
+                "dgt_1",
+                1000,
+                "dgt_2",
+                800,
+                unit_a=TimeUnit.pixels,
+                unit_b=TimeUnit.pixels,
             ),
         ]
 

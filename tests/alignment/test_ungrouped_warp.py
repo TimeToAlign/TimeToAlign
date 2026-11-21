@@ -11,7 +11,6 @@ from fractions import Fraction
 import pytest
 
 from timetoalign.alignment.bundle import AlignmentBundle
-from timetoalign.alignment.claims import AlignmentAnchor, MatchClaim
 from timetoalign.core import Coordinate, TimeUnit
 from timetoalign.maps import SamplesToSeconds
 from timetoalign.timelines import Timeline
@@ -53,7 +52,9 @@ def _bundle(layout: str = "ungrouped", *, claims: bool = True) -> AlignmentBundl
         layout: ``"ungrouped"`` (no groups), ``"score_grouped"`` (the score in
             a group of its own) or ``"both_grouped"`` (score and recording each
             in a group of its own; ``other`` stays ungrouped in every layout).
-        claims: Whether to add the four score -> recording claims.
+        claims: Whether to add the four score -> recording claims, each
+            between two Projections placed from the positions (the seconds
+            through the recording's C-Map onto its sample axis).
     """
     score = Timeline(length=16, unit=TimeUnit.quarters, uid=SCORE)
     recording = Timeline(length=441000, unit=TimeUnit.samples, uid=RECORDING)
@@ -74,18 +75,13 @@ def _bundle(layout: str = "ungrouped", *, claims: bool = True) -> AlignmentBundl
     bundle.add_timeline(other)
 
     if claims:
-        bundle.add_match_claims(
+        bundle.create_match_claims(
             [
-                MatchClaim(
-                    timeline_a_id=SCORE,
-                    timeline_b_id=RECORDING,
-                    start_anchor=AlignmentAnchor(
-                        timeline_a_id=SCORE,
-                        coordinate_a=Coordinate(quarters, TimeUnit.quarters),
-                        timeline_b_id=RECORDING,
-                        coordinate_b=Coordinate(seconds, TimeUnit.seconds),
-                    ),
-                    is_synchronous=True,
+                (
+                    {"start": quarters},
+                    SCORE,
+                    {"start": Coordinate(seconds, TimeUnit.seconds)},
+                    RECORDING,
                 )
                 for quarters, seconds in ANCHORS
             ]
@@ -101,6 +97,21 @@ def test_fixture_is_ungrouped() -> None:
     assert _bundle("ungrouped").timeline_to_groups == {}
     assert set(_bundle("score_grouped").timeline_to_groups) == {SCORE}
     assert set(_bundle("both_grouped").timeline_to_groups) == {SCORE, RECORDING}
+
+
+def test_claims_hold_the_recording_samples() -> None:
+    """Each seconds position is placed on the sample axis when claimed."""
+    claims = _bundle().get_match_claims()
+
+    assert [claim.start_anchor.coordinate_b for claim in claims] == [
+        _samples(22050),
+        _samples(66150),
+        _samples(88200),
+        _samples(176400),
+    ]
+    assert [claim.start_anchor.coordinate_a for claim in claims] == [
+        _quarters(quarters) for quarters, _ in ANCHORS
+    ]
 
 
 @pytest.mark.parametrize(("quarters", "samples"), BETWEEN)

@@ -1,4 +1,10 @@
-"""Regression tests for coordinates recorded by TimeSkeleton claims."""
+"""Regression tests for coordinates recorded by TimeSkeleton claims.
+
+A claim's coordinates are on its timelines' own axes: a raw number is a
+position in the participant's unit and declared number type, and a
+coordinate in another unit is converted through the participant's C-Map
+when the claim is made.
+"""
 
 from fractions import Fraction
 
@@ -12,13 +18,22 @@ from timetoalign.core import (
     NumberType,
     TimeUnit,
 )
+from timetoalign.maps import SamplesToSeconds
 from timetoalign.timelines import (
     ContinuousLogicalTimeline,
     DiscretePhysicalTimeline,
 )
 
 
-def test_coordinate_keeps_its_value_unit_and_number_type() -> None:
+def _samples_participant(uid: str) -> DiscretePhysicalTimeline:
+    """A samples participant (int axis) converting seconds at 44100 Hz."""
+    participant = DiscretePhysicalTimeline(length=1_000_000, uid=uid)
+    participant.add_conversion_map(SamplesToSeconds(44100))
+    return participant
+
+
+def test_coordinate_in_another_unit_is_converted_onto_the_participant_axis() -> None:
+    """0.35 seconds on a 44100 Hz samples participant is 15435 samples (int)."""
     measures = [
         Measure(
             id=f"coordinate-m{i}",
@@ -29,7 +44,7 @@ def test_coordinate_keeps_its_value_unit_and_number_type() -> None:
         for i in range(1, 4)
     ]
     skeleton = TimeSkeleton(SectionHierarchy.from_measures(measures))
-    participant = DiscretePhysicalTimeline(length=1_000_000, uid="coordinate-samples")
+    participant = _samples_participant("coordinate-samples")
     skeleton.attach(participant)
 
     claim = skeleton.create_match_claim(
@@ -40,10 +55,10 @@ def test_coordinate_keeps_its_value_unit_and_number_type() -> None:
     coordinate = claim.start_anchor.coordinate_a
 
     assert type(coordinate) is Coordinate
-    assert coordinate.value == 0.35
-    assert type(coordinate.value) is float
-    assert coordinate.unit is TimeUnit.seconds
-    assert coordinate.number_type is NumberType.float
+    assert coordinate.value == 15435
+    assert type(coordinate.value) is int
+    assert coordinate.unit is TimeUnit.samples
+    assert coordinate.number_type is NumberType.int
 
 
 def test_raw_int_uses_participant_unit_and_number_type() -> None:
@@ -98,7 +113,8 @@ def test_raw_fraction_uses_participant_unit_and_number_type() -> None:
     assert coordinate.number_type is NumberType.fraction
 
 
-def test_matching_id_coordinate_keeps_its_own_coordinate_data() -> None:
+def test_matching_id_coordinate_is_converted_onto_the_participant_axis() -> None:
+    """An IdCoordinate naming the participant converts like a Coordinate."""
     measures = [
         Measure(
             id=f"matching-id-m{i}",
@@ -109,7 +125,7 @@ def test_matching_id_coordinate_keeps_its_own_coordinate_data() -> None:
         for i in range(1, 4)
     ]
     skeleton = TimeSkeleton(SectionHierarchy.from_measures(measures))
-    participant = DiscretePhysicalTimeline(length=1_000_000, uid="matching-id-samples")
+    participant = _samples_participant("matching-id-samples")
     skeleton.attach(participant)
 
     claim = skeleton.create_match_claim(
@@ -125,10 +141,10 @@ def test_matching_id_coordinate_keeps_its_own_coordinate_data() -> None:
     coordinate = claim.start_anchor.coordinate_a
 
     assert type(coordinate) is Coordinate
-    assert coordinate.value == 0.35
-    assert type(coordinate.value) is float
-    assert coordinate.unit is TimeUnit.seconds
-    assert coordinate.number_type is NumberType.float
+    assert coordinate.value == 15435
+    assert type(coordinate.value) is int
+    assert coordinate.unit is TimeUnit.samples
+    assert coordinate.number_type is NumberType.int
 
 
 def test_mismatched_id_coordinate_names_both_timeline_ids() -> None:

@@ -13,15 +13,29 @@ from __future__ import annotations
 import math
 from fractions import Fraction
 
-from timetoalign.alignment import AlignmentBundle, MatchClaim, MatchStamp
+import pytest
+
+from timetoalign.alignment import (
+    AlignmentAnchor,
+    AlignmentBundle,
+    MatchClaim,
+    MatchStamp,
+)
 from timetoalign.alignment.warpmap import WarpMap
 from timetoalign.core import Coordinate, IdCoordinate, NumberType, TimeUnit
-from timetoalign.maps import LinearMap, ScalarMap, TicksToQuarters
+from timetoalign.maps import (
+    LinearMap,
+    QuartersToTicks,
+    SamplesToSeconds,
+    ScalarMap,
+    TicksToQuarters,
+)
 from timetoalign.timelines import (
     ContinuousLogicalTimeline,
     ContinuousPhysicalTimeline,
     DiscreteGraphicalTimeline,
     DiscreteLogicalTimeline,
+    DiscretePhysicalTimeline,
     TimelineGroup,
 )
 
@@ -299,14 +313,12 @@ def _claimed_bundle() -> tuple[AlignmentBundle, list[MatchClaim]]:
     bundle.add_timeline(audio, as_group="g-audio")
     claims = [
         MatchClaim.from_events(
-            event_a={"id": f"a{index}", "start": score_cells[index]},
-            tl_a_id="score",
-            event_b={"id": f"b{index}", "start": audio_cells[index]},
-            tl_b_id="audio",
-            unit_a=TimeUnit.quarters,
-            unit_b=TimeUnit.seconds,
+            {"id": f"a{q}", "start": score_cells[index]},
+            score,
+            {"id": f"b{index}", "start": audio_cells[index]},
+            audio,
         )
-        for index in range(4)
+        for index, q in enumerate((0, 4, 8, 12))
     ]
     bundle.add_match_claims(claims)
     return bundle, claims
@@ -652,18 +664,8 @@ def test_an_unmatched_claim_writes_its_axis_in_both_directions() -> None:
     score = ContinuousLogicalTimeline(length=Fraction(64), uid="score")
     score.add_events([{"id": "n1", "event_type": "Note", "instant": Fraction(1, 3)}])
 
-    on_float_axis = MatchClaim.nomatch(
-        event=audio.get_event("sect"),
-        source_tl_id="Demo2",
-        target_tl_id="Studio",
-        unit=TimeUnit.seconds,
-    )
-    on_exact_axis = MatchClaim.nomatch(
-        event=score.get_event("n1"),
-        source_tl_id="score",
-        target_tl_id="perf",
-        unit=TimeUnit.quarters,
-    )
+    on_float_axis = MatchClaim.nomatch(audio.get_event("sect"), audio, "Studio")
+    on_exact_axis = MatchClaim.nomatch(score.get_event("n1"), score, "perf")
 
     assert on_float_axis.source_coordinate == Coordinate(164.3, TimeUnit.seconds)
     assert isinstance(on_float_axis.source_coordinate.value, float)
@@ -678,3 +680,166 @@ def test_an_unmatched_claim_writes_its_axis_in_both_directions() -> None:
     )
     assert isinstance(on_exact_axis.source_coordinate.value, Fraction)
     assert repr(on_exact_axis) == ("MatchClaim(score@1/3 quarters <-> perf [NOMATCH])")
+
+
+def _converting_bundle() -> AlignmentBundle:
+    """A quarters score and a ticks and a samples timeline, each with a C-Map.
+
+    The score (``fraction``) converts ticks through ``QuartersToTicks(480)``,
+    the ticks timeline (``int``) converts quarters through
+    ``TicksToQuarters(480)``, the samples timeline (``int``) converts seconds
+    through ``SamplesToSeconds(44100)``. The score holds the note ``n1`` at
+    ``1/3``.
+    """
+    score = ContinuousLogicalTimeline(length=Fraction(20), uid="score")
+    score.add_conversion_map(QuartersToTicks(480))
+    score.add_events([{"id": "n1", "event_type": "Note", "instant": Fraction(1, 3)}])
+    ticks = DiscreteLogicalTimeline(length=9600, uid="ticks")
+    ticks.add_conversion_map(TicksToQuarters(480))
+    samples = DiscretePhysicalTimeline(length=441000, uid="samples")
+    samples.add_conversion_map(SamplesToSeconds(44100))
+
+    bundle = AlignmentBundle(id="b-convert")
+    bundle.add_timeline(score, as_group="g-score")
+    bundle.add_timeline(ticks, as_group="g-ticks")
+    bundle.add_timeline(samples, as_group="g-samples")
+    return bundle
+
+
+def test_a_claim_is_placed_on_its_axes_when_it_is_made() -> None:
+    """A position in another unit is converted through the C-Map as the claim is made.
+
+    Both directions of exactness: ``1/3`` quarters lands on an ``int`` ticks
+    axis as ``160`` (``1/3 * 480``), ``160`` ticks lands on the ``fraction``
+    quarters axis as ``Fraction(1, 3)``, and ``1.5`` seconds lands on an
+    ``int`` samples axis as ``66150`` (``1.5 * 44100``). Each coordinate is
+    asserted on its value and its Python type, since ``160 == 160.0``.
+    """
+    bundle = _converting_bundle()
+    score, ticks, samples = (
+        bundle.get_timeline(uid) for uid in ("score", "ticks", "samples")
+    )
+
+    to_ticks = MatchClaim.from_events(
+        {"id": "n1", "start": Fraction(1, 3)},
+        score,
+        {"id": "t1", "start": Coordinate(Fraction(1, 3), TimeUnit.quarters)},
+        ticks,
+    )
+    assert to_ticks.start_anchor.coordinate_b == Coordinate(160, TimeUnit.ticks)
+    assert type(to_ticks.start_anchor.coordinate_b.value) is int
+
+    to_quarters = MatchClaim.from_events(
+        {"id": "n1", "start": Coordinate(160, TimeUnit.ticks)},
+        score,
+        {"id": "t1", "start": 160},
+        ticks,
+    )
+    assert to_quarters.start_anchor.coordinate_a == Coordinate(
+        Fraction(1, 3), TimeUnit.quarters
+    )
+    assert type(to_quarters.start_anchor.coordinate_a.value) is Fraction
+
+    to_samples = MatchClaim.from_events(
+        {"id": "n1", "start": Fraction(1, 3)},
+        score,
+        {"id": "s1", "start": Coordinate(1.5, TimeUnit.seconds)},
+        samples,
+    )
+    assert to_samples.start_anchor.coordinate_b == Coordinate(66150, TimeUnit.samples)
+    assert type(to_samples.start_anchor.coordinate_b.value) is int
+
+
+def test_a_projected_claim_reaches_the_table_in_the_declared_types() -> None:
+    """End to end: a quarters position projected onto ticks, read back as a table.
+
+    ``create_match_claims`` adds a Projection to the ticks timeline at the
+    converted position (``160``) and claims between it and ``n1``; the
+    MatchClaim table's cells are the claim's coordinates as held, so the
+    frame reads ``Fraction(1, 3)`` in the quarters column and the integer
+    ``160`` (``int64``) in the ticks column.
+    """
+    bundle = _converting_bundle()
+    (claim,) = bundle.create_match_claims(
+        [
+            (
+                "n1",
+                "score",
+                {"start": Coordinate(Fraction(1, 3), TimeUnit.quarters)},
+                "ticks",
+            )
+        ]
+    )
+    assert claim.event_b_id == "projection_1"
+    assert bundle.get_timeline("ticks").get_event("projection_1")["start"] == {
+        "value": 160.0,
+        "numerator": 160,
+        "denominator": 1,
+    }
+
+    frame = bundle.get_matchstamp_table(format="dataframe")
+    assert frame.to_dict("list") == {
+        "score (quarters)": [Fraction(1, 3)],
+        "ticks (ticks)": [160],
+    }
+    assert type(frame["score (quarters)"].iloc[0]) is Fraction
+    assert str(frame["ticks (ticks)"].dtype) == "int64"
+
+
+def test_a_claim_off_its_axes_is_refused_when_added() -> None:
+    """The bundle converts nothing when it reads: an off-axis claim is refused.
+
+    A coordinate in another unit (seconds on the samples timeline) and one in
+    the timeline's unit but another number type (a float on the fraction
+    quarters axis) are each refused with a ValueError naming the timeline.
+    A batch holding one such claim among valid ones adds nothing.
+    """
+    bundle = _converting_bundle()
+
+    def claim(timeline_b: str, coordinate_a: Coordinate, coordinate_b: Coordinate):
+        return MatchClaim(
+            timeline_a_id="score",
+            timeline_b_id=timeline_b,
+            event_a_id="n1",
+            event_b_id=f"{timeline_b}_event",
+            start_anchor=AlignmentAnchor(
+                timeline_a_id="score",
+                coordinate_a=coordinate_a,
+                timeline_b_id=timeline_b,
+                coordinate_b=coordinate_b,
+            ),
+        )
+
+    on_axes = claim(
+        "ticks",
+        Coordinate(Fraction(1, 3), TimeUnit.quarters),
+        Coordinate(160, TimeUnit.ticks),
+    )
+    seconds_on_samples = claim(
+        "samples",
+        Coordinate(Fraction(1, 3), TimeUnit.quarters),
+        Coordinate(1.5, TimeUnit.seconds),
+    )
+    float_on_quarters = claim(
+        "ticks",
+        Coordinate(4.0, TimeUnit.quarters, number_type=NumberType.float),
+        Coordinate(1920, TimeUnit.ticks),
+    )
+
+    with pytest.raises(ValueError) as refused:
+        bundle.add_match_claims([on_axes, seconds_on_samples])
+    assert "start_anchor.coordinate_b is in seconds (float), but timeline " in str(
+        refused.value
+    )
+    assert "'samples' counts in samples (int)" in str(refused.value)
+
+    with pytest.raises(ValueError) as refused:
+        bundle.add_match_claims([float_on_quarters, on_axes])
+    assert "start_anchor.coordinate_a is in quarters (float), but timeline " in str(
+        refused.value
+    )
+    assert "'score' counts in quarters (fraction)" in str(refused.value)
+
+    assert bundle.n_cross_group_claims == 0
+    bundle.add_match_claims([on_axes])
+    assert bundle.n_cross_group_claims == 1

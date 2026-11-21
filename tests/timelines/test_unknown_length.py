@@ -312,9 +312,12 @@ def test_a_bundle_transfers_into_a_timeline_of_unknown_length() -> None:
 
 
 def _claim(a: str, at_a: int, b: str, at_b: int) -> MatchClaim:
+    """A synchronous claim between fixture events ``a@at_a`` and ``b@at_b`` (quarters)."""
     return MatchClaim(
         timeline_a_id=a,
         timeline_b_id=b,
+        event_a_id=f"{a}@{at_a}",
+        event_b_id=f"{b}@{at_b}",
         start_anchor=AlignmentAnchor(
             timeline_a_id=a,
             coordinate_a=Coordinate(at_a, Q),

@@ -176,7 +176,10 @@ def thoresen_segment_claims() -> list[MatchClaim]:
     """5 segment correspondence claims between DGT1 and DGT2.
 
     Each claim maps a DGT1 segment (967 px each) to the corresponding
-    DGT2 segment ([866, 867, 867, 864, 864] px).
+    DGT2 segment ([866, 867, 867, 864, 864] px). The events it names are the
+    segments, under the names the graphical fixtures give them
+    (``system_N`` on DGT1, ``page_N`` on DGT2); the coordinates are on the
+    pixel timelines' own axis (integers).
     """
     claims = []
     offset_dgt1 = 0
@@ -186,6 +189,8 @@ def thoresen_segment_claims() -> list[MatchClaim]:
         claim = MatchClaim(
             timeline_a_id="dgt_1",
             timeline_b_id="dgt_2",
+            event_a_id=f"system_{i + 1}",
+            event_b_id=f"page_{i + 1}",
             start_anchor=AlignmentAnchor(
                 timeline_a_id="dgt_1",
                 coordinate_a=Coordinate(offset_dgt1, TimeUnit.pixels),

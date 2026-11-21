@@ -10,6 +10,7 @@ Covers:
 - synchronous_only / nomatch_only filters
 - Mutual exclusion of synchronous_only and nomatch_only
 - Combined filters
+- The belief filter (believer / belief)
 - Timeline-level filtering (matches_timeline)
 - Domain / unit filtering
 - ClaimFilter.from_kwargs convenience constructor
@@ -20,72 +21,61 @@ from __future__ import annotations
 
 import pytest
 
-from timetoalign.alignment.claims import (
-    AlignmentAnchor,
-    MatchClaim,
-)
+from timetoalign.alignment.claims import MatchClaim
 from timetoalign.alignment.filters import ClaimFilter
-from timetoalign.core import Coordinate, TimeUnit
+from timetoalign.core import Belief, Coordinate, Provenance, TimeUnit
+
+from .helpers import event_id, match_claim
 
 # region Fixtures
+
+
+def _claim(
+    timeline_a: str, value_a: float, timeline_b: str, value_b: float, **kwargs
+) -> MatchClaim:
+    """A synchronous instant claim between two fixture events.
+
+    A filter reads a claim's timelines, kind and provenance, never its
+    timelines' axes, so dimensionless positions serve.
+    """
+    return match_claim(
+        timeline_a,
+        Coordinate(value_a, TimeUnit.number),
+        timeline_b,
+        Coordinate(value_b, TimeUnit.number),
+        **kwargs,
+    )
 
 
 @pytest.fixture
 def claim_score_perf1() -> MatchClaim:
     """Synchronous instant claim: score:clt_1 <-> perf:dlt_1."""
-    return MatchClaim(
-        timeline_a_id="score:clt_1",
-        timeline_b_id="perf:dlt_1",
-        start_anchor=AlignmentAnchor(
-            timeline_a_id="score:clt_1",
-            coordinate_a=Coordinate(0.0, TimeUnit.number),
-            timeline_b_id="perf:dlt_1",
-            coordinate_b=Coordinate(0.0, TimeUnit.number),
-        ),
-        is_synchronous=True,
-    )
+    return _claim("score:clt_1", 0.0, "perf:dlt_1", 0.0)
 
 
 @pytest.fixture
 def claim_score_perf5() -> MatchClaim:
     """Synchronous instant claim: score:clt_1 <-> perf:dlt_5."""
-    return MatchClaim(
-        timeline_a_id="score:clt_1",
-        timeline_b_id="perf:dlt_5",
-        start_anchor=AlignmentAnchor(
-            timeline_a_id="score:clt_1",
-            coordinate_a=Coordinate(10.0, TimeUnit.number),
-            timeline_b_id="perf:dlt_5",
-            coordinate_b=Coordinate(1280.0, TimeUnit.number),
-        ),
-        is_synchronous=True,
-    )
+    return _claim("score:clt_1", 10.0, "perf:dlt_5", 1280.0)
 
 
 @pytest.fixture
 def claim_nomatch() -> MatchClaim:
-    """Non-synchronous (NOMATCH) claim: score:clt_1 <-> perf:dlt_5."""
+    """NOMATCH claim: an event of score:clt_1 has no counterpart on perf:dlt_5."""
+    coordinate = Coordinate(20.0, TimeUnit.number)
     return MatchClaim(
         timeline_a_id="score:clt_1",
         timeline_b_id="perf:dlt_5",
         is_synchronous=False,
+        event_a_id=event_id("score:clt_1", coordinate),
+        source_coordinate=coordinate,
     )
 
 
 @pytest.fixture
 def claim_audio_video() -> MatchClaim:
     """Synchronous instant claim: audio:cpt_1 <-> video:dgt_1."""
-    return MatchClaim(
-        timeline_a_id="audio:cpt_1",
-        timeline_b_id="video:dgt_1",
-        start_anchor=AlignmentAnchor(
-            timeline_a_id="audio:cpt_1",
-            coordinate_a=Coordinate(45.0, TimeUnit.number),
-            timeline_b_id="video:dgt_1",
-            coordinate_b=Coordinate(1350.0, TimeUnit.number),
-        ),
-        is_synchronous=True,
-    )
+    return _claim("audio:cpt_1", 45.0, "video:dgt_1", 1350.0)
 
 
 @pytest.fixture
@@ -333,6 +323,100 @@ class TestClaimFilterCombined:
         f = ClaimFilter(include_units={TimeUnit.seconds})
 
         assert f.matches_timeline("missing", timelines={}) is False
+
+
+# endregion
+
+
+# region Test the belief filter
+
+
+def _believed_by(actor: str, belief: str) -> Provenance:
+    """A provenance entry stating one actor's belief."""
+    return Provenance(
+        method="manual",
+        beliefs=(Belief(actor=actor, belief=belief, date="2026-11-21"),),
+    )
+
+
+class TestClaimFilterBelief:
+    """Tests for the belief filter (believer, belief).
+
+    Four claims, one per case: no provenance, believed false by ``ana``,
+    believed true by ``ana``, believed false by ``ben``.
+    """
+
+    @pytest.fixture
+    def claims(self) -> dict[str, MatchClaim]:
+        """The four claims by name."""
+        return {
+            "unstated": _claim("score:clt_1", 1.0, "perf:dlt_1", 1.0),
+            "ana_false": _claim(
+                "score:clt_1",
+                2.0,
+                "perf:dlt_1",
+                2.0,
+                provenance=_believed_by("ana", "false"),
+            ),
+            "ana_true": _claim(
+                "score:clt_1",
+                3.0,
+                "perf:dlt_1",
+                3.0,
+                provenance=_believed_by("ana", "true"),
+            ),
+            "ben_false": _claim(
+                "score:clt_1",
+                4.0,
+                "perf:dlt_1",
+                4.0,
+                provenance=_believed_by("ben", "false"),
+            ),
+        }
+
+    @pytest.mark.parametrize(
+        ("believer", "belief", "kept"),
+        [
+            # No believer: nothing is filtered.
+            (None, "not_false", {"unstated", "ana_false", "ana_true", "ben_false"}),
+            (None, "true", {"unstated", "ana_false", "ana_true", "ben_false"}),
+            # ana's false belief drops its claim; ben's belief is not hers.
+            ("ana", "not_false", {"unstated", "ana_true", "ben_false"}),
+            # Only what ana believes true.
+            ("ana", "true", {"ana_true"}),
+            ("ben", "not_false", {"unstated", "ana_false", "ana_true"}),
+            ("ben", "true", set()),
+        ],
+    )
+    def test_matches_claim(
+        self,
+        claims: dict[str, MatchClaim],
+        believer: str | None,
+        belief: str,
+        kept: set[str],
+    ) -> None:
+        """matches_claim keeps exactly the claims the belief filter keeps."""
+        f = ClaimFilter(believer=believer, belief=belief)
+        assert {name for name, c in claims.items() if f.matches_claim(c)} == kept
+
+    def test_belief_combines_with_other_criteria(
+        self, claims: dict[str, MatchClaim], claim_audio_video: MatchClaim
+    ) -> None:
+        """The belief filter is ANDed with the timeline criteria."""
+        f = ClaimFilter(timeline_id="score:clt_1", believer="ana", belief="true")
+        assert f.matches_claim(claims["ana_true"]) is True
+        assert f.matches_claim(claims["unstated"]) is False
+        assert f.matches_claim(claim_audio_video) is False
+
+    def test_invalid_belief_refused(self) -> None:
+        """A belief value other than ``not_false`` or ``true`` is refused."""
+        with pytest.raises(ValueError, match="'not_false' or 'true'"):
+            ClaimFilter(believer="ana", belief="unlikely")
+
+    def test_belief_ignored_by_matches_timeline(self) -> None:
+        """The belief filter is claim-level: a timeline test ignores it."""
+        f = ClaimFilter(believer="ana", belief="true")
+        assert f.matches_timeline("score:clt_1") is True
 
 
 # endregion

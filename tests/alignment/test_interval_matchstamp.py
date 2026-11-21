@@ -7,7 +7,7 @@ from fractions import Fraction
 import pytest
 
 from timetoalign import MatchIntervalStamp
-from timetoalign.alignment import AlignmentAnchor, MatchClaim, MatchClaimField
+from timetoalign.alignment import MatchClaim, MatchClaimField
 from timetoalign.alignment.bundle import AlignmentBundle
 from timetoalign.alignment.graph import MatchStamp
 from timetoalign.core import (
@@ -20,6 +20,8 @@ from timetoalign.core import (
 )
 from timetoalign.maps import ScalarMap
 from timetoalign.timelines import Timeline
+
+from .helpers import match_claim
 
 FM = TimeUnit.floating_measures
 
@@ -73,21 +75,13 @@ def _interval_claim(
     def coordinate(value: int | float | Fraction) -> Coordinate:
         return Coordinate(value, unit, number_type=number_type)
 
-    return MatchClaim(
-        timeline_a_id=timeline_a,
-        timeline_b_id=timeline_b,
-        start_anchor=AlignmentAnchor(
-            timeline_a_id=timeline_a,
-            coordinate_a=coordinate(start_a),
-            timeline_b_id=timeline_b,
-            coordinate_b=coordinate(start_b),
-        ),
-        end_anchor=AlignmentAnchor(
-            timeline_a_id=timeline_a,
-            coordinate_a=coordinate(end_a),
-            timeline_b_id=timeline_b,
-            coordinate_b=coordinate(end_b),
-        ),
+    return match_claim(
+        timeline_a,
+        coordinate(start_a),
+        timeline_b,
+        coordinate(start_b),
+        end_a=coordinate(end_a),
+        end_b=coordinate(end_b),
     )
 
 
@@ -98,15 +92,8 @@ def _instant_claim(
     coordinate_b: int | float | Fraction,
 ) -> MatchClaim:
     """Create one synchronous instant claim."""
-    return MatchClaim(
-        timeline_a_id=timeline_a,
-        timeline_b_id=timeline_b,
-        start_anchor=AlignmentAnchor(
-            timeline_a_id=timeline_a,
-            coordinate_a=_coordinate(coordinate_a),
-            timeline_b_id=timeline_b,
-            coordinate_b=_coordinate(coordinate_b),
-        ),
+    return match_claim(
+        timeline_a, _coordinate(coordinate_a), timeline_b, _coordinate(coordinate_b)
     )
 
 
@@ -460,18 +447,8 @@ def test_motivating_dj_set_queries() -> None:
     bundle = _bundle("mix", "track-a", "track-b")
     bundle.add_match_claims(
         [
-            (
-                "mix",
-                _interval(125, 135),
-                "track-a",
-                _interval(33, 43),
-            ),
-            (
-                "mix",
-                _interval(128, 138),
-                "track-b",
-                _interval(1, 11),
-            ),
+            _interval_claim("mix", 125, 135, "track-a", 33, 43),
+            _interval_claim("mix", 128, 138, "track-b", 1, 11),
         ]
     )
 
@@ -692,22 +669,9 @@ def test_columnar_fraction_interval_distinguishes_same_float_value() -> None:
     """Columnar closed containment distinguishes exact fractions at one point."""
     third = Fraction(1, 3)
     same_float = Fraction(6004799503160661, 18014398509481984)
-    claim = MatchClaim(
-        timeline_a_id="source",
-        timeline_b_id="target",
-        start_anchor=AlignmentAnchor(
-            timeline_a_id="source",
-            coordinate_a=Coordinate(third, TimeUnit.quarters),
-            timeline_b_id="target",
-            coordinate_b=Coordinate(Fraction(4, 3), TimeUnit.quarters),
-        ),
-        end_anchor=AlignmentAnchor(
-            timeline_a_id="source",
-            coordinate_a=Coordinate(third, TimeUnit.quarters),
-            timeline_b_id="target",
-            coordinate_b=Coordinate(Fraction(4, 3), TimeUnit.quarters),
-        ),
-    )
+    source = Coordinate(third, TimeUnit.quarters)
+    target = Coordinate(Fraction(4, 3), TimeUnit.quarters)
+    claim = match_claim("source", source, "target", target, end_a=source, end_b=target)
     field = MatchClaimField.from_claims([claim])
 
     exact_matches = field.at(

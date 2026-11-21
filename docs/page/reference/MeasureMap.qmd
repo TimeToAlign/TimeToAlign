@@ -1,0 +1,345 @@
+# MeasureMap { #timetoalign.timelines.MeasureMap }
+
+```python
+timelines.MeasureMap(measures, *, id=None, name=None, meta=None)
+```
+
+An immutable sequence of measures in printed order.
+
+A measure's ``id`` is its Measure Map row ``ID``: ``str(count)`` unless a
+source states another, and ``next`` names successors by these IDs. A
+map states every successor explicitly: a measure built without ``next``
+is followed by the next measure in printed order, and the last one by
+none.
+
+In a manifest a measure map is an entry of ``measure_maps``: an ``id``,
+an optional ``name`` and ``meta``, and its compressed ``rows``. A map
+built without an id mints ``measuremap_1``, which a manifest's writer
+mints again should it collide. Identity takes no part in equality, nor
+do the keys of each row that the row form does not define, which a map
+read from a manifest keeps by measure and writes back in that measure's
+row: two maps are equal when their measures are.
+
+## Attributes
+
+| Name | Description |
+| --- | --- |
+| [id](#timetoalign.timelines.MeasureMap.id) | The map's id in a manifest. |
+| [measures](#timetoalign.timelines.MeasureMap.measures) | Measures in printed order. |
+| [meta](#timetoalign.timelines.MeasureMap.meta) | The map's free metadata. |
+| [name](#timetoalign.timelines.MeasureMap.name) | The map's display name, or None. |
+| [total_actual_length](#timetoalign.timelines.MeasureMap.total_actual_length) | Sum of actual lengths, or ``None`` when any length is abstract. |
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [by_id](#timetoalign.timelines.MeasureMap.by_id) | Return the uniquely identified measure. |
+| [expand_rows](#timetoalign.timelines.MeasureMap.expand_rows) | Expand compressed Measure Map rows into canonical full rows. |
+| [from_dict](#timetoalign.timelines.MeasureMap.from_dict) | Restore a map from its ``measure_maps`` entry. |
+| [from_expanded_rows](#timetoalign.timelines.MeasureMap.from_expanded_rows) | Build measures from full rows whose ``next`` holds row counts. |
+| [from_measure_data](#timetoalign.timelines.MeasureMap.from_measure_data) | Build the canonical measure structure described by loaded rows. |
+| [from_rows](#timetoalign.timelines.MeasureMap.from_rows) | Build a measure map from Measure Map authoring rows. |
+| [get_slice](#timetoalign.timelines.MeasureMap.get_slice) | Return the measures holding ``[start, end)``, re-based to *start*. |
+| [to_dict](#timetoalign.timelines.MeasureMap.to_dict) | Return this map as its ``measure_maps`` entry. |
+| [to_rows](#timetoalign.timelines.MeasureMap.to_rows) | Return Measure Map rows, omitting entries equal to their default successor. |
+
+### by_id { #timetoalign.timelines.MeasureMap.by_id }
+
+```python
+timelines.MeasureMap.by_id(measure_id)
+```
+
+Return the uniquely identified measure.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name       | Type         | Description           | Default    |
+|------------|--------------|-----------------------|------------|
+| measure_id | [str](`str`) | Identifier to locate. | _required_ |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                  | Description                       |
+|--------|---------------------------------------|-----------------------------------|
+|        | [Measure](`timetoalign.core.Measure`) | The measure with that identifier. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                   | Description                                 |
+|--------|------------------------|---------------------------------------------|
+|        | [KeyError](`KeyError`) | If no measure has the requested identifier. |
+
+### expand_rows { #timetoalign.timelines.MeasureMap.expand_rows }
+
+```python
+timelines.MeasureMap.expand_rows(rows, *, keep_unknown_keys=False)
+```
+
+Expand compressed Measure Map rows into canonical full rows.
+
+Rows are in their document form: quarter-note values are JSON numbers
+or Fraction pairs (``number_from_json``), ``next`` is a list of row
+``ID`` strings or ``count`` integers. Omitted rows are restored as
+default successors of the row before them (count, number and qstamp
+advance, actual length becomes the nominal length, the name is the
+number, repeats clear, ``volta`` and ``offset_within_measure`` are
+unset, ``next`` is the following row, none for the last row).
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name              | Type                                                                                                                | Description                                                                                                                                                    | Default    |
+|-------------------|---------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| rows              | [Iterable](`collections.abc.Iterable`)\[[Mapping](`collections.abc.Mapping`)\[[str](`str`), [Any](`typing.Any`)\]\] | Compressed or full rows in Measure Map order, optionally carrying the in-memory ``tempo`` extension.                                                           | _required_ |
+| keep_unknown_keys | [bool](`bool`)                                                                                                      | Keep every key outside the row form, ``tempo`` included, on its expanded row under ``"unknown_keys"`` instead of refusing it: the document form of a manifest. | `False`    |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                                  | Description                                                  |
+|--------|-----------------------------------------------------------------------|--------------------------------------------------------------|
+|        | [list](`list`)\[[dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\]\] | Full rows with exact quarter-note values, ``ID`` strings and |
+|        | [list](`list`)\[[dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\]\] | ``next`` as row counts (``[]`` for the last row by default). |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                                                                                                                       |
+|--------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If a row uses an unknown key (unless kept), a number in another form, a count that does not increase, an ``ID`` stated twice, a ``next`` naming no row, a non-positive offset, or contradicts derived signatures. |
+
+#### Warns {.doc-section .doc-section-warns}
+
+| Name   | Type        | Description                                                                    |
+|--------|-------------|--------------------------------------------------------------------------------|
+|        | UserWarning | If a stated qstamp disagrees with the derived one; the derived qstamp is kept. |
+
+### from_dict { #timetoalign.timelines.MeasureMap.from_dict }
+
+```python
+timelines.MeasureMap.from_dict(data)
+```
+
+Restore a map from its ``measure_maps`` entry.
+
+The entry holds the map's ``id``, an optional ``name`` and ``meta``
+and its ``rows``: a non-empty list of compressed Measure Map rows,
+each carrying ``count`` or ``ID``, with a non-negative ``qstamp`` and
+a strictly positive ``actual_length`` and ``nominal_length`` where it
+states them. A row's keys outside the row form (a ``tempo`` among
+them, which a document cannot hold as a :class:`Tempo`) are kept and
+written back in that measure's row, and the entry's own unknown keys
+with the entry.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name   | Type                                                | Description               | Default    |
+|--------|-----------------------------------------------------|---------------------------|------------|
+| data   | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | A ``measure_maps`` entry. | _required_ |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                       | Description                         |
+|--------|------------------------------------------------------------|-------------------------------------|
+|        | [MeasureMap](`timetoalign.timelines.structure.MeasureMap`) | The restored immutable measure map. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                                                                                                                                                                      |
+|--------|----------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If *data* is no object holding ``id`` and ``rows``, the id is invalid, ``rows`` is not a non-empty row list, a row carries neither ``count`` nor ``ID``, states a negative ``qstamp`` or a length that is not positive, or breaks a rule of :meth:`expand_rows`. |
+
+### from_expanded_rows { #timetoalign.timelines.MeasureMap.from_expanded_rows }
+
+```python
+timelines.MeasureMap.from_expanded_rows(rows)
+```
+
+Build measures from full rows whose ``next`` holds row counts.
+
+Every lane ends here: rows from :meth:`expand_rows`, which a loader
+may complete first, and rows read from a score loader's measure
+table. Each measure is classified by :meth:`Measure.from_values`;
+``next`` counts become row IDs. A row's ``"unknown_keys"`` are kept
+for that measure's row.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name   | Type                                                                                                                | Description                                          | Default    |
+|--------|---------------------------------------------------------------------------------------------------------------------|------------------------------------------------------|------------|
+| rows   | [Iterable](`collections.abc.Iterable`)\[[Mapping](`collections.abc.Mapping`)\[[str](`str`), [Any](`typing.Any`)\]\] | Full rows with the keys :meth:`expand_rows` returns. | _required_ |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                       | Description                        |
+|--------|------------------------------------------------------------|------------------------------------|
+|        | [MeasureMap](`timetoalign.timelines.structure.MeasureMap`) | The measure map the rows describe. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                       |
+|--------|----------------------------|-----------------------------------|
+|        | [ValueError](`ValueError`) | If a ``next`` count names no row. |
+
+### from_measure_data { #timetoalign.timelines.MeasureMap.from_measure_data }
+
+```python
+timelines.MeasureMap.from_measure_data(data)
+```
+
+Build the canonical measure structure described by loaded rows.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name   | Type                                                                  | Description                                        | Default    |
+|--------|-----------------------------------------------------------------------|----------------------------------------------------|------------|
+| data   | [MeasureData](`timetoalign.loader.score.stores.measures.MeasureData`) | Normalized measure-event rows from a score loader. | _required_ |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                       | Description                                        |
+|--------|------------------------------------------------------------|----------------------------------------------------|
+|        | [MeasureMap](`timetoalign.timelines.structure.MeasureMap`) | The immutable measure map represented by the rows. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                           |
+|--------|----------------------------|-----------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the data is empty or lacks required exact positions and durations. |
+
+### from_rows { #timetoalign.timelines.MeasureMap.from_rows }
+
+```python
+timelines.MeasureMap.from_rows(rows, *, keep_unknown_keys=False)
+```
+
+Build a measure map from Measure Map authoring rows.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name              | Type                                                                                                                | Description                                                                                              | Default    |
+|-------------------|---------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------|------------|
+| rows              | [Iterable](`collections.abc.Iterable`)\[[Mapping](`collections.abc.Mapping`)\[[str](`str`), [Any](`typing.Any`)\]\] | Compressed or full rows in their document form, without tempo extensions.                                | _required_ |
+| keep_unknown_keys | [bool](`bool`)                                                                                                      | Keep each row's keys outside the row form, written back in that measure's row, instead of refusing them. | `False`    |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                       | Description                                              |
+|--------|------------------------------------------------------------|----------------------------------------------------------|
+|        | [MeasureMap](`timetoalign.timelines.structure.MeasureMap`) | The exact immutable measure map represented by the rows. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                       |
+|--------|----------------------------|---------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If rows are invalid or contain tempo extensions, which require :meth:`MetricHierarchy.from_rows`. |
+
+### get_slice { #timetoalign.timelines.MeasureMap.get_slice }
+
+```python
+timelines.MeasureMap.get_slice(start, end)
+```
+
+Return the measures holding ``[start, end)``, re-based to *start*.
+
+Positions are quarters, as the map's ``qstamp`` values. A measure is
+kept when it overlaps the range (``qstamp < end`` and ``qstamp +
+actual_length > start``); it keeps its ``id``, ``number``, ``name``,
+``time_signature``, ``nominal_length``, repeat marks, ``volta`` and
+the row keys it was read with. Its ``actual_length`` becomes the part
+inside the range, a part cut off at the start adds to its
+``offset_within_measure``, and ``next`` keeps only the measures the
+slice holds. Each measure is classified again by
+:meth:`Measure.from_values`, so a measure cut at its start becomes a
+:class:`MeasureConstituent`. Counts and qstamps follow from the
+slice's own printed order; the slice is a new, unnamed map with a
+minted id.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name   | Type                                             | Description                                      | Default    |
+|--------|--------------------------------------------------|--------------------------------------------------|------------|
+| start  | [Fraction](`fractions.Fraction`) \| [int](`int`) | The first position of the range, in quarters.    | _required_ |
+| end    | [Fraction](`fractions.Fraction`) \| [int](`int`) | The position the range ends before, in quarters. | _required_ |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                       | Description                   |
+|--------|------------------------------------------------------------|-------------------------------|
+|        | [MeasureMap](`timetoalign.timelines.structure.MeasureMap`) | The measure map of the range. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                |
+|--------|----------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If a measure states no ``qstamp`` or no ``actual_length`` (an abstract map has no positions to slice), *start* is not before *end*, the range leaves ``[0, total_actual_length]``, or a measure cut at its start cannot lie at an offset (a cadenza, or a measure without nominal length). |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> bars = MeasureMap.from_rows(
+...     [{"count": 1, "time_signature": "3/4"}, {"count": 4}]
+... )
+>>> part = bars.get_slice(3, 9)
+>>> [measure.id for measure in part], part[0].qstamp
+(['2', '3'], Fraction(0, 1))
+```
+
+### to_dict { #timetoalign.timelines.MeasureMap.to_dict }
+
+```python
+timelines.MeasureMap.to_dict(minimal=True)
+```
+
+Return this map as its ``measure_maps`` entry.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name    | Type           | Description                                                                                                                                                   | Default   |
+|---------|----------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------|
+| minimal | [bool](`bool`) | Write the minimal form (the default): ``name`` and ``meta`` left out at their defaults. With False, the complete form: both written, their defaults included. | `True`    |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                | Description                                                       |
+|--------|-----------------------------------------------------|-------------------------------------------------------------------|
+|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | ``{"id", "name", "meta", "rows"}``, the rows compressed, then the |
+|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | entry's unknown keys kept when it was read.                       |
+
+### to_rows { #timetoalign.timelines.MeasureMap.to_rows }
+
+```python
+timelines.MeasureMap.to_rows(compress=True)
+```
+
+Return Measure Map rows, omitting entries equal to their default successor.
+
+A row holds every value its measure states, ``number`` (and ``name``)
+falling back to the count where a measure states none: ``ID`` only when
+it is not ``str(count)``, ``next`` as row IDs (on the last row only when it names
+a successor), ``volta`` when set, and ``offset_within_measure`` only
+when it is non-zero; then the keys outside the row form that the
+measure's row was read with. The first and the last rows are always
+retained, and so is every row read with such keys. Every other row is
+omitted when it equals the default successor of the preceding
+measure: count increments, the ID is ``str(count)``, qstamp
+advances by actual_length, actual_length becomes nominal_length, number
+increments, name becomes that number, signatures and nominal lengths
+persist, repeats clear, ``volta`` and ``offset_within_measure`` are
+unset, and ``next`` names the following measure.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name     | Type           | Description                             | Default   |
+|----------|----------------|-----------------------------------------|-----------|
+| compress | [bool](`bool`) | Whether to omit default-successor rows. | `True`    |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                                  | Description                                    |
+|--------|-----------------------------------------------------------------------|------------------------------------------------|
+|        | [list](`list`)\[[dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\]\] | JSON-safe compressed or full Measure Map rows. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                             |
+|--------|----------------------------|-------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the map holds a ``SplitRegularMeasure`` or ``SplitIrregularMeasure``, which no row can express; nothing is returned. |

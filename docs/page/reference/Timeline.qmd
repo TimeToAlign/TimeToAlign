@@ -288,7 +288,8 @@ The child's whole subtree joins this timeline's manifest, in which
 every id is unique across all element kinds: an element of the
 subtree whose minted id is already held here receives a freshly
 minted one, and an element whose given id is already held here makes
-the call raise without changing anything.
+the call raise without changing anything. A Projection's ID is never
+minted again, so one held by a Projection on both sides raises too.
 
 A timeline can accommodate events and other timelines, called
 Children, as long as they use the same measuring unit.
@@ -315,10 +316,10 @@ receives a minted id.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-|--------|----------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [TypeError](`TypeError`)   | If child is not a Timeline.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-|        | [ValueError](`ValueError`) | If units don't match (and no conversion map given), the offset is negative (not supported yet), the child is already a child of this timeline, ``locked=True`` asks to lock a plain segment, ``locked=False`` asks to leave a segment line unlocked, an id given in the child's subtree is already held in this manifest, or this timeline is locked and the child would end beyond its length without ``allow_expansion``. An unlocked timeline expands to fit the child instead, provided its own parent contains its new end. A child of unknown length has no end, so only its offset must fit; a parent of unknown length has no end to exceed, unless it is a segment, which ends at its successor's offset. |
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+|--------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [TypeError](`TypeError`)   | If child is not a Timeline.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+|        | [ValueError](`ValueError`) | If units don't match (and no conversion map given), the offset is negative (not supported yet), the child is already a child of this timeline, ``locked=True`` asks to lock a plain segment, ``locked=False`` asks to leave a segment line unlocked, an id given in the child's subtree is already held in this manifest, a Projection ID of the child's manifest is held by a Projection of this one, or this timeline is locked and the child would end beyond its length without ``allow_expansion``. An unlocked timeline expands to fit the child instead, provided its own parent contains its new end. A child of unknown length has no end, so only its offset must fit; a parent of unknown length has no end to exceed, unless it is a segment, which ends at its successor's offset. |
 
 ### add_conversion_map { #timetoalign.timelines.Timeline.add_conversion_map }
 
@@ -1021,6 +1022,8 @@ timelines.Timeline.create_child(
     name=None,
     allow_expansion=False,
     child_class=None,
+    *,
+    measures=False,
 )
 ```
 
@@ -1034,6 +1037,12 @@ By default, this is equivalent to:
 
 ``child_class=Timeline`` deliberately selects the experimental base class.
 
+With *measures*, the child holds the slice of this timeline's measure
+map over its span (:meth:`~timetoalign.timelines.MeasureMap.get_slice`),
+read through the same ``LinearMap`` to quarters on an axis in whole
+notes or ticks. The slice is computed before the child is built, so a
+refusal leaves this timeline unchanged.
+
 #### Parameters {.doc-section .doc-section-parameters}
 
 | Name            | Type                                                        | Description                                                                        | Default    |
@@ -1044,6 +1053,7 @@ By default, this is equivalent to:
 | name            | [str](`str`) \| None                                        | Human-readable name for the child.                                                 | `None`     |
 | allow_expansion | [bool](`bool`)                                              | If True, expand the parent when needed.                                            | `False`    |
 | child_class     | [type](`type`)\[\'Timeline\'\] \| None                      | Explicit class override for the child.                                             | `None`     |
+| measures        | [bool](`bool`)                                              | Give the child the slice of this timeline's measure map over its span.             | `False`    |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -1053,17 +1063,25 @@ By default, this is equivalent to:
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                             |
-|--------|----------------------------|---------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If coordinates are invalid or the child exceeds bounds. |
+| Name   | Type                       | Description                                                                                                                                                                        |
+|--------|----------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If coordinates are invalid or the child exceeds bounds; with *measures*, if this timeline has no measure map, the child's length is unknown, or the measure map refuses the slice. |
 
 #### Examples {.doc-section .doc-section-examples}
 
 ```python
+>>> from timetoalign.timelines import ContinuousLogicalTimeline, MeasureMap
 >>> parent = ContinuousLogicalTimeline(length=8)
 >>> child = parent.create_child(length=4)
 >>> type(child) is ContinuousLogicalTimeline
 True
+>>> bars = MeasureMap.from_rows(
+...     [{"count": 1, "time_signature": "2/4"}, {"count": 4}]
+... )
+>>> parent = parent.add_measure_map(bars)
+>>> half = parent.create_child(4, 4, measures=True)
+>>> [measure.id for measure in half.measure_map]
+['3', '4']
 ```
 
 ### create_child_from_region { #timetoalign.timelines.Timeline.create_child_from_region }
@@ -1074,6 +1092,7 @@ timelines.Timeline.create_child_from_region(
     *,
     copy_events=True,
     uid=None,
+    measures=False,
 )
 ```
 
@@ -1086,11 +1105,12 @@ copied with adjusted coordinates.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name        | Type                 | Description                                  | Default    |
-|-------------|----------------------|----------------------------------------------|------------|
-| region_id   | [str](`str`)         | Id of an existing region.                    | _required_ |
-| copy_events | [bool](`bool`)       | Copy events within the region to the child.  | `True`     |
-| uid         | [str](`str`) \| None | Explicit child ID. When None, one is minted. | `None`     |
+| Name        | Type                 | Description                                                                                            | Default    |
+|-------------|----------------------|--------------------------------------------------------------------------------------------------------|------------|
+| region_id   | [str](`str`)         | Id of an existing region.                                                                              | _required_ |
+| copy_events | [bool](`bool`)       | Copy events within the region to the child.                                                            | `True`     |
+| uid         | [str](`str`) \| None | Explicit child ID. When None, one is minted.                                                           | `None`     |
+| measures    | [bool](`bool`)       | Give the child the slice of this timeline's measure map over the region, as :meth:`create_child` does. | `False`    |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -1100,10 +1120,11 @@ copied with adjusted coordinates.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                           | Description             |
-|--------|--------------------------------|-------------------------|
-|        | [KeyError](`KeyError`)         | If region_id not found. |
-|        | [RuntimeError](`RuntimeError`) | If timeline is locked.  |
+| Name   | Type                           | Description                                                                                |
+|--------|--------------------------------|--------------------------------------------------------------------------------------------|
+|        | [KeyError](`KeyError`)         | If region_id not found.                                                                    |
+|        | [RuntimeError](`RuntimeError`) | If timeline is locked.                                                                     |
+|        | [ValueError](`ValueError`)     | With *measures*, if this timeline has no measure map or the measure map refuses the slice. |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -1124,6 +1145,7 @@ timelines.Timeline.create_children_from_boundaries(
     name_format='{prefix}_{n}',
     prefix='section',
     allow_expansion=False,
+    measures=False,
 )
 ```
 
@@ -1133,13 +1155,14 @@ Source events are not copied into the children.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name            | Type                                                                                          | Description                                      | Default          |
-|-----------------|-----------------------------------------------------------------------------------------------|--------------------------------------------------|------------------|
-| boundaries      | [Sequence](`collections.abc.Sequence`)\[[CoordinateSpec](`timetoalign.core.CoordinateSpec`)\] | k+1 monotonically increasing coordinates.        | _required_       |
-| names           | [Sequence](`collections.abc.Sequence`)\[[str](`str`)\] \| None                                | Explicit names for the k children.               | `None`           |
-| name_format     | [str](`str`)                                                                                  | Format with {prefix}, {i}, and {n} placeholders. | `'{prefix}_{n}'` |
-| prefix          | [str](`str`)                                                                                  | Prefix for auto-generated names.                 | `'section'`      |
-| allow_expansion | [bool](`bool`)                                                                                | If True, expand the parent when needed.          | `False`          |
+| Name            | Type                                                                                          | Description                                                                                           | Default          |
+|-----------------|-----------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------|------------------|
+| boundaries      | [Sequence](`collections.abc.Sequence`)\[[CoordinateSpec](`timetoalign.core.CoordinateSpec`)\] | k+1 monotonically increasing coordinates.                                                             | _required_       |
+| names           | [Sequence](`collections.abc.Sequence`)\[[str](`str`)\] \| None                                | Explicit names for the k children.                                                                    | `None`           |
+| name_format     | [str](`str`)                                                                                  | Format with {prefix}, {i}, and {n} placeholders.                                                      | `'{prefix}_{n}'` |
+| prefix          | [str](`str`)                                                                                  | Prefix for auto-generated names.                                                                      | `'section'`      |
+| allow_expansion | [bool](`bool`)                                                                                | If True, expand the parent when needed.                                                               | `False`          |
+| measures        | [bool](`bool`)                                                                                | Give each child the slice of this timeline's measure map over its span, as :meth:`create_child` does. | `False`          |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -1149,9 +1172,22 @@ Source events are not copied into the children.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                       |
-|--------|----------------------------|---------------------------------------------------|
-|        | [ValueError](`ValueError`) | If the boundaries or number of names are invalid. |
+| Name   | Type                       | Description                                                                                            |
+|--------|----------------------------|--------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the boundaries or number of names are invalid, or, with *measures*, as :meth:`create_child` raises. |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> from timetoalign.timelines import ContinuousLogicalTimeline, MeasureMap
+>>> score = ContinuousLogicalTimeline(length=8)
+>>> score = score.add_measure_map(
+...     MeasureMap.from_rows([{"count": 1, "time_signature": "2/4"}, {"count": 4}])
+... )
+>>> halves = score.create_children_from_boundaries([0, 4, 8], measures=True)
+>>> [[measure.id for measure in half.measure_map] for half in halves]
+[['1', '2'], ['3', '4']]
+```
 
 ### create_children_from_regions { #timetoalign.timelines.Timeline.create_children_from_regions }
 
@@ -1160,6 +1196,7 @@ timelines.Timeline.create_children_from_regions(
     region_ids=None,
     *,
     copy_events=True,
+    measures=False,
 )
 ```
 
@@ -1170,10 +1207,11 @@ are independent.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name        | Type                                                           | Description                                        | Default   |
-|-------------|----------------------------------------------------------------|----------------------------------------------------|-----------|
-| region_ids  | [Sequence](`collections.abc.Sequence`)\[[str](`str`)\] \| None | Region ids. None = all regions in insertion order. | `None`    |
-| copy_events | [bool](`bool`)                                                 | Copy events to children.                           | `True`    |
+| Name        | Type                                                           | Description                                                                                             | Default   |
+|-------------|----------------------------------------------------------------|---------------------------------------------------------------------------------------------------------|-----------|
+| region_ids  | [Sequence](`collections.abc.Sequence`)\[[str](`str`)\] \| None | Region ids. None = all regions in insertion order.                                                      | `None`    |
+| copy_events | [bool](`bool`)                                                 | Copy events to children.                                                                                | `True`    |
+| measures    | [bool](`bool`)                                                 | Give each child the slice of this timeline's measure map over its region, as :meth:`create_child` does. | `False`   |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -1183,10 +1221,11 @@ are independent.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                           | Description                    |
-|--------|--------------------------------|--------------------------------|
-|        | [KeyError](`KeyError`)         | If any region id is not found. |
-|        | [RuntimeError](`RuntimeError`) | If timeline is locked.         |
+| Name   | Type                           | Description                                                  |
+|--------|--------------------------------|--------------------------------------------------------------|
+|        | [KeyError](`KeyError`)         | If any region id is not found.                               |
+|        | [RuntimeError](`RuntimeError`) | If timeline is locked.                                       |
+|        | [ValueError](`ValueError`)     | With *measures*, as :meth:`create_child_from_region` raises. |
 
 #### Examples {.doc-section .doc-section-examples}
 

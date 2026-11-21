@@ -84,6 +84,7 @@ from .fields import (
     StructField,
     _struct_types_match,
     data_shaped,
+    drop_from_schema,
     metadata_blob_from_dict,
     parse_metadata_blob,
     register_value_projector,
@@ -2250,16 +2251,9 @@ def _time_value_projector(
     return list(RATIONAL_STRUCT_TYPE)
 
 
-def _drop_field_projector(
-    _model_cls: type[BaseModel], _name: str, _info: object
-) -> list[pa.Field]:
-    """Drop a pydantic field from the Arrow representation — lives in metadata."""
-    return []
-
-
 register_value_projector(TimeScalar, "value", _time_value_projector)
-register_value_projector(TimeScalar, "unit", _drop_field_projector)
-register_value_projector(IdTimeScalar, "timeline_id", _drop_field_projector)
+register_value_projector(TimeScalar, "unit", drop_from_schema)
+register_value_projector(IdTimeScalar, "timeline_id", drop_from_schema)
 
 
 # ═══════════════════════════════════════════════════════════════════════════

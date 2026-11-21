@@ -90,16 +90,19 @@ class MatchStamp(Stamp):
     """A synchronized timestamp across multiple timelines.
 
     A MatchStamp represents a single coordinate (or instant) that has been
-    synchronized across multiple timelines via explicit anchors and/or
-    inferred group membership.
+    synchronized across multiple timelines by the anchors MatchClaims state
+    and/or by edges the MatchGraph inferred through group membership.
 
-    Contains one coordinate per participating timeline, where coordinates
-    are linked via explicit anchors or inferred group membership.
+    Contains one coordinate per participating timeline, each pair of
+    timelines linked by a stated or an inferred edge.
 
     Attributes:
         coordinates: Dictionary of timeline ID to canonical coordinate.
-        anchor_edges: List of (tl_a, tl_b) pairs that are explicitly anchored.
-        inferred_edges: List of (tl_a, tl_b) pairs inferred via groups.
+        stated_pairs: The (tl_a, tl_b) timeline pairs a MatchClaim's anchor
+            links.
+        inferred_pairs: The (tl_a, tl_b) timeline pairs an edge the
+            MatchGraph inferred through a group links (an
+            :class:`InferredEdge`).
         axis: Identified source coordinate derived from storage.
         source: Bundle that produced the stamp.
         source_id: Timeline ID used for the query.
@@ -116,7 +119,7 @@ class MatchStamp(Stamp):
         ...         "audio": Coordinate(45.5, TimeUnit.seconds),
         ...     },
         ...     source_id="score",
-        ...     anchor_edges=[("score", "audio")],
+        ...     stated_pairs=[("score", "audio")],
         ... )
         >>> stamp.get_coordinate_for("audio", format="float")
         45.5
@@ -124,8 +127,8 @@ class MatchStamp(Stamp):
 
     coordinates: dict[str, Coordinate] = field(default_factory=dict)
     source_id: str = ""
-    anchor_edges: list[tuple[str, str]] = field(default_factory=list)
-    inferred_edges: list[tuple[str, str]] = field(default_factory=list)
+    stated_pairs: list[tuple[str, str]] = field(default_factory=list)
+    inferred_pairs: list[tuple[str, str]] = field(default_factory=list)
     source: "AlignmentBundle | None" = None
     is_interpolated: bool = False
     conversion_maps: ConversionMapsSpec = False
@@ -163,10 +166,10 @@ class MatchStamp(Stamp):
             )
         object.__setattr__(self, "coordinates", normalized)
         object.__setattr__(
-            self, "anchor_edges", [tuple(edge) for edge in self.anchor_edges]
+            self, "stated_pairs", [tuple(edge) for edge in self.stated_pairs]
         )
         object.__setattr__(
-            self, "inferred_edges", [tuple(edge) for edge in self.inferred_edges]
+            self, "inferred_pairs", [tuple(edge) for edge in self.inferred_pairs]
         )
         normalized_claims: list[MatchClaim] = []
         for claim in self.interval_claims:
@@ -283,14 +286,14 @@ class MatchStamp(Stamp):
         return len(self.coordinates)
 
     @property
-    def n_explicit_edges(self) -> int:
-        """Number of explicitly anchored pairs."""
-        return len(self.anchor_edges)
+    def n_stated_pairs(self) -> int:
+        """Number of timeline pairs a MatchClaim's anchor links."""
+        return len(self.stated_pairs)
 
     @property
-    def n_inferred_edges(self) -> int:
-        """Number of inferred (via group) pairs."""
-        return len(self.inferred_edges)
+    def n_inferred_pairs(self) -> int:
+        """Number of timeline pairs linked by an inferred edge."""
+        return len(self.inferred_pairs)
 
     def get_unit(
         self,
@@ -452,11 +455,11 @@ class MatchStamp(Stamp):
         # Filter edges to only include those between remaining timelines
         remaining = set(filtered_coords.keys())
 
-        filtered_anchor_edges = [
-            (a, b) for a, b in self.anchor_edges if a in remaining and b in remaining
+        filtered_stated_pairs = [
+            (a, b) for a, b in self.stated_pairs if a in remaining and b in remaining
         ]
-        filtered_inferred_edges = [
-            (a, b) for a, b in self.inferred_edges if a in remaining and b in remaining
+        filtered_inferred_pairs = [
+            (a, b) for a, b in self.inferred_pairs if a in remaining and b in remaining
         ]
 
         return MatchStamp(
@@ -466,8 +469,8 @@ class MatchStamp(Stamp):
                 if self.source_id in filtered_coords
                 else next(iter(filtered_coords))
             ),
-            anchor_edges=filtered_anchor_edges,
-            inferred_edges=filtered_inferred_edges,
+            stated_pairs=filtered_stated_pairs,
+            inferred_pairs=filtered_inferred_pairs,
             source=self.source,
             is_interpolated=self.is_interpolated,
             conversion_maps=self.conversion_maps,
@@ -499,8 +502,8 @@ class MatchStamp(Stamp):
                     timeline_id: coordinate_to_dict(coordinate)
                     for timeline_id, coordinate in self.coordinates.items()
                 },
-                "anchor_edges": list(self.anchor_edges),
-                "inferred_edges": list(self.inferred_edges),
+                "stated_pairs": list(self.stated_pairs),
+                "inferred_pairs": list(self.inferred_pairs),
             }
 
         if format not in ("flat", "prefix", "nested"):
@@ -567,8 +570,8 @@ class MatchStamp(Stamp):
         return cls(
             coordinates=coordinates,
             source_id=next(iter(coordinates)),
-            anchor_edges=[tuple(e) for e in data.get("anchor_edges", [])],
-            inferred_edges=[tuple(e) for e in data.get("inferred_edges", [])],
+            stated_pairs=[tuple(e) for e in data.get("stated_pairs", [])],
+            inferred_pairs=[tuple(e) for e in data.get("inferred_pairs", [])],
         )
 
     def __repr__(self) -> str:
@@ -596,16 +599,16 @@ class MatchStamp(Stamp):
             ...         "audio": Coordinate(2.5, TimeUnit.seconds),
             ...     },
             ...     source_id="score",
-            ...     anchor_edges=[("score", "audio")],
-            ...     inferred_edges=[("score", "parts")],
+            ...     stated_pairs=[("score", "audio")],
+            ...     inferred_pairs=[("score", "parts")],
             ... )
             >>> print(stamp)
             MatchStamp (3 timelines, 2 edges)
-              score   4 quarters  anchor
+              score   4 quarters  stated
               parts   4 quarters  inferred
-              audio  2.5 seconds  anchor
+              audio  2.5 seconds  stated
         """
-        n_edges = self.n_explicit_edges + self.n_inferred_edges
+        n_edges = self.n_stated_pairs + self.n_inferred_pairs
         lines: list[str] = [
             f"MatchStamp ({self.n_timelines} timelines, {n_edges} edges)"
         ]
@@ -614,19 +617,19 @@ class MatchStamp(Stamp):
             return lines[0]
 
         # Classify each timeline by edge type
-        anchor_tls = set()
-        for a, b in self.anchor_edges:
-            anchor_tls.add(a)
-            anchor_tls.add(b)
+        stated_tls = set()
+        for a, b in self.stated_pairs:
+            stated_tls.add(a)
+            stated_tls.add(b)
         inferred_tls = set()
-        for a, b in self.inferred_edges:
+        for a, b in self.inferred_pairs:
             inferred_tls.add(a)
             inferred_tls.add(b)
 
         entries: list[tuple[str, str, str]] = []
         for tl_id, coord in self.coordinates.items():
-            if tl_id in anchor_tls:
-                tag = "anchor"
+            if tl_id in stated_tls:
+                tag = "stated"
             elif tl_id in inferred_tls:
                 tag = "inferred"
             else:
@@ -680,15 +683,15 @@ class MatchStamp(Stamp):
 
         from timetoalign.display.html import affordance_line
 
-        n_edges = self.n_explicit_edges + self.n_inferred_edges
+        n_edges = self.n_stated_pairs + self.n_inferred_pairs
 
         # Classify timelines
-        anchor_tls = set()
-        for a, b in self.anchor_edges:
-            anchor_tls.add(a)
-            anchor_tls.add(b)
+        stated_tls = set()
+        for a, b in self.stated_pairs:
+            stated_tls.add(a)
+            stated_tls.add(b)
         inferred_tls = set()
-        for a, b in self.inferred_edges:
+        for a, b in self.inferred_pairs:
             inferred_tls.add(a)
             inferred_tls.add(b)
 
@@ -698,8 +701,8 @@ class MatchStamp(Stamp):
             formatted = html_mod.escape(
                 _format_stamp_value(coord.value, coord.unit.value)
             )
-            if tl_id in anchor_tls:
-                tag = "<em>anchor</em>"
+            if tl_id in stated_tls:
+                tag = "<em>stated</em>"
                 rows.append(
                     f"<tr><td><strong>{esc_id}</strong></td>"
                     f"<td style='text-align: right;'>{formatted}</td>"
@@ -1043,9 +1046,9 @@ class MatchGraph:
         >>> stamps = extended.get_stamps()
         >>> print(stamps[1])
         MatchStamp (3 timelines, 2 edges)
-          audio   2 seconds  anchor
+          audio   2 seconds  stated
           parts  4 quarters  inferred
-          score  4 quarters  anchor
+          score  4 quarters  stated
     """
 
     def __init__(
@@ -1917,8 +1920,8 @@ class MatchGraph:
             return MatchStamp(
                 coordinates={start_node[0]: identified.to_coordinate()},
                 source_id=start_node[0],
-                anchor_edges=[],
-                inferred_edges=[],
+                stated_pairs=[],
+                inferred_pairs=[],
                 source=self._source,
             )
 
@@ -1949,8 +1952,8 @@ class MatchGraph:
                 ).to_coordinate()
 
         # Categorize edges
-        anchor_edges: list[tuple[str, str]] = []
-        inferred_edges: list[tuple[str, str]] = []
+        stated_pairs: list[tuple[str, str]] = []
+        inferred_pairs: list[tuple[str, str]] = []
 
         # Get subgraph for this component
         subgraph = self._graph.subgraph(component)
@@ -1963,28 +1966,28 @@ class MatchGraph:
             reverse_pair = (v[0], u[0])
 
             if "inferred" not in data:
-                if edge_pair not in anchor_edges and reverse_pair not in anchor_edges:
-                    anchor_edges.append(edge_pair)
+                if edge_pair not in stated_pairs and reverse_pair not in stated_pairs:
+                    stated_pairs.append(edge_pair)
             else:
                 if (
-                    edge_pair not in inferred_edges
-                    and reverse_pair not in inferred_edges
+                    edge_pair not in inferred_pairs
+                    and reverse_pair not in inferred_pairs
                 ):
-                    inferred_edges.append(edge_pair)
+                    inferred_pairs.append(edge_pair)
 
         return MatchStamp(
             coordinates=coordinates,
             source_id=source_id,
-            anchor_edges=anchor_edges,
-            inferred_edges=inferred_edges,
+            stated_pairs=stated_pairs,
+            inferred_pairs=inferred_pairs,
             source=self._source,
         )
 
     def filter(
         self,
-        synchronous_only: bool = False,
-        explicit_only: bool = False,
         *,
+        synchronous_only: bool = False,
+        stated_only: bool = False,
         timeline_ids: set[str] | None = None,
         id_pattern: str | None = None,
         include_domains: set[Domain] | None = None,
@@ -1994,7 +1997,7 @@ class MatchGraph:
 
         Args:
             synchronous_only: Include only synchronous edges.
-            explicit_only: Include only the edges MatchClaims state (no
+            stated_only: Include only the edges MatchClaims state (no
                 inferred edges).
             timeline_ids: Only include these timeline IDs.
             id_pattern: Regex filter for timeline IDs.
@@ -2022,12 +2025,12 @@ class MatchGraph:
         filtered.remove_nodes_from(nodes_to_remove)
 
         # Filter edges by attributes
-        if synchronous_only or explicit_only:
+        if synchronous_only or stated_only:
             edges_to_remove = []
             for u, v, data in filtered.edges(data=True):
                 if synchronous_only and not data.get("synchronous", True):
                     edges_to_remove.append((u, v))
-                elif explicit_only and "inferred" in data:
+                elif stated_only and "inferred" in data:
                     edges_to_remove.append((u, v))
             filtered.remove_edges_from(edges_to_remove)
 

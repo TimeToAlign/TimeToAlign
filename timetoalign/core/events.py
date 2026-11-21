@@ -47,6 +47,7 @@ from .fields import (
     blob_metadata,
     build_struct_array,
     data_shaped,
+    drop_from_schema,
     install_paired_field_registry,
     register_value_projector,
 )
@@ -2106,16 +2107,11 @@ class Note(ScalarVocabulary, BaseModel):
         return f"{pitch_str} @{self.start}+{self.duration}"
 
 
-def _drop_field(_model_cls: type[BaseModel], _name: str, _info: object) -> list[Any]:
-    """Drop a polymorphic / out-of-band field from the derived pa.Schema."""
-    return []
-
-
 # Columnar-separation rule: drop ``Note.pitch`` from pa.Schema so that
 # the represent-once pitch field (``specific_pitch`` for a spelled
 # source, plus the non-default raw ``midi`` int) lives in its own
 # column (see Contributing → §2.4 Architectural decision log).
-register_value_projector(Note, "pitch", _drop_field)
+register_value_projector(Note, "pitch", drop_from_schema)
 
 
 class NoteField(SemanticField[Note]):

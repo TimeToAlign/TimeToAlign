@@ -44,6 +44,7 @@ from timetoalign.core.retrieval import (
 from timetoalign.core.time import Coordinate, IdCoordinate
 
 if TYPE_CHECKING:
+    from timetoalign.alignment.bundle import AlignmentBundle
     from timetoalign.alignment.claims import MatchClaim
     from timetoalign.alignment.match_format import MatchFileContext
     from timetoalign.core.enums import Domain, TimeUnit
@@ -455,6 +456,7 @@ class MatchLine:
         include_units: set[TimeUnit] | None = None,
         believer: str | None = None,
         beliefs: Collection[BeliefState] = DEFAULT_BELIEFS,
+        source: AlignmentBundle | None = None,
     ) -> MatchLine:
         """Build a MatchLine from claims via a MatchGraph.
 
@@ -479,11 +481,15 @@ class MatchLine:
             beliefs: The states kept for the believer (``"true"``,
                 ``"undecided"``, ``"unlikely"``, ``"false"``); default all
                 but ``"false"``.
+            source: The bundle the claims come from, whose manifest
+                ``@context`` the believer and the actors compare under (a
+                compact IRI and its absolute form name one actor); ``None``
+                declares no prefix.
 
         Returns:
             A MatchLine with stamps sorted by source coordinate.
         """
-        graph = MatchGraph(claims, believer=believer, beliefs=beliefs)
+        graph = MatchGraph(claims, believer=believer, beliefs=beliefs, source=source)
 
         if groups is not None:
             graph = graph.extend_to_groups(

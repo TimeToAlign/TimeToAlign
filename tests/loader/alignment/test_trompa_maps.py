@@ -266,9 +266,7 @@ def test_every_stated_row_gives_its_claims(score: Timeline, stated_path: Path) -
 
     # The file gives both inserted notes one id, so each Projection is minted
     # its own and the claim keeps the file's id as the event's name.
-    for n, (claim, seconds) in enumerate(
-        zip(claims[15:], [2.75, 4.75], strict=True), start=15
-    ):
+    for n, claim in enumerate(claims[15:], start=15):
         assert claim.is_synchronous is False
         assert (claim.start_anchor, claim.end_anchor) == (None, None)
         assert (claim.timeline_a_id, claim.timeline_b_id) == (performance.id, score.id)

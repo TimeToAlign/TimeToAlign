@@ -457,12 +457,12 @@ class TestGetMatchstampAt:
         stamp = bundle.get_matchstamp_at(37.5, "score:clt_1")
 
         assert stamp.is_interpolated is True
-        assert stamp.anchor_edges == []
+        assert stamp.stated_pairs == []
         assert stamp.get_coordinate_for("score:clt_1", format="float") == 37.5
         assert stamp.get_coordinate_for("perf:dlt_1", format="float") == 75.0
         assert stamp.get_coordinate_for("perf:dlt_2", format="float") == 56.25
         assert stamp.get_coordinate_for("perf:dlt_3", format="float") == 67.5
-        assert set(stamp.inferred_edges) == {
+        assert set(stamp.inferred_pairs) == {
             ("score:clt_1", "perf:dlt_1"),
             ("score:clt_1", "perf:dlt_2"),
             ("score:clt_1", "perf:dlt_3"),
@@ -621,7 +621,7 @@ class TestMatchStampDisplay:
         """__str__ includes timeline count and edge count."""
         stamp = MatchStamp(
             coordinates={"tl_a": 100.0, "tl_b": 50.0},
-            anchor_edges=[("tl_a", "tl_b")],
+            stated_pairs=[("tl_a", "tl_b")],
         )
         s = str(stamp)
         assert "MatchStamp" in s
@@ -632,7 +632,7 @@ class TestMatchStampDisplay:
         """__str__ shows coordinate values."""
         stamp = MatchStamp(
             coordinates={"score": 10.0, "audio": 45.5},
-            anchor_edges=[("score", "audio")],
+            stated_pairs=[("score", "audio")],
         )
         s = str(stamp)
         assert "score" in s
@@ -649,7 +649,7 @@ class TestMatchStampDisplay:
         """Integer-valued coordinates shown without decimals."""
         stamp = MatchStamp(
             coordinates={"tl_a": 100.0, "tl_b": 50.0},
-            anchor_edges=[("tl_a", "tl_b")],
+            stated_pairs=[("tl_a", "tl_b")],
         )
         s = str(stamp)
         assert "100" in s
@@ -659,7 +659,7 @@ class TestMatchStampDisplay:
         """_repr_html_ produces valid HTML."""
         stamp = MatchStamp(
             coordinates={"score": 10.0, "audio": 45.5},
-            anchor_edges=[("score", "audio")],
+            stated_pairs=[("score", "audio")],
         )
         html = stamp._repr_html_()
         assert "<table" in html
@@ -671,7 +671,7 @@ class TestMatchStampDisplay:
         """Anchor timelines are bold in HTML."""
         stamp = MatchStamp(
             coordinates={"score": 10.0, "audio": 45.5},
-            anchor_edges=[("score", "audio")],
+            stated_pairs=[("score", "audio")],
         )
         html = stamp._repr_html_()
         assert "<strong>score</strong>" in html
@@ -680,8 +680,8 @@ class TestMatchStampDisplay:
         """Inferred timelines are greyed in HTML."""
         stamp = MatchStamp(
             coordinates={"score": 10.0, "audio": 45.5, "video": 1000.0},
-            anchor_edges=[("score", "audio")],
-            inferred_edges=[("audio", "video")],
+            stated_pairs=[("score", "audio")],
+            inferred_pairs=[("audio", "video")],
         )
         html = stamp._repr_html_()
         assert "color: #666" in html
@@ -691,7 +691,7 @@ class TestMatchStampDisplay:
         """_repr_html_ appends the affordance Try footer after the table."""
         stamp = MatchStamp(
             coordinates={"score": 10.0, "audio": 45.5},
-            anchor_edges=[("score", "audio")],
+            stated_pairs=[("score", "audio")],
         )
         html = stamp._repr_html_()
         # The coordinate table still renders.

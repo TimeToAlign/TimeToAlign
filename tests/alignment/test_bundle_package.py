@@ -660,31 +660,12 @@ def _sorted_sets(items: list[dict[str, Any]]) -> str:
     return timetoshare.dumps({"items": normal})
 
 
-#: The fixture's two filter words as the states of the library's belief filter.
-_FIXTURE_STATES: dict[str, tuple[str, ...]] = {
-    "not_false": ("true", "undecided", "unlikely"),
-    "true": ("true",),
-}
-
-
-def _states(case: dict[str, Any]) -> tuple[str, ...]:
-    """The belief states a case of the fixture keeps for its believer.
-
-    A case states its filter either as the states themselves (``beliefs``)
-    or as one of the two words everything-not-false and only-true
-    (``belief``), which are two sets of states.
-    """
-    if "beliefs" in case:
-        return tuple(case["beliefs"])
-    return _FIXTURE_STATES[case["belief"]]
-
-
 def _derived(bundle: AlignmentBundle, case: dict[str, Any]) -> tuple[str, str, int]:
     """The unique anchors, the potential MatchStamps and the edge count."""
     graph = MatchGraph(
         bundle.get_match_claims(),
         believer=case["believer"],
-        beliefs=_states(case),
+        beliefs=case["beliefs"],
         source=bundle,
     )
     stated: dict[tuple[tuple[str, Any], ...], set[str]] = {}
@@ -769,26 +750,37 @@ class TestTimeToShareFixturePackage:
 
     @pytest.mark.parametrize(
         "index",
-        [0, 1, 2, 3],
-        ids=["no_filter", "actor_not_false", "actor_true", "other_actor_true"],
+        [0, 1, 2, 3, 4, 5],
+        ids=[
+            "no_filter",
+            "actor_default",
+            "actor_true",
+            "other_actor_true",
+            "actor_undecided",
+            "actor_unlikely_false",
+        ],
     )
     def test_anchors_and_potential_matchstamps_are_the_expected(
         self, bundle: AlignmentBundle, index: int
     ) -> None:
-        case = timetoshare.loads(
+        cases = timetoshare.loads(
             (_TABLES / "expected.yaml").read_text(encoding="utf-8")
-        )["cases"][index]
+        )["cases"]
+        assert len(cases) == 6
+        case = cases[index]
 
         anchors, stamps, edges = _derived(bundle, case)
 
         assert anchors == _sorted_sets(case["alignment_anchors"])
         assert stamps == _sorted_sets(case["potential_matchstamps"])
         assert edges == len(case["alignment_anchors"])
-        kept = bundle.get_match_claims(believer=case["believer"], beliefs=_states(case))
+        kept = bundle.get_match_claims(
+            believer=case["believer"], beliefs=case["beliefs"]
+        )
         graph = MatchGraph(
             bundle.get_match_claims(),
             believer=case["believer"],
-            beliefs=_states(case),
+            beliefs=case["beliefs"],
             source=bundle,
         )
         assert [claim.id for claim in kept] == [claim.id for claim in graph.claims]

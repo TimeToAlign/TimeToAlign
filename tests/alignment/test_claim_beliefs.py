@@ -13,7 +13,12 @@ from pathlib import Path
 
 import pytest
 
-from timetoalign.alignment import AlignmentBundle, ClaimFilter, MatchClaimField
+from timetoalign.alignment import (
+    AlignmentBundle,
+    ClaimFilter,
+    MatchClaimField,
+    MatchLine,
+)
 from timetoalign.alignment.filters import belief_context, believed
 from timetoalign.core import Belief, IdCoordinate, Provenance, TimeUnit
 from timetoalign.timelines import statements
@@ -131,6 +136,23 @@ class TestAddBelief:
             "claim_2", actor=WD_Q42, belief="true", date="2026-11-22"
         )
         assert _ids(bundle, believer=Q42, beliefs=["true"]) == ["claim_2"]
+
+    def test_a_matchline_compares_actors_under_its_source(self) -> None:
+        bundle = _bundle()
+        bundle.add_match_claim_belief(
+            "claim_2", actor=Q42, belief="false", date="2026-11-21"
+        )
+        claims = bundle.get_match_claims()
+
+        def positions(**kwargs: object) -> list[Fraction]:
+            line = MatchLine.from_claims(claims, "score", believer=WD_Q42, **kwargs)  # type: ignore[arg-type]
+            return [
+                stamp.get_coordinate_for("score", format="fraction")
+                for stamp in line.stamps
+            ]
+
+        assert positions(source=bundle) == [Fraction(0), Fraction(4)]
+        assert positions() == [Fraction(0), Fraction(2), Fraction(4)]
 
     def test_refusals_change_nothing(self) -> None:
         bundle = _bundle()

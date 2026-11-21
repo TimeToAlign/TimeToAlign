@@ -140,7 +140,7 @@ def test_coordinate_claim_endpoints_are_exact_anchors(
         "track": _coordinate(expected),
     }
     assert stamp.is_interpolated is False
-    assert stamp.anchor_edges == [("mix", "track")]
+    assert stamp.stated_pairs == [("mix", "track")]
 
 
 def test_crossfade_maps_each_claim_to_its_counterpart() -> None:

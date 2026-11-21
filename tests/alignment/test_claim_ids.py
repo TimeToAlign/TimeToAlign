@@ -151,7 +151,7 @@ def test_null_ids_are_minted_around_held_ones() -> None:
         pa.array([False, None, False, None], type=pa.bool_()),
     )
     field = MatchClaimField.from_table(table)
-    assert _ids(field) == ["claim_2", "claim_1", "x", "claim_3"]
+    assert _ids(field) == ["claim_2", "claim_3", "x", "claim_4"]
     assert [claim.id_minted for claim in field] == [False, True, False, True]
 
 
@@ -200,37 +200,44 @@ def test_two_runs_store_the_same_ids(tmp_path: Path) -> None:
 # region Bundle part
 
 
-def test_two_free_claims_become_distinct() -> None:
-    def pair() -> tuple[MatchClaim, MatchClaim]:
-        to_audio = _claims(STORED[:1])[0]
-        to_copy = MatchClaim.from_projection(
-            event={"start": 4},
-            source_tl_id="score",
-            target_tl_id="score_copy",
-            target_coord=4,
-            source_unit=TimeUnit.quarters,
-            target_unit=TimeUnit.quarters,
-        )
-        return to_audio, to_copy
+def _copy_claim(quarters: int) -> MatchClaim:
+    """A free claim between a ``score`` note and its ``score_copy`` twin."""
+    return MatchClaim.from_events(
+        {"id": f"note_{quarters}", "start": quarters},
+        SCORE,
+        {"id": f"copy_{quarters}", "start": quarters},
+        ContinuousLogicalTimeline(length=16, uid="score_copy"),
+    )
 
-    first, second = pair()
-    assert (first.id, second.id) == ("claim_1", "claim_1")
+
+def _holding(*claims: MatchClaim) -> AlignmentBundle:
+    """``score`` and ``audio``, ungrouped, holding *claims*."""
+    bundle = AlignmentBundle()
+    bundle.add_timeline(SCORE)
+    bundle.add_timeline(AUDIO)
+    return bundle.add_match_claims(list(claims))
+
+
+def test_two_free_claims_become_distinct() -> None:
+    first, second = _claims(STORED[:1])[0], _copy_claim(4)
+    assert (first.id, second.id) == (None, None)
 
     graph = MatchGraph([first, second])
     kept = graph.filter(timeline_ids={"score", "audio"}).claims
     assert len(kept) == 1 and kept[0] is first
     kept = graph.filter(timeline_ids={"score", "score_copy"}).claims
     assert len(kept) == 1 and kept[0] is second
-    edge_ids = sorted(data["claim_id"] for _, _, data in graph._graph.edges(data=True))
-    assert edge_ids == ["claim_1", "claim_1"]
+    edge_ids = [data["claim_id"] for _, _, data in graph._graph.edges(data=True)]
+    assert edge_ids == [None, None]
 
     assert _ids(MatchClaimField.from_claims([first, second])) == ["claim_1", "claim_2"]
-    assert (first.id, second.id) == ("claim_1", "claim_1")
+    assert (first.id, second.id) == (None, None)
 
-    bundle = AlignmentBundle()
+    bundle = _bundle()
     bundle.add_match_claims([first, second])
     assert (first.id, second.id) == ("claim_1", "claim_2")
-    kept = MatchGraph(bundle.cross_group_claims).filter(
+    assert (first.id_minted, second.id_minted) == (True, True)
+    kept = MatchGraph(bundle.get_match_claims()).filter(
         timeline_ids={"score", "score_copy"}
     )
     assert [claim.id for claim in kept.claims] == ["claim_2"]
@@ -248,14 +255,10 @@ def test_stored_and_new_claims_are_distinct(tmp_path: Path) -> None:
 
     assert [claim.id for claim in rebuilt] == [f"claim_{n}" for n in range(5, 11)]
     assert all(claim.bundle is bundle for claim in rebuilt)
-    assert [
-        claim is kept for claim, kept in zip(rebuilt, bundle.cross_group_claims)
-    ] == [True] * 6
-    ids = [claim.id for claim in bundle.get_match_claims()]
-    assert len(ids) == 10
-    assert sorted(ids, key=lambda claim_id: int(claim_id.split("_")[1])) == [
-        f"claim_{n}" for n in range(1, 11)
-    ]
+    held = bundle.get_match_claims()
+    assert held[4:] == rebuilt
+    assert all(claim.bundle is bundle for claim in held)
+    assert [claim.id for claim in held] == [f"claim_{n}" for n in range(1, 11)]
 
 
 def test_graph_filter_unaffected(tmp_path: Path) -> None:
@@ -289,41 +292,8 @@ def test_graph_filter_unaffected(tmp_path: Path) -> None:
     assert all(claim.is_explicit for claim in kept)
 
 
-def test_references_follow_reminted_ids() -> None:
-    def pair() -> tuple[MatchClaim, MatchClaim]:
-        source = _claims(STORED[:1])[0]
-        implicit = MatchClaim.implicit(
-            "score",
-            0,
-            "score_copy",
-            0,
-            unit_a=TimeUnit.quarters,
-            unit_b=TimeUnit.quarters,
-            source_claim=source,
-        )
-        return source, implicit
-
-    def holding_two() -> AlignmentBundle:
-        return AlignmentBundle().add_match_claims(_claims(NEW))
-
-    field = MatchClaimField.from_claims(list(pair()))
-    assert _ids(field) == ["claim_1", "claim_2"]
-    assert [claim.source_claim_id for claim in field] == [None, "claim_1"]
-
-    bundle = holding_two().add_match_claim_field(field)
-    joined = bundle.cross_group_claim_fields[0]
-    assert _ids(joined) == ["claim_3", "claim_4"]
-    assert [claim.source_claim_id for claim in joined] == [None, "claim_3"]
-
-    source, implicit = pair()
-    holding_two().add_match_claims([source, implicit])
-    assert (source.id, implicit.id) == ("claim_3", "claim_4")
-    assert implicit.source_claim_id == "claim_3"
-
-    anchor = MatchClaim.from_dict(
-        _claims(STORED[:1])[0].to_dict() | {"id": "anchor", "id_minted": False}
-    )
-    bundle = AlignmentBundle().add_match_claims([anchor, _claims(NEW[:1])[0]])
+def test_held_ids_are_refused_never_reminted() -> None:
+    source = _claims(STORED[:1], ["anchor"])[0]
     implicit = MatchClaim.implicit(
         "score",
         0,
@@ -331,7 +301,31 @@ def test_references_follow_reminted_ids() -> None:
         0,
         unit_a=TimeUnit.quarters,
         unit_b=TimeUnit.quarters,
-        source_claim=bundle.cross_group_claims[0],
+        source_claim=source,
+    )
+    field = MatchClaimField.from_claims([source, implicit])
+    assert _ids(field) == ["anchor", "claim_1"]
+    assert [claim.source_claim_id for claim in field] == [None, "anchor"]
+
+    bundle = _bundle().add_match_claims(_claims(NEW))
+    with pytest.raises(
+        ValueError,
+        match=re.escape(
+            "claim id 'claim_1' is already held by another claim of this bundle"
+        ),
+    ):
+        bundle.add_match_claim_field(field)
+    assert [claim.id for claim in bundle.get_match_claims()] == ["claim_1", "claim_2"]
+
+    bundle = _bundle().add_match_claims([source, _claims(NEW[:1])[0]])
+    implicit = MatchClaim.implicit(
+        "score",
+        0,
+        "score_copy",
+        0,
+        unit_a=TimeUnit.quarters,
+        unit_b=TimeUnit.quarters,
+        source_claim=bundle.get_match_claims()[0],
     )
     bundle.add_match_claims([implicit])
     assert (implicit.id, implicit.source_claim_id) == ("claim_2", "anchor")
@@ -341,23 +335,24 @@ def test_two_runs_merged(tmp_path: Path) -> None:
     program = textwrap.dedent("""
         import sys
 
-        import pyarrow.parquet as pq
-
         from timetoalign.alignment import MatchClaim, MatchClaimField
-        from timetoalign.core import TimeUnit
+        from timetoalign.timelines.types import (
+            ContinuousLogicalTimeline,
+            ContinuousPhysicalTimeline,
+        )
 
+        score = ContinuousLogicalTimeline(length=16, uid="score")
+        audio = ContinuousPhysicalTimeline(length=8.0, uid="audio")
         claims = [
-            MatchClaim.from_projection(
-                event={"start": quarters},
-                source_tl_id="score",
-                target_tl_id="audio",
-                target_coord=seconds,
-                source_unit=TimeUnit.quarters,
-                target_unit=TimeUnit.seconds,
+            MatchClaim.from_events(
+                {"id": f"note_{quarters}", "start": quarters},
+                score,
+                {"id": f"onset_{seconds}", "start": seconds},
+                audio,
             )
             for quarters, seconds in [(0, 0.0), (4, 2.0), (8, 4.0), (12, 6.0)]
         ]
-        pq.write_table(MatchClaimField.from_claims(claims).table, sys.argv[1])
+        MatchClaimField.from_claims(claims).to_parquet(sys.argv[1])
         """)
     first_path = tmp_path / "first.parquet"
     subprocess.run(
@@ -365,24 +360,30 @@ def test_two_runs_merged(tmp_path: Path) -> None:
         check=True,
         env=dict(os.environ),
     )
-    first = MatchClaimField.from_table(pq.read_table(first_path))
+    first = MatchClaimField.from_parquet(first_path)
     second = _stored(tmp_path / "second.parquet")
     assert _ids(first) == _ids(second) == ["claim_1", "claim_2", "claim_3", "claim_4"]
     assert first.table.equals(second.table, check_metadata=True)
 
-    bundle = _bundle()
-    bundle.add_match_claim_field(first)
-    bundle.add_match_claim_field(second)
-    merged_first, merged_second = bundle.cross_group_claim_fields
-    assert merged_first is first
-    assert _ids(merged_second) == ["claim_5", "claim_6", "claim_7", "claim_8"]
-    assert _ids(second) == ["claim_1", "claim_2", "claim_3", "claim_4"]
-    assert [claim.id_minted for claim in merged_second] == [True] * 4
-    merged_table = merged_second.table
-    stored = second.table
+    bundle = _holding().add_match_claim_field(first)
+    with pytest.raises(
+        ValueError,
+        match=re.escape(
+            "claim id 'claim_1' is already held by another claim of this bundle"
+        ),
+    ):
+        bundle.add_match_claim_field(second)
+    assert len(bundle.match_claim_table) == 4
+
+    runs = [_holding().add_match_claim_field(run) for run in (first, second)]
+    merged = AlignmentBundle.from_bundles(runs)
+    assert merged.claim_scopes == (merged.id, runs[0].id, runs[1].id)
+    table = merged.claim_table
+    assert table.column("id").to_pylist() == _ids(first) + _ids(second)
+    assert table.column("scope").to_pylist() == [1] * 4 + [2] * 4
+    stored = pa.concat_tables([first.table, second.table])
     for name in MatchClaimField.pa_schema.names:
-        if name != "id":
-            assert merged_table.column(name).equals(stored.column(name))
+        assert table.column(name).equals(stored.column(name))
 
 
 def test_given_id_refused_atomically() -> None:
@@ -395,40 +396,47 @@ def test_given_id_refused_atomically() -> None:
     given = given.model_copy(update={"id": "a", "id_minted": False})
     with pytest.raises(ValueError, match=message):
         bundle.add_match_claims([newcomer, given])
-    assert bundle.cross_group_claims == [held]
+    assert bundle.get_match_claims() == [held]
     assert (newcomer.id, newcomer.bundle) == (None, None)
     assert (given.id, given.bundle) == ("a", None)
 
     field = MatchClaimField.from_claims([given])
     with pytest.raises(ValueError, match=message):
         bundle.add_match_claim_field(field)
-    assert bundle.cross_group_claim_fields == []
+    assert bundle.get_match_claims() == [held]
     assert _ids(field) == ["a"]
 
 
-def test_held_claim_joins_as_copy() -> None:
-    sources = [AlignmentBundle(), AlignmentBundle()]
+def test_merge_keeps_ids_in_their_scopes() -> None:
+    sources = [_holding(*_claims(NEW)) for _ in range(2)]
     for source in sources:
-        source.add_match_claims(_claims(NEW))
-        assert [claim.id for claim in source.cross_group_claims] == [
+        assert [claim.id for claim in source.get_match_claims()] == [
             "claim_1",
             "claim_2",
         ]
 
     merged = AlignmentBundle.from_bundles(sources)
-    assert [claim.id for claim in merged.cross_group_claims] == [
-        "claim_1",
-        "claim_2",
-        "claim_3",
-        "claim_4",
-    ]
-    assert all(claim.bundle is merged for claim in merged.cross_group_claims)
+    held = merged.get_match_claims()
+    assert [claim.id for claim in held] == ["claim_1", "claim_2"] * 2
+    assert merged.claim_table.column("scope").to_pylist() == [1, 1, 2, 2]
+    assert merged.claim_scopes == (merged.id, sources[0].id, sources[1].id)
+    assert all(claim.bundle is merged for claim in held)
     for source in sources:
-        assert [claim.id for claim in source.cross_group_claims] == [
+        assert [claim.id for claim in source.get_match_claims()] == [
             "claim_1",
             "claim_2",
         ]
-        assert all(claim.bundle is source for claim in source.cross_group_claims)
+        assert "scope" not in source.claim_table.column_names
+
+    added = _claims(STORED[:1])
+    merged.add_match_claims(added)
+    assert added[0].id == "claim_1"
+    assert merged.claim_table.column("scope").to_pylist() == [1, 1, 2, 2, 0]
+
+    taken = sources[0].get_match_claims()[0]
+    other = _holding(taken)
+    assert taken.bundle is sources[0]
+    assert other.get_match_claims()[0].bundle is other
 
 
 # endregion

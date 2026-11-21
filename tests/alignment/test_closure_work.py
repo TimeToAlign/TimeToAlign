@@ -12,10 +12,13 @@ from typing import Any
 
 import pytest
 
-from timetoalign.alignment import AlignmentAnchor, AlignmentBundle, MatchClaim
+from timetoalign.alignment import AlignmentBundle, MatchClaim
+from timetoalign.alignment.claims import MatchClaimField
 from timetoalign.alignment.matchline import MatchLine
 from timetoalign.core import Coordinate, TimeUnit
 from timetoalign.timelines import Timeline, TimelineGroup
+
+from .helpers import match_claim
 
 Q = TimeUnit.quarters
 S = TimeUnit.seconds
@@ -27,17 +30,6 @@ PERFORMANCES = (1, 2, 3)
 def _timeline(uid: str, length: int, unit: TimeUnit) -> Timeline:
     """One timeline of the fixture."""
     return Timeline(length=length, unit=unit, uid=uid)
-
-
-def _claim(a_id: str, a: Coordinate, b_id: str, b: Coordinate) -> MatchClaim:
-    """One instant claim between two timelines."""
-    return MatchClaim(
-        timeline_a_id=a_id,
-        timeline_b_id=b_id,
-        start_anchor=AlignmentAnchor(
-            timeline_a_id=a_id, coordinate_a=a, timeline_b_id=b_id, coordinate_b=b
-        ),
-    )
 
 
 def _bundle() -> AlignmentBundle:
@@ -65,12 +57,12 @@ def _bundle() -> AlignmentBundle:
         TimelineGroup(id="recording_group", timelines=[_timeline("recording", 50, S)])
     )
     claims = [
-        _claim("score", Coordinate(q, Q), f"perf_{n}", Coordinate(float(n * q), S))
+        match_claim("score", Coordinate(q, Q), f"perf_{n}", Coordinate(float(n * q), S))
         for n in PERFORMANCES
         for q in range(0, 41, 2)
     ]
     claims += [
-        _claim("edition", Coordinate(q, Q), "recording", Coordinate(q + 5.0, S))
+        match_claim("edition", Coordinate(q, Q), "recording", Coordinate(q + 5.0, S))
         for q in (0, 40)
     ]
     bundle.add_match_claims(claims)
@@ -79,41 +71,57 @@ def _bundle() -> AlignmentBundle:
 
 @pytest.fixture
 def work(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
-    """Count claims expressed, MatchLines built and warps attempted."""
-    counts: Counter[str] = Counter()
+    """Count table cuts, claims materialised, MatchLines built, warps attempted."""
+    cuts: Counter[str] = Counter()
+    rows_cut: Counter[str] = Counter()
+    materialized: list[int] = []
     sources: list[str] = []
-    native = AlignmentBundle._claim_in_native_units
+    transfers: list[str] = []
+    connecting = MatchClaimField.connecting
+    as_claims = AlignmentBundle._materialized
     transfer = AlignmentBundle._transfer_to_group
     from_claims = MatchLine.from_claims.__func__  # type: ignore[attr-defined]
 
-    def counting_native(self: AlignmentBundle, claim: MatchClaim) -> MatchClaim:
-        counts["expressed"] += 1
-        return native(self, claim)
+    def counting_connecting(self: MatchClaimField, timeline_id: str) -> MatchClaimField:
+        cut = connecting(self, timeline_id)
+        cuts[timeline_id] += 1
+        rows_cut[timeline_id] += len(cut)
+        return cut
+
+    def counting_materialized(
+        self: AlignmentBundle, rows: MatchClaimField
+    ) -> list[MatchClaim]:
+        claims = as_claims(self, rows)
+        materialized.append(len(claims))
+        return claims
 
     def counting_transfer(self: AlignmentBundle, *args: Any, **kwargs: Any) -> Any:
-        counts["transfers"] += 1
+        transfers.append(args[1])
         return transfer(self, *args, **kwargs)
 
     def counting_from_claims(cls: type[MatchLine], *args: Any, **kwargs: Any) -> Any:
         sources.append(kwargs["source_timeline_id"])
         return from_claims(cls, *args, **kwargs)
 
-    monkeypatch.setattr(AlignmentBundle, "_claim_in_native_units", counting_native)
+    monkeypatch.setattr(MatchClaimField, "connecting", counting_connecting)
+    monkeypatch.setattr(AlignmentBundle, "_materialized", counting_materialized)
     monkeypatch.setattr(AlignmentBundle, "_transfer_to_group", counting_transfer)
     monkeypatch.setattr(MatchLine, "from_claims", classmethod(counting_from_claims))
-    return {"counts": counts, "sources": sources}
+    return {
+        "cuts": cuts,
+        "rows_cut": rows_cut,
+        "materialized": materialized,
+        "sources": sources,
+        "transfers": transfers,
+    }
 
 
-def test_closure_expresses_only_the_claims_naming_each_timeline(
+def test_closure_reads_only_the_claims_naming_each_timeline(
     work: dict[str, Any],
 ) -> None:
-    """386 claims expressed, two MatchLines, four warps (README derivation)."""
+    """57 cuts of 130 rows, 65 claims materialised, two lines, four warps."""
     bundle = _bundle()
     stamp = bundle.get_matchstamp_at(11, "score")
-
-    assert work["counts"]["expressed"] == 386
-    assert work["sources"] == ["score", "edition"]
-    assert work["counts"]["transfers"] == 4
 
     expected = (
         {"score", "facsimile", "edition", "recording"}
@@ -122,6 +130,23 @@ def test_closure_expresses_only_the_claims_naming_each_timeline(
         | {f"perf_{n}_track_{k}" for n in PERFORMANCES for k in range(1, N_TRACKS + 1)}
     )
     assert len(expected) == 57
+    assert work["cuts"] == Counter({timeline_id: 1 for timeline_id in expected})
+    assert +work["rows_cut"] == Counter(
+        {
+            "score": 63,
+            "edition": 2,
+            "recording": 2,
+            "perf_1": 21,
+            "perf_2": 21,
+            "perf_3": 21,
+        }
+    )
+    assert sum(work["rows_cut"].values()) == 130
+
+    assert work["sources"] == ["score", "edition"]
+    assert work["materialized"] == [0, 0, 0, 63, 2] + [0] * 56
+    assert work["transfers"] == ["score", "score", "score", "score"]
+
     assert set(stamp.present_timelines) == expected
 
     def value(timeline_id: str) -> Any:

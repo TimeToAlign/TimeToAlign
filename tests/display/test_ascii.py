@@ -16,7 +16,9 @@ import re
 import pyarrow as pa
 import pytest
 
-from timetoalign.core import TimeUnit
+from tests.alignment.helpers import match_claim
+from timetoalign.alignment import MatchClaimField
+from timetoalign.core import Coordinate, TimeUnit
 from timetoalign.core.enums import FlowMode
 from timetoalign.display.ascii import (
     BOX_CHARS,
@@ -642,13 +644,13 @@ class TestBundleDiagram:
         assert "MatchClaims:" in result
 
     def test_columnar_claim_field_counted(self) -> None:
-        """Claims held only in a columnar MatchClaimField are counted.
+        """Claims added as a columnar MatchClaimField are counted.
 
-        A dense audio-to-audio bundle stores its claims in a MatchClaimField
-        (not the per-claim Python list), so the diagram's claim count must
-        include the field's row count.
+        A dense audio-to-audio bundle adds its claims as a MatchClaimField,
+        whose rows join the bundle's MatchClaim table without a claim being
+        materialised; the diagram's count is the table's row count.
         """
-        from timetoalign.alignment import AlignmentBundle, MatchClaimField
+        from timetoalign.alignment import AlignmentBundle
 
         bundle = AlignmentBundle(id="columnar_bundle")
         tl_a = ContinuousPhysicalTimeline(length=1.0, uid="rec-a:cpt_1")
@@ -657,32 +659,20 @@ class TestBundleDiagram:
         bundle.add_timeline(tl_b, as_group="rec-b")
 
         # Three synchronous instant claims, held columnar (never materialised).
-        field = MatchClaimField.from_columns(
-            timeline_a_ids=["rec-a:cpt_1"] * 3,
-            timeline_b_ids=["rec-b:cpt_1"] * 3,
-            coordinate_a=[0.0, 0.1, 0.2],
-            coordinate_b=[0.0, 0.1, 0.2],
-            unit_a="seconds",
-            unit_b="seconds",
-        )
-        bundle.add_match_claim_field(field)
+        bundle.add_match_claim_field(_onset_claims(tl_a, tl_b, [0.0, 0.1, 0.2]))
 
         result = bundle_diagram(bundle)
 
-        # The Python claim list is empty; the count comes from the field.
-        assert len(bundle.cross_group_claims) == 0
+        assert bundle.n_cross_group_claims == 3
         assert "MatchClaims: 3" in result
 
-    def test_list_and_field_claim_counts_sum(self) -> None:
-        """The diagram count is the list count plus the columnar field count."""
-        from timetoalign.alignment import (
-            AlignmentAnchor,
-            AlignmentBundle,
-            MatchClaim,
-            MatchClaimField,
-        )
-        from timetoalign.core.enums import TimeUnit
-        from timetoalign.core.time import Coordinate
+    def test_claims_and_field_rows_counted_together(self) -> None:
+        """The diagram counts claims added one by one and a field's rows alike.
+
+        Three rows of a field (ids ``claim_1`` to ``claim_3``), then two
+        claims (minted ``claim_4`` and ``claim_5``): one table of five rows.
+        """
+        from timetoalign.alignment import AlignmentBundle
 
         bundle = AlignmentBundle(id="mixed_bundle")
         tl_a = ContinuousPhysicalTimeline(length=1.0, uid="rec-a:cpt_1")
@@ -690,36 +680,43 @@ class TestBundleDiagram:
         bundle.add_timeline(tl_a, as_group="rec-a")
         bundle.add_timeline(tl_b, as_group="rec-b")
 
-        # Two Python-list claims ...
+        bundle.add_match_claim_field(_onset_claims(tl_a, tl_b, [0.2, 0.3, 0.4]))
         bundle.add_match_claims(
             [
-                MatchClaim(
-                    timeline_a_id="rec-a:cpt_1",
-                    timeline_b_id="rec-b:cpt_1",
-                    start_anchor=AlignmentAnchor(
-                        timeline_a_id="rec-a:cpt_1",
-                        coordinate_a=Coordinate(c, TimeUnit.seconds),
-                        timeline_b_id="rec-b:cpt_1",
-                        coordinate_b=Coordinate(c, TimeUnit.seconds),
-                    ),
+                match_claim(
+                    tl_a.id,
+                    Coordinate(value, TimeUnit.seconds),
+                    tl_b.id,
+                    Coordinate(value, TimeUnit.seconds),
                 )
-                for c in (0.0, 0.1)
+                for value in (0.0, 0.1)
             ]
-        )
-        # ... plus three columnar claims → 5 total.
-        bundle.add_match_claim_field(
-            MatchClaimField.from_columns(
-                timeline_a_ids=["rec-a:cpt_1"] * 3,
-                timeline_b_ids=["rec-b:cpt_1"] * 3,
-                coordinate_a=[0.2, 0.3, 0.4],
-                coordinate_b=[0.2, 0.3, 0.4],
-                unit_a="seconds",
-                unit_b="seconds",
-            )
         )
 
         result = bundle_diagram(bundle)
+        assert bundle.n_cross_group_claims == 5
         assert "MatchClaims: 5" in result
+
+
+def _onset_claims(
+    tl_a: ContinuousPhysicalTimeline,
+    tl_b: ContinuousPhysicalTimeline,
+    seconds: list[float],
+) -> MatchClaimField:
+    """Instant claims matching onset ``i`` of *tl_a* to onset ``i`` of *tl_b*.
+
+    Both timelines count seconds as floats; each row names the onset
+    events ``a<seconds>`` and ``b<seconds>``.
+    """
+    return MatchClaimField.from_columns(
+        [tl_a.id] * len(seconds),
+        [tl_b.id] * len(seconds),
+        [f"a{value}" for value in seconds],
+        [f"b{value}" for value in seconds],
+        seconds,
+        seconds,
+        timelines=[tl_a, tl_b],
+    )
 
 
 # endregion

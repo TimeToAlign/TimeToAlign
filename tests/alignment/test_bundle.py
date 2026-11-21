@@ -11,6 +11,7 @@ Tests cover core functionality:
 - WarpMap cache invalidation
 - Indirect transfer (within-group convert + cross-group warp)
 - Edge cases (insufficient claims, non-synchronous claims)
+- The one MatchClaim table: entry checks, Projections, the belief filter
 
 Per ZERO TOLERANCE policy, all assertions use exact expected values.
 """
@@ -22,24 +23,31 @@ from fractions import Fraction
 import pytest
 
 from timetoalign.alignment import (
-    AlignmentAnchor,
     AlignmentBundle,
     MatchClaim,
     MatchClaimField,
 )
+from timetoalign.alignment.bundle import _ALL_BELIEFS
 from timetoalign.alignment.matchline import MatchLine
 from timetoalign.core import (
+    Belief,
     Coordinate,
     CoordinateField,
     IdCoordinate,
     IdCoordinateField,
+    Provenance,
     TimeUnit,
 )
 from timetoalign.maps import ScalarMap, TableMap
 from timetoalign.timelines import Timeline, TimelineGroup
-from timetoalign.timelines.types import ContinuousLogicalTimeline
+from timetoalign.timelines.types import (
+    ContinuousLogicalTimeline,
+    ContinuousPhysicalTimeline,
+    DiscretePhysicalTimeline,
+)
 
 from .helpers import make_match_stamp as MatchStamp
+from .helpers import match_claim
 
 # region Fixtures
 
@@ -607,33 +615,40 @@ def _make_cross_group_bundle() -> (
     return bundle, score_tl, image_tl, audio_tl, midi_tl
 
 
+def _seconds_claim(
+    tl_a_id: str,
+    value_a: float,
+    tl_b_id: str,
+    value_b: float,
+    *,
+    provenance: Provenance | None = None,
+) -> MatchClaim:
+    """An instant claim between two seconds timelines (float axes).
+
+    The fixture timelines are plain ``Timeline`` objects, whose axis is
+    seconds written as floats, so both coordinates are float seconds.
+    """
+    return match_claim(
+        tl_a_id,
+        Coordinate(value_a, TimeUnit.seconds),
+        tl_b_id,
+        Coordinate(value_b, TimeUnit.seconds),
+        provenance=provenance,
+    )
+
+
 def _make_linear_claims(
     tl_a_id: str, tl_b_id: str, n_points: int = 5
 ) -> list[MatchClaim]:
     """Create n_points instant MatchClaims mapping [0..n-1] linearly.
 
-    The mapping is: coord_b = coord_a * 0.5
-    So tl_a range [0, n-1] maps to tl_b range [0, (n-1)*0.5].
-
-    Uses the timeline IDs.
+    The mapping is: coord_b = coord_a * 0.5, on the seconds axes of both
+    timelines: tl_a at 0, 50, 100, ... matches tl_b at 0, 25, 50, ...
     """
-    claims = []
-    for i in range(n_points):
-        coord_a = float(i * 50)  # 0, 50, 100, 150, 200
-        coord_b = float(i * 25)  # 0, 25, 50, 75, 100
-        claims.append(
-            MatchClaim(
-                timeline_a_id=tl_a_id,
-                timeline_b_id=tl_b_id,
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id=tl_a_id,
-                    coordinate_a=Coordinate(coord_a, TimeUnit.number),
-                    timeline_b_id=tl_b_id,
-                    coordinate_b=Coordinate(coord_b, TimeUnit.number),
-                ),
-            )
-        )
-    return claims
+    return [
+        _seconds_claim(tl_a_id, float(i * 50), tl_b_id, float(i * 25))
+        for i in range(n_points)
+    ]
 
 
 def _make_claim_filter_bundle() -> tuple[
@@ -661,16 +676,12 @@ def _make_claim_filter_bundle() -> tuple[
     bundle.add_timeline(audio, as_group="audio-group")
     bundle.add_timeline(other, as_group="other-group")
 
+    def origin(timeline: Timeline) -> Coordinate:
+        return Coordinate(0, timeline.unit, number_type=timeline.number_type)
+
     def claim(timeline_a: Timeline, timeline_b: Timeline) -> MatchClaim:
-        return MatchClaim(
-            timeline_a_id=timeline_a.id,
-            timeline_b_id=timeline_b.id,
-            start_anchor=AlignmentAnchor(
-                timeline_a_id=timeline_a.id,
-                coordinate_a=Coordinate(0.0, timeline_a.unit),
-                timeline_b_id=timeline_b.id,
-                coordinate_b=Coordinate(0.0, timeline_b.unit),
-            ),
+        return match_claim(
+            timeline_a.id, origin(timeline_a), timeline_b.id, origin(timeline_b)
         )
 
     claims = [claim(score, audio), claim(score, other), claim(audio, other)]
@@ -747,8 +758,14 @@ class TestCrossGroupTransfer:
         assert result == 50.0
 
     def test_transfer_surfaces_ambiguous_warp_error(self) -> None:
-        """Ambiguous source coordinates are not converted to a false value."""
+        """Ambiguous source coordinates are not converted to a false value.
+
+        The bundle holds one claim (so it has claims in force); the
+        MatchLine it would build from its claims is replaced, in its cache,
+        by a line whose source coordinate 50 has two targets.
+        """
         bundle, score_tl, _, audio_tl, _ = _make_cross_group_bundle()
+        bundle.add_match_claims([_seconds_claim(score_tl.id, 0.0, audio_tl.id, 0.0)])
         line = MatchLine(
             source_timeline_id=score_tl.id,
             stamps=[
@@ -766,21 +783,8 @@ class TestCrossGroupTransfer:
                 ),
             ],
         )
-        bundle._matchline_cache[score_tl.id] = line
-        bundle._cache_claims_hash = id(bundle.cross_group_claims) + 1
+        bundle._matchline_cache[(_ALL_BELIEFS, score_tl.id)] = line
         bundle._warp_map_cache.clear()
-        bundle.cross_group_claims.append(
-            MatchClaim(
-                timeline_a_id=score_tl.id,
-                timeline_b_id=audio_tl.id,
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id=score_tl.id,
-                    coordinate_a=Coordinate(0.0, TimeUnit.number),
-                    timeline_b_id=audio_tl.id,
-                    coordinate_b=Coordinate(0.0, TimeUnit.number),
-                ),
-            )
-        )
 
         with pytest.raises(
             ValueError,
@@ -874,14 +878,7 @@ class TestCrossGroupTransfer:
         bundle, score_tl, _, audio_tl, _ = _make_cross_group_bundle()
 
         # Add non-synchronous claims (no anchors -> no WarpMap)
-        claims = [
-            MatchClaim.nomatch(
-                event={"start": 50.0},
-                source_tl_id=score_tl.id,
-                target_tl_id=audio_tl.id,
-                unit=TimeUnit.number,
-            )
-        ]
+        claims = [MatchClaim.nomatch({"id": "n50", "start": 50.0}, score_tl, audio_tl)]
         bundle.add_match_claims(claims)
 
         result = bundle.transfer(50.0, "score", "audio")
@@ -891,18 +888,7 @@ class TestCrossGroupTransfer:
         """One claim resolves its exact edge but cannot interpolate a WarpMap."""
         bundle, score_tl, _, audio_tl, _ = _make_cross_group_bundle()
 
-        claims = [
-            MatchClaim(
-                timeline_a_id=score_tl.id,
-                timeline_b_id=audio_tl.id,
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id=score_tl.id,
-                    coordinate_a=Coordinate(100.0, TimeUnit.number),
-                    timeline_b_id=audio_tl.id,
-                    coordinate_b=Coordinate(50.0, TimeUnit.number),
-                ),
-            )
-        ]
+        claims = [_seconds_claim(score_tl.id, 100.0, audio_tl.id, 50.0)]
         bundle.add_match_claims(claims)
 
         assert bundle.transfer(100.0, "score", "audio") == 50.0
@@ -1068,14 +1054,7 @@ class TestCommensurabilityWithClaims:
         """Non-synchronous claims don't make timelines commensurable."""
         bundle, score_tl, _, audio_tl, _ = _make_cross_group_bundle()
 
-        claims = [
-            MatchClaim.nomatch(
-                event={"start": 50.0},
-                source_tl_id=score_tl.id,
-                target_tl_id=audio_tl.id,
-                unit=TimeUnit.number,
-            )
-        ]
+        claims = [MatchClaim.nomatch({"id": "n50", "start": 50.0}, score_tl, audio_tl)]
         bundle.add_match_claims(claims)
 
         assert bundle.are_commensurable("score", "audio") is False
@@ -1129,18 +1108,7 @@ class TestCacheInvalidation:
         assert len(bundle._warp_map_cache) >= 1
 
         # Add more claims -> invalidates cache
-        more_claims = [
-            MatchClaim(
-                timeline_a_id=score_tl.id,
-                timeline_b_id=audio_tl.id,
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id=score_tl.id,
-                    coordinate_a=Coordinate(175.0, TimeUnit.number),
-                    timeline_b_id=audio_tl.id,
-                    coordinate_b=Coordinate(87.5, TimeUnit.number),
-                ),
-            )
-        ]
+        more_claims = [_seconds_claim(score_tl.id, 175.0, audio_tl.id, 87.5)]
         bundle.add_match_claims(more_claims)
 
         assert len(bundle._warp_map_cache) == 0  # Cache cleared
@@ -1157,18 +1125,7 @@ class TestCacheInvalidation:
         assert result1 == 50.0
 
         # Add an additional claim that is consistent with the linear mapping
-        more_claims = [
-            MatchClaim(
-                timeline_a_id=score_tl.id,
-                timeline_b_id=audio_tl.id,
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id=score_tl.id,
-                    coordinate_a=Coordinate(150.0, TimeUnit.number),
-                    timeline_b_id=audio_tl.id,
-                    coordinate_b=Coordinate(75.0, TimeUnit.number),
-                ),
-            )
-        ]
+        more_claims = [_seconds_claim(score_tl.id, 150.0, audio_tl.id, 75.0)]
         bundle.add_match_claims(more_claims)
 
         # Transfer should still work after rebuild
@@ -1193,13 +1150,18 @@ class TestAddMatchClaims:
         result = bundle.add_match_claims(claims)
         assert result is bundle
 
-    def test_claims_stored_in_cross_group_claims(self) -> None:
-        """Claims are stored in cross_group_claims list."""
+    def test_claims_are_rows_of_the_match_claim_table(self) -> None:
+        """The claims become rows of the one table; read back, they are equal."""
         bundle, score_tl, _, audio_tl, _ = _make_cross_group_bundle()
         claims = _make_linear_claims(score_tl.id, audio_tl.id, n_points=3)
         bundle.add_match_claims(claims)
 
-        assert len(bundle.cross_group_claims) == 3
+        assert len(bundle.match_claim_table) == 3
+        assert bundle.n_cross_group_claims == 3
+        held = bundle.get_match_claims()
+        assert [claim.id for claim in held] == ["claim_1", "claim_2", "claim_3"]
+        assert held == claims
+        assert all(claim.bundle is bundle for claim in held)
 
     def test_multiple_add_claims_accumulate(self) -> None:
         """Multiple add_match_claims calls accumulate claims."""
@@ -1207,56 +1169,243 @@ class TestAddMatchClaims:
 
         claims1 = _make_linear_claims(score_tl.id, audio_tl.id, n_points=3)
         bundle.add_match_claims(claims1)
-        assert len(bundle.cross_group_claims) == 3
+        assert bundle.n_cross_group_claims == 3
 
-        claims2 = [
-            MatchClaim(
-                timeline_a_id=score_tl.id,
-                timeline_b_id=audio_tl.id,
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id=score_tl.id,
-                    coordinate_a=Coordinate(150.0, TimeUnit.number),
-                    timeline_b_id=audio_tl.id,
-                    coordinate_b=Coordinate(75.0, TimeUnit.number),
-                ),
-            )
-        ]
+        claims2 = [_seconds_claim(score_tl.id, 150.0, audio_tl.id, 75.0)]
         bundle.add_match_claims(claims2)
-        assert len(bundle.cross_group_claims) == 4
+        assert bundle.n_cross_group_claims == 4
+        assert claims2[0].id == "claim_4"
+
+    def test_claim_naming_an_unknown_timeline_is_refused(self) -> None:
+        """A claim naming a timeline the bundle does not hold adds nothing."""
+        bundle, score_tl, _, audio_tl, _ = _make_cross_group_bundle()
+        claims = [
+            _seconds_claim(score_tl.id, 0.0, audio_tl.id, 0.0),
+            _seconds_claim(score_tl.id, 50.0, "ghost", 25.0),
+        ]
+
+        with pytest.raises(
+            KeyError, match=r"\['ghost'\] that this bundle does not hold"
+        ):
+            bundle.add_match_claims(claims)
+
+        assert bundle.n_cross_group_claims == 0
+        assert bundle.get_match_claims() == []
+
+    @pytest.mark.parametrize(
+        ("coordinate", "stated"),
+        [
+            (Coordinate(Fraction(4), TimeUnit.quarters), "quarters"),
+            (Coordinate(Fraction(1, 2), TimeUnit.seconds), "seconds"),
+        ],
+        ids=["other_unit", "other_number_type"],
+    )
+    def test_claim_off_its_timelines_axis_is_refused(
+        self, coordinate: Coordinate, stated: str
+    ) -> None:
+        """A coordinate off its timeline's axis (unit or number type) adds nothing.
+
+        The audio timeline's axis is seconds written as floats: quarters are
+        another unit, a Fraction of seconds another number type. Neither is
+        converted when the claim joins.
+        """
+        bundle, score_tl, _, audio_tl, _ = _make_cross_group_bundle()
+        claims = [
+            _seconds_claim(score_tl.id, 0.0, audio_tl.id, 0.0),
+            match_claim(
+                score_tl.id, Coordinate(50.0, TimeUnit.seconds), audio_tl.id, coordinate
+            ),
+        ]
+
+        with pytest.raises(
+            ValueError,
+            match=(
+                rf"Row 1 start_anchor\.coordinate_b is in {stated} \(fraction\), but "
+                r"timeline 'audio' counts in seconds \(float\)"
+            ),
+        ):
+            bundle.add_match_claims(claims)
+
+        assert bundle.n_cross_group_claims == 0
+        assert bundle.get_match_claims() == []
 
 
 # endregion
 
 
-# region Test: create_match_claims agent_identifier
+# region Test: create_match_claims
 
 
 class TestCreateMatchClaims:
-    """Tests for create_match_claims() and the agent_identifier keyword."""
+    """Tests for create_match_claims(): events, Projections and provenance."""
 
-    def test_agent_identifier_lands_in_agent_identifier(self) -> None:
-        # The public keyword is agent_identifier (renamed from
-        # decision_criteria); its value lands in Agent.identifier.
+    def test_provenance_lands_on_every_claim(self) -> None:
+        """How the claims were made is their provenance, held in the table."""
         bundle, score_tl, _, audio_tl, _ = _make_cross_group_bundle()
+        provenance = Provenance(
+            service="https://example.org/aligner", method="inferred"
+        )
+
         claims = bundle.create_match_claims(
             [({"start": 0.0}, score_tl.id, {"start": 10.0}, audio_tl.id)],
-            agent="dtw",
-            agent_identifier="dynamic_time_warping",
+            provenance=provenance,
         )
-        assert len(claims) == 1
-        meta = claims[0].metadata
-        assert meta is not None
-        assert meta.agent.name == "dtw"
-        assert meta.agent.identifier == "dynamic_time_warping"
 
-    def test_no_decision_criteria_keyword(self) -> None:
-        # The old keyword is gone — no compat shim.
+        assert len(claims) == 1
+        assert claims[0].provenance == provenance
+        assert bundle.get_match_claims()[0].provenance == provenance
+
+    @pytest.mark.parametrize(
+        "keyword", ["agent", "agent_identifier", "decision_criteria"]
+    )
+    def test_no_agent_keywords(self, keyword: str) -> None:
+        """Provenance alone states how a claim was made: no agent keyword."""
         bundle, score_tl, _, audio_tl, _ = _make_cross_group_bundle()
         with pytest.raises(TypeError):
             bundle.create_match_claims(
                 [({"start": 0.0}, score_tl.id, {"start": 10.0}, audio_tl.id)],
-                decision_criteria="manual",
+                **{keyword: "dtw"},
             )
+        assert bundle.n_cross_group_claims == 0
+
+    def test_position_in_seconds_is_projected_onto_a_samples_axis(self) -> None:
+        """A seconds position is converted onto the samples axis when the claim is made.
+
+        ``audio`` counts samples (int) and holds a C-Map samples -> seconds
+        at 44100 samples per second, so 2.0 seconds is exactly sample 88200.
+        The claim between the performance note ``o1`` (2.5 seconds) and the
+        Projection added for the position stores 88200 samples, an int, and
+        the Projection names ``o1`` as the event it stands for.
+        """
+        performance = ContinuousPhysicalTimeline(length=10.0, uid="performance")
+        performance.add_events([{"id": "o1", "event_type": "Note", "instant": 2.5}])
+        audio = DiscretePhysicalTimeline(length=441000, uid="audio")
+        audio.add_conversion_map(
+            ScalarMap(
+                scalar=Fraction(1, 44100),
+                source_unit=TimeUnit.samples,
+                target_unit=TimeUnit.seconds,
+            )
+        )
+        bundle = AlignmentBundle()
+        bundle.add_timeline(performance, as_group="performance")
+        bundle.add_timeline(audio, as_group="audio")
+
+        (claim,) = bundle.create_match_claims(
+            [
+                (
+                    "o1",
+                    "performance",
+                    {"start": Coordinate(2.0, TimeUnit.seconds)},
+                    "audio",
+                )
+            ]
+        )
+
+        assert (claim.event_a_id, claim.event_b_id) == ("o1", "projection_1")
+        assert claim.start_anchor.coordinate_a == Coordinate(2.5, TimeUnit.seconds)
+        assert claim.start_anchor.coordinate_b == Coordinate(88200, TimeUnit.samples)
+        assert type(claim.start_anchor.coordinate_b.value) is int
+        (held,) = bundle.get_match_claims()
+        assert held == claim
+        assert held.start_anchor.coordinate_b == Coordinate(88200, TimeUnit.samples)
+        projection = audio.get_event("projection_1")
+        assert projection["event_type"] == "Projection"
+        assert projection["projection_of"] == {
+            "timeline_id": "performance",
+            "event_id": "o1",
+        }
+
+
+# endregion
+
+
+# region Test: the belief filter
+
+
+def _believed_claims_bundle() -> AlignmentBundle:
+    """Three claims score -> audio, of which ``ana`` believes one false.
+
+    ``claim_1`` (0 -> 0) ana believes true; ``claim_2`` (100 -> 60) ana
+    believes false; ``claim_3`` (200 -> 100) states no belief.
+    """
+    bundle, score_tl, _, audio_tl, _ = _make_cross_group_bundle()
+
+    def believed(value: str) -> Provenance:
+        return Provenance(
+            method="manual",
+            beliefs=(Belief(actor="ana", belief=value, date="2026-11-21"),),
+        )
+
+    bundle.add_match_claims(
+        [
+            _seconds_claim(
+                score_tl.id, 0.0, audio_tl.id, 0.0, provenance=believed("true")
+            ),
+            _seconds_claim(
+                score_tl.id, 100.0, audio_tl.id, 60.0, provenance=believed("false")
+            ),
+            _seconds_claim(score_tl.id, 200.0, audio_tl.id, 100.0),
+        ]
+    )
+    return bundle
+
+
+class TestBeliefFilter:
+    """The belief filter selects the claims every reader reads."""
+
+    def test_get_match_claims_reads_through_the_belief_filter(self) -> None:
+        """No believer: all; ana: all but the false; ana, "true": the true only."""
+        bundle = _believed_claims_bundle()
+
+        assert [claim.id for claim in bundle.get_match_claims()] == [
+            "claim_1",
+            "claim_2",
+            "claim_3",
+        ]
+        assert [claim.id for claim in bundle.get_match_claims(believer="ana")] == [
+            "claim_1",
+            "claim_3",
+        ]
+        assert [
+            claim.id for claim in bundle.get_match_claims(believer="ana", belief="true")
+        ] == ["claim_1"]
+
+    def test_get_matchstamp_at_reads_through_the_belief_filter(self) -> None:
+        """Score 100 is claim_2's anchor, unless ana's filter leaves it out.
+
+        No believer: the anchor, audio 60.0, not interpolated. ana's filter
+        keeps claim_1 and claim_3, between which score 100 interpolates to
+        audio 50.0. With belief "true" only claim_1 remains: one claim
+        cannot interpolate, so the stamp holds the score group alone.
+        """
+        bundle = _believed_claims_bundle()
+
+        everything = bundle.get_matchstamp_at(100.0, "score")
+        assert everything.is_interpolated is False
+        assert everything.coordinates == {
+            "score": Coordinate(100.0, TimeUnit.seconds),
+            "image": Coordinate(200.0, TimeUnit.seconds),
+            "audio": Coordinate(60.0, TimeUnit.seconds),
+            "midi": Coordinate(60.0, TimeUnit.seconds),
+        }
+
+        not_false = bundle.get_matchstamp_at(100.0, "score", believer="ana")
+        assert not_false.is_interpolated is True
+        assert not_false.coordinates == {
+            "score": Coordinate(100.0, TimeUnit.seconds),
+            "image": Coordinate(200.0, TimeUnit.seconds),
+            "audio": Coordinate(50.0, TimeUnit.seconds),
+            "midi": Coordinate(50.0, TimeUnit.seconds),
+        }
+
+        only_true = bundle.get_matchstamp_at(
+            100.0, "score", believer="ana", belief="true"
+        )
+        assert only_true.coordinates == {
+            "score": Coordinate(100.0, TimeUnit.seconds),
+            "image": Coordinate(200.0, TimeUnit.seconds),
+        }
 
 
 # endregion
@@ -1268,61 +1417,78 @@ class TestCreateMatchClaims:
 class TestAddMatchClaimField:
     """Tests for the columnar add_match_claim_field() path."""
 
-    def _field(self, tl_a_id: str, tl_b_id: str) -> MatchClaimField:
-        """A 5-row instant claim field: coord_b = coord_a * 0.5."""
+    def _field(self, tl_a: Timeline, tl_b: Timeline) -> MatchClaimField:
+        """A 5-row instant claim field: coord_b = coord_a * 0.5, in seconds."""
+        coordinate_a = [0.0, 50.0, 100.0, 150.0, 200.0]
+        coordinate_b = [0.0, 25.0, 50.0, 75.0, 100.0]
         return MatchClaimField.from_columns(
-            timeline_a_ids=[tl_a_id] * 5,
-            timeline_b_ids=[tl_b_id] * 5,
-            coordinate_a=[0.0, 50.0, 100.0, 150.0, 200.0],
-            coordinate_b=[0.0, 25.0, 50.0, 75.0, 100.0],
-            unit_a=TimeUnit.number,
-            unit_b=TimeUnit.number,
+            [tl_a.id] * 5,
+            [tl_b.id] * 5,
+            [f"{tl_a.id}@{value}" for value in coordinate_a],
+            [f"{tl_b.id}@{value}" for value in coordinate_b],
+            coordinate_a,
+            coordinate_b,
+            timelines=[tl_a, tl_b],
         )
 
     def test_returns_self_for_chaining(self) -> None:
         bundle, score_tl, _, audio_tl, _ = _make_cross_group_bundle()
-        field = self._field(score_tl.id, audio_tl.id)
+        field = self._field(score_tl, audio_tl)
         assert bundle.add_match_claim_field(field) is bundle
 
-    def test_field_stored_columnar_not_in_list(self) -> None:
-        # The field goes to the columnar store; the per-claim Python list is
-        # left untouched (never exploded).
+    def test_field_rows_join_the_match_claim_table(self) -> None:
+        # The rows join the bundle's one table, ids kept; the field passed
+        # in is left as it is.
         bundle, score_tl, _, audio_tl, _ = _make_cross_group_bundle()
-        bundle.add_match_claim_field(self._field(score_tl.id, audio_tl.id))
-        assert len(bundle.cross_group_claims) == 0
-        assert len(bundle.cross_group_claim_fields) == 1
-        assert len(bundle.cross_group_claim_fields[0]) == 5
+        field = self._field(score_tl, audio_tl)
+        bundle.add_match_claim_field(field)
+
+        assert bundle.n_cross_group_claims == 5
+        assert bundle.match_claim_table.to_claims() == field.to_claims()
+        assert [claim.id for claim in bundle.get_match_claims()] == [
+            f"claim_{n}" for n in range(1, 6)
+        ]
+        assert len(field) == 5
 
     def test_matchstamp_via_columnar_field(self) -> None:
-        # get_matchstamp_at answers from the columnar field at an exact grid
-        # coordinate, without touching the Python claim list.
+        # get_matchstamp_at answers from the field's rows at an exact grid
+        # coordinate.
         bundle, score_tl, _, audio_tl, _ = _make_cross_group_bundle()
-        bundle.add_match_claim_field(self._field(score_tl.id, audio_tl.id))
+        bundle.add_match_claim_field(self._field(score_tl, audio_tl))
         stamp = bundle.get_matchstamp_at(100.0, score_tl.id)
         assert stamp.get_coordinate_for("score", format="float") == 100.0
         assert stamp.get_coordinate_for("audio", format="float") == 50.0
-        assert len(bundle.cross_group_claims) == 0
 
-    def test_inexact_coordinate_returns_interpolated_source_stamp(self) -> None:
-        # Columnar claims are exact-match queried; without a list-backed
-        # MatchLine, the fallback still returns the source-group cross-section.
+    def test_inexact_coordinate_interpolates_across_the_claims(self) -> None:
+        # Between the anchors at score 100 and 150 (audio 50 and 75), score
+        # 123.456 interpolates to audio 50 + 23.456 / 2 = 61.728; image
+        # (twice score) and midi (equal to audio) follow through their groups.
         bundle, score_tl, _, audio_tl, _ = _make_cross_group_bundle()
-        bundle.add_match_claim_field(self._field(score_tl.id, audio_tl.id))
+        bundle.add_match_claim_field(self._field(score_tl, audio_tl))
         stamp = bundle.get_matchstamp_at(123.456, score_tl.id)
 
         assert stamp.is_interpolated is True
-        assert stamp.get_coordinate_for("score", format="float") == 123.456
+        assert stamp.coordinates == {
+            "score": Coordinate(123.456, TimeUnit.seconds),
+            "image": Coordinate(246.912, TimeUnit.seconds),
+            "audio": Coordinate(61.728, TimeUnit.seconds),
+            "midi": Coordinate(61.728, TimeUnit.seconds),
+        }
 
-    def test_list_and_field_stores_coexist(self) -> None:
-        # A bundle may hold a Python-list claim AND a columnar field at once;
-        # a query reads both stores.
+    def test_claims_after_a_field_accumulate_in_one_table(self) -> None:
+        # Claims added after a field's rows are minted ids above the highest
+        # held and read alike with the rows.
         bundle, score_tl, _, audio_tl, _ = _make_cross_group_bundle()
-        bundle.add_match_claims(_make_linear_claims(score_tl.id, audio_tl.id, 5))
-        bundle.add_match_claim_field(self._field(score_tl.id, audio_tl.id))
-        assert len(bundle.cross_group_claims) == 5
-        assert len(bundle.cross_group_claim_fields) == 1
-        stamp = bundle.get_matchstamp_at(50.0, score_tl.id)
-        assert stamp.get_coordinate_for("audio", format="float") == 25.0
+        bundle.add_match_claim_field(self._field(score_tl, audio_tl))
+        claims = [_seconds_claim(score_tl.id, 175.0, audio_tl.id, 87.5)]
+        bundle.add_match_claims(claims)
+
+        assert bundle.n_cross_group_claims == 6
+        assert claims[0].id == "claim_6"
+        assert bundle.get_match_claims()[5] == claims[0]
+        stamp = bundle.get_matchstamp_at(175.0, score_tl.id)
+        assert stamp.is_interpolated is False
+        assert stamp.get_coordinate_for("audio", format="float") == 87.5
 
 
 # endregion
@@ -1679,20 +1845,7 @@ class TestGetMatchstampAtCoordinateParity:
         bundle = AlignmentBundle(id="cmap-query")
         bundle.add_timeline(source, as_group="source-group")
         bundle.add_timeline(target, as_group="target-group")
-        bundle.add_match_claims(
-            [
-                MatchClaim(
-                    timeline_a_id=source.id,
-                    timeline_b_id=target.id,
-                    start_anchor=AlignmentAnchor(
-                        timeline_a_id=source.id,
-                        coordinate_a=Coordinate(2.5, TimeUnit.seconds),
-                        timeline_b_id=target.id,
-                        coordinate_b=Coordinate(5.0, TimeUnit.seconds),
-                    ),
-                )
-            ]
-        )
+        bundle.add_match_claims([_seconds_claim(source.id, 2.5, target.id, 5.0)])
 
         native = bundle.get_matchstamp_at(2.5, "source")
         converted = bundle.get_matchstamp_at(
@@ -1883,20 +2036,7 @@ def _cross_group_millisecond_bundle() -> AlignmentBundle:
     bundle = AlignmentBundle(id="matchstamp-table-collision")
     bundle.add_timeline(tl_a, as_group="group-a")
     bundle.add_timeline(tl_b, as_group="group-b")
-    bundle.add_match_claims(
-        [
-            MatchClaim(
-                timeline_a_id="clock_a",
-                timeline_b_id="clock_b",
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id="clock_a",
-                    coordinate_a=Coordinate(25.0, TimeUnit.seconds),
-                    timeline_b_id="clock_b",
-                    coordinate_b=Coordinate(25.0, TimeUnit.seconds),
-                ),
-            )
-        ]
-    )
+    bundle.add_match_claims([_seconds_claim("clock_a", 25.0, "clock_b", 25.0)])
     return bundle
 
 

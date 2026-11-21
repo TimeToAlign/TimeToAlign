@@ -18,7 +18,6 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from timetoalign.alignment.claims import AlignmentAnchor, MatchClaim
 from timetoalign.alignment.matchline import MatchLine
 from timetoalign.alignment.warpmap import WarpMap
 from timetoalign.core import Coordinate, IdCoordinate, TimeUnit
@@ -31,6 +30,7 @@ from timetoalign.timelines.types import (
 )
 
 from .helpers import make_match_stamp as MatchStamp
+from .helpers import match_claim
 
 # region Fixtures
 
@@ -868,21 +868,15 @@ class TestIntegrationWithClaims:
 
     def test_full_pipeline(self) -> None:
         """Build a WarpMap from MatchClaims end-to-end."""
-        claims = []
-        for s, t in [(0.0, 0.0), (100.0, 50.0), (200.0, 100.0)]:
-            anchor = AlignmentAnchor(
-                timeline_a_id="score",
-                coordinate_a=Coordinate(s, TimeUnit.number),
-                timeline_b_id="audio",
-                coordinate_b=Coordinate(t, TimeUnit.number),
+        claims = [
+            match_claim(
+                "score",
+                Coordinate(s, TimeUnit.number),
+                "audio",
+                Coordinate(t, TimeUnit.number),
             )
-            claim = MatchClaim(
-                timeline_a_id="score",
-                timeline_b_id="audio",
-                start_anchor=anchor,
-                is_synchronous=True,
-            )
-            claims.append(claim)
+            for s, t in [(0.0, 0.0), (100.0, 50.0), (200.0, 100.0)]
+        ]
 
         line = MatchLine.from_claims(claims, source_timeline_id="score")
         warp = WarpMap.from_match_line(line, "audio")

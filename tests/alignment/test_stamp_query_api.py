@@ -39,8 +39,41 @@ from timetoalign.core import (
 from timetoalign.timelines import Timeline
 
 from .helpers import make_match_stamp as MatchStamp
+from .helpers import match_claim
 
 # region Helpers
+
+
+def _claim(
+    timeline_a: str,
+    value_a: float,
+    timeline_b: str,
+    value_b: float,
+    **kwargs,
+) -> MatchClaim:
+    """A synchronous claim between two fixture events on number axes (float)."""
+    return match_claim(
+        timeline_a,
+        Coordinate(value_a, TimeUnit.number),
+        timeline_b,
+        Coordinate(value_b, TimeUnit.number),
+        **kwargs,
+    )
+
+
+def _nomatch(timeline_a: str, timeline_b: str) -> MatchClaim:
+    """A NOMATCH claim naming the fixture event ``orphan`` on *timeline_a*."""
+    return MatchClaim(
+        timeline_a_id=timeline_a,
+        timeline_b_id=timeline_b,
+        is_synchronous=False,
+        event_a_id="orphan",
+    )
+
+
+def _number_timeline(uid: str, length: float = 1000) -> Timeline:
+    """A timeline counting in the dimensionless number unit (float axis)."""
+    return Timeline(length=length, uid=uid, unit=TimeUnit.number)
 
 
 def _make_star_bundle():
@@ -52,12 +85,12 @@ def _make_star_bundle():
     perf3_tl (length=200) standalone
 
     Claims: score <-> each perf at coordinates 0, 25, 50, 75, 100
-    Plus one NOMATCH claim: score <-> perf3 (non-synchronous).
+    Plus one NOMATCH claim: score <-> perf3 (non-synchronous), naming the
+    score's event ``orphan``.
 
-    Claims name the timeline IDs the bundle registers its timelines under.
+    Claims name the timeline IDs the bundle registers its timelines under,
+    and every coordinate is on its timeline's axis (number, float).
     """
-    # Timelines are number-native to match the units their own claims use,
-    # so a number-unit Coordinate/IdCoordinate resolves without conversion.
     score_tl = Timeline(
         length=100, uid="score:clt_1", name="Score", unit=TimeUnit.number
     )
@@ -86,29 +119,10 @@ def _make_star_bundle():
             ("perf:dlt_2", 1.5),
             ("perf:dlt_3", 1.8),
         ]:
-            coord_p = coord_s * factor
-            claims.append(
-                MatchClaim(
-                    timeline_a_id="score:clt_1",
-                    timeline_b_id=perf_id,
-                    start_anchor=AlignmentAnchor(
-                        timeline_a_id="score:clt_1",
-                        coordinate_a=Coordinate(coord_s, TimeUnit.number),
-                        timeline_b_id=perf_id,
-                        coordinate_b=Coordinate(coord_p, TimeUnit.number),
-                    ),
-                    is_synchronous=True,
-                )
-            )
+            claims.append(_claim("score:clt_1", coord_s, perf_id, coord_s * factor))
 
     # One NOMATCH claim
-    claims.append(
-        MatchClaim(
-            timeline_a_id="score:clt_1",
-            timeline_b_id="perf:dlt_3",
-            is_synchronous=False,
-        )
-    )
+    claims.append(_nomatch("score:clt_1", "perf:dlt_3"))
 
     bundle.add_match_claims(claims)
     return bundle, claims
@@ -203,26 +217,8 @@ class TestMatchGraphGetMatchstamp:
     def test_single_component(self):
         """Single connected component returns one MatchStamp."""
         claims = [
-            MatchClaim(
-                timeline_a_id="tl_a",
-                timeline_b_id="tl_b",
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id="tl_a",
-                    coordinate_a=Coordinate(100.0, TimeUnit.number),
-                    timeline_b_id="tl_b",
-                    coordinate_b=Coordinate(50.0, TimeUnit.number),
-                ),
-            ),
-            MatchClaim(
-                timeline_a_id="tl_b",
-                timeline_b_id="tl_c",
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id="tl_b",
-                    coordinate_a=Coordinate(50.0, TimeUnit.number),
-                    timeline_b_id="tl_c",
-                    coordinate_b=Coordinate(25.0, TimeUnit.number),
-                ),
-            ),
+            _claim("tl_a", 100.0, "tl_b", 50.0),
+            _claim("tl_b", 50.0, "tl_c", 25.0),
         ]
         mg = MatchGraph(claims=claims)
         stamp = mg.get_matchstamp()
@@ -234,26 +230,8 @@ class TestMatchGraphGetMatchstamp:
     def test_multi_component_raises(self):
         """Multiple disconnected components raise ValueError."""
         claims = [
-            MatchClaim(
-                timeline_a_id="tl_a",
-                timeline_b_id="tl_b",
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id="tl_a",
-                    coordinate_a=Coordinate(100.0, TimeUnit.number),
-                    timeline_b_id="tl_b",
-                    coordinate_b=Coordinate(50.0, TimeUnit.number),
-                ),
-            ),
-            MatchClaim(
-                timeline_a_id="tl_c",
-                timeline_b_id="tl_d",
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id="tl_c",
-                    coordinate_a=Coordinate(200.0, TimeUnit.number),
-                    timeline_b_id="tl_d",
-                    coordinate_b=Coordinate(75.0, TimeUnit.number),
-                ),
-            ),
+            _claim("tl_a", 100.0, "tl_b", 50.0),
+            _claim("tl_c", 200.0, "tl_d", 75.0),
         ]
         mg = MatchGraph(claims=claims)
         assert mg.n_components == 2
@@ -268,14 +246,7 @@ class TestMatchGraphGetMatchstamp:
 
     def test_only_nomatch_raises(self):
         """Graph with only NOMATCH claims raises ValueError."""
-        claims = [
-            MatchClaim(
-                timeline_a_id="tl_a",
-                timeline_b_id="tl_b",
-                is_synchronous=False,
-            ),
-        ]
-        mg = MatchGraph(claims=claims)
+        mg = MatchGraph(claims=[_nomatch("tl_a", "tl_b")])
         with pytest.raises(ValueError, match="no synchronous claims"):
             mg.get_matchstamp()
 
@@ -285,19 +256,7 @@ class TestMatchGraphSplitComponents:
 
     def test_single_component(self):
         """Single component returns list of one MatchGraph."""
-        claims = [
-            MatchClaim(
-                timeline_a_id="tl_a",
-                timeline_b_id="tl_b",
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id="tl_a",
-                    coordinate_a=Coordinate(100.0, TimeUnit.number),
-                    timeline_b_id="tl_b",
-                    coordinate_b=Coordinate(50.0, TimeUnit.number),
-                ),
-            ),
-        ]
-        mg = MatchGraph(claims=claims)
+        mg = MatchGraph(claims=[_claim("tl_a", 100.0, "tl_b", 50.0)])
         components = mg.split_components()
         assert len(components) == 1
         stamp = components[0].get_matchstamp()
@@ -306,26 +265,8 @@ class TestMatchGraphSplitComponents:
     def test_two_components(self):
         """Two disconnected components split correctly."""
         claims = [
-            MatchClaim(
-                timeline_a_id="tl_a",
-                timeline_b_id="tl_b",
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id="tl_a",
-                    coordinate_a=Coordinate(100.0, TimeUnit.number),
-                    timeline_b_id="tl_b",
-                    coordinate_b=Coordinate(50.0, TimeUnit.number),
-                ),
-            ),
-            MatchClaim(
-                timeline_a_id="tl_c",
-                timeline_b_id="tl_d",
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id="tl_c",
-                    coordinate_a=Coordinate(200.0, TimeUnit.number),
-                    timeline_b_id="tl_d",
-                    coordinate_b=Coordinate(75.0, TimeUnit.number),
-                ),
-            ),
+            _claim("tl_a", 100.0, "tl_b", 50.0),
+            _claim("tl_c", 200.0, "tl_d", 75.0),
         ]
         mg = MatchGraph(claims=claims)
         components = mg.split_components()
@@ -342,19 +283,7 @@ class TestMatchGraphSplitComponents:
 
     def test_n_components_property(self):
         """n_components property works correctly."""
-        claims = [
-            MatchClaim(
-                timeline_a_id="tl_a",
-                timeline_b_id="tl_b",
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id="tl_a",
-                    coordinate_a=Coordinate(100.0, TimeUnit.number),
-                    timeline_b_id="tl_b",
-                    coordinate_b=Coordinate(50.0, TimeUnit.number),
-                ),
-            ),
-        ]
-        mg = MatchGraph(claims=claims)
+        mg = MatchGraph(claims=[_claim("tl_a", 100.0, "tl_b", 50.0)])
         assert mg.n_components == 1
 
 
@@ -367,21 +296,10 @@ class TestMatchGraphStarTopology:
 
     def test_star_single_coordinate(self):
         """All claims at one coordinate form one component."""
-        claims = []
-        for i in range(5):
-            perf_id = f"perf:dlt{i + 1}"
-            claims.append(
-                MatchClaim(
-                    timeline_a_id="score:clt_1",
-                    timeline_b_id=perf_id,
-                    start_anchor=AlignmentAnchor(
-                        timeline_a_id="score:clt_1",
-                        coordinate_a=Coordinate(0.0, TimeUnit.number),
-                        timeline_b_id=perf_id,
-                        coordinate_b=Coordinate(float(i * 10), TimeUnit.number),
-                    ),
-                )
-            )
+        claims = [
+            _claim("score:clt_1", 0.0, f"perf:dlt{i + 1}", float(i * 10))
+            for i in range(5)
+        ]
         mg = MatchGraph(claims=claims)
         assert mg.n_components == 1
         stamp = mg.get_matchstamp()
@@ -395,21 +313,10 @@ class TestMatchGraphStarTopology:
         (and thus MatchStamp) must result regardless of which claim
         seeds the graph.
         """
-        claims = []
-        for i in range(5):
-            perf_id = f"perf:dlt{i + 1}"
-            claims.append(
-                MatchClaim(
-                    timeline_a_id="score:clt_1",
-                    timeline_b_id=perf_id,
-                    start_anchor=AlignmentAnchor(
-                        timeline_a_id="score:clt_1",
-                        coordinate_a=Coordinate(0.0, TimeUnit.number),
-                        timeline_b_id=perf_id,
-                        coordinate_b=Coordinate(float(i * 10), TimeUnit.number),
-                    ),
-                )
-            )
+        claims = [
+            _claim("score:clt_1", 0.0, f"perf:dlt{i + 1}", float(i * 10))
+            for i in range(5)
+        ]
         # Build from ALL claims
         mg_full = MatchGraph(claims=claims)
         stamp_full = mg_full.get_matchstamp()
@@ -431,16 +338,7 @@ class TestMatchClaimGetMatchstamp:
 
     def test_reduced_stamp(self):
         """from_graph=False returns 2-timeline MatchStamp."""
-        claim = MatchClaim(
-            timeline_a_id="score:clt_1",
-            timeline_b_id="perf:dlt_1",
-            start_anchor=AlignmentAnchor(
-                timeline_a_id="score:clt_1",
-                coordinate_a=Coordinate(10.0, TimeUnit.number),
-                timeline_b_id="perf:dlt_1",
-                coordinate_b=Coordinate(128.0, TimeUnit.number),
-            ),
-        )
+        claim = _claim("score:clt_1", 10.0, "perf:dlt_1", 128.0)
         stamp = claim.get_matchstamp(from_graph=False)
         assert stamp is not None
         assert stamp.n_timelines == 2
@@ -449,25 +347,12 @@ class TestMatchClaimGetMatchstamp:
 
     def test_nomatch_returns_none(self):
         """NOMATCH claim returns None."""
-        claim = MatchClaim(
-            timeline_a_id="score:clt_1",
-            timeline_b_id="perf:dlt_1",
-            is_synchronous=False,
-        )
+        claim = _nomatch("score:clt_1", "perf:dlt_1")
         assert claim.get_matchstamp(from_graph=False) is None
 
     def test_from_graph_without_bundle_raises(self):
         """from_graph=True without bundle raises ValueError."""
-        claim = MatchClaim(
-            timeline_a_id="score:clt_1",
-            timeline_b_id="perf:dlt_1",
-            start_anchor=AlignmentAnchor(
-                timeline_a_id="score:clt_1",
-                coordinate_a=Coordinate(10.0, TimeUnit.number),
-                timeline_b_id="perf:dlt_1",
-                coordinate_b=Coordinate(128.0, TimeUnit.number),
-            ),
-        )
+        claim = _claim("score:clt_1", 10.0, "perf:dlt_1", 128.0)
         with pytest.raises(ValueError, match="bundle is required"):
             claim.get_matchstamp()  # from_graph=True by default
 
@@ -512,20 +397,7 @@ class TestMatchGraphCache:
         bundle, _ = _make_star_bundle()
         mg1 = bundle._get_or_build_matchgraph("score:clt_1", 0.0)
         # Add more claims
-        bundle.add_match_claims(
-            [
-                MatchClaim(
-                    timeline_a_id="score:clt_1",
-                    timeline_b_id="perf:dlt_1",
-                    start_anchor=AlignmentAnchor(
-                        timeline_a_id="score:clt_1",
-                        coordinate_a=Coordinate(99.0, TimeUnit.number),
-                        timeline_b_id="perf:dlt_1",
-                        coordinate_b=Coordinate(198.0, TimeUnit.number),
-                    ),
-                ),
-            ]
-        )
+        bundle.add_match_claims([_claim("score:clt_1", 99.0, "perf:dlt_1", 198.0)])
         mg2 = bundle._get_or_build_matchgraph("score:clt_1", 0.0)
         assert mg1 is not mg2  # Cache was invalidated
 
@@ -844,16 +716,7 @@ class TestMatchClaimDisplay:
 
     def test_str_synchronous_instant(self):
         """__str__ for synchronous instant claim."""
-        claim = MatchClaim(
-            timeline_a_id="score:clt_1",
-            timeline_b_id="perf:dlt_1",
-            start_anchor=AlignmentAnchor(
-                timeline_a_id="score:clt_1",
-                coordinate_a=Coordinate(10.0, TimeUnit.number),
-                timeline_b_id="perf:dlt_1",
-                coordinate_b=Coordinate(128.0, TimeUnit.number),
-            ),
-        )
+        claim = _claim("score:clt_1", 10.0, "perf:dlt_1", 128.0)
         s = str(claim)
         assert "synchronous, instant" in s
         assert "score:clt_1" in s
@@ -863,21 +726,13 @@ class TestMatchClaimDisplay:
 
     def test_str_synchronous_interval(self):
         """__str__ for synchronous interval claim."""
-        claim = MatchClaim(
-            timeline_a_id="score:clt_1",
-            timeline_b_id="perf:dlt_1",
-            start_anchor=AlignmentAnchor(
-                timeline_a_id="score:clt_1",
-                coordinate_a=Coordinate(0.0, TimeUnit.number),
-                timeline_b_id="perf:dlt_1",
-                coordinate_b=Coordinate(0.0, TimeUnit.number),
-            ),
-            end_anchor=AlignmentAnchor(
-                timeline_a_id="score:clt_1",
-                coordinate_a=Coordinate(10.0, TimeUnit.number),
-                timeline_b_id="perf:dlt_1",
-                coordinate_b=Coordinate(128.0, TimeUnit.number),
-            ),
+        claim = match_claim(
+            "score:clt_1",
+            Coordinate(0.0, TimeUnit.number),
+            "perf:dlt_1",
+            Coordinate(0.0, TimeUnit.number),
+            end_a=Coordinate(10.0, TimeUnit.number),
+            end_b=Coordinate(128.0, TimeUnit.number),
         )
         s = str(claim)
         assert "synchronous, interval" in s
@@ -886,34 +741,25 @@ class TestMatchClaimDisplay:
 
     def test_str_nomatch(self):
         """__str__ for a NOMATCH claim (orphaned event named on one side)."""
-        claim = MatchClaim(
-            timeline_a_id="score:clt_1",
-            timeline_b_id="perf:dlt_1",
-            is_synchronous=False,
-            event_a_id="orphan",
-        )
+        claim = _nomatch("score:clt_1", "perf:dlt_1")
         s = str(claim)
         assert "NOMATCH" in s
         assert "score:clt_1" in s
         assert "perf:dlt_1" in s
 
-    def test_str_with_metadata(self):
-        """__str__ shows metadata."""
-        claim = MatchClaim(
-            timeline_a_id="score:clt_1",
-            timeline_b_id="perf:dlt_1",
-            start_anchor=AlignmentAnchor(
-                timeline_a_id="score:clt_1",
-                coordinate_a=Coordinate(10.0, TimeUnit.number),
-                timeline_b_id="perf:dlt_1",
-                coordinate_b=Coordinate(128.0, TimeUnit.number),
-            ),
+    def test_str_with_provenance_and_certainty(self):
+        """__str__ shows the certainty and the provenance."""
+        claim = _claim(
+            "score:clt_1",
+            10.0,
+            "perf:dlt_1",
+            128.0,
             provenance=Provenance(method="inferred", note="partitura note_matching"),
+            certainty=0.95,
         )
         s = str(claim)
-        assert "Metadata:" in s
-        assert "partitura" in s
-        assert "0.95" in s
+        assert "Certainty:   0.95" in s
+        assert "Provenance:  method=inferred, note=partitura note_matching" in s
 
     def test_str_inferred(self):
         """__str__ shows [inferred] flag."""
@@ -936,16 +782,7 @@ class TestMatchClaimDisplay:
 
     def test_repr_html_valid(self):
         """_repr_html_ produces valid HTML."""
-        claim = MatchClaim(
-            timeline_a_id="score:clt_1",
-            timeline_b_id="perf:dlt_1",
-            start_anchor=AlignmentAnchor(
-                timeline_a_id="score:clt_1",
-                coordinate_a=Coordinate(10.0, TimeUnit.number),
-                timeline_b_id="perf:dlt_1",
-                coordinate_b=Coordinate(128.0, TimeUnit.number),
-            ),
-        )
+        claim = _claim("score:clt_1", 10.0, "perf:dlt_1", 128.0)
         html = claim._repr_html_()
         assert "<table" in html
         assert "MatchClaim" in html
@@ -953,28 +790,14 @@ class TestMatchClaimDisplay:
 
     def test_repr_html_nomatch_badge(self):
         """NOMATCH claim (orphaned event named on one side) has red badge in HTML."""
-        claim = MatchClaim(
-            timeline_a_id="score:clt_1",
-            timeline_b_id="perf:dlt_1",
-            is_synchronous=False,
-            event_a_id="orphan",
-        )
+        claim = _nomatch("score:clt_1", "perf:dlt_1")
         html = claim._repr_html_()
         assert "NOMATCH" in html
         assert "#ffcdd2" in html  # Red background
 
     def test_repr_html_try_footer(self):
         """_repr_html_ appends the affordance Try footer after the table."""
-        claim = MatchClaim(
-            timeline_a_id="score:clt_1",
-            timeline_b_id="perf:dlt_1",
-            start_anchor=AlignmentAnchor(
-                timeline_a_id="score:clt_1",
-                coordinate_a=Coordinate(10.0, TimeUnit.number),
-                timeline_b_id="perf:dlt_1",
-                coordinate_b=Coordinate(128.0, TimeUnit.number),
-            ),
-        )
+        claim = _claim("score:clt_1", 10.0, "perf:dlt_1", 128.0)
         html = claim._repr_html_()
         # The claim detail table still renders.
         assert "<strong>score:clt_1</strong>" in html
@@ -992,22 +815,20 @@ class TestMatchClaimDisplay:
 class TestMatchClaimEventStorage:
     """Tests for MatchClaim storing and displaying event information.
 
-    Events should be stored with their ID and name (when provided),
-    and always displayed in __str__ and _repr_html_.
+    A claim names its events: their IDs always, their names when the event
+    dicts give them. Both are displayed in __str__ and _repr_html_.
     """
+
+    def _from_events(self, event_a: dict, event_b: dict) -> MatchClaim:
+        """from_events() between two number timelines ``tl_a`` and ``tl_b``."""
+        return MatchClaim.from_events(
+            event_a, _number_timeline("tl_a"), event_b, _number_timeline("tl_b")
+        )
 
     def test_from_events_stores_event_ids(self):
         """from_events() extracts and stores event IDs from event dicts."""
-        event_a = {"id": "e000001", "start": 10.0}
-        event_b = {"id": "e000042", "start": 128.0}
-
-        claim = MatchClaim.from_events(
-            event_a=event_a,
-            tl_a_id="score:clt_1",
-            event_b=event_b,
-            tl_b_id="perf:dlt_1",
-            unit_a=TimeUnit.number,
-            unit_b=TimeUnit.number,
+        claim = self._from_events(
+            {"id": "e000001", "start": 10.0}, {"id": "e000042", "start": 128.0}
         )
 
         assert claim.event_a_id == "e000001"
@@ -1015,82 +836,78 @@ class TestMatchClaimEventStorage:
 
     def test_from_events_stores_event_names(self):
         """from_events() extracts and stores event names from event dicts."""
-        event_a = {"id": "e001", "name": "Intro", "start": 0.0}
-        event_b = {"id": "e002", "name": "Verse 1", "start": 0.0}
-
-        claim = MatchClaim.from_events(
-            event_a=event_a,
-            tl_a_id="tl_a",
-            event_b=event_b,
-            tl_b_id="tl_b",
-            unit_a=TimeUnit.number,
-            unit_b=TimeUnit.number,
+        claim = self._from_events(
+            {"id": "e001", "name": "Intro", "start": 0.0},
+            {"id": "e002", "name": "Verse 1", "start": 0.0},
         )
 
         assert claim.event_a_name == "Intro"
         assert claim.event_b_name == "Verse 1"
 
-    def test_from_events_handles_missing_id_and_name(self):
-        """from_events() gracefully handles missing id/name fields."""
-        event_a = {"start": 10.0}  # No id or name
-        event_b = {"start": 20.0}
+    def test_from_events_needs_an_id_and_no_name(self):
+        """An event without a name gives None; an event without an ID is refused.
 
-        claim = MatchClaim.from_events(
-            event_a=event_a,
-            tl_a_id="tl_a",
-            event_b=event_b,
-            tl_b_id="tl_b",
-            unit_a=TimeUnit.number,
-            unit_b=TimeUnit.number,
+        A claim names the events it matches, so an event dict that names no
+        event cannot make one: a side without an event of its own is given a
+        Projection first (see ``test_projection_stands_for_a_side_without_event``).
+        """
+        claim = self._from_events(
+            {"id": "e1", "start": 10.0}, {"id": "e2", "start": 20.0}
         )
-
-        assert claim.event_a_id is None
         assert claim.event_a_name is None
-        assert claim.event_b_id is None
         assert claim.event_b_name is None
 
-    def test_from_projection_stores_source_event_info(self):
-        """from_projection() stores source event ID and name."""
-        event = {"id": "e100", "name": "Beat 1", "start": 0.0}
+        with pytest.raises(ValueError, match="event_a names no event id"):
+            self._from_events({"start": 10.0}, {"id": "e2", "start": 20.0})
+        with pytest.raises(ValueError, match="event_b names no event id"):
+            self._from_events({"id": "e1", "start": 10.0}, {"start": 20.0})
 
-        claim = MatchClaim.from_projection(
-            event=event,
-            source_tl_id="source",
-            target_tl_id="target",
-            target_coord=10.0,
-            source_unit=TimeUnit.number,
-            target_unit=TimeUnit.number,
+    def test_projection_stands_for_a_side_without_event(self):
+        """A position on the target side is given a Projection naming the source event.
+
+        ``create_match_claims`` adds a Projection at the stated position to
+        the target timeline (minted ``projection_1``, its ``projection_of``
+        naming the source event) and claims between the source event and it:
+        the source event's ID and name on side A, the Projection's ID and no
+        name on side B.
+        """
+        source = _number_timeline("source")
+        source.add_events(
+            [{"id": "e100", "name": "Beat 1", "event_type": "Beat", "instant": 0.0}]
+        )
+        target = _number_timeline("target")
+        bundle = AlignmentBundle()
+        bundle.add_timeline(source, as_group="source_group")
+        bundle.add_timeline(target, as_group="target_group")
+
+        (claim,) = bundle.create_match_claims(
+            [("e100", "source", {"start": 10.0}, "target")]
         )
 
         assert claim.event_a_id == "e100"
         assert claim.event_a_name == "Beat 1"
-        # Target has no event, so event_b fields are None
-        assert claim.event_b_id is None
+        assert claim.event_b_id == "projection_1"
         assert claim.event_b_name is None
+        assert claim.start_anchor.coordinate_b == Coordinate(10.0, TimeUnit.number)
+        assert target.get_event("projection_1")["projection_of"] == {
+            "timeline_id": "source",
+            "event_id": "e100",
+        }
 
     def test_nomatch_stores_source_event_info(self):
         """nomatch() stores source event ID and name."""
         event = {"id": "e999", "name": "Orphan Note", "start": 50.0}
 
-        claim = MatchClaim.nomatch(
-            event=event,
-            source_tl_id="score",
-            target_tl_id="perf",
-            unit=TimeUnit.number,
-        )
+        claim = MatchClaim.nomatch(event, _number_timeline("score"), "perf")
 
         assert claim.event_a_id == "e999"
         assert claim.event_a_name == "Orphan Note"
+        assert claim.event_b_id is None
 
     def test_str_displays_event_ids(self):
         """__str__ includes event IDs when present."""
-        claim = MatchClaim.from_events(
-            event_a={"id": "e001", "start": 10.0},
-            tl_a_id="score:clt_1",
-            event_b={"id": "e042", "start": 128.0},
-            tl_b_id="perf:dlt_1",
-            unit_a=TimeUnit.number,
-            unit_b=TimeUnit.number,
+        claim = self._from_events(
+            {"id": "e001", "start": 10.0}, {"id": "e042", "start": 128.0}
         )
 
         s = str(claim)
@@ -1099,13 +916,9 @@ class TestMatchClaimEventStorage:
 
     def test_str_displays_event_names(self):
         """__str__ includes event names when present."""
-        claim = MatchClaim.from_events(
-            event_a={"id": "e001", "name": "Intro", "start": 0.0},
-            tl_a_id="tl_a",
-            event_b={"id": "e002", "name": "Verse 1", "start": 0.0},
-            tl_b_id="tl_b",
-            unit_a=TimeUnit.number,
-            unit_b=TimeUnit.number,
+        claim = self._from_events(
+            {"id": "e001", "name": "Intro", "start": 0.0},
+            {"id": "e002", "name": "Verse 1", "start": 0.0},
         )
 
         s = str(claim)
@@ -1114,13 +927,9 @@ class TestMatchClaimEventStorage:
 
     def test_repr_html_displays_event_info(self):
         """_repr_html_ includes event ID and name when present."""
-        claim = MatchClaim.from_events(
-            event_a={"id": "note_001", "name": "C4", "start": 10.0},
-            tl_a_id="score",
-            event_b={"id": "note_042", "name": "C4", "start": 128.0},
-            tl_b_id="perf",
-            unit_a=TimeUnit.number,
-            unit_b=TimeUnit.number,
+        claim = self._from_events(
+            {"id": "note_001", "name": "C4", "start": 10.0},
+            {"id": "note_042", "name": "C4", "start": 128.0},
         )
 
         html = claim._repr_html_()
@@ -1128,15 +937,10 @@ class TestMatchClaimEventStorage:
         assert "note_042" in html
         assert "C4" in html
 
-    def test_repr_html_no_event_info_still_valid(self):
-        """_repr_html_ is valid HTML even without event info."""
-        claim = MatchClaim.from_events(
-            event_a={"start": 10.0},  # No id/name
-            tl_a_id="tl_a",
-            event_b={"start": 20.0},
-            tl_b_id="tl_b",
-            unit_a=TimeUnit.number,
-            unit_b=TimeUnit.number,
+    def test_repr_html_without_event_names_still_valid(self):
+        """_repr_html_ is valid HTML when the events give no names."""
+        claim = self._from_events(
+            {"id": "e1", "start": 10.0}, {"id": "e2", "start": 20.0}
         )
 
         html = claim._repr_html_()
@@ -1145,13 +949,9 @@ class TestMatchClaimEventStorage:
 
     def test_to_dict_includes_event_info(self):
         """to_dict() serializes event ID and name fields."""
-        claim = MatchClaim.from_events(
-            event_a={"id": "e001", "name": "Note A", "start": 0.0},
-            tl_a_id="tl_a",
-            event_b={"id": "e002", "name": "Note B", "start": 0.0},
-            tl_b_id="tl_b",
-            unit_a=TimeUnit.number,
-            unit_b=TimeUnit.number,
+        claim = self._from_events(
+            {"id": "e001", "name": "Note A", "start": 0.0},
+            {"id": "e002", "name": "Note B", "start": 0.0},
         )
 
         d = claim.to_dict()
@@ -1162,13 +962,9 @@ class TestMatchClaimEventStorage:
 
     def test_from_dict_restores_event_info(self):
         """from_dict() restores event ID and name fields."""
-        original = MatchClaim.from_events(
-            event_a={"id": "e001", "name": "Beat", "start": 0.0},
-            tl_a_id="tl_a",
-            event_b={"id": "e002", "name": "Onset", "start": 0.0},
-            tl_b_id="tl_b",
-            unit_a=TimeUnit.number,
-            unit_b=TimeUnit.number,
+        original = self._from_events(
+            {"id": "e001", "name": "Beat", "start": 0.0},
+            {"id": "e002", "name": "Onset", "start": 0.0},
         )
 
         d = original.to_dict()

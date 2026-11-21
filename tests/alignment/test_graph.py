@@ -11,7 +11,7 @@ from fractions import Fraction
 
 import pytest
 
-from timetoalign.alignment import AlignmentAnchor, MatchClaim, MatchLine, Provenance
+from timetoalign.alignment import Belief, MatchClaim, MatchLine, Provenance
 from timetoalign.alignment.graph import MatchGraph
 from timetoalign.alignment.graph import MatchStamp as MatchStampType
 from timetoalign.core import Coordinate, IdCoordinate
@@ -22,23 +22,69 @@ from timetoalign.timelines import (
     TimelineGroup,
 )
 
+from .helpers import event_id
 from .helpers import make_match_stamp as MatchStamp
+from .helpers import match_claim
 
 # region Fixtures
+
+
+def _claim(
+    timeline_a: str,
+    value_a: float | int,
+    timeline_b: str,
+    value_b: float | int,
+    *,
+    unit_a: TimeUnit = TimeUnit.number,
+    unit_b: TimeUnit = TimeUnit.number,
+    **kwargs,
+) -> MatchClaim:
+    """A synchronous instant claim between two fixture events.
+
+    The graph reads claims without their timelines, so dimensionless
+    positions serve unless a test needs a timeline's own unit.
+    """
+    return match_claim(
+        timeline_a,
+        Coordinate(value_a, unit_a),
+        timeline_b,
+        Coordinate(value_b, unit_b),
+        **kwargs,
+    )
+
+
+def _nomatch(timeline_id: str, value: float, other_timeline_id: str) -> MatchClaim:
+    """A NOMATCH claim: the event at *value* has no counterpart on the other side."""
+    coordinate = Coordinate(value, TimeUnit.number)
+    return MatchClaim(
+        timeline_a_id=timeline_id,
+        timeline_b_id=other_timeline_id,
+        is_synchronous=False,
+        event_a_id=event_id(timeline_id, coordinate),
+        source_coordinate=coordinate,
+    )
+
+
+def _conceptual(timeline_a: str, timeline_b: str, **kwargs) -> MatchClaim:
+    """A conceptual (non-synchronous) claim between two fixture sections."""
+    return MatchClaim(
+        timeline_a_id=timeline_a,
+        timeline_b_id=timeline_b,
+        is_synchronous=False,
+        event_a_id=f"{timeline_a}@section",
+        event_b_id=f"{timeline_b}@section",
+        **kwargs,
+    )
 
 
 @pytest.fixture
 def simple_instant_claim() -> MatchClaim:
     """Simple instant match between two timelines."""
-    return MatchClaim(
-        timeline_a_id="tl_a",
-        timeline_b_id="tl_b",
-        start_anchor=AlignmentAnchor(
-            timeline_a_id="tl_a",
-            coordinate_a=Coordinate(100.0, TimeUnit.number),
-            timeline_b_id="tl_b",
-            coordinate_b=Coordinate(50.0, TimeUnit.number),
-        ),
+    return _claim(
+        "tl_a",
+        100.0,
+        "tl_b",
+        50.0,
         provenance=Provenance(method="inferred", note="test manual"),
     )
 
@@ -46,21 +92,13 @@ def simple_instant_claim() -> MatchClaim:
 @pytest.fixture
 def simple_interval_claim() -> MatchClaim:
     """Simple interval match between two timelines."""
-    return MatchClaim(
-        timeline_a_id="tl_a",
-        timeline_b_id="tl_b",
-        start_anchor=AlignmentAnchor(
-            timeline_a_id="tl_a",
-            coordinate_a=Coordinate(0.0, TimeUnit.number),
-            timeline_b_id="tl_b",
-            coordinate_b=Coordinate(0.0, TimeUnit.number),
-        ),
-        end_anchor=AlignmentAnchor(
-            timeline_a_id="tl_a",
-            coordinate_a=Coordinate(100.0, TimeUnit.number),
-            timeline_b_id="tl_b",
-            coordinate_b=Coordinate(50.0, TimeUnit.number),
-        ),
+    return _claim(
+        "tl_a",
+        0.0,
+        "tl_b",
+        0.0,
+        end_a=Coordinate(100.0, TimeUnit.number),
+        end_b=Coordinate(50.0, TimeUnit.number),
         provenance=Provenance(method="inferred", note="test manual"),
     )
 
@@ -68,28 +106,7 @@ def simple_interval_claim() -> MatchClaim:
 @pytest.fixture
 def three_timeline_claims() -> list[MatchClaim]:
     """Claims connecting three timelines: A <-> B <-> C."""
-    return [
-        MatchClaim(
-            timeline_a_id="tl_a",
-            timeline_b_id="tl_b",
-            start_anchor=AlignmentAnchor(
-                timeline_a_id="tl_a",
-                coordinate_a=Coordinate(100.0, TimeUnit.number),
-                timeline_b_id="tl_b",
-                coordinate_b=Coordinate(50.0, TimeUnit.number),
-            ),
-        ),
-        MatchClaim(
-            timeline_a_id="tl_b",
-            timeline_b_id="tl_c",
-            start_anchor=AlignmentAnchor(
-                timeline_a_id="tl_b",
-                coordinate_a=Coordinate(50.0, TimeUnit.number),
-                timeline_b_id="tl_c",
-                coordinate_b=Coordinate(25.0, TimeUnit.number),
-            ),
-        ),
-    ]
+    return [_claim("tl_a", 100.0, "tl_b", 50.0), _claim("tl_b", 50.0, "tl_c", 25.0)]
 
 
 @pytest.fixture
@@ -475,26 +492,8 @@ class TestMatchGraphStamps:
     def test_disconnected_components_yield_multiple_stamps(self) -> None:
         """Disconnected components yield separate stamps."""
         claims = [
-            MatchClaim(
-                timeline_a_id="tl_a",
-                timeline_b_id="tl_b",
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id="tl_a",
-                    coordinate_a=Coordinate(100.0, TimeUnit.number),
-                    timeline_b_id="tl_b",
-                    coordinate_b=Coordinate(50.0, TimeUnit.number),
-                ),
-            ),
-            MatchClaim(
-                timeline_a_id="tl_c",
-                timeline_b_id="tl_d",
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id="tl_c",
-                    coordinate_a=Coordinate(200.0, TimeUnit.number),
-                    timeline_b_id="tl_d",
-                    coordinate_b=Coordinate(75.0, TimeUnit.number),
-                ),
-            ),  # Disconnected
+            _claim("tl_a", 100.0, "tl_b", 50.0),
+            _claim("tl_c", 200.0, "tl_d", 75.0),  # Disconnected
         ]
         graph = MatchGraph(claims)
         stamps = graph.get_stamps()
@@ -519,16 +518,7 @@ class TestMatchGraphGroupExtension:
     ) -> None:
         """Extending to groups adds inferred edges."""
         # Claim between dgt1 and some external timeline
-        claim = MatchClaim(
-            timeline_a_id="dgt_1",
-            timeline_b_id="external",
-            start_anchor=AlignmentAnchor(
-                timeline_a_id="dgt_1",
-                coordinate_a=Coordinate(500.0, TimeUnit.number),
-                timeline_b_id="external",
-                coordinate_b=Coordinate(25.0, TimeUnit.number),
-            ),
-        )
+        claim = _claim("dgt_1", 500, "external", 25.0, unit_a=TimeUnit.pixels)
         graph = MatchGraph([claim])
 
         # Set up group mapping
@@ -547,16 +537,7 @@ class TestMatchGraphGroupExtension:
         dgt1_group: TimelineGroup,
     ) -> None:
         """Extended edges have correct converted coordinates."""
-        claim = MatchClaim(
-            timeline_a_id="dgt_1",
-            timeline_b_id="external",
-            start_anchor=AlignmentAnchor(
-                timeline_a_id="dgt_1",
-                coordinate_a=Coordinate(500.0, TimeUnit.pixels),  # Midpoint
-                timeline_b_id="external",
-                coordinate_b=Coordinate(25.0, TimeUnit.number),
-            ),
-        )
+        claim = _claim("dgt_1", 500, "external", 25.0, unit_a=TimeUnit.pixels)
         graph = MatchGraph([claim])
 
         groups = {"group1": dgt1_group}
@@ -575,16 +556,7 @@ class TestMatchGraphGroupExtension:
         dgt1_group: TimelineGroup,
     ) -> None:
         """Extended edges are marked as inferred, not explicit."""
-        claim = MatchClaim(
-            timeline_a_id="dgt_1",
-            timeline_b_id="external",
-            start_anchor=AlignmentAnchor(
-                timeline_a_id="dgt_1",
-                coordinate_a=Coordinate(500.0, TimeUnit.number),
-                timeline_b_id="external",
-                coordinate_b=Coordinate(25.0, TimeUnit.number),
-            ),
-        )
+        claim = _claim("dgt_1", 500, "external", 25.0, unit_a=TimeUnit.pixels)
         graph = MatchGraph([claim])
 
         groups = {"group1": dgt1_group}
@@ -604,16 +576,7 @@ class TestMatchGraphGroupExtension:
         dgt1_group: TimelineGroup,
     ) -> None:
         """include_inferred=False returns original graph."""
-        claim = MatchClaim(
-            timeline_a_id="dgt_1",
-            timeline_b_id="external",
-            start_anchor=AlignmentAnchor(
-                timeline_a_id="dgt_1",
-                coordinate_a=Coordinate(500.0, TimeUnit.number),
-                timeline_b_id="external",
-                coordinate_b=Coordinate(25.0, TimeUnit.number),
-            ),
-        )
+        claim = _claim("dgt_1", 500, "external", 25.0, unit_a=TimeUnit.pixels)
         graph = MatchGraph([claim])
 
         groups = {"group1": dgt1_group}
@@ -637,26 +600,8 @@ class TestMatchGraphFilter:
     def test_filter_by_timeline_ids(self) -> None:
         """Filter to include only specific timelines."""
         claims = [
-            MatchClaim(
-                timeline_a_id="tl_a",
-                timeline_b_id="tl_b",
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id="tl_a",
-                    coordinate_a=Coordinate(100.0, TimeUnit.number),
-                    timeline_b_id="tl_b",
-                    coordinate_b=Coordinate(50.0, TimeUnit.number),
-                ),
-            ),
-            MatchClaim(
-                timeline_a_id="tl_b",
-                timeline_b_id="tl_c",
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id="tl_b",
-                    coordinate_a=Coordinate(50.0, TimeUnit.number),
-                    timeline_b_id="tl_c",
-                    coordinate_b=Coordinate(25.0, TimeUnit.number),
-                ),
-            ),
+            _claim("tl_a", 100.0, "tl_b", 50.0),
+            _claim("tl_b", 50.0, "tl_c", 25.0),
         ]
         graph = MatchGraph(claims)
 
@@ -668,26 +613,8 @@ class TestMatchGraphFilter:
     def test_filter_by_id_pattern(self) -> None:
         """Filter to exclude a timeline through an ID pattern."""
         claims = [
-            MatchClaim(
-                timeline_a_id="tl_a",
-                timeline_b_id="tl_b",
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id="tl_a",
-                    coordinate_a=Coordinate(100.0, TimeUnit.number),
-                    timeline_b_id="tl_b",
-                    coordinate_b=Coordinate(50.0, TimeUnit.number),
-                ),
-            ),
-            MatchClaim(
-                timeline_a_id="tl_b",
-                timeline_b_id="tl_c",
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id="tl_b",
-                    coordinate_a=Coordinate(50.0, TimeUnit.number),
-                    timeline_b_id="tl_c",
-                    coordinate_b=Coordinate(25.0, TimeUnit.number),
-                ),
-            ),
+            _claim("tl_a", 100.0, "tl_b", 50.0),
+            _claim("tl_b", 50.0, "tl_c", 25.0),
         ]
         graph = MatchGraph(claims)
 
@@ -699,23 +626,10 @@ class TestMatchGraphFilter:
     def test_filter_synchronous_only(self) -> None:
         """Filter to include only synchronous edges."""
         claims = [
-            MatchClaim(
-                timeline_a_id="tl_a",
-                timeline_b_id="tl_b",
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id="tl_a",
-                    coordinate_a=Coordinate(100.0, TimeUnit.number),
-                    timeline_b_id="tl_b",
-                    coordinate_b=Coordinate(50.0, TimeUnit.number),
-                ),
-                is_synchronous=True,
-            ),
-            MatchClaim(
-                timeline_a_id="tl_b",
-                timeline_b_id="tl_c",
-                start_anchor=None,
-                end_anchor=None,
-                is_synchronous=False,
+            _claim("tl_a", 100.0, "tl_b", 50.0),
+            _conceptual(
+                "tl_b",
+                "tl_c",
                 provenance=Provenance(method="inferred", note="test structural"),
             ),
         ]
@@ -733,16 +647,7 @@ class TestMatchGraphFilter:
         dgt1_group: TimelineGroup,
     ) -> None:
         """Filter to include only explicit edges (remove inferred)."""
-        claim = MatchClaim(
-            timeline_a_id="dgt_1",
-            timeline_b_id="external",
-            start_anchor=AlignmentAnchor(
-                timeline_a_id="dgt_1",
-                coordinate_a=Coordinate(500.0, TimeUnit.number),
-                timeline_b_id="external",
-                coordinate_b=Coordinate(25.0, TimeUnit.number),
-            ),
-        )
+        claim = _claim("dgt_1", 500, "external", 25.0, unit_a=TimeUnit.pixels)
         graph = MatchGraph([claim])
 
         groups = {"group1": dgt1_group}
@@ -758,24 +663,8 @@ class TestMatchGraphFilter:
     def test_filter_removes_isolated_nodes(self) -> None:
         """Filtering edges removes nodes that become isolated."""
         claims = [
-            MatchClaim(
-                timeline_a_id="tl_a",
-                timeline_b_id="tl_b",
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id="tl_a",
-                    coordinate_a=Coordinate(100.0, TimeUnit.number),
-                    timeline_b_id="tl_b",
-                    coordinate_b=Coordinate(50.0, TimeUnit.number),
-                ),
-                is_synchronous=True,
-            ),
-            MatchClaim(
-                timeline_a_id="tl_c",
-                timeline_b_id="tl_d",
-                start_anchor=None,
-                end_anchor=None,
-                is_synchronous=False,
-            ),
+            _claim("tl_a", 100.0, "tl_b", 50.0),
+            _conceptual("tl_c", "tl_d"),
         ]
         graph = MatchGraph(claims)
 
@@ -783,6 +672,78 @@ class TestMatchGraphFilter:
 
         # tl_c and tl_d should be removed
         assert filtered.timeline_ids == {"tl_a", "tl_b"}
+
+
+class TestMatchGraphBeliefFilter:
+    """A graph holds exactly the claims the belief filter keeps."""
+
+    @staticmethod
+    def _claims() -> list[MatchClaim]:
+        """Four claims, one per belief case, at distinct positions."""
+
+        def believed_by(actor: str, belief: str) -> Provenance:
+            return Provenance(
+                method="manual",
+                beliefs=(Belief(actor=actor, belief=belief, date="2026-11-21"),),
+            )
+
+        return [
+            _claim("tl_a", 1.0, "tl_b", 10.0, id="claim_1"),
+            _claim(
+                "tl_a",
+                2.0,
+                "tl_b",
+                20.0,
+                id="claim_2",
+                provenance=believed_by("ana", "false"),
+            ),
+            _claim(
+                "tl_a",
+                3.0,
+                "tl_b",
+                30.0,
+                id="claim_3",
+                provenance=believed_by("ana", "true"),
+            ),
+            _claim(
+                "tl_a",
+                4.0,
+                "tl_b",
+                40.0,
+                id="claim_4",
+                provenance=believed_by("ben", "false"),
+            ),
+        ]
+
+    @pytest.mark.parametrize(
+        ("believer", "belief", "kept"),
+        [
+            # No believer: nothing is filtered.
+            (None, "not_false", ["claim_1", "claim_2", "claim_3", "claim_4"]),
+            (None, "true", ["claim_1", "claim_2", "claim_3", "claim_4"]),
+            # ana believes claim_2 false; ben's belief in claim_4 is not hers.
+            ("ana", "not_false", ["claim_1", "claim_3", "claim_4"]),
+            # Only what ana believes true.
+            ("ana", "true", ["claim_3"]),
+            # ben believes claim_4 false; ana's beliefs are not his.
+            ("ben", "not_false", ["claim_1", "claim_2", "claim_3"]),
+            ("ben", "true", []),
+        ],
+    )
+    def test_graph_keeps_the_believed_claims(
+        self, believer: str | None, belief: str, kept: list[str]
+    ) -> None:
+        """Claims, nodes and edges are those of the kept claims alone."""
+        graph = MatchGraph(self._claims(), believer=believer, belief=belief)
+
+        assert [claim.id for claim in graph.claims] == kept
+        assert graph.n_edges == len(kept)
+        assert graph.n_nodes == 2 * len(kept)
+
+    def test_invalid_belief_is_refused(self) -> None:
+        """A belief value other than ``not_false`` or ``true`` is refused."""
+        with pytest.raises(ValueError):
+            MatchGraph(self._claims(), believer="ana", belief="unlikely")
 
 
 # endregion
@@ -891,23 +852,8 @@ class TestMatchGraphNonSynchronousClaims:
     def test_non_synchronous_claims_no_edges(self) -> None:
         """Non-synchronous claims do not create graph edges."""
         claims = [
-            MatchClaim(
-                timeline_a_id="tl_a",
-                timeline_b_id="tl_b",
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id="tl_a",
-                    coordinate_a=Coordinate(100.0, TimeUnit.number),
-                    timeline_b_id="tl_b",
-                    coordinate_b=Coordinate(50.0, TimeUnit.number),
-                ),
-                is_synchronous=True,
-            ),
-            MatchClaim.nomatch(
-                event={"start": 200.0},
-                source_tl_id="tl_a",
-                target_tl_id="tl_b",
-                unit=TimeUnit.number,
-            ),
+            _claim("tl_a", 100.0, "tl_b", 50.0),
+            _nomatch("tl_a", 200.0, "tl_b"),
         ]
         graph = MatchGraph(claims)
 
@@ -918,22 +864,8 @@ class TestMatchGraphNonSynchronousClaims:
 
     def test_non_synchronous_claims_accessible_via_claims(self) -> None:
         """Non-synchronous claims are accessible via claims property."""
-        sync_claim = MatchClaim(
-            timeline_a_id="tl_a",
-            timeline_b_id="tl_b",
-            start_anchor=AlignmentAnchor(
-                timeline_a_id="tl_a",
-                coordinate_a=Coordinate(100.0, TimeUnit.number),
-                timeline_b_id="tl_b",
-                coordinate_b=Coordinate(50.0, TimeUnit.number),
-            ),
-        )
-        nomatch_claim = MatchClaim.nomatch(
-            event={"start": 200.0},
-            source_tl_id="tl_a",
-            target_tl_id="tl_c",
-            unit=TimeUnit.number,
-        )
+        sync_claim = _claim("tl_a", 100.0, "tl_b", 50.0)
+        nomatch_claim = _nomatch("tl_a", 200.0, "tl_c")
         graph = MatchGraph([sync_claim, nomatch_claim])
 
         assert len(graph.claims) == 2
@@ -944,18 +876,8 @@ class TestMatchGraphNonSynchronousClaims:
     def test_only_non_synchronous_claims_empty_graph(self) -> None:
         """Graph with only non-synchronous claims has no nodes or edges."""
         claims = [
-            MatchClaim.nomatch(
-                event={"start": 100.0},
-                source_tl_id="tl_a",
-                target_tl_id="tl_b",
-                unit=TimeUnit.number,
-            ),
-            MatchClaim.nomatch(
-                event={"start": 200.0},
-                source_tl_id="tl_c",
-                target_tl_id="tl_d",
-                unit=TimeUnit.number,
-            ),
+            _nomatch("tl_a", 100.0, "tl_b"),
+            _nomatch("tl_c", 200.0, "tl_d"),
         ]
         graph = MatchGraph(claims)
 
@@ -981,26 +903,8 @@ class TestMatchGraphGetStamps:
     def test_get_stamps_one_per_component(self) -> None:
         """get_stamps() returns one MatchStamp per connected component."""
         claims = [
-            MatchClaim(
-                timeline_a_id="tl_a",
-                timeline_b_id="tl_b",
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id="tl_a",
-                    coordinate_a=Coordinate(100.0, TimeUnit.number),
-                    timeline_b_id="tl_b",
-                    coordinate_b=Coordinate(50.0, TimeUnit.number),
-                ),
-            ),
-            MatchClaim(
-                timeline_a_id="tl_c",
-                timeline_b_id="tl_d",
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id="tl_c",
-                    coordinate_a=Coordinate(200.0, TimeUnit.number),
-                    timeline_b_id="tl_d",
-                    coordinate_b=Coordinate(75.0, TimeUnit.number),
-                ),
-            ),  # Disconnected
+            _claim("tl_a", 100.0, "tl_b", 50.0),
+            _claim("tl_c", 200.0, "tl_d", 75.0),  # Disconnected
         ]
         graph = MatchGraph(claims)
         stamps = graph.get_stamps()
@@ -1033,16 +937,7 @@ class TestMatchGraphExtendToGroupsImplicitClaims:
         dgt1_group: TimelineGroup,
     ) -> None:
         """extend_to_groups() adds implicit MatchClaims (case d)."""
-        claim = MatchClaim(
-            timeline_a_id="dgt_1",
-            timeline_b_id="external",
-            start_anchor=AlignmentAnchor(
-                timeline_a_id="dgt_1",
-                coordinate_a=Coordinate(500.0, TimeUnit.number),
-                timeline_b_id="external",
-                coordinate_b=Coordinate(25.0, TimeUnit.number),
-            ),
-        )
+        claim = _claim("dgt_1", 500, "external", 25.0, unit_a=TimeUnit.pixels)
         graph = MatchGraph([claim])
 
         groups = {"group1": dgt1_group}
@@ -1067,15 +962,8 @@ class TestMatchGraphExtendToGroupsImplicitClaims:
         dgt1_group: TimelineGroup,
     ) -> None:
         """Implicit claims have source_claim_id for traceability."""
-        claim = MatchClaim(
-            timeline_a_id="dgt_1",
-            timeline_b_id="external",
-            start_anchor=AlignmentAnchor(
-                timeline_a_id="dgt_1",
-                coordinate_a=Coordinate(500.0, TimeUnit.number),
-                timeline_b_id="external",
-                coordinate_b=Coordinate(25.0, TimeUnit.number),
-            ),
+        claim = _claim(
+            "dgt_1", 500, "external", 25.0, unit_a=TimeUnit.pixels, id="claim_1"
         )
         graph = MatchGraph([claim])
 
@@ -1087,7 +975,27 @@ class TestMatchGraphExtendToGroupsImplicitClaims:
         assert len(implicit) == 1
 
         for ic in implicit:
-            assert ic.source_claim_id == claim.id
+            assert ic.source_claim_id == "claim_1"
+
+    def test_implicit_claim_ids_are_minted(
+        self,
+        dgt1_group: TimelineGroup,
+    ) -> None:
+        """The extension mints its claims' ids above the highest the graph holds.
+
+        The explicit claim keeps its given id, unminted; the one implicit
+        claim is given the next number, ``claim_5``, minted.
+        """
+        claim = _claim(
+            "dgt_1", 500, "external", 25.0, unit_a=TimeUnit.pixels, id="claim_4"
+        )
+
+        extended = MatchGraph([claim]).extend_to_groups({"group1": dgt1_group})
+
+        assert [(c.id, c.id_minted, c.is_explicit) for c in extended.claims] == [
+            ("claim_4", False, True),
+            ("claim_5", True, False),
+        ]
 
     def test_two_groups_five_implicit_claims(self) -> None:
         """Two groups {TL1, TL4, TL5} and {TL2, TL6}: all implicit claims added.
@@ -1120,15 +1028,8 @@ class TestMatchGraphExtendToGroupsImplicitClaims:
         group_b.add_timeline(tl6)
 
         # Explicit claim: tl1@500 <-> tl2@400
-        claim = MatchClaim(
-            timeline_a_id="tl1",
-            timeline_b_id="tl2",
-            start_anchor=AlignmentAnchor(
-                timeline_a_id="tl1",
-                coordinate_a=Coordinate(500.0, TimeUnit.number),
-                timeline_b_id="tl2",
-                coordinate_b=Coordinate(400.0, TimeUnit.number),
-            ),
+        claim = _claim(
+            "tl1", 500, "tl2", 400, unit_a=TimeUnit.pixels, unit_b=TimeUnit.pixels
         )
         graph = MatchGraph([claim])
 
@@ -1179,16 +1080,7 @@ class TestExtendToSeveralGroups:
             "g1": TimelineGroup(id="g1", timelines=[t, a, u]),
             "g2": TimelineGroup(id="g2", timelines=[t, u, b]),
         }
-        claim = MatchClaim(
-            timeline_a_id="a",
-            timeline_b_id="e",
-            start_anchor=AlignmentAnchor(
-                timeline_a_id="a",
-                coordinate_a=Coordinate(400.0, TimeUnit.number),
-                timeline_b_id="e",
-                coordinate_b=Coordinate(100.0, TimeUnit.number),
-            ),
-        )
+        claim = _claim("a", 400, "e", 100.0, unit_a=TimeUnit.pixels)
 
         extended = MatchGraph([claim]).extend_to_groups(groups)
 
@@ -1228,16 +1120,7 @@ class TestMatchGraphExtendToGroupsFilters:
         group_a.add_timeline(dgt1)
         group_a.add_timeline(audio)
 
-        claim = MatchClaim(
-            timeline_a_id="dgt_1",
-            timeline_b_id="external",
-            start_anchor=AlignmentAnchor(
-                timeline_a_id="dgt_1",
-                coordinate_a=Coordinate(500.0, TimeUnit.number),
-                timeline_b_id="external",
-                coordinate_b=Coordinate(25.0, TimeUnit.number),
-            ),
-        )
+        claim = _claim("dgt_1", 500, "external", 25.0, unit_a=TimeUnit.pixels)
 
         groups = {"group_a": group_a}
         timelines = {"dgt_1": dgt1, "audio": audio}
@@ -1312,7 +1195,7 @@ class TestMatchGraphExtendToGroupsFilters:
 
         assert line.n_stamps == 1
         assert line.stamps[0].coordinates == {
-            "dgt_1": Coordinate(500.0, TimeUnit.number),
+            "dgt_1": Coordinate(500, TimeUnit.pixels),
             "external": Coordinate(25.0, TimeUnit.number),
         }
 
@@ -1356,15 +1239,8 @@ class TestMatchGraphFilterPhase64:
 
     def test_filter_by_include_domains(self) -> None:
         """filter() with include_domains removes timelines of wrong domain."""
-        claim = MatchClaim(
-            timeline_a_id="dgt_1",
-            timeline_b_id="audio",
-            start_anchor=AlignmentAnchor(
-                timeline_a_id="dgt_1",
-                coordinate_a=Coordinate(500.0, TimeUnit.pixels),
-                timeline_b_id="audio",
-                coordinate_b=Coordinate(50.0, TimeUnit.seconds),
-            ),
+        claim = _claim(
+            "dgt_1", 500, "audio", 50.0, unit_a=TimeUnit.pixels, unit_b=TimeUnit.seconds
         )
         graph = MatchGraph([claim])
 
@@ -1381,26 +1257,8 @@ class TestMatchGraphFilterPhase64:
     def test_canonical_id_filters_preserve_pinned_graph_count(self) -> None:
         """timeline_ids and id_pattern combine with AND semantics."""
         claims = [
-            MatchClaim(
-                timeline_a_id="tl_a",
-                timeline_b_id="tl_b",
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id="tl_a",
-                    coordinate_a=Coordinate(100.0, TimeUnit.number),
-                    timeline_b_id="tl_b",
-                    coordinate_b=Coordinate(50.0, TimeUnit.number),
-                ),
-            ),
-            MatchClaim(
-                timeline_a_id="tl_b",
-                timeline_b_id="tl_c",
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id="tl_b",
-                    coordinate_a=Coordinate(50.0, TimeUnit.number),
-                    timeline_b_id="tl_c",
-                    coordinate_b=Coordinate(25.0, TimeUnit.number),
-                ),
-            ),
+            _claim("tl_a", 100.0, "tl_b", 50.0),
+            _claim("tl_b", 50.0, "tl_c", 25.0),
         ]
 
         filtered = MatchGraph(claims).filter(
@@ -1413,15 +1271,8 @@ class TestMatchGraphFilterPhase64:
 
     def test_filter_by_include_units(self) -> None:
         """filter() with include_units removes timelines of wrong unit."""
-        claim = MatchClaim(
-            timeline_a_id="dgt_1",
-            timeline_b_id="audio",
-            start_anchor=AlignmentAnchor(
-                timeline_a_id="dgt_1",
-                coordinate_a=Coordinate(500.0, TimeUnit.pixels),
-                timeline_b_id="audio",
-                coordinate_b=Coordinate(50.0, TimeUnit.seconds),
-            ),
+        claim = _claim(
+            "dgt_1", 500, "audio", 50.0, unit_a=TimeUnit.pixels, unit_b=TimeUnit.seconds
         )
         graph = MatchGraph([claim])
 
@@ -1436,28 +1287,9 @@ class TestMatchGraphFilterPhase64:
 
     def test_filter_keeps_non_synchronous_claims(self) -> None:
         """filter() preserves non-sync claims connecting remaining timelines."""
-        sync_claim = MatchClaim(
-            timeline_a_id="tl_a",
-            timeline_b_id="tl_b",
-            start_anchor=AlignmentAnchor(
-                timeline_a_id="tl_a",
-                coordinate_a=Coordinate(100.0, TimeUnit.number),
-                timeline_b_id="tl_b",
-                coordinate_b=Coordinate(50.0, TimeUnit.number),
-            ),
-        )
-        nomatch_claim = MatchClaim.nomatch(
-            event={"start": 200.0},
-            source_tl_id="tl_a",
-            target_tl_id="tl_b",
-            unit=TimeUnit.number,
-        )
-        unrelated_nomatch = MatchClaim.nomatch(
-            event={"start": 300.0},
-            source_tl_id="tl_a",
-            target_tl_id="tl_c",
-            unit=TimeUnit.number,
-        )
+        sync_claim = _claim("tl_a", 100.0, "tl_b", 50.0)
+        nomatch_claim = _nomatch("tl_a", 200.0, "tl_b")
+        unrelated_nomatch = _nomatch("tl_a", 300.0, "tl_c")
         graph = MatchGraph([sync_claim, nomatch_claim, unrelated_nomatch])
 
         filtered = graph.filter(timeline_ids={"tl_a", "tl_b"})
@@ -1515,15 +1347,11 @@ class TestMatchStampDeterminism:
             "audio:dpt_1",
         ]
         return [
-            MatchClaim(
-                timeline_a_id=names[0],
-                timeline_b_id=other,
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id=names[0],
-                    coordinate_a=Coordinate(Fraction(1, 2), TimeUnit.quarters),
-                    timeline_b_id=other,
-                    coordinate_b=Coordinate(261, TimeUnit.ticks),
-                ),
+            match_claim(
+                names[0],
+                Coordinate(Fraction(1, 2), TimeUnit.quarters),
+                other,
+                Coordinate(261, TimeUnit.ticks),
             )
             for other in names[1:]
         ]
@@ -1573,6 +1401,7 @@ class TestMatchStampDeterminism:
         itself however wrong it is. Only separate interpreters under
         different seeds can show the property.
         """
+        import os
         import subprocess
         import sys
         import textwrap
@@ -1595,6 +1424,8 @@ class TestMatchStampDeterminism:
                 MatchClaim(
                     timeline_a_id=names[0],
                     timeline_b_id=other,
+                    event_a_id=f"{names[0]}@1/2",
+                    event_b_id=f"{other}@261",
                     start_anchor=AlignmentAnchor(
                         timeline_a_id=names[0],
                         coordinate_a=Coordinate(Fraction(1, 2), TimeUnit.quarters),
@@ -1616,7 +1447,16 @@ class TestMatchStampDeterminism:
                 capture_output=True,
                 text=True,
                 check=True,
-                env={"PYTHONHASHSEED": seed, "PATH": "/usr/bin:/bin"},
+                env={
+                    "PYTHONHASHSEED": seed,
+                    "PATH": "/usr/bin:/bin",
+                    # The interpreters import the library under test.
+                    **{
+                        key: os.environ[key]
+                        for key in ("PYTHONPATH",)
+                        if key in os.environ
+                    },
+                },
             )
             outputs.add(completed.stdout)
 

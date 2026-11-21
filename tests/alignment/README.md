@@ -51,16 +51,14 @@ All Thoresen test data constants and shared fixtures are centralised in `tests/a
 | `dgt1_timeline` | `DiscreteGraphicalTimeline` | DGT1 (2009): 4835 px, uid="dgt_1" |
 | `dgt2_timeline` | `DiscreteGraphicalTimeline` | DGT2 (2010): 4328 px, uid="dgt_2" |
 | `audio_timeline` | `ContinuousPhysicalTimeline` | 150 seconds, uid="audio" |
-| `thoresen_segment_claims` | `list[MatchClaim]` | 5 interval claims mapping DGT1↔DGT2 segments |
+| `thoresen_segment_claims` | `list[MatchClaim]` | 5 interval claims mapping DGT1↔DGT2 segments; each names the segment events it matches (`system_N` on DGT1, `page_N` on DGT2, the names the graphical fixtures give the segments), its coordinates are integer pixels on both axes, its provenance `Provenance(method="manual", note="thoresen_analysis segment_correspondence")` |
 | `dgt1_bundle` / `dgt2_bundle` | `GraphicalBundle` | Full graphical bundles (requires PyMuPDF) |
+
+`test_thoresen_poc.py::TestThoresenSegmentClaims` pins the claim fixture itself: five interval claims, each connecting `dgt_1` and `dgt_2`, contiguous on both sides from 0 to the total width (4835, 4328), with exactly that provenance and the event pairs `(system_1, page_1)` … `(system_5, page_5)` in order.
 
 ### No ID Reset
 
 Every id the alignment module mints is minted statelessly (`group_N`, `bundle_N`, `claim_N`, N the smallest free number in the scope), so no test resets a generator and no test depends on what an earlier test built.
-
-### Migration Note
-
-Previously, `dgt1_timeline`, `dgt2_timeline`, `audio_timeline`, `thoresen_segment_claims`, and the DGT1/DGT2 coordinate constants were duplicated across `test_thoresen_poc.py`, `test_graph.py`, and `test_matchline.py`. These have been consolidated into `conftest.py` so that all test files share a single source of truth.
 
 ---
 
@@ -113,27 +111,35 @@ union** reachable from the query, and governs out-of-support transfers with a
 properties are proven with a synthetic fixture that owns no corpus data:
 
 1. A query reaches **every** timeline of **both** merged bundles, including
-   timelines that are only reachable through a bridge timeline, and only after
-   every derived-unit claim anchor is converted explicitly to its timeline's
-   native unit before WarpMap construction.
+   timelines that are only reachable through a bridge timeline. A bridging
+   position stated in a derived unit (seconds on a samples timeline) is
+   placed on the bridge's own axis through its C-Map when the claim is made,
+   so the WarpMap behind the warp is built from coordinates already on the
+   axis; the bundle converts nothing when it reads.
 2. A coordinate below the first alignment anchor produces **no negative
    coordinate under any policy**, and the three policies produce exact,
    distinct results.
 
+Merging keeps every claim id in the scope it comes from: the two source
+bundles both hold `claim_1`, and the claim the merged bundle adds afterwards
+is minted in its own scope. The test pins the ids and the scope column of the
+merged MatchClaim table, so a merge that re-mints ids or loses a scope fails.
+
 ### Synthetic Fixture Topology
 
 Two bundles are built, then merged with `AlignmentBundle.from_bundles`, then
-bridged with `create_match_claims`:
+bridged with `create_match_claims`. Every claim names an event on each side.
 
-- **Bundle A — a star in the per-claim list.** `a1` (score, quarters, len 100),
-  `a2` (seconds, len 100), `a3` (seconds, len 100), each in its own group.
-  Cross-group `MatchClaim`s at `a1` coordinates `{0, 50, 100}`:
-  `a2 = a1` and `a3 = a1 / 2`. A query at `a1 = 50` reaches `a2 = 50`,
-  `a3 = 25` by exact anchor.
+- **Bundle A — a star of single claims.** `a1` (score, quarters, exact axis,
+  len 100), `a2` (seconds, len 100), `a3` (seconds, len 100), each in its own
+  group. Six claims between fixture events (`helpers.match_claim`) at `a1`
+  coordinates `{0, 50, 100}`: `a2 = a1` and `a3 = a1 / 2`, ids `claim_1` …
+  `claim_6`. A query at `a1 = 50` reaches `a2 = 50`, `a3 = 25` by exact anchor.
 - **Bundle B — a WarpMap-able columnar `MatchClaimField`.** `b_bridge`
-  (samples, len 1000) carrying a `ScalarMap(0.01, samples→seconds)` C-Map,
-  plus `b1` (samples, len 3000) and `b2` (samples, len 3000), each in its own
-  group. The field holds native-samples instant anchors:
+  (samples, int axis, len 1000) carrying a `ScalarMap(0.01, samples→seconds)`
+  C-Map, plus `b1` (samples, len 3000) and `b2` (samples, len 3000), each in
+  its own group. The field (`MatchClaimField.from_columns`, ids `claim_1` …
+  `claim_8`) holds native-samples instant anchors between named events:
 
   | `b_bridge` (samples) | `b1` (samples) | `b2` (samples) |
   |---|---|---|
@@ -143,18 +149,24 @@ bridged with `create_match_claims`:
   | 800 | 2500 | 1200 |
 
   The field's `b_bridge` hull is therefore `[200, 800]`.
-- **Bridge A↔B.** A unit-bearing claim anchors `a1 = 50 quarters` to
-  `b_bridge = 5 seconds`. The bridge C-Map converts the latter to exactly
-  `500 samples` before its WarpMap is built. A separate mixed-unit assertion
-  combines native-sample and seconds anchors on the same timeline and checks
-  their exact normalized source coordinates; no range or magnitude inference
-  participates. `TimeUnit.number` remains the explicit unitless form and is
-  interpreted in the referenced timeline's native unit.
-  Because `b_bridge`'s native unit is samples, the anchor is recorded as
-  `b_bridge = 5` *samples* — a value that is really 5 seconds (the derived
-  unit), the same "seconds-on-a-samples-timeline" shape as the specimen.
+- **Bridge A↔B.** `create_match_claims` pairs the position `a1 = 50` with the
+  position `b_bridge = 5 seconds`. Each side becomes a Projection event
+  (`projection_1` on each timeline); the bridge C-Map places 5 seconds at
+  exactly `500 samples` (`5 / 0.01`), so the claim's `b_bridge` anchor is
+  `500` samples. The claim is the merged bundle's own: `claim_1` in scope 0.
+- **Mixed units on one timeline.** A separate bundle (`source`, samples with
+  the same C-Map; `target`, seconds) gets three claims from positions
+  `source = 2.0 s, 400 samples, 6.0 s` to `target = 20.0, 40.0, 60.0`. Each
+  source position is placed on the samples axis when its claim is made:
+  `200, 400, 600` samples, the Projections `projection_1` … `projection_3`.
+  The WarpMap's source array is `[200, 400, 600]` and `transfer(300)` gives
+  `30.0`; no range or magnitude inference participates.
 
 ### Exact Expected Values
+
+**Merged MatchClaim table:** `claim_scopes == (merged.id, "bundle_a",
+"bundle_b")`; ids `claim_1 … claim_6`, `claim_1 … claim_8`, `claim_1`, scope
+keys `[1] × 6 + [2] × 8 + [0]`.
 
 **Union query — `merged.get_matchstamp_at(50, "a1:clt_1")` (default `omit`):**
 
@@ -166,20 +178,19 @@ no negatives:
 | `a1:clt_1` | 50 | query |
 | `a2:cpt_1` | 50 | exact anchor |
 | `a3:cpt_2` | 25 | exact anchor |
-| `b_bridge:dpt_1` | 5 | exact bridge anchor (unaltered) |
-| `b1:dpt_2` | 1300 | reconcile 5 s → 500 samples, warp → 1300 |
-| `b2:dpt_3` | 750 | reconcile 5 s → 500 samples, warp → 750 |
+| `b_bridge:dpt_1` | 500 | exact bridge anchor, placed at 500 samples when made |
+| `b1:dpt_2` | 1300 | warp(500) |
+| `b2:dpt_3` | 750 | warp(500) |
 
-`b_bridge = 5` is out of the field hull `[200, 800]`; its C-Map inverse
-reinterprets 5 seconds as 500 samples (in hull), and `np.interp(500, …)` gives
-`b1 = 1300`, `b2 = 750`.
+`b_bridge = 500` lies in the field hull `[200, 800]`, and `np.interp(500, …)`
+gives `b1 = 1300` (`900 + ½·800`), `b2 = 750` (`600 + ½·300`).
 
-**Parity.** `b_bundle.get_matchstamp_at(500, "b_bridge:dpt_1")` (the reconciled
-native coordinate) yields `b1 = 1300`, `b2 = 750` — identical to the union's B
-portion for the transferred timelines.
+**Parity.** `b_bundle.get_matchstamp_at(500, "b_bridge:dpt_1")` yields
+`b1 = 1300`, `b2 = 750` — identical to the union's B portion for the
+transferred timelines.
 
 **Out-of-support query — `merged.get_matchstamp_at(50, "b_bridge:dpt_1")`** (50
-samples, below the hull; the query's own coordinate is never reconciled):
+samples, below the hull):
 
 | policy | timelines | `b1:dpt_2` | `b2:dpt_3` |
 |---|---|---|---|
@@ -236,8 +247,11 @@ position. A test proves the rule only if it holds in the following cases:
 
 - `score`: quarters, length 16, exact (`Fraction`) axis.
 - `recording`: samples, length 441000, with `SamplesToSeconds(44100)`.
-- Four instant claims, score quarters → recording **seconds**, so every anchor
-  passes through the C-Map into native samples. Each `seconds × 44100` is whole:
+- Four instant claims made with `create_match_claims` from positions, score
+  quarters → recording **seconds**: each side becomes a Projection event, and
+  each seconds position is placed on the recording's sample axis through the
+  C-Map when the claim is made, so the claims hold samples
+  (`test_claims_hold_the_recording_samples`). Each `seconds × 44100` is whole:
 
   | score (quarters) | recording (seconds) | recording (samples) |
   |---|---|---|
@@ -319,6 +333,10 @@ The validation covers these exact geometries:
   direct-edge transfer fallback remains available, public exports remain stable,
   and a position outside every claim produces a source-only `MatchStamp`.
 
+Every claim names a fixture event on each side (`helpers.match_claim`), its
+coordinates on the timelines' own axes; the DJ-set claims are two interval
+claims built that way.
+
 Every assertion uses exact `Coordinate`, `Interval`, `Fraction`, dictionary, and
 ordering expectations; no tolerance or approximate comparison is used.
 
@@ -328,56 +346,66 @@ ordering expectations; no tolerance or approximate comparison is used.
 
 ### What We're Validating
 
-A claim held by a bundle records that bundle (`MatchClaim.bundle`), so that
-`get_matchstamp` can be called without passing it. That record is where the
-claim is, not part of what it claims. Copying a claim must therefore never copy
-the bundle: a deep copy of one claim that dragged its bundle along copied every
-other claim the bundle holds, so retrieving a stamp at a position covered by
-`k` interval claims cost `k` times the whole bundle, and a loaded alignment of
-ten thousand claims did not answer.
+A bundle holds its claims as rows of one MatchClaim table
+(`match_claim_table`) and materialises a `MatchClaim` when one is read
+(`get_match_claims`, a stamp's `interval_claims`). A claim read from a bundle
+records that bundle (`MatchClaim.bundle`), so that `get_matchstamp` can be
+called without passing it. That record is where the claim is, not part of
+what it claims. Copying a claim must therefore never copy the bundle: a deep
+copy of one claim that dragged its bundle along would copy the whole
+alignment, so retrieving `k` claims and copying them would cost `k` times the
+bundle.
 
 Wall time cannot prove this (it depends on the machine and is not an exact
 value). What proves it is the number of claims copied, counted by wrapping
-`MatchClaim.__deepcopy__`: it is the number of objects the operation actually
-duplicated, independent of speed, and it scales with the bundle exactly when
-the defect is present.
+`MatchClaim.__deepcopy__`: it is the number of claim objects the operation
+actually duplicated, independent of speed.
 
-- **One claim, one copy.** A bundle holds 300 interval claims. Deep-copying one
-  of them (`copy.deepcopy` and `model_copy(deep=True)` alike) copies exactly
-  one claim. Before the fix the count was 303 (the bundle's every claim).
-- **A copy is held by no bundle.** The copy's `bundle` is `None`: a copy is not
-  among the bundle's claims, so naming that bundle would state a membership
-  that does not exist. The copy equals the original (`__eq__` reads the fields
-  only) and is a different object.
-- **A copied bundle's claims name the copied bundle.** Deep-copying the whole
-  bundle copies each claim once (300 copies, not 300²), and each copied claim's
-  `bundle` is the copied bundle, never the original and never `None` — the
-  claim and its bundle were copied together.
-- **Retrieval copies no claim.** `get_matchstamp_at` at a position three
-  overlapping interval claims cover makes zero claim copies; the stamp's
-  `interval_claims` are the bundle's own claim objects (identity), in
-  relevance order, and still name the bundle. A `MatchStamp` does not copy
-  claims because a claim is frozen: the stamp copies its list, so a caller
-  mutating the list it passed leaves the stamp's list unchanged, which the
-  test checks too.
+- **A claim read records its bundle.** Every claim `get_match_claims` returns
+  has `bundle is` the bundle; their ids are the ones the bundle minted in
+  order, `claim_1` … `claim_303`.
+- **One claim, one copy.** Deep-copying one claim read from the bundle
+  (`copy.deepcopy` and `model_copy(deep=True)` alike) copies exactly that
+  claim: the copy count is 1, the copied object the claim itself.
+- **A copy is held by no bundle.** The copy's `bundle` is `None`: the bundle
+  is not copied with it, and a copy is not a row of the bundle's table, so
+  naming that bundle would state a membership that does not exist. The
+  original still records the bundle. The copy equals the original (`__eq__`
+  reads the fields only) and is a different object.
+- **A copied bundle copies its table, and its claims record the copy.**
+  Deep-copying the whole bundle copies its table (a different
+  `match_claim_table` object, `claim_table` equal row for row, 303 rows) and
+  no claim object, since the bundle holds none: 0 claim copies. Every claim
+  read from the copy records the copy; every claim read from the original
+  still records the original; the two lists are equal.
+- **Retrieval copies no claim.** `get_matchstamp_at` at a position four
+  interval claims cover makes zero claim copies; the stamp's
+  `interval_claims` are those four claims, read from the table in table order
+  (ids and equality to the claims `get_match_claims` returns at the same
+  rows), and they record the bundle. A `MatchStamp` copies its list, not the
+  claims in it: a caller appending to the list it passed leaves the stamp's
+  list unchanged, and the stamp holds the very claim object it was given.
 
 ### Fixture
 
 Two standalone float-canonical `floating_measures` timelines, `score` and
-`perf`, length 1200. Claim `i` (`i = 0 … 299`) maps `score [i, i + 1]` to
-`perf [2i, 2i + 2]`; three further claims `score [10, 12]`, `score [10.25,
-10.75]`, `score [9, 11]` (to `perf [20, 24]`, `[20.5, 21.5]`, `[18, 22]`)
-overlap position `10.5`, which claim 10 also covers. The query at `score 10.5`
-is therefore covered by exactly four claims; they all map it to `perf 21`.
+`perf`, length 1200. Claim `i` (`i = 0 … 299`, id `claim_{i + 1}`) is an
+interval claim between two fixture events (`helpers.match_claim`) mapping
+`score [i, i + 1]` to `perf [2i, 2i + 2]`; three further claims `score [10,
+12]`, `score [10.25, 10.75]`, `score [9, 11]` (to `perf [20, 24]`, `[20.5,
+21.5]`, `[18, 22]`; ids `claim_301` … `claim_303`) overlap position `10.5`,
+which claim 10 (`claim_11`) also covers. The query at `score 10.5` is
+therefore covered by exactly four claims; they all map it to `perf 21`.
 
 ### Exact Expected Values
 
 | Operation | Claims copied | Back-reference |
 |---|---|---|
-| `copy.deepcopy(held claim)` | 1 | `None` |
-| `held.model_copy(deep=True)` | 1 | `None` |
-| `copy.deepcopy(bundle)` | 303 | every copy's `bundle is` the copied bundle |
-| `get_matchstamp_at(10.5, "score")` | 0 | `interval_claims` are claims 10, 300, 301, 302 of the bundle, by identity |
+| `get_match_claims()` | 0 | every claim's `bundle is` the bundle |
+| `copy.deepcopy(claim read)` | 1 (that claim) | copy `None`, original the bundle |
+| `claim.model_copy(deep=True)` | 1 (that claim) | copy `None`, original the bundle |
+| `copy.deepcopy(bundle)` | 0 | every claim read from the copy records the copy |
+| `get_matchstamp_at(10.5, "score")` | 0 | `interval_claims` are `claim_11`, `claim_301`, `claim_302`, `claim_303`, recording the bundle |
 
 The stamp's `perf` coordinate is `21` floating measures, a float on the float
 axis.
@@ -391,32 +419,35 @@ axis.
 A matchstamp's closure visits every timeline of the bundle's trees that holds
 the position: a score with loader category children or unfolded spans, and
 recordings with feature and track children, put dozens to hundreds of
-timelines on that walk while claims name only a handful of them. Two pieces of
-work must therefore scale with the claims naming a timeline, never with the
-bundle's whole claim list times the number of timelines visited:
+timelines on that walk while claims name only a handful of them. The bundle
+holds its claims as rows of one MatchClaim table, so two pieces of work must
+scale with the claims naming a timeline, never with the table's length times
+the number of timelines visited:
 
 - **Relevance.** Only a claim naming a timeline can be relevant to a position
-  on it, so the claims a visited timeline expresses in native units
-  (`_claim_in_native_units`) are those naming it. Before the fix every visited
-  timeline expressed every claim of the bundle, and a ten-thousand-claim
-  alignment over a 289-timeline bundle did not answer.
-- **MatchLines.** A MatchLine keeps only the stamps holding its source, and a
-  graph node exists only where a claim names a timeline, so a source no claim
-  names has no line. Such a source is answered without building a MatchLine
-  from every claim of the bundle.
+  on it. Each visited timeline cuts the table once, a vectorized cut
+  (`MatchClaimField.connecting`, through `_claims_naming`) cached per timeline
+  and table state, however often the timeline is asked; only the rows of that
+  cut holding the position are materialised as claims (`_materialized`). A
+  timeline no claim names cuts zero rows and materialises none.
+- **MatchLines.** A MatchLine is built from the claims naming its source only,
+  and a source no claim names has no line: nothing is materialised for it.
 
 Wall time cannot prove either (it depends on the machine and is not an exact
 value). What proves it is the amount of work, counted by wrapping
-`AlignmentBundle._claim_in_native_units` (claims expressed),
+`MatchClaimField.connecting` (cuts per timeline, rows per cut),
+`AlignmentBundle._materialized` (claims materialised per call),
 `MatchLine.from_claims` (lines built, with their source) and
-`AlignmentBundle._transfer_to_group` (warps attempted). These counts are exact
-for the fixture, independent of speed, and the first two scale with the number
-of visited timelines exactly when the defect is present. The stamp itself is
-pinned too, so the counts cannot fall by reaching fewer timelines.
+`AlignmentBundle._transfer_to_group` (warps attempted, with their source).
+These counts are exact for the fixture and independent of speed; a cut
+repeated per request, a cut that is not narrowed to its timeline, or a line
+built from the whole table changes them. The stamp itself is pinned too, so
+the counts cannot fall by reaching fewer timelines.
 
 ### Fixture
 
-Quarters and seconds, float seconds, exact quarters.
+Quarters and seconds: exact (fraction) quarters, float seconds, every claim a
+synchronous instant claim between two fixture events (`helpers.match_claim`).
 
 - Group `score_group`, members in order `score`, `facsimile`, `edition`, all
   quarters of length 40. `score` has 20 children `part_1` … `part_20`, each of
@@ -434,29 +465,41 @@ timeline is reached by a warp, the group or the tree.
 
 ### Derivation of the counts
 
-- `score` is asked for its relevant claims three times (the interval-claim
-  scan, the exact-anchor MatchGraph, the closure): 3 × 63 = 189. In the
-  closure `edition` and `recording` express their 2 claims each, every
-  `perf_n` its 21: 2 + 2 + 63 = 67. `facsimile`, the parts and the tracks name
-  no claim and express none. Relevance: 256.
-- The closure pops `score` first. Its group adds `facsimile` and `edition`;
-  then it warps into the four other groups: `perf_1`–`perf_3` directly from
-  `score`'s MatchLine (built: 65 claims expressed), `recording` only
+- **Cuts.** The closure visits 57 timelines (the stamp's). `score` is asked
+  for its relevant claims three times (the interval-claim scan, the
+  exact-anchor MatchGraph, the closure) and cut once; every other visited
+  timeline is asked and cut once. 57 cuts, one per timeline. The rows cut are
+  the claims naming each: `score` 63, `perf_1`–`perf_3` 21 each, `edition` 2,
+  `recording` 2, the 51 others (`facsimile`, the parts, the tracks) 0:
+  63 + 63 + 2 + 2 = **130** rows.
+- **Relevance materialises nothing.** No visited timeline holds an anchor at
+  its position: `score` 11 and `edition` 11 (anchors at even quarters, at 0
+  and 40), `perf_1` 11.0, `perf_2` 22.0, `perf_3` 33.0 (anchors at `n·q`, `q`
+  even: 22 would need `q = 11`, 11 and 33 are odd multiples), `recording`
+  16.0 (anchors 5.0, 45.0). Each of the 59 relevance reads (3 on `score`, 56
+  more timelines) materialises 0 claims.
+- **MatchLines.** The closure pops `score` first. Its group adds `facsimile`
+  and `edition`; then it warps into the four other groups, 4 calls of
+  `_transfer_to_group`, all from `score`: `perf_1`–`perf_3` directly through
+  `score`'s MatchLine (built from the 63 claims naming `score`), `recording`
   indirectly — `score`'s line does not reach it, `facsimile` names no claim
-  (no line built), `edition`'s line does (built: 65). Every group is then
-  reached, so no later node warps. MatchLines: 2 (`score`, `edition`),
-  130 claims expressed; transfers: 4.
-- Total claims expressed: 256 + 130 = **386**. Before the fix each of the 59
-  relevance calls (3 on `score`, 56 more timelines visited) expressed all 65
-  claims and a third line was built for `facsimile`: 59 × 65 + 3 × 65 = 4030.
+  (no line, nothing materialised), `edition`'s line (built from its 2 claims)
+  does, at `11 + 5.0 = 16.0`. Every group is then reached, so no later node
+  warps. MatchLines: `["score", "edition"]`.
+- **Materialised, in call order:** the 3 relevance reads on `score` (0 each),
+  `score`'s line (63), `edition`'s line (2), the 56 other relevance reads (0
+  each): `[0, 0, 0, 63, 2] + [0] * 56`, 65 claims in all — the claims of the
+  two lines, never the table times the timelines visited (57 × 65 = 3705).
 
 ### Exact Expected Values
 
 | Measure | Value |
 |---|---|
-| claims expressed in native units | 386 |
+| table cuts | 57, one per visited timeline |
+| rows cut | 130 (`score` 63, `perf_1`–`perf_3` 21 each, `edition` 2, `recording` 2) |
+| claims materialised, per call | `[0, 0, 0, 63, 2] + [0] * 56` |
 | MatchLines built, by source | `["score", "edition"]` |
-| `_transfer_to_group` calls | 4 |
+| `_transfer_to_group` calls, by source | `["score"] * 4` |
 | timelines in the stamp | 57 (3 score group, 20 parts, 3 performances, 30 tracks, `recording`) |
 | `perf_1`, `perf_2`, `perf_3` | `11.0`, `22.0`, `33.0` seconds |
 | `edition`, `part_7` | `11` quarters each |
@@ -543,8 +586,8 @@ holds in the following cases:
 
 - `clt_7`: child of `clt_4` at offset 0, length 27, so `[668, 695]` on `clt_1`.
 - `clt_6`: quarters, length 27, grouped with `clt_7` (one group, `score`).
-- `cpt_1`: seconds, length 10, ungrouped, with two instant claims to `clt_6`:
-  `0 ↔ 0.0` and `27 ↔ 9.0`.
+- `cpt_1`: seconds, length 10, ungrouped, with two instant claims to `clt_6`
+  between fixture events (`helpers.match_claim`): `0 ↔ 0.0` and `27 ↔ 9.0`.
 - Registered: `clt_7` (bringing its root `clt_1`), `clt_6`, `cpt_1`.
   `clt_2`..`clt_5` are neither registered nor grouped.
 
@@ -622,7 +665,8 @@ ungrouped registered timeline. What proves it:
     names warps nothing, so it is no unit: a registered root (quarters, length
     100) with 100 unregistered children of length 1, grouped alone, beside a
     grouped recording (seconds, length 100.0) with claims `0 ↔ 0.0` and
-    `100 ↔ 100.0` on the root, has exactly 2 units, and the stamp at the
+    `100 ↔ 100.0` on the root (made by `create_match_claims` from positions,
+    a Projection on each side), has exactly 2 units, and the stamp at the
     root's 50.5 holds the root 50.5, its child at 50 holding 1/2, and the
     recording 50.5 after exactly 1 transfer (102 units and 298 transfers
     before). In the fixture above, the units are the registered `clt_1` and
@@ -643,7 +687,8 @@ registered; `clt_2` its child at offset 20, length 40, not registered, events
 | `clt_1` 10 | `clt_1` 10 |
 
 `15.0 = 5.0 + (20 / 40) · (25.0 − 5.0)`; `40 = 20 + 20`. The claims' anchors are
-`clt_2` 0 ↔ `cpt_1` 5.0 and `clt_2` 40 ↔ `cpt_1` 25.0, both synchronous.
+`clt_2` 0 ↔ `cpt_1` 5.0 and `clt_2` 40 ↔ `cpt_1` 25.0, both synchronous, between
+the events `n1 ↔ a1` and `n2 ↔ a2` (read back with `get_match_claims`).
 `transfer(20, "clt_2", "cpt_1")` is `15.0` and `transfer(15.0, "cpt_1",
 "clt_2")` is `20.0`.
 
@@ -1239,14 +1284,24 @@ joins a table would break every reference to it. The rule tested:
   `validate_id`.
 - **A field is a scope** (every constructor: `from_columns`, `from_claims`,
   `from_dict`, `from_table`, `from_parquet`): a row without an id is minted
-  one, `claim_N` with N the smallest number free (minting gives a first id,
-  it renames nothing); an id held by two rows is refused, **whether given or
-  minted** (`claim id 'a' is held by 2 claims`), before anything is built.
+  one, `claim_N` with N above the highest number held (minting gives a first
+  id, it renames nothing, and a number is never given twice); an id held by
+  two rows is refused, **whether given or minted** (`claim id 'a' is held by
+  2 claims`), before anything is built.
   No id is ever re-minted. Two free claims, both without an id, share a
   table as `claim_1`, `claim_2`; the claim objects keep `None` (a field
   holds rows, not the objects).
 - **The flag is stored** (`id_minted` is a column of the claim struct): a
   row read back keeps its id and its flag.
+- **A bundle is a scope** for the claims added to it (`add_match_claims`,
+  `add_match_claim_field`), under the same rule: an id its scope holds is
+  refused, never re-minted, and a claim object without an id is given the
+  bundle's minted id in place (its first id). **A merge keeps every id in
+  its scope** (`from_bundles`): each source bundle stays the scope of its
+  claims' ids, so two sources may both hold `claim_1`; the scope of a row is
+  a key into `claim_scopes`, the key column `scope` of `claim_table` (never a
+  string joined onto the id), and claims added to the merge afterwards are
+  in its own scope, key 0.
 
 ### Why this proves "beyond one process"
 
@@ -1262,20 +1317,24 @@ determinism across processes is observed, not inferred.
 | `test_free_claim_holds_no_id` | two fresh claims both hold `None`, `id_minted` False; a given `"onset 7"` is kept, `id_minted` False; `"a\tb"` raises |
 | `test_field_is_a_scope` | `from_claims` of claims given `s0`–`s2` keeps them; two free claims become `claim_1`, `claim_2`, `id_minted` True, the objects still `None`; two claims given `"a"` are refused (`claim id 'a' is held by 2 claims`) |
 | `test_from_columns_mints_ids` | the gold vector's ids are `claim_1`–`claim_3`, `id_minted` all True |
-| `test_null_ids_are_minted_around_held_ones` | a table whose rows hold `claim_2`, null, `x`, null reads back as `claim_2`, `claim_1`, `x`, `claim_3`, the minted flags `False`, `True`, `False`, `True` |
+| `test_null_ids_are_minted_around_held_ones` | a table whose rows hold `claim_2`, null, `x`, null reads back as `claim_2`, `claim_3`, `x`, `claim_4` (above the highest held, `claim_1` never given), the minted flags `False`, `True`, `False`, `True` |
 | `test_two_runs_store_the_same_ids` | a subprocess and this process store the same field to Parquet: ids `claim_1`–`claim_4` and the tables equal |
 
 ### Bundle part: Exact Expected Values
 
+Fixture: `score` and `score_copy` (quarters, fraction) in one group, `audio`
+(seconds, float) in another, or `score` and `audio` ungrouped (`_holding`);
+the claims are `from_events` between named notes and onsets on those axes.
+
 | Test | Validates |
 |------|-----------|
-| `test_two_free_claims_become_distinct` | two free claims, `score ↔ audio` (0, 0.0) and `score ↔ score_copy` (4, 4), both `claim_1`: a graph built from them filters by object, so `filter(timeline_ids={"score", "audio"})` keeps the first alone and `{"score", "score_copy"}` the second alone, while both edges still carry `claim_id == "claim_1"`; `from_claims` stores them as `claim_1`, `claim_2` and leaves the objects unchanged; a bundle renames the second in place to `claim_2`, and a graph of the bundle's claims keeps `claim_2` for `{"score", "score_copy"}` |
-| `test_stored_and_new_claims_are_distinct` | the stored field read from Parquet keeps `claim_1`–`claim_4`; the same four built again plus the two new ones, all without an id, added to the bundle, are given `claim_5`–`claim_10` in order; the caller's objects carry them and `claim.bundle is bundle`; all ten ids distinct |
+| `test_two_free_claims_become_distinct` | two free claims, `score ↔ audio` (0, 0.0) and `score ↔ score_copy` (4, 4), both hold `None`: a graph built from them filters by object, so `filter(timeline_ids={"score", "audio"})` keeps the first alone and `{"score", "score_copy"}` the second alone, both edges carrying `claim_id is None`; `from_claims` stores them as `claim_1`, `claim_2` and leaves the objects unchanged; a bundle gives the objects `claim_1`, `claim_2` in place, `id_minted` True, and a graph of the bundle's claims keeps `claim_2` for `{"score", "score_copy"}` |
+| `test_stored_and_new_claims_are_distinct` | the stored field read from Parquet keeps `claim_1`–`claim_4`; the same four built again plus the two new ones, all without an id, added to the bundle, are given `claim_5`–`claim_10` in order; the caller's objects carry them and `claim.bundle is bundle`; the bundle's claims read back are `claim_1`–`claim_10`, the last six equal to the caller's objects, each with `bundle` the bundle |
 | `test_graph_filter_unaffected` | a bundle of the stored field and the two new claims (`claim_1`–`claim_6`): `MatchGraph(bundle.get_match_claims()).extend_to_groups(bundle.groups)` adds six implicit claims, `claim_7`–`claim_12` in the order made, `id_minted` True; every edge's `claim_id` equals its claim's id and the twelve are distinct; each implicit claim's `source_claim_id` is one of `claim_1`–`claim_6`, the explicit claim whose `score` coordinate it carries; `filter(explicit_only=True)` keeps exactly `claim_1`–`claim_6` and no implicit claim; `filter(timeline_ids={"score", "audio"})` keeps the same six |
-| `test_references_follow_reminted_ids` | `from_claims` of a free projection `score ↔ audio` (0, 0.0) and the implicit claim made from it (`source_claim_id` `claim_1`) stores `claim_1`, `claim_2`, the reference `claim_1` kept (the first row keeps the id); added to a bundle already holding `claim_1`, `claim_2`, the rows become `claim_3`, `claim_4` and the second row's `source_claim_id` `claim_3`; the same two claims as objects, added by `add_match_claims` to such a bundle, become `claim_3`, `claim_4` in place, the implicit one's `source_claim_id` `claim_3`; a bundle holding a given `"anchor"` and a minted `claim_1` takes an implicit claim made from `"anchor"`: its id becomes `claim_2` and its `source_claim_id` stays `"anchor"` (a reference to no re-minted newcomer) |
-| `test_two_runs_merged` | a subprocess and this process store the same field: ids equal (`claim_1`–`claim_4`); both added to one bundle: the second becomes `claim_5`–`claim_8`, every other table value equal |
-| `test_given_id_refused_atomically` | a bundle holding a given `"a"` refuses a claim and a field with a given `"a"` (`claim id 'a' is already held by another claim of this bundle`); after each refusal the bundle holds what it held and the newcomer keeps its id (`None` for the one made without) and no bundle |
-| `test_held_claim_joins_as_copy` | `from_bundles` of two bundles each holding `claim_1`, `claim_2`: the merge holds `claim_1`–`claim_4`; the second source still holds `claim_1`, `claim_2`, each with `bundle` the source |
+| `test_held_ids_are_refused_never_reminted` | `from_claims` of a claim given `"anchor"` and the implicit claim made from it stores `"anchor"`, `claim_1`, the reference `"anchor"` kept; a bundle holding `claim_1`, `claim_2` refuses that field (`claim id 'claim_1' is already held by another claim of this bundle`) and still holds its two; a bundle holding `"anchor"` and a minted `claim_1` takes an implicit claim made from `"anchor"`: its id becomes `claim_2`, its `source_claim_id` stays `"anchor"` |
+| `test_two_runs_merged` | a subprocess and this process store the same field: ids equal (`claim_1`–`claim_4`), tables equal; one bundle takes the first and refuses the second (`claim id 'claim_1' is already held ...`), keeping 4 rows; two bundles, one run each, merged by `from_bundles`: `claim_scopes` is the merge's id then the two sources', the ids read `claim_1`–`claim_4` twice, the `scope` column `[1, 1, 1, 1, 2, 2, 2, 2]`, every table column equal to the two source tables concatenated |
+| `test_given_id_refused_atomically` | a bundle holding a given `"a"` refuses a claim and a field with a given `"a"` (`claim id 'a' is already held by another claim of this bundle`); after each refusal the bundle's claims are exactly `[held]` and the newcomer keeps its id (`None` for the one made without) and no bundle |
+| `test_merge_keeps_ids_in_their_scopes` | `from_bundles` of two bundles each holding `claim_1`, `claim_2`: the merge holds `claim_1`, `claim_2`, `claim_1`, `claim_2`, `scope` `[1, 1, 2, 2]`, each claim read back recording the merge; the sources still hold `claim_1`, `claim_2` and their `claim_table` has no `scope` column; a free claim added to the merge is given `claim_1` in the merge's own scope (`scope` 0 appended); a claim another bundle holds, added to a third bundle, joins as a copy: the original keeps its bundle, the third bundle's row records the third |
 
 ---
 
@@ -1321,113 +1380,6 @@ only the installed `timetoshare` and always run.
 
 ---
 
-## Claim-Store Parity (`test_claim_store_parity.py`)
-
-### What We're Validating
-
-`AlignmentBundle` has two claim stores — the per-claim Python list
-`cross_group_claims` and the columnar `cross_group_claim_fields`. The contract
-is that **which store a claim lives in is invisible to every reader**: a bundle
-holding a set of claims in the list and a bundle holding the *same* claims in a
-`MatchClaimField` must answer every public getter identically. Only cost
-differs.
-
-This matters because a loader may legitimately choose either store, and a
-columnar loader must not silently lose query capability. A reader that consults
-only one store is a bug, and this suite is what catches it.
-
-### Fixture Topology
-
-Three timelines, one group each (so every claim is cross-group), spanning two
-domains so that domain/unit filters bite:
-
-| Timeline ID | Class | Unit | Domain |
-|------------|-------|------|--------|
-| `score:clt_1` | `ContinuousLogicalTimeline` | `quarters` | logical |
-| `perf:cpt_1` | `ContinuousPhysicalTimeline` | `seconds` | physical |
-| `perf:cpt_2` | `ContinuousPhysicalTimeline` | `seconds` | physical |
-
-The claims name these timeline IDs, the ids the bundle registers the
-timelines under.
-
-The claim topology is **complete pairwise at three aligned instants** — every
-pair claims at every instant, 3 pairs × 3 instants = **9 synchronous instant
-claims**:
-
-| Instant | `score:clt_1` | `perf:cpt_1` | `perf:cpt_2` |
-|---------|--------------|-------------|-------------|
-| 0 | 0.0 | 1.0 | 2.0 |
-| 1 | 4.0 | 3.0 | 5.0 |
-| 2 | 8.0 | 6.5 | 9.0 |
-
-Each instant is therefore one connected component spanning **all three**
-timelines, so `from_graph=True` collapses 9 pairwise rows into 3 cross-section
-rows — a non-trivial collapse, not an identity.
-
-The same nine claims are built twice by a factory (fresh objects each time, so
-the two bundles never share a claim's `set_bundle` association) and handed to:
-
-- `bundle_list` — via `add_match_claims(claims)`
-- `bundle_field` — via `add_match_claim_field(MatchClaimField.from_claims(claims))`
-
-### Comparison Rule
-
-Claim **identity** is not comparable across the two constructions: claims
-materialised out of a field are rebuilt from the struct row, so their generated
-`id` differs from the original objects', and the field carries provenance once
-at field level rather than per claim. What must be identical is the *alignment
-content*. Every claim comparison therefore runs on the normalised key
-
-```python
-(timeline_a_id, timeline_b_id, coordinate_a, coordinate_b, is_synchronous)
-```
-
-sorted, so ordering differences between the two stores also cannot mask a
-difference in content. Coordinate values are compared exactly (no tolerance) —
-both paths carry the same `float` through, so anything else is a defect.
-
-### Key Evidence (exact, zero-tolerance)
-
-| Test | Validates |
-|------|-----------|
-| `test_n_cross_group_claims` | both bundles report `9` |
-| `test_store_placement` | `bundle_list` has 9 list claims / 0 fields; `bundle_field` has 0 list claims / 1 field of 9 rows (proves the fixture actually tests two different layouts) |
-| `test_get_match_claims_unfiltered` | both return 9 claims with equal normalised keys |
-| `test_get_match_claims_filtered[…]` | one case per filter kwarg — `timeline_id`, `timeline_ids`, `id_pattern`, `between`, `synchronous_only`, `nomatch_only`, `include_domains`, `include_units`, and an unknown-UID case — equal normalised keys for each, with the exact expected count pinned per case |
-| `test_get_claim_fields_row_count_matches_claims` | for every filter case, `sum(len(f) for f in bundle_field.get_claim_fields(**kw))` equals `len(bundle_list.get_match_claims(**kw))` — the vectorized accessor and the materialising one agree |
-| `test_get_claim_fields_empty_on_list_bundle` | a list-only bundle returns `[]` (nothing to serve columnar) |
-| `test_get_claim_fields_drops_empty_fields` | a filter matching no row yields `[]`, not a zero-row field |
-| `test_get_matchstamps` | equal sorted coordinate maps, 9 stamps each |
-| `test_matchstamp_table_per_claim` | both: `num_rows == 9`, `column_names == ["perf:cpt_1", "perf:cpt_2", "score:clt_1"]`, and identical `to_pylist()` — each row exactly two non-null cells |
-| `test_matchstamp_table_from_graph` | both: `num_rows == 3`, same 3 columns, all 9 cells filled, rows in the documented order (instant 0, 1, 2) with the exact coordinates of the topology table above |
-| `test_matchstamp_table_timeline_filter` | `timeline_filter={"score:clt_1"}` yields a 1-column table in both modes for both bundles |
-| `test_are_commensurable` | all three timeline pairs are commensurable in both bundles; a non-member ID is not |
-| `test_get_matchstamp_at` | at each of the three instants, both bundles return a stamp spanning all 3 timelines with the exact coordinates of the topology table |
-| `test_transfer_round_trip` | `transfer(4.0, "score:clt_1", "perf:cpt_1") == 3.0` in both bundles, and the reverse direction returns `4.0` — exercising the `MatchLine` → `WarpMap` path that was dead for columnar bundles |
-| `test_diagram_reports_claim_count` | `bundle.diagram()` reports `MatchClaims: 9` for both |
-
-### Collapsed-Row Ordering
-
-`from_graph=True` must be deterministic or the table is not comparable at all.
-Components are ordered by the coordinate on the lexicographically smallest
-timeline ID present in the component, then by that ID. This is a total order:
-two components can never share a `(timeline_id, coordinate)` node, since
-sharing one would have unioned them. `test_matchstamp_table_from_graph` pins
-the resulting row order explicitly rather than sorting the result, so a change
-in the ordering rule fails the suite instead of passing silently.
-
-### Scale sanity (vectorized path, no Python objects)
-
-`test_scale_builds_columnar` builds a field of **100 000** rows via
-`from_columns` with deterministic inputs (`coordinate_a = [float(i) for i in
-range(100_000)]`), asserting `len == 100_000` and that `f[50_000]` materialises
-to the correct coordinate (`50000.0`). Construction completes in well under a
-second (≈30 ms locally) because `from_columns` builds Arrow arrays directly and
-never instantiates a `MatchClaim`. This is the proof that the columnar path
-scales to the dense-alignment workload.
-
----
-
 ## AlignmentBundle Dictionary Form and Identity (`test_bundle_dict.py`)
 
 ### What We're Validating
@@ -1455,11 +1407,14 @@ from every assertion here.
    object, so the rebuilt bundle must also answer every group's
    `get_timestamp_at` identically (value, type and unit of every cell) at the
    member's 0, a third of its length, half its length and its length, from
-   every member. Claims are excluded: `cross_group_claims` is not consulted. The
+   every member. Claims are excluded: the MatchClaim table is not consulted. The
    rebuilt bundle must also hold exactly the same participants and the same
    group membership.
 2. **Exact expected forms.** One direct construction pins the whole
-   manifest in the complete form (`to_dict(minimal=False)`): two groups and an ungrouped root, a group member that is a
+   manifest in the complete form (`to_dict(minimal=False)`), which writes
+   every key TimeToShare gives a default, the empty `resources`,
+   `graphical.timestamps` and `graphical.matchstamps` included: two groups
+   and an ungrouped root, a group member that is a
    child (its root is written, the child id is the member), the `group_N`
    ids, no `id` (the bundle's `bundle_1` is minted), no `support_policy`,
    and the member order as added. A bundle with a given id writes it; an
@@ -1714,7 +1669,7 @@ This test validates that MatchClaims can represent the segment-to-segment corres
 
 ### What We're Validating
 
-The MatchGraph enforces the design principle that only synchronous claims produce graph edges, while non-synchronous claims are stored as metadata. The `extend_to_groups()` method creates `MatchClaim.implicit()` objects with `source_claim_id` traceability, and filtering supports domain/unit/timeline constraints.
+The MatchGraph enforces the design principle that only synchronous claims produce graph edges, while non-synchronous claims are stored as metadata. The `extend_to_groups()` method creates `MatchClaim.implicit()` objects with `source_claim_id` traceability and ids minted in the graph's scope, filtering supports domain/unit/timeline constraints, and the belief filter decides which claims a graph holds at all.
 
 ### Local Fixtures (no conftest shadowing)
 
@@ -1729,10 +1684,52 @@ the same name, these local fixtures carry dimension-explicit names:
 | `dgt2_timeline` | `dgt2_800px_timeline` | (defined for symmetry; no current user) |
 | `audio_timeline` | `audio_100s_timeline` | `dgt1_group` |
 
+Claims are built by three local helpers over the shared `match_claim`
+fixture factory (`helpers.py`): `_claim` (a synchronous claim between the
+fixture events `"<timeline>@<value>"`), `_nomatch` (one event, its position as
+`source_coordinate`, the other side the NOMATCH sentinel) and `_conceptual`
+(two section events, no anchors). A MatchGraph reads claims without their
+timelines, so the timeline-free tests use dimensionless positions; every claim
+touching a timeline of a group states its position on that timeline's own
+axis — integer pixels on the graphical timelines (`dgt_1` at `500 pixels`,
+`tl1` at `500 pixels`, `a` at `400 pixels`) — so a stamp read back holds
+`Coordinate(500, pixels)` for `dgt_1`, exactly the claim's coordinate.
+
 All coordinate assertions in this file are exact `==`: the stamp-coordinate
 checks in `test_extend_creates_correct_coordinates` (50.0) and
 `test_two_groups_five_implicit_claims` (250.0, 100.0, 200.0) are linear
 group conversions at exactly representable ratios and carry no `pytest.approx`.
+
+### Implicit claim ids
+
+`extend_to_groups` makes its implicit claims without ids and mints them in
+the graph's scope: `claim_N`, N above the highest number the graph's claims
+hold, `id_minted` set. `test_implicit_claim_ids_are_minted` gives the one
+explicit claim the id `claim_4` and asserts the extended graph's claims are
+exactly `[("claim_4", False, explicit), ("claim_5", True, implicit)]` as
+`(id, id_minted, is_explicit)`: the given id is kept and unminted, the new one
+is the next number, never a reuse. `test_implicit_claims_have_source_claim_id`
+gives its explicit claim the id `claim_1` so that `source_claim_id ==
+"claim_1"` names it (an unset id on both sides would pass vacuously).
+
+### The belief filter
+
+`MatchGraph(claims, believer=..., belief=...)` keeps exactly the claims the
+belief filter keeps, and builds its nodes and edges from them alone. Four
+claims at distinct positions on `tl_a`/`tl_b`, one per case: `claim_1`
+without provenance, `claim_2` believed `false` by `ana`, `claim_3` believed
+`true` by `ana`, `claim_4` believed `false` by `ben`. The kept ids, in order,
+and `n_edges == len(kept)`, `n_nodes == 2·len(kept)`:
+
+| believer | belief | kept |
+|---|---|---|
+| none | `not_false` / `true` | all four (no believer filters nothing) |
+| `ana` | `not_false` | `claim_1`, `claim_3`, `claim_4` (ben's belief is not hers) |
+| `ana` | `true` | `claim_3` |
+| `ben` | `not_false` | `claim_1`, `claim_2`, `claim_3` |
+| `ben` | `true` | none |
+
+A belief value other than `not_false`/`true` is refused with `ValueError`.
 
 ### A stamp renders the same in every process
 
@@ -1770,43 +1767,52 @@ deterministic order was chosen, so "stable but wrong" also fails.
 
 | Class | Tests | Purpose |
 |-------|-------|---------|
-| `TestMatchStampDeterminism` | 3 | Stamp source and entry order are the same in every process |
-| `TestMatchGraphNonSynchronousClaims` | 4 | Non-synchronous claims stored as metadata, no edges created |
+| `TestMatchStamp` | 14 | Stamp construction, retrieval, filtering, dictionary round trip, renderings |
+| `TestMatchGraphBasic` | 8 | Node, edge and claim counts; node and coordinate retrieval; connectivity |
+| `TestMatchGraphStamps` | 4 | Instant claim → one stamp, interval claim → two, components → stamps |
+| `TestMatchGraphGroupExtension` | 4 | Inferred edges, converted coordinates, `include_inferred=False` |
+| `TestMatchGraphFilter` | 5 | `filter()` by timeline ids, id pattern, synchronous / explicit only, isolated nodes dropped |
+| `TestMatchGraphBeliefFilter` | 2 (7 cases) | The graph holds exactly the claims the belief filter keeps; an invalid belief is refused |
+| `TestMatchGraphSerialization` | 2 | `to_dict()`/`from_dict()` counts, repr |
+| `TestMatchGraphThoresenIntegration` | 3 | Thoresen segment claims: 12 nodes, 6 edges, boundary coordinates and stamps |
+| `TestMatchGraphNonSynchronousClaims` | 3 | Non-synchronous claims stored as metadata, no edges created |
 | `TestMatchGraphGetStamps` | 4 | `get_stamps()` returns one stamp per connected component |
-| `TestMatchGraphExtendToGroupsImplicitClaims` | 5 | Implicit claims created with correct coordinates and traceability |
+| `TestMatchGraphExtendToGroupsImplicitClaims` | 4 | Implicit claims: kind, `source_claim_id`, minted ids, two-group connectivity |
 | `TestExtendToSeveralGroups` | 1 | A shared member carries group extension into its other group |
-| `TestMatchGraphExtendToGroupsFilters` | 4 | `include_timelines`, `exclude_timelines`, `include_domains`, `include_units` |
-| `TestMatchGraphFilter` | 3 | `filter()` preserves non-synchronous claims for remaining timelines |
-| `TestMatchStampGroupRetrieval` | 2 | Retrieves group members with the plural key getter and `timeline_ids` |
+| `TestMatchGraphExtendToGroupsFilters` | 6 | `timeline_ids`, `id_pattern`, `include_domains`, `include_units`; `MatchLine.from_claims` forwards them |
+| `TestMatchGraphFilterPhase64` | 4 | `filter()` by domain and unit; keeps non-synchronous claims of remaining timelines |
+| `TestMatchStampGroupRetrieval` | 1 | Retrieves group members with the plural key getter and `timeline_ids` |
+| `TestMatchStampDeterminism` | 3 | Stamp source and entry order are the same in every process |
 
 ### Key Evidence
 
 | Test | Validates |
 |------|-----------|
-| `test_non_synchronous_claims_stored_as_metadata` | Non-synchronous claims don't create edges; graph has 0 edges |
-| `test_synchronous_and_non_synchronous_separation` | `synchronous_claims` and `non_synchronous_claims` properties partition correctly |
-| `test_get_stamps_returns_one_per_component` | Connected components yield separate stamps |
-| `test_get_stamps_matches_legacy_for_single_claim` | Backward compatibility with `get_match_stamps()` |
-| `test_implicit_claims_have_source_id` | Implicit claims trace back to originating explicit claim |
-| `test_two_groups_full_connectivity` | Core test: 1 explicit claim between TL1∈{TL1,TL4,TL5} and TL2∈{TL2,TL6} produces 5 connected timelines with correct interpolated coordinates |
-| `test_include_timelines_filter` | Only specified timelines appear in extension |
+| `test_non_synchronous_claims_no_edges` | A NOMATCH claim beside a synchronous one: 2 claims, 2 nodes, 1 edge |
+| `test_non_synchronous_claims_accessible_via_claims` | `synchronous_claims` and `non_synchronous_claims` partition `claims`; the NOMATCH claim is the object given |
+| `test_get_stamps_one_per_component` | Two disconnected claims yield two stamps of two timelines each |
+| `test_implicit_claims_have_source_claim_id` | Implicit claims trace back to the originating explicit claim (`claim_1`) |
+| `test_implicit_claim_ids_are_minted` | Implicit claim ids are minted above the highest held (`claim_4` → `claim_5`, `id_minted` set) |
+| `test_graph_keeps_the_believed_claims` | The belief filter decides the graph's claims, nodes and edges (table above) |
+| `test_two_groups_five_implicit_claims` | One explicit claim between TL1∈{TL1,TL4,TL5} and TL2∈{TL2,TL6} connects 5 timelines with exact interpolated coordinates |
+| `test_timeline_ids_filter` | Only specified timelines appear in extension |
 | `test_include_domains_filter` | Only timelines from specified domains appear |
-| `test_filter_preserves_relevant_non_synchronous` | `filter()` keeps non-synchronous claims whose timelines survive filtering |
-| `test_group_coordinates_basic` | Returns group-member coordinates via `TimelineGroup.get_coordinates_at()` |
+| `test_filter_keeps_non_synchronous_claims` | `filter()` keeps non-synchronous claims whose timelines survive filtering |
+| `test_group_coordinates` | Returns group-member coordinates in the group's declared order |
 
 ### The Two-Groups Connectivity Test
 
 ```python
-def test_two_groups_full_connectivity(self):
-    # Group A = {TL1, TL4, TL5}, Group B = {TL2, TL6}
-    # One explicit claim: TL1@100 <-> TL2@200
+def test_two_groups_five_implicit_claims(self):
+    # Group A = {tl1 1000px, tl4 500px, tl5 200px}, Group B = {tl2 800px, tl6 400px}
+    # One explicit claim: tl1@500px <-> tl2@400px
     # After extend_to_groups():
-    #   - TL4, TL5 get coordinates via Group A interpolation from TL1@100
-    #   - TL6 gets coordinate via Group B interpolation from TL2@200
-    #   - All 5 timelines connected in one component
-    stamps = graph.get_stamps()
+    #   - tl4 at 250, tl5 at 100 via Group A from tl1@500
+    #   - tl6 at 200 via Group B from tl2@400
+    #   - All 5 timelines connected in one component, 3 implicit claims
+    stamps = extended.get_stamps()
     assert len(stamps) == 1
-    assert len(stamps[0].coordinates) == 5  # All timelines present
+    assert stamps[0].n_timelines == 5
 ```
 
 This is the core group-extension test: it verifies that group extension creates implicit claims with coordinates derived from the typed group retrieval API, producing a fully connected component from a single explicit claim.
@@ -1818,6 +1824,8 @@ This is the core group-extension test: it verifies that group extension creates 
 ### What We're Validating
 
 `MatchLine` is an ordered sequence of `MatchStamp` objects for a given source timeline. It is the bridge between `MatchGraph` and `WarpMap`. A MatchLine collects stamps, sorts them by source coordinate, exposes typed `AlignmentAnchor` values, and keeps the float interpolation feed private.
+
+Claims come from the local helpers `_claim` and `_nomatch` over the shared `match_claim` fixture factory: each claim names its fixture events, dimensionless positions where no timeline is involved and integer pixels on the graphical timelines (`dgt_1`, `dgt_2`), so every anchor value read back is the value on its timeline's axis.
 
 ### Test Classes
 
@@ -1839,11 +1847,11 @@ This is the core group-extension test: it verifies that group extension creates 
 | `test_stamps_without_source_are_dropped` | Stamps missing the source timeline are silently dropped (with log warning) |
 | `test_target_timeline_ids_two_or_more` | `target_timeline_ids()` excludes timelines appearing in < 2 stamps (minimum for interpolation) |
 | `test_same_as_source_raises` | `get_alignment_anchors()` raises ValueError when target == source |
-| `test_from_claims_with_group_extension` | `from_claims()` with group parameters adds group member coordinates (audio mapped linearly) |
+| `test_from_claims_with_group_extension` | `from_claims()` with group parameters adds group member coordinates: audio pairs exactly `(0, 0.0)`, `(500, 50.0)`, `(1000, 100.0)`, the source values `int` (pixels) and the audio values `float` (seconds) |
 | `test_from_claims_non_synchronous_excluded` | Non-synchronous claims (NOMATCH) do not produce stamps |
 | `test_from_graphs_hendrix_pattern` | Four contiguous M-box graphs merged into 5 unique source coordinates (boundary deduplication) |
 | `test_from_graphs_keeps_richer_stamp` | Deduplication keeps the stamp with more timelines |
-| `test_thoresen_matchline` | Thoresen segment claims produce correct boundary pairs: (0,0) to (4835,4328) |
+| `test_thoresen_matchline` | Thoresen segment claims give exactly six stamps, target `{dgt_2}` only, and the boundary pairs `(0, 0)`, `(967, 866)`, `(1934, 1733)`, `(2901, 2600)`, `(3868, 3464)`, `(4835, 4328)` |
 
 ### The Hendrix Pattern Test
 
@@ -1943,7 +1951,8 @@ float detour would show.
    reader restores a shared member, not two copies of it.
 8. **Group extension of a `MatchGraph` follows a shared member**
    (`test_graph.py`). The same topology in pixels (`t` 1200, `a` 800, `u`
-   600, `b` 900) and one explicit claim `a@400 ↔ e@100` (`e` in no group),
+   600, `b` 900) and one explicit claim `a@400 ↔ e@100` (`a` at 400 integer
+   pixels, its axis; `e` in no group),
    extended through `{g1, g2}`, yield one stamp over exactly `a`, `e`, `t`,
    `u`, `b`, with `t` at `600.0`, `u` at `300.0` and `b` at `450.0` — `b` is
    only reachable by extending the coordinates `g1` gave `t` and `u` through
@@ -1959,51 +1968,66 @@ float detour would show.
 
 ### What We're Validating
 
-`AlignmentBundle` uses the `MatchLine` → `WarpMap` pipeline. The bundle lazily builds `WarpMap` objects on first cross-group `transfer()` call and caches them, invalidating the cache when `add_match_claims()` is called.
+An `AlignmentBundle` holds its timelines, its groups and ONE MatchClaim table
+(`match_claim_table`, a `MatchClaimField`). Every reader of the claims —
+`get_match_claims`, the matchstamp getters, `transfer`, `are_commensurable`,
+`get_matchstamp_table` — reads the rows of that table the belief filter keeps.
+Cross-group transfer runs MatchClaim → MatchLine → WarpMap; the bundle builds
+these lazily on first use and caches them until the table changes.
 
-### Key Test Classes
+### Strategy
 
-| Class | Tests | Purpose |
-|-------|-------|---------|
-| `TestCrossGroupTransfer` | 6 | `transfer()` across groups via WarpMap (direct, boundary, interpolation, reverse, non-existent path) |
-| `TestIndirectTransfer` | 2 | Within-group convert then cross-group warp (indirect path) |
-| `TestGroupExtension` | 2 | Claims connect score→audio; transfer propagates to midi via group membership |
-| `TestGetTimestampAtCrossGroup` | 3 | `get_timestamp_at()` propagation across groups (flat, nested, prefix formats) |
-| `TestCommensurabilityWithClaims` | 3 | `are_commensurable()` returns True when claims connect groups (direct + via membership) |
-| `TestCacheInvalidation` | 2 | WarpMap cache cleared on `add_match_claims()` |
-| `TestEdgeCases` | 6 | No claims, non-synchronous claims, single claim insufficient for WarpMap |
-| `TestAddMatchClaimsAPI` | 3 | Chaining, accumulation, no-arg validation |
-| `TestAddGroupWithCrossGroupTransfer` | 4 | `add_group()` + cross-group claims + transfer end-to-end |
-| `TestSeveralGroups` | 11 | A timeline in several groups: membership lookup, transfer within and across shared groups, `grouped_with` refusal, stamp forms, diagram, summary (see "A Timeline in Several Groups") |
+- **Claims on the timelines' own axes.** Every fixture claim names an event on
+  each side (the fixture events `"<timeline>@<value>"` of
+  `helpers.match_claim`) and states each coordinate in its timeline's unit and
+  declared number type. The plain `Timeline` fixtures count seconds as floats,
+  so `_make_linear_claims` states float seconds: score 0, 50, 100, 150, 200
+  matches audio 0, 25, 50, 75, 100 (`audio = score · 0.5`). The bundle
+  converts nothing when it reads, so every expected value is a claimed value
+  or a linear interpolation between two claimed values, derived by hand.
+- **Entry is checked, and atomic.** A claim naming a timeline the bundle does
+  not hold raises `KeyError`; a coordinate off its timeline's axis — another
+  unit (quarters on a seconds timeline) or another number type (a Fraction of
+  seconds on a float axis) — raises `ValueError` naming the row and both axes.
+  A valid claim given before the refused one in the same call is not added
+  either: the table stays empty. A position in another unit enters only
+  through `create_match_claims`, converted through the timeline's C-Map when
+  the claim is made; the test pins the converted value exactly.
+- **One table.** Claims added one by one and the rows of a `MatchClaimField`
+  join the same table: a claim read back equals the one added (another
+  object, recording the bundle), every id is kept, a claim without one is
+  minted `claim_N` above the highest id held.
+- **The belief filter decides what is read.** One claim per belief state
+  (believed true, believed false, no belief), with the false claim at a value
+  (audio 60) the other two would never give (they interpolate to 50): which
+  value a stamp holds shows which claims were read.
+- **Private state only where the subject is the cache.** The cache tests read
+  `_warp_map_cache`; the ambiguity test places a MatchLine in the bundle's
+  MatchLine cache, because claims cannot state the ambiguous line it needs.
 
 ### Key Evidence
 
-| Test | Validates |
-|------|-----------|
-| `test_cross_group_transfer_direct` | Score@0.0 → Audio@0.0 via WarpMap (exact boundary) |
-| `test_cross_group_transfer_interpolation` | Interior coordinates interpolated correctly |
-| `test_cross_group_transfer_reverse` | Bidirectional: Audio→Score as well as Score→Audio |
-| `test_indirect_transfer_through_group` | MIDI→Audio via group convert, then Audio→Score via WarpMap |
-| `test_group_extension_transfer` | Claims between Score and Audio propagate to MIDI via recording group membership |
-| `test_get_timestamp_at_cross_group_flat` | `get_timestamp_at()` returns coordinates for timelines in both groups |
-| `test_commensurable_via_claims` | `are_commensurable()` detects cross-group connectivity through claims |
-| `test_cache_invalidated_on_add_claims` | New claims clear cached WarpMaps; subsequent transfer uses updated data |
-| `test_no_cross_group_claims_returns_none` | `transfer()` returns None when no claims connect the groups |
-| `test_non_synchronous_claims_no_transfer` | Non-synchronous claims (NOMATCH) don't produce WarpMaps |
+| Class | Tests | Validates |
+|-------|-------|-----------|
+| `TestCrossGroupTransfer` | 12 | score 100 → audio 50, 0 → 0, 200 → 100; 75 → 37.5 (25 + (75 − 50)/(100 − 50) · 25); audio 50 → score 100; image 200 → audio 50 (200/400 · 200 = 100 within the score group, then 100 · 0.5); score 100 → midi 50 through the recording group; no claims → `None`; a NOMATCH claim (no anchors) → `None`; one claim resolves its anchor (100 → 50) and nothing between (75 → `None`); `transfer_interval(50, 150)` → `(25, 75)`; a MatchLine whose source 50 has two targets makes `transfer` raise `ValueError` naming the source timeline and `get_matchstamp_at()` |
+| `TestGetMatchstampAtCrossGroup` | 7 | the stamp at score 100 holds score 100 and image 200 (seconds) in the source group and audio 50 in the target group; at 75 its inferred edges are exactly `(score, image)`, `(score, audio)`, `(audio, midi)`; a graph the bundle caches gives score 50 / audio 25 with the timelines' units; nested format keys `group_1`, `group_2`; prefix keys `group_1/…`; without claims the source group only |
+| `TestCommensurabilityWithClaims` | 4 | claims make score–audio and image–audio commensurable; without claims, or with a NOMATCH claim only, they are not |
+| `TestCacheInvalidation` | 4 | no WarpMap before the first transfer, one after; a second transfer reuses the cached objects; a new claim clears the cache; the rebuilt map still gives score 100 → audio 50 |
+| `TestAddMatchClaims` | 6 | chaining; three claims are three rows, `claim_1`–`claim_3`, read back equal to the claims added and recording the bundle; a fourth call adds one row minted `claim_4`; an unknown timeline (`['ghost'] that this bundle does not hold`) and an off-axis coordinate (`Row 1 start_anchor.coordinate_b is in quarters (fraction)` / `in seconds (fraction)`, `but timeline 'audio' counts in seconds (float)`) are refused with nothing added |
+| `TestCreateMatchClaims` | 5 | the provenance given lands on the claim made and on the claim read back; `agent`, `agent_identifier` and `decision_criteria` are refused (`TypeError`), nothing added; a seconds position projected onto a samples timeline (C-Map samples → seconds at 1/44100): 2.0 s is sample 88200, so the claim between the note `o1` (2.5 s) and `projection_1` stores `Coordinate(88200, samples)` with an `int` value, read back equal, and the Projection's `projection_of` is `{"timeline_id": "performance", "event_id": "o1"}` |
+| `TestBeliefFilter` | 2 | `claim_1` (0 → 0, ana true), `claim_2` (100 → 60, ana false), `claim_3` (200 → 100, no belief). `get_match_claims`: no believer → all three; `believer="ana"` → `claim_1`, `claim_3`; `belief="true"` → `claim_1`. `get_matchstamp_at(100, "score")`: no believer → `claim_2`'s anchor, audio and midi 60.0, not interpolated; ana → interpolated between `claim_1` and `claim_3`, audio and midi 50.0; ana, `"true"` → one claim cannot interpolate: score 100 and image 200 alone |
+| `TestAddMatchClaimField` | 5 | chaining; the five rows join the table with their ids `claim_1`–`claim_5`, equal to the field's claims, the field left as given; score 100 → audio 50 exactly; score 123.456 interpolates to audio and midi 61.728 (50 + 23.456 / 2) and image 246.912, flagged interpolated; a claim added after the field is minted `claim_6`, read as the sixth, and score 175 answers audio 87.5 exactly |
+| `TestBundleClaimFilters` | 3 | (`score` quarters as Fractions, `audio` and `other` seconds as floats; one claim at the origins per pair) `timeline_id="score"` → the first two; `timeline_ids={"audio"}` and `id_pattern="^audio$"` → the first and third; `between=("score", "audio")` → the first; `include_units={seconds}` → the third only (both its timelines count seconds), `{pixels}` → none; a stamp filtered to `{"score", "audio"}` holds exactly score `0` (quarters, Fraction) and audio `0.0` (seconds) |
+| `TestAddGroup` | 3 | a pre-built group with its timelines; a duplicate group id refused; cross-group transfer through added groups (100 → 50) |
+| `TestSeveralGroups` | 11 | a timeline in several groups (see "A Timeline in Several Groups") |
+| Creation, timelines, groups, within-group transfer, a part as a child, order independence, commensurability, chaining | 32 | ids and names, registration and lookup, `grouped_with`/`as_group`, a child joining with its root (section 0 s = reference 25 s, section 100 s = reference 125 s), linear transfer within a group (tl1 50 → tl2 100), exact ratios within a group (1/3 of 3 quarters → 7/9 of 7), results independent of the order timelines are added |
 
-### Design: Lazy WarpMap Cache
+### Lazy WarpMap cache
 
-```python
-# Bundle maintains:
-_warp_map_cache: dict[tuple[str, str], WarpMap]  # (source_group, target_group) -> WarpMap
-_cache_claims_hash: int  # Invalidation key
-
-# On transfer():
-warp = self._get_or_build_warp_map(source_group_id, target_group_id)
-result = warp(source_coord)
-```
-
-The cache is keyed by `(source_group_id, target_group_id)` and invalidated whenever `add_match_claims()` is called. This avoids redundant `MatchLine.from_claims()` + `WarpMap.from_match_line()` computation for repeated queries.
+The bundle caches MatchLines per (belief filter, source timeline) and
+WarpMaps per (belief filter, source timeline, target timeline), negative
+results included. Every change of the MatchClaim table clears both, with
+the MatchGraphs and the belief-filtered views of the table.
 
 ### `get_matchstamp_table` Conversion Columns
 
@@ -2012,7 +2036,7 @@ and represents every timeline column as an `IdCoordinateField`. Numeric
 conversion columns are `CoordinateField` values with the converted unit and
 canonical number-type metadata; tests materialize their exact scalar values
 through those semantic fields rather than comparing raw Arrow floats.
-(default `False`, matching the opt-in default now shared by every
+(default `False`, the opt-in default shared by every
 matchstamp getter). When given, `_assemble_matchstamp_table` adds one
 derived column per (timeline, enabled unit-conversion map) after the
 timeline columns already in the table — **numeric unit conversions only**
@@ -2031,7 +2055,7 @@ and seconds→frames (`[0,100]->[0,5000]`).
 |------|-----------|
 | `test_matchstamp_table_adds_conversion_columns` | `get_matchstamp_table(coordinates=[25.0], timeline_id="clock", conversion_maps=True)` returns columns `{"clock", "milliseconds", "frames"}`, one row, with exact values `clock=25.0`, `milliseconds=25000.0`, `frames=1250.0` |
 | `test_matchstamp_table_no_conversion_columns_by_default` | Omitting `conversion_maps` yields `column_names == ["clock"]` — no derived columns |
-| `test_matchstamp_table_conversion_column_collision_qualified` | Two timelines in different groups, each with its own seconds→milliseconds map, linked by one cross-group synchronous claim: requesting the table with `conversion_maps=True` qualifies both derived columns as `"<timeline_id>:milliseconds"` rather than colliding on a bare `"milliseconds"` |
+| `test_matchstamp_table_conversion_column_collision_qualified` | Two timelines in different groups, each with its own seconds→milliseconds map, linked by one cross-group synchronous claim at 25 seconds: the table has one row (the claim's one anchor) and qualifies both derived columns as `"<timeline_id>:milliseconds"`, each `25000.0`, rather than colliding on a bare `"milliseconds"` |
 
 ### Coordinate-Type Parity (raw / Coordinate / IdCoordinate)
 
@@ -2047,17 +2071,16 @@ optional; passing a non-Id coordinate without an explicit `timeline_id` is an
 error. An explicit ID and an `IdCoordinate` ID must agree, including for the
 named source endpoints of `transfer` and `transfer_interval`.
 
-These tests reuse the existing `_make_cross_group_bundle()` +
-`_make_linear_claims()` fixtures (no new corpus). The claims map
-`score → audio` linearly (`audio = score * 0.5`), so a query at score 100
-resolves to audio 50 — an exact value with no interpolation rounding. Parity is
-asserted by comparing the whole result across all three call forms, plus a
-pinned concrete value.
+These tests reuse the `_make_cross_group_bundle()` + `_make_linear_claims()`
+fixtures (no corpus). The claims map `score → audio` linearly
+(`audio = score · 0.5`), so a query at score 100 resolves to audio 50 — an
+exact value with no interpolation rounding. Parity is asserted by comparing
+the whole result across all three call forms, plus a pinned concrete value.
 
 | Test class | Validates |
 |------------|-----------|
-| `TestGetMatchstampAtCoordinateParity` | raw / native-unit Coordinate / IdCoordinate-alone agree; C-Map conversion agrees with a native query; unavailable units and conflicting IDs ⇒ `ValueError`; non-coordinate type ⇒ `TypeError` |
-| `TestGetTimestampAtCoordinateParity` | same three forms produce identical whole-dict results; error paths identical |
+| `TestGetMatchstampAtCoordinateParity` | raw / native-unit Coordinate / IdCoordinate-alone agree (score 100, audio 50, image 200, midi 50); a millisecond query through the source's seconds → milliseconds C-Map (2500 ms) gives the stamp of the native 2.5 s; unavailable units and conflicting IDs ⇒ `ValueError`; non-coordinate type ⇒ `TypeError` |
+| `TestGetMatchstampRenderingCoordinateParity` | the same three forms produce identical whole `to_dict(format="flat")` results; error paths identical |
 | `TestTransferCoordinateParity` | `transfer`/`transfer_interval` resolve native-unit Coordinate/IdCoordinate inputs through the named source timeline; non-coordinate ⇒ `TypeError` |
 
 The same parity is validated for `TimelineGroup.get_coordinate_at` in
@@ -2083,7 +2106,7 @@ exact pixel `2438` on `dgt_1` for all three coordinate forms.
 | `TestMaterialiseTypeConversion` | 3 | CLT→CPT type conversion, unit propagation, region unit conversion |
 | `TestSerialization` | 4 | `to_dict()`/`from_dict()` round-trip, repr |
 | `TestMultiTarget` | 1 | Different WarpMaps from same MatchLine for different targets |
-| `TestIntegrationWithClaims` | 1 | End-to-end: MatchClaim → AlignmentAnchor → MatchLine → WarpMap |
+| `TestIntegrationWithClaims` | 1 | End-to-end: MatchClaim (fixture events, `match_claim`) → MatchLine → WarpMap |
 | `TestEdgeCases` | 10 | Non-linear warping, single-point rejection, degenerate intervals, large datasets, overlapping regions |
 
 ### Key Evidence
@@ -2096,7 +2119,7 @@ exact pixel `2438` on `dgt_1` for all three coordinate forms.
 | `test_materialise_warps_children` | Child offsets converted, child count preserved |
 | `test_materialise_warps_regions` | Region boundaries converted, region names preserved |
 | `test_type_conversion_clt_to_cpt` | Source CLT (quarters) → target CPT (seconds): correct type and unit |
-| `test_full_pipeline` | MatchClaim → AlignmentAnchor → MatchLine → WarpMap → forward/inverse |
+| `test_full_pipeline` | Three claims `score`↔`audio` at (0, 0), (100, 50), (200, 100) → MatchLine → WarpMap: forward 50 → 25.0, inverse 75 → 150.0 |
 
 ### EventData Struct Dict Discovery
 
@@ -2214,17 +2237,18 @@ python -m pytest tests/alignment/ -v
 | File | Tests | Description |
 |------|-------|-------------|
 | `conftest.py` | — | Shared fixtures and constants: Thoresen timeline fixtures (`dgt1_timeline`, `dgt2_timeline`, `audio_timeline`, `thoresen_segment_claims`), DGT1/DGT2 coordinate constants, `autouse` ID reset fixture, graphical bundle fixtures |
-| `test_bundle.py` | 94 | AlignmentBundle: linear alignment, a child joining with its root, cross-group transfer, timestamps, commensurability, caching, edge cases, coordinate-type parity (raw/Coordinate/IdCoordinate) |
+| `test_bundle.py` | 114 | AlignmentBundle: linear alignment, a child joining with its root, cross-group transfer, timestamps, commensurability, caching, the MatchClaim table and its entry checks, Projections, the belief filter, coordinate-type parity (raw/Coordinate/IdCoordinate) |
 | `test_bundle_dict.py` | — | AlignmentBundle dictionary form and identity: round trips of direct constructions and of every alignment loader's bundle, minted ids, collisions, a child bringing its root, refusals |
 | `test_anchors.py` | 62 | AlignmentAnchor, MatchClaim (incl. NOMATCH coordinate preservation + repr), Provenance |
-| `test_graph.py` | 54 | MatchGraph operations (implicit claims, filtering, stamps); imports Thoresen fixtures from conftest |
+| `test_graph.py` | 73 | MatchGraph operations (implicit claims and their ids, filtering, the belief filter, stamps); imports Thoresen fixtures from conftest |
 | Robustness coverage | — | Bundle graph stamp units/context, coordinate-bearing claim factories, Fraction serialization, inferred-edge completeness, and MatchStamp container isolation/axis handling |
 | `test_matchline.py` | 33 | MatchLine construction, from_claims, from_graphs, coordinate pairs, serialization; imports Thoresen fixtures from conftest |
-| `test_warpmap.py` | 36 | WarpMap construction, forward/inverse, materialise (events, children, regions, type conversion), serialization, end-to-end pipeline |
-| `test_filters.py` | 27 | `ClaimFilter` dataclass: exact ID, set-of-IDs, regex, between, synchronous/nomatch, combined filters, timeline-level filtering |
-| `test_stamp_query_api.py` | 54 | Unified Stamp & Query API: `get_match_claims()`, `get_matchstamp_at()`, `MatchGraph.get_matchstamp()`/`split_components()`, `MatchClaim.get_matchstamp()`, MatchGraph cache, display methods (`__str__`/`_repr_html_` incl. the affordance `Try` footer on `MatchStamp`/`MatchClaim`), `transfer()` docstring fix, top-level exports |
+| `test_warpmap.py` | 39 | WarpMap construction, forward/inverse, materialise (events, children, regions, type conversion), serialization, end-to-end pipeline |
+| `test_filters.py` | 37 | `ClaimFilter` dataclass: exact ID, set-of-IDs, regex, between, synchronous/nomatch, the belief filter, combined filters, timeline-level filtering |
+| `test_stamp_query_api.py` | 73 | Unified Stamp & Query API: `get_match_claims()`, `get_matchstamp_at()`, position batches, `MatchGraph.get_matchstamp()`/`split_components()`, `MatchClaim.get_matchstamp()`, MatchGraph cache, display methods (`__str__`/`_repr_html_` incl. the affordance `Try` footer on `MatchStamp`/`MatchClaim`), the events a claim names, `transfer()` docstring, top-level exports |
+| `test_claim_coordinates.py` | 10 | Coordinates of the claims a `TimeSkeleton` makes: on the participant's axis (a raw number in its unit and number type, a coordinate in another unit converted through its C-Map), the reference side exact, refusals of mismatched timelines and of reference positions off the reference axis |
 | `test_supra_integration.py` | 13 | SUPRA piano roll workflow (partial alignment as a child) |
-| `test_thoresen_poc.py` | 35 | Thoresen graphical analysis workflow; imports Thoresen fixtures from conftest |
+| `test_thoresen_poc.py` | 21 | Thoresen graphical analysis workflow; imports Thoresen fixtures from conftest |
 | `../timelines/test_offset_arithmetic.py` | 11 | Parent–child offset arithmetic |
 
 ---
@@ -2243,11 +2267,14 @@ Tests for the `ClaimFilter` dataclass — the Unified Filter API. Covers all fil
 | `TestClaimFilterRegex` | 4 | `id_pattern` regex: prefix, suffix, range, timeline-level |
 | `TestClaimFilterBetween` | 3 | `between` pair filter: exact, reversed, mismatch |
 | `TestClaimFilterSynchronous` | 4 | `synchronous_only` and `nomatch_only` |
-| `TestClaimFilterCombined` | 4 | AND logic across multiple filters |
+| `TestClaimFilterCombined` | 5 | AND logic across multiple filters; a unit criterion rejects a timeline missing from the lookup |
+| `TestClaimFilterBelief` | 4 (9 cases) | The belief filter (`believer`, `belief`) |
+
+The claims name fixture events (`match_claim`; the NOMATCH claim one event and the sentinel). The belief tests use four claims on `score:clt_1`/`perf:dlt_1`, one per case: no provenance, believed `false` by `ana`, believed `true` by `ana`, believed `false` by `ben`. `matches_claim` keeps exactly: without a believer all four (for either belief value); `ana`/`not_false` all but ana's false one (ben's belief is not hers); `ana`/`true` only ana's true one; `ben`/`not_false` all but ben's false one; `ben`/`true` none. Combined with `timeline_id`, the belief filter is ANDed (ana's true claim kept; the unstated claim and a claim off the timeline dropped). `belief="unlikely"` is refused at construction (`ValueError`, "'not_false' or 'true'"). `matches_timeline` ignores the belief filter, as it ignores every claim-level criterion.
 
 ### Stamp & Query API Tests (`test_stamp_query_api.py`)
 
-Tests for the Unified Stamp & Query API, using a star-topology bundle (1 score + 3 performers, 5 coordinates each, plus 1 NOMATCH claim).
+Tests for the Unified Stamp & Query API, using a star-topology bundle (1 score + 3 performers, 5 coordinates each, plus 1 NOMATCH claim naming the score's event `orphan`). Every timeline counts in the dimensionless number unit (float axis), and every synchronous fixture claim names a fixture event on each side (`score:clt_1@50.0`, `helpers.match_claim`) with its coordinates on those axes, so the bundle admits them as given and every expected coordinate is the factor (2.0, 1.5, 1.8) times the score coordinate. The NOMATCH claim takes no part in a MatchGraph, so the counts split 15 synchronous + 1 NOMATCH.
 
 | Class | Tests | Purpose |
 |-------|-------|---------|
@@ -2257,8 +2284,10 @@ Tests for the Unified Stamp & Query API, using a star-topology bundle (1 score +
 | `TestMatchGraphStarTopology` | 2 | Star topology (1 score + N performers): single coordinate = one component, determinism |
 | `TestMatchClaimGetMatchstamp` | 4 | `MatchClaim.get_matchstamp()`: reduced stamp, NOMATCH returns None, no-bundle raises, from-graph with bundle |
 | `TestMatchGraphCache` | 5 | MatchGraph cache: hit, cross-key lookup, invalidation, no-claims raises, different coordinates |
-| `TestGetMatchstampAt` | 6 | `AlignmentBundle.get_matchstamp_at()`: basic, non-zero coordinate, not-in-bundle, no claims, regex filter, timeline_ids filter |
+| `TestGetMatchstampAt` | 6 | `AlignmentBundle.get_matchstamp_at()`: basic, non-zero coordinate, not-in-bundle, a position between anchors interpolated by the WarpMaps (37.5 → 75.0 / 56.25 / 67.5, `is_interpolated`, inferred edges only), regex filter, timeline_ids filter |
+| `TestCoordinateBatch` | 7 | Position batches on `get_matchstamps_at()` / `get_matchstamp_table()`: order kept, one full cross-section per coordinate, IdCoordinate carries its timeline, parity with the singular getter, one table row per coordinate, `timeline_filter` narrows columns, empty in → empty out, claims and positions together refused |
 | `TestMatchStampDisplay` | 8 | `MatchStamp.__str__`/`_repr_html_`: header, entries, empty, integer formatting, valid HTML, bold anchors, greyed inferred, and typed retrieval affordance appended after the table |
-| `TestMatchClaimDisplay` | 9 | `MatchClaim.__str__`/`_repr_html_`: instant, interval, NOMATCH, metadata, inferred, valid HTML, NOMATCH badge, affordance `Try` footer (`claim.get_matchstamp()`) appended after the table |
+| `TestMatchClaimDisplay` | 8 | `MatchClaim.__str__`/`_repr_html_`: instant, interval, NOMATCH, certainty and provenance lines (`Certainty:   0.95`, `Provenance:  method=inferred, note=…`), inferred, valid HTML, NOMATCH badge, affordance `Try` footer (`claim.get_matchstamp()`) appended after the table |
+| `TestMatchClaimEventStorage` | 12 | The events a claim names: `from_events()` keeps both event IDs and names (a missing name is `None`; an event dict without an ID is refused, `event_a names no event id`); a position without an event is given a Projection by `create_match_claims` (`projection_1`, no name, `projection_of` naming the source event, its coordinate on the target axis); `nomatch()` names one event and `None` on the other side; IDs and names displayed in `__str__`/`_repr_html_` and round-tripped by `to_dict()`/`from_dict()`; direct construction |
 | `TestTransferDocstring` | 1 | `transfer()` docstring no longer says "primary user-facing" |
 | `TestTopLevelExports` | 4 | `MatchGraph`, `MatchStamp`, `ClaimFilter` importable from top-level |

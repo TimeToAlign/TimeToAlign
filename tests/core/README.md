@@ -378,11 +378,12 @@ anchor reprs read `@5/2 seconds` and `@23/4 seconds`, and
 that declares float.
 
 An anchor coordinate is not a free-standing number; it is a position on a named
-timeline, so the axis decides. An anchor reaches its timelines only by id, so
-what it can consult is the unit's own default (R3); a bundle holds the timeline
-objects and refines that to each timeline's declared representation as the
-claim is read in its context. Both directions are asserted, for the reason
-given above:
+timeline, so the axis decides, and it decides when the claim is made:
+`MatchClaim.from_events` receives the timelines and places each event's
+position on its timeline's axis (unit and declared number type). The fixture
+claims are made that way from the storage cells, so the claim holds `2.5`, not
+`Fraction(5, 2)`, before any reader sees it. Both directions are asserted, for
+the reason given above:
 
 | Reader | Axis declares | Asserted |
 |---|---|---|
@@ -412,6 +413,33 @@ reason, applied where the value is stored so that storage, `repr`, `__str__`
 and `_repr_html_` cannot disagree. The test asserts the model field and all
 three renderings, because an anchorless claim has no getter to go through:
 `get_coordinate_for` raises on it, correctly, and is left alone.
+
+**A claim is put on its axes when it is made, and only then.** A bundle reads
+its claims as they are held and converts nothing, so the conversion has one
+place: the claim's factory. A position in another unit goes through the
+timeline's C-Map there, and the result is written in the axis's declared type.
+Both directions of exactness are asserted, each on value and Python type
+(`160 == 160.0`):
+
+| Position given | Timeline (C-Map) | Claim holds |
+|---|---|---|
+| `Coordinate(1/3, quarters)` | ticks, `int` (`TicksToQuarters(480)`) | `160` (`1/3 × 480`) |
+| `Coordinate(160, ticks)` | quarters, `fraction` (`QuartersToTicks(480)`) | `Fraction(1, 3)` |
+| `Coordinate(1.5, seconds)` | samples, `int` (`SamplesToSeconds(44100)`) | `66150` (`1.5 × 44100`) |
+
+End to end, `create_match_claims` projecting `1/3` quarters onto the ticks
+timeline adds a Projection at `160` and the MatchClaim table's frame reads
+`Fraction(1, 3)` in the quarters column and `160` in an `int64` ticks column:
+the cells are the claim's coordinates as held.
+
+The other half of the rule is the refusal: `add_match_claims` refuses a claim
+whose coordinate is off its timeline's axis, whether in another unit (`1.5`
+seconds on the samples timeline) or in the timeline's unit but another number
+type (a float `4.0` on the fraction quarters axis), with a `ValueError` naming
+the coordinate, the timeline and its axis. Each bad claim is sent in a batch
+with a valid one, and the bundle holds no claim afterwards: every check
+precedes any change. The valid claim is then added alone, so the refusal is
+the bad claim's and not the batch's.
 
 #### A published table writes the columns its axes declare
 
@@ -534,9 +562,10 @@ positions collected from events (`at=None`, what a bare
 boundaries (`include_boundaries=True`, where the ratio comes from an offset
 and a length rather than from any event). Asserting only the first is what
 let the event route ship reporting the dyadic while the stamp lane on the
-same timeline reported the ratio. The claim table is covered over both claim
-stores, because the columnar store reaches the table through a bulk
-four-column read that the per-claim list does not use.
+same timeline reported the ratio. The claim table is covered over both ways
+claims join a bundle, one MatchClaim at a time and a columnar
+`MatchClaimField`, because both land in the one MatchClaim table that the
+table lane reads column by column in bulk.
 
 **Known limitation — a group's stored rows are a float lane.** A
 `TimelineGroup` keeps its timestamps as `float64` because interpolation

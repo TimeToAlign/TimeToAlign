@@ -14,22 +14,65 @@ The canonical filter parameters are:
 - ``nomatch_only``: Return only non-synchronous (NOMATCH) claims.
 - ``include_domains``: Only timelines in these domains.
 - ``include_units``: Only timelines with these units.
+- ``believer``, ``belief``: The belief filter: for one actor, every claim the
+  actor does not believe ``false`` (``belief="not_false"``, the default) or
+  only those the actor believes ``true`` (``"true"``); without a believer
+  nothing is filtered. Decided by
+  :func:`~timetoalign.core.provenance.belief_mask` alone.
 """
 
 from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from timetoalign.core.enums import Domain, TimeUnit
+from timetoalign.core.provenance import BeliefFilter, belief_mask, provenance_array
 
 if TYPE_CHECKING:
     from timetoalign.alignment.claims import MatchClaim
     from timetoalign.timelines import Timeline
 
 module_logger = logging.getLogger(__name__)
+
+
+def believed(
+    claims: Sequence[MatchClaim],
+    believer: str | None,
+    belief: BeliefFilter = "not_false",
+) -> list[MatchClaim]:
+    """Return the claims the belief filter keeps for *believer*, in order.
+
+    The list form of the belief filter: it asks
+    :func:`~timetoalign.core.provenance.belief_mask` once over the claims'
+    provenance, the one place the filter is decided. A claim without
+    provenance holds no belief. Without a believer every claim is kept.
+
+    Args:
+        claims: The claims to filter.
+        believer: The actor whose beliefs filter; ``None`` keeps every claim.
+        belief: ``"not_false"`` keeps every claim the believer does not
+            believe ``false``; ``"true"`` only those the believer believes
+            ``true``.
+
+    Returns:
+        The kept claims, in their order.
+
+    Raises:
+        ValueError: If *belief* is neither ``"not_false"`` nor ``"true"``.
+    """
+    claims = list(claims)
+    if believer is None:
+        # Still refuse an unknown belief value, as the predicate does.
+        belief_mask(None, None, belief)
+        return claims
+    mask = belief_mask(
+        provenance_array([claim.provenance for claim in claims]), believer, belief
+    )
+    return [claim for claim, kept in zip(claims, mask.to_pylist(), strict=True) if kept]
 
 
 @dataclass(frozen=True)
@@ -70,6 +113,10 @@ class ClaimFilter:
             Requires a ``timelines`` dict for resolution.
         include_units: Only include timelines with these units.
             Requires a ``timelines`` dict for resolution.
+        believer: The actor whose beliefs filter claims (the belief
+            filter); ``None`` filters nothing.
+        belief: ``"not_false"`` keeps every claim the believer does not
+            believe ``false``; ``"true"`` only those believed ``true``.
     """
 
     timeline_id: str | None = None
@@ -80,11 +127,17 @@ class ClaimFilter:
     nomatch_only: bool = False
     include_domains: set[Domain] | None = field(default=None)
     include_units: set[TimeUnit] | None = field(default=None)
+    believer: str | None = None
+    belief: BeliefFilter = "not_false"
 
     def __post_init__(self) -> None:
-        """Validate mutually exclusive options."""
+        """Validate mutually exclusive options and the belief filter."""
         if self.synchronous_only and self.nomatch_only:
             raise ValueError("synchronous_only and nomatch_only are mutually exclusive")
+        if self.belief not in ("not_false", "true"):
+            raise ValueError(
+                f"The belief filter keeps 'not_false' or 'true', not {self.belief!r}"
+            )
 
     @property
     def _compiled_pattern(self) -> re.Pattern[str] | None:
@@ -144,6 +197,11 @@ class ClaimFilter:
             if not self._timeline_passes_domain_unit(claim.timeline_b_id, timelines):
                 return False
 
+        # The belief filter, decided where every consumer decides it.
+        if self.believer is not None:
+            if not believed([claim], self.believer, self.belief):
+                return False
+
         return True
 
     def matches_timeline(
@@ -158,7 +216,7 @@ class ClaimFilter:
         related filters are applied (``timeline_id``, ``timeline_ids``,
         ``id_pattern``, ``include_domains``, ``include_units``). The
         claim-level filters (``synchronous_only``, ``nomatch_only``,
-        ``between``) are ignored.
+        ``between``, the belief filter) are ignored.
 
         Args:
             timeline_id: The timeline ID to test.
@@ -272,6 +330,8 @@ class ClaimFilter:
         nomatch_only: bool = False,
         include_domains: set[Domain] | None = None,
         include_units: set[TimeUnit] | None = None,
+        believer: str | None = None,
+        belief: BeliefFilter = "not_false",
     ) -> ClaimFilter:
         """Create a ClaimFilter from keyword arguments.
 
@@ -287,6 +347,8 @@ class ClaimFilter:
             nomatch_only: Return only non-synchronous claims.
             include_domains: Only timelines in these domains.
             include_units: Only timelines with these units.
+            believer: The actor whose beliefs filter claims.
+            belief: ``"not_false"`` or ``"true"`` (the belief filter).
 
         Returns:
             A new ClaimFilter.
@@ -300,6 +362,8 @@ class ClaimFilter:
             nomatch_only=nomatch_only,
             include_domains=include_domains,
             include_units=include_units,
+            believer=believer,
+            belief=belief,
         )
 
     def __repr__(self) -> str:
@@ -320,4 +384,8 @@ class ClaimFilter:
             parts.append(f"include_domains={self.include_domains!r}")
         if self.include_units is not None:
             parts.append(f"include_units={self.include_units!r}")
+        if self.believer is not None:
+            parts.append(f"believer={self.believer!r}")
+        if self.belief != "not_false":
+            parts.append(f"belief={self.belief!r}")
         return f"ClaimFilter({', '.join(parts)})"

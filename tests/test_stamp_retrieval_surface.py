@@ -53,12 +53,35 @@ def _group() -> TimelineGroup:
     return TimelineGroup(id="pair", timelines=[pixels, audio])
 
 
+def _claim(
+    timeline_a: str, coordinate_a: Coordinate, timeline_b: str, coordinate_b: Coordinate
+) -> MatchClaim:
+    """A synchronous claim between two fixture events, one at each coordinate.
+
+    The events are names only (``score@50``); the coordinates must already be
+    on their timelines' axes, unit and declared number type.
+    """
+    return MatchClaim(
+        timeline_a_id=timeline_a,
+        timeline_b_id=timeline_b,
+        event_a_id=f"{timeline_a}@{coordinate_a.value}",
+        event_b_id=f"{timeline_b}@{coordinate_b.value}",
+        start_anchor=AlignmentAnchor(
+            timeline_a_id=timeline_a,
+            coordinate_a=coordinate_a,
+            timeline_b_id=timeline_b,
+            coordinate_b=coordinate_b,
+        ),
+    )
+
+
 def _ratio_bundle(*, columnar: bool) -> AlignmentBundle:
     """A bundle whose anchors sit at exact thirds of a quarters axis.
 
-    Built twice over the two claim stores — the per-claim Python list and the
-    columnar ``MatchClaimField`` — because they reach the table by different
-    reads and only the columnar one goes through a bulk four-column read.
+    Built twice over the two ways claims join a bundle -- as MatchClaims and
+    as a columnar ``MatchClaimField`` -- because they reach the bundle's
+    MatchClaim table by different writes, and the table must read the same
+    exact ratios back from either.
     """
     score = ContinuousLogicalTimeline(length=Fraction(10), uid="clt_1")
     performance = ContinuousPhysicalTimeline(length=20.0, unit="seconds", uid="cpt_1")
@@ -67,16 +90,11 @@ def _ratio_bundle(*, columnar: bool) -> AlignmentBundle:
     bundle.add_timeline(performance, as_group="perf_group")
 
     claims = [
-        MatchClaim(
-            timeline_a_id="clt_1",
-            timeline_b_id="cpt_1",
-            start_anchor=AlignmentAnchor(
-                timeline_a_id="clt_1",
-                coordinate_a=Coordinate(Fraction(third, 3), TimeUnit.quarters),
-                timeline_b_id="cpt_1",
-                coordinate_b=Coordinate(float(third), TimeUnit.seconds),
-            ),
-            is_synchronous=True,
+        _claim(
+            "clt_1",
+            Coordinate(Fraction(third, 3), TimeUnit.quarters),
+            "cpt_1",
+            Coordinate(float(third), TimeUnit.seconds),
         )
         for third in (0, 5, 15)
     ]
@@ -98,16 +116,11 @@ def _bundle() -> AlignmentBundle:
     bundle.add_timeline(performance, as_group="perf_group")
     bundle.add_match_claims(
         [
-            MatchClaim(
-                timeline_a_id="score",
-                timeline_b_id="perf",
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id="score",
-                    coordinate_a=Coordinate(position, TimeUnit.number),
-                    timeline_b_id="perf",
-                    coordinate_b=Coordinate(position * 2, TimeUnit.number),
-                ),
-                is_synchronous=True,
+            _claim(
+                "score",
+                Coordinate(float(position), TimeUnit.number),
+                "perf",
+                Coordinate(float(position * 2), TimeUnit.number),
             )
             for position in (0, 50, 100)
         ]
@@ -562,11 +575,12 @@ class TestStructCells:
         assert frame["clt_2 (quarters)"].tolist()[2] == Fraction(1, 3)
 
     def test_authored_ratio_survives_the_claim_table(self) -> None:
-        """Both claim stores tabulate the ratio their anchors were given.
+        """The claim table gives the ratio the anchors were given, however added.
 
-        The columnar store is the one that reads four Arrow columns in bulk;
-        it held the exact numerator and denominator all along and handed over
-        only the float member.
+        Claims added one by one and claims added as a columnar
+        ``MatchClaimField`` land in the same MatchClaim table, which is read
+        column by column in bulk: the exact numerator and denominator must
+        survive that read, not only the float member.
         """
         for from_graph in (False, True):
             per_claim = _ratio_bundle(columnar=False).get_matchstamp_table(

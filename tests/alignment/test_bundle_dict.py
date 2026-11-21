@@ -177,11 +177,13 @@ def test_bundle_dict_is_exact() -> None:
             },
         ],
         "measure_maps": [],
+        "resources": [],
         "graphical": {
             "order": {"group_1": ["score", "audio"], "group_2": ["holes", "midi"]},
             "styles": {},
             "rules": [],
             "timestamps": [],
+            "matchstamps": [],
         },
     }
     assert bare(bundle.to_dict(minimal=True))["graphical"] == {
@@ -261,6 +263,7 @@ def test_no_claims_are_written() -> None:
         "timelines",
         "groups",
         "measure_maps",
+        "resources",
         "graphical",
     }
 
@@ -289,6 +292,7 @@ def test_styling_round_trips_unchanged() -> None:
         "order": {"group_1": ["score", "audio"], "group_2": ["holes", "midi"]},
         **STYLING,
         "timestamps": [],
+        "matchstamps": [],
     }
     assert all(group.styling == {} for group in rebuilt.groups.values())
     assert rebuilt.styling["styles"] is not data["graphical"]["styles"]

@@ -45,6 +45,7 @@ if TYPE_CHECKING:
     from timetoalign.alignment.claims import MatchClaim
     from timetoalign.alignment.match_format import MatchFileContext
     from timetoalign.core.enums import Domain, TimeUnit
+    from timetoalign.core.provenance import BeliefFilter
     from timetoalign.timelines.groups import TimelineGroup
 
 module_logger = logging.getLogger(__name__)
@@ -450,6 +451,8 @@ class MatchLine:
         id_pattern: str | None = None,
         include_domains: set[Domain] | None = None,
         include_units: set[TimeUnit] | None = None,
+        believer: str | None = None,
+        belief: BeliefFilter = "not_false",
     ) -> MatchLine:
         """Build a MatchLine from claims via a MatchGraph.
 
@@ -468,11 +471,16 @@ class MatchLine:
             id_pattern: Regex filter for timeline IDs.
             include_domains: Only extend to timelines in these domains.
             include_units: Only extend to timelines with these units.
+            believer: The actor whose beliefs filter the claims (the belief
+                filter, applied by :class:`MatchGraph`); ``None`` keeps
+                every claim.
+            belief: ``"not_false"`` keeps every claim the believer does not
+                believe ``false``; ``"true"`` only those believed ``true``.
 
         Returns:
             A MatchLine with stamps sorted by source coordinate.
         """
-        graph = MatchGraph(claims)
+        graph = MatchGraph(claims, believer=believer, belief=belief)
 
         if groups is not None:
             graph = graph.extend_to_groups(

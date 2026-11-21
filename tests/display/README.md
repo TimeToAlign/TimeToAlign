@@ -262,6 +262,9 @@ for `depth=1`.
 - Header shows bundle ID
 - Groups are rendered with indentation
 - Match claims footer is present
+- The footer counts the rows of the bundle's MatchClaim table: three rows of
+  a `MatchClaimField` give `MatchClaims: 3`; three rows of a field and two
+  claims added after it (minted `claim_4`, `claim_5`) give `MatchClaims: 5`
 
 #### 10. Integration Tests (`TestDiagramMethods`)
 

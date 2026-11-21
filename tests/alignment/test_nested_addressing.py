@@ -11,10 +11,11 @@ from fractions import Fraction
 import pytest
 
 from timetoalign.alignment.bundle import AlignmentBundle
-from timetoalign.alignment.claims import AlignmentAnchor, MatchClaim
 from timetoalign.core import Coordinate, IdCoordinate, TimeUnit
 from timetoalign.core.fields import field_metadata
 from timetoalign.timelines import Timeline, TimelineGroup
+
+from .helpers import match_claim
 
 # region Fixture
 
@@ -67,16 +68,11 @@ def _bundle() -> tuple[AlignmentBundle, dict[str, Timeline]]:
     bundle.add_timeline(recording)
     bundle.add_match_claims(
         [
-            MatchClaim(
-                timeline_a_id="clt_6",
-                timeline_b_id="cpt_1",
-                start_anchor=AlignmentAnchor(
-                    timeline_a_id="clt_6",
-                    coordinate_a=Coordinate(quarters, TimeUnit.quarters),
-                    timeline_b_id="cpt_1",
-                    coordinate_b=Coordinate(seconds, TimeUnit.seconds),
-                ),
-                is_synchronous=True,
+            match_claim(
+                "clt_6",
+                Coordinate(quarters, TimeUnit.quarters),
+                "cpt_1",
+                Coordinate(seconds, TimeUnit.seconds),
             )
             for quarters, seconds in CLAIMS
         ]
@@ -446,6 +442,7 @@ def _claimed_child_bundle() -> AlignmentBundle:
 def test_claims_are_made_on_an_unregistered_child() -> None:
     """``create_match_claims`` resolves events on a child no one registered."""
     bundle = _claimed_child_bundle()
+    claims = bundle.get_match_claims()
 
     anchors = [
         (
@@ -454,7 +451,7 @@ def test_claims_are_made_on_an_unregistered_child() -> None:
             claim.start_anchor.timeline_b_id,
             claim.start_anchor.coordinate_b.value,
         )
-        for claim in bundle.cross_group_claims
+        for claim in claims
     ]
 
     assert bundle.timeline_ids == ["clt_1", "cpt_1"]
@@ -462,7 +459,11 @@ def test_claims_are_made_on_an_unregistered_child() -> None:
         ("clt_2", Fraction(0), "cpt_1", 5.0),
         ("clt_2", Fraction(40), "cpt_1", 25.0),
     ]
-    assert [claim.is_synchronous for claim in bundle.cross_group_claims] == [True, True]
+    assert [(claim.event_a_id, claim.event_b_id) for claim in claims] == [
+        ("n1", "a1"),
+        ("n2", "a2"),
+    ]
+    assert [claim.is_synchronous for claim in claims] == [True, True]
 
 
 def test_claims_on_an_unknown_timeline_name_every_known_one() -> None:
@@ -532,16 +533,9 @@ def test_unclaimed_descendants_are_no_units(monkeypatch: pytest.MonkeyPatch) -> 
     bundle = AlignmentBundle()
     bundle.add_timeline(root, as_group="gs")
     bundle.add_timeline(recording, as_group="gp")
-    bundle.add_match_claims(
+    bundle.create_match_claims(
         [
-            MatchClaim.from_events(
-                event_a={"start": position},
-                tl_a_id="score",
-                event_b={"start": float(position)},
-                tl_b_id="perf",
-                unit_a=TimeUnit.quarters,
-                unit_b=TimeUnit.seconds,
-            )
+            ({"start": position}, "score", {"start": float(position)}, "perf")
             for position in (0, 100)
         ]
     )

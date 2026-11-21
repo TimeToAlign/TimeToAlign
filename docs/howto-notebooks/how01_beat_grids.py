@@ -31,7 +31,7 @@ from fractions import Fraction
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from timetoalign import BeatGrid, BeatGridSegment, BeatPolicy, policy_for_metro
+from timetoalign import BeatGrid, BeatGridSegment, BeatPolicy
 
 # %% [markdown]
 # ## One tempo statement, one grid
@@ -187,13 +187,13 @@ eighths = BeatPolicy.uniform(Fraction(1, 2), 8, name="eighths")
 # and hand them to `BeatGrid` together.
 #
 # Each segment carries the policy its own stretch is counted under.
-# `policy_for_metro()` builds one from a meter string, applying the same
-# lattice reading `from_tempo(metro=…)` does. (`BeatPolicy.from_time_signature()`
-# makes the other choice, reading `6/8` as two dotted beats; that is notated
-# meter, not a grid's lattice.)
+# `BeatPolicy.from_time_signature()` reads a meter string as notated meter, so
+# `6/8` counts two dotted beats; `.as_divisions()` turns that into the grid's
+# lattice, one beat per counted value — the same reading `from_tempo(metro=…)`
+# applies.
 
 # %%
-four_four = policy_for_metro("4/4")
+four_four = BeatPolicy.from_time_signature("4/4").as_divisions()
 opening = BeatGridSegment(start=0, bpm=120, policy=four_four, battito=1)
 faster = BeatGridSegment(start=30, bpm=128, policy=four_four, battito=3)
 
@@ -370,7 +370,7 @@ message
 # | Grid from one tempo statement | `BeatGrid.from_tempo(bpm, metro=…, start=…, extent=…)` |
 # | Grid from several tempo statements | `BeatGrid([segment, …], extent=…)` |
 # | One stated stretch | `BeatGridSegment(start=…, bpm=…, policy=…, battito=…)` |
-# | A policy for the meter a source spells | `policy_for_metro("4/4")` |
+# | A policy for the meter a source spells | `BeatPolicy.from_time_signature("4/4").as_divisions()` |
 # | Every beat as a table | `grid.get_beat_table(segment=…, numbering=…)` |
 # | Downbeats | the table's rows where `beat == 1` |
 # | Label to instant | `grid.seconds_at(measure, beat)` |

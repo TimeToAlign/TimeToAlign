@@ -1682,3 +1682,142 @@ def test_a_measure_map_needs_a_unit_reaching_quarter_notes(unit: str) -> None:
         f"Timeline unit '{unit}' does not reach the quarter notes a measure map is "
         "anchored on: give it a quarters, whole_notes or ticks timeline"
     )
+
+
+# region Measure map slices
+
+_NINE_EIGHT = {
+    "time_signature": "9/8",
+    "nominal_length": [9, 2],
+    "actual_length": [9, 2],
+    "start_repeat": False,
+    "end_repeat": False,
+}
+SEVENTY_TWO_BARS = [
+    {
+        "count": 1,
+        "qstamp": [0, 1],
+        "number": 1,
+        "name": "1",
+        **_NINE_EIGHT,
+        "next": ["2"],
+    },
+    {"count": 72, "qstamp": [639, 2], "number": 72, "name": "72", **_NINE_EIGHT},
+]
+"""72 bars of 9/8 (324 quarters), IDs ``str(count)``, as two compressed rows."""
+
+
+def _bar_row(count: int, qstamp: list[int], bar: int, *, last: bool = False) -> dict:
+    """A 9/8 row of a slice, written by hand: the bar keeps its ID, number, name."""
+    row: dict = {"count": count, "qstamp": qstamp, "number": bar, "name": str(bar)}
+    row.update(_NINE_EIGHT)
+    if str(bar) != str(count):
+        row = {"ID": str(bar), **row}
+    if not last:
+        row["next"] = [str(bar + 1)]
+    return row
+
+
+BARS_1_TO_6 = [_bar_row(1, [0, 1], 1), _bar_row(6, [45, 2], 6, last=True)]
+BARS_7_TO_12 = [
+    _bar_row(1, [0, 1], 7),
+    _bar_row(2, [9, 2], 8),
+    _bar_row(3, [9, 1], 9),
+    _bar_row(4, [27, 2], 10),
+    _bar_row(5, [18, 1], 11),
+    _bar_row(6, [45, 2], 12, last=True),
+]
+
+
+class TestMeasureMapSlice:
+    """``MeasureMap.get_slice`` against rows written by hand (README "Measure map slices")."""
+
+    def test_the_first_six_bars(self) -> None:
+        bars = MeasureMap.from_rows(SEVENTY_TWO_BARS)
+
+        assert bars.get_slice(0, 27).to_rows() == BARS_1_TO_6
+
+    def test_bars_seven_to_twelve_keep_their_ids(self) -> None:
+        bars = MeasureMap.from_rows(SEVENTY_TWO_BARS)
+
+        assert bars.get_slice(27, 54).to_rows() == BARS_7_TO_12
+        assert [measure.id for measure in bars.get_slice(27, 54)] == [
+            "7",
+            "8",
+            "9",
+            "10",
+            "11",
+            "12",
+        ]
+
+    def test_a_bar_cut_at_its_middle_is_a_constituent(self) -> None:
+        part = MeasureMap.from_rows(SEVENTY_TWO_BARS).get_slice(F(9, 4), 27)
+
+        first = part[0]
+        assert part.total_actual_length == F(99, 4)
+        assert type(first) is MeasureConstituent
+        assert first.offset_within_measure == F(9, 4)
+        assert first.actual_length == F(9, 4)
+        assert part.to_rows()[0] == {
+            "count": 1,
+            "qstamp": [0, 1],
+            "number": 1,
+            "name": "1",
+            "time_signature": "9/8",
+            "nominal_length": [9, 2],
+            "actual_length": [9, 4],
+            "start_repeat": False,
+            "end_repeat": False,
+            "next": ["2"],
+            "offset_within_measure": [9, 4],
+        }
+        assert part.to_rows()[-1]["qstamp"] == [81, 4]
+        assert part.to_rows()[-1]["count"] == 6
+
+    def test_a_slice_is_a_new_minted_unnamed_map(self) -> None:
+        part = MeasureMap.from_rows(SEVENTY_TWO_BARS).get_slice(0, 27)
+
+        assert (part.id, part.name, part.meta) == ("measuremap_1", None, {})
+
+    @pytest.mark.parametrize(
+        ("start", "end", "message"),
+        [
+            (27, 27, "A measure map slice must start before it ends, not at 27 and 27"),
+            (
+                0,
+                325,
+                "The slice [0, 325) leaves the measure map, which spans [0, 324]",
+            ),
+            (-1, 4, "The slice [-1, 4) leaves the measure map, which spans [0, 324]"),
+        ],
+    )
+    def test_a_range_outside_the_map_is_refused(
+        self, start: int, end: int, message: str
+    ) -> None:
+        bars = MeasureMap.from_rows(SEVENTY_TWO_BARS)
+
+        with pytest.raises(ValueError) as refused:
+            bars.get_slice(start, end)
+        assert str(refused.value) == message
+
+    def test_an_abstract_map_is_refused(self) -> None:
+        abstract = MeasureMap([Measure(actual_length=F(4)), Measure()])
+
+        with pytest.raises(ValueError) as refused:
+            abstract.get_slice(0, 2)
+        assert str(refused.value) == (
+            "Cannot slice an abstract MeasureMap: every measure must state its "
+            "qstamp and actual_length"
+        )
+
+    def test_the_source_map_is_unchanged(self) -> None:
+        bars = MeasureMap.from_rows(SEVENTY_TWO_BARS)
+
+        bars.get_slice(F(9, 4), 27)
+        bars.get_slice(27, 54)
+
+        assert bars == MeasureMap.from_rows(SEVENTY_TWO_BARS)
+        assert bars.to_rows() == SEVENTY_TWO_BARS
+
+
+# endregion

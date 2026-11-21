@@ -139,6 +139,47 @@ classifier specifies:
 - no ``Ms3Loader`` measure table and no Rekordbox track changes class or
   offset.
 
+### Measure map slices (`test_structure.py`, `test_nesting.py`)
+
+``MeasureMap.get_slice(start, end)`` returns the measures holding
+``[start, end)`` (quarters), re-based to ``start``; ``create_child(...,
+measures=True)`` gives a child that slice of its parent's map. A slice is
+proved right by evidence that does not come from the slicer itself:
+
+1. **Rows written by hand.** The slice's ``to_rows()`` equals rows written
+   out by hand from the parent's measures, re-based: never the slicer's own
+   output fed back. The fixture is a 9/8 map of 72 measures (324 quarters,
+   IDs ``str(count)``) read from its two compressed rows. ``[0, 27)`` is two
+   rows (measures 1 and 6, the last without ``next``, because measure 7 is no
+   longer in the map); ``[27, 54)`` is six rows, each stating its ``ID``
+   ``"7"`` … ``"12"`` beside counts 1–6, since an ID kept from the parent is
+   no longer ``str(count)``, and each ``next`` but the last's names the
+   following ID. ``[9/4, 27)`` cuts measure 1 at its middle: it becomes a
+   ``MeasureConstituent`` at offset ``9/4`` with actual length ``9/4``, the
+   map's total actual length is ``99/4`` and the last row's qstamp ``81/4``.
+2. **Same measure at the same position.** For positions of the child the
+   child's ``MeasureRecordMap`` answers the measure (by ``id``) that the
+   parent's answers at offset + position: ``"1"``, ``"2"``, ``"6"`` at 0,
+   9/2, 26 of a child at offset 0; ``"7"`` at 0 of a child at offset 27. A
+   ticks parent (480 ticks per quarter, its map attached through a
+   ``LinearMap`` to quarters) proves the span is read in quarters and the
+   child reaches its slice through the same scalar: the child at ticks 12960
+   of length 12960 holds the ``[27, 54)`` rows and answers ``"7"`` at tick 0.
+   ``create_child_from_region`` over a region ``[27, 54)`` and
+   ``create_children_from_boundaries([27, 54])`` hold the same rows: one
+   slice, whichever call derives the child.
+3. **Refusals change nothing.** ``get_slice`` refuses ``start >= end``, a
+   range outside ``[0, total actual length]`` and a map with a measure lacking
+   ``actual_length`` (``ValueError``), and leaves its source map equal to a
+   fresh copy. ``create_child(..., measures=True)`` on a parent without a
+   measure map, or with an unknown child length, raises ``ValueError`` and
+   the parent's children are unchanged, because the slice is computed before
+   the child exists. The default, ``measures=False``, gives no measure map.
+4. **The child's map survives a manifest.** A bundle holding the parent with
+   its child, written by ``to_dict()`` and read by ``from_dict()``, holds two
+   ``measure_maps`` entries, and the child read back carries a measure map
+   equal to the slice.
+
 ### Merged Score Event Coordinates
 
 The score-timeline regression inspects the flattened Partitura event table
@@ -2291,6 +2332,11 @@ need contents opt in.
    - `create_children_from_boundaries()` creates named, contiguous children
      that tile the parent exactly, supports explicit names, and reports the
      same boundary-validation errors as `create_regions_from_boundaries()`
+
+11. **A child's slice of its parent's measure map** (`TestChildMeasureMap`)
+   - `create_child(..., measures=True)`, on a quarters and on a ticks parent,
+     with the refusals and the manifest round trip; the strategy is in
+     "Measure map slices" above
 
 **Validity Rationale:**
 

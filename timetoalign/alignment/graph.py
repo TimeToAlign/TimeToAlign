@@ -40,9 +40,10 @@ from timetoalign.alignment.claims import (
     AlignmentAnchor,
     MatchClaim,
 )
-from timetoalign.alignment.filters import ClaimFilter
+from timetoalign.alignment.filters import ClaimFilter, believed
 from timetoalign.core.enums import Domain, NumberType, TimeUnit
 from timetoalign.core.ids import mint_ids
+from timetoalign.core.provenance import BeliefFilter
 from timetoalign.core.retrieval import (
     CoordinateCollection,
     CoordinateFormat,
@@ -972,13 +973,16 @@ class MatchGraph:
         claims: List of all MatchClaims in this graph (synchronous and non-synchronous).
 
     Examples:
-        Build a graph from two claims between a score and a recording:
+        Build a graph from two claims between notes of a score and onsets
+        of a recording:
 
         >>> from timetoalign.timelines import Timeline, TimelineGroup
         >>> def claim(quarters, seconds):
         ...     return MatchClaim(
         ...         timeline_a_id="score",
         ...         timeline_b_id="audio",
+        ...         event_a_id=f"note_{quarters}",
+        ...         event_b_id=f"onset_{quarters}",
         ...         start_anchor=AlignmentAnchor(
         ...             timeline_a_id="score",
         ...             coordinate_a=Coordinate(quarters, TimeUnit.quarters),
@@ -1018,13 +1022,23 @@ class MatchGraph:
         axis: int | float | Fraction | None = None,
         source: "AlignmentBundle | None" = None,
         source_id: str | None = None,
+        believer: str | None = None,
+        belief: BeliefFilter = "not_false",
     ):
         """Initialize MatchGraph from MatchClaims.
 
         Args:
             claims: List of MatchClaims to build graph from.
+            units: Unit names by timeline id, for display.
+            axis: The queried position, when the graph answers one query.
+            source: The bundle the claims come from.
+            source_id: The queried timeline, when the graph answers one query.
+            believer: The actor whose beliefs filter the claims (the belief
+                filter); ``None`` keeps every claim.
+            belief: ``"not_false"`` keeps every claim the believer does not
+                believe ``false``; ``"true"`` only those believed ``true``.
         """
-        self._claims: list[MatchClaim] = claims or []
+        self._claims: list[MatchClaim] = believed(claims or [], believer, belief)
         self._graph: nx.Graph = self._build_graph()
         self._logger = module_logger.getChild("MatchGraph")
         self._units = dict(units or {})
@@ -1458,8 +1472,9 @@ class MatchGraph:
         other. Filters control which timelines receive implicit claims; a
         timeline they exclude receives no coordinate, so no extension passes
         through it. The implicit claims' ids are minted among the ids of
-        this graph's claims (``claim_N``, the smallest N free, in the order
-        the claims are made), so each names one claim of the extended graph.
+        this graph's claims (``claim_N``, above the highest N held, in the
+        order the claims are made), so each names one claim of the extended
+        graph.
 
         Args:
             groups: Dict of group_id -> TimelineGroup.
@@ -1529,11 +1544,11 @@ class MatchGraph:
     ) -> None:
         """Mint the ids of the implicit claims in this graph's scope.
 
-        Each implicit claim is made free, so all of them hold ``claim_1``;
-        they are given ``claim_N``, the N the smallest numbers the graph's
-        claims leave free, in the order they were made, and every edge
-        carrying one takes its new id. Their ``source_claim_id`` names a
-        claim of the graph and is left as it is.
+        Each implicit claim is made without an id; they are given
+        ``claim_N``, N above the highest number the graph's claims hold, in
+        the order they were made, with ``id_minted`` set, and every edge
+        carrying one takes its id. Their ``source_claim_id`` names a claim
+        of the graph and is left as it is.
 
         Args:
             extended: The extended graph, whose edges carry the claims.
@@ -1547,8 +1562,9 @@ class MatchGraph:
             len(implicit_claims),
         )
         for claim, claim_id in zip(implicit_claims, fresh.to_pylist(), strict=True):
-            # A claim just made, held by nothing else: renamed in place.
+            # A claim just made, held by nothing else: its first id, minted.
             object.__setattr__(claim, "id", claim_id)
+            object.__setattr__(claim, "id_minted", True)
         for _, _, data in extended.edges(data=True):
             claim = data.get("claim")
             if claim is not None:

@@ -1840,9 +1840,10 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
             >>> from timetoalign.timelines.types import ContinuousPhysicalTimeline
             >>> audio = ContinuousPhysicalTimeline(length=150.0, unit="seconds", uid="audio")
             >>> audio.add_events([{"event_type": "Note", "instant": 45.5}])
+            ['note_1']
             >>> group = TimelineGroup(id="my_group", timelines=[audio])
 
-            >>> ts = group.get_timestamp_for("note:000001")
+            >>> ts = group.get_timestamp_for("note_1")
             >>> ts.get_coordinate_for("audio", format="float")
             45.5
             >>> ts.get_unit(TimeUnit.seconds)  # C-Map conversion
@@ -1905,6 +1906,7 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
             >>> from timetoalign.timelines.types import ContinuousPhysicalTimeline
             >>> audio = ContinuousPhysicalTimeline(length=150.0, unit="seconds", uid="audio")
             >>> audio.add_events([{"id": "beat:1", "instant": 45.5}])
+            ['beat:1']
             >>> group = TimelineGroup(id="my_group", timelines=[audio])
             >>> stamps = group.get_timestamps_for(["beat:1"])
             >>> stamps[0].get_coordinate_for("audio", format="float")

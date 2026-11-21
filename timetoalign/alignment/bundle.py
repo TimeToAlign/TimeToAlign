@@ -18,28 +18,35 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, ClassVar
 
+import numpy as np
 import pandas as pd
+import pyarrow as pa
+import pyarrow.compute as pc
 
 from timetoalign.core import (
     Coordinate,
     CoordinateSpec,
     CoordinateValue,
+    Duration,
+    EventReference,
     IdCoordinate,
     Interval,
+    Projection,
+    Provenance,
     SupportPolicy,
     TimeUnit,
     express_as,
-    express_scalar_as,
     resolve_coordinate_spec,
     resolve_id,
 )
 from timetoalign.core.enums import NumberType
 from timetoalign.core.ids import _OpenObject, mint_id, quote_id, validate_id
+from timetoalign.core.provenance import BeliefFilter, provenance_array
 from timetoalign.core.retrieval import (
     CoordinateCollection,
     CoordinateFormat,
@@ -58,7 +65,7 @@ from timetoalign.core.retrieval import (
     validate_key_collection,
     validate_table_format,
 )
-from timetoalign.core.time import shift_number
+from timetoalign.core.time import cell_coordinate, shift_number
 from timetoalign.core.timestamp import TimestampColumn, build_timestamp_table
 from timetoalign.timelines import TimelineGroup, UnknownLengthError
 from timetoalign.timelines.groups import (
@@ -72,16 +79,14 @@ from timetoalign.timelines.groups import (
 from timetoalign.timelines.manifest import Manifest, ManifestFileMixin
 from timetoalign.timelines.statements import MutableStatementsMixin, rename_references
 
-from .claims import AlignmentAnchor, MatchClaim, MatchClaimField
-from .filters import ClaimFilter
+from .claims import MatchClaim, MatchClaimField, _event_coordinate, _join_claims
+from .filters import ClaimFilter, believed
 from .graph import MatchGraph, MatchIntervalStamp, MatchStamp
 from .matchline import MatchLine
 from .warpmap import AmbiguousWarpMapError, WarpMap
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-
-    import pyarrow as pa
 
     from timetoalign.core.enums import ColumnNaming, Domain
     from timetoalign.core.timestamp import ConversionMapsSpec
@@ -90,6 +95,11 @@ if TYPE_CHECKING:
     from timetoalign.timelines import Timeline
 
 module_logger = logging.getLogger(__name__)
+
+#: A belief filter as the bundle's caches key it: ``(believer, belief)``.
+_BeliefKey = tuple["str | None", str]
+#: The belief filter that filters nothing (no believer).
+_ALL_BELIEFS: _BeliefKey = (None, "not_false")
 
 
 def _resolve_coordinate_and_timeline(
@@ -125,6 +135,182 @@ def _resolve_coordinate_and_timeline(
     return resolved.value, resolved.timeline_id, resolved.unit
 
 
+def _held_event(event: dict | str | None, timeline: "Timeline") -> dict | None:
+    """The event of *timeline* a side of a claimed pair names, if it holds one.
+
+    An id string must name an event of the timeline; an event dict names one
+    by its ``id`` when the timeline holds it. ``None`` (the NOMATCH
+    sentinel) and a dict naming no event the timeline holds give ``None``.
+
+    Raises:
+        ValueError: If an id string names no event of the timeline.
+        TypeError: If *event* is neither a dict, a string nor ``None``.
+    """
+    if event is None:
+        return None
+    if isinstance(event, str):
+        held = timeline.get_event(event)
+        if held is None:
+            raise ValueError(
+                f"No event with id {quote_id(event)} on timeline {quote_id(timeline.id)}"
+            )
+        return held
+    if not isinstance(event, dict):
+        raise TypeError(
+            f"A side of a claimed pair is an event id, an event dict or None, "
+            f"not {type(event).__name__}"
+        )
+    event_id = event.get("id")
+    return None if event_id is None else timeline.get_event(str(event_id))
+
+
+def _reference(timeline: "Timeline", held: dict | None) -> EventReference | None:
+    """The reference to an event *timeline* holds, or ``None`` without one."""
+    if held is None:
+        return None
+    return EventReference(timeline_id=timeline.id, event_id=str(held["id"]))
+
+
+def _event_position(raw: Any, timeline: "Timeline") -> Coordinate | None:
+    """A position an event dict states, as a coordinate (``None`` if null).
+
+    A number, or a storage cell, is a position on the timeline's axis; a
+    :class:`Coordinate` (or a coordinate dict) keeps its unit, which
+    :meth:`Timeline.add_events` converts through the timeline's C-Map.
+    """
+    if raw is None or (isinstance(raw, dict) and raw.get("value") is None):
+        return None
+    value = _event_coordinate(raw)
+    if isinstance(value, Coordinate):
+        return value
+    return Coordinate(value, timeline.unit, number_type=timeline.number_type)
+
+
+def _projected_event(
+    event: dict | None, timeline: "Timeline", other: EventReference | None
+) -> dict | None:
+    """Add a Projection standing for one side of a claimed pair; its event.
+
+    The Projection is placed at the dict's ``start`` (and spans to its
+    ``end``), converted onto the timeline's axis by
+    :meth:`Timeline.add_events`. It takes the dict's ``id`` when it gives one
+    (an event the bundle does not hold: ``projection_of`` stays null), else
+    the timeline mints ``projection_N`` and the Projection names *other*,
+    the event of the other side, if any.
+
+    Returns:
+        The Projection as its timeline holds it, or ``None`` for the
+        NOMATCH sentinel.
+
+    Raises:
+        ValueError: If the dict states no ``start``, or its end is in
+            another unit than its start.
+    """
+    if event is None:
+        return None
+    event_id = event.get("id")
+    start = _event_position(event.get("start"), timeline)
+    if start is None:
+        raise ValueError(
+            f"An event dict for timeline {quote_id(timeline.id)} names no event "
+            f"of it and states no 'start': a side of a MatchClaim is an event, "
+            f"or a position where a Projection stands for one."
+        )
+    end = _event_position(event.get("end"), timeline)
+    duration = None
+    if end is not None:
+        if end.unit != start.unit:
+            raise ValueError(
+                f"An event dict for timeline {quote_id(timeline.id)} states its "
+                f"start in {start.unit.value} and its end in {end.unit.value}"
+            )
+        duration = Duration(
+            end.value - start.value, start.unit, number_type=start.number_type
+        )
+    projection = Projection(
+        id=None if event_id is None else str(event_id),
+        start=start,
+        duration=duration,
+        projection_of=other if event_id is None else None,
+    )
+    (projection_id,) = timeline.add_events(projection)
+    return timeline.get_event(projection_id)
+
+
+def _with_own_provenance(rows: MatchClaimField) -> pa.StructArray:
+    """The rows' struct, each row carrying the provenance it is read with.
+
+    A field's shared provenance is written into every row's ``provenance``
+    cell, so the rows can join rows of another provenance.
+    """
+    data = rows._struct_array()
+    shared = rows.provenance
+    if shared is None:
+        return data
+    schema = MatchClaimField.pa_schema
+    children = data.flatten()
+    children[schema.get_field_index("provenance")] = provenance_array([shared]).take(
+        pa.array(np.zeros(len(data), dtype=np.int64))
+    )
+    return pa.StructArray.from_arrays(children, fields=list(schema))
+
+
+def _concatenated(first: MatchClaimField, second: MatchClaimField) -> MatchClaimField:
+    """The rows of two MatchClaim tables, one after the other, in one table.
+
+    A provenance both share stays shared; otherwise every row carries its
+    own. The ids are neither checked nor changed here.
+    """
+    if len(first) == 0:
+        return second
+    if len(second) == 0:
+        return first
+    if first.provenance == second.provenance:
+        provenance = first.provenance
+        parts = [first._struct_array(), second._struct_array()]
+    else:
+        provenance = None
+        parts = [_with_own_provenance(first), _with_own_provenance(second)]
+    return MatchClaimField._from_struct_array(
+        pa.concat_arrays(parts), provenance=provenance
+    )
+
+
+def _table_anchors(
+    rows: MatchClaimField,
+) -> list[tuple[str, Coordinate, str, Coordinate]]:
+    """The alignment anchors of a MatchClaim table, read column by column.
+
+    Per row its start anchor, then its end anchor where it has one; a row
+    without anchors gives none. Each coordinate is read from its cell
+    (:func:`~timetoalign.core.time.cell_coordinate`) in the number type the
+    cell declares; no claim is materialised.
+
+    Returns:
+        ``(timeline_a_id, coordinate_a, timeline_b_id, coordinate_b)`` per
+        anchor, in row order.
+    """
+    data = rows._struct_array()
+    anchors: list[tuple[str, Coordinate, str, Coordinate]] = []
+    for start, end in zip(
+        data.field("start_anchor").to_pylist(),
+        data.field("end_anchor").to_pylist(),
+        strict=True,
+    ):
+        for anchor in (start, end):
+            if anchor is None:
+                continue
+            anchors.append(
+                (
+                    anchor["timeline_a_id"],
+                    cell_coordinate(anchor["coordinate_a"]),
+                    anchor["timeline_b_id"],
+                    cell_coordinate(anchor["coordinate_b"]),
+                )
+            )
+    return anchors
+
+
 # region AlignmentBundle
 
 
@@ -158,11 +344,12 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         groups: Dictionary mapping group IDs to TimelineGroup objects. The
             groups are the one statement of membership; a timeline may be a
             member of several (see :attr:`timeline_to_groups`).
-        cross_group_claims: MatchClaims connecting timelines across groups
-            (the per-claim Python-list store).
-        cross_group_claim_fields: Columnar ``MatchClaimField`` stores of dense
-            synchronous-instant pairwise claims, queried vectorized without
-            materialising the full claim list.
+        match_claim_table: The bundle's MatchClaims, every kind, in one
+            :class:`~timetoalign.alignment.claims.MatchClaimField` (the
+            MatchClaim table), queried vectorized; a claim is materialised
+            only where a reader needs the object. Claims merged from other
+            bundles keep their ids in the scopes they come from
+            (:attr:`claim_scopes`, :attr:`claim_table`).
         styling: The members of the manifest's ``graphical`` other than
             ``order`` (``styles``, ``rules``, ``timestamps`` and any
             other), kept as given and never interpreted.
@@ -171,12 +358,12 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             :mod:`~timetoalign.timelines.statements`).
 
     Note:
-        The two claim stores are interchangeable as far as queries are
-        concerned: every reader consults both, so a bundle whose claims live
-        in a ``MatchClaimField`` answers exactly as a bundle holding the same
-        claims in the Python list.  What differs is cost — ``MatchClaimField``
-        queries stay vectorized, and ``get_claim_fields()`` is the accessor
-        that keeps them that way.
+        Every reader of the MatchClaims (queries, the matchstamp getters,
+        the table lane, the MatchLines and WarpMaps behind transfer) reads
+        the one table, through the belief filter (``believer``, ``belief``)
+        where the reader takes it. The table is compared by
+        :meth:`MatchClaimField` identity only, so two bundles holding equal
+        claims in different tables compare by their other fields.
 
     Examples:
         >>> from timetoalign.alignment import AlignmentBundle
@@ -202,13 +389,15 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
     timelines: dict[str, "Timeline"] = field(default_factory=dict)
     groups: dict[str, TimelineGroup] = field(default_factory=dict)
     meta: dict[str, Any] = field(default_factory=dict)
-    cross_group_claims: list[MatchClaim] = field(default_factory=list)
-    # Columnar claim stores added additively (e.g. by ListenHereLoader). Each
-    # holds a dense set of synchronous instant pairwise claims as Arrow
-    # columns. Queries filter these vectorized and materialise
-    # only the matched rows — a million-claim field is never exploded into a
-    # Python list. The Python-list ``cross_group_claims`` path is unchanged.
-    cross_group_claim_fields: list[MatchClaimField] = field(default_factory=list)
+    # The one store of the bundle's MatchClaims, changed only through
+    # ``add_match_claims``, ``add_match_claim_field`` and ``from_bundles``,
+    # which check what joins it. Not compared: a MatchClaimField has no value
+    # equality.
+    match_claim_table: MatchClaimField = field(
+        default_factory=lambda: MatchClaimField.from_claims([]),
+        init=False,
+        compare=False,
+    )
 
     # Persistent per-bundle setting: how ``get_matchstamp_at`` treats a
     # timeline whose transferred coordinate falls outside alignment support
@@ -227,28 +416,36 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
     )
     _prefixes: dict[str, str] = field(default_factory=dict, init=False, repr=False)
 
-    # Cached WarpMaps: (source_tl_id, target_tl_id) -> WarpMap | None
-    # None values are cached as negative results to avoid repeated expensive
-    # MatchLine construction for unreachable timeline pairs.
-    _warp_map_cache: dict[tuple[str, str], WarpMap | None] = field(
+    # Cached WarpMaps: (belief filter, source_tl_id, target_tl_id) ->
+    # WarpMap | None. None values are cached as negative results to avoid
+    # repeated expensive MatchLine construction for unreachable pairs.
+    _warp_map_cache: dict[tuple[_BeliefKey, str, str], WarpMap | None] = field(
         default_factory=dict, repr=False
     )
-    # Cached MatchLines: source_tl_id -> MatchLine (avoids rebuilding the
-    # expensive MatchGraph + group extension for every target lookup)
-    _matchline_cache: dict[str, MatchLine | None] = field(
+    # Cached MatchLines: (belief filter, source_tl_id) -> MatchLine (avoids
+    # rebuilding the MatchGraph for every target lookup)
+    _matchline_cache: dict[tuple[_BeliefKey, str], MatchLine | None] = field(
         default_factory=dict, repr=False
     )
-    # Cached MatchGraphs: (timeline_id, coordinate) -> MatchGraph
-    _matchgraph_cache: dict[tuple[str, CoordinateValue], MatchGraph] = field(
-        default_factory=dict, repr=False
+    # Cached MatchGraphs: (belief filter, timeline_id, coordinate) -> MatchGraph
+    _matchgraph_cache: dict[tuple[_BeliefKey, str, CoordinateValue], MatchGraph] = (
+        field(default_factory=dict, repr=False)
     )
-    # The listed cross-group claims by each timeline they name, in store
-    # order; None until first read after the claims changed.
-    _claims_by_timeline: dict[str, list[MatchClaim]] | None = field(
-        default=None, repr=False, compare=False
+    # The claims in force under each belief filter, and those of them naming
+    # each timeline; emptied whenever the table changes.
+    _in_force_cache: dict[_BeliefKey, MatchClaimField] = field(
+        default_factory=dict, repr=False, compare=False
     )
-    # Hash of cross_group_claims list at time of last cache build
-    _cache_claims_hash: int = field(default=0, repr=False)
+    _naming_cache: dict[tuple[_BeliefKey, str], MatchClaimField] = field(
+        default_factory=dict, repr=False, compare=False
+    )
+    # The scope of each row of the table: a key into ``_claim_scope_ids``, 0
+    # for the bundle's own scope; None while every row is in the bundle's
+    # own scope.
+    _claim_scope: Any = field(default=None, repr=False, compare=False)
+    # The ids of the bundles whose claims were merged in, by scope key less
+    # one (key 0 is the bundle itself).
+    _claim_scope_ids: list[str] = field(default_factory=list, repr=False, compare=False)
 
     # Whether the id was minted rather than given.
     _id_minted: bool = field(default=False, init=False, repr=False, compare=False)
@@ -369,9 +566,15 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         """Merge multiple bundles' groups, standalone timelines, and claims.
 
         Registers every group and standalone timeline from each source
-        bundle into a new bundle, and carries over every cross-group
-        ``MatchClaim`` (both the per-claim list and any columnar
-        ``MatchClaimField`` stores) unchanged. The statements of the
+        bundle into a new bundle, and carries over every ``MatchClaim``
+        unchanged, its id included: a MatchClaim's id never changes, and
+        each source bundle stays the scope of the ids of its claims (its own
+        and those it merged in), so two sources may both hold ``claim_1``.
+        The merged :attr:`match_claim_table` holds every row once; the scope
+        of each row is a key into :attr:`claim_scopes`, the key column
+        ``scope`` of :attr:`claim_table` (never a string joined onto the
+        id). Claims added to the merged bundle afterwards are in its own
+        scope, key 0. The statements of the
         timelines and regions travel with them, and their prefixes; the
         source bundles' own statements describe their manifests and are not
         carried. Each source group is entered as
@@ -397,7 +600,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
 
         Returns:
             A new AlignmentBundle containing every group, standalone
-            timeline, and cross-group claim from ``bundles``.
+            timeline, and MatchClaim from ``bundles``.
 
         Raises:
             ValueError: If two source bundles share a given group ID, a
@@ -420,6 +623,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             True
             >>> sorted(merged.timelines)
             ['clt_1', 'cpt_1']
+            >>> merged.claim_scopes == (merged.id, score_bundle.id, audio_bundle.id)
+            True
         """
         merged = cls(id=id, name=name)
         for bundle in bundles:
@@ -453,9 +658,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             rename_references(
                 carried, (), {old: rebuilt.id for old, rebuilt in rebuilt_groups}
             )
-            merged.add_match_claims(bundle.cross_group_claims)
-            for claim_field in bundle.cross_group_claim_fields:
-                merged.add_match_claim_field(claim_field)
+            merged._take_claims_of(bundle)
         return merged
 
     # region Timeline Management
@@ -939,7 +1142,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         )
         return self.groups[min(shared)] if shared else None
 
-    def _warp_units(self) -> list[tuple[TimelineGroup | None, tuple[str, ...]]]:
+    def _warp_units(
+        self, belief_key: _BeliefKey = _ALL_BELIEFS
+    ) -> list[tuple[TimelineGroup | None, tuple[str, ...]]]:
         """Return the units a matchstamp warps between, each with its members.
 
         Every group is one unit, and so is every other registered timeline,
@@ -953,14 +1158,11 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         carry a position to the child (:meth:`_manifest_relatives`) but only
         the child's unit warps it on through those claims. A unit no claim
         reaches warps nothing, so a descendant no claim names is left out
-        rather than tried on every step of the closure.
+        rather than tried on every step of the closure. The claims are those
+        in force under the belief filter *belief_key*.
         """
         membership = self.timeline_to_groups
-        claimed: set[str] = set()
-        for claim in self.cross_group_claims:
-            claimed.update(claim.timelines)
-        for claim_field in self.cross_group_claim_fields:
-            claimed.update(claim_field.timeline_ids)
+        claimed = self._claims_in_force(belief_key).timeline_ids
         units: list[tuple[TimelineGroup | None, tuple[str, ...]]] = [
             (group, tuple(group.timeline_ids)) for group in self.groups.values()
         ]
@@ -1282,102 +1484,106 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
 
         return (transferred_start, transferred_end)
 
-    def are_commensurable(self, timeline_a: str, timeline_b: str) -> bool:
+    def are_commensurable(
+        self,
+        timeline_a: str,
+        timeline_b: str,
+        *,
+        believer: str | None = None,
+        belief: BeliefFilter = "not_false",
+    ) -> bool:
         """Check if two timelines can be connected via transfer.
 
         Two timelines are commensurable if groups connect them — they share
         a group, or a chain of groups sharing members leads from one to the
-        other — or if a synchronous MatchClaim connects the timelines so
-        connected to each.
+        other — or if a synchronous MatchClaim in force under the belief
+        filter connects the timelines so connected to each.
 
         Args:
             timeline_a: First timeline ID.
             timeline_b: Second timeline ID.
+            believer: The actor whose beliefs filter the claims (the belief
+                filter); ``None`` reads every claim.
+            belief: ``"not_false"`` (default) reads every claim the believer
+                does not believe ``false``; ``"true"`` only those believed
+                ``true``.
 
         Returns:
             True if coordinates can be transferred between them.
         """
         if timeline_a == timeline_b:
             return True
-
         group_a_tl_ids = self._group_component(timeline_a)
         if timeline_b in group_a_tl_ids:
             return True
-
-        # Check for cross-group path via claims
-        if self.n_cross_group_claims == 0:
-            return False
-
-        # Check if any synchronous claim connects the groups reaching a and b
-        group_b_tl_ids = self._group_component(timeline_b)
-
-        for claim in self.cross_group_claims:
-            if not claim.is_synchronous or claim.start_anchor is None:
-                continue
-            anchor = claim.start_anchor
-            # Does this claim connect the two groups?
-            a_side = (
-                anchor.timeline_a_id in group_a_tl_ids
-                or anchor.timeline_b_id in group_a_tl_ids
-            )
-            b_side = (
-                anchor.timeline_a_id in group_b_tl_ids
-                or anchor.timeline_b_id in group_b_tl_ids
-            )
-            if a_side and b_side:
-                return True
-
-        # Columnar stores answer the same question with one vectorized pass,
-        # without materialising a claim.
-        return any(
-            claim_field.connects_groups(group_a_tl_ids, group_b_tl_ids)
-            for claim_field in self.cross_group_claim_fields
+        # One vectorized pass over the claims in force; none is materialised.
+        return self._claims_in_force((believer, belief)).connects_groups(
+            group_a_tl_ids, self._group_component(timeline_b)
         )
 
     # endregion
 
-    # region Cross-Group Claims
+    # region MatchClaims
 
     def create_match_claims(
         self,
-        event_pairs: list[tuple[dict | str | None, str, dict | str | None, str]],
+        event_pairs: Sequence[tuple[dict | str | None, str, dict | str | None, str]],
         *,
         synchronous: bool = True,
-        agent: str = "user",
-        agent_identifier: str = "manual",
+        certainty: float = 1.0,
+        provenance: Provenance | None = None,
     ) -> list[MatchClaim]:
-        """Create MatchClaims from a list of event pairs.
+        """Create MatchClaims between events, projecting a side that has none.
 
-        Convenience factory for creating multiple MatchClaims from paired
-        events. Each tuple specifies two events and their timeline IDs.
+        A MatchClaim connects two events. Each tuple ``(event_a,
+        timeline_a_id, event_b, timeline_b_id)`` names one side per
+        timeline, each side one of:
+
+        - the ``id`` of an event its timeline holds;
+        - an event dict whose ``id`` its timeline holds: that event;
+        - an event dict stating a position: ``start``, and ``end`` for a
+          span, each a number on the timeline's axis or a
+          :class:`~timetoalign.core.Coordinate` in any unit one of the
+          timeline's C-Maps converts. A **Projection** is added to the
+          timeline there (:meth:`Timeline.add_events`), converted onto the
+          timeline's axis, and stands for the side: under the dict's ``id``
+          (an event the bundle does not hold, ``projection_of`` null), or,
+          without one, under a minted ``projection_N`` naming the other
+          side's event in ``projection_of`` when the other side is an event
+          the timeline holds (null when both sides are positions);
+        - ``None``, the NOMATCH sentinel, on one side at most.
+
+        The MatchClaim is then made between the two events, on the two
+        timelines' own axes (:meth:`MatchClaim.from_events`); an end on both
+        sides makes an interval claim. A pair with ``None`` makes a NOMATCH
+        claim for the other side's event (:meth:`MatchClaim.nomatch`). The
+        claims join the bundle (:meth:`add_match_claims`).
+
+        Every pair is checked before any Projection is added: the timelines
+        are the bundle's, an id names an event of its timeline, at most one
+        side is ``None``. A pair refused later (a position no C-Map
+        converts) leaves the Projections of the pairs before it on their
+        timelines, and no claim is added.
 
         Args:
-            event_pairs: List of tuples, each containing:
-                ``(event_a, timeline_a_id, event_b, timeline_b_id)``.
-                ``event_a``/``event_b`` are each one of:
-                an event dict (must have at least a ``start`` key with a
-                coordinate; an ``end`` key on both sides produces an
-                interval match), the ``id`` string of an existing event on
-                the paired timeline (resolved via ``Timeline.get_event()``),
-                or ``None``. Exactly one of ``event_a``/``event_b`` may be
-                ``None``, producing a NOMATCH claim for the other side's
-                event. The forms may be mixed within a pair.
-            synchronous: Whether the matches are temporally synchronous.
-                Ignored for NOMATCH pairs, which are always non-synchronous.
-            agent: Name of the agent creating the claims (for provenance).
-            agent_identifier: The agent's stable identifier — a version string
-                for a software agent or a URI for a human agent (e.g.
-                ``"manual"``, ``"dynamic_time_warping"``). Stored as
-                ``Agent.identifier``.
+            event_pairs: The pairs, ``(event_a, timeline_a_id, event_b,
+                timeline_b_id)`` each.
+            synchronous: Whether the matches are temporally synchronous; a
+                non-synchronous (conceptual) claim holds no anchors. Ignored
+                for NOMATCH pairs, which are always non-synchronous.
+            certainty: How certain every claim is, in [0, 1].
+            provenance: How the claims were made and who believes them
+                (:class:`~timetoalign.core.provenance.Provenance`); a person
+                stating them records their belief ``true`` there.
 
         Returns:
-            List of MatchClaim objects. Also automatically adds them to
-            the bundle's ``cross_group_claims``.
+            The claims made, in pair order, each holding the id the bundle
+            gave it.
 
         Raises:
-            ValueError: If event dicts are missing required keys, an event
-                id string doesn't resolve to an existing event, or both
-                ``event_a`` and ``event_b`` are ``None``.
+            ValueError: If an id string names no event of its timeline, both
+                sides of a pair are ``None``, or a position cannot be placed
+                on its timeline's axis.
             KeyError: If a timeline id names no timeline of the bundle's
                 trees. A nested timeline is found whether or not it was
                 registered.
@@ -1391,284 +1597,332 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             >>> score = ContinuousLogicalTimeline(length=16, uid="score")
             >>> score.add_events(
             ...     [
-            ...         {"id": "note:000010", "event_type": "Note", "instant": 4},
-            ...         {"id": "note:000099", "event_type": "Note", "instant": 8},
+            ...         {"id": "n10", "event_type": "Note", "instant": 4},
+            ...         {"id": "n99", "event_type": "Note", "instant": 8},
             ...     ]
             ... )
+            ['n10', 'n99']
             >>> audio = ContinuousPhysicalTimeline(length=60.0, uid="audio")
-            >>> audio.add_events([{"id": "note:000042", "event_type": "Note", "instant": 50.5}])
+            >>> audio.add_events([{"id": "o42", "event_type": "Note", "instant": 50.5}])
+            ['o42']
             >>> bundle = AlignmentBundle()
             >>> _ = bundle.add_timeline(score, as_group="score")
             >>> _ = bundle.add_timeline(audio, as_group="audio")
-            >>> pairs = [
-            ...     ({"start": 0}, "score", {"start": 45.5}, "audio"),
-            ...     ("note:000010", "score", "note:000042", "audio"),
-            ...     ("note:000099", "score", None, "audio"),  # NOMATCH
-            ... ]
-            >>> claims = bundle.create_match_claims(pairs, agent="manual_alignment")
-            >>> [claim.is_synchronous for claim in claims]
-            [True, True, False]
+            >>> claims = bundle.create_match_claims(
+            ...     [
+            ...         ("n10", "score", "o42", "audio"),
+            ...         ("n99", "score", {"start": 55.0}, "audio"),  # projected
+            ...         ("n99", "score", None, "audio"),  # NOMATCH
+            ...     ]
+            ... )
+            >>> [(claim.event_a_id, claim.event_b_id) for claim in claims]
+            [('n10', 'o42'), ('n99', 'projection_1'), ('n99', None)]
+            >>> audio.get_event("projection_1")["projection_of"]
+            {'timeline_id': 'score', 'event_id': 'n99'}
         """
-        from timetoalign.core import AgentType
-
-        from .claims import Agent, MatchClaim, MatchMetadata
-
-        claims = []
+        sides: list[tuple[Timeline, dict | None, Timeline, dict | None]] = []
         for event_a, tl_a, event_b, tl_b in event_pairs:
-            timeline_a = self._require_known_timeline(tl_a)
-            timeline_b = self._require_known_timeline(tl_b)
-            event_a = self._resolve_event(event_a, timeline_a, tl_a)
-            event_b = self._resolve_event(event_b, timeline_b, tl_b)
-
             if event_a is None and event_b is None:
                 raise ValueError("event_a and event_b cannot both be None")
-
-            metadata = MatchMetadata(
-                agent=Agent(
-                    name=agent,
-                    type=AgentType.software,
-                    identifier=agent_identifier,
-                ),
+            timeline_a = self._require_known_timeline(tl_a)
+            timeline_b = self._require_known_timeline(tl_b)
+            sides.append(
+                (
+                    timeline_a,
+                    _held_event(event_a, timeline_a),
+                    timeline_b,
+                    _held_event(event_b, timeline_b),
+                )
             )
 
-            if event_b is None:
+        claims: list[MatchClaim] = []
+        for (event_a, _, event_b, _), (timeline_a, held_a, timeline_b, held_b) in zip(
+            event_pairs, sides, strict=True
+        ):
+            resolved_a = held_a or _projected_event(
+                event_a, timeline_a, _reference(timeline_b, held_b)
+            )
+            resolved_b = held_b or _projected_event(
+                event_b, timeline_b, _reference(timeline_a, held_a)
+            )
+            if resolved_b is None:
+                assert resolved_a is not None
                 claim = MatchClaim.nomatch(
-                    event=event_a,
-                    source_tl_id=tl_a,
-                    target_tl_id=tl_b,
-                    unit=timeline_a.unit,
-                    metadata=metadata,
+                    resolved_a,
+                    timeline_a,
+                    timeline_b,
+                    certainty=certainty,
+                    provenance=provenance,
                 )
-            elif event_a is None:
+            elif resolved_a is None:
                 claim = MatchClaim.nomatch(
-                    event=event_b,
-                    source_tl_id=tl_b,
-                    target_tl_id=tl_a,
-                    unit=timeline_b.unit,
-                    metadata=metadata,
+                    resolved_b,
+                    timeline_b,
+                    timeline_a,
+                    certainty=certainty,
+                    provenance=provenance,
                 )
             else:
-                # Auto-detect interval events: if both events have a non-null
-                # "end" key, create an interval match with both start and end
-                # anchors.  Event dicts from PyArrow may store coordinates as
-                # structs ``{"value": float, ...}``; a None value means no end.
-                end_key = None
-                end_a = event_a.get("end")
-                end_b = event_b.get("end")
-                if end_a is not None and end_b is not None:
-                    # Handle struct dicts: {"value": float, ...}
-                    val_a = end_a["value"] if isinstance(end_a, dict) else end_a
-                    val_b = end_b["value"] if isinstance(end_b, dict) else end_b
-                    if val_a is not None and val_b is not None:
-                        end_key = "end"
+                ends = resolved_a.get("end") is not None and (
+                    resolved_b.get("end") is not None
+                )
                 claim = MatchClaim.from_events(
-                    event_a=event_a,
-                    tl_a_id=tl_a,
-                    event_b=event_b,
-                    tl_b_id=tl_b,
-                    unit_a=timeline_a.unit,
-                    unit_b=timeline_b.unit,
-                    end_coord_key=end_key,
+                    resolved_a,
+                    timeline_a,
+                    resolved_b,
+                    timeline_b,
+                    end_coord_key="end" if ends and synchronous else None,
                     is_synchronous=synchronous,
-                    metadata=metadata,
+                    certainty=certainty,
+                    provenance=provenance,
                 )
             claims.append(claim)
 
         if claims:
             self.add_match_claims(claims)
-
         return claims
 
-    @staticmethod
-    def _resolve_event(
-        event: dict | str | None, timeline: "Timeline", timeline_id: str
-    ) -> dict | None:
-        """Resolve an event-dict-or-id-or-None argument to an event dict.
+    def add_match_claims(self, claims: Iterable[MatchClaim]) -> "AlignmentBundle":
+        """Add MatchClaims to the bundle's MatchClaim table.
+
+        A claim names timelines of the bundle's trees, and each of its
+        coordinates is on its timeline's own axis, its unit and declared
+        number type (:meth:`MatchClaim.check_on_timelines`): a position in
+        another unit is converted when the claim is made
+        (:meth:`create_match_claims`, :meth:`MatchClaim.from_events`), never
+        here, and a claim holding one is refused.
+
+        The bundle is the scope of the ids of its own claims (claims merged
+        in by :meth:`from_bundles` keep theirs, in their own scopes). A
+        claim's id never changes: an id the bundle's scope holds, or one
+        held by two of the claims, is refused, whether it was given or
+        minted. A claim without an id is given the id the bundle mints
+        (``claim_N``, N above the highest held), set on the claim object
+        itself: its first id, not a rename. Each claim records the bundle
+        (:attr:`MatchClaim.bundle`); a claim another bundle holds joins as a
+        copy. The table holds the claims' rows, so a claim read back from
+        the bundle equals the one added but is another object. Every check
+        precedes any change.
+
+        WarpMaps are built lazily on first transfer or ``get_matchstamp_at()``
+        call, so adding claims is cheap.
 
         Args:
-            event: An event dict, the ``id`` of an existing event, or
-                ``None``.
-            timeline: The timeline ``event`` belongs to.
-            timeline_id: The timeline's id as given by the caller (for
-                error messages).
-
-        Returns:
-            The event dict, or ``None`` if ``event`` was ``None``.
-
-        Raises:
-            ValueError: If ``event`` is an id string with no matching event.
-        """
-        if not isinstance(event, str):
-            return event
-        resolved = timeline.get_event(event)
-        if resolved is None:
-            raise ValueError(f"No event with id {event!r} on timeline {timeline_id!r}")
-        return resolved
-
-    def add_match_claims(
-        self,
-        claims: Any,
-    ) -> "AlignmentBundle":
-        """Add MatchClaims connecting timelines across different groups.
-
-        MatchClaims encode coordinate correspondences between timelines in
-        different groups (e.g., EEP recording notes matched to ABC score
-        notes).  They enable cross-group coordinate transfer via
-        ``MatchLine`` → ``WarpMap``.
-
-        WarpMaps are built lazily on first ``transfer()`` or
-        ``get_matchstamp_at()`` call, so adding claims is cheap.
-
-        The bundle is the scope of its claims' ids, both stores together. A
-        claim whose minted id the bundle already holds (or an earlier claim
-        of the same call) is minted again, ``claim_N`` with the smallest N
-        free; a given id the bundle already holds is refused, before any
-        claim is added. A claim's ``source_claim_id`` naming a claim of the
-        same call whose id gave way takes the new id with it. A claim that
-        belongs to no bundle is added as itself (renamed in place where its
-        id or its ``source_claim_id`` changed); a claim another bundle holds
-        is added as a copy, so that bundle keeps its ids.
-
-        A claim's hash follows its id, so a claim renamed in place hashes
-        differently afterwards: one kept in a set or as a dictionary key
-        before it was added is no longer found there, and is looked up
-        again by the claim object or its new id.
-
-        Args:
-            claims: MatchClaim objects, claim tuples, or lists of claim tuples.
-                A tuple is ``(timeline_a_id, interval_a, timeline_b_id,
-                interval_b)``.
+            claims: The MatchClaims.
 
         Returns:
             self (for method chaining)
 
         Raises:
-            ValueError: If a claim's given id is held by another claim of
-                the bundle or given twice among the claims.
+            TypeError: If an item is not a MatchClaim.
+            KeyError: If a claim names a timeline the bundle does not hold.
+            ValueError: If a claim's id is held by another claim of the
+                bundle's scope or by two of the claims, or a coordinate is
+                not on its timeline's axis.
         """
-        materialized = list(claims)
-        flattened: list[Any] = []
-        for item in materialized:
-            if isinstance(item, list):
-                flattened.extend(item)
-            else:
-                flattened.append(item)
-
-        normalized: list[MatchClaim] = []
-        for item in flattened:
-            if isinstance(item, MatchClaim):
-                normalized.append(item)
-                continue
-            if not isinstance(item, tuple) or len(item) != 4:
-                raise TypeError("Claims must be MatchClaims or four-item claim tuples")
-            timeline_a_id, interval_a, timeline_b_id, interval_b = item
-            start_anchor = AlignmentAnchor(
-                timeline_a_id=str(timeline_a_id),
-                coordinate_a=interval_a.start,
-                timeline_b_id=str(timeline_b_id),
-                coordinate_b=interval_b.start,
-            )
-            end_anchor = AlignmentAnchor(
-                timeline_a_id=str(timeline_a_id),
-                coordinate_a=interval_a.end,
-                timeline_b_id=str(timeline_b_id),
-                coordinate_b=interval_b.end,
-            )
-            normalized.append(
-                MatchClaim(
-                    timeline_a_id=str(timeline_a_id),
-                    timeline_b_id=str(timeline_b_id),
-                    start_anchor=start_anchor,
-                    end_anchor=end_anchor,
+        claims = list(claims)
+        for claim in claims:
+            if not isinstance(claim, MatchClaim):
+                raise TypeError(
+                    f"add_match_claims takes MatchClaims, not {type(claim).__name__}"
                 )
-            )
-
-        from .claims import _join_claims
-
-        joined = _join_claims(normalized, self._claim_ids(), scope="bundle")
+        if not claims:
+            return self
+        self._check_rows(MatchClaimField.from_claims(claims))
+        joined = _join_claims(claims, self._own_claim_ids(), scope="bundle")
         for claim in joined:
             claim.set_bundle(self)
-        self.cross_group_claims.extend(joined)
-        self._invalidate_warp_cache()
+        self._append_rows(MatchClaimField.from_claims(joined))
         return self
 
-    def add_match_claim_field(
-        self,
-        claim_field: MatchClaimField,
-    ) -> "AlignmentBundle":
-        """Add a columnar ``MatchClaimField`` of cross-group claims.
+    def add_match_claim_field(self, claim_field: MatchClaimField) -> "AlignmentBundle":
+        """Add the rows of a :class:`MatchClaimField` to the bundle's table.
 
-        This is the columnar counterpart of :meth:`add_match_claims`.  The
-        field is stored as-is (Arrow columns) and queried
-        vectorized by :meth:`get_matchstamp_at` /
-        :meth:`_get_or_build_matchgraph`, which filter the claim columns and
-        materialise only the handful of claims at the queried coordinate.  A
-        dense whole-work field (on the order of a million claims) is therefore
-        never exploded into a Python list.
-
-        It complements the per-claim list path: a bundle may hold both a
-        Python-list ``cross_group_claims`` and one or more
-        ``cross_group_claim_fields`` at once.
-
-        The field's ids join the bundle's as :meth:`add_match_claims` admits
-        claims: a minted id the bundle holds is minted again, a given one is
-        refused, and a row's ``source_claim_id`` naming a row whose id gave
-        way takes the new id with it. Where an id gave way, the bundle stores
-        a new field and the one passed in is left unchanged.
-
-        A claim's hash follows its id, so a claim read from the field passed
-        in no longer equals the bundle's claim of that row where the row's
-        id gave way: one kept in a set or as a dictionary key before is
-        looked up again among the bundle's claims.
+        The columnar counterpart of :meth:`add_match_claims`, for a bulk
+        producer (an alignment loader, a MatchClaim table read from its
+        file): no claim is materialised. The same checks hold: every row
+        names timelines of the bundle's trees with coordinates on their
+        axes, and no row's id is held in the bundle's scope (ids never
+        change). The field passed in is left as it is.
 
         Args:
-            claim_field: A :class:`MatchClaimField` of synchronous pairwise
-                claims.
+            claim_field: The MatchClaims.
 
         Returns:
             self (for method chaining)
 
         Raises:
-            ValueError: If a row's given id is held by another claim of the
-                bundle.
+            KeyError: If a row names a timeline the bundle does not hold.
+            ValueError: If a row's id is held by another claim of the
+                bundle's scope, or a coordinate is not on its timeline's
+                axis.
         """
-        joined = claim_field._joined(self._claim_ids(), scope="bundle")
-        self.cross_group_claim_fields.append(joined)
-        self._invalidate_warp_cache()
+        self._check_rows(claim_field)
+        self._append_rows(claim_field._joined(self._own_claim_ids(), scope="bundle"))
         return self
 
     @property
     def n_cross_group_claims(self) -> int:
-        """Total cross-group claims across BOTH claim stores.
+        """The number of MatchClaims the bundle holds (rows of its table).
 
-        Sums the per-claim Python list and the row counts of every columnar
-        ``MatchClaimField``.  The field contribution is a row count, so no
-        claim is materialised — this is the cheap way to ask "does this
-        bundle carry any alignment at all?".
+        A row count: no claim is materialised, so this is the cheap way to
+        ask "does this bundle carry any alignment at all?".
         """
-        return len(self.cross_group_claims) + sum(
-            len(claim_field) for claim_field in self.cross_group_claim_fields
+        return len(self.match_claim_table)
+
+    @property
+    def claim_scopes(self) -> tuple[str, ...]:
+        """The scopes of the claims' ids, each named by its bundle's id.
+
+        Key 0 is this bundle; every bundle merged in by :meth:`from_bundles`
+        adds its own scope and those it had merged in, in merge order. The
+        scope of each row of :attr:`match_claim_table` is a key into this
+        tuple (:attr:`claim_table`'s ``scope`` column). Two scopes may come
+        from bundles of one id; the key, not the id, tells them apart.
+        """
+        return (self.id, *self._claim_scope_ids)
+
+    @property
+    def claim_table(self) -> pa.Table:
+        """The MatchClaim table, with its scopes where it mixes them.
+
+        :attr:`match_claim_table`'s :attr:`~MatchClaimField.table`, the
+        MatchClaim table type column for column, while every row is in the
+        bundle's own scope. Where a row comes from another scope (a merge,
+        :meth:`from_bundles`), the key column ``scope`` follows: per row its
+        key into :attr:`claim_scopes`. A claim is addressed by its scope and
+        its id, never by a string joining them.
+        """
+        table = self.match_claim_table.table
+        keys = self._claim_scope
+        if keys is None or not pc.any(pc.not_equal(keys, 0)).as_py():
+            return table
+        return table.append_column("scope", keys)
+
+    def _own_claim_ids(self) -> pa.Array:
+        """The ids of the claims in the bundle's own scope (key 0)."""
+        ids = self.match_claim_table._ids
+        if self._claim_scope is None:
+            return ids
+        return ids.filter(pc.equal(self._claim_scope, 0))
+
+    def _scope_keys(self) -> pa.Array:
+        """The scope key of every row, 0 throughout for one scope."""
+        if self._claim_scope is not None:
+            return self._claim_scope
+        return pa.array(np.zeros(len(self.match_claim_table), dtype=np.int32))
+
+    def _check_rows(self, rows: MatchClaimField) -> None:
+        """Refuse rows naming a timeline the bundle lacks or one off its axis.
+
+        Raises:
+            KeyError: Naming the timelines the bundle does not hold.
+            ValueError: If a coordinate is not on its timeline's axis.
+        """
+        known = self._known_timelines()
+        named = rows.timeline_ids
+        unknown = sorted(named.difference(known))
+        if unknown:
+            raise KeyError(
+                f"MatchClaims name timeline(s) {unknown} that this bundle does "
+                f"not hold. Available timelines: {list(known)}"
+            )
+        rows.check_on_timelines(
+            {timeline_id: known[timeline_id] for timeline_id in named}
         )
 
-    def _claim_ids(self) -> pa.Array:
-        """The ids of every claim the bundle holds, both stores together."""
-        import pyarrow as pa
+    def _append_rows(
+        self, rows: MatchClaimField, scope_keys: pa.Array | None = None
+    ) -> None:
+        """Append checked, admitted rows to the table, in a scope.
 
-        return pa.concat_arrays(
-            [
-                pa.array(
-                    [claim.id for claim in self.cross_group_claims], type=pa.string()
-                ),
-                *(claim_field._ids for claim_field in self.cross_group_claim_fields),
-            ]
-        )
+        Args:
+            rows: The rows.
+            scope_keys: Their scope keys; ``None`` for the bundle's own.
+        """
+        if len(rows) == 0:
+            return
+        if scope_keys is not None or self._claim_scope is not None:
+            new_keys = (
+                scope_keys
+                if scope_keys is not None
+                else pa.array(np.zeros(len(rows), dtype=np.int32))
+            )
+            self._claim_scope = pa.concat_arrays(
+                [self._scope_keys(), pc.cast(new_keys, pa.int32())]
+            )
+        self.match_claim_table = _concatenated(self.match_claim_table, rows)
+        self._invalidate_warp_cache()
+
+    def _take_claims_of(self, bundle: "AlignmentBundle") -> None:
+        """Append another bundle's claims, every id kept in its scope.
+
+        The bundle's own scope and the scopes it had merged in become scopes
+        of this bundle, after those it holds.
+        """
+        offset = len(self.claim_scopes)
+        self._claim_scope_ids.extend(bundle.claim_scopes)
+        rows = bundle.match_claim_table
+        if len(rows) == 0:
+            return
+        self._check_rows(rows)
+        self._append_rows(rows, pc.add(bundle._scope_keys(), np.int32(offset)))
+
+    def _claims_in_force(
+        self, belief_key: _BeliefKey = _ALL_BELIEFS
+    ) -> MatchClaimField:
+        """The claims the belief filter keeps: the one point every reader reads.
+
+        Every reader of the bundle's MatchClaims — the queries, the
+        matchstamp getters, the table lane, the MatchGraphs, MatchLines and
+        WarpMaps behind them — takes its claims from here, so the belief
+        filter (:func:`~timetoalign.core.provenance.belief_mask`, through
+        :meth:`MatchClaimField.filter`) is applied once, vectorized, per
+        state of the table.
+
+        Args:
+            belief_key: ``(believer, belief)``; no believer keeps every claim.
+        """
+        if belief_key == _ALL_BELIEFS:
+            return self.match_claim_table
+        in_force = self._in_force_cache.get(belief_key)
+        if in_force is None:
+            believer, belief = belief_key
+            in_force = self.match_claim_table.filter(
+                believer=believer,
+                belief=belief,  # type: ignore[arg-type]
+            )
+            self._in_force_cache[belief_key] = in_force
+        return in_force
+
+    def _claims_naming(
+        self, timeline_id: str, belief_key: _BeliefKey = _ALL_BELIEFS
+    ) -> MatchClaimField:
+        """The claims in force naming *timeline_id*, cut once per table state.
+
+        A timeline no claim names (a loader's category child, an unfolded
+        span) costs one lookup, however many claims the bundle holds.
+        """
+        key = (belief_key, timeline_id)
+        naming = self._naming_cache.get(key)
+        if naming is None:
+            naming = self._claims_in_force(belief_key).connecting(timeline_id)
+            self._naming_cache[key] = naming
+        return naming
+
+    def _materialized(self, rows: MatchClaimField) -> list[MatchClaim]:
+        """The rows as MatchClaims, each recording this bundle."""
+        claims = rows.to_claims()
+        for claim in claims:
+            claim.set_bundle(self)
+        return claims
 
     def _known_id_pattern(self, id_pattern: str | None) -> str | None:
         """Narrow a timeline-id regex to the timelines the bundle knows.
 
-        Claims may name timelines the bundle does not hold; a pattern only
-        ever selects among the known ones (:meth:`_known_timelines`), so it
-        is rewritten as an exact alternation of the known ids it matches.
+        A pattern only ever selects among the known timelines
+        (:meth:`_known_timelines`), so it is rewritten as an exact
+        alternation of the known ids it matches.
         """
         if id_pattern is None:
             return None
@@ -1695,22 +1949,20 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         nomatch_only: bool = False,
         include_domains: set["Domain"] | None = None,
         include_units: set["TimeUnit"] | None = None,
+        believer: str | None = None,
+        belief: BeliefFilter = "not_false",
     ) -> list[MatchClaim]:
-        """Query MatchClaims connecting timelines across groups.
+        """Query the bundle's MatchClaims.
 
-        This is the primary interface for accessing alignment information.
         All parameters are optional; when none are provided, returns all
-        claims.
+        claims, in table order. Filters are combined with AND logic: a claim
+        must satisfy every criterion set (the unified filter parameters).
 
-        Filters are combined with AND logic: a claim must satisfy every
-        non-None criterion. Uses the Unified Filter API.
-
-        Both claim stores are queried: the per-claim Python list and every
-        columnar ``MatchClaimField``. The columnar matches are filtered
-        vectorized but then **materialised**, one ``MatchClaim`` per surviving
-        row — for a dense pairwise alignment that is O(n) Python objects. Use
-        :meth:`get_claim_fields` when the columnar answer suffices, or narrow
-        the query first.
+        The table is filtered vectorized (:meth:`get_claim_field`) and the
+        rows kept are then **materialised**, one ``MatchClaim`` each,
+        recording this bundle — for a dense pairwise alignment that is O(n)
+        Python objects. Use :meth:`get_claim_field` when the columnar answer
+        suffices.
 
         Args:
             timeline_id: Return claims involving this timeline ID.
@@ -1720,10 +1972,15 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 performance timelines.
             between: Return claims connecting exactly these two timeline IDs
                 (order-independent).
-            synchronous_only: Exclude non-synchronous (NOMATCH) claims.
-            nomatch_only: Return only non-synchronous (NOMATCH) claims.
+            synchronous_only: Only the synchronous claims (with anchors).
+            nomatch_only: Only the NOMATCH claims.
             include_domains: Only timelines in these domains.
             include_units: Only timelines with these units.
+            believer: The actor whose beliefs filter the claims (the belief
+                filter); ``None`` filters nothing.
+            belief: ``"not_false"`` (default) keeps every claim the believer
+                does not believe ``false``; ``"true"`` only those the
+                believer believes ``true``.
 
         Returns:
             Filtered list of MatchClaims.
@@ -1772,30 +2029,22 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 >>> len(nomatches)
                 1
         """
-        filt = self._claim_filter(
-            timeline_id=timeline_id,
-            timeline_ids=timeline_ids,
-            id_pattern=id_pattern,
-            between=between,
-            synchronous_only=synchronous_only,
-            nomatch_only=nomatch_only,
-            include_domains=include_domains,
-            include_units=include_units,
+        return self._materialized(
+            self.get_claim_field(
+                timeline_id=timeline_id,
+                timeline_ids=timeline_ids,
+                id_pattern=id_pattern,
+                between=between,
+                synchronous_only=synchronous_only,
+                nomatch_only=nomatch_only,
+                include_domains=include_domains,
+                include_units=include_units,
+                believer=believer,
+                belief=belief,
+            )
         )
-        if filt is None:
-            return []
 
-        timeline_lookup = self._known_timelines()
-        claims = [
-            c
-            for c in self.cross_group_claims
-            if filt.matches_claim(c, timelines=timeline_lookup)
-        ]
-        for claim_field in self._filtered_claim_fields(filt, timeline_lookup):
-            claims.extend(claim_field.to_claims())
-        return claims
-
-    def get_claim_fields(
+    def get_claim_field(
         self,
         *,
         timeline_id: str | None = None,
@@ -1806,21 +2055,15 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         nomatch_only: bool = False,
         include_domains: set["Domain"] | None = None,
         include_units: set["TimeUnit"] | None = None,
-    ) -> list[MatchClaimField]:
-        """Query the columnar claim stores, materialising nothing.
+        believer: str | None = None,
+        belief: BeliefFilter = "not_false",
+    ) -> MatchClaimField:
+        """Query the MatchClaim table, materialising nothing.
 
-        This is the scalable counterpart of :meth:`get_match_claims` for
-        bundles whose claims live in a ``MatchClaimField`` — a dense pairwise
-        alignment can hold hundreds of thousands of claims, and turning each
-        one into a Python object costs orders of magnitude more than the
-        columnar answer.  Every filter is applied as a vectorized PyArrow
-        mask, and the result is a list of *filtered fields*, one per store
-        that still has rows.
-
-        The filter parameters are exactly those of :meth:`get_match_claims`
-        and carry the same meaning.  Because a ``MatchClaimField`` holds
-        synchronous claims only, ``synchronous_only`` is a no-op here and
-        ``nomatch_only`` returns nothing.
+        The columnar counterpart of :meth:`get_match_claims`, with the same
+        filter parameters and meaning: every criterion is a vectorized
+        PyArrow mask over :attr:`match_claim_table`, and the answer is the
+        filtered table (empty when nothing passes).
 
         Args:
             timeline_id: Keep claims involving this timeline ID.
@@ -1828,13 +2071,16 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             id_pattern: Regex matched against timeline IDs via ``re.search()``.
             between: Keep claims connecting exactly these two timeline IDs
                 (order-independent).
-            synchronous_only: No-op (every stored claim is synchronous).
-            nomatch_only: Returns an empty list.
+            synchronous_only: Only the synchronous claims (with anchors).
+            nomatch_only: Only the NOMATCH claims.
             include_domains: Only timelines in these domains.
             include_units: Only timelines with these units.
+            believer: The actor whose beliefs filter the claims (the belief
+                filter); ``None`` filters nothing.
+            belief: ``"not_false"`` (default) or ``"true"``.
 
         Returns:
-            Filtered ``MatchClaimField`` objects, empty stores dropped.
+            The filtered :class:`MatchClaimField`.
 
         Examples:
             >>> from timetoalign.alignment import AlignmentBundle, MatchClaimField
@@ -1842,25 +2088,23 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             ...     ContinuousLogicalTimeline,
             ...     ContinuousPhysicalTimeline,
             ... )
+            >>> score = ContinuousLogicalTimeline(length=16, uid="score:clt_1")
+            >>> audio = ContinuousPhysicalTimeline(length=40.0, uid="rec-a:cpt_1")
             >>> bundle = AlignmentBundle()
-            >>> _ = bundle.add_timeline(
-            ...     ContinuousLogicalTimeline(length=16, uid="score:clt_1"), as_group="score"
-            ... )
-            >>> _ = bundle.add_timeline(
-            ...     ContinuousPhysicalTimeline(length=40.0, uid="rec-a:cpt_1"), as_group="rec-a"
-            ... )
+            >>> _ = bundle.add_timeline(score, as_group="score")
+            >>> _ = bundle.add_timeline(audio, as_group="rec-a")
             >>> _ = bundle.add_match_claim_field(
             ...     MatchClaimField.from_columns(
             ...         ["score:clt_1"] * 3,
             ...         ["rec-a:cpt_1"] * 3,
+            ...         ["n1", "n2", "n3"],
+            ...         ["o1", "o2", "o3"],
             ...         [0, 8, 16],
             ...         [0.0, 20.0, 40.0],
-            ...         unit_a="quarters",
-            ...         unit_b="seconds",
+            ...         timelines=[score, audio],
             ...     )
             ... )
-            >>> fields = bundle.get_claim_fields(timeline_id="rec-a:cpt_1")
-            >>> sum(len(f) for f in fields)
+            >>> len(bundle.get_claim_field(timeline_id="rec-a:cpt_1"))
             3
         """
         filt = self._claim_filter(
@@ -1872,10 +2116,22 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             nomatch_only=nomatch_only,
             include_domains=include_domains,
             include_units=include_units,
+            believer=believer,
+            belief=belief,
         )
         if filt is None:
-            return []
-        return self._filtered_claim_fields(filt, self._known_timelines())
+            return self.match_claim_table._empty()
+        return self.match_claim_table.filter(
+            timeline_id=filt.timeline_id,
+            timeline_ids=filt.timeline_ids,
+            id_pattern=filt.id_pattern,
+            between=filt.between,
+            within=filt.domain_unit_timeline_ids(self._known_timelines()),
+            synchronous_only=filt.synchronous_only,
+            nomatch_only=filt.nomatch_only,
+            believer=filt.believer,
+            belief=filt.belief,
+        )
 
     def _claim_filter(
         self,
@@ -1888,11 +2144,13 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         nomatch_only: bool,
         include_domains: set["Domain"] | None,
         include_units: set["TimeUnit"] | None,
+        believer: str | None,
+        belief: BeliefFilter,
     ) -> ClaimFilter | None:
         """Build the ``ClaimFilter`` for the timelines the bundle knows.
 
         Every ID-shaped criterion selects among the bundle's known timelines
-        (:meth:`_known_timelines`), once, for both claim stores.
+        (:meth:`_known_timelines`).
 
         Returns:
             The filter, or ``None`` when a required timeline is unknown to the
@@ -1918,36 +2176,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             nomatch_only=nomatch_only,
             include_domains=include_domains,
             include_units=include_units,
+            believer=believer,
+            belief=belief,
         )
-
-    def _filtered_claim_fields(
-        self,
-        filt: ClaimFilter,
-        timeline_lookup: dict[str, "Timeline"],
-    ) -> list[MatchClaimField]:
-        """Apply a ``ClaimFilter`` to every columnar claim store.
-
-        The domain/unit criteria are resolved into a set of passing timeline
-        IDs (the fields hold IDs, not timeline metadata); everything else maps
-        straight onto ``MatchClaimField.filter``.  Stores that filter down to
-        zero rows are dropped.
-        """
-        if not self.cross_group_claim_fields:
-            return []
-        within = filt.domain_unit_timeline_ids(timeline_lookup)
-        filtered = (
-            claim_field.filter(
-                timeline_id=filt.timeline_id,
-                timeline_ids=filt.timeline_ids,
-                id_pattern=filt.id_pattern,
-                between=filt.between,
-                within=within,
-                synchronous_only=filt.synchronous_only,
-                nomatch_only=filt.nomatch_only,
-            )
-            for claim_field in self.cross_group_claim_fields
-        )
-        return [claim_field for claim_field in filtered if len(claim_field) > 0]
 
     def _axis_on(self, coordinate: float, timeline_id: str) -> int | float | Fraction:
         """Express a query coordinate the way *timeline_id* writes numbers.
@@ -1966,43 +2197,25 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             return coordinate
         return express_as(coordinate, timeline.number_type)
 
-    @staticmethod
-    def _claim_is_relevant_at(
-        claim: MatchClaim, timeline_id: str, coordinate: Coordinate
-    ) -> bool:
-        """Return whether one native-unit claim is relevant to a query."""
-        if not claim.is_synchronous or claim.start_anchor is None:
-            return False
-        if timeline_id not in claim.timelines:
-            return False
-        if claim.is_interval:
-            interval = claim.get_interval_for(timeline_id)
-            return interval.start.value <= coordinate.value <= interval.end.value
-        stored = claim.start_anchor.get_coordinate_for(timeline_id, format="coordinate")
-        assert isinstance(stored, Coordinate)
-        return stored.value == coordinate.value
-
     def _relevant_claims_at(
-        self, timeline_id: str, coordinate: Coordinate
+        self,
+        timeline_id: str,
+        coordinate: Coordinate,
+        belief_key: _BeliefKey = _ALL_BELIEFS,
     ) -> list[MatchClaim]:
-        """Find relevant claims in deterministic store and row order.
+        """The claims in force relevant at a position, in table order.
 
-        Only a claim naming the timeline can be relevant to a position on it,
-        so only those are expressed in native units and compared: a timeline
-        no claim names (a loader's category child, an unfolded span) costs
-        nothing, however many claims the bundle holds.
+        An instant claim is relevant where one of its coordinates on the
+        timeline equals the position, an interval claim where its span on
+        the timeline holds it (closed); a claim without anchors never is
+        (:meth:`MatchClaimField.at`). Only the claims naming the timeline
+        are compared, so a timeline no claim names costs nothing. Every
+        coordinate is on its timeline's axis since the claim was added, so
+        none is converted here.
         """
-        relevant: list[MatchClaim] = []
-        for raw_claim in self._claims_naming(timeline_id):
-            claim = self._claim_in_native_units(raw_claim)
-            if self._claim_is_relevant_at(claim, timeline_id, coordinate):
-                relevant.append(claim)
-        for claim_field in self.cross_group_claim_fields:
-            for raw_claim in claim_field.at(timeline_id, coordinate):
-                claim = self._claim_in_native_units(raw_claim)
-                if self._claim_is_relevant_at(claim, timeline_id, coordinate):
-                    relevant.append(claim)
-        return relevant
+        return self._materialized(
+            self._claims_naming(timeline_id, belief_key).at(timeline_id, coordinate)
+        )
 
     def _interval_claim_candidate(
         self,
@@ -2066,6 +2279,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         self,
         timeline_id: str,
         coordinate: CoordinateValue,
+        belief_key: _BeliefKey = _ALL_BELIEFS,
     ) -> MatchGraph:
         """Get or build the MatchGraph containing (timeline_id, coordinate).
 
@@ -2079,6 +2293,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         Args:
             timeline_id: A timeline in the bundle.
             coordinate: The coordinate to look up.
+            belief_key: The belief filter the claims are read under.
 
         Returns:
             The MatchGraph for this coordinate's connected component.
@@ -2086,7 +2301,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         Raises:
             ValueError: If no synchronous claims touch this node.
         """
-        key = (timeline_id, coordinate)
+        key = (belief_key, timeline_id, coordinate)
         if key in self._matchgraph_cache:
             return self._matchgraph_cache[key]
 
@@ -2094,7 +2309,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         query = Coordinate(coordinate, timeline.unit, number_type=timeline.number_type)
         relevant_claims = [
             claim
-            for claim in self._relevant_claims_at(timeline_id, query)
+            for claim in self._relevant_claims_at(timeline_id, query, belief_key)
             if not claim.is_interval
         ]
 
@@ -2117,7 +2332,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         # Cache keyed by ALL nodes in the graph
         for node in mg._graph.nodes():
             node_tl, node_coord = node
-            self._matchgraph_cache[(node_tl, node_coord)] = mg
+            self._matchgraph_cache[(belief_key, node_tl, node_coord)] = mg
 
         return mg
 
@@ -2376,6 +2591,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         id_pattern: str | None = None,
         include_domains: set["Domain"] | None = None,
         include_units: set["TimeUnit"] | None = None,
+        believer: str | None = None,
+        belief: BeliefFilter = "not_false",
     ) -> MatchStamp | MatchIntervalStamp:
         """Get a cross-group match stamp for a position on a timeline.
 
@@ -2421,6 +2638,11 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             id_pattern: Regex filter for timeline IDs in the result.
             include_domains: Only these domains in the result.
             include_units: Only these units in the result.
+            believer: The actor whose beliefs filter the MatchClaims read
+                (the belief filter); ``None`` reads every claim.
+            belief: ``"not_false"`` (default) reads every claim the believer
+                does not believe ``false``; ``"true"`` only those believed
+                ``true``.
 
         Returns:
             A coordinate query returns a MatchStamp. An Interval query returns
@@ -2474,6 +2696,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 id_pattern=id_pattern,
                 include_domains=include_domains,
                 include_units=include_units,
+                believer=believer,
+                belief=belief,
             )
             end_stamp = self.get_matchstamp_at(
                 at.end,
@@ -2484,6 +2708,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 id_pattern=id_pattern,
                 include_domains=include_domains,
                 include_units=include_units,
+                believer=believer,
+                belief=belief,
             )
             assert type(start_stamp) is MatchStamp
             assert type(end_stamp) is MatchStamp
@@ -2525,7 +2751,10 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         assert isinstance(query_coordinate, Coordinate)
         queried = query_coordinate.value
 
-        relevant_claims = self._relevant_claims_at(timeline_id, query_coordinate)
+        belief_key: _BeliefKey = (believer, belief)
+        relevant_claims = self._relevant_claims_at(
+            timeline_id, query_coordinate, belief_key
+        )
         interval_claims = [claim for claim in relevant_claims if claim.is_interval]
         candidate_groups: dict[
             str, list[tuple[MatchClaim, Coordinate | None, bool]]
@@ -2571,6 +2800,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 timeline_id,
                 support_policy=policy,
                 conversion_maps=conversion_maps,
+                belief_key=belief_key,
                 interval_coordinates=interval_coordinates,
                 interval_anchor_edges=interval_anchor_edges,
                 interval_inferred_edges=interval_inferred_edges,
@@ -2690,6 +2920,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         id_pattern: str | None = None,
         include_domains: set["Domain"] | None = None,
         include_units: set["TimeUnit"] | None = None,
+        believer: str | None = None,
+        belief: BeliefFilter = "not_false",
     ) -> list[MatchStamp | MatchIntervalStamp]:
         """Get cross-group MatchStamps at a collection of positions.
 
@@ -2709,6 +2941,11 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             id_pattern: Regex filter for timeline IDs in each result.
             include_domains: Only these domains in each result.
             include_units: Only these units in each result.
+            believer: The actor whose beliefs filter the MatchClaims read
+                (the belief filter); ``None`` reads every claim.
+            belief: ``"not_false"`` (default) reads every claim the believer
+                does not believe ``false``; ``"true"`` only those believed
+                ``true``.
 
         Returns:
             One stamp per input position. Coordinate elements produce
@@ -2756,6 +2993,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 id_pattern=id_pattern,
                 include_domains=include_domains,
                 include_units=include_units,
+                believer=believer,
+                belief=belief,
             )
             for value in values
         ]
@@ -2771,6 +3010,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         id_pattern: str | None = None,
         include_domains: set["Domain"] | None = None,
         include_units: set["TimeUnit"] | None = None,
+        believer: str | None = None,
+        belief: BeliefFilter = "not_false",
     ) -> MatchStamp:
         """Get the cross-group MatchStamp at a uniquely owned event.
 
@@ -2784,6 +3025,11 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             id_pattern: Regex filter for timeline IDs in the result.
             include_domains: Only these domains in the result.
             include_units: Only these units in the result.
+            believer: The actor whose beliefs filter the MatchClaims read
+                (the belief filter); ``None`` reads every claim.
+            belief: ``"not_false"`` (default) reads every claim the believer
+                does not believe ``false``; ``"true"`` only those believed
+                ``true``.
 
         Returns:
             MatchStamp spanning all connected timelines.
@@ -2799,7 +3045,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             ...     ContinuousPhysicalTimeline,
             ... )
             >>> score = ContinuousLogicalTimeline(length=16, uid="score:clt_1")
-            >>> score.add_events([{"id": "note:000001", "event_type": "Note", "instant": 4}])
+            >>> _ = score.add_events([{"id": "n1", "event_type": "Note", "instant": 4}])
             >>> bundle = AlignmentBundle()
             >>> _ = bundle.add_timeline(score, as_group="score")
             >>> _ = bundle.add_timeline(
@@ -2811,7 +3057,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             ...         ({"start": 16}, "score:clt_1", {"start": 40.0}, "perf:cpt_1"),
             ...     ]
             ... )
-            >>> ms = bundle.get_matchstamp_for("note:000001")
+            >>> ms = bundle.get_matchstamp_for("n1")
             >>> ms.get_coordinate_for(ms.source_id)  # the event's own owner axis
             IdCoordinate(Fraction(4, 1), quarters, 'score:clt_1')
             >>> ms.get_coordinate_for("perf:cpt_1", format="float")
@@ -2836,6 +3082,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             id_pattern=id_pattern,
             include_domains=include_domains,
             include_units=include_units,
+            believer=believer,
+            belief=belief,
         )
 
     def get_matchstamps_for(
@@ -2849,6 +3097,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         id_pattern: str | None = None,
         include_domains: set["Domain"] | None = None,
         include_units: set["TimeUnit"] | None = None,
+        believer: str | None = None,
+        belief: BeliefFilter = "not_false",
     ) -> list[MatchStamp]:
         """Get cross-group MatchStamps for a collection of event IDs.
 
@@ -2862,6 +3112,11 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             id_pattern: Regex filter for timeline IDs in each result.
             include_domains: Only these domains in each result.
             include_units: Only these units in each result.
+            believer: The actor whose beliefs filter the MatchClaims read
+                (the belief filter); ``None`` reads every claim.
+            belief: ``"not_false"`` (default) reads every claim the believer
+                does not believe ``false``; ``"true"`` only those believed
+                ``true``.
 
         Returns:
             One MatchStamp per key, in input order; an empty collection gives
@@ -2882,6 +3137,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 id_pattern=id_pattern,
                 include_domains=include_domains,
                 include_units=include_units,
+                believer=believer,
+                belief=belief,
             ),
         )
         return stamps
@@ -2904,6 +3161,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         id_pattern: str | None = None,
         include_domains: set["Domain"] | None = None,
         include_units: set["TimeUnit"] | None = None,
+        believer: str | None = None,
+        belief: BeliefFilter = "not_false",
     ) -> MatchStamp | MatchIntervalStamp | list[MatchStamp | MatchIntervalStamp]:
         """Dispatch a positional or event-key match-stamp query.
 
@@ -2916,6 +3175,11 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             id_pattern: Regex filter for timeline IDs in each result.
             include_domains: Only these domains in each result.
             include_units: Only these units in each result.
+            believer: The actor whose beliefs filter the MatchClaims read
+                (the belief filter); ``None`` reads every claim.
+            belief: ``"not_false"`` (default) reads every claim the believer
+                does not believe ``false``; ``"true"`` only those believed
+                ``true``.
 
         Returns:
             The selected precise-getter result.
@@ -2931,6 +3195,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             "id_pattern": id_pattern,
             "include_domains": include_domains,
             "include_units": include_units,
+            "believer": believer,
+            "belief": belief,
         }
         if isinstance(at, str):
             return self.get_matchstamp_for(at, timeline_id, **options)
@@ -2956,6 +3222,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         *,
         support_policy: SupportPolicy,
         conversion_maps: "ConversionMapsSpec",
+        belief_key: _BeliefKey = _ALL_BELIEFS,
         interval_coordinates: dict[str, CoordinateValue] | None = None,
         interval_anchor_edges: list[tuple[str, str]] | None = None,
         interval_inferred_edges: list[tuple[str, str]] | None = None,
@@ -2982,6 +3249,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             actual_timeline_id: Actual timeline id of the query.
             support_policy: How out-of-support transfers are handled.
             conversion_maps: C-map spec forwarded to group timestamps.
+            belief_key: The belief filter every claim is read under.
             interval_coordinates: Unambiguous interval-derived seed values.
             interval_anchor_edges: Interval-claim edges reached at an anchor.
             interval_inferred_edges: Interval-claim edges reached in an interior.
@@ -3019,7 +3287,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         # 1. Exact-anchor seed: the query's connected component of explicit
         #    (and any graph-inferred) claims.
         try:
-            mg = self._get_or_build_matchgraph(actual_timeline_id, coordinate)
+            mg = self._get_or_build_matchgraph(
+                actual_timeline_id, coordinate, belief_key
+            )
         except ValueError as error:
             if "No synchronous claims touch" not in str(error):
                 raise
@@ -3057,7 +3327,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         ]
         processed: set[str] = set()
         tree_reached: set[str] = set()
-        units = self._warp_units()
+        units = self._warp_units(belief_key)
 
         while worklist:
             node_id = worklist.pop()
@@ -3076,7 +3346,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 node_timeline.unit,
                 number_type=node_timeline.number_type,
             )
-            for claim in self._relevant_claims_at(node_id, query):
+            for claim in self._relevant_claims_at(node_id, query, belief_key):
                 if claim.is_interval:
                     continue
                 anchor = claim.start_anchor
@@ -3145,6 +3415,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                         source_group,
                         target_ids,
                         support_policy,
+                        belief_key,
                     )
                     if transferred is None:
                         continue
@@ -3163,6 +3434,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         *,
         from_graph: bool = True,
         conversion_maps: "ConversionMapsSpec" = False,
+        believer: str | None = None,
+        belief: BeliefFilter = "not_false",
     ) -> list[MatchStamp]:
         """Get MatchStamps for the bundle's claims.
 
@@ -3175,16 +3448,19 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         Uses the bundle's caching mechanism for efficient retrieval.
 
         Args:
-            claims: List of MatchClaims to get stamps for. If None, uses
-                every cross-group claim in the bundle — the per-claim list
-                and every columnar ``MatchClaimField`` (see
-                :meth:`get_match_claims`, which materialises the columnar
-                rows).
-            from_graph: If True (default), return full MatchStamps from the
-                MatchGraph (all connected timelines). If False, return
-                reduced 2-timeline stamps.
+            claims: List of MatchClaims to get stamps for. If None, every
+                MatchClaim of the bundle (:meth:`get_match_claims`, which
+                materialises the rows).
+            from_graph: If True (default), return full MatchStamps
+                (:meth:`get_matchstamp_at` at each claim's start anchor, all
+                connected timelines). If False, return reduced 2-timeline
+                stamps.
             conversion_maps: C-map conversions available through unit lookup
                 and display. Opt-in: defaults to ``False``.
+            believer: The actor whose beliefs filter the claims, those
+                listed and those every full stamp reads (the belief filter);
+                ``None`` keeps every claim.
+            belief: ``"not_false"`` (default) or ``"true"``.
 
         Returns:
             List of MatchStamp objects. Non-synchronous claims yield None
@@ -3218,15 +3494,27 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             3
         """
         if claims is None:
-            claims = self.get_match_claims()
+            claims = self.get_match_claims(believer=believer, belief=belief)
+        else:
+            claims = believed(claims, believer, belief)
 
         stamps = []
         for claim in claims:
-            stamp = claim.get_matchstamp(
-                bundle=self, from_graph=from_graph, conversion_maps=conversion_maps
-            )
-            if stamp is not None:
-                stamps.append(stamp)
+            if not claim.is_synchronous or claim.start_anchor is None:
+                continue
+            if not from_graph:
+                stamp = claim.get_matchstamp(
+                    bundle=self, from_graph=False, conversion_maps=conversion_maps
+                )
+            else:
+                stamp = self.get_matchstamp_at(
+                    claim.start_anchor.get_coordinate_for(claim.timeline_a_id),
+                    conversion_maps=conversion_maps,
+                    believer=believer,
+                    belief=belief,
+                )
+            assert isinstance(stamp, MatchStamp)
+            stamps.append(stamp)
 
         return stamps
 
@@ -3250,6 +3538,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         format: TableFormat = "table",
         fields: "ColumnNaming | Callable[[str, dict], str] | list[str] | None" = None,
         units: bool | None = None,
+        believer: str | None = None,
+        belief: BeliefFilter = "not_false",
     ) -> "pa.Table | pd.DataFrame":
         """Get a table of MatchStamps for alignment queries.
 
@@ -3257,19 +3547,22 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         Fields are timeline IDs holding their coordinate values; what a *row*
         is depends on ``from_graph``:
 
-        - ``from_graph=False`` (default) — one row per synchronous claim.  A
-          pairwise claim fills exactly two cells and leaves the rest null, so
-          a dense pairwise alignment produces one sparse row per claim.
+        - ``from_graph=False`` (default) — one row per alignment anchor: an
+          instant claim gives one, an interval claim two (its start anchor,
+          then its end anchor). A row fills exactly two cells and leaves the
+          rest null, so a dense pairwise alignment produces sparse rows.
         - ``from_graph=True`` — one row per connected component of the
-          ``(timeline_id, coordinate)`` graph the claims induce.  The pairwise
-          rows above collapse into the *cross-section* they describe: one row
-          per aligned instant, every participating timeline filled.
+          ``(timeline_id, coordinate)`` graph the anchors induce, end anchors
+          included.  The pairwise rows above collapse into the
+          *cross-section* they describe: one row per aligned instant, every
+          participating timeline filled.
 
-        When ``claims`` is None both claim stores are read: the per-claim
-        Python list and every columnar ``MatchClaimField``.  The columnar
-        stores are read four Arrow columns at a time — no ``MatchClaim`` is
-        ever materialised — which is what keeps a hundreds-of-thousands-of-rows
-        alignment tabulable.
+        When ``claims`` is None the claims are the bundle's
+        :attr:`match_claim_table`, read column by column — no ``MatchClaim``
+        is materialised. Every coordinate is written as the claim holds it,
+        on its timeline's axis (a claim is checked against its timelines
+        when it is added), so no cell is converted here. The belief filter
+        (``believer``, ``belief``) selects the claims either way.
 
         When ``at`` is given instead of ``claims``, each position or event ID
         is resolved through :meth:`get_matchstamp_at` and becomes exactly one
@@ -3305,6 +3598,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             fields: How to name the DataFrame fields (``format="dataframe"``).
             units: If True (the DataFrame default), append units to field
                 names like "name (unit)".
+            believer: The actor whose beliefs filter the claims (the belief
+                filter); ``None`` keeps every claim.
+            belief: ``"not_false"`` (default) or ``"true"``.
 
         Returns:
             One field per timeline, each a coordinate struct carrying its
@@ -3351,7 +3647,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             ...         ]
             ...     )
             >>> table = bundle.get_matchstamp_table()
-            >>> table.num_rows  # one per claim
+            >>> table.num_rows  # one per anchor
             4
             >>> table.column_names
             ['perf:cpt_1', 'perf:cpt_2', 'score:clt_1']
@@ -3369,6 +3665,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 at,
                 timeline_id,
                 conversion_maps=conversion_maps,
+                believer=believer,
+                belief=belief,
             )
             stamps = resolved if isinstance(resolved, list) else [resolved]
             if any(isinstance(stamp, MatchIntervalStamp) for stamp in stamps):
@@ -3392,7 +3690,6 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             return self._render_matchstamp_table(
                 self._assemble_matchstamp_table(
                     rows,
-                    [],
                     all_tl_ids,
                     timeline_filter,
                     conversion_maps=conversion_maps,
@@ -3402,45 +3699,30 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 units=units,
             )
 
-        list_claims = self.cross_group_claims if claims is None else claims
-        claim_fields = [] if claims is not None else self.cross_group_claim_fields
-
-        all_tl_ids = set()
-        rows = []
-        # Bulk (timeline_a_id, timeline_b_id, coordinate_a, coordinate_b)
-        # column reads, one per columnar store, scattered without dicts.
-        bulk_columns: list[tuple[list[str], list[str], list[float], list[float]]] = []
-
-        if from_graph:
-            rows = self._collapsed_claim_rows(list_claims, claim_fields)
-            for row in rows:
-                all_tl_ids.update(row)
-        else:
-            for claim in list_claims:
-                if not claim.is_synchronous or claim.start_anchor is None:
-                    continue
-
-                # Get reduced stamp (2 timelines only, for efficiency)
-                stamp = claim.get_matchstamp(bundle=self, from_graph=False)
-                if stamp is None:
-                    continue
-
-                row = dict(stamp.coordinates)
-                rows.append(row)
-                all_tl_ids.update(stamp.coordinates.keys())
-
-            bulk_columns = [
-                claim_field.coordinate_pairs() for claim_field in claim_fields
+        anchors = (
+            _table_anchors(self._claims_in_force((believer, belief)))
+            if claims is None
+            else [
+                (anchor.timeline_a_id, anchor.coordinate_a)
+                + (anchor.timeline_b_id, anchor.coordinate_b)
+                for claim in believed(claims, believer, belief)
+                for anchor in claim.anchors
             ]
-            for ids_a, ids_b, _, _ in bulk_columns:
-                all_tl_ids.update(ids_a)
-                all_tl_ids.update(ids_b)
-            all_tl_ids.discard(None)
+        )
+        if from_graph:
+            rows = self._collapsed_claim_rows(anchors)
+        else:
+            rows = [
+                {timeline_a: coordinate_a, timeline_b: coordinate_b}
+                for timeline_a, coordinate_a, timeline_b, coordinate_b in anchors
+            ]
+        all_tl_ids = set()
+        for row in rows:
+            all_tl_ids.update(row)
 
         return self._render_matchstamp_table(
             self._assemble_matchstamp_table(
                 rows,
-                bulk_columns,
                 all_tl_ids,
                 timeline_filter,
                 conversion_maps=conversion_maps,
@@ -3471,26 +3753,21 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
 
     def _assemble_matchstamp_table(
         self,
-        rows: list[dict[str, Coordinate | float | None]],
-        bulk_columns: list[tuple[list[str], list[str], list[float], list[float]]],
+        rows: list[dict[str, Coordinate]],
         all_tl_ids: set[str],
         timeline_filter: set[str] | None,
         conversion_maps: "ConversionMapsSpec" = False,
     ) -> "pa.Table":
-        """Scatter per-row dicts and bulk columnar reads into one PyArrow table.
+        """Scatter per-row dicts into one PyArrow table.
 
         Shared assembly tail for :meth:`get_matchstamp_table`.  Each ``rows``
-        entry contributes one row (its timeline keys scattered into the
-        matching fields); each ``bulk_columns`` entry contributes
-        ``len(ids_a)`` further rows read four Arrow columns at a time — no
-        ``MatchClaim`` materialised.  ``all_tl_ids`` is the field universe
-        before filtering; ``timeline_filter`` (when given) intersects it.
+        entry contributes one row, its timeline keys scattered into the
+        matching fields, each cell the coordinate as given, on its
+        timeline's axis. ``all_tl_ids`` is the field universe before
+        filtering; ``timeline_filter`` (when given) intersects it.
 
         Args:
-            rows: One dict per already-materialised stamp/claim row.
-            bulk_columns: ``(ids_a, ids_b, coordinates_a, coordinates_b)``
-                reads, one per columnar store, each contributing one row per
-                position.
+            rows: One dict per row, timeline id to coordinate.
             all_tl_ids: Union of every timeline ID appearing in the inputs.
             timeline_filter: Only include these timeline fields, if given.
             conversion_maps: C-map conversions to add as derived columns, one
@@ -3503,9 +3780,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             by any derived conversion columns.  Empty input yields an empty
             table.
         """
-        import pyarrow as pa
-
-        n_rows = len(rows) + sum(len(ids_a) for ids_a, _, _, _ in bulk_columns)
+        n_rows = len(rows)
         if n_rows == 0:
             return pa.table({})
 
@@ -3519,36 +3794,11 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             tl_id: [None] * n_rows for tl_id in sorted(all_tl_ids)
         }
         known = self._known_timelines()
-        axes: dict[str, Timeline] = {}
-
-        def cell(tl_id: str, value: Coordinate | float | None) -> Coordinate | None:
-            """Write one cell on its timeline's axis, resolving the axis once."""
-            timeline = axes.get(tl_id)
-            if timeline is None:
-                timeline = known[tl_id] if tl_id in known else self.get_timeline(tl_id)
-                axes[tl_id] = timeline
-            return self._canonical_table_coordinate(timeline, value)
-
         for position, row in enumerate(rows):
             for tl_id, value in row.items():
                 column = field_lists.get(tl_id)
                 if column is not None:
-                    column[position] = cell(tl_id, value)
-
-        offset = len(rows)
-        for ids_a, ids_b, coordinates_a, coordinates_b in bulk_columns:
-            for position in range(len(ids_a)):
-                column = field_lists.get(ids_a[position])
-                if column is not None:
-                    column[offset + position] = cell(
-                        ids_a[position], coordinates_a[position]
-                    )
-                column = field_lists.get(ids_b[position])
-                if column is not None:
-                    column[offset + position] = cell(
-                        ids_b[position], coordinates_b[position]
-                    )
-            offset += len(ids_a)
+                    column[position] = value
 
         if conversion_maps is not False and conversion_maps is not None:
             from timetoalign.core.timestamp import _conversion_map_enabled_for_spec
@@ -3619,202 +3869,85 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         return build_timestamp_table(columns)
 
     @staticmethod
-    def _canonical_table_coordinate(
-        timeline: "Timeline", value: Coordinate | float | None
-    ) -> Coordinate | None:
-        """Return one match-stamp table cell in its timeline's canonical type.
-
-        Args:
-            timeline: The timeline the cell's column belongs to.
-            value: Stored coordinate or a numeric value from a columnar claim.
-
-        Returns:
-            Canonical coordinate, or ``None`` for an absent cell.
-        """
-        if value is None:
-            return None
-        raw_value = value.value if isinstance(value, Coordinate) else value
-        return Coordinate(
-            raw_value,
-            timeline.unit,
-            number_type=timeline.number_type,
-        )
-
     def _collapsed_claim_rows(
-        self,
-        claims: list[MatchClaim],
-        claim_fields: list[MatchClaimField],
-    ) -> list[dict[str, CoordinateValue | None]]:
-        """Collapse pairwise claims into one row per aligned instant.
+        anchors: list[tuple[str, Coordinate, str, Coordinate]],
+    ) -> list[dict[str, Coordinate]]:
+        """Collapse alignment anchors into one row per aligned instant.
 
-        Each synchronous claim is an edge between the nodes
-        ``(timeline_a_id, coordinate_a)`` and ``(timeline_b_id, coordinate_b)``.
-        A union-find over those edges recovers the connected components, and
-        each component becomes one row mapping every participating timeline to
-        its coordinate.  Columnar stores contribute their edges through a bulk
-        four-column read, so no ``MatchClaim`` is materialised.
+        Each anchor is an edge between the nodes ``(timeline_a_id,
+        coordinate_a)`` and ``(timeline_b_id, coordinate_b)``. A union-find
+        over those edges recovers the connected components, and each
+        component becomes one row mapping every participating timeline to
+        its coordinate. Nodes are keyed by their exact values: every
+        coordinate of a timeline is on its axis, so two anchors meet at a
+        node exactly when they name the same position.
 
         Args:
-            claims: Per-claim edge source (non-synchronous claims ignored).
-            claim_fields: Columnar edge sources.
+            anchors: ``(timeline_a_id, coordinate_a, timeline_b_id,
+                coordinate_b)`` per anchor, end anchors included.
 
         Returns:
             One row per component, ordered as documented on
             :meth:`get_matchstamp_table`.
         """
-        parent: dict[tuple[str, float], tuple[str, float]] = {}
+        parent: dict[tuple[str, CoordinateValue], tuple[str, CoordinateValue]] = {}
+        coordinates: dict[tuple[str, CoordinateValue], Coordinate] = {}
 
-        def find(node: tuple[str, float]) -> tuple[str, float]:
-            root = node
+        def node(
+            timeline_id: str, coordinate: Coordinate
+        ) -> tuple[str, CoordinateValue]:
+            key = (timeline_id, coordinate.value)
+            parent.setdefault(key, key)
+            coordinates.setdefault(key, coordinate)
+            return key
+
+        def find(key: tuple[str, CoordinateValue]) -> tuple[str, CoordinateValue]:
+            root = key
             while parent[root] != root:
                 root = parent[root]
-            while parent[node] != root:
-                parent[node], node = root, parent[node]
+            while parent[key] != root:
+                parent[key], key = root, parent[key]
             return root
 
-        def union(node_a: tuple[str, float], node_b: tuple[str, float]) -> None:
-            parent.setdefault(node_a, node_a)
-            parent.setdefault(node_b, node_b)
-            root_a, root_b = find(node_a), find(node_b)
+        for timeline_a, coordinate_a, timeline_b, coordinate_b in anchors:
+            root_a = find(node(timeline_a, coordinate_a))
+            root_b = find(node(timeline_b, coordinate_b))
             if root_a != root_b:
                 parent[root_b] = root_a
 
-        # The union runs on float keys, because two claims meet at a node only
-        # when they name the same position and a float is the one spelling both
-        # sides always have. What the row REPORTS is the exact coordinate
-        # recorded for that node, so an anchor authored at 5/3 is emitted as
-        # 5/3 rather than as the double it was joined on.
-        exact: dict[tuple[str, float], CoordinateValue] = {}
-
-        def record(timeline_id: str, coordinate: CoordinateValue) -> tuple[str, float]:
-            node = (timeline_id, float(coordinate))
-            exact.setdefault(node, coordinate)
-            return node
-
-        for claim in claims:
-            if not claim.is_synchronous or claim.start_anchor is None:
-                continue
-            anchor = claim.start_anchor
-            union(
-                record(claim.timeline_a_id, anchor.coordinate_a.value),
-                record(claim.timeline_b_id, anchor.coordinate_b.value),
-            )
-        for claim_field in claim_fields:
-            ids_a, ids_b, coordinates_a, coordinates_b = claim_field.coordinate_pairs()
-            for position in range(len(ids_a)):
-                union(
-                    record(ids_a[position], coordinates_a[position]),
-                    record(ids_b[position], coordinates_b[position]),
-                )
-
-        components: dict[tuple[str, float], dict[str, CoordinateValue | None]] = {}
-        for node in parent:
-            timeline_id, coordinate = node
-            row = components.setdefault(find(node), {})
+        components: dict[tuple[str, CoordinateValue], dict[str, Coordinate]] = {}
+        for key in parent:
+            timeline_id, value = key
+            row = components.setdefault(find(key), {})
             carried = row.get(timeline_id)
-            if carried is None or coordinate < carried:
-                row[timeline_id] = exact[node]
+            if carried is None or value < carried.value:
+                row[timeline_id] = coordinates[key]
 
         return sorted(
             components.values(),
-            key=lambda row: (float(row[min(row)]), min(row)),
+            key=lambda row: (float(row[min(row)].value), min(row)),
         )
 
     def _invalidate_warp_cache(self) -> None:
-        """Clear the WarpMap, MatchLine, and MatchGraph caches, forcing rebuild on next access."""
+        """Clear every cache built from the claims, forcing rebuild on next access."""
         self._warp_map_cache.clear()
         self._matchline_cache.clear()
         self._matchgraph_cache.clear()
-        self._claims_by_timeline = None
-        self._cache_claims_hash = 0
+        self._in_force_cache.clear()
+        self._naming_cache.clear()
 
-    def _refresh_claim_caches(self) -> None:
-        """Drop the caches built from the claims when either store changed.
-
-        The hash moves when EITHER store changes: it folds in the total claim
-        count and the identity of each columnar store alongside the list's
-        own identity.
-        """
-        claims_hash = id(self.cross_group_claims) + self.n_cross_group_claims
-        for claim_field in self.cross_group_claim_fields:
-            claims_hash += id(claim_field)
-        if claims_hash != self._cache_claims_hash:
-            self._warp_map_cache.clear()
-            self._matchline_cache.clear()
-            self._claims_by_timeline = None
-            self._cache_claims_hash = claims_hash
-
-    def _claims_naming(self, timeline_id: str) -> list[MatchClaim]:
-        """Return the listed cross-group claims naming a timeline, in store order.
-
-        The index is built once per state of the claim stores; it holds the
-        claims as stored, since a claim's timelines do not change when its
-        coordinates are expressed in native units.
-        """
-        self._refresh_claim_caches()
-        if self._claims_by_timeline is None:
-            index: dict[str, list[MatchClaim]] = {}
-            for claim in self.cross_group_claims:
-                for named in dict.fromkeys(claim.timelines):
-                    index.setdefault(named, []).append(claim)
-            self._claims_by_timeline = index
-        return self._claims_by_timeline.get(timeline_id, [])
-
-    def _claim_in_native_units(self, claim: MatchClaim) -> MatchClaim:
-        """Return a claim whose anchors use each timeline's native axis.
-
-        Native means both halves of what an axis declares: its unit and the
-        representation it writes numbers in. An anchor on its own can only
-        reach the unit's default, so the bundle is the first place a timeline
-        declaring something other than that default can be honoured, and
-        every reader downstream -- MatchGraph, MatchLine, WarpMap inference --
-        sees the timeline's own answer rather than the claim author's.
-        """
-
-        def _native(timeline_id: str, coordinate: Coordinate) -> Coordinate:
-            timeline = self._known_timeline(timeline_id)
-            if timeline is None:
-                return coordinate
-            if coordinate.unit == TimeUnit.number:
-                coordinate = Coordinate(coordinate.value, timeline.unit)
-            elif coordinate.unit != timeline.unit:
-                result = timeline.get_coordinate_at(coordinate, format="coordinate")
-                assert isinstance(result, Coordinate)
-                coordinate = result
-            return express_scalar_as(coordinate, timeline.number_type)
-
-        updates: dict[str, Any] = {}
-        for name in ("start_anchor", "end_anchor"):
-            anchor = getattr(claim, name)
-            if anchor is None:
-                continue
-            coordinate_a = _native(anchor.timeline_a_id, anchor.coordinate_a)
-            coordinate_b = _native(anchor.timeline_b_id, anchor.coordinate_b)
-            if (
-                coordinate_a is not anchor.coordinate_a
-                or coordinate_b is not anchor.coordinate_b
-            ):
-                updates[name] = anchor.model_copy(
-                    update={
-                        "coordinate_a": coordinate_a,
-                        "coordinate_b": coordinate_b,
-                    }
-                )
-        # A NOMATCH claim keeps its position outside an anchor; it is on a
-        # named axis all the same, so it gets the same treatment rather than
-        # a second, quieter set of rules.
-        if claim.source_coordinate is not None:
-            source_coordinate = _native(claim.timeline_a_id, claim.source_coordinate)
-            if source_coordinate is not claim.source_coordinate:
-                updates["source_coordinate"] = source_coordinate
-        return claim.model_copy(update=updates) if updates else claim
-
-    def _get_or_build_match_line(self, source_tl_id: str) -> MatchLine | None:
+    def _get_or_build_match_line(
+        self, source_tl_id: str, belief_key: _BeliefKey = _ALL_BELIEFS
+    ) -> MatchLine | None:
         """Get or lazily build a MatchLine for the given source timeline.
 
-        The MatchLine is cached per ``source_tl_id`` and shared across
-        all target lookups from the same source. This avoids rebuilding
-        the expensive ``MatchGraph`` for every ``(source, target)`` pair.
+        The MatchLine is built from the claims in force naming the source
+        (:meth:`_claims_naming`, a vectorized cut of the table, so a dense
+        pairwise table is cut to its source slice before anything is
+        materialised), cached per source and belief filter and shared across
+        all target lookups from the same source. A source no claim names
+        has no line. What lies further than one claim from the source is
+        reached by the matchstamp closure, unit by unit.
 
         Group extension is deliberately NOT applied here. When groups
         contain timelines at different sampling rates (e.g. 44.1 kHz
@@ -3827,37 +3960,23 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
 
         Args:
             source_tl_id: ID of the source timeline.
+            belief_key: The belief filter the claims are read under.
 
         Returns:
             MatchLine for the source, or None if construction fails.
         """
-        self._refresh_claim_caches()
-        if source_tl_id in self._matchline_cache:
-            return self._matchline_cache[source_tl_id]
+        cache_key = (belief_key, source_tl_id)
+        if cache_key in self._matchline_cache:
+            return self._matchline_cache[cache_key]
 
-        # Columnar stores contribute only the rows that actually touch this
-        # source. ``connecting`` is a vectorized mask, so a dense pairwise
-        # field is cut to its source slice — for R recordings that is 2/R of
-        # the rows — before anything is materialised, and the resulting
-        # MatchLine is then cached per source.
-        field_claims: list[MatchClaim] = []
-        for claim_field in self.cross_group_claim_fields:
-            field_claims.extend(claim_field.connecting(source_tl_id).to_claims())
-        # A MatchLine keeps only the stamps holding its source, and a graph
-        # node exists only where a claim names a timeline, so a source no
-        # claim names has an empty line: it is not built from every claim of
-        # the bundle to find that out.
-        if not field_claims and not self._claims_naming(source_tl_id):
-            self._matchline_cache[source_tl_id] = None
+        naming = self._claims_naming(source_tl_id, belief_key)
+        if len(naming) == 0:
+            self._matchline_cache[cache_key] = None
             return None
-        claims = [
-            self._claim_in_native_units(claim)
-            for claim in [*self.cross_group_claims, *field_claims]
-        ]
 
         try:
             match_line = MatchLine.from_claims(
-                claims=claims,
+                claims=self._materialized(naming),
                 source_timeline_id=source_tl_id,
             )
         except Exception as e:
@@ -3866,40 +3985,43 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 source_tl_id,
                 e,
             )
-            self._matchline_cache[source_tl_id] = None
+            self._matchline_cache[cache_key] = None
             return None
 
-        self._matchline_cache[source_tl_id] = match_line
+        self._matchline_cache[cache_key] = match_line
         return match_line
 
     def _get_or_build_warp_map(
-        self, source_tl_id: str, target_tl_id: str
+        self,
+        source_tl_id: str,
+        target_tl_id: str,
+        belief_key: _BeliefKey = _ALL_BELIEFS,
     ) -> WarpMap | None:
         """Get or lazily build a WarpMap for the given timeline pair.
 
-        Builds a ``MatchLine`` from ``cross_group_claims`` with group
-        extension and constructs a ``WarpMap`` via
-        ``WarpMap.from_match_line()``.  Both negative results (unreachable
-        pairs) and positive results are cached; the cache is invalidated
-        when ``add_match_claims()`` is called.
+        Builds the source's ``MatchLine`` (:meth:`_get_or_build_match_line`)
+        and constructs a ``WarpMap`` via ``WarpMap.from_match_line()``. Both
+        negative results (unreachable pairs) and positive results are
+        cached per belief filter; the cache is invalidated whenever the
+        table changes.
 
         Args:
             source_tl_id: ID of the source timeline.
             target_tl_id: ID of the target timeline.
+            belief_key: The belief filter the claims are read under.
 
         Returns:
             WarpMap for the pair, or None if insufficient data.
         """
-        if self.n_cross_group_claims == 0:
+        if len(self._claims_in_force(belief_key)) == 0:
             return None
 
-        self._refresh_claim_caches()
-        cache_key = (source_tl_id, target_tl_id)
+        cache_key = (belief_key, source_tl_id, target_tl_id)
         if cache_key in self._warp_map_cache:
             return self._warp_map_cache[cache_key]
 
         # Build or retrieve cached MatchLine for this source
-        match_line = self._get_or_build_match_line(source_tl_id)
+        match_line = self._get_or_build_match_line(source_tl_id, belief_key)
         if match_line is None:
             self._warp_map_cache[cache_key] = None
             return None
@@ -4169,6 +4291,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         source_group: TimelineGroup | None,
         target_ids: Sequence[str],
         support_policy: SupportPolicy,
+        belief_key: _BeliefKey = _ALL_BELIEFS,
     ) -> tuple[str, float] | None:
         """Transfer a coordinate from one group to another via WarpMap.
 
@@ -4188,13 +4311,14 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             target_ids: The target group's members, or the one ungrouped
                 target timeline.
             support_policy: How out-of-support transfers are handled.
+            belief_key: The belief filter the WarpMaps' claims are read under.
 
         Returns:
             ``(target_timeline_id, transferred_coordinate)`` or ``None``.
         """
         # Try direct: source_tl_id -> any timeline in target group
         for target_tl_id in target_ids:
-            warp = self._get_or_build_warp_map(source_tl_id, target_tl_id)
+            warp = self._get_or_build_warp_map(source_tl_id, target_tl_id, belief_key)
             if warp is None:
                 continue
             try:
@@ -4233,7 +4357,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
 
             # Try WarpMap from intermediate to target group
             for target_tl_id in target_ids:
-                warp = self._get_or_build_warp_map(src_other_tl_id, target_tl_id)
+                warp = self._get_or_build_warp_map(
+                    src_other_tl_id, target_tl_id, belief_key
+                )
                 if warp is None:
                     continue
                 try:

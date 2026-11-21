@@ -226,12 +226,10 @@ def _conversion_maps() -> list[ConversionMap[Any]]:
 def _claim() -> MatchClaim:
     """A synchronous claim whose A-side coordinate is exact."""
     return MatchClaim.from_events(
-        event_a={"id": "e1", "name": "Note C4", "start": Fraction(1, 3)},
-        tl_a_id="score",
-        event_b={"id": "e2", "name": "Note C4", "start": 45.5},
-        tl_b_id="audio",
-        unit_a=TimeUnit.quarters,
-        unit_b=TimeUnit.seconds,
+        {"id": "e1", "name": "Note C4", "start": Fraction(1, 3)},
+        Timeline(length=16, unit=TimeUnit.quarters, uid="score"),
+        {"id": "e2", "name": "Note C4", "start": 45.5},
+        Timeline(length=60.0, unit=TimeUnit.seconds, uid="audio"),
     )
 
 

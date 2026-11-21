@@ -135,19 +135,34 @@ def read_statement_state(data: Mapping[str, Any]) -> dict[str, Any]:
     return {key: copy.deepcopy(data[key]) for key in STATE_KEYS if key in data}
 
 
+def declared_prefixes(declared: Mapping[str, Any]) -> dict[str, str]:
+    """Return the prefixes of *declared* the catalogue lacks or gives another namespace.
+
+    *declared* is a ``@context`` without the format's terms; an entry whose
+    value is no namespace string declares no prefix.
+    """
+    catalogue = load_catalogue().prefixes
+    return {
+        prefix: namespace
+        for prefix, namespace in declared.items()
+        if isinstance(namespace, str) and namespace != catalogue.get(prefix)
+    }
+
+
 def needed_prefixes(
     state: Mapping[str, Any], declared: Mapping[str, str]
 ) -> dict[str, str]:
     """Return the prefixes of *declared* the statements of *state* use.
 
-    Only those the catalogue lacks or gives another namespace: a holder
-    keeps the prefixes its pairs need beyond the catalogue's.
+    Only those the catalogue lacks or gives another namespace
+    (:func:`declared_prefixes`): a holder keeps the prefixes its pairs need
+    beyond the catalogue's.
     """
-    catalogue = load_catalogue().prefixes
+    own = declared_prefixes(declared)
     return {
-        prefix: declared[prefix]
+        prefix: own[prefix]
         for prefix in timetoshare.used_prefixes(dict(state))
-        if prefix in declared and declared[prefix] != catalogue.get(prefix)
+        if prefix in own
     }
 
 

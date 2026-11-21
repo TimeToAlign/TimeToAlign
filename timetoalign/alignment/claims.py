@@ -1327,8 +1327,8 @@ class MatchClaim(BaseModel):
         one, every other actor's belief stands, and a claim stated without
         provenance gets an entry holding the belief alone. The copy is held
         by no bundle (:attr:`bundle` is ``None``); a bundle records a belief
-        in a MatchClaim it holds with :meth:`AlignmentBundle.add_belief
-        <timetoalign.alignment.bundle.AlignmentBundle.add_belief>`.
+        in a MatchClaim it holds with :meth:`AlignmentBundle.add_match_claim_belief
+        <timetoalign.alignment.bundle.AlignmentBundle.add_match_claim_belief>`.
 
         Args:
             belief: The belief.
@@ -3601,7 +3601,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
             raise ValueError(
                 f"The new MatchClaim table lacks the MatchClaim {name} of the "
                 f"existing one: a MatchClaim is never removed; record the belief "
-                f"'false' in it instead (AlignmentBundle.add_belief)."
+                f"'false' in it instead (AlignmentBundle.add_match_claim_belief)."
             )
         old = _leaf_columns(existing.table.drop_columns(["provenance"]))
         new = _leaf_columns(self.table.drop_columns(["provenance"]).take(positions))

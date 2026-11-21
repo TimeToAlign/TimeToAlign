@@ -285,7 +285,7 @@ MatchClaim: |
   extension and name no events. A person stating claims is recorded as
   believing them "true" (create_match_claims(..., actor=)). A claim is never
   deleted: who disagrees records a belief "false" in it
-  (AlignmentBundle.add_belief()), and every reader of claims, the
+  (AlignmentBundle.add_match_claim_belief()), and every reader of claims, the
   MatchStamp and coordinate getters included, filters by believer= and
   belief=. Held individually, or in the bundle's one MatchClaim table, a
   MatchClaimField. Its id never changes: a claim given none holds no id until
@@ -464,7 +464,7 @@ Provenance: |
   one is stated by the manifest's publisher, and a pair held only as its
   entry is a candidate. For a MatchClaim, the entry is the claim's
   provenance: create_match_claims(..., actor=) records the stating person's
-  belief "true", and AlignmentBundle.add_belief() records a belief in a
+  belief "true", and AlignmentBundle.add_match_claim_belief() records a belief in a
   claim the bundle holds.
 
 Reach: |

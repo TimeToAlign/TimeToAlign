@@ -82,9 +82,10 @@ row by row, provenance included (:class:`MatchClaimField` equality).
 
 | Name | Description |
 | --- | --- |
-| [add_belief](#timetoalign.alignment.AlignmentBundle.add_belief) | Record *actor*'s belief in the MatchClaim *claim_id*. |
+| [add_belief](#timetoalign.alignment.AlignmentBundle.add_belief) | Record *actor*'s belief in the pair ``(property, value)``. |
 | [add_candidate](#timetoalign.alignment.AlignmentBundle.add_candidate) | Offer the pair ``(property, value)`` as a candidate, without stating it. |
 | [add_group](#timetoalign.alignment.AlignmentBundle.add_group) | Add a pre-built TimelineGroup with all its timelines at once. |
+| [add_match_claim_belief](#timetoalign.alignment.AlignmentBundle.add_match_claim_belief) | Record *actor*'s belief in the MatchClaim *claim_id*. |
 | [add_match_claim_field](#timetoalign.alignment.AlignmentBundle.add_match_claim_field) | Add the rows of a :class:`MatchClaimField` to the bundle's table. |
 | [add_match_claims](#timetoalign.alignment.AlignmentBundle.add_match_claims) | Add MatchClaims to the bundle's MatchClaim table. |
 | [add_prefix](#timetoalign.alignment.AlignmentBundle.add_prefix) | Declare a prefix the holder's statements may use. |
@@ -131,72 +132,43 @@ row by row, provenance included (:class:`MatchClaimField` equality).
 
 ```python
 alignment.AlignmentBundle.add_belief(
-    claim_id,
+    property,
+    value,
     *,
     actor,
     belief,
     date=None,
     note=None,
-    scope_key=0,
+    node=(),
 )
 ```
 
-Record *actor*'s belief in the MatchClaim *claim_id*.
+Record *actor*'s belief in the pair ``(property, value)``.
 
-A MatchClaim is never removed and never changed: invalidating one is
-believing it ``"false"``, and a correction is a new MatchClaim. Only
-the claim's provenance changes. The belief replaces the actor's
-earlier one in that claim, actors compared as IRIs under the
-bundle's ``@context`` (a compact and an absolute spelling of one
-actor are one actor); every other actor's belief stands. A claim
-stated without provenance gets an entry holding the belief alone.
-The belief filter (``believer=``, ``belief=`` on every query) reads
-it at once; the MatchClaim table written by :meth:`to_file` succeeds
-the one written before.
+The pair's entry, made where the pair has none, records the belief,
+replacing the actor's earlier one (:func:`timetoshare.with_belief`).
+Whether the pair is stated is left as it is: believing a stated
+pair ``"false"`` records the belief and never removes the pair, and
+every other actor's belief stands. A candidate the actor believes
+``"false"`` is left out of :meth:`get_candidates` for that actor.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name      | Type                                                                   | Description                                                                                                                                                                                       | Default    |
-|-----------|------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
-| claim_id  | [str](`str`)                                                           | The MatchClaim's id.                                                                                                                                                                              | _required_ |
-| actor     | [str](`str`)                                                           | Who holds the belief, an IRI (compact or absolute).                                                                                                                                               | _required_ |
-| belief    | [BeliefValue](`timetoalign.core.provenance.BeliefValue`)               | ``"true"``, ``"false"`` or ``"unlikely"``.                                                                                                                                                        | _required_ |
-| date      | [str](`str`) \| [datetime](`datetime`).[date](`datetime.date`) \| None | The day, ``YYYY-MM-DD`` or a :class:`datetime.date`; today when None.                                                                                                                             | `None`     |
-| note      | [str](`str`) \| None                                                   | A remark.                                                                                                                                                                                         | `None`     |
-| scope_key | [int](`int`)                                                           | The scope holding the claim's id, a key into :attr:`claim_scopes`: 0, the default, the bundle's own; another for a claim merged in by :meth:`from_bundles` (:attr:`claim_table`'s ``scope_key``). | `0`        |
-
-#### Returns {.doc-section .doc-section-returns}
-
-| Name   | Type                | Description                |
-|--------|---------------------|----------------------------|
-|        | \'AlignmentBundle\' | self (for method chaining) |
+| Name     | Type                                                                   | Description                                                           | Default    |
+|----------|------------------------------------------------------------------------|-----------------------------------------------------------------------|------------|
+| property | [str](`str`)                                                           | The property, as for :meth:`add_statement`.                           | _required_ |
+| value    | [Any](`typing.Any`)                                                    | The value, as for :meth:`add_statement`.                              | _required_ |
+| actor    | [str](`str`)                                                           | Who holds the belief, an IRI.                                         | _required_ |
+| belief   | [BeliefValue](`timetoalign.core.provenance.BeliefValue`)               | ``"true"``, ``"false"`` or ``"unlikely"``.                            | _required_ |
+| date     | [str](`str`) \| [datetime](`datetime`).[date](`datetime.date`) \| None | The day, ``YYYY-MM-DD`` or a :class:`datetime.date`; today when None. | `None`     |
+| note     | [str](`str`) \| None                                                   | A remark.                                                             | `None`     |
+| node     | [NodePath](`timetoalign.timelines.statements.NodePath`)                | The value node whose pair is meant.                                   | `()`       |
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                 |
-|--------|----------------------------|-----------------------------------------------------------------------------|
-|        | [KeyError](`KeyError`)     | If the scope holds no MatchClaim *claim_id*, or *scope_key* names no scope. |
-|        | [ValueError](`ValueError`) | If *belief* is none of the three words, or *date* is no calendar date.      |
-
-#### Examples {.doc-section .doc-section-examples}
-
-```python
->>> from timetoalign.alignment import AlignmentBundle
->>> from timetoalign.timelines.types import (
-...     ContinuousLogicalTimeline,
-...     DiscretePhysicalTimeline,
-... )
->>> bundle = AlignmentBundle()
->>> _ = bundle.add_timeline(ContinuousLogicalTimeline(length=16, uid="score"))
->>> _ = bundle.add_timeline(DiscretePhysicalTimeline(length=705600, uid="pcm"))
->>> _ = bundle.create_match_claims([({"start": 0}, "score", {"start": 0}, "pcm")])
->>> _ = bundle.add_belief(
-...     "claim_1", actor="https://orcid.org/0000-0001", belief="false",
-...     date="2026-11-21",
-... )
->>> len(bundle.get_match_claims(believer="https://orcid.org/0000-0001"))
-0
-```
+| Name   | Type                       | Description                                                                                                                |
+|--------|----------------------------|----------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If *belief* is none of the three, the date is no calendar date, *node* addresses no value node, or a prefix is undeclared. |
 
 ### add_candidate { #timetoalign.alignment.AlignmentBundle.add_candidate }
 
@@ -294,6 +266,79 @@ Add a recording group with three DPTs:
     >>> bundle = AlignmentBundle().add_group(grp)
     >>> sorted(bundle.timelines), list(bundle.groups)
     (['dpt_1', 'dpt_2', 'dpt_3'], ['group_1'])
+
+### add_match_claim_belief { #timetoalign.alignment.AlignmentBundle.add_match_claim_belief }
+
+```python
+alignment.AlignmentBundle.add_match_claim_belief(
+    claim_id,
+    *,
+    actor,
+    belief,
+    date=None,
+    note=None,
+    scope_key=0,
+)
+```
+
+Record *actor*'s belief in the MatchClaim *claim_id*.
+
+A MatchClaim is never removed and never changed: invalidating one is
+believing it ``"false"``, and a correction is a new MatchClaim. Only
+the claim's provenance changes. The belief replaces the actor's
+earlier one in that claim, actors compared as IRIs under the
+bundle's ``@context``, every prefix it declares (a compact and an
+absolute spelling of one actor are one actor); every other actor's
+belief stands. A claim stated without provenance gets an entry
+holding the belief alone. The belief filter (``believer=``,
+``belief=`` on every query) reads it at once; the MatchClaim table
+written by :meth:`to_file` succeeds the one written before. A belief
+in a pair of the bundle's own statements is recorded by
+:meth:`add_belief`.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name      | Type                                                                   | Description                                                                                                                                                                                       | Default    |
+|-----------|------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| claim_id  | [str](`str`)                                                           | The MatchClaim's id.                                                                                                                                                                              | _required_ |
+| actor     | [str](`str`)                                                           | Who holds the belief, an IRI (compact or absolute).                                                                                                                                               | _required_ |
+| belief    | [BeliefValue](`timetoalign.core.provenance.BeliefValue`)               | ``"true"``, ``"false"`` or ``"unlikely"``.                                                                                                                                                        | _required_ |
+| date      | [str](`str`) \| [datetime](`datetime`).[date](`datetime.date`) \| None | The day, ``YYYY-MM-DD`` or a :class:`datetime.date`; today when None.                                                                                                                             | `None`     |
+| note      | [str](`str`) \| None                                                   | A remark.                                                                                                                                                                                         | `None`     |
+| scope_key | [int](`int`)                                                           | The scope holding the claim's id, a key into :attr:`claim_scopes`: 0, the default, the bundle's own; another for a claim merged in by :meth:`from_bundles` (:attr:`claim_table`'s ``scope_key``). | `0`        |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                | Description                |
+|--------|---------------------|----------------------------|
+|        | \'AlignmentBundle\' | self (for method chaining) |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                 |
+|--------|----------------------------|-----------------------------------------------------------------------------|
+|        | [KeyError](`KeyError`)     | If the scope holds no MatchClaim *claim_id*, or *scope_key* names no scope. |
+|        | [ValueError](`ValueError`) | If *belief* is none of the three words, or *date* is no calendar date.      |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> from timetoalign.alignment import AlignmentBundle
+>>> from timetoalign.timelines.types import (
+...     ContinuousLogicalTimeline,
+...     DiscretePhysicalTimeline,
+... )
+>>> bundle = AlignmentBundle()
+>>> _ = bundle.add_timeline(ContinuousLogicalTimeline(length=16, uid="score"))
+>>> _ = bundle.add_timeline(DiscretePhysicalTimeline(length=705600, uid="pcm"))
+>>> _ = bundle.create_match_claims([({"start": 0}, "score", {"start": 0}, "pcm")])
+>>> _ = bundle.add_match_claim_belief(
+...     "claim_1", actor="https://orcid.org/0000-0001", belief="false",
+...     date="2026-11-21",
+... )
+>>> len(bundle.get_match_claims(believer="https://orcid.org/0000-0001"))
+0
+```
 
 ### add_match_claim_field { #timetoalign.alignment.AlignmentBundle.add_match_claim_field }
 
@@ -883,7 +928,10 @@ tables they name are read by :meth:`from_file`, which knows where
 the manifest lies. ``graphical``'s other keys are kept as :attr:`styling`, and the
 entries of ``graphical.order`` keyed by a timeline, its band orders,
 are kept too, both unread. The manifest's statements and provenance
-become the bundle's, with the prefixes of its ``@context`` they need.
+become the bundle's, with every prefix its ``@context`` declares
+beyond the catalogue's, used or not: they are the context under which
+the MatchClaims' actors compare (a prefix declared only for the
+actors of the MatchClaim table expands).
 Every root no group names joins
 ungrouped. A timeline several groups name is a member of each, one
 object shared by them. Keys the library does not know are kept on the

@@ -585,8 +585,8 @@ Only the provenance changes: the belief replaces its actor's earlier
 one, every other actor's belief stands, and a claim stated without
 provenance gets an entry holding the belief alone. The copy is held
 by no bundle (:attr:`bundle` is ``None``); a bundle records a belief
-in a MatchClaim it holds with :meth:`AlignmentBundle.add_belief
-<timetoalign.alignment.bundle.AlignmentBundle.add_belief>`.
+in a MatchClaim it holds with :meth:`AlignmentBundle.add_match_claim_belief
+<timetoalign.alignment.bundle.AlignmentBundle.add_match_claim_belief>`.
 
 #### Parameters {.doc-section .doc-section-parameters}
 

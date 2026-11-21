@@ -98,7 +98,7 @@ documentation:
 - [How to Keep MatchClaims, Projections and Beliefs in a Package](howto/how03_match_claims_package.ipynb) ---
   MatchClaims between events, a Projection for a side without one
   (`create_match_claims`, `Timeline.add_projections`), beliefs (`actor=`,
-  `add_belief`) and the belief filter, the MatchClaim and Projections tables beside the manifest and its
+  `add_match_claim_belief`) and the belief filter, the MatchClaim and Projections tables beside the manifest and its
   `resources` through `to_file` and `from_file`, and why claims are added but
   never removed.
 

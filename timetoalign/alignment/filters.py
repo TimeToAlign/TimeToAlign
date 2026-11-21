@@ -91,10 +91,12 @@ def believed(
 def belief_context(bundle: AlignmentBundle | None) -> dict[str, Any] | None:
     """The context under which a bundle's MatchClaims compare actors.
 
-    The ``@context`` of the bundle's manifest (the format's terms, the
-    catalogue's prefixes and the bundle's own), as the bundle's statements
-    use it, so a believer named by a compact IRI matches a belief recorded
-    under the full IRI; ``None`` for no bundle (no prefix declared).
+    The ``@context`` of the bundle's manifest: the format's terms, the
+    catalogue's prefixes and every prefix the bundle declares (each its
+    manifest's ``@context`` declares, used by its statements or not, and
+    each :meth:`~timetoalign.alignment.AlignmentBundle.add_prefix` adds),
+    so a believer named by a compact IRI matches a belief recorded under the
+    full IRI; ``None`` for no bundle (no prefix declared).
 
     Args:
         bundle: The bundle holding the claims, or ``None``.

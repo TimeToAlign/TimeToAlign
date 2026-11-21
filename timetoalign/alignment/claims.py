@@ -3161,6 +3161,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
         nomatch_only: bool = False,
         believer: str | None = None,
         belief: BeliefFilter = "not_false",
+        context: Mapping[str, Any] | None = None,
     ) -> "MatchClaimField":
         """Return a filtered view following the unified filter API.
 
@@ -3195,6 +3196,9 @@ class MatchClaimField(SemanticField[MatchClaim]):
             belief: ``"not_false"`` (default) keeps every row the believer
                 does not believe ``false``; ``"true"`` only the rows the
                 believer believes ``true``.
+            context: The JSON-LD context under which the believer and the
+                rows' actors compare as IRIs (a bundle passes its manifest's
+                ``@context``); ``None`` declares no prefix.
 
         Returns:
             A new :class:`MatchClaimField`. With no criteria set, a copy of
@@ -3229,7 +3233,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
         if nomatch_only:
             masks.append(self._nomatch_mask())
         if believer is not None or belief != "not_false":
-            masks.append(self._belief_mask(believer, belief))
+            masks.append(self._belief_mask(believer, belief, context))
 
         if not masks:
             return self._from_struct_array(data, provenance=self._provenance)
@@ -3516,17 +3520,25 @@ class MatchClaimField(SemanticField[MatchClaim]):
             False,
         )
 
-    def _belief_mask(self, believer: str | None, belief: BeliefFilter) -> pa.Array:
+    def _belief_mask(
+        self,
+        believer: str | None,
+        belief: BeliefFilter,
+        context: Mapping[str, Any] | None = None,
+    ) -> pa.Array:
         """Boolean mask: the rows the belief filter keeps for *believer*.
 
         The shared provenance, where the field holds one, decides for every
-        row; otherwise each row's own (:func:`belief_mask` either way).
+        row; otherwise each row's own (:func:`belief_mask` either way, actors
+        compared as IRIs under *context*).
         """
         data = self._struct_array()
         if self._provenance is not None:
-            keep = self._provenance.passes_belief_filter(believer, belief)
+            keep = self._provenance.passes_belief_filter(
+                believer, belief, context=context
+            )
             return pa.array(np.full(len(data), keep), type=pa.bool_())
-        return belief_mask(data.field("provenance"), believer, belief)
+        return belief_mask(data.field("provenance"), believer, belief, context=context)
 
     @staticmethod
     def _id_value_set(timeline_ids: set[str]) -> pa.Array:

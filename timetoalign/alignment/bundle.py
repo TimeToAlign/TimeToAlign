@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, ClassVar
@@ -82,7 +82,7 @@ from .claims import (
     _claims_between_events,
     _join_claims,
 )
-from .filters import ClaimFilter, believed
+from .filters import ClaimFilter, belief_context, believed
 from .graph import MatchGraph, MatchIntervalStamp, MatchStamp
 from .matchline import MatchLine
 from .warpmap import AmbiguousWarpMapError, WarpMap
@@ -1691,7 +1691,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         WarpMaps behind them — takes its claims from here, so the belief
         filter (:func:`~timetoalign.core.provenance.belief_mask`, through
         :meth:`MatchClaimField.filter`) is applied once, vectorized, per
-        state of the table.
+        state of the table, actors compared as IRIs under the bundle's
+        manifest ``@context`` (:func:`~timetoalign.alignment.filters.belief_context`),
+        as its statements compare them.
 
         Args:
             belief_key: ``(believer, belief)``; no believer keeps every claim.
@@ -1704,6 +1706,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             in_force = self.match_claim_table.filter(
                 believer=believer,
                 belief=belief,  # type: ignore[arg-type]
+                context=belief_context(self),
             )
             self._in_force_cache[belief_key] = in_force
         return in_force
@@ -3309,7 +3312,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         if claims is None:
             claims = self.get_match_claims(believer=believer, belief=belief)
         else:
-            claims = believed(claims, believer, belief)
+            claims = believed(claims, believer, belief, context=belief_context(self))
 
         stamps = []
         for claim in claims:
@@ -3518,7 +3521,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             else [
                 (anchor.timeline_a_id, anchor.coordinate_a)
                 + (anchor.timeline_b_id, anchor.coordinate_b)
-                for claim in believed(claims, believer, belief)
+                for claim in believed(
+                    claims, believer, belief, context=belief_context(self)
+                )
                 for anchor in claim.anchors
             ]
         )
@@ -3748,6 +3753,20 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         self._matchgraph_cache.clear()
         self._in_force_cache.clear()
         self._naming_cache.clear()
+
+    def _set_statement_state(
+        self, state: Mapping[str, Any], prefixes: Mapping[str, str]
+    ) -> None:
+        """Store the statements and prefixes; new prefixes clear the claim caches.
+
+        The belief filter compares actors under the bundle's ``@context``,
+        whose prefixes these are, so a filtered table cached under the old
+        ones would answer for a context the bundle no longer has.
+        """
+        changed = dict(prefixes) != self._prefixes
+        super()._set_statement_state(state, prefixes)
+        if changed:
+            self._invalidate_warp_cache()
 
     def _get_or_build_match_line(
         self, source_tl_id: str, belief_key: _BeliefKey = _ALL_BELIEFS

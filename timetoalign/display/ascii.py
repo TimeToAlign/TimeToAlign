@@ -1203,15 +1203,9 @@ def bundle_diagram(
 
         lines.append("")
 
-    # Match claims summary. The bundle's own count spans BOTH claim stores —
-    # the per-claim Python list and the columnar claim fields (the latter via
-    # row counts, no claim materialised) — so a dense audio-to-audio bundle
-    # whose claims live only in a MatchClaimField reports its true count.
-    n_matches = getattr(bundle, "n_cross_group_claims", 0)
-    if n_matches > 0:
-        lines.append(f"  MatchClaims: {n_matches}")
-    else:
-        lines.append("  MatchClaims: 0")
+    # Match claims summary: the rows of the bundle's MatchClaim table, every
+    # kind of claim, counted without materialising one.
+    lines.append(f"  MatchClaims: {len(bundle.match_claim_table)}")
 
     return Diagram("\n".join(lines))
 

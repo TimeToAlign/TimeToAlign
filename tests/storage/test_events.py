@@ -10,6 +10,7 @@ from fractions import Fraction
 import pyarrow as pa
 import pytest
 
+from timetoalign import storage
 from timetoalign.core import (
     Coordinate,
     Duration,
@@ -19,7 +20,7 @@ from timetoalign.core import (
     TimeUnit,
 )
 from timetoalign.core.fields import field_metadata
-from timetoalign.storage.events import EventData, _mint_event_ids
+from timetoalign.storage.events import EventData, mint_event_ids
 from timetoalign.timelines import ContinuousLogicalTimeline
 
 
@@ -332,7 +333,8 @@ class TestMintedIds:
     """One minting function; a declared ``projection_of`` column."""
 
     def test_mint_event_ids(self) -> None:
-        assert _mint_event_ids(
+        assert storage.mint_event_ids is mint_event_ids
+        assert mint_event_ids(
             ["Note", "Projection", "Note", None],
             {"note_1", "projection_2", "note:000005"},
         ).to_pylist() == ["note_2", "projection_3", "note_3", "event_1"]

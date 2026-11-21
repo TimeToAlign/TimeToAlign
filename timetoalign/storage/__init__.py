@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from .events import EventData
+from .events import EventData, mint_event_ids
 from .mixins import MultipleFieldsError, SemanticFieldAccessMixin
 from .store import AlignmentStore, DictStore, EventStore, MatchData, SingleStore
 
 __all__ = [
     "EventData",
+    "mint_event_ids",
     "EventStore",
     "SingleStore",
     "DictStore",

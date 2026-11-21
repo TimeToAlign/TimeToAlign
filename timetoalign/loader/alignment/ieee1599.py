@@ -134,7 +134,7 @@ from timetoalign.core.fields import SemanticField
 from timetoalign.display.html import code
 from timetoalign.loader.format.xml import XmlLoader
 from timetoalign.maps.interval import IntervalToConstantMap
-from timetoalign.storage.events import EventData, _mint_event_ids
+from timetoalign.storage.events import EventData, mint_event_ids
 from timetoalign.timelines.factory import _mint_timeline_id
 from timetoalign.timelines.types import (
     ContinuousPhysicalTimeline,
@@ -287,7 +287,7 @@ def _give_event_ids(rows: list[dict[str, Any]]) -> None:
     The document names no layer event (only the spine's), so each row of a
     layer is given ``{event type in lower case}_{N}``, counted per type in
     document order, by the one event-ID minter
-    (:func:`~timetoalign.storage.events._mint_event_ids`, nothing taken). The
+    (:func:`~timetoalign.storage.events.mint_event_ids`, nothing taken). The
     id is fixed before any timeline exists, so that the claim naming the
     event and the event itself agree wherever and whenever the timeline is
     built.
@@ -296,7 +296,7 @@ def _give_event_ids(rows: list[dict[str, Any]]) -> None:
         rows: The rows of one timeline (an edition's rows span its pages and
             accolades, so its ids are unique over the whole edition).
     """
-    ids = _mint_event_ids([row["event_type"] for row in rows])
+    ids = mint_event_ids([row["event_type"] for row in rows])
     for row, event_id in zip(rows, ids.to_pylist(), strict=True):
         row["id"] = event_id
 

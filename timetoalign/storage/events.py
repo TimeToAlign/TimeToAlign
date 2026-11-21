@@ -92,7 +92,7 @@ _DECLARED_EXTRA_FIELDS: dict[str, type[SemanticField[Any]]] = {
 }
 
 
-def _mint_event_ids(
+def mint_event_ids(
     event_types: pa.Array | pa.ChunkedArray | Iterable[object],
     taken: pa.Array | pa.ChunkedArray | Iterable[str] = (),
 ) -> pa.Array:
@@ -112,7 +112,7 @@ def _mint_event_ids(
         A string array of the minted IDs, in the order of *event_types*.
 
     Examples:
-        >>> _mint_event_ids(["Note", "Projection", "Note", None], {"note_1"}).to_pylist()
+        >>> mint_event_ids(["Note", "Projection", "Note", None], {"note_1"}).to_pylist()
         ['note_2', 'projection_1', 'note_3', 'event_1']
     """
     if isinstance(event_types, pa.ChunkedArray):
@@ -1095,7 +1095,7 @@ class EventData(SemanticFieldAccessMixin):
 
         # Mint the IDs the rows lack, above the IDs the rows give.
         minted = iter(
-            _mint_event_ids(
+            mint_event_ids(
                 [row.get("event_type") for row in rows if row.get("id") is None],
                 [row["id"] for row in rows if row.get("id") is not None],
             ).to_pylist()
@@ -1355,7 +1355,7 @@ class EventData(SemanticFieldAccessMixin):
                         event_types = pa.nulls(n_rows, pa.string())
                     elif isinstance(event_types, np.ndarray):
                         event_types = event_types.tolist()
-                    processed[field_name] = _mint_event_ids(event_types)
+                    processed[field_name] = mint_event_ids(event_types)
             elif arr_data is not None:
                 # Regular field - convert to PyArrow array
                 if isinstance(arr_data, (pa.Array, pa.ChunkedArray)):

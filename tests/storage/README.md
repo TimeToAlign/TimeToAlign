@@ -130,7 +130,8 @@ by declaration rather than by the rows of one batch.
 
 **Contract and what proves it:**
 
-- `_mint_event_ids(event_types, taken)` mints one ID per type, in order: the
+- `mint_event_ids(event_types, taken)` (public, also exported from
+  `timetoalign.storage`, the same function) mints one ID per type, in order: the
   prefix is the event type in lower case (a missing type counts as
   `Event`), N continues above the highest number held under that prefix,
   so a gap is never filled. `["Note", "Projection", "Note", None]` against

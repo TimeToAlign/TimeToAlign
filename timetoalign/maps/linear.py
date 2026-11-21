@@ -257,6 +257,37 @@ class LinearMap(ConversionMap[CoordinateValue]):
             output_number_type=self._inverse_output_number_type(),
         )
 
+    def with_offset(self, offset: CoordinateValue) -> LinearMap:
+        """This map from another origin: the same line, shifted.
+
+        A new map with this map's scalar, units and the output
+        representation it was given, and *offset* in place of its own; it
+        gets its own ID and no name. A child timeline reads its measure map
+        through its parent's map from its own origin (``with_offset(0)``),
+        in the same number type as the parent.
+
+        Args:
+            offset: The additive offset of the new map.
+
+        Returns:
+            The new map.
+
+        Examples:
+            >>> m = LinearMap(scalar=Fraction(1, 480), offset=3, output_number_type="float")
+            >>> moved = m.with_offset(0)
+            >>> moved.scalar, moved.offset
+            (Fraction(1, 480), 0)
+            >>> moved.output_number_type == m.output_number_type
+            True
+        """
+        return LinearMap(
+            scalar=self._scalar,
+            offset=offset,
+            source_unit=self._source_unit,
+            target_unit=self._target_unit,
+            output_number_type=self._given_output_number_type,
+        )
+
     def compose_with(self, other: LinearMap) -> LinearMap:
         """Compose with another LinearMap: (self then other).
 

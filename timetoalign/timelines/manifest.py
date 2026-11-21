@@ -397,9 +397,8 @@ def check_groupstamps(data: Mapping[str, Any]) -> None:
     are drawn inside the member's card); an ancestor of a member lies in no
     group through it. A match timestamp is checked as any other, and a
     timestamp naming no timeline of the manifest, like the rest of
-    ``graphical.timestamps``, is kept unread. A
-    manifest is checked as it is read and as it is written. *data* holds
-    bare IDs.
+    ``graphical.timestamps``, is kept unread. A manifest is checked as it is
+    read and as it is written. *data* holds bare IDs.
 
     Raises:
         timetoshare.SchemaValidationError: The first groupstamp lying in no

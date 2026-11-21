@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Iterable, Iterator, Sequence
+from contextlib import contextmanager
 from fractions import Fraction
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
@@ -49,6 +50,7 @@ from timetoalign.core.time import (
     build_number_struct_array,
     combine_number_columns,
     combine_numbers,
+    compare_number_column,
     coordinate_to_struct,
     express_as,
     in_lowest_terms,
@@ -250,12 +252,24 @@ def _completed_column(
     if not rows.any():
         return cells
     selected = np.flatnonzero(rows)
-    computed = combine_number_columns(
-        left.take(selected), right.take(selected), operation, number_type
-    )
+    target = "duration (end - start)" if operation == "subtract" else "end"
+    with _naming_the_computation(f"Completing the events' {target}", number_type):
+        computed = combine_number_columns(
+            left.take(selected), right.take(selected), operation, number_type
+        )
     positions = np.arange(len(cells))
     positions[selected] = len(cells) + np.arange(len(selected))
     return pa.concat_arrays([cells, computed]).take(pa.array(positions))
+
+
+@contextmanager
+def _naming_the_computation(what: str, number_type: NumberType) -> Iterator[None]:
+    """Prefix a refused computation's message with *what* and the axis."""
+    try:
+        yield
+    except ValueError as error:
+        article = "an" if number_type is NumberType.int else "a"
+        raise ValueError(f"{what} on {article} {number_type} axis: {error}") from error
 
 
 def _completed_cell(
@@ -273,6 +287,88 @@ def _completed_cell(
             number_type,
         ),
         number_type,
+    )
+
+
+_FLOAT_TOLERANCE = 1e-9
+"""How far ``end - start`` may lie from a stated ``duration`` on a float axis."""
+
+
+def _inconsistent_rows(
+    start: pa.StructArray,
+    end: pa.StructArray,
+    duration: pa.StructArray,
+    rows: np.ndarray,
+    number_type: NumberType,
+) -> np.ndarray:
+    """The selected *rows* whose stated duration is not ``end - start``.
+
+    The comparison runs in the number type the table declares. On an exact
+    axis (``int``, ``fraction``) it is exact: ``end - start`` is computed in
+    that number type (:func:`combine_number_columns`) and compared with the
+    duration as a ratio (:func:`compare_number_column`), so a duration off by
+    ``2**-40`` of a quarter is inconsistent. On a ``float`` axis it is a
+    float comparison on the doubles, within :data:`_FLOAT_TOLERANCE`, since
+    the difference of two stated doubles is itself rounded.
+    :func:`_inconsistency` decides a single row by the same rule.
+    """
+    inconsistent = np.zeros(len(rows), dtype=bool)
+    if not rows.any():
+        return inconsistent
+    selected = np.flatnonzero(rows)
+    if number_type is NumberType.float:
+
+        def _doubles(cells: pa.StructArray) -> np.ndarray:
+            return cells.field("value").to_numpy(zero_copy_only=False)[selected]
+
+        expected = _doubles(end) - _doubles(start)
+        inconsistent[selected] = np.abs(expected - _doubles(duration)) > (
+            _FLOAT_TOLERANCE
+        )
+        return inconsistent
+    indices = pa.array(selected)
+    with _naming_the_computation(
+        "Checking the events' durations against end - start", number_type
+    ):
+        expected = combine_number_columns(
+            end.take(indices), start.take(indices), "subtract", number_type
+        )
+    equal = compare_number_column(
+        duration.take(indices), expected, "equal", number_type
+    )
+    inconsistent[selected] = ~pc.fill_null(equal, True).to_numpy(zero_copy_only=False)
+    return inconsistent
+
+
+def _inconsistency(
+    start: dict[str, Any],
+    end: dict[str, Any],
+    duration: dict[str, Any],
+    number_type: NumberType,
+) -> str | None:
+    """The values of a row whose stated duration is not ``end - start``.
+
+    The rule of :func:`_inconsistent_rows` for a single row: exact on an
+    ``int`` or ``fraction`` axis, a float comparison within
+    :data:`_FLOAT_TOLERANCE` on a ``float`` axis.
+
+    Returns:
+        The row's values in the table's number type, or None if the row is
+        consistent.
+    """
+    start_value, end_value, duration_value = (
+        struct_to_coordinate(cell, number_type) for cell in (start, end, duration)
+    )
+    expected = combine_numbers(end_value, start_value, "subtract", number_type)
+    if number_type is NumberType.float:
+        consistent = not abs(expected - duration_value) > _FLOAT_TOLERANCE
+    else:
+        consistent = expected == duration_value
+    if consistent:
+        return None
+    return (
+        f"start={start_value}, end={end_value}, duration={duration_value} "
+        f"(expected duration={expected})"
     )
 
 
@@ -630,7 +726,10 @@ class EventData(SemanticFieldAccessMixin):
 
         The *policy* parameter controls behaviour when both ``end`` and
         ``duration`` are present but inconsistent
-        (``end - start != duration``).
+        (``end - start != duration``). Consistency is decided in
+        *number_type* (:func:`_inconsistent_rows`): exactly on an ``int``
+        or ``fraction`` axis, as a float comparison within ``1e-9`` on a
+        ``float`` axis.
 
         Args:
             processed: Mutable field dict (modified **in-place**).
@@ -659,19 +758,8 @@ class EventData(SemanticFieldAccessMixin):
         end = _cell_column(processed.get("end"), n)
         duration = _cell_column(processed.get("duration"), n)
 
-        def _nulls_and_values(cells: pa.StructArray) -> tuple[np.ndarray, np.ndarray]:
-            """The column's null mask and its float side, for the checks."""
-            return (
-                cells.is_null().to_numpy(zero_copy_only=False),
-                cells.field("value").to_numpy(zero_copy_only=False),
-            )
-
-        start_is_null, start_val = _nulls_and_values(start)
-        end_is_null, end_val = _nulls_and_values(end)
-        dur_is_null, dur_val = _nulls_and_values(duration)
-
         # Boolean masks for each situation (vectorized)
-        has_start = ~start_is_null
+        has_start = start.is_valid().to_numpy(zero_copy_only=False)
         temporal_type = processed.get("temporal_type")
         if temporal_type is None:
             instant_rows = np.zeros(n, dtype=bool)
@@ -687,54 +775,38 @@ class EventData(SemanticFieldAccessMixin):
         # Explicit instant events have no interval endpoints.  In particular,
         # do not let a populated start coordinate manufacture a zero-length
         # value-only interval during merged-table assembly.
-        has_end = ~end_is_null & ~instant_rows
-        has_dur = ~dur_is_null & ~instant_rows
-
-        # Identify rows that are interval events (have start and at least end or dur)
-        # is_interval = has_start & (has_end | has_dur)
+        has_end = end.is_valid().to_numpy(zero_copy_only=False) & ~instant_rows
+        has_dur = duration.is_valid().to_numpy(zero_copy_only=False) & ~instant_rows
 
         # ---- Policy-driven resolution ----
 
         # Rows where both end AND duration are present (potential conflict)
         both_present = has_start & has_end & has_dur
-        inconsistent = np.zeros(n, dtype=bool)  # default: no inconsistencies
-        if both_present.any():
-            # Compute expected duration from end - start (float)
-            expected_dur = end_val - start_val
-            # Compare against supplied duration
-            actual_dur = dur_val
-            discrepancy = np.abs(expected_dur - actual_dur)
-            # Use a tight tolerance for float comparison
-            tol = 1e-9
-            inconsistent = both_present & (discrepancy > tol)
-
-            if inconsistent.any():
-                n_bad = int(inconsistent.sum())
-                # Find first inconsistent row for the error message
-                first_idx = int(np.argmax(inconsistent))
-
-                if policy == IntervalPolicy.strict:
-                    raise ValueError(
-                        f"Interval inconsistency in {n_bad} event(s): "
-                        f"end - start != duration. First at index {first_idx}: "
-                        f"start={start_val[first_idx]}, end={end_val[first_idx]}, "
-                        f"duration={dur_val[first_idx]} "
-                        f"(expected duration={expected_dur[first_idx]})."
-                    )
-                elif policy == IntervalPolicy.warn:
-                    module_logger.warning(
-                        "Interval inconsistency in %d event(s): end - start != "
-                        "duration. Recomputing duration from end. First at index "
-                        "%d: start=%s, end=%s, duration=%s (expected %s).",
-                        n_bad,
-                        first_idx,
-                        start_val[first_idx],
-                        end_val[first_idx],
-                        dur_val[first_idx],
-                        expected_dur[first_idx],
-                    )
-                # For warn, prefer_end, and strict-without-error: fall through
-                # to the fill logic below (which uses the policy).
+        inconsistent = _inconsistent_rows(
+            start, end, duration, both_present, number_type
+        )
+        if inconsistent.any():
+            n_bad = int(inconsistent.sum())
+            first_idx = int(np.argmax(inconsistent))
+            first = _inconsistency(
+                *(cells[first_idx].as_py() for cells in (start, end, duration)),
+                number_type,
+            )
+            if policy == IntervalPolicy.strict:
+                raise ValueError(
+                    f"Interval inconsistency in {n_bad} event(s): "
+                    f"end - start != duration. First at index {first_idx}: "
+                    f"{first}."
+                )
+            elif policy == IntervalPolicy.warn:
+                module_logger.warning(
+                    "Interval inconsistency in %d event(s): end - start != "
+                    "duration. Recomputing duration from end. First at index "
+                    "%d: %s.",
+                    n_bad,
+                    first_idx,
+                    first,
+                )
 
         # ---- Fill missing values ----
         #
@@ -814,7 +886,10 @@ class EventData(SemanticFieldAccessMixin):
 
         This is the **row-based** counterpart to
         ``_normalize_intervals_vectorized`` and is called from
-        ``from_dicts``; both complete a row alike (:func:`_completed_cell`).
+        ``from_dicts``; both decide consistency alike
+        (:func:`_inconsistency`: exact on an ``int`` or ``fraction``
+        axis, a float comparison within ``1e-9`` on a ``float`` axis) and
+        complete a row alike (:func:`_completed_cell`).
 
         Args:
             processed: Mutable row dict (modified **in-place**).
@@ -852,45 +927,28 @@ class EventData(SemanticFieldAccessMixin):
             processed["duration"] = None
             return processed
 
-        # ---- Extract float values ----
-        def _float_of(v: Any) -> float | None:
-            if v is None:
-                return None
-            if isinstance(v, dict):
-                return v.get("value")
-            return float(v)
-
-        start_val = _float_of(processed.get("start"))
-        end_val = _float_of(processed.get("end"))
-        dur_val = _float_of(processed.get("duration"))
-
-        has_start = start_val is not None
-        has_end = end_val is not None
-        has_dur = dur_val is not None
+        has_start = processed.get("start") is not None
+        has_end = processed.get("end") is not None
+        has_dur = processed.get("duration") is not None
 
         # ---- Consistency check when both present ----
-        inconsistent = False
-        if has_start and has_end and has_dur:
-            expected = end_val - start_val
-            inconsistent = abs(expected - dur_val) > 1e-9
-            if inconsistent:
-                if policy == IntervalPolicy.strict:
-                    raise ValueError(
-                        f"Interval inconsistency: start={start_val}, "
-                        f"end={end_val}, duration={dur_val} "
-                        f"(expected duration={expected})."
-                    )
-                elif policy == IntervalPolicy.warn:
-                    module_logger.warning(
-                        "Interval inconsistency: start=%s, end=%s, "
-                        "duration=%s (expected %s). Recomputing duration "
-                        "from end.",
-                        start_val,
-                        end_val,
-                        dur_val,
-                        expected,
-                    )
-                # After warning: fall through to fill logic
+        values = (
+            _inconsistency(
+                processed["start"], processed["end"], processed["duration"], number_type
+            )
+            if has_start and has_end and has_dur
+            else None
+        )
+        inconsistent = values is not None
+        if inconsistent:
+            if policy == IntervalPolicy.strict:
+                raise ValueError(f"Interval inconsistency: {values}.")
+            elif policy == IntervalPolicy.warn:
+                module_logger.warning(
+                    "Interval inconsistency: %s. Recomputing duration from end.",
+                    values,
+                )
+            # After warning: fall through to fill logic
 
         # ---- Fill missing values ----
         # The same rows as the vectorized path: duration from end where it

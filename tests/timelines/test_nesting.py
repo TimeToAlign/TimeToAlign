@@ -27,7 +27,12 @@ import pytest
 
 from timetoalign.alignment import AlignmentBundle
 from timetoalign.core import Coordinate, NumberType, TimeUnit, number_to_json
-from timetoalign.maps import LinearMap
+from timetoalign.maps import (
+    FloatingMeasureMap,
+    LinearMap,
+    MeasureNumberMap,
+    MeasureRecordMap,
+)
 from timetoalign.timelines import (
     ContinuousGraphicalTimeline,
     ContinuousLogicalTimeline,
@@ -509,6 +514,82 @@ class TestChildMeasureMap:
         assert _bar_at(child, 0) == _bar_at(midi, 12960) == "7"
         to_quarters = child._measure_record_map.maps[0]
         assert (to_quarters.scalar, to_quarters.offset) == (Fraction(1, 480), 0)
+
+    def test_a_ticks_child_keeps_the_number_type_its_parents_map_was_given(
+        self,
+    ) -> None:
+        midi = DiscreteLogicalTimeline(length=155520, uid="midi")
+        midi.add_measure_map(
+            MeasureMap.from_rows(SEVENTY_TWO_BARS),
+            to_quarters=LinearMap(
+                scalar=Fraction(1, 480),
+                source_unit="ticks",
+                target_unit="quarters",
+                output_number_type=NumberType.float,
+            ),
+        )
+
+        child = midi.create_child(12960, 12960, measures=True)
+
+        to_quarters = child._measure_record_map.maps[0]
+        assert to_quarters.output_number_type is NumberType.float
+        answer = to_quarters(480)
+        assert (type(answer), answer) == (float, 1.0)
+        assert child.measure_map.to_rows() == BARS_7_TO_12
+
+    def test_a_whole_notes_child_holds_the_quarters_childs_bars(self) -> None:
+        score = ContinuousLogicalTimeline(
+            length=Fraction(81), unit=TimeUnit.whole_notes, uid="wn"
+        )
+        score.add_measure_map(MeasureMap.from_rows(SEVENTY_TWO_BARS))
+
+        child = score.create_child(Fraction(27, 4), Fraction(27, 4), measures=True)
+
+        assert child.measure_map.to_rows() == BARS_7_TO_12
+        assert _bar_at(child, 0) == "7"
+
+    def test_a_child_affords_its_parents_measure_views(self) -> None:
+        score = _measured_score()
+        score.add_conversion_map(FloatingMeasureMap(score.measure_map))
+        score.add_conversion_map(MeasureNumberMap(score.measure_map))
+
+        child = score.create_child(27, 27, uid="clt_7", measures=True)
+
+        (floating,) = [
+            m for m in child._all_conversion_maps() if type(m) is FloatingMeasureMap
+        ]
+        (numbers,) = [
+            m for m in child._all_conversion_maps() if type(m) is MeasureNumberMap
+        ]
+        assert floating.measure_map is child.measure_map
+        assert numbers.measure_map is child.measure_map
+        assert [floating(at) for at in (0, Fraction(9, 2), 27)] == [1.0, 2.0, 7.0]
+        assert [numbers(at) for at in (0, 26)] == [7, 12]
+
+        cut = score.create_child(Fraction(99, 4), Fraction(9, 4), measures=True)
+        (cut_floating,) = [
+            m for m in cut._all_conversion_maps() if type(m) is FloatingMeasureMap
+        ]
+        assert [cut_floating(at) for at in (0, Fraction(9, 4))] == [0.5, 1.0]
+
+        bundle = AlignmentBundle()
+        bundle.add_timeline(score)
+        written = bundle.to_dict()
+        read_child = (
+            AlignmentBundle.from_dict(written).timelines["clt_4"].get_child("clt_7")
+        )
+        assert len(written["measure_maps"]) == 3
+        (read_floating,) = [
+            m
+            for m in read_child._all_conversion_maps()
+            if type(m) is FloatingMeasureMap
+        ]
+        assert read_floating.measure_map == child.measure_map
+
+    def test_a_parent_without_views_gives_a_child_none(self) -> None:
+        child = _measured_score().create_child(27, 27, measures=True)
+
+        assert [type(m) for m in child._all_conversion_maps()] == [MeasureRecordMap]
 
     def test_a_parent_without_a_measure_map_is_refused_unchanged(self) -> None:
         score = ContinuousLogicalTimeline(length=Fraction(324), uid="clt_4")

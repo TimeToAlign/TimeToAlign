@@ -81,6 +81,13 @@ doubles as literals (`1.234 + 1.484 == 2.718`, `2.718 + 0.382 == 3.1`, `0.001 +
 double (`Fraction(numerator, denominator) == Fraction(value)`, denominator
 positive); a quarters axis whose operands' denominators multiply past `2⁶³`
 (`1/(5·2⁴⁰) + (15·2³⁹ + 1)/(15·2³⁹)`) gives exactly `(3·2⁴⁰ + 1)/(3·2⁴⁰)`.
+A duration a `column_specs` producer synthesises as number cells is taken
+whole, each side in the role the axis's number type gives it: on seconds, a
+sub-millisecond `0.000123` (whose mirror is capped at a `2⁶²` denominator, so
+`float(mirror) != value`) keeps `duration == 0.000123` and gives `end ==
+0.000123` from `start = 0` and `end == 1.5 + 0.000123` from `start = 1.5`, the
+IEEE sums. Reading the mirror as the number would store
+`0.00012300000000000006`.
 
 ### How We Know the Parser is Correct
 
@@ -279,7 +286,7 @@ The default unit is `seconds` and the default event type is `Region`.
 
 **Completed durations on a seconds axis.** The fixtures above hold values whose
 ratios are small; real annotation files hold three-decimal seconds, whose
-mirrors carry denominators up to `2⁵²`. `TestNonDyadicSeconds` writes the three
+mirrors carry denominators up to `2⁶²` (`0.001`). `TestNonDyadicSeconds` writes the three
 lines `0.000 1.234 N`, `1.234 2.718 C:maj`, `2.718 3.1 G:maj` under `tmp_path`
 and loads them with `LabLoader.from_file`. For every row of `start`, `end` and
 `duration`: `denominator > 0` and `Fraction(numerator, denominator) ==

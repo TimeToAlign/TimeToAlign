@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 from collections.abc import Iterator, Sequence
 from fractions import Fraction
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, NamedTuple
 
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -27,7 +27,14 @@ from timetoalign.core.time import (
     subtract_coordinates,
 )
 from timetoalign.core.timestamp import ConversionMapsSpec, _format_coordinate_value
-from timetoalign.maps import ChainMap, ConversionMap, LinearMap
+from timetoalign.maps import (
+    ChainMap,
+    ConversionMap,
+    FloatingMeasureMap,
+    LinearMap,
+    MeasureBeatMap,
+    MeasureNumberMap,
+)
 
 from ..manifest import spell
 from ..regions import Region
@@ -39,6 +46,23 @@ if TYPE_CHECKING:
 
 SEGMENT_EVENT_TYPE = "Segment"
 TraversalOrder = Literal["sorted", "depth_first", "breadth_first"]
+
+_MEASURE_VIEWS = (FloatingMeasureMap, MeasureNumberMap, MeasureBeatMap)
+"""The conversion maps reading a measure map that a child rebuilds over its slice."""
+
+
+class _MeasureSlice(NamedTuple):
+    """The measure structure a child takes from its parent."""
+
+    measure_map: MeasureMap
+    to_quarters: LinearMap | None
+    views: list[ConversionMap[Any]]
+
+    def give_to(self, child: Timeline) -> None:
+        """Attach the slice, then each view over it, to *child*."""
+        child.add_measure_map(self.measure_map, to_quarters=self.to_quarters)
+        for view in self.views:
+            child.add_conversion_map(view)
 
 
 class ChildrenMixin:
@@ -658,7 +682,7 @@ class ChildrenMixin:
             name=name,
         )
         if measured is not None:
-            child.add_measure_map(measured[0], to_quarters=measured[1])
+            measured.give_to(child)
         self.add_child(child, offset=offset, allow_expansion=allow_expansion)
         return child
 
@@ -1069,7 +1093,7 @@ class ChildrenMixin:
             name=region.name,
         )
         if measured is not None:
-            child.add_measure_map(measured[0], to_quarters=measured[1])
+            measured.give_to(child)
 
         if copy_events:
             self._copy_events_to_child(child, region)
@@ -1077,24 +1101,31 @@ class ChildrenMixin:
         self.add_child(child, offset=region.start)
         return child
 
-    def _measure_slice(
-        self, offset: CoordinateSpec, length: Any
-    ) -> tuple[MeasureMap, LinearMap | None]:
-        """Return the slice of this timeline's measure map a child would hold.
+    def _measure_slice(self, offset: CoordinateSpec, length: Any) -> _MeasureSlice:
+        """Return the measure structure a child would hold.
 
         The child spans *length* from *offset*, both on this timeline's
         axis. On a quarters axis the span is the slice's range as it is; on
         an axis read through a ``LinearMap`` to quarters, the span goes
-        through that map, and the child reads its slice through a map of the
-        same scalar from its own origin.
+        through that map, and the child reads its slice through the same map
+        from its own origin (:meth:`LinearMap.with_offset`), in the number
+        type that map was given. Every other view this timeline holds of its
+        measure map (a :class:`~timetoalign.maps.FloatingMeasureMap`,
+        :class:`~timetoalign.maps.MeasureNumberMap` or
+        :class:`~timetoalign.maps.MeasureBeatMap` reading a measure map
+        equal to it) is built again over the slice, by the same call: the
+        child affords the measure views its parent affords, each reading
+        the child's own measures.
 
         Returns:
-            The slice, and the ``LinearMap`` the child reads it through, or
-            None on a quarters axis.
+            The slice, the ``LinearMap`` the child reads it through (None on
+            a quarters axis) and the views over the slice.
 
         Raises:
             ValueError: If this timeline has no measure map, *length* is
-                None, or the measure map refuses the slice.
+                None, or the measure map or a view refuses the slice.
+            TypeError: If the measure map is read through another map than
+                a ``LinearMap`` to quarters.
         """
         record = self._measure_record_map
         measure_map = self.measure_map
@@ -1109,20 +1140,24 @@ class ChildrenMixin:
             )
         start = Fraction(self._resolve_axis_value(offset))
         end = start + Fraction(length)
-        if not isinstance(record, ChainMap):
-            return measure_map.get_slice(start, end), None
-        to_quarters = record.maps[0]
-        assert isinstance(to_quarters, LinearMap)
-        scalar, shift = Fraction(to_quarters.scalar), Fraction(to_quarters.offset)
-        child_map = LinearMap(
-            scalar=to_quarters.scalar,
-            source_unit=to_quarters.source_unit,
-            target_unit=to_quarters.target_unit,
-            output_number_type=to_quarters._declared_output_number_type,
-        )
-        return (
-            measure_map.get_slice(start * scalar + shift, end * scalar + shift),
-            child_map,
+        to_quarters: LinearMap | None = None
+        if isinstance(record, ChainMap):
+            to_quarters = record.maps[0]
+            if not isinstance(to_quarters, LinearMap):
+                raise TypeError(
+                    f"Timeline {self._id!r} reads its measure map through a "
+                    f"{type(to_quarters).__name__}, not a LinearMap to quarters"
+                )
+            scalar, shift = Fraction(to_quarters.scalar), Fraction(to_quarters.offset)
+            start, end = start * scalar + shift, end * scalar + shift
+        sliced = measure_map.get_slice(start, end)
+        views = [
+            type(view)(sliced)
+            for view in self._conversion_maps.values()
+            if isinstance(view, _MEASURE_VIEWS) and view.measure_map == measure_map
+        ]
+        return _MeasureSlice(
+            sliced, None if to_quarters is None else to_quarters.with_offset(0), views
         )
 
     def create_children_from_regions(

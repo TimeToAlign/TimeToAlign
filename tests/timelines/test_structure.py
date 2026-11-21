@@ -1729,6 +1729,66 @@ BARS_7_TO_12 = [
 ]
 
 
+SEVEN_BARS_WITH_REPEATS = [
+    {"count": 1, "qstamp": [0, 1], "time_signature": "4/4", "next": ["2"]},
+    {"count": 2, "qstamp": [4, 1], "start_repeat": True, "next": ["3"]},
+    {"count": 3, "qstamp": [8, 1], "end_repeat": True, "next": ["2", "4"]},
+    {"count": 4, "qstamp": [12, 1], "start_repeat": True, "next": ["5"]},
+    {
+        "count": 5,
+        "qstamp": [16, 1],
+        "volta": 1,
+        "end_repeat": True,
+        "next": ["4"],
+    },
+    {"count": 6, "qstamp": [20, 1], "volta": 2, "next": ["7"], "tempo": "Allegro"},
+    {"count": 7, "qstamp": [24, 1]},
+]
+"""Seven 4/4 bars: a plain repeat (bars 2-3), a repeat with two voltas (bars
+4-6) and an unknown row key."""
+
+
+def _repeats() -> MeasureMap:
+    return MeasureMap.from_rows(SEVEN_BARS_WITH_REPEATS, keep_unknown_keys=True)
+
+
+def _four_four(
+    bar: int,
+    count: int,
+    qstamp: int,
+    *,
+    actual: int = 4,
+    start_repeat: bool = False,
+    end_repeat: bool = False,
+    next: list[str] | None = None,
+    volta: int | None = None,
+    offset: int | None = None,
+    tempo: str | None = None,
+) -> dict:
+    """A 4/4 row of a slice of the seven bars, written by hand."""
+    row: dict = {
+        "ID": str(bar),
+        "count": count,
+        "qstamp": [qstamp, 1],
+        "number": bar,
+        "name": str(bar),
+        "time_signature": "4/4",
+        "nominal_length": [4, 1],
+        "actual_length": [actual, 1],
+        "start_repeat": start_repeat,
+        "end_repeat": end_repeat,
+    }
+    if next is not None:
+        row["next"] = next
+    if volta is not None:
+        row["volta"] = volta
+    if offset is not None:
+        row["offset_within_measure"] = [offset, 1]
+    if tempo is not None:
+        row["tempo"] = tempo
+    return row
+
+
 class TestMeasureMapSlice:
     """``MeasureMap.get_slice`` against rows written by hand (README "Measure map slices")."""
 
@@ -1818,6 +1878,51 @@ class TestMeasureMapSlice:
 
         assert bars == MeasureMap.from_rows(SEVENTY_TWO_BARS)
         assert bars.to_rows() == SEVENTY_TWO_BARS
+
+    def test_a_slice_cut_at_both_ends_across_the_repeats(self) -> None:
+        part = _repeats().get_slice(6, 22)
+
+        assert part.to_rows() == [
+            _four_four(2, 1, 0, actual=2, start_repeat=True, next=["3"], offset=2),
+            _four_four(3, 2, 2, end_repeat=True, next=["2", "4"]),
+            _four_four(4, 3, 6, start_repeat=True, next=["5"]),
+            _four_four(5, 4, 10, end_repeat=True, next=["4"], volta=1),
+            _four_four(6, 5, 14, actual=2, volta=2, tempo="Allegro"),
+        ]
+        assert [type(measure) for measure in part] == [
+            MeasureConstituent,
+            RegularMeasure,
+            RegularMeasure,
+            RegularMeasure,
+            IrregularMeasure,
+        ]
+
+    def test_a_backward_successor_before_the_slice_is_dropped(self) -> None:
+        part = _repeats().get_slice(10, 22)
+
+        assert part.to_rows() == [
+            _four_four(3, 1, 0, actual=2, end_repeat=True, next=["4"], offset=2),
+            _four_four(4, 2, 2, start_repeat=True, next=["5"]),
+            _four_four(5, 3, 6, end_repeat=True, next=["4"], volta=1),
+            _four_four(6, 4, 10, actual=2, volta=2, tempo="Allegro"),
+        ]
+
+    def test_a_measure_whose_only_successor_is_outside_keeps_none(self) -> None:
+        part = _repeats().get_slice(16, 22)
+
+        assert part.to_rows() == [
+            _four_four(5, 1, 0, end_repeat=True, next=[], volta=1),
+            _four_four(6, 2, 4, actual=2, volta=2, tempo="Allegro"),
+        ]
+
+    def test_a_constituent_cut_again_sums_its_offsets(self) -> None:
+        part = _repeats().get_slice(6, 22).get_slice(1, 6)
+
+        assert part.to_rows() == [
+            _four_four(2, 1, 0, actual=1, start_repeat=True, next=["3"], offset=3),
+            _four_four(3, 2, 1, end_repeat=True, next=["2"]),
+        ]
+        assert type(part[0]) is MeasureConstituent
 
 
 # endregion

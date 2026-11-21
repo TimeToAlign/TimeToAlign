@@ -14,6 +14,7 @@ import numpy as np
 import pytest
 from timetoshare import (
     FORMAT_CONTEXT,
+    UNITS,
     SchemaValidationError,
     canonical_order,
     complete,
@@ -29,7 +30,6 @@ from timetoshare import (
     warning_paths,
     with_context,
 )
-from timetoshare.manifest import UNIT_NUMBER_TYPES
 
 from tests.helpers import filed
 from timetoalign import (
@@ -490,7 +490,7 @@ STYLE_RULES = {
 """Rejection cases about ``graphical.rules``, which the library keeps unread."""
 
 BAND_ORDER_RULES = {
-    "band_order_missing_band",
+    "band_order_missing_line",
     "band_order_old_form",
     "band_order_unknown_entry",
 }
@@ -810,7 +810,21 @@ def test_int64_boundary() -> None:
 
 
 def test_the_unit_table_is_the_package_s() -> None:
-    """Every unit and its default number type are the package's, and no other."""
+    """Every unit, its domain, modality and number types are the package's."""
     assert {
-        unit.value: unit.default_number_type.name for unit in TimeUnit
-    } == UNIT_NUMBER_TYPES
+        unit.value: (
+            unit.domain.value,
+            "discrete" if unit.is_discrete else "continuous",
+            unit.default_number_type.name,
+            {number_type.name for number_type in unit.allowed_number_types},
+        )
+        for unit in TimeUnit
+    } == {
+        unit: (
+            entry.domain,
+            entry.modality,
+            entry.number_type,
+            set(entry.number_types),
+        )
+        for unit, entry in UNITS.items()
+    }

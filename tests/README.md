@@ -128,11 +128,12 @@ the keys the library writes in every row it keeps (`name`, `start_repeat`,
 expected text is the case with that one row as the library writes it,
 spelled out in the test, unknown `tempo` included.
 
-**The unit table is the package's.** `{unit.value:
-unit.default_number_type.name for unit in TimeUnit}` equals the package's
-`UNIT_NUMBER_TYPES` exactly: the library knows every unit the schema names,
-no other, and gives each the default number type the validators supply, so
-a unit added on one side only fails here.
+**The unit table is the package's.** For every `TimeUnit`, its domain,
+modality (`is_discrete`), default number type and admitted number types
+equal the row of the package's `UNITS` exactly, and the two hold the same
+units: the library knows every unit the schema names, no other, and gives
+each the domain, the default number type and the number types the
+validators apply, so a unit added or changed on one side only fails here.
 
 **Manifests the library builds.** A catalogue builds manifests directly and
 through the loaders, so the check covers the emitted representation rather

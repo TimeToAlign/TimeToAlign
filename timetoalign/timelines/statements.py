@@ -300,28 +300,21 @@ def _believing(
 ) -> list[dict[str, Any]]:
     """The *entries* the belief filter keeps for *believer*.
 
-    The filter is :func:`~timetoalign.core.provenance.belief_mask`'s;
-    actors compare as their IRIs under *context*, as TimeToShare compares
-    them, so ``believer`` may be compact or absolute.
+    The filter is :func:`~timetoalign.core.provenance.belief_mask`'s,
+    which compares actors as their IRIs under *context*, so ``believer``
+    may be compact or absolute.
     """
     if believer is None:
         # The mask keeps every row without a believer; its belief is still checked.
         belief_mask(None, None, belief)
         return entries
-
-    def iri(actor: str) -> str:
-        return timetoshare.expand_iri(context, actor) or actor
-
     rows: list[Provenance | None] = []
     for entry in entries:
         members = {key: item for key, item in entry.items() if key not in PAIR_KEYS}
-        members["beliefs"] = [
-            {**held, "actor": iri(held["actor"])} for held in members.get("beliefs", ())
-        ]
         # An entry holding the pair alone states no provenance: a null row.
-        stated = members["beliefs"] or len(members) > 1
+        stated = members.get("beliefs") or members.keys() - {"beliefs"}
         rows.append(Provenance.from_dict(members) if stated else None)
-    mask = belief_mask(provenance_array(rows), iri(believer), belief)
+    mask = belief_mask(provenance_array(rows), believer, belief, context=context)
     return [
         entry for entry, kept in zip(entries, mask.to_pylist(), strict=True) if kept
     ]

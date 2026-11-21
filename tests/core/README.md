@@ -562,10 +562,10 @@ positions collected from events (`at=None`, what a bare
 boundaries (`include_boundaries=True`, where the ratio comes from an offset
 and a length rather than from any event). Asserting only the first is what
 let the event route ship reporting the dyadic while the stamp lane on the
-same timeline reported the ratio. The claim table is covered over both ways
-claims join a bundle, one MatchClaim at a time and a columnar
-`MatchClaimField`, because both land in the one MatchClaim table that the
-table lane reads column by column in bulk.
+same timeline reported the ratio. The MatchClaim table is covered over both
+ways claims join a bundle, one MatchClaim at a time and a columnar
+`MatchClaimField`, because both land in it and the table lane reads it column
+by column in bulk.
 
 **Known limitation — a group's stored rows are a float lane.** A
 `TimelineGroup` keeps its timestamps as `float64` because interpolation
@@ -1435,6 +1435,25 @@ surgery over the base repr. The exact-string assertions guard against silent
 drift, regression of the EnharmonicPitch dual-spelling repr, and accidental
 re-introduction of the verbose `Object(field=…)` forms.
 
+### `test_fields_base.py` - Raw fields and SemanticField delegation
+
+A `SemanticField` composes its raw field and delegates every other attribute
+to it through `__getattr__`. Delegation must not reach an instance whose
+`__init__` has not run: `copy` and `pickle` build one with `__new__` and ask
+it for `__setstate__`, and delegating that question asks for the missing
+`_raw` again, without end (`RecursionError`). What proves the guard:
+
+- On an instance made with `__new__` alone, `_raw` and a dunder name raise
+  `AttributeError` naming the attribute, the answer `copy` expects.
+- `copy.deepcopy` of a field gives a field of its class, equal row for row
+  (`to_pylist()` and `field_names` the original's) and holding its own raw
+  field (`_raw is not` the original's); `pickle` round-trips it the same way.
+- `copy.deepcopy` of an `AlignmentBundle`, which holds its MatchClaim table
+  as a `MatchClaimField`, gives a bundle equal to the original that is not
+  the original, its MatchClaim table a `MatchClaimField` of zero rows that is
+  not the original's. (`tests/alignment/test_claim_back_reference.py` copies
+  a bundle holding 303 claims and checks that they follow the copy.)
+
 ### `test_field_repr_html.py` - Field affordance `_repr_html_`
 
 Validates the rich-HTML affordance card every `DataField` / `SemanticField`
@@ -1602,6 +1621,20 @@ What proves the entry is the format's and holds nothing else:
   filter). An empty column gives an empty mask; a filter word other than the
   two is refused. The scalar answers equal the column's row for row, and the
   Field's equal the function's, so neither can drift from the one predicate.
+- **Actors compare as IRIs, in the predicate itself.** `belief_mask` expands
+  the believer and every actor under its `context=` (TimeToShare's
+  `expand_iri`), so statements and MatchClaims share one comparison. A column
+  of four entries — `ex:ana` `false`, `https://example.org/people/ana`
+  `false`, `https://example.org/people/ana` `true`, `wd:Q1` `false` — under
+  the context declaring `ex` as `https://example.org/people/` gives for the
+  believer `ex:ana` and for `https://example.org/people/ana` alike
+  `[False, False, True, True]` (`"not_false"`), and for the absolute
+  believer with `"true"` `[False, False, True, False]`: the compact and the
+  absolute spelling are one actor either way round. Without a context no
+  prefix is declared, so the compact actor compares as written: `ex:ana`
+  gives `[False, True, True, True]`, the absolute believer
+  `[True, False, True, True]`. A prefix the context does not declare
+  (`wd:Q1`) also compares as written, `[True, True, True, False]`.
 - **Null beliefs.** A row of TimeToShare's provenance column states an entry
   without beliefs as a null `beliefs` cell (its fixture table does). Such a
   row reads as an entry whose `beliefs` is `()`, equal to one built without

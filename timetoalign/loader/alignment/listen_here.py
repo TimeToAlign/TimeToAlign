@@ -74,6 +74,7 @@ from timetoalign.display.html import code
 from timetoalign.loader.base import AlignmentLoader
 from timetoalign.loader.physical.audio import AudioLoader
 from timetoalign.maps import SamplesToSeconds
+from timetoalign.storage.events import _mint_event_ids
 from timetoalign.timelines.types import DiscretePhysicalTimeline
 
 if TYPE_CHECKING:
@@ -98,13 +99,15 @@ _DEFAULT_SAMPLE_RATE = 44100
 _POINT_EVENT_TYPE = "ListenHerePoint"
 
 
-def _point_id(column: int) -> str:
-    """The id of a recording's point at reference grid column *column* (from 0).
+def _point_ids(n_columns: int) -> pa.Array:
+    """The ids of a recording's points, one per reference grid column, in order.
 
     Every recording holds one point per grid column under the same id, the
-    id the timeline would mint for it (``listenherepoint_1`` for column 0).
+    id the timeline would mint for it (``listenherepoint_1`` for column 0),
+    given by the one event-ID minter
+    (:func:`~timetoalign.storage.events._mint_event_ids`, nothing taken).
     """
-    return f"{_POINT_EVENT_TYPE.lower()}_{column + 1}"
+    return _mint_event_ids(pa.repeat(pa.scalar(_POINT_EVENT_TYPE), n_columns))
 
 
 # endregion
@@ -287,7 +290,7 @@ class ListenHereLoader(AlignmentLoader):
 
         Every recording's timeline holds one ``ListenHerePoint`` event per
         reference grid column, the point column ``i`` under the id
-        :func:`_point_id` gives (the same on every recording).  For every
+        :func:`_point_ids` gives (the same on every recording).  For every
         unordered pair of recordings ``(a, b)`` and every column ``i``, a
         synchronous instant claim joins the point ``i`` of ``a``, at
         ``times_a[i]`` in samples, to the point ``i`` of ``b``.  The parallel
@@ -337,9 +340,9 @@ class ListenHereLoader(AlignmentLoader):
             if coord_b_blocks
             else np.empty(0, dtype=np.int64)
         )
-        # Grid column i is the point event ``_point_id(i)`` of every recording,
-        # so both sides of each claim name the same point id.
-        point_ids = pa.array([_point_id(i) for i in range(ncols)], type=pa.string())
+        # Grid column i is the point event ``_point_ids(ncols)[i]`` of every
+        # recording, so both sides of each claim name the same point id.
+        point_ids = _point_ids(ncols)
         n_pairs = len(a_id_blocks)
         event_ids = (
             pa.concat_arrays([point_ids] * n_pairs)
@@ -523,15 +526,18 @@ class ListenHereLoader(AlignmentLoader):
                 "sample_rate_provenance": self._sample_rate_provenance[key],
             },
         )
+        times = self._times_by_key[key]
         timeline.add_events(
             [
                 {
-                    "id": _point_id(i),
+                    "id": point_id,
                     "event_type": _POINT_EVENT_TYPE,
                     "instant": int(round(seconds * sample_rate)),
                     "seconds": np.float64(seconds),
                 }
-                for i, seconds in enumerate(self._times_by_key[key])
+                for point_id, seconds in zip(
+                    _point_ids(len(times)).to_pylist(), times, strict=True
+                )
             ]
         )
         timeline.add_conversion_map(SamplesToSeconds(sample_rate=sample_rate))

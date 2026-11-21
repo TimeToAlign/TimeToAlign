@@ -376,9 +376,10 @@ the source columns and the documented mapping: section and fine breaks occur at
 measure ends, while target markers occur at measure starts.
 
 Both normal and flattened timeline creation must store one ``MeasureMap`` and the
-same flow-control facts. The normal timeline also has a skeleton whose section
-hierarchy holds that identical map object; flattening opts out only of section
-children and skeleton attachment. The normal timeline is serialized through JSON
+same flow-control facts: the timeline holds its map as one object, returned
+identically on every access, with exactly ``60`` measures (one per row of the
+TSV), and flattening merges events only, never dropping the map or a flow-control
+fact. The normal timeline is serialized through JSON
 and restored. The restored payload must equal the original payload, which is a
 fixpoint over every structural key. The restored registry must hold exactly
 ``6`` jumps. The restored measure map must equal the original under type-aware

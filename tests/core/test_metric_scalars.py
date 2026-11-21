@@ -15,7 +15,7 @@ import pytest
 from pydantic import ValidationError
 
 import timetoalign.core as core
-from timetoalign.core import Address, Beat, BeatPolicy, Duration, Tempo, fields
+from timetoalign.core import Beat, BeatPolicy, Duration, Tempo, fields
 
 
 @pytest.mark.parametrize(
@@ -168,7 +168,3 @@ def test_negative_beat_level_is_valid_but_index_remains_one_based() -> None:
     assert Beat(index=1, level=-1).level == -1
     with pytest.raises(ValidationError, match="1-based"):
         Beat(index=0)
-
-
-def test_address_has_no_skeleton_identifier() -> None:
-    assert "skeleton_id" not in Address.model_fields

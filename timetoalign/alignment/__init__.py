@@ -33,13 +33,11 @@ from .matching import (
     prepare_eep_notes_for_matching,
 )
 from .matchline import MatchLine
-from .skeleton import TimeSkeleton
 from .warpmap import WarpMap
 
 __all__ = [
     # Bundle (Primary Entry Point)
     "AlignmentBundle",
-    "TimeSkeleton",
     # Anchors and Claims
     "AlignmentAnchor",
     "Belief",

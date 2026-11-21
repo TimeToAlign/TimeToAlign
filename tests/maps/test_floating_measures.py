@@ -375,4 +375,4 @@ class TestScoreFloatingMeasures:
         assert timeline.get_conversion_map(TimeUnit.floating_measures) is None
         assert TimeUnit.ticks in timeline._get_available_units()
         # The structure itself is intact: only the derived lattice is absent.
-        assert timeline.skeleton.section_hierarchy.n_measures > 0
+        assert len(timeline.measure_map) == 397

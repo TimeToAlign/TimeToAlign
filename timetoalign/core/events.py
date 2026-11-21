@@ -2425,11 +2425,8 @@ class Gap:
     A string passed positionally is a descriptive label. Numeric values are
     exact durations; omitting both makes the gap auto-sized by flow machinery.
 
-    Two contexts give a duration-less gap different meanings. When a FlowMap
-    assembles interval descriptors, the gap is auto-sized from the distance
-    between its neighbouring spans. In a skeleton flow, inserted material has
-    no counterpart on the shared structure, so a duration-less gap is a
-    zero-extent marker — its extent is unknown and is never inferred.
+    When a FlowMap assembles interval descriptors, a duration-less gap is
+    auto-sized from the distance between its neighbouring spans.
     """
 
     duration: Fraction | None
@@ -2934,9 +2931,8 @@ class Address(BaseModel):
 
     An address identifies a place in a piece the way a musician does —
     "bar 12", "the second ending of bar 15", "beat 3" — rather than by a
-    position on a coordinate axis.  Resolving an address into a
-    coordinate is a :class:`~timetoalign.timelines.TimeSkeleton`
-    operation; the address itself is inert data and carries no timeline.
+    position on a coordinate axis.  The address itself is inert data:
+    it carries no timeline and holds no coordinate.
 
     Subclasses are frozen and strict: a measure label is a string, a
     measure count is an integer, and neither is silently coerced into

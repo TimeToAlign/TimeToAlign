@@ -630,11 +630,11 @@ class QuartersToFloatingMeasures(TableMap):
             measure_map: Measures whose exact starts and lengths define the lattice.
 
         Returns:
-            The fm map for that skeleton: a :class:`FloatingMeasureMap`,
+            The fm map for those measures: a :class:`FloatingMeasureMap`,
             which remembers the measure map it reads.
 
         Raises:
-            ValueError: If the skeleton has no measures, or if two
+            ValueError: If the measure map has no measures, or if two
                 records share a virtual nominal downbeat (a split bar,
                 whose two halves cannot both anchor the same fm ordinal).
         """

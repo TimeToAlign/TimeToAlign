@@ -232,13 +232,14 @@ tox -e lint
 | Jump | A control event with JumpFrom and JumpTo Instants. When active, makes events at JumpTo contiguous with those ending at JumpFrom (e.g., repeats, *dal segno*). |
 | Length | The distance between a timeline's origin and its last Instant. A locked timeline cannot extend its length. |
 | LinearMap | A *ConversionMap* implementing an affine transformation, f(x) = ax + b. Includes *ScalarMap* (b=0) and *ShiftMap* (a=1) as special cases. |
-| MatchClaim | A claim — issued by a human or algorithmic agent — that events from disparate timelines are synchronous or equivalent, carrying provenance metadata (agent, criteria, certainty) and comprising one (instant) or two (interval) AlignmentAnchors. |
+| MatchClaim | A claim that two events on different timelines are synchronous or otherwise equivalent, each coordinate on its own timeline's axis, carrying its *Provenance* and a certainty. A side without an event of its own is given a *Projection*. A claim is never deleted; who disagrees records a belief. |
 | MatchLine | An ordered line that links MatchClaim objects through MatchStamps, enabling selection and alignment of temporal correspondences. |
-| MatchMetadata | Structured provenance information attached to a *MatchClaim*, recording the agent, decision criteria, and certainty level of the match. |
 | Match path | A graph traversal connecting matched events across multiple timelines, for example A -> B -> C. |
 | MetricMap | A specialized *ConversionMap* that handles complex metrical conversions (e.g., quarter notes to measure count) accounting for time signatures and anacrusis. |
 | Origin | The zero coordinate of a timeline, from which all positions are measured. |
 | PiecewiseMap | A ConversionMap that applies different sub-maps to disjoint coordinate intervals. |
+| Projection | An event standing on a timeline for an event that timeline does not hold (or for a bare position), so that a *MatchClaim* can join two events. |
+| Provenance | How a *MatchClaim* or a statement was made and who believes it: who stated it, when, how, its sources, a note, and at most one belief per actor ("true", "false" or "unlikely"). |
 | Region | A named part of a timeline defined by a TimeInterval (e.g., "Chorus", "Verse"). Regions are not timelines and cannot hold events or maps directly. |
 | RotationMap | A *ConversionMap* that implements periodic or cyclic transformations using modular arithmetic. |
 | Segment | A Child timeline that is contiguous with its siblings. A SegmentLine is a parent containing only contiguous Segments. |

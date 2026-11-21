@@ -56,6 +56,7 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+from timetoshare.statements import used_prefixes
 from timetoshare.tables import PROVENANCE_METADATA_KEY, SCOPE_FIELD
 
 from timetoalign.core import (
@@ -3083,6 +3084,52 @@ class MatchClaimField(SemanticField[MatchClaim]):
     def provenance(self) -> Provenance | None:
         """Shared provenance applied to every materialised claim."""
         return self._provenance
+
+    def _used_prefixes(self) -> list[str]:
+        """The sorted prefixes the table's provenance uses, its actors among them.
+
+        Every prefix of a compact IRI at an IRI position of the shared
+        provenance and of the rows' (``stated_by``, ``basis``, ``service``,
+        a ``method`` that is no method word, each belief's ``actor``), as
+        :func:`timetoshare.used_prefixes` finds them. Vectorized: each
+        distinct string is read once, no row is materialised.
+        """
+        entries: list[dict[str, Any]] = []
+        if self._provenance is not None:
+            entries.append(self._provenance.to_dict())
+        data = self._raw.data
+        if data is not None and len(data):
+            # ``flatten`` carries a null parent over to its children.
+            provenance = data.flatten()[self.pa_schema.get_field_index("provenance")]
+            members = {
+                member.name: column
+                for member, column in zip(provenance.type, provenance.flatten())
+            }
+            beliefs = pc.list_flatten(members["beliefs"])
+            references = [
+                pc.list_flatten(members["stated_by"]),
+                pc.list_flatten(members["basis"]),
+                members["service"],
+                beliefs.flatten()[beliefs.type.get_field_index("actor")],
+            ]
+            entries.append(
+                {
+                    "stated_by": sorted(
+                        {
+                            text
+                            for column in references
+                            for text in pc.unique(column).to_pylist()
+                            if text is not None
+                        }
+                    )
+                }
+            )
+            entries.extend(
+                {"method": method}
+                for method in pc.unique(members["method"]).to_pylist()
+                if method is not None
+            )
+        return used_prefixes({"provenance": entries})
 
     @property
     def timeline_ids(self) -> set[str]:

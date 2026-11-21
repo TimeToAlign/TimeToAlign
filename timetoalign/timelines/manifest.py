@@ -47,7 +47,7 @@ import json
 import math
 import os
 import re
-from collections.abc import Container, Iterable, Iterator, Mapping
+from collections.abc import Collection, Container, Iterable, Iterator, Mapping
 from dataclasses import asdict, dataclass, field, replace
 from fractions import Fraction
 from os import PathLike
@@ -1082,6 +1082,7 @@ class Manifest(_OpenObject):
         minimal: bool = True,
         events: bool = False,
         external_references: bool = False,
+        table_prefixes: Collection[str] = (),
     ) -> dict[str, Any]:
         """Write the manifest around root timelines and written groups.
 
@@ -1108,12 +1109,10 @@ class Manifest(_OpenObject):
         every ID is written as a file writes it, ``#`` followed by the ID
         (:func:`timetoshare.with_file_ids`). Every manifest written carries
         its inline JSON-LD ``@context``: the format's terms, then, sorted by
-        name, the prefixes its statements use (:func:`timetoshare.with_context`),
-        each standing for the namespace the holders using it declare, else
-        the catalogue's (:meth:`_prefix_table`), and every prefix the
-        manifest declares (:attr:`prefixes`), used or not: the context the
-        actors of a MatchClaim table beside it are read under, which a
-        reload must give again. The statements and provenance
+        name, the prefixes its statements use (:func:`timetoshare.with_context`)
+        and the *table_prefixes*, each standing for the namespace the holders
+        using it declare, else the catalogue's (:meth:`_prefix_table`); a
+        prefix neither uses is not written, declared or not. The statements and provenance
         written, and the named MatchStamps, are checked as a manifest read
         is, so that a manifest whose statements or MatchStamps break a rule
         of the format is never emitted.
@@ -1127,6 +1126,12 @@ class Manifest(_OpenObject):
             events: Write each timeline's event rows.
             external_references: Write each timeline's external reference
                 table.
+            table_prefixes: The prefixes a table written beside the manifest
+                uses (the actors of a bundle's MatchClaim table), read under
+                the manifest's ``@context``, so a reload must find them
+                there; each stands for the namespace the manifest declares
+                (:attr:`prefixes`), else the catalogue's, and one neither
+                declares is not written.
 
         Raises:
             ValueError: If an id is held twice among the manifest, its
@@ -1199,7 +1204,7 @@ class Manifest(_OpenObject):
             roots,
             {*entries.taken, *(entry["id"] for entry in fields["measure_maps"])},
         )
-        prefixes = self._prefix_table(fields, trees)
+        prefixes = self._prefix_table(fields, trees, table_prefixes)
         written = _timeline_ids(fields["timelines"])
         fields["resources"] = [
             {
@@ -1221,7 +1226,7 @@ class Manifest(_OpenObject):
         result = timetoshare.with_context(timetoshare.with_file_ids(result), prefixes)
         declared = {
             **{k: v for k, v in result["@context"].items() if k not in FORMAT_CONTEXT},
-            **self.prefixes,
+            **{p: prefixes[p] for p in table_prefixes if p in prefixes},
         }
         result["@context"] = {**FORMAT_CONTEXT, **dict(sorted(declared.items()))}
         check_statements(result)
@@ -1229,20 +1234,24 @@ class Manifest(_OpenObject):
         return result
 
     def _prefix_table(
-        self, fields: Mapping[str, Any], trees: list[Timeline]
+        self,
+        fields: Mapping[str, Any],
+        trees: list[Timeline],
+        table_prefixes: Collection[str] = (),
     ) -> dict[str, str]:
         """Return the namespace of every prefix the statements written use.
 
         The catalogue's prefixes, then holder by holder in written order
         (the manifest; each timeline object, depth first, followed by its
         regions): a prefix a holder uses stands for the namespace the holder
-        declares, else the catalogue's. A prefix the manifest declares
-        (:attr:`prefixes`) is written whether used or not, so it stands for
-        the manifest's namespace wherever it is used.
+        declares, else the catalogue's. A prefix a table beside the manifest
+        uses (*table_prefixes*) is used by the manifest: it stands for the
+        manifest's namespace (:attr:`prefixes`), else the catalogue's,
+        wherever it is used.
 
         Raises:
             ValueError: If two holders use one prefix for two namespaces, the
-                manifest counting as a holder of each prefix it declares.
+                manifest counting as a holder of each prefix its tables use.
         """
         catalogue = load_catalogue().prefixes
         held: dict[str, Any] = {}
@@ -1250,7 +1259,12 @@ class Manifest(_OpenObject):
             held[timeline.id] = timeline
             held.update(timeline._regions)
         table = dict(catalogue)
-        fixed = {prefix: (iri, "the manifest") for prefix, iri in self.prefixes.items()}
+        fixed: dict[str, tuple[str, str]] = {}
+        for prefix in table_prefixes:
+            iri = self.prefixes.get(prefix, catalogue.get(prefix))
+            if iri is not None:
+                fixed[prefix] = (iri, "the manifest")
+                table[prefix] = iri
         for _path, element, kind in timetoshare.subjects(fields):
             state = {key: element[key] for key in STATE_KEYS if key in element}
             if not state:

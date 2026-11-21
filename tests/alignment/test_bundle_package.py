@@ -359,6 +359,31 @@ class TestWriting:
         read.to_file(tmp_path / "second" / "package.yaml")
         assert _bytes(tmp_path / "second") == _bytes(tmp_path / "first")
 
+    def test_a_prefix_nothing_uses_is_not_written(self, tmp_path: Path) -> None:
+        bundle = (
+            _bundle()
+            .add_prefix("ex", "http://example.org/ns/")
+            .add_prefix("orcid", "https://orcid.org/")
+        )
+        bundle.add_match_claim_belief(
+            "claim_2", actor="orcid:0000-0001", belief="true", date="2026-11-21"
+        )
+        bundle.add_match_claim_belief(
+            "claim_3", actor="wd:Q1", belief="true", date="2026-11-21"
+        )
+
+        path = bundle.to_file(tmp_path / "package.yaml")
+
+        context = timetoshare.loads(path.read_text(encoding="utf-8"))["@context"]
+        assert context == {
+            **timetoshare.FORMAT_CONTEXT,
+            "orcid": "https://orcid.org/",
+            "wd": "http://www.wikidata.org/entity/",
+        }
+        assert AlignmentBundle.from_file(path).prefixes == {
+            "orcid": "https://orcid.org/"
+        }
+
     def test_writing_over_the_package_obeys_the_succession_rule(
         self, tmp_path: Path
     ) -> None:

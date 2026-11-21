@@ -4768,9 +4768,12 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         of every timeline written, beside the members of :attr:`styling`. A
         root no group names is ungrouped. The bundle's statements and
         provenance are the manifest's, and the manifest carries its inline
-        JSON-LD ``@context`` with the prefixes its statements use and every
-        prefix the bundle declares (:attr:`prefixes`, the context of its
-        MatchClaims' actors), and its
+        JSON-LD ``@context`` with the prefixes its statements use and those
+        its MatchClaim table's provenance uses (its actors: the table
+        :meth:`to_file` writes beside the manifest is read under this
+        context), each standing for the namespace the bundle declares
+        (:attr:`prefixes`), else the catalogue's; a declared prefix neither
+        uses is not written. The manifest carries its
         :attr:`resources`. MatchClaims are not written into the manifest:
         :meth:`to_file` writes them into the MatchClaim table beside it. The
         support policy is a setting of the bundle, not part of the manifest.
@@ -4831,6 +4834,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             minimal=minimal,
             events=events,
             external_references=external_references,
+            table_prefixes=self.match_claim_table._used_prefixes(),
         )
 
     def __repr__(self) -> str:

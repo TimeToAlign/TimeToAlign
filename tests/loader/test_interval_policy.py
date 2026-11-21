@@ -15,7 +15,7 @@ from typing import Any
 import pyarrow as pa
 import pytest
 
-from timetoalign.core import Coordinate, TimeUnit
+from timetoalign.core import Coordinate, NumberType, TimeUnit
 from timetoalign.core.enums import IntervalPolicy
 from timetoalign.core.time import (
     coordinate_to_struct,
@@ -74,7 +74,7 @@ class TestNormalizeIntervalsRow:
             "start": coordinate_to_struct(1.0),
             "end": coordinate_to_struct(3.0),
         }
-        EventData._normalize_intervals_row(processed)
+        EventData._normalize_intervals_row(processed, number_type=NumberType.float)
         dur = _value_of(processed["duration"])
         assert dur == 2.0
         assert processed["temporal_type"] == "interval"
@@ -85,7 +85,7 @@ class TestNormalizeIntervalsRow:
             "start": coordinate_to_struct(1.0),
             "duration": coordinate_to_struct(2.0),
         }
-        EventData._normalize_intervals_row(processed)
+        EventData._normalize_intervals_row(processed, number_type=NumberType.float)
         end = _value_of(processed["end"])
         assert end == 3.0
         assert processed["temporal_type"] == "interval"
@@ -93,7 +93,7 @@ class TestNormalizeIntervalsRow:
     def test_no_end_no_duration_is_instant(self):
         """When neither end nor duration is given, event is instant."""
         processed = {"start": coordinate_to_struct(1.0)}
-        EventData._normalize_intervals_row(processed)
+        EventData._normalize_intervals_row(processed, number_type=NumberType.float)
         assert processed["temporal_type"] == "instant"
 
     def test_consistent_both_present(self):
@@ -103,7 +103,9 @@ class TestNormalizeIntervalsRow:
             "end": coordinate_to_struct(3.0),
             "duration": coordinate_to_struct(2.0),
         }
-        EventData._normalize_intervals_row(processed, policy=IntervalPolicy.warn)
+        EventData._normalize_intervals_row(
+            processed, policy=IntervalPolicy.warn, number_type=NumberType.float
+        )
         assert _value_of(processed["end"]) == 3.0
         assert _value_of(processed["duration"]) == 2.0
 
@@ -117,7 +119,9 @@ class TestNormalizeIntervalsRow:
             "duration": coordinate_to_struct(5.0),  # wrong!
         }
         with pytest.raises(ValueError, match="Interval inconsistency"):
-            EventData._normalize_intervals_row(processed, policy=IntervalPolicy.strict)
+            EventData._normalize_intervals_row(
+                processed, policy=IntervalPolicy.strict, number_type=NumberType.float
+            )
 
     def test_warn_logs_and_recomputes_duration(self, caplog):
         """warn policy logs a warning and recomputes duration from end."""
@@ -127,7 +131,9 @@ class TestNormalizeIntervalsRow:
             "duration": coordinate_to_struct(5.0),
         }
         with caplog.at_level(logging.WARNING, logger="timetoalign.storage.events"):
-            EventData._normalize_intervals_row(processed, policy=IntervalPolicy.warn)
+            EventData._normalize_intervals_row(
+                processed, policy=IntervalPolicy.warn, number_type=NumberType.float
+            )
         assert _value_of(processed["duration"]) == 2.0
         assert _value_of(processed["end"]) == 3.0
         assert any("inconsistency" in r.message.lower() for r in caplog.records)
@@ -139,7 +145,9 @@ class TestNormalizeIntervalsRow:
             "end": coordinate_to_struct(3.0),
             "duration": coordinate_to_struct(5.0),
         }
-        EventData._normalize_intervals_row(processed, policy=IntervalPolicy.prefer_end)
+        EventData._normalize_intervals_row(
+            processed, policy=IntervalPolicy.prefer_end, number_type=NumberType.float
+        )
         assert _value_of(processed["duration"]) == 2.0
         assert _value_of(processed["end"]) == 3.0
 
@@ -151,7 +159,9 @@ class TestNormalizeIntervalsRow:
             "duration": coordinate_to_struct(5.0),
         }
         EventData._normalize_intervals_row(
-            processed, policy=IntervalPolicy.prefer_duration
+            processed,
+            policy=IntervalPolicy.prefer_duration,
+            number_type=NumberType.float,
         )
         assert _value_of(processed["end"]) == 6.0
         assert _value_of(processed["duration"]) == 5.0
@@ -164,7 +174,7 @@ class TestNormalizeIntervalsRow:
             "start": coordinate_to_struct(Fraction(1, 4)),
             "end": coordinate_to_struct(Fraction(3, 4)),
         }
-        EventData._normalize_intervals_row(processed)
+        EventData._normalize_intervals_row(processed, number_type=NumberType.fraction)
         dur = _value_of(processed["duration"])
         assert dur == 0.5
 
@@ -174,7 +184,7 @@ class TestNormalizeIntervalsRow:
             "start": coordinate_to_struct(Fraction(1, 4)),
             "duration": coordinate_to_struct(Fraction(1, 2)),
         }
-        EventData._normalize_intervals_row(processed)
+        EventData._normalize_intervals_row(processed, number_type=NumberType.fraction)
         end = _value_of(processed["end"])
         assert end == 0.75
 
@@ -187,7 +197,9 @@ class TestNormalizeIntervalsRow:
             "end": coordinate_to_struct(Fraction(3, 1)),
             "duration": coordinate_to_struct(Fraction(1, 2)),  # inconsistent
         }
-        EventData._normalize_intervals_row(processed, policy=IntervalPolicy.warn)
+        EventData._normalize_intervals_row(
+            processed, policy=IntervalPolicy.warn, number_type=NumberType.fraction
+        )
         dur = processed["duration"]
         assert dur["numerator"] == 8
         assert dur["denominator"] == 3
@@ -199,7 +211,9 @@ class TestNormalizeIntervalsRow:
             "end": coordinate_to_struct(3.0),  # no exact ratio
             "duration": coordinate_to_struct(Fraction(1, 2)),  # inconsistent
         }
-        EventData._normalize_intervals_row(processed, policy=IntervalPolicy.warn)
+        EventData._normalize_intervals_row(
+            processed, policy=IntervalPolicy.warn, number_type=NumberType.fraction
+        )
         dur = processed["duration"]
         assert (dur["numerator"], dur["denominator"]) == (8, 3)
         assert dur["value"] == float(Fraction(8, 3))
@@ -269,7 +283,9 @@ class TestNormalizeIntervalsVectorized:
             "start": _make_coord_array([0.0, 1.0, 2.0]),
             "end": _make_coord_array([1.0, 2.0, 3.5]),
         }
-        result = EventData._normalize_intervals_vectorized(processed)
+        result = EventData._normalize_intervals_vectorized(
+            processed, number_type=NumberType.float
+        )
         dur = result["duration"]
         dur_vals = dur.field("value").to_pylist()
         assert dur_vals == [1.0, 1.0, 1.5]
@@ -280,7 +296,9 @@ class TestNormalizeIntervalsVectorized:
             "start": _make_coord_array([0.0, 1.0, 2.0]),
             "duration": _make_coord_array([1.0, 1.0, 1.5]),
         }
-        result = EventData._normalize_intervals_vectorized(processed)
+        result = EventData._normalize_intervals_vectorized(
+            processed, number_type=NumberType.float
+        )
         end = result["end"]
         end_vals = end.field("value").to_pylist()
         assert end_vals == [1.0, 2.0, 3.5]
@@ -294,7 +312,7 @@ class TestNormalizeIntervalsVectorized:
         }
         with pytest.raises(ValueError, match="Interval inconsistency"):
             EventData._normalize_intervals_vectorized(
-                processed, policy=IntervalPolicy.strict
+                processed, policy=IntervalPolicy.strict, number_type=NumberType.float
             )
 
     def test_warn_recomputes_duration(self, caplog):
@@ -306,7 +324,7 @@ class TestNormalizeIntervalsVectorized:
         }
         with caplog.at_level(logging.WARNING, logger="timetoalign.storage.events"):
             result = EventData._normalize_intervals_vectorized(
-                processed, policy=IntervalPolicy.warn
+                processed, policy=IntervalPolicy.warn, number_type=NumberType.float
             )
         dur_vals = result["duration"].field("value").to_pylist()
         assert dur_vals == [1.0, 2.0]
@@ -321,7 +339,7 @@ class TestNormalizeIntervalsVectorized:
             "duration": _make_coord_array([1.0, 5.0]),
         }
         result = EventData._normalize_intervals_vectorized(
-            processed, policy=IntervalPolicy.prefer_end
+            processed, policy=IntervalPolicy.prefer_end, number_type=NumberType.float
         )
         dur_vals = result["duration"].field("value").to_pylist()
         assert dur_vals == [1.0, 2.0]
@@ -336,7 +354,9 @@ class TestNormalizeIntervalsVectorized:
             "duration": _make_coord_array([1.0, 5.0]),
         }
         result = EventData._normalize_intervals_vectorized(
-            processed, policy=IntervalPolicy.prefer_duration
+            processed,
+            policy=IntervalPolicy.prefer_duration,
+            number_type=NumberType.float,
         )
         end_vals = result["end"].field("value").to_pylist()
         assert end_vals == [1.0, 6.0]
@@ -349,7 +369,9 @@ class TestNormalizeIntervalsVectorized:
             "start": _make_coord_array([0.0, 1.0]),
             "end": _make_coord_array([1.0, 2.0]),
         }
-        result = EventData._normalize_intervals_vectorized(processed)
+        result = EventData._normalize_intervals_vectorized(
+            processed, number_type=NumberType.float
+        )
         tt = result["temporal_type"]
         if isinstance(tt, pa.Array):
             tt = tt.to_pylist()
@@ -360,7 +382,9 @@ class TestNormalizeIntervalsVectorized:
         processed = {
             "start": _make_coord_array([0.0, 1.0]),
         }
-        result = EventData._normalize_intervals_vectorized(processed)
+        result = EventData._normalize_intervals_vectorized(
+            processed, number_type=NumberType.float
+        )
         tt = result["temporal_type"]
         if isinstance(tt, pa.Array):
             tt = tt.to_pylist()

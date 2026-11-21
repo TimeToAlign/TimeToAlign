@@ -216,7 +216,11 @@ class NoteEventData(EventData):
             # Unified interval normalisation: converts coordinate fields
             # to struct format, fills missing end/duration, and infers
             # temporal_type.  Delegates to the base EventData method.
-            EventData._normalize_intervals_row(processed, policy=interval_policy)
+            EventData._normalize_intervals_row(
+                processed,
+                policy=interval_policy,
+                number_type=unit.resolve_number_type(number_type),
+            )
 
             processed_rows.append(processed)
 

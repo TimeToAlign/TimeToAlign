@@ -52,7 +52,7 @@ from timetoalign.core.fields import (
     metadata_blob_from_dict,
     parse_metadata_blob,
 )
-from timetoalign.core.time import build_number_struct_array
+from timetoalign.core.time import build_number_struct_array, combine_number_columns
 from timetoalign.loader.base import EventLoader
 from timetoalign.storage.schema import (
     ComputedField,
@@ -1117,110 +1117,16 @@ class TabularLoader(EventLoader):
             if all(v is None for v in dur_values):
                 return pa.nulls(n, type=columns["start"].type)
 
-        # Compute valid masks (vectorized)
-        start_is_null = columns["start"].is_null().to_numpy(zero_copy_only=False)
-        valid_dur_mask = ~pd.isna(dur_values)
-        valid_end_mask = ~start_is_null & valid_dur_mask
-
-        # Parse duration through the one number builder
-        valid_dur_values = dur_values[valid_dur_mask]
-        parsed_dur = build_number_struct_array(
-            valid_dur_values, number_type=self._number_type
-        )
-
-        # Build full duration arrays using scatter (vectorized)
-        dur_value_full = np.full(n, np.nan, dtype=np.float64)
-        dur_num_full = np.zeros(n, dtype=np.int64)
-        dur_den_full = np.ones(n, dtype=np.int64)
-
-        valid_indices = np.where(valid_dur_mask)[0]
-        dur_value_full[valid_indices] = parsed_dur.field("value").to_numpy(
-            zero_copy_only=False
-        )
-
-        # Extract numerator/denominator arrays from parsed (vectorized)
-        parsed_num_arr = parsed_dur.field("numerator").to_numpy(zero_copy_only=False)
-        parsed_den_arr = parsed_dur.field("denominator").to_numpy(zero_copy_only=False)
-
-        num_valid = ~pd.isna(parsed_num_arr)
-        den_valid = ~pd.isna(parsed_den_arr)
-        pair_valid = num_valid & den_valid
-
-        if num_valid.any():
-            dur_num_full[valid_indices[num_valid]] = parsed_num_arr[num_valid].astype(
-                np.int64
-            )
-        if den_valid.any():
-            dur_den_full[valid_indices[den_valid]] = parsed_den_arr[den_valid].astype(
-                np.int64
-            )
-
-        # Get start arrays (vectorized)
-        start_value = columns["start"].field("value").to_numpy(zero_copy_only=False)
-        start_num = columns["start"].field("numerator").to_numpy(zero_copy_only=False)
-        start_den = columns["start"].field("denominator").to_numpy(zero_copy_only=False)
-
-        # Compute end = start + duration (vectorized)
-        end_value = start_value + dur_value_full
-
-        # Vectorized fraction addition: a/b + c/d = (a*d + c*b) / (b*d)
-        start_has_frac = ~pd.isna(start_num) & ~pd.isna(start_den)
-        dur_has_frac = np.zeros(n, dtype=bool)
-        dur_has_frac[valid_indices] = pair_valid
-        both_frac_mask = start_has_frac & dur_has_frac & valid_end_mask
-
-        s_num = np.where(pd.isna(start_num), 0, start_num).astype(np.int64)
-        s_den = np.where(pd.isna(start_den), 1, start_den).astype(np.int64)
-        d_num = dur_num_full
-        d_den = dur_den_full
-
-        result_num = s_num * d_den + d_num * s_den
-        result_den = s_den * d_den
-
-        end_num = np.zeros(n, dtype=np.int64)
-        end_den = np.ones(n, dtype=np.int64)
-
-        if both_frac_mask.any():
-            gcd_vals = np.gcd(result_num[both_frac_mask], result_den[both_frac_mask])
-            end_num[both_frac_mask] = result_num[both_frac_mask] // gcd_vals
-            end_den[both_frac_mask] = result_den[both_frac_mask] // gcd_vals
-
-        # Build coordinate struct arrays (vectorized)
-        coord_type = pa.struct(
-            [
-                pa.field("value", pa.float64(), nullable=True),
-                pa.field("numerator", pa.int64(), nullable=True),
-                pa.field("denominator", pa.int64(), nullable=True),
-            ]
-        )
-
-        end_null_mask = ~valid_end_mask
-        end_num_null_mask = ~both_frac_mask
-
-        # Also store duration in columns
-        dur_null_mask = ~valid_dur_mask
-        dur_num_has_pair = np.zeros(n, dtype=bool)
-        dur_num_has_pair[valid_indices] = pair_valid
-        dur_num_null_full = ~dur_num_has_pair
-
-        columns["duration"] = pa.StructArray.from_arrays(
-            [
-                pa.array(dur_value_full, mask=dur_null_mask, type=pa.float64()),
-                pa.array(dur_num_full, mask=dur_num_null_full, type=pa.int64()),
-                pa.array(dur_den_full, mask=dur_num_null_full, type=pa.int64()),
-            ],
-            fields=list(coord_type),
-            mask=pa.array(dur_null_mask),
-        )
-
-        return pa.StructArray.from_arrays(
-            [
-                pa.array(end_value, mask=end_null_mask, type=pa.float64()),
-                pa.array(end_num, mask=end_num_null_mask, type=pa.int64()),
-                pa.array(end_den, mask=end_num_null_mask, type=pa.int64()),
-            ],
-            fields=list(coord_type),
-            mask=pa.array(end_null_mask),
+        # The duration column through the one number builder, then end =
+        # start + duration in the declared number type: a float axis adds its
+        # doubles and mirrors each sum once, an exact axis adds its ratios
+        # without overflow.
+        if dur_values.dtype == object:
+            dur_values = np.where(pd.isna(dur_values), None, dur_values)
+        duration = build_number_struct_array(dur_values, number_type=self._number_type)
+        columns["duration"] = duration
+        return combine_number_columns(
+            columns["start"], duration, "add", self._number_type
         )
 
     def _parse_nullable_coordinates(

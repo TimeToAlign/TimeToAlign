@@ -3597,6 +3597,161 @@ OptionalCoordinate = Union[Coordinate, None]
 
 
 # ---------------------------------------------------------------------------
+# Coordinate cell: a number with its own unit and number type
+# ---------------------------------------------------------------------------
+
+COORDINATE_CELL_TYPE: pa.StructType = pa.struct(
+    [
+        *RATIONAL_STRUCT_TYPE,
+        pa.field("unit", pa.string(), nullable=True),
+        pa.field("number_type", pa.string(), nullable=True),
+    ]
+)
+"""One coordinate (or duration) as a table cell that names its own axis.
+
+The number struct of :data:`RATIONAL_STRUCT_TYPE`, both sides populated on
+every non-null cell (a float mirrored by its exact ratio), followed by the
+``unit`` (the :class:`TimeUnit` value) and the ``number_type`` (``"int"``,
+``"float"`` or ``"fraction"``), which says which side is authoritative. It
+is the cell of a table whose rows may lie on different timelines, such as
+the MatchClaim table and the Projections table, where no field can record
+one axis for all rows.
+"""
+
+
+def axis_coordinate_cells(
+    values: Any,
+    *,
+    unit: TimeUnit | str,
+    number_type: NumberType | str | None = None,
+    rounding: str = "round",
+) -> pa.StructArray:
+    """Build the coordinate cells of a column of numbers on one axis.
+
+    The numbers go through :func:`build_number_struct_array` (vectorized for
+    a plain numeric column), written in *number_type*; every non-null cell
+    names *unit* and *number_type*.
+
+    Args:
+        values: One number per row, ``None`` for a null cell (any column
+            :func:`build_number_struct_array` reads).
+        unit: The axis's unit.
+        number_type: The axis's number type; the unit's default when omitted.
+        rounding: How an inexact value is made integral on an ``int`` axis.
+
+    Returns:
+        A ``pa.StructArray`` of :data:`COORDINATE_CELL_TYPE`.
+
+    Examples:
+        >>> axis_coordinate_cells([3, None], unit="samples").to_pylist()[0]
+        {'value': 3.0, 'numerator': 3, 'denominator': 1, 'unit': 'samples', 'number_type': 'int'}
+    """
+    unit = TimeUnit(unit)
+    number_type = unit.resolve_number_type(
+        None if number_type is None else NumberType(number_type)
+    )
+    numbers = build_number_struct_array(
+        values, number_type=number_type, rounding=rounding
+    )
+    valid = numbers.is_valid()
+    n = len(numbers)
+    return pa.StructArray.from_arrays(
+        [
+            numbers.field("value"),
+            numbers.field("numerator"),
+            numbers.field("denominator"),
+            pc.if_else(valid, pa.scalar(unit.value), pa.nulls(n, pa.string())),
+            pc.if_else(valid, pa.scalar(number_type.name), pa.nulls(n, pa.string())),
+        ],
+        fields=list(COORDINATE_CELL_TYPE),
+        mask=pc.invert(valid),
+    )
+
+
+def coordinate_cells(coordinates: Iterable[TimeScalar | None]) -> pa.StructArray:
+    """Build the coordinate cells of *coordinates*, each on its own axis.
+
+    Each coordinate keeps its unit and number type; the rows of one axis are
+    built together by :func:`axis_coordinate_cells`, and the row order is
+    kept. A :class:`Duration` makes a cell like a :class:`Coordinate`.
+
+    Args:
+        coordinates: One coordinate (or duration) per row, ``None`` for a
+            null cell.
+
+    Returns:
+        A ``pa.StructArray`` of :data:`COORDINATE_CELL_TYPE`.
+
+    Examples:
+        >>> cells = coordinate_cells(
+        ...     [Coordinate(Fraction(1, 3), "quarters"), None, Coordinate(0.5, "seconds")]
+        ... )
+        >>> [cell and (cell["numerator"], cell["denominator"]) for cell in cells.to_pylist()]
+        [(1, 3), None, (1, 2)]
+    """
+    items = list(coordinates)
+    rows_of_axis: dict[tuple[TimeUnit, NumberType], list[int]] = {}
+    for index, coordinate in enumerate(items):
+        if coordinate is not None:
+            axis = (coordinate.unit, coordinate.number_type)
+            rows_of_axis.setdefault(axis, []).append(index)
+    order = [index for rows in rows_of_axis.values() for index in rows]
+    nulls = [index for index, coordinate in enumerate(items) if coordinate is None]
+    parts = [
+        axis_coordinate_cells(
+            [items[index].value for index in rows], unit=unit, number_type=number_type
+        )
+        for (unit, number_type), rows in rows_of_axis.items()
+    ]
+    parts.append(pa.nulls(len(nulls), COORDINATE_CELL_TYPE))
+    cells = pa.concat_arrays(parts)
+    position = np.empty(len(items), dtype=np.int64)
+    position[np.asarray(order + nulls, dtype=np.int64)] = np.arange(
+        len(items), dtype=np.int64
+    )
+    return cells.take(pa.array(position))
+
+
+def cell_coordinate(
+    cell: dict[str, Any] | None,
+    scalar: type[TimeScalarT] = Coordinate,  # type: ignore[assignment]
+) -> TimeScalarT | None:
+    """Read the coordinate a coordinate cell holds, on the axis it names.
+
+    The side the cell's ``number_type`` names is read, so an exact value
+    stays exact and a float stays the float written.
+
+    Args:
+        cell: A cell of :data:`COORDINATE_CELL_TYPE` as a dict, or ``None``.
+        scalar: The scalar to make, :class:`Coordinate` or :class:`Duration`.
+
+    Returns:
+        The scalar, or ``None`` for a null cell.
+
+    Raises:
+        ValueError: If the cell names no unit or number type, or its number
+            cannot be read in its number type.
+
+    Examples:
+        >>> cell_coordinate(
+        ...     {"value": 0.5, "numerator": 1, "denominator": 2,
+        ...      "unit": "quarters", "number_type": "fraction"}
+        ... )
+        Coordinate(Fraction(1, 2), quarters)
+    """
+    if cell is None:
+        return None
+    if cell.get("unit") is None or cell.get("number_type") is None:
+        raise ValueError(f"The coordinate cell {cell} names no unit or number type")
+    number_type = NumberType(cell["number_type"])
+    return scalar(
+        struct_to_coordinate(cell, number_type),
+        TimeUnit(cell["unit"]),
+        number_type=number_type,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Interval / IntervalField
 # ---------------------------------------------------------------------------
 

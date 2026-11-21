@@ -1594,11 +1594,11 @@ ever yields a negative coordinate or one beyond a timeline's length.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                               |
-|--------|----------------------------|-----------------------------------------------------------|
-|        | [TypeError](`TypeError`)   | If ``at`` is not a supported coordinate or Interval.      |
-|        | [ValueError](`ValueError`) | If timeline_id is None and ``at`` is not an IdCoordinate. |
-|        | [KeyError](`KeyError`)     | If timeline_id is not in the bundle.                      |
+| Name   | Type                       | Description                                                                                                                                                                                        |
+|--------|----------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [TypeError](`TypeError`)   | If ``at`` is not a supported coordinate or Interval.                                                                                                                                               |
+|        | [ValueError](`ValueError`) | If timeline_id is None and ``at`` is not an IdCoordinate, or if ``within``, ``id_pattern``, ``include_domains`` and ``include_units`` keep none of the stamp's timelines (the message names them). |
+|        | [KeyError](`KeyError`)     | If timeline_id is not in the bundle.                                                                                                                                                               |
 
 #### Examples {.doc-section .doc-section-examples}
 

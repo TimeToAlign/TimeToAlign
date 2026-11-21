@@ -85,6 +85,12 @@ Create filtered stamp with subset of timelines.
 |--------|----------------|-----------------------------------------|
 |        | \'MatchStamp\' | New MatchStamp with filtered timelines. |
 
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                     |
+|--------|----------------------------|-----------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the filter keeps none of the stamp's timelines, naming them. |
+
 ### from_dict { #timetoalign.alignment.MatchStamp.from_dict }
 
 ```python

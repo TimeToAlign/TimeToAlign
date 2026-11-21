@@ -311,7 +311,9 @@ MatchClaimField: |
   its number type names (an int as numerator alone, a fraction as numerator
   and denominator, a float as value alone), the others null, and
   from_package_table() reads that form back, refusing a cell that does not
-  stand as its number type says and a null coordinate. Either way a claim's coordinate comes back in its axis's
+  stand as its number type says and a null coordinate. A fraction is read in
+  any terms (2/4 is the value 1/2), and a claim gives an end on both sides or
+  on neither. Either way a claim's coordinate comes back in its axis's
   declared number type instead of being flattened on the way through the
   column. Individual MatchClaims are materialised on demand when a row is
   indexed or iterated. Built vectorized via from_columns(), it is the scalable

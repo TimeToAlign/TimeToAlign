@@ -2446,8 +2446,11 @@ Filter and retrieve events.
 
 When ``include_children=True`` (the default), events from all
 children are included with their coordinates adjusted to the
-root timeline's coordinate system. Segment events (internal
-bookkeeping) are always excluded.
+root timeline's coordinate system. Each of them names the
+timeline holding it in the column ``source_timeline`` (a child, or
+a deeper descendant), at every depth; the timeline's own events
+leave it null. Segment events (internal bookkeeping) are always
+excluded.
 
 #### Parameters {.doc-section .doc-section-parameters}
 

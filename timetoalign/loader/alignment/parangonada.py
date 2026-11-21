@@ -62,9 +62,10 @@ expressing the work across the logical and physical domains:
   :class:`~timetoalign.timelines.types.DiscretePhysicalTimeline`
   (``perf:<key>:dpt_1``) carrying a
   :class:`~timetoalign.maps.convenience.SamplesToSeconds` map; and
-* a cross-group :class:`~timetoalign.alignment.anchors.MatchClaim` per
-  ``align.csv`` row — a synchronous claim for a match and a NOMATCH
-  claim for an insertion or a deletion.
+* a cross-group :class:`~timetoalign.alignment.claims.MatchClaim` per
+  ``align.csv`` row, naming the notes the row names on the two timelines
+  — a synchronous claim for a match and a NOMATCH claim for an insertion
+  or a deletion.
 
 The loader reads the *existing* alignment; it never runs an aligner.
 
@@ -83,6 +84,7 @@ from fractions import Fraction
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import pyarrow.compute as pc
 from typing_extensions import Self
 
 from timetoalign.alignment.claims import MatchClaim
@@ -441,9 +443,7 @@ class ParangonadaLoader(AlignmentLoader):
         self._perf_cpt[performer_key] = perf_cpt
         self._perf_dpt[performer_key] = perf_dpt
 
-        self._build_claims(
-            performer_key, performer_dir, score_q_by_id, perf_sec_by_id, cpt_id
-        )
+        self._build_claims(performer_key, performer_dir, perf_cpt)
 
     @classmethod
     def _add_feature_events(
@@ -558,57 +558,66 @@ class ParangonadaLoader(AlignmentLoader):
         self,
         performer_key: str,
         performer_dir: Path,
-        score_q_by_id: dict[str, Fraction],
-        perf_sec_by_id: dict[str, float],
-        cpt_id: str,
+        perf_cpt: ContinuousPhysicalTimeline,
     ) -> None:
         """Emit one cross-group MatchClaim per ``align.csv`` row (faithfully).
 
-        A matchtype-0 row yields a synchronous score→performance
-        projection claim; matchtype-1 (score-only) and matchtype-2
-        (performance-only) rows yield NOMATCH claims, oriented so the
-        present side is the claim's source.  Duplicated rows in the source
+        Every row names its notes by the ids of ``part.csv`` (``partid``) and
+        ``ppart.csv`` (``ppartid``), which are the ids of the notes on
+        ``score:clt_1`` and on the performer's seconds timeline, so every
+        claim names those events at their coordinates there.  A matchtype-0
+        row yields a synchronous claim between the two notes; matchtype-1
+        (score-only) and matchtype-2 (performance-only) rows yield NOMATCH
+        claims from the note that is present.  Duplicated rows in the source
         data are preserved as duplicate claims.
         """
+        score = self._score_clt
+        assert score is not None
+        score_notes = self._note_events(score)
+        perf_notes = self._note_events(perf_cpt)
         meta = Provenance(method="imported", note=f"parangonada {performer_key}")
         for row in self._read_csv(performer_dir / "align.csv"):
             matchtype = row["matchtype"]
-            partid = row["partid"]
-            ppartid = row["ppartid"]
-
             if matchtype == _MATCH:
                 self._claims.append(
-                    MatchClaim.from_projection(
-                        event={"start": score_q_by_id[partid]},
-                        source_tl_id=_SCORE_CLT_ID,
-                        target_tl_id=cpt_id,
-                        target_coord=float(perf_sec_by_id[ppartid]),
-                        source_unit=TimeUnit.quarters,
-                        target_unit=TimeUnit.seconds,
-                        coord_key="start",
+                    MatchClaim.from_events(
+                        score_notes[row["partid"]],
+                        score,
+                        perf_notes[row["ppartid"]],
+                        perf_cpt,
                         provenance=meta,
                     )
                 )
             elif matchtype == _SCORE_ONLY:
                 self._claims.append(
                     MatchClaim.nomatch(
-                        event={"start": score_q_by_id[partid]},
-                        source_tl_id=_SCORE_CLT_ID,
-                        target_tl_id=cpt_id,
-                        unit=TimeUnit.quarters,
-                        provenance=meta,
+                        score_notes[row["partid"]], score, perf_cpt, provenance=meta
                     )
                 )
             elif matchtype == _PERF_ONLY:
                 self._claims.append(
                     MatchClaim.nomatch(
-                        event={"start": float(perf_sec_by_id[ppartid])},
-                        source_tl_id=cpt_id,
-                        target_tl_id=_SCORE_CLT_ID,
-                        unit=TimeUnit.seconds,
-                        provenance=meta,
+                        perf_notes[row["ppartid"]], perf_cpt, score, provenance=meta
                     )
                 )
+
+    @staticmethod
+    def _note_events(timeline: Timeline) -> dict[str, dict[str, Any]]:
+        """Return each Note event of *timeline* as ``{id, start}``, by id.
+
+        The starts are the stored cells, read column-wise, so a claim names
+        each note at its own coordinate on the timeline's axis.
+        """
+        table = timeline.get_events(include_children=False)._table
+        notes = table.filter(pc.equal(table.column("event_type"), "Note"))
+        return {
+            event_id: {"id": event_id, "start": start}
+            for event_id, start in zip(
+                notes.column("id").to_pylist(),
+                notes.column("start").to_pylist(),
+                strict=True,
+            )
+        }
 
     @staticmethod
     def _resolve_audio_info(performer_key: str, audio_dir: Path) -> Any:

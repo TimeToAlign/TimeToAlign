@@ -541,10 +541,8 @@ class MatchfileLoader(AlignmentLoader):
             f"{len(perf_event_dicts)} events"
         )
 
-        # Step 3: Build MatchClaims
-        score_tl_id = self._score_timeline.id
-        perf_tl_id = perf_tl.id
-
+        # Step 3: Build MatchClaims, each naming the score note and the
+        # performed note by their ids on the two timelines.
         # Matched notes: synchronous interval claims
         for match_record in matches:
             score_id = match_record["score_id"]
@@ -572,13 +570,10 @@ class MatchfileLoader(AlignmentLoader):
             perf_end = float(perf_note["note_off_tick"])
 
             claim = MatchClaim.from_events(
-                event_a={"start": score_start, "end": score_end},
-                tl_a_id=score_tl_id,
-                event_b={"start": perf_start, "end": perf_end},
-                tl_b_id=perf_tl_id,
-                unit_a=self._score_unit,
-                unit_b=TimeUnit.ticks,
-                coord_key="start",
+                {"id": score_id, "start": score_start, "end": score_end},
+                self._score_timeline,
+                {"id": perf_id, "start": perf_start, "end": perf_end},
+                perf_tl,
                 end_coord_key="end",
                 provenance=MATCH_META,
             )
@@ -598,10 +593,9 @@ class MatchfileLoader(AlignmentLoader):
 
             score_start, _ = self._score_events[score_id]
             claim = MatchClaim.nomatch(
-                event={"start": score_start},
-                source_tl_id=score_tl_id,
-                target_tl_id=perf_tl_id,
-                unit=self._score_unit,
+                {"id": score_id, "start": score_start},
+                self._score_timeline,
+                perf_tl,
                 provenance=MATCH_META,
             )
             self._claims.append(claim)

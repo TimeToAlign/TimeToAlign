@@ -26,10 +26,10 @@ kinds of rows, both stating a note on one side only:
   string rather than a one-item list.
 
 The loader keeps the rows verbatim and states each as
-:class:`~timetoalign.alignment.claims.MatchClaim` objects between a score
-timeline whose events carry those ``xml:id`` values (as
-:class:`~timetoalign.loader.score.VerovioLoader` gives) and a performance
-timeline::
+:class:`~timetoalign.alignment.claims.MatchClaim` objects between the events
+of a score timeline whose events carry those ``xml:id`` values (as
+:class:`~timetoalign.loader.score.VerovioLoader` gives) and the Projections
+it adds to a performance timeline::
 
     bundle = MapsLoader.from_file("alignment.json").create_bundle(score, performance)
 """
@@ -43,7 +43,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from timetoalign.alignment.claims import MatchClaim
-from timetoalign.core import Provenance, TimeUnit
+from timetoalign.core import EventReference, Projection, Provenance, TimeUnit
 from timetoalign.core.time import Coordinate
 from timetoalign.loader.base import AlignmentLoader
 
@@ -66,15 +66,17 @@ class MapsLoader(AlignmentLoader):
     2. ``loader.create_bundle(score, performance)`` — both timelines and the
        claims in one bundle; ``create_match_claims`` gives the claims alone.
 
-    Every row is kept as stated, one claim per listed id:
+    Every row is kept as stated, one claim per listed id. The recording has
+    no events of its own, so an onset enters the performance timeline as a
+    :class:`~timetoalign.core.Projection` on its own axis:
 
     * a non-negative onset: a synchronous claim between the score note and
-      the onset;
+      its Projection at the onset;
     * a negative onset (trompa-align's ``-1`` for a note not performed): a
-      NOMATCH claim from the score side, at the note's score coordinate;
+      NOMATCH claim from the score note;
     * an id beginning ``trompa-align_inserted_`` (a performed note not in the
-      score): a NOMATCH claim from the performance side, at the onset, the id
-      kept verbatim.
+      score): a NOMATCH claim from a Projection at the onset that stands for
+      no score note, the id kept.
 
     An id listed in two rows (say, a repeat played against an unrepeated
     score) gives one claim per row, and ``load`` logs it. ``load`` logs the
@@ -183,20 +185,36 @@ class MapsLoader(AlignmentLoader):
     ) -> list[MatchClaim]:
         """Return one claim per listed id of every row, as the row states it.
 
-        A note at a non-negative onset gives a synchronous claim relating the
-        event named by the id on ``score``, at its start coordinate there, to
-        ``performance`` at the onset in seconds. A note at a negative onset
-        gives a NOMATCH claim from ``score`` at that start coordinate; an
-        inserted id a NOMATCH claim from ``performance`` at the onset in
-        seconds, the id kept as the event id. A performance timeline in
-        another unit reaches seconds through its C-Map; an
-        :class:`~timetoalign.alignment.bundle.AlignmentBundle` holding both
-        timelines converts the claims onto its axis.
+        Every claim names its events. The recording holds no event of its
+        own, so each onset first becomes a
+        :class:`~timetoalign.core.Projection` added to ``performance``, its
+        position the onset converted onto the performance timeline's axis
+        (through its C-Map where that is not in seconds: a samples timeline
+        holds samples, never seconds):
+
+        * a note at a non-negative onset: a Projection of the score note
+          (``projection_of`` naming it on ``score``) and a synchronous claim
+          between the score note, at its start coordinate on ``score``, and
+          that Projection;
+        * a note at a negative onset: a NOMATCH claim from the score note;
+          nothing is added to ``performance``;
+        * an inserted id: a Projection standing for a note the score does not
+          hold (``projection_of`` null) and a NOMATCH claim from it. The
+          Projection keeps the file's id; where trompa-align gives two
+          inserted notes one id (it spells the pitch only), each Projection
+          is minted an id of its own and the claim keeps the file's id as
+          the event's name.
+
+        Each call adds its Projections to ``performance``: calling it twice
+        on one performance timeline adds them twice (and refuses an inserted
+        id the timeline already holds).
 
         Args:
             score: The timeline holding the events the ids name (searched
-                with its children).
-            performance: The timeline of the recording.
+                with its children); the claims name it and give each note's
+                coordinate on its axis.
+            performance: The timeline of the recording, which receives the
+                Projections.
             provenance: Provenance recorded on every claim.
 
         Returns:
@@ -207,22 +225,30 @@ class MapsLoader(AlignmentLoader):
             RuntimeError: If no file has been loaded.
             KeyError: If an id of a score note names no event of ``score``.
             ValueError: If ``performance`` is not in seconds and has no C-Map
-                to seconds.
+                to seconds, or an onset does not fit on it. Nothing is added
+                to ``performance`` then.
         """
         rows = self._require_rows()
         _require_seconds(performance, rows)
-        claims: list[MatchClaim] = []
+        inserted = Counter(
+            xml_id
+            for row in rows
+            for xml_id in _ids(row)
+            if xml_id.startswith(_INSERTED_ID_PREFIX)
+        )
+        # Every lookup and conversion runs before the performance timeline
+        # changes, so a refusal leaves it as it was.
+        stated: list[tuple[str, Coordinate | None, int | None]] = []
+        projections: list[Projection] = []
         for row in rows:
             onset = Coordinate(row["obs_mean_onset"], TimeUnit.seconds)
             for xml_id in _ids(row):
                 if xml_id.startswith(_INSERTED_ID_PREFIX):
-                    claims.append(
-                        MatchClaim.nomatch(
-                            event={"id": xml_id, "start": onset},
-                            source_tl_id=performance.id,
-                            target_tl_id=score.id,
-                            unit=TimeUnit.seconds,
-                            provenance=provenance,
+                    stated.append((xml_id, None, len(projections)))
+                    projections.append(
+                        Projection(
+                            id=xml_id if inserted[xml_id] == 1 else None,
+                            start=_on_performance(onset, performance),
                         )
                     )
                     continue
@@ -235,26 +261,53 @@ class MapsLoader(AlignmentLoader):
                         "was made for?"
                     ) from None
                 if onset.value < 0:
-                    claims.append(
-                        MatchClaim.nomatch(
-                            event={"id": xml_id, "start": start},
-                            source_tl_id=score.id,
-                            target_tl_id=performance.id,
-                            unit=score.unit,
-                            provenance=provenance,
-                        )
-                    )
+                    stated.append((xml_id, start, None))
                     continue
+                stated.append((xml_id, start, len(projections)))
+                projections.append(
+                    Projection(
+                        start=_on_performance(onset, performance),
+                        projection_of=EventReference(
+                            timeline_id=score.id, event_id=xml_id
+                        ),
+                    )
+                )
+        projection_ids = performance.add_events(projections) if projections else []
+
+        claims: list[MatchClaim] = []
+        for xml_id, start, index in stated:
+            if index is None:
                 claims.append(
-                    MatchClaim.from_projection(
+                    MatchClaim.nomatch(
                         {"id": xml_id, "start": start},
-                        score.id,
-                        performance.id,
-                        onset,
-                        source_unit=score.unit,
+                        score,
+                        performance,
                         provenance=provenance,
                     )
                 )
+                continue
+            projected = {
+                "id": projection_ids[index],
+                "start": projections[index].start,
+            }
+            if start is None:
+                if projected["id"] != xml_id:
+                    projected["name"] = xml_id
+                claims.append(
+                    MatchClaim.nomatch(
+                        projected, performance, score, provenance=provenance
+                    )
+                )
+                continue
+            claims.append(
+                MatchClaim.from_events(
+                    {"id": xml_id, "start": start},
+                    score,
+                    projected,
+                    performance,
+                    provenance=provenance,
+                )
+            )
         return claims
 
     def create_bundle(
@@ -379,6 +432,22 @@ def _validate_rows(rows: Any, source: Path) -> None:
                 f"{', '.join(inserted)} at the negative onset {onset}: a note on "
                 "neither the score nor the recording."
             )
+
+
+def _on_performance(onset: Coordinate, performance: Timeline) -> Coordinate:
+    """Return an onset in seconds as a position on *performance*'s own axis.
+
+    A seconds timeline takes it as it is, written in the timeline's number
+    type; any other unit is reached through the timeline's C-Map
+    (3.16952381 s on a 44.1 kHz samples timeline is sample 139776).
+    """
+    if performance.unit == TimeUnit.seconds:
+        return Coordinate(
+            onset.value, TimeUnit.seconds, number_type=performance.number_type
+        )
+    position = performance.get_coordinate_at(onset, format="coordinate")
+    assert isinstance(position, Coordinate)
+    return Coordinate(position.value, position.unit, number_type=position.number_type)
 
 
 def _require_seconds(performance: Timeline, rows: list[dict[str, Any]]) -> None:

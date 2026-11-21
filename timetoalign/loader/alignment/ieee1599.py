@@ -31,9 +31,9 @@ rests and lyric syllables     unit ``ticks``
 ``<structural>`` per          one ``external_references`` row on the
 ``<segment_event>``           spine timeline, naming the Petri-net place
                               that segment maps to
-every ``event_ref``           one synchronous ``MatchClaim``, projection
-                              timeline against the spine, all of them in
-                              one columnar ``MatchClaimField``
+every ``event_ref``           one synchronous ``MatchClaim`` between the
+                              layer event and the spine event, all of
+                              them in one columnar ``MatchClaimField``
 ============================  =========================================
 
 **Spine coordinates.**  The ``timing`` and ``hpos`` attributes of a spine
@@ -47,8 +47,11 @@ spine event ``id`` values, which is what makes ``event_ref`` resolvable on the
 way back out.
 
 **Projected layers.**  Every LOS, graphic and track event carries its raw
-``event_ref`` as a field *and* contributes one synchronous claim tying its own
-coordinate to the referenced spine event's VTU coordinate.  LOS events sit at
+``event_ref`` as a field *and* contributes one synchronous claim between
+itself, at its own coordinate, and the referenced spine event, at its VTU
+coordinate.  The document names no layer event, so each is given the id its
+timeline would mint for it (``note_1``, ``graphicevent_1``,
+``trackevent_1``, counted per event type in document order).  LOS events sit at
 the VTU coordinate of the event they reference (that reference *is* their
 temporal position); graphic events are integer-pixel interval events in their
 edition SegmentLine; track events are instants at ``start_time`` seconds.
@@ -117,6 +120,7 @@ import logging
 import re
 import unicodedata
 import xml.etree.ElementTree as ET
+from collections import Counter
 from dataclasses import dataclass, field
 from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
 from pathlib import Path
@@ -278,6 +282,26 @@ def _prune_columns(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [{key: row[key] for key in kept} for row in rows]
 
 
+def _give_event_ids(rows: list[dict[str, Any]]) -> None:
+    """Give each row the id its timeline would mint for it, in place.
+
+    The document names no layer event (only the spine's), so each row of a
+    layer is given ``{event type in lower case}_{N}``, counted per type in
+    document order. The id is fixed before any timeline exists, so that the
+    claim naming the event and the event itself agree wherever and whenever
+    the timeline is built.
+
+    Args:
+        rows: The rows of one timeline (an edition's rows span its pages and
+            accolades, so its ids are unique over the whole edition).
+    """
+    counts: Counter[str] = Counter()
+    for row in rows:
+        prefix = str(row["event_type"]).lower()
+        counts[prefix] += 1
+        row["id"] = f"{prefix}_{counts[prefix]}"
+
+
 def _table_from_rows(rows: list[dict[str, Any]]) -> pa.Table:
     """Build a column-oriented ``pa.Table`` from uniformly-keyed row dicts."""
     if not rows:
@@ -318,6 +342,7 @@ _EMPTY_CURATED_SCHEMAS = {
     ),
     "los": pa.schema(
         [
+            pa.field("id", pa.string()),
             pa.field("event_type", pa.string()),
             pa.field("instant", pa.int64()),
             pa.field("event_ref", pa.string()),
@@ -346,6 +371,7 @@ _EMPTY_CURATED_SCHEMAS = {
         [
             pa.field("timeline_uid", pa.string()),
             pa.field("edition", pa.string()),
+            pa.field("id", pa.string()),
             pa.field("event_type", pa.string()),
             pa.field("start", pa.int64()),
             pa.field("end", pa.int64()),
@@ -360,6 +386,7 @@ _EMPTY_CURATED_SCHEMAS = {
         [
             pa.field("timeline_uid", pa.string()),
             pa.field("track", pa.string()),
+            pa.field("id", pa.string()),
             pa.field("event_type", pa.string()),
             pa.field("instant", pa.float64()),
             pa.field("event_ref", pa.string()),
@@ -637,6 +664,7 @@ class Ieee1599Loader(XmlLoader):
             for syllable in lyrics.findall("syllable"):
                 self._read_syllable(syllable, context)
 
+        _give_event_ids(self._los_rows)
         self._los_rows = _prune_columns(self._los_rows)
         self._staff_rows = _prune_columns(self._staff_rows)
 
@@ -733,6 +761,7 @@ class Ieee1599Loader(XmlLoader):
     def _los_row(values: dict[str, Any], event_type: str) -> dict[str, Any]:
         """Complete one LOS row to the layer's full key set."""
         row: dict[str, Any] = {
+            "id": None,
             "event_type": event_type,
             "instant": None,
             "event_ref": None,
@@ -811,6 +840,7 @@ class Ieee1599Loader(XmlLoader):
             )
             for instance in group.findall("graphic_instance"):
                 self._read_graphic_instance(instance, spec)
+            _give_event_ids(spec.rows)
             self._set_graphic_claim_coordinates(spec)
             spec.rows = _prune_columns(spec.rows)
             if spec.rows:
@@ -908,6 +938,7 @@ class Ieee1599Loader(XmlLoader):
         assert all(value is not None for value in source_coordinates)
         source_ulx, source_uly, source_lrx, source_lry = source_coordinates
         row: dict[str, Any] = {
+            "id": None,
             "event_type": "GraphicEvent",
             "start": ulx,
             "end": lrx,
@@ -974,12 +1005,14 @@ class Ieee1599Loader(XmlLoader):
                         continue
                     spec.rows.append(
                         {
+                            "id": None,
                             "event_type": "TrackEvent",
                             "instant": start_time,
                             "event_ref": event_ref,
                             "file_name": file_name,
                         }
                     )
+            _give_event_ids(spec.rows)
             spec.rows = _prune_columns(spec.rows)
             self._tracks.append(spec)
 
@@ -1200,13 +1233,18 @@ class Ieee1599Loader(XmlLoader):
     def _build_claim_field(self) -> None:
         """Build the document's single columnar claim field.
 
-        Every projected event states where the spine event it references falls
-        in that layer's own coordinate space, which is one synchronous claim
-        ``projection@own_coordinate <-> spine@vtu``.  All three layers go into
-        one field: the alignment they express is one alignment, hub-and-spoke
-        around the spine, and the coordinate storage carries a unit per row,
-        so ``ticks``, page-image coordinates and ``seconds`` sit side by side
-        without a per-layer split.
+        Every LOS, graphic and track event states where the spine event it
+        references (``event_ref``) falls in its layer's own coordinate space,
+        which is one synchronous claim between the two events: the layer
+        event, at its coordinate on its layer's timeline, and the spine
+        event, at its VTU.  Both are events of the package (the layer events
+        under the ids :func:`_give_event_ids` fixed; a graphic event lives on
+        an accolade of its edition and is named on the edition at its
+        edition-wide x), so no claim needs a Projection.  All three layers go
+        into one field: the alignment they express is one alignment,
+        hub-and-spoke around the spine, and every coordinate is on its own
+        timeline's axis, so ``ticks``, page-image ``pixels`` and ``seconds``
+        sit side by side without a per-layer split.
 
         Claim counts run into the tens of thousands, so the field is assembled
         straight from parallel columns with
@@ -1218,16 +1256,29 @@ class Ieee1599Loader(XmlLoader):
             method="imported", note=f"{creator} {_AGENT_IDENTIFIER}"
         )
         blocks: list[
-            tuple[str | None, list[dict[str, Any]], list[int | float], TimeUnit]
+            tuple[
+                str | None,
+                list[dict[str, Any]],
+                list[int | float],
+                TimeUnit,
+                NumberType,
+            ]
         ] = [
             (
                 self._los_uid,
                 self._los_rows,
                 [row["instant"] for row in self._los_rows],
                 TimeUnit.ticks,
+                NumberType.int,
             ),
             *(
-                (spec.uid, spec.rows, spec.claim_coordinates, _GRAPHIC_UNIT)
+                (
+                    spec.uid,
+                    spec.rows,
+                    spec.claim_coordinates,
+                    _GRAPHIC_UNIT,
+                    NumberType.int,
+                )
                 for spec in self._editions
             ),
             *(
@@ -1236,34 +1287,43 @@ class Ieee1599Loader(XmlLoader):
                     spec.rows,
                     [row["instant"] for row in spec.rows],
                     TimeUnit.seconds,
+                    NumberType.float,
                 )
                 for spec in self._tracks
             ),
         ]
 
         timeline_ids: list[str] = []
-        units: list[TimeUnit] = []
-        projection: list[float] = []
-        spine: list[int] = []
-        for uid, rows, coordinates, unit in blocks:
+        event_ids: list[str] = []
+        spine_event_ids: list[str] = []
+        coordinates: list[int | float] = []
+        axes: dict[str, tuple[TimeUnit, NumberType]] = {}
+        for uid, rows, layer_coordinates, unit, number_type in blocks:
             if uid is None or not rows:
                 continue
+            axes[uid] = (unit, number_type)
             timeline_ids.extend([uid] * len(rows))
-            units.extend([unit] * len(rows))
-            projection.extend(coordinates)
-            spine.extend(self._spine_coordinates[row["event_ref"]] for row in rows)
+            event_ids.extend(row["id"] for row in rows)
+            spine_event_ids.extend(row["event_ref"] for row in rows)
+            coordinates.extend(layer_coordinates)
         if not timeline_ids:
             return
+        assert self._spine_uid is not None
+        axes[self._spine_uid] = (TimeUnit.ticks, NumberType.int)
 
-        # ``unit_a`` is a per-row sequence: the claim coordinate storage keeps
-        # one unit per row, which is what lets the three layers share a field.
+        # The coordinate cells take each row's axis from its timeline, which
+        # is what lets the three layers share a field.
         self._claim_field = MatchClaimField.from_columns(
             timeline_ids,
             [self._spine_uid] * len(timeline_ids),
-            projection,
-            np.asarray(spine, dtype=np.int64),
-            unit_a=units,
-            unit_b=TimeUnit.ticks,
+            event_ids,
+            spine_event_ids,
+            coordinates,
+            np.asarray(
+                [self._spine_coordinates[ref] for ref in spine_event_ids],
+                dtype=np.int64,
+            ),
+            timelines=axes,
             provenance=provenance,
         )
 

@@ -47,7 +47,7 @@ import pyarrow.compute as pc
 import pytest
 
 from timetoalign.alignment.claims import MatchClaim, MatchClaimField
-from timetoalign.core import IdCoordinateField, NumberType, TimeUnit
+from timetoalign.core import IdCoordinateField, NumberType, Provenance, TimeUnit
 from timetoalign.loader.alignment import Ieee1599Loader
 from timetoalign.maps.interval import IntervalToConstantMap
 from timetoalign.timelines.types import (
@@ -767,13 +767,6 @@ class TestClaims:
             "audio": audio,
         }
 
-    def test_claims_stay_columnar(self, ieee1599_bundle) -> None:
-        """No ``MatchClaim`` object is materialised into the bundle."""
-        bundle = ieee1599_bundle("gymnopedie")
-
-        assert bundle.cross_group_claims == []
-        assert len(bundle.cross_group_claim_fields) == 1
-
     def test_get_field_returns_the_one_field(self, ieee1599_loader) -> None:
         """The uniform field API: both selectors resolve to one field."""
         loader = ieee1599_loader("animals")
@@ -823,13 +816,53 @@ class TestClaims:
         assert claim.start_anchor.coordinate_b.value == 0
 
     def test_claim_provenance(self, ieee1599_loader) -> None:
-        """The document's ``creator`` is the agent; the alignment is read, not run."""
+        """The document's ``creator`` is named; the alignment is read, not run."""
         field = ieee1599_loader("gymnopedie").get_field(MatchClaim)
 
-        assert field.metadata is not None
-        assert field.metadata.agent.name == "Finale Plugin"
-        assert field.metadata.agent.identifier == "ieee1599_event_ref"
-        assert field.metadata.certainty == 1.0
+        assert field.provenance == Provenance(
+            method="imported", note="Finale Plugin ieee1599_event_ref"
+        )
+        assert {claim.certainty for claim in field} == {1.0}
+
+    @pytest.mark.parametrize("specimen", ["animals", "khomus"])
+    def test_claims_name_their_events(self, ieee1599_loader, specimen: str) -> None:
+        """Each claim names a layer event and the spine event it references.
+
+        Side A is an event of the layer's timeline (a graphic event lives on
+        an accolade of its edition), and the claim holds the coordinate that
+        timeline gives the event; side B is the spine event the layer event's
+        ``event_ref`` names, at its VTU.
+        """
+        loader = ieee1599_loader(specimen)
+        spine = loader.create_timeline(loader.spine_uid)
+        layers = {uid: loader.create_timeline(uid) for uid in loader.timeline_uids}
+        event_refs = {
+            (uid, row["id"]): row["event_ref"]
+            for uid, timeline in layers.items()
+            if uid != loader.spine_uid
+            for row in timeline.get_events(include_children=True).table.to_pylist()
+        }
+        claims = list(loader.get_field(MatchClaim))
+        assert len(claims) == len(event_refs)
+        assert {(c.timeline_a_id, c.event_a_id) for c in claims} == set(event_refs)
+        for claim in claims:
+            timeline = layers[claim.timeline_a_id]
+            assert (
+                claim.event_b_id == event_refs[(claim.timeline_a_id, claim.event_a_id)]
+            )
+            assert claim.start_anchor.coordinates == (
+                timeline.get_coordinate_for(claim.event_a_id, format="coordinate"),
+                spine.get_coordinate_for(claim.event_b_id, format="coordinate"),
+            )
+
+    def test_layer_events_are_given_ids(self, ieee1599_loader) -> None:
+        """Layer events are numbered per event type, in document order."""
+        loader = ieee1599_loader("animals")
+        los = loader.create_timeline(loader.los_uid)
+        assert los.events.table.column("id").to_pylist() == [
+            *(f"rest_{n}" for n in range(1, 9)),
+            *(f"syllable_{n}" for n in range(1, 9)),
+        ]
 
 
 # endregion
@@ -1098,6 +1131,7 @@ class TestLoaderContract:
             "hpos",
         ]
         assert loader.store["los"].table.schema.names == [
+            "id",
             "event_type",
             "instant",
             "event_ref",
@@ -1124,6 +1158,7 @@ class TestLoaderContract:
         assert loader.store["notational"].table.schema.names == [
             "timeline_uid",
             "edition",
+            "id",
             "event_type",
             "start",
             "end",
@@ -1136,6 +1171,7 @@ class TestLoaderContract:
         assert loader.store["audio"].table.schema.names == [
             "timeline_uid",
             "track",
+            "id",
             "event_type",
             "instant",
             "event_ref",

@@ -36,7 +36,7 @@ from pathlib import Path
 import pytest
 
 from timetoalign.alignment.claims import MatchClaim
-from timetoalign.core import TimeUnit
+from timetoalign.core import Provenance, TimeUnit
 from timetoalign.loader.alignment import ParangonadaLoader
 from timetoalign.maps.convenience import SamplesToSeconds
 from timetoalign.testdata import ensure_data
@@ -103,7 +103,7 @@ def _read_tsv(path: Path) -> list[dict[str, str]]:
 def _performer_claims(bundle, performer_key: str) -> list[MatchClaim]:
     """Claims touching this performer's cpt_1 timeline (either orientation)."""
     cpt_id = f"perf:{performer_key}:cpt_1"
-    return [c for c in bundle.cross_group_claims if c.connects(cpt_id)]
+    return [c for c in bundle.get_match_claims() if c.connects(cpt_id)]
 
 
 # region Bundle shape
@@ -235,19 +235,40 @@ def test_per_performer_claim_counts(bundle, performer_key: str) -> None:
 
 def test_total_claim_counts(bundle) -> None:
     """Totals across all 5 performers: 1275 = 1208 sync + 67 NOMATCH."""
-    claims = bundle.cross_group_claims
+    claims = bundle.get_match_claims()
     assert len(claims) == 1275
     assert sum(1 for c in claims if c.is_synchronous) == 1208
     assert sum(1 for c in claims if not c.is_synchronous) == 67
 
 
-def test_claim_metadata(bundle) -> None:
-    """Claims carry the documented agent (name + per-performer identifier)."""
-    claims = _performer_claims(bundle, "1966_Szegedi")
-    sample = claims[0]
-    assert sample.metadata.agent.name == "parangonada"
-    assert sample.metadata.certainty == 1.0
-    assert sample.metadata.agent.identifier == "1966_Szegedi"
+def test_claim_provenance(bundle) -> None:
+    """Every claim of a performer records the import with its key."""
+    for performer_key in PERFORMER_KEYS:
+        claims = _performer_claims(bundle, performer_key)
+        assert {claim.provenance for claim in claims} == {
+            Provenance(method="imported", note=f"parangonada {performer_key}")
+        }
+        assert {claim.certainty for claim in claims} == {1.0}
+
+
+@pytest.mark.parametrize("performer_key", PERFORMER_KEYS)
+def test_claims_name_the_rows_notes(bundle, performer_key: str) -> None:
+    """Each claim names the notes its align.csv row names, in row order."""
+    cpt_id = f"perf:{performer_key}:cpt_1"
+    with open(_subdir(performer_key) / "align.csv", encoding="utf-8", newline="") as f:
+        rows = list(csv.DictReader(f))
+    expected = [
+        {
+            "0": (SCORE_CLT_ID, row["partid"], cpt_id, row["ppartid"]),
+            "1": (SCORE_CLT_ID, row["partid"], cpt_id, None),
+            "2": (cpt_id, row["ppartid"], SCORE_CLT_ID, None),
+        }[row["matchtype"]]
+        for row in rows
+    ]
+    claims = _performer_claims(bundle, performer_key)
+    assert [
+        (c.timeline_a_id, c.event_a_id, c.timeline_b_id, c.event_b_id) for c in claims
+    ] == expected
 
 
 # endregion
@@ -342,7 +363,7 @@ def test_feature_events_preserve_bundle_totals(bundle) -> None:
     """Feature events do not change the bundle's claim/timeline/group totals."""
     assert bundle.n_timelines == 12
     assert bundle.n_groups == 6
-    claims = bundle.cross_group_claims
+    claims = bundle.get_match_claims()
     assert len(claims) == 1275
     assert sum(1 for c in claims if c.is_synchronous) == 1208
     assert sum(1 for c in claims if not c.is_synchronous) == 67
@@ -357,14 +378,15 @@ def test_feature_events_preserve_bundle_totals(bundle) -> None:
 def test_szegedi_align_row_zero_spot_check(bundle) -> None:
     """Szegedi align idx 0 ('0,0,ngx1f26,n149') → synchronous claim.
 
-    Source coordinate equals score_q_by_id['ngx1f26'] (40.0 quarters);
-    target coordinate equals perf_sec_by_id['n149'] (38.183334 s).
+    It names the notes ngx1f26 and n149; its anchor holds the part note's
+    onset (40 quarters) and the ppart note's (38.183334 s).
     """
     cpt_id = "perf:1966_Szegedi:cpt_1"
     matching = [
         c
-        for c in bundle.cross_group_claims
+        for c in bundle.get_match_claims()
         if c.is_synchronous
+        and (c.event_a_id, c.event_b_id) == ("ngx1f26", "n149")
         and c.start_anchor is not None
         and c.start_anchor.timeline_a_id == SCORE_CLT_ID
         and c.start_anchor.timeline_b_id == cpt_id
@@ -425,7 +447,7 @@ def test_duplicate_row_yields_duplicate_claim(bundle) -> None:
 
     matching = [
         c
-        for c in bundle.cross_group_claims
+        for c in bundle.get_match_claims()
         if c.is_synchronous
         and c.start_anchor is not None
         and c.start_anchor.timeline_a_id == SCORE_CLT_ID

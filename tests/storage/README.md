@@ -120,3 +120,29 @@ values without reaching into `EventData`'s private `_table`.
 - **Conversion equivalence**: `head(n)` matches `to_dataframe().head(n)`.
 - **Numeric rendering**: coordinate columns decode to `Fraction`, never
   raw struct dicts.
+
+### `test_events.py` - Minted event IDs and the declared `projection_of` column
+
+**Purpose:** Every path that builds an `EventData` mints a missing event ID
+through one function, `mint_event_ids`, and a Projection's reference column is
+typed by declaration rather than by the rows of one batch.
+
+**Contract and what proves it:**
+
+- `mint_event_ids(event_types, taken)` mints one ID per type, in order, free
+  in `taken` and among the IDs it mints: a Projection `projection_N`, any
+  other type `{type}:{N:06d}` in lower case, a missing type counting as
+  `Event`, N the smallest number free for that form.
+  `["Note", "Projection", "Note", None]` against `{"note:000001",
+  "projection_2"}` gives exactly `["note:000002", "projection_1",
+  "note:000003", "event:000001"]`.
+- `EventData.from_dicts` mints against the IDs its rows give: a row given
+  `note:000001` and one without an ID end with `note:000001` and
+  `note:000002` (no repeated ID within the table); `from_arrays` without an
+  `id` column mints `projection_1`, `projection_2`, `note:000001` for the
+  types `Projection, Projection, Note`.
+- A batch whose rows hold `projection_of` only as `None` still has the
+  column typed `struct<timeline_id: string, event_id: string>` with the
+  `EventReferenceField` field type in its metadata, so `extend` with a batch
+  holding a reference concatenates and the column reads `[None,
+  {"timeline_id": "clt_6", "event_id": "x1azmn68"}]`.

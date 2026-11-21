@@ -18,7 +18,7 @@ Design principles:
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Container, Iterable, Iterator
 from fractions import Fraction
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
@@ -28,17 +28,20 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
+from pydantic import BaseModel
 from typing_extensions import Self
 
 from timetoalign.core import (
     Coordinate,
     CoordinateSpec,
+    EventReferenceField,
     IntervalPolicy,
     NumberType,
+    Projection,
     TimeUnit,
     resolve_coordinate_spec,
 )
-from timetoalign.core.fields import field_metadata
+from timetoalign.core.fields import SemanticField, field_metadata
 from timetoalign.core.time import (
     build_number_struct_array,
     coordinate_to_struct,
@@ -73,6 +76,60 @@ def _register_timeline_factory(
     """Register the timeline-layer constructor used by ``create_timeline``."""
     global _timeline_factory
     _timeline_factory = factory
+
+
+#: The event type a :class:`~timetoalign.core.Projection` is stored under.
+PROJECTION_EVENT_TYPE = Projection.__name__
+
+#: Extra columns whose type is declared, not read off the rows: every batch
+#: types them alike, whether its rows hold a value there or none, so batches
+#: concatenate.
+_DECLARED_EXTRA_FIELDS: dict[str, type[SemanticField[Any]]] = {
+    "projection_of": EventReferenceField,
+}
+
+
+def mint_event_ids(
+    event_types: Iterable[object],
+    taken: Container[str] = (),
+) -> list[str]:
+    """Mint one event ID per event type, each free in *taken* and in the result.
+
+    A Projection mints ``projection_N`` (the ID scheme's ``{prefix}_{N}``);
+    every other type mints ``{type}:{N:06d}`` with its name in lower case
+    (``note:000001``), a missing type counting as ``Event``. N is the
+    smallest number free for that form, so a batch minted against a table's
+    IDs never repeats one of them.
+
+    Args:
+        event_types: One event type per ID to mint, in order.
+        taken: The IDs already held.
+
+    Returns:
+        The minted IDs, in the order of *event_types*.
+
+    Examples:
+        >>> mint_event_ids(["Note", "Projection", "Note"], taken={"note:000001"})
+        ['note:000002', 'projection_1', 'note:000003']
+    """
+    numbers: dict[str, int] = {}
+    minted: set[str] = set()
+    result: list[str] = []
+    for event_type in event_types:
+        name = str(event_type) if event_type else "Event"
+        number = numbers.get(name, 0)
+        while True:
+            number += 1
+            if name == PROJECTION_EVENT_TYPE:
+                candidate = f"{Projection._id_prefix}_{number}"
+            else:
+                candidate = f"{name.lower()}:{number:06d}"
+            if candidate not in taken and candidate not in minted:
+                break
+        numbers[name] = number
+        minted.add(candidate)
+        result.append(candidate)
+    return result
 
 
 def _has_value_subfield(pa_type: pa.DataType) -> bool:
@@ -196,6 +253,27 @@ def _build_extra_field_schema(
 
     new_fields = list(schema)
     for name in extra_field_names:
+        declared = _DECLARED_EXTRA_FIELDS.get(name)
+        if declared is not None:
+            for row in processed_rows:
+                value = row.get(name)
+                row[name] = (
+                    value.model_dump() if isinstance(value, BaseModel) else value
+                )
+            new_fields.append(
+                pa.field(
+                    name,
+                    declared.pa_schema,
+                    nullable=True,
+                    metadata={
+                        TIMETOALIGN_METADATA_KEY: metadata_blob_from_dict(
+                            {"field_type": declared.field_type()}
+                        )
+                    },
+                )
+            )
+            continue
+
         if name == "volta":
             for row in processed_rows:
                 value = row.get(name)
@@ -943,10 +1021,9 @@ class EventData(SemanticFieldAccessMixin):
         converted to the internal struct format. Convenience defaults are
         applied so that callers can omit boilerplate fields:
 
-        - **id**: Auto-generated as ``{event_type}:{counter}`` if missing,
-          e.g. ``note:000001``, ``rest:000001``, ``beat:000001``.
-          When events are placed on a timeline, the timeline's ID is
-          prepended, yielding e.g. ``clt:1:note:000001``.
+        - **id**: Minted by :func:`mint_event_ids` if missing, free among
+          the IDs the rows give: ``note:000001``, ``beat:000001``, and
+          ``projection_1`` for a Projection.
         - **temporal_type**: Inferred from the keys present in the dict --
           ``"interval"`` when *both* ``start`` and ``end`` (or ``duration``)
           are given, ``"instant"`` otherwise.
@@ -978,19 +1055,21 @@ class EventData(SemanticFieldAccessMixin):
         if not rows:
             return cls.empty(unit, number_type)
 
+        # Mint the IDs the rows lack, free among the IDs the rows give.
+        given = {row["id"] for row in rows if row.get("id") is not None}
+        minted = iter(
+            mint_event_ids(
+                (row.get("event_type") for row in rows if row.get("id") is None),
+                given,
+            )
+        )
+
         # Convert coordinate values to struct format
         processed_rows = []
-        # Per-type counters for generating informative IDs
-        type_counters: dict[str, int] = {}
-        for i, row in enumerate(rows):
+        for row in rows:
             processed = dict(row)
-
-            # Auto-generate id if missing: use event_type prefix for informative IDs
-            if "id" not in processed or processed["id"] is None:
-                etype = str(processed.get("event_type", "event")).lower()
-                type_counters.setdefault(etype, 0)
-                type_counters[etype] += 1
-                processed["id"] = f"{etype}:{type_counters[etype]:06d}"
+            if processed.get("id") is None:
+                processed["id"] = next(minted)
 
             # Map 'instant' to 'start'
             if "instant" in processed and processed.get("start") is None:
@@ -1228,27 +1307,19 @@ class EventData(SemanticFieldAccessMixin):
                             [str(x) for x in arr_data], type=pa.string()
                         )
                 else:
-                    # Auto-generate IDs using event_type prefix if available
+                    # Mint the IDs from the event types, if there are any.
                     event_types = get_arr("event_type")
-                    if event_types is not None:
-                        # Use per-type counters for informative IDs
-                        type_counters: dict[str, int] = {}
-                        id_list = []
-                        if isinstance(event_types, (pa.Array, pa.ChunkedArray)):
-                            et_py = event_types.to_pylist()
-                        elif isinstance(event_types, np.ndarray):
-                            et_py = event_types.tolist()
-                        else:
-                            et_py = list(event_types)
-                        for et in et_py:
-                            etype = str(et).lower() if et else "event"
-                            type_counters.setdefault(etype, 0)
-                            type_counters[etype] += 1
-                            id_list.append(f"{etype}:{type_counters[etype]:06d}")
-                        processed[field_name] = pa.array(id_list, type=pa.string())
+                    if event_types is None:
+                        et_py: list[Any] = [None] * n_rows
+                    elif isinstance(event_types, (pa.Array, pa.ChunkedArray)):
+                        et_py = event_types.to_pylist()
+                    elif isinstance(event_types, np.ndarray):
+                        et_py = event_types.tolist()
                     else:
-                        ids = np.array([f"event:{i + 1:06d}" for i in range(n_rows)])
-                        processed[field_name] = pa.array(ids)
+                        et_py = list(event_types)
+                    processed[field_name] = pa.array(
+                        mint_event_ids(et_py), type=pa.string()
+                    )
             elif arr_data is not None:
                 # Regular field - convert to PyArrow array
                 if isinstance(arr_data, (pa.Array, pa.ChunkedArray)):

@@ -1803,6 +1803,27 @@ the axis's declared canonical number type.
    - `get_events()` filtering by temporal_type, event_type
    - Segment events excluded by default
 
+   **`add_events` stores positions on the timeline's axis and IDs unique on
+   it (`TestAddEventsAxisAndIds`).** What proves it, on a samples timeline
+   (`int`) with a samples→seconds `LinearMap` of scalar `1/44100`:
+   - a `Duration` in seconds added to a start in seconds is the span from
+     that start: start `Coordinate(1, s)`, duration `Duration(1/2, s)` store
+     start 44100, duration 22050 and end 66150 samples, each an `int` cell
+     (numerator over denominator 1); before, a duration was never converted;
+   - a `Duration` already in samples is stored as its value (`Duration(10,
+     samples)` from start 0: duration 10, end 10);
+   - a duration in seconds added to a start given as a bare number is
+     refused with the message naming both units, since the span has no
+     start in its own unit; nothing is added (the table length is
+     unchanged);
+   - an ID already held by an event of the timeline is refused naming the ID
+     and the timeline, and so is one given twice in one call; nothing is
+     added either time, so the refusal is atomic;
+   - two calls without IDs mint `note:000001` and then `note:000002`, never
+     the same ID twice (a per-call counter minted `note:000001` twice);
+   - `add_events` returns the IDs of the rows it added, in row order, the
+     minted ones included.
+
 4. **Length and Expansion Tests** (7 tests)
    - Length can expand (unlocked)
    - Length cannot contract below content
@@ -1861,6 +1882,56 @@ These tests verify the fundamental Timeline contract:
 - Events are stored efficiently in an EventStore (PyArrow-backed)
 - Timelines can expand (if unlocked) but cannot contract below content
 - Coordinates are validated against the timeline's unit
+
+---
+
+### `test_projections.py` - Projections added to a timeline
+
+**Purpose:** A Projection is an event standing on a timeline for an event
+not held there (the scalar is tested in `tests/core/test_projection.py`). It
+is added like any event, through `Timeline.add_events` with `event_type`
+`"Projection"`, and is stored on the timeline's own axis: a position given in
+a unit the timeline converts is converted when the Projection is added, never
+kept in the other unit. These tests prove that a timeline's events hold
+Projections under that one mechanism, with exact positions, their reference
+kept as an object, and IDs minted by the ID scheme.
+
+**What proves it** (a samples timeline, `int`, length 1,000,000, with a
+samples→seconds `LinearMap` of scalar `1/44100`; and a quarters timeline,
+`fraction`, with a quarters→seconds `LinearMap` of scalar `1/2` declared to
+write fractions):
+
+- **Instant, converted.** `Coordinate(1/2, seconds)` is stored at sample
+  22050 (cell `{22050.0, 22050, 1}`) with null `end` and `duration` and
+  `temporal_type` `"instant"`; the float `Coordinate(19.278367347,
+  seconds)` of the LayerIt alignment lands on sample 850176. On the
+  quarters timeline `Coordinate(3/4, seconds)` is stored at 3/2 quarters
+  (cell numerator 3, denominator 2): the number type of the timeline is
+  kept, never a float.
+- **Interval, converted.** Start `Coordinate(1, s)` with
+  `Duration(1/2, s)` is stored as start 44100, duration 22050, end 66150,
+  `temporal_type` `"interval"`.
+- **The reference is an object.** `projection_of` given as a dict
+  `{timeline_id, event_id}` or as an `EventReference` is stored in the
+  struct column `projection_of` (`{timeline_id: string, event_id:
+  string}`, its field metadata naming `EventReferenceField`), never as a
+  joined string; `None` is a null cell. A batch of Projections all without
+  a reference still types the column as that struct, so a later batch with
+  one concatenates (the column of the second Projection reads back its
+  dict).
+- **IDs.** A source's ID is kept (`x1azmn68`); a missing one is minted
+  `projection_N`, the smallest N free among the timeline's events of every
+  type: the first call mints `projection_1`, `projection_2`; with
+  `projection_2` held by a Note, the next call mints `projection_1` and
+  `projection_3` for two rows (the call returns them in row order).
+- **Refusals**, each atomic (the number of events unchanged):
+  - an ID held by any event of the timeline (a Note's ID reused by a
+    Projection);
+  - a row giving a property the Projection does not have (`pitch`):
+    `A Projection holds its ID, its position and projection_of, nothing else
+    of the event it stands for; the row also gives ['pitch']`;
+  - a `projection_of` that is not an event reference (the joined string
+    `"clt_6:x1azmn68"`).
 
 ---
 

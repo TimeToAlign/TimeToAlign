@@ -598,6 +598,47 @@ one metadata triple; indexing reconstructs `Interval | None`, and its `start`,
 `end`, and `duration` accessors return the paired semantic field types without
 changing exact rational values.
 
+### `test_projection.py` - The Projection event and its reference
+
+**Purpose:** A `Projection` is an event standing on a timeline for an event
+not held there: its ID, its position on the timeline's axis (`start`, and
+`duration`, `None` for an instant) and `projection_of`, an `EventReference`
+`{timeline_id, event_id}` or `None`. It repeats nothing else of its source.
+These tests prove the scalar holds exactly that and the paired
+`ProjectionField` stores it without losing a value; adding Projections to a
+timeline is tested in `tests/timelines/test_projections.py`.
+
+**What proves it:**
+
+- **The stored shape is the scalar's properties and nothing else.**
+  `ProjectionField.pa_schema` is exactly `struct<id: string, start:
+  struct<value, numerator, denominator>, duration: <the same>,
+  projection_of: struct<timeline_id: string, event_id: string>>`, and
+  `EventReferenceField.pa_schema` exactly `struct<timeline_id, event_id>`:
+  a reference is an object of two values, never a joined string.
+- **Construction.** An instant has `duration` and `end` `None`; an interval
+  `start` 27/2 quarters with `duration` 1/3 has `end` exactly 83/6 quarters
+  (a `Fraction`, not a float). `EventReference` refuses a key it does not
+  have and an empty ID; `Projection` refuses an empty ID, a duration in
+  another unit than its start and a duration written in another number type
+  (both messages pinned): start and duration are on one axis.
+- **Arrow round trip with exact values**, on three axes: quarters written as
+  fractions (start 27/2, duration 1/3), samples as integers (850176,
+  duration 22050), seconds as floats (0.1, a float with no exact short
+  ratio). Each field is written to a Parquet file in `tmp_path` and read
+  back: every Projection read back equals the one written, its positions
+  in the number type of the axis (`Fraction`, `int`, `float`), and the
+  stored cells carry the exact numerator and denominator (27 and 2, 850176
+  and 1). The unit and number type are recorded once, in the field's
+  metadata (`unit`, `number_type`), as a timeline records them for its
+  events.
+- **`projection_of` set and `None`** survive the round trip alike: the
+  first Projection keeps `EventReference(clt_6, x1azmn68)`, the second
+  reads back `None` from a null cell.
+- **One axis per field.** `ProjectionField.from_projections` refuses
+  Projections at two units, and a quarters axis mixing fractions and
+  floats; an empty field needs its unit.
+
 ### `test_number_storage.py` - One struct, one canonical side, one builder
 
 **Purpose:** Pins the storage contract every coordinate in the library rests

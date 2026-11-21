@@ -54,8 +54,8 @@ from typing import TYPE_CHECKING, Any
 
 from typing_extensions import Self
 
-from timetoalign.alignment.claims import Agent, MatchClaim, MatchMetadata
-from timetoalign.core import AgentType, TimeUnit
+from timetoalign.alignment.claims import MatchClaim
+from timetoalign.core import Provenance, TimeUnit
 from timetoalign.loader.base import AlignmentLoader
 from timetoalign.loader.tabular.solo import SoloLoader
 from timetoalign.maps.meter import MetricalPositionMap, MetricMap
@@ -440,14 +440,7 @@ class PerformancePrecisionLoader(AlignmentLoader):
 
         # MatchClaims for every granularity.
         for gran, rows in granularity_rows.items():
-            meta = MatchMetadata(
-                agent=Agent(
-                    name="performance_precision",
-                    type=AgentType.software,
-                    identifier=gran,
-                ),
-                certainty=1.0,
-            )
+            meta = Provenance(method="imported", note=f"performance_precision {gran}")
             for measure, offset_wn, time_str in rows:
                 quarters = self._resolve_label(measure, offset_wn, starts, m0_downbeat)
                 if time_str == _DANGLING:
@@ -457,7 +450,7 @@ class PerformancePrecisionLoader(AlignmentLoader):
                             source_tl_id=_SCORE_TL_ID,
                             target_tl_id=perf_tl_id,
                             unit=self._score_unit,
-                            metadata=meta,
+                            provenance=meta,
                         )
                     )
                 else:
@@ -470,7 +463,7 @@ class PerformancePrecisionLoader(AlignmentLoader):
                             source_unit=self._score_unit,
                             target_unit=self._media_unit,
                             coord_key="start",
-                            metadata=meta,
+                            provenance=meta,
                         )
                     )
 

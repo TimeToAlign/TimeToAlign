@@ -33,6 +33,7 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+from timetoshare.statements import MATCHES, METHODS
 
 from .fields import SemanticField, data_shaped, install_paired_field_registry
 
@@ -43,10 +44,11 @@ BeliefFilter = Literal["not_false", "true"]
 """Which items the belief filter keeps for its believer: those the believer
 does not believe ``false``, or only those the believer believes ``true``."""
 
-MatchKind = Literal["exact", "close", "broad", "narrow", "related"]
-"""How closely a reconciled value matches its source (the SKOS mapping kinds)."""
-
 _DATE_PATTERN = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
+
+#: An IRI as the format tells one from a method word: a scheme, a colon and
+#: something after it.
+_IRI_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9_+.-]*:.")
 
 
 def _checked_date(value: str) -> str:
@@ -130,19 +132,21 @@ class BeliefField(SemanticField[Belief]):
 class Provenance(BaseModel):
     """How an item was made (paradata) and who believes it.
 
-    Every key is optional, but an entry states at least one. A person who
-    states an item through the library is recorded with the belief
-    ``"true"``; a loader or a service records how the item was made and
-    holds no belief.
+    Every key is optional, but an entry states at least one. The format
+    records a person who states an item with the belief ``"true"``, and a
+    loader or a service with how the item was made and no belief.
 
     Attributes:
         stated_by: Who stated the item (IRIs), at least one, each once.
         date: When it was stated, written ``YYYY-MM-DD``.
-        method: How: ``"manual"``, ``"reconciled"``, ``"imported"``,
-            ``"inferred"`` or an IRI naming another method.
-        service: The service or software that made it (an IRI).
+        method: How: one of TimeToShare's method words (``"manual"``,
+            ``"reconciled"``, ``"imported"``, ``"inferred"``) or an IRI
+            naming another method.
+        service: The service or software that made it (an IRI), never empty.
         basis: The sources it rests on (IRIs), at least one, each once.
-        match: For a reconciled value, how closely it matches its source.
+        match: For a reconciled value, how closely it matches its source:
+            one of TimeToShare's SKOS mapping words (``"exact"``,
+            ``"close"``, ``"broad"``, ``"narrow"``, ``"related"``).
         note: Free text.
         beliefs: Who believes the item, at most one :class:`Belief` per
             actor, in the order given.
@@ -167,7 +171,7 @@ class Provenance(BaseModel):
     method: str | None = None
     service: str | None = None
     basis: tuple[str, ...] | None = None
-    match: MatchKind | None = None
+    match: str | None = None
     note: str | None = None
     beliefs: tuple[Belief, ...] = ()
 
@@ -202,6 +206,33 @@ class Provenance(BaseModel):
     @classmethod
     def _check_date(cls, value: str | None) -> str | None:
         return None if value is None else _checked_date(value)
+
+    @field_validator("method")
+    @classmethod
+    def _check_method(cls, value: str | None) -> str | None:
+        if value is None or value in METHODS or _IRI_PATTERN.match(value):
+            return value
+        raise ValueError(f"A method is one of {list(METHODS)} or an IRI, not {value!r}")
+
+    @field_validator("service")
+    @classmethod
+    def _check_service(cls, value: str | None) -> str | None:
+        if value == "":
+            raise ValueError("A service is named, never empty")
+        return value
+
+    @field_validator("match")
+    @classmethod
+    def _check_match(cls, value: str | None) -> str | None:
+        if value is None or value in MATCHES:
+            return value
+        raise ValueError(f"A match is one of {list(MATCHES)}, not {value!r}")
+
+    @field_validator("beliefs", mode="before")
+    @classmethod
+    def _read_null_beliefs(cls, value: Any) -> Any:
+        """Read a null list of beliefs, as a table row states none, as none."""
+        return () if value is None else value
 
     @model_validator(mode="after")
     def _check_entry(self) -> Provenance:
@@ -294,16 +325,25 @@ install_paired_field_registry()
 def provenance_array(values: Sequence[Provenance | None]) -> pa.StructArray:
     """The struct array of *values*, of the type :class:`ProvenanceField` stores.
 
+    An entry without beliefs has a null ``beliefs`` cell, as TimeToShare's
+    tables write it.
+
     Args:
         values: One entry per row, ``None`` for a row stating none.
 
     Returns:
         A struct array of ``ProvenanceField.pa_schema``.
     """
-    rows = [
-        None if value is None else value.model_dump(mode="json") for value in values
-    ]
+    rows = [None if value is None else _row(value) for value in values]
     return pa.array(rows, type=ProvenanceField.pa_schema)
+
+
+def _row(value: Provenance) -> dict[str, Any]:
+    """One entry as a row of its struct column; no beliefs is a null cell."""
+    row = value.model_dump(mode="json")
+    if not row["beliefs"]:
+        row["beliefs"] = None
+    return row
 
 
 def belief_mask(

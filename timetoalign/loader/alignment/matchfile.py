@@ -34,8 +34,8 @@ from timetoalign.core.backends import suppressed_backend_warnings
 with suppressed_backend_warnings():
     import partitura as pt
 
-from timetoalign.alignment.claims import Agent, MatchClaim, MatchMetadata
-from timetoalign.core import AgentType, TimeUnit, resolve_id
+from timetoalign.alignment.claims import MatchClaim
+from timetoalign.core import Provenance, TimeUnit, resolve_id
 from timetoalign.loader.base import AlignmentLoader
 from timetoalign.maps.linear import ScalarMap, ShiftMap
 from timetoalign.timelines.types import (
@@ -52,14 +52,7 @@ module_logger = logging.getLogger(__name__)
 
 # region Constants
 
-MATCH_META = MatchMetadata(
-    agent=Agent(
-        name="vienna_match",
-        type=AgentType.software,
-        identifier="v1.0.0",
-    ),
-    certainty=1.0,
-)
+MATCH_META = Provenance(method="imported", note="vienna_match v1.0.0")
 
 # endregion
 
@@ -122,9 +115,9 @@ class MatchfileLoader(AlignmentLoader):
       - Deletion records produce ``MatchClaim.nomatch()`` (non-synchronous,
         NOMATCH).
 
-    All MatchClaims carry ``MatchMetadata`` whose agent is
-    ``Agent(name="vienna_match", type=AgentType.software,
-    identifier="v1.0.0")`` and ``certainty=1.0``.
+    All MatchClaims carry the provenance
+    ``Provenance(method="imported", note="vienna_match v1.0.0")`` and
+    ``certainty=1.0``.
 
     **Coordinate system and normalisation:**
     Score coordinates are stored as **normalised TTA coordinates** (shifted
@@ -587,7 +580,7 @@ class MatchfileLoader(AlignmentLoader):
                 unit_b=TimeUnit.ticks,
                 coord_key="start",
                 end_coord_key="end",
-                metadata=MATCH_META,
+                provenance=MATCH_META,
             )
             self._claims.append(claim)
 
@@ -609,7 +602,7 @@ class MatchfileLoader(AlignmentLoader):
                 source_tl_id=score_tl_id,
                 target_tl_id=perf_tl_id,
                 unit=self._score_unit,
-                metadata=MATCH_META,
+                provenance=MATCH_META,
             )
             self._claims.append(claim)
 

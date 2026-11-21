@@ -1549,7 +1549,12 @@ What proves the entry is the format's and holds nothing else:
 - **Values.** A date written other than `YYYY-MM-DD` (`2026-1-5`) or not of
   the calendar (`2026-02-30`) is refused with its own message; `stated_by` and
   `basis` list at least one IRI, each once; `match` takes the five SKOS kinds
-  only; `belief` the three values only.
+  only; `belief` the three values only. The vocabularies are TimeToShare's
+  (`timetoshare.statements.METHODS`, `MATCHES`), never restated: `method` is
+  one of the four method words (`manual`, `reconciled`, `imported`,
+  `inferred`) or an IRI (a scheme and a colon, `https://example.org/m`); a
+  phrase (`by hand`) is refused, and so is an empty `service`, as
+  TimeToShare's table check refuses them.
 - **One belief per actor.** An entry holding two beliefs of `ana` is refused;
   `with_belief` replaces `ana`'s belief in its place (her `unlikely` of
   2026-11-20 becomes `false` of 2026-11-21, `jo`'s `true` after it stays) and
@@ -1570,6 +1575,11 @@ What proves the entry is the format's and holds nothing else:
   filter). An empty column gives an empty mask; a filter word other than the
   two is refused. The scalar answers equal the column's row for row, and the
   Field's equal the function's, so neither can drift from the one predicate.
+- **Null beliefs.** A row of TimeToShare's provenance column states an entry
+  without beliefs as a null `beliefs` cell (its fixture table does). Such a
+  row reads as an entry whose `beliefs` is `()`, equal to one built without
+  beliefs, and `provenance_array` writes an entry without beliefs back with a
+  null `beliefs` cell, so a row read and written keeps its cell.
 - **Field.** `ProvenanceField.from_provenances` of entries and `None` reads
   each row back equal (`None` where none), its type the scalar's derived
   struct.

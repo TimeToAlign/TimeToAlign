@@ -17,14 +17,14 @@ from __future__ import annotations
 import pytest
 
 from timetoalign.alignment.bundle import AlignmentBundle
-from timetoalign.alignment.claims import (
-    Agent,
-    AlignmentAnchor,
-    MatchClaim,
-    MatchClaimField,
-    MatchMetadata,
+from timetoalign.alignment.claims import AlignmentAnchor, MatchClaim, MatchClaimField
+from timetoalign.core import (
+    Coordinate,
+    Domain,
+    IdCoordinateField,
+    Provenance,
+    TimeUnit,
 )
-from timetoalign.core import AgentType, Coordinate, Domain, IdCoordinateField, TimeUnit
 from timetoalign.timelines import (
     ContinuousLogicalTimeline,
     ContinuousPhysicalTimeline,
@@ -55,9 +55,7 @@ _PAIRS = [(SCORE, PERF_1), (SCORE, PERF_2), (PERF_1, PERF_2)]
 
 def _make_claims() -> list[MatchClaim]:
     """Build the nine claims fresh (never shared between two bundles)."""
-    metadata = MatchMetadata(
-        agent=Agent(name="parity", type=AgentType.software, identifier="fixture"),
-    )
+    provenance = Provenance(method="inferred", note="parity fixture")
     claims = []
     for instant in INSTANTS:
         for tl_a, tl_b in _PAIRS:
@@ -72,7 +70,7 @@ def _make_claims() -> list[MatchClaim]:
                         coordinate_b=Coordinate(instant[tl_b], _UNITS[tl_b]),
                     ),
                     is_synchronous=True,
-                    metadata=metadata,
+                    provenance=provenance,
                 )
             )
     return claims

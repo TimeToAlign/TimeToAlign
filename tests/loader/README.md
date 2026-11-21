@@ -383,11 +383,9 @@ deduplication):
   ``perf:<key>:cpt_1`` and target ``score:clt_1`` (source coordinate =
   the ppart note's ``onset_sec``).
 
-Each performer's claims share a
-``MatchMetadata`` whose agent is
-``Agent(name="parangonada", type=AgentType.software, identifier=<key>)``
-with ``certainty=1.0`` (the per-performer key now lives in the agent's
-``identifier``).
+Each performer's claims share the provenance
+``Provenance(method="imported", note="parangonada <key>")`` (the
+per-performer key lives in the note) and have ``certainty=1.0``.
 
 ### Zero-tolerance counts
 

@@ -11,17 +11,11 @@ from fractions import Fraction
 
 import pytest
 
-from timetoalign.alignment import (
-    Agent,
-    AlignmentAnchor,
-    MatchClaim,
-    MatchLine,
-    MatchMetadata,
-)
+from timetoalign.alignment import AlignmentAnchor, MatchClaim, MatchLine, Provenance
 from timetoalign.alignment.graph import MatchGraph
 from timetoalign.alignment.graph import MatchStamp as MatchStampType
 from timetoalign.core import Coordinate, IdCoordinate
-from timetoalign.core.enums import AgentType, Domain, TimeUnit
+from timetoalign.core.enums import Domain, TimeUnit
 from timetoalign.timelines import (
     ContinuousPhysicalTimeline,
     DiscreteGraphicalTimeline,
@@ -45,9 +39,7 @@ def simple_instant_claim() -> MatchClaim:
             timeline_b_id="tl_b",
             coordinate_b=Coordinate(50.0, TimeUnit.number),
         ),
-        metadata=MatchMetadata(
-            agent=Agent(name="test", type=AgentType.software, identifier="manual")
-        ),
+        provenance=Provenance(method="inferred", note="test manual"),
     )
 
 
@@ -69,9 +61,7 @@ def simple_interval_claim() -> MatchClaim:
             timeline_b_id="tl_b",
             coordinate_b=Coordinate(50.0, TimeUnit.number),
         ),
-        metadata=MatchMetadata(
-            agent=Agent(name="test", type=AgentType.software, identifier="manual")
-        ),
+        provenance=Provenance(method="inferred", note="test manual"),
     )
 
 
@@ -726,11 +716,7 @@ class TestMatchGraphFilter:
                 start_anchor=None,
                 end_anchor=None,
                 is_synchronous=False,
-                metadata=MatchMetadata(
-                    agent=Agent(
-                        name="test", type=AgentType.software, identifier="structural"
-                    )
-                ),
+                provenance=Provenance(method="inferred", note="test structural"),
             ),
         ]
         graph = MatchGraph(claims)

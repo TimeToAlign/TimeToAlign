@@ -105,6 +105,7 @@ from __future__ import annotations
 from importlib import import_module
 
 from timetoalign.core import (
+    Belief,
     ClaimType,
     ColumnNaming,
     ColumnRole,
@@ -113,12 +114,15 @@ from timetoalign.core import (
     CoordinateSpec,
     CoordinateValue,
     Domain,
+    EventReference,
     EventType,
     IdCoordinate,
     Interval,
     IntervalField,
     NumberType,
     OptionalCoordinate,
+    Projection,
+    Provenance,
     ResolvedCoordinate,
     ScopedId,
     TimeIntervalStamp,
@@ -126,7 +130,6 @@ from timetoalign.core import (
     TimeUnit,
     resolve_coordinate_spec,
 )
-from timetoalign.core.provenance import Belief, Provenance
 from timetoalign.maps import (
     ChainMap,
     ConstantMap,
@@ -286,6 +289,8 @@ __all__ = [
     "Coordinate",
     "CoordinateField",
     "Coord",  # Alias for Coordinate
+    "EventReference",
+    "Projection",
     "IdCoordinate",
     "Interval",
     "IntervalField",

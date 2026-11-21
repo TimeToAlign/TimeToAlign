@@ -125,13 +125,8 @@ from typing import TYPE_CHECKING, Any, ClassVar, Self
 import numpy as np
 import pyarrow as pa
 
-from timetoalign.alignment.claims import (
-    Agent,
-    MatchClaim,
-    MatchClaimField,
-    MatchMetadata,
-)
-from timetoalign.core import AgentType, NumberType, TimeUnit
+from timetoalign.alignment.claims import MatchClaim, MatchClaimField
+from timetoalign.core import NumberType, Provenance, TimeUnit
 from timetoalign.core.fields import SemanticField
 from timetoalign.display.html import code
 from timetoalign.loader.format.xml import XmlLoader
@@ -1218,13 +1213,9 @@ class Ieee1599Loader(XmlLoader):
         :meth:`MatchClaimField.from_columns`; no :class:`MatchClaim` object is
         ever constructed.
         """
-        metadata = MatchMetadata(
-            agent=Agent(
-                name=str(self._file_metadata.get("creator") or _DEFAULT_AGENT),
-                type=AgentType.software,
-                identifier=_AGENT_IDENTIFIER,
-            ),
-            certainty=1.0,
+        creator = str(self._file_metadata.get("creator") or _DEFAULT_AGENT)
+        provenance = Provenance(
+            method="imported", note=f"{creator} {_AGENT_IDENTIFIER}"
         )
         blocks: list[
             tuple[str | None, list[dict[str, Any]], list[int | float], TimeUnit]
@@ -1273,7 +1264,7 @@ class Ieee1599Loader(XmlLoader):
             np.asarray(spine, dtype=np.int64),
             unit_a=units,
             unit_b=TimeUnit.ticks,
-            metadata=metadata,
+            provenance=provenance,
         )
 
     def get_field(

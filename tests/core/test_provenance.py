@@ -105,6 +105,43 @@ class TestValues:
         with pytest.raises(ValidationError, match="A belief names its actor"):
             _belief("", "true")
 
+    def test_method_and_service_as_the_format_takes_them(self) -> None:
+        for method in ("manual", "reconciled", "imported", "inferred"):
+            assert Provenance(method=method).method == method
+        assert (
+            Provenance(method="https://example.org/m").method == "https://example.org/m"
+        )
+        with pytest.raises(
+            ValidationError,
+            match=re.escape(
+                "A method is one of ['manual', 'reconciled', 'imported', "
+                "'inferred'] or an IRI, not 'by hand'"
+            ),
+        ):
+            Provenance(method="by hand")
+        with pytest.raises(ValidationError, match="A service is named, never empty"):
+            Provenance(service="")
+
+
+class TestNullBeliefs:
+    def test_null_beliefs_read_as_none_and_written_back_null(self) -> None:
+        row = {
+            "stated_by": None,
+            "date": "2026-11-20",
+            "method": "imported",
+            "service": "https://example.org/aligner",
+            "basis": None,
+            "match": None,
+            "note": None,
+            "beliefs": None,
+        }
+        entry = Provenance.from_row(row)
+        assert entry == Provenance(
+            date="2026-11-20", method="imported", service="https://example.org/aligner"
+        )
+        assert entry.beliefs == ()
+        assert provenance_array([entry]).to_pylist() == [row]
+
 
 class TestOneBeliefPerActor:
     def test_two_beliefs_of_one_actor_refused(self) -> None:

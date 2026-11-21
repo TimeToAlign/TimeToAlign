@@ -145,6 +145,7 @@ from .ids import (
     resolve_ids,
     validate_id,
 )
+from .provenance import Belief, BeliefField, Provenance, ProvenanceField
 from .retrieval import (
     TABLE_FORMATS,
     TableFormat,
@@ -327,6 +328,11 @@ __all__ = [
     "EventReferenceField",
     "Projection",
     "ProjectionField",
+    # Provenance scalars + paired Fields
+    "Belief",
+    "BeliefField",
+    "Provenance",
+    "ProvenanceField",
     "Address",
     "Beat",
     "BeatField",

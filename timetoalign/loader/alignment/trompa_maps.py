@@ -42,8 +42,8 @@ from collections import Counter
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from timetoalign.alignment.claims import MatchClaim, MatchMetadata
-from timetoalign.core import TimeUnit
+from timetoalign.alignment.claims import MatchClaim
+from timetoalign.core import Provenance, TimeUnit
 from timetoalign.core.time import Coordinate
 from timetoalign.loader.base import AlignmentLoader
 
@@ -179,7 +179,7 @@ class MapsLoader(AlignmentLoader):
         score: Timeline,
         performance: Timeline,
         *,
-        metadata: MatchMetadata | None = None,
+        provenance: Provenance | None = None,
     ) -> list[MatchClaim]:
         """Return one claim per listed id of every row, as the row states it.
 
@@ -197,7 +197,7 @@ class MapsLoader(AlignmentLoader):
             score: The timeline holding the events the ids name (searched
                 with its children).
             performance: The timeline of the recording.
-            metadata: Provenance recorded on every claim.
+            provenance: Provenance recorded on every claim.
 
         Returns:
             The claims, in row order and, within a row, in the file's id
@@ -222,7 +222,7 @@ class MapsLoader(AlignmentLoader):
                             source_tl_id=performance.id,
                             target_tl_id=score.id,
                             unit=TimeUnit.seconds,
-                            metadata=metadata,
+                            provenance=provenance,
                         )
                     )
                     continue
@@ -241,7 +241,7 @@ class MapsLoader(AlignmentLoader):
                             source_tl_id=score.id,
                             target_tl_id=performance.id,
                             unit=score.unit,
-                            metadata=metadata,
+                            provenance=provenance,
                         )
                     )
                     continue
@@ -252,7 +252,7 @@ class MapsLoader(AlignmentLoader):
                         performance.id,
                         onset,
                         source_unit=score.unit,
-                        metadata=metadata,
+                        provenance=provenance,
                     )
                 )
         return claims
@@ -262,7 +262,7 @@ class MapsLoader(AlignmentLoader):
         score: Timeline,
         performance: Timeline,
         *,
-        metadata: MatchMetadata | None = None,
+        provenance: Provenance | None = None,
     ) -> AlignmentBundle:
         """Return a bundle of both timelines, related by the file's claims.
 
@@ -273,7 +273,7 @@ class MapsLoader(AlignmentLoader):
         Args:
             score: The timeline holding the events the ids name.
             performance: The timeline of the recording.
-            metadata: Provenance recorded on every claim.
+            provenance: Provenance recorded on every claim.
 
         Returns:
             The bundle.
@@ -286,7 +286,7 @@ class MapsLoader(AlignmentLoader):
         """
         from timetoalign.alignment.bundle import AlignmentBundle
 
-        claims = self.create_match_claims(score, performance, metadata=metadata)
+        claims = self.create_match_claims(score, performance, provenance=provenance)
         bundle = AlignmentBundle(name=self._sources[0].stem)
         bundle.add_timeline(score, as_group="score")
         bundle.add_timeline(performance, as_group="performance")

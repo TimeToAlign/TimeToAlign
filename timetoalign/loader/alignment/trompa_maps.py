@@ -267,8 +267,11 @@ class MapsLoader(AlignmentLoader):
         """Return a bundle of both timelines, related by the file's claims.
 
         The score joins as group ``"score"``, the performance as group
-        ``"performance"``, and :meth:`create_match_claims` gives the claims.
-        The bundle is named after the file.
+        ``"performance"``, and then :meth:`create_match_claims` gives the
+        claims: the Projections are added while both timelines are in the
+        bundle, so their IDs are minted unique among all Projections of the
+        bundle (above any the score holds) and the bundle's package can be
+        written. The bundle is named after the file.
 
         Args:
             score: The timeline holding the events the ids name.
@@ -282,15 +285,19 @@ class MapsLoader(AlignmentLoader):
             RuntimeError: If no file has been loaded.
             KeyError: If an id of a score note names no event of ``score``.
             ValueError: If ``performance`` is not in seconds and has no C-Map
-                to seconds.
+                to seconds, or the two timelines cannot join one bundle
+                (:meth:`AlignmentBundle.add_timeline
+                <timetoalign.alignment.bundle.AlignmentBundle.add_timeline>`).
         """
         from timetoalign.alignment.bundle import AlignmentBundle
 
-        claims = self.create_match_claims(score, performance, provenance=provenance)
+        _require_seconds(performance, self._require_rows())
         bundle = AlignmentBundle(name=self._sources[0].stem)
         bundle.add_timeline(score, as_group="score")
         bundle.add_timeline(performance, as_group="performance")
-        bundle.add_match_claims(claims)
+        bundle.add_match_claims(
+            self.create_match_claims(score, performance, provenance=provenance)
+        )
         return bundle
 
     # endregion

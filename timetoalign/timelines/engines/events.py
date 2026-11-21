@@ -191,6 +191,37 @@ def _held_by(row: dict[str, Any], child_id: str) -> dict[str, Any]:
     return row
 
 
+def tree_projection_ids(
+    roots: Sequence[Any], *, skip: Any = None
+) -> tuple[pa.Array, pa.Array]:
+    """The Projection IDs every timeline of the trees of *roots* holds.
+
+    Read column-wise, never as Python objects: the trees of a manifest hold
+    one Projections table between them.
+
+    Args:
+        roots: Root timelines, each tree once.
+        skip: A timeline whose Projections are left out, or None.
+
+    Returns:
+        The IDs and, row for row, the ID of the timeline holding each, the
+        trees in the order given, each root before its descendants.
+    """
+    ids: list[pa.Array] = []
+    holders: list[pa.Array] = []
+    for root in roots:
+        for timeline in (root, *(child for _, child in root._iter_descendants())):
+            if timeline is skip:
+                continue
+            held = projection_ids(timeline._events.table)
+            if len(held):
+                ids.append(held)
+                holders.append(pa.array([timeline.id] * len(held), pa.string()))
+    if not ids:
+        return pa.array([], pa.string()), pa.array([], pa.string())
+    return pa.concat_arrays(ids), pa.concat_arrays(holders)
+
+
 def _decoded_rows(data: EventData) -> list[dict[str, Any]]:
     """Return rows with every rational-shaped column decoded."""
     rows = list(data)
@@ -489,19 +520,7 @@ class EventsMixin:
             for root in container._member_roots():
                 if not any(seen is root for seen in roots):
                     roots.append(root)
-        ids: list[pa.Array] = []
-        holders: list[pa.Array] = []
-        for root in roots:
-            for timeline in (root, *(child for _, child in root._iter_descendants())):
-                if timeline is self:
-                    continue
-                held = projection_ids(timeline._events.table)
-                if len(held):
-                    ids.append(held)
-                    holders.append(pa.array([timeline.id] * len(held), pa.string()))
-        if not ids:
-            return pa.array([], pa.string()), pa.array([], pa.string())
-        return pa.concat_arrays(ids), pa.concat_arrays(holders)
+        return tree_projection_ids(roots, skip=self)
 
     def _rows_with_ids(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Return *rows*, each with an ID new to this timeline.

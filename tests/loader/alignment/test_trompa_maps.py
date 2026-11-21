@@ -8,6 +8,7 @@ from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
+import pyarrow.parquet as pq
 import pytest
 
 pytest.importorskip("verovio")
@@ -15,7 +16,7 @@ pytest.importorskip("verovio")
 from timetoalign import MapsLoader  # noqa: E402
 from timetoalign.alignment.bundle import AlignmentBundle  # noqa: E402
 from timetoalign.alignment.claims import MatchClaim  # noqa: E402
-from timetoalign.core import Coordinate, Provenance, TimeUnit  # noqa: E402
+from timetoalign.core import Coordinate, Projection, Provenance, TimeUnit  # noqa: E402
 from timetoalign.loader.score import VerovioLoader  # noqa: E402
 from timetoalign.maps import SamplesToSeconds  # noqa: E402
 from timetoalign.timelines import (  # noqa: E402
@@ -371,6 +372,37 @@ def test_create_bundle(score: Timeline, stated_path: Path) -> None:
             performance.id, format="coordinate"
         ) == Coordinate(sample, TimeUnit.samples)
         assert stamp.is_interpolated is interpolated
+
+
+def test_the_bundle_s_package_is_written_and_read_back(
+    score: Timeline, stated_path: Path, tmp_path: Path
+) -> None:
+    """The performance's Projections are minted above the score's own."""
+    assert score.add_projections(
+        Projection(start=Coordinate(Fraction(3, 2), TimeUnit.quarters))
+    ) == ["projection_1"]
+    performance = _samples_timeline()
+    bundle = MapsLoader.from_file(stated_path).create_bundle(score, performance)
+    claims = bundle.get_match_claims()
+    assert [claim.event_a_id for claim in claims[15:]] == [
+        "projection_16",
+        "projection_17",
+    ]
+    assert [claim.event_b_id for claim in claims[1:15]] == [
+        f"projection_{n}" for n in range(2, 16)
+    ]
+
+    bundle.to_file(tmp_path / "package" / "package.yaml")
+    table = pq.read_table(tmp_path / "package" / "projections.parquet")
+    assert list(
+        zip(table.column("timeline_id").to_pylist(), table.column("id").to_pylist())
+    ) == [(performance.id, f"projection_{n}") for n in range(2, 18)] + [
+        (score.id, "projection_1")
+    ]
+    read = AlignmentBundle.from_file(tmp_path / "package" / "package.yaml")
+    assert [_stated(claim) for claim in read.get_match_claims()] == [
+        _stated(claim) for claim in claims
+    ]
 
 
 # endregion

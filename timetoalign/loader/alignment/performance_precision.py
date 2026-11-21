@@ -40,6 +40,10 @@ with:
   dangling rows of every performer that name one score position share
   one Projection standing for no event.
 
+The Projections are added by ``create_bundle``, once the timelines are in
+the bundle: a Projection's ID is unique among all Projections of the
+bundle, so the bundle's package can be written.
+
 The score's measure → quarter conversion runs through a
 :class:`~timetoalign.maps.meter.MetricalPositionMap`, which the loader
 attaches to the score timeline and also exposes via the
@@ -62,7 +66,7 @@ from typing import TYPE_CHECKING, Any
 
 from typing_extensions import Self
 
-from timetoalign.alignment.claims import ClaimSide, MatchClaim, _claims_between_events
+from timetoalign.alignment.claims import ClaimSide
 from timetoalign.core import Provenance, TimeUnit
 from timetoalign.loader.base import AlignmentLoader
 from timetoalign.loader.tabular.solo import SoloLoader
@@ -113,10 +117,15 @@ class PerformancePrecisionLoader(AlignmentLoader):
 
     **Usage follows the standard loader two-phase pattern:**
 
-    1. ``loader.load(specimen_dir)`` — ingests the whole directory.
-    2. ``loader.create_bundle()`` — assembles the AlignmentBundle.
+    1. ``loader.load(specimen_dir)`` — ingests the whole directory: the
+       score and performance timelines with their notes, and every
+       alignment row resolved to its two sides.
+    2. ``loader.create_bundle()`` — assembles the AlignmentBundle and states
+       every row as a MatchClaim in it, adding the Projections the claims
+       stand on.
     3. ``loader.create_timeline(uid)`` / ``create_timelines()`` — retrieve
-       individual timelines.
+       individual timelines (holding Projections once ``create_bundle``
+       has stated the claims).
 
     Args:
         score_unit: Unit for the score timeline. Default
@@ -137,7 +146,11 @@ class PerformancePrecisionLoader(AlignmentLoader):
 
         self._score_timeline: ContinuousLogicalTimeline | None = None
         self._performance_timelines: dict[str, ContinuousPhysicalTimeline] = {}
-        self._claims: list[MatchClaim] = []
+        #: Per performer and granularity, in file order: the granularity,
+        #: the performer's timeline and each row's two sides.
+        self._rows: list[
+            tuple[str, ContinuousPhysicalTimeline, list[tuple[Fraction, ClaimSide]]]
+        ] = []
         self._metric_map: MetricMap | None = None
         self._metrical_position_map: MetricalPositionMap | None = None
         self._name: str | None = None
@@ -218,6 +231,8 @@ class PerformancePrecisionLoader(AlignmentLoader):
         )
 
         self._build_score_timeline(solo_path, starts, m0_downbeat)
+        self._performance_timelines = {}
+        self._rows = []
         self._build_performers(alignments_dir, starts, m0_downbeat)
 
         return self
@@ -403,22 +418,12 @@ class PerformancePrecisionLoader(AlignmentLoader):
         starts: list[Fraction],
         m0_downbeat: Fraction,
     ) -> None:
-        """Build a single performer's timeline and MatchClaims.
+        """Build a single performer's timeline and resolve its rows.
 
         The physical timeline holds one Note event per *aligned* note-level
-        row (dangling ``"N"`` rows have no audio coordinate).  A row's
-        ``LABEL`` states a score position, not a score note (a chord holds
-        several notes at one position), so the score side of every claim is a
-        :class:`~timetoalign.core.Projection` on the score timeline at
-        that position.  Claims are emitted for all three granularities:
-
-        * an aligned note-level row: the score Projection stands for the
-          performed Note event (``projection_of`` naming it), and the claim
-          joins the two;
-        * an aligned bar- or beat-level row: both sides are positions only,
-          so each gets a Projection standing for no event, and the claim
-          joins the two Projections;
-        * a dangling row: a NOMATCH claim from its score Projection.
+        row (dangling ``"N"`` rows have no audio coordinate). The rows of
+        all three granularities are resolved to their two sides
+        (:meth:`_resolve_rows`), stated as claims by :meth:`create_bundle`.
         """
         perf_tl_id = f"perf:{performer_key}:cpt_1"
         stem = note_file.stem
@@ -454,7 +459,7 @@ class PerformancePrecisionLoader(AlignmentLoader):
         ]
         perf_note_ids = perf_tl.add_events(perf_events)
         self._performance_timelines[performer_key] = perf_tl
-        self._build_claims(
+        self._resolve_rows(
             granularity_rows,
             perf_tl,
             perf_note_ids,
@@ -462,7 +467,7 @@ class PerformancePrecisionLoader(AlignmentLoader):
             m0_downbeat,
         )
 
-    def _build_claims(
+    def _resolve_rows(
         self,
         granularity_rows: dict[str, list[tuple[int, Fraction, str]]],
         perf_tl: ContinuousPhysicalTimeline,
@@ -470,15 +475,12 @@ class PerformancePrecisionLoader(AlignmentLoader):
         starts: list[Fraction],
         m0_downbeat: Fraction,
     ) -> None:
-        """State one performer's rows as MatchClaims between events.
+        """Resolve one performer's rows to the two sides of their claims.
 
-        Each row's score side is its LABEL's position; its performance side
-        the performed Note (an aligned note-level row), the position of its
-        TIME (an aligned bar- or beat-level row), or the NOMATCH sentinel (a
-        dangling row). The library's projection operation gives each
-        position its Projection, one per position and event it stands for,
-        so the bar and beat positions every performer shares stand once on
-        the score timeline.
+        Each row's score side is its LABEL's position in quarters; its
+        performance side the performed Note (an aligned note-level row), the
+        position of its TIME (an aligned bar- or beat-level row), or the
+        NOMATCH sentinel (a dangling row).
 
         Args:
             granularity_rows: The rows of each granularity, in file order.
@@ -488,11 +490,9 @@ class PerformancePrecisionLoader(AlignmentLoader):
             starts: Measure-start quarter positions.
             m0_downbeat: Virtual downbeat of LABEL measure 0.
         """
-        score_tl = self._score_timeline
-        assert score_tl is not None
         notes = iter(perf_note_ids)
         for gran, rows in granularity_rows.items():
-            pairs: list[tuple[ClaimSide, Timeline, ClaimSide, Timeline]] = []
+            sides: list[tuple[Fraction, ClaimSide]] = []
             for measure, offset_wn, time_str in rows:
                 quarters = self._resolve_label(measure, offset_wn, starts, m0_downbeat)
                 performed: ClaimSide
@@ -502,15 +502,8 @@ class PerformancePrecisionLoader(AlignmentLoader):
                     performed = next(notes)
                 else:
                     performed = {"start": float(time_str)}
-                pairs.append(({"start": quarters}, score_tl, performed, perf_tl))
-            self._claims.extend(
-                _claims_between_events(
-                    pairs,
-                    provenance=Provenance(
-                        method="imported", note=f"performance_precision {gran}"
-                    ),
-                )
-            )
+                sides.append((quarters, performed))
+            self._rows.append((gran, perf_tl, sides))
 
     @staticmethod
     def _read_alignment_csv(path: Path) -> list[tuple[int, Fraction, str]]:
@@ -547,6 +540,27 @@ class PerformancePrecisionLoader(AlignmentLoader):
     def create_bundle(self) -> "AlignmentBundle":
         """Assemble an AlignmentBundle from the loaded specimen.
 
+        The timelines join the bundle first; then every row is stated as a
+        MatchClaim between events
+        (:meth:`AlignmentBundle.create_match_claims
+        <timetoalign.alignment.bundle.AlignmentBundle.create_match_claims>`),
+        one call per performer and granularity, in file order:
+
+        * an aligned note-level row: a Projection on the score at its
+          LABEL's position stands for the performed Note event
+          (``projection_of`` naming it), and the claim joins the two;
+        * an aligned bar- or beat-level row: both sides are positions only,
+          so each gets a Projection standing for no event, and the claim
+          joins the two Projections;
+        * a dangling row: a NOMATCH claim from its score Projection.
+
+        A timeline keeps one Projection per position and event it stands
+        for, so the bar and beat positions every performer shares stand once
+        on the score timeline, and a second call adds no Projection. Every
+        Projection is added while its timeline is in the bundle, so its ID
+        is minted unique among all Projections of the bundle and the
+        bundle's package can be written.
+
         Returns:
             An ``AlignmentBundle`` with the score timeline in its own
             ``"score"`` group, each performer timeline standalone, and all
@@ -557,16 +571,26 @@ class PerformancePrecisionLoader(AlignmentLoader):
         """
         from timetoalign.alignment.bundle import AlignmentBundle
 
-        if self._score_timeline is None:
+        score_tl = self._score_timeline
+        if score_tl is None:
             raise RuntimeError(
                 "No specimen loaded yet. Call load() before create_bundle()."
             )
 
         bundle = AlignmentBundle(name=self._name)
-        bundle.add_timeline(self._score_timeline, as_group="score")
+        bundle.add_timeline(score_tl, as_group="score")
         for perf_tl in self._performance_timelines.values():
             bundle.add_timeline(perf_tl)
-        bundle.add_match_claims(self._claims)
+        for gran, perf_tl, sides in self._rows:
+            bundle.create_match_claims(
+                [
+                    ({"start": quarters}, score_tl.id, performed, perf_tl.id)
+                    for quarters, performed in sides
+                ],
+                provenance=Provenance(
+                    method="imported", note=f"performance_precision {gran}"
+                ),
+            )
         return bundle
 
     def create_timelines(self, id_pattern: str | None = None) -> list["Timeline"]:
@@ -618,7 +642,7 @@ class PerformancePrecisionLoader(AlignmentLoader):
 
     def __repr__(self) -> str:
         n_perf = len(self._performance_timelines)
-        n_claims = len(self._claims)
+        n_claims = sum(len(sides) for _, _, sides in self._rows)
         return f"PerformancePrecisionLoader(performers={n_perf}, " f"claims={n_claims})"
 
     # endregion

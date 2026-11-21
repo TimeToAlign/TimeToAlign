@@ -231,7 +231,13 @@ notes at one position), so the score side of every row is a `Projection`
 added to the score timeline at the resolved quarter; the performance side
 of an aligned note row is the performer's Note event the loader built from
 that row, and of an aligned bar or beat row a `Projection` at its time.
-What proves it, counted from the files alone:
+`load` builds the timelines and their Notes and resolves the rows;
+`create_bundle` joins the timelines into the bundle first and only then
+states the claims, so every Projection is added inside the bundle. Before
+`create_bundle` the score holds its 2494 Note events and no Projection, a
+performer its 480 Notes and no Projection: a loader projecting in `load`
+would show Projections there. What proves it, counted from the files
+alone (after `create_bundle`):
 
 - a timeline holds one Projection per position and event it stands for
   (the library's one projection operation reuses a Projection it holds),
@@ -255,6 +261,19 @@ What proves it, counted from the files alone:
 - a note-level score Projection's `projection_of` names the performer's
   Note event the claim joins it to; a bar- or beat-level Projection (both
   sides) and a dangling row's score Projection stand for no event (null).
+
+**The bundle's package is written and read back** (`tmp_path`). A
+Projection's ID is unique among all Projections of a package, and the
+loader adds every Projection while its timeline is in the bundle, so each
+is minted above every Projection ID the bundle holds: the Projections
+table holds 6447 rows, 3815 on the score and 376 on each performer, and
+its IDs are exactly `projection_1` … `projection_6447`, each once (no gap:
+nothing else mints a Projection ID in the bundle). Ashkenazy's first
+note-level claim (the first claim stated) names the score's `projection_1`.
+`AlignmentBundle.from_file` reads the package back with the same 6769
+claims. A loader projecting onto each free timeline would give the score
+`projection_1` … `projection_3815` and every performer `projection_1` …
+`projection_376`: writing would refuse `projection_1` on two timelines.
 
 **Coordinate spot-check:** Ashkenazy's bar-level claim for LABEL `1+0/1`
 joins a score Projection at `Fraction(1, 2)` (0.5 quarters) to a

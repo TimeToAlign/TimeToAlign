@@ -521,6 +521,19 @@ stated all the same.
   anchors as the hand-built bundle of the first fixture (quarter 3/2 →
   sample 55125, 15/4 → 121275 interpolated): the NOMATCH claims add no
   anchor, so the WarpMap is unchanged by them.
+* **The bundle's package is written and read back.** The score first holds
+  a Projection of its own, given while it belongs to no bundle (at quarter
+  3/2, standing for no event: `projection_1` on the score). `create_bundle`
+  on the second fixture with a samples timeline joins both timelines
+  before it makes the claims, so the performance's 16 Projections are
+  minted above the score's: `projection_2` … `projection_17` in claim
+  order, the inserted notes' claims 16 and 17 naming `projection_16` and
+  `projection_17`. Projecting before the join would mint the performance
+  its own `projection_1` … `projection_16`, and writing would refuse
+  `projection_1` on two timelines. `to_file` writes the package to
+  `tmp_path`; its Projections table holds the 17 IDs, `projection_1` on the
+  score and the 16 others on the performance; `AlignmentBundle.from_file`
+  reads it back with the 17 claims stating the same events and anchors.
 * **A second call reuses every Projection.** The loader makes its claims
   through the library's one projection operation, which keeps one Projection
   per score note and position on the performance timeline. Calling

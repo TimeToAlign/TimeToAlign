@@ -79,7 +79,9 @@ from timetoalign.core.timestamp import (
     timestamp_table_to_dataframe,
 )
 from timetoalign.storage import EventData
+from timetoalign.storage.events import refuse_shared_projection_ids
 
+from .engines.events import tree_projection_ids
 from .manifest import (
     Manifest,
     ManifestFileMixin,
@@ -280,10 +282,13 @@ class _IdScope:
         it. A tree they hold already joins as it is. An element of another
         tree whose id they hold is a collision: a minted id is minted again,
         also around the ids of every other scope the tree belongs to, and a
-        given id raises. Nothing changes before every collision has been
-        checked, so a raise leaves the newcomer untouched. Then every minted
-        group id that a given id of the tree takes is minted again. The
-        caller registers the tree in the scope and the holders returned.
+        given id raises. A Projection's ID is never minted again (a
+        MatchClaim may name it): one that a Projection of the scopes' trees
+        holds too raises, minted or given. Nothing changes before every
+        collision has been checked, so a raise leaves the newcomer
+        untouched. Then every minted group id that a given id of the tree
+        takes is minted again. The caller registers the tree in the scope
+        and the holders returned.
 
         Args:
             timeline: The timeline joining the scope.
@@ -293,7 +298,10 @@ class _IdScope:
             The scopes holding this one (:meth:`_holders`).
 
         Raises:
-            ValueError: If a given id of the tree is held in a scope.
+            ValueError: If a given id of the tree is held in a scope, or a
+                Projection ID of the tree is held by a Projection of the
+                scopes' trees (naming the ID, the timeline holding it there
+                and the newcomer's timeline holding it).
         """
         root = _root(timeline)
         holders = self._holders()
@@ -301,6 +309,11 @@ class _IdScope:
         members = [member for scope in scopes for member in scope._scope_members()]
         if any(_root(member) is root for member in members):
             return holders
+        member_roots: list[Timeline] = []
+        for member in members:
+            if not any(_root(member) is seen for seen in member_roots):
+                member_roots.append(_root(member))
+        refuse_shared_projection_ids(*tree_projection_ids([*member_roots, root]))
         taken = _held_ids(members)
         for scope in scopes:
             taken.update(scope._scope_ids(trees=False))
@@ -744,7 +757,10 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
                 held by an element of the group's trees, is the group's given
                 id or is held in a bundle holding the group (a minted id held
                 there is minted again instead, and a minted group id that a
-                newcomer's given id takes is minted again).
+                newcomer's given id takes is minted again); or if a
+                Projection of its tree has an ID a Projection of the group's
+                trees, or of a bundle holding the group, holds (naming the ID
+                and both timelines).
 
         Examples:
             >>> from timetoalign.timelines import TimelineGroup

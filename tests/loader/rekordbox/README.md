@@ -5,18 +5,56 @@ correct under the TimeToAlign! Zero Tolerance Validation Policy. Every anchor is
 derived directly from the two ground-truth data files and stated as an exact value
 with no range or approximation.
 
-## Timeline-native measure structure
+## The seconds timeline and the loader's grid and measure map
 
-The synthetic single-track XML fixture already fixes the generated measure count
-from its TEMPO grid. The measure map belongs to the track's quarter-anchored
-structure, not to the seconds axis: the attached skeleton's section hierarchy
-holds the one ``MeasureMap`` of exactly that count, with row IDs ``"1"`` to
-``"4"``, while the seconds timeline carries none (``measure_map`` is ``None``)
-and its manifest names no measure map (no ``MeasureRecordMap``, an empty
-``measure_maps``). Rekordbox TEMPO data states no score repeat, jump, break,
-or target marker, so the bound flow-control registry must have exactly zero
-breaks, zero jumps and zero markers, written as an empty ``flow_control``. A JSON round trip
-of the seconds timeline must reproduce its payload exactly.
+The loader keeps the two-phase contract: ``load()`` reads the XML, and every
+``create_*`` method builds from the parsed tracks without a file path. Besides
+the timelines it creates two structures per track, in the same pairing as
+``create_timeline()`` / ``create_timelines()``:
+
+- ``create_beatgrids()`` / ``create_measure_maps()`` return one ``BeatGrid`` /
+  ``MeasureMap`` per collection track, in XML order, so index ``i`` belongs to
+  ``tracks[i]`` and to ``create_timelines()[i]``.
+- ``create_beatgrid()`` / ``create_measure_map()`` return the only loaded
+  track's, and refuse an ambiguous collection with the message
+  ``create_timeline()`` gives, naming every available track.
+- With nothing loaded, the plural methods raise ``RuntimeError`` as
+  ``create_timelines()`` does.
+
+**The measure map stays off the seconds timeline.** Its measures are anchored
+in quarter notes, which a seconds axis cannot carry: the seconds timeline's
+``measure_map`` is ``None`` and its manifest names no measure map (no
+``MeasureRecordMap``, an empty ``measure_maps``). Rekordbox TEMPO data states
+no score repeat, jump, break, or target marker, so the bound flow-control
+registry must have exactly zero breaks, zero jumps and zero markers, written
+as an empty ``flow_control``. A JSON round trip of the seconds timeline must
+reproduce its payload exactly. The synthetic single-track fixture fixes the
+measure map ``create_measure_map()`` returns from its TEMPO grids: exactly four
+measures, row IDs ``"1"`` to ``"4"``.
+
+**The grid is the source's facts, nothing added.** The proof does not compare
+the loader's grid with itself: the test builds the expected ``BeatGrid`` by
+hand from the TEMPO attributes (``Inizio`` as start, ``Bpm``, ``Battito``, one
+beat per ``Metro`` numerator unit) bounded by ``TotalTime``, and the loader's
+grid must equal it (``BeatGrid`` equality compares segments and extent). A
+loader that dropped a segment, rounded an ``Inizio`` through a float, or read
+``4/4`` as two half-note beats fails it.
+
+**Grid, measure map and floating-measure axis are one derivation.** The
+measure records and the timeline's ``fm`` anchors are generated from the same
+grid, so three readings must agree exactly: ``grid.n_measures`` equals the
+measure map's length, and for every downbeat ``m`` the grid states,
+``seconds_at(m)`` read through the timeline's ``fm`` conversion answers
+``float(m)``. A loader that built either from a second walk over the TEMPO
+tags, with a boundary rule of its own, breaks the agreement at a grid change.
+Each call builds anew from the parsed tracks, so two calls return equal
+objects, and the plural method's only entry equals the singular result.
+
+**No measures, no map.** A track whose grids reach no downbeat states no
+measures: ``create_measure_map()`` and ``create_timeline()`` (whose ``fm``
+anchors need the map) both raise ``grids state no measures``, while
+``create_beatgrid()`` still returns the grid, which is a true statement of the
+source.
 
 ## Ground-truth data files
 
@@ -425,8 +463,8 @@ Floating-measure anchors: ``0 → 0.75`` (grid 1 opens ``0.5`` s = a quarter bar
 after nominal bar 1, so ``1 − 0.5/2``), ``10.51 → 6.0`` (six downbeats at or
 before it) and ``20.31 → 11.0``.
 
-Grid cross-checks, which must agree because the measure records are generated
-from the beat grid: ``seconds_at(6) == 10.51`` and ``position_at(10.505)``
+Grid cross-checks on ``create_beatgrid()``, which must agree because the
+measure records are generated from the beat grid: ``seconds_at(6) == 10.51`` and ``position_at(10.505)``
 answers the beat at ``10.0`` — measure 5, beat 4, segment 0 — because a
 position between two beats floors to the earlier one, and 10.5 is not a beat.
 

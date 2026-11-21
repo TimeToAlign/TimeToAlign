@@ -7,10 +7,11 @@ from pathlib import Path
 import pytest
 
 from timetoalign import Coordinate, GridBeat, Interval, NumberType, TimeUnit
+from timetoalign.core import BeatPolicy
 from timetoalign.core.events import IrregularMeasure, MeasureConstituent
 from timetoalign.loader import RekordboxLoader
 from timetoalign.maps import QuartersToFloatingMeasures
-from timetoalign.timelines import MeasureMap, Timeline
+from timetoalign.timelines import BeatGrid, BeatGridSegment, MeasureMap, Timeline
 
 _DEFAULT_LOCATION = object()
 
@@ -56,20 +57,33 @@ def _write_collection(tmp_path: Path, tracks: str) -> Path:
     return path
 
 
+_PICKUP_TEMPOS = """
+  <TEMPO Inizio="0" Bpm="60" Metro="4/4" Battito="4" />
+  <TEMPO Inizio="3.5" Bpm="120" Metro="4/4" Battito="2" />
+  <TEMPO Inizio="7" Bpm="120" Metro="4/4" Battito="1" />
+"""
+
+
+def _fm_at_downbeats(timeline: Timeline, grid: BeatGrid) -> dict[int, float]:
+    """Read each downbeat the grid states through the timeline's fm axis."""
+    floating_measures = timeline.get_conversion_map(TimeUnit.floating_measures)
+    assert floating_measures is not None
+    return {
+        beat.measure: floating_measures(grid.seconds_at(beat.measure).value)
+        for beat in grid.iter_beats()
+        if beat.is_downbeat
+    }
+
+
 def test_pickup_grid_change_and_trailing_measure_are_exact(tmp_path: Path) -> None:
-    tempos = """
-      <TEMPO Inizio="0" Bpm="60" Metro="4/4" Battito="4" />
-      <TEMPO Inizio="3.5" Bpm="120" Metro="4/4" Battito="2" />
-      <TEMPO Inizio="7" Bpm="120" Metro="4/4" Battito="1" />
-    """
     path = _write_collection(
         tmp_path,
-        _track_xml("1", "Grid Study", tempos=tempos),
+        _track_xml("1", "Grid Study", tempos=_PICKUP_TEMPOS),
     )
 
     loader = RekordboxLoader.from_file(path)
     timeline = loader.create_timeline()
-    measure_map = timeline.skeleton.section_hierarchy.measure_map
+    measure_map = loader.create_measure_map()
     assert isinstance(measure_map, MeasureMap)
     # The map is quarter-anchored; the track timeline's axis is seconds.
     assert timeline.measure_map is None
@@ -105,7 +119,6 @@ def test_pickup_grid_change_and_trailing_measure_are_exact(tmp_path: Path) -> No
     assert floating_measures.y_values.tolist() == [0.75, 1.0, 1.25, 2.0, 3.0, 4.0]
     assert floating_measures(3.0) == 1.2
     assert floating_measures(7.5) == 3.5
-    assert timeline.create_skeleton() is timeline.skeleton
     assert timeline.meta == {
         "TrackID": "1",
         "AverageBpm": 90.0,
@@ -121,6 +134,57 @@ def test_pickup_grid_change_and_trailing_measure_are_exact(tmp_path: Path) -> No
     ]
     restored = Timeline.from_dict(json.loads(json.dumps(payload)))
     assert restored.to_dict(minimal=False) == payload
+
+
+def test_beatgrid_states_the_tempo_facts_and_generates_the_measures(
+    tmp_path: Path,
+) -> None:
+    """The loader's grid equals one built by hand from the TEMPO attributes.
+
+    The measure map and the timeline's fm anchors come from that grid, so
+    its measure count, the map's length and the fm reading of every
+    downbeat must agree.
+    """
+    path = _write_collection(
+        tmp_path,
+        _track_xml("1", "Grid Study", tempos=_PICKUP_TEMPOS),
+    )
+    loader = RekordboxLoader.from_file(path)
+    four_four = BeatPolicy.from_time_signature("4/4").as_divisions()
+    expected = BeatGrid(
+        [
+            BeatGridSegment(
+                start=Fraction(0), bpm=Fraction(60), policy=four_four, battito=4
+            ),
+            BeatGridSegment(
+                start=Fraction(7, 2), bpm=Fraction(120), policy=four_four, battito=2
+            ),
+            BeatGridSegment(
+                start=Fraction(7), bpm=Fraction(120), policy=four_four, battito=1
+            ),
+        ],
+        extent=Fraction(8),
+    )
+
+    grid = loader.create_beatgrid()
+    measure_map = loader.create_measure_map()
+
+    assert grid == expected
+    assert [segment.end for segment in grid.segments] == [
+        Fraction(7, 2),
+        Fraction(7),
+        Fraction(8),
+    ]
+    assert loader.create_beatgrids() == [grid]
+    assert loader.create_beatgrid() == grid
+    assert loader.create_beatgrid() is not grid
+    assert loader.create_measure_maps() == [measure_map]
+    assert grid.n_measures == len(measure_map) == 4
+    assert _fm_at_downbeats(loader.create_timeline(), grid) == {
+        1: 1.0,
+        2: 2.0,
+        3: 3.0,
+    }
 
 
 def test_displaced_anchor_beats_are_not_counted_twice(tmp_path: Path) -> None:
@@ -140,10 +204,11 @@ def test_displaced_anchor_beats_are_not_counted_twice(tmp_path: Path) -> None:
         _track_xml("1", "Phantom Study", total_time="30", tempos=tempos),
     )
 
-    timeline = RekordboxLoader.from_file(path).create_timeline()
-    measures = timeline.skeleton.section_hierarchy.measure_map.measures
+    loader = RekordboxLoader.from_file(path)
+    timeline = loader.create_timeline()
+    measures = loader.create_measure_map().measures
     floating_measures = timeline.get_conversion_map(TimeUnit.floating_measures)
-    grid = timeline.skeleton.create_beatgrid()
+    grid = loader.create_beatgrid()
 
     assert len(measures) == 15
     assert [measure.number for measure in measures] == list(range(1, 16))
@@ -191,6 +256,9 @@ def test_displaced_anchor_beats_are_not_counted_twice(tmp_path: Path) -> None:
     assert grid.position_at(10.505) == GridBeat(
         seconds=Fraction(10), segment=0, measure=5, segment_measure=5, beat=4
     )
+    assert _fm_at_downbeats(timeline, grid) == {
+        measure: float(measure) for measure in range(1, 16)
+    }
 
 
 def test_a_grid_reanchoring_mid_measure_continues_the_measure_count(
@@ -212,10 +280,11 @@ def test_a_grid_reanchoring_mid_measure_continues_the_measure_count(
         _track_xml("1", "Reanchor Study", total_time="12", tempos=tempos),
     )
 
-    timeline = RekordboxLoader.from_file(path).create_timeline()
-    measures = timeline.skeleton.section_hierarchy.measure_map.measures
+    loader = RekordboxLoader.from_file(path)
+    timeline = loader.create_timeline()
+    measures = loader.create_measure_map().measures
     floating_measures = timeline.get_conversion_map(TimeUnit.floating_measures)
-    grid = timeline.skeleton.create_beatgrid()
+    grid = loader.create_beatgrid()
 
     assert [measure.id for measure in measures] == ["1", "2", "3", "4", "5"]
     # [4, 7.01) crosses the tempo change: 2.01 s at 1 q/s plus 1.0 s at 2 q/s.
@@ -243,6 +312,9 @@ def test_a_grid_reanchoring_mid_measure_continues_the_measure_count(
         seconds=Fraction("6.01"), segment=1, measure=2, segment_measure=0, beat=3
     )
     assert grid.position_at(6.6).beat == 4
+    assert _fm_at_downbeats(timeline, grid) == {
+        measure: float(measure) for measure in range(1, 6)
+    }
 
 
 def test_grids_that_state_no_downbeat_are_refused(tmp_path: Path) -> None:
@@ -262,8 +334,16 @@ def test_grids_that_state_no_downbeat_are_refused(tmp_path: Path) -> None:
         _track_xml("1", "Empty Study", total_time="0.3", tempos=tempos),
     )
 
+    loader = RekordboxLoader.from_file(path)
+
     with pytest.raises(ValueError, match="grids state no measures"):
-        RekordboxLoader.from_file(path).create_timeline()
+        loader.create_timeline()
+    with pytest.raises(ValueError, match="grids state no measures"):
+        loader.create_measure_map()
+    # The grid itself is a true statement of the source.
+    grid = loader.create_beatgrid()
+    assert grid.n_segments == 2
+    assert grid.extent == Fraction(3, 10)
 
 
 def test_timeline_id_is_decoded_location_stem(tmp_path: Path) -> None:
@@ -279,7 +359,6 @@ def test_timeline_id_is_decoded_location_stem(tmp_path: Path) -> None:
 
     assert timeline.id == "02. Tonight (Remix)"
     assert timeline.name == "Habstrakt - Tonight FREE DL"
-    assert timeline.skeleton.id == "02. Tonight (Remix)/skeleton"
 
 
 def test_timeline_id_falls_back_to_name_without_location(tmp_path: Path) -> None:
@@ -288,7 +367,6 @@ def test_timeline_id_falls_back_to_name_without_location(tmp_path: Path) -> None
 
     assert timeline.id == "Display Only"
     assert timeline.name == "Display Only"
-    assert timeline.skeleton.id == "Display Only/skeleton"
     assert timeline.meta["Location"] is None
 
 
@@ -320,7 +398,7 @@ def test_absent_sample_rate_attaches_no_samples_axis(tmp_path: Path) -> None:
     assert timeline.get_conversion_map(TimeUnit.samples) is None
 
 
-def test_collection_scope_bundle_and_claim_tuple_ingestion(tmp_path: Path) -> None:
+def test_collection_scope_and_bundle(tmp_path: Path) -> None:
     path = _write_collection(
         tmp_path,
         _track_xml("1", "Mix") + _track_xml("2", "Source"),
@@ -328,26 +406,28 @@ def test_collection_scope_bundle_and_claim_tuple_ingestion(tmp_path: Path) -> No
     loader = RekordboxLoader.from_file(path)
 
     assert [track.name for track in loader.tracks] == ["Mix", "Source"]
-    with pytest.raises(ValueError, match=r"'Mix'.*'Source'"):
-        loader.create_timeline()
+    for method in ("create_timeline", "create_beatgrid", "create_measure_map"):
+        with pytest.raises(
+            ValueError,
+            match=rf"^{method}\(\) requires exactly one Rekordbox collection track; "
+            r"available names: 'Mix', 'Source'$",
+        ):
+            getattr(loader, method)()
+    assert len(loader.create_beatgrids()) == 2
+    assert len(loader.create_measure_maps()) == 2
 
     bundle = loader.create_bundle()
-    mix = bundle.get_timeline("Mix")
-    source = bundle.get_timeline("Source")
-    claims = [
-        [
-            (
-                mix.id,
-                Interval(2.0, 3.0, "fm"),
-                source.id,
-                Interval(4.0, 5.0, "fm"),
-            )
-        ]
-    ]
-    bundle.add_match_claims(claims)
 
     assert bundle.n_timelines == 2
-    assert bundle.n_cross_group_claims == 1
+    assert list(bundle.timelines) == ["Mix", "Source"]
+
+
+def test_nothing_loaded_creates_nothing() -> None:
+    loader = RekordboxLoader()
+
+    for method in ("create_timelines", "create_beatgrids", "create_measure_maps"):
+        with pytest.raises(RuntimeError, match=r"^No Rekordbox collection loaded"):
+            getattr(loader, method)()
 
 
 def test_interval_positional_construction_and_coordinate_passthrough() -> None:
@@ -425,7 +505,13 @@ def test_real_specimen_collection_and_mix_grids_are_exact(
     bundle = loader.create_bundle()
     assert bundle.n_timelines == 38
     mix_timeline = bundle.get_timeline(mix.name)
-    measure_map = mix_timeline.skeleton.section_hierarchy.measure_map
+    # The structures pair with the tracks and the timelines by XML order.
+    mix_index = loader.tracks.index(mix)
+    assert list(bundle.timelines)[mix_index] == mix_timeline.id
+    grids = loader.create_beatgrids()
+    measure_maps = loader.create_measure_maps()
+    assert len(grids) == len(measure_maps) == 38
+    measure_map = measure_maps[mix_index]
     floating_measures = mix_timeline.get_conversion_map(TimeUnit.floating_measures)
 
     pickup = measure_map[0]
@@ -478,7 +564,7 @@ def test_real_specimen_collection_and_mix_grids_are_exact(
         mix_timeline.id, format="float"
     ) == float(Fraction(5786690123, 1336500))
 
-    grid = mix_timeline.skeleton.create_beatgrid()
+    grid = grids[mix_index]
     assert grid.n_segments == 14
     assert grid.n_measures == 3519
     assert grid.seconds_at(2887).value == 4329.734472876918
@@ -492,9 +578,12 @@ def test_real_specimen_collection_and_mix_grids_are_exact(
     assert beats["segment_seconds"].iloc[-1] == 840.75
     assert beats["measure"].iloc[-1] == 3518
     assert beats["beat"].iloc[-1] == 3
+    assert _fm_at_downbeats(mix_timeline, grid) == {
+        measure: float(measure) for measure in range(1, 3519)
+    }
 
     brace = bundle.get_timeline("40. Brace For Impact")
-    brace_grid = brace.skeleton.create_beatgrid()
+    brace_grid = grids[list(bundle.timelines).index(brace.id)]
     brace_fm = brace.get_conversion_map(TimeUnit.floating_measures)
     # Battito 2 needs three 0.4 s beats: 0.145 + 3 * (60/150) = 1.345.
     first_downbeat = Fraction("0.145") + 3 * Fraction(60, 150)

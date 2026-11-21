@@ -537,7 +537,7 @@ def test_rule_band_order_and_timestamp_cases_are_the_only_unread_cases() -> None
     """The library keeps rules, band orders and named timestamps unchecked.
 
     So it accepts these cases. A band order is written back unchanged with its
-    timeline, the named timestamps unchanged.
+    timeline, the named timestamps as the package's complete form writes them.
     """
     unread = STYLE_RULES | BAND_ORDER_RULES | TIMESTAMP_RULES
     assert unread <= set(REJECTIONS)
@@ -547,7 +547,7 @@ def test_rule_band_order_and_timestamp_cases_are_the_only_unread_cases() -> None
         if case in BAND_ORDER_RULES:
             assert written["graphical"]["order"] == manifest["graphical"]["order"]
         if case in TIMESTAMP_RULES:
-            timestamps = manifest["graphical"]["timestamps"]
+            timestamps = complete(manifest)["graphical"]["timestamps"]
             assert written["graphical"]["timestamps"] == timestamps
 
 
@@ -570,16 +570,19 @@ SEVERAL_DEPTHS_ROW = {
 def test_the_library_writes_every_warning_case_back(path: Path) -> None:
     """Each case reads, and writes back in its own form with the same unknown keys.
 
-    The manifest written carries the inline context the package builds for
-    the case: the format's terms and the prefixes its statements use, each
-    standing for the namespace the case declares, else the catalogue's. A
-    case without ``@context`` (``context_absent``) gains one; a prefix the
-    case declares but does not use (``bundle_blank_*``) is not written.
+    A case in the minimal form is written back as it stands, any other in
+    the complete form as the package's ``complete`` writes it. The manifest
+    written carries the inline context the package builds for the case: the
+    format's terms and the prefixes its statements use, each standing for
+    the namespace the case declares, else the catalogue's. A case without
+    ``@context`` (``context_absent``) gains one; a prefix the case declares
+    but does not use (``bundle_blank_*``) is not written.
     """
     case = loads(path.read_text(encoding="utf-8"))
     manifest = case["manifest"]
     is_minimal = dumps(manifest) == dumps(minimal(manifest))
-    expected = with_context(manifest, load_catalogue().prefixes)
+    form = manifest if is_minimal else complete(manifest)
+    expected = with_context(form, load_catalogue().prefixes)
     if path.stem == "several_depths":
         expected["measure_maps"][0]["rows"] = [SEVERAL_DEPTHS_ROW]
 

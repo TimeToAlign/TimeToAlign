@@ -358,6 +358,31 @@ def check_statements(data: Mapping[str, Any]) -> None:
         raise problems[0]
 
 
+def check_matchstamps(data: Mapping[str, Any]) -> None:
+    """Refuse a manifest whose named MatchStamps break a rule of the format.
+
+    The library keeps ``graphical`` as given, the named MatchStamps
+    (``graphical.matchstamps``) and their match timestamps among it, and
+    refuses what the format refuses about them: the rules are TimeToShare's
+    (:func:`timetoshare.matchstamp_problems`, the schema of each match
+    timestamp and MatchStamp, an ID of a MatchStamp or an alignment anchor
+    held twice in the manifest, an anchor naming an unknown, an unflagged or
+    a same-timeline timestamp, anchors not connected, two match timestamps
+    on one coordinate, a match timestamp no MatchStamp names), and the first
+    problem is raised. A manifest is checked as it is read and as it is
+    written. *data* is in the file form.
+
+    Raises:
+        timetoshare.SchemaValidationError: The first problem, a
+            ``ValueError``: ``#/graphical/matchstamps/0/alignment_anchors:
+            the alignment anchors of 'matchstamp_1' are not one connected
+            set``.
+    """
+    problems = timetoshare.matchstamp_problems(data)
+    if problems:
+        raise problems[0]
+
+
 def _leave_out_unwritten(
     fields: dict[str, Any], roots: list[Timeline], written: set[str]
 ) -> dict[str, Any]:
@@ -852,9 +877,10 @@ class Manifest(_OpenObject):
     its statements and provenance with the prefixes they need, the members
     of its ``graphical`` other than ``order``
     (``styling``) and the band orders of its timelines (``band_orders``),
-    both kept as given and never interpreted, whether it holds ``graphical``
-    at all, the measure maps no timeline names, and every key the library
-    does not read.
+    both kept as given and never interpreted (the named MatchStamps among
+    the styling are checked, :func:`check_matchstamps`), whether it holds
+    ``graphical`` at all, the measure maps no timeline names, and every key
+    the library does not read.
 
     Attributes:
         id: The manifest id, or None when it has none (an anonymous bundle,
@@ -912,8 +938,9 @@ class Manifest(_OpenObject):
         *data* is the manifest as a file holds it, every ID written ``#``
         followed by the ID; it is read with bare IDs (:func:`bare_ids`), as
         every object of the library holds them. The statements and their
-        provenance are checked first, by TimeToShare's rules
-        (:func:`check_statements`). The measure maps are read next, then
+        provenance are checked first, then the named MatchStamps, by
+        TimeToShare's rules (:func:`check_statements`,
+        :func:`check_matchstamps`). The measure maps are read next, then
         every root timeline is rebuilt, its conversion maps reading the
         measure maps they name, and every timeline of the roots' trees is
         indexed by id. Every id is unique across the manifest: the
@@ -939,7 +966,8 @@ class Manifest(_OpenObject):
                 TimeToShare manifest"``), names another version, writes an ID
                 without its ``#`` (:func:`bare_ids`), or is malformed:
                 statements or provenance breaking a rule of the format (the
-                first problem, a ``timetoshare.SchemaValidationError``), an id
+                first problem, a ``timetoshare.SchemaValidationError``), named
+                MatchStamps breaking one (:func:`check_matchstamps`), an id
                 held twice anywhere in the manifest (see
                 :func:`unique_ids`), a ``graphical.order`` that is no object
                 or names no group or timeline; a resource that is malformed,
@@ -958,6 +986,7 @@ class Manifest(_OpenObject):
         require_object(data, "a TimeToShare manifest", ("timelines",))
         bare = bare_ids(data)
         check_statements(data)
+        check_matchstamps(data)
         own = {
             key: value
             for key, value in data.get("@context", {}).items()
@@ -1092,8 +1121,9 @@ class Manifest(_OpenObject):
         its statements use (:func:`timetoshare.with_context`), each prefix
         standing for the namespace the holders using it declare, else the
         catalogue's (:meth:`_prefix_table`). The statements and provenance
-        written are checked as a manifest read is, so that a manifest whose
-        statements break a rule of the format is never emitted.
+        written, and the named MatchStamps, are checked as a manifest read
+        is, so that a manifest whose statements or MatchStamps break a rule
+        of the format is never emitted.
 
         Args:
             roots: The root timelines.
@@ -1197,6 +1227,7 @@ class Manifest(_OpenObject):
         result = timetoshare.minimal(built) if minimal else timetoshare.complete(built)
         result = timetoshare.with_context(timetoshare.with_file_ids(result), prefixes)
         check_statements(result)
+        check_matchstamps(result)
         return result
 
     def _prefix_table(

@@ -95,13 +95,25 @@ the test fails if a listed case is refused by the library or no longer
 exists, so the list cannot outgrow the truth; each band-order case is also
 written back by `AlignmentBundle.from_dict` with its `graphical.order`
 unchanged, and each named-timestamp case, written in the complete form,
-with its `graphical.timestamps` unchanged.
+with its `graphical.timestamps` as the package's `complete` writes them
+(the cases predate the default `matchstamp: false`, which the complete
+form states). The named MatchStamps are no exception: the library keeps
+`graphical.matchstamps` and the match timestamps as given but refuses what
+the format refuses about them, by the package's own check of them alone
+(`timetoshare.matchstamp_problems`), so the nine MatchStamp cases (a
+malformed MatchStamp ID, a claim listed twice, an anchor ID repeated, an
+anchor naming an unknown, an unflagged or a same-timeline timestamp,
+anchors not connected, two match timestamps on one coordinate, a match
+timestamp no MatchStamp names) are refused like any other.
 
 **The shared warning cases.** `warning_paths()` lists manifests carrying
 unknown keys at many depths, each with the `unknown_keys` the validators
 report. `AlignmentBundle.from_dict` reads every case, and the bundle writes
-it back in the form the case is written in (complete or minimal) byte for
-byte with `dumps`, its `unknown_keys` equal to the case's list. One case,
+it back in the form the case is written in byte for byte with `dumps`, its
+`unknown_keys` equal to the case's list: a case in the minimal form as it
+stands, any other in the complete form as the package's `complete` writes
+it (the hand-written cases predate the defaults `resources: []` and
+`graphical.matchstamps: []`, which the complete form states). One case,
 `several_depths.yaml`, writes its measure-map row as a hand would, without
 the keys the library writes in every row it keeps (`name`, `start_repeat`,
 `end_repeat`) and with JSON numbers where the library writes exact pairs; the

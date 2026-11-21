@@ -167,7 +167,10 @@ proved right by evidence that does not come from the slicer itself:
    of length 12960 holds the ``[27, 54)`` rows and answers ``"7"`` at tick 0.
    ``create_child_from_region`` over a region ``[27, 54)`` and
    ``create_children_from_boundaries([27, 54])`` hold the same rows: one
-   slice, whichever call derives the child.
+   slice, whichever call derives the child. ``create_children_from_regions``
+   over the regions ``[0, 27)`` and ``[27, 54)`` with ``measures=True`` gives
+   two children holding exactly ``BARS_1_TO_6`` and ``BARS_7_TO_12``, in
+   region order; without it, neither holds a measure map.
 3. **Refusals change nothing.** ``get_slice`` refuses ``start >= end``, a
    range outside ``[0, total actual length]`` and a map with a measure lacking
    ``actual_length`` (``ValueError``), and leaves its source map equal to a

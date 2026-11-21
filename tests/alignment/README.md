@@ -1709,9 +1709,12 @@ then fails to load. Each test pins one of these with exact values.
 
 TimeToShare's `fixtures/tables/<version>/` is a package: `manifest.yaml`
 naming `match_claims.parquet` and `projections.parquet`, and
-`expected.yaml` holding, for four belief filters (none; the actor
-`0000-0002-1825-0097` with `not_false` and with `true`; the actor
-`0000-0001-5109-3700` with `true`), the expected unique alignment anchors
+`expected.yaml` holding, for six belief filters, each a `believer` and its
+`beliefs` (states of the four: none with the default; the actor
+`0000-0002-1825-0097` with the default `["true", "undecided",
+"unlikely"]`, with `["true"]`, with `["undecided"]` and with
+`["unlikely", "false"]`; the actor `0000-0001-5109-3700` with `["true"]`),
+the expected unique alignment anchors
 with the MatchClaims stating each and the expected potential MatchStamps.
 Those values are literal data written by hand in TimeToShare's emission
 script, never computed by a derivation, so they are an independent oracle.
@@ -1725,9 +1728,8 @@ script, never computed by a derivation, so they are an independent oracle.
   digest included); the Projection entry differs from the fixture's only in
   `size` and `integrity`, those of the file written.
 - For each case, `MatchGraph(bundle.get_match_claims(), believer=,
-  beliefs=, source=bundle)`, the fixture's filter read as states
-  (`not_false` is every state but `false`, `true` is `["true"]`; a case
-  stating `beliefs` is read as it stands): the unique anchors (each synchronous claim's
+  beliefs=, source=bundle)`, the case's `believer` and `beliefs` read as
+  they stand (the fixture holds exactly the six cases): the unique anchors (each synchronous claim's
   start and end anchors, both coordinates sorted, with the IDs of the claims
   stating them) equal the expected anchors, and the graph has one edge per
   unique anchor; the coordinates of each connected component

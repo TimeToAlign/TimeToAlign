@@ -395,9 +395,9 @@ def check_groupstamps(data: Mapping[str, Any]) -> None:
     timeline to lie in one: a timeline lies in a group when it or one of its
     ancestors is listed in the group's ``members`` (a member's descendants
     are drawn inside the member's card); an ancestor of a member lies in no
-    group through it. A match timestamp is left to :func:`check_matchstamps`
-    (it is never a groupstamp), and a timestamp naming no timeline of the
-    manifest, like the rest of ``graphical.timestamps``, is kept unread. A
+    group through it. A match timestamp is checked as any other, and a
+    timestamp naming no timeline of the manifest, like the rest of
+    ``graphical.timestamps``, is kept unread. A
     manifest is checked as it is read and as it is written. *data* holds
     bare IDs.
 
@@ -414,9 +414,7 @@ def check_groupstamps(data: Mapping[str, Any]) -> None:
         for index, timestamp in enumerate(
             timestamps if isinstance(timestamps, list) else []
         )
-        if isinstance(timestamp, Mapping)
-        and timestamp.get("groupstamp") is True
-        and timestamp.get("matchstamp") is not True
+        if isinstance(timestamp, Mapping) and timestamp.get("groupstamp") is True
     ]
     if not flagged:
         return

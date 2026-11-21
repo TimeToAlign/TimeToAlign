@@ -447,6 +447,16 @@ the library writes back against the same literal text.
   `timestamp_1` and `s` on `to_dict`, so a manifest that breaks the rule
   is never emitted. (The shared rejection cases cover the parent of a
   member and a child of an ungrouped root.)
+- **A match timestamp may be a groupstamp.** The rule above holds for a
+  match timestamp as for any named timestamp, and nothing else refuses
+  one. A bundle of the roots `r` and `s` (4 quarters each), both members
+  of the group `g`, whose MatchStamp `matchstamp_1` joins the match
+  timestamp `timestamp_1` at 1 on `r`, a groupstamp, to `timestamp_2` at 2
+  on `s` by the anchor `anchor_1`, is read and written back with its
+  timestamps and MatchStamps unchanged, in the complete form; the same
+  bundle without the group raises `#/graphical/timestamps/0/groupstamp:
+  'timestamp_1' is a groupstamp, but its timeline 'r' is a member of no
+  group and lies in none` on reading.
 - **A root's offset.** A seconds root with `"offset": -5.5` and a child at
   offset 2 round-trips with `root_offset == Coordinate(-5.5, seconds)`, and
   its timestamps and child positions equal those of the same root without

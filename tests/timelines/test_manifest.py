@@ -2157,6 +2157,75 @@ def test_a_groupstamp_whose_group_lost_its_timeline_is_refused_on_writing() -> N
     assert str(refusal.value) == GROUPSTAMP_REFUSAL.format(timeline="s")
 
 
+def _match_groupstamp_bundle(*, grouped: bool) -> dict[str, Any]:
+    """Roots ``r`` and ``s``, grouped in ``g`` where *grouped*, joined by one
+    MatchStamp whose match timestamp on ``r`` is a groupstamp."""
+    data: dict[str, Any] = {
+        "timetoshare": "0.2.0",
+        "timelines": [
+            {"id": "r", "unit": "quarters", "length": [4, 1]},
+            {"id": "s", "unit": "quarters", "length": [4, 1]},
+        ],
+        "graphical": {
+            "timestamps": [
+                {
+                    "id": "timestamp_1",
+                    "timeline": "r",
+                    "coordinate": [1, 1],
+                    "display": ["cross_section"],
+                    "matchstamp": True,
+                    "groupstamp": True,
+                },
+                {
+                    "id": "timestamp_2",
+                    "timeline": "s",
+                    "coordinate": [2, 1],
+                    "display": ["cross_section"],
+                    "matchstamp": True,
+                    "groupstamp": False,
+                },
+            ],
+            "matchstamps": [
+                {
+                    "id": "matchstamp_1",
+                    "name": "Bar 1",
+                    "alignment_anchors": [
+                        {
+                            "id": "anchor_1",
+                            "timestamps": ["timestamp_1", "timestamp_2"],
+                            "display": ["line"],
+                        }
+                    ],
+                    "match_claims": ["claim_1"],
+                }
+            ],
+        },
+    }
+    if grouped:
+        data["groups"] = [{"id": "g", "members": ["r", "s"]}]
+    return data
+
+
+def test_a_match_timestamp_that_is_a_groupstamp_is_read_and_written_back() -> None:
+    data = _match_groupstamp_bundle(grouped=True)
+    graphical = copy.deepcopy(data["graphical"])
+
+    read = reading(AlignmentBundle.from_dict)(data)
+
+    written = bare(read.to_dict(minimal=False))["graphical"]
+    assert written["timestamps"] == graphical["timestamps"]
+    assert written["matchstamps"] == graphical["matchstamps"]
+
+
+def test_a_match_timestamp_that_is_a_groupstamp_lying_in_no_group_is_refused() -> None:
+    data = _match_groupstamp_bundle(grouped=False)
+
+    with pytest.raises(ValueError) as refusal:
+        reading(AlignmentBundle.from_dict)(data)
+
+    assert str(refusal.value) == GROUPSTAMP_REFUSAL.format(timeline="r")
+
+
 STYLING_CASES = {
     "styles_default": ({"styles": {}}, {}),
     "rules_default": ({"rules": []}, {}),

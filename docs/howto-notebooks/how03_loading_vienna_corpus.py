@@ -186,12 +186,13 @@ bundle
 #
 # ## Step 5: Viewing and Querying MatchClaims
 #
-# MatchClaims are stored on the bundle as `cross_group_claims`. Each claim
-# connects a score event to a performance event (synchronous match) or
-# records a deletion (non-synchronous NOMATCH).
+# The bundle keeps its MatchClaims in one MatchClaim table,
+# `bundle.match_claim_table`; `get_match_claims()` reads them back as
+# `MatchClaim` objects. Each claim connects a score event to a performance
+# event (synchronous match) or records a deletion (non-synchronous NOMATCH).
 
 # %%
-claims = bundle.cross_group_claims
+claims = bundle.get_match_claims()
 len(claims)
 
 # %% [markdown]
@@ -318,7 +319,7 @@ s0
 # bundle = loader.create_bundle()
 #
 # # Query claims and build MatchStamps
-# claims = bundle.cross_group_claims
+# claims = bundle.get_match_claims()
 # mg = MatchGraph(claims=[c for c in claims if c.is_synchronous])
 # stamps = mg.get_stamps()  # full cross-section across all timelines
 # ```

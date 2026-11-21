@@ -99,7 +99,7 @@ def ids_at(timeline, position) -> list[str]:
 
 
 def claims_table(claims) -> pd.DataFrame:
-    """One row per claim: its type, the event it names, and both sides."""
+    """One row per claim: its type, the events it names, and both sides."""
     rows = []
     for claim in claims:
         if claim.is_synchronous:
@@ -117,6 +117,7 @@ def claims_table(claims) -> pd.DataFrame:
                 "at": str(here),
                 "to": claim.timeline_b_id,
                 "there": "" if there is None else str(there),
+                "event there": claim.event_b_id or "",
             }
         )
     return pd.DataFrame(rows)
@@ -215,10 +216,14 @@ maps
 
 # %% [markdown]
 # `create_match_claims(score, performance)` states every listed id as a
-# claim of its own. A note at a time of the recording becomes a synchronous
-# claim (`projection`: the score side names an event, the recording side a
-# time); the unplayed note and the inserted note each become a
-# {{< glossary NOMATCH >}} claim, from the side that has the note.
+# claim of its own. A MatchClaim joins two events, and the recording has no
+# events of its own: for a note at a time of the recording, a
+# {{< glossary Projection >}} of that note is added to the recording at that
+# time, and the claim is an `event_match` between the score note and the
+# Projection. The unplayed note becomes a {{< glossary NOMATCH >}} claim from
+# the score. The inserted note, which the score lacks, is added to the
+# recording as a Projection of no event under its MAPS id, and becomes a
+# NOMATCH claim from the recording.
 #
 # The recording is a timeline in seconds; any physical timeline works, and
 # one in samples reaches seconds through its C-Map.
@@ -251,7 +256,8 @@ bundle.get_matchstamp_at(Fraction(1, 4), score.id), bundle.get_matchstamp_at(
 # %% [markdown]
 # `create_bundle(score, performance)` is the one-call form: it puts each
 # timeline in a group of its own, named `score` and `performance`, and gives
-# the same answers.
+# the same answers. On this recording it adds no Projection: the recording
+# already holds one for every note and time, and the claims name those.
 
 # %%
 maps.create_bundle(score, recording).get_matchstamp_at(Fraction(3, 7), score.id)
@@ -372,7 +378,8 @@ page.list_children()
 # timelines, their children and conversion maps, the score's measures. A
 # manifest holds no MatchClaims, and events only when asked for with
 # `events=True`; the claims stay in the MAPS file, which names the score's
-# events, so the events are written too. The file opens with the
+# events, so the events are written too, the recording's Projections among
+# them. The file opens with the
 # manifest's inline JSON-LD `@context`; the cell below prints it from
 # `timelines` on.
 
@@ -385,7 +392,8 @@ print("\n".join(text[start:][:24]))
 
 # %% [markdown]
 # `from_file()` reads the bundle back. The MAPS file states the claims again
-# on the timelines read, and the bundle answers as before: the drawing's
+# on the timelines read, naming the Projections the recording was read with,
+# and the bundle answers as before: the drawing's
 # point at x = 258 is still 2.08 seconds, and the septuplet note still warps
 # to the same time.
 

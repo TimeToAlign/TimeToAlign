@@ -76,15 +76,14 @@ Child: |
 ClaimType: |
   The semantic kind of a MatchClaim, derived from its structure rather than
   stored: read from whether the claim is explicit, whether it is synchronous,
-  and how many of its two sides name an event. Six members: event_match
-  (synchronous, both sides name an event — the case that yields
-  AlignmentAnchors), projection (synchronous, exactly one side names an event,
-  the other a bare coordinate), anchor (synchronous, neither side names an
-  event — two anonymous coordinates), nomatch (non-synchronous, exactly one
-  side names an event whose counterpart is absent — see NOMATCH), conceptual
-  (non-synchronous, neither or both sides name an event — a structural
-  correspondence with no temporal commitment), and implicit (inferred by graph
-  extension; overrides all the above).
+  and whether both of its sides name an event or one names the NOMATCH
+  sentinel. Every stated claim names an event on each side it aligns; a side
+  without an event of its own is given a Projection first. Four members:
+  event_match (synchronous, an event on each side — the case that yields
+  AlignmentAnchors), nomatch (non-synchronous, one event whose counterpart is
+  absent — see NOMATCH), conceptual (non-synchronous, an event on each side —
+  a structural correspondence with no temporal commitment), and implicit
+  (inferred by graph extension, naming no events; overrides all the above).
 
 CombinationMap: |
   A MultiMap yielding outputs from multiple ConversionMaps simultaneously
@@ -277,35 +276,42 @@ MatchfileLoader: |
   standalone timelines; MatchClaims connect score to performances.
 
 MatchClaim: |
-  A claim of equivalence between events on different timelines, with provenance
-  metadata (the authoring agent and a certainty). May be synchronous (producing
-  AlignmentAnchors) or conceptual (structural equivalence without temporal
-  commitment). Always knows which pair of timelines it connects. Four cases:
-  (a) event-to-event, (b) projection, (c) NOMATCH, (d) implicit (from group
-  extension). Held individually, or columnar at scale in a MatchClaimField.
-  Its id is given or minted: a claim given none mints claim_N, N the smallest
-  number free in the scope that holds it (a MatchClaimField or an
-  AlignmentBundle), and id_minted records which. Joining a scope, a minted id
-  already held there is minted again and a given one is refused.
+  A claim of equivalence between two events on different timelines, each
+  coordinate on its own timeline's axis, with its Provenance (how it was made
+  and who believes it) and a certainty. A side without an event of its own is
+  given a Projection. May be synchronous (producing AlignmentAnchors) or not:
+  conceptual (structural equivalence without temporal commitment) or NOMATCH
+  (the event has no counterpart). Implicit claims are inferred by group
+  extension and name no events. A claim is never deleted: who disagrees
+  records a belief "false", and every reader of claims filters by believer=
+  and belief=. Held individually, or in the bundle's one MatchClaim table, a
+  MatchClaimField. Its id never changes: a claim given none holds no id until
+  the AlignmentBundle it joins mints claim_N above the highest held there, and
+  id_minted records which; a MatchClaimField mints nothing, and an id already
+  held in a scope is refused.
 
 MatchClaimField: |
-  A columnar, PyArrow-backed store holding a whole set of synchronous-instant
-  pairwise MatchClaims as Arrow columns, one per property of a MatchClaim (the
-  two timeline ids as strings, the anchors, the flags, the metadata, the event
-  ids and names, the source coordinate, id and id_minted; each coordinate a
-  struct of value, numerator, denominator and unit), rather than as one frozen
-  MatchClaim object per claim. Storing the exact ratio beside
-  the float mirror is what lets a claim's coordinate come back in its axis's
-  declared number type instead of being flattened on the way through the column. Individual MatchClaims are materialised on demand when a row is indexed
-  or iterated. Built vectorized via from_columns(), it is the scalable backing
-  for dense alignment matrices, where the complete pairwise topology of a whole
-  work runs to roughly a million claims. Shared provenance is held once at field
-  level; only claims whose metadata differ carry it per row. The table property
-  gives the field as an Arrow table, the shared provenance in its schema
-  metadata under the key timetoalign:match_metadata, and from_table() reads it
-  back unchanged, from Parquet too. to_dict() renders the same table as
-  {"metadata": …, "rows": […]}, one mapping per claim keyed by the columns, and
-  from_dict() reads it back.
+  The MatchClaim table: a columnar, PyArrow-backed store holding a set of
+  MatchClaims of every kind as Arrow columns, one per property of a MatchClaim
+  (the two timeline ids as strings, the anchors, the flags, the provenance and
+  certainty, the event ids and names, the source coordinate, id and
+  id_minted; each coordinate a struct of value, numerator, denominator, unit
+  and number_type), rather than as one frozen MatchClaim object per claim;
+  its columns are TimeToShare's MatchClaim table. Storing the exact ratio
+  beside the float mirror is what lets a claim's coordinate come back in its
+  axis's declared number type instead of being flattened on the way through
+  the column. Individual MatchClaims are materialised on demand when a row is
+  indexed or iterated. Built vectorized via from_columns(), it is the scalable
+  backing for dense alignment matrices, where the complete pairwise topology
+  of a whole work runs to roughly a million claims, and an AlignmentBundle
+  keeps all its claims in one, match_claim_table. Shared provenance is held
+  once at field level; only claims whose provenance differs carry it per row.
+  The table property gives the field as an Arrow table, the shared provenance
+  in its schema metadata under the key timetoshare:provenance, and
+  from_table() reads it back unchanged; to_parquet() and from_parquet() write
+  and read match_claims.parquet. to_dict() renders the same table as
+  {"provenance": …, "rows": […]}, one mapping per claim keyed by the columns,
+  and from_dict() reads it back.
 
 MatchGraph: |
   An auxiliary structure formed by extending MatchClaims through shared
@@ -386,7 +392,8 @@ MultiMap: |
 NOMATCH: |
   A sentinel value in a MatchClaim explicitly encoding the absence of a
   corresponding event on the other timeline. The MatchClaim records both
-  timeline IDs but has no AlignmentAnchors; is_synchronous is always False.
+  timeline IDs and names the event of the timeline that has it, but has no
+  AlignmentAnchors; is_synchronous is always False.
 
 Origin: "The zero coordinate of a timeline, from which all positions are measured."
 
@@ -417,16 +424,34 @@ Parent: |
   its children must share the same measuring unit. Coordinate transfer uses
   exact offset arithmetic.
 
-Provenance entry: |
-  The annotation of one statement in the provenance beside an element's
-  statements (or inside a value node, for its own pairs). It names the pair
-  again by property and value and gives its status: confirmed (the subject
-  states the pair), proposed (a candidate awaiting a decision) or rejected (a
-  candidate examined and refused, so that no tool proposes it again). It may
-  state who stated it, the day, how (manual, reconciled, imported, inferred),
-  the lookup service, the sources it rests on, how closely the value matches
-  and a note. A proposed or rejected pair is never stated; a pair without an
-  entry is stated by the manifest's publisher.
+Projection: |
+  An event standing on a timeline for an event that timeline does not hold,
+  so that a MatchClaim can join two events: its ID (projection_N when none is
+  given), its position on the timeline's own axis (start, and a duration for
+  a span), and projection_of, the event it stands for ({timeline_id,
+  event_id}), or none when its side was stated as a position only.
+  Timeline.add_projections() adds Projections, reusing one the timeline
+  already holds for the same event and position;
+  AlignmentBundle.create_match_claims(), the alignment loaders and
+  match_notes_by_attributes() give a Projection to every side stated as a
+  position.
+
+Provenance: |
+  How an item was made and who believes it, one facility for statements and
+  MatchClaims. Every key is optional, but an entry states at least one: who
+  stated the item, the day, how (manual, reconciled, imported, inferred or an
+  IRI), the lookup service, the sources it rests on, how closely a value
+  matches, a note, and beliefs: at most one per actor, "true", "false" or
+  "unlikely", with its date. A person stating an item is recorded as
+  believing it "true"; a loader or a service records how it made the item and
+  believes nothing. A belief never removes an item. The belief filter reads
+  one actor's beliefs: everything the believer does not believe "false" (the
+  default) or only what the believer believes "true". For a statement, the
+  entry sits in the provenance beside an element's statements (or inside a
+  value node) and names the pair again by property and value; a pair without
+  one is stated by the manifest's publisher, and a pair held only as its
+  entry is a candidate. For a MatchClaim, the entry is the claim's
+  provenance.
 
 Reach: |
   The farthest coordinate on a timeline's own axis that its content reaches:
@@ -568,8 +593,7 @@ TimeToShare manifest: |
   region bounds, flow-control coordinates) is written bare, in the axis's
   number type. Timeline, TimelineGroup and AlignmentBundle write one with
   to_dict() and read one with from_dict(), and write and read a manifest
-  file with to_file() and from_file(). The library class TimeSkeleton is
-  a different thing: a temporal structure shared by the timelines of one work.
+  file with to_file() and from_file().
 
 Unknown key: |
   A key of a TimeToShare manifest that the format does not define, written

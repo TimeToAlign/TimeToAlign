@@ -190,7 +190,7 @@ samples_to_seconds = szegedi_dpt.get_conversion_map(TimeUnit.seconds)
 # discarding it.
 
 # %%
-claims = bundle.cross_group_claims
+claims = bundle.get_match_claims()
 
 {
     "total claims": len(claims),

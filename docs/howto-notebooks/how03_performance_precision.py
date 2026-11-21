@@ -116,7 +116,8 @@ metrical_position_map = loader.metrical_position_map
 # ## 3. The score timeline
 #
 # The score is a logical {{< glossary Timeline >}} measured in quarters. It holds
-# every note of the `.solo` score, each placed at its absolute quarter position.
+# every note of the `.solo` score, each placed at its absolute quarter position,
+# and after the notes the Projections the alignment's claims stand on (§5).
 # Its stored UID is `score:clt_1`.
 
 # %%
@@ -171,7 +172,8 @@ pitch_field = solo.events.get_field(EnharmonicPitch)
 # ## 4. The performance timelines
 #
 # Each recording is a physical {{< glossary Timeline >}} measured in seconds, one
-# event per aligned note onset. Their stored UIDs follow
+# Note per aligned note onset, followed by the Projections of its bar and beat
+# rows (§5). Their stored UIDs follow
 # `perf:<performer>:cpt_1`, so the Ashkenazy recording is
 # `perf:Chopin_Ashkenazy:cpt_1`:
 
@@ -202,19 +204,43 @@ bundle = loader.create_bundle()
 bundle
 
 # %% [markdown]
+# A MatchClaim joins two events. An alignment row names its score position by
+# a `measure+offset` label, which may stand for several notes of a chord, so
+# the score side of every claim is a {{< glossary Projection >}}: an event
+# added to the score timeline at the label's position. On a note row it
+# names the performer's Note it stands for (`projection_of`); a bar or beat
+# row has no note on either side, so the performance side gets a Projection
+# too. A timeline keeps one Projection per event and position, so the score's
+# Projections are shared wherever the labels agree:
+
+# %%
+{
+    "score Notes": len(score_tl.get_events(event_type="Note")),
+    "score Projections": len(score_tl.get_events(event_type="Projection")),
+    "Ashkenazy Projections": len(ashkenazy.get_events(event_type="Projection")),
+}
+
+# %% [markdown]
 # Each recording was aligned at three granularities — note, bar, and beat — and
-# the loader records which one produced each claim in its provenance metadata:
-# the aligning agent's `identifier` carries the granularity. Counting the
-# claims for one performer shows the shape of a single recording's alignment.
-# A {{< glossary NOMATCH >}} claim prints its unmatched score coordinate
-# (`score:clt_1@…`) so the dangling position stays legible at a glance:
+# the loader records which one produced each claim in its
+# {{< glossary Provenance >}}: the claim's `provenance.note` names the
+# granularity after the tool. Counting the claims for one performer shows the
+# shape of a single recording's alignment. A {{< glossary NOMATCH >}} claim
+# prints its unmatched score coordinate (`score:clt_1@…`) so the dangling
+# position stays legible at a glance:
 
 # %%
-bundle.cross_group_claims
+bundle.get_match_claims()
+
 
 # %%
-ashkenazy_claims = [c for c in bundle.cross_group_claims if c.connects(ashkenazy.id)]
-by_granularity = Counter(c.metadata.agent.identifier for c in ashkenazy_claims)
+def granularity(claim):
+    """The granularity the loader names in a claim's provenance note."""
+    return claim.provenance.note.removeprefix("performance_precision ")
+
+
+ashkenazy_claims = [c for c in bundle.get_match_claims() if c.connects(ashkenazy.id)]
+by_granularity = Counter(granularity(c) for c in ashkenazy_claims)
 dict(by_granularity)
 
 # %% [markdown]
@@ -225,7 +251,7 @@ dict(by_granularity)
 # distinction explicit:
 
 # %%
-note_claims = [c for c in ashkenazy_claims if c.metadata.agent.identifier == "note"]
+note_claims = [c for c in ashkenazy_claims if granularity(c) == "note"]
 
 {
     "note claims (total)": len(note_claims),
@@ -239,9 +265,7 @@ note_claims = [c for c in ashkenazy_claims if c.metadata.agent.identifier == "no
 # Ashkenazy played it:
 
 # %%
-ashkenazy_bar_claims = [
-    c for c in ashkenazy_claims if c.metadata.agent.identifier == "bar"
-]
+ashkenazy_bar_claims = [c for c in ashkenazy_claims if granularity(c) == "bar"]
 ashkenazy_bar_claims[0]
 
 # %% [markdown]

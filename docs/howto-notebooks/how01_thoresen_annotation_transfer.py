@@ -29,7 +29,9 @@
 #
 # Eleven annotated sound-object rectangles are placed on DGT2.  The goal is to
 # project them onto DGT1 via a shared physical timeline (seconds), creating
-# cross-domain `MatchClaims` that record the correspondence.
+# cross-domain `MatchClaims` that record the correspondence. DGT1 has no
+# events of its own, so each claim's DGT1 side is a `Projection`: an event
+# standing on DGT1 for the DGT2 rectangle it projects.
 #
 # ## Key Concepts Demonstrated
 #
@@ -38,7 +40,7 @@
 # - Attaching `ScalarMap` and `ConstantMap` to timeline segments
 # - Adding interval events to child timelines
 # - Querying `TimeIntervalStamp` via `get_timestamp_for()`
-# - Creating `MatchClaim.from_projection()` for coordinate transfer
+# - Projecting events onto another timeline with `AlignmentBundle.create_match_claims()`
 # - Querying `MatchStamp` from both a single claim and an `AlignmentBundle`
 # - Transferring y-coordinates via per-segment `LinearMap`
 
@@ -51,17 +53,15 @@ import json
 import pandas as pd
 
 from timetoalign import (
-    Agent,
     AlignmentBundle,
     ConstantMap,
+    Coordinate,
     DiscreteGraphicalTimeline,
     LinearMap,
-    MatchClaim,
-    MatchMetadata,
+    Provenance,
     ScalarMap,
     TimeUnit,
 )
-from timetoalign.core import AgentType
 from timetoalign.testdata import ensure_data  # noqa: E402
 from timetoalign.timelines import SegmentLine
 
@@ -328,17 +328,16 @@ print(bundle)
 #
 # For each event on DGT2, we:
 # 1. Get its `TimeIntervalStamp` to extract global pixel coordinates and seconds.
-# 2. Project the seconds onto DGT1 via the inverse of DGT1's ScalarMap.
-# 3. Create a `MatchClaim.from_projection()` recording the correspondence.
+# 2. State the DGT1 side as a position in seconds: DGT1's ScalarMap places it
+#    on DGT1's pixel axis.
+# 3. Let `bundle.create_match_claims()` add a `Projection` of the DGT2 event
+#    at that position on DGT1 and make the MatchClaim between the two events.
 
 # %%
-# Get the inverse map for DGT1: seconds -> pixels
-dgt1_sec_to_px = dgt1_px_to_sec.inverse()
-
 # Collect all event IDs from the TSV
 event_ids = events_df["graphical_element_id"].tolist()
 
-claims = []
+event_pairs = []
 projection_data = []
 
 for event_id in event_ids:
@@ -353,30 +352,13 @@ for event_id in event_ids:
     sec_start = dgt2_global_px_to_sec(dgt2_start.value)
     sec_end = dgt2_global_px_to_sec(dgt2_end.value)
 
-    # Project seconds onto DGT1 pixels via the inverse of DGT1's ScalarMap
-    dgt1_start = float(dgt1_sec_to_px(sec_start))
-    dgt1_end = float(dgt1_sec_to_px(sec_end))
-
-    # Create the MatchClaim
-    claim = MatchClaim.from_projection(
-        event={"id": event_id, "name": event_id, "start": dgt2_start, "end": dgt2_end},
-        source_tl_id="dgt_2",
-        target_tl_id="dgt_1",
-        target_coord=dgt1_start,
-        source_unit=TimeUnit.pixels,
-        target_unit=TimeUnit.pixels,
-        target_end_coord=dgt1_end,
-        end_coord_key="end",
-        metadata=MatchMetadata(
-            agent=Agent(
-                name="Thoresen analysis",
-                type=AgentType.human,
-                identifier="coordinate_projection_via_shared_physical_timeline",
-            ),
-            certainty=1.0,
-        ),
-    )
-    claims.append(claim)
+    # The DGT1 side: a span in seconds, which DGT1's ScalarMap places on its
+    # pixel axis when the Projection is added
+    dgt1_side = {
+        "start": Coordinate(sec_start, TimeUnit.seconds),
+        "end": Coordinate(sec_end, TimeUnit.seconds),
+    }
+    event_pairs.append((event_id, dgt2.id, dgt1_side, dgt1.id))
 
     # Track data for the summary table
     projection_data.append(
@@ -386,16 +368,30 @@ for event_id in event_ids:
             "dgt2_end_px": dgt2_end,
             "seconds_start": round(sec_start, 2),
             "seconds_end": round(sec_end, 2),
-            "dgt1_start_px": round(dgt1_start, 1),
-            "dgt1_end_px": round(dgt1_end, 1),
         }
     )
 
-{"claims": len(claims)}
+claims = bundle.create_match_claims(
+    event_pairs,
+    provenance=Provenance(
+        method="manual",
+        note="Thoresen analysis: projection via the shared physical timeline",
+    ),
+)
+
+# The DGT1 pixels each claim holds, for the summary table
+for row, claim in zip(projection_data, claims):
+    row["dgt1_start_px"] = claim.start_anchor.coordinate_b.value
+    row["dgt1_end_px"] = claim.end_anchor.coordinate_b.value
+
+{"claims": len(claims), "DGT1 events": dgt1.n_events}
+
+# %% [markdown]
+# Each claim joins a DGT2 rectangle and the Projection added for it on DGT1.
+# A Projection records the event it stands for in `projection_of`:
 
 # %%
-# Add claims to the bundle
-bundle.add_match_claims(claims)
+dgt1.get_event(claims[0].event_b_id)
 
 # %%
 # Display an example claim (shows event ID, timelines, coordinates)
@@ -422,11 +418,11 @@ matchstamp_h_start
 {
     "start": {
         "DGT2 px": claim_h.start_anchor.coordinate_a.value,
-        "DGT1 px": round(claim_h.start_anchor.coordinate_b.value, 1),
+        "DGT1 px": claim_h.start_anchor.coordinate_b.value,
     },
     "end": {
         "DGT2 px": claim_h.end_anchor.coordinate_a.value,
-        "DGT1 px": round(claim_h.end_anchor.coordinate_b.value, 1),
+        "DGT1 px": claim_h.end_anchor.coordinate_b.value,
     },
 }
 
@@ -608,7 +604,8 @@ print("All y-coordinates within their respective DGT1 system bounds")
 # 2. **DGT1** was built as a plain `DiscreteGraphicalTimeline` with five
 #    children and a single `ScalarMap` on the parent.
 # 3. **11 MatchClaims** were created by projecting DGT2 events through seconds
-#    onto DGT1, using `MatchClaim.from_projection()`.
+#    onto DGT1 with `bundle.create_match_claims()`, which added one
+#    `Projection` per rectangle on DGT1.
 # 4. **MatchStamps** confirmed the coordinate correspondence from both the
 #    claim and bundle perspectives.
 # 5. **Y-coordinates** were transferred via per-segment `LinearMap`, mapping

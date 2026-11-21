@@ -53,9 +53,7 @@
 
 import pandas as pd
 
-from timetoalign import AlignmentBundle
-from timetoalign.alignment.claims import Agent, MatchClaim, MatchMetadata
-from timetoalign.core.enums import AgentType
+from timetoalign import AlignmentBundle, MatchClaim, Provenance
 from timetoalign.loader.alignment import TiliaJsonLoader
 from timetoalign.testdata import ensure_data  # noqa: E402
 
@@ -130,22 +128,17 @@ for name, tl in timelines.items():
 # 2. Emit a **NOMATCH** claim from every present timeline to every absent one.
 #    The orphaned section lives on the versions that *have* it, so a genuine
 #    NOMATCH names that section and is oriented from the naming timeline to the
-#    one that lacks it -- not the reverse. A NOMATCH that named no event at all
-#    would merely be conceptual.
-# 3. For the present timelines, create **pairwise MatchClaims** -- synchronous
-#    or conceptual according to the `synchronous` column.
+#    one that lacks it -- not the reverse.
+# 3. For the present timelines, create **pairwise MatchClaims** between their
+#    sections -- synchronous or conceptual according to the `synchronous`
+#    column.
 #
 # The pairwise strategy fans out from the first present timeline to each of the
-# others (a "star" topology).
+# others (a "star" topology). Every claim records its
+# {{< glossary Provenance >}}: how it was made and from which source.
 
 # %%
-metadata = MatchMetadata(
-    agent=Agent(
-        name="Hendrix analysis",
-        type=AgentType.human,
-        identifier="match_data.csv",
-    )
-)
+provenance = Provenance(method="manual", note="Hendrix analysis, match_data.csv")
 tl_columns = [c for c in df.columns if c not in ("match", "synchronous")]
 
 sync_claims = []
@@ -182,11 +175,10 @@ for _, row in df.iterrows():
         for present_tl, present_ev in present:
             nomatch_claims.append(
                 MatchClaim.nomatch(
-                    event=present_ev,
-                    source_tl_id=timelines[present_tl].id,
-                    target_tl_id=timelines[absent_tl].id,
-                    unit=timelines[present_tl].unit,
-                    metadata=metadata,
+                    present_ev,
+                    timelines[present_tl],
+                    timelines[absent_tl],
+                    provenance=provenance,
                 )
             )
 
@@ -196,27 +188,16 @@ for _, row in df.iterrows():
 
     tl_a_name, ev_a = present[0]
     for tl_b_name, ev_b in present[1:]:
-        if is_synchronous:
-            claim = MatchClaim.from_events(
-                event_a=ev_a,
-                tl_a_id=timelines[tl_a_name].id,
-                event_b=ev_b,
-                tl_b_id=timelines[tl_b_name].id,
-                unit_a=timelines[tl_a_name].unit,
-                unit_b=timelines[tl_b_name].unit,
-                end_coord_key="end",
-                is_synchronous=True,
-                metadata=metadata,
-            )
-            sync_claims.append(claim)
-        else:
-            claim = MatchClaim(
-                timeline_a_id=timelines[tl_a_name].id,
-                timeline_b_id=timelines[tl_b_name].id,
-                is_synchronous=False,
-                metadata=metadata,
-            )
-            conceptual_claims.append(claim)
+        claim = MatchClaim.from_events(
+            ev_a,
+            timelines[tl_a_name],
+            ev_b,
+            timelines[tl_b_name],
+            end_coord_key="end",
+            is_synchronous=is_synchronous,
+            provenance=provenance,
+        )
+        (sync_claims if is_synchronous else conceptual_claims).append(claim)
 
 all_claims = sync_claims + conceptual_claims + nomatch_claims
 bundle.add_match_claims(all_claims)
@@ -232,12 +213,12 @@ bundle.add_match_claims(all_claims)
 # ### The claim kind is derived, not stored
 #
 # Every `MatchClaim` reports a `claim_type` computed from its structure --
-# whether it is synchronous and how many of its two sides name an event. A
-# synchronous event-to-event match is `ClaimType.event_match`, a structural
-# link with no temporal commitment is `ClaimType.conceptual`, and a
-# named-but-absent section is `ClaimType.nomatch`. This discriminator is what
-# keeps conceptual links and NOMATCH claims -- both non-synchronous -- visibly
-# distinct.
+# whether it is synchronous and whether its second side names an event or
+# the NOMATCH sentinel. A synchronous match between two sections is
+# `ClaimType.event_match`, a non-synchronous link between two sections (no
+# temporal commitment) is `ClaimType.conceptual`, and a named-but-absent
+# section is `ClaimType.nomatch`. This discriminator is what keeps conceptual
+# links and NOMATCH claims -- both non-synchronous -- visibly distinct.
 
 # %%
 {
@@ -256,7 +237,7 @@ bundle.add_match_claims(all_claims)
 # of section boundaries in seconds.
 #
 # The MatchClaim's rich display shows timelines, coordinates, events, and
-# metadata — no need to compile info-dicts manually.
+# provenance — no need to compile info-dicts manually.
 
 # %%
 # Display an example synchronous claim (shows timeline IDs, coordinates, events)
@@ -274,12 +255,12 @@ sync_claims[0]
 #
 # These record structural equivalence without temporal commitment — for
 # instance, "both versions have an Intro" without asserting that the intros
-# can be aligned beat-by-beat. A conceptual claim names no orphaned event, so
-# it badges as `[CONCEPTUAL]` — visibly distinct from the `[NOMATCH]` claims
-# below, even though both are non-synchronous.
+# can be aligned beat-by-beat. A conceptual claim names a section on each
+# side, so it badges as `[CONCEPTUAL]` — visibly distinct from the `[NOMATCH]`
+# claims below, even though both are non-synchronous.
 
 # %%
-# Display an example conceptual claim (no coordinates, just timeline connection)
+# Display an example conceptual claim (no coordinates, the two sections it links)
 conceptual_claims[0] if conceptual_claims else "No conceptual claims"
 
 # %%
@@ -294,7 +275,8 @@ conceptual_claims[0] if conceptual_claims else "No conceptual claims"
 # version that has it to the version that lacks it. For instance, the
 # "Instrumental Part" in the studio recording has no equivalent in Demo1, so
 # the claim names that studio section and points at Demo1. Naming the orphaned
-# event is precisely what distinguishes a NOMATCH from a conceptual link.
+# event, and no counterpart, is precisely what distinguishes a NOMATCH from a
+# conceptual link.
 
 # %%
 # Display an example NOMATCH claim (names the present section, points at the
@@ -314,9 +296,9 @@ nomatch_claims[0] if nomatch_claims else "No NOMATCH claims"
 # |---------|-----|
 # | Load TiLiA annotations | `TiliaJsonLoader.from_file()` |
 # | Look up sections by name | `tl.get_events(name=...)` |
-# | Synchronous alignment | `MatchClaim.from_events(..., is_synchronous=True)` |
-# | Conceptual correspondence | `MatchClaim(..., is_synchronous=False)` |
-# | Explicit absence (names orphaned section) | `MatchClaim.nomatch(event=ev, source_tl_id=has, target_tl_id=lacks)` |
+# | Synchronous alignment | `MatchClaim.from_events(ev_a, tl_a, ev_b, tl_b)` |
+# | Conceptual correspondence | `MatchClaim.from_events(..., is_synchronous=False)` |
+# | Explicit absence (names orphaned section) | `MatchClaim.nomatch(ev, has_it, lacks_it)` |
 # | Discriminate claim kinds | `claim.claim_type` |
 # | Collect in bundle | `bundle.add_match_claims(claims)` |
 

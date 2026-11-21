@@ -382,6 +382,7 @@ message
 # | Annotation file | `grid.export_to_csv(path, format=…, labels=…)` |
 #
 # A grid does not have to be written by hand. Where a loader reads tempo
-# statements out of a file, the `TimeSkeleton` it builds for that track carries
-# the grid its measures came from, and `skeleton.create_beatgrid()` returns
-# that grid — the same object, with the same surface as everything above.
+# statements out of a file, it builds the grid for you:
+# `RekordboxLoader.create_beatgrid()` returns the grid of the loaded track (and
+# `create_beatgrids()` one per track of a collection), a `BeatGrid` with the
+# same surface as everything above.

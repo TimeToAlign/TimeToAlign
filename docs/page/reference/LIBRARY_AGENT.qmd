@@ -1,0 +1,5 @@
+# LIBRARY_AGENT { #timetoalign.timelines.LIBRARY_AGENT }
+
+`timelines.LIBRARY_AGENT`
+
+The agent an importer of this library names as ``stated_by`` by default.

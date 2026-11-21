@@ -1,0 +1,12 @@
+# OutputNumberTypeError { #timetoalign.maps.OutputNumberTypeError }
+
+```python
+maps.OutputNumberTypeError()
+```
+
+A float handed to a map declared to write fractions.
+
+Such a map computes exactly, so it takes ints and Fractions only: a float
+result rebuilt as an exact value would state a ratio the input never
+stated. The input is refused as a value, like any other position a map
+cannot answer for.

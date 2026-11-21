@@ -102,6 +102,8 @@ website:
               href: howto/how03_engraved_score_alignment.ipynb
             - text: "How to Describe What a Bundle and Its Timelines Stand For"
               href: howto/how03_describe_the_work.ipynb
+            - text: "How to Keep MatchClaims, Projections and Beliefs in a Package"
+              href: howto/how03_match_claims_package.ipynb
         - section: "In-depth Topics"
           contents:
             - text: "How to Encode Song Genesis (Hendrix)"
@@ -290,10 +292,14 @@ quartodoc:
           package: timetoalign.core
         - name: MatchClaimField
           package: timetoalign.alignment
-        - name: MatchMetadata
-          package: timetoalign.alignment
-        - name: Agent
-          package: timetoalign.alignment
+        - name: Provenance
+          package: timetoalign.core
+        - name: Belief
+          package: timetoalign.core
+        - name: Projection
+          package: timetoalign.core
+        - name: EventReference
+          package: timetoalign.core
         - name: MatchGraph
           package: timetoalign.alignment
         - name: MatchStamp

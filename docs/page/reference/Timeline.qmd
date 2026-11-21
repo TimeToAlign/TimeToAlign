@@ -43,17 +43,18 @@ subclass, use :meth:`to_typed`.
 
 ## Attributes {.doc-section .doc-section-attributes}
 
-| Name          | Type                                                | Description                                                      |
-|---------------|-----------------------------------------------------|------------------------------------------------------------------|
-| id            | [str](`str`)                                        | Unique identifier for this timeline.                             |
-| unit          | [TimeUnit](`timetoalign.core.TimeUnit`)             | The time unit for coordinates (e.g., seconds, quarters, pixels). |
-| number_type   | [NumberType](`timetoalign.core.NumberType`)         | The numeric type for coordinates (int, float, Fraction).         |
-| domain        | [Domain](`timetoalign.core.Domain`)                 | The temporal domain (derived from unit).                         |
-| origin        | [Coordinate](`timetoalign.core.Coordinate`)         | The start coordinate (always 0).                                 |
-| length        | [Coordinate](`timetoalign.core.Coordinate`) \| None | The end coordinate, or ``None`` when the length is unknown.      |
-| is_locked     | [bool](`bool`)                                      | Whether the timeline's length is fixed.                          |
-| is_discrete   | [bool](`bool`)                                      | Whether the timeline uses discrete coordinates.                  |
-| is_continuous | [bool](`bool`)                                      | Whether the timeline uses continuous coordinates.                |
+| Name          | Type                                                                  | Description                                                                                                                          |
+|---------------|-----------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------|
+| id            | [str](`str`)                                                          | Unique identifier for this timeline.                                                                                                 |
+| unit          | [TimeUnit](`timetoalign.core.TimeUnit`)                               | The time unit for coordinates (e.g., seconds, quarters, pixels).                                                                     |
+| number_type   | [NumberType](`timetoalign.core.NumberType`)                           | The numeric type for coordinates (int, float, Fraction).                                                                             |
+| domain        | [Domain](`timetoalign.core.Domain`)                                   | The temporal domain (derived from unit).                                                                                             |
+| origin        | [Coordinate](`timetoalign.core.Coordinate`)                           | The start coordinate (always 0).                                                                                                     |
+| length        | [Coordinate](`timetoalign.core.Coordinate`) \| None                   | The end coordinate, or ``None`` when the length is unknown.                                                                          |
+| is_locked     | [bool](`bool`)                                                        | Whether the timeline's length is fixed.                                                                                              |
+| is_discrete   | [bool](`bool`)                                                        | Whether the timeline uses discrete coordinates.                                                                                      |
+| is_continuous | [bool](`bool`)                                                        | Whether the timeline uses continuous coordinates.                                                                                    |
+| statements    | [dict](`dict`)\[[str](`str`), [list](`list`)\[[Any](`typing.Any`)\]\] | What the timeline stands for, as property–value pairs, with their :attr:`provenance` (see :mod:`~timetoalign.timelines.statements`). |
 
 ## Examples {.doc-section .doc-section-examples}
 
@@ -79,6 +80,8 @@ subclass, use :meth:`to_typed`.
 
 | Name | Description |
 | --- | --- |
+| [add_belief](#timetoalign.timelines.Timeline.add_belief) | Record *actor*'s belief in the pair ``(property, value)``. |
+| [add_candidate](#timetoalign.timelines.Timeline.add_candidate) | Offer the pair ``(property, value)`` as a candidate, without stating it. |
 | [add_child](#timetoalign.timelines.Timeline.add_child) | Embed a child timeline at the specified offset. |
 | [add_conversion_map](#timetoalign.timelines.Timeline.add_conversion_map) | Add a ConversionMap to this timeline. |
 | [add_events](#timetoalign.timelines.Timeline.add_events) | Add events to the timeline. |
@@ -86,12 +89,16 @@ subclass, use :meth:`to_typed`.
 | [add_flow_map](#timetoalign.timelines.Timeline.add_flow_map) | Add a FlowMap to this timeline. |
 | [add_measure_map](#timetoalign.timelines.Timeline.add_measure_map) | Attach the timeline's single authored measure map. |
 | [add_metric_hierarchy](#timetoalign.timelines.Timeline.add_metric_hierarchy) | Attach the timeline's single measure-anchored metric hierarchy. |
+| [add_prefix](#timetoalign.timelines.Timeline.add_prefix) | Declare a prefix the holder's statements may use. |
+| [add_projections](#timetoalign.timelines.Timeline.add_projections) | Add Projections to the timeline, reusing those it already holds. |
 | [add_region](#timetoalign.timelines.Timeline.add_region) | Attach a pre-existing Region object to this timeline. |
+| [add_statement](#timetoalign.timelines.Timeline.add_statement) | State the pair ``(property, value)``. |
+| [add_verb](#timetoalign.timelines.Timeline.add_verb) | State a verb of the catalogue in one system's vocabulary. |
 | [append_child](#timetoalign.timelines.Timeline.append_child) | Append a child timeline at the current end of this timeline. |
 | [apply_flow](#timetoalign.timelines.Timeline.apply_flow) | Yield the unfolded timeline for an attached FlowMap. |
 | [as_segment_line](#timetoalign.timelines.Timeline.as_segment_line) | Cast a structurally contiguous hierarchy to a parameterized line. |
-| [attach](#timetoalign.timelines.Timeline.attach) | Refuse timeline-side enrollment. |
 | [convert_to](#timetoalign.timelines.Timeline.convert_to) | Convert coordinates to another unit using attached C-Maps. |
+| [create_calibrated_child](#timetoalign.timelines.Timeline.create_calibrated_child) | Create a child over a calibrated segment, with the map it reads. |
 | [create_child](#timetoalign.timelines.Timeline.create_child) | Create and embed a child selected by this timeline's spawn hook. |
 | [create_child_from_region](#timetoalign.timelines.Timeline.create_child_from_region) | Create a child timeline from a region (partitioning). |
 | [create_children_from_boundaries](#timetoalign.timelines.Timeline.create_children_from_boundaries) | Create children spanning consecutive boundary coordinates. |
@@ -105,7 +112,6 @@ subclass, use :meth:`to_typed`.
 | [create_segment_line_by_grouping](#timetoalign.timelines.Timeline.create_segment_line_by_grouping) | Create a SegmentLine by grouping adjacent events on a field value. |
 | [create_segment_line_by_splitting](#timetoalign.timelines.Timeline.create_segment_line_by_splitting) | Create a SegmentLine by splitting at events matching a predicate. |
 | [create_segment_line_from_regions](#timetoalign.timelines.Timeline.create_segment_line_from_regions) | Create a SegmentLine from contiguous regions. |
-| [create_skeleton](#timetoalign.timelines.Timeline.create_skeleton) | Return structure already harvested for this timeline. |
 | [derive](#timetoalign.timelines.Timeline.derive) | Create a derivative timeline in a different unit via C-Map conversion. |
 | [diagram](#timetoalign.timelines.Timeline.diagram) | Generate ASCII diagram for this timeline. |
 | [empty](#timetoalign.timelines.Timeline.empty) | Create an empty Timeline with length 0. |
@@ -114,10 +120,12 @@ subclass, use :meth:`to_typed`.
 | [from_dict](#timetoalign.timelines.Timeline.from_dict) | Read a timeline from a TimeToShare manifest. |
 | [from_event_data](#timetoalign.timelines.Timeline.from_event_data) | Create a Timeline from an existing EventData. |
 | [from_events](#timetoalign.timelines.Timeline.from_events) | Create a Timeline from event dictionaries. |
+| [from_file](#timetoalign.timelines.Timeline.from_file) | Read a manifest file in any serialization, as ``from_dict`` reads a manifest. |
 | [get_boundary_table](#timetoalign.timelines.Timeline.get_boundary_table) | Get timestamps for timeline boundaries only. |
+| [get_candidates](#timetoalign.timelines.Timeline.get_candidates) | Return the candidates: the entries of pairs the holder does not state. |
 | [get_child](#timetoalign.timelines.Timeline.get_child) | Retrieve a child timeline by ID. |
 | [get_child_offset](#timetoalign.timelines.Timeline.get_child_offset) | Get the offset of a child timeline. |
-| [get_children_at](#timetoalign.timelines.Timeline.get_children_at) | Return all children whose extent contains the given coordinate. |
+| [get_children_at](#timetoalign.timelines.Timeline.get_children_at) | Return all children that hold the given coordinate. |
 | [get_conversion_map](#timetoalign.timelines.Timeline.get_conversion_map) | Get a conversion map by target unit **or** by name/id. |
 | [get_coordinate](#timetoalign.timelines.Timeline.get_coordinate) | Dispatch a positional or event-key coordinate query. |
 | [get_coordinate_at](#timetoalign.timelines.Timeline.get_coordinate_at) | Resolve one position onto this timeline's canonical axis. |
@@ -129,6 +137,9 @@ subclass, use :meth:`to_typed`.
 | [get_events_at](#timetoalign.timelines.Timeline.get_events_at) | Get all events active at a specific coordinate. |
 | [get_flow_map](#timetoalign.timelines.Timeline.get_flow_map) | Get an attached FlowMap by id. |
 | [get_interval_stamp](#timetoalign.timelines.Timeline.get_interval_stamp) | Get a TimeIntervalStamp for a coordinate range. |
+| [get_pairs](#timetoalign.timelines.Timeline.get_pairs) | Return the pairs ``(property, value)`` of the holder or of a value node. |
+| [get_provenance](#timetoalign.timelines.Timeline.get_provenance) | Return the provenance entries of the holder or of a value node. |
+| [get_rectangles](#timetoalign.timelines.Timeline.get_rectangles) | Return the holder's pairs gathered by verb: one verb about one thing. |
 | [get_region](#timetoalign.timelines.Timeline.get_region) | Get a Region by id. |
 | [get_regions_at](#timetoalign.timelines.Timeline.get_regions_at) | Return all regions containing the given coordinate. |
 | [get_slice](#timetoalign.timelines.Timeline.get_slice) | Extract a portion of this timeline as a new, independent timeline. |
@@ -149,12 +160,103 @@ subclass, use :meth:`to_typed`.
 | [list_regions](#timetoalign.timelines.Timeline.list_regions) | List all region ids. |
 | [lock](#timetoalign.timelines.Timeline.lock) | Lock this timeline so that it can no longer expand. |
 | [make_coordinate](#timetoalign.timelines.Timeline.make_coordinate) | Create a Coordinate in this timeline's unit. |
+| [remove_statement](#timetoalign.timelines.Timeline.remove_statement) | Remove the pair ``(property, value)`` and its entry. |
+| [replace_region](#timetoalign.timelines.Timeline.replace_region) | Store *region* in place of the region holding its id. |
 | [resolve_subclass](#timetoalign.timelines.Timeline.resolve_subclass) | Return the most specific Timeline subclass for a unit/number_type pair. |
 | [summary](#timetoalign.timelines.Timeline.summary) | Get a summary of the timeline. |
 | [to_dict](#timetoalign.timelines.Timeline.to_dict) | Write a TimeToShare manifest holding this timeline as its one root. |
+| [to_file](#timetoalign.timelines.Timeline.to_file) | Write the object's manifest to a file. |
 | [to_typed](#timetoalign.timelines.Timeline.to_typed) | Return this timeline re-instantiated as the appropriate typed subclass. |
 | [unfold_coordinate](#timetoalign.timelines.Timeline.unfold_coordinate) | Convert a folded coordinate to unfolded coordinates. |
 | [validate_child](#timetoalign.timelines.Timeline.validate_child) | Validate that a timeline can be added as a child. |
+
+### add_belief { #timetoalign.timelines.Timeline.add_belief }
+
+```python
+timelines.Timeline.add_belief(
+    property,
+    value,
+    *,
+    actor,
+    belief,
+    date=None,
+    note=None,
+    node=(),
+)
+```
+
+Record *actor*'s belief in the pair ``(property, value)``.
+
+The pair's entry, made where the pair has none, records the belief,
+replacing the actor's earlier one (:func:`timetoshare.with_belief`).
+Whether the pair is stated is left as it is: believing a stated
+pair ``"false"`` records the belief and never removes the pair, and
+every other actor's belief stands. A candidate the actor believes
+``"false"`` is left out of :meth:`get_candidates` for that actor.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name     | Type                                                                   | Description                                                           | Default    |
+|----------|------------------------------------------------------------------------|-----------------------------------------------------------------------|------------|
+| property | [str](`str`)                                                           | The property, as for :meth:`add_statement`.                           | _required_ |
+| value    | [Any](`typing.Any`)                                                    | The value, as for :meth:`add_statement`.                              | _required_ |
+| actor    | [str](`str`)                                                           | Who holds the belief, an IRI.                                         | _required_ |
+| belief   | [BeliefValue](`timetoalign.core.provenance.BeliefValue`)               | ``"true"``, ``"false"`` or ``"unlikely"``.                            | _required_ |
+| date     | [str](`str`) \| [datetime](`datetime`).[date](`datetime.date`) \| None | The day, ``YYYY-MM-DD`` or a :class:`datetime.date`; today when None. | `None`     |
+| note     | [str](`str`) \| None                                                   | A remark.                                                             | `None`     |
+| node     | [NodePath](`timetoalign.timelines.statements.NodePath`)                | The value node whose pair is meant.                                   | `()`       |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                                |
+|--------|----------------------------|----------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If *belief* is none of the three, the date is no calendar date, *node* addresses no value node, or a prefix is undeclared. |
+
+### add_candidate { #timetoalign.timelines.Timeline.add_candidate }
+
+```python
+timelines.Timeline.add_candidate(
+    property,
+    value,
+    *,
+    stated_by,
+    method,
+    date=None,
+    service=None,
+    basis=(),
+    match=None,
+    note=None,
+    node=(),
+)
+```
+
+Offer the pair ``(property, value)`` as a candidate, without stating it.
+
+The candidate is an entry of the pair alone; it takes the place of
+another entry of the pair, whose beliefs it keeps
+(:func:`timetoshare.with_candidate`). A loader or a service
+offering it holds no belief; :meth:`add_statement` states it.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name      | Type                                                                   | Description                                                           | Default    |
+|-----------|------------------------------------------------------------------------|-----------------------------------------------------------------------|------------|
+| property  | [str](`str`)                                                           | The property, as for :meth:`add_statement`.                           | _required_ |
+| value     | [Any](`typing.Any`)                                                    | The value, as for :meth:`add_statement`.                              | _required_ |
+| stated_by | [str](`str`) \| [Sequence](`collections.abc.Sequence`)\[[str](`str`)\] | Who offers it: an IRI, or several.                                    | _required_ |
+| method    | [str](`str`)                                                           | ``manual``, ``reconciled``, ``imported``, ``inferred`` or an IRI.     | _required_ |
+| date      | [str](`str`) \| [datetime](`datetime`).[date](`datetime.date`) \| None | The day, ``YYYY-MM-DD`` or a :class:`datetime.date`; today when None. | `None`     |
+| service   | [str](`str`) \| None                                                   | The service that offered it, an IRI.                                  | `None`     |
+| basis     | [Sequence](`collections.abc.Sequence`)\[[str](`str`)\]                 | The sources the candidate rests on, IRIs.                             | `()`       |
+| match     | [str](`str`) \| None                                                   | ``exact``, ``close``, ``broad``, ``narrow`` or ``related``.           | `None`     |
+| note      | [str](`str`) \| None                                                   | A remark.                                                             | `None`     |
+| node      | [NodePath](`timetoalign.timelines.statements.NodePath`)                | The value node to offer the pair of.                                  | `()`       |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                                                                      |
+|--------|----------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the pair is stated (``'wdt:P175' already has this value; a stated pair is no candidate``), a member is no valid provenance member, or a prefix is undeclared. |
 
 ### add_child { #timetoalign.timelines.Timeline.add_child }
 
@@ -266,32 +368,59 @@ Add events to the timeline.
 Only ``event_type`` and a coordinate are strictly required per dict.
 Missing fields are filled in automatically:
 
-- **id**: auto-generated (``e000001``, ``e000002``, ...).
+- **id**: minted above every ID held on this timeline, its prefix the
+  event type in lower case: ``note_1``, ``beat_1``, ``projection_1``.
+  An ID once given on the timeline is never given again.
 - **temporal_type**: inferred from keys -- ``"interval"`` when both
   ``start`` and ``end`` (or ``duration``) are present, ``"instant"``
   otherwise.
 
+Positions are stored on this timeline's axis. A ``start``, ``end`` or
+``instant`` given as a :class:`~timetoalign.core.Coordinate` in another
+unit is converted through the timeline's C-Map; a ``duration`` given as
+a :class:`~timetoalign.core.Duration` (or ``Coordinate``) in another
+unit is the span from the start it is added to, converted as the two
+ends of that span are, so its start must be given in the same unit.
+Each converted value is written in the timeline's number type. Bare
+numbers and struct dicts are taken as on this timeline's axis.
+
+A Projection (``event_type`` ``"Projection"``) holds ``id``, its
+position and ``projection_of``, the event of another timeline it
+stands for, as a dict ``{"timeline_id": ..., "event_id": ...}`` or an
+:class:`~timetoalign.core.EventReference` (``None`` where none is
+known); it repeats nothing else of that event. A
+:class:`~timetoalign.core.Projection` object may be given in place of
+its row, alone or in the list.
+
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name            | Type                                                                  | Description                                                                                                                                                                                          | Default    |
-|-----------------|-----------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
-| rows            | [list](`list`)\[[dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\]\] | List of event dictionaries. Required keys: - event_type: class name (e.g. ``"Beat"``, ``"Note"``) - instant: coordinate (for instant events), **or** - start, end: coordinates (for interval events) | _required_ |
-| allow_expansion | [bool](`bool`)                                                        | If True, expand timeline if events exceed length.                                                                                                                                                    | `False`    |
+| Name            | Type                                                                                                                                                                                        | Description                                                                                                                                                                                                                                                     | Default    |
+|-----------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| rows            | [Projection](`timetoalign.core.Projection`) \| [Sequence](`collections.abc.Sequence`)\[[dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] \| [Projection](`timetoalign.core.Projection`)\] | Event dictionaries or Projections (one or a list). Required keys of a dictionary: - event_type: class name (e.g. ``"Beat"``, ``"Note"``,   ``"Projection"``) - instant: coordinate (for instant events), **or** - start, end: coordinates (for interval events) | _required_ |
+| allow_expansion | [bool](`bool`)                                                                                                                                                                              | If True, expand timeline if events exceed length.                                                                                                                                                                                                               | `False`    |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                           | Description                                          |
+|--------|--------------------------------|------------------------------------------------------|
+|        | [list](`list`)\[[str](`str`)\] | The IDs of the added events, in the order of *rows*. |
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                           | Description                                        |
-|--------|--------------------------------|----------------------------------------------------|
-|        | [ValueError](`ValueError`)     | If events exceed length and expansion not allowed. |
-|        | [RuntimeError](`RuntimeError`) | If timeline is locked and expansion not allowed.   |
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                            |
+|--------|----------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If an ID is already held by an event of this timeline or given twice, a Projection row holds a key a Projection does not have or names an event of this timeline, a position cannot be converted, or the events exceed the length and expansion is not allowed. Nothing is added then. |
 
 #### Examples {.doc-section .doc-section-examples}
 
 ```python
+>>> from timetoalign.timelines import ContinuousPhysicalTimeline
+>>> tl = ContinuousPhysicalTimeline(length=10.0)
 >>> tl.add_events([
 ...     {"event_type": "Beat", "instant": 0.0},
 ...     {"event_type": "Note", "start": 0.0, "end": 0.5},
 ... ])
+['beat_1', 'note_1']
 ```
 
 ### add_external_references { #timetoalign.timelines.Timeline.add_external_references }
@@ -436,6 +565,76 @@ Attach the timeline's single measure-anchored metric hierarchy.
 |--------|----------------------------|---------------------------------------------------------------------------------------------------------------|
 |        | [ValueError](`ValueError`) | If the timeline has no matching measure map, is not on the quarter-note axis, or already carries a hierarchy. |
 
+### add_prefix { #timetoalign.timelines.Timeline.add_prefix }
+
+```python
+timelines.Timeline.add_prefix(name, namespace)
+```
+
+Declare a prefix the holder's statements may use.
+
+The catalogue's prefixes need no declaration. A manifest written
+holding the holder carries the prefix in its ``@context`` when the
+statements use it.
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                    |
+|--------|----------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the format refuses the declaration (``cannot declare the prefix 'unit' as ...``), or the holder declares the prefix already with another namespace (``the prefix 'foaf' already stands for 'http://xmlns.com/foaf/0.1/' on timeline 'cpt_1'``). The same declaration again changes nothing. |
+
+### add_projections { #timetoalign.timelines.Timeline.add_projections }
+
+```python
+timelines.Timeline.add_projections(projections, allow_expansion=False)
+```
+
+Add Projections to the timeline, reusing those it already holds.
+
+Get-or-add: each Projection is placed on the timeline's axis as
+:meth:`add_events` places it, and the timeline keeps one Projection
+per thing it stands for. A Projection without an ``id`` reuses the
+Projection the timeline holds with the same ``projection_of`` (the
+same event of another timeline, or none) at the same exact ``start``
+and ``duration``; a Projection with an ``id`` reuses the one held
+under that id when its content is equal. Rows of one call are taken
+alike, so two rows standing for one thing give one Projection.
+Everything else is added, its id kept or minted
+(``projection_N``).
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name            | Type                                                                                                                                                                                        | Description                                                                        | Default    |
+|-----------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------|------------|
+| projections     | [Projection](`timetoalign.core.Projection`) \| [Sequence](`collections.abc.Sequence`)\[[dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] \| [Projection](`timetoalign.core.Projection`)\] | :class:`~timetoalign.core.Projection` objects or their event rows (one or a list). | _required_ |
+| allow_expansion | [bool](`bool`)                                                                                                                                                                              | If True, expand the timeline if a Projection added exceeds its length.             | `False`    |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                           | Description                                                   |
+|--------|--------------------------------|---------------------------------------------------------------|
+|        | [list](`list`)\[[str](`str`)\] | The ID of the Projection standing for each row, in row order. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                                                                                                 |
+|--------|----------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If a row is not a Projection, a given ID is held by another event of the timeline or given twice for different positions, or a row is refused by :meth:`add_events`. Nothing is added then. |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> from timetoalign.core import Coordinate, EventReference, Projection
+>>> from timetoalign.timelines import ContinuousPhysicalTimeline
+>>> tl = ContinuousPhysicalTimeline(length=10.0)
+>>> n1 = EventReference(timeline_id="score", event_id="n1")
+>>> at = Coordinate(2.5, "seconds")
+>>> tl.add_projections([Projection(start=at, projection_of=n1)] * 2)
+['projection_1', 'projection_1']
+>>> tl.add_projections(Projection(start=at, projection_of=n1))
+['projection_1']
+```
+
 ### add_region { #timetoalign.timelines.Timeline.add_region }
 
 ```python
@@ -474,6 +673,90 @@ one raises.
 ...            Coordinate(30, TimeUnit.seconds), name="Chorus")
 >>> tl.add_region(r)
 ```
+
+### add_statement { #timetoalign.timelines.Timeline.add_statement }
+
+```python
+timelines.Timeline.add_statement(
+    property,
+    value,
+    *,
+    node=(),
+    provenance=None,
+    actor=None,
+    date=None,
+)
+```
+
+State the pair ``(property, value)``.
+
+A candidate of the pair becomes the stated pair's entry, its
+beliefs kept (:func:`timetoshare.with_pair`). *provenance* sets the
+entry's members; *actor*, the person stating the pair, is recorded
+with the belief ``"true"``, replacing that actor's earlier belief.
+A loader or a service gives *provenance* alone and holds no belief.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name       | Type                                                                                                                                        | Description                                                                                                                                                               | Default    |
+|------------|---------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| property   | [str](`str`)                                                                                                                                | ``type`` ("is a"), a compact IRI or an absolute IRI.                                                                                                                      | _required_ |
+| value      | [Any](`typing.Any`)                                                                                                                         | A JSON value of the file's form: a literal, a value object, a node (``{"id": ...}``) or ``{"list": [...]}``; ``type`` takes a class IRI.                                  | _required_ |
+| node       | [NodePath](`timetoalign.timelines.statements.NodePath`)                                                                                     | The value node to state the pair of; ``()`` the holder.                                                                                                                   | `()`       |
+| provenance | [Provenance](`timetoalign.core.provenance.Provenance`) \| [Mapping](`collections.abc.Mapping`)\[[str](`str`), [Any](`typing.Any`)\] \| None | How the pair was made, a :class:`~timetoalign.core.provenance.Provenance` or its dictionary (``stated_by``, ``date``, ``method``, ...); its ``beliefs`` are recorded too. | `None`     |
+| actor      | [str](`str`) \| None                                                                                                                        | The person stating the pair, an IRI.                                                                                                                                      | `None`     |
+| date       | [str](`str`) \| [datetime](`datetime`).[date](`datetime.date`) \| None                                                                      | The day of *actor*'s belief, ``YYYY-MM-DD`` or a :class:`datetime.date`; today when None.                                                                                 | `None`     |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                   |
+|--------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the pair is stated already (``'wdt:P175' already has this value``), the property is no property, *node* addresses no value node, *provenance* is no provenance entry, *date* is given without *actor*, or a prefix is declared neither by the catalogue nor on the holder. |
+
+### add_verb { #timetoalign.timelines.Timeline.add_verb }
+
+```python
+timelines.Timeline.add_verb(
+    verb,
+    system,
+    value,
+    *,
+    label=None,
+    slots=None,
+    alternative=0,
+    provenance=None,
+    actor=None,
+    date=None,
+    catalogue=None,
+)
+```
+
+State a verb of the catalogue in one system's vocabulary.
+
+The pairs of the system's pattern for the verb are stated in their
+order, all or none (:func:`timetoshare.instantiate`), each as
+:meth:`add_statement` states a pair, with *provenance* and *actor*.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name        | Type                                                                                                                                        | Description                                                  | Default    |
+|-------------|---------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------|------------|
+| verb        | [str](`str`)                                                                                                                                | The verb's ID in the catalogue (``performed_by``).           | _required_ |
+| system      | [str](`str`)                                                                                                                                | The system's ID (``wikidata``, ``fallback``).                | _required_ |
+| value       | [str](`str`)                                                                                                                                | What the pattern's slot ``?`` takes (``wd:Q235650``).        | _required_ |
+| label       | [str](`str`) \| None                                                                                                                        | The label of the node the value becomes, if any.             | `None`     |
+| slots       | [Mapping](`collections.abc.Mapping`)\[[str](`str`), [Any](`typing.Any`)\] \| None                                                           | Values of the pattern's named slots (``{"role": "piano"}``). | `None`     |
+| alternative | [int](`int`)                                                                                                                                | Which of the system's patterns to use.                       | `0`        |
+| provenance  | [Provenance](`timetoalign.core.provenance.Provenance`) \| [Mapping](`collections.abc.Mapping`)\[[str](`str`), [Any](`typing.Any`)\] \| None | As for :meth:`add_statement`.                                | `None`     |
+| actor       | [str](`str`) \| None                                                                                                                        | As for :meth:`add_statement`.                                | `None`     |
+| date        | [str](`str`) \| [datetime](`datetime`).[date](`datetime.date`) \| None                                                                      | As for :meth:`add_statement`.                                | `None`     |
+| catalogue   | [Catalogue](`timetoshare.Catalogue`) \| None                                                                                                | The catalogue; the shipped one when None.                    | `None`     |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                                |
+|--------|----------------------------|----------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the catalogue has no such verb or pattern, a named slot has no value, or a pair is refused as by :meth:`add_statement`. |
 
 ### append_child { #timetoalign.timelines.Timeline.append_child }
 
@@ -617,14 +900,6 @@ The line is a copy holding copies of the children, so a change to it
 never reaches this tree; everything else is carried over as by
 :meth:`to_typed`.
 
-### attach { #timetoalign.timelines.Timeline.attach }
-
-```python
-timelines.Timeline.attach(*args, **kwargs)
-```
-
-Refuse timeline-side enrollment.
-
 ### convert_to { #timetoalign.timelines.Timeline.convert_to }
 
 ```python
@@ -663,6 +938,76 @@ Coordinate(51.1, inches)
 >>> arr = timeline.convert_to(np.array([100, 200]), "inches")
 >>> arr
 array([0.333, 0.666])
+```
+
+### create_calibrated_child { #timetoalign.timelines.Timeline.create_calibrated_child }
+
+```python
+timelines.Timeline.create_calibrated_child(
+    length,
+    offset,
+    calibration,
+    *,
+    value_unit=None,
+    law=LinearMap,
+    uid=None,
+    name=None,
+)
+```
+
+Create a child over a calibrated segment, with the map it reads.
+
+A segment of this timeline is calibrated by pairs of a position and
+the value read there in another unit, such as the labelled ticks of
+a drawn axis. The child starts at *offset*, and *law* builds the
+conversion map from the child's unit to the values' unit through the
+pairs, reading each position from *offset* in this timeline's own
+arithmetic (see :meth:`~timetoalign.maps.ConversionMap.from_pairs`).
+The pairs are checked against the law on the positions as given,
+where their rounding happened. The map is built before the child, so
+a refusal leaves this timeline unchanged.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name        | Type                                                                                                                                                                   | Description                                                                                                                                                                | Default     |
+|-------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------|
+| length      | [CoordinateSpec](`timetoalign.core.CoordinateSpec`) \| None                                                                                                            | Child length in this timeline's unit, or ``None`` when the child's length is unknown.                                                                                      | _required_  |
+| offset      | [CoordinateSpec](`timetoalign.core.CoordinateSpec`)                                                                                                                    | Child start coordinate.                                                                                                                                                    | _required_  |
+| calibration | [Sequence](`collections.abc.Sequence`)\[[tuple](`tuple`)\[[CoordinateSpec](`timetoalign.core.CoordinateSpec`), [CoordinateSpec](`timetoalign.core.CoordinateSpec`)\]\] | ``(position, value)`` pairs, in any order: positions in this timeline's coordinates, values as coordinates carrying the one unit they share or as numbers in *value_unit*. | _required_  |
+| value_unit  | [TimeUnit](`timetoalign.core.TimeUnit`) \| [str](`str`) \| None                                                                                                        | The unit of the values. Needed when a value is a number; a coordinate value must be in it.                                                                                 | `None`      |
+| law         | [type](`type`)\[[ConversionMap](`timetoalign.maps.ConversionMap`)\[[Any](`typing.Any`)\]\]                                                                             | The map class whose ``from_pairs`` reads the pairs.                                                                                                                        | `LinearMap` |
+| uid         | [str](`str`) \| None                                                                                                                                                   | Unique identifier for the child. Auto-generated if None.                                                                                                                   | `None`      |
+| name        | [str](`str`) \| None                                                                                                                                                   | Human-readable name for the child.                                                                                                                                         | `None`      |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type         | Description                                             |
+|--------|--------------|---------------------------------------------------------|
+|        | \'Timeline\' | The newly created and embedded child, carrying the map. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                                                                                                            |
+|--------|----------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [TypeError](`TypeError`)   | If a value is a number and no *value_unit* is given.                                                                                                                                                   |
+|        | [ValueError](`ValueError`) | If a position lies outside the child, or *law* refuses the pairs (fewer than two, a repeated position, values in two units, a pair off the law), or the child does not fit as in :meth:`create_child`. |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> from timetoalign.core import Coordinate
+>>> from timetoalign.timelines import ContinuousGraphicalTimeline
+>>> parent = ContinuousGraphicalTimeline(length=100, unit="points")
+>>> child = parent.create_calibrated_child(
+...     80, 10, [(10, Coordinate(0, "seconds")), (90, Coordinate(4, "seconds"))]
+... )
+>>> child.get_conversion_map("seconds").scalar
+0.05
+>>> child = parent.create_calibrated_child(
+...     80, 10, [(10, 0), (50, 2), (90, 4)], value_unit="seconds"
+... )
+>>> child.get_conversion_map("seconds").scalar
+0.05
 ```
 
 ### create_child { #timetoalign.timelines.Timeline.create_child }
@@ -1300,17 +1645,6 @@ Does NOT modify self.
 >>> seg_line = tl.create_segment_line_from_regions()
 ```
 
-### create_skeleton { #timetoalign.timelines.Timeline.create_skeleton }
-
-```python
-timelines.Timeline.create_skeleton(*args, **kwargs)
-```
-
-Return structure already harvested for this timeline.
-
-Creating structure from arbitrary events is intentionally unsupported:
-measures are structural scalars, not timeline events.
-
 ### derive { #timetoalign.timelines.Timeline.derive }
 
 ```python
@@ -1553,7 +1887,12 @@ manifest back. An argument naming a timeline of the manifest, root
 or descendant, selects it; given both, they must name the same
 timeline. Only arguments naming no timeline override the root's id
 and name, and only in a manifest of one root and no group; the new
-id must not be held by any element of the manifest.
+id must not be held by any element of the manifest, and the
+statements naming the root name it by its new id.
+
+A timeline selected leaves the rest of the manifest behind: a value
+of a statement of its tree naming a timeline or region of the rest
+is dropped, with its provenance.
 
 The class comes from the unit (each unit belongs to exactly one
 class) and ``is_segment_line``. Every optional key may be left out
@@ -1594,7 +1933,7 @@ back.
 >>> piece = Timeline.from_dict(
 ...     {
 ...         "timetoshare": "0.2.0",
-...         "timelines": [{"id": "piece", "unit": "quarters", "length": [32, 1]}],
+...         "timelines": [{"id": "#piece", "unit": "quarters", "length": [32, 1]}],
 ...     }
 ... )
 >>> type(piece).__name__, piece.length
@@ -1646,6 +1985,42 @@ The timeline length is automatically set to accommodate all events.
 | Name   | Type                             | Description                           |
 |--------|----------------------------------|---------------------------------------|
 |        | [Self](`typing_extensions.Self`) | A new Timeline containing the events. |
+
+### from_file { #timetoalign.timelines.Timeline.from_file }
+
+```python
+timelines.Timeline.from_file(path, **selection)
+```
+
+Read a manifest file in any serialization, as ``from_dict`` reads a manifest.
+
+The text is read with ``timetoshare.loads``: canonical YAML, pretty
+JSON, RFC 8785 JSON or any other JSON or YAML text. The object read
+records the file's form, styling and serialization, as
+``timetoshare.file_form`` reads them, and whether its timeline
+objects hold ``events`` and ``external_references``, which
+:meth:`to_file` writes back. An
+:class:`~timetoalign.alignment.AlignmentBundle` reads the tables its
+manifest names beside it, where they lie there.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name        | Type                                                      | Description                                                                                                                                                                    | Default    |
+|-------------|-----------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| path        | [str](`str`) \| [PathLike](`os.PathLike`)\[[str](`str`)\] | The manifest file, UTF-8.                                                                                                                                                      | _required_ |
+| **selection | [str](`str`) \| None                                      | The keyword arguments of ``from_dict`` that select one timeline or group of the manifest (``timeline_id`` and ``name`` for a timeline, ``group_id`` and ``name`` for a group). | `{}`       |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                  | Description      |
+|--------|-----------------------|------------------|
+|        | [Self](`typing.Self`) | The object read. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                |
+|--------|----------------------------|------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the text cannot be read (with the line and column of the fault), or ``from_dict`` refuses the manifest. |
 
 ### get_boundary_table { #timetoalign.timelines.Timeline.get_boundary_table }
 
@@ -1702,6 +2077,33 @@ cell:
 1   50.0    0.0
 2   60.0   10.0
 ```
+
+### get_candidates { #timetoalign.timelines.Timeline.get_candidates }
+
+```python
+timelines.Timeline.get_candidates(node=(), believer=None, belief='not_false')
+```
+
+Return the candidates: the entries of pairs the holder does not state.
+
+A candidate is offered for someone to state (:meth:`add_statement`
+with the same pair). With *believer*, a candidate the believer
+believes ``"false"`` is left out: it is not offered to that actor
+again (:func:`timetoshare.candidates` with ``actor=``).
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name     | Type                                                       | Description                                                                              | Default       |
+|----------|------------------------------------------------------------|------------------------------------------------------------------------------------------|---------------|
+| node     | [NodePath](`timetoalign.timelines.statements.NodePath`)    | The value node whose candidates to return; ``()`` the holder.                            | `()`          |
+| believer | [str](`str`) \| None                                       | The actor whose beliefs filter, an IRI (compact or absolute); every candidate when None. | `None`        |
+| belief   | [BeliefFilter](`timetoalign.core.provenance.BeliefFilter`) | ``"not_false"`` or ``"true"``, as for :meth:`get_provenance`.                            | `'not_false'` |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                               |
+|--------|----------------------------|-------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If *node* addresses no value node, or *belief* is neither ``"not_false"`` nor ``"true"``. |
 
 ### get_child { #timetoalign.timelines.Timeline.get_child }
 
@@ -1761,11 +2163,16 @@ Get the offset of a child timeline.
 timelines.Timeline.get_children_at(coord)
 ```
 
-Return all children whose extent contains the given coordinate.
+Return all children that hold the given coordinate.
 
-A child contains coord if offset <= coord < offset + child.length; a
-child of unknown length contains every coord from its offset on (up
-to its successor's offset in a segment line).
+A child holds every position from its offset up to its end, and its
+end too unless a sibling starts there: one boundary position belongs
+to the sibling starting at it, while the end of a child nothing
+follows stays on that child. A child of unknown length holds every
+position from its offset on (up to its successor's offset in a
+segment line). This is the rule the timeline's stamps and tables
+follow, so a child listed here is a child the stamp at *coord*
+names.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
@@ -2177,6 +2584,72 @@ Duration(10.0, seconds)
 >>> interval.get_interval("cpt_2")
 Interval(start=Coordinate(0.0, seconds), end=Coordinate(10.0, seconds))
 ```
+
+### get_pairs { #timetoalign.timelines.Timeline.get_pairs }
+
+```python
+timelines.Timeline.get_pairs(node=())
+```
+
+Return the pairs ``(property, value)`` of the holder or of a value node.
+
+Keys in code-point order, values in list order; each ``type`` item
+is a pair ``("type", iri)`` (:func:`timetoshare.pairs`).
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name   | Type                                                    | Description                                              | Default   |
+|--------|---------------------------------------------------------|----------------------------------------------------------|-----------|
+| node   | [NodePath](`timetoalign.timelines.statements.NodePath`) | The value node whose pairs to return; ``()`` the holder. | `()`      |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                        |
+|--------|----------------------------|------------------------------------|
+|        | [ValueError](`ValueError`) | If *node* addresses no value node. |
+
+### get_provenance { #timetoalign.timelines.Timeline.get_provenance }
+
+```python
+timelines.Timeline.get_provenance(node=(), believer=None, belief='not_false')
+```
+
+Return the provenance entries of the holder or of a value node.
+
+Entries of stated pairs and candidates alike, in their order
+(:func:`timetoshare.entries`), kept by the belief filter.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name     | Type                                                       | Description                                                                                                                                   | Default       |
+|----------|------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------|---------------|
+| node     | [NodePath](`timetoalign.timelines.statements.NodePath`)    | The value node whose entries to return; ``()`` the holder.                                                                                    | `()`          |
+| believer | [str](`str`) \| None                                       | The actor whose beliefs filter, an IRI (compact or absolute); every entry when None.                                                          | `None`        |
+| belief   | [BeliefFilter](`timetoalign.core.provenance.BeliefFilter`) | ``"not_false"`` keeps the entries of pairs the believer does not believe ``"false"``; ``"true"`` only those the believer believes ``"true"``. | `'not_false'` |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                               |
+|--------|----------------------------|-------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If *node* addresses no value node, or *belief* is neither ``"not_false"`` nor ``"true"``. |
+
+### get_rectangles { #timetoalign.timelines.Timeline.get_rectangles }
+
+```python
+timelines.Timeline.get_rectangles(catalogue=None)
+```
+
+Return the holder's pairs gathered by verb: one verb about one thing.
+
+Pairs a catalogue reads as one verb about one thing, in whatever
+vocabularies, form one rectangle; the ``is_a`` rectangle comes
+first (:func:`timetoshare.rectangles`).
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name      | Type                                         | Description                                                      | Default   |
+|-----------|----------------------------------------------|------------------------------------------------------------------|-----------|
+| catalogue | [Catalogue](`timetoshare.Catalogue`) \| None | The catalogue to read the pairs with; the shipped one when None. | `None`    |
 
 ### get_region { #timetoalign.timelines.Timeline.get_region }
 
@@ -2858,6 +3331,66 @@ Public API for creating coordinates compatible with this timeline.
 |--------|---------------------------------------------|-----------------------------------------|
 |        | [Coordinate](`timetoalign.core.Coordinate`) | A Coordinate with this timeline's unit. |
 
+### remove_statement { #timetoalign.timelines.Timeline.remove_statement }
+
+```python
+timelines.Timeline.remove_statement(property, value, *, node=())
+```
+
+Remove the pair ``(property, value)`` and its entry.
+
+Removing is an edit of its own: no belief removes a pair.
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                        |
+|--------|----------------------------|----------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the pair is not stated (``'type' does not have this value``) or *node* addresses no value node. |
+
+### replace_region { #timetoalign.timelines.Timeline.replace_region }
+
+```python
+timelines.Timeline.replace_region(region)
+```
+
+Store *region* in place of the region holding its id.
+
+Regions are frozen: a region changed — given a statement with
+:meth:`Region.with_statement
+<timetoalign.timelines.Region.with_statement>`, another name with
+``dataclasses.replace`` — is a new region, which takes the place of
+the one this timeline holds under its id.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name   | Type                                             | Description                                                        | Default    |
+|--------|--------------------------------------------------|--------------------------------------------------------------------|------------|
+| region | [Region](`timetoalign.timelines.regions.Region`) | The region to store, carrying the id of a region of this timeline. | _required_ |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                             | Description                        |
+|--------|----------------------------------|------------------------------------|
+|        | [Self](`typing_extensions.Self`) | The timeline, so that calls chain. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                           |
+|--------|----------------------------|-------------------------------------------------------|
+|        | [KeyError](`KeyError`)     | If the timeline holds no region with the region's id. |
+|        | [ValueError](`ValueError`) | If the region's unit is not the timeline's.           |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> from timetoalign.timelines import ContinuousLogicalTimeline
+>>> score = ContinuousLogicalTimeline(length=16)
+>>> intro = score.create_region(0, 4, id="intro")
+>>> _ = score.replace_region(intro.with_statement("rdfs:label", "Introduction"))
+>>> score.get_region("intro").statements
+{'rdfs:label': ['Introduction']}
+```
+
 ### resolve_subclass { #timetoalign.timelines.Timeline.resolve_subclass }
 
 ```python
@@ -2919,7 +3452,7 @@ Get a summary of the timeline.
 
 ```python
 timelines.Timeline.to_dict(
-    minimal=False,
+    minimal=True,
     events=False,
     external_references=False,
 )
@@ -2928,7 +3461,8 @@ timelines.Timeline.to_dict(
 Write a TimeToShare manifest holding this timeline as its one root.
 
 The timeline object is the timeline's structure: its axis, children,
-conversion maps, regions and flow control. Its measure map is a
+conversion maps, regions and flow control, and its statements and
+provenance (see :mod:`~timetoalign.timelines.statements`). Its measure map is a
 ``MeasureRecordMap`` among the conversion maps (chained after a
 ``LinearMap`` to quarters on an axis in whole notes or ticks) naming
 an entry of the manifest's ``measure_maps``, which also holds every
@@ -2944,16 +3478,24 @@ written bare, represented as the axis's number type selects (``8``,
 ``"events"`` and ``"external_references"`` are written only on
 request.
 
-By default every optional key is written, its default value
-included (the complete form); with ``minimal=True`` every key at its
-default is left out, except ``length``. Keys the library does not
-know, kept when the timeline was read, are written back. A timeline
-read from a manifest as a whole writes that manifest's ``id``,
-``name``, ``meta``, ``graphical`` and unknown keys back around it.
+By default every key at its default value is left out, except
+``length`` (the minimal form); with ``minimal=False`` every optional
+key is written, its default value included (the complete form). Keys
+the library does not know, kept when the timeline was read, are
+written back. A timeline read from a manifest as a whole writes that
+manifest's ``id``, ``name``, ``meta``, statements, ``graphical``
+and unknown keys back around it. :meth:`to_file` writes the
+manifest as a file. Every manifest carries its inline JSON-LD
+``@context``: the format's terms and the prefixes its statements use.
+
+The manifest is written whole and valid wherever the timeline
+belongs: a value naming a timeline or region this manifest leaves
+out (another timeline of the bundle) is left out with its
+provenance.
 
 Collections are written in one canonical order, independent of the
 order in which their content was added, so equal timelines give equal
-JSON text: ``children`` by offset, then id; ``conversion_maps`` by id;
+text: ``children`` by offset, then id; ``conversion_maps`` by id;
 ``regions`` by start, then end, then id; ``flow_control`` (breaks,
 markers and jumps in one array, see
 :meth:`FlowControlRegistry.to_dict
@@ -2966,31 +3508,110 @@ Unicode code point. The timeline's own storage is not reordered, and
 
 | Name                | Type           | Description                                                                                                                                                                                                                     | Default   |
 |---------------------|----------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------|
-| minimal             | [bool](`bool`) | If True, leave out every key at its default value.                                                                                                                                                                              | `False`   |
+| minimal             | [bool](`bool`) | If False, write every optional key, its default value included.                                                                                                                                                                 | `True`    |
 | events              | [bool](`bool`) | If True, write an ``"events"`` key on every timeline object holding its event rows.                                                                                                                                             | `False`   |
 | external_references | [bool](`bool`) | If True, write an ``"external_references"`` key on every timeline object holding the reference table as a list of row dicts (``access_points`` as a nested list of ``{"uri": ..., "kind": ...}`` dicts), even when it is empty. | `False`   |
 
 #### Returns {.doc-section .doc-section-returns}
 
-| Name   | Type                                                | Description                                                  |
-|--------|-----------------------------------------------------|--------------------------------------------------------------|
-|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | A JSON-serializable manifest ``{"timetoshare": "0.2.0", ..., |
-|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | "timelines": [timeline]}``.                                  |
+| Name   | Type                                                | Description                                                    |
+|--------|-----------------------------------------------------|----------------------------------------------------------------|
+|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | A JSON-serializable manifest ``{"timetoshare": "0.2.0", ...,   |
+|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | "timelines": [timeline]}``, every ID written ``#`` followed by |
+|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | the ID, as a manifest file writes it.                          |
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                                                                                 |
-|--------|----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If a conversion map has no TimeToShare form or cannot be written losslessly, a jump cannot name the marker it lands on, or a measure map's given id is held by another measure map or by a timeline, group or the manifest. |
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+|--------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If a conversion map has no TimeToShare form or cannot be written losslessly, a jump cannot name the marker it lands on, a measure map's given id is held by another measure map or by a timeline, group or the manifest, two timelines or regions use one prefix for two namespaces, or the statements written break a rule of the format, in TimeToShare's words (``#/timelines/0/statements/dcterms:source/0/id: '#ghost' names no element of this manifest``). |
 
 #### Examples {.doc-section .doc-section-examples}
 
 ```python
->>> from fractions import Fraction
+>>> from timetoshare import FORMAT_CONTEXT
 >>> from timetoalign.timelines import ContinuousLogicalTimeline
+>>> score = ContinuousLogicalTimeline(length=8, uid="piece")
+>>> score.to_dict() == {
+...     "@context": dict(FORMAT_CONTEXT),
+...     "timetoshare": "0.2.0",
+...     "timelines": [{"id": "#piece", "unit": "quarters", "length": [8, 1]}],
+... }
+True
+```
+
+### to_file { #timetoalign.timelines.Timeline.to_file }
+
+```python
+timelines.Timeline.to_file(
+    path,
+    *,
+    minimal=None,
+    styling=None,
+    serialization=None,
+    events=None,
+    external_references=None,
+)
+```
+
+Write the object's manifest to a file.
+
+The manifest is ``to_dict``'s complete form, written with
+``timetoshare.dumps_file`` in the form, styling and serialization
+chosen: every object's keys sorted, its arrays in canonical order, so
+that equal manifests give equal text and a change shows in a diff as the
+lines it touches. Each argument left None takes the value the file
+the object was read from had (see :meth:`from_file`); for an object
+not read from a file, the minimal form, the styling included, in
+canonical YAML, without event rows or external references. An
+:class:`~timetoalign.alignment.AlignmentBundle` holding MatchClaims
+writes its tables beside the manifest first and names them in its
+``resources``.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name                | Type                                                               | Description                                                                                | Default    |
+|---------------------|--------------------------------------------------------------------|--------------------------------------------------------------------------------------------|------------|
+| path                | [str](`str`) \| [PathLike](`os.PathLike`)\[[str](`str`)\]          | The file to write, UTF-8 with line feeds; it is overwritten.                               | _required_ |
+| minimal             | [bool](`bool`) \| None                                             | Write the minimal form (True) or the complete form (False).                                | `None`     |
+| styling             | [bool](`bool`) \| None                                             | Write the ``graphical`` object, when the manifest has one (True), or leave it out (False). | `None`     |
+| serialization       | [Serialization](`timetoshare.serialization.Serialization`) \| None | ``"yaml"`` (canonical YAML), ``"json"`` (pretty JSON) or ``"jcs"`` (RFC 8785 JSON).        | `None`     |
+| events              | [bool](`bool`) \| None                                             | Write every timeline's event rows (``events``).                                            | `None`     |
+| external_references | [bool](`bool`) \| None                                             | Write every timeline's external reference table (``external_references``).                 | `None`     |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                   | Description       |
+|--------|------------------------|-------------------|
+|        | [Path](`pathlib.Path`) | The path written. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                           |
+|--------|----------------------------|---------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If ``to_dict`` cannot write the manifest, or the serialization refuses a value of it. |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> import tempfile
+>>> from fractions import Fraction
+>>> from pathlib import Path
+>>> from timetoalign.timelines import ContinuousLogicalTimeline, Timeline
 >>> score = ContinuousLogicalTimeline(length=Fraction(32), uid="piece")
->>> score.to_dict(minimal=True)
-{'timetoshare': '0.2.0', 'timelines': [{'id': 'piece', 'unit': 'quarters', 'length': [32, 1]}]}
+>>> path = score.to_file(Path(tempfile.mkdtemp()) / "piece.yaml")
+>>> text = path.read_text(encoding="utf-8")
+>>> text.startswith('"@context":')
+True
+>>> print(text[text.index("\ntimelines:") + 1 :], end="")
+timelines:
+  -
+    id: "#piece"
+    length: [32, 1]
+    unit: quarters
+timetoshare: "0.2.0"
+>>> Timeline.from_file(path).length
+Coordinate(Fraction(32, 1), quarters)
 ```
 
 ### to_typed { #timetoalign.timelines.Timeline.to_typed }
@@ -3011,8 +3632,8 @@ when working with generic ``Timeline`` instances that should carry
 domain-specific type information.
 
 Events, external references, conversion maps, regions, flow maps,
-metadata, the root offset and the keys the timeline was read with are
-preserved. Children are recursively re-typed copies, so a change to
+metadata, the root offset and the keys the timeline was read
+with are preserved. Children are recursively re-typed copies, so a change to
 the result never reaches the source tree.
 
 #### Returns {.doc-section .doc-section-returns}

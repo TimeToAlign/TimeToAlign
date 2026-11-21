@@ -1,0 +1,55 @@
+# Belief { #timetoalign.core.Belief }
+
+```python
+core.Belief()
+```
+
+One actor's belief in an item, at a date.
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name   | Type                                                     | Description                                                      |
+|--------|----------------------------------------------------------|------------------------------------------------------------------|
+| actor  | [str](`str`)                                             | Who holds the belief (an IRI or another identifier of a person). |
+| belief | [BeliefValue](`timetoalign.core.provenance.BeliefValue`) | ``"true"``, ``"false"`` or ``"unlikely"``.                       |
+| date   | [str](`str`)                                             | When the actor stated it, written ``YYYY-MM-DD``.                |
+| note   | [str](`str`) \| None                                     | Optional free text.                                              |
+
+## Examples {.doc-section .doc-section-examples}
+
+```python
+>>> Belief(actor="https://orcid.org/0000-0001", belief="false", date="2026-11-21")
+Belief(actor='https://orcid.org/0000-0001', belief='false', date='2026-11-21', note=None)
+```
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [from_dict](#timetoalign.core.Belief.from_dict) | Read a belief from its dictionary (:meth:`to_dict`). |
+| [from_row](#timetoalign.core.Belief.from_row) | Read a belief from one row of its struct column. |
+| [to_dict](#timetoalign.core.Belief.to_dict) | The belief as a JSON-safe dictionary, an absent ``note`` left out. |
+
+### from_dict { #timetoalign.core.Belief.from_dict }
+
+```python
+core.Belief.from_dict(data)
+```
+
+Read a belief from its dictionary (:meth:`to_dict`).
+
+### from_row { #timetoalign.core.Belief.from_row }
+
+```python
+core.Belief.from_row(row)
+```
+
+Read a belief from one row of its struct column.
+
+### to_dict { #timetoalign.core.Belief.to_dict }
+
+```python
+core.Belief.to_dict()
+```
+
+The belief as a JSON-safe dictionary, an absent ``note`` left out.

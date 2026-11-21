@@ -11,6 +11,11 @@ A neutral record with no claim semantics. AlignmentAnchors are value
 objects: two anchors with the same coordinates and timeline IDs are
 equivalent regardless of how they were created.
 
+Each coordinate is kept as given. An anchor knows its timelines only by
+id; the claim holding it checks both coordinates against the two
+timelines (:meth:`MatchClaim.check_on_timelines`), since only the
+timeline knows its declared number type.
+
 Only synchronous `MatchClaim` instances produce AlignmentAnchors.
 Non-synchronous claims (conceptual matches, NOMATCH) have no anchors.
 
@@ -28,7 +33,7 @@ Non-synchronous claims (conceptual matches, NOMATCH) have no anchors.
 ```python
 >>> anchor = AlignmentAnchor(
 ...     timeline_a_id="score:1",
-...     coordinate_a=Coordinate(100.0, TimeUnit.quarters),
+...     coordinate_a=Coordinate(100, TimeUnit.quarters),
 ...     timeline_b_id="recording:1",
 ...     coordinate_b=Coordinate(45.5, TimeUnit.seconds),
 ... )

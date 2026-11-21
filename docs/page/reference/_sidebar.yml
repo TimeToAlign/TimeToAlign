@@ -43,7 +43,6 @@ website:
       - reference/BeatGridSegment.qmd
       - reference/GridBeat.qmd
       - reference/BeatPolicy.qmd
-      - reference/policy_for_metro.qmd
       section: Beat Grids
     - contents:
       - reference/Flow.qmd
@@ -72,6 +71,7 @@ website:
       - reference/SecondsToSamples.qmd
       - reference/QuartersToFloatingMeasures.qmd
       - reference/QuartersToMeasureNumber.qmd
+      - reference/OutputNumberTypeError.qmd
       section: Conversion Maps
     - contents:
       - reference/TimelineGroup.qmd
@@ -81,8 +81,10 @@ website:
       - reference/MatchClaim.qmd
       - reference/ClaimType.qmd
       - reference/MatchClaimField.qmd
-      - reference/MatchMetadata.qmd
-      - reference/Agent.qmd
+      - reference/Provenance.qmd
+      - reference/Belief.qmd
+      - reference/Projection.qmd
+      - reference/EventReference.qmd
       - reference/MatchGraph.qmd
       - reference/MatchStamp.qmd
       - reference/MatchLine.qmd
@@ -92,6 +94,12 @@ website:
       - reference/NoteRecord.qmd
       - reference/SnoteRecord.qmd
       section: Alignment
+    - contents:
+      - reference/StatementsMixin.qmd
+      - reference/MutableStatementsMixin.qmd
+      - reference/Region.qmd
+      - reference/LIBRARY_AGENT.qmd
+      section: Statements
     - contents:
       - reference/Loader.qmd
       - reference/EventData.qmd
@@ -122,6 +130,7 @@ website:
       - reference/GraphicalLoader.qmd
       - reference/IIIFManifestLoader.qmd
       - reference/ATONLoader.qmd
+      - reference/ScoreWarpLoader.qmd
       - reference/MatchfileLoader.qmd
       - reference/TiliaJsonLoader.qmd
       - reference/TiliaDictStore.qmd
@@ -129,6 +138,9 @@ website:
       - reference/ParangonadaLoader.qmd
       - reference/MpmLoader.qmd
       - reference/ListenHereLoader.qmd
+      - reference/MapsLoader.qmd
+      - reference/MeiHeadLoader.qmd
+      - reference/MelodyLoader.qmd
       section: Loaders
     id: reference
   - id: dummy-sidebar

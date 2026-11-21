@@ -8,32 +8,27 @@ The semantic kind of a MatchClaim, derived from its structure.
 
 A claim's kind is never stored; it is read from whether the claim is
 explicit, whether it is synchronous, and how many of its two sides name an
-event. The members span every shape a pairwise claim can take:
+event. An explicit MatchClaim always names two events, or one event and
+the NOMATCH sentinel on the other side; a side without an event of its own
+is given a Projection event first, never a bare coordinate.
 
 ## Members {.doc-section .doc-section-members}
 
-event_match: Two identified events on different timelines correspond,
-    temporally anchored.
-projection: One identified event corresponds to a bare coordinate on
-    the other timeline (which names no event of its own).
-nomatch: An identified event has no counterpart on the other timeline.
-anchor: Two anonymous coordinates correspond, with no event identity on
-    either side.
+event_match: Two events on different timelines correspond, temporally
+    anchored.
+nomatch: An event has no counterpart on the other timeline.
 implicit: A correspondence inferred by graph extension rather than
     directly asserted.
-conceptual: A structural correspondence with no temporal commitment —
-    no anchors and no single orphaned event.
+conceptual: Two events correspond structurally, with no temporal
+    commitment (no anchors).
 
 ## Attributes
 
 | Name | Description |
 | --- | --- |
-| [anchor](#timetoalign.core.ClaimType.anchor) | Two anonymous coordinates correspond (no event identity). |
-| [anon](#timetoalign.core.ClaimType.anon) | Alias for anchor. |
-| [conceptual](#timetoalign.core.ClaimType.conceptual) | A structural correspondence with no temporal commitment (no anchors). |
+| [conceptual](#timetoalign.core.ClaimType.conceptual) | Two events correspond with no temporal commitment (no anchors). |
 | [event](#timetoalign.core.ClaimType.event) | Alias for event_match. |
-| [event_match](#timetoalign.core.ClaimType.event_match) | Two identified events correspond, temporally anchored. |
+| [event_match](#timetoalign.core.ClaimType.event_match) | Two events correspond, temporally anchored. |
 | [implicit](#timetoalign.core.ClaimType.implicit) | An inferred (not directly asserted) correspondence. |
 | [nomat](#timetoalign.core.ClaimType.nomat) | Alias for nomatch. |
-| [nomatch](#timetoalign.core.ClaimType.nomatch) | An identified event has no counterpart on the other timeline. |
-| [projection](#timetoalign.core.ClaimType.projection) | One identified event corresponds to a bare coordinate on the other timeline. |
+| [nomatch](#timetoalign.core.ClaimType.nomatch) | An event has no counterpart on the other timeline. |

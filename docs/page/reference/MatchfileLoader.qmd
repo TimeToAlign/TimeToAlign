@@ -34,9 +34,9 @@ Produces:
   - Deletion records produce ``MatchClaim.nomatch()`` (non-synchronous,
     NOMATCH).
 
-All MatchClaims carry ``MatchMetadata`` whose agent is
-``Agent(name="vienna_match", type=AgentType.software,
-identifier="v1.0.0")`` and ``certainty=1.0``.
+All MatchClaims carry the provenance
+``Provenance(method="imported", note="vienna_match v1.0.0")`` and
+``certainty=1.0``.
 
 **Coordinate system and normalisation:**
 Score coordinates are stored as **normalised TTA coordinates** (shifted

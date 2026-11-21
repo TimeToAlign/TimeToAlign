@@ -1,0 +1,133 @@
+# StatementsMixin { #timetoalign.timelines.StatementsMixin }
+
+```python
+timelines.StatementsMixin()
+```
+
+The statements of a bundle, a timeline or a region, and their provenance.
+
+A holder stores exactly the file's two keys (``_statement_state``:
+``statements`` and ``provenance``, each only when not empty) and the
+prefixes its pairs need beyond the catalogue's (``_prefixes``). Reading
+and every change run TimeToShare's functions on a one-subject document
+built from the holder's own state: its ``@context`` holds the format's
+terms, the catalogue's prefixes and the holder's own, and the holder is
+the subject ``()``.
+
+## Attributes
+
+| Name | Description |
+| --- | --- |
+| [prefixes](#timetoalign.timelines.StatementsMixin.prefixes) | The prefixes declared on this holder beyond the catalogue's, sorted. |
+| [provenance](#timetoalign.timelines.StatementsMixin.provenance) | The provenance entries, in their order; a copy, ``[]`` when none. |
+| [statements](#timetoalign.timelines.StatementsMixin.statements) | The pairs stated, ``{property: [value, ...]}``, keys in code-point order. |
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [get_candidates](#timetoalign.timelines.StatementsMixin.get_candidates) | Return the candidates: the entries of pairs the holder does not state. |
+| [get_pairs](#timetoalign.timelines.StatementsMixin.get_pairs) | Return the pairs ``(property, value)`` of the holder or of a value node. |
+| [get_provenance](#timetoalign.timelines.StatementsMixin.get_provenance) | Return the provenance entries of the holder or of a value node. |
+| [get_rectangles](#timetoalign.timelines.StatementsMixin.get_rectangles) | Return the holder's pairs gathered by verb: one verb about one thing. |
+
+### get_candidates { #timetoalign.timelines.StatementsMixin.get_candidates }
+
+```python
+timelines.StatementsMixin.get_candidates(
+    node=(),
+    believer=None,
+    belief='not_false',
+)
+```
+
+Return the candidates: the entries of pairs the holder does not state.
+
+A candidate is offered for someone to state (:meth:`add_statement`
+with the same pair). With *believer*, a candidate the believer
+believes ``"false"`` is left out: it is not offered to that actor
+again (:func:`timetoshare.candidates` with ``actor=``).
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name     | Type                                                       | Description                                                                              | Default       |
+|----------|------------------------------------------------------------|------------------------------------------------------------------------------------------|---------------|
+| node     | [NodePath](`timetoalign.timelines.statements.NodePath`)    | The value node whose candidates to return; ``()`` the holder.                            | `()`          |
+| believer | [str](`str`) \| None                                       | The actor whose beliefs filter, an IRI (compact or absolute); every candidate when None. | `None`        |
+| belief   | [BeliefFilter](`timetoalign.core.provenance.BeliefFilter`) | ``"not_false"`` or ``"true"``, as for :meth:`get_provenance`.                            | `'not_false'` |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                               |
+|--------|----------------------------|-------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If *node* addresses no value node, or *belief* is neither ``"not_false"`` nor ``"true"``. |
+
+### get_pairs { #timetoalign.timelines.StatementsMixin.get_pairs }
+
+```python
+timelines.StatementsMixin.get_pairs(node=())
+```
+
+Return the pairs ``(property, value)`` of the holder or of a value node.
+
+Keys in code-point order, values in list order; each ``type`` item
+is a pair ``("type", iri)`` (:func:`timetoshare.pairs`).
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name   | Type                                                    | Description                                              | Default   |
+|--------|---------------------------------------------------------|----------------------------------------------------------|-----------|
+| node   | [NodePath](`timetoalign.timelines.statements.NodePath`) | The value node whose pairs to return; ``()`` the holder. | `()`      |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                        |
+|--------|----------------------------|------------------------------------|
+|        | [ValueError](`ValueError`) | If *node* addresses no value node. |
+
+### get_provenance { #timetoalign.timelines.StatementsMixin.get_provenance }
+
+```python
+timelines.StatementsMixin.get_provenance(
+    node=(),
+    believer=None,
+    belief='not_false',
+)
+```
+
+Return the provenance entries of the holder or of a value node.
+
+Entries of stated pairs and candidates alike, in their order
+(:func:`timetoshare.entries`), kept by the belief filter.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name     | Type                                                       | Description                                                                                                                                   | Default       |
+|----------|------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------|---------------|
+| node     | [NodePath](`timetoalign.timelines.statements.NodePath`)    | The value node whose entries to return; ``()`` the holder.                                                                                    | `()`          |
+| believer | [str](`str`) \| None                                       | The actor whose beliefs filter, an IRI (compact or absolute); every entry when None.                                                          | `None`        |
+| belief   | [BeliefFilter](`timetoalign.core.provenance.BeliefFilter`) | ``"not_false"`` keeps the entries of pairs the believer does not believe ``"false"``; ``"true"`` only those the believer believes ``"true"``. | `'not_false'` |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                               |
+|--------|----------------------------|-------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If *node* addresses no value node, or *belief* is neither ``"not_false"`` nor ``"true"``. |
+
+### get_rectangles { #timetoalign.timelines.StatementsMixin.get_rectangles }
+
+```python
+timelines.StatementsMixin.get_rectangles(catalogue=None)
+```
+
+Return the holder's pairs gathered by verb: one verb about one thing.
+
+Pairs a catalogue reads as one verb about one thing, in whatever
+vocabularies, form one rectangle; the ``is_a`` rectangle comes
+first (:func:`timetoshare.rectangles`).
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name      | Type                                         | Description                                                      | Default   |
+|-----------|----------------------------------------------|------------------------------------------------------------------|-----------|
+| catalogue | [Catalogue](`timetoshare.Catalogue`) \| None | The catalogue to read the pairs with; the shipped one when None. | `None`    |

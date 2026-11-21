@@ -404,10 +404,9 @@ Coordinate values (instant, start, end, duration) are automatically
 converted to the internal struct format. Convenience defaults are
 applied so that callers can omit boilerplate fields:
 
-- **id**: Auto-generated as ``{event_type}:{counter}`` if missing,
-  e.g. ``note:000001``, ``rest:000001``, ``beat:000001``.
-  When events are placed on a timeline, the timeline's ID is
-  prepended, yielding e.g. ``clt:1:note:000001``.
+- **id**: Minted if missing, above the IDs the rows give, its prefix
+  the event type in lower case: ``note_1``, ``beat_1``,
+  ``projection_1``.
 - **temporal_type**: Inferred from the keys present in the dict --
   ``"interval"`` when *both* ``start`` and ``end`` (or ``duration``)
   are given, ``"instant"`` otherwise.
@@ -419,12 +418,12 @@ inconsistent is controlled by *interval_policy*.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name            | Type                                                                  | Description                                                                                                                                                              | Default               |
-|-----------------|-----------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------|
-| rows            | [list](`list`)\[[dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\]\] | List of event dictionaries. At minimum each dict needs a coordinate (``instant`` *or* ``start``/``end``) and an ``event_type``. All other fields have sensible defaults. | _required_            |
-| unit            | [TimeUnit](`timetoalign.core.TimeUnit`)                               | The time unit for coordinates.                                                                                                                                           | _required_            |
-| number_type     | [NumberType](`timetoalign.core.NumberType`) \| None                   | The number type for coordinates.                                                                                                                                         | `None`                |
-| interval_policy | [IntervalPolicy](`timetoalign.core.IntervalPolicy`)                   | How to handle end/duration inconsistencies. See `IntervalPolicy` for options.                                                                                            | `IntervalPolicy.warn` |
+| Name            | Type                                                                                                                                                                                        | Description                                                                                                                                                                                                                                                                                                                                                                           | Default               |
+|-----------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------|
+| rows            | [Projection](`timetoalign.core.Projection`) \| [Sequence](`collections.abc.Sequence`)\[[dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] \| [Projection](`timetoalign.core.Projection`)\] | Event dictionaries, or :class:`~timetoalign.core.Projection` objects (one or a list), each standing for its event row (:meth:`~timetoalign.core.Projection.to_event_row`). At minimum each dict needs a coordinate (``instant`` *or* ``start``/``end``) and an ``event_type``. A position may be a ``Coordinate`` or ``Duration`` in *unit*. All other fields have sensible defaults. | _required_            |
+| unit            | [TimeUnit](`timetoalign.core.TimeUnit`)                                                                                                                                                     | The time unit for coordinates.                                                                                                                                                                                                                                                                                                                                                        | _required_            |
+| number_type     | [NumberType](`timetoalign.core.NumberType`) \| None                                                                                                                                         | The number type for coordinates.                                                                                                                                                                                                                                                                                                                                                      | `None`                |
+| interval_policy | [IntervalPolicy](`timetoalign.core.IntervalPolicy`)                                                                                                                                         | How to handle end/duration inconsistencies. See `IntervalPolicy` for options.                                                                                                                                                                                                                                                                                                         | `IntervalPolicy.warn` |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -534,7 +533,7 @@ Return a new EventData with all event IDs prefixed.
 
 Prepends ``prefix:`` to every event ID. Used when events are placed
 onto a timeline so that IDs become globally unique and informative,
-e.g. ``clt1:note:000001``.
+e.g. ``clt_1:note:000001``.
 
 If the IDs already start with the prefix, they are left unchanged.
 

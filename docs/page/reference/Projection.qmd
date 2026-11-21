@@ -1,0 +1,84 @@
+# Projection { #timetoalign.core.Projection }
+
+```python
+core.Projection()
+```
+
+An event standing on a timeline for an event not held there.
+
+A Projection is an event type of its own (``event_type`` ``"Projection"``
+in a timeline's events). It holds its own ID, its position on the
+timeline's axis and, when the event it stands for is known, the
+reference to it; it repeats nothing else of that event (its pitch, its
+name, its other properties stay where the event lives). A Projection
+without ``projection_of`` stands for a position a source states without
+an event of its own.
+
+``start`` and ``duration`` are on one axis: the duration has the start's
+unit and number type. An instant has no duration. A Projection made
+without an ID has ``id`` ``None`` until the timeline it is added to
+mints one (:meth:`Timeline.add_events`).
+
+Storage struct (derived): ``{id, start, duration, projection_of}``, the
+two positions as coordinate cells
+(:data:`~timetoalign.core.time.COORDINATE_CELL_TYPE`), each naming its
+unit and number type, as the Projections table of a package holds them.
+
+## Examples {.doc-section .doc-section-examples}
+
+```python
+>>> from timetoalign.core import Coordinate, TimeUnit
+>>> Projection(
+...     start=Coordinate(850176, TimeUnit.samples),
+...     projection_of=EventReference(timeline_id="clt_6", event_id="x1azmn68"),
+... ).end is None
+True
+```
+
+## Attributes
+
+| Name | Description |
+| --- | --- |
+| [end](#timetoalign.core.Projection.end) | ``start + duration``; ``None`` for an instant. |
+| [semantic_type](#timetoalign.core.Projection.semantic_type) | The event type a Projection is stored under: ``"Projection"``. |
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [from_row](#timetoalign.core.Projection.from_row) | Construct from a storage-row dict; ``None`` for a null cell. |
+| [to_event_row](#timetoalign.core.Projection.to_event_row) | The Projection as an event row of a timeline. |
+
+### from_row { #timetoalign.core.Projection.from_row }
+
+```python
+core.Projection.from_row(row)
+```
+
+Construct from a storage-row dict; ``None`` for a null cell.
+
+Each position is read from its coordinate cell, on the axis the cell
+names, so an exact value stays exact. Keys beside the four of the
+struct (a Projections table's ``timeline_id``) are not read.
+
+### to_event_row { #timetoalign.core.Projection.to_event_row }
+
+```python
+core.Projection.to_event_row()
+```
+
+The Projection as an event row of a timeline.
+
+The row :meth:`Timeline.add_events` and
+:meth:`~timetoalign.storage.EventData.from_dicts` take: ``event_type``
+``"Projection"``, the positions as the scalars they are, ``id`` only
+where the Projection holds one.
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> from timetoalign.core import Coordinate, TimeUnit
+>>> row = Projection(id="p", start=Coordinate(3, TimeUnit.samples)).to_event_row()
+>>> row["event_type"], row["id"], row["start"], row["duration"]
+('Projection', 'p', Coordinate(3, samples), None)
+```

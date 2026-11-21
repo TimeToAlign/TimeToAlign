@@ -8,6 +8,8 @@ alignment.MatchGraph(
     axis=None,
     source=None,
     source_id=None,
+    believer=None,
+    belief='not_false',
 )
 ```
 
@@ -32,19 +34,50 @@ is NOT a global graph; MatchGraphs are created on demand.
 
 ## Examples {.doc-section .doc-section-examples}
 
-```python
->>> # Build graph from claims
->>> graph = MatchGraph(claims=[claim1, claim2])
-```
+Build a graph from two claims between notes of a score and onsets
+of a recording:
 
 ```python
->>> # Extend via group membership
->>> extended = graph.extend_to_groups(groups)
+>>> from timetoalign.timelines import Timeline, TimelineGroup
+>>> def claim(quarters, seconds):
+...     return MatchClaim(
+...         timeline_a_id="score",
+...         timeline_b_id="audio",
+...         event_a_id=f"note_{quarters}",
+...         event_b_id=f"onset_{quarters}",
+...         start_anchor=AlignmentAnchor(
+...             timeline_a_id="score",
+...             coordinate_a=Coordinate(quarters, TimeUnit.quarters),
+...             timeline_b_id="audio",
+...             coordinate_b=Coordinate(seconds, TimeUnit.seconds),
+...         ),
+...         is_synchronous=True,
+...     )
+>>> graph = MatchGraph(claims=[claim(0, 0.0), claim(4, 2.0)])
+>>> graph.n_nodes, graph.n_edges, graph.n_components
+(4, 2, 2)
 ```
 
+Extend it through the group the score shares with its parts:
+
 ```python
->>> # Get synchronized timestamps
->>> stamps = graph.get_stamps()
+>>> score = Timeline(length=8, unit=TimeUnit.quarters, uid="score")
+>>> parts = Timeline(length=8, unit=TimeUnit.quarters, uid="parts")
+>>> group = TimelineGroup(name="edition", timelines=[score, parts])
+>>> extended = graph.extend_to_groups({group.id: group})
+>>> extended.n_nodes, extended.n_edges
+(6, 4)
+```
+
+One stamp per synchronized position:
+
+```python
+>>> stamps = extended.get_stamps()
+>>> print(stamps[1])
+MatchStamp (3 timelines, 2 edges)
+  audio   2 seconds  anchor
+  parts  4 quarters  inferred
+  score  4 quarters  anchor
 ```
 
 ## Methods
@@ -91,7 +124,10 @@ the other groups of its timeline, so a timeline shared by two groups
 carries a coordinate from the members of one to the members of the
 other. Filters control which timelines receive implicit claims; a
 timeline they exclude receives no coordinate, so no extension passes
-through it.
+through it. The implicit claims' ids are minted among the ids of
+this graph's claims (``claim_N``, above the highest N held, in the
+order the claims are made), so each names one claim of the extended
+graph.
 
 #### Parameters {.doc-section .doc-section-parameters}
 

@@ -1,0 +1,33 @@
+# EventReference { #timetoalign.core.EventReference }
+
+```python
+core.EventReference()
+```
+
+The address of one event: the timeline holding it and its ID there.
+
+An event ID is unique on its timeline, not beyond it, so an event is
+named by the pair, kept as two values and never joined into one string.
+
+Storage struct (derived): ``{timeline_id: string, event_id: string}``.
+
+## Examples {.doc-section .doc-section-examples}
+
+```python
+>>> EventReference(timeline_id="clt_6", event_id="x1azmn68")
+EventReference(timeline_id='clt_6', event_id='x1azmn68')
+```
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [from_row](#timetoalign.core.EventReference.from_row) | Construct from a storage-row dict; ``None`` for a null cell. |
+
+### from_row { #timetoalign.core.EventReference.from_row }
+
+```python
+core.EventReference.from_row(row)
+```
+
+Construct from a storage-row dict; ``None`` for a null cell.

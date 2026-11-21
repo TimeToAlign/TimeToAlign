@@ -45,14 +45,16 @@ from timetoalign.core import (
 from timetoalign.core.fields import SemanticField, field_metadata
 from timetoalign.core.ids import id_column, mint_ids
 from timetoalign.core.time import (
+    RATIONAL_STRUCT_TYPE,
     build_number_struct_array,
+    combine_number_columns,
+    combine_numbers,
     coordinate_to_struct,
     express_as,
     in_lowest_terms,
     number_cell,
     number_from_json,
     struct_to_coordinate,
-    struct_to_rational,
 )
 
 from .mixins import SemanticFieldAccessMixin
@@ -169,6 +171,61 @@ def _native_position(
             "add it to a timeline, which converts it through its C-Map"
         )
     return express_as(value.value, number_type)
+
+
+def _cell_column(column: Any, n: int) -> pa.StructArray:
+    """A coordinate column as number cells; all null where there is none."""
+    if isinstance(column, pa.ChunkedArray):
+        column = column.combine_chunks()
+    if not isinstance(column, pa.StructArray):
+        return pa.nulls(n, RATIONAL_STRUCT_TYPE)
+    return column.cast(RATIONAL_STRUCT_TYPE)
+
+
+def _completed_column(
+    cells: pa.StructArray,
+    rows: np.ndarray,
+    left: pa.StructArray,
+    right: pa.StructArray,
+    operation: str,
+    number_type: NumberType,
+) -> pa.StructArray:
+    """*cells*, holding ``left <operation> right`` in the selected *rows*.
+
+    Interval completion (``duration = end - start``, ``end = start +
+    duration``) runs in the number type the table declares, through the
+    library's column arithmetic (:func:`combine_number_columns`): a float
+    axis computes on its doubles and mirrors each result once, an exact
+    axis computes on its ratios without overflow. The rows not selected
+    keep their cells.
+    """
+    if not rows.any():
+        return cells
+    selected = np.flatnonzero(rows)
+    computed = combine_number_columns(
+        left.take(selected), right.take(selected), operation, number_type
+    )
+    positions = np.arange(len(cells))
+    positions[selected] = len(cells) + np.arange(len(selected))
+    return pa.concat_arrays([cells, computed]).take(pa.array(positions))
+
+
+def _completed_cell(
+    left: dict[str, Any],
+    right: dict[str, Any],
+    operation: str,
+    number_type: NumberType,
+) -> dict[str, Any]:
+    """One cell of :func:`_completed_column`, by the same rule."""
+    return number_cell(
+        combine_numbers(
+            struct_to_coordinate(left, number_type),
+            struct_to_coordinate(right, number_type),
+            operation,
+            number_type,
+        ),
+        number_type,
+    )
 
 
 def _has_value_subfield(pa_type: pa.DataType) -> bool:
@@ -512,15 +569,16 @@ class EventData(SemanticFieldAccessMixin):
     def _normalize_intervals_vectorized(
         processed: dict[str, Any],
         policy: IntervalPolicy = IntervalPolicy.warn,
+        *,
+        number_type: NumberType,
     ) -> dict[str, Any]:
         """Normalise interval events in a field dict (FULLY VECTORIZED).
 
         Ensures that every interval event has both ``end`` and ``duration``
         populated, every instant event has both null, and that the
-        ``temporal_type`` field is consistent.  Also handles the case
-        where start/end/duration arrays are raw numeric (not yet parsed)
-        by operating purely on the float ``value`` field of coordinate
-        struct arrays.
+        ``temporal_type`` field is consistent. A missing ``end`` or
+        ``duration`` is completed in *number_type* (see
+        :func:`_completed_column`).
 
         The *policy* parameter controls behaviour when both ``end`` and
         ``duration`` are present but inconsistent
@@ -533,6 +591,8 @@ class EventData(SemanticFieldAccessMixin):
                 ``pa.NullArray``, or absent.
             policy: How to resolve inconsistencies between ``end`` and
                 ``duration``.
+            number_type: The number type the table declares for its
+                coordinates.
 
         Returns:
             The same *processed* dict (for chaining convenience).
@@ -547,55 +607,20 @@ class EventData(SemanticFieldAccessMixin):
             return processed
 
         n = len(start_arr)
-        start_is_null = start_arr.is_null().to_numpy(zero_copy_only=False)
-        start_val = start_arr.field("value").to_numpy(zero_copy_only=False)
-        start_num = start_arr.field("numerator").to_numpy(zero_copy_only=False)
-        start_den = start_arr.field("denominator").to_numpy(zero_copy_only=False)
+        start = _cell_column(start_arr, n)
+        end = _cell_column(processed.get("end"), n)
+        duration = _cell_column(processed.get("duration"), n)
 
-        # Determine which fields are present and non-null
-        end_arr = processed.get("end")
-        dur_arr = processed.get("duration")
+        def _nulls_and_values(cells: pa.StructArray) -> tuple[np.ndarray, np.ndarray]:
+            """The column's null mask and its float side, for the checks."""
+            return (
+                cells.is_null().to_numpy(zero_copy_only=False),
+                cells.field("value").to_numpy(zero_copy_only=False),
+            )
 
-        def _is_real(arr: Any) -> bool:
-            """True when the array is a StructArray with at least one non-null."""
-            if arr is None:
-                return False
-            if isinstance(arr, pa.StructArray):
-                return arr.null_count < len(arr)
-            if isinstance(arr, pa.ChunkedArray):
-                return arr.null_count < len(arr)
-            return False
-
-        has_end_data = _is_real(end_arr)
-        has_dur_data = _is_real(dur_arr)
-
-        # Extract end arrays (if present)
-        if has_end_data:
-            if isinstance(end_arr, pa.ChunkedArray):
-                end_arr = end_arr.combine_chunks()
-            end_is_null = end_arr.is_null().to_numpy(zero_copy_only=False)
-            end_val = end_arr.field("value").to_numpy(zero_copy_only=False)
-            end_num = end_arr.field("numerator").to_numpy(zero_copy_only=False)
-            end_den = end_arr.field("denominator").to_numpy(zero_copy_only=False)
-        else:
-            end_is_null = np.ones(n, dtype=bool)
-            end_val = np.full(n, np.nan, dtype=np.float64)
-            end_num = np.full(n, np.nan, dtype=np.float64)
-            end_den = np.full(n, np.nan, dtype=np.float64)
-
-        # Extract duration arrays (if present)
-        if has_dur_data:
-            if isinstance(dur_arr, pa.ChunkedArray):
-                dur_arr = dur_arr.combine_chunks()
-            dur_is_null = dur_arr.is_null().to_numpy(zero_copy_only=False)
-            dur_val = dur_arr.field("value").to_numpy(zero_copy_only=False)
-            dur_num = dur_arr.field("numerator").to_numpy(zero_copy_only=False)
-            dur_den = dur_arr.field("denominator").to_numpy(zero_copy_only=False)
-        else:
-            dur_is_null = np.ones(n, dtype=bool)
-            dur_val = np.full(n, np.nan, dtype=np.float64)
-            dur_num = np.full(n, np.nan, dtype=np.float64)
-            dur_den = np.full(n, np.nan, dtype=np.float64)
+        start_is_null, start_val = _nulls_and_values(start)
+        end_is_null, end_val = _nulls_and_values(end)
+        dur_is_null, dur_val = _nulls_and_values(duration)
 
         # Boolean masks for each situation (vectorized)
         has_start = ~start_is_null
@@ -665,40 +690,9 @@ class EventData(SemanticFieldAccessMixin):
 
         # ---- Fill missing values ----
         #
-        # After this block every interval row will have both end and
-        # duration.  The policy controls which value is authoritative
-        # when both are already present.
-
-        # Allocate output arrays (copy so we don't mutate the originals)
-        out_end_val = end_val.copy()
-        out_end_num = end_num.copy()
-        out_end_den = end_den.copy()
-        out_end_null = end_is_null.copy() | instant_rows
-
-        out_dur_val = dur_val.copy()
-        out_dur_num = dur_num.copy()
-        out_dur_den = dur_den.copy()
-        out_dur_null = dur_is_null.copy() | instant_rows
-
-        # Helper: vectorized fraction subtraction a/b - c/d
-        def _frac_sub(a_num, a_den, b_num, b_den):
-            r_num = a_num * b_den - b_num * a_den
-            r_den = a_den * b_den
-            g = np.gcd(np.abs(r_num).astype(np.int64), np.abs(r_den).astype(np.int64))
-            g = np.where(g == 0, 1, g)
-            return (r_num // g), (r_den // g)
-
-        # Helper: vectorized fraction addition a/b + c/d
-        def _frac_add(a_num, a_den, b_num, b_den):
-            r_num = a_num * b_den + b_num * a_den
-            r_den = a_den * b_den
-            g = np.gcd(np.abs(r_num).astype(np.int64), np.abs(r_den).astype(np.int64))
-            g = np.where(g == 0, 1, g)
-            return (r_num // g), (r_den // g)
-
-        def _has_frac(num_arr, den_arr):
-            """Return the rows whose rational pair is complete."""
-            return (~pd.isna(num_arr)) & (~pd.isna(den_arr))
+        # After this block every interval row has both end and duration.
+        # The policy controls which value is authoritative when both are
+        # already present.
 
         # 1) Rows with end but no duration -> compute duration = end - start
         need_dur = has_start & has_end & ~has_dur
@@ -707,99 +701,29 @@ class EventData(SemanticFieldAccessMixin):
             need_dur = need_dur | both_present
         elif policy in (IntervalPolicy.warn, IntervalPolicy.strict):
             # Recompute duration for inconsistent rows (prefer end)
-            if inconsistent.any():
-                need_dur = need_dur | (both_present & inconsistent)
-
-        if need_dur.any():
-            out_dur_val[need_dur] = out_end_val[need_dur] - start_val[need_dur]
-            out_dur_null[need_dur] = False
-
-            # Fraction arithmetic where both have fractions
-            s_has = _has_frac(start_num, start_den)
-            e_has = _has_frac(out_end_num, out_end_den)
-            frac_mask = need_dur & s_has & e_has
-            if frac_mask.any():
-                s_n = np.where(pd.isna(start_num), 0, start_num).astype(np.int64)
-                s_d = np.where(pd.isna(start_den), 1, start_den).astype(np.int64)
-                e_n = np.where(pd.isna(out_end_num), 0, out_end_num).astype(np.int64)
-                e_d = np.where(pd.isna(out_end_den), 1, out_end_den).astype(np.int64)
-                r_n, r_d = _frac_sub(e_n, e_d, s_n, s_d)
-                out_dur_num[frac_mask] = r_n[frac_mask]
-                out_dur_den[frac_mask] = r_d[frac_mask]
+            need_dur = need_dur | (both_present & inconsistent)
+        duration = _completed_column(
+            duration, need_dur, end, start, "subtract", number_type
+        )
 
         # 2) Rows with duration but no end -> compute end = start + duration
         need_end = has_start & has_dur & ~has_end
         if policy == IntervalPolicy.prefer_duration:
             # Also recompute end for rows that already have both
             need_end = need_end | both_present
+        end = _completed_column(end, need_end, start, duration, "add", number_type)
 
-        if need_end.any():
-            out_end_val[need_end] = start_val[need_end] + out_dur_val[need_end]
-            out_end_null[need_end] = False
-
-            s_has = _has_frac(start_num, start_den)
-            d_has = _has_frac(out_dur_num, out_dur_den)
-            frac_mask = need_end & s_has & d_has
-            if frac_mask.any():
-                s_n = np.where(pd.isna(start_num), 0, start_num).astype(np.int64)
-                s_d = np.where(pd.isna(start_den), 1, start_den).astype(np.int64)
-                d_n = np.where(pd.isna(out_dur_num), 0, out_dur_num).astype(np.int64)
-                d_d = np.where(pd.isna(out_dur_den), 1, out_dur_den).astype(np.int64)
-                r_n, r_d = _frac_add(s_n, s_d, d_n, d_d)
-                out_end_num[frac_mask] = r_n[frac_mask]
-                out_end_den[frac_mask] = r_d[frac_mask]
-
-        # ---- Build output struct arrays ----
-
-        coord_type = pa.struct(
-            [
-                pa.field("value", pa.float64(), nullable=True),
-                pa.field("numerator", pa.int64(), nullable=True),
-                pa.field("denominator", pa.int64(), nullable=True),
-            ]
-        )
-
-        # Determine fraction null mask for output arrays
-        def _build_struct_array(
-            val, num, den, null_mask, frac_source_num, frac_source_den
-        ):
-            """Build a coordinate StructArray from numpy arrays."""
-            # Fraction fields are null wherever the struct is null or source had no frac
-            frac_present = (~pd.isna(frac_source_num)) & (~pd.isna(frac_source_den))
-            frac_null = null_mask | ~frac_present
-            # Convert to safe int arrays
-            safe_num = np.where(pd.isna(num), 0, num).astype(np.int64)
-            safe_den = np.where(pd.isna(den), 1, den).astype(np.int64)
-            return pa.StructArray.from_arrays(
-                [
-                    pa.array(val, mask=null_mask, type=pa.float64()),
-                    pa.array(safe_num, mask=frac_null, type=pa.int64()),
-                    pa.array(safe_den, mask=frac_null, type=pa.int64()),
-                ],
-                fields=list(coord_type),
-                mask=pa.array(null_mask),
-            )
-
-        processed["end"] = _build_struct_array(
-            out_end_val,
-            out_end_num,
-            out_end_den,
-            out_end_null,
-            out_end_num,
-            out_end_den,
-        )
-        processed["duration"] = _build_struct_array(
-            out_dur_val,
-            out_dur_num,
-            out_dur_den,
-            out_dur_null,
-            out_dur_num,
-            out_dur_den,
-        )
+        # Explicit instants carry no interval endpoints.
+        if instant_rows.any():
+            no_cells = pa.nulls(n, RATIONAL_STRUCT_TYPE)
+            end = pc.if_else(pa.array(instant_rows), no_cells, end)
+            duration = pc.if_else(pa.array(instant_rows), no_cells, duration)
+        processed["end"] = end
+        processed["duration"] = duration
 
         # ---- Ensure temporal_type is consistent ----
         # Recompute: interval if end is now non-null, instant otherwise
-        new_has_end = ~out_end_null
+        new_has_end = end.is_valid().to_numpy(zero_copy_only=False)
         inferred_tt = np.where(new_has_end, "interval", "instant")
 
         # Only overwrite temporal_type if it was all-null or not provided;
@@ -830,6 +754,8 @@ class EventData(SemanticFieldAccessMixin):
     def _normalize_intervals_row(
         processed: dict[str, Any],
         policy: IntervalPolicy = IntervalPolicy.warn,
+        *,
+        number_type: NumberType,
     ) -> dict[str, Any]:
         """Normalise interval fields in a single event row dict.
 
@@ -840,11 +766,13 @@ class EventData(SemanticFieldAccessMixin):
 
         This is the **row-based** counterpart to
         ``_normalize_intervals_vectorized`` and is called from
-        ``from_dicts``.
+        ``from_dicts``; both complete a row alike (:func:`_completed_cell`).
 
         Args:
             processed: Mutable row dict (modified **in-place**).
             policy: How to resolve inconsistencies.
+            number_type: The number type the table declares for its
+                coordinates.
 
         Returns:
             The same *processed* dict (for chaining convenience).
@@ -884,35 +812,6 @@ class EventData(SemanticFieldAccessMixin):
                 return v.get("value")
             return float(v)
 
-        # ---- Extract exact Fraction, when the struct carries one ----
-        def _fraction_of(v: Any) -> Fraction | None:
-            if not isinstance(v, dict):
-                return None
-            try:
-                return struct_to_rational(v)
-            except (TypeError, ValueError, ZeroDivisionError):
-                return None
-
-        def _add_or_float(
-            left: Any, right: Any, left_val: float, right_val: float
-        ) -> Any:
-            """Add exact operands as fractions and otherwise use their values."""
-            left_frac = _fraction_of(left)
-            right_frac = _fraction_of(right)
-            if left_frac is not None and right_frac is not None:
-                return left_frac + right_frac
-            return left_val + right_val
-
-        def _sub_or_float(
-            left: Any, right: Any, left_val: float, right_val: float
-        ) -> Any:
-            """Subtract exact operands as fractions and otherwise use their values."""
-            left_frac = _fraction_of(left)
-            right_frac = _fraction_of(right)
-            if left_frac is not None and right_frac is not None:
-                return left_frac - right_frac
-            return left_val - right_val
-
         start_val = _float_of(processed.get("start"))
         end_val = _float_of(processed.get("end"))
         dur_val = _float_of(processed.get("duration"))
@@ -922,9 +821,11 @@ class EventData(SemanticFieldAccessMixin):
         has_dur = dur_val is not None
 
         # ---- Consistency check when both present ----
+        inconsistent = False
         if has_start and has_end and has_dur:
             expected = end_val - start_val
-            if abs(expected - dur_val) > 1e-9:
+            inconsistent = abs(expected - dur_val) > 1e-9
+            if inconsistent:
                 if policy == IntervalPolicy.strict:
                     raise ValueError(
                         f"Interval inconsistency: start={start_val}, "
@@ -944,76 +845,26 @@ class EventData(SemanticFieldAccessMixin):
                 # After warning: fall through to fill logic
 
         # ---- Fill missing values ----
+        # The same rows as the vectorized path: duration from end where it
+        # is missing, where prefer_end says so, or where warn/strict found
+        # it inconsistent; end from duration where it is missing or where
+        # prefer_duration says so.
         if has_start:
-            if policy == IntervalPolicy.prefer_end:
-                if has_end:
-                    processed["duration"] = coordinate_to_struct(
-                        _sub_or_float(
-                            processed.get("end"),
-                            processed.get("start"),
-                            end_val,
-                            start_val,
-                        )
-                    )
-                elif has_dur:
-                    processed["end"] = coordinate_to_struct(
-                        _add_or_float(
-                            processed.get("start"),
-                            processed.get("duration"),
-                            start_val,
-                            dur_val,
-                        )
-                    )
-            elif policy == IntervalPolicy.prefer_duration:
-                if has_dur:
-                    processed["end"] = coordinate_to_struct(
-                        _add_or_float(
-                            processed.get("start"),
-                            processed.get("duration"),
-                            start_val,
-                            dur_val,
-                        )
-                    )
-                elif has_end:
-                    processed["duration"] = coordinate_to_struct(
-                        _sub_or_float(
-                            processed.get("end"),
-                            processed.get("start"),
-                            end_val,
-                            start_val,
-                        )
-                    )
-            else:
-                # warn / strict: prefer end when both present, otherwise fill
-                if has_end and not has_dur:
-                    processed["duration"] = coordinate_to_struct(
-                        _sub_or_float(
-                            processed.get("end"),
-                            processed.get("start"),
-                            end_val,
-                            start_val,
-                        )
-                    )
-                elif has_dur and not has_end:
-                    processed["end"] = coordinate_to_struct(
-                        _add_or_float(
-                            processed.get("start"),
-                            processed.get("duration"),
-                            start_val,
-                            dur_val,
-                        )
-                    )
-                elif has_end and has_dur:
-                    # Recompute duration from end (prefer end); stay exact
-                    # when both endpoints carry exact ratios.
-                    processed["duration"] = coordinate_to_struct(
-                        _sub_or_float(
-                            processed.get("end"),
-                            processed.get("start"),
-                            end_val,
-                            start_val,
-                        )
-                    )
+            if has_end and (
+                not has_dur
+                or policy == IntervalPolicy.prefer_end
+                or (
+                    inconsistent
+                    and policy in (IntervalPolicy.warn, IntervalPolicy.strict)
+                )
+            ):
+                processed["duration"] = _completed_cell(
+                    processed["end"], processed["start"], "subtract", number_type
+                )
+            elif has_dur and (not has_end or policy == IntervalPolicy.prefer_duration):
+                processed["end"] = _completed_cell(
+                    processed["start"], processed["duration"], "add", number_type
+                )
 
         # ---- Infer temporal_type ----
         if "temporal_type" not in processed or processed["temporal_type"] is None:
@@ -1133,7 +984,9 @@ class EventData(SemanticFieldAccessMixin):
             # Unified interval normalisation: converts coordinate fields
             # to struct format, fills missing end/duration, infers
             # temporal_type, and checks consistency per policy.
-            cls._normalize_intervals_row(processed, policy=interval_policy)
+            cls._normalize_intervals_row(
+                processed, policy=interval_policy, number_type=number_type
+            )
 
             # Ensure name field exists
             if "name" not in processed:
@@ -1386,7 +1239,9 @@ class EventData(SemanticFieldAccessMixin):
 
         # Unified interval normalisation: compute missing end/duration,
         # check consistency, and infer temporal_type -- all vectorized.
-        cls._normalize_intervals_vectorized(processed, policy=interval_policy)
+        cls._normalize_intervals_vectorized(
+            processed, policy=interval_policy, number_type=number_type
+        )
 
         # Infer event_type if not provided or all null (vectorized)
         if "event_type" in processed:

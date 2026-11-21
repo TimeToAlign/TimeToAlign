@@ -181,6 +181,52 @@ class TestCoordinateTypeParsing:
         assert end.field("numerator").to_pylist() == [17]
         assert end.field("denominator").to_pylist() == [4]
 
+    def test_duration_column_on_seconds_adds_floats(self, tmp_path: Path) -> None:
+        """end = start + duration on a float axis is the IEEE sum, mirrored."""
+
+        class SecondsDurationLoader(TabularLoader):
+            start_column = "start"
+            duration_column = "duration"
+            _default_unit = TimeUnit.seconds
+
+        path = tmp_path / "seconds_duration.csv"
+        path.write_text(
+            "start,duration,event_type\n"
+            "1.234,1.484,Note\n2.718,0.382,Note\n0.001,123.456,Note\n"
+        )
+
+        loader = SecondsDurationLoader()
+        loader.load(path)
+
+        ends = loader.events.table.column("end").combine_chunks().to_pylist()
+        assert [cell["value"] for cell in ends] == [2.718, 3.1, 123.45700000000001]
+        for name in ("start", "end", "duration"):
+            for cell in loader.events.table.column(name).combine_chunks().to_pylist():
+                assert cell["denominator"] > 0
+                assert Fraction(cell["numerator"], cell["denominator"]) == Fraction(
+                    cell["value"]
+                )
+
+    def test_duration_column_on_quarters_beyond_int64(self, tmp_path: Path) -> None:
+        """Exact end whose operands' denominators multiply past 2**63."""
+
+        class QuarterDurationLoader(TabularLoader):
+            start_column = "start"
+            duration_column = "duration"
+            _default_unit = TimeUnit.quarters
+
+        start = Fraction(1, 5 * 2**40)
+        duration = Fraction(15 * 2**39 + 1, 15 * 2**39)
+        path = tmp_path / "wide_duration.csv"
+        path.write_text(f"start,duration,event_type\n{start},{duration},Note\n")
+
+        loader = QuarterDurationLoader()
+        loader.load(path)
+
+        assert loader.events.column_values("end") == [
+            Fraction(3 * 2**40 + 1, 3 * 2**40)
+        ]
+
 
 class TestEventDataFromArrays:
     """Test EventData.from_arrays() vectorized construction."""

@@ -283,6 +283,162 @@ class TestIntervalFractionFidelity:
         assert self._pairs(data, "end") == [(17, 4), (17, 4)]
 
 
+# The seconds of a real annotation file: three decimals, no short ratio. The
+# last two rows span magnitudes: the exact difference of their dyadic mirrors
+# needs more than 53 bits (and, for the last, a numerator past int64).
+_SECONDS_STARTS = [0.0, 1.234, 2.718, 0.003, 0.001]
+_SECONDS_ENDS = [1.234, 2.718, 3.1, 1.5, 123.457]
+# The IEEE differences of the stored doubles, and the sums back.
+_SECONDS_DURATIONS = [1.234, 1.484, 0.3820000000000001, 1.497, 123.45599999999999]
+_SECONDS_SUMS = [1.234, 2.718, 3.1, 1.5, 123.457]
+
+# Two quarter positions whose denominators multiply past 2**63; their
+# difference does not need that much.
+_WIDE_END = Fraction(3 * 2**40 + 1, 3 * 2**40)
+_WIDE_START = Fraction(1, 5 * 2**40)
+_WIDE_DURATION = Fraction(15 * 2**39 + 1, 15 * 2**39)
+
+
+def _rows(starts: list, **others: list) -> list[dict]:
+    """Event rows of one note per start, with the other coordinate given."""
+    ((key, values),) = others.items()
+    return [
+        {"event_type": "Note", "start": start, key: value}
+        for start, value in zip(starts, values, strict=True)
+    ]
+
+
+def _arrays(starts: list, **others: list) -> dict:
+    """The same events as columns, for ``EventData.from_arrays``."""
+    ((key, values),) = others.items()
+    return {"event_type": ["Note"] * len(starts), "start": starts, key: values}
+
+
+def _cells(data: EventData, name: str) -> list[dict]:
+    return data.table.column(name).combine_chunks().to_pylist()
+
+
+def _assert_mirrors_value(cells: list[dict]) -> None:
+    """Float axis: every ratio is the exact mirror of the stored double."""
+    for cell in cells:
+        assert cell["denominator"] > 0
+        assert Fraction(cell["numerator"], cell["denominator"]) == Fraction(
+            cell["value"]
+        )
+
+
+def _assert_value_mirrors_ratio(cells: list[dict]) -> None:
+    """Exact axis: every double is the mirror of the stored ratio."""
+    for cell in cells:
+        assert cell["denominator"] > 0
+        assert cell["value"] == float(Fraction(cell["numerator"], cell["denominator"]))
+
+
+def _build(path: str, starts: list, unit: TimeUnit, **others: list) -> EventData:
+    if path == "row":
+        return EventData.from_dicts(_rows(starts, **others), unit=unit)
+    return EventData.from_arrays(_arrays(starts, **others), unit=unit)
+
+
+class TestIntervalCompletion:
+    """Completion of ``end`` / ``duration`` in the declared number type."""
+
+    @pytest.mark.parametrize("path", ["row", "column"])
+    def test_seconds_duration_is_the_float_difference(self, path: str) -> None:
+        data = _build(path, _SECONDS_STARTS, TimeUnit.seconds, end=_SECONDS_ENDS)
+        durations = _cells(data, "duration")
+        assert [cell["value"] for cell in durations] == _SECONDS_DURATIONS
+        for name in ("start", "end", "duration"):
+            _assert_mirrors_value(_cells(data, name))
+
+    @pytest.mark.parametrize("path", ["row", "column"])
+    def test_seconds_end_is_the_float_sum(self, path: str) -> None:
+        data = _build(
+            path, _SECONDS_STARTS, TimeUnit.seconds, duration=_SECONDS_DURATIONS
+        )
+        ends = _cells(data, "end")
+        assert [cell["value"] for cell in ends] == _SECONDS_SUMS
+        for name in ("start", "end", "duration"):
+            _assert_mirrors_value(_cells(data, name))
+
+    def test_ten_thousand_seconds_rows(self, tmp_path) -> None:
+        import numpy as np
+
+        rng = np.random.default_rng(0)
+        starts = np.round(rng.uniform(0, 300, 10_000), 3)
+        ends = starts + np.round(rng.uniform(0.05, 2, 10_000), 3)
+        data = EventData.from_arrays(
+            {"event_type": np.array(["Note"] * 10_000), "start": starts, "end": ends},
+            unit=TimeUnit.seconds,
+        )
+        durations = _cells(data, "duration")
+        assert sum(1 for cell in durations if cell["denominator"] <= 0) == 0
+        _assert_mirrors_value(durations)
+        assert [cell["value"] for cell in durations] == (ends - starts).tolist()
+
+        path = tmp_path / "seconds.parquet"
+        data.to_parquet(path)
+        read = EventData.from_parquet(path)
+        for name in ("start", "end", "duration"):
+            assert _cells(read, name) == _cells(data, name)
+
+    @pytest.mark.parametrize("path", ["row", "column"])
+    def test_quarters_beyond_int64_cross_products(self, path: str) -> None:
+        by_end = _build(path, [_WIDE_START], TimeUnit.quarters, end=[_WIDE_END])
+        (duration,) = _cells(by_end, "duration")
+        assert Fraction(duration["numerator"], duration["denominator"]) == (
+            _WIDE_DURATION
+        )
+        _assert_value_mirrors_ratio(_cells(by_end, "duration"))
+
+        by_duration = _build(
+            path, [_WIDE_START], TimeUnit.quarters, duration=[_WIDE_DURATION]
+        )
+        (end,) = _cells(by_duration, "end")
+        assert Fraction(end["numerator"], end["denominator"]) == _WIDE_END
+        _assert_value_mirrors_ratio(_cells(by_duration, "end"))
+
+    @pytest.mark.parametrize("path", ["row", "column"])
+    def test_ticks_complete_as_integers(self, path: str) -> None:
+        by_end = _build(path, [0, 480, 960], TimeUnit.ticks, end=[480, 1200, 961])
+        assert _cells(by_end, "duration") == [
+            {"value": 480.0, "numerator": 480, "denominator": 1},
+            {"value": 720.0, "numerator": 720, "denominator": 1},
+            {"value": 1.0, "numerator": 1, "denominator": 1},
+        ]
+        by_duration = _build(
+            path, [0, 480, 960], TimeUnit.ticks, duration=[480, 720, 1]
+        )
+        assert _cells(by_duration, "end") == [
+            {"value": 480.0, "numerator": 480, "denominator": 1},
+            {"value": 1200.0, "numerator": 1200, "denominator": 1},
+            {"value": 961.0, "numerator": 961, "denominator": 1},
+        ]
+
+    @pytest.mark.parametrize(
+        ("unit", "starts", "others"),
+        [
+            (TimeUnit.seconds, _SECONDS_STARTS, {"end": _SECONDS_ENDS}),
+            (TimeUnit.seconds, _SECONDS_STARTS, {"duration": _SECONDS_DURATIONS}),
+            (TimeUnit.ticks, [0, 480, 960], {"end": [480, 1200, 961]}),
+            (TimeUnit.ticks, [0, 480, 960], {"duration": [480, 720, 1]}),
+            (TimeUnit.quarters, [Fraction(1, 3), _WIDE_START], {"end": [2, _WIDE_END]}),
+            (
+                TimeUnit.quarters,
+                [Fraction(1, 3), _WIDE_START],
+                {"duration": [Fraction(3, 4), _WIDE_DURATION]},
+            ),
+        ],
+    )
+    def test_row_and_column_paths_give_the_same_cells(
+        self, unit: TimeUnit, starts: list, others: dict
+    ) -> None:
+        row = _build("row", starts, unit, **others)
+        column = _build("column", starts, unit, **others)
+        for name in ("start", "end", "duration"):
+            assert _cells(row, name) == _cells(column, name)
+
+
 class TestHead:
     """`EventData.head()` — pandas-style leading-row preview."""
 

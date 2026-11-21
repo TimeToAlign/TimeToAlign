@@ -6,6 +6,7 @@ All expected values are EXACT per the ZERO TOLERANCE validation policy.
 
 from __future__ import annotations
 
+from fractions import Fraction
 from pathlib import Path
 
 import pytest
@@ -322,6 +323,32 @@ class TestLabFileFormat:
         loader.load(path)
 
         assert len(loader) == 3
+
+
+class TestNonDyadicSeconds:
+    """Three-decimal seconds: completed durations keep the struct invariant."""
+
+    def test_durations_are_float_differences_with_exact_mirrors(
+        self, tmp_path: Path
+    ) -> None:
+        path = tmp_path / "chords.lab"
+        path.write_text("0.000\t1.234\tN\n1.234\t2.718\tC:maj\n2.718\t3.1\tG:maj\n")
+
+        loader = LabLoader.from_file(path)
+        table = loader.events.table
+
+        durations = table.column("duration").combine_chunks().to_pylist()
+        assert [cell["value"] for cell in durations] == [
+            1.234,
+            1.484,
+            0.3820000000000001,
+        ]
+        for name in ("start", "end", "duration"):
+            for cell in table.column(name).combine_chunks().to_pylist():
+                assert cell["denominator"] > 0
+                assert Fraction(cell["numerator"], cell["denominator"]) == Fraction(
+                    cell["value"]
+                )
 
 
 # endregion

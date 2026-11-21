@@ -18,6 +18,47 @@ float canonical side and an exact dyadic mirror, and one in a fraction-typed
 column has the reverse. Asserting only the side a caller happens to read would
 miss a cell whose two halves disagree.
 
+### Interval completion runs in the axis's number type
+
+Completion fills `duration = end − start` where a row has no duration (or the
+policy recomputes it) and `end = start + duration` where it has no end; the
+tabular loader's `duration_column` takes the second form. A row without a
+`start` is not completed. The arithmetic runs in the number type the table
+declares and nowhere else: a float axis subtracts its doubles and mirrors the
+result once, an exact axis (`int`, `fraction`) computes on its ratios with
+arithmetic that cannot overflow. What proves it, in `test_events.py`
+(`TestIntervalCompletion`):
+
+- **The struct invariant on every completed cell.** For every completed cell:
+  `denominator > 0`; on a float axis `Fraction(numerator, denominator) ==
+  Fraction(value)` exactly (the ratio is the exact mirror of the stored
+  double, never a ratio computed beside it); on an exact axis `value ==
+  float(Fraction(numerator, denominator))`.
+- **Float axes give the float result.** Seconds with three decimals, the shape
+  of every real annotation file: the completed `value` is the IEEE result of
+  the operation on the stored doubles, stated as a literal
+  (`2.718 - 1.234 == 1.484`, `3.1 - 2.718 == 0.3820000000000001`, `1.234 +
+  1.484 == 2.718`), on both construction paths. Two rows span magnitudes,
+  `1.5 - 0.003 == 1.497` and `123.457 - 0.001 == 123.45599999999999`: the
+  exact difference of their dyadic mirrors needs more than 53 bits, so a
+  completion that computed it would store a ratio that is not the mirror of
+  its double (the first) or fail on a numerator past int64 (the second).
+- **Scale.** 10,000 rows of three-decimal seconds (seeded generator): zero
+  cells with a non-positive denominator, every ratio the mirror of its value,
+  every value equal to `end − start` computed by numpy on the same doubles,
+  and `to_parquet` / `from_parquet` return identical cells.
+- **Exact axes beyond int64 cross-products.** On quarters, `end =
+  (3·2⁴⁰ + 1)/(3·2⁴⁰)` and `start = 1/(5·2⁴⁰)`:
+  the denominators' product is past `2⁶³`, the result is not:
+  `duration == Fraction(15·2³⁹ + 1, 15·2³⁹)` exactly, both directions (`end`
+  from `start + duration` gives back the `end`). On ticks (`int`) the result is
+  the integer difference / sum with denominator 1.
+- **One rule for both construction paths.** The same rows through `from_dicts`
+  (row path) and `from_arrays` (column path) give identical `end` and
+  `duration` cells, on float, int and fraction axes.
+- **The tabular loader.** Covered in `tests/loader/tabular/README.md`
+  (LabLoader) and `test_struct_columns.py`.
+
 The interval-normalisation regression also checks the explicit temporal type:
 an instant row may have a populated `start` coordinate, but its `end` and
 `duration` cells remain null — genuinely null rows are the only place a null

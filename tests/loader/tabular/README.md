@@ -7,8 +7,8 @@ This directory contains comprehensive tests for the `timetoalign.loader.tabular`
 | File | Tests | Purpose |
 |------|-------|---------|
 | `test_tabular.py` | 11 | Core TabularLoader, CsvLoader, TsvLoader functionality |
-| `test_vectorized.py` | 10 | Vectorized pipeline integration tests |
-| `test_lab_loader.py` | 29 | `LabLoader` (.lab audio-region files) — see §LabLoader below |
+| `test_vectorized.py` | 13 | Vectorized pipeline integration tests |
+| `test_lab_loader.py` | 30 | `LabLoader` (.lab audio-region files) — see §LabLoader below |
 | `test_correctness.py` | 11 | ZERO TOLERANCE validation with real specimens |
 | `test_error_handling.py` | 15 | Graceful degradation and error message clarity |
 | `test_struct_columns.py` | 16 | `Field`, `ComputedField`, `ConvertedField` unit tests and JSON-to-struct parsing helper |
@@ -72,13 +72,15 @@ file.
 
 ### Exact Coordinate Completion
 
-Loader tests verify that computed interval endpoints retain a numerator and
-denominator only when both the start and duration carry a complete exact pair.
-Exact pairs are compared as `Fraction` values with zero tolerance.  Rows that
-use floating-point coordinates, or mix exact and floating-point operands,
-retain their float convenience values while leaving computed rational fields
-null.  This prevents parser defaults such as `0/1` from being mistaken for
-source precision.
+A `duration_column` is completed as `end = start + duration` in the number
+type the loader declares, and every computed cell carries both sides. In
+`test_vectorized.py`: a fraction axis given a float duration (`7/2 + 0.75`)
+gives the exact `17/4`; a seconds axis gives the IEEE sums of the stored
+doubles as literals (`1.234 + 1.484 == 2.718`, `2.718 + 0.382 == 3.1`, `0.001 +
+123.456 == 123.45700000000001`) with every ratio the exact mirror of its
+double (`Fraction(numerator, denominator) == Fraction(value)`, denominator
+positive); a quarters axis whose operands' denominators multiply past `2⁶³`
+(`1/(5·2⁴⁰) + (15·2³⁹ + 1)/(15·2³⁹)`) gives exactly `(3·2⁴⁰ + 1)/(3·2⁴⁰)`.
 
 ### How We Know the Parser is Correct
 
@@ -274,6 +276,15 @@ with the dedicated `TestRegionsLab` / `TestBeatsLab` / `TestInstantsLab`
 count assertions and with `test_from_file_convenience` (`== 6`). Coordinate
 ranges are asserted as exact `Fraction`/float endpoints (`15.2`, `3.0`, `0.0`).
 The default unit is `seconds` and the default event type is `Region`.
+
+**Completed durations on a seconds axis.** The fixtures above hold values whose
+ratios are small; real annotation files hold three-decimal seconds, whose
+mirrors carry denominators up to `2⁵²`. `TestNonDyadicSeconds` writes the three
+lines `0.000 1.234 N`, `1.234 2.718 C:maj`, `2.718 3.1 G:maj` under `tmp_path`
+and loads them with `LabLoader.from_file`. For every row of `start`, `end` and
+`duration`: `denominator > 0` and `Fraction(numerator, denominator) ==
+Fraction(value)` exactly; the durations are the IEEE differences of the stored
+doubles, as literals: `1.234`, `1.484`, `0.3820000000000001`.
 
 ## SoloLoader
 

@@ -11,7 +11,7 @@ Covers:
   ``get_matchstamp_at``. The cases below pin that raw values and IdCoordinates
   coerce identically to the singular resolver, that each query coordinate
   yields exactly one full transitive cross-section (one list entry / one table
-  row), that ``timeline_filter`` narrows the table's columns, that empty input
+  row), that ``within`` narrows the table's columns, that empty input
   yields empty output, and that supplying both ``claims`` and ``at`` is
   rejected.
 - MatchGraph.get_matchstamp() + split_components()
@@ -513,7 +513,7 @@ class TestCoordinateBatch:
     contract: input order is preserved, each query coordinate yields exactly
     one full transitive cross-section, raw values and IdCoordinates coerce
     exactly as they do on the singular path, the table lays one row per
-    coordinate through the same assembly the claims path uses, ``timeline_filter``
+    coordinate through the same assembly the claims path uses, ``within``
     narrows columns, empty input yields empty output, and combining ``claims``
     with ``at`` is rejected.
     """
@@ -581,13 +581,13 @@ class TestCoordinateBatch:
             for timeline_id in table.column_names
         } == self.COORD_50
 
-    def test_table_timeline_filter_narrows_columns(self):
-        """timeline_filter narrows the coordinate table to the named fields."""
+    def test_table_within_narrows_columns(self):
+        """within narrows the coordinate table to the named timelines' fields."""
         bundle, _ = _make_star_bundle()
         table = bundle.get_matchstamp_table(
             [0.0, 50.0, 100.0],
             "score:clt_1",
-            timeline_filter={"score:clt_1", "perf:dlt_1"},
+            within={"score:clt_1", "perf:dlt_1"},
         )
         assert set(table.column_names) == {"score:clt_1", "perf:dlt_1"}
         assert {

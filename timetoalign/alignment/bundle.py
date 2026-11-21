@@ -3673,7 +3673,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         timeline_id: str | None = None,
         *,
         claims: list[MatchClaim] | None = None,
-        timeline_filter: set[str] | None = None,
+        within: set[str] | None = None,
         from_graph: bool = False,
         conversion_maps: "ConversionMapsSpec" = False,
         format: TableFormat = "table",
@@ -3726,7 +3726,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 cross-group claim in the bundle (both stores).  When given,
                 only those claims are tabulated.  Mutually exclusive with
                 ``at``.
-            timeline_filter: Only include these timeline fields.
+            within: Only these timelines' coordinates in the table, one
+                column each; ``None`` keeps every timeline.
             from_graph: Collapse claims into one row per connected component
                 instead of one row per claim.  Ignored on the ``at`` path.
             conversion_maps: C-map conversions to add as derived columns, one
@@ -3833,7 +3834,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 self._assemble_matchstamp_table(
                     rows,
                     all_tl_ids,
-                    timeline_filter,
+                    within,
                     conversion_maps=conversion_maps,
                 ),
                 format=format,
@@ -3868,7 +3869,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             self._assemble_matchstamp_table(
                 rows,
                 all_tl_ids,
-                timeline_filter,
+                within,
                 conversion_maps=conversion_maps,
             ),
             format=format,
@@ -3899,7 +3900,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         self,
         rows: list[dict[str, Coordinate]],
         all_tl_ids: set[str],
-        timeline_filter: set[str] | None,
+        within: set[str] | None,
         conversion_maps: "ConversionMapsSpec" = False,
     ) -> "pa.Table":
         """Scatter per-row dicts into one PyArrow table.
@@ -3908,12 +3909,12 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         entry contributes one row, its timeline keys scattered into the
         matching fields, each cell the coordinate as given, on its
         timeline's axis. ``all_tl_ids`` is the field universe before
-        filtering; ``timeline_filter`` (when given) intersects it.
+        filtering; ``within`` (when given) intersects it.
 
         Args:
             rows: One dict per row, timeline id to coordinate.
             all_tl_ids: Union of every timeline ID appearing in the inputs.
-            timeline_filter: Only include these timeline fields, if given.
+            within: Only these timelines' columns, if given.
             conversion_maps: C-map conversions to add as derived columns, one
                 per (timeline, enabled unit-conversion map). Opt-in: defaults
                 to ``False``. Only numeric unit-conversion maps (a
@@ -3928,9 +3929,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         if n_rows == 0:
             return pa.table({})
 
-        # Apply timeline filter if provided
-        if timeline_filter is not None:
-            all_tl_ids = all_tl_ids & timeline_filter
+        # Keep only the timelines ``within`` names, if given
+        if within is not None:
+            all_tl_ids = all_tl_ids & within
 
         # Build table with consistent fields, scattering each row into its
         # cells rather than probing every field of every row.

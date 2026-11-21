@@ -907,12 +907,12 @@ len(stamp.present_timelines)
 # children of the unfolded score's timelines and of each recording, so the
 # stamp holds 114 timelines. To keep the output readable, the cells below
 # narrow it to the bundle's own members (`bundle.timeline_ids`) with the
-# getter's `timeline_ids=` filter; the children's coordinates are still
+# getter's `within=` filter; the children's coordinates are still
 # there whenever you ask without the filter.
 
 # %%
 members = set(bundle.timeline_ids)
-stamp = bundle.get_matchstamp_at(79.0, "clt_1", timeline_ids=members)
+stamp = bundle.get_matchstamp_at(79.0, "clt_1", within=members)
 stamp
 
 # %% [markdown]
@@ -939,7 +939,7 @@ stamp
 # instead, ask for one with `get_coordinate_for(id, format="float")`.
 
 # %%
-bundle.get_matchstamp_at(79.0, "clt_1", timeline_ids=members).to_dict(format="nested")
+bundle.get_matchstamp_at(79.0, "clt_1", within=members).to_dict(format="nested")
 
 # %% [markdown]
 # Note that the `emerson` group now appears in the output: the
@@ -950,7 +950,7 @@ bundle.get_matchstamp_at(79.0, "clt_1", timeline_ids=members).to_dict(format="ne
 # The flat format is useful for programmatic access:
 
 # %%
-bundle.get_matchstamp_at(79.0, "clt_1", timeline_ids=members).to_dict(format="flat")
+bundle.get_matchstamp_at(79.0, "clt_1", within=members).to_dict(format="flat")
 
 # %% [markdown]
 # ### 14.3 USE CASE B — Reverse Transfer: Emerson to All Groups
@@ -960,7 +960,7 @@ bundle.get_matchstamp_at(79.0, "clt_1", timeline_ids=members).to_dict(format="fl
 # connected timeline — including the three EEP recording groups:
 
 # %%
-bundle.get_matchstamp_at(120.0, "dpt_16", timeline_ids=members).to_dict(format="nested")
+bundle.get_matchstamp_at(120.0, "dpt_16", within=members).to_dict(format="nested")
 
 # %% [markdown]
 # A coordinate at 120 seconds into the Emerson recording is mapped
@@ -983,7 +983,7 @@ section_coords
 # %%
 boundary_rows = []
 for _qb in section_coords.values():
-    _stamp = bundle.get_matchstamp_at(float(_qb), "clt_1", timeline_ids=members)
+    _stamp = bundle.get_matchstamp_at(float(_qb), "clt_1", within=members)
     _row = {}
     for _tl_id in _stamp.present_timelines:
         _coord = _stamp.get_coordinate_for(_tl_id)

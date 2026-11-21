@@ -567,7 +567,7 @@ holds in the following cases:
 6. **Every lane follows.** The plural getter, the key getter (`_for`), the
    position table and the coordinate getter all give the same values as the
    singular stamp; they share one assembly path, and the test pins each of them.
-7. **Filters select among every known timeline.** `timeline_ids`, `id_pattern`
+7. **Filters select among every known timeline.** `within`, `id_pattern`
    and `include_units` keep exactly the nested timelines they name.
 8. **An unknown id** still raises `KeyError`, naming every timeline the bundle
    knows: the registered ones in registration order, then each root's other
@@ -1762,12 +1762,18 @@ Those values are literal data written by hand in TimeToShare's emission
 script, never computed by a derivation, so they are an independent oracle.
 
 - `AlignmentBundle.from_file(manifest.yaml)` holds the fifteen MatchClaims
-  and the nine Projections (eight on `dpt_1`, one on `cpt_1`); the bundle's
-  Projections table equals the fixture's sorted by timeline (a stable sort,
-  so each timeline keeps its order). The Projections file is equal as a
-  table, not as bytes: the library writes the rows by timeline ID, the
-  fixture holds them in its emitter's order (`dpt_1` ×6, `cpt_1`, `dpt_1`
-  ×2).
+  and the eleven Projections (eight on `dpt_1`, two on `cpt_1`, one on
+  `clt_2`; `clt_1` holds none), so every timeline's events are its
+  Projections alone; the bundle's Projections table equals the fixture's
+  sorted by timeline (a stable sort, so each timeline keeps its order). The
+  Projections file is equal as a table, not as bytes: the library writes
+  the rows by timeline ID, each timeline in its event order (`clt_2`,
+  `cpt_1` ×2, `dpt_1` ×8), the fixture holds them in its emitter's order
+  (`dpt_1` ×6, `cpt_1`, `dpt_1` ×2, `clt_2`, `cpt_1`). The bundle holds
+  each timeline's Projections in that timeline's events and keeps no order
+  across timelines, so it cannot write the fixture's; the fixture sorted by
+  timeline and written with Parquet's defaults is the library's file byte
+  for byte.
 - Written to a fresh directory, `match_claims.parquet` is the fixture's
   byte for byte and the MatchClaim entry equals the fixture's (its size and
   digest included); the Projection entry differs from the fixture's only in
@@ -2909,7 +2915,7 @@ Tests for the Unified Stamp & Query API, using a star-topology bundle (1 score +
 | `TestMatchClaimGetMatchstamp` | 4 | `MatchClaim.get_matchstamp()`: reduced stamp, NOMATCH returns None, no-bundle raises, from-graph with bundle |
 | `TestMatchGraphCache` | 5 | MatchGraph cache: hit, cross-key lookup, invalidation, no-claims raises, different coordinates |
 | `TestGetMatchstampAt` | 6 | `AlignmentBundle.get_matchstamp_at()`: basic, non-zero coordinate, not-in-bundle, a position between anchors interpolated by the WarpMaps (37.5 → 75.0 / 56.25 / 67.5, `is_interpolated`, inferred edges only), regex filter, timeline_ids filter |
-| `TestCoordinateBatch` | 7 | Position batches on `get_matchstamps_at()` / `get_matchstamp_table()`: order kept, one full cross-section per coordinate, IdCoordinate carries its timeline, parity with the singular getter, one table row per coordinate, `timeline_filter` narrows columns, empty in → empty out, claims and positions together refused |
+| `TestCoordinateBatch` | 7 | Position batches on `get_matchstamps_at()` / `get_matchstamp_table()`: order kept, one full cross-section per coordinate, IdCoordinate carries its timeline, parity with the singular getter, one table row per coordinate, `within` narrows columns, empty in → empty out, claims and positions together refused |
 | `TestMatchStampDisplay` | 8 | `MatchStamp.__str__`/`_repr_html_`: header, entries, empty, integer formatting, valid HTML, bold anchors, greyed inferred, and typed retrieval affordance appended after the table |
 | `TestMatchClaimDisplay` | 8 | `MatchClaim.__str__`/`_repr_html_`: instant, interval, NOMATCH, certainty and provenance lines (`Certainty:   0.95`, `Provenance:  method=inferred, note=…`), inferred, valid HTML, NOMATCH badge, affordance `Try` footer (`claim.get_matchstamp()`) appended after the table |
 | `TestMatchClaimEventStorage` | 12 | The events a claim names: `from_events()` keeps both event IDs and names (a missing name is `None`; an event dict without an ID is refused, `event_a names no event id`); a position without an event is given a Projection by `create_match_claims` (`projection_1`, no name, `projection_of` naming the source event, its coordinate on the target axis); `nomatch()` names one event and `None` on the other side; IDs and names displayed in `__str__`/`_repr_html_` and round-tripped by `to_dict()`/`from_dict()`; direct construction |

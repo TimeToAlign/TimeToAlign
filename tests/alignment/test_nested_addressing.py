@@ -386,7 +386,7 @@ def test_coordinate_getter_follows() -> None:
 @pytest.mark.parametrize(
     ("filters", "expected"),
     [
-        ({"timeline_ids": {"clt_4", "cpt_1"}}, ["cpt_1", "clt_4"]),
+        ({"within": {"clt_4", "cpt_1"}}, ["cpt_1", "clt_4"]),
         ({"id_pattern": r"^clt_[47]$"}, ["clt_7", "clt_4"]),
         ({"include_units": {TimeUnit.seconds}}, ["cpt_1"]),
     ],

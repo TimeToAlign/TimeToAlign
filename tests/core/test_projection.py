@@ -351,6 +351,18 @@ FIXTURE_PROJECTIONS = [
         start=Coordinate(396900, TimeUnit.samples),
         projection_of=EventReference(timeline_id="clt_2", event_id="note_13"),
     ),
+    Projection(
+        id="projection_10",
+        start=Coordinate(Fraction(7, 2), TimeUnit.quarters),
+        duration=Duration(Fraction(1, 2), TimeUnit.quarters),
+        projection_of=EventReference(timeline_id="dpt_1", event_id="onset_1"),
+    ),
+    Projection(
+        id="projection_11",
+        start=Coordinate(12.5, TimeUnit.seconds),
+        duration=Duration(0.75, TimeUnit.seconds),
+        projection_of=EventReference(timeline_id="clt_1", event_id="note_16"),
+    ),
 ]
 
 
@@ -371,13 +383,27 @@ class TestTimeToShareFixture:
         )
         read = read_projection_table(fixture_path("projections.parquet"), manifest)
         assert read == {
-            "dpt_1": FIXTURE_PROJECTIONS[:6] + FIXTURE_PROJECTIONS[7:],
-            "cpt_1": [FIXTURE_PROJECTIONS[6]],
+            "dpt_1": FIXTURE_PROJECTIONS[:6] + FIXTURE_PROJECTIONS[7:9],
+            "cpt_1": [FIXTURE_PROJECTIONS[6], FIXTURE_PROJECTIONS[10]],
+            "clt_2": [FIXTURE_PROJECTIONS[9]],
         }
         timelines = _fixture_projections().column("timeline_id").to_pylist()
-        assert timelines == ["dpt_1"] * 6 + ["cpt_1"] + ["dpt_1"] * 2
-        assert [type(p.start.value) for p in read["dpt_1"]] == [int] * 8
-        assert type(read["cpt_1"][0].start.value) is float
+        assert timelines == (
+            ["dpt_1"] * 6 + ["cpt_1"] + ["dpt_1"] * 2 + ["clt_2", "cpt_1"]
+        )
+
+        def types(projections: list[Projection]) -> list[tuple[type, type | None]]:
+            return [
+                (
+                    type(p.start.value),
+                    None if p.duration is None else type(p.duration.value),
+                )
+                for p in projections
+            ]
+
+        assert types(read["dpt_1"]) == [(int, None), (int, int)] + [(int, None)] * 6
+        assert types(read["cpt_1"]) == [(float, None), (float, float)]
+        assert types(read["clt_2"]) == [(Fraction, Fraction)]
 
     def test_the_field_in_the_package_form_is_the_fixture_table(self) -> None:
         table = _fixture_projections()

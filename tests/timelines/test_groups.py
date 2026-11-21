@@ -362,7 +362,7 @@ class TestTimestampAccess:
         """Test get_timestamp_table() with filter."""
         group = TimelineGroup(id="test_group", timelines=[dgt_timeline, audio_timeline])
 
-        table = group.get_timestamp_table(timeline_filter={"dgt_1"})
+        table = group.get_timestamp_table(within={"dgt_1"})
 
         assert table.num_rows == 2
         assert "dgt_1" in table.column_names

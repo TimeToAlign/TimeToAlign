@@ -160,7 +160,6 @@ def loaded_stores() -> Mapping[str, tuple[EventStore, dict[str, Any]]]:
                 },
                 "facts": {
                     "event_count": 0,
-                    "match_count": 0,
                     "cmap_count": 0,
                     "domains": ["physical"],
                     "store_names": ["events"],

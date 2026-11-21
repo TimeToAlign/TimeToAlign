@@ -4,7 +4,7 @@ This module provides the loader hierarchy for TimeToAlign!:
 
 - **Loader (ABC)**: Returns EventStore (events only)
 - **ManifestLoader (ABC)**: Returns ManifestData (dimensions/metadata only)
-- **AlignmentLoader (ABC)**: Returns AlignmentStore (events + C-maps + Matches)
+- **AlignmentLoader (ABC)**: Returns AlignmentStore (events + C-maps)
 
 Design principles:
 - Multi-source: One Loader can aggregate multiple files
@@ -1209,7 +1209,9 @@ class AlignmentLoader(Loader["AlignmentStore"]):
     AlignmentStore contains:
     - EventData tables for each domain/layer
     - ConversionMaps between coordinate systems
-    - Match objects representing alignment claims
+
+    MatchClaims are made by the loader itself (``create_bundle`` and the
+    ``create_*`` methods), never held in the store.
 
     Examples:
         >>> loader = MatchfileLoader()
@@ -1235,7 +1237,7 @@ class AlignmentLoader(Loader["AlignmentStore"]):
             source: Path to the source file.
 
         Returns:
-            AlignmentStore containing events, C-maps, and matches.
+            AlignmentStore containing events and C-maps.
 
         Raises:
             FileNotFoundError: If the source file doesn't exist.

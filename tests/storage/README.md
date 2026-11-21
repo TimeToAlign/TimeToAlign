@@ -158,3 +158,12 @@ by declaration rather than by the rows of one batch.
   `EventReferenceField` field type in its metadata, so `extend` with a batch
   holding a reference concatenates and the column reads `[None,
   {"timeline_id": "clt_6", "event_id": "x1azmn68"}]`.
+
+### `test_store_summary_contract.py` - store summaries and cards
+
+Every store a loader exposes (single, dict, score, MIDI, graphical,
+alignment) returns the exact `summary()` dict pinned for its specimen, and a
+non-empty notebook card. The alignment store's facts are its events, its
+C-Maps, its domains and its table names (`event_count`, `cmap_count`,
+`domains`, `store_names`): it holds no MatchClaims, which live in the
+MatchClaim table, so no match count appears among them.

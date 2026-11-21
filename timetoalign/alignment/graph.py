@@ -1200,9 +1200,8 @@ class MatchGraph:
 
         Nodes: (timeline_id, coordinate) tuples
         Edges: Anchors with attributes (synchronous, claim_id, and claim:
-        the claim object itself, which selects claims, since a claim id is
-        unique only in the scope holding the claim, so two free claims may
-        share one). An edge :meth:`extend_to_groups` infers carries
+        the claim object itself, which selects claims, since a claim held by
+        no bundle may share its id with another). An edge :meth:`extend_to_groups` infers carries
         ``inferred``, its :class:`InferredEdge`, instead of a claim.
 
         Returns:

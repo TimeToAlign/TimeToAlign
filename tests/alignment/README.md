@@ -376,7 +376,8 @@ actually duplicated, independent of speed.
   reads the fields only) and is a different object.
 - **A copied bundle copies its table, and its claims record the copy.**
   Deep-copying the whole bundle copies its table (a different
-  `match_claim_table` object, `claim_table` equal row for row, 303 rows) and
+  `match_claim_table` object, `match_claim_table.table` equal row for row,
+  303 rows) and
   no claim object, since the bundle holds none: 0 claim copies. Every claim
   read from the copy records the copy; every claim read from the original
   still records the original; the two lists are equal.

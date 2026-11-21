@@ -731,9 +731,11 @@ def build_number_struct_array(
     a single value: the canonical side is *number_type*, the other side
     mirrors it, and both are populated on every non-null row.
 
-    A plain numeric column takes a vectorised path; anything mixed, textual
-    or rational falls back to reading values one at a time, because no array
-    kernel parses ``"3/8"``.
+    A plain numeric column takes a vectorised path, and so does a column
+    already of :data:`RATIONAL_STRUCT_TYPE`, whose complete cells are taken as
+    they stand (a cell carries both sides, so *number_type* has nothing to
+    choose). Anything mixed, textual or rational falls back to reading values
+    one at a time, because no array kernel parses ``"3/8"``.
 
     Args:
         values: Source column — a PyArrow array, numpy array, pandas Series,
@@ -768,6 +770,8 @@ def build_number_struct_array(
         rounding=rounding,
         preserve_source_floats=preserve_source_floats,
     )
+    if vectorised is None:
+        vectorised = _pass_number_struct_array(values)
     if vectorised is not None:
         return vectorised
 
@@ -877,6 +881,32 @@ def _build_numeric_struct_array(
             pa.array(denominator, type=pa.int64()),
         ],
         fields=list(RATIONAL_STRUCT_TYPE),
+    )
+
+
+def _pass_number_struct_array(values: Any) -> pa.StructArray | None:
+    """Take a column of complete number structs whole; ``None`` if inapplicable.
+
+    Vectorised counterpart of what :func:`number_cell` does to one cell dict
+    with both sides present: the cell is kept as it stands. A column of
+    another struct type, or one holding a non-null cell with a null
+    numerator or denominator, is left to the per-row reader, which knows
+    what such a cell means.
+    """
+    if isinstance(values, pa.ChunkedArray):
+        values = values.combine_chunks()
+    if not isinstance(values, pa.StructArray) or [
+        (field.name, field.type) for field in values.type
+    ] != [(field.name, field.type) for field in RATIONAL_STRUCT_TYPE]:
+        return None
+    valid = values.is_valid()
+    # flatten() applies the slice offset and nulls every side of a null cell.
+    sides = values.flatten()
+    incomplete = pc.and_(valid, pc.or_(sides[1].is_null(), sides[2].is_null()))
+    if pc.any(incomplete).as_py():
+        return None
+    return pa.StructArray.from_arrays(
+        sides, fields=list(RATIONAL_STRUCT_TYPE), mask=pc.invert(valid)
     )
 
 
@@ -3642,8 +3672,8 @@ def axis_coordinate_cells(
     """Build the coordinate cells of a column of numbers on one axis.
 
     The numbers go through :func:`build_number_struct_array` (vectorized for
-    a plain numeric column), written in *number_type*; every non-null cell
-    names *unit* and *number_type*.
+    a plain numeric column and for a column of number structs), written in
+    *number_type*; every non-null cell names *unit* and *number_type*.
 
     Args:
         values: One number per row, ``None`` for a null cell (any column

@@ -12,8 +12,10 @@ import pyarrow as pa
 import pytest
 from timetoshare.tables import COORDINATE_TYPE
 
+from timetoalign.core import time as time_module
 from timetoalign.core.time import (
     COORDINATE_CELL_TYPE,
+    RATIONAL_STRUCT_TYPE,
     Coordinate,
     Duration,
     axis_coordinate_cells,
@@ -125,6 +127,85 @@ class TestAxisCoordinateCells:
                 "value": 0.25,
                 "numerator": 1,
                 "denominator": 4,
+                "unit": "seconds",
+                "number_type": "float",
+            }
+        ]
+
+
+def _quarters(numerator: int, denominator: int) -> dict[str, object]:
+    return {
+        "value": numerator / denominator,
+        "numerator": numerator,
+        "denominator": denominator,
+        "unit": "quarters",
+        "number_type": "fraction",
+    }
+
+
+class TestNumberStructColumns:
+    NUMBERS = [
+        {"value": 0.75, "numerator": 3, "denominator": 4},
+        None,
+        {"value": 0.5, "numerator": 2, "denominator": 4},
+    ]
+    EXPECTED = [_quarters(3, 4), None, _quarters(2, 4)]
+
+    def _column(self) -> pa.StructArray:
+        return pa.array(self.NUMBERS, type=RATIONAL_STRUCT_TYPE)
+
+    def test_a_struct_column_keeps_its_cells(self) -> None:
+        cells = axis_coordinate_cells(self._column(), unit="quarters")
+        assert cells.type == COORDINATE_CELL_TYPE
+        assert cells.to_pylist() == self.EXPECTED
+
+    def test_the_per_row_reader_gives_the_same_cells(self) -> None:
+        cells = axis_coordinate_cells(self.NUMBERS, unit="quarters")
+        assert cells.to_pylist() == self.EXPECTED
+
+    def test_a_slice_gives_the_cells_of_its_own_rows(self) -> None:
+        # Row 0 is dropped by the slice; row 2 is null with numbers underneath.
+        column = pa.StructArray.from_arrays(
+            [
+                pa.array([9.0, 0.75, 7.0, 0.5]),
+                pa.array([9, 3, 7, 2]),
+                pa.array([1, 4, 1, 4]),
+            ],
+            fields=list(RATIONAL_STRUCT_TYPE),
+            mask=pa.array([False, False, True, False]),
+        ).slice(1)
+        cells = axis_coordinate_cells(column, unit="quarters")
+        assert cells.to_pylist() == self.EXPECTED
+
+    def test_a_chunked_column_gives_the_cells_of_all_chunks(self) -> None:
+        column = pa.chunked_array(
+            [self._column().slice(0, 1), self._column().slice(1)],
+            type=RATIONAL_STRUCT_TYPE,
+        )
+        cells = axis_coordinate_cells(column, unit="quarters")
+        assert cells.to_pylist() == self.EXPECTED
+
+    def test_no_cell_is_encoded_one_by_one(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def refuse(*_args: object, **_kwargs: object) -> None:
+            raise AssertionError("a struct column was read cell by cell")
+
+        monkeypatch.setattr(time_module, "number_cell", refuse)
+        cells = axis_coordinate_cells(self._column(), unit="quarters")
+        assert cells.to_pylist() == self.EXPECTED
+
+    def test_a_cell_missing_its_ratio_mirrors_its_float(self) -> None:
+        column = pa.array(
+            [{"value": 0.5, "numerator": None, "denominator": None}],
+            type=RATIONAL_STRUCT_TYPE,
+        )
+        cells = axis_coordinate_cells(column, unit="seconds")
+        assert cells.to_pylist() == [
+            {
+                "value": 0.5,
+                "numerator": 1,
+                "denominator": 2,
                 "unit": "seconds",
                 "number_type": "float",
             }

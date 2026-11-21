@@ -1393,11 +1393,9 @@ TimeToShare's own artifacts:
   `["c1", "c2", "claim_1"]` (minted above the highest held number, none) and
   gives `match_claim_problems(...) == []`.
 
-**Where the fixture comes from.** The test locates TimeToShare's checkout as
-the sibling of this repository (`../TimeToShare`, the layout of the parent
-project) and reads the fixture there; where no sibling checkout holds the
-fixture, the test is skipped with that reason. The schema assertions need
-only the installed `timetoshare` and always run.
+**Where the fixture comes from.** The installed `timetoshare` package ships
+it: the test reads `timetoshare.tables.fixture_path("match_claims.parquet")`.
+Nothing is skipped; a missing fixture fails.
 
 ---
 

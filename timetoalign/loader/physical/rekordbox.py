@@ -14,7 +14,7 @@ from timetoalign.alignment import AlignmentBundle
 from timetoalign.loader.base import Loader
 
 if TYPE_CHECKING:
-    from timetoalign.timelines import BeatGrid
+    from timetoalign.timelines import BeatGrid, BeatGridSegment, MeasureMap
 
 
 @dataclass(frozen=True)
@@ -137,19 +137,44 @@ class RekordboxLoader(Loader[list[RekordboxTrack]]):
 
     def create_timelines(self) -> list[Any]:
         """Create and structure one seconds timeline per collection track."""
-        if not self._tracks:
-            raise RuntimeError("No Rekordbox collection loaded. Call load() first.")
-        return [self._create_track_timeline(track) for track in self._tracks]
+        return [self._create_track_timeline(track) for track in self._loaded_tracks()]
 
     def create_timeline(self) -> Any:
         """Create the only loaded track, rejecting ambiguous collections."""
-        if len(self._tracks) != 1:
-            available = ", ".join(repr(track.name) for track in self._tracks) or "none"
-            raise ValueError(
-                "create_timeline() requires exactly one Rekordbox collection track; "
-                f"available names: {available}"
-            )
-        return self._create_track_timeline(self._tracks[0])
+        return self._create_track_timeline(self._only_track("create_timeline"))
+
+    def create_beatgrids(self) -> list[BeatGrid]:
+        """Create one beat grid per collection track, in XML order.
+
+        Each grid holds the track's ``TEMPO`` declarations as segments,
+        bounded by its ``TotalTime``; it generated the track's measures
+        and its floating-measure anchors.
+        """
+        return [self._beat_grid(track) for track in self._loaded_tracks()]
+
+    def create_beatgrid(self) -> BeatGrid:
+        """Create the only loaded track's beat grid."""
+        return self._beat_grid(self._only_track("create_beatgrid"))
+
+    def create_measure_maps(self) -> list[MeasureMap]:
+        """Create one measure map per collection track, in XML order.
+
+        The measures are anchored in quarter notes, which a seconds
+        timeline cannot carry, so the map is returned here instead of
+        being attached to the track's timeline.
+
+        Raises:
+            ValueError: If a track's grids reach no downbeat.
+        """
+        return [self._track_measures(track)[1] for track in self._loaded_tracks()]
+
+    def create_measure_map(self) -> MeasureMap:
+        """Create the only loaded track's measure map.
+
+        Raises:
+            ValueError: If the track's grids reach no downbeat.
+        """
+        return self._track_measures(self._only_track("create_measure_map"))[1]
 
     def create_bundle(self) -> AlignmentBundle:
         """Create an alignment bundle containing every collection track."""
@@ -159,16 +184,26 @@ class RekordboxLoader(Loader[list[RekordboxTrack]]):
             bundle.add_timeline(timeline)
         return bundle
 
+    def _loaded_tracks(self) -> list[RekordboxTrack]:
+        if not self._tracks:
+            raise RuntimeError("No Rekordbox collection loaded. Call load() first.")
+        return self._tracks
+
+    def _only_track(self, method: str) -> RekordboxTrack:
+        if len(self._tracks) != 1:
+            available = ", ".join(repr(track.name) for track in self._tracks) or "none"
+            raise ValueError(
+                f"{method}() requires exactly one Rekordbox collection track; "
+                f"available names: {available}"
+            )
+        return self._tracks[0]
+
     @classmethod
-    def _create_track_timeline(cls, track: RekordboxTrack) -> Any:
-        from timetoalign.alignment import TimeSkeleton
-        from timetoalign.core import NumberType, TimeUnit
-        from timetoalign.maps import SecondsToSamples, TableMap
-        from timetoalign.timelines import (
-            ContinuousPhysicalTimeline,
-            MeasureMap,
-            SectionHierarchy,
-        )
+    def _track_measures(
+        cls, track: RekordboxTrack
+    ) -> tuple[BeatGrid, MeasureMap, list[tuple[Fraction, BeatGridSegment]]]:
+        """Return the track's grid, the measure map it generates, and its downbeats."""
+        from timetoalign.timelines import MeasureMap
 
         grid = cls._beat_grid(track)
         downbeats = [
@@ -176,18 +211,24 @@ class RekordboxLoader(Loader[list[RekordboxTrack]]):
             for beat in grid.iter_beats()
             if beat.is_downbeat
         ]
-        measures = cls._measure_map(grid, downbeats)
-        measure_map = MeasureMap(measures)
+        return grid, MeasureMap(cls._measure_map(grid, downbeats)), downbeats
+
+    @classmethod
+    def _create_track_timeline(cls, track: RekordboxTrack) -> Any:
+        from timetoalign.core import NumberType, TimeUnit
+        from timetoalign.maps import SecondsToSamples, TableMap
+        from timetoalign.timelines import ContinuousPhysicalTimeline
+
+        grid, measure_map, downbeats = cls._track_measures(track)
         seconds, floating_measures = cls._conversion_anchors(
             track, grid, downbeats, measure_map
         )
 
-        uid = cls._track_uid(track)
         timeline = ContinuousPhysicalTimeline(
             length=float(track.total_time),
             unit=TimeUnit.seconds,
             number_type=NumberType.float,
-            uid=uid,
+            uid=cls._track_uid(track),
             name=track.name,
             meta={
                 "TrackID": track.track_id,
@@ -208,10 +249,6 @@ class RekordboxLoader(Loader[list[RekordboxTrack]]):
         )
         if track.sample_rate is not None:
             timeline.add_conversion_map(SecondsToSamples(sample_rate=track.sample_rate))
-        # The measures are anchored in quarter notes, which a seconds axis
-        # cannot carry; the track's skeleton holds the map instead.
-        hierarchy = SectionHierarchy.from_measure_map(measure_map)
-        TimeSkeleton(hierarchy, uid=f"{uid}/skeleton", beat_grid=grid).attach(timeline)
         return timeline
 
     @staticmethod
@@ -251,7 +288,9 @@ class RekordboxLoader(Loader[list[RekordboxTrack]]):
         return BeatGrid(segments, extent=track.total_time)
 
     @staticmethod
-    def _measure_map(grid: BeatGrid, downbeats: list[Any]) -> list[Any]:
+    def _measure_map(
+        grid: BeatGrid, downbeats: list[tuple[Fraction, BeatGridSegment]]
+    ) -> list[Any]:
         from timetoalign.core import Measure
 
         measures: list[Any] = []
@@ -292,8 +331,8 @@ class RekordboxLoader(Loader[list[RekordboxTrack]]):
     def _conversion_anchors(
         track: RekordboxTrack,
         grid: BeatGrid,
-        downbeats: list[Any],
-        measure_map: Any,
+        downbeats: list[tuple[Fraction, BeatGridSegment]],
+        measure_map: MeasureMap,
     ) -> tuple[list[Fraction], list[Fraction]]:
         from timetoalign.maps import QuartersToFloatingMeasures
 

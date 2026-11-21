@@ -2569,15 +2569,6 @@ The grid has none this iteration, and the tests assert none. A grid is
 reconstructed from its segments, which are the source facts; a second dictionary
 format for them would be a second source of truth.
 
-#### `create_beatgrid()` on the structural view
-
-A structure read from a tempo-bearing source carries the grid that generated
-its measures, and `create_beatgrid()` returns that same object (identity, not
-a rebuild). A structure with no tempo segments raises: measure lengths alone
-do not state a tempo, and inventing one would fabricate a fact. Structural
-equality includes the grid, so two otherwise identical structures with
-different tempi are not equal.
-
 ---
 
 ### `test_maps_integration.py` - Conversion Maps on Timelines

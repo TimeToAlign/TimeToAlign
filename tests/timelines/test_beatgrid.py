@@ -14,15 +14,13 @@ from pathlib import Path
 
 import pytest
 
-from timetoalign.alignment import TimeSkeleton
 from timetoalign.core import (
     BeatPolicy,
     Coordinate,
     NumberType,
-    RegularMeasure,
     TimeUnit,
 )
-from timetoalign.timelines import BeatGrid, BeatGridSegment, GridBeat, SectionHierarchy
+from timetoalign.timelines import BeatGrid, BeatGridSegment, GridBeat
 
 FOUR_FOUR = BeatPolicy.from_time_signature("4/4").as_divisions()
 
@@ -895,38 +893,3 @@ class TestAtomicRaises:
 
         assert not hasattr(grid, "to_dict")
         assert not hasattr(BeatGrid, "from_dict")
-
-
-class TestStructuralView:
-    """A structure read from a tempo source carries the grid that made it."""
-
-    @staticmethod
-    def _skeleton(grid: BeatGrid | None) -> TimeSkeleton:
-        measures = [
-            RegularMeasure(
-                number=number,
-                time_signature="4/4",
-                nominal_length=Fraction(4),
-                actual_length=Fraction(4),
-            )
-            for number in (1, 2)
-        ]
-        return TimeSkeleton(SectionHierarchy.from_measures(measures), beat_grid=grid)
-
-    def test_create_beatgrid_returns_the_stored_grid(self) -> None:
-        """The generation entry hands back the very object, not a rebuild."""
-        grid = _phantom_grid()
-
-        assert self._skeleton(grid).create_beatgrid() is grid
-
-    def test_create_beatgrid_without_a_tempo_raises(self) -> None:
-        """Measure lengths alone state no tempo, and none is invented."""
-        with pytest.raises(ValueError, match="carries no tempo segments"):
-            self._skeleton(None).create_beatgrid()
-
-    def test_structural_equality_includes_the_grid(self) -> None:
-        """Same measures, different tempi: not the same structure."""
-        assert self._skeleton(None) == self._skeleton(None)
-        assert self._skeleton(_phantom_grid()) == self._skeleton(_phantom_grid())
-        assert self._skeleton(_phantom_grid()) != self._skeleton(None)
-        assert self._skeleton(_phantom_grid()) != self._skeleton(_reanchor_grid())

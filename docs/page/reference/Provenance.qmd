@@ -12,16 +12,16 @@ loader or a service with how the item was made and no belief.
 
 ## Attributes {.doc-section .doc-section-attributes}
 
-| Name      | Type                                                                    | Description                                                                                                                                                              |
-|-----------|-------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| stated_by | [tuple](`tuple`)\[[str](`str`), ...\] \| None                           | Who stated the item (IRIs), at least one, each once.                                                                                                                     |
-| date      | [str](`str`) \| None                                                    | When it was stated, written ``YYYY-MM-DD``.                                                                                                                              |
-| method    | [str](`str`) \| None                                                    | How: one of TimeToShare's method words (``"manual"``, ``"reconciled"``, ``"imported"``, ``"inferred"``) or an IRI naming another method.                                 |
-| service   | [str](`str`) \| None                                                    | The service or software that made it (an IRI), never empty.                                                                                                              |
-| basis     | [tuple](`tuple`)\[[str](`str`), ...\] \| None                           | The sources it rests on (IRIs), at least one, each once.                                                                                                                 |
-| match     | [str](`str`) \| None                                                    | For a reconciled value, how closely it matches its source: one of TimeToShare's SKOS mapping words (``"exact"``, ``"close"``, ``"broad"``, ``"narrow"``, ``"related"``). |
-| note      | [str](`str`) \| None                                                    | Free text.                                                                                                                                                               |
-| beliefs   | [tuple](`tuple`)\[[Belief](`timetoalign.core.provenance.Belief`), ...\] | Who believes the item, at most one :class:`Belief` per actor, in the order given.                                                                                        |
+| Name      | Type                                                                    | Description                                                                                                                                                                                                                                                                                                                                                       |
+|-----------|-------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| stated_by | [tuple](`tuple`)\[[str](`str`), ...\] \| None                           | Who stated the item (IRIs), at least one, each once.                                                                                                                                                                                                                                                                                                              |
+| date      | [str](`str`) \| None                                                    | When it was stated, written ``YYYY-MM-DD``.                                                                                                                                                                                                                                                                                                                       |
+| method    | [str](`str`) \| None                                                    | How: one of TimeToShare's method words (``"manual"``, ``"reconciled"``, ``"imported"``, ``"inferred"``) or an IRI naming another method.                                                                                                                                                                                                                          |
+| service   | [str](`str`) \| None                                                    | The service or software that made it (an IRI), never empty.                                                                                                                                                                                                                                                                                                       |
+| basis     | [tuple](`tuple`)\[[str](`str`), ...\] \| None                           | The sources it rests on (IRIs), at least one, each once.                                                                                                                                                                                                                                                                                                          |
+| match     | [str](`str`) \| None                                                    | For a reconciled value, how closely it matches its source: one of TimeToShare's SKOS mapping words (``"exact"``, ``"close"``, ``"broad"``, ``"narrow"``, ``"related"``).                                                                                                                                                                                          |
+| note      | [str](`str`) \| None                                                    | Free text.                                                                                                                                                                                                                                                                                                                                                        |
+| beliefs   | [tuple](`tuple`)\[[Belief](`timetoalign.core.provenance.Belief`), ...\] | Who believes the item, at most one :class:`Belief` per actor, in the order given. Actors are compared as the IRIs they stand for (:func:`actor_iri`): on construction without a context, so ``https://orcid.org/0000-0001`` is one actor however it is spelled absolutely; :meth:`get_belief` and :meth:`with_belief` take the context that expands compact IRIs. |
 
 ## Examples {.doc-section .doc-section-examples}
 
@@ -74,10 +74,17 @@ Read an entry from one row of its struct column.
 ### get_belief { #timetoalign.core.Provenance.get_belief }
 
 ```python
-core.Provenance.get_belief(actor)
+core.Provenance.get_belief(actor, *, context=None)
 ```
 
 The belief *actor* holds, if any.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name    | Type                                                                              | Description                                                                                              | Default    |
+|---------|-----------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------|------------|
+| actor   | [str](`str`)                                                                      | The actor, an IRI (compact or absolute).                                                                 | _required_ |
+| context | [Mapping](`collections.abc.Mapping`)\[[str](`str`), [Any](`typing.Any`)\] \| None | The JSON-LD context under which actors compare as IRIs (:func:`actor_iri`); ``None`` declares no prefix. | `None`     |
 
 ### passes_belief_filter { #timetoalign.core.Provenance.passes_belief_filter }
 
@@ -117,10 +124,20 @@ The entry as a JSON-safe dictionary, absent keys left out.
 ### with_belief { #timetoalign.core.Provenance.with_belief }
 
 ```python
-core.Provenance.with_belief(belief)
+core.Provenance.with_belief(belief, *, context=None)
 ```
 
 A copy holding *belief*, which replaces its actor's earlier one.
 
-Every other actor's belief stands, in its place; a new actor's
-belief is appended.
+The actor's earlier belief is found as :meth:`get_belief` finds it,
+actors compared as IRIs under *context*, so a compact and an
+absolute spelling of one actor hold one belief; the new belief takes
+its place, as written. Every other actor's belief stands, in its
+place; a new actor's belief is appended.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name    | Type                                                                              | Description                                                                                              | Default    |
+|---------|-----------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------|------------|
+| belief  | [Belief](`timetoalign.core.provenance.Belief`)                                    | The belief.                                                                                              | _required_ |
+| context | [Mapping](`collections.abc.Mapping`)\[[str](`str`), [Any](`typing.Any`)\] \| None | The JSON-LD context under which actors compare as IRIs (:func:`actor_iri`); ``None`` declares no prefix. | `None`     |

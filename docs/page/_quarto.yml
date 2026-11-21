@@ -300,6 +300,10 @@ quartodoc:
           package: timetoalign.core
         - name: EventReference
           package: timetoalign.core
+        - name: Resource
+          package: timetoalign.timelines
+        - name: Integrity
+          package: timetoalign.timelines
         - name: MatchGraph
           package: timetoalign.alignment
         - name: MatchStamp

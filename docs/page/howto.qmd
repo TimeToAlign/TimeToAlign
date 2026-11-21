@@ -87,17 +87,18 @@ documentation:
 - [How to Align an Engraved Score with a Recording and a Drawn Time Axis](howto/how03_engraved_score_alignment.ipynb) ---
   VerovioLoader, MapsLoader and ScoreWarpLoader: a score in exact quarters
   with notes by `xml:id`, a MAPS alignment as MatchClaims, a ScoreWarp time
-  axis in `css_pixels`, `create_calibrated_child`, and the bundle saved and
-  read back.
+  axis in `css_pixels`, `create_calibrated_child`, and the bundle saved as a
+  package and read back.
 - [How to Describe What a Bundle and Its Timelines Stand For](howto/how03_describe_the_work.ipynb) ---
   Statements and provenance on the bundle, a timeline and a region:
-  `add_statement`, `add_verb` and rectangles, proposals, confirmation and
-  rejection, the manifest's inline `@context`, a timeline written alone, and
+  `add_statement`, `add_verb` and rectangles, candidates and beliefs
+  (`add_candidate`, `add_belief`, the belief filter), the manifest's inline
+  `@context`, a timeline written alone, and
   the MEI header and MeLODy imports (`MeiHeadLoader`, `MelodyLoader`).
 - [How to Keep MatchClaims, Projections and Beliefs in a Package](howto/how03_match_claims_package.ipynb) ---
   MatchClaims between events, a Projection for a side without one
-  (`create_match_claims`, `Timeline.add_projections`), beliefs and the belief
-  filter, the MatchClaim and Projections tables beside the manifest and its
+  (`create_match_claims`, `Timeline.add_projections`), beliefs (`actor=`,
+  `add_belief`) and the belief filter, the MatchClaim and Projections tables beside the manifest and its
   `resources` through `to_file` and `from_file`, and why claims are added but
   never removed.
 

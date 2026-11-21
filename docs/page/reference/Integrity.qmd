@@ -1,0 +1,72 @@
+# Integrity { #timetoalign.timelines.Integrity }
+
+```python
+timelines.Integrity(algorithm, digest, *, _unknown_keys=dict())
+```
+
+The digest of a resource's raw bytes and the hash function computing it.
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name      | Type         | Description                                                                                                                               |
+|-----------|--------------|-------------------------------------------------------------------------------------------------------------------------------------------|
+| algorithm | [str](`str`) | The hash function as the PREMIS vocabulary of cryptographic hash functions names it, one of :data:`INTEGRITY_ALGORITHMS` (``"SHA-256"``). |
+| digest    | [str](`str`) | The digest in lower-case hexadecimal.                                                                                                     |
+
+## Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                 |
+|--------|----------------------------|-------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the algorithm is none of :data:`INTEGRITY_ALGORITHMS` or the digest is no lower-case hexadecimal string. |
+
+## Examples {.doc-section .doc-section-examples}
+
+```python
+>>> Integrity("SHA-256", "5f9a").to_dict()
+{'algorithm': 'SHA-256', 'digest': '5f9a'}
+```
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [from_dict](#timetoalign.timelines.Integrity.from_dict) | Read an ``integrity`` object, keeping its unknown keys. |
+| [of_bytes](#timetoalign.timelines.Integrity.of_bytes) | The SHA-256 digest of *data*. |
+| [to_dict](#timetoalign.timelines.Integrity.to_dict) | Write the ``integrity`` object. |
+
+### from_dict { #timetoalign.timelines.Integrity.from_dict }
+
+```python
+timelines.Integrity.from_dict(data, what="a resource's integrity")
+```
+
+Read an ``integrity`` object, keeping its unknown keys.
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                          |
+|--------|----------------------------|--------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If *data* is no object holding ``algorithm`` and ``digest``, or either is malformed. |
+
+### of_bytes { #timetoalign.timelines.Integrity.of_bytes }
+
+```python
+timelines.Integrity.of_bytes(data)
+```
+
+The SHA-256 digest of *data*.
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> Integrity.of_bytes(b"").digest[:12]
+'e3b0c44298fc'
+```
+
+### to_dict { #timetoalign.timelines.Integrity.to_dict }
+
+```python
+timelines.Integrity.to_dict()
+```
+
+Write the ``integrity`` object.

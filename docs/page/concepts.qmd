@@ -574,27 +574,29 @@ together.
 ::: {.definition-header}
 Definition: MatchClaim
 :::
-A **MatchClaim** is a claim of equivalence between events on different
-timelines, with provenance metadata (agent, method, certainty). A MatchClaim
-may be **synchronous** (producing {{< glossary AlignmentAnchor >}}s) or
-**conceptual** (structural equivalence without temporal commitment). It may
-include special **sentinel values** ({{< glossary NOMATCH >}}) explicitly
-encoding the absence of a corresponding event on the other timeline.
+A **MatchClaim** is a claim of equivalence between two events on different
+timelines, each coordinate on its own timeline's axis, with its
+{{< glossary Provenance >}}: how it was made and who believes it. A
+MatchClaim may be **synchronous** (producing
+{{< glossary AlignmentAnchor >}}s) or **conceptual** (structural equivalence
+without temporal commitment). The sentinel {{< glossary NOMATCH >}} on one
+side explicitly encodes the absence of a corresponding event on the other
+timeline.
 :::
 
-A MatchClaim takes the form of named references (IDs) of claimed-equivalent
-events, combined with metadata on genesis:
-
-- **Agent**: who or what produced the claim (human annotator, DTW algorithm,
-  neural model, ...).
-- **Decision criteria**: what evidence was used (temporal similarity,
-  harmonic content, expert judgement, ...).
-- **Certainty level**: how confident the agent is in the claim.
+A MatchClaim names its two events by their IDs, each with its timeline. The
+model matches *events*, not coordinates: the claim's coordinates are its
+events' coordinates, and the events stay addressable for everything else
+that is said about them. A side without an event of its own is given a
+{{< glossary Projection >}}: an event added to that timeline at the stated
+position, standing for the other side's event (its `projection_of`), or for
+none when both sides are stated as positions. Every stated MatchClaim
+therefore joins two events. `AlignmentBundle.create_match_claims()` adds the
+Projections a list of pairs needs and reuses those a timeline already holds.
 
 MatchClaims grow incrementally: an initial claim between events A and B can
 be extended by adding B-C, creating a **match path** A -> B -> C that
-connects three timelines. The model explicitly matches *events* (not
-coordinates) to allow richer metadata about the alignment procedure.
+connects three timelines.
 
 Two levels of matching are distinguished:
 
@@ -604,6 +606,47 @@ Two levels of matching are distinguished:
 - **Conceptual matching**: the matched events are semantically equivalent
   but may not share a temporal correspondence (e.g., "both versions have
   a Bridge section, but they differ in length and internal structure").
+
+#### Provenance and beliefs
+
+A MatchClaim carries a certainty, in [0, 1], and one
+{{< glossary Provenance >}} entry, the facility statements use as well. The
+entry records how the claim was made: who stated it (`stated_by`), the day,
+the method (`manual`, `reconciled`, `imported`, `inferred` or an IRI), the
+`service` that made it, the sources it rests on and a note. It also holds
+the beliefs about the claim: at most one per actor, `"true"`, `"false"` or
+`"unlikely"`, each dated. A person stating a claim believes it `"true"`
+(`create_match_claims(..., actor=)` records that belief); a loader or a
+service records how it made the claim and believes nothing.
+
+A MatchClaim is never deleted and its ID never changes. Whoever disagrees
+records a belief instead (`AlignmentBundle.add_belief()`), and a correction
+is a new claim. Nothing derives a truth value from the beliefs; the
+**belief filter** reads them for one actor. Every query that reads
+MatchClaims takes it (`get_match_claims()`, the MatchStamp getters and the
+bundle's coordinate getters): `believer=` names the actor, and `belief=`
+keeps every claim the believer does not believe `"false"` (`"not_false"`,
+the default, so a claim without a belief and an `"unlikely"` one pass) or
+only those the believer believes `"true"`. Without `believer=` nothing is
+filtered.
+
+#### The MatchClaim table and the package
+
+An {{< glossary AlignmentBundle >}} holds all its claims in one MatchClaim
+table, a {{< glossary MatchClaimField >}} (`match_claim_table`): one row per
+claim, one column per property of a MatchClaim. The bundle gives a claim
+without an ID the next `claim_N`. On disk the MatchClaim table is
+`match_claims.parquet`, and the Projections of every timeline form one
+Projections table, `projections.parquet`. Both lie beside the
+{{< glossary "TimeToShare manifest" >}}, which names each in its `resources`
+(see {{< glossary Resource >}}); a manifest and the files it names make a
+**package**. The manifest names no event: the claims name events by their
+IDs, the events stay with the sources they come from, and the package holds
+only the events it made itself, the Projections. `to_file()` writes the
+package and `from_file()` reads it back. Writing over a MatchClaim table
+obeys the **succession rule**: every claim of the old table is in the new
+one, with the same timelines, events and anchors; only the provenance may
+differ.
 
 
 ### AlignmentAnchors
@@ -637,19 +680,27 @@ using the same or a similar visual style as the Matches they derive from.
 
 A MatchClaim always knows which pair of timelines it connects. It contains
 0--2 {{< glossary AlignmentAnchor >}}s (only if synchronous), synchrony and
-explicitness flags, and optional metadata (agent, decision criteria,
-certainty). Four cases are distinguished:
+explicitness flags, its provenance and its certainty. Its kind, the
+{{< glossary ClaimType >}}, is derived from that structure and never stored.
+Four kinds are distinguished:
 
-1. **Event-to-event** (case a): two timed things on different timelines
-   correspond---the core alignment operation.
-2. **Projection** (case b): an event is projected onto a timeline with no
-   matching event---useful for transferring annotations.
-3. **NOMATCH** (case c): an event has no equivalent on the other
-   timeline---a positive assertion of absence.
-4. **Implicit** (case d): generated automatically by
-   {{< glossary MatchGraph >}} group extension---e.g., when a match between
-   two timelines implies coordinates on sibling timelines within the same
-   {{< glossary TimelineGroup >}}.
+1. **event_match**: synchronous, an event on each side, a Projection
+   included---the core alignment operation, and the kind that yields
+   AlignmentAnchors.
+2. **nomatch** ({{< glossary NOMATCH >}}): non-synchronous, one event and
+   the sentinel---a positive assertion that the event has no equivalent on
+   the other timeline, oriented from the timeline that has it to the one
+   that lacks it.
+3. **conceptual**: non-synchronous, an event on each side---a structural
+   correspondence without temporal commitment.
+4. **implicit**: generated automatically by
+   {{< glossary MatchGraph >}} group extension and naming no events---e.g.,
+   when a match between two timelines implies coordinates on sibling
+   timelines within the same {{< glossary TimelineGroup >}}.
+
+A Projection is not a kind of claim: it is an event, and a claim joining a
+Projection is an `event_match` like any other. Transferring an annotation to
+a timeline that has no event for it is such a claim.
 
 
 ### MatchGraph and MatchStamp
@@ -746,7 +797,7 @@ The AlignmentBundle provides coordinate transfer at two levels:
   which converts linearly and exactly between members that share one start
   and one end.
 - **Across groups**: constructs a {{< glossary MatchLine >}} from the
-  cross-group claims, generates {{< glossary WarpMap >}}s on demand, and
+  claims between the groups that the belief filter keeps, generates {{< glossary WarpMap >}}s on demand, and
   uses those WarpMaps for coordinate transfer.
 
 The canonical user-facing query is `bundle.get_matchstamp_at(coord, tl_id)`,

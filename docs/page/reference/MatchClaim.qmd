@@ -87,6 +87,7 @@ their coordinates is on its timeline's own axis (:meth:`check_on_timelines`).
 | [nomatch](#timetoalign.alignment.MatchClaim.nomatch) | Case (b): An event has no equivalent on the other timeline. |
 | [set_bundle](#timetoalign.alignment.MatchClaim.set_bundle) | Associate this claim with an AlignmentBundle. |
 | [to_dict](#timetoalign.alignment.MatchClaim.to_dict) | Serialize to dictionary for storage. |
+| [with_belief](#timetoalign.alignment.MatchClaim.with_belief) | A copy of the claim whose provenance holds *belief*. |
 
 ### check_on_timelines { #timetoalign.alignment.MatchClaim.check_on_timelines }
 
@@ -571,3 +572,31 @@ Serialize to dictionary for storage.
 The values come straight from ``model_dump``; only the key order
 and the omission of an absent ``source_claim_id`` are applied on
 top, since both are part of the stored shape.
+
+### with_belief { #timetoalign.alignment.MatchClaim.with_belief }
+
+```python
+alignment.MatchClaim.with_belief(belief, *, context=None)
+```
+
+A copy of the claim whose provenance holds *belief*.
+
+Only the provenance changes: the belief replaces its actor's earlier
+one, every other actor's belief stands, and a claim stated without
+provenance gets an entry holding the belief alone. The copy is held
+by no bundle (:attr:`bundle` is ``None``); a bundle records a belief
+in a MatchClaim it holds with :meth:`AlignmentBundle.add_belief
+<timetoalign.alignment.bundle.AlignmentBundle.add_belief>`.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name    | Type                                                                              | Description                                                                          | Default    |
+|---------|-----------------------------------------------------------------------------------|--------------------------------------------------------------------------------------|------------|
+| belief  | [Belief](`timetoalign.core.provenance.Belief`)                                    | The belief.                                                                          | _required_ |
+| context | [Mapping](`collections.abc.Mapping`)\[[str](`str`), [Any](`typing.Any`)\] \| None | The JSON-LD context under which actors compare as IRIs; ``None`` declares no prefix. | `None`     |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type           | Description   |
+|--------|----------------|---------------|
+|        | \'MatchClaim\' | The copy.     |

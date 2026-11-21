@@ -67,6 +67,37 @@ def _without_nones(data: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in data.items() if value is not None}
 
 
+def actor_iri(actor: str, context: Mapping[str, Any] | None = None) -> str:
+    """The IRI an actor stands for under *context*: how actors are compared.
+
+    :func:`timetoshare.expand_iri` under *context*; an actor that expands to
+    nothing (a compact IRI whose prefix *context* does not declare, or a name
+    that is no IRI) is compared as written. Without a context absolute IRIs
+    and the URI schemes still expand.
+
+    Examples:
+        >>> actor_iri("orcid:0000-0001", {"orcid": "https://orcid.org/"})
+        'https://orcid.org/0000-0001'
+        >>> actor_iri("orcid:0000-0001")
+        'orcid:0000-0001'
+    """
+    return expand_iri(context, actor) or actor
+
+
+def check_belief_filter(belief: str) -> None:
+    """Refuse a belief filter that is neither ``"not_false"`` nor ``"true"``.
+
+    The one check of the word every filter taking ``belief=`` makes.
+
+    Raises:
+        ValueError: If *belief* is no :data:`BeliefFilter`.
+    """
+    if belief not in ("not_false", "true"):
+        raise ValueError(
+            f"The belief filter keeps 'not_false' or 'true', not {belief!r}"
+        )
+
+
 # region Belief
 
 
@@ -149,7 +180,11 @@ class Provenance(BaseModel):
             ``"close"``, ``"broad"``, ``"narrow"``, ``"related"``).
         note: Free text.
         beliefs: Who believes the item, at most one :class:`Belief` per
-            actor, in the order given.
+            actor, in the order given. Actors are compared as the IRIs they
+            stand for (:func:`actor_iri`): on construction without a
+            context, so ``https://orcid.org/0000-0001`` is one actor however
+            it is spelled absolutely; :meth:`get_belief` and
+            :meth:`with_belief` take the context that expands compact IRIs.
 
     Examples:
         >>> entry = Provenance(service="https://example.org/aligner", method="inferred")
@@ -236,7 +271,7 @@ class Provenance(BaseModel):
 
     @model_validator(mode="after")
     def _check_entry(self) -> Provenance:
-        actors = [belief.actor for belief in self.beliefs]
+        actors = [actor_iri(belief.actor) for belief in self.beliefs]
         repeated = sorted({actor for actor in actors if actors.count(actor) > 1})
         if repeated:
             raise ValueError(
@@ -251,24 +286,44 @@ class Provenance(BaseModel):
             raise ValueError("A provenance entry states at least one key")
         return self
 
-    def get_belief(self, actor: str) -> Belief | None:
-        """The belief *actor* holds, if any."""
+    def get_belief(
+        self, actor: str, *, context: Mapping[str, Any] | None = None
+    ) -> Belief | None:
+        """The belief *actor* holds, if any.
+
+        Args:
+            actor: The actor, an IRI (compact or absolute).
+            context: The JSON-LD context under which actors compare as IRIs
+                (:func:`actor_iri`); ``None`` declares no prefix.
+        """
+        wanted = actor_iri(actor, context)
         for belief in self.beliefs:
-            if belief.actor == actor:
+            if actor_iri(belief.actor, context) == wanted:
                 return belief
         return None
 
-    def with_belief(self, belief: Belief) -> Provenance:
+    def with_belief(
+        self, belief: Belief, *, context: Mapping[str, Any] | None = None
+    ) -> Provenance:
         """A copy holding *belief*, which replaces its actor's earlier one.
 
-        Every other actor's belief stands, in its place; a new actor's
-        belief is appended.
+        The actor's earlier belief is found as :meth:`get_belief` finds it,
+        actors compared as IRIs under *context*, so a compact and an
+        absolute spelling of one actor hold one belief; the new belief takes
+        its place, as written. Every other actor's belief stands, in its
+        place; a new actor's belief is appended.
+
+        Args:
+            belief: The belief.
+            context: The JSON-LD context under which actors compare as IRIs
+                (:func:`actor_iri`); ``None`` declares no prefix.
         """
-        beliefs = [held for held in self.beliefs if held.actor != belief.actor]
-        position = next(
-            (i for i, held in enumerate(self.beliefs) if held.actor == belief.actor),
-            len(beliefs),
-        )
+        actor = actor_iri(belief.actor, context)
+        held = [actor_iri(other.actor, context) == actor for other in self.beliefs]
+        beliefs = [
+            other for other, same in zip(self.beliefs, held, strict=True) if not same
+        ]
+        position = held.index(True) if True in held else len(beliefs)
         beliefs.insert(position, belief)
         return self.model_copy(update={"beliefs": tuple(beliefs)})
 
@@ -393,10 +448,7 @@ def belief_mask(
     Raises:
         ValueError: If *belief* is neither ``"not_false"`` nor ``"true"``.
     """
-    if belief not in ("not_false", "true"):
-        raise ValueError(
-            f"The belief filter keeps 'not_false' or 'true', not {belief!r}"
-        )
+    check_belief_filter(belief)
     if isinstance(provenance, pa.ChunkedArray):
         provenance = provenance.combine_chunks()
     n = 0 if provenance is None else len(provenance)
@@ -423,18 +475,16 @@ def _names_actor(
 ) -> pa.BooleanArray:
     """Per actor, whether it is *believer*, both compared as expanded IRIs.
 
-    Each distinct actor is expanded once (:func:`timetoshare.expand_iri`,
-    falling back to the text as written), so the cost follows the number of
-    actors, not of beliefs.
+    Each distinct actor is expanded once (:func:`actor_iri`), so the cost
+    follows the number of actors, not of beliefs.
     """
-
-    def iri(actor: str) -> str:
-        return expand_iri(context, actor) or actor
-
     distinct = pc.unique(actors)
-    names = pa.array([iri(actor) for actor in distinct.to_pylist()], pa.string())
+    names = pa.array(
+        [actor_iri(actor, context) for actor in distinct.to_pylist()], pa.string()
+    )
     return pc.equal(
-        pc.take(names, pc.index_in(actors, value_set=distinct)), iri(believer)
+        pc.take(names, pc.index_in(actors, value_set=distinct)),
+        actor_iri(believer, context),
     )
 
 

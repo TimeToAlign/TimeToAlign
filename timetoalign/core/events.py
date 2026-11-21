@@ -53,10 +53,10 @@ from .fields import (
 from .ids import quote_id, validate_id
 from .protocols import TwelveTETPitchMixin
 from .time import (
-    COORDINATE_CELL_TYPE,
     Coordinate,
     Duration,
     cell_coordinate,
+    coordinate_cell_projector,
     coordinate_cells,
     number_from_json,
     number_to_json,
@@ -3555,15 +3555,8 @@ class Projection(ScalarVocabulary, BaseModel):
         return f"Projection({', '.join(parts)})"
 
 
-def _projection_coordinate_projector(
-    _model_cls: type[BaseModel], name: str, _info: object
-) -> list[pa.Field]:
-    """Store a Projection's position as a coordinate cell naming its axis."""
-    return [pa.field(name, COORDINATE_CELL_TYPE, nullable=True)]
-
-
-register_value_projector(Projection, "start", _projection_coordinate_projector)
-register_value_projector(Projection, "duration", _projection_coordinate_projector)
+register_value_projector(Projection, "start", coordinate_cell_projector)
+register_value_projector(Projection, "duration", coordinate_cell_projector)
 
 
 class ProjectionField(SemanticField[Projection]):

@@ -17,15 +17,17 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 import timetoshare
+from timetoshare.fixtures import fixture_paths
 from timetoshare.tables import (
     TableError,
     check_match_claims,
+    fixture_path,
     match_claim_problems,
     projection_problems,
 )
 
 from timetoalign.alignment import AlignmentBundle, MatchClaimField, MatchGraph
-from timetoalign.core import Provenance
+from timetoalign.core import Coordinate, Projection, Provenance, TimeUnit
 from timetoalign.core.time import number_to_json
 from timetoalign.timelines import Timeline
 from timetoalign.timelines.manifest import (
@@ -41,26 +43,12 @@ from timetoalign.timelines.types import (
     DiscretePhysicalTimeline,
 )
 
-#: TimeToShare's checkout beside this repository, where its fixtures live.
-_TIMETOSHARE = Path(__file__).resolve().parents[2].parent / "TimeToShare"
 _VERSION = timetoshare.SCHEMA_VERSION
-_TABLES = _TIMETOSHARE / "fixtures" / "tables" / _VERSION
-_RESOURCES = _TIMETOSHARE / "fixtures" / _VERSION / "bundles" / "bundle_resources.yaml"
-
-needs_tables = pytest.mark.skipif(
-    not (_TABLES / "manifest.yaml").is_file(),
-    reason=(
-        f"TimeToShare's table fixture {_TABLES} is absent: no TimeToShare "
-        f"checkout beside this repository"
-    ),
-)
-needs_resources = pytest.mark.skipif(
-    not _RESOURCES.is_file(),
-    reason=(
-        f"TimeToShare's fixture {_RESOURCES} is absent: no TimeToShare "
-        f"checkout beside this repository"
-    ),
-)
+#: TimeToShare's table fixture package, as its package carries it.
+_TABLES = fixture_path("manifest.yaml").parent
+(_RESOURCES,) = [
+    path for path in fixture_paths() if path.name == "bundle_resources.yaml"
+]
 
 FILES = ["match_claims.parquet", "package.yaml", "projections.parquet"]
 
@@ -169,7 +157,6 @@ def _bytes(directory: Path) -> dict[str, bytes]:
 
 
 class TestResources:
-    @needs_resources
     def test_the_fixture_s_resources_are_read_as_descriptors(self) -> None:
         bundle = AlignmentBundle.from_file(_RESOURCES)
 
@@ -354,8 +341,8 @@ class TestWriting:
 
         message = (
             "The new MatchClaim table lacks the MatchClaim 'claim_5' of the "
-            "existing one: a MatchClaim is never removed (state the belief "
-            "'false' instead)."
+            "existing one: a MatchClaim is never removed; record the belief "
+            "'false' in it instead (AlignmentBundle.add_belief)."
         )
         with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
             _bundle(nomatch=False).to_file(tmp_path / "package.yaml")
@@ -373,7 +360,28 @@ class TestWriting:
         assert bundle.resources == []
         assert "resources" not in timetoshare.loads(path.read_text(encoding="utf-8"))
 
-    @needs_resources
+    def test_projections_without_claims_are_written(self, tmp_path: Path) -> None:
+        bundle = AlignmentBundle(id="plain")
+        pcm = DiscretePhysicalTimeline(length=705600, uid="pcm")
+        pcm.add_projections([Projection(start=Coordinate(22050, TimeUnit.samples))])
+        bundle.add_timeline(pcm)
+
+        bundle.to_file(tmp_path / "plain.yaml")
+
+        assert sorted(p.name for p in tmp_path.iterdir()) == [
+            "plain.yaml",
+            "projections.parquet",
+        ]
+        assert [(r.id, r.type, r.timelines, r.url) for r in bundle.resources] == [
+            ("resource_1", "Projection", ("pcm",), "projections.parquet")
+        ]
+        read = AlignmentBundle.from_file(tmp_path / "plain.yaml")
+        known = read._known_timelines()
+        assert projection_table(known[tid] for tid in sorted(known)).equals(
+            pq.read_table(tmp_path / "projections.parquet")
+        )
+        assert len(read.match_claim_table) == 0
+
     def test_a_manifest_whose_tables_are_absent_loads(self, tmp_path: Path) -> None:
         copy = shutil.copy(_RESOURCES, tmp_path / _RESOURCES.name)
 
@@ -391,10 +399,49 @@ class TestWriting:
             "out.yaml",
         ]
 
-    def test_event_rows_and_the_projections_table_give_each_projection_once(
+    def test_an_entry_whose_file_is_neither_written_nor_there_goes(
         self, tmp_path: Path
     ) -> None:
-        _bundle().to_file(tmp_path / "package.yaml", events=True)
+        bundle = AlignmentBundle.from_file(_RESOURCES)
+        bundle.timelines["take_1"].add_projections(
+            [Projection(start=Coordinate(22050, TimeUnit.samples))]
+        )
+
+        bundle.to_file(tmp_path / "out.yaml")
+
+        assert sorted(p.name for p in tmp_path.iterdir()) == [
+            "out.yaml",
+            "projections.parquet",
+        ]
+        assert [(r.id, r.type, r.timelines, r.url) for r in bundle.resources] == [
+            ("resource_2", "Projection", ("take_1",), "projections.parquet")
+        ]
+
+    def test_no_event_row_is_written_beside_the_tables(self, tmp_path: Path) -> None:
+        message = (
+            "A package's manifest names no event ID: the bundle writes its "
+            "MatchClaim table and its Projections table beside the manifest, so "
+            "its event rows are not written into it; write it with events=False."
+        )
+        with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+            _bundle().to_file(tmp_path / "package.yaml", events=True)
+        bundle = AlignmentBundle(id="plain")
+        pcm = DiscretePhysicalTimeline(length=705600, uid="pcm")
+        pcm.add_projections([Projection(start=Coordinate(22050, TimeUnit.samples))])
+        bundle.add_timeline(pcm)
+        with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+            bundle.to_file(tmp_path / "plain.yaml", events=True)
+        assert list(tmp_path.iterdir()) == []
+
+    def test_event_rows_of_a_manifest_and_its_table_give_each_projection_once(
+        self, tmp_path: Path
+    ) -> None:
+        bundle = _bundle()
+        bundle.to_file(tmp_path / "package.yaml")
+        # A manifest written by hand that names the Projections in its event rows.
+        (tmp_path / "package.yaml").write_text(
+            timetoshare.dumps(bundle.to_dict(events=True)), encoding="utf-8"
+        )
 
         read = AlignmentBundle.from_file(tmp_path / "package.yaml")
 
@@ -466,7 +513,7 @@ class TestWriting:
         read = AlignmentBundle.from_file(path)
 
         assert read.claim_scopes == ("merged", "source_a", "source_b")
-        assert read.claim_table.column("scope").to_pylist() == [1, 2, 0]
+        assert read.claim_table.column("scope_key").to_pylist() == [1, 2, 0]
         assert read.claim_table.equals(merged.claim_table)
         assert read.match_claim_table == merged.match_claim_table
         assert read.to_dict() == merged.to_dict()
@@ -483,8 +530,8 @@ class TestWriting:
 
         message = (
             "The new MatchClaim table lacks the MatchClaim 'claim_1' of the scope "
-            "'source_b' of the existing one: a MatchClaim is never removed (state "
-            "the belief 'false' instead)."
+            "'source_b' of the existing one: a MatchClaim is never removed; record "
+            "the belief 'false' in it instead (AlignmentBundle.add_belief)."
         )
         with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
             _merged("source_a", "source_c").to_file(tmp_path / "merged.yaml")
@@ -599,7 +646,6 @@ def _derived(bundle: AlignmentBundle, case: dict[str, Any]) -> tuple[str, str, i
     return _sorted_sets(anchors), _sorted_sets(stamps), graph.n_edges
 
 
-@needs_tables
 class TestTimeToShareFixturePackage:
     @pytest.fixture(scope="class")
     def bundle(self) -> AlignmentBundle:

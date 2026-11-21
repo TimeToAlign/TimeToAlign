@@ -77,6 +77,7 @@ from timetoalign.core.fields import (
 )
 from timetoalign.core.ids import mint_ids, quote_id, validate_id
 from timetoalign.core.provenance import (
+    Belief,
     BeliefFilter,
     Provenance,
     belief_mask,
@@ -98,6 +99,7 @@ from timetoalign.core.time import (
     axis_coordinate_cells,
     cell_coordinate,
     compare_number_column,
+    coordinate_cell_projector,
     coordinate_cells,
     struct_to_coordinate,
     struct_to_rational,
@@ -466,6 +468,22 @@ def _event_name(event: dict[str, Any]) -> str | None:
     """The name of an event, if it states one."""
     name = event.get("name")
     return None if name is None else str(name)
+
+
+def _believed_entry(
+    provenance: Provenance | None,
+    belief: Belief,
+    context: Mapping[str, Any] | None,
+) -> Provenance:
+    """*provenance* holding *belief*, which replaces its actor's earlier one.
+
+    A MatchClaim stated without provenance gets an entry holding the belief
+    alone; actors compare as IRIs under *context*
+    (:meth:`~timetoalign.core.provenance.Provenance.with_belief`).
+    """
+    if provenance is None:
+        return Provenance(beliefs=(belief,))
+    return provenance.with_belief(belief, context=context)
 
 
 def _provenance_lines(provenance: Provenance | None) -> list[tuple[str, str]]:
@@ -1300,6 +1318,32 @@ class MatchClaim(BaseModel):
                 conversion_maps=conversion_maps,
             )
 
+    def with_belief(
+        self, belief: Belief, *, context: Mapping[str, Any] | None = None
+    ) -> "MatchClaim":
+        """A copy of the claim whose provenance holds *belief*.
+
+        Only the provenance changes: the belief replaces its actor's earlier
+        one, every other actor's belief stands, and a claim stated without
+        provenance gets an entry holding the belief alone. The copy is held
+        by no bundle (:attr:`bundle` is ``None``); a bundle records a belief
+        in a MatchClaim it holds with :meth:`AlignmentBundle.add_belief
+        <timetoalign.alignment.bundle.AlignmentBundle.add_belief>`.
+
+        Args:
+            belief: The belief.
+            context: The JSON-LD context under which actors compare as IRIs;
+                ``None`` declares no prefix.
+
+        Returns:
+            The copy.
+        """
+        copied = self.model_copy(
+            update={"provenance": _believed_entry(self.provenance, belief, context)}
+        )
+        copied._bundle = None
+        return copied
+
     # region Factory Methods
 
     @classmethod
@@ -1894,16 +1938,9 @@ class MatchClaim(BaseModel):
 # region MatchClaimField
 
 
-def _claim_coordinate_projector(
-    _model_cls: type[BaseModel], name: str, _info: object
-) -> list[pa.Field]:
-    """Store a claim coordinate as a coordinate cell, naming its own axis."""
-    return [pa.field(name, COORDINATE_CELL_TYPE, nullable=True)]
-
-
-register_value_projector(AlignmentAnchor, "coordinate_a", _claim_coordinate_projector)
-register_value_projector(AlignmentAnchor, "coordinate_b", _claim_coordinate_projector)
-register_value_projector(MatchClaim, "source_coordinate", _claim_coordinate_projector)
+register_value_projector(AlignmentAnchor, "coordinate_a", coordinate_cell_projector)
+register_value_projector(AlignmentAnchor, "coordinate_b", coordinate_cell_projector)
+register_value_projector(MatchClaim, "source_coordinate", coordinate_cell_projector)
 
 #: The keys of a coordinate dict (:func:`coordinate_to_dict`), which is how a
 #: claim coordinate cell is written in :meth:`MatchClaimField.to_dict`.
@@ -3563,8 +3600,8 @@ class MatchClaimField(SemanticField[MatchClaim]):
                 name += f" of the scope {quote_id(existing_scopes[row].as_py())}"
             raise ValueError(
                 f"The new MatchClaim table lacks the MatchClaim {name} of the "
-                f"existing one: a MatchClaim is never removed (state the belief "
-                f"'false' instead)."
+                f"existing one: a MatchClaim is never removed; record the belief "
+                f"'false' in it instead (AlignmentBundle.add_belief)."
             )
         old = _leaf_columns(existing.table.drop_columns(["provenance"]))
         new = _leaf_columns(self.table.drop_columns(["provenance"]).take(positions))
@@ -3583,6 +3620,68 @@ class MatchClaimField(SemanticField[MatchClaim]):
                     f"{name!r}: only a MatchClaim's provenance may change; a "
                     f"correction is a new MatchClaim under a new id."
                 )
+
+    def with_belief(
+        self,
+        claim_id: str,
+        belief: Belief,
+        *,
+        context: Mapping[str, Any] | None = None,
+    ) -> "MatchClaimField":
+        """A copy of the table whose MatchClaim *claim_id* holds *belief*.
+
+        Only that row's provenance changes, as :meth:`MatchClaim.with_belief`
+        changes a claim's; every other row, and every other column, is kept.
+        A provenance the field holds once for every row stays shared where
+        the field has one row; otherwise every row then carries its own,
+        since one row's differs.
+
+        Args:
+            claim_id: The MatchClaim's id, held by one row.
+            belief: The belief.
+            context: The JSON-LD context under which actors compare as IRIs;
+                ``None`` declares no prefix.
+
+        Returns:
+            The new field; this one is left as it is.
+
+        Raises:
+            KeyError: If no row holds *claim_id*.
+        """
+        rows = pc.indices_nonzero(pc.equal(self._ids, claim_id)).to_pylist()
+        if not rows:
+            raise KeyError(
+                f"The MatchClaim table holds no MatchClaim {quote_id(claim_id)} "
+                f"({len(self)} MatchClaims)."
+            )
+        return self._with_belief_at(rows[0], belief, context)
+
+    def _with_belief_at(
+        self, row: int, belief: Belief, context: Mapping[str, Any] | None
+    ) -> "MatchClaimField":
+        """A copy of the table whose row *row* holds *belief* (:meth:`with_belief`)."""
+        if self._provenance is not None and len(self) == 1:
+            return self._from_struct_array(
+                self._struct_array(),
+                provenance=_believed_entry(self._provenance, belief, context),
+            )
+        data = self._rows_with_provenance()
+        index = self.pa_schema.get_field_index("provenance")
+        children = data.flatten()
+        column = children[index]
+        earlier = column[row].as_py()
+        entry = _believed_entry(
+            None if earlier is None else Provenance.from_row(earlier), belief, context
+        )
+        children[index] = pa.concat_arrays(
+            [
+                column.slice(0, row),
+                provenance_array([entry]).cast(column.type),
+                column.slice(row + 1),
+            ]
+        )
+        rows = pa.StructArray.from_arrays(children, fields=list(self.pa_schema))
+        return self._from_struct_array(rows, provenance=None)
 
     def _rows_with_provenance(self) -> pa.StructArray:
         """The rows' struct, each row carrying the provenance it is read with.

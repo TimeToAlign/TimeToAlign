@@ -146,7 +146,7 @@ class TestTransitiveUnion:
             + [f"claim_{n}" for n in range(1, 9)]
             + ["claim_1"]
         )
-        assert table.column("scope").to_pylist() == [1] * 6 + [2] * 8 + [0]
+        assert table.column("scope_key").to_pylist() == [1] * 6 + [2] * 8 + [0]
 
     def test_bridge_position_is_placed_on_the_bridge_axis(self) -> None:
         merged, _ = _make_bundles()

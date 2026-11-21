@@ -16,6 +16,7 @@ manifest, in which every id is unique whatever element holds it.
 
 from __future__ import annotations
 
+import datetime
 import logging
 import re
 from collections.abc import Iterable, Mapping, Sequence
@@ -44,7 +45,12 @@ from timetoalign.core import (
 )
 from timetoalign.core.enums import NumberType
 from timetoalign.core.ids import _OpenObject, mint_id, quote_id, validate_id
-from timetoalign.core.provenance import BeliefFilter
+from timetoalign.core.provenance import (
+    Belief,
+    BeliefFilter,
+    BeliefValue,
+    check_belief_filter,
+)
 from timetoalign.core.retrieval import (
     CoordinateCollection,
     CoordinateFormat,
@@ -85,11 +91,16 @@ from timetoalign.timelines.manifest import (
     resource_path,
     write_projection_table,
 )
-from timetoalign.timelines.statements import MutableStatementsMixin, rename_references
+from timetoalign.timelines.statements import (
+    MutableStatementsMixin,
+    _day,
+    rename_references,
+)
 
 from .claims import (
     MatchClaim,
     MatchClaimField,
+    _believed_entry,
     _claims_between_events,
     _join_claims,
     _refuse_held_claim_ids,
@@ -101,6 +112,9 @@ from .warpmap import AmbiguousWarpMapError, WarpMap
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from os import PathLike
+
+    from timetoshare.serialization import Serialization
 
     from timetoalign.core.enums import ColumnNaming, Domain
     from timetoalign.core.timestamp import ConversionMapsSpec
@@ -454,7 +468,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         and those it merged in), so two sources may both hold ``claim_1``.
         The merged :attr:`match_claim_table` holds every row once; the scope
         of each row is a key into :attr:`claim_scopes`, the key column
-        ``scope`` of :attr:`claim_table` (never a string joined onto the
+        ``scope_key`` of :attr:`claim_table` (never a string joined onto the
         id). Claims added to the merged bundle afterwards are in its own
         scope, key 0. The statements of the
         timelines and regions travel with them, and their prefixes; the
@@ -1173,6 +1187,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         coord: CoordinateSpec,
         from_timeline: str,
         to_timeline: str,
+        *,
+        believer: str | None = None,
+        belief: BeliefFilter = "not_false",
     ) -> float | None:
         """Transfer a coordinate from one timeline to another.
 
@@ -1192,13 +1209,21 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             coord: The coordinate value to transfer.
             from_timeline: ID of the source timeline.
             to_timeline: ID of the target timeline.
+            believer: The actor whose beliefs filter the MatchClaims read
+                (the belief filter); ``None`` reads every claim.
+            belief: ``"not_false"`` (default) reads every claim the believer
+                does not believe ``false``; ``"true"`` only those believed
+                ``true``.
 
         Returns:
             The transferred coordinate, or None if no path exists.
 
         Raises:
             KeyError: If either id names no timeline of the bundle's trees.
+            ValueError: If *belief* is neither ``"not_false"`` nor ``"true"``.
         """
+        check_belief_filter(belief)
+        belief_key = (believer, belief)
         source_timeline = self._require_known_timeline(
             from_timeline, role="Source timeline"
         )
@@ -1244,7 +1269,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             return float(converted)
 
         # Cross-group transfer via MatchLine/WarpMap pipeline
-        warp = self._get_or_build_warp_map(from_timeline, to_timeline)
+        warp = self._get_or_build_warp_map(from_timeline, to_timeline, belief_key)
         if warp is not None:
             try:
                 return warp._interpolate_float(coord)
@@ -1263,7 +1288,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             for src_other_tl_id in source_group.timeline_ids:
                 if src_other_tl_id == from_timeline:
                     continue
-                warp = self._get_or_build_warp_map(src_other_tl_id, to_timeline)
+                warp = self._get_or_build_warp_map(
+                    src_other_tl_id, to_timeline, belief_key
+                )
                 if warp is None:
                     continue
                 try:
@@ -1287,7 +1314,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             for tgt_other_tl_id in target_group.timeline_ids:
                 if tgt_other_tl_id == to_timeline:
                     continue
-                warp = self._get_or_build_warp_map(from_timeline, tgt_other_tl_id)
+                warp = self._get_or_build_warp_map(
+                    from_timeline, tgt_other_tl_id, belief_key
+                )
                 if warp is None:
                     continue
                 try:
@@ -1306,7 +1335,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         # A single exact claim cannot construct a WarpMap, but it is still a
         # direct reachability edge. Reuse the match-stamp closure for that
         # exact-anchor case, including chains through standalone timelines.
-        stamp = self.get_matchstamp_at(query_coordinate, from_timeline)
+        stamp = self.get_matchstamp_at(
+            query_coordinate, from_timeline, believer=believer, belief=belief
+        )
         if isinstance(stamp, MatchStamp) and to_timeline in stamp.coordinates:
             return float(stamp.coordinates[to_timeline].value)
 
@@ -1323,6 +1354,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         end: CoordinateSpec,
         from_timeline: str,
         to_timeline: str,
+        *,
+        believer: str | None = None,
+        belief: BeliefFilter = "not_false",
     ) -> tuple[float, float] | None:
         """Transfer an interval from one timeline to another.
 
@@ -1333,6 +1367,11 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 int/float/Fraction, a Coordinate, or an IdCoordinate.
             from_timeline: ID of the source timeline.
             to_timeline: ID of the target timeline.
+            believer: The actor whose beliefs filter the MatchClaims read
+                (the belief filter); ``None`` reads every claim.
+            belief: ``"not_false"`` (default) reads every claim the believer
+                does not believe ``false``; ``"true"`` only those believed
+                ``true``.
 
         Returns:
             Tuple of (start, end) in target timeline, or None if no path.
@@ -1358,8 +1397,12 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             if end_unit is not None
             else end_value
         )
-        transferred_start = self.transfer(start, from_timeline, to_timeline)
-        transferred_end = self.transfer(end, from_timeline, to_timeline)
+        transferred_start = self.transfer(
+            start, from_timeline, to_timeline, believer=believer, belief=belief
+        )
+        transferred_end = self.transfer(
+            end, from_timeline, to_timeline, believer=believer, belief=belief
+        )
 
         if transferred_start is None or transferred_end is None:
             return None
@@ -1414,6 +1457,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         synchronous: bool = True,
         certainty: float = 1.0,
         provenance: Provenance | None = None,
+        actor: str | None = None,
+        date: str | datetime.date | None = None,
     ) -> list[MatchClaim]:
         """Create MatchClaims between events, projecting a side that has none.
 
@@ -1459,8 +1504,15 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 for NOMATCH pairs, which are always non-synchronous.
             certainty: How certain every claim is, in [0, 1].
             provenance: How the claims were made and who believes them
-                (:class:`~timetoalign.core.provenance.Provenance`); a person
-                stating them records their belief ``true`` there.
+                (:class:`~timetoalign.core.provenance.Provenance`), shared
+                by every claim.
+            actor: The person stating the claims, an IRI: recorded in
+                their provenance with the belief ``"true"``, replacing that
+                actor's belief in *provenance* (actors compared as IRIs
+                under the bundle's ``@context``). A loader or a service
+                records how the claims were made and states no belief.
+            date: The day of *actor*'s belief, ``YYYY-MM-DD`` or a
+                :class:`datetime.date`; today when None.
 
         Returns:
             The claims made, in pair order, each holding the id the bundle
@@ -1468,8 +1520,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
 
         Raises:
             ValueError: If both sides of a pair are ``None``, a dict naming
-                no held event states no ``start``, or a position cannot be
-                placed on its timeline's axis.
+                no held event states no ``start``, a position cannot be
+                placed on its timeline's axis, or *date* is given without
+                *actor* or is no calendar date.
             KeyError: If a timeline id names no timeline of the bundle's
                 trees (a nested timeline is found whether or not it was
                 registered), or an id string names no event of its timeline.
@@ -1508,7 +1561,26 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             >>> again = bundle.create_match_claims([("n99", "score", {"start": 55.0}, "audio")])
             >>> again[0].event_b_id, again[0].id
             ('projection_1', 'claim_4')
+            >>> stated = bundle.create_match_claims(
+            ...     [("n10", "score", "o42", "audio")],
+            ...     actor="https://orcid.org/0000-0002-1825-0097",
+            ...     date="2026-11-21",
+            ... )
+            >>> stated[0].provenance.beliefs[0].belief
+            'true'
         """
+        if actor is None:
+            if date is not None:
+                raise ValueError(
+                    "a date dates the belief of the actor stating the MatchClaims; "
+                    "give actor="
+                )
+        else:
+            provenance = _believed_entry(
+                provenance,
+                Belief(actor=actor, belief="true", date=_day(date)),
+                belief_context(self),
+            )
         timelines = {
             timeline_id: self._require_known_timeline(timeline_id)
             for _, tl_a, _, tl_b in event_pairs
@@ -1606,6 +1678,90 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         self._append_rows(claim_field._joined(self._own_claim_ids(), scope="bundle"))
         return self
 
+    def add_belief(
+        self,
+        claim_id: str,
+        *,
+        actor: str,
+        belief: BeliefValue,
+        date: str | datetime.date | None = None,
+        note: str | None = None,
+        scope_key: int = 0,
+    ) -> "AlignmentBundle":
+        """Record *actor*'s belief in the MatchClaim *claim_id*.
+
+        A MatchClaim is never removed and never changed: invalidating one is
+        believing it ``"false"``, and a correction is a new MatchClaim. Only
+        the claim's provenance changes. The belief replaces the actor's
+        earlier one in that claim, actors compared as IRIs under the
+        bundle's ``@context`` (a compact and an absolute spelling of one
+        actor are one actor); every other actor's belief stands. A claim
+        stated without provenance gets an entry holding the belief alone.
+        The belief filter (``believer=``, ``belief=`` on every query) reads
+        it at once; the MatchClaim table written by :meth:`to_file` succeeds
+        the one written before.
+
+        Args:
+            claim_id: The MatchClaim's id.
+            actor: Who holds the belief, an IRI (compact or absolute).
+            belief: ``"true"``, ``"false"`` or ``"unlikely"``.
+            date: The day, ``YYYY-MM-DD`` or a :class:`datetime.date`; today
+                when None.
+            note: A remark.
+            scope_key: The scope holding the claim's id, a key into
+                :attr:`claim_scopes`: 0, the default, the bundle's own;
+                another for a claim merged in by :meth:`from_bundles`
+                (:attr:`claim_table`'s ``scope_key``).
+
+        Returns:
+            self (for method chaining)
+
+        Raises:
+            KeyError: If the scope holds no MatchClaim *claim_id*, or
+                *scope_key* names no scope.
+            ValueError: If *belief* is none of the three words, or *date* is
+                no calendar date.
+
+        Examples:
+            >>> from timetoalign.alignment import AlignmentBundle
+            >>> from timetoalign.timelines.types import (
+            ...     ContinuousLogicalTimeline,
+            ...     DiscretePhysicalTimeline,
+            ... )
+            >>> bundle = AlignmentBundle()
+            >>> _ = bundle.add_timeline(ContinuousLogicalTimeline(length=16, uid="score"))
+            >>> _ = bundle.add_timeline(DiscretePhysicalTimeline(length=705600, uid="pcm"))
+            >>> _ = bundle.create_match_claims([({"start": 0}, "score", {"start": 0}, "pcm")])
+            >>> _ = bundle.add_belief(
+            ...     "claim_1", actor="https://orcid.org/0000-0001", belief="false",
+            ...     date="2026-11-21",
+            ... )
+            >>> len(bundle.get_match_claims(believer="https://orcid.org/0000-0001"))
+            0
+        """
+        held = Belief(actor=actor, belief=belief, date=_day(date), note=note)
+        scopes = self.claim_scopes
+        if not 0 <= scope_key < len(scopes):
+            raise KeyError(
+                f"No scope has the key {scope_key}. Available scopes: "
+                f"{dict(enumerate(scopes))}"
+            )
+        in_scope = pc.equal(self._scope_keys(), scope_key)
+        rows = pc.indices_nonzero(
+            pc.and_(pc.equal(self.match_claim_table._ids, claim_id), in_scope)
+        ).to_pylist()
+        if not rows:
+            raise KeyError(
+                f"The scope {scope_key} ({quote_id(scopes[scope_key])}) of bundle "
+                f"{quote_id(self.id)} holds no MatchClaim {quote_id(claim_id)} "
+                f"({pc.sum(in_scope).as_py() or 0} MatchClaims)."
+            )
+        self.match_claim_table = self.match_claim_table._with_belief_at(
+            rows[0], held, belief_context(self)
+        )
+        self._invalidate_warp_cache()
+        return self
+
     @property
     def claim_scopes(self) -> tuple[str, ...]:
         """The scopes of the claims' ids, each named by its bundle's id.
@@ -1613,8 +1769,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         Key 0 is this bundle; every bundle merged in by :meth:`from_bundles`
         adds its own scope and those it had merged in, in merge order. The
         scope of each row of :attr:`match_claim_table` is a key into this
-        tuple (:attr:`claim_table`'s ``scope`` column). Two scopes may come
-        from bundles of one id; the key, not the id, tells them apart.
+        tuple (:attr:`claim_table`'s ``scope_key`` column). Two scopes may
+        come from bundles of one id; the key, not the id, tells them apart.
         """
         return (self.id, *self._claim_scope_ids)
 
@@ -1625,15 +1781,17 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         :attr:`match_claim_table`'s :attr:`~MatchClaimField.table`, the
         MatchClaim table type column for column, while every row is in the
         bundle's own scope. Where a row comes from another scope (a merge,
-        :meth:`from_bundles`), the key column ``scope`` follows: per row its
-        key into :attr:`claim_scopes`. A claim is addressed by its scope and
-        its id, never by a string joining them.
+        :meth:`from_bundles`), the key column ``scope_key`` follows: per row
+        its key into :attr:`claim_scopes`. (The MatchClaim table's file
+        names a scope in its column ``scope`` by the scope's id instead,
+        :meth:`to_file`.) A claim is addressed by its scope and its id,
+        never by a string joining them.
         """
         table = self.match_claim_table.table
         keys = self._claim_scope
         if keys is None or not pc.any(pc.not_equal(keys, 0)).as_py():
             return table
-        return table.append_column("scope", keys)
+        return table.append_column("scope_key", keys)
 
     def _own_claim_ids(self) -> pa.Array:
         """The ids of the claims in the bundle's own scope (key 0)."""
@@ -2242,18 +2400,30 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         *,
         format: CoordinateFormat = "id_coordinate",
         rounding: Rounding = "round",
+        believer: str | None = None,
+        belief: BeliefFilter = "not_false",
     ) -> CoordinateResult | pd.Series:
         """Resolve one coordinate onto a requested timeline axis.
+
+        Another timeline is reached through the MatchStamp at the position
+        (:meth:`get_matchstamp_at`), read from the MatchClaims the belief
+        filter keeps, as every query of the bundle reads them.
 
         Args:
             at: Raw, plain, or ID-bearing coordinate input.
             timeline_id: Requested result timeline ID.
             format: Requested coordinate output format.
             rounding: Integral projection mode.
+            believer: The actor whose beliefs filter the MatchClaims read
+                (the belief filter); ``None`` reads every claim.
+            belief: ``"not_false"`` (default) reads every claim the believer
+                does not believe ``false``; ``"true"`` only those believed
+                ``true``.
 
         Returns:
             One coordinate projection or a length-one Series.
         """
+        check_belief_filter(belief)
         if not (
             not isinstance(at, bool)
             and isinstance(at, (int, float, Fraction, Coordinate))
@@ -2290,7 +2460,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 scalar=True,
                 series_name=result_id,
             )
-        stamp = self.get_matchstamp_at(at, source_id)
+        stamp = self.get_matchstamp_at(at, source_id, believer=believer, belief=belief)
         return stamp.get_coordinate_for(result_id, format=format, rounding=rounding)
 
     def get_coordinates_at(
@@ -2300,6 +2470,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         *,
         format: CoordinateFormat = "id_coordinate",
         rounding: Rounding = "round",
+        believer: str | None = None,
+        belief: BeliefFilter = "not_false",
     ) -> list[CoordinateResult] | pd.Series:
         """Resolve a coordinate collection onto one timeline axis.
 
@@ -2308,10 +2480,16 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             timeline_id: Requested result timeline ID.
             format: Requested coordinate output format.
             rounding: Integral projection mode.
+            believer: The actor whose beliefs filter the MatchClaims read
+                (the belief filter); ``None`` reads every claim.
+            belief: ``"not_false"`` (default) reads every claim the believer
+                does not believe ``false``; ``"true"`` only those believed
+                ``true``.
 
         Returns:
             A list of projections or canonical-value Series.
         """
+        check_belief_filter(belief)
         values, index = validate_coordinate_collection(at)
         if not values and timeline_id is None:
             raise ValueError("timeline_id is required for an empty bundle query")
@@ -2324,6 +2502,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 timeline_id=timeline_id,
                 format="id_coordinate",
                 rounding=rounding,
+                believer=believer,
+                belief=belief,
             )
             assert isinstance(result, IdCoordinate)
             results.append(result)
@@ -2364,6 +2544,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         *,
         format: CoordinateFormat = "id_coordinate",
         rounding: Rounding = "round",
+        believer: str | None = None,
+        belief: BeliefFilter = "not_false",
     ) -> CoordinateResult | pd.Series:
         """Return a uniquely owned event's start on a selected bundle axis.
 
@@ -2372,10 +2554,16 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             timeline_id: Requested result timeline ID, or the owner by default.
             format: Requested coordinate output format.
             rounding: Integral projection mode.
+            believer: The actor whose beliefs filter the MatchClaims read
+                (the belief filter); ``None`` reads every claim.
+            belief: ``"not_false"`` (default) reads every claim the believer
+                does not believe ``false``; ``"true"`` only those believed
+                ``true``.
 
         Returns:
             One event-start projection or a length-one Series.
         """
+        check_belief_filter(belief)
         if not isinstance(key, str):
             raise TypeError("get_coordinate_for requires an event-ID string")
         owners = self._event_owners(key)
@@ -2393,6 +2581,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             timeline_id=timeline_id or owner,
             format="id_coordinate",
             rounding=rounding,
+            believer=believer,
+            belief=belief,
         )
         assert isinstance(result, IdCoordinate)
         return format_coordinates(
@@ -2411,6 +2601,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         *,
         format: CoordinateFormat = "id_coordinate",
         rounding: Rounding = "round",
+        believer: str | None = None,
+        belief: BeliefFilter = "not_false",
     ) -> list[CoordinateResult] | pd.Series:
         """Return event-start coordinates for a key collection.
 
@@ -2419,10 +2611,16 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             timeline_id: Requested result timeline ID, or each owner by default.
             format: Requested coordinate output format.
             rounding: Integral projection mode.
+            believer: The actor whose beliefs filter the MatchClaims read
+                (the belief filter); ``None`` reads every claim.
+            belief: ``"not_false"`` (default) reads every claim the believer
+                does not believe ``false``; ``"true"`` only those believed
+                ``true``.
 
         Returns:
             A list of projections or canonical-value Series.
         """
+        check_belief_filter(belief)
         values, index = validate_key_collection(keys)
         results: list[IdCoordinate] = []
         for key in values:
@@ -2431,6 +2629,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 timeline_id=timeline_id,
                 format="id_coordinate",
                 rounding=rounding,
+                believer=believer,
+                belief=belief,
             )
             assert isinstance(result, IdCoordinate)
             results.append(result)
@@ -2457,6 +2657,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         *,
         format: CoordinateFormat = "id_coordinate",
         rounding: Rounding = "round",
+        believer: str | None = None,
+        belief: BeliefFilter = "not_false",
     ) -> CoordinateResult | list[CoordinateResult] | pd.Series:
         """Dispatch a positional or event-key bundle coordinate query.
 
@@ -2465,6 +2667,11 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             timeline_id: Requested result timeline ID when required.
             format: Requested coordinate output format.
             rounding: Integral projection mode.
+            believer: The actor whose beliefs filter the MatchClaims read
+                (the belief filter); ``None`` reads every claim.
+            belief: ``"not_false"`` (default) reads every claim the believer
+                does not believe ``false``; ``"true"`` only those believed
+                ``true``.
 
         Returns:
             The selected precise-getter result.
@@ -2477,6 +2684,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             timeline_id,
             format=format,
             rounding=rounding,
+            believer=believer,
+            belief=belief,
         )
 
     def get_matchstamp_at(
@@ -4381,6 +4590,61 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 else:
                     self._take_scoped_rows(claims, scopes)
 
+    def _projection_table(self) -> pa.Table:
+        """The Projections table of every timeline of the bundle's trees, by ID."""
+        known = self._known_timelines()
+        return projection_table(known[tid] for tid in sorted(known))
+
+    def to_file(
+        self,
+        path: str | PathLike[str],
+        *,
+        minimal: bool | None = None,
+        styling: bool | None = None,
+        serialization: Serialization | None = None,
+        events: bool | None = None,
+        external_references: bool | None = None,
+    ) -> Path:
+        """Write the package: the manifest and, beside it, the bundle's tables.
+
+        As :meth:`ManifestFileMixin.to_file
+        <timetoalign.timelines.manifest.ManifestFileMixin.to_file>` writes
+        a manifest, after the MatchClaim table and the Projections table
+        (:meth:`_write_tables`). A manifest never names an event's ID: where
+        the bundle writes a table, its Projections lie in
+        ``projections.parquet`` alone and the events of its timelines are
+        not written into the manifest, so writing event rows (``events``,
+        given or as read) is refused before any file is written.
+
+        Raises:
+            ValueError: If event rows would be written beside a table, or as
+                :meth:`ManifestFileMixin.to_file
+                <timetoalign.timelines.manifest.ManifestFileMixin.to_file>`
+                and :meth:`_write_tables` refuse.
+        """
+        writes_events = (
+            events
+            if events is not None
+            else (self._file_form is not None and self._file_form.events)
+        )
+        if writes_events and (
+            len(self.match_claim_table) or self._projection_table().num_rows
+        ):
+            raise ValueError(
+                "A package's manifest names no event ID: the bundle writes its "
+                "MatchClaim table and its Projections table beside the manifest, "
+                "so its event rows are not written into it; write it with "
+                "events=False."
+            )
+        return super().to_file(
+            path,
+            minimal=minimal,
+            styling=styling,
+            serialization=serialization,
+            events=events,
+            external_references=external_references,
+        )
+
     def _write_tables(self, directory: Path) -> None:
         """Write the package tables into *directory* and name them in :attr:`resources`.
 
@@ -4390,9 +4654,10 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         column ``scope`` where it holds MatchClaims merged from other
         bundles (:meth:`from_bundles`): per row the id of the bundle its
         scope comes from (:attr:`claim_scopes`), null for its own. A scope
-        holding no MatchClaim is not written, so it is not read back. And, where a
-        timeline holds Projections, the Projections table of every timeline
-        of its trees, sorted by timeline ID
+        holding no MatchClaim is not written, so it is not read back. A
+        bundle one of whose timelines holds Projections, with MatchClaims
+        or without, writes the Projections table of every timeline of its
+        trees, sorted by timeline ID
         (:func:`~timetoalign.timelines.manifest.projection_table`). Each
         lies where its entry read with the manifest places it, else beside
         the manifest (``match_claims.parquet``, ``projections.parquet``);
@@ -4400,8 +4665,11 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         names the timelines it holds data for (sorted, or in the order the
         entry read lists them where it lists the same), the Parquet media
         type, the file's size and its SHA-256 digest. An entry of either
-        type naming no table written goes. A bundle without MatchClaims
-        writes no table and keeps its :attr:`resources` as they are.
+        type whose table is not written stays where its file lies in
+        *directory* and goes where it does not. A bundle holding neither
+        MatchClaims nor Projections writes no table and keeps its
+        :attr:`resources` as they are: a manifest read without its tables
+        names them still.
 
         Raises:
             ValueError: If two scopes holding MatchClaims share a name (two
@@ -4410,9 +4678,10 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 table.
         """
         claims = self.match_claim_table
-        if len(claims) == 0:
+        projections = self._projection_table()
+        if len(claims) == 0 and projections.num_rows == 0:
             return
-        scopes = self._scope_names()
+        scopes = self._scope_names() if len(claims) else None
         named = {r.type: r for r in self.resources if r.type in TABLE_RESOURCE_TYPES}
         taken = {*self._scope_ids(), *(r.id for r in self.resources)}
         written: dict[str, Resource] = {}
@@ -4434,29 +4703,40 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             path.parent.mkdir(parents=True, exist_ok=True)
             return url, path
 
-        known = self._known_timelines()
-        projections = projection_table(known[tid] for tid in sorted(known))
-        url, path = place("MatchClaim", MatchClaimField.file_name)
+        # Every place is resolved (a URL refused) before the first file is written.
+        if len(claims):
+            claim_place = place("MatchClaim", MatchClaimField.file_name)
         if projections.num_rows:
             projection_place = place("Projection", PROJECTIONS_FILE_NAME)
-        claims.to_parquet(path, scopes=scopes)
-        table = claims.table
-        named_timelines = pc.unique(
-            pa.concat_arrays(
-                [
-                    table.column("timeline_a_id").combine_chunks(),
-                    table.column("timeline_b_id").combine_chunks(),
-                ]
+        kept = {
+            table_type
+            for table_type, held in named.items()
+            if resource_path(directory, held.url).is_file()
+        }
+        if len(claims):
+            url, path = claim_place
+            claims.to_parquet(path, scopes=scopes)
+            table = claims.table
+            named_timelines = pc.unique(
+                pa.concat_arrays(
+                    [
+                        table.column("timeline_a_id").combine_chunks(),
+                        table.column("timeline_b_id").combine_chunks(),
+                    ]
+                )
             )
-        )
-        entry("MatchClaim", url, path, sorted(named_timelines.to_pylist()))
+            entry("MatchClaim", url, path, sorted(named_timelines.to_pylist()))
         if projections.num_rows:
             url, path = projection_place
             write_projection_table(projections, path)
             holders = pc.unique(projections.column("timeline_id")).to_pylist()
             entry("Projection", url, path, sorted(holders))
         resources = [
-            written.pop(r.type, None) if r.type in TABLE_RESOURCE_TYPES else r
+            (
+                written.pop(r.type, r if r.type in kept else None)
+                if r.type in TABLE_RESOURCE_TYPES
+                else r
+            )
             for r in self.resources
         ]
         self.resources = [r for r in resources if r is not None] + list(

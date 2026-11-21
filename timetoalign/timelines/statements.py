@@ -949,8 +949,8 @@ class MutableStatementsMixin(StatementsMixin):
 
         The catalogue's prefixes need no declaration. A manifest written
         holding the holder carries the prefix in its ``@context`` when the
-        statements use it; a bundle's prefix always, as the context of its
-        MatchClaims' actors.
+        statements use it, a bundle's prefix also when its MatchClaim
+        table's actors use it.
 
         Raises:
             ValueError: If the format refuses the declaration (``cannot

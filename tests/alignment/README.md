@@ -1601,6 +1601,19 @@ then fails to load. Each test pins one of these with exact values.
   only the prefixes statements use would drop the declaration: the compact
   actor would then expand to nothing after the reload and the filter would
   keep no claim. Written again, the files are byte for byte the first ones.
+- **A prefix neither the statements nor the table use is not written.**
+  The written `@context` holds what its readers need, no more: a prefix
+  the statements use or the MatchClaim table's provenance uses (its
+  actors), whether the bundle declares it or the catalogue does. The
+  synthetic package with `add_prefix("ex", "http://example.org/ns/")`
+  (used by nothing) and `add_prefix("orcid", "https://orcid.org/")`, the
+  belief `true` of `orcid:0000-0001` in `claim_2` and of `wd:Q1` (a
+  catalogue prefix no statement uses) in `claim_3`, written with its table:
+  the `@context` is exactly the format's terms, `orcid` and `wd` with the
+  catalogue's namespace; `ex` is not written. Read back, `prefixes` is
+  `{"orcid": "https://orcid.org/"}` (`wd` is the catalogue's, so not the
+  bundle's own). A writer keeping every declared prefix would write `ex`;
+  one keeping only what statements use would drop `orcid` and `wd`.
 - **The succession rule binds the writer.** Writing the same bundle over
   its own files succeeds and changes no byte. A bundle holding only
   `claim_1`–`claim_4` of those claims, written over them, is refused (`The

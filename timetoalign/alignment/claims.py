@@ -102,9 +102,11 @@ from timetoalign.core.time import (
     COORDINATE_CELL_TYPE,
     axis_coordinate_cells,
     cell_coordinate,
+    cells_from_package,
     compare_number_column,
     coordinate_cell_projector,
     coordinate_cells,
+    package_cells,
     struct_to_coordinate,
     struct_to_rational,
 )
@@ -1887,6 +1889,46 @@ def _with_children(
     )
 
 
+#: The MatchClaim table's anchor columns, each a struct of two coordinate cells.
+_ANCHOR_COLUMNS = ("start_anchor", "end_anchor")
+_ANCHOR_SIDES = ("coordinate_a", "coordinate_b")
+
+
+def _anchors_converted(table: pa.Table, convert: Any) -> pa.Table:
+    """*table* with each anchor's two coordinate cells passed through *convert*.
+
+    *convert* takes a column of cells and the name of the column it is
+    (``start_anchor.coordinate_a``) and returns the converted column; a null
+    anchor stays null. A table without an anchor column, or whose anchor
+    column is no struct of the two cells, is returned as it stands, for the
+    reader's check of the columns to refuse.
+    """
+    for name in _ANCHOR_COLUMNS:
+        if name not in table.column_names:
+            continue
+        anchors = table.column(name).combine_chunks()
+        if not pa.types.is_struct(anchors.type) or sorted(
+            field.name for field in anchors.type
+        ) != sorted(_ANCHOR_SIDES):
+            continue
+        sides = dict(
+            zip((field.name for field in anchors.type), anchors.flatten(), strict=True)
+        )
+        converted = [convert(sides[side], f"{name}.{side}") for side in _ANCHOR_SIDES]
+        written = pa.StructArray.from_arrays(
+            converted,
+            fields=[
+                pa.field(side, cells.type)
+                for side, cells in zip(_ANCHOR_SIDES, converted, strict=True)
+            ],
+            mask=anchors.is_null(),
+        )
+        table = table.set_column(
+            table.schema.get_field_index(name), pa.field(name, written.type), written
+        )
+    return table
+
+
 def _leaf_columns(table: pa.Table) -> pa.Table:
     """*table* with every struct column flattened into its leaves."""
     while any(pa.types.is_struct(field.type) for field in table.schema):
@@ -2327,6 +2369,39 @@ class MatchClaimField(SemanticField[MatchClaim]):
         return field
 
     @classmethod
+    def from_package_table(cls, table: pa.Table) -> "MatchClaimField":
+        """Read a field from a MatchClaim table in the package form.
+
+        The inverse of :attr:`package_table`: every anchor coordinate cell is
+        read back from the package form, then the table is read as
+        :meth:`from_table` reads one. A cell whose numbers do not stand as
+        its ``number_type`` says (an int ``(n, null, null)``, a fraction
+        ``(n, d >= 1, null)``, a float ``(null, null, x)``) is refused.
+
+        Args:
+            table: A table as :attr:`package_table` gives it, or as read from
+                a package's ``match_claims.parquet``.
+
+        Returns:
+            A new :class:`MatchClaimField`.
+
+        Raises:
+            ValueError: As :meth:`from_table`, or naming the column and row
+                of a cell not in the package form.
+        """
+        return cls.from_table(cls._memory_table(table))
+
+    @staticmethod
+    def _memory_table(table: pa.Table) -> pa.Table:
+        """A package-form MatchClaim table with its anchor cells as memory holds them."""
+        return _anchors_converted(
+            table,
+            lambda cells, name: cells_from_package(
+                cells, where=f"MatchClaim table {name}"
+            ),
+        )
+
+    @classmethod
     def _from_table(cls, table: pa.Table) -> tuple["MatchClaimField", pa.Array | None]:
         """Read a MatchClaim table and the scope of each of its rows.
 
@@ -2408,7 +2483,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
         """
         import pyarrow.parquet as pq
 
-        field = cls.from_table(pq.read_table(cls._file_path(path)))
+        field = cls.from_package_table(pq.read_table(cls._file_path(path)))
         return field if timelines is None else field.check_on_timelines(timelines)
 
     @classmethod
@@ -2422,7 +2497,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
         """
         import pyarrow.parquet as pq
 
-        return cls._from_table(pq.read_table(cls._file_path(path)))
+        return cls._from_table(cls._memory_table(pq.read_table(cls._file_path(path))))
 
     @classmethod
     def _file_path(cls, path: str | os.PathLike[str]) -> Path:
@@ -2826,6 +2901,21 @@ class MatchClaimField(SemanticField[MatchClaim]):
         )
         table = pa.Table.from_struct_array(self._struct_array())
         return table.replace_schema_metadata(schema_metadata)
+
+    @property
+    def package_table(self) -> pa.Table:
+        """The claims as a package writes them: :attr:`table` in the package form.
+
+        The columns and the schema metadata of :attr:`table`, every anchor
+        coordinate cell written in the package form
+        (:data:`~timetoalign.core.time.PACKAGE_COORDINATE_CELL_TYPE`): its
+        number once, in the member its ``number_type`` names, the others
+        null, beside its ``unit`` and ``number_type``. It is TimeToShare's
+        MatchClaim table, the table :meth:`to_parquet` writes and
+        :meth:`from_package_table` reads; in memory the cells keep both sides
+        of every number.
+        """
+        return _anchors_converted(self.table, lambda cells, _name: package_cells(cells))
 
     @property
     def provenance(self) -> Provenance | None:
@@ -3279,9 +3369,10 @@ class MatchClaimField(SemanticField[MatchClaim]):
     ) -> Path:
         """Write the MatchClaim table to its Parquet file.
 
-        The file holds :attr:`table`, the field-level provenance in its
-        schema metadata, so :meth:`from_parquet` reads back every value
-        exactly. Where the rows mix scopes, TimeToShare's key column
+        The file holds :attr:`package_table` (each anchor coordinate's
+        number written once, by its number type), the field-level
+        provenance in its schema metadata, so :meth:`from_parquet` reads
+        back every value exactly. Where the rows mix scopes, TimeToShare's key column
         ``scope`` follows the others, per row the name of its scope (null
         for the package's own). Where the file exists, the new table must
         succeed it: every MatchClaim of the existing table, by its scope and
@@ -3326,7 +3417,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
             )
         if scopes is not None and not pc.any(pc.is_valid(scopes)).as_py():
             scopes = None
-        table = self.table
+        table = self.package_table
         if scopes is not None:
             table = table.append_column(SCOPE_FIELD, pc.cast(scopes, SCOPE_FIELD.type))
         target = self._file_path(path)
@@ -3660,23 +3751,51 @@ ClaimSide = str | dict[str, Any] | None
 def _held_events(timeline: Any, ids: list[str]) -> list[dict[str, Any] | None]:
     """The events of *timeline* (its descendants included) named by *ids*.
 
-    One lookup per call: the timeline's events, its children's at their
+    One lookup per call: the timeline's events, its descendants' at their
     positions on its axis, are read once and the ids found in the id column
-    (:func:`pyarrow.compute.index_in`). An event of a child counts as an
-    event of the timeline, at the child's offset.
+    (:func:`pyarrow.compute.index_in`). An event of a descendant counts as an
+    event of the timeline, at the timeline's coordinate. An event ID is
+    unique on its own timeline only, so two of these timelines may hold one:
+    such an ID names no one event and is refused, never resolved to the
+    first that holds it.
 
     Returns:
         Per id its event row, ``None`` where the timeline holds none.
+
+    Raises:
+        ValueError: If two events of the timeline and its descendants hold
+            one of *ids*, naming the timelines holding it.
     """
     if not ids:
         return []
     table = timeline.get_events(include_children=True).table
     if table.num_rows == 0 or "id" not in table.column_names:
         return [None] * len(ids)
-    positions = pc.index_in(
-        pa.array(ids, type=pa.string()),
-        value_set=pc.cast(table.column("id").combine_chunks(), pa.string()),
-    )
+    wanted = pa.array(ids, type=pa.string())
+    held = pc.cast(table.column("id").combine_chunks(), pa.string())
+    named = pc.is_in(held, value_set=wanted)
+    counts = pc.value_counts(held.filter(named))
+    repeated = counts.filter(pc.greater(counts.field("counts"), 1))
+    if len(repeated):
+        event_id = repeated.field("values")[0].as_py()
+        holders = (
+            table.column("source_timeline")
+            .combine_chunks()
+            .filter(pc.equal(held, event_id))
+            if "source_timeline" in table.column_names
+            else pa.nulls(repeated.field("counts")[0].as_py(), pa.string())
+        )
+        spelled = ", ".join(
+            quote_id(timeline.id if holder is None else holder)
+            for holder in holders.to_pylist()
+        )
+        raise ValueError(
+            f"The event ID {quote_id(event_id)} is held by "
+            f"{repeated.field('counts')[0].as_py()} events of timeline "
+            f"{quote_id(timeline.id)} and its descendants (on {spelled}), so it "
+            f"names no one event: name the timeline holding the event instead."
+        )
+    positions = pc.index_in(wanted, value_set=held)
     found = table.take(pc.fill_null(positions, 0)).to_pylist()
     return [
         row if valid else None

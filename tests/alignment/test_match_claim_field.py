@@ -1221,15 +1221,58 @@ class TestParquetFile:
         field = MatchClaimField.from_claims(claims)
         path = field.to_parquet(tmp_path)
         assert path == tmp_path / "match_claims.parquet"
-        assert [(f.name, f.type) for f in pq.read_schema(path)] == [
-            (f.name, f.type) for f in MatchClaimField.pa_schema
+        written = pq.read_table(path)
+        assert written.schema.equals(field.package_table.schema)
+
+        def numbers(anchor: dict | None) -> tuple | None:
+            if anchor is None:
+                return None
+            return tuple(
+                tuple(anchor[side][m] for m in ("numerator", "denominator", "value"))
+                for side in ("coordinate_a", "coordinate_b")
+            )
+
+        assert [numbers(a) for a in written.column("start_anchor").to_pylist()] == [
+            ((7, 3, None), (None, None, 1.25)),
+            ((96, None, None), (44100, None, None)),
+            ((None, None, 1.5), (None, None, 0.75)),
+            None,
+            None,
         ]
+        assert numbers(written.column("end_anchor")[0].as_py()) == (
+            (10, 3, None),
+            (None, None, 2.5),
+        )
         restored = MatchClaimField.from_parquet(tmp_path)
         assert restored.to_claims() == claims
         assert restored.table.equals(field.table, check_metadata=True)
         assert (
             MatchClaimField.from_parquet(path, timelines=TIMELINES).to_claims()
             == claims
+        )
+
+    def test_a_cell_not_in_the_package_form_is_refused(self, tmp_path: Path) -> None:
+        field = MatchClaimField.from_claims(_every_kind(NONE5))
+        table = field.package_table
+        anchors = table.column("start_anchor").to_pylist()
+        anchors[1]["coordinate_b"]["denominator"] = 1
+        index = table.schema.get_field_index("start_anchor")
+        path = tmp_path / "match_claims.parquet"
+        pq.write_table(
+            table.set_column(
+                index,
+                table.schema.field(index),
+                pa.array(anchors, table.schema.field(index).type),
+            ),
+            path,
+        )
+        with pytest.raises(ValueError) as raised:
+            MatchClaimField.from_parquet(path)
+        assert str(raised.value) == (
+            "MatchClaim table start_anchor.coordinate_b row 1: the int cell "
+            "(numerator, denominator, value) holds (44100, 1, null), where an int "
+            "is (n, null, null), a fraction (n, d >= 1, null) and a float "
+            "(null, null, x) with x finite"
         )
 
     def test_shared_provenance_through_the_file(

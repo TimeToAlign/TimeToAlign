@@ -1343,6 +1343,60 @@ class TestCreateMatchClaims:
         assert (len(score_tl.events), len(audio_tl.events)) == (0, 0)
         assert len(bundle.match_claim_table) == 0
 
+    @staticmethod
+    def _nested() -> tuple[AlignmentBundle, Timeline, Timeline, Timeline]:
+        """``score`` with children ``c`` (0) and ``d`` (4), both holding ``n1``."""
+        score = ContinuousLogicalTimeline(length=8, uid="score")
+        c = ContinuousLogicalTimeline(length=4, uid="c")
+        d = ContinuousLogicalTimeline(length=4, uid="d")
+        score.add_child(c, 0)
+        score.add_child(d, 4)
+        c.add_events([{"id": "n1", "start": 1}])
+        d.add_events([{"id": "n1", "start": 1}, {"id": "n3", "start": 2}])
+        audio = ContinuousPhysicalTimeline(length=60.0, uid="audio")
+        audio.add_events([{"id": "o1", "start": 1.0}])
+        bundle = AlignmentBundle(id="nested")
+        bundle.add_timeline(score)
+        bundle.add_timeline(audio)
+        return bundle, score, c, audio
+
+    def test_an_event_of_a_descendant_is_found(self) -> None:
+        bundle, *_ = self._nested()
+        (claim,) = bundle.create_match_claims([("n3", "score", "o1", "audio")])
+        assert (claim.event_a_id, claim.event_b_id) == ("n3", "o1")
+        assert claim.start_anchor.coordinate_a == Coordinate(6, TimeUnit.quarters)
+
+    def test_an_id_two_descendants_hold_names_no_event(self) -> None:
+        bundle, score, c, audio = self._nested()
+        counts = (len(score.events), len(c.events), len(audio.events))
+        with pytest.raises(ValueError) as raised:
+            bundle.create_match_claims(
+                [
+                    ({"start": 0}, "score", {"start": 2.0}, "audio"),
+                    ("n1", "score", "o1", "audio"),
+                ]
+            )
+        assert str(raised.value) == (
+            "The event ID 'n1' is held by 2 events of timeline 'score' and its "
+            "descendants (on 'c', 'd'), so it names no one event: name the "
+            "timeline holding the event instead."
+        )
+        assert (len(score.events), len(c.events), len(audio.events)) == counts
+        assert len(bundle.match_claim_table) == 0
+
+    def test_an_id_the_timeline_and_a_child_hold_names_no_event(self) -> None:
+        bundle, score, *_ = self._nested()
+        score.add_events([{"id": "n3", "start": 3}])
+        with pytest.raises(ValueError) as raised:
+            bundle.create_match_claims([("n3", "score", "o1", "audio")])
+        assert str(raised.value) == (
+            "The event ID 'n3' is held by 2 events of timeline 'score' and its "
+            "descendants (on 'score', 'd'), so it names no one event: name the "
+            "timeline holding the event instead."
+        )
+        (claim,) = bundle.create_match_claims([("n3", "d", "o1", "audio")])
+        assert claim.start_anchor.coordinate_a == Coordinate(2, TimeUnit.quarters)
+
     def test_a_side_without_start_adds_nothing(self) -> None:
         bundle, score_tl, _, audio_tl, _ = _make_cross_group_bundle()
         with pytest.raises(ValueError) as raised:

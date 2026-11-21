@@ -10,17 +10,21 @@ from fractions import Fraction
 
 import pyarrow as pa
 import pytest
-from timetoshare.tables import COORDINATE_TYPE
+from timetoshare.tables import COORDINATE_TYPE, NUMBER_TYPE
 
 from timetoalign.core import time as time_module
 from timetoalign.core.time import (
     COORDINATE_CELL_TYPE,
+    PACKAGE_COORDINATE_CELL_TYPE,
+    PACKAGE_NUMBER_TYPE,
     RATIONAL_STRUCT_TYPE,
     Coordinate,
     Duration,
     axis_coordinate_cells,
     cell_coordinate,
+    cells_from_package,
     coordinate_cells,
+    package_cells,
 )
 
 SPELLED_OUT = pa.struct(
@@ -77,9 +81,6 @@ EXPECTED_CELLS = [
 class TestCellType:
     def test_the_cell_type_is_spelled_out(self) -> None:
         assert COORDINATE_CELL_TYPE == SPELLED_OUT
-
-    def test_the_cell_type_is_timetoshares(self) -> None:
-        assert COORDINATE_CELL_TYPE == COORDINATE_TYPE
 
 
 class TestCoordinateCells:
@@ -237,3 +238,193 @@ class TestCellCoordinate:
         cell = {**EXPECTED_CELLS[0], "unit": None}
         with pytest.raises(ValueError, match="names no unit or number type"):
             cell_coordinate(cell)
+
+
+PACKAGE_NUMBER_SPELLED_OUT = pa.struct(
+    [
+        pa.field("numerator", pa.int64()),
+        pa.field("denominator", pa.int64()),
+        pa.field("value", pa.float64()),
+    ]
+)
+
+PACKAGE_CELLS = [
+    {
+        "numerator": 1,
+        "denominator": 3,
+        "value": None,
+        "unit": "quarters",
+        "number_type": "fraction",
+    },
+    None,
+    {
+        "numerator": None,
+        "denominator": None,
+        "value": 0.1,
+        "unit": "seconds",
+        "number_type": "float",
+    },
+    {
+        "numerator": 139776,
+        "denominator": None,
+        "value": None,
+        "unit": "samples",
+        "number_type": "int",
+    },
+    {
+        "numerator": 2,
+        "denominator": 3,
+        "value": None,
+        "unit": "quarters",
+        "number_type": "fraction",
+    },
+]
+
+
+def _package_cell(
+    numerator: int | None,
+    denominator: int | None,
+    value: float | None,
+    number_type: str | None = "int",
+    unit: str | None = "samples",
+) -> dict:
+    return {
+        "numerator": numerator,
+        "denominator": denominator,
+        "value": value,
+        "unit": unit,
+        "number_type": number_type,
+    }
+
+
+class TestPackageForm:
+    def test_the_types_are_spelled_out_and_timetoshares(self) -> None:
+        assert PACKAGE_NUMBER_TYPE == PACKAGE_NUMBER_SPELLED_OUT
+        assert PACKAGE_COORDINATE_CELL_TYPE == pa.struct(
+            [
+                *PACKAGE_NUMBER_SPELLED_OUT,
+                pa.field("unit", pa.string()),
+                pa.field("number_type", pa.string()),
+            ]
+        )
+        assert PACKAGE_NUMBER_TYPE == NUMBER_TYPE
+        assert PACKAGE_COORDINATE_CELL_TYPE == COORDINATE_TYPE
+
+    def test_each_number_is_written_once(self) -> None:
+        written = package_cells(coordinate_cells(COORDINATES))
+        assert written.type == PACKAGE_COORDINATE_CELL_TYPE
+        assert written.to_pylist() == PACKAGE_CELLS
+
+    def test_a_fraction_keeps_its_denominator_one(self) -> None:
+        cells = coordinate_cells([Coordinate(Fraction(4), "quarters")])
+        assert package_cells(cells).to_pylist() == [
+            _package_cell(4, 1, None, "fraction", "quarters")
+        ]
+
+    def test_reading_back_fills_both_sides(self) -> None:
+        cells = coordinate_cells(COORDINATES)
+        read = cells_from_package(package_cells(cells))
+        assert read.type == COORDINATE_CELL_TYPE
+        assert read.equals(cells)
+        assert read.to_pylist() == EXPECTED_CELLS
+
+    def test_a_slice_reads_its_own_rows(self) -> None:
+        written = pa.array(PACKAGE_CELLS, PACKAGE_COORDINATE_CELL_TYPE)
+        assert cells_from_package(written.slice(2)).to_pylist() == EXPECTED_CELLS[2:]
+
+    def test_members_are_read_by_name(self) -> None:
+        reordered = pa.struct(
+            [PACKAGE_COORDINATE_CELL_TYPE.field(i) for i in (4, 2, 3, 0, 1)]
+        )
+        written = pa.array(PACKAGE_CELLS, reordered)
+        assert cells_from_package(written).to_pylist() == EXPECTED_CELLS
+
+    def test_the_first_wrong_cell_is_named_exactly(self) -> None:
+        written = pa.array(
+            [None, _package_cell(3, 1, None)], PACKAGE_COORDINATE_CELL_TYPE
+        )
+        with pytest.raises(ValueError) as raised:
+            cells_from_package(written, where="Test")
+        assert str(raised.value) == (
+            "Test row 1: the int cell (numerator, denominator, value) holds "
+            "(3, 1, null), where an int is (n, null, null), a fraction "
+            "(n, d >= 1, null) and a float (null, null, x) with x finite"
+        )
+
+    @pytest.mark.parametrize(
+        ("cell", "problem"),
+        [
+            (
+                _package_cell(3, None, 3.0),
+                "the int cell (numerator, denominator, value) holds (3, null, 3.0)",
+            ),
+            (
+                _package_cell(1, None, None, "fraction"),
+                "the fraction cell (numerator, denominator, value) holds (1, null, null)",
+            ),
+            (
+                _package_cell(1, 0, None, "fraction"),
+                "the fraction cell (numerator, denominator, value) holds (1, 0, null)",
+            ),
+            (
+                _package_cell(1, 2, 0.5, "fraction"),
+                "the fraction cell (numerator, denominator, value) holds (1, 2, 0.5)",
+            ),
+            (
+                _package_cell(1, 2, 0.5, "float"),
+                "the float cell (numerator, denominator, value) holds (1, 2, 0.5)",
+            ),
+            (
+                _package_cell(None, None, float("inf"), "float"),
+                "the float cell (numerator, denominator, value) holds (null, null, inf)",
+            ),
+            (
+                _package_cell(None, None, None, "float"),
+                "the float cell (numerator, denominator, value) holds (null, null, null)",
+            ),
+            (
+                _package_cell(3, None, None, "decimal"),
+                "its number type is 'decimal', not 'int', 'fraction' or 'float'",
+            ),
+            (
+                _package_cell(3, None, None, None),
+                "its number type is None, not 'int', 'fraction' or 'float'",
+            ),
+            (_package_cell(3, None, None, "int", None), "it names no unit"),
+        ],
+        ids=[
+            "int_with_value",
+            "fraction_without_denominator",
+            "fraction_denominator_zero",
+            "fraction_with_value",
+            "float_with_ratio",
+            "float_infinite",
+            "float_without_value",
+            "unknown_type",
+            "no_type",
+            "no_unit",
+        ],
+    )
+    def test_a_cell_not_as_its_number_type_says_is_refused(
+        self, cell: dict, problem: str
+    ) -> None:
+        written = pa.array([cell], PACKAGE_COORDINATE_CELL_TYPE)
+        with pytest.raises(ValueError) as raised:
+            cells_from_package(written, where="Test")
+        message = str(raised.value)
+        if problem.startswith("the "):
+            problem += (
+                ", where an int is (n, null, null), a fraction (n, d >= 1, null) "
+                "and a float (null, null, x) with x finite"
+            )
+        assert message == f"Test row 0: {problem}"
+
+    def test_no_cell_is_converted_one_by_one(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def refuse(*_args: object, **_kwargs: object) -> None:
+            raise AssertionError("a cell was converted one by one")
+
+        cells = coordinate_cells(COORDINATES * 200)
+        monkeypatch.setattr(time_module, "number_cell", refuse)
+        assert cells_from_package(package_cells(cells)).equals(cells)

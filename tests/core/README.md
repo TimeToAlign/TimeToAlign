@@ -674,14 +674,19 @@ timeline is tested in `tests/timelines/test_projections.py`.
   unit and number type. An empty field has the field's struct type.
 - **TimeToShare's fixture Projections table**
   (`timetoshare.tables.fixture_path("projections.parquet")`, shipped with
-  the installed package; never skipped): its nine rows read through
-  `Projection.from_row` equal the nine Projections spelled out in the test (ints on `dpt_1`, the float 10.0 seconds on `cpt_1`, one
-  interval, two without `projection_of`); `ProjectionField.from_projections`
-  of those nine writes the columns `id`, `start`, `duration`,
-  `projection_of` equal to the fixture's, values and types; with the
-  fixture's `timeline_id` column added in `PROJECTION_SCHEMA`'s order the
-  table equals the fixture table and TimeToShare's `projection_problems`
-  finds nothing.
+  the installed package; never skipped), which is in the package form
+  (each row's `unit` and `number_type` once, `start` and `duration` their
+  number once): read by the package reader (`read_projection_table`
+  against the fixture manifest), its nine rows equal the nine Projections
+  spelled out in the test, by timeline in row order (eight ints on `dpt_1`,
+  the float 10.0 seconds on `cpt_1`, one interval, two without
+  `projection_of`), each value of its number type's Python type.
+  `ProjectionField.from_projections` of those nine, its cells written in
+  the package form (`package_numbers` of each position's number by its
+  number type, the row's `unit` and `number_type` from its start cell) and
+  the fixture's `timeline_id` column added, in `PROJECTION_SCHEMA`'s order,
+  equals the fixture table, and TimeToShare's `projection_problems` finds
+  nothing.
 
 ### `test_number_storage.py` - One struct, one canonical side, one builder
 
@@ -809,16 +814,16 @@ silent rounding the refusal exists to prevent.
 **Purpose:** A table whose rows lie on different timelines (the MatchClaim
 table, the Projections table) cannot record one unit and number type in its
 field metadata, so each cell carries them: `COORDINATE_CELL_TYPE` is the
-number struct above followed by `unit` and `number_type`. It is TimeToShare's
-coordinate cell, so a table the library writes passes TimeToShare's check.
-These tests prove the cell is that shape and holds exactly the number written.
+number struct above followed by `unit` and `number_type`. In memory the cell
+keeps both sides of its number; a package's tables write it in TimeToShare's
+package form, the number once (below). These tests prove the cell is that
+shape and holds exactly the number written.
 
 **What proves it:**
 
-- **The type is TimeToShare's.** `COORDINATE_CELL_TYPE` equals
-  `struct<value: double, numerator: int64, denominator: int64, unit: string,
-  number_type: string>` spelled out in the test, and equals
-  `timetoshare.tables.COORDINATE_TYPE`.
+- **The type.** `COORDINATE_CELL_TYPE` equals `struct<value: double,
+  numerator: int64, denominator: int64, unit: string, number_type: string>`
+  spelled out in the test.
 - **Both sides on every non-null cell, a float included.** `coordinate_cells`
   of `[1/3 quarters (fraction), None, 0.1 seconds (float), 139776 samples
   (int), 2/3 quarters]` gives exactly, in that order: `{0.3333333333333333,
@@ -852,6 +857,49 @@ These tests prove the cell is that shape and holds exactly the number written.
   type (`Fraction`, `float`, `int`); `scalar=Duration` gives a `Duration`; a
   null cell gives `None`; a cell without unit or number type is refused.
 - **Empty input** gives an empty array of the cell type.
+
+**The package form** (`TestPackageForm`). A package writes a number once:
+the member its number type names holds it, the others are null — an int
+`(n, null, null)`, a fraction `(n, d ≥ 1, null)`, a float `(null, null, x)`
+with x finite — so a float is never also a ratio and an int has no
+denominator. One encoder/decoder pair (`package_numbers` /
+`numbers_from_package`, with `package_cells` / `cells_from_package` for a
+cell that names its axis) converts at the file boundary; memory keeps both
+sides. What would show it broken: a mirror left in the file, a side not
+filled again on reading (an int read with a null denominator, a float
+without its ratio), a malformed cell read as some number, a wrong row
+named. Evidence:
+
+- **The types.** `PACKAGE_NUMBER_TYPE` is `struct<numerator: int64,
+  denominator: int64, value: double>` and `PACKAGE_COORDINATE_CELL_TYPE`
+  that followed by `unit`, `number_type` (strings), each spelled out in
+  the test and equal to TimeToShare's `NUMBER_TYPE` and `COORDINATE_TYPE`.
+- **Written once.** `package_cells` of the five cells above gives exactly
+  `{1, 3, null, "quarters", "fraction"}`, null, `{null, null, 0.1,
+  "seconds", "float"}`, `{139776, null, null, "samples", "int"}`, `{2, 3,
+  null, "quarters", "fraction"}`; a fraction cell holding `4/1` keeps its
+  denominator `1` (it is a fraction).
+- **Read back whole.** `cells_from_package` of that column equals the
+  memory column built by `coordinate_cells` (`equals`, every member, the
+  float's ratio `3602879701896397/36028797018963968` and the int's
+  denominator `1` and float `139776.0` filled again), so a round trip
+  loses nothing; a slice reads the cells of its own rows; members given in
+  another order read alike (by name).
+- **A cell not as its number type says is refused**, naming the column and
+  row and what it holds, for each wrong pattern: an int with a
+  denominator `(3, 1, null)`, an int with its float `(3, null, 3.0)`, a
+  fraction without denominator `(1, null, null)`, a fraction with
+  denominator `0`, a fraction with its float, a float with a ratio
+  `(1, 2, 0.5)`, a float that is not finite (`inf`), a float without its
+  value, a number type outside the three (`"decimal"`), a non-null cell
+  without number type, and a cell without unit. The message of the first
+  is pinned exactly (`Test row 1: the int cell (numerator, denominator,
+  value) holds (3, 1, null), where an int is (n, null, null), a fraction
+  (n, d >= 1, null) and a float (null, null, x) with x finite`); a null
+  cell is no problem.
+- **Vectorized.** With the per-row cell encoder (`number_cell`) replaced
+  by one that fails, `cells_from_package` and `package_cells` of 1,000
+  cells still give the same cells.
 
 ### `test_numpy_portability_hygiene.py` - Integer widths the library chooses
 

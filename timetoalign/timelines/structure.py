@@ -141,12 +141,10 @@ class MeasureMap(_OpenObject):
     _manifest_path: ClassVar[tuple[str, ...]] = ("measure_maps",)
 
     _unknown_row_keys: Mapping[str, Mapping[str, Any]] = MappingProxyType({})
-    # The identity of a map that never went through __init__ (a section's
-    # slice of its parent map): minted, unnamed.
-    _id: str = mint_id(MEASURE_MAP_ID_PREFIX, ())
-    _id_minted: bool = True
-    _name: str | None = None
-    _meta: Mapping[str, Any] = MappingProxyType({})
+    _id: str
+    _id_minted: bool
+    _name: str | None
+    _meta: Mapping[str, Any]
 
     @classmethod
     def from_measure_data(cls, data: MeasureData) -> MeasureMap:
@@ -582,13 +580,6 @@ class MeasureMap(_OpenObject):
         }
         return measure_map
 
-    @classmethod
-    def _from_normalized(cls, measures: Iterable[Measure]) -> MeasureMap:
-        """Build a view over measures already normalized by a parent map."""
-        instance = cls.__new__(cls)
-        instance._measures = tuple(measures)
-        return instance
-
     def __init__(
         self,
         measures: Iterable[Measure],
@@ -745,6 +736,101 @@ class MeasureMap(_OpenObject):
             if measure.id == measure_id:
                 return measure
         raise KeyError(measure_id)
+
+    def get_slice(self, start: Fraction | int, end: Fraction | int) -> MeasureMap:
+        """Return the measures holding ``[start, end)``, re-based to *start*.
+
+        Positions are quarters, as the map's ``qstamp`` values. A measure is
+        kept when it overlaps the range (``qstamp < end`` and ``qstamp +
+        actual_length > start``); it keeps its ``id``, ``number``, ``name``,
+        ``time_signature``, ``nominal_length``, repeat marks, ``volta`` and
+        the row keys it was read with. Its ``actual_length`` becomes the part
+        inside the range, a part cut off at the start adds to its
+        ``offset_within_measure``, and ``next`` keeps only the measures the
+        slice holds. Each measure is classified again by
+        :meth:`Measure.from_values`, so a measure cut at its start becomes a
+        :class:`MeasureConstituent`. Counts and qstamps follow from the
+        slice's own printed order; the slice is a new, unnamed map with a
+        minted id.
+
+        Args:
+            start: The first position of the range, in quarters.
+            end: The position the range ends before, in quarters.
+
+        Returns:
+            The measure map of the range.
+
+        Raises:
+            ValueError: If a measure states no ``qstamp`` or no
+                ``actual_length`` (an abstract map has no positions to
+                slice), *start* is not before *end*, the range leaves
+                ``[0, total_actual_length]``, or a measure cut at its start
+                cannot lie at an offset (a cadenza, or a measure without
+                nominal length).
+
+        Examples:
+            >>> bars = MeasureMap.from_rows(
+            ...     [{"count": 1, "time_signature": "3/4"}, {"count": 4}]
+            ... )
+            >>> part = bars.get_slice(3, 9)
+            >>> [measure.id for measure in part], part[0].qstamp
+            (['2', '3'], Fraction(0, 1))
+        """
+        start, end = Fraction(start), Fraction(end)
+        if any(
+            measure.qstamp is None or measure.actual_length is None
+            for measure in self._measures
+        ):
+            raise ValueError(
+                "Cannot slice an abstract MeasureMap: every measure must state "
+                "its qstamp and actual_length"
+            )
+        total = self.total_actual_length
+        if start >= end:
+            raise ValueError(
+                f"A measure map slice must start before it ends, not at {start} "
+                f"and {end}"
+            )
+        if start < 0 or total is None or end > total:
+            raise ValueError(
+                f"The slice [{start}, {end}) leaves the measure map, which spans "
+                f"[0, {total}]"
+            )
+        held: list[tuple[Measure, Fraction, Fraction]] = []
+        for measure in self._measures:
+            qstamp, length = measure.qstamp, measure.actual_length
+            assert qstamp is not None and length is not None
+            if qstamp < end and qstamp + length > start:
+                held.append((measure, qstamp, qstamp + length))
+        ids = {measure.id for measure, _, _ in held}
+        sliced = type(self)(
+            Measure.from_values(
+                id=measure.id,
+                qstamp=max(first, start) - start,
+                number=measure.number,
+                name=measure.name,
+                time_signature=measure.time_signature,
+                nominal_length=measure.nominal_length,
+                actual_length=min(last, end) - max(first, start),
+                start_repeat=measure.start_repeat,
+                end_repeat=measure.end_repeat,
+                next=tuple(
+                    successor for successor in measure.next or () if successor in ids
+                ),
+                volta=measure.volta,
+                offset_within_measure=(
+                    getattr(measure, "offset_within_measure", Fraction(0))
+                    + max(start - first, Fraction(0))
+                ),
+            )
+            for measure, first, last in held
+        )
+        sliced._unknown_row_keys = {
+            measure_id: keys
+            for measure_id, keys in self._unknown_row_keys.items()
+            if measure_id in ids
+        }
+        return sliced
 
     def to_rows(self, *, compress: bool = True) -> list[dict[str, Any]]:
         """Return Measure Map rows, omitting entries equal to their default successor.

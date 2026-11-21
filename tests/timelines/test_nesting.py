@@ -25,7 +25,9 @@ from inspect import Parameter, signature
 
 import pytest
 
+from timetoalign.alignment import AlignmentBundle
 from timetoalign.core import Coordinate, NumberType, TimeUnit, number_to_json
+from timetoalign.maps import LinearMap
 from timetoalign.timelines import (
     ContinuousGraphicalTimeline,
     ContinuousLogicalTimeline,
@@ -33,6 +35,7 @@ from timetoalign.timelines import (
     DiscreteGraphicalTimeline,
     DiscreteLogicalTimeline,
     DiscretePhysicalTimeline,
+    MeasureMap,
     SegmentLine,
     Timeline,
 )
@@ -365,6 +368,209 @@ class TestCreateChild:
 
         assert child.length.value == 2.0
         assert parent.get_child_offset("coordinate_child").value == 3.0
+
+
+_NINE_EIGHT = {
+    "time_signature": "9/8",
+    "nominal_length": [9, 2],
+    "actual_length": [9, 2],
+    "start_repeat": False,
+    "end_repeat": False,
+}
+SEVENTY_TWO_BARS = [
+    {
+        "count": 1,
+        "qstamp": [0, 1],
+        "number": 1,
+        "name": "1",
+        **_NINE_EIGHT,
+        "next": ["2"],
+    },
+    {"count": 72, "qstamp": [639, 2], "number": 72, "name": "72", **_NINE_EIGHT},
+]
+"""72 bars of 9/8 (324 quarters), IDs ``str(count)``, as two compressed rows."""
+BARS_1_TO_6 = [
+    {
+        "count": 1,
+        "qstamp": [0, 1],
+        "number": 1,
+        "name": "1",
+        **_NINE_EIGHT,
+        "next": ["2"],
+    },
+    {"count": 6, "qstamp": [45, 2], "number": 6, "name": "6", **_NINE_EIGHT},
+]
+BARS_7_TO_12 = [
+    {
+        "ID": "7",
+        "count": 1,
+        "qstamp": [0, 1],
+        "number": 7,
+        "name": "7",
+        **_NINE_EIGHT,
+        "next": ["8"],
+    },
+    {
+        "ID": "8",
+        "count": 2,
+        "qstamp": [9, 2],
+        "number": 8,
+        "name": "8",
+        **_NINE_EIGHT,
+        "next": ["9"],
+    },
+    {
+        "ID": "9",
+        "count": 3,
+        "qstamp": [9, 1],
+        "number": 9,
+        "name": "9",
+        **_NINE_EIGHT,
+        "next": ["10"],
+    },
+    {
+        "ID": "10",
+        "count": 4,
+        "qstamp": [27, 2],
+        "number": 10,
+        "name": "10",
+        **_NINE_EIGHT,
+        "next": ["11"],
+    },
+    {
+        "ID": "11",
+        "count": 5,
+        "qstamp": [18, 1],
+        "number": 11,
+        "name": "11",
+        **_NINE_EIGHT,
+        "next": ["12"],
+    },
+    {
+        "ID": "12",
+        "count": 6,
+        "qstamp": [45, 2],
+        "number": 12,
+        "name": "12",
+        **_NINE_EIGHT,
+    },
+]
+
+
+def _measured_score() -> ContinuousLogicalTimeline:
+    """A quarters timeline of 324 holding the 72 bars."""
+    score = ContinuousLogicalTimeline(length=Fraction(324), uid="clt_4")
+    return score.add_measure_map(MeasureMap.from_rows(SEVENTY_TWO_BARS))
+
+
+def _measured_midi() -> DiscreteLogicalTimeline:
+    """The same 72 bars on a ticks timeline of 480 ticks per quarter."""
+    midi = DiscreteLogicalTimeline(length=155520, uid="midi")
+    to_quarters = LinearMap(
+        scalar=Fraction(1, 480), source_unit="ticks", target_unit="quarters"
+    )
+    return midi.add_measure_map(
+        MeasureMap.from_rows(SEVENTY_TWO_BARS), to_quarters=to_quarters
+    )
+
+
+def _bar_at(timeline: Timeline, position: int | Fraction) -> str:
+    """The id of the measure the timeline's measure record map answers at *position*."""
+    return timeline._measure_record_map(position).id
+
+
+class TestChildMeasureMap:
+    """``create_child(..., measures=True)`` (README "Measure map slices")."""
+
+    def test_a_child_holds_the_bars_of_its_span(self) -> None:
+        score = _measured_score()
+
+        child = score.create_child(27, 0, uid="clt_7", measures=True)
+
+        assert child.measure_map.to_rows() == BARS_1_TO_6
+        assert [_bar_at(child, at) for at in (0, Fraction(9, 2), 26)] == ["1", "2", "6"]
+        assert [_bar_at(score, at) for at in (0, Fraction(9, 2), 26)] == ["1", "2", "6"]
+
+    def test_a_child_further_on_answers_its_parents_bars(self) -> None:
+        score = _measured_score()
+
+        child = score.create_child(27, 27, measures=True)
+
+        assert child.measure_map.to_rows() == BARS_7_TO_12
+        assert _bar_at(child, 0) == _bar_at(score, 27) == "7"
+        assert _bar_at(child, 26) == _bar_at(score, 53) == "12"
+
+    def test_a_ticks_child_reads_its_slice_through_the_same_scalar(self) -> None:
+        midi = _measured_midi()
+
+        child = midi.create_child(12960, 12960, measures=True)
+
+        assert child.measure_map.to_rows() == BARS_7_TO_12
+        assert _bar_at(child, 0) == _bar_at(midi, 12960) == "7"
+        to_quarters = child._measure_record_map.maps[0]
+        assert (to_quarters.scalar, to_quarters.offset) == (Fraction(1, 480), 0)
+
+    def test_a_parent_without_a_measure_map_is_refused_unchanged(self) -> None:
+        score = ContinuousLogicalTimeline(length=Fraction(324), uid="clt_4")
+
+        with pytest.raises(ValueError) as refused:
+            score.create_child(27, 0, measures=True)
+        assert str(refused.value) == (
+            "Timeline 'clt_4' has no measure map to give a child a slice of"
+        )
+        assert score.list_children() == []
+
+    def test_a_child_of_unknown_length_is_refused_unchanged(self) -> None:
+        score = _measured_score()
+
+        with pytest.raises(ValueError) as refused:
+            score.create_child(None, 0, measures=True)
+        assert str(refused.value) == (
+            "A child of unknown length takes no slice of the measure map of "
+            "timeline 'clt_4'"
+        )
+        assert score.list_children() == []
+
+    def test_a_slice_refused_by_the_map_leaves_the_parent_unchanged(self) -> None:
+        score = _measured_score()
+
+        with pytest.raises(ValueError) as refused:
+            score.create_child(27, 300, measures=True, allow_expansion=True)
+        assert str(refused.value) == (
+            "The slice [300, 327) leaves the measure map, which spans [0, 324]"
+        )
+        assert score.list_children() == []
+        assert score.length.value == 324
+
+    def test_a_child_from_a_region_holds_the_bars_of_the_region(self) -> None:
+        score = _measured_score()
+        region = score.create_region(27, 54, id="bars_7_12")
+
+        child = score.create_child_from_region(region.id, measures=True)
+        (section,) = score.create_children_from_boundaries([27, 54], measures=True)
+
+        assert child.measure_map.to_rows() == BARS_7_TO_12
+        assert section.measure_map.to_rows() == BARS_7_TO_12
+
+    def test_by_default_a_child_holds_no_measure_map(self) -> None:
+        child = _measured_score().create_child(27, 0)
+
+        assert child.measure_map is None
+
+    def test_the_childs_measure_map_survives_a_manifest(self) -> None:
+        score = _measured_score()
+        child = score.create_child(27, 27, uid="clt_7", measures=True)
+        bundle = AlignmentBundle()
+        bundle.add_timeline(score)
+
+        written = bundle.to_dict()
+        read = AlignmentBundle.from_dict(written)
+
+        assert len(written["measure_maps"]) == 2
+        read_child = read.timelines["clt_4"].get_child("clt_7")
+        assert read_child.measure_map == child.measure_map
+        assert read_child.measure_map.to_rows() == BARS_7_TO_12
+        assert read.timelines["clt_4"].measure_map == score.measure_map
 
 
 class TestCreateChildrenFromBoundaries:

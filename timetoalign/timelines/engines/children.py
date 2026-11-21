@@ -27,7 +27,7 @@ from timetoalign.core.time import (
     subtract_coordinates,
 )
 from timetoalign.core.timestamp import ConversionMapsSpec, _format_coordinate_value
-from timetoalign.maps import ConversionMap, LinearMap
+from timetoalign.maps import ChainMap, ConversionMap, LinearMap
 
 from ..manifest import spell
 from ..regions import Region
@@ -35,6 +35,7 @@ from .regions import _resolve_boundary_names
 
 if TYPE_CHECKING:
     from ..base import Timeline
+    from ..structure import MeasureMap
 
 SEGMENT_EVENT_TYPE = "Segment"
 TraversalOrder = Literal["sorted", "depth_first", "breadth_first"]
@@ -592,6 +593,8 @@ class ChildrenMixin:
         name: str | None = None,
         allow_expansion: bool = False,
         child_class: type["Timeline"] | None = None,
+        *,
+        measures: bool = False,
     ) -> "Timeline":
         """Create and embed a child selected by this timeline's spawn hook.
 
@@ -603,6 +606,12 @@ class ChildrenMixin:
 
         ``child_class=Timeline`` deliberately selects the experimental base class.
 
+        With *measures*, the child holds the slice of this timeline's measure
+        map over its span (:meth:`~timetoalign.timelines.MeasureMap.get_slice`),
+        read through the same ``LinearMap`` to quarters on an axis in whole
+        notes or ticks. The slice is computed before the child is built, so a
+        refusal leaves this timeline unchanged.
+
         Args:
             length: Child length in the parent's unit, or ``None`` when the
                 child's length is unknown.
@@ -611,21 +620,35 @@ class ChildrenMixin:
             name: Human-readable name for the child.
             allow_expansion: If True, expand the parent when needed.
             child_class: Explicit class override for the child.
+            measures: Give the child the slice of this timeline's measure
+                map over its span.
 
         Returns:
             The newly created and embedded child Timeline.
 
         Raises:
-            ValueError: If coordinates are invalid or the child exceeds bounds.
+            ValueError: If coordinates are invalid or the child exceeds bounds;
+                with *measures*, if this timeline has no measure map, the
+                child's length is unknown, or the measure map refuses the
+                slice.
 
         Examples:
+            >>> from timetoalign.timelines import ContinuousLogicalTimeline, MeasureMap
             >>> parent = ContinuousLogicalTimeline(length=8)
             >>> child = parent.create_child(length=4)
             >>> type(child) is ContinuousLogicalTimeline
             True
+            >>> bars = MeasureMap.from_rows(
+            ...     [{"count": 1, "time_signature": "2/4"}, {"count": 4}]
+            ... )
+            >>> parent = parent.add_measure_map(bars)
+            >>> half = parent.create_child(4, 4, measures=True)
+            >>> [measure.id for measure in half.measure_map]
+            ['3', '4']
         """
         if length is not None:
             length = self._resolve_axis_value(length)
+        measured = self._measure_slice(offset, length) if measures else None
 
         child = (child_class or self._spawn_class())(
             length=length,
@@ -634,6 +657,8 @@ class ChildrenMixin:
             uid=uid,
             name=name,
         )
+        if measured is not None:
+            child.add_measure_map(measured[0], to_quarters=measured[1])
         self.add_child(child, offset=offset, allow_expansion=allow_expansion)
         return child
 
@@ -725,6 +750,7 @@ class ChildrenMixin:
         name_format: str = "{prefix}_{n}",
         prefix: str = "section",
         allow_expansion: bool = False,
+        measures: bool = False,
     ) -> list["Timeline"]:
         """Create children spanning consecutive boundary coordinates.
 
@@ -736,12 +762,25 @@ class ChildrenMixin:
             name_format: Format with {prefix}, {i}, and {n} placeholders.
             prefix: Prefix for auto-generated names.
             allow_expansion: If True, expand the parent when needed.
+            measures: Give each child the slice of this timeline's measure
+                map over its span, as :meth:`create_child` does.
 
         Returns:
             Child timelines in boundary order.
 
         Raises:
-            ValueError: If the boundaries or number of names are invalid.
+            ValueError: If the boundaries or number of names are invalid, or,
+                with *measures*, as :meth:`create_child` raises.
+
+        Examples:
+            >>> from timetoalign.timelines import ContinuousLogicalTimeline, MeasureMap
+            >>> score = ContinuousLogicalTimeline(length=8)
+            >>> score = score.add_measure_map(
+            ...     MeasureMap.from_rows([{"count": 1, "time_signature": "2/4"}, {"count": 4}])
+            ... )
+            >>> halves = score.create_children_from_boundaries([0, 4, 8], measures=True)
+            >>> [[measure.id for measure in half.measure_map] for half in halves]
+            [['1', '2'], ['3', '4']]
         """
         coords, child_names = _resolve_boundary_names(
             boundaries,
@@ -751,7 +790,9 @@ class ChildrenMixin:
             self._resolve_axis_value,
         )
         return [
-            self.create_child(end - start, start, name, name, allow_expansion)
+            self.create_child(
+                end - start, start, name, name, allow_expansion, measures=measures
+            )
             for start, end, name in zip(
                 coords[:-1], coords[1:], child_names, strict=True
             )
@@ -975,6 +1016,7 @@ class ChildrenMixin:
         *,
         copy_events: bool = True,
         uid: str | None = None,
+        measures: bool = False,
     ) -> "Timeline":
         """Create a child timeline from a region (partitioning).
 
@@ -987,6 +1029,8 @@ class ChildrenMixin:
             region_id: Id of an existing region.
             copy_events: Copy events within the region to the child.
             uid: Explicit child ID. When None, one is minted.
+            measures: Give the child the slice of this timeline's measure
+                map over the region, as :meth:`create_child` does.
 
         Returns:
             The newly created and attached child timeline.
@@ -994,6 +1038,8 @@ class ChildrenMixin:
         Raises:
             KeyError: If region_id not found.
             RuntimeError: If timeline is locked.
+            ValueError: With *measures*, if this timeline has no measure map
+                or the measure map refuses the slice.
 
         Examples:
             >>> tl.create_regions_by_splitting("breaks", prefix="movement")
@@ -1009,6 +1055,11 @@ class ChildrenMixin:
             )
 
         self._check_not_locked("create child from region")
+        measured = (
+            self._measure_slice(region.start, region.duration.value)
+            if measures
+            else None
+        )
 
         child = self._spawn_class()(
             length=region.duration.value,
@@ -1017,12 +1068,62 @@ class ChildrenMixin:
             uid=uid,
             name=region.name,
         )
+        if measured is not None:
+            child.add_measure_map(measured[0], to_quarters=measured[1])
 
         if copy_events:
             self._copy_events_to_child(child, region)
 
         self.add_child(child, offset=region.start)
         return child
+
+    def _measure_slice(
+        self, offset: CoordinateSpec, length: Any
+    ) -> tuple[MeasureMap, LinearMap | None]:
+        """Return the slice of this timeline's measure map a child would hold.
+
+        The child spans *length* from *offset*, both on this timeline's
+        axis. On a quarters axis the span is the slice's range as it is; on
+        an axis read through a ``LinearMap`` to quarters, the span goes
+        through that map, and the child reads its slice through a map of the
+        same scalar from its own origin.
+
+        Returns:
+            The slice, and the ``LinearMap`` the child reads it through, or
+            None on a quarters axis.
+
+        Raises:
+            ValueError: If this timeline has no measure map, *length* is
+                None, or the measure map refuses the slice.
+        """
+        record = self._measure_record_map
+        measure_map = self.measure_map
+        if record is None or measure_map is None:
+            raise ValueError(
+                f"Timeline {self._id!r} has no measure map to give a child a slice of"
+            )
+        if length is None:
+            raise ValueError(
+                f"A child of unknown length takes no slice of the measure map of "
+                f"timeline {self._id!r}"
+            )
+        start = Fraction(self._resolve_axis_value(offset))
+        end = start + Fraction(length)
+        if not isinstance(record, ChainMap):
+            return measure_map.get_slice(start, end), None
+        to_quarters = record.maps[0]
+        assert isinstance(to_quarters, LinearMap)
+        scalar, shift = Fraction(to_quarters.scalar), Fraction(to_quarters.offset)
+        child_map = LinearMap(
+            scalar=to_quarters.scalar,
+            source_unit=to_quarters.source_unit,
+            target_unit=to_quarters.target_unit,
+            output_number_type=to_quarters._declared_output_number_type,
+        )
+        return (
+            measure_map.get_slice(start * scalar + shift, end * scalar + shift),
+            child_map,
+        )
 
     def create_children_from_regions(
         self,

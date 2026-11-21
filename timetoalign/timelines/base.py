@@ -821,9 +821,11 @@ class Timeline(
 
     @property
     def measure_map(self) -> MeasureMap | None:
-        """Authored measure structure, absent on fresh and derived slices.
+        """Authored measure structure; absent on fresh and derived slices.
 
-        A measure map's positions are quarters; on an axis in other units
+        A child holds one only when it was created with ``measures=True``
+        (see :meth:`create_child`), the slice of its parent's map over its
+        span. A measure map's positions are quarters; on an axis in other units
         the timeline reaches it through a ``LinearMap`` to quarters (see
         :meth:`add_measure_map`).
         """

@@ -47,7 +47,7 @@
 # %%
 from fractions import Fraction
 
-from timetoalign import MatchClaim, PartituraLoader
+from timetoalign import AlignmentBundle, PartituraLoader
 from timetoalign.core import EnharmonicPitch, SpecificPitch
 from timetoalign.testdata import ensure_data
 from timetoalign.timelines import (
@@ -203,24 +203,31 @@ coordinate_pair
 #
 # An {{< glossary AlignmentBundle >}} collects broader alignment evidence; its
 # basic link is a {{< glossary MatchClaim >}}. A synchronous claim asserts that
-# two unit-bearing positions correspond.
+# two events correspond. Where a side has no event of its own, give its
+# position: a {{< glossary Projection >}} is added there to stand for it.
 
 # %%
-claim = MatchClaim.from_events(
-    {"start": coordinate_pair["audio"].value},
-    audio.id,
-    {"start": coordinate_pair["score"].value},
-    score.id,
-    unit_a=audio.unit,
-    unit_b=score.unit,
-)
+bundle = AlignmentBundle(name="quickstart")
+bundle.add_timeline(audio)
+bundle.add_timeline(score)
+claim = bundle.create_match_claims(
+    [
+        (
+            {"start": coordinate_pair["audio"].value},
+            audio.id,
+            {"start": coordinate_pair["score"].value},
+            score.id,
+        )
+    ]
+)[0]
 claim
 
 # %% [markdown]
-# The rendered claim shows the exact, unit-bearing positions `@25/2 seconds`
-# and `@415/24 quarters`, with the `ANCHOR` tag marking a claim built from bare
-# coordinates, as explained with other claim types in the alignment tutorial. A
-# bundle can combine this claim with wider alignment evidence. Open
+# The rendered claim shows the unit-bearing positions `@12.5 seconds` and
+# `@415/24 quarters`, each in its timeline's unit and number type. Neither
+# timeline held an event there, so the claim joins the two Projections the
+# bundle added; the alignment tutorial explains them with the other claim
+# types. A bundle can combine this claim with wider alignment evidence. Open
 # [Alignment Bundles](tut06_alignment_bundles.ipynb) to assemble and query
 # larger alignments.
 

@@ -22,7 +22,8 @@
 #
 # **What you will learn:**
 #
-# 1. Match performance notes to score notes by shared attributes (pitch, staff)
+# 1. Match performance notes to score notes by shared attributes (pitch, staff),
+#    giving each matched position a {{< glossary Projection >}}
 # 2. Create an `AlignmentBundle` with performance and score groups
 # 3. Query coordinates across both using `get_matchstamp_at()`
 # 4. Create `MatchLine` objects from both directions
@@ -33,7 +34,10 @@
 # ## TL;DR
 #
 # ```python
-# result = match_notes_by_attributes(perf_df, score_df, ["pitch", "staff"], ...)
+# result = match_notes_by_attributes(
+#     perf_df, score_df, ["pitch", "staff"], ...,
+#     source_timeline=performance, target_timeline=score,
+# )
 # bundle.add_match_claims(result.match_claims)
 # stamp = bundle.get_matchstamp_at(78.0, "clt_1")  # quarterbeat 78 -> seconds
 # ```
@@ -54,30 +58,54 @@ from timetoalign.alignment.matching import (
     prepare_abc_notes_for_matching,
     prepare_eep_notes_for_matching,
 )
+from timetoalign.core.enums import FlowMode
 from timetoalign.loader.physical.eep_notes import EepNotesLoader
 from timetoalign.testdata import ensure_data
+from timetoalign.timelines.flow import create_unfolded_timeline
 
 DATA_DIR = ensure_data("score") / "beethoven_op18-4iv_multimodal"
 NORMAL_DIR = DATA_DIR / "StringQuartetEEP_I_Normal"
 ABC_DIR = DATA_DIR / "ABC"
 
 # %% [markdown]
-# ## 2. Load Performance & Score Notes
+# ## 2. Load the Performance and the Score
 #
 # The performance notes come from `.notes` files (EEP format with timestamps
-# in seconds). The score notes come from a pre-unfolded TSV (with coordinates
-# in quarterbeats).
+# in seconds); the loader turns them into the performance timeline. The score
+# is the ABC edition played through: the loader reads the folded score with
+# its repeats, and `create_unfolded_timeline()` lays it out in playthrough
+# order. That is the axis on which the pre-unfolded TSV of score notes counts
+# its quarterbeats.
 
 # %%
-# Performance notes from the Normal recording
+# Performance notes and timeline from the Normal recording
 eep_loader = EepNotesLoader()
 eep_loader.load(*sorted(NORMAL_DIR.glob("*_align_*.notes")))
 eep_df = eep_loader.events.to_dataframe()
+perf_tl = eep_loader.create_timeline(uid="cpt_1")
+
+# The score timeline, played through (quarterbeats)
+score_loader = Ms3Loader.from_file(
+    ABC_DIR / "n04op18-4_04.notes.tsv",
+    ABC_DIR / "n04op18-4_04.measures.tsv",
+)
+flow_controller = score_loader.create_flow_controller()
+clt1 = create_unfolded_timeline(
+    score_loader.create_timeline(),
+    flow_controller.compute_flow(FlowMode.default),
+    flow_controller=flow_controller,
+    uid="clt_1",
+)
 
 # Score notes from the unfolded ABC edition
 abc_df = pd.read_csv(ABC_DIR / "n04op18-4_04_unfolded.notes.tsv", sep="\t")
 
-{"EEP notes": len(eep_df), "ABC notes": len(abc_df)}
+{
+    "EEP notes": len(eep_df),
+    "ABC notes": len(abc_df),
+    "performance length": perf_tl.length,
+    "played-through score length": clt1.length,
+}
 
 # %% [markdown]
 # ## 3. Prepare & Match Notes
@@ -95,8 +123,16 @@ abc_prepared = prepare_abc_notes_for_matching(abc_df)
 {"EEP prepared": len(eep_prepared), "ABC prepared": len(abc_prepared)}
 
 # %% [markdown]
-# Now match by pitch name and staff number. The matcher returns a `MatchResult`
-# containing the matched pairs and the generated `MatchClaim` objects.
+# Now match by pitch name and staff number. A {{< glossary MatchClaim >}}
+# joins two events, but neither table names its events uniquely: the four EEP
+# files reuse their note IDs, one file per instrument, and a played-through
+# score repeats a passage's notes under the same IDs. So both sides are given
+# as positions (`source_coord_column`, `target_coord_column`, each on its
+# timeline's axis), and every matched position gets a Projection on its
+# timeline: an event standing there for the matched note. The notes of a
+# chord share one Projection, since a timeline holds one Projection per
+# position. The matcher returns a `MatchResult` containing the matched pairs
+# and the `MatchClaim` objects between the Projections.
 
 # %%
 match_result = match_notes_by_attributes(
@@ -105,13 +141,21 @@ match_result = match_notes_by_attributes(
     match_columns=["pitch", "staff"],
     source_coord_column="start",
     target_coord_column="quarterbeats_playthrough",
-    source_timeline_id="cpt_1",  # performance timeline (seconds)
-    target_timeline_id="clt_1",  # score timeline (quarterbeats)
-    source_unit=TimeUnit.seconds,
-    target_unit=TimeUnit.quarters,
+    source_timeline=perf_tl,  # performance timeline (seconds)
+    target_timeline=clt1,  # score timeline (quarterbeats)
 )
 
 match_result.summary()
+
+# %%
+# The Projections the matching added, and the first claim's two events
+first_claim = match_result.match_claims[0]
+{
+    "performance Projections": len(perf_tl.get_events(event_type="Projection")),
+    "score Projections": len(clt1.get_events(event_type="Projection")),
+    "first claim, performance side": perf_tl.get_event(first_claim.event_a_id),
+    "first claim, score side": clt1.get_event(first_claim.event_b_id),
+}
 
 # %% [markdown]
 # ## 4. Create AlignmentBundle
@@ -121,9 +165,6 @@ match_result.summary()
 # connections via {{< glossary MatchClaim >}} objects.
 
 # %%
-# Create the performance timeline (seconds)
-perf_tl = eep_loader.create_timeline(uid="cpt_1")
-
 perf_group = TimelineGroup(
     id="performance",
     name="Normal Recording",
@@ -132,13 +173,6 @@ perf_group = TimelineGroup(
 perf_group
 
 # %%
-# Create the score timeline (quarterbeats)
-score_loader = Ms3Loader.from_file(
-    ABC_DIR / "n04op18-4_04.notes.tsv",
-    ABC_DIR / "n04op18-4_04.measures.tsv",
-)
-clt1 = score_loader.create_timeline(uid="clt_1")
-
 score_group = TimelineGroup(
     id="score",
     name="ABC Score",
@@ -147,7 +181,7 @@ score_group = TimelineGroup(
 score_group
 
 # %%
-# Create the bundle and add the match claims
+# Create the bundle and add the match claims; the bundle gives them their ids
 bundle = AlignmentBundle(name="Beethoven Op.18/4 — Simple Alignment")
 bundle.add_group(perf_group)
 bundle.add_group(score_group)
@@ -170,6 +204,11 @@ match_result.match_claims[0]
 # Query from the score side: quarterbeat 78 (a matched note onset)
 stamp = bundle.get_matchstamp_at(78.0, "clt_1")
 stamp
+
+# %% [markdown]
+# The played-through score is assembled from the score's sections, each a
+# child of `clt_1` named after its region, so the stamp also gives the
+# position within the section it falls in (`A+B`).
 
 # %%
 # The stamp shows coordinates on both timelines
@@ -275,13 +314,12 @@ for line in text.splitlines()[:15]:
 # %% [markdown]
 # ## 8. Conversion Maps in MatchStamp Display
 #
-# The score timeline already carries conversion maps from `Ms3Loader`
-# (ticks, floating measures), and a conversion map can be added to any
-# timeline at any time. Either way, `get_matchstamp_at()` leaves them out of
-# the {{< glossary MatchStamp >}} by default — `conversion_maps` is opt-in.
+# A conversion map can be added to any timeline at any time; loaders attach
+# their own. Either way, `get_matchstamp_at()` leaves them out of the
+# {{< glossary MatchStamp >}} by default — `conversion_maps` is opt-in.
 
 # %%
-# Add one more conversion map, this time on the performance timeline.
+# Add a conversion map to the performance timeline.
 from timetoalign.maps import ScalarMap
 
 perf_tl.add_conversion_map(
@@ -295,9 +333,9 @@ perf_tl.add_conversion_map(
 bundle.get_matchstamp_at(78.0, "clt_1")
 
 # %%
-# conversion_maps=True adds one row per enabled map, each evaluated at its
-# own timeline's coordinate — ticks and floating measures from the score's
-# loader-provided maps, milliseconds from the one just added.
+# conversion_maps=True adds the enabled maps, each evaluated at its own
+# timeline's coordinate — ticks from the score loader's map, milliseconds
+# from the map just added.
 bundle.get_matchstamp_at(78.0, "clt_1", conversion_maps=True)
 
 # %% [markdown]
@@ -318,7 +356,7 @@ bundle.get_matchstamp_table([78.0], "clt_1", conversion_maps=True).column_names
 #
 # | Pattern | API |
 # |---------|-----|
-# | Match notes by attributes | `match_notes_by_attributes()` |
+# | Match notes by attributes | `match_notes_by_attributes(..., source_timeline=, target_timeline=)` |
 # | Add claims to bundle | `bundle.add_match_claims(claims)` |
 # | Query by coordinate | `bundle.get_matchstamp_at(coord, tl_id)` |
 # | Create MatchLine | `MatchLine.from_claims(claims, source_timeline_id)` |

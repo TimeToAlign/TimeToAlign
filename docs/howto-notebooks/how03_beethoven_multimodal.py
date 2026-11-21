@@ -49,30 +49,21 @@ from PIL import Image
 
 from timetoalign import (
     ContinuousPhysicalTimeline,
-    Coordinate,
     DiscreteGraphicalTimeline,
     Ms3Loader,
     NumberType,
+    Provenance,
     RepoVizzLoader,
     TableMap,
     TimelineGroup,
     TimeUnit,
 )
-from timetoalign.alignment import (
-    Agent,
-    AlignmentAnchor,
-    AlignmentBundle,
-    MatchClaim,
-    MatchLine,
-    MatchMetadata,
-    WarpMap,
-)
+from timetoalign.alignment import AlignmentBundle, MatchLine, WarpMap
 from timetoalign.alignment.matching import (
     match_notes_by_attributes,
     prepare_abc_notes_for_matching,
     prepare_eep_notes_for_matching,
 )
-from timetoalign.core import AgentType
 from timetoalign.core.enums import FlowMode
 from timetoalign.testdata import ensure_data
 from timetoalign.timelines.flow import create_unfolded_timeline
@@ -516,24 +507,32 @@ len(abc_prepared)  # sounding onsets: untied notes and tie starts
 # Each EEP recording's note events (seconds, pitch, staff) are matched
 # against the ABC **unfolded** score notes (quarterbeats, pitch, staff)
 # prepared in §9.2 using greedy sequential matching. The result:
-# `MatchClaim` objects that connect recording coordinates to score
-# coordinates. No pre-computed TSV is needed — the unfolded CLT1 carries
+# `MatchClaim` objects that connect recording positions to score
+# positions. No pre-computed TSV is needed — the unfolded CLT1 carries
 # all the notes.
 
 # %% [markdown]
-# Match each recording against the score. The `source_timeline_id` and
-# `target_timeline_id` are the audio DPT and CLT1 respectively — these
-# appear in the resulting `MatchClaim` anchors.
+# Match each recording against the score. The `source_timeline` and
+# `target_timeline` are the audio DPT and the unfolded CLT1 respectively —
+# the two timelines of every resulting `MatchClaim`.
+#
+# A MatchClaim joins two events, but here neither side names its events
+# uniquely: the EEP note IDs repeat across instruments, and the unfolded
+# score repeats a passage's notes under the same IDs. Both sides are
+# therefore given as positions, and every matched position gets a
+# `Projection` on its timeline, an event standing there for the matched note.
+# The EEP onsets are stated in seconds (`source_unit`); the audio DPT's
+# conversion map places them on its own axis.
 #
 # We use `rv.store.notes` to access the EEP notes from the XML manifest's
 # score section — no direct `EepNotesLoader` import needed.
 
 # %%
 match_results = {}
-for xml_path, dpt_id in [
-    (NORMAL_XML, "dpt_1"),
-    (MECHANICAL_XML, "dpt_6"),
-    (EXAGGERATED_XML, "dpt_11"),
+for xml_path, group, dpt_id in [
+    (NORMAL_XML, normal_group, "dpt_1"),
+    (MECHANICAL_XML, mechanical_group, "dpt_6"),
+    (EXAGGERATED_XML, exaggerated_group, "dpt_11"),
 ]:
     rv = RepoVizzLoader.from_file(xml_path)
     eep_events = rv.store.notes.to_dataframe()
@@ -544,8 +543,8 @@ for xml_path, dpt_id in [
         match_columns=["pitch", "staff"],
         source_coord_column="start",
         target_coord_column="quarterbeats_playthrough",
-        source_timeline_id=dpt_id,
-        target_timeline_id="clt_1",
+        source_timeline=group.get_timeline(dpt_id),
+        target_timeline=clt1_unfolded,
         source_unit=TimeUnit.seconds,
         target_unit=TimeUnit.quarters,
     )
@@ -683,64 +682,38 @@ dpt16
 # ### 11.5 Emerson MatchClaims (alpha through kappa)
 #
 # Each row in the measure-map CSV defines a section boundary: a
-# correspondence between an unfolded floating-measure coordinate on
-# CLT2 and a seconds coordinate on DPT16. We create one MatchClaim
-# per boundary, plus the final end boundary.
+# correspondence between an unfolded position on CLT2 and a seconds
+# position on DPT16. There is one MatchClaim per boundary, plus the final
+# end boundary.
 #
-# These cross-group claims are the key connection between the Emerson
-# recording and the score group.
-# `AlignmentAnchor` stores unit-bearing `Coordinate` values, so the units are
-# explicit at the claim boundary even though the source data is numeric.
+# These claims are the key connection between the Emerson recording and the
+# score group. Neither timeline has an event at a section boundary, so each
+# side is given as a position, the score side named by its section's Greek
+# letter. When the claims are made in §13, a `Projection` is added at each
+# position and the MatchClaim joins the two.
 
 # %%
-emerson_claims = []
-for _, row in ema_df.iterrows():
-    anchor = AlignmentAnchor(
-        timeline_a_id="clt2_unfolded",
-        coordinate_a=Coordinate(float(row["measure_unfold_start"]), TimeUnit.quarters),
-        timeline_b_id="dpt_16",
-        coordinate_b=Coordinate(float(row["seconds_start"]), TimeUnit.seconds),
+emerson_pairs = [
+    (
+        {"start": float(row["measure_unfold_start"]), "name": section},
+        "clt2_unfolded",
+        {"start": float(row["seconds_start"])},
+        "dpt_16",
     )
-    emerson_claims.append(
-        MatchClaim(
-            timeline_a_id="clt2_unfolded",
-            timeline_b_id="dpt_16",
-            start_anchor=anchor,
-            metadata=MatchMetadata(
-                agent=Agent(
-                    name="dataset",
-                    type=AgentType.software,
-                    identifier="measure_map_audio",
-                ),
-            ),
-        )
-    )
+    for section, row in ema_df.iterrows()
+]
 
 # Final end boundary
-final_anchor = AlignmentAnchor(
-    timeline_a_id="clt2_unfolded",
-    coordinate_a=Coordinate(
-        float(ema_df["measure_unfold_end"].iloc[-1]), TimeUnit.quarters
-    ),
-    timeline_b_id="dpt_16",
-    coordinate_b=Coordinate(float(ema_df["seconds_end"].iloc[-1]), TimeUnit.seconds),
-)
-emerson_claims.append(
-    MatchClaim(
-        timeline_a_id="clt2_unfolded",
-        timeline_b_id="dpt_16",
-        start_anchor=final_anchor,
-        metadata=MatchMetadata(
-            agent=Agent(
-                name="dataset",
-                type=AgentType.software,
-                identifier="measure_map_audio",
-            ),
-        ),
+emerson_pairs.append(
+    (
+        {"start": float(ema_df["measure_unfold_end"].iloc[-1]), "name": "end"},
+        "clt2_unfolded",
+        {"start": float(ema_df["seconds_end"].iloc[-1])},
+        "dpt_16",
     )
 )
 
-len(emerson_claims)
+len(emerson_pairs)
 
 # %% [markdown]
 # ## 12. Bridging the Two AlignmentBundles
@@ -780,7 +753,7 @@ score_group_unfolded
 #
 # The Emerson group contains only DPT16 — the recording timeline.
 # CLT2\_unfolded lives in the score group, and the Emerson MatchClaims
-# connect the two groups via cross-group claims.
+# connect the two groups.
 
 # %%
 emerson_group = TimelineGroup(
@@ -811,8 +784,15 @@ bundle.add_group(emerson_group)
 for dpt_id in ["dpt_1", "dpt_6", "dpt_11"]:
     bundle.add_match_claims(match_results[dpt_id].match_claims)
 
-# Add Emerson section boundary claims (CLT2_unfolded <-> DPT16)
-bundle.add_match_claims(emerson_claims)
+# Make the Emerson section boundary claims (CLT2_unfolded <-> DPT16): a
+# Projection at each boundary position, then the claim between the two
+emerson_claims = bundle.create_match_claims(
+    emerson_pairs,
+    provenance=Provenance(
+        method="imported",
+        note="measureMapAudio.csv section boundaries",
+    ),
+)
 
 bundle
 
@@ -1060,7 +1040,7 @@ boundary_df
 # | `TimelineGroup.apply_flow()` | Unfold entire group via one flow | 9.2 |
 # | `match_notes_by_attributes()` | EEP <-> ABC note matching (from unfolded TL) | 10 |
 # | `create_unfolded_timeline()` | Unfold a single timeline | 11.3 |
-# | `MatchClaim` + `AlignmentAnchor` | Section-boundary alignment (alpha-kappa) | 11.5 |
+# | `create_match_claims()` with positions | Section-boundary alignment through Projections (alpha-kappa) | 11.5, 13 |
 # | `add_timeline()` on a group | Bridge independent alignment networks | 12.1 |
 # | `MatchLine` + `WarpMap` | Explicit construction from MatchClaims | 13.1 |
 # | `AlignmentBundle` | Multi-group cross-domain transfer | 13 |

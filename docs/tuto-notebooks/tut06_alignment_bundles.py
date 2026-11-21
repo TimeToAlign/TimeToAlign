@@ -31,11 +31,11 @@
 
 # %%
 import warnings
-from collections import Counter
 from fractions import Fraction
 
 from timetoalign import (
     AlignmentBundle,
+    Belief,
     ClaimType,
     ContinuousGraphicalTimeline,
     ContinuousLogicalTimeline,
@@ -46,6 +46,7 @@ from timetoalign import (
     MatchfileLoader,
     MatchLine,
     MatchStamp,
+    Provenance,
     SecondsToSamples,
     TimeUnit,
     WarpMap,
@@ -102,9 +103,11 @@ observed_pairs
 # %% [markdown]
 # ## A {{< glossary MatchClaim >}}
 #
-# One claim says that an event or coordinate on one timeline corresponds to an
-# event or coordinate on another. `create_match_claims()` accepts several such
-# pairs and records who or what supplied the evidence.
+# One claim says that an event on one timeline corresponds to an event on
+# another. `create_match_claims()` accepts several such pairs; its
+# {{< glossary Provenance >}} records who stated them and how. A person who
+# states a claim believes it, so the entry also holds that person's `Belief`,
+# `"true"`.
 
 # %%
 claim_bundle = AlignmentBundle(name="Visible teaching claims")
@@ -117,10 +120,15 @@ event_pairs = [
         score_cue_frame["id"], performance_cue_frame["id"]
     )
 ]
+MUSICOLOGIST = "https://example.org/people/musicologist"
+cue_alignment = Provenance(
+    stated_by=(MUSICOLOGIST,),
+    method="manual",
+    date="2026-11-21",
+    beliefs=(Belief(actor=MUSICOLOGIST, belief="true", date="2026-11-21"),),
+)
 evidence_claims = claim_bundle.create_match_claims(
-    event_pairs,
-    agent="musicologist",
-    agent_identifier="manual-cue-alignment",
+    event_pairs, provenance=cue_alignment
 )
 shown_claim = evidence_claims[1]
 shown_claim
@@ -128,16 +136,15 @@ shown_claim
 # %% [markdown]
 # The rendered claim names both events, both timelines, both coordinates, and
 # its provenance. It is an assertion about one observed correspondence, not a
-# rule for the whole performance.
+# rule for the whole performance. The bundle gave it its id, which never
+# changes.
 
 # %%
 single_event_claim = MatchClaim.from_events(
     score.get_event("score-c2"),
-    score.id,
+    score,
     performance.get_event("perf-c2"),
-    performance.id,
-    unit_a=score.unit,
-    unit_b=performance.unit,
+    performance,
 )
 construction_comparison = {
     "standalone from_events claim": single_event_claim,
@@ -147,39 +154,71 @@ construction_comparison
 
 # %% [markdown]
 # Reach for `MatchClaim.from_events()` when you have one event pair and want a
-# standalone claim; its `unit_a` and `unit_b` arguments make the two event
-# conventions explicit. Use `create_match_claims()` when you have several
-# pairs in a bundle: it gets the units from the registered timelines and adds
-# all four claims here to the bundle, as the output shows.
+# standalone claim: it takes each event with its timeline and places the
+# event's coordinate on that timeline's own axis. A standalone claim has no id
+# until a bundle it joins gives it one. Use `create_match_claims()` when you
+# have several pairs in a bundle: it finds each event by its id in the
+# registered timelines and adds all four claims here to the bundle, as the
+# output shows.
+
+# %% [markdown]
+# ## Who believes a claim
+#
+# A claim is never deleted. Someone who disagrees records a belief instead:
+# `"true"`, `"false"`, or `"unlikely"`. Software that proposes a claim states
+# how it worked but believes nothing. Every reader of claims takes the same
+# two filter parameters, `believer=` and `belief=`.
+
+# %%
+ALIGNER = "https://example.org/tools/cue-aligner"
+aligner_guess = Provenance(service=ALIGNER, method="inferred").with_belief(
+    Belief(actor=MUSICOLOGIST, belief="false", date="2026-11-21")
+)
+doubted_claim = claim_bundle.create_match_claims(
+    [("score-c3", score.id, "perf-ornament", performance.id)],
+    provenance=aligner_guess,
+)[0]
+belief_view = {
+    "every claim": len(claim_bundle.get_match_claims()),
+    "not believed false by the musicologist": len(
+        claim_bundle.get_match_claims(believer=MUSICOLOGIST)
+    ),
+    "believed true by the musicologist": len(
+        claim_bundle.get_match_claims(believer=MUSICOLOGIST, belief="true")
+    ),
+}
+belief_view
+
+# %% [markdown]
+# An aligner matched the third score cue to the ornament, and the musicologist
+# believes that claim false. It stays in the bundle, but a reader filtering by
+# the musicologist's beliefs no longer sees it: the default `"not_false"`
+# keeps every claim the believer does not reject (no belief and `"unlikely"`
+# pass), while `"true"` keeps only what the believer holds true. Without a
+# `believer=` nothing is filtered.
 
 # %% [markdown]
 # ## The kinds of claim
 #
 # {{< glossary ClaimType >}} is derived from a claim's structure; it is never
-# stored separately. The possibilities are `event_match`, `projection`,
-# `anchor`, {{< glossary NOMATCH >}}, `conceptual`, and `implicit`.
+# stored separately. The possibilities are `event_match`,
+# {{< glossary NOMATCH >}}, `conceptual`, and `implicit`. Every stated claim
+# names an event on each side it aligns. When one side has no event of its
+# own, give a position instead: a {{< glossary Projection >}} is added there,
+# an event standing for the other side's event on this timeline.
 
 # %%
-anonymous_claim = claim_bundle.create_match_claims(
-    [({"start": Fraction(3)}, score.id, {"start": 1.7}, performance.id)]
+projected_claim = claim_bundle.create_match_claims(
+    [({"start": Fraction(9)}, score.id, "perf-ornament", performance.id)]
 )[0]
-projection_event = performance.get_event("perf-c2")
-projection_claim = MatchClaim.from_projection(
-    event=projection_event,
-    source_tl_id=performance.id,
-    target_tl_id=score.id,
-    target_coord=Coordinate(Fraction(4), TimeUnit.quarters),
-    source_unit=TimeUnit.seconds,
-)
+projection = score.get_event(projected_claim.event_a_id)
 absence_claim = claim_bundle.create_match_claims(
     [(None, score.id, "perf-ornament", performance.id)]
 )[0]
-conceptual_claim = MatchClaim.nomatch(
-    event={},
-    source_tl_id=performance.id,
-    target_tl_id=score.id,
-    unit=TimeUnit.seconds,
-)
+conceptual_claim = claim_bundle.create_match_claims(
+    [("score-c4", score.id, "perf-ornament", performance.id)],
+    synchronous=False,
+)[0]
 implicit_claim = MatchClaim.implicit(
     tl_a_id=score.id,
     coord_a=Coordinate(Fraction(2), TimeUnit.quarters),
@@ -189,25 +228,27 @@ implicit_claim = MatchClaim.implicit(
 )
 
 claim_examples = {
-    ClaimType.event_match: evidence_claims[0],
-    ClaimType.projection: projection_claim,
-    ClaimType.anchor: anonymous_claim,
+    ClaimType.event_match: projected_claim,
     ClaimType.nomatch: absence_claim,
     ClaimType.conceptual: conceptual_claim,
     ClaimType.implicit: implicit_claim,
 }
 derived_types = {kind.value: claim.claim_type for kind, claim in claim_examples.items()}
-derived_types
+{"derived kinds": derived_types, "the Projection": projection}
 
 # %% [markdown]
-# A synchronous claim names two events, one event, or no events to become an
-# event match, projection, or anonymous anchor. A non-synchronous claim with
-# exactly one named event is a NOMATCH; here it points **from the performance**,
-# which has `perf-ornament`, **to the score**, which lacks it. There is no
-# dedicated conceptual constructor: passing an empty event to
-# `MatchClaim.nomatch()` leaves no named event, so the claim becomes
-# `conceptual`. `implicit` wins over every other discriminator because it marks
-# a relationship inferred by graph extension rather than asserted.
+# The score has no event for the ornament, so to say where it falls in score
+# time the score side was given as a position, quarter 9. The claim is still
+# an event match: it joins `perf-ornament` and the Projection added to the
+# score at quarter 9, whose `projection_of` names the performance event it
+# stands for. Asking again with the same pair reuses that Projection rather
+# than adding another.
+# A non-synchronous claim naming one event is a NOMATCH; here it points
+# **from the performance**, which has `perf-ornament`, **to the score**, which
+# lacks it. A non-synchronous claim naming two events is `conceptual`: the
+# ornament belongs to the last cue without sounding at its moment. `implicit`
+# wins over every other discriminator because it marks a relationship inferred
+# by graph extension rather than asserted.
 
 # %% [markdown]
 # ## The bundle
@@ -457,21 +498,21 @@ print(vienna_diagram)
 # ## Reading a loaded cross-section
 #
 # We can discover the score identifier from its registered group, choose a
-# frequently matched score coordinate, and read that position across several
-# performances.
+# position inside the first matched note, and read that position across
+# several performances.
 
 # %%
 vienna_score_group_id = vienna_bundle.group_ids[0]
 vienna_score_group = vienna_bundle.get_group(vienna_score_group_id)
 vienna_score_id = vienna_score_group.timeline_ids[0]
-vienna_claims = vienna_bundle.get_match_claims()
-vienna_score_coordinates = [
-    claim.get_coordinate_for(vienna_score_id)
-    for claim in vienna_claims
+first_note_claim = next(
+    claim
+    for claim in vienna_bundle.get_match_claims()
     if claim.is_synchronous and claim.connects(vienna_score_id)
-]
-coordinate_counts = Counter(vienna_score_coordinates)
-vienna_coordinate = coordinate_counts.most_common(1)[0][0]
+)
+note_onset = first_note_claim.start_anchor.get_coordinate_for(vienna_score_id)
+note_offset = first_note_claim.end_anchor.get_coordinate_for(vienna_score_id)
+vienna_coordinate = (note_onset.value + note_offset.value) / 2
 vienna_stamp = vienna_bundle.get_matchstamp_at(vienna_coordinate, vienna_score_id)
 vienna_performance_ids = [
     timeline_id
@@ -484,26 +525,31 @@ vienna_cross_section = {
     for timeline_id in vienna_shown_ids
 }
 vienna_result = {
-    "selected claim coordinate": vienna_coordinate,
+    "first note in the score": (note_onset, note_offset),
+    "queried position": vienna_coordinate,
     "queried cross-section": vienna_cross_section,
+    "is_interpolated": vienna_stamp.is_interpolated,
 }
 vienna_result
 
 # %% [markdown]
 # The score identifier comes from the bundle rather than a hardcoded string.
-# The bundle query preserves the claim's exact value: the selected coordinate
-# and the score entry of the returned cross-section are the same
-# `Fraction(65, 2)` quarters, because a quarters axis is exact whichever route
-# a value reaches it by. The performance coordinates are integer ticks for the
-# same reason — each timeline's entry follows that timeline's own declared
-# type, so one cross-section legitimately mixes fractions and integers.
+# Each Vienna claim spans a note from its onset to its offset, so a position
+# inside the first note reaches every performance, interpolated within that
+# note. The score entry of the cross-section is the queried `Fraction(1, 4)`
+# quarters, because a quarters axis is exact whichever route a value reaches
+# it by. The performance coordinates are integer ticks for the same reason —
+# each timeline's entry follows that timeline's own declared type, so one
+# cross-section legitimately mixes fractions and integers.
 
 # %% [markdown]
 # ## Merging
 #
 # `AlignmentBundle.from_bundles([...])` registers the source groups, timelines,
-# and claims in a new bundle. It does not invent evidence between the sources;
-# add bridge claims when you know how the two sides correspond.
+# and claims in a new bundle, every claim keeping its id. It does not invent
+# evidence between the sources; add bridge claims when you know how the two
+# sides correspond. The facsimile has no events, so each bridge claim gives
+# its page position and a Projection of the score cue is added there.
 
 # %%
 facsimile = ContinuousGraphicalTimeline(
@@ -518,11 +564,10 @@ merged_claims_before_bridge = merged_bundle.get_match_claims()
 unbridged_stamp = merged_bundle.get_matchstamp_at(between_coordinate, score.id)
 bridge_claims = merged_bundle.create_match_claims(
     [
-        ({"start": Fraction(2)}, score.id, {"start": 200.0}, facsimile.id),
-        ({"start": Fraction(10)}, score.id, {"start": 1000.0}, facsimile.id),
+        ("score-c1", score.id, {"start": 200.0}, facsimile.id),
+        ("score-c4", score.id, {"start": 1000.0}, facsimile.id),
     ],
-    agent="page-alignment",
-    agent_identifier="manual-landmarks",
+    provenance=cue_alignment,
 )
 bridged_stamp = merged_bundle.get_matchstamp_at(between_coordinate, score.id)
 merge_summary = {
@@ -549,8 +594,11 @@ merge_summary
 # ## What you learned
 #
 # - You can replace a constant-ratio guess with explicit coordinate evidence.
-# - You can create and inspect a MatchClaim with recorded provenance.
-# - You can distinguish every derived ClaimType and orient a NOMATCH correctly.
+# - You can create and inspect a MatchClaim between two events, with recorded
+#   provenance.
+# - You can filter claims by who believes them, without deleting any.
+# - You can give a side without an event a Projection, distinguish every
+#   derived ClaimType, and orient a NOMATCH correctly.
 # - You can start and extend timeline groups inside an AlignmentBundle.
 # - You can turn claims into a MatchLine and a WarpMap.
 # - You can tell an exact MatchStamp from an interpolated one.

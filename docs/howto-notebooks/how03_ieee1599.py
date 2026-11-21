@@ -22,16 +22,16 @@
 # axis. That axis is the ``<spine>``: a flat, ordered list of abstract
 # events in *virtual time units* (VTU), unit-less by design. Every other
 # layer states where in **its own** coordinate space one of those spine
-# events falls, via an ``event_ref``. The spine is the hub; the layers are
-# projections onto it; ``event_ref`` is the correspondence — exactly the
-# shape of an alignment.
+# events falls, via an ``event_ref``. The spine is the hub; the layers refer
+# to it; ``event_ref`` is the correspondence — exactly the shape of an
+# alignment.
 #
 # `Ieee1599Loader` reads one such document into a single multimodal
 # {{< glossary AlignmentBundle >}}: the spine as one {{< glossary Timeline >}}
 # in ticks, the logically-organised-symbols (LOS) layer of notes, rests and
 # lyrics on another, one graphical timeline per engraved edition, one
-# physical timeline per audio track, and the whole set of projections as one
-# columnar {{< glossary MatchClaimField >}}. The document's own analytical
+# physical timeline per audio track, and the whole set of correspondences as
+# one columnar {{< glossary MatchClaimField >}}. The document's own analytical
 # layer — a segmentation of the spine resolving to places of a Petri net — is
 # carried too, not as timing but as an external reference.
 #
@@ -48,7 +48,7 @@
 #    layer of notes and rests sitting at spine coordinates.
 # 3. The graphical editions as nested `SegmentLine`s of pages and accolades,
 #    in pixels, and the audio tracks, in seconds.
-# 4. The projections, reached through the uniform
+# 4. The correspondences, reached through the uniform
 #    {{< glossary MatchClaimField >}} API, and the cross-section they
 #    describe over spine coordinates.
 # 5. The structural layer: a Petri-net analysis carried as external
@@ -239,11 +239,12 @@ track.get_events().head(3)
 # %% [markdown]
 # ---
 #
-# ## 4. The projections, as one columnar claim field
+# ## 4. The correspondences, as one columnar claim field
 #
 # Every LOS, graphical and audio event contributes one synchronous
-# {{< glossary MatchClaim >}} tying its own coordinate to the spine event it
-# references. All three layers go into **one** field — the alignment they
+# {{< glossary MatchClaim >}} joining it to the spine event it references;
+# both sides are events, each at its own timeline's coordinate. All three
+# layers go into **one** field — the alignment they
 # express is one alignment, hub-and-spoke around the spine — reached through
 # the uniform field API:
 
@@ -258,8 +259,8 @@ field = loader.get_field(MatchClaim)
 # %% [markdown]
 # The `MatchClaimField` remains columnar: its table has one column per
 # property of a `MatchClaim` (the two timeline ids, the anchors, the flags,
-# the metadata, the event ids and names, the source coordinate and the claim
-# id). Showing its head makes that stored representation visible before any
+# the provenance and certainty, the event ids and names, the source
+# coordinate and the claim id). Showing its head makes that stored representation visible before any
 # individual `MatchClaim` is materialised:
 
 # %%
@@ -337,11 +338,11 @@ unmapped.to_pandas()
 # | Engraved editions, page-image boxes | one nested `SegmentLine` per edition:
 # |   4 page segments carrying 18 accolades, an `IntervalToConstantMap` to page images, ``pixels`` |
 # | Audio recordings | one `ContinuousPhysicalTimeline` per track, ``seconds`` |
-# | Every projection onto the spine | one columnar {{< glossary MatchClaimField >}} via `loader.get_field(MatchClaim)` |
+# | Every reference to the spine | one columnar {{< glossary MatchClaimField >}} via `loader.get_field(MatchClaim)` |
 # | The cross-section over spine coordinates | `bundle.get_matchstamp_table(from_graph=True)` |
 # | The Petri-net analysis | `spine.external_references` — segment → place, resolved without opening any `.pnml` |
 #
-# One IEEE 1599 document — one spine, several projections, one analytical
-# annotation layer — loaded into a single {{< glossary AlignmentBundle >}}
+# One IEEE 1599 document — one spine, several layers referring to it, one
+# analytical annotation layer — loaded into a single {{< glossary AlignmentBundle >}}
 # in which every representation of the work stays reachable from the axis
 # the document itself defines.

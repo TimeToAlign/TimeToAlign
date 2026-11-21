@@ -133,8 +133,9 @@ field = loader.get_field(MatchClaim)
 # %% [markdown]
 # The field is held columnar precisely so that this many claims need not be a
 # million Python objects. Indexing it materialises **one** {{< glossary MatchClaim >}}
-# on demand — an ordinary pairwise claim relating two recordings at one grid
-# column, carrying the shared provenance the export recorded (Listen Here!'s
+# on demand — an ordinary pairwise claim joining the grid-point events of two
+# recordings at one grid column, carrying the shared provenance the export
+# recorded (Listen Here!'s
 # chroma-feature DTW). We look at a single claim to see the shape; we do **not**
 # iterate or materialise the whole field.
 
@@ -152,8 +153,8 @@ field[0]
 # carried on a {{< glossary Discrete >}} samples axis because a sample index is
 # what a recording actually counts; each recording's verbatim JSON seconds are
 # preserved beside it as a field on the grid-column events. All the alignment
-# lives in the cross-group claim field, which the bundle keeps columnar rather
-# than exploding into a million claim objects.
+# lives in the bundle's one MatchClaim table, which the bundle keeps columnar
+# rather than exploding into a million claim objects.
 
 # %%
 bundle = loader.create_bundle()
@@ -237,8 +238,8 @@ stamp
 # This is exactly why the claims live in a {{< glossary MatchClaimField >}}
 # rather than as a million individual `MatchClaim` objects. The field stores the
 # whole set as Arrow columns, one per property of a claim (the two timeline
-# ids as strings, each coordinate as a struct of value, numerator, denominator
-# and unit), and the
+# ids as strings, each coordinate as a struct of value, numerator, denominator,
+# unit and number type), and the
 # loader builds it **vectorised** — never
 # constructing a Python claim per row. A `MatchClaim` is materialised only when
 # a single row is indexed. `get_matchstamp_at` likewise filters the columns

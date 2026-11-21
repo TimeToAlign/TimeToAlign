@@ -41,8 +41,12 @@
 # ## Setup
 
 # %%
+from timetoalign import Provenance
 from timetoalign.testdata import DATA_DIR, ensure_data
 from timetoalign.timelines import Timeline
+
+# How the example MatchClaims below were made
+EXAMPLE_PROVENANCE = Provenance(method="manual", note="notebook example")
 
 ensure_data("score", "midi", "vienna_1x22", "supra", "tabular", "thoresen")
 
@@ -1010,7 +1014,7 @@ if len(tilia_bundle.timeline_ids) >= 2:
         ),
     ]
     tilia_new_claims = tilia_bundle.create_match_claims(
-        tilia_pairs, synchronous=True, agent="notebook_test"
+        tilia_pairs, synchronous=True, provenance=EXAMPLE_PROVENANCE
     )
     print(f"Created {len(tilia_new_claims)} new MatchClaim(s)")
     tilia_new_claims[0] if tilia_new_claims else "No claims created"
@@ -1149,7 +1153,7 @@ if match_evts_a and match_evts_b:
         (match_evts_a[0], match_tl_ids[0], match_evts_b[0], match_tl_ids[1]),
     ]
     match_new_claims = match_bundle.create_match_claims(
-        match_pairs, synchronous=True, agent="notebook_test"
+        match_pairs, synchronous=True, provenance=EXAMPLE_PROVENANCE
     )
     print(f"Created {len(match_new_claims)} new MatchClaim(s)")
     match_new_claims[0] if match_new_claims else "No claims created"

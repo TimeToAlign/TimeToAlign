@@ -291,7 +291,7 @@ perf_cpt
 # {{< glossary NOMATCH >}} gaps.
 
 # %%
-claims = bundle.cross_group_claims
+claims = bundle.get_match_claims()
 
 {
     "total claims": len(claims),

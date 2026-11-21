@@ -1026,15 +1026,18 @@ by calling the package):
     pair (with its label) in `statements`, keeps the candidate's members,
     and leaves EDITOR one belief, `"true"`, dated `"2026-11-20"`: the
     later belief replaces the earlier one; `get_candidates() == []` and
-    `get_provenance(believer=EDITOR, belief="true")` is the entry;
+    `get_provenance(believer=EDITOR, beliefs=["true"])` is the entry;
   - `REVIEWER` believing the stated pair `"false"` (with a note) leaves
     `statements` unchanged and appends REVIEWER's belief after EDITOR's:
     believing `"false"` never removes a pair, and the entry then leaves
-    `get_provenance(believer=REVIEWER)` while
-    `get_provenance(believer=EDITOR, belief="true")` keeps it;
+    `get_provenance(believer=REVIEWER)` (the default states, all but
+    `false`) while `get_provenance(believer=REVIEWER, beliefs=["false"])`
+    and `get_provenance(believer=EDITOR, beliefs=["true"])` keep it;
   - `REVIEWER` changing to `"unlikely"` passes the default filter
-    (`get_provenance(believer=REVIEWER)` is the entry) and not
-    `belief="true"`.
+    (`get_provenance(believer=REVIEWER)` is the entry) and
+    `beliefs=["unlikely"]`, not `beliefs=["true"]`; for `TILIE`, who
+    proposed the candidate and holds no belief, the entry is `undecided`
+    (`beliefs=["undecided"]` keeps it).
 - **Actors compare as IRIs.** A belief recorded by the compact actor
   `wd:Q4700` filters for the believer written
   `http://www.wikidata.org/entity/Q4700`, and the other way round, as
@@ -1042,9 +1045,10 @@ by calling the package):
   library's one `belief_mask`.
 - **Refusals change nothing.** The belief `"maybe"` is refused by the
   library's `Belief` scalar (a `ValueError` whose one error is the
-  `literal_error` at `belief`); the filter value `"false"` with the
-  `belief_mask` message `The belief filter keeps 'not_false' or 'true', not
-  'false'` (even without a believer); a `date=` without `actor=` with `a
+  `literal_error` at `belief`); the filter states `["not_false"]` with the
+  `belief_mask` message `The belief filter keeps the states ['true',
+  'undecided', 'unlikely', 'false'], not ['not_false']` (even without a
+  believer); a `date=` without `actor=` with `a
   date dates the belief of the actor stating the pair; give actor=`; and
   a candidate of a stated pair with the package's `'wdt:P2550' already has
   this value; a stated pair is no candidate`. The holder's `statements`

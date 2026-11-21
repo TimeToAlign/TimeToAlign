@@ -14,6 +14,7 @@ from pydantic import ValidationError
 
 from timetoalign.core.fields import derive_arrow_struct
 from timetoalign.core.provenance import (
+    DEFAULT_BELIEFS,
     Belief,
     BeliefField,
     Provenance,
@@ -219,48 +220,80 @@ class TestDictionary:
         )
 
 
+_ALL_STATES = ("true", "undecided", "unlikely", "false")
+
+
 class TestBeliefFilter:
     @pytest.mark.parametrize(
-        ("believer", "belief", "expected"),
+        ("believer", "beliefs", "expected"),
         [
-            ("jo", "not_false", [True, True, False, True, True]),
-            ("jo", "true", [False, False, False, True, False]),
-            ("ana", "not_false", [True, True, True, True, False]),
-            ("ana", "true", [False, False, False, False, False]),
-            (None, "not_false", [True, True, True, True, True]),
-            (None, "true", [True, True, True, True, True]),
+            ("jo", DEFAULT_BELIEFS, [True, True, False, True, True]),
+            ("jo", ["true"], [False, False, False, True, False]),
+            ("jo", ["undecided"], [True, True, False, False, False]),
+            ("jo", ["unlikely"], [False, False, False, False, True]),
+            ("jo", ["false"], [False, False, True, False, False]),
+            ("jo", _ALL_STATES, [True, True, True, True, True]),
+            ("jo", [], [False, False, False, False, False]),
+            ("ana", DEFAULT_BELIEFS, [True, True, True, True, False]),
+            ("ana", ["true"], [False, False, False, False, False]),
+            ("ana", ["false"], [False, False, False, False, True]),
+            (None, DEFAULT_BELIEFS, [True, True, True, True, True]),
+            (None, ["true"], [True, True, True, True, True]),
         ],
     )
     def test_one_predicate(
-        self, believer: str | None, belief: str, expected: list[bool]
+        self, believer: str | None, beliefs: list[str], expected: list[bool]
     ) -> None:
         column = provenance_array(_ROWS)
-        assert belief_mask(column, believer, belief).to_pylist() == expected
+        assert belief_mask(column, believer, beliefs).to_pylist() == expected
         assert (
             ProvenanceField.from_provenances(_ROWS)
-            .passes_belief_filter(believer, belief)
+            .passes_belief_filter(believer, beliefs)
             .to_pylist()
             == expected
         )
         assert [
-            entry.passes_belief_filter(believer, belief)
+            entry.passes_belief_filter(believer, beliefs)
             for entry in _ROWS
             if entry is not None
         ] == expected[1:]
 
-    def test_default_is_not_false(self) -> None:
+    @pytest.mark.parametrize("believer", ["jo", "ana"])
+    def test_the_four_states_partition_the_rows(self, believer: str) -> None:
         column = provenance_array(_ROWS)
-        assert belief_mask(column, "jo").equals(belief_mask(column, "jo", "not_false"))
+        masks = [
+            belief_mask(column, believer, [state]).to_pylist() for state in _ALL_STATES
+        ]
+        assert [sum(row) for row in zip(*masks, strict=True)] == [1] * len(_ROWS)
 
-    def test_empty_column_and_unknown_filter(self) -> None:
+    def test_default_is_all_but_false(self) -> None:
+        column = provenance_array(_ROWS)
+        assert DEFAULT_BELIEFS == ("true", "undecided", "unlikely")
+        assert belief_mask(column, "jo").equals(
+            belief_mask(column, "jo", {"unlikely", "true", "undecided"})
+        )
+        assert belief_mask(column, "jo", ["true", "true"]).equals(
+            belief_mask(column, "jo", ("true",))
+        )
+
+    def test_empty_column_and_unknown_states(self) -> None:
         assert belief_mask(provenance_array([]), "jo").to_pylist() == []
         with pytest.raises(
             ValueError,
             match=re.escape(
-                "The belief filter keeps 'not_false' or 'true', not 'false'"
+                "The belief filter keeps the states ['true', 'undecided', "
+                "'unlikely', 'false'], not ['not_false']"
             ),
         ):
-            belief_mask(provenance_array(_ROWS), "jo", "false")  # type: ignore[arg-type]
+            belief_mask(provenance_array(_ROWS), "jo", ["not_false"])  # type: ignore[list-item]
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "The belief filter takes a collection of states, not the string "
+                "'false': write ['false']."
+            ),
+        ):
+            belief_mask(provenance_array(_ROWS), "jo", "false")
 
     def test_chunked_column(self) -> None:
         column = provenance_array(_ROWS)
@@ -282,26 +315,26 @@ _IRI_ROWS: list[Provenance | None] = [
 
 class TestActorsCompareAsIris:
     @pytest.mark.parametrize(
-        ("believer", "belief", "context", "expected"),
+        ("believer", "beliefs", "context", "expected"),
         [
-            ("ex:ana", "not_false", _CONTEXT, [False, False, True, True]),
-            (_ANA, "not_false", _CONTEXT, [False, False, True, True]),
-            (_ANA, "true", _CONTEXT, [False, False, True, False]),
-            ("ex:ana", "true", _CONTEXT, [False, False, True, False]),
-            ("ex:ana", "not_false", None, [False, True, True, True]),
-            (_ANA, "not_false", None, [True, False, True, True]),
-            ("wd:Q1", "not_false", _CONTEXT, [True, True, True, False]),
+            ("ex:ana", DEFAULT_BELIEFS, _CONTEXT, [False, False, True, True]),
+            (_ANA, DEFAULT_BELIEFS, _CONTEXT, [False, False, True, True]),
+            (_ANA, ["true"], _CONTEXT, [False, False, True, False]),
+            ("ex:ana", ["true"], _CONTEXT, [False, False, True, False]),
+            ("ex:ana", DEFAULT_BELIEFS, None, [False, True, True, True]),
+            (_ANA, DEFAULT_BELIEFS, None, [True, False, True, True]),
+            ("wd:Q1", DEFAULT_BELIEFS, _CONTEXT, [True, True, True, False]),
         ],
     )
     def test_expanded_under_the_context(
         self,
         believer: str,
-        belief: str,
+        beliefs: list[str],
         context: dict[str, str] | None,
         expected: list[bool],
     ) -> None:
         column = provenance_array(_IRI_ROWS)
-        mask = belief_mask(column, believer, belief, context=context)
+        mask = belief_mask(column, believer, beliefs, context=context)
         assert mask.to_pylist() == expected
 
     def test_actor_iri(self) -> None:
@@ -337,16 +370,28 @@ class TestActorsCompareAsIris:
         ):
             Provenance(beliefs=(_belief(_ANA, "true"), _belief(_ANA, "false")))
 
-    def test_one_check_of_the_filter_word(self) -> None:
-        check_belief_filter("not_false")
-        check_belief_filter("true")
+    def test_one_check_of_the_states(self) -> None:
+        assert check_belief_filter(["true", "unlikely"]) == frozenset(
+            {"true", "unlikely"}
+        )
+        assert check_belief_filter(("true", "true")) == frozenset({"true"})
+        assert check_belief_filter([]) == frozenset()
         with pytest.raises(
             ValueError,
             match=re.escape(
-                "The belief filter keeps 'not_false' or 'true', not 'maybe'"
+                "The belief filter takes a collection of states, not the string "
+                "'true': write ['true']."
             ),
         ):
-            check_belief_filter("maybe")
+            check_belief_filter("true")
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "The belief filter keeps the states ['true', 'undecided', "
+                "'unlikely', 'false'], not ['maybe']"
+            ),
+        ):
+            check_belief_filter(["maybe", "true"])
 
 
 class TestField:

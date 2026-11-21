@@ -14,24 +14,26 @@ The canonical filter parameters are:
 - ``nomatch_only``: Return only non-synchronous (NOMATCH) claims.
 - ``include_domains``: Only timelines in these domains.
 - ``include_units``: Only timelines with these units.
-- ``believer``, ``belief``: The belief filter: for one actor, every claim the
-  actor does not believe ``false`` (``belief="not_false"``, the default) or
-  only those the actor believes ``true`` (``"true"``); without a believer
-  nothing is filtered. Decided by
-  :func:`~timetoalign.core.provenance.belief_mask` alone.
+- ``believer``, ``beliefs``: The belief filter: for one actor, the claims
+  whose state for the actor is one of ``beliefs`` (``"true"``,
+  ``"undecided"`` where the actor holds no belief, ``"unlikely"``,
+  ``"false"``; by default all but ``"false"``); without a believer nothing is
+  filtered. Decided by :func:`~timetoalign.core.provenance.belief_mask` alone.
 """
 
 from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from timetoalign.core.enums import Domain, TimeUnit
 from timetoalign.core.provenance import (
-    BeliefFilter,
+    BELIEF_STATES,
+    DEFAULT_BELIEFS,
+    BeliefState,
     belief_mask,
     check_belief_filter,
     provenance_array,
@@ -48,7 +50,7 @@ module_logger = logging.getLogger(__name__)
 def believed(
     claims: Sequence[MatchClaim],
     believer: str | None,
-    belief: BeliefFilter = "not_false",
+    beliefs: Collection[BeliefState] = DEFAULT_BELIEFS,
     *,
     context: Mapping[str, Any] | None = None,
 ) -> list[MatchClaim]:
@@ -62,9 +64,8 @@ def believed(
     Args:
         claims: The claims to filter.
         believer: The actor whose beliefs filter; ``None`` keeps every claim.
-        belief: ``"not_false"`` keeps every claim the believer does not
-            believe ``false``; ``"true"`` only those the believer believes
-            ``true``.
+        beliefs: The states kept (``"true"``, ``"undecided"``,
+            ``"unlikely"``, ``"false"``); default all but ``"false"``.
         context: The JSON-LD context under which the believer and the
             actors compare as IRIs (the bundle's manifest ``@context``,
             :func:`belief_context`); ``None`` declares no prefix.
@@ -73,16 +74,16 @@ def believed(
         The kept claims, in their order.
 
     Raises:
-        ValueError: If *belief* is neither ``"not_false"`` nor ``"true"``.
+        ValueError: If *beliefs* is not a collection of belief states.
     """
     claims = list(claims)
     if believer is None:
-        check_belief_filter(belief)
+        check_belief_filter(beliefs)
         return claims
     mask = belief_mask(
         provenance_array([claim.provenance for claim in claims]),
         believer,
-        belief,
+        beliefs,
         context=context,
     )
     return [claim for claim, kept in zip(claims, mask.to_pylist(), strict=True) if kept]
@@ -144,8 +145,9 @@ class ClaimFilter:
             Requires a ``timelines`` dict for resolution.
         believer: The actor whose beliefs filter claims (the belief
             filter); ``None`` filters nothing.
-        belief: ``"not_false"`` keeps every claim the believer does not
-            believe ``false``; ``"true"`` only those believed ``true``.
+        beliefs: The states kept for the believer (``"true"``,
+            ``"undecided"``, ``"unlikely"``, ``"false"``), held as a frozen
+            set; default all but ``"false"``.
     """
 
     timeline_id: str | None = None
@@ -157,13 +159,14 @@ class ClaimFilter:
     include_domains: set[Domain] | None = field(default=None)
     include_units: set[TimeUnit] | None = field(default=None)
     believer: str | None = None
-    belief: BeliefFilter = "not_false"
+    beliefs: Collection[BeliefState] = DEFAULT_BELIEFS
 
     def __post_init__(self) -> None:
         """Validate mutually exclusive options and the belief filter."""
         if self.synchronous_only and self.nomatch_only:
             raise ValueError("synchronous_only and nomatch_only are mutually exclusive")
-        check_belief_filter(self.belief)
+        # Frozen: the checked states are set once, as a frozen set.
+        object.__setattr__(self, "beliefs", check_belief_filter(self.beliefs))
 
     @property
     def _compiled_pattern(self) -> re.Pattern[str] | None:
@@ -226,7 +229,7 @@ class ClaimFilter:
         # The belief filter, decided where every consumer decides it.
         if self.believer is not None:
             context = belief_context(claim.bundle)
-            if not believed([claim], self.believer, self.belief, context=context):
+            if not believed([claim], self.believer, self.beliefs, context=context):
                 return False
 
         return True
@@ -358,7 +361,7 @@ class ClaimFilter:
         include_domains: set[Domain] | None = None,
         include_units: set[TimeUnit] | None = None,
         believer: str | None = None,
-        belief: BeliefFilter = "not_false",
+        beliefs: Collection[BeliefState] = DEFAULT_BELIEFS,
     ) -> ClaimFilter:
         """Create a ClaimFilter from keyword arguments.
 
@@ -375,7 +378,7 @@ class ClaimFilter:
             include_domains: Only timelines in these domains.
             include_units: Only timelines with these units.
             believer: The actor whose beliefs filter claims.
-            belief: ``"not_false"`` or ``"true"`` (the belief filter).
+            beliefs: The states kept for the believer (the belief filter).
 
         Returns:
             A new ClaimFilter.
@@ -390,7 +393,7 @@ class ClaimFilter:
             include_domains=include_domains,
             include_units=include_units,
             believer=believer,
-            belief=belief,
+            beliefs=beliefs,
         )
 
     def __repr__(self) -> str:
@@ -413,6 +416,7 @@ class ClaimFilter:
             parts.append(f"include_units={self.include_units!r}")
         if self.believer is not None:
             parts.append(f"believer={self.believer!r}")
-        if self.belief != "not_false":
-            parts.append(f"belief={self.belief!r}")
+        if self.beliefs != frozenset(DEFAULT_BELIEFS):
+            states = [state for state in BELIEF_STATES if state in self.beliefs]
+            parts.append(f"beliefs={states!r}")
         return f"ClaimFilter({', '.join(parts)})"

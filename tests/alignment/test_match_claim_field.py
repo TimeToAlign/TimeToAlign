@@ -31,6 +31,7 @@ from timetoalign.alignment import (
 )
 from timetoalign.core import Coordinate, NumberType, TimeUnit
 from timetoalign.core.fields import SemanticField, derive_arrow_struct
+from timetoalign.core.provenance import DEFAULT_BELIEFS
 from timetoalign.core.time import COORDINATE_CELL_TYPE
 from timetoalign.timelines.types import (
     ContinuousLogicalTimeline,
@@ -80,14 +81,12 @@ def gold_field() -> MatchClaimField:
 
 
 def _every_kind(provenance: list[Provenance | None]) -> list[MatchClaim]:
-    """Six claims covering every kind and every stored representation once.
+    """Five claims covering every kind and every stored representation once.
 
     An exact-fraction interval claim (``c1``), an int claim between two
     discrete timelines (``midi 96``, event names), a float on a ``quarters``
-    timeline declaring ``float`` (``c3``), a NOMATCH claim (``c4``), a
-    conceptual claim (``c5``) and an implicit claim made from ``c1`` (the id
-    ``claim_1`` minted, as a graph mints it); ``provenance`` gives the first
-    five their own.
+    timeline declaring ``float`` (``c3``), a NOMATCH claim (``c4``) and a
+    conceptual claim (``c5``); ``provenance`` gives each its own.
     """
     interval = MatchClaim.from_events(
         {"id": "note_7", "start": Fraction(7, 3), "end": Fraction(10, 3)},
@@ -131,17 +130,10 @@ def _every_kind(provenance: list[Provenance | None]) -> list[MatchClaim]:
         provenance=provenance[4],
         id="c5",
     )
-    implicit = MatchClaim.implicit(
-        "audio",
-        Coordinate(0.5, TimeUnit.seconds),
-        "score",
-        Coordinate(Fraction(1, 3), TimeUnit.quarters),
-        source_claim=interval,
-    ).model_copy(update={"id": "claim_1", "id_minted": True})
-    return [interval, discrete, float_quarters, nomatch, conceptual, implicit]
+    return [interval, discrete, float_quarters, nomatch, conceptual]
 
 
-NONE6: list[Provenance | None] = [None] * 6
+NONE5: list[Provenance | None] = [None] * 5
 
 # endregion
 
@@ -176,9 +168,12 @@ class TestFromColumns:
             ]
         )
         assert coordinate_type == COORDINATE_CELL_TYPE
-        assert (
-            MatchClaimField.pa_schema.field("source_coordinate").type
-            == COORDINATE_CELL_TYPE
+        # An anchor is its two coordinates: its timelines are its row's.
+        assert MatchClaimField.pa_schema.field("start_anchor").type == pa.struct(
+            [
+                pa.field("coordinate_a", COORDINATE_CELL_TYPE),
+                pa.field("coordinate_b", COORDINATE_CELL_TYPE),
+            ]
         )
 
     def test_table_one_column_per_property(self, gold_field: MatchClaimField) -> None:
@@ -193,17 +188,13 @@ class TestFromColumns:
             "start_anchor",
             "end_anchor",
             "is_synchronous",
-            "is_explicit",
             "provenance",
             "certainty",
-            "source_claim_id",
             "event_a_id",
             "event_a_name",
             "event_b_id",
             "event_b_name",
-            "source_coordinate",
             "id",
-            "id_minted",
         ]
 
     def test_float_cells_carry_their_exact_ratio(
@@ -496,10 +487,10 @@ class TestConnectsGroups:
 
 
 class TestEveryKind:
-    """NOMATCH, conceptual and implicit claims are rows like any other."""
+    """NOMATCH and conceptual claims are rows like any other."""
 
     def test_round_trip_of_every_kind(self) -> None:
-        claims = _every_kind(NONE6)
+        claims = _every_kind(NONE5)
         field = MatchClaimField.from_claims(claims)
         assert field.to_claims() == claims
         assert [claim.claim_type.name for claim in field] == [
@@ -508,36 +499,30 @@ class TestEveryKind:
             "event_match",
             "nomatch",
             "conceptual",
-            "implicit",
         ]
-        assert [claim.id for claim in field] == [
-            "c1",
-            "midi 96",
-            "c3",
-            "c4",
-            "c5",
-            "claim_1",
-        ]
+        assert [claim.id for claim in field] == ["c1", "midi 96", "c3", "c4", "c5"]
+        # Each anchor is rebuilt on its row's timelines.
+        assert field[0].end_anchor == claims[0].end_anchor
+        assert field[0].end_anchor.timelines == ("score", "audio")
         assert MatchClaimField.from_dict(field.to_dict()).to_claims() == claims
 
     def test_queries_read_the_kinds(self) -> None:
-        field = MatchClaimField.from_claims(_every_kind(NONE6))
+        field = MatchClaimField.from_claims(_every_kind(NONE5))
         assert [c.id for c in field.filter(synchronous_only=True)] == [
             "c1",
             "midi 96",
             "c3",
-            "claim_1",
         ]
         assert [c.id for c in field.filter(nomatch_only=True)] == ["c4"]
         # c4 is a NOMATCH of the event at 27/2 on score: no anchor, never relevant.
         assert [c.id for c in field.at("score", Fraction(27, 2))] == []
         assert [c.id for c in field.at("score", Fraction(3, 1))] == ["c1"]
         assert field.connects_groups({"score"}, {"audio"}) is True
-        anchorless = MatchClaimField.from_claims(_every_kind(NONE6)[3:5])
+        anchorless = MatchClaimField.from_claims(_every_kind(NONE5)[3:5])
         assert anchorless.connects_groups({"score"}, {"audio"}) is False
 
     def test_repr_html_of_an_anchorless_row(self) -> None:
-        field = MatchClaimField.from_claims(_every_kind(NONE6)[3:4])
+        field = MatchClaimField.from_claims(_every_kind(NONE5)[3:4])
         assert field._repr_html_() == (
             "<div style='font-family: monospace;'><strong>MatchClaimField</strong> "
             "<span style='color: #555;'>claims=1, timelines=2</span><table "
@@ -568,17 +553,21 @@ class TestBeliefFilter:
         return MatchClaimField.from_claims(claims)
 
     @pytest.mark.parametrize(
-        ("believer", "belief", "kept"),
+        ("believer", "beliefs", "kept"),
         [
-            (None, "not_false", ["c1", "midi 96", "c3"]),
-            ("jo", "not_false", ["c1", "c3"]),
-            ("jo", "true", ["c3"]),
-            ("ana", "not_false", ["c1", "midi 96", "c3"]),
-            ("ana", "true", []),
+            (None, DEFAULT_BELIEFS, ["c1", "midi 96", "c3"]),
+            ("jo", DEFAULT_BELIEFS, ["c1", "c3"]),
+            ("jo", ["true"], ["c3"]),
+            ("jo", ["undecided"], ["c1"]),
+            ("jo", ["false"], ["midi 96"]),
+            ("ana", DEFAULT_BELIEFS, ["c1", "midi 96", "c3"]),
+            ("ana", ["true"], []),
         ],
     )
-    def test_rows(self, believer: str | None, belief: str, kept: list[str]) -> None:
-        filtered = self._field().filter(believer=believer, belief=belief)
+    def test_rows(
+        self, believer: str | None, beliefs: list[str], kept: list[str]
+    ) -> None:
+        filtered = self._field().filter(believer=believer, beliefs=beliefs)
         assert [claim.id for claim in filtered] == kept
 
     def test_shared_provenance_decides_for_every_row(
@@ -592,14 +581,18 @@ class TestBeliefFilter:
         assert len(doubted.filter(believer="ana")) == 3
         assert len(doubted.filter(believer="jo", timeline_id="C")) == 0
 
-    def test_unknown_filter_word(self, gold_field: MatchClaimField) -> None:
+    @pytest.mark.parametrize("believer", ["jo", None])
+    def test_unknown_state(
+        self, gold_field: MatchClaimField, believer: str | None
+    ) -> None:
         with pytest.raises(
             ValueError,
             match=re.escape(
-                "The belief filter keeps 'not_false' or 'true', not 'false'"
+                "The belief filter keeps the states ['true', 'undecided', "
+                "'unlikely', 'false'], not ['not_false']"
             ),
         ):
-            gold_field.filter(believer="jo", belief="false")  # type: ignore[arg-type]
+            gold_field.filter(believer=believer, beliefs=["not_false"])
 
 
 # endregion
@@ -663,25 +656,17 @@ class TestCheckOnTimelines:
         ):
             field.check_on_timelines([SCORE, PCM])
 
-    def test_nomatch_source_coordinate(self) -> None:
+    def test_a_nomatch_row_holds_no_coordinate(self) -> None:
         nomatch = MatchClaim.nomatch(
             {"id": "x", "start": Fraction(27, 2)}, SCORE, AUDIO, id="x"
         )
         field = MatchClaimField.from_claims([nomatch])
         assert field.check_on_timelines([SCORE, AUDIO]) is field
-        with pytest.raises(
-            ValueError,
-            match=re.escape(
-                _off_axis(
-                    "Row 0 source_coordinate",
-                    "quarters",
-                    "fraction",
-                    "score",
-                    "quarters (float)",
-                )
-            ),
-        ):
+        # No cell of the row is on any axis, so no axis can refuse it.
+        assert (
             field.check_on_timelines({"score": ("quarters", "float"), "audio": AUDIO})
+            is field
+        )
 
     def test_from_parquet_runs_the_check(self, tmp_path: Path) -> None:
         path = self._field().to_parquet(tmp_path)
@@ -704,7 +689,6 @@ _COORDINATE_PATHS = (
     ("start_anchor", "coordinate_b"),
     ("end_anchor", "coordinate_a"),
     ("end_anchor", "coordinate_b"),
-    ("source_coordinate",),
 )
 
 
@@ -739,30 +723,24 @@ def _literal_row(claim_id: str | None, a: tuple, b: tuple) -> dict:
     """The ``to_dict`` row of an instant event match between *a* and *b*.
 
     *a* and *b* are ``(timeline id, event id, unit, number type, value)``;
-    a row without an id holds no minted one.
+    the anchor holds the two coordinates, its timelines being the row's.
     """
     return {
         "timeline_a_id": a[0],
         "timeline_b_id": b[0],
         "start_anchor": {
-            "timeline_a_id": a[0],
             "coordinate_a": {"unit": a[2], "number_type": a[3], "value": a[4]},
-            "timeline_b_id": b[0],
             "coordinate_b": {"unit": b[2], "number_type": b[3], "value": b[4]},
         },
         "end_anchor": None,
         "is_synchronous": True,
-        "is_explicit": True,
-        "certainty": 1.0,
         "provenance": None,
-        "source_claim_id": None,
+        "certainty": 1.0,
         "event_a_id": a[1],
         "event_a_name": None,
         "event_b_id": b[1],
         "event_b_name": None,
-        "source_coordinate": None,
         "id": claim_id,
-        "id_minted": claim_id is not None,
     }
 
 
@@ -772,15 +750,11 @@ _DISCRETE_ROW = {
     "timeline_a_id": "midi",
     "timeline_b_id": "pcm",
     "start_anchor": {
-        "timeline_a_id": "midi",
         "coordinate_a": {"unit": "ticks", "number_type": "int", "value": 96},
-        "timeline_b_id": "pcm",
         "coordinate_b": {"unit": "samples", "number_type": "int", "value": 44100},
     },
     "end_anchor": None,
     "is_synchronous": True,
-    "is_explicit": True,
-    "certainty": 0.5,
     "provenance": {
         "stated_by": ["ana"],
         "date": None,
@@ -793,14 +767,12 @@ _DISCRETE_ROW = {
             {"actor": "ana", "belief": "true", "date": "2026-11-21", "note": None}
         ],
     },
-    "source_claim_id": None,
+    "certainty": 0.5,
     "event_a_id": "tick_96",
     "event_a_name": "C4",
     "event_b_id": "sample_44100",
     "event_b_name": "onset",
-    "source_coordinate": None,
     "id": "midi 96",
-    "id_minted": False,
 }
 
 HUMAN = Provenance(
@@ -836,13 +808,8 @@ class TestDictRoundTrip:
             claim = field[index].to_dict()
             assert row["start_anchor"] == claim["start_anchor"]
             assert row["end_anchor"] == claim["end_anchor"]
-            assert row["source_coordinate"] == claim["source_coordinate"]
-        assert rows[0]["end_anchor"] is not None
-        assert rows[3]["source_coordinate"] == {
-            "unit": "quarters",
-            "number_type": "fraction",
-            "value": [27, 2],
-        }
+        assert list(rows[0]["end_anchor"]) == ["coordinate_a", "coordinate_b"]
+        assert rows[3]["start_anchor"] is None
 
     def test_to_dict_literal(self) -> None:
         field = _two_claim_field()
@@ -881,32 +848,20 @@ class TestDictRoundTrip:
         field = MatchClaimField.from_claims(claims)
         data = field.to_dict()
         rows = data["rows"]
-        assert [row["id"] for row in rows] == [
-            "c1",
-            "midi 96",
-            "c3",
-            "c4",
-            "c5",
-            "claim_1",
-        ]
-        assert [row["id_minted"] for row in rows] == [False] * 5 + [True]
+        assert [row["id"] for row in rows] == ["c1", "midi 96", "c3", "c4", "c5"]
         assert [row["is_synchronous"] for row in rows] == [
             True,
             True,
             True,
             False,
             False,
-            True,
         ]
-        assert [row["is_explicit"] for row in rows] == [True] * 5 + [False]
-        assert [row["source_claim_id"] for row in rows] == [None] * 5 + ["c1"]
         assert [row["event_b_id"] for row in rows] == [
             "onset_7",
             "sample_44100",
             "o2",
             None,
             "o10",
-            None,
         ]
         assert rows[1] == _DISCRETE_ROW
         assert data["provenance"] is None
@@ -917,8 +872,6 @@ class TestDictRoundTrip:
     @pytest.mark.parametrize("shared", [False, True])
     def test_yaml_round_trip(self, shared: bool) -> None:
         claims = _every_kind([HUMAN, HUMAN, HUMAN, HUMAN, HUMAN if shared else None])
-        if shared:
-            claims[5] = claims[5].model_copy(update={"provenance": HUMAN})
         field = MatchClaimField.from_claims(claims)
         assert (field.provenance == HUMAN) is shared
         data = field.to_dict()
@@ -979,9 +932,15 @@ class TestDictRoundTrip:
             (
                 ("start_anchor",),
                 lambda mapping: mapping.update(unit="seconds"),
-                "row 0 start_anchor must hold the keys ['timeline_a_id', "
-                "'coordinate_a', 'timeline_b_id', 'coordinate_b']; it lacks [] "
-                "and has the unknown keys ['unit'].",
+                "row 0 start_anchor must hold the keys ['coordinate_a', "
+                "'coordinate_b']; it lacks [] and has the unknown keys ['unit'].",
+            ),
+            (
+                ("start_anchor",),
+                lambda mapping: mapping.update(timeline_a_id="score"),
+                "row 0 start_anchor must hold the keys ['coordinate_a', "
+                "'coordinate_b']; it lacks [] and has the unknown keys "
+                "['timeline_a_id'].",
             ),
             (
                 ("provenance",),
@@ -1051,21 +1010,17 @@ class TestTableRoundTrip:
     """``.table`` / ``from_table``."""
 
     def test_claims_are_what_they_say(self) -> None:
-        interval, discrete, float_quarters, nomatch, conceptual, implicit = _every_kind(
-            NONE6
-        )
+        interval, discrete, float_quarters, nomatch, conceptual = _every_kind(NONE5)
         assert interval.end_anchor.coordinate_a.value == Fraction(10, 3)
         assert interval.end_anchor.coordinate_b.value == 2.5
         assert type(discrete.start_anchor.coordinate_a.value) is int
         assert type(discrete.start_anchor.coordinate_b.value) is int
         assert float_quarters.start_anchor.coordinate_a.number_type is NumberType.float
-        assert nomatch.source_coordinate.value == Fraction(27, 2)
+        assert (nomatch.event_a_id, nomatch.anchors) == ("note_9", [])
         assert (conceptual.is_synchronous, conceptual.anchors) == (False, [])
-        assert (implicit.is_explicit, implicit.source_claim_id) == (False, "c1")
 
     def test_shared_provenance_in_schema_metadata(self) -> None:
         claims = _every_kind([SOFTWARE] * 5)
-        claims[5] = claims[5].model_copy(update={"provenance": SOFTWARE})
         field = MatchClaimField.from_claims(claims)
         assert field.provenance == SOFTWARE
         assert field.table.schema.metadata == {
@@ -1087,7 +1042,6 @@ class TestTableRoundTrip:
             SOFTWARE,
             None,
             HUMAN,
-            None,
         ]
         assert restored.to_claims() == claims
 
@@ -1111,7 +1065,7 @@ class TestTableRoundTrip:
             ValueError,
             match=re.escape(_NOT_THE_PROPERTIES.format(columns, columns[:-1])),
         ):
-            MatchClaimField.from_table(gold_field.table.drop_columns(["id_minted"]))
+            MatchClaimField.from_table(gold_field.table.drop_columns(["id"]))
         single = pa.table({"match_claim": gold_field.table.to_struct_array()})
         with pytest.raises(
             ValueError,
@@ -1120,11 +1074,11 @@ class TestTableRoundTrip:
             MatchClaimField.from_table(single)
 
     def test_refuses_other_type(self, gold_field: MatchClaimField) -> None:
-        table = _with_child(gold_field.table, "is_explicit", pa.array([1, 1, 1]))
+        table = _with_child(gold_field.table, "is_synchronous", pa.array([1, 1, 1]))
         with pytest.raises(
             ValueError,
             match=re.escape(
-                "Column 'is_explicit' has type int64, which is not the type of "
+                "Column 'is_synchronous' has type int64, which is not the type of "
                 "the MatchClaim property, bool."
             ),
         ):
@@ -1151,31 +1105,9 @@ class TestTableRoundTrip:
                 "MatchClaim table row 1 has a certainty outside [0, 1].",
             ),
             (
-                "timeline_b_id",
-                ["B", "C", "A"],
-                "MatchClaim table row 2 has a start anchor not joining its timeline "
-                "A and timeline B in that order.",
-            ),
-            (
                 "timeline_a_id",
                 ["B", "A", "B"],
                 "MatchClaim table row 0 connects a timeline with itself.",
-            ),
-            (
-                "source_coordinate",
-                [
-                    None,
-                    {
-                        "value": 0.0,
-                        "numerator": 0,
-                        "denominator": 1,
-                        "unit": "quarters",
-                        "number_type": "fraction",
-                    },
-                    None,
-                ],
-                "MatchClaim table row 1 holds a source_coordinate and is not a "
-                "NOMATCH MatchClaim.",
             ),
         ],
     )
@@ -1188,14 +1120,17 @@ class TestTableRoundTrip:
             MatchClaimField.from_table(table)
 
     def test_swapped_timelines_refused(self, gold_field: MatchClaimField) -> None:
+        # An anchor's coordinates are on its row's timelines: swapping a row's
+        # timelines puts each coordinate on the other's axis.
         table = gold_field.table
         table = _with_child(table, "timeline_a_id", pa.array(["B", "A", "B"]))
         table = _with_child(table, "timeline_b_id", pa.array(["A", "C", "C"]))
         with pytest.raises(
             ValueError,
             match=re.escape(
-                "MatchClaim table row 0 has a start anchor not joining its timeline "
-                "A and timeline B in that order."
+                "The MatchClaim table holds coordinates of timeline 'B' in quarters "
+                "(fraction) and seconds (float): the coordinates of one timeline are "
+                "on its one axis."
             ),
         ):
             MatchClaimField.from_table(table)
@@ -1220,20 +1155,8 @@ class TestTableRoundTrip:
             coordinate_b=[10.0, 44100],
             timelines={**GOLD_AXES, "C": ("samples", "int")},
         )
+        # Renaming the row's timeline moves its anchor's coordinate with it.
         table = _with_child(field.table, "timeline_b_id", pa.array(["B", "B"]))
-        anchor = table.column("start_anchor").combine_chunks()
-        renamed = pa.StructArray.from_arrays(
-            [
-                (
-                    pa.array(["B", "B"])
-                    if sub.name == "timeline_b_id"
-                    else anchor.field(sub.name)
-                )
-                for sub in anchor.type
-            ],
-            fields=list(anchor.type),
-        )
-        table = _with_child(table, "start_anchor", renamed)
         with pytest.raises(
             ValueError,
             match=re.escape(
@@ -1263,7 +1186,7 @@ class TestTableRoundTrip:
             MatchClaimField.from_table(table)
 
     def test_refuses_anchorless_row_naming_no_event(self) -> None:
-        field = MatchClaimField.from_claims(_every_kind(NONE6)[3:4])
+        field = MatchClaimField.from_claims(_every_kind(NONE5)[3:4])
         table = _with_child(
             field.table, "event_a_id", pa.array([None], type=pa.string())
         )
@@ -1330,23 +1253,6 @@ class TestParquetFile:
             "claim_3",
         ]
         assert restored.table.equals(held.table, check_metadata=True)
-
-    def test_implicit_claims_stay_out_of_the_file(self, tmp_path: Path) -> None:
-        field = MatchClaimField.from_claims(_every_kind(NONE6))
-        message = (
-            "MatchClaim table row 5 is an implicit MatchClaim, which is derived and "
-            "never {}: the file holds the MatchClaims stated."
-        )
-        with pytest.raises(
-            ValueError, match=re.escape(message.format("written to a file"))
-        ):
-            field.to_parquet(tmp_path)
-        assert list(tmp_path.iterdir()) == []
-        pq.write_table(field.table, tmp_path / "match_claims.parquet")
-        with pytest.raises(
-            ValueError, match=re.escape(message.format("read from a file"))
-        ):
-            MatchClaimField.from_parquet(tmp_path)
 
     def test_empty_field_through_the_file(self, tmp_path: Path) -> None:
         restored = MatchClaimField.from_parquet(
@@ -1422,7 +1328,7 @@ class TestEquality:
     """Claim equality is over the claim, never over the bundle holding it."""
 
     def test_copy_in_a_bundle_is_equal(self) -> None:
-        claim = _every_kind(NONE6)[0]
+        claim = _every_kind(NONE5)[0]
         held = claim.model_copy()
         held.set_bundle(AlignmentBundle())
         assert held.bundle is not None and claim.bundle is None
@@ -1430,8 +1336,8 @@ class TestEquality:
         assert hash(claim) == hash(held)
 
     def test_round_trip_outside_a_bundle(self) -> None:
-        claims = MatchClaimField.from_claims(_every_kind(NONE6)).to_claims()
-        assert [claim.bundle for claim in claims] == [None] * 6
+        claims = MatchClaimField.from_claims(_every_kind(NONE5)).to_claims()
+        assert [claim.bundle for claim in claims] == [None] * 5
         assert MatchClaimField.from_claims(claims).to_claims() == claims
 
     def test_tables_of_equal_rows_are_equal(self, gold_field: MatchClaimField) -> None:

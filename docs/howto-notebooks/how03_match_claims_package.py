@@ -245,16 +245,20 @@ claim_rows(bundle.get_match_claims())
 
 # %% [markdown]
 # Every reader of claims takes the belief filter: `believer=` names an
-# actor, and `belief=` keeps everything that actor does not believe
-# `"false"` (the default, so `"unlikely"` passes) or only what the actor
-# believes `"true"`. Without a `believer=` nothing is filtered.
+# actor, and `beliefs=` lists the states kept for that actor: `"true"`,
+# `"undecided"` (the actor holds no belief on the claim), `"unlikely"` and
+# `"false"`. The default keeps every state but `"false"`, so `"unlikely"`
+# passes. Without a `believer=` nothing is filtered.
 
 # %%
 {
     "every claim": len(bundle.get_match_claims()),
     "not believed false by the editor": len(bundle.get_match_claims(believer=EDITOR)),
     "believed true by the editor": len(
-        bundle.get_match_claims(believer=EDITOR, belief="true")
+        bundle.get_match_claims(believer=EDITOR, beliefs=["true"])
+    ),
+    "undecided for the editor": len(
+        bundle.get_match_claims(believer=EDITOR, beliefs=["undecided"])
     ),
 }
 
@@ -262,12 +266,12 @@ claim_rows(bundle.get_match_claims())
 # MatchStamps read the same filter, and so do the bundle's coordinate
 # getters (`get_coordinate_at` and the rest of its row). At quarter 6, the
 # doubted claim reaches the recording under the default filter; with
-# `belief="true"` the stamp holds the score alone.
+# `beliefs=["true"]` the stamp holds the score alone.
 
 # %%
 [
     bundle.get_matchstamp_at(Fraction(6), score.id, believer=EDITOR),
-    bundle.get_matchstamp_at(Fraction(6), score.id, believer=EDITOR, belief="true"),
+    bundle.get_matchstamp_at(Fraction(6), score.id, believer=EDITOR, beliefs=["true"]),
 ]
 
 # %% [markdown]
@@ -340,7 +344,7 @@ read = AlignmentBundle.from_file(manifest_path)
     "same MatchClaim table": read.match_claim_table == bundle.match_claim_table,
     "same manifest": read.to_dict() == bundle.to_dict(),
     "believed true by the editor": [
-        claim.id for claim in read.get_match_claims(believer=EDITOR, belief="true")
+        claim.id for claim in read.get_match_claims(believer=EDITOR, beliefs=["true"])
     ],
     "events of the score read": len(read.get_timeline(score.id).get_events()),
 }
@@ -399,7 +403,7 @@ len(AlignmentBundle.from_file(manifest_path).get_match_claims())
 # %% [markdown]
 # ## Next
 #
-# - The kinds of claim (event match, NOMATCH, conceptual, implicit) and how
+# - The kinds of claim (event match, NOMATCH, conceptual) and how
 #   claims become MatchStamps: the
 #   [Alignment Bundles and MatchClaims](../tutorials/tut06_alignment_bundles.ipynb)
 #   tutorial.

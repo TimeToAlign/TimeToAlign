@@ -489,8 +489,8 @@ stated all the same.
   verbatim, the bare string included. The claims are 17 = 1 + 13 + 1 + 2, in
   row order:
   * claim 1, a NOMATCH from the score: not synchronous, no anchor, timeline
-    a the score and b the performance, `event_a_id` `n4`, `source_coordinate`
-    `Fraction(9, 2)` quarters, the note's own score position (a loader
+    a the score and b the performance, `event_a_id` `n4` (the claim holds no
+    coordinate: the note's position is its own on the score; a loader
     dropping the row would give 16 claims; one placing it at -1 s would give
     an anchor);
   * claims 2–14, the thirteen synchronous claims of the first fixture;
@@ -499,7 +499,8 @@ stated all the same.
   * claims 16 and 17, NOMATCH from the performance: timeline a the
     performance and b the score, `event_a_id` `projection_15` and
     `projection_16`, Projections standing for no score note (`projection_of`
-    null) at 2.75 and 4.75 seconds (`source_coordinate`, as floats). The file
+    null) at 2.75 and 4.75 seconds (the Projections' `start`, as floats; the
+    claims hold no coordinate). The file
     gives both notes one id, which can name neither event, so the timeline
     mints theirs and the claim keeps the file's id as `event_a_name`
     (`trompa-align_inserted_Cs4`). The performance holds 16 Projections.

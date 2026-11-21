@@ -647,41 +647,6 @@ def test_a_fraction_target_stays_exact_from_any_source() -> None:
     assert stamp._conversion_rows() == [("quarters", Fraction(3, 4), "quarters")]
 
 
-def test_an_unmatched_claim_writes_its_axis_in_both_directions() -> None:
-    """A NOMATCH claim carries its position outside an anchor, and it counts.
-
-    The anchored and interval lanes were brought onto their axes first, and
-    this one was missed because its coordinate lives in a different field --
-    which is exactly how the same defect reappears in a fixed area. The
-    storage and every rendering of it are asserted, since the coordinate is
-    read straight off the model rather than through a getter (an anchorless
-    claim raises on ``get_coordinate_for``, and rightly so). Both directions:
-    the exact side of the seconds cell is a sixteen-digit ratio, and a
-    quarters axis must still keep its exact third.
-    """
-    audio = ContinuousPhysicalTimeline(length=300.0, uid="Demo2")
-    audio.add_events([{"id": "sect", "event_type": "Section", "instant": 164.3}])
-    score = ContinuousLogicalTimeline(length=Fraction(64), uid="score")
-    score.add_events([{"id": "n1", "event_type": "Note", "instant": Fraction(1, 3)}])
-
-    on_float_axis = MatchClaim.nomatch(audio.get_event("sect"), audio, "Studio")
-    on_exact_axis = MatchClaim.nomatch(score.get_event("n1"), score, "perf")
-
-    assert on_float_axis.source_coordinate == Coordinate(164.3, TimeUnit.seconds)
-    assert isinstance(on_float_axis.source_coordinate.value, float)
-    assert repr(on_float_axis) == (
-        "MatchClaim(Demo2@164.3 seconds <-> Studio [NOMATCH])"
-    )
-    assert "@164.3 seconds" in str(on_float_axis)
-    assert "164.3 seconds" in on_float_axis._repr_html_()
-
-    assert on_exact_axis.source_coordinate == Coordinate(
-        Fraction(1, 3), TimeUnit.quarters
-    )
-    assert isinstance(on_exact_axis.source_coordinate.value, Fraction)
-    assert repr(on_exact_axis) == ("MatchClaim(score@1/3 quarters <-> perf [NOMATCH])")
-
-
 def _converting_bundle() -> AlignmentBundle:
     """A quarters score and a ticks and a samples timeline, each with a C-Map.
 

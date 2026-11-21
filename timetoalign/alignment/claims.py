@@ -39,7 +39,7 @@ import json
 import logging
 import os
 import re
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Collection, Iterable, Iterator, Mapping, Sequence
 from fractions import Fraction
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple
@@ -78,10 +78,12 @@ from timetoalign.core.fields import (
 )
 from timetoalign.core.ids import mint_ids, quote_id, validate_id
 from timetoalign.core.provenance import (
+    DEFAULT_BELIEFS,
     Belief,
-    BeliefFilter,
+    BeliefState,
     Provenance,
     belief_mask,
+    check_belief_filter,
     provenance_array,
 )
 from timetoalign.core.retrieval import (
@@ -323,10 +325,8 @@ def _positions_by_scope(
     return joined.sort_by("old").column("new").combine_chunks()
 
 
-def _admitted_claim_ids(
-    ids: pa.Array, minted: pa.Array, taken: pa.Array, *, scope: str
-) -> tuple[pa.Array, pa.Array]:
-    """Return the ids and minted flags rows keep when they join a bundle.
+def _admitted_claim_ids(ids: pa.Array, taken: pa.Array, *, scope: str) -> pa.Array:
+    """Return the ids rows keep when they join a bundle.
 
     The ids are checked first (:func:`_refuse_held_claim_ids`), so a refusal
     changes nothing. A row without an id is then minted one (``claim_N``, N
@@ -336,12 +336,11 @@ def _admitted_claim_ids(
 
     Args:
         ids: The newcomers' ids (a string array; null for a row without one).
-        minted: Whether each newcomer's id was minted.
         taken: The ids the bundle already holds.
         scope: What the scope is, for the message.
 
     Returns:
-        The ids the newcomers keep, in row order, and their minted flags.
+        The ids the newcomers keep, in row order.
 
     Raises:
         ValueError: If an id is already held in the scope or held twice.
@@ -351,12 +350,11 @@ def _admitted_claim_ids(
     _refuse_held_claim_ids(ids, taken, scope=scope)
     present = ids.filter(pc.is_valid(ids))
     missing = pc.is_null(ids)
-    minted = pc.or_(pc.fill_null(pc.cast(minted, pa.bool_()), False), missing)
     count = pc.sum(missing).as_py() or 0
     if count == 0:
-        return ids, minted
+        return ids
     fresh = mint_ids(_CLAIM_ID_PREFIX, pa.concat_arrays([taken, present]), count)
-    return pc.replace_with_mask(ids, missing, fresh), minted
+    return pc.replace_with_mask(ids, missing, fresh)
 
 
 def _join_claims(
@@ -367,8 +365,8 @@ def _join_claims(
     The ids are admitted by :func:`_admitted_claim_ids`, which never renames
     one: a claim whose id the scope holds, or two claims under one id, are
     refused before anything changes. A claim without an id is then given
-    the id the scope mints for it, in place (its first id, not a rename),
-    with ``id_minted`` set. A claim that belongs to no bundle joins as
+    the id the scope mints for it, in place (its first id, not a rename).
+    A claim that belongs to no bundle joins as
     itself; a claim a bundle already holds joins as a copy, so the bundle it
     came from keeps its back-reference.
 
@@ -380,9 +378,8 @@ def _join_claims(
     Returns:
         The claims to store, in order.
     """
-    ids, _ = _admitted_claim_ids(
+    ids = _admitted_claim_ids(
         pa.array([claim.id for claim in claims], type=pa.string()),
-        pa.array([claim.id_minted for claim in claims], type=pa.bool_()),
         taken,
         scope=scope,
     )
@@ -390,7 +387,6 @@ def _join_claims(
         if claim.id is None:
             # Frozen model: its first id is set through object.__setattr__.
             object.__setattr__(claim, "id", claim_id)
-            object.__setattr__(claim, "id_minted", True)
     return [claim if claim._bundle is None else claim.model_copy() for claim in claims]
 
 
@@ -408,33 +404,6 @@ def _coordinate_to_dict(coordinate: Coordinate) -> dict[str, Any]:
 def _coordinate_from_dict(data: dict[str, Any]) -> Coordinate:
     """Restore a coordinate through the shared representation."""
     return coordinate_from_dict(data)
-
-
-def _coordinate_from_input(
-    value: int | float | Fraction | Coordinate,
-    unit: TimeUnit | str | None,
-    timeline_id: str,
-    parameter_name: str,
-) -> Coordinate:
-    """Resolve a raw or unit-bearing coordinate factory argument."""
-    if isinstance(value, Coordinate):
-        if isinstance(value, IdCoordinate) and value.timeline_id != timeline_id:
-            raise ValueError(
-                f"{parameter_name} timeline_id {value.timeline_id!r} does not "
-                f"match {timeline_id!r}"
-            )
-        if unit is not None and TimeUnit(unit) != value.unit:
-            raise ValueError(
-                f"{parameter_name} unit {value.unit.value!r} does not match "
-                f"explicit unit {TimeUnit(unit).value!r}"
-            )
-        return value
-
-    if unit is None:
-        raise ValueError(
-            f"{parameter_name} requires an explicit unit for a raw coordinate"
-        )
-    return Coordinate(value, unit)
 
 
 def _event_coordinate(raw: Any) -> Any:
@@ -688,30 +657,10 @@ class AlignmentAnchor(BaseModel):
 # region MatchClaim
 
 
-_CLAIM_KEY_ORDER: tuple[str, ...] = (
-    "id",
-    "id_minted",
-    "timeline_a_id",
-    "timeline_b_id",
-    "start_anchor",
-    "end_anchor",
-    "is_explicit",
-    "is_synchronous",
-    "certainty",
-    "provenance",
-    "event_a_id",
-    "event_a_name",
-    "event_b_id",
-    "event_b_name",
-    "source_coordinate",
-    "source_claim_id",
-)
-"""Key order of the stored :meth:`MatchClaim.to_dict` shape.
-
-``model_dump`` emits fields in declaration order; the stored dictionary
-predates that order and is pinned here so the two can diverge without
-either becoming the accident.
-"""
+_ANCHOR_KEYS: tuple[str, ...] = ("coordinate_a", "coordinate_b")
+"""The keys of an anchor in a MatchClaim's dictionary and in a row of the
+MatchClaim table: its two coordinates. Its timelines are the claim's own
+(``timeline_a_id``, ``timeline_b_id``), stated once."""
 
 
 class MatchClaim(BaseModel):
@@ -719,18 +668,20 @@ class MatchClaim(BaseModel):
 
     A MatchClaim always knows which two timelines it connects via top-level
     ``timeline_a_id`` and ``timeline_b_id`` fields, and it names the events
-    it is about: an explicit claim names an event on each side, or one event
+    it is about: it names an event on each side, or one event
     and the NOMATCH sentinel (``None``) on the other. It never states a bare
     coordinate: a side without an event of its own is given a Projection
     event first. Anchors are only present for synchronous claims, and each of
     their coordinates is on its timeline's own axis (:meth:`check_on_timelines`).
 
-    Four cases:
+    Two factories:
         (a) ``from_events``: Two events on different timelines correspond
             (synchronous, with anchors; or conceptual, without).
         (b) ``nomatch``: An event has no equivalent on the other timeline.
-        (c) ``implicit``: Implicit claim generated by MatchGraph group
-            extension (derived, never stored as a statement).
+
+    A MatchClaim is always stated: the correspondences a
+    :class:`~timetoalign.alignment.graph.MatchGraph` infers through groups
+    are the graph's own inferred edges, never MatchClaims.
 
     Attributes:
         timeline_a_id: First timeline's unique identifier.
@@ -739,28 +690,21 @@ class MatchClaim(BaseModel):
         end_anchor: AlignmentAnchor for event ends (None for instants or
             non-synchronous claims).
         is_synchronous: True if temporally synchronous matches.
-        is_explicit: True if directly claimed, False if inferred.
         provenance: How the claim was made and who believes it
             (:class:`~timetoalign.core.provenance.Provenance`).
         certainty: How certain the claim is, in [0, 1] (1.0, certain;
             ``None``, not stated).
-        source_claim_id: For implicit claims, the ID of the claim that
-            generated this one.
         event_a_id: ID of the event on timeline A (``None``: the NOMATCH
             sentinel).
         event_a_name: Name/label of the event on timeline A (if known).
         event_b_id: ID of the event on timeline B (``None``: the NOMATCH
             sentinel).
         event_b_name: Name/label of the event on timeline B (if known).
-        source_coordinate: The position of a NOMATCH claim's event, on the
-            timeline of its event. None for synchronous claims, whose
-            coordinates are held by the anchors instead.
         id: The claim's identifier, unique in the scope holding the claim
             (a :class:`MatchClaimField` or an ``AlignmentBundle``). It never
             changes once given: a scope already holding it refuses the
             claim. A claim made without one holds ``None`` until the first
             scope it joins mints one (``claim_N``).
-        id_minted: Whether ``id`` was minted by a scope rather than given.
 
     Examples:
         >>> from timetoalign.timelines.types import (
@@ -783,24 +727,20 @@ class MatchClaim(BaseModel):
         (True, 'nomatch')
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     timeline_a_id: str
     timeline_b_id: str
     start_anchor: AlignmentAnchor | None = None
     end_anchor: AlignmentAnchor | None = None
     is_synchronous: bool = True
-    is_explicit: bool = True
     provenance: Provenance | None = None
     certainty: float | None = 1.0
-    source_claim_id: str | None = None
     event_a_id: str | None = None
     event_a_name: str | None = None
     event_b_id: str | None = None
     event_b_name: str | None = None
-    source_coordinate: Coordinate | None = None
     id: str | None = None  # noqa: A003 — minted by the first scope it joins
-    id_minted: bool = False
 
     # Runtime association with the owning bundle. A private attr takes no
     # part in the derived Arrow schema or the repr, and ``__eq__`` excludes it.
@@ -851,28 +791,20 @@ class MatchClaim(BaseModel):
                     "is_synchronous=True."
                 )
 
-        # An explicit claim names its events, never a bare coordinate.
-        if self.is_explicit:
-            n_events = int(self.event_a_id is not None) + int(
-                self.event_b_id is not None
-            )
-            if self.is_synchronous and n_events != 2:
-                raise ValueError(
-                    "A synchronous MatchClaim names an event on each side "
-                    "(event_a_id and event_b_id). Give a side without an event "
-                    "of its own a Projection event first, never a bare "
-                    "coordinate."
-                )
-            if not self.is_synchronous and n_events == 0:
-                raise ValueError(
-                    "A MatchClaim names its events: a NOMATCH claim one event "
-                    "(the other side None, the NOMATCH sentinel), a conceptual "
-                    "claim two."
-                )
-        if self.source_coordinate is not None and not self.is_nomatch:
+        # A MatchClaim names its events, never a bare coordinate.
+        n_events = int(self.event_a_id is not None) + int(self.event_b_id is not None)
+        if self.is_synchronous and n_events != 2:
             raise ValueError(
-                "Only a NOMATCH MatchClaim has a source_coordinate: the "
-                "coordinates of any other claim are its anchors'."
+                "A synchronous MatchClaim names an event on each side "
+                "(event_a_id and event_b_id). Give a side without an event "
+                "of its own a Projection event first, never a bare "
+                "coordinate."
+            )
+        if not self.is_synchronous and n_events == 0:
+            raise ValueError(
+                "A MatchClaim names its events: a NOMATCH claim one event "
+                "(the other side None, the NOMATCH sentinel), a conceptual "
+                "claim two."
             )
         return self
 
@@ -921,8 +853,8 @@ class MatchClaim(BaseModel):
     def claim_type(self) -> ClaimType:
         """The semantic kind of this claim, derived from its structure.
 
-        The classification reads only ``is_explicit``, ``is_synchronous`` and
-        which of ``event_a_id`` / ``event_b_id`` are set — no stored field
+        The classification reads only ``is_synchronous`` and which of
+        ``event_a_id`` / ``event_b_id`` are set — no stored field
         records the kind, so it always reflects the claim's current shape.
 
         Returns:
@@ -932,13 +864,10 @@ class MatchClaim(BaseModel):
 
         | Condition                            | Result          |
         |--------------------------------------|-----------------|
-        | ``is_explicit`` is False             | ``implicit``    |
         | synchronous (an event on each side)  | ``event_match`` |
         | non-synchronous, one side names one  | ``nomatch``     |
         | non-synchronous, both sides name one | ``conceptual``  |
         """
-        if not self.is_explicit:
-            return ClaimType.implicit
         if self.is_synchronous:
             return ClaimType.event_match
         n_events = int(self.event_a_id is not None) + int(self.event_b_id is not None)
@@ -982,17 +911,15 @@ class MatchClaim(BaseModel):
     def check_on_timelines(self, timeline_a: Any, timeline_b: Any) -> "MatchClaim":
         """Refuse this claim unless every coordinate is on its timeline's axis.
 
-        Every coordinate the claim holds (both coordinates of each anchor,
-        and a NOMATCH claim's ``source_coordinate``, which is on the side of
-        its event) must be in its timeline's unit and declared number type.
-        Every factory that receives the timelines runs this check.
+        Every coordinate the claim holds (both coordinates of each anchor)
+        must be in its timeline's unit and declared number type. Every
+        factory that receives the timelines runs this check.
 
         Args:
             timeline_a: Timeline A, or its ``(unit, number_type)`` pair. A
                 timeline must be the one ``timeline_a_id`` names.
             timeline_b: Timeline B, likewise. Either may be ``None`` where
-                the claim holds no coordinate on that side (a NOMATCH
-                claim's other side).
+                the claim holds no coordinate (a claim without anchors).
 
         Returns:
             This claim.
@@ -1039,16 +966,6 @@ class MatchClaim(BaseModel):
                     getattr(anchor, f"timeline_{side}_id"),
                     f"{anchor_name}.coordinate_{side}",
                 )
-        if self.source_coordinate is not None:
-            refuse(
-                self.source_coordinate,
-                (
-                    self.timeline_a_id
-                    if self.event_a_id is not None
-                    else self.timeline_b_id
-                ),
-                "source_coordinate",
-            )
         return self
 
     def get_coordinate_for(
@@ -1455,7 +1372,7 @@ class MatchClaim(BaseModel):
 
         Args:
             event: Event dict from *timeline*; must hold ``id``, may hold
-                ``name`` and ``start``.
+                ``name``.
             timeline: The event's timeline.
             other_timeline: The timeline on which the event has no
                 counterpart (a timeline, or its id).
@@ -1465,96 +1382,29 @@ class MatchClaim(BaseModel):
                 mints it.
 
         Returns:
-            A non-synchronous MatchClaim with no anchors. The event's
-            ``start``, placed on its timeline's axis, is kept as
-            ``source_coordinate``.
+            A non-synchronous MatchClaim with no anchors.
 
         Raises:
-            ValueError: If the event names no id, or its start cannot be
-                placed on its timeline's axis.
+            ValueError: If the event names no id.
         """
         other_id = (
             other_timeline if isinstance(other_timeline, str) else other_timeline.id
-        )
-        source_coordinate = (
-            _on_timeline(
-                _event_coordinate(event["start"]), timeline, "source_coordinate"
-            )
-            if event.get("start") is not None
-            else None
         )
         claim = cls(
             timeline_a_id=timeline.id,
             timeline_b_id=other_id,
             is_synchronous=False,
-            is_explicit=True,
             certainty=certainty,
             provenance=provenance,
             event_a_id=_event_id(event, "event"),
             event_a_name=_event_name(event),
-            source_coordinate=source_coordinate,
             id=id,
         )
         return claim.check_on_timelines(
             timeline, None if isinstance(other_timeline, str) else other_timeline
         )
 
-    @classmethod
-    def implicit(
-        cls,
-        tl_a_id: str,
-        coord_a: CoordinateSpec,
-        tl_b_id: str,
-        coord_b: CoordinateSpec,
-        *,
-        unit_a: TimeUnit | str | None = None,
-        unit_b: TimeUnit | str | None = None,
-        source_claim: "MatchClaim | None" = None,
-        provenance: Provenance | None = None,
-    ) -> "MatchClaim":
-        """Case (c): Implicit claim generated by MatchGraph group extension.
-
-        An implicit claim is derived, never stated: it names no events.
-
-        Args:
-            tl_a_id: First timeline's ID.
-            coord_a: Coordinate specification on timeline A.
-            tl_b_id: Second timeline's ID.
-            coord_b: Coordinate specification on timeline B.
-            unit_a: Unit of timeline A's coordinate.
-            unit_b: Unit of timeline B's coordinate.
-            source_claim: The claim that generated this one.
-            provenance: How the claim was made.
-
-        Returns:
-            A synchronous, non-explicit MatchClaim with one anchor.
-        """
-        coordinate_a = _coordinate_from_input(coord_a, unit_a, tl_a_id, "coord_a")
-        coordinate_b = _coordinate_from_input(coord_b, unit_b, tl_b_id, "coord_b")
-
-        return cls(
-            timeline_a_id=tl_a_id,
-            timeline_b_id=tl_b_id,
-            start_anchor=AlignmentAnchor(
-                timeline_a_id=tl_a_id,
-                coordinate_a=coordinate_a,
-                timeline_b_id=tl_b_id,
-                coordinate_b=coordinate_b,
-            ),
-            is_synchronous=True,
-            is_explicit=False,
-            source_claim_id=source_claim.id if source_claim else None,
-            provenance=provenance,
-        )
-
     # endregion
-
-    @field_serializer("source_coordinate")
-    def _serialize_source_coordinate(
-        self, coordinate: Coordinate | None
-    ) -> dict[str, Any] | None:
-        """Emit the NOMATCH coordinate through the shared JSON representation."""
-        return None if coordinate is None else _coordinate_to_dict(coordinate)
 
     @field_serializer("provenance")
     def _serialize_provenance(
@@ -1563,52 +1413,55 @@ class MatchClaim(BaseModel):
         """Emit the provenance as its dictionary, absent keys left out."""
         return None if provenance is None else provenance.to_dict()
 
-    @field_validator("source_coordinate", mode="before")
-    @classmethod
-    def _parse_source_coordinate(cls, value: Any) -> Any:
-        """Accept the serialized coordinate dict as well as a Coordinate."""
-        if isinstance(value, dict) and "unit" in value:
-            return _coordinate_from_dict(value)
-        return value
-
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary for storage.
 
-        The values come straight from ``model_dump``; only the key order
-        and the omission of an absent ``source_claim_id`` are applied on
-        top, since both are part of the stored shape.
+        The keys are the columns of the MatchClaim table, in its order
+        (:attr:`MatchClaimField.table`), and the values those of a row of
+        its dictionary (:meth:`MatchClaimField.to_dict`): an anchor holds
+        its two coordinates (coordinate dicts), its timelines being the
+        claim's ``timeline_a_id`` and ``timeline_b_id``.
         """
         dumped = self.model_dump(mode="json")
-        if dumped["source_claim_id"] is None:
-            del dumped["source_claim_id"]
-        return {key: dumped[key] for key in _CLAIM_KEY_ORDER if key in dumped}
+        for slot in ("start_anchor", "end_anchor"):
+            if dumped[slot] is not None:
+                dumped[slot] = {key: dumped[slot][key] for key in _ANCHOR_KEYS}
+        return dumped
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "MatchClaim":
-        """Deserialize from dictionary.
+        """Deserialize from dictionary (inverse of :meth:`to_dict`).
 
-        One normalisation precedes validation: an absent timeline ID is
-        taken from the start anchor. A missing or null ``id`` leaves the
-        claim without one.
+        An anchor is a mapping holding ``coordinate_a`` and ``coordinate_b``
+        (coordinate dicts or coordinates), rebuilt as an
+        :class:`AlignmentAnchor` on the claim's ``timeline_a_id`` and
+        ``timeline_b_id``; an :class:`AlignmentAnchor` is taken as it is. A
+        missing or null ``id`` leaves the claim without one.
+
+        Raises:
+            ValueError: If the timeline IDs are missing, or an anchor mapping
+                holds other keys than its two coordinates.
         """
         payload = dict(data)
         for slot in ("start_anchor", "end_anchor", "provenance"):
             if not payload.get(slot):
                 payload[slot] = None
-        anchor = payload.get("start_anchor")
-        for own_key, anchor_key in (
-            ("timeline_a_id", "timeline_a_id"),
-            ("timeline_b_id", "timeline_b_id"),
-        ):
-            if payload.get(own_key) is not None:
-                continue
-            if isinstance(anchor, AlignmentAnchor):
-                payload[own_key] = getattr(anchor, anchor_key)
-            elif isinstance(anchor, dict):
-                payload[own_key] = anchor.get(anchor_key)
         if payload.get("timeline_a_id") is None or payload.get("timeline_b_id") is None:
-            raise ValueError(
-                "Cannot deserialize MatchClaim: missing timeline IDs and no anchor."
+            raise ValueError("Cannot deserialize MatchClaim: missing timeline IDs.")
+        for slot in ("start_anchor", "end_anchor"):
+            anchor = payload[slot]
+            if not isinstance(anchor, dict):
+                continue
+            if sorted(anchor) != sorted(_ANCHOR_KEYS):
+                raise ValueError(
+                    f"A MatchClaim's {slot} holds the keys {list(_ANCHOR_KEYS)}, "
+                    f"not {sorted(anchor)}: its timelines are the claim's "
+                    f"timeline_a_id and timeline_b_id."
+                )
+            payload[slot] = AlignmentAnchor(
+                timeline_a_id=payload["timeline_a_id"],
+                timeline_b_id=payload["timeline_b_id"],
+                **anchor,
             )
         return cls.model_validate(payload)
 
@@ -1618,9 +1471,10 @@ class MatchClaim(BaseModel):
 
         This is the entry point ``SemanticField.__getitem__`` uses to
         materialise a scalar from the backing struct array. Every coordinate
-        cell (both anchors' coordinates and ``source_coordinate``) is read
-        as the coordinate it stores, in its unit and number type; the rest of
-        the row is the shape :meth:`from_dict` accepts.
+        cell (both coordinates of each anchor) is read as the coordinate it
+        stores, in its unit and number type; the rest of the row is the
+        shape :meth:`from_dict` accepts, each anchor rebuilt on the row's
+        ``timeline_a_id`` and ``timeline_b_id``.
 
         Args:
             row: The ``.as_py()`` dict of one struct-column element.
@@ -1647,14 +1501,7 @@ class MatchClaim(BaseModel):
         )
 
         if not self.is_synchronous:
-            if self.source_coordinate is not None:
-                timeline_a = (
-                    f"{self.timeline_a_id}@"
-                    f"{_format_coordinate(self.source_coordinate)}"
-                )
-            else:
-                timeline_a = self.timeline_a_id
-            return f"MatchClaim({timeline_a} <-> {self.timeline_b_id}{badge})"
+            return f"MatchClaim({self.timeline_a_id} <-> {self.timeline_b_id}{badge})"
 
         if self.is_interval:
             interval_a = self.get_interval_for(self.timeline_a_id)
@@ -1734,9 +1581,6 @@ class MatchClaim(BaseModel):
         else:
             header = "MatchClaim (synchronous, instant)"
 
-        if not self.is_explicit:
-            header += " [inferred]"
-
         lines = [header]
 
         # Timeline A and Event A
@@ -1752,11 +1596,6 @@ class MatchClaim(BaseModel):
                     f"  Timeline A:  {self.timeline_a_id}  "
                     f"@{_format_coordinate(self.start_anchor.coordinate_a)}"
                 )
-        elif self.source_coordinate is not None:
-            lines.append(
-                f"  Timeline A:  {self.timeline_a_id}  "
-                f"@{_format_coordinate(self.source_coordinate)}"
-            )
         else:
             lines.append(f"  Timeline A:  {self.timeline_a_id}")
 
@@ -1791,9 +1630,6 @@ class MatchClaim(BaseModel):
         for label, text in _provenance_lines(self.provenance):
             lines.append(f"  {label + ':':<12} {text}")
 
-        if self.source_claim_id is not None:
-            lines.append(f"  Source:      {self.source_claim_id}")
-
         return "\n".join(lines)
 
     def _repr_html_(self) -> str:
@@ -1815,11 +1651,8 @@ class MatchClaim(BaseModel):
             else:
                 badge_bg = "#e8f5e9"
                 badge_text = "synchronous, instant"
-        elif claim_type in (ClaimType.nomatch, ClaimType.conceptual):
+        else:  # nomatch, conceptual
             badge_bg = "#ffcdd2"
-            badge_text = claim_type.name.upper()
-        else:  # implicit — synchronous with anchors
-            badge_bg = "#fff3e0"
             badge_text = claim_type.name.upper()
 
         badge = (
@@ -1865,13 +1698,6 @@ class MatchClaim(BaseModel):
                 f"<tr><td>Timeline A</td>"
                 f"<td><strong>{html_mod.escape(self.timeline_a_id)}</strong></td>"
                 f"<td>{coord_a}</td></tr>"
-            )
-        elif self.source_coordinate is not None:
-            source_coordinate = _format_coordinate(self.source_coordinate)
-            rows.append(
-                f"<tr><td>Timeline A</td>"
-                f"<td>{html_mod.escape(self.timeline_a_id)}</td>"
-                f"<td>@{html_mod.escape(source_coordinate)}</td></tr>"
             )
         else:
             rows.append(
@@ -1939,9 +1765,17 @@ class MatchClaim(BaseModel):
 # region MatchClaimField
 
 
+def _drop_from_table(
+    _model_cls: type[BaseModel], _name: str, _info: object
+) -> list[pa.Field]:
+    """Leave a property out of the table: an anchor's timelines are its row's."""
+    return []
+
+
+register_value_projector(AlignmentAnchor, "timeline_a_id", _drop_from_table)
+register_value_projector(AlignmentAnchor, "timeline_b_id", _drop_from_table)
 register_value_projector(AlignmentAnchor, "coordinate_a", coordinate_cell_projector)
 register_value_projector(AlignmentAnchor, "coordinate_b", coordinate_cell_projector)
-register_value_projector(MatchClaim, "source_coordinate", coordinate_cell_projector)
 
 #: The keys of a coordinate dict (:func:`coordinate_to_dict`), which is how a
 #: claim coordinate cell is written in :meth:`MatchClaimField.to_dict`.
@@ -2123,16 +1957,13 @@ class MatchClaimField(SemanticField[MatchClaim]):
     _PROVENANCE_KEY: ClassVar[bytes] = PROVENANCE_METADATA_KEY.encode()
     #: The file name of the MatchClaim table beside a manifest.
     file_name: ClassVar[str] = "match_claims.parquet"
-    #: The per-row values beside the anchors, the source coordinate and the
-    #: provenance that :meth:`from_claims` reads from each claim under its
-    #: own name; the types are the derived struct's.
+    #: The per-row values beside the anchors and the provenance that
+    #: :meth:`from_claims` reads from each claim under its own name; the
+    #: types are the derived struct's.
     _ROW_VALUES: ClassVar[tuple[str, ...]] = (
         "id",
-        "id_minted",
         "is_synchronous",
-        "is_explicit",
         "certainty",
-        "source_claim_id",
         "event_a_id",
         "event_a_name",
         "event_b_id",
@@ -2168,18 +1999,17 @@ class MatchClaimField(SemanticField[MatchClaim]):
         from the parallel inputs and **never** materialises a single
         :class:`MatchClaim` Python object, so it scales to millions of rows.
 
-        Each row is a synchronous, explicit claim between two events: the
-        timeline and event ids are filled from the inputs, and every
-        coordinate is a position on its row's timeline, written in that
-        timeline's unit and declared number type. With the two end columns,
-        every row with an end on both sides is an interval claim. The ids
-        are left null (``id_minted`` false): the bundle the field joins
-        mints them (:meth:`~timetoalign.alignment.bundle.AlignmentBundle.add_match_claim_field`),
-        so fields of several sources join one bundle. Names,
-        ``source_coordinate`` and ``source_claim_id`` are left null, and so
-        is the ``provenance`` column (the shared provenance is injected on
-        read). The field is checked against the
-        timelines (:meth:`check_on_timelines`).
+        Each row is a synchronous claim between two events: the timeline
+        and event ids are filled from the inputs, and every coordinate is a
+        position on its row's timeline, written in that timeline's unit and
+        declared number type. With the two end columns, every row with an
+        end on both sides is an interval claim. The ids are left null: the
+        bundle the field joins mints them
+        (:meth:`~timetoalign.alignment.bundle.AlignmentBundle.add_match_claim_field`),
+        so fields of several sources join one bundle. Names are left null,
+        and so is the ``provenance`` column (the shared provenance is
+        injected on read). The field is checked against the timelines
+        (:meth:`check_on_timelines`).
 
         Args:
             timeline_a_ids: Timeline-A ids, one per claim.
@@ -2245,9 +2075,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
                 )
         anchors = {
             "start_anchor": cls._anchor_array(
-                tl_a,
                 _timeline_cells(coordinate_a, tl_a, axes),
-                tl_b,
                 _timeline_cells(coordinate_b, tl_b, axes),
             )
         }
@@ -2255,11 +2083,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
             end_a = _timeline_cells(end_coordinate_a, tl_a, axes)
             end_b = _timeline_cells(end_coordinate_b, tl_b, axes)
             anchors["end_anchor"] = cls._anchor_array(
-                tl_a,
-                end_a,
-                tl_b,
-                end_b,
-                mask=pc.or_(pc.is_null(end_a), pc.is_null(end_b)),
+                end_a, end_b, mask=pc.or_(pc.is_null(end_a), pc.is_null(end_b))
             )
         true_column = pa.array(np.ones(n, dtype=bool), type=pa.bool_())
         struct_array = cls._assemble(
@@ -2270,7 +2094,6 @@ class MatchClaimField(SemanticField[MatchClaim]):
                 "event_a_id": ev_a,
                 "event_b_id": ev_b,
                 "is_synchronous": true_column,
-                "is_explicit": true_column,
                 "certainty": pa.array(np.full(n, float(certainty)), pa.float64()),
                 **anchors,
             },
@@ -2327,15 +2150,10 @@ class MatchClaimField(SemanticField[MatchClaim]):
         for anchor_name in ("start_anchor", "end_anchor"):
             anchors = [getattr(claim, anchor_name) for claim in claims]
             columns[anchor_name] = cls._anchor_array(
-                cls._string_array([a and a.timeline_a_id for a in anchors]),
                 coordinate_cells([a and a.coordinate_a for a in anchors]),
-                cls._string_array([a and a.timeline_b_id for a in anchors]),
                 coordinate_cells([a and a.coordinate_b for a in anchors]),
                 mask=pa.array([a is None for a in anchors], type=pa.bool_()),
             )
-        columns["source_coordinate"] = coordinate_cells(
-            [claim.source_coordinate for claim in claims]
-        )
         if provenance is None:
             columns["provenance"] = provenance_array(
                 [claim.provenance for claim in claims]
@@ -2485,7 +2303,8 @@ class MatchClaimField(SemanticField[MatchClaim]):
         under TimeToShare's key ``timetoshare:provenance`` (the JSON of
         :meth:`~timetoalign.core.provenance.Provenance.to_dict`); a table
         without that key gives a field whose provenance is ``None``. Every
-        row is kept as stored; a row without an id is minted one.
+        row is kept as stored; a row without an id keeps none (the bundle it
+        joins mints it).
 
         Args:
             table: A table as written by :attr:`table`.
@@ -2590,13 +2409,11 @@ class MatchClaimField(SemanticField[MatchClaim]):
 
         Raises:
             ValueError: As :meth:`from_table`, or as
-                :meth:`check_on_timelines`; or if a row is an implicit
-                MatchClaim, which a file never holds.
+                :meth:`check_on_timelines`.
         """
         import pyarrow.parquet as pq
 
         field = cls.from_table(pq.read_table(cls._file_path(path)))
-        cls._refuse_implicit(field._struct_array(), "read from a file")
         return field if timelines is None else field.check_on_timelines(timelines)
 
     @classmethod
@@ -2610,9 +2427,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
         """
         import pyarrow.parquet as pq
 
-        field, scopes = cls._from_table(pq.read_table(cls._file_path(path)))
-        cls._refuse_implicit(field._struct_array(), "read from a file")
-        return field, scopes
+        return cls._from_table(pq.read_table(cls._file_path(path)))
 
     @classmethod
     def _file_path(cls, path: str | os.PathLike[str]) -> Path:
@@ -2655,14 +2470,13 @@ class MatchClaimField(SemanticField[MatchClaim]):
 
         The rules of the scalar, vectorized, which are the rules of
         TimeToShare's MatchClaim table: both timelines named, and not the
-        same one; ``is_synchronous`` and ``is_explicit`` stated; a
-        synchronous row holds a start anchor, a non-synchronous one no
-        anchor; an explicit synchronous row names an event on each side, an
-        explicit non-synchronous one at least one event; each anchor joins
-        the row's timeline A and timeline B, in that order; only a NOMATCH
-        row holds a ``source_coordinate``; a stated certainty lies in
-        [0, 1]. Across rows, every coordinate of one timeline is in one unit
-        and number type (:meth:`_refuse_two_axes`).
+        same one; ``is_synchronous`` stated; a synchronous row holds a start
+        anchor, a non-synchronous one no anchor; a synchronous row names an
+        event on each side, a non-synchronous one at least one event; a
+        stated certainty lies in [0, 1]. Across rows, every coordinate of
+        one timeline is in one unit and number type (:meth:`_refuse_two_axes`).
+        An anchor's coordinates are on the row's timelines, ``coordinate_a``
+        on timeline A and ``coordinate_b`` on timeline B.
 
         Raises:
             ValueError: Naming the first offending row and what it lacks.
@@ -2670,7 +2484,6 @@ class MatchClaimField(SemanticField[MatchClaim]):
         if len(data) == 0:
             return
         synchronous = data.field("is_synchronous")
-        explicit = data.field("is_explicit")
         start = data.field("start_anchor")
         end = data.field("end_anchor")
         n_events = pc.add(
@@ -2680,27 +2493,13 @@ class MatchClaimField(SemanticField[MatchClaim]):
         tl_a = data.field("timeline_a_id")
         tl_b = data.field("timeline_b_id")
         certainty = data.field("certainty")
-        nomatch = pc.and_(
-            pc.and_(explicit, pc.invert(synchronous)), pc.equal(n_events, 1)
-        )
-
-        def off_timelines(anchor: pa.StructArray) -> pa.Array:
-            same = pc.and_(
-                pc.equal(anchor.field("timeline_a_id"), tl_a),
-                pc.equal(anchor.field("timeline_b_id"), tl_b),
-            )
-            return pc.and_(anchor.is_valid(), pc.invert(pc.fill_null(same, False)))
-
         checks = (
             (
                 pc.or_(pc.is_null(tl_a), pc.is_null(tl_b)),
                 "names no timeline_a_id or no timeline_b_id",
             ),
             (pc.equal(tl_a, tl_b), "connects a timeline with itself"),
-            (
-                pc.or_(pc.is_null(synchronous), pc.is_null(explicit)),
-                "states no is_synchronous or no is_explicit",
-            ),
+            (pc.is_null(synchronous), "states no is_synchronous"),
             (
                 pc.and_(synchronous, start.is_null()),
                 "is synchronous and holds no start anchor",
@@ -2712,32 +2511,13 @@ class MatchClaimField(SemanticField[MatchClaim]):
                 "is not synchronous and holds an anchor",
             ),
             (
-                pc.and_(pc.and_(explicit, synchronous), pc.not_equal(n_events, 2)),
+                pc.and_(synchronous, pc.not_equal(n_events, 2)),
                 "is synchronous and does not name an event on each side; give a "
                 "side without an event of its own a Projection event first",
             ),
             (
-                pc.and_(
-                    pc.and_(explicit, pc.invert(synchronous)), pc.equal(n_events, 0)
-                ),
+                pc.and_(pc.invert(synchronous), pc.equal(n_events, 0)),
                 "names no event",
-            ),
-            (
-                off_timelines(start),
-                "has a start anchor not joining its timeline A and timeline B "
-                "in that order",
-            ),
-            (
-                off_timelines(end),
-                "has an end anchor not joining its timeline A and timeline B "
-                "in that order",
-            ),
-            (
-                pc.and_(
-                    data.field("source_coordinate").is_valid(),
-                    pc.invert(pc.fill_null(nomatch, False)),
-                ),
-                "holds a source_coordinate and is not a NOMATCH MatchClaim",
             ),
             (
                 pc.or_(pc.less(certainty, 0.0), pc.greater(certainty, 1.0)),
@@ -2757,27 +2537,22 @@ class MatchClaimField(SemanticField[MatchClaim]):
 
         Every coordinate cell names its axis (unit and number type); the
         cells of one timeline, wherever they are (either side of either
-        anchor, a NOMATCH row's ``source_coordinate`` on its event's side),
-        name one axis, or one position could be written two ways.
-        Vectorized: the cells are gathered once and grouped by timeline.
+        anchor, each on its row's timeline of that side), name one axis, or
+        one position could be written two ways. Vectorized: the cells are
+        gathered once and grouped by timeline.
 
         Raises:
             ValueError: Naming the timeline and two of its axes.
         """
-        nomatch_a = pc.is_valid(data.field("event_a_id"))
-        source_timeline = pc.if_else(
-            nomatch_a, data.field("timeline_a_id"), data.field("timeline_b_id")
-        )
         timelines: list[pa.Array] = []
         cells: list[pa.Array] = []
         for anchor_name in ("start_anchor", "end_anchor"):
+            # ``flatten`` carries a null anchor over to its coordinates.
             anchor = data.field(anchor_name).flatten()
             names = data.type.field(anchor_name).type.names
             for side in ("a", "b"):
-                timelines.append(anchor[names.index(f"timeline_{side}_id")])
+                timelines.append(data.field(f"timeline_{side}_id"))
                 cells.append(anchor[names.index(f"coordinate_{side}")])
-        timelines.append(source_timeline)
-        cells.append(data.field("source_coordinate"))
         cell = pa.concat_arrays(cells)
         axes = pa.table(
             {
@@ -2801,22 +2576,6 @@ class MatchClaimField(SemanticField[MatchClaim]):
                 f"The MatchClaim table holds coordinates of timeline "
                 f"{quote_id(timeline_id)} in {described}: the coordinates of "
                 f"one timeline are on its one axis."
-            )
-
-    @staticmethod
-    def _refuse_implicit(data: pa.StructArray, where: str) -> None:
-        """Refuse an implicit row where only statements belong (the file).
-
-        Raises:
-            ValueError: Naming the first implicit row.
-        """
-        implicit = pc.invert(pc.fill_null(data.field("is_explicit"), True))
-        if pc.any(implicit).as_py():
-            row = pc.index(implicit, True).as_py()
-            raise ValueError(
-                f"MatchClaim table row {row} is an implicit MatchClaim, which "
-                f"is derived and never {where}: the file holds the "
-                f"MatchClaims stated."
             )
 
     @staticmethod
@@ -2880,21 +2639,14 @@ class MatchClaimField(SemanticField[MatchClaim]):
                 held twice only within one of them.
         """
         taken = pa.array([], type=pa.string()) if taken is None else taken
-        if mint:
-            ids, minted = _admitted_claim_ids(
-                struct_array.field("id"),
-                struct_array.field("id_minted"),
-                taken,
-                scope=scope,
+        if not mint:
+            _refuse_held_claim_ids(
+                struct_array.field("id"), taken, scope=scope, within=within
             )
-        else:
-            ids = struct_array.field("id")
-            _refuse_held_claim_ids(ids, taken, scope=scope, within=within)
-            # A row's id is not minted until a bundle mints it.
-            minted = pc.fill_null(struct_array.field("id_minted"), False)
-        children = {"id": ids, "id_minted": minted}
+            return cls._from_struct_array(struct_array, provenance=provenance)
+        ids = _admitted_claim_ids(struct_array.field("id"), taken, scope=scope)
         arrays = [
-            children.get(sub_field.name, struct_array.field(sub_field.name))
+            ids if sub_field.name == "id" else struct_array.field(sub_field.name)
             for sub_field in cls.pa_schema
         ]
         rebuilt = pa.StructArray.from_arrays(arrays, fields=list(cls.pa_schema))
@@ -2938,19 +2690,19 @@ class MatchClaimField(SemanticField[MatchClaim]):
     @classmethod
     def _anchor_array(
         cls,
-        timeline_a_id: pa.Array,
         coordinate_a: pa.StructArray,
-        timeline_b_id: pa.Array,
         coordinate_b: pa.StructArray,
         *,
         mask: pa.Array | None = None,
     ) -> pa.StructArray:
-        """Build one anchor struct from parallel typed columns (null where *mask*)."""
+        """Build one anchor struct from its two coordinate columns (null where *mask*).
+
+        The anchor's timelines are its row's, so the struct holds the two
+        coordinates alone.
+        """
         anchor_type = cls.pa_schema.field("start_anchor").type
         sources: dict[str, pa.Array] = {
-            "timeline_a_id": timeline_a_id,
             "coordinate_a": coordinate_a,
-            "timeline_b_id": timeline_b_id,
             "coordinate_b": coordinate_b,
         }
         return pa.StructArray.from_arrays(
@@ -3158,9 +2910,8 @@ class MatchClaimField(SemanticField[MatchClaim]):
         """Refuse this field unless every coordinate is on its timeline's axis.
 
         The vectorized form of :meth:`MatchClaim.check_on_timelines`: every
-        coordinate cell (both coordinates of each anchor, and the
-        ``source_coordinate`` of a NOMATCH row, on the side of its event) is
-        compared with the unit and declared number type of the timeline it
+        coordinate cell (both coordinates of each anchor, each on its row's
+        timeline of that side) is compared with the unit and declared number type of the timeline it
         is on; the first offending cell is refused with the scalar check's
         message.
 
@@ -3193,24 +2944,11 @@ class MatchClaimField(SemanticField[MatchClaim]):
                 cells_by_place.append(
                     (
                         f"{anchor_name}.coordinate_{side}",
-                        anchor.field(f"timeline_{side}_id"),
+                        data.field(f"timeline_{side}_id"),
                         cells,
                         pc.and_(anchor.is_valid(), cells.is_valid()),
                     )
                 )
-        source = data.field("source_coordinate")
-        cells_by_place.append(
-            (
-                "source_coordinate",
-                pc.if_else(
-                    pc.is_valid(data.field("event_a_id")),
-                    data.field("timeline_a_id"),
-                    data.field("timeline_b_id"),
-                ),
-                source,
-                source.is_valid(),
-            )
-        )
         for where, timeline_ids, cells, valid in cells_by_place:
             position = pc.index_in(timeline_ids, value_set=keys)
             unknown = pc.and_(valid, pc.is_null(position))
@@ -3358,7 +3096,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
         synchronous_only: bool = False,
         nomatch_only: bool = False,
         believer: str | None = None,
-        belief: BeliefFilter = "not_false",
+        beliefs: Collection[BeliefState] = DEFAULT_BELIEFS,
         context: Mapping[str, Any] | None = None,
     ) -> "MatchClaimField":
         """Return a filtered view following the unified filter API.
@@ -3386,14 +3124,15 @@ class MatchClaimField(SemanticField[MatchClaim]):
             within: Keep rows whose **both** ids are in this set. This is the
                 primitive behind domain- and unit-restricted queries.
             synchronous_only: Keep the synchronous rows (those with anchors).
-            nomatch_only: Keep the NOMATCH rows (explicit, not synchronous,
-                one event named).
+            nomatch_only: Keep the NOMATCH rows (not synchronous, one event
+                named).
             believer: The actor whose beliefs filter the rows (the belief
                 filter, :func:`~timetoalign.core.provenance.belief_mask`);
                 ``None`` filters nothing.
-            belief: ``"not_false"`` (default) keeps every row the believer
-                does not believe ``false``; ``"true"`` only the rows the
-                believer believes ``true``.
+            beliefs: The states kept: a row passes when the believer's
+                belief in it (``"true"``, ``"unlikely"``, ``"false"``), or
+                ``"undecided"`` where the believer holds none, is one of
+                them. Default: every state but ``"false"``.
             context: The JSON-LD context under which the believer and the
                 rows' actors compare as IRIs (a bundle passes its manifest's
                 ``@context``); ``None`` declares no prefix.
@@ -3404,7 +3143,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
 
         Raises:
             ValueError: If ``synchronous_only`` and ``nomatch_only`` are both
-                set, or ``belief`` is neither ``"not_false"`` nor ``"true"``.
+                set, or ``beliefs`` is not a collection of belief states.
         """
         if synchronous_only and nomatch_only:
             raise ValueError("synchronous_only and nomatch_only are mutually exclusive")
@@ -3430,8 +3169,10 @@ class MatchClaimField(SemanticField[MatchClaim]):
             masks.append(pc.fill_null(data.field("is_synchronous"), False))
         if nomatch_only:
             masks.append(self._nomatch_mask())
-        if believer is not None or belief != "not_false":
-            masks.append(self._belief_mask(believer, belief, context))
+        if believer is not None:
+            masks.append(self._belief_mask(believer, beliefs, context))
+        else:
+            check_belief_filter(beliefs)
 
         if not masks:
             return self._from_struct_array(data, provenance=self._provenance)
@@ -3519,8 +3260,8 @@ class MatchClaimField(SemanticField[MatchClaim]):
             {'unit': 'quarters', 'number_type': 'fraction', 'value': [1, 3]}
             >>> row["start_anchor"]["coordinate_b"]
             {'unit': 'seconds', 'number_type': 'float', 'value': 0.5}
-            >>> row["id"], row["id_minted"], row["end_anchor"]
-            (None, False, None)
+            >>> row["id"], row["end_anchor"]
+            (None, None)
         """
         rows = self._struct_array().to_pylist()
         paths = list(_coordinate_paths(self.pa_schema))
@@ -3555,10 +3296,6 @@ class MatchClaimField(SemanticField[MatchClaim]):
         file is replaced whole, never in part: a write that fails leaves the
         file as it was and no temporary file.
 
-        The file holds what was stated: an implicit MatchClaim, which a
-        :class:`~timetoalign.alignment.graph.MatchGraph` derives, is never
-        written.
-
         Args:
             path: The file, or a directory to hold :attr:`file_name`
                 (``match_claims.parquet``).
@@ -3579,13 +3316,11 @@ class MatchClaimField(SemanticField[MatchClaim]):
         <timetoalign.alignment.bundle.AlignmentBundle.match_claim_table>`).
 
         Raises:
-            ValueError: If a row is an implicit MatchClaim or holds no id, or
-                the existing table holds a MatchClaim this one lacks or
-                changes.
+            ValueError: If a row holds no id, or the existing table holds a
+                MatchClaim this one lacks or changes.
         """
         import pyarrow.parquet as pq
 
-        self._refuse_implicit(self._struct_array(), "written to a file")
         missing = pc.is_null(self._ids)
         if pc.any(missing).as_py():
             row = pc.index(missing, True).as_py()
@@ -3798,26 +3533,21 @@ class MatchClaimField(SemanticField[MatchClaim]):
         return self._from_struct_array(filtered, provenance=self._provenance)
 
     def _nomatch_mask(self) -> pa.Array:
-        """Boolean mask: the NOMATCH rows (explicit, not synchronous, one event)."""
+        """Boolean mask: the NOMATCH rows (not synchronous, one event)."""
         data = self._struct_array()
         n_events = pc.add(
             pc.cast(pc.is_valid(data.field("event_a_id")), pa.int8()),
             pc.cast(pc.is_valid(data.field("event_b_id")), pa.int8()),
         )
         return pc.fill_null(
-            pc.and_(
-                pc.and_(
-                    data.field("is_explicit"), pc.invert(data.field("is_synchronous"))
-                ),
-                pc.equal(n_events, 1),
-            ),
+            pc.and_(pc.invert(data.field("is_synchronous")), pc.equal(n_events, 1)),
             False,
         )
 
     def _belief_mask(
         self,
         believer: str | None,
-        belief: BeliefFilter,
+        beliefs: Collection[BeliefState],
         context: Mapping[str, Any] | None = None,
     ) -> pa.Array:
         """Boolean mask: the rows the belief filter keeps for *believer*.
@@ -3829,10 +3559,10 @@ class MatchClaimField(SemanticField[MatchClaim]):
         data = self._struct_array()
         if self._provenance is not None:
             keep = self._provenance.passes_belief_filter(
-                believer, belief, context=context
+                believer, beliefs, context=context
             )
             return pa.array(np.full(len(data), keep), type=pa.bool_())
-        return belief_mask(data.field("provenance"), believer, belief, context=context)
+        return belief_mask(data.field("provenance"), believer, beliefs, context=context)
 
     @staticmethod
     def _id_value_set(timeline_ids: set[str]) -> pa.Array:

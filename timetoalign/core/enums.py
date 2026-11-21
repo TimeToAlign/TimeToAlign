@@ -367,17 +367,16 @@ class ClaimType(FancyStrEnum):
     """The semantic kind of a MatchClaim, derived from its structure.
 
     A claim's kind is never stored; it is read from whether the claim is
-    explicit, whether it is synchronous, and how many of its two sides name an
-    event. An explicit MatchClaim always names two events, or one event and
-    the NOMATCH sentinel on the other side; a side without an event of its own
-    is given a Projection event first, never a bare coordinate.
+    synchronous and how many of its two sides name an event. A MatchClaim
+    always names two events, or one event and the NOMATCH sentinel on the
+    other side; a side without an event of its own is given a Projection event
+    first, never a bare coordinate. What a MatchGraph infers through groups is
+    the graph's own and has no kind here.
 
     Members:
         event_match: Two events on different timelines correspond, temporally
             anchored.
         nomatch: An event has no counterpart on the other timeline.
-        implicit: A correspondence inferred by graph extension rather than
-            directly asserted.
         conceptual: Two events correspond structurally, with no temporal
             commitment (no anchors).
     """
@@ -391,9 +390,6 @@ class ClaimType(FancyStrEnum):
     """An event has no counterpart on the other timeline."""
     nomat = nomatch
     """Alias for nomatch."""
-
-    implicit = auto()
-    """An inferred (not directly asserted) correspondence."""
 
     conceptual = auto()
     """Two events correspond with no temporal commitment (no anchors)."""

@@ -18,7 +18,6 @@ import pytest
 
 from timetoalign.alignment import AlignmentBundle, MatchClaim, MatchClaimField
 from timetoalign.alignment.graph import MatchGraph
-from timetoalign.core import TimeUnit
 from timetoalign.timelines.types import (
     ContinuousLogicalTimeline,
     ContinuousPhysicalTimeline,
@@ -93,27 +92,20 @@ def _columns() -> MatchClaimField:
 
 def test_free_claim_holds_no_id() -> None:
     first, second = _claims(NEW)
-    assert [(c.id, c.id_minted) for c in (first, second)] == [
-        (None, False),
-        (None, False),
-    ]
-    named = MatchClaim.from_dict(
-        first.to_dict() | {"id": "onset 7", "id_minted": False}
-    )
-    assert (named.id, named.id_minted) == ("onset 7", False)
+    assert [c.id for c in (first, second)] == [None, None]
+    named = MatchClaim.from_dict(first.to_dict() | {"id": "onset 7"})
+    assert named.id == "onset 7"
     with pytest.raises(ValueError, match=re.escape("Invalid id 'a\\tb'")):
-        MatchClaim.from_dict(first.to_dict() | {"id": "a\tb", "id_minted": False})
+        MatchClaim.from_dict(first.to_dict() | {"id": "a\tb"})
 
 
 def test_field_is_a_scope() -> None:
     field = MatchClaimField.from_claims(_claims(STORED[:3], ["s0", "s1", "s2"]))
     assert _ids(field) == ["s0", "s1", "s2"]
-    assert [claim.id_minted for claim in field] == [False, False, False]
 
     free = _claims(NEW)
     field = MatchClaimField.from_claims(free)
     assert _ids(field) == [None, None]
-    assert [claim.id_minted for claim in field] == [False, False]
     assert [claim.id for claim in free] == [None, None]
     with pytest.raises(ValueError, match=re.escape("claim id 'a' is held by 2 claims")):
         MatchClaimField.from_claims(_claims(NEW, ["a", "a"]))
@@ -134,7 +126,6 @@ def test_from_columns_mints_no_id() -> None:
         },
     )
     assert _ids(field) == [None, None, None]
-    assert [claim.id_minted for claim in field] == [False, False, False]
 
     bundle = AlignmentBundle()
     for uid, timeline_class in (
@@ -146,7 +137,6 @@ def test_from_columns_mints_no_id() -> None:
     bundle.add_match_claim_field(field)
     held = bundle.get_match_claims()
     assert [claim.id for claim in held] == ["claim_1", "claim_2", "claim_3"]
-    assert [claim.id_minted for claim in held] == [True, True, True]
     assert _ids(field) == [None, None, None]
 
 
@@ -173,17 +163,10 @@ def test_null_ids_are_minted_around_held_ones() -> None:
         "id",
         pa.array(["claim_2", None, "x", None], type=pa.string()),
     )
-    table = table.set_column(
-        table.column_names.index("id_minted"),
-        "id_minted",
-        pa.array([False, None, False, None], type=pa.bool_()),
-    )
     field = MatchClaimField.from_table(table)
     assert _ids(field) == ["claim_2", None, "x", None]
-    assert [claim.id_minted for claim in field] == [False] * 4
     held = _holding().add_match_claim_field(field).get_match_claims()
     assert [claim.id for claim in held] == ["claim_2", "claim_3", "x", "claim_4"]
-    assert [claim.id_minted for claim in held] == [False, True, False, True]
 
 
 def test_a_field_without_ids_is_not_written(tmp_path: Path) -> None:
@@ -285,7 +268,6 @@ def test_two_free_claims_become_distinct() -> None:
     bundle = _bundle()
     bundle.add_match_claims([first, second])
     assert (first.id, second.id) == ("claim_1", "claim_2")
-    assert (first.id_minted, second.id_minted) == (True, True)
     kept = MatchGraph(bundle.get_match_claims()).filter(
         timeline_ids={"score", "score_copy"}
     )
@@ -318,43 +300,39 @@ def test_graph_filter_unaffected(tmp_path: Path) -> None:
     assert sorted(claim.id for claim in explicit) == [f"claim_{n}" for n in range(1, 7)]
 
     graph = MatchGraph(explicit).extend_to_groups(bundle.groups)
-    implicit = [claim for claim in graph.claims if not claim.is_explicit]
-    assert [claim.id for claim in implicit] == [f"claim_{n}" for n in range(7, 13)]
-    assert all(claim.id_minted for claim in implicit)
+    # The graph's claims are the six it was given; what it infers is its own.
+    assert graph.claims == explicit
+    inferred = graph.inferred_edges
+    assert len(inferred) == 6
+    assert all(edge.source_claim in explicit for edge in inferred)
+    for edge in inferred:
+        assert edge.anchor.timelines == ("score", "score_copy")
+        assert edge.anchor.coordinate_a == edge.source_claim.start_anchor.coordinate_a
     edges = [data for _, _, data in graph._graph.edges(data=True)]
-    assert [data["claim_id"] for data in edges] == [data["claim"].id for data in edges]
-    assert len({data["claim_id"] for data in edges}) == len(edges) == 12
-    by_id = {claim.id: claim for claim in explicit}
-    for claim in implicit:
-        source = by_id[claim.source_claim_id]
-        assert (
-            source.start_anchor.coordinate_a.value
-            == claim.start_anchor.coordinate_a.value
-        )
+    stated = [data for data in edges if "claim" in data]
+    assert [data["claim_id"] for data in stated] == [
+        data["claim"].id for data in stated
+    ]
+    assert len({data["claim_id"] for data in stated}) == len(stated) == 6
+    assert [data["inferred"] for data in edges if "claim" not in data] == inferred
 
-    kept = graph.filter(explicit_only=True).claims
-    assert sorted(claim.id for claim in kept) == [f"claim_{n}" for n in range(1, 7)]
-    assert all(claim.is_explicit for claim in kept)
+    kept = graph.filter(explicit_only=True)
+    assert sorted(claim.id for claim in kept.claims) == [
+        f"claim_{n}" for n in range(1, 7)
+    ]
+    assert kept.inferred_edges == []
 
-    kept = graph.filter(timeline_ids={"score", "audio"}).claims
-    assert sorted(claim.id for claim in kept) == [f"claim_{n}" for n in range(1, 7)]
-    assert all(claim.is_explicit for claim in kept)
+    kept = graph.filter(timeline_ids={"score", "audio"})
+    assert sorted(claim.id for claim in kept.claims) == [
+        f"claim_{n}" for n in range(1, 7)
+    ]
+    assert kept.inferred_edges == []
 
 
 def test_held_ids_are_refused_never_reminted() -> None:
     source = _claims(STORED[:1], ["anchor"])[0]
-    implicit = MatchClaim.implicit(
-        "score",
-        0,
-        "score_copy",
-        0,
-        unit_a=TimeUnit.quarters,
-        unit_b=TimeUnit.quarters,
-        source_claim=source,
-    )
-    field = MatchClaimField.from_claims([source, implicit])
+    field = MatchClaimField.from_claims([source, _copy_claim(0)])
     assert _ids(field) == ["anchor", None]
-    assert [claim.source_claim_id for claim in field] == [None, "anchor"]
 
     bundle = _bundle().add_match_claims(_claims(NEW))
     bundle.add_match_claim_field(field)
@@ -370,17 +348,10 @@ def test_held_ids_are_refused_never_reminted() -> None:
     assert [claim.id for claim in bundle.get_match_claims()] == held
 
     bundle = _bundle().add_match_claims([source, _claims(NEW[:1])[0]])
-    implicit = MatchClaim.implicit(
-        "score",
-        0,
-        "score_copy",
-        0,
-        unit_a=TimeUnit.quarters,
-        unit_b=TimeUnit.quarters,
-        source_claim=bundle.get_match_claims()[0],
-    )
-    bundle.add_match_claims([implicit])
-    assert (implicit.id, implicit.source_claim_id) == ("claim_2", "anchor")
+    assert [claim.id for claim in bundle.get_match_claims()] == ["anchor", "claim_1"]
+    free = _copy_claim(0)
+    bundle.add_match_claims([free])
+    assert free.id == "claim_2"
 
 
 def test_two_runs_merged(tmp_path: Path) -> None:
@@ -442,13 +413,13 @@ def test_two_runs_merged(tmp_path: Path) -> None:
 
 
 def test_given_id_refused_atomically() -> None:
-    held = _claims(STORED[:1])[0].model_copy(update={"id": "a", "id_minted": False})
+    held = _claims(STORED[:1])[0].model_copy(update={"id": "a"})
     bundle = _bundle()
     bundle.add_match_claims([held])
     message = re.escape("claim id 'a' is already held by another claim of this bundle")
 
     newcomer, given = _claims(NEW)
-    given = given.model_copy(update={"id": "a", "id_minted": False})
+    given = given.model_copy(update={"id": "a"})
     with pytest.raises(ValueError, match=message):
         bundle.add_match_claims([newcomer, given])
     assert bundle.get_match_claims() == [held]

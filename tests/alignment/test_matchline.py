@@ -57,13 +57,11 @@ def _claim(
 
 def _nomatch(timeline_id: str, value: float, other_timeline_id: str) -> MatchClaim:
     """A NOMATCH claim: the event at *value* has no counterpart on the other side."""
-    coordinate = Coordinate(value, TimeUnit.number)
     return MatchClaim(
         timeline_a_id=timeline_id,
         timeline_b_id=other_timeline_id,
         is_synchronous=False,
-        event_a_id=event_id(timeline_id, coordinate),
-        source_coordinate=coordinate,
+        event_a_id=event_id(timeline_id, Coordinate(value, TimeUnit.number)),
     )
 
 

@@ -288,7 +288,7 @@ def test_a_candidate_is_offered_believed_and_stated(
     }
     assert (video.statements, video.provenance) == ({"wdt:P2550": [labelled]}, [stated])
     assert video.get_candidates() == []
-    assert video.get_provenance(believer=EDITOR, belief="true") == [stated]
+    assert video.get_provenance(believer=EDITOR, beliefs=["true"]) == [stated]
 
     video.add_belief(
         "wdt:P2550",
@@ -315,7 +315,8 @@ def test_a_candidate_is_offered_believed_and_stated(
         [doubted],
     )
     assert video.get_provenance(believer=REVIEWER) == []
-    assert video.get_provenance(believer=EDITOR, belief="true") == [doubted]
+    assert video.get_provenance(believer=REVIEWER, beliefs=["false"]) == [doubted]
+    assert video.get_provenance(believer=EDITOR, beliefs=["true"]) == [doubted]
 
     video.add_belief("wdt:P2550", work, actor=REVIEWER, belief="unlikely")
     unlikely = {
@@ -327,7 +328,9 @@ def test_a_candidate_is_offered_believed_and_stated(
     }
     assert video.provenance == [unlikely]
     assert video.get_provenance(believer=REVIEWER) == [unlikely]
-    assert video.get_provenance(believer=REVIEWER, belief="true") == []
+    assert video.get_provenance(believer=REVIEWER, beliefs=["true"]) == []
+    assert video.get_provenance(believer=REVIEWER, beliefs=["unlikely"]) == [unlikely]
+    assert video.get_provenance(believer=TILIE, beliefs=["undecided"]) == [unlikely]
 
 
 @pytest.mark.parametrize(
@@ -345,7 +348,7 @@ def test_actors_compare_as_their_iris(actor: str, believer: str) -> None:
     video.add_belief("wdt:P175", PIRES, actor=actor, belief="false", date="2026-11-19")
     assert video.get_candidates(believer=believer) == []
     assert video.get_provenance(believer=believer) == []
-    assert video.get_provenance(believer=believer, belief="true") == []
+    assert video.get_provenance(believer=believer, beliefs=["true"]) == []
     assert len(video.get_candidates(believer=EDITOR)) == 1
 
 
@@ -363,8 +366,9 @@ def test_refusals_change_nothing() -> None:
     for filtered in (video.get_provenance, video.get_candidates):
         for believer in (None, EDITOR):
             _raises(
-                "The belief filter keeps 'not_false' or 'true', not 'false'",
-                lambda: filtered(believer=believer, belief="false"),  # type: ignore[arg-type]
+                "The belief filter keeps the states ['true', 'undecided', "
+                "'unlikely', 'false'], not ['not_false']",
+                lambda: filtered(believer=believer, beliefs=["not_false"]),  # type: ignore[arg-type]
             )
     _raises(
         "a date dates the belief of the actor stating the pair; give actor=",

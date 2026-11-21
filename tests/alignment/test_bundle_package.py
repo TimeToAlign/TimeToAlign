@@ -353,7 +353,9 @@ class TestWriting:
         for holder in (bundle, read):
             assert [
                 claim.id
-                for claim in holder.get_match_claims(believer=believer, belief="true")
+                for claim in holder.get_match_claims(
+                    believer=believer, beliefs=["true"]
+                )
             ] == ["claim_2"]
         (tmp_path / "second").mkdir()
         read.to_file(tmp_path / "second" / "package.yaml")
@@ -658,12 +660,31 @@ def _sorted_sets(items: list[dict[str, Any]]) -> str:
     return timetoshare.dumps({"items": normal})
 
 
+#: The fixture's two filter words as the states of the library's belief filter.
+_FIXTURE_STATES: dict[str, tuple[str, ...]] = {
+    "not_false": ("true", "undecided", "unlikely"),
+    "true": ("true",),
+}
+
+
+def _states(case: dict[str, Any]) -> tuple[str, ...]:
+    """The belief states a case of the fixture keeps for its believer.
+
+    A case states its filter either as the states themselves (``beliefs``)
+    or as one of the two words everything-not-false and only-true
+    (``belief``), which are two sets of states.
+    """
+    if "beliefs" in case:
+        return tuple(case["beliefs"])
+    return _FIXTURE_STATES[case["belief"]]
+
+
 def _derived(bundle: AlignmentBundle, case: dict[str, Any]) -> tuple[str, str, int]:
     """The unique anchors, the potential MatchStamps and the edge count."""
     graph = MatchGraph(
         bundle.get_match_claims(),
         believer=case["believer"],
-        belief=case["belief"],
+        beliefs=_states(case),
         source=bundle,
     )
     stated: dict[tuple[tuple[str, Any], ...], set[str]] = {}
@@ -763,11 +784,11 @@ class TestTimeToShareFixturePackage:
         assert anchors == _sorted_sets(case["alignment_anchors"])
         assert stamps == _sorted_sets(case["potential_matchstamps"])
         assert edges == len(case["alignment_anchors"])
-        kept = bundle.get_match_claims(believer=case["believer"], belief=case["belief"])
+        kept = bundle.get_match_claims(believer=case["believer"], beliefs=_states(case))
         graph = MatchGraph(
             bundle.get_match_claims(),
             believer=case["believer"],
-            belief=case["belief"],
+            beliefs=_states(case),
             source=bundle,
         )
         assert [claim.id for claim in kept] == [claim.id for claim in graph.claims]

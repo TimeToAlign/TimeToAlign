@@ -11,6 +11,7 @@ Public API:
 - MatchClaimField: The MatchClaim table, ``SemanticField[MatchClaim]``
 - Provenance, Belief: How a MatchClaim was made, and who believes it
 - MatchGraph: Graph of MatchClaims (networkx integration)
+- InferredEdge: An anchor a MatchGraph infers through group membership
 - MatchStamp: Cross-group timestamp at a single coordinate
 - MatchIntervalStamp: Combined endpoint resolutions for an interval query
 - MatchLine: Ordered sequence of MatchStamps for WarpMap generation
@@ -24,7 +25,7 @@ from timetoalign.core import Belief, Provenance
 from .bundle import AlignmentBundle
 from .claims import AlignmentAnchor, ClaimType, MatchClaim, MatchClaimField
 from .filters import ClaimFilter
-from .graph import MatchGraph, MatchIntervalStamp, MatchStamp
+from .graph import InferredEdge, MatchGraph, MatchIntervalStamp, MatchStamp
 from .match_format import MatchFileContext, NoteRecord, SnoteRecord
 from .matching import (
     MatchResult,
@@ -48,6 +49,7 @@ __all__ = [
     # Filters
     "ClaimFilter",
     # Graph, Stamps, and Lines
+    "InferredEdge",
     "MatchGraph",
     "MatchIntervalStamp",
     "MatchStamp",

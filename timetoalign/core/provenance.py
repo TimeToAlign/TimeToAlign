@@ -12,11 +12,13 @@ MatchClaim holds one in its ``provenance`` property. It has two parts:
   One actor's belief leaves another's standing, and nothing derives a truth
   value from them.
 
-The **belief filter** reads the beliefs for one actor, the *believer*:
-everything the believer does not believe ``false`` (``"not_false"``, the
-default), or only what the believer believes ``true`` (``"true"``). Without a
-believer nothing is filtered. :func:`belief_mask` is the one place the filter
-is decided; the scalar and the Field both ask it.
+The **belief filter** reads the beliefs for one actor, the *believer*: it
+keeps the items whose state for the believer is one of the states asked for
+(``beliefs``), each of ``"true"``, ``"undecided"`` (the believer holds no
+belief on the item), ``"unlikely"`` and ``"false"``; by default every state
+but ``"false"`` (:data:`DEFAULT_BELIEFS`). Without a believer nothing is
+filtered. :func:`belief_mask` is the one place the filter is decided; the
+scalar and the Field both ask it.
 
 Each scalar is followed by its paired Field: :class:`Belief` /
 :class:`BeliefField`, :class:`Provenance` / :class:`ProvenanceField`.
@@ -26,7 +28,7 @@ from __future__ import annotations
 
 import datetime
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from typing import Any, Literal
 
 import numpy as np
@@ -40,9 +42,15 @@ from .fields import SemanticField, data_shaped, install_paired_field_registry
 BeliefValue = Literal["true", "false", "unlikely"]
 """What an actor believes of an item."""
 
-BeliefFilter = Literal["not_false", "true"]
-"""Which items the belief filter keeps for its believer: those the believer
-does not believe ``false``, or only those the believer believes ``true``."""
+BeliefState = Literal["true", "undecided", "unlikely", "false"]
+"""An item's state for one actor: the actor's belief, or ``"undecided"`` where
+the actor holds no belief on the item."""
+
+BELIEF_STATES: tuple[BeliefState, ...] = ("true", "undecided", "unlikely", "false")
+"""The four states of the belief filter, in that order."""
+
+DEFAULT_BELIEFS: tuple[BeliefState, ...] = ("true", "undecided", "unlikely")
+"""The states the belief filter keeps by default: every state but ``"false"``."""
 
 _DATE_PATTERN = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 
@@ -84,18 +92,45 @@ def actor_iri(actor: str, context: Mapping[str, Any] | None = None) -> str:
     return expand_iri(context, actor) or actor
 
 
-def check_belief_filter(belief: str) -> None:
-    """Refuse a belief filter that is neither ``"not_false"`` nor ``"true"``.
+def check_belief_filter(beliefs: Collection[str]) -> frozenset[BeliefState]:
+    """The states a belief filter keeps, checked: the set *beliefs* names.
 
-    The one check of the word every filter taking ``belief=`` makes.
+    The one check every filter taking ``beliefs=`` makes. The set it returns
+    is how the filter is compared and cached: two collections naming the same
+    states are one filter.
+
+    Args:
+        beliefs: A collection of :data:`BeliefState` words (a list, a tuple, a
+            set); empty keeps nothing a believer is asked about.
+
+    Returns:
+        The states, as a frozen set.
 
     Raises:
-        ValueError: If *belief* is no :data:`BeliefFilter`.
+        ValueError: If *beliefs* is a single string, or names a word that is
+            no :data:`BeliefState`.
+
+    Examples:
+        >>> sorted(check_belief_filter(["true", "unlikely"]))
+        ['true', 'unlikely']
+        >>> check_belief_filter("true")
+        Traceback (most recent call last):
+        ...
+        ValueError: The belief filter takes a collection of states, not the string 'true': write ['true'].
     """
-    if belief not in ("not_false", "true"):
+    if isinstance(beliefs, str):
         raise ValueError(
-            f"The belief filter keeps 'not_false' or 'true', not {belief!r}"
+            f"The belief filter takes a collection of states, not the string "
+            f"{beliefs!r}: write [{beliefs!r}]."
         )
+    states = frozenset(beliefs)
+    unknown = sorted(str(state) for state in states if state not in BELIEF_STATES)
+    if unknown:
+        raise ValueError(
+            f"The belief filter keeps the states {list(BELIEF_STATES)}, not "
+            f"{unknown}"
+        )
+    return states  # type: ignore[return-value]
 
 
 # region Belief
@@ -195,8 +230,10 @@ class Provenance(BaseModel):
         ...     Belief(actor="ana", belief="false", date="2026-11-21")
         ... ).get_belief("ana").belief
         'false'
-        >>> entry.passes_belief_filter("ana"), entry.passes_belief_filter("ana", "true")
+        >>> entry.passes_belief_filter("ana"), entry.passes_belief_filter("ana", ["true"])
         (True, False)
+        >>> entry.passes_belief_filter("bea", ["undecided"])
+        True
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -331,7 +368,7 @@ class Provenance(BaseModel):
     def passes_belief_filter(
         self,
         believer: str | None,
-        belief: BeliefFilter = "not_false",
+        beliefs: Collection[BeliefState] = DEFAULT_BELIEFS,
         *,
         context: Mapping[str, Any] | None = None,
     ) -> bool:
@@ -339,15 +376,17 @@ class Provenance(BaseModel):
 
         Args:
             believer: The actor whose beliefs filter; ``None`` keeps all.
-            belief: ``"not_false"`` keeps what the believer does not believe
-                ``false``; ``"true"`` only what the believer believes ``true``.
+            beliefs: The states kept (:data:`BeliefState`): the item passes
+                when the believer's belief in it, or ``"undecided"`` where
+                the believer holds none, is one of them. Default: every
+                state but ``"false"``.
             context: The JSON-LD context under which actors compare as IRIs
                 (:func:`belief_mask`).
 
         Returns:
             Whether the item passes, decided by :func:`belief_mask`.
         """
-        mask = belief_mask(provenance_array([self]), believer, belief, context=context)
+        mask = belief_mask(provenance_array([self]), believer, beliefs, context=context)
         return bool(mask[0].as_py())
 
     def to_dict(self) -> dict[str, Any]:
@@ -372,7 +411,7 @@ class ProvenanceField(SemanticField[Provenance]):
     def passes_belief_filter(
         self,
         believer: str | None,
-        belief: BeliefFilter = "not_false",
+        beliefs: Collection[BeliefState] = DEFAULT_BELIEFS,
         *,
         context: Mapping[str, Any] | None = None,
     ) -> pa.BooleanArray:
@@ -381,7 +420,7 @@ class ProvenanceField(SemanticField[Provenance]):
         The vectorized mirror of :meth:`Provenance.passes_belief_filter`,
         decided by :func:`belief_mask`.
         """
-        return belief_mask(self._raw.data, believer, belief, context=context)
+        return belief_mask(self._raw.data, believer, beliefs, context=context)
 
 
 install_paired_field_registry()
@@ -414,7 +453,7 @@ def _row(value: Provenance) -> dict[str, Any]:
 def belief_mask(
     provenance: pa.Array | pa.ChunkedArray | None,
     believer: str | None,
-    belief: BeliefFilter = "not_false",
+    beliefs: Collection[BeliefState] = DEFAULT_BELIEFS,
     *,
     context: Mapping[str, Any] | None = None,
 ) -> pa.BooleanArray:
@@ -435,9 +474,10 @@ def belief_mask(
             where a row states no provenance).
         believer: The actor whose beliefs filter, an IRI (compact or
             absolute); ``None`` keeps every row.
-        belief: ``"not_false"`` keeps every row the believer does not believe
-            ``false`` (no belief, ``true`` and ``unlikely`` pass); ``"true"``
-            keeps only the rows the believer believes ``true``.
+        beliefs: The states kept (:data:`BeliefState`): a row passes when
+            the believer's belief in it (``"true"``, ``"unlikely"``,
+            ``"false"``), or ``"undecided"`` where the believer holds none,
+            is one of them. Default: every state but ``"false"``.
         context: The JSON-LD context whose prefixes expand compact IRIs, the
             believer's and the actors' alike; ``None`` declares no prefix
             (absolute IRIs and the URI schemes still compare as IRIs).
@@ -446,9 +486,25 @@ def belief_mask(
         A boolean array, one value per row, never null.
 
     Raises:
-        ValueError: If *belief* is neither ``"not_false"`` nor ``"true"``.
+        ValueError: If *beliefs* is not a collection of belief states
+            (:func:`check_belief_filter`).
+
+    Examples:
+        >>> rows = provenance_array(
+        ...     [
+        ...         None,
+        ...         Provenance(beliefs=(Belief(actor="ana", belief="false", date="2026-11-21"),)),
+        ...         Provenance(beliefs=(Belief(actor="ana", belief="true", date="2026-11-21"),)),
+        ...     ]
+        ... )
+        >>> belief_mask(rows, "ana").to_pylist()
+        [True, False, True]
+        >>> belief_mask(rows, "ana", ["undecided", "false"]).to_pylist()
+        [True, True, False]
+        >>> belief_mask(rows, None, ["true"]).to_pylist()
+        [True, True, True]
     """
-    check_belief_filter(belief)
+    states = check_belief_filter(beliefs)
     if isinstance(provenance, pa.ChunkedArray):
         provenance = provenance.combine_chunks()
     n = 0 if provenance is None else len(provenance)
@@ -457,17 +513,20 @@ def belief_mask(
     if n == 0:
         return pa.array([], type=pa.bool_())
     # ``flatten`` carries a null entry over to its beliefs.
-    beliefs = provenance.flatten()[provenance.type.get_field_index("beliefs")]
-    stated = pc.list_flatten(beliefs)
-    owners = pc.cast(pc.list_parent_indices(beliefs), pa.int64())
-    wanted = "false" if belief == "not_false" else "true"
-    held = pc.and_(
-        _names_actor(stated.field("actor"), believer, context),
-        pc.equal(stated.field("belief"), wanted),
+    held = provenance.flatten()[provenance.type.get_field_index("beliefs")]
+    stated = pc.list_flatten(held)
+    owners = pc.cast(pc.list_parent_indices(held), pa.int64())
+    # At most one belief per actor and entry: each row's state is the
+    # believer's belief where the row holds one, else "undecided".
+    own = pc.fill_null(_names_actor(stated.field("actor"), believer, context), False)
+    state = np.full(n, "undecided", dtype=object)
+    state[owners.filter(own).to_numpy()] = (
+        stated.field("belief").filter(own).to_numpy(zero_copy_only=False)
     )
-    rows = owners.filter(pc.fill_null(held, False))
-    found = pc.is_in(pa.array(np.arange(n, dtype=np.int64)), value_set=rows)
-    return pc.invert(found) if belief == "not_false" else found
+    return pc.is_in(
+        pa.array(state, type=pa.string()),
+        value_set=pa.array(sorted(states), type=pa.string()),
+    )
 
 
 def _names_actor(

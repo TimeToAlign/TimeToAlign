@@ -27,7 +27,10 @@ Q42 = "http://www.wikidata.org/entity/Q42"
 WD_Q42 = "wd:Q42"
 
 SHARED = Provenance(method="imported", service="https://example.org/aligner")
-REFUSED_WORD = "The belief filter keeps 'not_false' or 'true', not 'maybe'"
+REFUSED_WORD = (
+    "The belief filter keeps the states ['true', 'undecided', 'unlikely', "
+    "'false'], not ['maybe']"
+)
 
 
 def _timelines(
@@ -117,12 +120,17 @@ class TestAddBelief:
         )
         assert _ids(bundle, believer=Q42) == ["claim_1", "claim_3"]
         assert _ids(bundle, believer=WD_Q42) == ["claim_1", "claim_3"]
-        assert _ids(bundle, believer=Q42, belief="true") == []
+        assert _ids(bundle, believer=Q42, beliefs=["true"]) == []
+        assert _ids(bundle, believer=Q42, beliefs=["false"]) == ["claim_2"]
+        assert _ids(bundle, believer=Q42, beliefs=["undecided"]) == [
+            "claim_1",
+            "claim_3",
+        ]
 
         bundle.add_match_claim_belief(
             "claim_2", actor=WD_Q42, belief="true", date="2026-11-22"
         )
-        assert _ids(bundle, believer=Q42, belief="true") == ["claim_2"]
+        assert _ids(bundle, believer=Q42, beliefs=["true"]) == ["claim_2"]
 
     def test_refusals_change_nothing(self) -> None:
         bundle = _bundle()
@@ -202,9 +210,9 @@ class TestAddBelief:
 
         assert bundle.prefixes == {"orcid": "https://orcid.org/"}
         assert belief_context(bundle)["orcid"] == "https://orcid.org/"  # type: ignore[index]
-        assert _ids(bundle, believer="https://orcid.org/0000-0001", belief="true") == [
-            "claim_1"
-        ]
+        assert _ids(
+            bundle, believer="https://orcid.org/0000-0001", beliefs=["true"]
+        ) == ["claim_1"]
 
     def test_a_claim_is_addressed_in_its_scope(self) -> None:
         sources = []
@@ -287,19 +295,22 @@ class TestCoordinateGettersTakeTheBeliefFilter:
         )
         assert bundle.transfer_interval(1, 3, "score", "pcm") == (50000.0, 138200.0)
 
-    def test_an_unknown_filter_word_is_refused(self) -> None:
+    def test_an_unknown_state_is_refused(self) -> None:
         bundle = _bundle()
         refused = re.escape(REFUSED_WORD)
+        maybe = ["maybe"]
         calls = [
-            lambda: bundle.get_coordinate_at(QUARTER_2, "pcm", belief="maybe"),
-            lambda: bundle.get_coordinates_at([QUARTER_2], "pcm", belief="maybe"),
-            lambda: bundle.get_coordinate_for("n2", "pcm", belief="maybe"),
-            lambda: bundle.get_coordinates_for(["n2"], "pcm", belief="maybe"),
-            lambda: bundle.get_coordinate(QUARTER_2, "pcm", belief="maybe"),
-            lambda: bundle.transfer(2, "score", "pcm", belief="maybe"),
-            lambda: bundle.transfer_interval(1, 3, "score", "pcm", belief="maybe"),
-            lambda: ClaimFilter(belief="maybe"),  # type: ignore[arg-type]
-            lambda: believed([], None, "maybe"),  # type: ignore[arg-type]
+            lambda: bundle.get_coordinate_at(QUARTER_2, "pcm", beliefs=maybe),
+            lambda: bundle.get_coordinates_at([QUARTER_2], "pcm", beliefs=maybe),
+            lambda: bundle.get_coordinate_for("n2", "pcm", beliefs=maybe),
+            lambda: bundle.get_coordinates_for(["n2"], "pcm", beliefs=maybe),
+            lambda: bundle.get_coordinate(QUARTER_2, "pcm", beliefs=maybe),
+            lambda: bundle.transfer(2, "score", "pcm", beliefs=maybe),
+            lambda: bundle.transfer_interval(1, 3, "score", "pcm", beliefs=maybe),
+            lambda: bundle.get_match_claims(beliefs=maybe),
+            lambda: bundle.get_matchstamp_at(QUARTER_2, beliefs=maybe),
+            lambda: ClaimFilter(beliefs=maybe),  # type: ignore[arg-type]
+            lambda: believed([], None, maybe),  # type: ignore[arg-type]
         ]
         for call in calls:
             with pytest.raises(ValueError, match=refused):

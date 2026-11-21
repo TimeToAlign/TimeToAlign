@@ -761,25 +761,6 @@ class TestMatchClaimDisplay:
         assert "Certainty:   0.95" in s
         assert "Provenance:  method=inferred, note=partitura note_matching" in s
 
-    def test_str_inferred(self):
-        """__str__ shows [inferred] flag."""
-        claim = MatchClaim(
-            timeline_a_id="tl_a",
-            timeline_b_id="tl_b",
-            start_anchor=AlignmentAnchor(
-                timeline_a_id="tl_a",
-                coordinate_a=Coordinate(0.0, TimeUnit.number),
-                timeline_b_id="tl_b",
-                coordinate_b=Coordinate(0.0, TimeUnit.number),
-            ),
-            is_explicit=False,
-            source_claim_id="claim_1",
-        )
-        s = str(claim)
-        assert "[inferred]" in s
-        assert "Source:" in s
-        assert "claim_1" in s
-
     def test_repr_html_valid(self):
         """_repr_html_ produces valid HTML."""
         claim = _claim("score:clt_1", 10.0, "perf:dlt_1", 128.0)

@@ -20,6 +20,7 @@ Design:
 from __future__ import annotations
 
 import logging
+from collections.abc import Collection
 from dataclasses import dataclass, field
 from fractions import Fraction
 from pathlib import Path
@@ -29,6 +30,7 @@ import pandas as pd
 
 from timetoalign.alignment.claims import AlignmentAnchor
 from timetoalign.alignment.graph import MatchGraph, MatchStamp
+from timetoalign.core.provenance import DEFAULT_BELIEFS
 from timetoalign.core.retrieval import (
     CoordinateCollection,
     CoordinateFormat,
@@ -45,7 +47,7 @@ if TYPE_CHECKING:
     from timetoalign.alignment.claims import MatchClaim
     from timetoalign.alignment.match_format import MatchFileContext
     from timetoalign.core.enums import Domain, TimeUnit
-    from timetoalign.core.provenance import BeliefFilter
+    from timetoalign.core.provenance import BeliefState
     from timetoalign.timelines.groups import TimelineGroup
 
 module_logger = logging.getLogger(__name__)
@@ -452,7 +454,7 @@ class MatchLine:
         include_domains: set[Domain] | None = None,
         include_units: set[TimeUnit] | None = None,
         believer: str | None = None,
-        belief: BeliefFilter = "not_false",
+        beliefs: Collection[BeliefState] = DEFAULT_BELIEFS,
     ) -> MatchLine:
         """Build a MatchLine from claims via a MatchGraph.
 
@@ -474,13 +476,14 @@ class MatchLine:
             believer: The actor whose beliefs filter the claims (the belief
                 filter, applied by :class:`MatchGraph`); ``None`` keeps
                 every claim.
-            belief: ``"not_false"`` keeps every claim the believer does not
-                believe ``false``; ``"true"`` only those believed ``true``.
+            beliefs: The states kept for the believer (``"true"``,
+                ``"undecided"``, ``"unlikely"``, ``"false"``); default all
+                but ``"false"``.
 
         Returns:
             A MatchLine with stamps sorted by source coordinate.
         """
-        graph = MatchGraph(claims, believer=believer, belief=belief)
+        graph = MatchGraph(claims, believer=believer, beliefs=beliefs)
 
         if groups is not None:
             graph = graph.extend_to_groups(

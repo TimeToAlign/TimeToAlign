@@ -1489,15 +1489,26 @@ class TestBeliefFilter:
             "claim_3",
         ]
         assert [
-            claim.id for claim in bundle.get_match_claims(believer="ana", belief="true")
+            claim.id
+            for claim in bundle.get_match_claims(believer="ana", beliefs=["true"])
         ] == ["claim_1"]
+        assert [
+            claim.id
+            for claim in bundle.get_match_claims(believer="ana", beliefs=["undecided"])
+        ] == ["claim_3"]
+        assert [
+            claim.id
+            for claim in bundle.get_match_claims(
+                believer="ana", beliefs=["true", "false"]
+            )
+        ] == ["claim_1", "claim_2"]
 
     def test_get_matchstamp_at_reads_through_the_belief_filter(self) -> None:
         """Score 100 is claim_2's anchor, unless ana's filter leaves it out.
 
         No believer: the anchor, audio 60.0, not interpolated. ana's filter
         keeps claim_1 and claim_3, between which score 100 interpolates to
-        audio 50.0. With belief "true" only claim_1 remains: one claim
+        audio 50.0. With the states ["true"] only claim_1 remains: one claim
         cannot interpolate, so the stamp holds the score group alone.
         """
         bundle = _believed_claims_bundle()
@@ -1511,9 +1522,9 @@ class TestBeliefFilter:
             "midi": Coordinate(60.0, TimeUnit.seconds),
         }
 
-        not_false = bundle.get_matchstamp_at(100.0, "score", believer="ana")
-        assert not_false.is_interpolated is True
-        assert not_false.coordinates == {
+        all_but_false = bundle.get_matchstamp_at(100.0, "score", believer="ana")
+        assert all_but_false.is_interpolated is True
+        assert all_but_false.coordinates == {
             "score": Coordinate(100.0, TimeUnit.seconds),
             "image": Coordinate(200.0, TimeUnit.seconds),
             "audio": Coordinate(50.0, TimeUnit.seconds),
@@ -1521,7 +1532,7 @@ class TestBeliefFilter:
         }
 
         only_true = bundle.get_matchstamp_at(
-            100.0, "score", believer="ana", belief="true"
+            100.0, "score", believer="ana", beliefs=["true"]
         )
         assert only_true.coordinates == {
             "score": Coordinate(100.0, TimeUnit.seconds),
@@ -1551,7 +1562,7 @@ class TestBeliefFilterIris:
         ]
         assert [
             claim.id
-            for claim in bundle.get_match_claims(believer=believer, belief="true")
+            for claim in bundle.get_match_claims(believer=believer, beliefs=["true"])
         ] == ["claim_1"]
 
     def test_a_compact_belief_is_found_by_the_full_iri(self) -> None:
@@ -1643,9 +1654,8 @@ class TestAddMatchClaimField:
         assert len(bundle.match_claim_table) == 5
         held = bundle.get_match_claims()
         assert [claim.id for claim in held] == [f"claim_{n}" for n in range(1, 6)]
-        assert [claim.id_minted for claim in held] == [True] * 5
         assert [
-            claim.model_copy(update={"id": None, "id_minted": False}) for claim in held
+            claim.model_copy(update={"id": None}) for claim in held
         ] == field.to_claims()
         assert [claim.id for claim in field] == [None] * 5
 

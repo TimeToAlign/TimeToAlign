@@ -403,16 +403,9 @@ what turns a float axis rational. A test built from hand-written literals would
 have gone green against the broken code, which is why the fixture reads its
 values out of an actual `EventData` table.
 
-**A NOMATCH claim keeps its position outside an anchor, and it counts.** The
-anchored and interval lanes were brought onto their axes first and this one was
-missed, because its coordinate lives in a different field (`source_coordinate`)
-— which is exactly how one defect reappears in an area already believed fixed.
-A section marker at `164.3` seconds rendered as
-`@2890396167097549/17592186044416 seconds`. It gets the same rule for the same
-reason, applied where the value is stored so that storage, `repr`, `__str__`
-and `_repr_html_` cannot disagree. The test asserts the model field and all
-three renderings, because an anchorless claim has no getter to go through:
-`get_coordinate_for` raises on it, correctly, and is left alone.
+A NOMATCH claim holds no coordinate (its event's position is the event's,
+on its timeline), so the anchors are the only claim coordinates the rule
+reaches.
 
 **A claim is put on its axes when it is made, and only then.** A bundle reads
 its claims as they are held and converts nothing, so the conversion has one
@@ -1631,25 +1624,42 @@ What proves the entry is the format's and holds nothing else:
   another actor and is appended. Construction, which has no context,
   compares the same way: two beliefs of `https://example.org/people/ana`
   are refused.
-- **One check of the filter word.** `check_belief_filter` accepts
-  `not_false` and `true` and refuses `maybe` with `The belief filter keeps
-  'not_false' or 'true', not 'maybe'`; `belief_mask` refuses through it with that
-  message (and so do `ClaimFilter` and `believed`, `test_claim_beliefs.py`).
+- **One check of the states.** `check_belief_filter` takes a collection of
+  the four states and answers it as a frozen set (`["true", "unlikely"]` →
+  `{"true", "unlikely"}`; a repeated state counts once; `[]` is the empty
+  set). It refuses a single string, which would read as its characters
+  (`"true"`: `The belief filter takes a collection of states, not the string
+  'true': write ['true'].`), and a word that is no state (`["maybe",
+  "true"]`: `The belief filter keeps the states ['true', 'undecided',
+  'unlikely', 'false'], not ['maybe']`; the former words `not_false` alike);
+  `belief_mask` refuses through it with those messages (and so do
+  `ClaimFilter` and `believed`, `test_claim_beliefs.py`).
 - **Dictionary.** `to_dict` leaves absent keys out (an entry of `service`
   alone is `{"service": ...}`; a belief without a note has no `note` key),
   writes lists for `stated_by`, `basis` and `beliefs`, and `from_dict` gives
   back an equal entry; asserted on one whole literal.
 - **The belief filter** is decided in one place, `belief_mask`, over a column
   of entries; `Provenance.passes_belief_filter` and
-  `ProvenanceField.passes_belief_filter` ask it. The column of five rows — no
-  entry, an entry without beliefs, `jo` `false`, `jo` `true`, `jo`
-  `unlikely` with `ana` `false` — gives for `jo` with `"not_false"`
-  `[True, True, False, True, True]`, with `"true"`
-  `[False, False, False, True, False]`, for `ana` with `"not_false"`
-  `[True, True, True, True, False]`, and for no believer all `True` (either
-  filter). An empty column gives an empty mask; a filter word other than the
-  two is refused. The scalar answers equal the column's row for row, and the
-  Field's equal the function's, so neither can drift from the one predicate.
+  `ProvenanceField.passes_belief_filter` ask it. Each row has one state for
+  the believer — the believer's belief, or `undecided` where the believer
+  holds none (no entry, an entry without beliefs, or only other actors'
+  beliefs) — and is kept when that state is among `beliefs`. The column of
+  five rows — no entry, an entry without beliefs, `jo` `false`, `jo` `true`,
+  `jo` `unlikely` with `ana` `false` — has for `jo` the states `undecided,
+  undecided, false, true, unlikely` and for `ana` `undecided` ×4, `false`.
+  So for `jo`: the default (all but `false`) `[True, True, False, True,
+  True]`; `["true"]` `[False, False, False, True, False]`; `["undecided"]`
+  `[True, True, False, False, False]`; `["unlikely"]` `[False, False, False,
+  False, True]`; `["false"]` `[False, False, True, False, False]`; all four
+  states all `True`; `[]` all `False`. For `ana`: the default `[True, True,
+  True, True, False]`, `["false"]` `[False, False, False, False, True]`. The
+  four one-state masks of one believer partition the rows (each row in
+  exactly one), which is what proves `undecided` is the complement of the
+  three beliefs rather than a fourth value read from the data. For no
+  believer every row is `True` whatever the states. An empty column gives
+  an empty mask. The scalar answers equal the column's row for row, and the
+  Field's equal the function's, so neither can drift from the one
+  predicate; a tuple, a list and a set of the same states give one mask.
 - **Actors compare as IRIs, in the predicate itself.** `belief_mask` expands
   the believer and every actor under its `context=` (TimeToShare's
   `expand_iri`), so statements and MatchClaims share one comparison. A column
@@ -1657,8 +1667,8 @@ What proves the entry is the format's and holds nothing else:
   `false`, `https://example.org/people/ana` `true`, `wd:Q1` `false` — under
   the context declaring `ex` as `https://example.org/people/` gives for the
   believer `ex:ana` and for `https://example.org/people/ana` alike
-  `[False, False, True, True]` (`"not_false"`), and for the absolute
-  believer with `"true"` `[False, False, True, False]`: the compact and the
+  `[False, False, True, True]` (the default states), and for the absolute
+  believer with `["true"]` `[False, False, True, False]`: the compact and the
   absolute spelling are one actor either way round. Without a context no
   prefix is declared, so the compact actor compares as written: `ex:ana`
   gives `[False, True, True, True]`, the absolute believer

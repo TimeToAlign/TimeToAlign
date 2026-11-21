@@ -18,7 +18,7 @@ was made and holds no belief. Every actor may record a belief in any pair,
 ``"true"``, ``"false"`` or ``"unlikely"``: believing a stated pair
 ``"false"`` records that belief and never removes the pair, and a candidate
 an actor believes ``"false"`` is not offered to that actor again. The
-belief filter (``believer=``, ``belief=``) is decided by
+belief filter (``believer=``, ``beliefs=``) is decided by
 :func:`~timetoalign.core.provenance.belief_mask`, as for MatchClaims.
 
 Everything about the pairs themselves is TimeToShare's
@@ -87,7 +87,7 @@ from __future__ import annotations
 
 import copy
 import datetime
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from typing import Any, Final
 
 import timetoshare
@@ -95,8 +95,9 @@ from timetoshare import FORMAT_CONTEXT, Catalogue, Rectangle, load_catalogue
 from typing_extensions import Self
 
 from ..core.provenance import (
+    DEFAULT_BELIEFS,
     Belief,
-    BeliefFilter,
+    BeliefState,
     BeliefValue,
     Provenance,
     belief_mask,
@@ -312,7 +313,7 @@ def _believing(
     entries: list[dict[str, Any]],
     context: Mapping[str, Any],
     believer: str | None,
-    belief: BeliefFilter,
+    beliefs: Collection[BeliefState],
 ) -> list[dict[str, Any]]:
     """The *entries* the belief filter keeps for *believer*.
 
@@ -321,8 +322,8 @@ def _believing(
     may be compact or absolute.
     """
     if believer is None:
-        # Without a believer every entry is kept; the filter word is still checked.
-        check_belief_filter(belief)
+        # Without a believer every entry is kept; the states are still checked.
+        check_belief_filter(beliefs)
         return entries
     rows: list[Provenance | None] = []
     for entry in entries:
@@ -330,7 +331,7 @@ def _believing(
         # An entry holding the pair alone states no provenance: a null row.
         stated = members.get("beliefs") or members.keys() - {"beliefs"}
         rows.append(Provenance.from_dict(members) if stated else None)
-    mask = belief_mask(provenance_array(rows), believer, belief, context=context)
+    mask = belief_mask(provenance_array(rows), believer, beliefs, context=context)
     return [
         entry for entry, kept in zip(entries, mask.to_pylist(), strict=True) if kept
     ]
@@ -462,7 +463,7 @@ class StatementsMixin:
         *,
         node: NodePath = (),
         believer: str | None = None,
-        belief: BeliefFilter = "not_false",
+        beliefs: Collection[BeliefState] = DEFAULT_BELIEFS,
     ) -> list[dict[str, Any]]:
         """Return the provenance entries of the holder or of a value node.
 
@@ -473,20 +474,21 @@ class StatementsMixin:
             node: The value node whose entries to return; ``()`` the holder.
             believer: The actor whose beliefs filter, an IRI (compact or
                 absolute); every entry when None.
-            belief: ``"not_false"`` keeps the entries of pairs the believer
-                does not believe ``"false"``; ``"true"`` only those the
-                believer believes ``"true"``.
+            beliefs: The states kept: the entries of pairs whose state for
+                the believer (``"true"``, ``"undecided"`` where the believer
+                holds no belief, ``"unlikely"``, ``"false"``) is one of
+                them; default all but ``"false"``.
 
         Raises:
-            ValueError: If *node* addresses no value node, or *belief* is
-                neither ``"not_false"`` nor ``"true"``.
+            ValueError: If *node* addresses no value node, or *beliefs* is
+                not a collection of belief states.
         """
         document = self._statement_document()
         return _believing(
             timetoshare.entries(document, _subject(node)),
             document["@context"],
             believer,
-            belief,
+            beliefs,
         )
 
     def get_candidates(
@@ -494,33 +496,33 @@ class StatementsMixin:
         *,
         node: NodePath = (),
         believer: str | None = None,
-        belief: BeliefFilter = "not_false",
+        beliefs: Collection[BeliefState] = DEFAULT_BELIEFS,
     ) -> list[dict[str, Any]]:
         """Return the candidates: the entries of pairs the holder does not state.
 
         A candidate is offered for someone to state (:meth:`add_statement`
-        with the same pair). With *believer*, a candidate the believer
-        believes ``"false"`` is left out: it is not offered to that actor
-        again (:func:`timetoshare.candidates` with ``actor=``).
+        with the same pair). With *believer* and the default *beliefs*, a
+        candidate the believer believes ``"false"`` is left out: it is not
+        offered to that actor again (:func:`timetoshare.candidates` with
+        ``actor=``).
 
         Args:
             node: The value node whose candidates to return; ``()`` the
                 holder.
             believer: The actor whose beliefs filter, an IRI (compact or
                 absolute); every candidate when None.
-            belief: ``"not_false"`` or ``"true"``, as for
-                :meth:`get_provenance`.
+            beliefs: The states kept, as for :meth:`get_provenance`.
 
         Raises:
-            ValueError: If *node* addresses no value node, or *belief* is
-                neither ``"not_false"`` nor ``"true"``.
+            ValueError: If *node* addresses no value node, or *beliefs* is
+                not a collection of belief states.
         """
         document = self._statement_document()
         return _believing(
             timetoshare.candidates(document, _subject(node)),
             document["@context"],
             believer,
-            belief,
+            beliefs,
         )
 
     def get_rectangles(self, catalogue: Catalogue | None = None) -> list[Rectangle]:

@@ -243,8 +243,9 @@ show(wav)
 # the earlier. A belief never changes what is stated: a reviewer who
 # believes the source `"false"` leaves the pair in place, and nothing
 # derives a truth value from the beliefs. The belief filter reads them for
-# one actor, the believer: everything the believer does not believe
-# `"false"` (the default), or only what the believer believes `"true"`.
+# one actor, the believer, keeping the states listed in `beliefs=`
+# (`"true"`, `"undecided"` where the believer holds no belief,
+# `"unlikely"`, `"false"`); by default every state but `"false"`.
 
 # %%
 wav.add_belief(
@@ -253,7 +254,7 @@ wav.add_belief(
 (
     wav.statements,
     len(wav.get_provenance(believer=REVIEWER)),
-    len(wav.get_provenance(believer=EDITOR, belief="true")),
+    len(wav.get_provenance(believer=EDITOR, beliefs=["true"])),
 )
 
 # %% [markdown]

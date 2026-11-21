@@ -3656,7 +3656,7 @@ def coordinate_cell_projector(
 
     The value projector (``core.fields.register_value_projector``) of every
     coordinate that names its own axis in a table whose rows may lie on
-    different timelines: a MatchClaim's anchors and ``source_coordinate``, a
+    different timelines: the coordinates of a MatchClaim's anchors, a
     Projection's ``start`` and ``duration``.
     """
     return [pa.field(name, COORDINATE_CELL_TYPE, nullable=True)]

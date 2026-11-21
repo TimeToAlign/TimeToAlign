@@ -19,7 +19,7 @@ from __future__ import annotations
 import datetime
 import logging
 import re
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from fractions import Fraction
 from pathlib import Path
@@ -46,8 +46,9 @@ from timetoalign.core import (
 from timetoalign.core.enums import NumberType
 from timetoalign.core.ids import _OpenObject, mint_id, quote_id, validate_id
 from timetoalign.core.provenance import (
+    DEFAULT_BELIEFS,
     Belief,
-    BeliefFilter,
+    BeliefState,
     BeliefValue,
     check_belief_filter,
 )
@@ -124,10 +125,24 @@ if TYPE_CHECKING:
 
 module_logger = logging.getLogger(__name__)
 
-#: A belief filter as the bundle's caches key it: ``(believer, belief)``.
-_BeliefKey = tuple["str | None", str]
+#: A belief filter as the bundle's caches key it: ``(believer, beliefs)``,
+#: the states a frozen set (:func:`_belief_key`).
+_BeliefKey = tuple["str | None", frozenset[str]]
 #: The belief filter that filters nothing (no believer).
-_ALL_BELIEFS: _BeliefKey = (None, "not_false")
+_ALL_BELIEFS: _BeliefKey = (None, frozenset(DEFAULT_BELIEFS))
+
+
+def _belief_key(believer: str | None, beliefs: Collection[str]) -> _BeliefKey:
+    """The cache key of a belief filter, its states checked.
+
+    Without a believer nothing is filtered, whatever the states, so every
+    such filter is :data:`_ALL_BELIEFS`.
+
+    Raises:
+        ValueError: If *beliefs* is not a collection of belief states.
+    """
+    states = check_belief_filter(beliefs)
+    return _ALL_BELIEFS if believer is None else (believer, states)
 
 
 def _resolve_coordinate_and_timeline(
@@ -171,7 +186,8 @@ def _table_anchors(
     Per row its start anchor, then its end anchor where it has one; a row
     without anchors gives none. Each coordinate is read from its cell
     (:func:`~timetoalign.core.time.cell_coordinate`) in the number type the
-    cell declares; no claim is materialised.
+    cell declares, on its row's timeline of that side; no claim is
+    materialised.
 
     Returns:
         ``(timeline_a_id, coordinate_a, timeline_b_id, coordinate_b)`` per
@@ -179,7 +195,9 @@ def _table_anchors(
     """
     data = rows._struct_array()
     anchors: list[tuple[str, Coordinate, str, Coordinate]] = []
-    for start, end in zip(
+    for timeline_a_id, timeline_b_id, start, end in zip(
+        data.field("timeline_a_id").to_pylist(),
+        data.field("timeline_b_id").to_pylist(),
         data.field("start_anchor").to_pylist(),
         data.field("end_anchor").to_pylist(),
         strict=True,
@@ -189,9 +207,9 @@ def _table_anchors(
                 continue
             anchors.append(
                 (
-                    anchor["timeline_a_id"],
+                    timeline_a_id,
                     cell_coordinate(anchor["coordinate_a"]),
-                    anchor["timeline_b_id"],
+                    timeline_b_id,
                     cell_coordinate(anchor["coordinate_b"]),
                 )
             )
@@ -252,7 +270,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         Every reader of the MatchClaims (queries, the matchstamp getters,
         the table getter :meth:`get_matchstamp_table`, the MatchLines and
         WarpMaps behind transfer) reads the one table, through the belief
-        filter (``believer``, ``belief``) where the reader takes it. Two
+        filter (``believer``, ``beliefs``) where the reader takes it. Two
         bundles are equal when their claims are too: the tables are compared
         row by row, provenance included (:class:`MatchClaimField` equality).
 
@@ -1192,7 +1210,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         to_timeline: str,
         *,
         believer: str | None = None,
-        belief: BeliefFilter = "not_false",
+        beliefs: Collection[BeliefState] = DEFAULT_BELIEFS,
     ) -> float | None:
         """Transfer a coordinate from one timeline to another.
 
@@ -1214,19 +1232,18 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             to_timeline: ID of the target timeline.
             believer: The actor whose beliefs filter the MatchClaims read
                 (the belief filter); ``None`` reads every claim.
-            belief: ``"not_false"`` (default) reads every claim the believer
-                does not believe ``false``; ``"true"`` only those believed
-                ``true``.
+            beliefs: The states read for the believer (``"true"``,
+                ``"undecided"``, ``"unlikely"``, ``"false"``); default all
+                but ``"false"``.
 
         Returns:
             The transferred coordinate, or None if no path exists.
 
         Raises:
             KeyError: If either id names no timeline of the bundle's trees.
-            ValueError: If *belief* is neither ``"not_false"`` nor ``"true"``.
+            ValueError: If *beliefs* is not a collection of belief states.
         """
-        check_belief_filter(belief)
-        belief_key = (believer, belief)
+        belief_key = _belief_key(believer, beliefs)
         source_timeline = self._require_known_timeline(
             from_timeline, role="Source timeline"
         )
@@ -1339,7 +1356,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         # direct reachability edge. Reuse the match-stamp closure for that
         # exact-anchor case, including chains through standalone timelines.
         stamp = self.get_matchstamp_at(
-            query_coordinate, from_timeline, believer=believer, belief=belief
+            query_coordinate, from_timeline, believer=believer, beliefs=beliefs
         )
         if isinstance(stamp, MatchStamp) and to_timeline in stamp.coordinates:
             return float(stamp.coordinates[to_timeline].value)
@@ -1359,7 +1376,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         to_timeline: str,
         *,
         believer: str | None = None,
-        belief: BeliefFilter = "not_false",
+        beliefs: Collection[BeliefState] = DEFAULT_BELIEFS,
     ) -> tuple[float, float] | None:
         """Transfer an interval from one timeline to another.
 
@@ -1372,9 +1389,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             to_timeline: ID of the target timeline.
             believer: The actor whose beliefs filter the MatchClaims read
                 (the belief filter); ``None`` reads every claim.
-            belief: ``"not_false"`` (default) reads every claim the believer
-                does not believe ``false``; ``"true"`` only those believed
-                ``true``.
+            beliefs: The states read for the believer (``"true"``,
+                ``"undecided"``, ``"unlikely"``, ``"false"``); default all
+                but ``"false"``.
 
         Returns:
             Tuple of (start, end) in target timeline, or None if no path.
@@ -1401,10 +1418,10 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             else end_value
         )
         transferred_start = self.transfer(
-            start, from_timeline, to_timeline, believer=believer, belief=belief
+            start, from_timeline, to_timeline, believer=believer, beliefs=beliefs
         )
         transferred_end = self.transfer(
-            end, from_timeline, to_timeline, believer=believer, belief=belief
+            end, from_timeline, to_timeline, believer=believer, beliefs=beliefs
         )
 
         if transferred_start is None or transferred_end is None:
@@ -1418,7 +1435,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         timeline_b: str,
         *,
         believer: str | None = None,
-        belief: BeliefFilter = "not_false",
+        beliefs: Collection[BeliefState] = DEFAULT_BELIEFS,
     ) -> bool:
         """Check if two timelines can be connected via transfer.
 
@@ -1432,9 +1449,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             timeline_b: Second timeline ID.
             believer: The actor whose beliefs filter the claims (the belief
                 filter); ``None`` reads every claim.
-            belief: ``"not_false"`` (default) reads every claim the believer
-                does not believe ``false``; ``"true"`` only those believed
-                ``true``.
+            beliefs: The states read for the believer (``"true"``,
+                ``"undecided"``, ``"unlikely"``, ``"false"``); default all
+                but ``"false"``.
 
         Returns:
             True if coordinates can be transferred between them.
@@ -1445,7 +1462,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         if timeline_b in group_a_tl_ids:
             return True
         # One vectorized pass over the claims in force; none is materialised.
-        return self._claims_in_force((believer, belief)).connects_groups(
+        return self._claims_in_force(_belief_key(believer, beliefs)).connects_groups(
             group_a_tl_ids, self._group_component(timeline_b)
         )
 
@@ -1701,7 +1718,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         absolute spelling of one actor are one actor); every other actor's
         belief stands. A claim stated without provenance gets an entry
         holding the belief alone. The belief filter (``believer=``,
-        ``belief=`` on every query) reads it at once; the MatchClaim table
+        ``beliefs=`` on every query) reads it at once; the MatchClaim table
         written by :meth:`to_file` succeeds the one written before. A belief
         in a pair of the bundle's own statements is recorded by
         :meth:`add_belief`.
@@ -1942,16 +1959,17 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         as its statements compare them.
 
         Args:
-            belief_key: ``(believer, belief)``; no believer keeps every claim.
+            belief_key: ``(believer, beliefs)`` (:func:`_belief_key`); no
+                believer keeps every claim.
         """
         if belief_key == _ALL_BELIEFS:
             return self.match_claim_table
         in_force = self._in_force_cache.get(belief_key)
         if in_force is None:
-            believer, belief = belief_key
+            believer, beliefs = belief_key
             in_force = self.match_claim_table.filter(
                 believer=believer,
-                belief=belief,  # type: ignore[arg-type]
+                beliefs=beliefs,
                 context=belief_context(self),
             )
             self._in_force_cache[belief_key] = in_force
@@ -2012,7 +2030,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         include_domains: set["Domain"] | None = None,
         include_units: set["TimeUnit"] | None = None,
         believer: str | None = None,
-        belief: BeliefFilter = "not_false",
+        beliefs: Collection[BeliefState] = DEFAULT_BELIEFS,
     ) -> list[MatchClaim]:
         """Query the bundle's MatchClaims.
 
@@ -2040,9 +2058,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             include_units: Only timelines with these units.
             believer: The actor whose beliefs filter the claims (the belief
                 filter); ``None`` filters nothing.
-            belief: ``"not_false"`` (default) keeps every claim the believer
-                does not believe ``false``; ``"true"`` only those the
-                believer believes ``true``.
+            beliefs: The states kept for the believer (``"true"``,
+                ``"undecided"``, ``"unlikely"``, ``"false"``); default all
+                but ``"false"``.
 
         Returns:
             Filtered list of MatchClaims.
@@ -2102,7 +2120,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 include_domains=include_domains,
                 include_units=include_units,
                 believer=believer,
-                belief=belief,
+                beliefs=beliefs,
             )
         )
 
@@ -2118,7 +2136,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         include_domains: set["Domain"] | None = None,
         include_units: set["TimeUnit"] | None = None,
         believer: str | None = None,
-        belief: BeliefFilter = "not_false",
+        beliefs: Collection[BeliefState] = DEFAULT_BELIEFS,
     ) -> MatchClaimField:
         """Query the MatchClaim table, materialising nothing.
 
@@ -2139,7 +2157,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             include_units: Only timelines with these units.
             believer: The actor whose beliefs filter the claims (the belief
                 filter); ``None`` filters nothing.
-            belief: ``"not_false"`` (default) or ``"true"``.
+            beliefs: The states kept for the believer; default all but
+                ``"false"``.
 
         Returns:
             The filtered :class:`MatchClaimField`.
@@ -2179,13 +2198,13 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             include_domains=include_domains,
             include_units=include_units,
             believer=believer,
-            belief=belief,
+            beliefs=beliefs,
         )
         if filt is None:
             return self.match_claim_table._empty()
         # The belief filter is the one shared point's; the rest filters what
         # it keeps.
-        return self._claims_in_force((filt.believer, filt.belief)).filter(
+        return self._claims_in_force(_belief_key(filt.believer, filt.beliefs)).filter(
             timeline_id=filt.timeline_id,
             timeline_ids=filt.timeline_ids,
             id_pattern=filt.id_pattern,
@@ -2207,7 +2226,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         include_domains: set["Domain"] | None,
         include_units: set["TimeUnit"] | None,
         believer: str | None,
-        belief: BeliefFilter,
+        beliefs: Collection[BeliefState],
     ) -> ClaimFilter | None:
         """Build the ``ClaimFilter`` for the timelines the bundle knows.
 
@@ -2239,7 +2258,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             include_domains=include_domains,
             include_units=include_units,
             believer=believer,
-            belief=belief,
+            beliefs=beliefs,
         )
 
     def _axis_on(self, coordinate: float, timeline_id: str) -> int | float | Fraction:
@@ -2406,7 +2425,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         format: CoordinateFormat = "id_coordinate",
         rounding: Rounding = "round",
         believer: str | None = None,
-        belief: BeliefFilter = "not_false",
+        beliefs: Collection[BeliefState] = DEFAULT_BELIEFS,
     ) -> CoordinateResult | pd.Series:
         """Resolve one coordinate onto a requested timeline axis.
 
@@ -2421,14 +2440,14 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             rounding: Integral projection mode.
             believer: The actor whose beliefs filter the MatchClaims read
                 (the belief filter); ``None`` reads every claim.
-            belief: ``"not_false"`` (default) reads every claim the believer
-                does not believe ``false``; ``"true"`` only those believed
-                ``true``.
+            beliefs: The states read for the believer (``"true"``,
+                ``"undecided"``, ``"unlikely"``, ``"false"``); default all
+                but ``"false"``.
 
         Returns:
             One coordinate projection or a length-one Series.
         """
-        check_belief_filter(belief)
+        check_belief_filter(beliefs)
         if not (
             not isinstance(at, bool)
             and isinstance(at, (int, float, Fraction, Coordinate))
@@ -2465,7 +2484,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 scalar=True,
                 series_name=result_id,
             )
-        stamp = self.get_matchstamp_at(at, source_id, believer=believer, belief=belief)
+        stamp = self.get_matchstamp_at(
+            at, source_id, believer=believer, beliefs=beliefs
+        )
         return stamp.get_coordinate_for(result_id, format=format, rounding=rounding)
 
     def get_coordinates_at(
@@ -2476,7 +2497,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         format: CoordinateFormat = "id_coordinate",
         rounding: Rounding = "round",
         believer: str | None = None,
-        belief: BeliefFilter = "not_false",
+        beliefs: Collection[BeliefState] = DEFAULT_BELIEFS,
     ) -> list[CoordinateResult] | pd.Series:
         """Resolve a coordinate collection onto one timeline axis.
 
@@ -2487,14 +2508,14 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             rounding: Integral projection mode.
             believer: The actor whose beliefs filter the MatchClaims read
                 (the belief filter); ``None`` reads every claim.
-            belief: ``"not_false"`` (default) reads every claim the believer
-                does not believe ``false``; ``"true"`` only those believed
-                ``true``.
+            beliefs: The states read for the believer (``"true"``,
+                ``"undecided"``, ``"unlikely"``, ``"false"``); default all
+                but ``"false"``.
 
         Returns:
             A list of projections or canonical-value Series.
         """
-        check_belief_filter(belief)
+        check_belief_filter(beliefs)
         values, index = validate_coordinate_collection(at)
         if not values and timeline_id is None:
             raise ValueError("timeline_id is required for an empty bundle query")
@@ -2508,7 +2529,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 format="id_coordinate",
                 rounding=rounding,
                 believer=believer,
-                belief=belief,
+                beliefs=beliefs,
             )
             assert isinstance(result, IdCoordinate)
             results.append(result)
@@ -2550,7 +2571,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         format: CoordinateFormat = "id_coordinate",
         rounding: Rounding = "round",
         believer: str | None = None,
-        belief: BeliefFilter = "not_false",
+        beliefs: Collection[BeliefState] = DEFAULT_BELIEFS,
     ) -> CoordinateResult | pd.Series:
         """Return a uniquely owned event's start on a selected bundle axis.
 
@@ -2561,14 +2582,14 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             rounding: Integral projection mode.
             believer: The actor whose beliefs filter the MatchClaims read
                 (the belief filter); ``None`` reads every claim.
-            belief: ``"not_false"`` (default) reads every claim the believer
-                does not believe ``false``; ``"true"`` only those believed
-                ``true``.
+            beliefs: The states read for the believer (``"true"``,
+                ``"undecided"``, ``"unlikely"``, ``"false"``); default all
+                but ``"false"``.
 
         Returns:
             One event-start projection or a length-one Series.
         """
-        check_belief_filter(belief)
+        check_belief_filter(beliefs)
         if not isinstance(key, str):
             raise TypeError("get_coordinate_for requires an event-ID string")
         owners = self._event_owners(key)
@@ -2587,7 +2608,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             format="id_coordinate",
             rounding=rounding,
             believer=believer,
-            belief=belief,
+            beliefs=beliefs,
         )
         assert isinstance(result, IdCoordinate)
         return format_coordinates(
@@ -2607,7 +2628,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         format: CoordinateFormat = "id_coordinate",
         rounding: Rounding = "round",
         believer: str | None = None,
-        belief: BeliefFilter = "not_false",
+        beliefs: Collection[BeliefState] = DEFAULT_BELIEFS,
     ) -> list[CoordinateResult] | pd.Series:
         """Return event-start coordinates for a key collection.
 
@@ -2618,14 +2639,14 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             rounding: Integral projection mode.
             believer: The actor whose beliefs filter the MatchClaims read
                 (the belief filter); ``None`` reads every claim.
-            belief: ``"not_false"`` (default) reads every claim the believer
-                does not believe ``false``; ``"true"`` only those believed
-                ``true``.
+            beliefs: The states read for the believer (``"true"``,
+                ``"undecided"``, ``"unlikely"``, ``"false"``); default all
+                but ``"false"``.
 
         Returns:
             A list of projections or canonical-value Series.
         """
-        check_belief_filter(belief)
+        check_belief_filter(beliefs)
         values, index = validate_key_collection(keys)
         results: list[IdCoordinate] = []
         for key in values:
@@ -2635,7 +2656,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 format="id_coordinate",
                 rounding=rounding,
                 believer=believer,
-                belief=belief,
+                beliefs=beliefs,
             )
             assert isinstance(result, IdCoordinate)
             results.append(result)
@@ -2663,7 +2684,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         format: CoordinateFormat = "id_coordinate",
         rounding: Rounding = "round",
         believer: str | None = None,
-        belief: BeliefFilter = "not_false",
+        beliefs: Collection[BeliefState] = DEFAULT_BELIEFS,
     ) -> CoordinateResult | list[CoordinateResult] | pd.Series:
         """Dispatch a positional or event-key bundle coordinate query.
 
@@ -2674,9 +2695,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             rounding: Integral projection mode.
             believer: The actor whose beliefs filter the MatchClaims read
                 (the belief filter); ``None`` reads every claim.
-            belief: ``"not_false"`` (default) reads every claim the believer
-                does not believe ``false``; ``"true"`` only those believed
-                ``true``.
+            beliefs: The states read for the believer (``"true"``,
+                ``"undecided"``, ``"unlikely"``, ``"false"``); default all
+                but ``"false"``.
 
         Returns:
             The selected precise-getter result.
@@ -2690,7 +2711,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             format=format,
             rounding=rounding,
             believer=believer,
-            belief=belief,
+            beliefs=beliefs,
         )
 
     def get_matchstamp_at(
@@ -2705,7 +2726,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         include_domains: set["Domain"] | None = None,
         include_units: set["TimeUnit"] | None = None,
         believer: str | None = None,
-        belief: BeliefFilter = "not_false",
+        beliefs: Collection[BeliefState] = DEFAULT_BELIEFS,
     ) -> MatchStamp | MatchIntervalStamp:
         """Get a cross-group match stamp for a position on a timeline.
 
@@ -2753,9 +2774,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             include_units: Only these units in the result.
             believer: The actor whose beliefs filter the MatchClaims read
                 (the belief filter); ``None`` reads every claim.
-            belief: ``"not_false"`` (default) reads every claim the believer
-                does not believe ``false``; ``"true"`` only those believed
-                ``true``.
+            beliefs: The states read for the believer (``"true"``,
+                ``"undecided"``, ``"unlikely"``, ``"false"``); default all
+                but ``"false"``.
 
         Returns:
             A coordinate query returns a MatchStamp. An Interval query returns
@@ -2810,7 +2831,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 include_domains=include_domains,
                 include_units=include_units,
                 believer=believer,
-                belief=belief,
+                beliefs=beliefs,
             )
             end_stamp = self.get_matchstamp_at(
                 at.end,
@@ -2822,7 +2843,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 include_domains=include_domains,
                 include_units=include_units,
                 believer=believer,
-                belief=belief,
+                beliefs=beliefs,
             )
             assert type(start_stamp) is MatchStamp
             assert type(end_stamp) is MatchStamp
@@ -2864,7 +2885,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         assert isinstance(query_coordinate, Coordinate)
         queried = query_coordinate.value
 
-        belief_key: _BeliefKey = (believer, belief)
+        belief_key = _belief_key(believer, beliefs)
         relevant_claims = self._relevant_claims_at(
             timeline_id, query_coordinate, belief_key
         )
@@ -3034,7 +3055,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         include_domains: set["Domain"] | None = None,
         include_units: set["TimeUnit"] | None = None,
         believer: str | None = None,
-        belief: BeliefFilter = "not_false",
+        beliefs: Collection[BeliefState] = DEFAULT_BELIEFS,
     ) -> list[MatchStamp | MatchIntervalStamp]:
         """Get cross-group MatchStamps at a collection of positions.
 
@@ -3056,9 +3077,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             include_units: Only these units in each result.
             believer: The actor whose beliefs filter the MatchClaims read
                 (the belief filter); ``None`` reads every claim.
-            belief: ``"not_false"`` (default) reads every claim the believer
-                does not believe ``false``; ``"true"`` only those believed
-                ``true``.
+            beliefs: The states read for the believer (``"true"``,
+                ``"undecided"``, ``"unlikely"``, ``"false"``); default all
+                but ``"false"``.
 
         Returns:
             One stamp per input position. Coordinate elements produce
@@ -3107,7 +3128,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 include_domains=include_domains,
                 include_units=include_units,
                 believer=believer,
-                belief=belief,
+                beliefs=beliefs,
             )
             for value in values
         ]
@@ -3124,7 +3145,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         include_domains: set["Domain"] | None = None,
         include_units: set["TimeUnit"] | None = None,
         believer: str | None = None,
-        belief: BeliefFilter = "not_false",
+        beliefs: Collection[BeliefState] = DEFAULT_BELIEFS,
     ) -> MatchStamp:
         """Get the cross-group MatchStamp at a uniquely owned event.
 
@@ -3140,9 +3161,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             include_units: Only these units in the result.
             believer: The actor whose beliefs filter the MatchClaims read
                 (the belief filter); ``None`` reads every claim.
-            belief: ``"not_false"`` (default) reads every claim the believer
-                does not believe ``false``; ``"true"`` only those believed
-                ``true``.
+            beliefs: The states read for the believer (``"true"``,
+                ``"undecided"``, ``"unlikely"``, ``"false"``); default all
+                but ``"false"``.
 
         Returns:
             MatchStamp spanning all connected timelines.
@@ -3196,7 +3217,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             include_domains=include_domains,
             include_units=include_units,
             believer=believer,
-            belief=belief,
+            beliefs=beliefs,
         )
 
     def get_matchstamps_for(
@@ -3211,7 +3232,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         include_domains: set["Domain"] | None = None,
         include_units: set["TimeUnit"] | None = None,
         believer: str | None = None,
-        belief: BeliefFilter = "not_false",
+        beliefs: Collection[BeliefState] = DEFAULT_BELIEFS,
     ) -> list[MatchStamp]:
         """Get cross-group MatchStamps for a collection of event IDs.
 
@@ -3227,9 +3248,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             include_units: Only these units in each result.
             believer: The actor whose beliefs filter the MatchClaims read
                 (the belief filter); ``None`` reads every claim.
-            belief: ``"not_false"`` (default) reads every claim the believer
-                does not believe ``false``; ``"true"`` only those believed
-                ``true``.
+            beliefs: The states read for the believer (``"true"``,
+                ``"undecided"``, ``"unlikely"``, ``"false"``); default all
+                but ``"false"``.
 
         Returns:
             One MatchStamp per key, in input order; an empty collection gives
@@ -3251,7 +3272,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 include_domains=include_domains,
                 include_units=include_units,
                 believer=believer,
-                belief=belief,
+                beliefs=beliefs,
             ),
         )
         return stamps
@@ -3275,7 +3296,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         include_domains: set["Domain"] | None = None,
         include_units: set["TimeUnit"] | None = None,
         believer: str | None = None,
-        belief: BeliefFilter = "not_false",
+        beliefs: Collection[BeliefState] = DEFAULT_BELIEFS,
     ) -> MatchStamp | MatchIntervalStamp | list[MatchStamp | MatchIntervalStamp]:
         """Dispatch a positional or event-key match-stamp query.
 
@@ -3290,9 +3311,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             include_units: Only these units in each result.
             believer: The actor whose beliefs filter the MatchClaims read
                 (the belief filter); ``None`` reads every claim.
-            belief: ``"not_false"`` (default) reads every claim the believer
-                does not believe ``false``; ``"true"`` only those believed
-                ``true``.
+            beliefs: The states read for the believer (``"true"``,
+                ``"undecided"``, ``"unlikely"``, ``"false"``); default all
+                but ``"false"``.
 
         Returns:
             The selected precise-getter result.
@@ -3309,7 +3330,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             "include_domains": include_domains,
             "include_units": include_units,
             "believer": believer,
-            "belief": belief,
+            "beliefs": beliefs,
         }
         if isinstance(at, str):
             return self.get_matchstamp_for(at, timeline_id, **options)
@@ -3548,7 +3569,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         from_graph: bool = True,
         conversion_maps: "ConversionMapsSpec" = False,
         believer: str | None = None,
-        belief: BeliefFilter = "not_false",
+        beliefs: Collection[BeliefState] = DEFAULT_BELIEFS,
     ) -> list[MatchStamp]:
         """Get MatchStamps for the bundle's claims.
 
@@ -3573,7 +3594,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             believer: The actor whose beliefs filter the claims, those
                 listed and those every full stamp reads (the belief filter);
                 ``None`` keeps every claim.
-            belief: ``"not_false"`` (default) or ``"true"``.
+            beliefs: The states kept for the believer; default all but
+                ``"false"``.
 
         Returns:
             List of MatchStamp objects. Non-synchronous claims yield None
@@ -3607,9 +3629,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             3
         """
         if claims is None:
-            claims = self.get_match_claims(believer=believer, belief=belief)
+            claims = self.get_match_claims(believer=believer, beliefs=beliefs)
         else:
-            claims = believed(claims, believer, belief, context=belief_context(self))
+            claims = believed(claims, believer, beliefs, context=belief_context(self))
 
         stamps = []
         for claim in claims:
@@ -3624,7 +3646,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                     claim.start_anchor.get_coordinate_for(claim.timeline_a_id),
                     conversion_maps=conversion_maps,
                     believer=believer,
-                    belief=belief,
+                    beliefs=beliefs,
                 )
             assert isinstance(stamp, MatchStamp)
             stamps.append(stamp)
@@ -3652,7 +3674,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         fields: "ColumnNaming | Callable[[str, dict], str] | list[str] | None" = None,
         units: bool | None = None,
         believer: str | None = None,
-        belief: BeliefFilter = "not_false",
+        beliefs: Collection[BeliefState] = DEFAULT_BELIEFS,
     ) -> "pa.Table | pd.DataFrame":
         """Get a table of MatchStamps for alignment queries.
 
@@ -3675,7 +3697,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         is materialised. Every coordinate is written as the claim holds it,
         on its timeline's axis (a claim is checked against its timelines
         when it is added), so no cell is converted here. The belief filter
-        (``believer``, ``belief``) selects the claims either way.
+        (``believer``, ``beliefs``) selects the claims either way.
 
         When ``at`` is given instead of ``claims``, each position or event ID
         is resolved through :meth:`get_matchstamp_at` and becomes exactly one
@@ -3713,7 +3735,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 names like "name (unit)".
             believer: The actor whose beliefs filter the claims (the belief
                 filter); ``None`` keeps every claim.
-            belief: ``"not_false"`` (default) or ``"true"``.
+            beliefs: The states kept for the believer; default all but
+                ``"false"``.
 
         Returns:
             One field per timeline, each a coordinate struct carrying its
@@ -3779,7 +3802,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 timeline_id,
                 conversion_maps=conversion_maps,
                 believer=believer,
-                belief=belief,
+                beliefs=beliefs,
             )
             stamps = resolved if isinstance(resolved, list) else [resolved]
             if any(isinstance(stamp, MatchIntervalStamp) for stamp in stamps):
@@ -3813,13 +3836,13 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             )
 
         anchors = (
-            _table_anchors(self._claims_in_force((believer, belief)))
+            _table_anchors(self._claims_in_force(_belief_key(believer, beliefs)))
             if claims is None
             else [
                 (anchor.timeline_a_id, anchor.coordinate_a)
                 + (anchor.timeline_b_id, anchor.coordinate_b)
                 for claim in believed(
-                    claims, believer, belief, context=belief_context(self)
+                    claims, believer, beliefs, context=belief_context(self)
                 )
                 for anchor in claim.anchors
             ]

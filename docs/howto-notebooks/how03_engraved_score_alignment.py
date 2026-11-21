@@ -99,7 +99,11 @@ def ids_at(timeline, position) -> list[str]:
 
 
 def claims_table(claims) -> pd.DataFrame:
-    """One row per claim: its type, the events it names, and both sides."""
+    """One row per claim: its type, the events it names, and both sides.
+
+    A NOMATCH claim holds no coordinate (its event's position is the event's
+    own), so its ``at`` and ``there`` are empty.
+    """
     rows = []
     for claim in claims:
         if claim.is_synchronous:
@@ -108,13 +112,13 @@ def claims_table(claims) -> pd.DataFrame:
                 claim.start_anchor.coordinate_b,
             )
         else:
-            here, there = claim.source_coordinate, None
+            here, there = None, None
         rows.append(
             {
                 "claim_type": claim.claim_type.value,
                 "event": claim.event_a_id,
                 "from": claim.timeline_a_id,
-                "at": str(here),
+                "at": "" if here is None else str(here),
                 "to": claim.timeline_b_id,
                 "there": "" if there is None else str(there),
                 "event there": claim.event_b_id or "",

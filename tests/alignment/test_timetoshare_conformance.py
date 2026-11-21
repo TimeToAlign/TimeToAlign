@@ -21,6 +21,7 @@ from timetoshare.tables import (
 )
 
 from timetoalign.alignment import (
+    AlignmentAnchor,
     AlignmentBundle,
     MatchClaim,
     MatchClaimField,
@@ -63,13 +64,30 @@ class TestFixtureTable:
         fixture = pq.read_table(_FIXTURE)
         field = MatchClaimField.from_parquet(_FIXTURE)
         assert [claim.id for claim in field] == [f"claim_{n}" for n in range(1, 16)]
-        assert [claim.id_minted for claim in field] == [False] * 15
         kinds = [claim.claim_type.name for claim in field]
         assert kinds == ["event_match"] * 11 + ["nomatch", "event_match"] + [
             "conceptual",
             "event_match",
         ]
-        assert field[11].source_coordinate == Coordinate(Fraction(9), TimeUnit.quarters)
+        nomatch = field[11]
+        assert (nomatch.event_a_id, nomatch.event_b_id, nomatch.anchors) == (
+            "note_10",
+            None,
+            [],
+        )
+        # An anchor cell holds two coordinates; reading rebuilds the anchor on
+        # the row's timelines.
+        assert [anchor.timelines for claim in field for anchor in claim.anchors] == [
+            (claim.timeline_a_id, claim.timeline_b_id)
+            for claim in field
+            for _ in claim.anchors
+        ]
+        assert field[1].start_anchor == AlignmentAnchor(
+            timeline_a_id="clt_1",
+            coordinate_a=Coordinate(1, TimeUnit.quarters),
+            timeline_b_id="dpt_1",
+            coordinate_b=Coordinate(44100, TimeUnit.samples),
+        )
         assert field[1].provenance == Provenance(
             date="2026-11-20", method="imported", service="https://example.org/aligner"
         )

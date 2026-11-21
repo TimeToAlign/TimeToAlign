@@ -4,6 +4,7 @@ This module implements the mid-level graph structure for alignment:
 
 - MatchStamp: Cross-group timestamp at a single coordinate
 - MatchIntervalStamp: Combined endpoint resolutions for an interval query
+- InferredEdge: An anchor a MatchGraph infers through group membership
 - MatchGraph: Graph of MatchClaims yielding MatchStamps
 
 The hierarchy is:
@@ -11,21 +12,24 @@ The hierarchy is:
 
 MatchGraph uses networkx to:
 1. Build a graph with private ``(timeline_id, canonical_value)`` keys
-2. Edges represent synchronous AlignmentAnchors (explicit or inferred)
-3. Extend edges via Group membership (implicit claims)
+2. Edges represent synchronous AlignmentAnchors, stated by MatchClaims or
+   inferred by the graph
+3. Extend edges via Group membership (inferred edges)
 4. Extract MatchStamps from connected components
 
 Design:
     Only synchronous claims produce graph edges. Non-synchronous claims
     (conceptual matches, NOMATCH) are stored as metadata but do not create
-    edges. ``extend_to_groups()`` creates implicit ``MatchClaim`` objects
-    (case d) and adds their anchors as edges. Each Hendrix M-box
-    (M1-M15) is a MatchGraph -- the system is NOT a global graph.
+    edges. ``extend_to_groups()`` infers edges through group membership:
+    each is the graph's own :class:`InferredEdge` (its anchor, the group and
+    the MatchClaim it traces back to), never a MatchClaim. Each Hendrix
+    M-box (M1-M15) is a MatchGraph -- the system is NOT a global graph.
 """
 
 from __future__ import annotations
 
 import logging
+from collections.abc import Collection
 from dataclasses import dataclass, field
 from fractions import Fraction
 from types import SimpleNamespace
@@ -33,17 +37,11 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import networkx as nx
 import pandas as pd
-import pyarrow as pa
 
-from timetoalign.alignment.claims import (
-    _CLAIM_ID_PREFIX,
-    AlignmentAnchor,
-    MatchClaim,
-)
+from timetoalign.alignment.claims import AlignmentAnchor, MatchClaim
 from timetoalign.alignment.filters import ClaimFilter, belief_context, believed
 from timetoalign.core.enums import Domain, NumberType, TimeUnit
-from timetoalign.core.ids import mint_ids
-from timetoalign.core.provenance import BeliefFilter
+from timetoalign.core.provenance import DEFAULT_BELIEFS, BeliefState
 from timetoalign.core.retrieval import (
     CoordinateCollection,
     CoordinateFormat,
@@ -955,22 +953,54 @@ class MatchIntervalStamp:
 # region MatchGraph
 
 
+@dataclass(frozen=True)
+class InferredEdge:
+    """An anchor a :class:`MatchGraph` infers through group membership.
+
+    The graph's own record of an edge it added (:meth:`MatchGraph.extend_to_groups`):
+    a coordinate on one member of a group, the coordinate the group gives
+    another member, the group, and the MatchClaim the extension traced the
+    first coordinate back to. It states nothing and is never a MatchClaim:
+    it holds what the graph derived from the MatchClaims it was given.
+
+    Attributes:
+        anchor: The coordinate pair the edge joins, each coordinate on its
+            timeline's own axis (:class:`~timetoalign.alignment.claims.AlignmentAnchor`).
+        group_id: The group through which the edge was inferred.
+        source_claim: The stated MatchClaim whose anchor the inference
+            started from (``None`` where no claim of the graph names that
+            coordinate).
+    """
+
+    anchor: AlignmentAnchor
+    group_id: str
+    source_claim: MatchClaim | None = None
+
+    def __repr__(self) -> str:
+        claim_id = None if self.source_claim is None else self.source_claim.id
+        source = "" if claim_id is None else f", from {claim_id}"
+        return f"InferredEdge({self.anchor!r} via {self.group_id}{source})"
+
+
 class MatchGraph:
     """A graph of MatchClaims connecting events across timelines/groups.
 
     The MatchGraph builds a networkx graph where:
     - Nodes: (timeline_id, coordinate) tuples
-    - Edges: synchronous AlignmentAnchors (explicit or implicit)
+    - Edges: synchronous AlignmentAnchors, stated by a MatchClaim or
+      inferred through a group (:class:`InferredEdge`)
 
     Only synchronous claims produce graph edges. Non-synchronous claims
     (conceptual matches, NOMATCH) are stored in ``_claims`` but do not
-    create nodes or edges.
+    create nodes or edges. The graph's MatchClaims are those it was given;
+    what it infers is held apart, in :attr:`inferred_edges`.
 
     Each Hendrix M-box (M1–M15) is a separate MatchGraph. The system
     is NOT a global graph; MatchGraphs are created on demand.
 
     Attributes:
-        claims: List of all MatchClaims in this graph (synchronous and non-synchronous).
+        claims: The MatchClaims of this graph (synchronous and non-synchronous).
+        inferred_edges: The edges the graph inferred through groups.
 
     Examples:
         Build a graph from two claims between notes of a score and onsets
@@ -1001,8 +1031,12 @@ class MatchGraph:
         >>> parts = Timeline(length=8, unit=TimeUnit.quarters, uid="parts")
         >>> group = TimelineGroup(name="edition", timelines=[score, parts])
         >>> extended = graph.extend_to_groups({group.id: group})
-        >>> extended.n_nodes, extended.n_edges
-        (6, 4)
+        >>> extended.n_nodes, extended.n_edges, extended.n_claims
+        (6, 4, 2)
+        >>> extended.inferred_edges[0].group_id == group.id
+        True
+        >>> extended.inferred_edges[0].source_claim.event_a_id
+        'note_0'
 
         One stamp per synchronized position:
 
@@ -1023,7 +1057,7 @@ class MatchGraph:
         source: "AlignmentBundle | None" = None,
         source_id: str | None = None,
         believer: str | None = None,
-        belief: BeliefFilter = "not_false",
+        beliefs: Collection[BeliefState] = DEFAULT_BELIEFS,
     ):
         """Initialize MatchGraph from MatchClaims.
 
@@ -1036,12 +1070,14 @@ class MatchGraph:
             believer: The actor whose beliefs filter the claims (the belief
                 filter, actors compared as IRIs under the *source* bundle's
                 manifest ``@context``); ``None`` keeps every claim.
-            belief: ``"not_false"`` keeps every claim the believer does not
-                believe ``false``; ``"true"`` only those believed ``true``.
+            beliefs: The states kept for the believer (``"true"``,
+                ``"undecided"``, ``"unlikely"``, ``"false"``); default all
+                but ``"false"``.
         """
         self._claims: list[MatchClaim] = believed(
-            claims or [], believer, belief, context=belief_context(source)
+            claims or [], believer, beliefs, context=belief_context(source)
         )
+        self._inferred: list[InferredEdge] = []
         self._graph: nx.Graph = self._build_graph()
         self._logger = module_logger.getChild("MatchGraph")
         self._units = dict(units or {})
@@ -1053,8 +1089,20 @@ class MatchGraph:
 
     @property
     def claims(self) -> list[MatchClaim]:
-        """List of all MatchClaims in this graph (synchronous and non-synchronous)."""
+        """The MatchClaims of this graph (synchronous and non-synchronous).
+
+        Only the claims the graph was given: what it infers through groups
+        is in :attr:`inferred_edges`.
+        """
         return self._claims
+
+    @property
+    def inferred_edges(self) -> list[InferredEdge]:
+        """The edges this graph inferred through groups, in the order made.
+
+        Empty unless the graph was extended (:meth:`extend_to_groups`).
+        """
+        return list(self._inferred)
 
     @property
     def synchronous_claims(self) -> list[MatchClaim]:
@@ -1094,12 +1142,11 @@ class MatchGraph:
         nodes or edges.
 
         Nodes: (timeline_id, coordinate) tuples
-        Edges: Anchors with attributes (explicit, synchronous, claim_id, and
-        claim: the claim object itself, which selects claims, since a claim
-        id is unique only in the scope holding the claim: the explicit
-        claims keep the ids of the scopes they come from, so two free claims
-        may share one, while :meth:`extend_to_groups` mints the implicit
-        claims' ids among those of the graph's claims)
+        Edges: Anchors with attributes (synchronous, claim_id, and claim:
+        the claim object itself, which selects claims, since a claim id is
+        unique only in the scope holding the claim, so two free claims may
+        share one). An edge :meth:`extend_to_groups` infers carries
+        ``inferred``, its :class:`InferredEdge`, instead of a claim.
 
         Returns:
             networkx Graph representing the anchor structure.
@@ -1119,26 +1166,26 @@ class MatchGraph:
 
         return G
 
+    def _anchors(self) -> list[AlignmentAnchor]:
+        """Every anchor of the graph: its claims', then its inferred edges'."""
+        return [anchor for claim in self._claims for anchor in claim.anchors] + [
+            edge.anchor for edge in self._inferred
+        ]
+
     def _collect_timeline_units(self) -> dict[str, TimeUnit]:
-        """Collect the coordinate units recorded by this graph's claims."""
+        """Collect the coordinate units recorded by this graph's anchors."""
         timeline_units: dict[str, TimeUnit] = {}
-        for claim in self._claims:
-            for anchor in claim.anchors:
-                timeline_units.setdefault(
-                    anchor.timeline_a_id, anchor.coordinate_a.unit
-                )
-                timeline_units.setdefault(
-                    anchor.timeline_b_id, anchor.coordinate_b.unit
-                )
+        for anchor in self._anchors():
+            timeline_units.setdefault(anchor.timeline_a_id, anchor.coordinate_a.unit)
+            timeline_units.setdefault(anchor.timeline_b_id, anchor.coordinate_b.unit)
         return timeline_units
 
     def _collect_timeline_number_types(self) -> dict[str, NumberType]:
-        """Collect declared coordinate representations from claim anchors."""
+        """Collect declared coordinate representations from the graph's anchors."""
         result: dict[str, NumberType] = {}
-        for claim in self._claims:
-            for anchor in claim.anchors:
-                result.setdefault(anchor.timeline_a_id, anchor.coordinate_a.number_type)
-                result.setdefault(anchor.timeline_b_id, anchor.coordinate_b.number_type)
+        for anchor in self._anchors():
+            result.setdefault(anchor.timeline_a_id, anchor.coordinate_a.number_type)
+            result.setdefault(anchor.timeline_b_id, anchor.coordinate_b.number_type)
         return result
 
     def _add_anchor_edge(
@@ -1160,7 +1207,6 @@ class MatchGraph:
         G.add_edge(
             node_a,
             node_b,
-            explicit=claim.is_explicit,
             synchronous=claim.is_synchronous,
             claim_id=claim.id,
             claim=claim,
@@ -1463,21 +1509,21 @@ class MatchGraph:
         include_domains: set[Domain] | None = None,
         include_units: set[TimeUnit] | None = None,
     ) -> "MatchGraph":
-        """Extend anchors to full group timestamps via implicit claims.
+        """Extend anchors to full group timestamps via inferred edges.
 
         For each coordinate in the graph, computes the equivalent coordinate
         for every other member of every group its timeline belongs to and
-        adds an implicit ``MatchClaim`` (case d) plus the corresponding edge.
-        Membership is read from *groups* alone, and a timeline may belong to
-        several. A coordinate reached this way is extended in turn through
-        the other groups of its timeline, so a timeline shared by two groups
-        carries a coordinate from the members of one to the members of the
-        other. Filters control which timelines receive implicit claims; a
-        timeline they exclude receives no coordinate, so no extension passes
-        through it. The implicit claims' ids are minted among the ids of
-        this graph's claims (``claim_N``, above the highest N held, in the
-        order the claims are made), so each names one claim of the extended
-        graph.
+        adds an edge between the two, recorded as an :class:`InferredEdge`
+        (the anchor, the group, and the MatchClaim the coordinate traces
+        back to) in the extended graph's :attr:`inferred_edges`. The
+        extended graph holds the same MatchClaims as this one: an inferred
+        edge is the graph's own, never a MatchClaim. Membership is read from
+        *groups* alone, and a timeline may belong to several. A coordinate
+        reached this way is extended in turn through the other groups of its
+        timeline, so a timeline shared by two groups carries a coordinate
+        from the members of one to the members of the other. Filters control
+        which timelines receive inferred edges; a timeline they exclude
+        receives no coordinate, so no extension passes through it.
 
         Args:
             groups: Dict of group_id -> TimelineGroup.
@@ -1495,12 +1541,12 @@ class MatchGraph:
 
         # Create a copy of the graph
         extended = nx.Graph(self._graph)
-        implicit_claims: list[MatchClaim] = []
+        inferred: list[InferredEdge] = list(self._inferred)
         membership = _groups_by_timeline(groups)
 
         # Every graph node, then every node the extension adds, each with the
         # group it was reached through (whose members it has already reached)
-        # and the explicit claim it traces back to (looked up when a graph
+        # and the claim it traces back to (looked up when a graph
         # node is extended).
         pending: list[tuple[_GraphNode, str | None, MatchClaim | None]] = [
             (node, None, None) for node in self._graph.nodes()
@@ -1519,7 +1565,7 @@ class MatchGraph:
             for group_id in group_ids:
                 self._extend_through_group(
                     extended,
-                    implicit_claims,
+                    inferred,
                     pending,
                     node,
                     group_id,
@@ -1531,52 +1577,20 @@ class MatchGraph:
                     include_units=include_units,
                 )
 
-        self._mint_implicit_claim_ids(extended, implicit_claims)
-        all_claims = list(self._claims) + implicit_claims
         return MatchGraph._from_graph(
             extended,
-            all_claims,
+            list(self._claims),
+            inferred=inferred,
             units=self._units,
             axis=self._axis,
             source=self._source,
             source_id=self._source_id,
         )
 
-    def _mint_implicit_claim_ids(
-        self, extended: nx.Graph, implicit_claims: list[MatchClaim]
-    ) -> None:
-        """Mint the ids of the implicit claims in this graph's scope.
-
-        Each implicit claim is made without an id; they are given
-        ``claim_N``, N above the highest number the graph's claims hold, in
-        the order they were made, with ``id_minted`` set, and every edge
-        carrying one takes its id. Their ``source_claim_id`` names a claim
-        of the graph and is left as it is.
-
-        Args:
-            extended: The extended graph, whose edges carry the claims.
-            implicit_claims: The claims the extension made, in order.
-        """
-        if not implicit_claims:
-            return
-        fresh = mint_ids(
-            _CLAIM_ID_PREFIX,
-            pa.array([claim.id for claim in self._claims], type=pa.string()),
-            len(implicit_claims),
-        )
-        for claim, claim_id in zip(implicit_claims, fresh.to_pylist(), strict=True):
-            # A claim just made, held by nothing else: its first id, minted.
-            object.__setattr__(claim, "id", claim_id)
-            object.__setattr__(claim, "id_minted", True)
-        for _, _, data in extended.edges(data=True):
-            claim = data.get("claim")
-            if claim is not None:
-                data["claim_id"] = claim.id
-
     def _extend_through_group(
         self,
         extended: nx.Graph,
-        implicit_claims: list[MatchClaim],
+        inferred: list[InferredEdge],
         pending: list[tuple[_GraphNode, str | None, MatchClaim | None]],
         node: _GraphNode,
         group_id: str,
@@ -1590,9 +1604,8 @@ class MatchGraph:
     ) -> None:
         """Link one node to the other members of one of its groups.
 
-        Adds an implicit claim and an edge per member the filters admit, and
-        queues every node it creates for extension through its own other
-        groups.
+        Adds an inferred edge per member the filters admit, and queues every
+        node it creates for extension through its own other groups.
         """
         timeline_id, coord = node
         for other_tl_id in group.timeline_ids:
@@ -1616,13 +1629,14 @@ class MatchGraph:
             # Convert coordinate to other timeline
             try:
                 source_timeline = group.get_timeline(timeline_id)
+                source_coord = IdCoordinate(
+                    coord,
+                    source_timeline.unit,
+                    timeline_id,
+                    number_type=source_timeline.number_type,
+                )
                 other_coord = group.get_coordinate_at(
-                    IdCoordinate(
-                        coord,
-                        source_timeline.unit,
-                        timeline_id,
-                        number_type=source_timeline.number_type,
-                    ),
+                    source_coord,
                     timeline_id=other_tl_id,
                     format="coordinate",
                 )
@@ -1635,33 +1649,23 @@ class MatchGraph:
             if other_node not in extended:
                 pending.append((other_node, group_id, source_claim))
 
-            # Add implicit edge if not already connected
+            # Add an inferred edge if not already connected
             if not extended.has_edge(node, other_node):
-                # Create an implicit MatchClaim (case d)
-                implicit_claim = MatchClaim.implicit(
-                    tl_a_id=timeline_id,
-                    coord_a=coord,
-                    tl_b_id=other_tl_id,
-                    coord_b=other_value,
-                    unit_a=group.get_timeline(timeline_id).unit,
-                    unit_b=group.get_timeline(other_tl_id).unit,
+                edge = InferredEdge(
+                    anchor=AlignmentAnchor(
+                        timeline_a_id=timeline_id,
+                        coordinate_a=source_coord.to_coordinate(),
+                        timeline_b_id=other_tl_id,
+                        coordinate_b=other_coord,
+                    ),
+                    group_id=group_id,
                     source_claim=source_claim,
                 )
-                implicit_claims.append(implicit_claim)
-
-                extended.add_edge(
-                    node,
-                    other_node,
-                    explicit=False,
-                    synchronous=True,
-                    inferred_via="group",
-                    group_id=group_id,
-                    claim_id=implicit_claim.id,
-                    claim=implicit_claim,
-                )
+                inferred.append(edge)
+                extended.add_edge(node, other_node, synchronous=True, inferred=edge)
 
     def _find_source_claim_for_node(self, node: _GraphNode) -> MatchClaim | None:
-        """Find the first explicit synchronous claim that contains this node.
+        """Find the first synchronous claim that contains this node.
 
         Args:
             node: The (timeline_id, coordinate) node.
@@ -1671,7 +1675,7 @@ class MatchGraph:
         """
         timeline_id, coord = node
         for claim in self._claims:
-            if not claim.is_synchronous or not claim.is_explicit:
+            if not claim.is_synchronous:
                 continue
             if claim.start_anchor is None:
                 continue
@@ -1730,6 +1734,7 @@ class MatchGraph:
         graph: nx.Graph,
         claims: list[MatchClaim],
         *,
+        inferred: list[InferredEdge] | None = None,
         units: dict[str, str] | None = None,
         axis: int | float | Fraction | None = None,
         source: "AlignmentBundle | None" = None,
@@ -1741,13 +1746,15 @@ class MatchGraph:
 
         Args:
             graph: The networkx graph.
-            claims: All claims (original + implicit).
+            claims: The graph's MatchClaims.
+            inferred: The edges the graph inferred, in the order made.
 
         Returns:
             New MatchGraph wrapping the graph.
         """
         instance = cls.__new__(cls)
         instance._claims = claims
+        instance._inferred = list(inferred or [])
         instance._graph = graph
         instance._logger = module_logger.getChild("MatchGraph")
         instance._units = dict(units or {})
@@ -1869,10 +1876,18 @@ class MatchGraph:
                     ):
                         component_claims.append(c)
 
+            component_edges = {
+                id(data["inferred"])
+                for _, _, data in subgraph.edges(data=True)
+                if "inferred" in data
+            }
             result.append(
                 MatchGraph._from_graph(
                     subgraph,
                     component_claims,
+                    inferred=[
+                        edge for edge in self._inferred if id(edge) in component_edges
+                    ],
                     units=self._units,
                     axis=self._axis,
                     source=self._source,
@@ -1947,7 +1962,7 @@ class MatchGraph:
             # Avoid duplicates (edges are undirected)
             reverse_pair = (v[0], u[0])
 
-            if data.get("explicit", True):
+            if "inferred" not in data:
                 if edge_pair not in anchor_edges and reverse_pair not in anchor_edges:
                     anchor_edges.append(edge_pair)
             else:
@@ -1979,7 +1994,8 @@ class MatchGraph:
 
         Args:
             synchronous_only: Include only synchronous edges.
-            explicit_only: Include only explicit edges (no inferred).
+            explicit_only: Include only the edges MatchClaims state (no
+                inferred edges).
             timeline_ids: Only include these timeline IDs.
             id_pattern: Regex filter for timeline IDs.
             include_domains: Only include timelines in these domains.
@@ -2011,7 +2027,7 @@ class MatchGraph:
             for u, v, data in filtered.edges(data=True):
                 if synchronous_only and not data.get("synchronous", True):
                     edges_to_remove.append((u, v))
-                elif explicit_only and not data.get("explicit", True):
+                elif explicit_only and "inferred" in data:
                     edges_to_remove.append((u, v))
             filtered.remove_edges_from(edges_to_remove)
 
@@ -2025,6 +2041,12 @@ class MatchGraph:
             id(data["claim"])
             for _, _, data in filtered.edges(data=True)
             if "claim" in data
+        }
+
+        remaining_inferred = {
+            id(data["inferred"])
+            for _, _, data in filtered.edges(data=True)
+            if "inferred" in data
         }
 
         # Keep non-synchronous claims that connect remaining timelines
@@ -2043,6 +2065,9 @@ class MatchGraph:
         return MatchGraph._from_graph(
             filtered,
             filtered_claims,
+            inferred=[
+                edge for edge in self._inferred if id(edge) in remaining_inferred
+            ],
             units=self._units,
             axis=self._axis,
             source=self._source,
@@ -2053,7 +2078,9 @@ class MatchGraph:
         """Serialize to dictionary.
 
         Note: This serializes the claims, not the full graph.
-        The graph can be rebuilt from claims.
+        The graph can be rebuilt from claims; its inferred edges are not
+        written, and extending the rebuilt graph through the same groups
+        infers them again.
         """
         return {
             "claims": [c.to_dict() for c in self._claims],

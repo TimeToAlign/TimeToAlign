@@ -19,11 +19,14 @@ Covers:
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from timetoalign.alignment.claims import MatchClaim
 from timetoalign.alignment.filters import ClaimFilter
 from timetoalign.core import Belief, Coordinate, Provenance, TimeUnit
+from timetoalign.core.provenance import DEFAULT_BELIEFS
 
 from .helpers import event_id, match_claim
 
@@ -62,13 +65,11 @@ def claim_score_perf5() -> MatchClaim:
 @pytest.fixture
 def claim_nomatch() -> MatchClaim:
     """NOMATCH claim: an event of score:clt_1 has no counterpart on perf:dlt_5."""
-    coordinate = Coordinate(20.0, TimeUnit.number)
     return MatchClaim(
         timeline_a_id="score:clt_1",
         timeline_b_id="perf:dlt_5",
         is_synchronous=False,
-        event_a_id=event_id("score:clt_1", coordinate),
-        source_coordinate=coordinate,
+        event_a_id=event_id("score:clt_1", Coordinate(20.0, TimeUnit.number)),
     )
 
 
@@ -340,7 +341,7 @@ def _believed_by(actor: str, belief: str) -> Provenance:
 
 
 class TestClaimFilterBelief:
-    """Tests for the belief filter (believer, belief).
+    """Tests for the belief filter (believer, beliefs).
 
     Four claims, one per case: no provenance, believed false by ``ana``,
     believed true by ``ana``, believed false by ``ben``.
@@ -375,47 +376,67 @@ class TestClaimFilterBelief:
         }
 
     @pytest.mark.parametrize(
-        ("believer", "belief", "kept"),
+        ("believer", "beliefs", "kept"),
         [
             # No believer: nothing is filtered.
-            (None, "not_false", {"unstated", "ana_false", "ana_true", "ben_false"}),
-            (None, "true", {"unstated", "ana_false", "ana_true", "ben_false"}),
+            (None, DEFAULT_BELIEFS, {"unstated", "ana_false", "ana_true", "ben_false"}),
+            (None, ["true"], {"unstated", "ana_false", "ana_true", "ben_false"}),
             # ana's false belief drops its claim; ben's belief is not hers.
-            ("ana", "not_false", {"unstated", "ana_true", "ben_false"}),
+            ("ana", DEFAULT_BELIEFS, {"unstated", "ana_true", "ben_false"}),
             # Only what ana believes true.
-            ("ana", "true", {"ana_true"}),
-            ("ben", "not_false", {"unstated", "ana_false", "ana_true"}),
-            ("ben", "true", set()),
+            ("ana", ["true"], {"ana_true"}),
+            # What ana holds no belief on: ben's belief is not hers.
+            ("ana", ["undecided"], {"unstated", "ben_false"}),
+            ("ana", ["false"], {"ana_false"}),
+            ("ben", DEFAULT_BELIEFS, {"unstated", "ana_false", "ana_true"}),
+            ("ben", ["true"], set()),
+            ("ben", ["true", "false"], {"ben_false"}),
         ],
     )
     def test_matches_claim(
         self,
         claims: dict[str, MatchClaim],
         believer: str | None,
-        belief: str,
+        beliefs: list[str],
         kept: set[str],
     ) -> None:
         """matches_claim keeps exactly the claims the belief filter keeps."""
-        f = ClaimFilter(believer=believer, belief=belief)
+        f = ClaimFilter(believer=believer, beliefs=beliefs)
         assert {name for name, c in claims.items() if f.matches_claim(c)} == kept
+
+    def test_states_held_as_a_frozen_set(self) -> None:
+        """The states are checked once and held as a frozen set; repr in order."""
+        f = ClaimFilter(believer="ana", beliefs=["false", "true", "false"])
+        assert f.beliefs == frozenset({"true", "false"})
+        assert repr(f) == "ClaimFilter(believer='ana', beliefs=['true', 'false'])"
+        assert repr(ClaimFilter(believer="ana")) == "ClaimFilter(believer='ana')"
+        assert ClaimFilter(beliefs=("unlikely", "true", "undecided")) == ClaimFilter()
 
     def test_belief_combines_with_other_criteria(
         self, claims: dict[str, MatchClaim], claim_audio_video: MatchClaim
     ) -> None:
         """The belief filter is ANDed with the timeline criteria."""
-        f = ClaimFilter(timeline_id="score:clt_1", believer="ana", belief="true")
+        f = ClaimFilter(timeline_id="score:clt_1", believer="ana", beliefs=["true"])
         assert f.matches_claim(claims["ana_true"]) is True
         assert f.matches_claim(claims["unstated"]) is False
         assert f.matches_claim(claim_audio_video) is False
 
-    def test_invalid_belief_refused(self) -> None:
-        """A belief value other than ``not_false`` or ``true`` is refused."""
-        with pytest.raises(ValueError, match="'not_false' or 'true'"):
-            ClaimFilter(believer="ana", belief="unlikely")
+    def test_invalid_states_refused(self) -> None:
+        """A word that is no state, or a bare string, is refused."""
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "The belief filter keeps the states ['true', 'undecided', "
+                "'unlikely', 'false'], not ['not_false']"
+            ),
+        ):
+            ClaimFilter(believer="ana", beliefs=["not_false"])
+        with pytest.raises(ValueError, match="not the string 'unlikely'"):
+            ClaimFilter(believer="ana", beliefs="unlikely")
 
     def test_belief_ignored_by_matches_timeline(self) -> None:
         """The belief filter is claim-level: a timeline test ignores it."""
-        f = ClaimFilter(believer="ana", belief="true")
+        f = ClaimFilter(believer="ana", beliefs=["true"])
         assert f.matches_timeline("score:clt_1") is True
 
 

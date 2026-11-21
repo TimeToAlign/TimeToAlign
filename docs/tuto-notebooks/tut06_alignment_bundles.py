@@ -165,7 +165,7 @@ construction_comparison
 # the bundle, naming the claim by its id. Software that proposes a claim
 # states how it worked but believes nothing, so it gives no `actor=`. Every
 # reader of claims takes the same two filter parameters, `believer=` and
-# `belief=`.
+# `beliefs=`.
 
 # %%
 ALIGNER = "https://example.org/tools/cue-aligner"
@@ -182,7 +182,10 @@ belief_view = {
         claim_bundle.get_match_claims(believer=MUSICOLOGIST)
     ),
     "believed true by the musicologist": len(
-        claim_bundle.get_match_claims(believer=MUSICOLOGIST, belief="true")
+        claim_bundle.get_match_claims(believer=MUSICOLOGIST, beliefs=["true"])
+    ),
+    "undecided for the musicologist": len(
+        claim_bundle.get_match_claims(believer=MUSICOLOGIST, beliefs=["undecided"])
     ),
 }
 belief_view
@@ -190,9 +193,10 @@ belief_view
 # %% [markdown]
 # An aligner matched the third score cue to the ornament, and the musicologist
 # believes that claim false. It stays in the bundle, but a reader filtering by
-# the musicologist's beliefs no longer sees it: the default `"not_false"`
-# keeps every claim the believer does not reject (no belief and `"unlikely"`
-# pass), while `"true"` keeps only what the believer holds true. Without a
+# the musicologist's beliefs no longer sees it. `beliefs=` lists the states
+# a reader keeps: `"true"`, `"undecided"` (the believer holds no belief on the
+# claim), `"unlikely"` and `"false"`. The default keeps every state but
+# `"false"`; `["true"]` keeps only what the believer holds true. Without a
 # `believer=` nothing is filtered.
 
 # %% [markdown]
@@ -200,8 +204,8 @@ belief_view
 #
 # {{< glossary ClaimType >}} is derived from a claim's structure; it is never
 # stored separately. The possibilities are `event_match`,
-# {{< glossary NOMATCH >}}, `conceptual`, and `implicit`. Every stated claim
-# names an event on each side it aligns. When one side has no event of its
+# {{< glossary NOMATCH >}} and `conceptual`. Every claim names an event on
+# each side it aligns. When one side has no event of its
 # own, give a position instead: a {{< glossary Projection >}} is added there,
 # an event standing for the other side's event on this timeline.
 
@@ -217,19 +221,10 @@ conceptual_claim = claim_bundle.create_match_claims(
     [("score-c4", score.id, "perf-ornament", performance.id)],
     synchronous=False,
 )[0]
-implicit_claim = MatchClaim.implicit(
-    tl_a_id=score.id,
-    coord_a=Coordinate(Fraction(2), TimeUnit.quarters),
-    tl_b_id=performance.id,
-    coord_b=Coordinate(1.0, TimeUnit.seconds),
-    source_claim=evidence_claims[0],
-)
-
 claim_examples = {
     ClaimType.event_match: projected_claim,
     ClaimType.nomatch: absence_claim,
     ClaimType.conceptual: conceptual_claim,
-    ClaimType.implicit: implicit_claim,
 }
 derived_types = {kind.value: claim.claim_type for kind, claim in claim_examples.items()}
 {"derived kinds": derived_types, "the Projection": projection}
@@ -244,9 +239,9 @@ derived_types = {kind.value: claim.claim_type for kind, claim in claim_examples.
 # A non-synchronous claim naming one event is a NOMATCH; here it points
 # **from the performance**, which has `perf-ornament`, **to the score**, which
 # lacks it. A non-synchronous claim naming two events is `conceptual`: the
-# ornament belongs to the last cue without sounding at its moment. `implicit`
-# wins over every other discriminator because it marks a relationship inferred
-# by graph extension rather than asserted.
+# ornament belongs to the last cue without sounding at its moment. What a
+# MatchGraph infers through groups is no claim at all: the graph keeps it as
+# its own inferred edge.
 
 # %% [markdown]
 # ## The bundle

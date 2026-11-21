@@ -249,10 +249,6 @@ def test_every_stated_row_gives_its_claims(score: Timeline, stated_path: Path) -
         performance.id,
     )
     assert (unperformed.event_a_id, unperformed.event_b_id) == ("n4", None)
-    assert unperformed.source_coordinate == Coordinate(
-        Fraction(9, 2), TimeUnit.quarters
-    )
-    assert type(unperformed.source_coordinate.value) is Fraction
 
     aligned = [
         (xml_id, quarter, float(onset))
@@ -278,8 +274,6 @@ def test_every_stated_row_gives_its_claims(score: Timeline, stated_path: Path) -
         assert (claim.timeline_a_id, claim.timeline_b_id) == (performance.id, score.id)
         assert (claim.event_a_id, claim.event_b_id) == (f"projection_{n}", None)
         assert claim.event_a_name == INSERTED
-        assert claim.source_coordinate == Coordinate(seconds, TimeUnit.seconds)
-        assert type(claim.source_coordinate.value) is float
 
     # One Projection per performed note: 14 of score notes, 2 of none.
     projections = performance.events.table.to_pylist()
@@ -297,7 +291,6 @@ def test_a_single_inserted_note_keeps_its_id(score: Timeline, tmp_path: Path) ->
     ).create_match_claims(score, performance)
     inserted = claims[-1]
     assert (inserted.event_a_id, inserted.event_a_name) == (INSERTED, None)
-    assert inserted.source_coordinate == Coordinate(121275, TimeUnit.samples)
     row = performance.events.table.to_pylist()[-1]
     assert (row["id"], row["projection_of"], row["start"]["numerator"]) == (
         INSERTED,
@@ -355,7 +348,6 @@ def _stated(claim: MatchClaim) -> tuple[Any, ...]:
         claim.timeline_b_id,
         claim.event_a_id,
         claim.is_synchronous,
-        claim.source_coordinate,
         None if anchor is None else (anchor.coordinate_a, anchor.coordinate_b),
     )
 

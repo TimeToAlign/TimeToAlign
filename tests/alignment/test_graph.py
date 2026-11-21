@@ -11,11 +11,19 @@ from fractions import Fraction
 
 import pytest
 
-from timetoalign.alignment import Belief, MatchClaim, MatchLine, Provenance
+from timetoalign.alignment import (
+    AlignmentAnchor,
+    Belief,
+    InferredEdge,
+    MatchClaim,
+    MatchLine,
+    Provenance,
+)
 from timetoalign.alignment.graph import MatchGraph
 from timetoalign.alignment.graph import MatchStamp as MatchStampType
 from timetoalign.core import Coordinate, IdCoordinate
 from timetoalign.core.enums import Domain, TimeUnit
+from timetoalign.core.provenance import DEFAULT_BELIEFS
 from timetoalign.timelines import (
     ContinuousPhysicalTimeline,
     DiscreteGraphicalTimeline,
@@ -55,13 +63,11 @@ def _claim(
 
 def _nomatch(timeline_id: str, value: float, other_timeline_id: str) -> MatchClaim:
     """A NOMATCH claim: the event at *value* has no counterpart on the other side."""
-    coordinate = Coordinate(value, TimeUnit.number)
     return MatchClaim(
         timeline_a_id=timeline_id,
         timeline_b_id=other_timeline_id,
         is_synchronous=False,
-        event_a_id=event_id(timeline_id, coordinate),
-        source_coordinate=coordinate,
+        event_a_id=event_id(timeline_id, Coordinate(value, TimeUnit.number)),
     )
 
 
@@ -716,34 +722,37 @@ class TestMatchGraphBeliefFilter:
         ]
 
     @pytest.mark.parametrize(
-        ("believer", "belief", "kept"),
+        ("believer", "beliefs", "kept"),
         [
             # No believer: nothing is filtered.
-            (None, "not_false", ["claim_1", "claim_2", "claim_3", "claim_4"]),
-            (None, "true", ["claim_1", "claim_2", "claim_3", "claim_4"]),
+            (None, DEFAULT_BELIEFS, ["claim_1", "claim_2", "claim_3", "claim_4"]),
+            (None, ["true"], ["claim_1", "claim_2", "claim_3", "claim_4"]),
             # ana believes claim_2 false; ben's belief in claim_4 is not hers.
-            ("ana", "not_false", ["claim_1", "claim_3", "claim_4"]),
+            ("ana", DEFAULT_BELIEFS, ["claim_1", "claim_3", "claim_4"]),
             # Only what ana believes true.
-            ("ana", "true", ["claim_3"]),
+            ("ana", ["true"], ["claim_3"]),
+            # What ana holds no belief on.
+            ("ana", ["undecided"], ["claim_1", "claim_4"]),
             # ben believes claim_4 false; ana's beliefs are not his.
-            ("ben", "not_false", ["claim_1", "claim_2", "claim_3"]),
-            ("ben", "true", []),
+            ("ben", DEFAULT_BELIEFS, ["claim_1", "claim_2", "claim_3"]),
+            ("ben", ["true"], []),
+            ("ben", ["false"], ["claim_4"]),
         ],
     )
     def test_graph_keeps_the_believed_claims(
-        self, believer: str | None, belief: str, kept: list[str]
+        self, believer: str | None, beliefs: list[str], kept: list[str]
     ) -> None:
         """Claims, nodes and edges are those of the kept claims alone."""
-        graph = MatchGraph(self._claims(), believer=believer, belief=belief)
+        graph = MatchGraph(self._claims(), believer=believer, beliefs=beliefs)
 
         assert [claim.id for claim in graph.claims] == kept
         assert graph.n_edges == len(kept)
         assert graph.n_nodes == 2 * len(kept)
 
-    def test_invalid_belief_is_refused(self) -> None:
-        """A belief value other than ``not_false`` or ``true`` is refused."""
-        with pytest.raises(ValueError):
-            MatchGraph(self._claims(), believer="ana", belief="unlikely")
+    def test_invalid_state_is_refused(self) -> None:
+        """A word that is no belief state is refused."""
+        with pytest.raises(ValueError, match="not \\['not_false'\\]"):
+            MatchGraph(self._claims(), believer="ana", beliefs=["not_false"])
 
 
 # endregion
@@ -929,76 +938,55 @@ class TestMatchGraphGetStamps:
         assert stamps == []
 
 
-class TestMatchGraphExtendToGroupsImplicitClaims:
-    """Tests for extend_to_groups() creating implicit MatchClaim objects."""
+class TestMatchGraphInferredEdges:
+    """extend_to_groups() records what it infers as the graph's own edges."""
 
-    def test_extension_creates_implicit_claims(
+    def test_extension_infers_edges_not_claims(
         self,
         dgt1_group: TimelineGroup,
     ) -> None:
-        """extend_to_groups() adds implicit MatchClaims (case d)."""
+        """The extended graph holds the given claim and one inferred edge."""
         claim = _claim("dgt_1", 500, "external", 25.0, unit_a=TimeUnit.pixels)
         graph = MatchGraph([claim])
 
-        groups = {"group1": dgt1_group}
+        extended = graph.extend_to_groups({"group1": dgt1_group})
 
-        extended = graph.extend_to_groups(groups)
+        assert extended.claims == [claim]
+        assert extended.n_claims == 1
+        assert graph.inferred_edges == []
+        (edge,) = extended.inferred_edges
+        assert isinstance(edge, InferredEdge)
+        assert edge.group_id == "group1"
+        assert edge.source_claim is claim
+        # dgt_1 is 1000 px and audio 100 s: 500 px is 50 s, each coordinate on
+        # its timeline's own axis.
+        assert edge.anchor == AlignmentAnchor(
+            timeline_a_id="dgt_1",
+            coordinate_a=Coordinate(500, TimeUnit.pixels),
+            timeline_b_id="audio",
+            coordinate_b=Coordinate(50.0, TimeUnit.seconds),
+        )
+        assert (extended.n_nodes, extended.n_edges) == (3, 2)
 
-        # Original had 1 claim, extended should have 1 original + 1 implicit
-        assert extended.n_claims == 2
-
-        # Check that implicit claims exist
-        implicit = [c for c in extended.claims if not c.is_explicit]
-        assert len(implicit) == 1
-
-        # Implicit claims should be synchronous
-        for ic in implicit:
-            assert ic.is_synchronous is True
-            assert ic.is_explicit is False
-            assert ic.start_anchor is not None
-
-    def test_implicit_claims_have_source_claim_id(
+    def test_inferred_edge_names_its_source_claim(
         self,
         dgt1_group: TimelineGroup,
     ) -> None:
-        """Implicit claims have source_claim_id for traceability."""
+        """An inferred edge traces back to the claim it started from."""
         claim = _claim(
             "dgt_1", 500, "external", 25.0, unit_a=TimeUnit.pixels, id="claim_1"
-        )
-        graph = MatchGraph([claim])
-
-        groups = {"group1": dgt1_group}
-
-        extended = graph.extend_to_groups(groups)
-
-        implicit = [c for c in extended.claims if not c.is_explicit]
-        assert len(implicit) == 1
-
-        for ic in implicit:
-            assert ic.source_claim_id == "claim_1"
-
-    def test_implicit_claim_ids_are_minted(
-        self,
-        dgt1_group: TimelineGroup,
-    ) -> None:
-        """The extension mints its claims' ids above the highest the graph holds.
-
-        The explicit claim keeps its given id, unminted; the one implicit
-        claim is given the next number, ``claim_5``, minted.
-        """
-        claim = _claim(
-            "dgt_1", 500, "external", 25.0, unit_a=TimeUnit.pixels, id="claim_4"
         )
 
         extended = MatchGraph([claim]).extend_to_groups({"group1": dgt1_group})
 
-        assert [(c.id, c.id_minted, c.is_explicit) for c in extended.claims] == [
-            ("claim_4", False, True),
-            ("claim_5", True, False),
-        ]
+        assert [edge.source_claim.id for edge in extended.inferred_edges] == ["claim_1"]
+        assert repr(extended.inferred_edges[0]) == (
+            "InferredEdge(AlignmentAnchor(dgt_1@500 pixels <-> audio@50 seconds) "
+            "via group1, from claim_1)"
+        )
 
-    def test_two_groups_five_implicit_claims(self) -> None:
-        """Two groups {TL1, TL4, TL5} and {TL2, TL6}: all implicit claims added.
+    def test_two_groups_three_inferred_edges(self) -> None:
+        """Two groups {TL1, TL4, TL5} and {TL2, TL6}: every edge inferred.
 
         Scenario:
         - Group A: tl1 (1000px), tl4 (500px), tl5 (200px)
@@ -1055,10 +1043,12 @@ class TestMatchGraphExtendToGroupsImplicitClaims:
         # tl2@400 -> tl6: 400 * (400/800) = 200
         assert stamp.get_coordinate_for("tl6", format="float") == 200.0
 
-        # Count implicit claims
-        implicit = [c for c in extended.claims if not c.is_explicit]
-        # Exactly 3: tl1->tl4, tl1->tl5, tl2->tl6
-        assert len(implicit) == 3
+        # Exactly 3 inferred edges: tl1->tl4, tl1->tl5, tl2->tl6
+        assert [
+            (edge.anchor.timeline_a_id, edge.anchor.timeline_b_id)
+            for edge in extended.inferred_edges
+        ] == [("tl1", "tl4"), ("tl1", "tl5"), ("tl2", "tl6")]
+        assert extended.claims == [claim]
 
 
 class TestExtendToSeveralGroups:
@@ -1092,8 +1082,15 @@ class TestExtendToSeveralGroups:
         # a->t and a->u through g1; t->u and t->b through g2 from t; u->b
         # through g2 from u (u->t exists already). A node is never extended
         # again through the group that reached it.
-        implicit = [c for c in extended.claims if not c.is_explicit]
-        assert len(implicit) == 5
+        assert extended.claims == [claim]
+        assert len(extended.inferred_edges) == 5
+        assert [edge.group_id for edge in extended.inferred_edges] == [
+            "g1",
+            "g1",
+            "g2",
+            "g2",
+            "g2",
+        ]
 
 
 class TestMatchGraphExtendToGroupsFilters:
@@ -1131,7 +1128,7 @@ class TestMatchGraphExtendToGroupsFilters:
         self,
         multi_group_setup: tuple,
     ) -> None:
-        """timeline_ids restricts which timelines get implicit claims."""
+        """timeline_ids restricts which timelines get inferred edges."""
         claim, groups, timelines = multi_group_setup
         graph = MatchGraph([claim])
 

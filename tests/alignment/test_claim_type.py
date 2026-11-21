@@ -1,15 +1,14 @@
 """Tests for the derived ``MatchClaim.claim_type`` classification.
 
 A :class:`MatchClaim` never stores its semantic kind. ``claim_type`` reads the
-kind back from three structural facts: whether the claim is explicit, whether
-it is synchronous, and how many of its two sides name an event (``event_a_id`` /
-``event_b_id``). An explicit claim always names its events, so four kinds
-remain. Validation strategy: ``tests/alignment/README.md`` ("Claim Kinds").
+kind back from two structural facts: whether it is synchronous, and how many
+of its two sides name an event (``event_a_id`` / ``event_b_id``). A claim
+always names its events, so three kinds remain. Validation strategy:
+``tests/alignment/README.md`` ("Claim Kinds").
 
 ======================================  =================  ===========================
 Structure                               ``ClaimType``      Typical origin
 ======================================  =================  ===========================
-``is_explicit`` is False                ``implicit``       ``MatchClaim.implicit``
 synchronous (an event on each side)     ``event_match``    ``MatchClaim.from_events``
 non-synchronous, one side names it      ``nomatch``        ``MatchClaim.nomatch``
 non-synchronous, both sides name one    ``conceptual``     ``from_events(..., is_synchronous=False)``
@@ -30,7 +29,6 @@ import pytest
 
 from timetoalign.alignment import ClaimType, MatchClaim, MatchClaimField
 from timetoalign.core import ClaimType as CoreClaimType
-from timetoalign.core import TimeUnit
 from timetoalign.timelines.types import (
     ContinuousLogicalTimeline,
     ContinuousPhysicalTimeline,
@@ -83,17 +81,6 @@ class TestClaimTypeClassification:
         claim = _nomatch()
         assert claim.claim_type is ClaimType.nomatch
         assert (claim.event_a_id, claim.event_b_id) == ("x", None)
-
-    def test_implicit_is_implicit(self) -> None:
-        claim = MatchClaim.implicit(
-            tl_a_id="score:1",
-            coord_a=100,
-            tl_b_id="recording:1",
-            coord_b=45.5,
-            unit_a=TimeUnit.quarters,
-            unit_b=TimeUnit.seconds,
-        )
-        assert claim.claim_type is ClaimType.implicit
 
     def test_field_row_materialises_as_event_match(self) -> None:
         field = MatchClaimField.from_columns(
@@ -169,18 +156,7 @@ class TestClaimTypeDisplay:
         )
 
     def test_repr_nomatch_says_nomatch(self) -> None:
-        assert repr(_nomatch()) == (
-            "MatchClaim(score:1@0 quarters <-> recording:1 [NOMATCH])"
-        )
-
-    def test_repr_implicit_says_implicit(self) -> None:
-        claim = MatchClaim.implicit(
-            "score:1", 4, "recording:1", 2.0, unit_a="quarters", unit_b="seconds"
-        )
-        assert repr(claim) == (
-            "MatchClaim(instant: score:1@4 quarters <-> recording:1@2 seconds "
-            "[IMPLICIT])"
-        )
+        assert repr(_nomatch()) == "MatchClaim(score:1 <-> recording:1 [NOMATCH])"
 
 
 # endregion
@@ -196,7 +172,6 @@ class TestClaimTypeEnum:
         assert [member.name for member in ClaimType] == [
             "event_match",
             "nomatch",
-            "implicit",
             "conceptual",
         ]
 
@@ -208,7 +183,7 @@ class TestClaimTypeEnum:
         assert ClaimType("event") is ClaimType.event_match
         assert ClaimType("nomat") is ClaimType.nomatch
 
-    @pytest.mark.parametrize("name", ["projection", "anchor", "anon"])
+    @pytest.mark.parametrize("name", ["projection", "anchor", "anon", "implicit"])
     def test_kinds_without_events_are_gone(self, name: str) -> None:
         with pytest.raises(ValueError):
             ClaimType(name)

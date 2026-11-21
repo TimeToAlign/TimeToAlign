@@ -116,9 +116,9 @@ metrical_position_map = loader.metrical_position_map
 # ## 3. The score timeline
 #
 # The score is a logical {{< glossary Timeline >}} measured in quarters. It holds
-# every note of the `.solo` score, each placed at its absolute quarter position,
-# and after the notes the Projections the alignment's claims stand on (§5).
-# Its stored UID is `score:clt_1`.
+# every note of the `.solo` score, each placed at its absolute quarter position.
+# The Projections the alignment's claims stand on are not here yet: they are
+# added when the bundle is created (§5). Its stored UID is `score:clt_1`.
 
 # %%
 score_tl = loader.create_timeline(uid="score:clt_1")
@@ -172,8 +172,8 @@ pitch_field = solo.events.get_field(EnharmonicPitch)
 # ## 4. The performance timelines
 #
 # Each recording is a physical {{< glossary Timeline >}} measured in seconds, one
-# Note per aligned note onset, followed by the Projections of its bar and beat
-# rows (§5). Their stored UIDs follow
+# Note per aligned note onset; the Projections of its bar and beat rows are
+# added with the bundle (§5). Their stored UIDs follow
 # `perf:<performer>:cpt_1`, so the Ashkenazy recording is
 # `perf:Chopin_Ashkenazy:cpt_1`:
 
@@ -207,7 +207,9 @@ bundle
 # A MatchClaim joins two events. An alignment row names its score position by
 # a `measure+offset` label, which may stand for several notes of a chord, so
 # the score side of every claim is a {{< glossary Projection >}}: an event
-# added to the score timeline at the label's position. On a note row it
+# added to the score timeline at the label's position when `create_bundle()`
+# states the claims, so the timelines shown in §3 and §4 held Notes only and
+# hold their Projections from here on. On a note row it
 # names the performer's Note it stands for (`projection_of`); a bar or beat
 # row has no note on either side, so the performance side gets a Projection
 # too. A timeline keeps one Projection per event and position, so the score's
@@ -226,8 +228,8 @@ bundle
 # {{< glossary Provenance >}}: the claim's `provenance.note` names the
 # granularity after the tool. Counting the claims for one performer shows the
 # shape of a single recording's alignment. A {{< glossary NOMATCH >}} claim
-# prints its unmatched score coordinate (`score:clt_1@…`) so the dangling
-# position stays legible at a glance:
+# names the score event left unmatched and the sentinel opposite it; it holds
+# no coordinate, so it prints as its two timelines and the `[NOMATCH]` badge:
 
 # %%
 bundle.get_match_claims()
@@ -246,7 +248,7 @@ dict(by_granularity)
 # %% [markdown]
 # At the note level, not every score note is found in the recording: where the
 # aligner located no onset, the row is recorded as a {{< glossary NOMATCH >}}
-# rather than discarded, so the dangling score position is preserved. Splitting
+# rather than discarded, so the unmatched score event is preserved. Splitting
 # the note-level claims into located and {{< glossary NOMATCH >}} makes the
 # distinction explicit:
 

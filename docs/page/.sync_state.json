@@ -19,7 +19,7 @@
   "how03_mpm_toolbox.py": "53f0d56d34f625a6bea2162654a4e5f68de2efa51cc1a0206ad0b2d348c3db05",
   "how03_listen_here.py": "93a722f10fb57c89eeb7d884ab6b8ec3412cd8472ced1695c3bc4670cbe09970",
   "how03_parangonada.py": "69f9a89dbe26725bb93e3100065f701fda9bbffa340b7ca8eb0ba825bb5cd224",
-  "how03_performance_precision.py": "78ae33e01fc71d10592d4cdfc4cbce549522dd38af70dd53f6da60ab46f42219",
+  "how03_performance_precision.py": "acb268db111eae2b6ab8d40fe210e30afd7471dd98621d3e2823a26572e5db52",
   "how04_loading_csv.py": "231ff877e64204288344ffee9681b5fc15736f6b85480e39ba23c60b50df35fb",
   "how03_ieee1599.py": "73632155eb081a05a997c65ab15f784bba547d736a004e27e876ea37a4510694",
   "tut00_quickstart.py": "d89c6c5899ebec618704be262d646b75380077f3148c2819335eb4bcecbdb768",
@@ -34,7 +34,7 @@
   "tut09_pitch_and_harmony.py": "8aff86fbb8f45134d76549fb41d70b235c547d90375c05eee05640e9cbf9a08f",
   "how04_load_anything.py": "41796204d34b782a2df2349043b1a4c1a454fb57965e7be6bd754961c96012c4",
   "how02_group_and_bundle_files.py": "3f1c2aeb1f5e40b119ce5d703d81a1c1edeed43d9bf67be543af9fd54911e4d0",
-  "how03_describe_the_work.py": "56fba35af514ce49c8f7f61142d8fae4010c83205e4db227fb8949349e8d895d",
-  "how03_engraved_score_alignment.py": "4b83e1ecd4db86b25242c2bae2c7ec711c9bb95c47aea2098a8ad19c3951b6bf",
+  "how03_describe_the_work.py": "f2faeda32e67334f51b261b196858b2fb6827de97e85d4cd5b515e35bf988d29",
+  "how03_engraved_score_alignment.py": "fcc4ce9465217bd82717e462edf97e32a784bf6b921c6c97df66a580d77d9bc7",
   "how03_match_claims_package.py": "858f2eeddd6328ad4eef3b55832e9919c71cc6a784f6447900cf62b33a23e8c7"
 }

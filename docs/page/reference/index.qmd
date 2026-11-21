@@ -56,7 +56,6 @@ Tempo segments that generate a labelled lattice of beats on a seconds axis.
 | [BeatGridSegment](BeatGridSegment.qmd#timetoalign.timelines.BeatGridSegment) | One tempo segment of a beat grid: an anchor beat and how it repeats. |
 | [GridBeat](GridBeat.qmd#timetoalign.timelines.GridBeat) | One beat of a grid, labelled in both numbering schemes. |
 | [BeatPolicy](BeatPolicy.qmd#timetoalign.core.BeatPolicy) | How a bar is counted in beats: a grouping cycle over one division. |
-| [policy_for_metro](policy_for_metro.qmd#timetoalign.timelines.policy_for_metro) | Read a grid's meter string as one beat per counted note value. |
 
 ## Flow Control
 
@@ -95,6 +94,7 @@ Functions for transforming coordinates between units.
 | [SecondsToSamples](SecondsToSamples.qmd#timetoalign.SecondsToSamples) | Convert seconds to audio samples by multiplying by sample rate. |
 | [QuartersToFloatingMeasures](QuartersToFloatingMeasures.qmd#timetoalign.QuartersToFloatingMeasures) | Map quarters to floating measures. |
 | [QuartersToMeasureNumber](QuartersToMeasureNumber.qmd#timetoalign.QuartersToMeasureNumber) | Map quarters to measure number labels (no interpolation). |
+| [OutputNumberTypeError](OutputNumberTypeError.qmd#timetoalign.maps.OutputNumberTypeError) | A float handed to a map declared to write fractions. |
 
 ## Alignment
 
@@ -102,15 +102,17 @@ Classes for connecting and aligning timelines.
 
 | | |
 | --- | --- |
-| [TimelineGroup](TimelineGroup.qmd#timetoalign.timelines.TimelineGroup) | Container for commensurable timelines. |
+| [TimelineGroup](TimelineGroup.qmd#timetoalign.timelines.TimelineGroup) | An array of timelines sharing one graphical start and end point. |
 | [AlignmentBundle](AlignmentBundle.qmd#timetoalign.alignment.AlignmentBundle) | The primary entry point for all alignment workflows. |
 | [SupportPolicy](SupportPolicy.qmd#timetoalign.core.SupportPolicy) | How to treat a transferred coordinate that falls outside alignment support. |
 | [AlignmentAnchor](AlignmentAnchor.qmd#timetoalign.alignment.AlignmentAnchor) | A coordinate pair associating one coordinate on timeline A with one |
-| [MatchClaim](MatchClaim.qmd#timetoalign.alignment.MatchClaim) | A claim that two events or coordinates on different timelines correspond. |
+| [MatchClaim](MatchClaim.qmd#timetoalign.alignment.MatchClaim) | A claim that two events on different timelines correspond. |
 | [ClaimType](ClaimType.qmd#timetoalign.core.ClaimType) | The semantic kind of a MatchClaim, derived from its structure. |
-| [MatchClaimField](MatchClaimField.qmd#timetoalign.alignment.MatchClaimField) | A ``SemanticField[MatchClaim]`` columnar store for pairwise claims. |
-| [MatchMetadata](MatchMetadata.qmd#timetoalign.alignment.MatchMetadata) | Provenance information for a match claim. |
-| [Agent](Agent.qmd#timetoalign.alignment.Agent) | The author of a match claim — a human annotator or a software aligner. |
+| [MatchClaimField](MatchClaimField.qmd#timetoalign.alignment.MatchClaimField) | The MatchClaim table: a ``SemanticField[MatchClaim]`` columnar store. |
+| [Provenance](Provenance.qmd#timetoalign.core.Provenance) | How an item was made (paradata) and who believes it. |
+| [Belief](Belief.qmd#timetoalign.core.Belief) | One actor's belief in an item, at a date. |
+| [Projection](Projection.qmd#timetoalign.core.Projection) | An event standing on a timeline for an event not held there. |
+| [EventReference](EventReference.qmd#timetoalign.core.EventReference) | The address of one event: the timeline holding it and its ID there. |
 | [MatchGraph](MatchGraph.qmd#timetoalign.alignment.MatchGraph) | A graph of MatchClaims connecting events across timelines/groups. |
 | [MatchStamp](MatchStamp.qmd#timetoalign.alignment.MatchStamp) | A synchronized timestamp across multiple timelines. |
 | [MatchLine](MatchLine.qmd#timetoalign.alignment.MatchLine) | Ordered sequence of MatchStamps for a source timeline. |
@@ -119,6 +121,17 @@ Classes for connecting and aligning timelines.
 | [MatchFileContext](MatchFileContext.qmd#timetoalign.alignment.MatchFileContext) | Supplementary data required for ``.match`` file export. |
 | [NoteRecord](NoteRecord.qmd#timetoalign.alignment.NoteRecord) | Performance note record for ``.match`` format export. |
 | [SnoteRecord](SnoteRecord.qmd#timetoalign.alignment.SnoteRecord) | Score note record for ``.match`` format export. |
+
+## Statements
+
+Property–value statements and their provenance on a bundle, its timelines at any depth and its regions; a timeline and a bundle change them in place, a region returns a copy.
+
+| | |
+| --- | --- |
+| [StatementsMixin](StatementsMixin.qmd#timetoalign.timelines.StatementsMixin) | The statements of a bundle, a timeline or a region, and their provenance. |
+| [MutableStatementsMixin](MutableStatementsMixin.qmd#timetoalign.timelines.MutableStatementsMixin) | Statements changed in place: a timeline's and a bundle's. |
+| [Region](Region.qmd#timetoalign.timelines.Region) | An identified part of a timeline defined by a TimeInterval. |
+| [LIBRARY_AGENT](LIBRARY_AGENT.qmd#timetoalign.timelines.LIBRARY_AGENT) | The agent an importer of this library names as ``stated_by`` by default. |
 
 ## Loaders
 
@@ -155,6 +168,7 @@ Data ingestion from various file formats.
 | [GraphicalLoader](GraphicalLoader.qmd#timetoalign.loader.graphical.GraphicalLoader) | Factory for building GraphicalStore objects. |
 | [IIIFManifestLoader](IIIFManifestLoader.qmd#timetoalign.loader.graphical.IIIFManifestLoader) | Load image metadata from IIIF Presentation API manifests. |
 | [ATONLoader](ATONLoader.qmd#timetoalign.loader.graphical.aton.ATONLoader) | Load ATON format files (piano roll analysis data). |
+| [ScoreWarpLoader](ScoreWarpLoader.qmd#timetoalign.loader.graphical.ScoreWarpLoader) | Load the time axis drawn into a ScoreWarp SVG. |
 | [MatchfileLoader](MatchfileLoader.qmd#timetoalign.loader.alignment.matchfile.MatchfileLoader) | Load Vienna Match (.match) alignment files via partitura. |
 | [TiliaJsonLoader](TiliaJsonLoader.qmd#timetoalign.loader.alignment.tilia.TiliaJsonLoader) | Loader for TiLiA JSON annotation exports. |
 | [TiliaDictStore](TiliaDictStore.qmd#timetoalign.loader.alignment.tilia.TiliaDictStore) | ``DictStore`` subclass with convenience properties for TiLiA timeline types. |
@@ -162,3 +176,6 @@ Data ingestion from various file formats.
 | [ParangonadaLoader](ParangonadaLoader.qmd#timetoalign.loader.alignment.parangonada.ParangonadaLoader) | Load a parangonada CSV export as one multimodal AlignmentBundle. |
 | [MpmLoader](MpmLoader.qmd#timetoalign.loader.alignment.mpm.MpmLoader) | Load an MPM-Toolbox MSM+MPM+MPR triple as one multimodal AlignmentBundle. |
 | [ListenHereLoader](ListenHereLoader.qmd#timetoalign.loader.alignment.listen_here.ListenHereLoader) | Load a Listen Here! alignment JSON file as one AlignmentBundle. |
+| [MapsLoader](MapsLoader.qmd#timetoalign.loader.alignment.MapsLoader) | Load a MAPS alignment file and state it as MatchClaims. |
+| [MeiHeadLoader](MeiHeadLoader.qmd#timetoalign.loader.MeiHeadLoader) | Read an MEI header and state what it says as statements. |
+| [MelodyLoader](MelodyLoader.qmd#timetoalign.loader.MelodyLoader) | Read MeLODy's Turtle and carry its triples as statements. |

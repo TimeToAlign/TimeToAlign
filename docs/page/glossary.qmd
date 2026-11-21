@@ -423,10 +423,17 @@ to the relevant section of the conceptual model.
     `table` property gives the field as an Arrow table, the shared provenance
     in its schema metadata under the key `timetoshare:provenance`, and
     `from_table()` reads it back unchanged; `to_parquet()` and
-    `from_parquet()` write and read `match_claims.parquet`. `to_dict()`
-    renders the same table as `{"provenance": …, "rows": […]}`, one mapping
-    per claim keyed by the columns, and `from_dict()` reads it back.
-    See [Alignment](concepts.qmd#alignment).
+    `from_parquet()` write and read `match_claims.parquet`. An
+    {{< glossary AlignmentBundle >}}'s `to_file()` writes its table there,
+    beside the manifest, named in the manifest's `resources` (see
+    {{< glossary Resource >}}), and `from_file()` reads it back; writing over
+    an existing table keeps every claim it holds (the succession rule: same
+    timelines, events and anchors, only the provenance may differ).
+    `to_dict()` renders the same table as `{"provenance": …, "rows": […]}`,
+    one mapping per claim keyed by the columns, and `from_dict()` reads it
+    back.
+    See [Alignment](concepts.qmd#alignment) and
+    [How to Keep MatchClaims, Projections and Beliefs in a Package](howto/how03_match_claims_package.ipynb).
 
 **MatchGraph**
 :   An auxiliary structure formed by extending {{< glossary MatchClaim >}}s
@@ -599,8 +606,14 @@ to the relevant section of the conceptual model.
     Projections, reusing one the timeline already holds for the same event
     and position; `AlignmentBundle.create_match_claims()`, the alignment
     loaders and `match_notes_by_attributes()` give a Projection to every
-    side stated as a position.
-    See [Alignment Bundles and MatchClaims](tutorials/tut06_alignment_bundles.ipynb).
+    side stated as a position. A package holds every timeline's Projections
+    in one table, the Projections table (`projections.parquet`, one row per
+    Projection with its `timeline_id`), which an AlignmentBundle's
+    `to_file()` writes beside the manifest, named in its `resources`, and
+    `from_file()` reads back onto the timelines. A Projection's ID is unique
+    on its timeline.
+    See [Alignment Bundles and MatchClaims](tutorials/tut06_alignment_bundles.ipynb) and
+    [How to Keep MatchClaims, Projections and Beliefs in a Package](howto/how03_match_claims_package.ipynb).
 
 **Provenance**
 :   How an item was made and who believes it, one facility for
@@ -657,6 +670,23 @@ to the relevant section of the conceptual model.
     "Chorus", "Verse"). Regions are not timelines and cannot hold events or
     maps directly.
     See [Regions](concepts.qmd#regions).
+
+**Resource**
+:   An entry of a {{< glossary "TimeToShare manifest" >}}'s `resources`,
+    naming a file that holds data for its timelines and lies beside it: its
+    `id` (`resource_N`), its `type` (what its rows are: `MatchClaim` for the
+    MatchClaim table, a {{< glossary MatchClaimField >}}, `Projection` for
+    the Projections table, see {{< glossary Projection >}}), the IDs of the
+    `timelines` it holds data for, its `url` relative to the manifest, and
+    optionally its `media_type`, `size` in bytes and `integrity`
+    (`algorithm` and `digest`). At most one resource has each of the two
+    types. A manifest and the files it names make a package; the manifest
+    reads and draws without them. An {{< glossary AlignmentBundle >}}
+    holding MatchClaims writes both tables and their entries with
+    `to_file()` and reads them with `from_file()`; a named file that is
+    absent is not read and its entry is kept.
+    See [How to Keep MatchClaims, Projections and Beliefs in a Package](howto/how03_match_claims_package.ipynb) and
+    [TimeToShare's README, "Resources and tables"](https://github.com/TimeToAlign/TimeToShare#resources-and-tables).
 
 **Root**
 :   The top-level {{< glossary Timeline >}} in a hierarchy of nested
@@ -811,7 +841,9 @@ to the relevant section of the conceptual model.
     written in canonical YAML, or optionally in pretty JSON or RFC 8785 JSON,
     one shape for all: the version marker `"timetoshare"`, an array of root
     `timelines`, and optionally the manifest's `id`, `name` and `meta`, its
-    `groups`, its `measure_maps`, its `@context`, `statements` and
+    `groups`, its `measure_maps`, its `resources` (the files beside it, such
+    as the MatchClaim table; see {{< glossary Resource >}}), its `@context`,
+    `statements` and
     `provenance` (see {{< glossary statement >}}) and its `graphical`
     (display order and styling). A single
     timeline is a manifest of one root, a group a manifest with one group; a

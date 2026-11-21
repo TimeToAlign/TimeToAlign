@@ -1,0 +1,126 @@
+# Provenance { #timetoalign.core.Provenance }
+
+```python
+core.Provenance()
+```
+
+How an item was made (paradata) and who believes it.
+
+Every key is optional, but an entry states at least one. The format
+records a person who states an item with the belief ``"true"``, and a
+loader or a service with how the item was made and no belief.
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name      | Type                                                                    | Description                                                                                                                                                              |
+|-----------|-------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| stated_by | [tuple](`tuple`)\[[str](`str`), ...\] \| None                           | Who stated the item (IRIs), at least one, each once.                                                                                                                     |
+| date      | [str](`str`) \| None                                                    | When it was stated, written ``YYYY-MM-DD``.                                                                                                                              |
+| method    | [str](`str`) \| None                                                    | How: one of TimeToShare's method words (``"manual"``, ``"reconciled"``, ``"imported"``, ``"inferred"``) or an IRI naming another method.                                 |
+| service   | [str](`str`) \| None                                                    | The service or software that made it (an IRI), never empty.                                                                                                              |
+| basis     | [tuple](`tuple`)\[[str](`str`), ...\] \| None                           | The sources it rests on (IRIs), at least one, each once.                                                                                                                 |
+| match     | [str](`str`) \| None                                                    | For a reconciled value, how closely it matches its source: one of TimeToShare's SKOS mapping words (``"exact"``, ``"close"``, ``"broad"``, ``"narrow"``, ``"related"``). |
+| note      | [str](`str`) \| None                                                    | Free text.                                                                                                                                                               |
+| beliefs   | [tuple](`tuple`)\[[Belief](`timetoalign.core.provenance.Belief`), ...\] | Who believes the item, at most one :class:`Belief` per actor, in the order given.                                                                                        |
+
+## Examples {.doc-section .doc-section-examples}
+
+```python
+>>> entry = Provenance(service="https://example.org/aligner", method="inferred")
+>>> entry = entry.with_belief(
+...     Belief(actor="ana", belief="unlikely", date="2026-11-20")
+... )
+>>> entry.with_belief(
+...     Belief(actor="ana", belief="false", date="2026-11-21")
+... ).get_belief("ana").belief
+'false'
+>>> entry.passes_belief_filter("ana"), entry.passes_belief_filter("ana", "true")
+(True, False)
+```
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [from_dict](#timetoalign.core.Provenance.from_dict) | Read an entry from its dictionary (:meth:`to_dict`). |
+| [from_row](#timetoalign.core.Provenance.from_row) | Read an entry from one row of its struct column. |
+| [get_belief](#timetoalign.core.Provenance.get_belief) | The belief *actor* holds, if any. |
+| [passes_belief_filter](#timetoalign.core.Provenance.passes_belief_filter) | Whether the belief filter for *believer* keeps the item. |
+| [to_dict](#timetoalign.core.Provenance.to_dict) | The entry as a JSON-safe dictionary, absent keys left out. |
+| [with_belief](#timetoalign.core.Provenance.with_belief) | A copy holding *belief*, which replaces its actor's earlier one. |
+
+### from_dict { #timetoalign.core.Provenance.from_dict }
+
+```python
+core.Provenance.from_dict(data)
+```
+
+Read an entry from its dictionary (:meth:`to_dict`).
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                             |
+|--------|----------------------------|-----------------------------------------|
+|        | [ValueError](`ValueError`) | If a key is unknown or a value invalid. |
+
+### from_row { #timetoalign.core.Provenance.from_row }
+
+```python
+core.Provenance.from_row(row)
+```
+
+Read an entry from one row of its struct column.
+
+### get_belief { #timetoalign.core.Provenance.get_belief }
+
+```python
+core.Provenance.get_belief(actor)
+```
+
+The belief *actor* holds, if any.
+
+### passes_belief_filter { #timetoalign.core.Provenance.passes_belief_filter }
+
+```python
+core.Provenance.passes_belief_filter(
+    believer,
+    belief='not_false',
+    *,
+    context=None,
+)
+```
+
+Whether the belief filter for *believer* keeps the item.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name     | Type                                                                              | Description                                                                                                              | Default       |
+|----------|-----------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------|---------------|
+| believer | [str](`str`) \| None                                                              | The actor whose beliefs filter; ``None`` keeps all.                                                                      | _required_    |
+| belief   | [BeliefFilter](`timetoalign.core.provenance.BeliefFilter`)                        | ``"not_false"`` keeps what the believer does not believe ``false``; ``"true"`` only what the believer believes ``true``. | `'not_false'` |
+| context  | [Mapping](`collections.abc.Mapping`)\[[str](`str`), [Any](`typing.Any`)\] \| None | The JSON-LD context under which actors compare as IRIs (:func:`belief_mask`).                                            | `None`        |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type           | Description                                              |
+|--------|----------------|----------------------------------------------------------|
+|        | [bool](`bool`) | Whether the item passes, decided by :func:`belief_mask`. |
+
+### to_dict { #timetoalign.core.Provenance.to_dict }
+
+```python
+core.Provenance.to_dict()
+```
+
+The entry as a JSON-safe dictionary, absent keys left out.
+
+### with_belief { #timetoalign.core.Provenance.with_belief }
+
+```python
+core.Provenance.with_belief(belief)
+```
+
+A copy holding *belief*, which replaces its actor's earlier one.
+
+Every other actor's belief stands, in its place; a new actor's
+belief is appended.

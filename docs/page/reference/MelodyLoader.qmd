@@ -1,0 +1,127 @@
+# MelodyLoader { #timetoalign.loader.MelodyLoader }
+
+```python
+loader.MelodyLoader()
+```
+
+Read MeLODy's Turtle and carry its triples as statements.
+
+``load(*sources)`` takes Turtle files and MeLODy data repositories: a
+directory is read as one, every ``*.ttl`` at any depth except under
+``indexes/``, ``configuration/`` and ``datasets/``. Each file is parsed
+into its own graph. :meth:`create_bundle` then writes one work, its
+manifestations and their items as statements on a bundle, as the module
+describes.
+
+## Examples {.doc-section .doc-section-examples}
+
+```python
+>>> import tempfile
+>>> from pathlib import Path
+>>> from timetoalign.loader.metadata.melody import MelodyLoader
+>>> folder = Path(tempfile.mkdtemp())
+>>> _ = (folder / "work.ttl").write_text(
+...     "@prefix melod: <https://lod.academy/melod/vocab/ontology#> .\n"
+...     "@prefix schema: <https://schema.org/> .\n"
+...     "<urn:uuid:works/1> a melod:Work ; schema:creativeWorkStatus 'authentic' .\n",
+...     encoding="utf-8",
+... )
+>>> bundle = MelodyLoader.from_file(folder / "work.ttl").create_bundle(
+...     id="clair_de_lune", date="2026-11-19"
+... )
+>>> list(bundle.statements)
+['schema:about']
+>>> work = bundle.statements["schema:about"][0]
+>>> work["id"], work["type"], work["schema:creativeWorkStatus"]
+('urn:uuid:works/1', ['melod:Work'], ['authentic'])
+>>> bundle.provenance[0]["basis"]
+['work.ttl']
+```
+
+## Attributes
+
+| Name | Description |
+| --- | --- |
+| [records](#timetoalign.loader.MelodyLoader.records) | The sources read, each with its files and graphs, in loading order. |
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [clear](#timetoalign.loader.MelodyLoader.clear) | Forget every source read. |
+| [create_bundle](#timetoalign.loader.MelodyLoader.create_bundle) | State one work, its manifestations and their items on a bundle. |
+
+### clear { #timetoalign.loader.MelodyLoader.clear }
+
+```python
+loader.MelodyLoader.clear()
+```
+
+Forget every source read.
+
+### create_bundle { #timetoalign.loader.MelodyLoader.create_bundle }
+
+```python
+loader.MelodyLoader.create_bundle(
+    work=None,
+    into=None,
+    subjects=None,
+    id=None,
+    base='',
+    stated_by=LIBRARY_AGENT,
+    date=None,
+)
+```
+
+State one work, its manifestations and their items on a bundle.
+
+The bundle states ``schema:about`` the work, a value node carrying
+the work's triples. Each expression of the work is a value node
+under ``lrmoo:R4_embodies`` of every manifestation embodying it, or
+under the work node's ``lrmoo:R3_is_realised_in`` when none does.
+Each manifestation embodying an expression of the work is a new
+:class:`~timetoalign.timelines.ContinuousGraphicalTimeline` in
+millimetres, of unknown length, named by its ``rdfs:label`` or else
+by the label of its first title; the timelines join the bundle
+ungrouped before any statement is added. Each item exemplifying such
+a manifestation is a value node under the manifestation's
+``lrmoo:R7i_is_exemplified_by``.
+
+A subject (the manifestation's timeline, a mapped element) states
+its ``type``, its own IRI as ``owl:sameAs``, then its other triples
+as they are: in the code-point order of the compact property,
+values sorted by their canonical JSON. An IRI naming an entity with
+an element is ``{"id": "#<element>"}``; another IRI ``{"id": ...}``
+with the ``label`` and ``owl:sameAs`` the graph states of it; a
+blank node a node of its own triples, an ``rdf:List`` ``{"list":
+[...]}``. Each pair stated carries an entry holding no belief:
+method ``imported``, basis the subject's file (and the file of the
+entity whose node the value is, where it differs). A pair the
+subject already states or holds an entry of (a candidate, a pair
+someone believes) is skipped, so importing twice into one bundle
+adds nothing and every belief recorded stands. Every pair is checked
+before the bundle changes: a refused one leaves it as it was.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name      | Type                                                                       | Description                                                                                                                                                                                                | Default         |
+|-----------|----------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------|
+| work      | [str](`str`) \| None                                                       | The IRI of the ``melod:Work`` the bundle is about; the only work of the graph when None.                                                                                                                   | `None`          |
+| into      | [AlignmentBundle](`timetoalign.alignment.bundle.AlignmentBundle`) \| None  | A bundle to import into instead of a new one; it is returned.                                                                                                                                              | `None`          |
+| subjects  | [Mapping](`collections.abc.Mapping`)\[[str](`str`), [str](`str`)\] \| None | Maps the IRI of a manifestation or an item of the work to the ID of a timeline (at any depth) or region of ``into``, which then receives that entity's statements instead of a new timeline or value node. | `None`          |
+| id        | [str](`str`) \| None                                                       | The ID of a new bundle; minted (and never written) when None. Pass one so that the bundle has an IRI of its own.                                                                                           | `None`          |
+| base      | [str](`str`)                                                               | Written before each file's relative path in a ``basis``.                                                                                                                                                   | `''`            |
+| stated_by | [str](`str`) \| [Sequence](`collections.abc.Sequence`)\[[str](`str`)\]     | Who the entries name as having stated the pairs.                                                                                                                                                           | `LIBRARY_AGENT` |
+| date      | [str](`str`) \| [datetime](`datetime`).[date](`datetime.date`) \| None     | The day of the entries; today when None.                                                                                                                                                                   | `None`          |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                              | Description                         |
+|--------|-------------------------------------------------------------------|-------------------------------------|
+|        | [AlignmentBundle](`timetoalign.alignment.bundle.AlignmentBundle`) | The bundle: ``into``, or a new one. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+|--------|----------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | Before anything changes, if ``id`` is given with ``into``; ``subjects`` is given without ``into``; the graph holds no work, or several and ``work`` is None; ``work`` is no ``melod:Work`` of the graph; ``subjects`` names no entity of the graph, a work, an expression, or an entity that is no manifestation or item of the work, or maps one to an ID naming no timeline or region of ``into``; a blank node contains itself; a pair is refused (``the prefix 'doi' is declared neither by the catalogue nor on the new timeline of manifestation 'urn:uuid:manifestations/4'``). |

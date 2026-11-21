@@ -1,0 +1,377 @@
+# ---
+# jupyter:
+#   jupytext:
+#     formats: ipynb,py:percent
+#     text_representation:
+#       extension: .py
+#       format_name: percent
+#       format_version: '1.3'
+#       jupytext_version: 1.19.3
+#   kernelspec:
+#     display_name: Python 3 (ipykernel)
+#     language: python
+#     name: python3
+# ---
+
+# %% [markdown]
+# # How to Keep MatchClaims, Projections and Beliefs in a Package
+#
+# A TimeToShare manifest holds the structure of its timelines. The
+# MatchClaims that relate them are data and live beside it, in the
+# **MatchClaim table** (`match_claims.parquet`), and the events that stand
+# in for an event a timeline does not hold live in the **Projections
+# table** (`projections.parquet`). The manifest names both files in its
+# `resources`; the manifest and the files it names make a **package**.
+#
+# This guide states MatchClaims between the events of a score and a
+# recording, gives a side without an event a Projection, records who
+# believes which claim and filters by those beliefs, writes the bundle as a
+# package with `to_file()` and reads it back with `from_file()`, and shows
+# why a package's claims can be added to but never removed.
+
+# %% [markdown]
+# ## Setup
+#
+# Install the library with `pip install timetoalign`. Two people take part:
+# an editor, who states claims and believes what they state, and an
+# automatic aligner, which states how it made its claims and believes
+# nothing. Every date is a fixed string. The helper `claim_rows` shows
+# claims one per row with the editor's belief, `files` lists a directory,
+# and `show` prints part of a manifest as the file holds it.
+
+# %%
+import tempfile
+from fractions import Fraction
+from pathlib import Path
+
+import pandas as pd
+import pyarrow.parquet as pq
+from timetoshare import dumps, loads
+
+from timetoalign import (
+    AlignmentBundle,
+    Belief,
+    ContinuousLogicalTimeline,
+    ContinuousPhysicalTimeline,
+    Coordinate,
+    EventReference,
+    Projection,
+    Provenance,
+)
+
+FILES = Path(tempfile.mkdtemp())
+EDITOR = "https://example.org/people/editor"
+ALIGNER = "https://example.org/tools/onset-aligner"
+DAY = "2026-11-21"
+
+
+def claim_rows(claims):
+    """One row per claim: its id, its two events, its kind, the editor's belief."""
+
+    def editor_belief(claim):
+        beliefs = claim.provenance.beliefs if claim.provenance else ()
+        return next((b.belief for b in beliefs if b.actor == EDITOR), None)
+
+    return pd.DataFrame(
+        [
+            {
+                "id": claim.id,
+                "event_a_id": claim.event_a_id,
+                "event_b_id": claim.event_b_id,
+                "claim_type": claim.claim_type.value,
+                "editor believes": editor_belief(claim),
+            }
+            for claim in claims
+        ]
+    )
+
+
+def files(directory):
+    """The names of the files in a directory, sorted."""
+    return sorted(path.name for path in directory.iterdir())
+
+
+def show(manifest_path, key):
+    """Print one key of a manifest file as canonical YAML."""
+    print(dumps({key: loads(manifest_path.read_text(encoding="utf-8"))[key]}), end="")
+
+
+# %% [markdown]
+# ## Two timelines with events
+#
+# A score of eight quarters with four notes, and a recording of six seconds
+# in which an onset detector found three onsets. The fourth note, held at
+# the end, was played too softly for the detector.
+
+# %%
+score = ContinuousLogicalTimeline(length=Fraction(8), uid="score", name="Score")
+notes = {"n1": (0, 1), "n2": (1, 1), "n3": (2, 2), "n4": (4, 4)}
+score.add_events(
+    [
+        {
+            "id": note,
+            "event_type": "Note",
+            "start": Fraction(start),
+            "duration": Fraction(length),
+        }
+        for note, (start, length) in notes.items()
+    ]
+)
+recording = ContinuousPhysicalTimeline(length=6.0, uid="recording", name="Recording")
+recording.add_events(
+    [
+        {"id": "o1", "event_type": "Onset", "instant": 0.25},
+        {"id": "o2", "event_type": "Onset", "instant": 1.0},
+        {"id": "o3", "event_type": "Onset", "instant": 1.75},
+    ]
+)
+
+bundle = AlignmentBundle(name="Song")
+bundle.add_timeline(score, as_group="score")
+bundle.add_timeline(recording, as_group="recording")
+
+# %% [markdown]
+# ## MatchClaims between events
+#
+# A MatchClaim connects two events, one on each timeline. Give
+# `create_match_claims()` one tuple per claim, `(event_a, timeline_a_id,
+# event_b, timeline_b_id)`, each event by its id. Its `provenance` records
+# who stated the claims, how and when; the editor states them and so
+# believes them `"true"`. The bundle gives every claim its id, `claim_N`,
+# which never changes.
+
+# %%
+stated = Provenance(
+    stated_by=(EDITOR,),
+    method="manual",
+    date=DAY,
+    beliefs=(Belief(actor=EDITOR, belief="true", date=DAY),),
+)
+event_claims = bundle.create_match_claims(
+    [
+        ("n1", score.id, "o1", recording.id),
+        ("n2", score.id, "o2", recording.id),
+        ("n3", score.id, "o3", recording.id),
+    ],
+    provenance=stated,
+)
+claim_rows(event_claims)
+
+# %% [markdown]
+# Each claim takes its coordinates from its two events, each on its own
+# timeline's axis: quarters on the score, seconds on the recording.
+
+# %%
+event_claims[2]
+
+# %% [markdown]
+# ## A side without an event: a Projection
+#
+# The recording holds no event for `n4`, but the editor hears it begin at
+# 3.5 seconds. Give that side as a position, a dict with `start` (and `end`
+# for a span). A **Projection** is added to the recording there: an event
+# that stands on the recording for `n4`, which its `projection_of` names.
+# The claim then joins two events like any other.
+
+# %%
+projected = bundle.create_match_claims(
+    [("n4", score.id, {"start": 3.5}, recording.id)], provenance=stated
+)[0]
+recording.get_event(projected.event_b_id)
+
+# %% [markdown]
+# The timeline keeps one Projection per event it stands for and position.
+# Stating the same pair again makes a second claim with its own id, and it
+# reuses the Projection rather than adding another.
+
+# %%
+again = bundle.create_match_claims(
+    [("n4", score.id, {"start": 3.5}, recording.id)], provenance=stated
+)[0]
+{"claim": again.id, "its recording event": again.event_b_id}
+
+# %% [markdown]
+# `Timeline.add_projections()` is the same operation, for adding
+# Projections yourself: a `Projection` holds its position (a `Coordinate`,
+# converted onto the timeline's axis like any event's) and, in
+# `projection_of`, an `EventReference` to the event it stands for. It
+# returns the id of the Projection standing for each one, here the one
+# already held.
+
+# %%
+recording.add_projections(
+    Projection(
+        start=Coordinate(3.5, "seconds"),
+        projection_of=EventReference(timeline_id=score.id, event_id="n4"),
+    )
+)
+
+# %% [markdown]
+# ## Who believes a claim
+#
+# The aligner proposes two claims. One matches the third note to the second
+# onset; the editor believes it `"false"`. The other places quarter 6, where
+# the score has no event, at 5 seconds, where the recording has none: both
+# sides are positions, so each gets a Projection whose `projection_of` is
+# empty. The editor finds it `"unlikely"`. A belief is part of the claim's
+# provenance and never removes it.
+
+# %%
+proposed = Provenance(service=ALIGNER, method="inferred", date=DAY)
+rejected = bundle.create_match_claims(
+    [("n3", score.id, "o2", recording.id)],
+    provenance=proposed.with_belief(Belief(actor=EDITOR, belief="false", date=DAY)),
+)
+doubted = bundle.create_match_claims(
+    [({"start": Fraction(6)}, score.id, {"start": 5.0}, recording.id)],
+    provenance=proposed.with_belief(Belief(actor=EDITOR, belief="unlikely", date=DAY)),
+)
+claim_rows(bundle.get_match_claims())
+
+# %% [markdown]
+# Every reader of claims takes the belief filter: `believer=` names an
+# actor, and `belief=` keeps everything that actor does not believe
+# `"false"` (the default, so `"unlikely"` passes) or only what the actor
+# believes `"true"`. Without a `believer=` nothing is filtered.
+
+# %%
+{
+    "every claim": len(bundle.get_match_claims()),
+    "not believed false by the editor": len(bundle.get_match_claims(believer=EDITOR)),
+    "believed true by the editor": len(
+        bundle.get_match_claims(believer=EDITOR, belief="true")
+    ),
+}
+
+# %% [markdown]
+# MatchStamps read the same filter. At quarter 6, the doubted claim reaches
+# the recording under the default filter; with `belief="true"` the stamp
+# holds the score alone.
+
+# %%
+[
+    bundle.get_matchstamp_at(Fraction(6), score.id, believer=EDITOR),
+    bundle.get_matchstamp_at(Fraction(6), score.id, believer=EDITOR, belief="true"),
+]
+
+# %% [markdown]
+# ## Write the package
+#
+# `to_file()` writes the MatchClaim table and the Projections table beside
+# the manifest, then the manifest naming them. The claims name the score's
+# notes and the recording's onsets by their ids, and a manifest holds event
+# rows only when asked to, so pass `events=True` to keep the package whole.
+
+# %%
+package = FILES / "song"
+package.mkdir()
+manifest_path = bundle.to_file(package / "song.yaml", events=True)
+files(package)
+
+# %% [markdown]
+# The manifest's `resources` names each table: its `id`, its `type` (what
+# its rows are: `MatchClaim` or `Projection`), the `timelines` it holds
+# data for, its `url` relative to the manifest, and its media type, size in
+# bytes and SHA-256 digest.
+
+# %%
+show(manifest_path, "resources")
+
+# %% [markdown]
+# ## What the tables hold
+#
+# The MatchClaim table has one row per claim and one column per property of
+# a MatchClaim: its two timelines and two events, the anchors' coordinates,
+# its provenance with the beliefs, and more. Its identifying columns:
+
+# %%
+pq.read_table(package / "match_claims.parquet").select(
+    ["id", "timeline_a_id", "event_a_id", "timeline_b_id", "event_b_id"]
+).to_pandas()
+
+# %% [markdown]
+# The Projections table holds every timeline's Projections, one row each:
+# its id, its timeline, its position on that timeline's axis (`start`, and
+# `duration` for a span), and the event it stands for, if any. Each
+# position is a coordinate cell, the exact value beside its unit and number
+# type.
+
+# %%
+pq.read_table(package / "projections.parquet").to_pylist()
+
+# %% [markdown]
+# A Projection's id is unique on its timeline: the score's `projection_1`
+# and the recording's `projection_1` are two events.
+
+# %% [markdown]
+# ## Read the package
+#
+# `from_file()` reads the manifest, then the tables it names: each
+# Projection onto its timeline, then the MatchClaim table. The bundle read
+# holds the same claims and the same manifest, and its belief filter gives
+# the same answers.
+
+# %%
+read = AlignmentBundle.from_file(manifest_path)
+{
+    "same MatchClaim table": read.match_claim_table == bundle.match_claim_table,
+    "same manifest": read.to_dict(events=True) == bundle.to_dict(events=True),
+    "believed true by the editor": [
+        claim.id for claim in read.get_match_claims(believer=EDITOR, belief="true")
+    ],
+}
+
+# %% [markdown]
+# Writing the bundle read gives the same bytes, file by file.
+
+# %%
+copy = FILES / "copy"
+copy.mkdir()
+read.to_file(copy / "song.yaml")
+{
+    name: (package / name).read_bytes() == (copy / name).read_bytes()
+    for name in files(package)
+}
+
+# %% [markdown]
+# ## Add to a package, never remove from it
+#
+# A MatchClaim is never deleted and its id never changes; whoever disagrees
+# states a belief instead. So writing over a package's MatchClaim table
+# obeys the succession rule: every claim of the old table is in the new
+# one, with the same timelines, events and anchors; only its provenance
+# may differ. Adding a claim and writing the bundle back is fine.
+
+# %%
+read.create_match_claims([("n2", score.id, "o2", recording.id)], synchronous=False)
+read.to_file(manifest_path)
+len(AlignmentBundle.from_file(manifest_path).get_match_claims())
+
+# %% [markdown]
+# A bundle that lacks claims the table holds cannot be written over it.
+# Here a draft is built from the manifest alone (`from_dict()` reads no
+# tables) and states one claim: the write is refused before any file is
+# touched, and the package keeps its claims.
+
+# %%
+draft = AlignmentBundle.from_dict(read.to_dict(events=True))
+draft.create_match_claims([("n1", score.id, "o1", recording.id)])
+try:
+    draft.to_file(manifest_path)
+except ValueError as refusal:
+    print(refusal)
+len(AlignmentBundle.from_file(manifest_path).get_match_claims())
+
+# %% [markdown]
+# ## Next
+#
+# - The kinds of claim (event match, NOMATCH, conceptual, implicit) and how
+#   claims become MatchStamps: the
+#   [Alignment Bundles and MatchClaims](../tutorials/tut06_alignment_bundles.ipynb)
+#   tutorial.
+# - Manifests in depth (minimal and complete form, serializations, editing
+#   a file): [How to Save and Load Timelines, Groups and Bundles](how02_group_and_bundle_files.ipynb).
+# - Beliefs on statements as well as claims:
+#   [How to Describe What a Bundle and Its Timelines Stand For](how03_describe_the_work.ipynb).
+# - The format of the package, its resources and the two tables:
+#   [TimeToShare's README, "Resources and tables"](https://github.com/TimeToAlign/TimeToShare#resources-and-tables).

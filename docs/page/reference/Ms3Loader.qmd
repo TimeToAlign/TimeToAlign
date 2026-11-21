@@ -15,15 +15,20 @@ By default the loader loads exactly the files it is given. Pass
 ``auto_discover=True`` to have it locate companion facet files
 automatically.
 
-Auto-discovery uses two strategies:
+Auto-discovery keeps the piece name and swaps the facet, looking in two
+places for each other facet:
 
 1. **Flat siblings** (ms3 convention): for ``name.notes.tsv``, look for
    ``name.measures.tsv``, ``name.chords.tsv``, ``name.harmonies.tsv``
    in the same directory.
 2. **Facet directories** (DCML corpus convention): if the file sits in a
-   directory whose name matches a facet (e.g., ``notes/``), look for
-   sibling directories named after the other facets and find a file
-   with the same stem there.
+   directory named after its facet (``notes/name.notes.tsv``), look in
+   the sibling directories named after the other facets
+   (``measures/name.measures.tsv``, ``chords/name.chords.tsv``,
+   ``harmonies/name.harmonies.tsv``).
+
+A facet the piece lacks is skipped; a file for which no companion is
+found at all raises a ``UserWarning`` and is loaded alone.
 
 TSV columns (notes.tsv gold standard):
 - mc, mn: Measure count/number
@@ -46,7 +51,7 @@ TSV columns (notes.tsv gold standard):
 
 | Name | Description |
 | --- | --- |
-| [create_timeline](#timetoalign.loader.score.Ms3Loader.create_timeline) | Create a score timeline and, by default, attach parsed structure. |
+| [create_timeline](#timetoalign.loader.score.Ms3Loader.create_timeline) | Create a score timeline carrying the parsed measure structure. |
 | [from_file](#timetoalign.loader.score.Ms3Loader.from_file) | Create a loader and load TSV files in one step. |
 | [load](#timetoalign.loader.score.Ms3Loader.load) | Load one or more TSV source files. |
 
@@ -62,7 +67,7 @@ loader.score.Ms3Loader.create_timeline(
 )
 ```
 
-Create a score timeline and, by default, attach parsed structure.
+Create a score timeline carrying the parsed measure structure.
 
 Known limitation: a score whose measures are **split** — two
 records sharing one notated downbeat, as when a bar is divided
@@ -120,6 +125,9 @@ When ``auto_discover`` is enabled, each source file is expanded to
 include its companion facet files (measures, chords, harmonies,
 etc.) before loading. Files that have already been loaded (or that
 appear more than once in the expanded set) are silently skipped.
+A facet the piece does not have is not looked for further; a source
+for which no companion at all is found raises a ``UserWarning``
+naming the paths that were looked at, and is loaded alone.
 
 #### Parameters {.doc-section .doc-section-parameters}
 

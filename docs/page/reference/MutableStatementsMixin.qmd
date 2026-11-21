@@ -1,0 +1,228 @@
+# MutableStatementsMixin { #timetoalign.timelines.MutableStatementsMixin }
+
+```python
+timelines.MutableStatementsMixin()
+```
+
+Statements changed in place: a timeline's and a bundle's.
+
+Every method returns the holder, for chaining. A pair whose property
+or value uses a prefix the holder's context lacks is refused before
+anything changes; :meth:`add_prefix` declares one.
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [add_belief](#timetoalign.timelines.MutableStatementsMixin.add_belief) | Record *actor*'s belief in the pair ``(property, value)``. |
+| [add_candidate](#timetoalign.timelines.MutableStatementsMixin.add_candidate) | Offer the pair ``(property, value)`` as a candidate, without stating it. |
+| [add_prefix](#timetoalign.timelines.MutableStatementsMixin.add_prefix) | Declare a prefix the holder's statements may use. |
+| [add_statement](#timetoalign.timelines.MutableStatementsMixin.add_statement) | State the pair ``(property, value)``. |
+| [add_verb](#timetoalign.timelines.MutableStatementsMixin.add_verb) | State a verb of the catalogue in one system's vocabulary. |
+| [remove_statement](#timetoalign.timelines.MutableStatementsMixin.remove_statement) | Remove the pair ``(property, value)`` and its entry. |
+
+### add_belief { #timetoalign.timelines.MutableStatementsMixin.add_belief }
+
+```python
+timelines.MutableStatementsMixin.add_belief(
+    property,
+    value,
+    *,
+    actor,
+    belief,
+    date=None,
+    note=None,
+    node=(),
+)
+```
+
+Record *actor*'s belief in the pair ``(property, value)``.
+
+The pair's entry, made where the pair has none, records the belief,
+replacing the actor's earlier one (:func:`timetoshare.with_belief`).
+Whether the pair is stated is left as it is: believing a stated
+pair ``"false"`` records the belief and never removes the pair, and
+every other actor's belief stands. A candidate the actor believes
+``"false"`` is left out of :meth:`get_candidates` for that actor.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name     | Type                                                                   | Description                                                           | Default    |
+|----------|------------------------------------------------------------------------|-----------------------------------------------------------------------|------------|
+| property | [str](`str`)                                                           | The property, as for :meth:`add_statement`.                           | _required_ |
+| value    | [Any](`typing.Any`)                                                    | The value, as for :meth:`add_statement`.                              | _required_ |
+| actor    | [str](`str`)                                                           | Who holds the belief, an IRI.                                         | _required_ |
+| belief   | [BeliefValue](`timetoalign.core.provenance.BeliefValue`)               | ``"true"``, ``"false"`` or ``"unlikely"``.                            | _required_ |
+| date     | [str](`str`) \| [datetime](`datetime`).[date](`datetime.date`) \| None | The day, ``YYYY-MM-DD`` or a :class:`datetime.date`; today when None. | `None`     |
+| note     | [str](`str`) \| None                                                   | A remark.                                                             | `None`     |
+| node     | [NodePath](`timetoalign.timelines.statements.NodePath`)                | The value node whose pair is meant.                                   | `()`       |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                                |
+|--------|----------------------------|----------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If *belief* is none of the three, the date is no calendar date, *node* addresses no value node, or a prefix is undeclared. |
+
+### add_candidate { #timetoalign.timelines.MutableStatementsMixin.add_candidate }
+
+```python
+timelines.MutableStatementsMixin.add_candidate(
+    property,
+    value,
+    *,
+    stated_by,
+    method,
+    date=None,
+    service=None,
+    basis=(),
+    match=None,
+    note=None,
+    node=(),
+)
+```
+
+Offer the pair ``(property, value)`` as a candidate, without stating it.
+
+The candidate is an entry of the pair alone; it takes the place of
+another entry of the pair, whose beliefs it keeps
+(:func:`timetoshare.with_candidate`). A loader or a service
+offering it holds no belief; :meth:`add_statement` states it.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name      | Type                                                                   | Description                                                           | Default    |
+|-----------|------------------------------------------------------------------------|-----------------------------------------------------------------------|------------|
+| property  | [str](`str`)                                                           | The property, as for :meth:`add_statement`.                           | _required_ |
+| value     | [Any](`typing.Any`)                                                    | The value, as for :meth:`add_statement`.                              | _required_ |
+| stated_by | [str](`str`) \| [Sequence](`collections.abc.Sequence`)\[[str](`str`)\] | Who offers it: an IRI, or several.                                    | _required_ |
+| method    | [str](`str`)                                                           | ``manual``, ``reconciled``, ``imported``, ``inferred`` or an IRI.     | _required_ |
+| date      | [str](`str`) \| [datetime](`datetime`).[date](`datetime.date`) \| None | The day, ``YYYY-MM-DD`` or a :class:`datetime.date`; today when None. | `None`     |
+| service   | [str](`str`) \| None                                                   | The service that offered it, an IRI.                                  | `None`     |
+| basis     | [Sequence](`collections.abc.Sequence`)\[[str](`str`)\]                 | The sources the candidate rests on, IRIs.                             | `()`       |
+| match     | [str](`str`) \| None                                                   | ``exact``, ``close``, ``broad``, ``narrow`` or ``related``.           | `None`     |
+| note      | [str](`str`) \| None                                                   | A remark.                                                             | `None`     |
+| node      | [NodePath](`timetoalign.timelines.statements.NodePath`)                | The value node to offer the pair of.                                  | `()`       |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                                                                      |
+|--------|----------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the pair is stated (``'wdt:P175' already has this value; a stated pair is no candidate``), a member is no valid provenance member, or a prefix is undeclared. |
+
+### add_prefix { #timetoalign.timelines.MutableStatementsMixin.add_prefix }
+
+```python
+timelines.MutableStatementsMixin.add_prefix(name, namespace)
+```
+
+Declare a prefix the holder's statements may use.
+
+The catalogue's prefixes need no declaration. A manifest written
+holding the holder carries the prefix in its ``@context`` when the
+statements use it.
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                    |
+|--------|----------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the format refuses the declaration (``cannot declare the prefix 'unit' as ...``), or the holder declares the prefix already with another namespace (``the prefix 'foaf' already stands for 'http://xmlns.com/foaf/0.1/' on timeline 'cpt_1'``). The same declaration again changes nothing. |
+
+### add_statement { #timetoalign.timelines.MutableStatementsMixin.add_statement }
+
+```python
+timelines.MutableStatementsMixin.add_statement(
+    property,
+    value,
+    *,
+    node=(),
+    provenance=None,
+    actor=None,
+    date=None,
+)
+```
+
+State the pair ``(property, value)``.
+
+A candidate of the pair becomes the stated pair's entry, its
+beliefs kept (:func:`timetoshare.with_pair`). *provenance* sets the
+entry's members; *actor*, the person stating the pair, is recorded
+with the belief ``"true"``, replacing that actor's earlier belief.
+A loader or a service gives *provenance* alone and holds no belief.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name       | Type                                                                                                                                        | Description                                                                                                                                                               | Default    |
+|------------|---------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| property   | [str](`str`)                                                                                                                                | ``type`` ("is a"), a compact IRI or an absolute IRI.                                                                                                                      | _required_ |
+| value      | [Any](`typing.Any`)                                                                                                                         | A JSON value of the file's form: a literal, a value object, a node (``{"id": ...}``) or ``{"list": [...]}``; ``type`` takes a class IRI.                                  | _required_ |
+| node       | [NodePath](`timetoalign.timelines.statements.NodePath`)                                                                                     | The value node to state the pair of; ``()`` the holder.                                                                                                                   | `()`       |
+| provenance | [Provenance](`timetoalign.core.provenance.Provenance`) \| [Mapping](`collections.abc.Mapping`)\[[str](`str`), [Any](`typing.Any`)\] \| None | How the pair was made, a :class:`~timetoalign.core.provenance.Provenance` or its dictionary (``stated_by``, ``date``, ``method``, ...); its ``beliefs`` are recorded too. | `None`     |
+| actor      | [str](`str`) \| None                                                                                                                        | The person stating the pair, an IRI.                                                                                                                                      | `None`     |
+| date       | [str](`str`) \| [datetime](`datetime`).[date](`datetime.date`) \| None                                                                      | The day of *actor*'s belief, ``YYYY-MM-DD`` or a :class:`datetime.date`; today when None.                                                                                 | `None`     |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                   |
+|--------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the pair is stated already (``'wdt:P175' already has this value``), the property is no property, *node* addresses no value node, *provenance* is no provenance entry, *date* is given without *actor*, or a prefix is declared neither by the catalogue nor on the holder. |
+
+### add_verb { #timetoalign.timelines.MutableStatementsMixin.add_verb }
+
+```python
+timelines.MutableStatementsMixin.add_verb(
+    verb,
+    system,
+    value,
+    *,
+    label=None,
+    slots=None,
+    alternative=0,
+    provenance=None,
+    actor=None,
+    date=None,
+    catalogue=None,
+)
+```
+
+State a verb of the catalogue in one system's vocabulary.
+
+The pairs of the system's pattern for the verb are stated in their
+order, all or none (:func:`timetoshare.instantiate`), each as
+:meth:`add_statement` states a pair, with *provenance* and *actor*.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name        | Type                                                                                                                                        | Description                                                  | Default    |
+|-------------|---------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------|------------|
+| verb        | [str](`str`)                                                                                                                                | The verb's ID in the catalogue (``performed_by``).           | _required_ |
+| system      | [str](`str`)                                                                                                                                | The system's ID (``wikidata``, ``fallback``).                | _required_ |
+| value       | [str](`str`)                                                                                                                                | What the pattern's slot ``?`` takes (``wd:Q235650``).        | _required_ |
+| label       | [str](`str`) \| None                                                                                                                        | The label of the node the value becomes, if any.             | `None`     |
+| slots       | [Mapping](`collections.abc.Mapping`)\[[str](`str`), [Any](`typing.Any`)\] \| None                                                           | Values of the pattern's named slots (``{"role": "piano"}``). | `None`     |
+| alternative | [int](`int`)                                                                                                                                | Which of the system's patterns to use.                       | `0`        |
+| provenance  | [Provenance](`timetoalign.core.provenance.Provenance`) \| [Mapping](`collections.abc.Mapping`)\[[str](`str`), [Any](`typing.Any`)\] \| None | As for :meth:`add_statement`.                                | `None`     |
+| actor       | [str](`str`) \| None                                                                                                                        | As for :meth:`add_statement`.                                | `None`     |
+| date        | [str](`str`) \| [datetime](`datetime`).[date](`datetime.date`) \| None                                                                      | As for :meth:`add_statement`.                                | `None`     |
+| catalogue   | [Catalogue](`timetoshare.Catalogue`) \| None                                                                                                | The catalogue; the shipped one when None.                    | `None`     |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                                |
+|--------|----------------------------|----------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the catalogue has no such verb or pattern, a named slot has no value, or a pair is refused as by :meth:`add_statement`. |
+
+### remove_statement { #timetoalign.timelines.MutableStatementsMixin.remove_statement }
+
+```python
+timelines.MutableStatementsMixin.remove_statement(property, value, *, node=())
+```
+
+Remove the pair ``(property, value)`` and its entry.
+
+Removing is an edit of its own: no belief removes a pair.
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                        |
+|--------|----------------------------|----------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the pair is not stated (``'type' does not have this value``) or *node* addresses no value node. |

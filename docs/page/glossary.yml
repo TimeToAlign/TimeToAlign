@@ -309,7 +309,11 @@ MatchClaimField: |
   The table property gives the field as an Arrow table, the shared provenance
   in its schema metadata under the key timetoshare:provenance, and
   from_table() reads it back unchanged; to_parquet() and from_parquet() write
-  and read match_claims.parquet. to_dict() renders the same table as
+  and read match_claims.parquet. An AlignmentBundle's to_file() writes its
+  table there, beside the manifest, named in the manifest's resources, and
+  from_file() reads it back; writing over an existing table keeps every claim
+  it holds (the succession rule: same timelines, events and anchors, only
+  the provenance may differ). to_dict() renders the same table as
   {"provenance": …, "rows": […]}, one mapping per claim keyed by the columns,
   and from_dict() reads it back.
 
@@ -434,7 +438,11 @@ Projection: |
   already holds for the same event and position;
   AlignmentBundle.create_match_claims(), the alignment loaders and
   match_notes_by_attributes() give a Projection to every side stated as a
-  position.
+  position. A package holds every timeline's Projections in one table, the
+  Projections table (projections.parquet, one row per Projection with its
+  timeline_id), which an AlignmentBundle's to_file() writes beside the
+  manifest, named in its resources, and from_file() reads back onto the
+  timelines. A Projection's ID is unique on its timeline.
 
 Provenance: |
   How an item was made and who believes it, one facility for statements and
@@ -465,6 +473,18 @@ Region: |
   A part of a timeline defined by a TimeInterval, identified by its element id
   and displayed by its name (e.g., "Chorus", "Verse"). Regions are not
   timelines and cannot hold events or maps directly.
+
+Resource: |
+  An entry of a TimeToShare manifest's resources, naming a file that holds
+  data for its timelines and lies beside it: its id (resource_N), its type
+  (what its rows are: MatchClaim for the MatchClaim table, Projection for
+  the Projections table), the ids of the timelines it holds data for, its url
+  relative to the manifest, and optionally its media type, size in bytes and
+  integrity (algorithm and digest). At most one resource has each of the two
+  types. A manifest and the files it names make a package; the manifest reads
+  and draws without them. An AlignmentBundle holding MatchClaims writes both
+  tables and their entries with to_file() and reads them with from_file(); a
+  named file that is absent is not read and its entry is kept.
 
 raw_quarters: |
   The conventional name for the ShiftMap attached to a score timeline. The
@@ -584,7 +604,8 @@ TimeToShare manifest: |
   written in canonical YAML, or optionally in pretty JSON or RFC 8785 JSON,
   one shape for all: the version marker "timetoshare", an array of root
   timelines, and optionally the manifest's id, name and meta, its groups, its
-  measure maps, its @context, statements and provenance and its
+  measure maps, its resources (the files beside it, such as the MatchClaim
+  table), its @context, statements and provenance and its
   graphical (display order and styling). A single timeline is a manifest
   of one root, a group a manifest with one group; a manifest with an id or a
   name is named. Every manifest is an alignment bundle, also one holding one

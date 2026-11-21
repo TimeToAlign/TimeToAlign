@@ -1,0 +1,94 @@
+# ScoreWarpLoader { #timetoalign.loader.graphical.ScoreWarpLoader }
+
+```python
+loader.graphical.ScoreWarpLoader()
+```
+
+Load the time axis drawn into a ScoreWarp SVG.
+
+The drawing becomes a :class:`ContinuousGraphicalTimeline` in
+``css_pixels``, the unit of the SVG's outer viewport, and its time axis a
+child over the drawn segment, carrying the C-Map from ``css_pixels`` to
+the unit of the axis title, built through the labelled ticks (see
+:meth:`~timetoalign.timelines.Timeline.create_calibrated_child`).
+
+The drawing's length is its content extent, because a child lies within
+its parent: the viewport width, or the end of the axis's farthest line
+where the axis runs past the viewport (ScoreWarp sets
+``overflow="visible"``).
+
+Known limits: the extent of text is not counted, since no font metrics
+are read, and nothing but the axis is read; the score's own elements and
+the transforms that place them are left alone.
+
+## Examples {.doc-section .doc-section-examples}
+
+```python
+>>> loader = ScoreWarpLoader.from_file("warped.svg")
+>>> drawing = loader.create_timeline()
+>>> axis = drawing.get_child(drawing.list_children()[0])
+>>> cmap = axis.get_conversion_map("seconds")
+```
+
+## Attributes
+
+| Name | Description |
+| --- | --- |
+| [axis_segment](#timetoalign.loader.graphical.ScoreWarpLoader.axis_segment) | Start and end of the drawn horizontal axis line, in ``css_pixels``. |
+| [calibration](#timetoalign.loader.graphical.ScoreWarpLoader.calibration) | ``(position, value)`` of every labelled tick, in label order. |
+| [svg_size](#timetoalign.loader.graphical.ScoreWarpLoader.svg_size) | The root's ``width`` and ``height`` attributes, verbatim. |
+| [ticks](#timetoalign.loader.graphical.ScoreWarpLoader.ticks) | The x of every tick line, in ``css_pixels`` and document order. |
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [clear](#timetoalign.loader.graphical.ScoreWarpLoader.clear) | Forget the loaded SVG. |
+| [create_timeline](#timetoalign.loader.graphical.ScoreWarpLoader.create_timeline) | Create the drawing's timeline, its time axis as a calibrated child. |
+
+### clear { #timetoalign.loader.graphical.ScoreWarpLoader.clear }
+
+```python
+loader.graphical.ScoreWarpLoader.clear()
+```
+
+Forget the loaded SVG.
+
+### create_timeline { #timetoalign.loader.graphical.ScoreWarpLoader.create_timeline }
+
+```python
+loader.graphical.ScoreWarpLoader.create_timeline(uid=None, name=None)
+```
+
+Create the drawing's timeline, its time axis as a calibrated child.
+
+The timeline is in ``css_pixels``, its length the content extent, its
+``meta`` the root's size strings (``svg_width``, ``svg_height``). Its
+one child is the axis: offset at the segment's start, length the
+segment's, named by the title label, with the C-Map from
+``css_pixels`` to the title's unit through the labelled ticks.
+
+Both ids are minted ``cgt_N`` by this loader, the root first: its
+number is drawn even when *uid* names it, and a given *uid* is
+recorded among the loader's minted ids, so the child is never
+minted the root's id and successive timelines share none.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name   | Type                 | Description                                                                                               | Default   |
+|--------|----------------------|-----------------------------------------------------------------------------------------------------------|-----------|
+| uid    | [str](`str`) \| None | Unique identifier for the timeline. ``None`` mints ``cgt_N``, a number this loader has not minted before. | `None`    |
+| name   | [str](`str`) \| None | Human-readable name. Uses the source file's stem if None.                                                 | `None`    |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                                               | Description             |
+|--------|------------------------------------------------------------------------------------|-------------------------|
+|        | [ContinuousGraphicalTimeline](`timetoalign.timelines.ContinuousGraphicalTimeline`) | The drawing's timeline. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                           | Description                                                                    |
+|--------|--------------------------------|--------------------------------------------------------------------------------|
+|        | [RuntimeError](`RuntimeError`) | If no SVG has been loaded.                                                     |
+|        | [ValueError](`ValueError`)     | If the labelled ticks do not lie on one line, as the calibration check states. |

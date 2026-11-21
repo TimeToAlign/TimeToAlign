@@ -94,6 +94,12 @@ documentation:
   `add_statement`, `add_verb` and rectangles, proposals, confirmation and
   rejection, the manifest's inline `@context`, a timeline written alone, and
   the MEI header and MeLODy imports (`MeiHeadLoader`, `MelodyLoader`).
+- [How to Keep MatchClaims, Projections and Beliefs in a Package](howto/how03_match_claims_package.ipynb) ---
+  MatchClaims between events, a Projection for a side without one
+  (`create_match_claims`, `Timeline.add_projections`), beliefs and the belief
+  filter, the MatchClaim and Projections tables beside the manifest and its
+  `resources` through `to_file` and `from_file`, and why claims are added but
+  never removed.
 
 ### In-depth Topics
 

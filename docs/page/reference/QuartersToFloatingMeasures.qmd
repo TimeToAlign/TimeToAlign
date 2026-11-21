@@ -54,19 +54,9 @@ dropped.
 
 | Name | Description |
 | --- | --- |
-| [from_dict](#timetoalign.QuartersToFloatingMeasures.from_dict) | Deserialize from dictionary. |
 | [from_measure_map](#timetoalign.QuartersToFloatingMeasures.from_measure_map) | Build the floating-measure lattice of a measure map. |
 | [inverse](#timetoalign.QuartersToFloatingMeasures.inverse) | Return the inverse map (measures -> quarters). |
-| [to_dict](#timetoalign.QuartersToFloatingMeasures.to_dict) | Serialize to dictionary. |
 | [to_measure_number_map](#timetoalign.QuartersToFloatingMeasures.to_measure_number_map) | Convert to non-interpolating measure number map. |
-
-### from_dict { #timetoalign.QuartersToFloatingMeasures.from_dict }
-
-```python
-QuartersToFloatingMeasures.from_dict(data)
-```
-
-Deserialize from dictionary.
 
 ### from_measure_map { #timetoalign.QuartersToFloatingMeasures.from_measure_map }
 
@@ -98,15 +88,16 @@ consecutive ordinals — and never resets.
 
 #### Returns {.doc-section .doc-section-returns}
 
-| Name   | Type                                                                                 | Description                   |
-|--------|--------------------------------------------------------------------------------------|-------------------------------|
-|        | [QuartersToFloatingMeasures](`timetoalign.maps.interval.QuartersToFloatingMeasures`) | The fm map for that skeleton. |
+| Name   | Type                                                                 | Description                                                   |
+|--------|----------------------------------------------------------------------|---------------------------------------------------------------|
+|        | [FloatingMeasureMap](`timetoalign.maps.measures.FloatingMeasureMap`) | The fm map for those measures: a :class:`FloatingMeasureMap`, |
+|        | [FloatingMeasureMap](`timetoalign.maps.measures.FloatingMeasureMap`) | which remembers the measure map it reads.                     |
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                 |
-|--------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If the skeleton has no measures, or if two records share a virtual nominal downbeat (a split bar, whose two halves cannot both anchor the same fm ordinal). |
+| Name   | Type                       | Description                                                                                                                                                    |
+|--------|----------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the measure map has no measures, or if two records share a virtual nominal downbeat (a split bar, whose two halves cannot both anchor the same fm ordinal). |
 
 ### inverse { #timetoalign.QuartersToFloatingMeasures.inverse }
 
@@ -127,14 +118,6 @@ Return the inverse map (measures -> quarters).
 | Name   | Type                                         | Description                                         |
 |--------|----------------------------------------------|-----------------------------------------------------|
 |        | [NotImplementedError](`NotImplementedError`) | If not invertible (should not happen for this map). |
-
-### to_dict { #timetoalign.QuartersToFloatingMeasures.to_dict }
-
-```python
-QuartersToFloatingMeasures.to_dict(minimal=False)
-```
-
-Serialize to dictionary.
 
 ### to_measure_number_map { #timetoalign.QuartersToFloatingMeasures.to_measure_number_map }
 

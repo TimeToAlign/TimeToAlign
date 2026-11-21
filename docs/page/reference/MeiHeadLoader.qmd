@@ -1,0 +1,87 @@
+# MeiHeadLoader { #timetoalign.loader.MeiHeadLoader }
+
+```python
+loader.MeiHeadLoader()
+```
+
+Read an MEI header and state what it says as statements.
+
+MEI 5.1 headers are read, and MEI 4.0.1 headers using ``workList`` and
+``manifestationList``. ``load`` takes one MEI file whose root is ``mei``
+or ``meiHead``; :meth:`create_bundle` states its description on a new
+bundle or on one given.
+
+## Examples {.doc-section .doc-section-examples}
+
+```python
+>>> from timetoalign.loader.metadata import MeiHeadLoader
+>>> MeiHeadLoader().create_bundle()
+Traceback (most recent call last):
+...
+ValueError: MeiHeadLoader holds no source: load an MEI file first.
+```
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [clear](#timetoalign.loader.MeiHeadLoader.clear) | Release the header and the source. |
+| [create_bundle](#timetoalign.loader.MeiHeadLoader.create_bundle) | State the header's description on a bundle and its timelines. |
+
+### clear { #timetoalign.loader.MeiHeadLoader.clear }
+
+```python
+loader.MeiHeadLoader.clear()
+```
+
+Release the header and the source.
+
+### create_bundle { #timetoalign.loader.MeiHeadLoader.create_bundle }
+
+```python
+loader.MeiHeadLoader.create_bundle(
+    into=None,
+    subjects=None,
+    id=None,
+    base=None,
+    stated_by=LIBRARY_AGENT,
+    date=None,
+)
+```
+
+State the header's description on a bundle and its timelines.
+
+The work becomes a value node under the bundle's ``schema:about``,
+each manifestation a new graphical timeline in millimetres of
+unknown length, named by its first title; expressions and items are
+value nodes. A name without an IRI is offered as a candidate. A
+pair a subject already states or holds an entry of (a candidate, a
+pair someone believes) is passed over, and the pairs of a value node
+go into it only while the subject states it, so importing a header
+twice into one bundle adds nothing and every belief recorded
+stands. The import holds no belief. Every pair
+is checked before the bundle changes: a refused one leaves it as it
+was.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name      | Type                                                                       | Description                                                                                                                                                                                       | Default         |
+|-----------|----------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------|
+| into      | [AlignmentBundle](`timetoalign.alignment.AlignmentBundle`) \| None         | The bundle to state the description on, returned; a new bundle when None.                                                                                                                         | `None`          |
+| subjects  | [Mapping](`collections.abc.Mapping`)\[[str](`str`), [str](`str`)\] \| None | Maps the ``xml:id`` of a manifestation or an item to the ID of a timeline (at any depth) or region of *into*, which then takes that entity's statements in place of a new timeline or value node. | `None`          |
+| id        | [str](`str`) \| None                                                       | The ID of the new bundle; the file's stem when None, with every character outside ``[A-Za-z0-9_.-]`` replaced by ``_``.                                                                           | `None`          |
+| base      | [str](`str`) \| None                                                       | The MEI file's address: relative targets resolve against it, and every basis and IRI built from an ``xml:id`` begins with it. The file name, percent-encoded, when None.                          | `None`          |
+| stated_by | [str](`str`) \| [Sequence](`collections.abc.Sequence`)\[[str](`str`)\]     | Who states the pairs: an IRI, or several.                                                                                                                                                         | `LIBRARY_AGENT` |
+| date      | [str](`str`) \| [datetime](`datetime`).[date](`datetime.date`) \| None     | The day of the provenance entries, ``YYYY-MM-DD`` or a :class:`datetime.date`; today when None.                                                                                                   | `None`          |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                       | Description                        |
+|--------|------------------------------------------------------------|------------------------------------|
+|        | [AlignmentBundle](`timetoalign.alignment.AlignmentBundle`) | The bundle holding the statements. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+|--------|----------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | Before anything changes, if *id* is given with *into*, *subjects* without *into*, a key of *subjects* names no work, expression, manifestation or item, or names a work or an expression, a value names no timeline or region of *into*, the header holds more than one work, a work or an expression has no ``xml:id``, or a pair is refused (``the prefix 'doi' is declared neither by the catalogue nor on the new timeline of manifestation 'source_2'``). |

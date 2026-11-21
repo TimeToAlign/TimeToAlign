@@ -24,11 +24,11 @@
   "how03_ieee1599.py": "73632155eb081a05a997c65ab15f784bba547d736a004e27e876ea37a4510694",
   "tut00_quickstart.py": "d89c6c5899ebec618704be262d646b75380077f3148c2819335eb4bcecbdb768",
   "tut01_timelines_and_coordinates.py": "3a68eb5da9861b5f7d911b5a010bab5e76407555138d315fdbff10a26a0e6680",
-  "tut02_nesting_and_timestamps.py": "882d62d527c2fba180e5e19faa9ee9f19fe1d1fe725ceecb2aaffc43a1fc3bbb",
+  "tut02_nesting_and_timestamps.py": "e24a70cb1757477f6bf0232389d5aabf51059b151d85a25baf54329c65c0d042",
   "tut03_events.py": "b9427b36bc04f827cce43ed67600c03ed1f628336d4ad66eeb0fb1581ca2b880",
   "tut04_loading_data.py": "fab32cd8e1fd76299811900fcdb90a3bcd6f7bf35bbc82e57ab78de4b8972bd9",
   "tut05_timeline_groups.py": "27cbaf3c0bbd400dba40b09981f1ab30d8f11474e57ae54e886ae7cefba24b41",
-  "tut06_alignment_bundles.py": "a4274bf7255ca0639ed6d14ad8588a8af7e8848f36257e8b077af5078cdb4cae",
+  "tut06_alignment_bundles.py": "f7550afc0ce80f2240cb17aed230d7ac777637281df8730d1292f7db937bd79c",
   "tut07_flow_and_grids.py": "03217ceb12a46ea944fdb7f4af5da55b5738fe1b2e28e133ac290f5058b0ab7c",
   "tut08_data_model.py": "8faff22931435cb61c183c1465d208f2f131deffd8c7bbeff5816a1e717bbfbe",
   "tut09_pitch_and_harmony.py": "8aff86fbb8f45134d76549fb41d70b235c547d90375c05eee05640e9cbf9a08f",
@@ -36,5 +36,5 @@
   "how02_group_and_bundle_files.py": "3f1c2aeb1f5e40b119ce5d703d81a1c1edeed43d9bf67be543af9fd54911e4d0",
   "how03_describe_the_work.py": "56fba35af514ce49c8f7f61142d8fae4010c83205e4db227fb8949349e8d895d",
   "how03_engraved_score_alignment.py": "4b83e1ecd4db86b25242c2bae2c7ec711c9bb95c47aea2098a8ad19c3951b6bf",
-  "how03_match_claims_package.py": "789f00a85509d017b6d3a888f55e0760e6ef9adb2cbecec135d14c9c045be9ea"
+  "how03_match_claims_package.py": "858f2eeddd6328ad4eef3b55832e9919c71cc6a784f6447900cf62b33a23e8c7"
 }

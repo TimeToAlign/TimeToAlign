@@ -2021,6 +2021,15 @@ and the number of rows the timeline holds afterwards, never a count of calls:
   `n1` and one of no event at one position are two), the start (`n1` at two
   positions, a repeat played against one score note, are two), and the
   duration (an instant and a span from one start are two).
+- **One value, one key, however the cell is spelled.** The keys compare a
+  cell's members, so they compare values only because memory holds one
+  spelling of a value. On the quarters timeline a Projection row given its
+  start as the whole cell `{0.5, 2, 4}` is stored as `{0.5, 1, 2}` and
+  added as `projection_1`; `Projection(start=Coordinate(1/2, quarters))`
+  then returns `projection_1` and the timeline holds one event. The same
+  holds for an event table given whole: `EventData.from_arrays` with a
+  `start` struct column `[{0.5, 2, 4}, {0.75, 3, 4}]` stores
+  `[{0.5, 1, 2}, {0.75, 3, 4}]`.
 - **A given ID.** A Projection given `x1azmn68` is added under it; the same
   Projection given again returns `x1azmn68` and adds nothing. Refused,
   atomically: the ID held by a Note, the ID held by a Projection at another
@@ -2241,7 +2250,24 @@ need contents opt in.
      exact Fraction pair (`number_to_json`) for the child's length — not a
      rounded float projection.
 
-9. **Child Construction and Boundary Tests**
+9. **The holder of an event, at every depth** (`TestEventHolder`)
+   - `get_events(include_children=True)` tags every row a child reports with
+     the timeline holding the event (`source_timeline`): the child for its
+     own events, a deeper descendant's name kept; only the timeline's own
+     rows stay untagged. A child that has a descendant holding events
+     reports its own rows beside the descendant's tagged ones, so a rule
+     that tags only rows lacking the key leaves them untagged and the
+     parent reads them as its own (what the MatchClaim factory relies on,
+     `tests/alignment/README.md`, `TestCreateMatchClaims`). Evidence on
+     `score` (quarters, 8) ⊃ `c` (offset 2, length 4) ⊃ `g` (offset 1 in
+     `c`, length 2), `score` holding `s1` at 0, `c` `n1` at 1, `g` `x9` at
+     1: `score.get_events(include_children=True)` gives exactly
+     `[("s1", None, 0), ("n1", "c", 3), ("x9", "g", 4)]` as `(id,
+     source_timeline, start)`, `c.get_events(include_children=True)` gives
+     `[("n1", None, 1), ("x9", "g", 2)]`; `score.get_event` names `None`
+     for `s1`, `"c"` for `n1`, `"g"` for `x9`.
+
+10. **Child Construction and Boundary Tests**
    - `create_child()` defaults its offset to zero and returns the parent's
      exact concrete class for all six concrete timeline types
    - Coordinate objects remain valid for child lengths and offsets

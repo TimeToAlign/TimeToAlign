@@ -33,7 +33,7 @@ from timetoalign.alignment import (
 )
 from timetoalign.core import Coordinate, NumberType, TimeUnit
 from timetoalign.core.fields import SemanticField, derive_arrow_struct
-from timetoalign.core.time import COORDINATE_CELL_TYPE
+from timetoalign.core.time import COORDINATE_CELL_TYPE, RATIONAL_STRUCT_TYPE
 from timetoalign.timelines.types import (
     ContinuousLogicalTimeline,
     ContinuousPhysicalTimeline,
@@ -1472,6 +1472,39 @@ class TestNullCoordinateRefused:
                 timelines=GOLD_AXES,
             )
 
+    @pytest.mark.parametrize(
+        ("end_a", "end_b", "where"),
+        [
+            ([Fraction(2, 3), 1], [0.75, None], "end_anchor.coordinate_b"),
+            ([Fraction(2, 3), None], [0.75, 2.0], "end_anchor.coordinate_a"),
+            ([Fraction(2, 3), 1], [0.75, float("nan")], "end_anchor.coordinate_b"),
+            (
+                [Fraction(2, 3), float("nan")],
+                [0.75, float("nan")],
+                "end_anchor.coordinate_a",
+            ),
+        ],
+    )
+    def test_from_columns_an_end_on_one_side_or_a_nan_end(
+        self, end_a: list, end_b: list, where: str
+    ) -> None:
+        """Never an instant claim made of an interval claim's broken end."""
+        with pytest.raises(ValueError) as raised:
+            MatchClaimField.from_columns(
+                ["score", "score"],
+                ["audio", "audio"],
+                ["n1", "n2"],
+                ["o1", "o2"],
+                [Fraction(1, 3), Fraction(1, 2)],
+                [0.5, 1.0],
+                timelines=[SCORE, AUDIO],
+                end_coordinate_a=end_a,
+                end_coordinate_b=end_b,
+            )
+        assert str(raised.value) == (
+            f"MatchClaim table row 1 {where}: the coordinate is null."
+        )
+
     def test_from_dict(self, gold_field: MatchClaimField) -> None:
         data = gold_field.to_dict()
         data["rows"][0]["start_anchor"]["coordinate_a"] = None
@@ -1502,6 +1535,91 @@ class TestNullCoordinateRefused:
             event_a_id="a",
         )
         assert MatchClaimField.from_claims([nomatch]).to_claims() == [nomatch]
+
+
+# endregion
+
+
+# region One spelling of a value
+
+
+class TestOneSpelling:
+    """An unreduced fraction is held reduced, so fields compare by value."""
+
+    AXES = {"score": ("quarters", "fraction"), "audio": ("seconds", "float")}
+
+    def _field(self, coordinate_a: pa.Array | list) -> MatchClaimField:
+        return MatchClaimField.from_columns(
+            ["score"],
+            ["audio"],
+            ["n1"],
+            ["o1"],
+            coordinate_a,
+            [1.0],
+            timelines=self.AXES,
+        )
+
+    def _reduced(self) -> MatchClaimField:
+        return self._field([Fraction(1, 2)])
+
+    def _unreduced(self) -> MatchClaimField:
+        return self._field(
+            pa.array(
+                [{"value": 0.5, "numerator": 2, "denominator": 4}],
+                type=RATIONAL_STRUCT_TYPE,
+            )
+        )
+
+    @staticmethod
+    def _held(field: MatchClaimField) -> MatchClaimField:
+        """*field* as a bundle holds it, its claim given the id ``claim_1``."""
+        bundle = AlignmentBundle()
+        bundle.add_timeline(ContinuousLogicalTimeline(length=16, uid="score"))
+        bundle.add_timeline(ContinuousPhysicalTimeline(length=60.0, uid="audio"))
+        return bundle.add_match_claim_field(field).match_claim_table
+
+    def test_from_columns_holds_the_reduced_ratio(self) -> None:
+        unreduced = self._unreduced()
+        assert unreduced == self._reduced()
+        assert unreduced.table.column("start_anchor").to_pylist()[0][
+            "coordinate_a"
+        ] == {
+            "value": 0.5,
+            "numerator": 1,
+            "denominator": 2,
+            "unit": "quarters",
+            "number_type": "fraction",
+        }
+
+    def test_from_table_holds_the_reduced_ratio(self) -> None:
+        reduced = self._reduced()
+        table = reduced.table
+        anchors = table.column("start_anchor").to_pylist()
+        anchors[0]["coordinate_a"].update(numerator=2, denominator=4)
+        index = table.schema.get_field_index("start_anchor")
+        rewritten = table.set_column(
+            index,
+            table.schema.field(index),
+            pa.array(anchors, table.schema.field(index).type),
+        )
+        assert MatchClaimField.from_table(rewritten) == reduced
+
+    def test_both_spellings_succeed_each_other_in_the_file(
+        self, tmp_path: Path
+    ) -> None:
+        unreduced = self._held(self._unreduced())
+        reduced = self._held(self._reduced())
+        for order, fields in (
+            ("unreduced_first", (unreduced, unreduced, reduced)),
+            ("reduced_first", (reduced, unreduced)),
+        ):
+            directory = tmp_path / order
+            directory.mkdir()
+            for field in fields:
+                field.to_parquet(directory)
+            read = MatchClaimField.from_parquet(directory)
+            assert read == unreduced
+            assert read == reduced
 
 
 # endregion

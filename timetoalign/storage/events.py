@@ -48,6 +48,8 @@ from timetoalign.core.time import (
     build_number_struct_array,
     coordinate_to_struct,
     express_as,
+    in_lowest_terms,
+    number_cell,
     number_from_json,
     struct_to_coordinate,
     struct_to_rational,
@@ -71,6 +73,10 @@ module_logger = logging.getLogger(__name__)
 _timeline_factory: (
     Callable[["EventData", str | None, dict[str, Any] | None], "Timeline"] | None
 ) = None
+
+
+#: The members of a storage cell given whole (``number_cell`` reads it).
+_NUMBER_KEYS = frozenset({"value", "numerator", "denominator"})
 
 
 def _register_timeline_factory(
@@ -854,6 +860,10 @@ class EventData(SemanticFieldAccessMixin):
                 if isinstance(val, dict):
                     if "value" not in val:
                         processed[coord_col] = coordinate_to_struct(val)
+                    elif set(val) == _NUMBER_KEYS:
+                        # A storage cell given whole, its ratio reduced: memory
+                        # holds one spelling of a value (2/4 is held as 1/2).
+                        processed[coord_col] = number_cell(val)
                 elif isinstance(val, list):
                     processed[coord_col] = coordinate_to_struct(number_from_json(val))
                 else:
@@ -1178,7 +1188,7 @@ class EventData(SemanticFieldAccessMixin):
                 - list: Python lists (converted to numpy)
 
                 For coordinate fields (start, end, duration):
-                - If pa.StructArray: used directly
+                - If pa.StructArray: used as given, each ratio in lowest terms
                 - If numeric/string array: parsed via build_number_struct_array
 
             unit: The time unit for coordinates.
@@ -1245,7 +1255,13 @@ class EventData(SemanticFieldAccessMixin):
                         else arr_data
                     )
                     if isinstance(arr, pa.StructArray):
-                        processed[field_name] = arr
+                        # Cells given whole keep their members, each ratio
+                        # reduced: memory holds one spelling of a value.
+                        processed[field_name] = (
+                            in_lowest_terms(arr)
+                            if {"numerator", "denominator"} <= set(arr.type.names)
+                            else arr
+                        )
                     elif pa.types.is_null(arr.type):
                         processed[field_name] = pa.nulls(n_rows, type=pa_field.type)
                     else:

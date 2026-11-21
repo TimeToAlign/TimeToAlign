@@ -286,6 +286,46 @@ class TestAddChildDurationExactness:
         assert duration == number_to_json(Fraction(7, 3))
 
 
+class TestEventHolder:
+    """Every row a child reports names the timeline holding the event."""
+
+    @staticmethod
+    def _tree() -> tuple[Timeline, Timeline, Timeline]:
+        """``score`` ⊃ ``c`` (at 2) ⊃ ``g`` (at 1 in ``c``), one event each."""
+        score = ContinuousLogicalTimeline(length=8, uid="score")
+        c = ContinuousLogicalTimeline(length=4, uid="c")
+        g = ContinuousLogicalTimeline(length=2, uid="g")
+        c.add_child(g, 1)
+        score.add_child(c, 2)
+        score.add_events([{"id": "s1", "start": 0}])
+        c.add_events([{"id": "n1", "start": 1}])
+        g.add_events([{"id": "x9", "start": 1}])
+        return score, c, g
+
+    @staticmethod
+    def _held(timeline: Timeline) -> list[tuple[str, str | None, int | float]]:
+        return [
+            (row["id"], row.get("source_timeline"), row["start"]["value"])
+            for row in timeline.get_events(include_children=True)
+        ]
+
+    def test_each_row_names_its_holder_at_every_depth(self) -> None:
+        score, c, _ = self._tree()
+        assert self._held(score) == [
+            ("s1", None, 0.0),
+            ("n1", "c", 3.0),
+            ("x9", "g", 4.0),
+        ]
+        assert self._held(c) == [("n1", None, 1.0), ("x9", "g", 2.0)]
+
+    def test_get_event_names_the_holder(self) -> None:
+        score, *_ = self._tree()
+        assert {
+            event_id: score.get_event(event_id).get("source_timeline")
+            for event_id in ("s1", "n1", "x9")
+        } == {"s1": None, "n1": "c", "x9": "g"}
+
+
 class TestCreateChild:
     """Test child construction and concrete class selection."""
 

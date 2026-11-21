@@ -46,7 +46,7 @@ if TYPE_CHECKING:
 module_logger = logging.getLogger(__name__)
 
 
-def _meet(first: set | None, second: set | None) -> set | None:
+def meet(first: set | None, second: set | None) -> set | None:
     """Both restrictions at once (``None`` restricts nothing)."""
     if first is None:
         return second

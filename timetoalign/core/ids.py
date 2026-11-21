@@ -218,8 +218,23 @@ def _highest_minted_number(prefix: str, taken: pa.Array) -> int:
     return pc.max(pc.cast(numbers, pa.int64())).as_py()
 
 
-def _id_column(taken: pa.Array | pa.ChunkedArray | Iterable[str]) -> pa.Array:
-    """*taken* as one string array without nulls."""
+def id_column(taken: pa.Array | pa.ChunkedArray | Iterable[str]) -> pa.Array:
+    """Read the ids held in a scope as one string array without nulls.
+
+    This is how :func:`mint_ids` reads its *taken* ids; a caller minting
+    several times against the same ids reads them once with it.
+
+    Args:
+        taken: The ids (a string array, chunked or not, or any iterable of
+            strings; nulls are dropped).
+
+    Returns:
+        A string array of the ids, nulls dropped.
+
+    Examples:
+        >>> id_column(["note_1", None, "note_3"]).to_pylist()
+        ['note_1', 'note_3']
+    """
     if isinstance(taken, pa.ChunkedArray):
         taken = taken.combine_chunks()
     if not isinstance(taken, pa.Array):
@@ -259,7 +274,7 @@ def mint_ids(
         >>> len(mint_ids("claim", pa.array([], pa.string()), 0))
         0
     """
-    first = _highest_minted_number(prefix, _id_column(taken)) + 1
+    first = _highest_minted_number(prefix, id_column(taken)) + 1
     numbers = pa.array(np.arange(first, first + count, dtype=np.int64))
     return pc.binary_join_element_wise(f"{prefix}_", pc.cast(numbers, pa.string()), "")
 

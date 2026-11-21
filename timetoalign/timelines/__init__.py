@@ -24,6 +24,10 @@ Statements (what a bundle, a timeline or a region stands for):
 - MutableStatementsMixin: The same, changed in place (timeline, bundle)
 - LIBRARY_AGENT: The agent this library's importers name by default
 
+Package resources (the files a manifest names beside it):
+- Resource: One entry of a manifest's ``resources``, a file and its timelines
+- Integrity: The digest a resource states of its file's bytes
+
 Structural components:
 - Region: Named TimeInterval (not a timeline itself)
 - MeasureMap: Immutable printed-order measure structure
@@ -104,6 +108,7 @@ from .flow import (
     load_valid_flows,
 )
 from .groups import TimelineGroup
+from .manifest import Integrity, Resource
 from .regions import Region
 from .statements import LIBRARY_AGENT, MutableStatementsMixin, StatementsMixin
 from .structure import (
@@ -158,6 +163,9 @@ __all__ = [
     "LIBRARY_AGENT",
     "MutableStatementsMixin",
     "StatementsMixin",
+    # Package resources
+    "Integrity",
+    "Resource",
     # Structural components
     "Region",
     "MeasureMap",

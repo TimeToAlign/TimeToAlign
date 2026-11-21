@@ -11,12 +11,11 @@ from pathlib import Path
 
 import pyarrow as pa
 import pyarrow.parquet as pq
-import pytest
-import timetoshare
 from timetoshare.tables import (
     COORDINATE_TYPE,
     MATCH_CLAIM_SCHEMA,
     PROVENANCE_METADATA_KEY,
+    fixture_path,
     match_claim_problems,
     row_provenance,
 )
@@ -35,23 +34,8 @@ from timetoalign.timelines.types import (
     DiscretePhysicalTimeline,
 )
 
-#: TimeToShare's checkout beside this repository, where its fixtures live.
-_TIMETOSHARE = Path(__file__).resolve().parents[2].parent / "TimeToShare"
-_FIXTURE = (
-    _TIMETOSHARE
-    / "fixtures"
-    / "tables"
-    / timetoshare.SCHEMA_VERSION
-    / "match_claims.parquet"
-)
-
-needs_fixture = pytest.mark.skipif(
-    not _FIXTURE.is_file(),
-    reason=(
-        f"TimeToShare's fixture table {_FIXTURE} is absent: no TimeToShare "
-        f"checkout beside this repository"
-    ),
-)
+#: TimeToShare's fixture MatchClaim table, shipped with the installed package.
+_FIXTURE = fixture_path("match_claims.parquet")
 
 SCORE = ContinuousLogicalTimeline(length=16, uid="score")
 AUDIO = ContinuousPhysicalTimeline(length=60.0, uid="audio")
@@ -74,7 +58,6 @@ class TestSchema:
         assert MatchClaimField._PROVENANCE_KEY == PROVENANCE_METADATA_KEY.encode()
 
 
-@needs_fixture
 class TestFixtureTable:
     def test_read_and_written_back_unchanged(self, tmp_path: Path) -> None:
         fixture = pq.read_table(_FIXTURE)

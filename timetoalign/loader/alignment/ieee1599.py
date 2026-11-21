@@ -1419,7 +1419,7 @@ class Ieee1599Loader(XmlLoader):
 
         Returns:
             An ``AlignmentBundle`` with one group per timeline and the
-            projection claims.
+            MatchClaims.
 
         Raises:
             RuntimeError: If ``load()`` has not been called yet.

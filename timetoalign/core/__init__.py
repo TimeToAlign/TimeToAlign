@@ -23,7 +23,6 @@ from __future__ import annotations
 
 from .enums import (
     ActivationCondition,
-    AgentType,
     ClaimType,
     ColumnNaming,
     ColumnRole,
@@ -212,7 +211,6 @@ from .timestamp import (
 __all__ = [
     # Enums
     "ActivationCondition",
-    "AgentType",
     "ClaimType",
     "ColumnNaming",
     "ColumnRole",

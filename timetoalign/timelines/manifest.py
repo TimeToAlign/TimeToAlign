@@ -71,8 +71,8 @@ from timetoshare.tables import (
 from timetoalign.core import Coordinate, NumberType, Projection, TimeUnit
 from timetoalign.core.ids import _OpenObject, mint_id, quote_id, validate_id
 from timetoalign.core.time import (
-    COORDINATE_CELL_TYPE,
     RATIONAL_STRUCT_TYPE,
+    axis_coordinate_cells,
     is_fraction_json,
     number_from_json,
     number_to_json,
@@ -740,26 +740,6 @@ PROJECTIONS_FILE_NAME = "projections.parquet"
 """The file name of a package's Projections table beside its manifest."""
 
 
-def _cells_on(column: Any, timeline: Timeline) -> pa.StructArray:
-    """The coordinate cells of an event column on *timeline*'s axis.
-
-    The column's number structs keep both sides of every number; each
-    non-null cell gains the timeline's unit and number type.
-    """
-    numbers = column.combine_chunks() if isinstance(column, pa.ChunkedArray) else column
-    valid = numbers.is_valid()
-    n = len(numbers)
-    named = [
-        pc.if_else(valid, pa.scalar(text), pa.nulls(n, pa.string()))
-        for text in (timeline.unit.value, timeline.number_type.name)
-    ]
-    return pa.StructArray.from_arrays(
-        [numbers.field(key) for key in ("value", "numerator", "denominator")] + named,
-        fields=list(COORDINATE_CELL_TYPE),
-        mask=pc.invert(valid),
-    )
-
-
 def projection_table(timelines: Iterable[Timeline]) -> pa.Table:
     """The Projections table of *timelines*: every Projection each holds itself.
 
@@ -791,13 +771,20 @@ def projection_table(timelines: Iterable[Timeline]) -> pa.Table:
         def column(name: str, empty: pa.Array, rows: pa.Table = rows) -> Any:
             return rows.column(name) if name in rows.column_names else empty
 
+        def cells(name: str, number: pa.Array = number) -> pa.StructArray:
+            return axis_coordinate_cells(
+                column(name, number),
+                unit=timeline.unit,
+                number_type=timeline.number_type,
+            )
+
         parts.append(
             pa.Table.from_arrays(
                 [
                     rows.column("id").combine_chunks().cast(pa.string()),
                     pa.array([timeline.id] * n, pa.string()),
-                    _cells_on(column("start", number), timeline),
-                    _cells_on(column("duration", number), timeline),
+                    cells("start"),
+                    cells("duration"),
                     column("projection_of", pa.nulls(n, PROJECTION_OF_TYPE))
                     .combine_chunks()
                     .cast(PROJECTION_OF_TYPE),

@@ -1265,7 +1265,7 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
         at: CoordinateInput | CoordinateCollection | str | KeyCollection | None = None,
         timeline_id: str | None = None,
         *,
-        timeline_filter: set[str] | None = None,
+        within: set[str] | None = None,
         conversion_maps: ConversionMapsSpec = True,
         format: TableFormat = "table",
         fields: "ColumnNaming | Callable[[str, dict], str] | list[str] | None" = None,
@@ -1280,7 +1280,8 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
                 at ``0`` and at its length, exact in its declared number type.
             timeline_id: Which timeline the positions refer to. Required for
                 entries without an embedded timeline ID.
-            timeline_filter: Only include these timeline fields.
+            within: Only these timelines' coordinates in the table, one
+                column each; ``None`` keeps every timeline.
             conversion_maps: Whether to include C-Map fields from member timelines.
                 - True (default): Include all attached C-Maps from all timelines
                 - False/None: No C-Map fields
@@ -1341,10 +1342,10 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
         reject_dataframe_options(format, fields=fields, units=units)
 
         if at is None:
-            table = self._stored_timestamp_table(timeline_filter, conversion_maps)
+            table = self._stored_timestamp_table(within, conversion_maps)
         else:
             table = self._queried_timestamp_table(
-                at, timeline_id, timeline_filter, conversion_maps
+                at, timeline_id, within, conversion_maps
             )
         if format == "table":
             return table
@@ -1356,7 +1357,7 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
 
     def _stored_timestamp_table(
         self,
-        timeline_filter: set[str] | None,
+        within: set[str] | None,
         conversion_maps: ConversionMapsSpec,
     ) -> pa.Table:
         """Tabulate the two stored timestamps: the common start and end.
@@ -1386,7 +1387,7 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
             },
             ends,
         ]
-        return self._tabulate(rows, timeline_filter, conversion_maps)
+        return self._tabulate(rows, within, conversion_maps)
 
     def _member_columns(
         self, names: list[str], values: dict[str, Any]
@@ -1460,7 +1461,7 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
         self,
         at: CoordinateInput | CoordinateCollection | str | KeyCollection,
         timeline_id: str | None,
-        timeline_filter: set[str] | None,
+        within: set[str] | None,
         conversion_maps: ConversionMapsSpec,
     ) -> pa.Table:
         """Tabulate one row per queried position or event key.
@@ -1491,12 +1492,12 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
                 )
                 for value in queried
             ]
-        return self._tabulate(rows, timeline_filter, conversion_maps)
+        return self._tabulate(rows, within, conversion_maps)
 
     def _tabulate(
         self,
         rows: list[dict[str, Coordinate]],
-        timeline_filter: set[str] | None,
+        within: set[str] | None,
         conversion_maps: ConversionMapsSpec,
     ) -> pa.Table:
         """Encode cross-sections as one coordinate column per timeline.
@@ -1507,8 +1508,8 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
         names = list(self._timelines)
         for row in rows:
             names.extend(name for name in row if name not in names)
-        if timeline_filter is not None:
-            names = [name for name in names if name in timeline_filter]
+        if within is not None:
+            names = [name for name in names if name in within]
 
         cells: dict[str, Any] = {
             name: [row.get(name) for row in rows] for name in names

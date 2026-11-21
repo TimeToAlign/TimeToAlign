@@ -7,6 +7,7 @@ from collections.abc import Sequence
 from fractions import Fraction
 from typing import Any, Literal
 
+import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
 
@@ -90,6 +91,88 @@ def _check_projection_row(row: dict[str, Any], timeline_id: str) -> None:
             f"event of another timeline; its projection_of names "
             f"{quote_id(timeline_id)} itself"
         )
+
+
+#: The cells and the reference that make two Projections of one timeline the
+#: same one: the event it stands for (or none) and its exact position.
+_PROJECTION_CELLS = ("start", "end", "duration")
+
+
+def _projection_keys(table: pa.Table) -> pa.Table:
+    """The columns that tell a timeline's Projections apart, without nulls.
+
+    Per row the ``projection_of`` reference and the exact ``start``, ``end``
+    and ``duration`` cells (each side of the number, so a float compares as
+    its value and an exact number as its ratio), every nullable column
+    beside a flag of its presence, so that a join matches a missing value
+    with a missing one. A column the table lacks is missing in every row.
+    """
+    n = table.num_rows
+    columns: dict[str, pa.Array] = {}
+
+    def struct(name: str, fields: dict[str, pa.DataType]) -> list[pa.Array]:
+        if name in table.column_names:
+            data = table.column(name).combine_chunks()
+            if isinstance(data, pa.StructArray) and len(data.type) > 0:
+                flat = dict(
+                    zip((f.name for f in data.type), data.flatten(), strict=True)
+                )
+                return [
+                    pc.is_valid(data),
+                    *(flat.get(key, pa.nulls(n, kind)) for key, kind in fields.items()),
+                ]
+        return [
+            pa.array([False] * n, pa.bool_()),
+            *(pa.nulls(n, kind) for kind in fields.values()),
+        ]
+
+    number = {"value": pa.float64(), "numerator": pa.int64(), "denominator": pa.int64()}
+    fills = {pa.float64(): 0.0, pa.int64(): 0, pa.string(): ""}
+    for name in _PROJECTION_CELLS:
+        present, *parts = struct(name, number)
+        columns[f"{name}_present"] = present
+        for key, part in zip(number, parts, strict=True):
+            part = pc.cast(part, number[key])
+            columns[f"{name}_{key}"] = pc.fill_null(part, fills[number[key]])
+    reference = {"timeline_id": pa.string(), "event_id": pa.string()}
+    present, *parts = struct("projection_of", reference)
+    columns["projection_of_present"] = present
+    for key, part in zip(reference, parts, strict=True):
+        columns[f"projection_of_{key}"] = pc.fill_null(pc.cast(part, pa.string()), "")
+    return pa.table(columns)
+
+
+def _held_by_key(
+    held: pa.Table, rows: pa.Table, *, with_id: bool = False
+) -> list[str | None]:
+    """Per row of *rows* the ID of a held Projection with its keys, or ``None``.
+
+    Both tables hold the columns of :func:`_projection_keys`, *held* also
+    ``held_id``. Without ``with_id`` the first Projection held with a row's
+    keys answers; with it, *rows* holds ``held_id`` as well (a given ID) and
+    a row is answered only by the Projection held under that ID with equal
+    keys. One hash join, whatever the number of Projections held.
+    """
+    keys = [name for name in held.column_names if name != "held_id"]
+    if with_id:
+        keys.append("held_id")
+        right = held.group_by(keys).aggregate([])
+        right = right.append_column(
+            "match", pa.array(np.ones(right.num_rows, dtype=bool))
+        )
+    else:
+        right = held.group_by(keys, use_threads=False).aggregate([("held_id", "first")])
+        right = right.rename_columns([*keys, "match"])
+    left = rows.append_column("row", pa.array(np.arange(rows.num_rows), pa.int64()))
+    joined = left.join(right, keys=keys, join_type="left outer").sort_by("row")
+    match = joined.column("match").to_pylist()
+    if not with_id:
+        return match
+    given = joined.column("held_id").to_pylist()
+    return [
+        event_id if found else None
+        for event_id, found in zip(given, match, strict=True)
+    ]
 
 
 def _decoded_rows(data: EventData) -> list[dict[str, Any]]:
@@ -259,6 +342,120 @@ class EventsMixin:
         # Add events
         self._add_events_unchecked(rows)
         return [row["id"] for row in rows]
+
+    def add_projections(
+        self,
+        projections: Projection | Sequence[dict[str, Any] | Projection],
+        allow_expansion: bool = False,
+    ) -> list[str]:
+        """Add Projections to the timeline, reusing those it already holds.
+
+        Get-or-add: each Projection is placed on the timeline's axis as
+        :meth:`add_events` places it, and the timeline keeps one Projection
+        per thing it stands for. A Projection without an ``id`` reuses the
+        Projection the timeline holds with the same ``projection_of`` (the
+        same event of another timeline, or none) at the same exact ``start``
+        and ``duration``; a Projection with an ``id`` reuses the one held
+        under that id when its content is equal. Rows of one call are taken
+        alike, so two rows standing for one thing give one Projection.
+        Everything else is added, its id kept or minted
+        (``projection_N``).
+
+        Args:
+            projections: :class:`~timetoalign.core.Projection` objects or
+                their event rows (one or a list).
+            allow_expansion: If True, expand the timeline if a Projection
+                added exceeds its length.
+
+        Returns:
+            The ID of the Projection standing for each row, in row order.
+
+        Raises:
+            ValueError: If a row is not a Projection, a given ID is held by
+                another event of the timeline or given twice for different
+                positions, or a row is refused by :meth:`add_events`.
+                Nothing is added then.
+
+        Examples:
+            >>> from timetoalign.core import Coordinate, EventReference, Projection
+            >>> from timetoalign.timelines import ContinuousPhysicalTimeline
+            >>> tl = ContinuousPhysicalTimeline(length=10.0)
+            >>> n1 = EventReference(timeline_id="score", event_id="n1")
+            >>> at = Coordinate(2.5, "seconds")
+            >>> tl.add_projections([Projection(start=at, projection_of=n1)] * 2)
+            ['projection_1', 'projection_1']
+            >>> tl.add_projections(Projection(start=at, projection_of=n1))
+            ['projection_1']
+        """
+        rows = [self._resolve_row_coordinates(row) for row in _event_rows(projections)]
+        if not rows:
+            return []
+        for row in rows:
+            if row.get("event_type") != PROJECTION_EVENT_TYPE:
+                raise ValueError(
+                    f"add_projections adds Projections, not a row of type "
+                    f"{row.get('event_type')!r}"
+                )
+            _check_projection_row(row, self._id)
+        # The cells each row is stored with, read as add_events would store them.
+        placed = (
+            type(self._events)
+            .from_dicts(
+                [{**row, "id": str(index)} for index, row in enumerate(rows)],
+                self._unit,
+                self._number_type,
+            )
+            .table
+        )
+        keys = list(zip(*(column.to_pylist() for column in _projection_keys(placed))))
+        table = self._events.table
+        held = table.filter(pc.equal(table.column("event_type"), PROJECTION_EVENT_TYPE))
+        held_keys = _projection_keys(held).append_column(
+            "held_id", held.column("id").combine_chunks()
+        )
+        by_key = _held_by_key(held_keys, _projection_keys(placed))
+        given = pa.array([row.get("id") for row in rows], type=pa.string())
+        same_held = _held_by_key(
+            held_keys,
+            _projection_keys(placed).append_column("held_id", given),
+            with_id=True,
+        )
+        held_elsewhere = pc.is_in(given, value_set=table.column("id")).to_pylist()
+
+        ids: list[str | int] = []
+        first: dict[tuple[Any, ...], str | int] = {}
+        given_keys: dict[str, tuple[Any, ...]] = {}
+        added: list[dict[str, Any]] = []
+        for index, (row, key) in enumerate(zip(rows, keys, strict=True)):
+            event_id = row.get("id")
+            if event_id is not None:
+                seen = event_id in given_keys
+                if given_keys.setdefault(event_id, key) != key:
+                    raise ValueError(
+                        f"Projection id {quote_id(event_id)} is given twice for "
+                        f"different positions in one call on timeline "
+                        f"{quote_id(self._id)}"
+                    )
+                if not seen and same_held[index] is None:
+                    if held_elsewhere[index]:
+                        raise ValueError(
+                            f"Event id {quote_id(event_id)} is already held by "
+                            f"another event of timeline {quote_id(self._id)}"
+                        )
+                    added.append(row)
+                ids.append(event_id)
+                first.setdefault(key, event_id)
+                continue
+            if by_key[index] is not None:
+                ids.append(by_key[index])
+            elif key in first:
+                ids.append(first[key])
+            else:
+                first[key] = len(added)
+                ids.append(len(added))
+                added.append(row)
+        minted = self.add_events(added, allow_expansion) if added else []
+        return [minted[entry] if isinstance(entry, int) else entry for entry in ids]
 
     def _rows_with_ids(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Return *rows*, each with an ID new to this timeline.

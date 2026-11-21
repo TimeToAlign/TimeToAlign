@@ -208,7 +208,7 @@ def test_an_id_the_timeline_does_not_hold_is_refused():
     performance, score = _timelines()
     rows = PERFORMANCE_ROWS.assign(id=["p1", "p9", "p3"])
 
-    with pytest.raises(ValueError) as raised:
+    with pytest.raises(KeyError) as raised:
         match_notes_by_attributes(
             rows,
             SCORE_ROWS,
@@ -219,10 +219,29 @@ def test_an_id_the_timeline_does_not_hold_is_refused():
             source_unit=TimeUnit.seconds,
         )
 
-    assert str(raised.value) == (
-        "1 matched row(s) name no event of timeline 'dpt_1', the first 'p9'"
+    assert raised.value.args[0] == (
+        "Pair 1: no event with id 'p9' on timeline 'dpt_1' or its children "
+        "(3 events of its own)"
     )
     assert (len(performance.events), len(score.events)) == (3, 3)
+
+
+def test_matching_again_adds_nothing():
+    performance, score = _timelines()
+    first = _match(performance, score, source_id_column="id").match_claims
+    again = _match(performance, score, source_id_column="id").match_claims
+    assert _named(again) == _named(first)
+    assert (len(performance.events), len(score.events)) == (3, 6)
+
+    performance, score = _timelines()
+    first = _match(performance, score).match_claims
+    again = _match(performance, score).match_claims
+    assert (
+        _named(again)
+        == _named(first)
+        == [("dpt_1", f"projection_{k}", "clt_1", f"projection_{k}") for k in (1, 2, 3)]
+    )
+    assert (len(performance.events), len(score.events)) == (6, 6)
 
 
 def test_claims_need_both_timelines():

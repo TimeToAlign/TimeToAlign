@@ -306,6 +306,29 @@ def test_a_single_inserted_note_keeps_its_id(score: Timeline, tmp_path: Path) ->
     )
 
 
+@pytest.mark.parametrize("single", [False, True], ids=["repeated-id", "kept-id"])
+def test_a_second_call_reuses_every_projection(
+    score: Timeline, tmp_path: Path, single: bool
+) -> None:
+    rows = _stated_rows()
+    if single:
+        rows = rows[:-1]
+    loader = MapsLoader.from_file(_write(tmp_path / "stated.json", rows))
+    performance = _samples_timeline()
+
+    def stated(claims: list[MatchClaim]) -> list[tuple[Any, ...]]:
+        return [(*_stated(claim), claim.event_b_id) for claim in claims]
+
+    first = loader.create_match_claims(score, performance)
+    held = performance.events.table.to_pylist()
+    again = loader.create_match_claims(score, performance)
+    assert stated(again) == stated(first)
+    assert performance.events.table.to_pylist() == held
+    assert len(held) == (15 if single else 16)
+    if single:
+        assert [first[-1].event_a_id, again[-1].event_a_id] == [INSERTED, INSERTED]
+
+
 def test_kinds_are_logged(stated_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     with caplog.at_level(logging.INFO, logger="timetoalign"):
         MapsLoader.from_file(stated_path)
@@ -345,11 +368,9 @@ def test_create_bundle(score: Timeline, stated_path: Path) -> None:
     assert bundle.get_group_for_timeline(score.id).name == "score"
     assert bundle.get_group_for_timeline(performance.id).name == "performance"
     # Claims carry generated ids, so they are compared by what they state;
-    # the claims alone are made on a fresh recording, since each call adds
-    # its Projections to the performance timeline it is given.
+    # made again on the same recording, they name the same Projections.
     assert [_stated(claim) for claim in bundle.get_match_claims()] == [
-        _stated(claim)
-        for claim in loader.create_match_claims(score, _samples_timeline())
+        _stated(claim) for claim in loader.create_match_claims(score, performance)
     ]
     for quarter, sample, interpolated in [
         (Fraction(3, 2), 55125, False),
@@ -423,8 +444,12 @@ def test_unknown_id_is_refused(score: Timeline, tmp_path: Path) -> None:
     rows[3]["xml_id"] = ["zz9"]
     loader = MapsLoader.from_file(_write(tmp_path / "unknown.json", rows))
     performance = _seconds_timeline()
-    with pytest.raises(KeyError, match=r"MAPS row 4 names xml:id 'zz9'"):
+    with pytest.raises(KeyError) as raised:
         loader.create_match_claims(score, performance)
+    assert raised.value.args[0] == (
+        "Pair 8: no event with id 'zz9' on timeline 'score:clt_1' or its children "
+        "(0 events of its own)"
+    )
     # Rows 1-3 were read before the refusal; none of their Projections stays.
     assert len(performance.events) == 0
 

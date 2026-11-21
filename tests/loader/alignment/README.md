@@ -183,7 +183,8 @@ its `coordinate_a.unit` (ticks / pixels / seconds) against `coordinate_b.unit`
 (always ticks, always `spine:dlt_1`).  Per-layer row counts are recovered by
 counting the field's `timeline_a_id` column against the loader's `los_uid` /
 `edition_uids` / `track_uids`, which is what the arithmetic above is asserted
-through.  The bundle's `n_cross_group_claims` reports the totals above.
+through.  The bundle's MatchClaim table (`len(bundle.match_claim_table)`)
+holds the totals above.
 
 **Every claim names its two events.** The document names spine events only, so
 the loader gives each layer event the id its timeline would mint
@@ -513,12 +514,24 @@ stated all the same.
 * **`create_bundle`** builds what users would otherwise assemble by hand: the
   bundle is named after the file (`stated`), holds the score in group
   `score` and the performance in group `performance`, and carries the 17
-  claims of `create_match_claims` (made again on a fresh recording, since
-  each call adds its Projections to the timeline it is given). On a samples
+  claims of `create_match_claims` (made again on the same recording: they
+  state the same, see the next item). On a samples
   timeline it answers the same
   anchors as the hand-built bundle of the first fixture (quarter 3/2 →
   sample 55125, 15/4 → 121275 interpolated): the NOMATCH claims add no
   anchor, so the WarpMap is unchanged by them.
+* **A second call reuses every Projection.** The loader makes its claims
+  through the library's one projection operation, which keeps one Projection
+  per score note and position on the performance timeline. Calling
+  `create_match_claims` twice on the second fixture with one samples
+  timeline gives claims stating the same events and anchors both times
+  (`projection_1` … `projection_16` named alike), and the performance
+  timeline holds the same 16 rows after the second call as after the first.
+  The same holds with row 11 left out, so that the inserted id is given once
+  and kept: 15 rows, and both calls' last claim names
+  `trompa-align_inserted_Cs4` (the second time as the event the timeline
+  holds). Before, a second call added every Projection again and refused the
+  kept inserted id.
 
 ### Refusals
 
@@ -526,8 +539,10 @@ Each refusal raises before anything is created; each test changes one thing
 in an otherwise valid fixture, so the refusal can only come from that change.
 
 * **An id not on the score**: a row naming `zz9` → `KeyError` naming the id
-  and its `obs_num`; the performance timeline holds no event afterwards,
-  though rows 1–3 were read first (every lookup runs before a Projection is
+  and the pair it is in (`Pair 8: no event with id 'zz9' on timeline
+  'score:clt_1' or its children ...`: the pairs count the listed ids of rows
+  1–4 from 0); the performance timeline holds no event afterwards, though
+  rows 1–3 were read first (every lookup runs before a Projection is
   added).
 * **No path to seconds**: a samples timeline without a C-Map, and a quarters
   timeline without one → `ValueError`.

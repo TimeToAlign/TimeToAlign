@@ -28,18 +28,9 @@ from fractions import Fraction
 from typing import TYPE_CHECKING, Any, Sequence
 
 import pandas as pd
-import pyarrow as pa
-import pyarrow.compute as pc
 
-from timetoalign.alignment.claims import MatchClaim
-from timetoalign.core import (
-    Coordinate,
-    EventReference,
-    Projection,
-    Provenance,
-    TimeUnit,
-)
-from timetoalign.core.ids import quote_id
+from timetoalign.alignment.claims import ClaimSide, MatchClaim, _claims_between_events
+from timetoalign.core import Coordinate, Provenance, TimeUnit
 
 if TYPE_CHECKING:
     from timetoalign.timelines.base import Timeline
@@ -154,13 +145,16 @@ def match_notes_by_attributes(
     with unfolded ABC score notes by pitch name + staff number.
 
     Each claim joins two events, one on each timeline. A side given an id
-    column names, per row, the event of its timeline with that id (which
-    must be one); a side without one states positions only, so each of its
-    matched rows becomes a :class:`~timetoalign.core.Projection` added to
-    its timeline, standing for the other side's event where that side names
-    one (``projection_of``) and for no event otherwise. Every coordinate is
-    placed on its timeline's own axis: a value in another unit is converted
-    through the timeline's C-Map.
+    column names, per row, the event of its timeline (or of a descendant of
+    it) with that id, which must be one, at that event's own position; a
+    side without one states positions only, so each of its matched rows
+    gets a :class:`~timetoalign.core.Projection` on its timeline, standing
+    for the other side's event where that side names one
+    (``projection_of``) and for no event otherwise. A Projection the
+    timeline already holds for that event at that position is reused, so
+    matching again adds no Projection. Every coordinate is placed on its
+    timeline's own axis: a value in another unit is converted through the
+    timeline's C-Map.
 
     Args:
         source_df: DataFrame of source notes (e.g., EEP performance notes).
@@ -169,8 +163,9 @@ def match_notes_by_attributes(
             Must contain the ``match_columns`` and ``target_coord_column``.
         match_columns: Column names to match on (e.g., ``["pitch", "staff"]``).
         source_coord_column: Column in source_df containing the coordinate
-            to use in MatchClaims (e.g., onset in seconds); a string such as
-            ``"707/2"`` is read as an exact fraction.
+            to use in MatchClaims (e.g., onset in seconds) where the source
+            side has no id column; a string such as ``"707/2"`` is read as
+            an exact fraction.
         target_coord_column: Column in target_df containing the coordinate
             to use in MatchClaims (e.g., onset in quarterbeats).
         source_timeline: The timeline of the source rows (side A of every
@@ -195,9 +190,10 @@ def match_notes_by_attributes(
 
     Raises:
         ValueError: If required columns are missing from either DataFrame,
-            claims are asked for without both timelines, an id column names
-            no event of its timeline, or a coordinate cannot be placed on its
-            timeline. No Projection is added then.
+            claims are asked for without both timelines, or a coordinate
+            cannot be placed on its timeline. No Projection is added then.
+        KeyError: If an id column names no event of its timeline; no
+            Projection is added then either.
 
     Examples:
         >>> # Match EEP notes with ABC notes by pitch and staff
@@ -322,10 +318,34 @@ def match_notes_by_attributes(
                 note="greedy sequential matching by " + "+".join(match_columns),
             )
         claims = _claims_between_events(
-            matched_df,
-            (source_timeline, source_coord_column, source_id_column, source_unit),
-            (target_timeline, target_coord_column, target_id_column, target_unit),
-            provenance,
+            list(
+                zip(
+                    _sides(
+                        matched_df,
+                        "source",
+                        (
+                            source_timeline,
+                            source_coord_column,
+                            source_id_column,
+                            source_unit,
+                        ),
+                    ),
+                    [source_timeline] * len(matched_df),
+                    _sides(
+                        matched_df,
+                        "target",
+                        (
+                            target_timeline,
+                            target_coord_column,
+                            target_id_column,
+                            target_unit,
+                        ),
+                    ),
+                    [target_timeline] * len(matched_df),
+                    strict=True,
+                )
+            ),
+            provenance=provenance,
         )
 
     module_logger.info(
@@ -342,116 +362,34 @@ def match_notes_by_attributes(
     )
 
 
-def _claims_between_events(
+def _sides(
     matched: pd.DataFrame,
-    source: tuple[Timeline, str, str | None, TimeUnit | str | None],
-    target: tuple[Timeline, str, str | None, TimeUnit | str | None],
-    provenance: Provenance,
-) -> list[MatchClaim]:
-    """Return one MatchClaim per matched pair, between two events.
+    prefix: str,
+    side: tuple[Timeline, str, str | None, TimeUnit | str | None],
+) -> list[ClaimSide]:
+    """One side of every matched pair, as :func:`_claims_between_events` takes it.
 
-    Each side is ``(timeline, coordinate column, id column, unit)``, its
-    columns read from the ``source_`` / ``target_`` columns of *matched*. A
-    side with an id column names its events, refused unless the timeline
-    holds them; a side without one gets a Projection per row, standing for
-    the other side's event where that side names one. Every check and
-    conversion runs before the first Projection is added.
+    A side with an id column names its events by id. A side without one
+    states its positions: each value read exactly (a fraction string such as
+    ``"707/2"`` as a :class:`~fractions.Fraction`), a number on the
+    timeline's axis when it is in the timeline's unit, else a
+    :class:`~timetoalign.core.Coordinate` in *unit*, which the timeline's
+    C-Map converts.
     """
-    sides: list[tuple[Timeline, list[Coordinate], list[str] | None]] = []
-    for prefix, (timeline, coord_column, id_column, unit) in (
-        ("source", source),
-        ("target", target),
-    ):
-        positions = _positions(matched[f"{prefix}_{coord_column}"], timeline, unit)
-        ids = None
-        if id_column is not None:
-            ids = [str(value) for value in matched[f"{prefix}_{id_column}"]]
-            _refuse_unknown_events(ids, timeline)
-        sides.append((timeline, positions, ids))
-
-    event_ids: list[list[str]] = []
-    for side, (timeline, positions, ids) in enumerate(sides):
-        if ids is not None:
-            event_ids.append(ids)
-            continue
-        other_timeline, _, other_ids = sides[1 - side]
-        projections = [
-            Projection(
-                start=position,
-                projection_of=(
-                    None
-                    if other_ids is None
-                    else EventReference(
-                        timeline_id=other_timeline.id, event_id=other_ids[row]
-                    )
-                ),
-            )
-            for row, position in enumerate(positions)
-        ]
-        event_ids.append(timeline.add_events(projections))
-
-    (timeline_a, positions_a, _), (timeline_b, positions_b, _) = sides
-    return [
-        MatchClaim.from_events(
-            {"id": id_a, "start": position_a},
-            timeline_a,
-            {"id": id_b, "start": position_b},
-            timeline_b,
-            provenance=provenance,
-        )
-        for id_a, position_a, id_b, position_b in zip(
-            event_ids[0], positions_a, event_ids[1], positions_b, strict=True
-        )
-    ]
-
-
-def _positions(
-    values: pd.Series, timeline: Timeline, unit: TimeUnit | str | None
-) -> list[Coordinate]:
-    """Place a column of coordinate values on *timeline*'s own axis.
-
-    A value is read exactly (a fraction string such as ``"707/2"`` as a
-    :class:`~fractions.Fraction`). In the timeline's unit it is written in
-    the timeline's number type; in another *unit* it is converted through
-    the timeline's C-Map.
-    """
-    unit = TimeUnit(timeline.unit) if unit is None else TimeUnit(unit)
-    positions = []
-    for value in values:
+    timeline, coord_column, id_column, unit = side
+    if id_column is not None:
+        return [str(value) for value in matched[f"{prefix}_{id_column}"]]
+    unit = None if unit is None else TimeUnit(unit)
+    positions: list[ClaimSide] = []
+    for value in matched[f"{prefix}_{coord_column}"]:
         if isinstance(value, str):
             exact = Fraction(value)
         else:
             # A NumPy scalar from the frame becomes the Python number it holds.
             exact = value.item() if hasattr(value, "item") else value
-        if unit == timeline.unit:
-            positions.append(Coordinate(exact, unit, number_type=timeline.number_type))
-            continue
-        converted = timeline.get_coordinate_at(
-            Coordinate(exact, unit), format="coordinate"
-        )
-        positions.append(
-            Coordinate(
-                converted.value, converted.unit, number_type=converted.number_type
-            )
-        )
+        on_axis = unit is None or unit == timeline.unit
+        positions.append({"start": exact if on_axis else Coordinate(exact, unit)})
     return positions
-
-
-def _refuse_unknown_events(ids: list[str], timeline: Timeline) -> None:
-    """Refuse an id naming no event of *timeline* (its own events)."""
-    table = timeline.get_events(include_children=False)._table
-    held = (
-        table.column("id").combine_chunks()
-        if "id" in table.column_names
-        else pa.array([], type=pa.string())
-    )
-    named = pa.array(ids, type=pa.string())
-    unknown = named.filter(pc.invert(pc.is_in(named, value_set=held)))
-    if len(unknown):
-        raise ValueError(
-            f"{len(unknown)} matched row(s) name no event of timeline "
-            f"{quote_id(timeline.id)}, the first {quote_id(unknown[0].as_py())}"
-        )
 
 
 def prepare_eep_notes_for_matching(

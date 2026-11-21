@@ -233,10 +233,20 @@ of an aligned note row is the performer's Note event the loader built from
 that row, and of an aligned bar or beat row a `Projection` at its time.
 What proves it, counted from the files alone:
 
-- the score timeline holds 2494 Note events and 6769 Projections (one per
-  row of the 21 files, `7 × (559 + 32 + 376)`), 9263 events;
-- each performer timeline holds 480 Note events and 408 Projections
-  (`32 + 376`), 888 events;
+- a timeline holds one Projection per position and event it stands for
+  (the library's one projection operation reuses a Projection it holds),
+  so the counts follow from the files' distinct values, never from their
+  row counts:
+  - the score timeline holds 2494 Note events and 3815 Projections, 6309
+    events: 3360 standing for a performer's Note (`7 × 480` aligned note
+    rows, each its own Note) and 455 standing for no event, one per
+    distinct ``LABEL`` among the bar, beat and dangling note rows of all
+    seven performers (a ``LABEL`` resolves to one quarter, and no two
+    ``LABEL`` strings to the same one, so distinct strings are distinct
+    positions);
+  - each performer timeline holds 480 Note events and 376 Projections, 856
+    events: one per distinct ``TIME`` among its 32 bar and 376 beat rows
+    (every bar row's time is one of a beat row's);
 - for every claim, `event_a_id` is an event id of the score timeline and
   `event_b_id` one of its performer timeline (or null on a NOMATCH claim),
   checked against the stored id columns, and each anchor coordinate equals
@@ -927,10 +937,10 @@ bundle previously left unanswered, all with exact values:
 
 | Test | Validates |
 |------|-----------|
-| `test_bundle_claim_count` | `n_cross_group_claims == 15` (spans both stores) |
+| `test_bundle_claim_count` | the bundle's MatchClaim table holds the 15 rows, ids `claim_1`–`claim_15` minted by the bundle (the loader's field holds none: a field built from columns mints no id, so fields of several loaders join one bundle) |
 | `test_bundle_get_match_claims` | 15 claims, all synchronous |
 | `test_bundle_get_match_claims_filtered` | `timeline_id="rec-a:dpt_1"` → 10; `between=("rec-a:dpt_1","rec-b:dpt_1")` → 5 |
-| `test_bundle_get_claim_fields` | the vectorized accessor selects `[15]` / `[10]`, and `[]` for an unknown UID |
+| `test_bundle_get_claim_field` | the vectorized accessor `get_claim_field` selects 15 / 10 rows, and 0 for an unknown UID |
 | `test_bundle_matchstamp_table_per_claim` | 15 rows × 3 columns, exactly two filled cells per row |
 | `test_bundle_matchstamp_table_from_graph` | the 15 pairwise rows collapse into the 5 reference-grid cross-sections, exact coordinates, ordered by the `rec-a` coordinate |
 | `test_bundle_are_commensurable` | all recording pairs commensurable; an absent ID is not |

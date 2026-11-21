@@ -692,6 +692,58 @@ def _make_claim_filter_bundle() -> tuple[
 # endregion
 
 
+# region Test: Bundle equality
+
+
+class TestBundleEquality:
+    """Two bundles are equal only when their MatchClaims are."""
+
+    @staticmethod
+    def _timelines() -> tuple[Timeline, ...]:
+        return tuple(
+            Timeline(length=length, uid=uid)
+            for uid, length in (("score", 200), ("image", 400), ("audio", 100))
+        )
+
+    @staticmethod
+    def _built(
+        timelines: tuple[Timeline, ...], *, extra: bool = False, believed: bool = False
+    ) -> AlignmentBundle:
+        """A bundle over *timelines* (shared, so only the claims can differ)."""
+        score, image, audio = timelines
+        bundle = AlignmentBundle(id="equal")
+        bundle.add_timeline(score, as_group="score_group")
+        bundle.add_timeline(image, grouped_with="score")
+        bundle.add_timeline(audio, as_group="recording_group")
+        claims = _make_linear_claims("score", "audio", n_points=3)
+        if believed:
+            belief = Belief(actor="ana", belief="false", date="2026-11-21")
+            claims[1] = claims[1].model_copy(
+                update={"provenance": Provenance(beliefs=(belief,))}
+            )
+        if extra:
+            claims.append(_seconds_claim("score", 150.0, "audio", 75.0))
+        return bundle.add_match_claims(claims)
+
+    def test_bundles_built_alike_are_equal(self) -> None:
+        timelines = self._timelines()
+        first, second = self._built(timelines), self._built(timelines)
+        assert first == second
+        assert first.transfer(75.0, "score", "audio") == 37.5
+        assert first == second
+
+    def test_one_claim_more_is_unequal(self) -> None:
+        timelines = self._timelines()
+        assert self._built(timelines) != self._built(timelines, extra=True)
+
+    def test_a_belief_added_is_unequal(self) -> None:
+        timelines = self._timelines()
+        assert self._built(timelines) != self._built(timelines, believed=True)
+
+
+# endregion
+
+
 # region Test: Claim filters
 
 
@@ -1157,7 +1209,6 @@ class TestAddMatchClaims:
         bundle.add_match_claims(claims)
 
         assert len(bundle.match_claim_table) == 3
-        assert bundle.n_cross_group_claims == 3
         held = bundle.get_match_claims()
         assert [claim.id for claim in held] == ["claim_1", "claim_2", "claim_3"]
         assert held == claims
@@ -1169,11 +1220,11 @@ class TestAddMatchClaims:
 
         claims1 = _make_linear_claims(score_tl.id, audio_tl.id, n_points=3)
         bundle.add_match_claims(claims1)
-        assert bundle.n_cross_group_claims == 3
+        assert len(bundle.match_claim_table) == 3
 
         claims2 = [_seconds_claim(score_tl.id, 150.0, audio_tl.id, 75.0)]
         bundle.add_match_claims(claims2)
-        assert bundle.n_cross_group_claims == 4
+        assert len(bundle.match_claim_table) == 4
         assert claims2[0].id == "claim_4"
 
     def test_claim_naming_an_unknown_timeline_is_refused(self) -> None:
@@ -1189,7 +1240,7 @@ class TestAddMatchClaims:
         ):
             bundle.add_match_claims(claims)
 
-        assert bundle.n_cross_group_claims == 0
+        assert len(bundle.match_claim_table) == 0
         assert bundle.get_match_claims() == []
 
     @pytest.mark.parametrize(
@@ -1226,7 +1277,7 @@ class TestAddMatchClaims:
         ):
             bundle.add_match_claims(claims)
 
-        assert bundle.n_cross_group_claims == 0
+        assert len(bundle.match_claim_table) == 0
         assert bundle.get_match_claims() == []
 
 
@@ -1238,6 +1289,74 @@ class TestAddMatchClaims:
 
 class TestCreateMatchClaims:
     """Tests for create_match_claims(): events, Projections and provenance."""
+
+    @staticmethod
+    def _pairs(score_id: str, audio_id: str) -> list:
+        """A held onset against a position, and two positions."""
+        return [
+            ("o1", audio_id, {"start": 10.0}, score_id),
+            ({"start": 20.0}, audio_id, {"start": 40.0}, score_id),
+        ]
+
+    def test_a_second_call_reuses_every_projection(self) -> None:
+        bundle, score_tl, _, audio_tl, _ = _make_cross_group_bundle()
+        audio_tl.add_events([{"id": "o1", "event_type": "Note", "instant": 5.0}])
+
+        def named(claims: list[MatchClaim]) -> list[tuple]:
+            return [(c.id, c.event_a_id, c.event_b_id) for c in claims]
+
+        first = bundle.create_match_claims(self._pairs(score_tl.id, audio_tl.id))
+        counts = (len(audio_tl.events), len(score_tl.events))
+        assert counts == (2, 2)
+        again = bundle.create_match_claims(self._pairs(score_tl.id, audio_tl.id))
+        assert named(first) == [
+            ("claim_1", "o1", "projection_1"),
+            ("claim_2", "projection_1", "projection_2"),
+        ]
+        assert named(again) == [
+            ("claim_3", "o1", "projection_1"),
+            ("claim_4", "projection_1", "projection_2"),
+        ]
+        assert (len(audio_tl.events), len(score_tl.events)) == counts
+        assert score_tl.get_event("projection_1")["projection_of"] == {
+            "timeline_id": "audio",
+            "event_id": "o1",
+        }
+        assert score_tl.get_event("projection_2")["projection_of"] is None
+        assert audio_tl.get_event("projection_1")["projection_of"] is None
+
+    def test_an_unknown_event_id_adds_nothing(self) -> None:
+        bundle, score_tl, _, audio_tl, _ = _make_cross_group_bundle()
+        with pytest.raises(KeyError) as raised:
+            bundle.create_match_claims(
+                [
+                    ({"start": 0.0}, score_tl.id, {"start": 0.0}, audio_tl.id),
+                    ({"start": 50.0}, score_tl.id, "nope", audio_tl.id),
+                ]
+            )
+        assert raised.value.args[0] == (
+            "Pair 1: no event with id 'nope' on timeline 'audio' or its children "
+            "(0 events of its own)"
+        )
+        assert (len(score_tl.events), len(audio_tl.events)) == (0, 0)
+        assert len(bundle.match_claim_table) == 0
+
+    def test_a_side_without_start_adds_nothing(self) -> None:
+        bundle, score_tl, _, audio_tl, _ = _make_cross_group_bundle()
+        with pytest.raises(ValueError) as raised:
+            bundle.create_match_claims(
+                [
+                    ({"start": 0.0}, score_tl.id, {"start": 0.0}, audio_tl.id),
+                    ({"start": 50.0}, score_tl.id, {"end": 3.0}, audio_tl.id),
+                ]
+            )
+        assert str(raised.value) == (
+            "Pair 1: the side on timeline 'audio' names no event of it and states "
+            "no 'start': a side of a MatchClaim is an event, or a position where a "
+            "Projection stands for one."
+        )
+        assert (len(score_tl.events), len(audio_tl.events)) == (0, 0)
+        assert len(bundle.match_claim_table) == 0
 
     def test_provenance_lands_on_every_claim(self) -> None:
         """How the claims were made is their provenance, held in the table."""
@@ -1266,7 +1385,7 @@ class TestCreateMatchClaims:
                 [({"start": 0.0}, score_tl.id, {"start": 10.0}, audio_tl.id)],
                 **{keyword: "dtw"},
             )
-        assert bundle.n_cross_group_claims == 0
+        assert len(bundle.match_claim_table) == 0
 
     def test_position_in_seconds_is_projected_onto_a_samples_axis(self) -> None:
         """A seconds position is converted onto the samples axis when the claim is made.
@@ -1437,18 +1556,31 @@ class TestAddMatchClaimField:
         assert bundle.add_match_claim_field(field) is bundle
 
     def test_field_rows_join_the_match_claim_table(self) -> None:
-        # The rows join the bundle's one table, ids kept; the field passed
-        # in is left as it is.
+        # The rows join the bundle's one table, the bundle minting their
+        # ids; the field passed in is left as it is, without ids.
         bundle, score_tl, _, audio_tl, _ = _make_cross_group_bundle()
         field = self._field(score_tl, audio_tl)
         bundle.add_match_claim_field(field)
 
-        assert bundle.n_cross_group_claims == 5
-        assert bundle.match_claim_table.to_claims() == field.to_claims()
+        assert len(bundle.match_claim_table) == 5
+        held = bundle.get_match_claims()
+        assert [claim.id for claim in held] == [f"claim_{n}" for n in range(1, 6)]
+        assert [claim.id_minted for claim in held] == [True] * 5
+        assert [
+            claim.model_copy(update={"id": None, "id_minted": False}) for claim in held
+        ] == field.to_claims()
+        assert [claim.id for claim in field] == [None] * 5
+
+    def test_two_fields_join_one_bundle(self) -> None:
+        # Two loaders' fields, both built from columns, hold no ids; the
+        # bundle mints them in order of arrival.
+        bundle, score_tl, _, audio_tl, _ = _make_cross_group_bundle()
+        bundle.add_match_claim_field(self._field(score_tl, audio_tl))
+        bundle.add_match_claim_field(self._field(score_tl, audio_tl))
+
         assert [claim.id for claim in bundle.get_match_claims()] == [
-            f"claim_{n}" for n in range(1, 6)
+            f"claim_{n}" for n in range(1, 11)
         ]
-        assert len(field) == 5
 
     def test_matchstamp_via_columnar_field(self) -> None:
         # get_matchstamp_at answers from the field's rows at an exact grid
@@ -1483,7 +1615,7 @@ class TestAddMatchClaimField:
         claims = [_seconds_claim(score_tl.id, 175.0, audio_tl.id, 87.5)]
         bundle.add_match_claims(claims)
 
-        assert bundle.n_cross_group_claims == 6
+        assert len(bundle.match_claim_table) == 6
         assert claims[0].id == "claim_6"
         assert bundle.get_match_claims()[5] == claims[0]
         stamp = bundle.get_matchstamp_at(175.0, score_tl.id)

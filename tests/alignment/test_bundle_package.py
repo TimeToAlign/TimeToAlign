@@ -40,7 +40,7 @@ from timetoalign.core import (
     TimeUnit,
 )
 from timetoalign.core.time import number_to_json
-from timetoalign.timelines import Timeline
+from timetoalign.timelines import Timeline, TimelineGroup
 from timetoalign.timelines.manifest import (
     PARQUET_MEDIA_TYPE,
     Integrity,
@@ -783,25 +783,107 @@ class TestWriting:
     ) -> None:
         pcm = DiscretePhysicalTimeline(length=705600, uid="pcm")
         audio = ContinuousPhysicalTimeline(length=16.0, uid="audio")
-        # Each free, so each mints on its own.
-        assert pcm.add_projections(
-            Projection(start=Coordinate(22050, TimeUnit.samples))
-        ) == ["projection_1"]
-        assert audio.add_projections(
-            Projection(start=Coordinate(0.5, TimeUnit.seconds))
-        ) == ["projection_1"]
         bundle = AlignmentBundle(id="package")
         bundle.add_timeline(pcm)
         bundle.add_timeline(audio)
+        assert audio.add_projections(
+            Projection(start=Coordinate(0.5, TimeUnit.seconds))
+        ) == ["projection_1"]
+        # Free, so it mints on its own; a child joining its parent's tree is
+        # not checked for Projection IDs.
+        part = DiscretePhysicalTimeline(length=1000, uid="part")
+        assert part.add_projections(
+            Projection(start=Coordinate(5, TimeUnit.samples))
+        ) == ["projection_1"]
+        pcm.add_child(part, 0)
 
         message = (
             "Projection ID 'projection_1' names a Projection on the timeline "
-            "'audio' and one on 'pcm': a Projection's ID is unique among all "
+            "'audio' and one on 'part': a Projection's ID is unique among all "
             "Projections of a manifest and its package"
         )
         with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
             bundle.to_file(tmp_path / "package.yaml")
         assert list(tmp_path.iterdir()) == []
+
+
+def _apart() -> tuple[DiscretePhysicalTimeline, ContinuousPhysicalTimeline]:
+    """``pcm`` and ``audio``, each given ``projection_1`` while free."""
+    pcm = DiscretePhysicalTimeline(length=705600, uid="pcm")
+    audio = ContinuousPhysicalTimeline(length=16.0, uid="audio")
+    assert pcm.add_projections(
+        Projection(start=Coordinate(22050, TimeUnit.samples))
+    ) == ["projection_1"]
+    assert audio.add_projections(
+        Projection(start=Coordinate(0.5, TimeUnit.seconds))
+    ) == ["projection_1"]
+    return pcm, audio
+
+
+def _package_projections(bundle: AlignmentBundle, path: Path) -> list[tuple[str, str]]:
+    """The ``(timeline_id, id)`` rows of the Projections table *bundle* writes."""
+    bundle.to_file(path / "package.yaml")
+    table = pq.read_table(path / "projections.parquet")
+    return list(
+        zip(table.column("timeline_id").to_pylist(), table.column("id").to_pylist())
+    )
+
+
+class TestProjectionIdsAtAJoin:
+    """A timeline joining a manifest refuses a Projection ID held there."""
+
+    MESSAGE = (
+        "Projection ID 'projection_1' names a Projection on the timeline 'pcm' "
+        "and one on 'audio': a Projection's ID is unique among all Projections "
+        "of a manifest and its package"
+    )
+
+    @pytest.mark.parametrize("grouped", [False, True], ids=["standalone", "grouped"])
+    def test_add_timeline_refuses(self, tmp_path: Path, grouped: bool) -> None:
+        pcm, audio = _apart()
+        bundle = AlignmentBundle(id="package")
+        bundle.add_timeline(pcm, as_group="recording" if grouped else None)
+        with pytest.raises(ValueError) as raised:
+            bundle.add_timeline(audio, grouped_with="pcm" if grouped else None)
+        assert str(raised.value) == self.MESSAGE
+        assert list(bundle.timelines) == ["pcm"]
+        assert [group.timeline_ids for group in bundle.groups.values()] == (
+            [["pcm"]] if grouped else []
+        )
+        assert _package_projections(bundle, tmp_path) == [("pcm", "projection_1")]
+
+    def test_add_group_refuses(self, tmp_path: Path) -> None:
+        pcm, audio = _apart()
+        bundle = AlignmentBundle(id="package")
+        bundle.add_timeline(pcm)
+        with pytest.raises(ValueError) as raised:
+            bundle.add_group(TimelineGroup(timelines=[audio]))
+        assert str(raised.value) == self.MESSAGE
+        assert (list(bundle.timelines), bundle.groups) == (["pcm"], {})
+        assert _package_projections(bundle, tmp_path) == [("pcm", "projection_1")]
+
+    def test_from_bundles_refuses(self, tmp_path: Path) -> None:
+        pcm, audio = _apart()
+        first = AlignmentBundle(id="first").add_timeline(pcm)
+        second = AlignmentBundle(id="second").add_timeline(audio)
+        with pytest.raises(ValueError) as raised:
+            AlignmentBundle.from_bundles([first, second])
+        assert str(raised.value) == self.MESSAGE
+        assert (list(first.timelines), first.groups) == (["pcm"], {})
+        assert list(second.timelines) == ["audio"]
+        assert _package_projections(first, tmp_path) == [("pcm", "projection_1")]
+
+    def test_another_id_joins(self, tmp_path: Path) -> None:
+        pcm, _ = _apart()
+        audio = ContinuousPhysicalTimeline(length=16.0, uid="audio")
+        audio.add_projections(
+            Projection(id="onset_a", start=Coordinate(0.5, TimeUnit.seconds))
+        )
+        bundle = AlignmentBundle(id="package").add_timeline(pcm).add_timeline(audio)
+        assert _package_projections(bundle, tmp_path) == [
+            ("audio", "onset_a"),
+            ("pcm", "projection_1"),
+        ]
 
 
 def _coordinate(timeline_id: str, value: Any) -> dict[str, Any]:

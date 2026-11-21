@@ -1834,17 +1834,38 @@ then fails to load. Each test pins one of these with exact values.
   'projection_1' is given twice`; so is row 1 (`projection_4` on `audio`)
   rewritten to `projection_1`, the same ID on two timelines, with the
   same message. Writing: IDs are minted unique when the Projection is
-  created, but two timelines given Projections apart (each free, so each
-  mints `projection_1`: `pcm` at 22050 samples, `audio` at 0.5 s) and then
-  added to one bundle hold one ID twice; nothing is minted again on
-  joining or on writing (an ID once given is stable), so `to_file`
+  created, and a timeline joining refuses a Projection ID its new
+  manifest holds (next item); a child added to a timeline of the bundle
+  (`add_child`) is not checked on joining its parent's tree, so a child
+  `part` given a Projection while free (`projection_1` at sample 5) and
+  then added at offset 0 to `pcm` of a bundle whose `audio` holds
+  `projection_1` (minted there at 0.5 s) holds one ID twice; nothing is
+  minted again on writing (an ID once given is stable), so `to_file`
   refuses before any file is written: `Projection ID 'projection_1' names
-  a Projection on the timeline 'audio' and one on 'pcm': a Projection's ID
-  is unique among all Projections of a manifest and its package` (the
+  a Projection on the timeline 'audio' and one on 'part': a Projection's
+  ID is unique among all Projections of a manifest and its package` (the
   timelines in the table's order, sorted by ID), and the directory stays
   empty. A writer that let it pass would write a table TimeToShare's
   check refuses; one that minted again would change an ID a MatchClaim
   may name.
+- **A join refuses a Projection ID the manifest holds** (`TestProjectionIdsAtAJoin`).
+  Two timelines given Projections apart each mint `projection_1` (`pcm`
+  at 22050 samples, `audio` at 0.5 s). Every way a timeline joins a
+  bundle's manifest passes one admission, so each is tried once with the
+  bundle holding `pcm`: `add_timeline(audio)`, `add_timeline(audio,
+  grouped_with="pcm")` (the group, held by the bundle, admits it),
+  `add_group` of a group holding `audio`, and `from_bundles` of a bundle
+  holding `pcm` and one holding `audio`. Each raises `ValueError`
+  `Projection ID 'projection_1' names a Projection on the timeline 'pcm'
+  and one on 'audio': a Projection's ID is unique among all Projections of
+  a manifest and its package` (the timeline already there first, the
+  newcomer second), and the bundle holding `pcm` is unchanged (for
+  `from_bundles`, the source holding it): its timelines are `['pcm']`, it
+  holds no group, and its package is written with the one Projection
+  `projection_1` on `pcm`. The control: `audio`'s Projection given the ID `onset_a` instead joins, and
+  the package holds `projection_1` on `pcm` and `onset_a` on `audio`. A
+  join that minted again would rename an ID a MatchClaim may name; one
+  that let it pass would build a bundle whose package cannot be written.
 
 ### Conformance with TimeToShare's fixture package
 

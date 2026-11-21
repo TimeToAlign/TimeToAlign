@@ -25,11 +25,14 @@ Policy.  Validation logic is documented in ``tests/loader/README.md``.
 from __future__ import annotations
 
 from fractions import Fraction
+from pathlib import Path
 from typing import Any
 
 import pyarrow.compute as pc
+import pyarrow.parquet as pq
 import pytest
 
+from timetoalign.alignment.bundle import AlignmentBundle
 from timetoalign.alignment.claims import MatchClaim
 from timetoalign.core import Provenance, TimeUnit
 from timetoalign.core.time import struct_to_rational
@@ -152,7 +155,16 @@ def _events_by_id(timeline: Any) -> dict[str, dict[str, Any]]:
     return {row["id"]: row for row in timeline.events._table.to_pylist()}
 
 
-def test_score_timeline_basics(loader: PerformancePrecisionLoader) -> None:
+def test_load_adds_no_projection(loader: PerformancePrecisionLoader) -> None:
+    """``load`` resolves the rows; the Projections come with ``create_bundle``."""
+    assert _event_type_counts(loader.create_timeline("score")) == {"Note": 2494}
+    for performer_key in PERFORMERS:
+        assert _event_type_counts(loader.create_timeline(performer_key)) == {
+            "Note": 480
+        }
+
+
+def test_score_timeline_basics(loader: PerformancePrecisionLoader, bundle) -> None:
     """2494 notes; Projections: 3360 of a performer's Note, 455 positions of none."""
     score = loader.create_timeline("score")
     assert _event_type_counts(score) == {"Note": 2494, "Projection": 3815}
@@ -251,7 +263,9 @@ def test_per_performer_counts(bundle, performer_key: str) -> None:
     assert all(c.is_synchronous for c in beats)
 
 
-def test_performer_physical_timeline(loader: PerformancePrecisionLoader) -> None:
+def test_performer_physical_timeline(
+    loader: PerformancePrecisionLoader, bundle
+) -> None:
     """One Note per aligned note row (480), one Projection per bar/beat time."""
     perf = loader.create_timeline("Chopin_Ashkenazy")
     assert perf.unit == TimeUnit.seconds
@@ -317,6 +331,27 @@ def test_ashkenazy_first_note_claim(bundle, loader) -> None:
         "timeline_id": "perf:Chopin_Ashkenazy:cpt_1",
         "event_id": "Chopin_Ashkenazy:0",
     }
+
+
+def test_the_bundle_s_package_is_written_and_read_back(bundle, tmp_path: Path) -> None:
+    """Every Projection is minted in the bundle: one ID each, no gap."""
+    first = _by_granularity(_performer_claims(bundle, "Chopin_Ashkenazy"), "note")[0]
+    assert first.event_a_id == "projection_1"
+
+    bundle.to_file(tmp_path / "package.yaml")
+    table = pq.read_table(tmp_path / "projections.parquet")
+    ids = table.column("id").to_pylist()
+    assert sorted(ids, key=lambda event_id: int(event_id.split("_")[1])) == [
+        f"projection_{n}" for n in range(1, 6448)
+    ]
+    counts = pc.value_counts(table.column("timeline_id")).to_pylist()
+    assert {row["values"]: row["counts"] for row in counts} == {
+        SCORE_TL_ID: 3815,
+        **{f"perf:{key}:cpt_1": 376 for key in PERFORMERS},
+    }
+    read = AlignmentBundle.from_file(tmp_path / "package.yaml")
+    assert read.match_claim_table == bundle.match_claim_table
+    assert len(read.get_match_claims()) == 6769
 
 
 # endregion

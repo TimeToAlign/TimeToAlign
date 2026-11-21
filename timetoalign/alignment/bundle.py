@@ -538,9 +538,10 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
 
         Raises:
             ValueError: If two source bundles share a given group ID, a
-                given timeline ID collision would occur across bundles, or
-                two source bundles hold a MatchClaim under one id (the
-                message names the id and both bundles).
+                given timeline ID collision would occur across bundles, two
+                source bundles hold a MatchClaim under one id (the message
+                names the id and both bundles), or a Projection under one ID
+                (the message names the ID and both timelines).
 
         Examples:
             >>> from timetoalign.alignment import AlignmentBundle
@@ -649,7 +650,11 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 given id of its manifest tree — of any timeline, conversion
                 map, region or flow-control element of it — is held by
                 another element of the bundle's trees (a minted id held there
-                is minted again instead), by a group or by the bundle.
+                is minted again instead), by a group or by the bundle; if a
+                Projection of its tree has an ID a Projection of the bundle's
+                trees holds, minted or given (a Projection's ID is never
+                minted again; the message names the ID and both timelines).
+                Nothing has changed then.
             KeyError: If grouped_with names no timeline of the bundle's trees,
                 naming every timeline the bundle knows.
 
@@ -761,10 +766,12 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
 
         Raises:
             ValueError: If the group's given ID is already held in the bundle
-                (a minted one is minted again instead), or if a given id of a
+                (a minted one is minted again instead), if a given id of a
                 member's manifest tree is held by another element of the
                 bundle's trees (a minted id held there is minted again
-                instead), by a group or by the bundle.
+                instead), by a group or by the bundle, or if a Projection of a
+                member's tree has an ID a Projection of the bundle's trees
+                holds (the message names the ID and both timelines).
 
         Examples:
             Add a recording group with three DPTs:
@@ -834,7 +841,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         Raises:
             ValueError: If a given id of the tree is held by another element
                 of the bundle's trees, a group with a given id or the bundle
-                (minted ids held there are minted again instead).
+                (minted ids held there are minted again instead), or a
+                Projection ID of the tree by a Projection of the bundle's
+                trees.
         """
         self._admit_tree(timeline, check_only=check_only)
 

@@ -153,7 +153,8 @@ bridged with `create_match_claims`. Every claim names an event on each side.
   The field's `b_bridge` hull is therefore `[200, 800]`.
 - **Bridge A↔B.** `create_match_claims` pairs the position `a1 = 50` with the
   position `b_bridge = 5 seconds`. Each side becomes a Projection event
-  (`projection_1` on each timeline); the bridge C-Map places 5 seconds at
+  (`projection_1` on `a1`, `projection_2` on `b_bridge`: a Projection's ID
+  is unique in the bundle); the bridge C-Map places 5 seconds at
   exactly `500 samples` (`5 / 0.01`), so the claim's `b_bridge` anchor is
   `500` samples. The merged bundle mints it `claim_9`.
 - **Mixed units on one timeline.** A separate bundle (`source`, samples with
@@ -1684,15 +1685,20 @@ then fails to load. Each test pins one of these with exact values.
   of `n2` towards `audio`. `to_file(dir / "package.yaml")` leaves exactly
   three files. The Projections table holds five rows, timelines sorted by
   ID and each timeline's Projections in the order they were added:
-  `onset_a` on `audio` (no source), `projection_1` on `audio` (of
+  `onset_a` on `audio` (no source), `projection_4` on `audio` (of
   `part`/`p1`), `projection_1` on `pcm` (of `score`/`n1`), `projection_2`
-  (of `score`/`n2`), `projection_3` (no source) — each ID minted on its
-  own timeline, so `projection_1` is held twice, once per timeline. Each
+  (of `score`/`n2`), `projection_3` (no source). A Projection's ID is
+  unique among all Projections of the bundle, so each is minted above
+  every Projection ID the bundle's timelines hold when it is created:
+  `create_match_claims` adds `pcm`'s three first (the timeline a pair
+  first gives a Projection), then `audio`'s, which is `projection_4`, never
+  a second `projection_1`. `claim_4` names `projection_4` as its event B.
+  Each
   row states its axis once, `unit` and `number_type` (`seconds`/`float`
   on `audio`, `samples`/`int` on `pcm`), and `start` and `duration` their
   number once, as `(numerator, denominator, value)`: `onset_a` start
-  `(null, null, 0.5)` (no mirror), `projection_1` on `audio` `(null, null,
-  9.0)`, on `pcm` start `(0, null, null)` and duration `(44100, null,
+  `(null, null, 0.5)` (no mirror), `projection_4` `(null, null,
+  9.0)`, `projection_1` start `(0, null, null)` and duration `(44100, null,
   null)`, `projection_2` `(66150, null, null)`, `projection_3` `(22050,
   null, null)`; every instant's duration null. The
   MatchClaim table passes TimeToShare's check against the manifest written
@@ -1821,13 +1827,24 @@ then fails to load. Each test pins one of these with exact values.
   the ones first written (a writer respells reduced).
 - **A Projections table that breaks the format** (a row naming the
   timeline `ghost`) makes `from_file` raise TimeToShare's `TableError`.
-- **Event IDs are unique per timeline.** `projection_1` on `audio` and on
-  `pcm` are two events (an event is named by its timeline and its ID), and
-  the reader accepts them, as TimeToShare's check does. One timeline
-  holding an ID twice (row 3 of the file rewritten to `projection_1`) is
-  refused by that check, which the reader raises as it stands: a
-  `TableError` `the ID 'projection_1' is given twice on the timeline
-  'pcm'`.
+- **Projection IDs are unique across the package** (TimeToShare's check
+  keys the Projections table on the ID alone). Reading: the file's row 3
+  (`projection_2` on `pcm`) rewritten to `projection_1` is refused by that
+  check, which the reader raises as it stands, a `TableError` `the ID
+  'projection_1' is given twice`; so is row 1 (`projection_4` on `audio`)
+  rewritten to `projection_1`, the same ID on two timelines, with the
+  same message. Writing: IDs are minted unique when the Projection is
+  created, but two timelines given Projections apart (each free, so each
+  mints `projection_1`: `pcm` at 22050 samples, `audio` at 0.5 s) and then
+  added to one bundle hold one ID twice; nothing is minted again on
+  joining or on writing (an ID once given is stable), so `to_file`
+  refuses before any file is written: `Projection ID 'projection_1' names
+  a Projection on the timeline 'audio' and one on 'pcm': a Projection's ID
+  is unique among all Projections of a manifest and its package` (the
+  timelines in the table's order, sorted by ID), and the directory stays
+  empty. A writer that let it pass would write a table TimeToShare's
+  check refuses; one that minted again would change an ID a MatchClaim
+  may name.
 
 ### Conformance with TimeToShare's fixture package
 
@@ -2672,8 +2689,10 @@ these lazily on first use and caches them until the table changes.
 - **A second call reuses every Projection.** The same pairs made twice — the
   held onset `o1` (audio 5.0) against score 10.0, and audio 20.0 against
   score 40.0 — name the same Projections both times (score `projection_1`
-  standing for `o1`, audio `projection_1` and score `projection_2` standing
-  for no event), and the audio and score timelines hold as many events after
+  standing for `o1`, score `projection_2` and audio `projection_3` standing
+  for no event: a Projection's ID is unique in the bundle, and the score's
+  are added first, the first pair giving it one), and the audio and score
+  timelines hold as many events after
   the second call as after the first (2 each); the claims are new
   statements (`claim_3`, `claim_4`).
 - **Equality includes the claims.** Two bundles built alike are equal; one
@@ -2714,7 +2733,7 @@ these lazily on first use and caches them until the table changes.
 | `TestCommensurabilityWithClaims` | 4 | claims make score–audio and image–audio commensurable; without claims, or with a NOMATCH claim only, they are not |
 | `TestCacheInvalidation` | 4 | no WarpMap before the first transfer, one after; a second transfer reuses the cached objects; a new claim clears the cache; the rebuilt map still gives score 100 → audio 50 |
 | `TestAddMatchClaims` | 6 | chaining; three claims are three rows, `claim_1`–`claim_3`, read back equal to the claims added and recording the bundle; a fourth call adds one row minted `claim_4`; an unknown timeline (`['ghost'] that this bundle does not hold`) and an off-axis coordinate (`Row 1 start_anchor.coordinate_b is in quarters (fraction)` / `in seconds (fraction)`, `but timeline 'audio' counts in seconds (float)`) are refused with nothing added |
-| `TestCreateMatchClaims` | 13 | an event ID names an event of the timeline or of a descendant, and one ID held twice there names none (an event ID is unique on its own timeline only): on `score` (quarters, 8) with children `c` at 0 and `d` at 4 (length 4 each), `c` holding `n1` at 1, `d` holding `n1` at 1 and `n3` at 2, the pair `n3` ↔ audio `o1` makes one claim at score 6 (the descendant's event, at `score`'s coordinate); the pair `n1` ↔ `o1`, after a projected pair in the same call, is refused (`ValueError`, `The event ID 'n1' is held by 2 events of descendants of timeline 'score' (on 'c', 'd') and not by the timeline itself, so it names no one event: name the timeline holding the event instead.`) and nothing is added (no claim, no Projection), and the advice works: `n1` on `c` resolves to `c`'s event at 1, on `d` to `d`'s at 1; the timeline's own event answers for its ID: with `n3` added to `score` itself (at 3), `n3` on `score` resolves to `score`'s own event at 3 (not `d`'s at 6), `n3` on `d` still to `d`'s at 2, and `n1` added to `score` (at 7) makes `n1` on `score` resolve at 7 where it was refused before; one level deeper (`score` (quarters, 8) ⊃ `c` (offset 2, length 4) ⊃ `g` (offset 1 in `c`, length 2)), where `c` reports its own events beside a descendant's: with `score` holding `n1` at 7, `c` `n1` at 1 and `g` `x9` at 1, `n1` on `score` resolves to `score`'s own event at 7 (a holder read from a null `source_timeline` alone would take `c`'s row for `score`'s and refuse, naming `'None'`); with `c` and `g` each holding `n1` at 1 and `score` none, `n1` on `score` is refused (`The event ID 'n1' is held by 2 events of descendants of timeline 'score' (on 'c', 'g') and not by the timeline itself, so it names no one event: name the timeline holding the event instead.`), nothing added, never resolved to `c`'s; a second call with the same pairs names the same Projections and adds no event (audio `o1` + `projection_1`, score `projection_1` of `o1` + `projection_2`, before and after), its claims `claim_3`, `claim_4`; a pair naming an unknown event id (`Pair 1: no event with id 'nope' on timeline 'audio' or its children (0 events of its own)`) and a dict without `start` (`Pair 1: the side on timeline 'audio' names no event of it and states no 'start': ...`) after a projected pair add nothing; the provenance given lands on the claim made and on the claim read back; `agent`, `agent_identifier` and `decision_criteria` are refused (`TypeError`), nothing added; a seconds position projected onto a samples timeline (C-Map samples → seconds at 1/44100): 2.0 s is sample 88200, so the claim between the note `o1` (2.5 s) and `projection_1` stores `Coordinate(88200, samples)` with an `int` value, read back equal, and the Projection's `projection_of` is `{"timeline_id": "performance", "event_id": "o1"}` |
+| `TestCreateMatchClaims` | 13 | an event ID names an event of the timeline or of a descendant, and one ID held twice there names none (an event ID is unique on its own timeline only): on `score` (quarters, 8) with children `c` at 0 and `d` at 4 (length 4 each), `c` holding `n1` at 1, `d` holding `n1` at 1 and `n3` at 2, the pair `n3` ↔ audio `o1` makes one claim at score 6 (the descendant's event, at `score`'s coordinate); the pair `n1` ↔ `o1`, after a projected pair in the same call, is refused (`ValueError`, `The event ID 'n1' is held by 2 events of descendants of timeline 'score' (on 'c', 'd') and not by the timeline itself, so it names no one event: name the timeline holding the event instead.`) and nothing is added (no claim, no Projection), and the advice works: `n1` on `c` resolves to `c`'s event at 1, on `d` to `d`'s at 1; the timeline's own event answers for its ID: with `n3` added to `score` itself (at 3), `n3` on `score` resolves to `score`'s own event at 3 (not `d`'s at 6), `n3` on `d` still to `d`'s at 2, and `n1` added to `score` (at 7) makes `n1` on `score` resolve at 7 where it was refused before; one level deeper (`score` (quarters, 8) ⊃ `c` (offset 2, length 4) ⊃ `g` (offset 1 in `c`, length 2)), where `c` reports its own events beside a descendant's: with `score` holding `n1` at 7, `c` `n1` at 1 and `g` `x9` at 1, `n1` on `score` resolves to `score`'s own event at 7 (a holder read from a null `source_timeline` alone would take `c`'s row for `score`'s and refuse, naming `'None'`); with `c` and `g` each holding `n1` at 1 and `score` none, `n1` on `score` is refused (`The event ID 'n1' is held by 2 events of descendants of timeline 'score' (on 'c', 'g') and not by the timeline itself, so it names no one event: name the timeline holding the event instead.`), nothing added, never resolved to `c`'s; a second call with the same pairs names the same Projections and adds no event (audio `o1` + `projection_3`, score `projection_1` of `o1` + `projection_2`, before and after: a Projection's ID is unique in the bundle), its claims `claim_3`, `claim_4`; a pair naming an unknown event id (`Pair 1: no event with id 'nope' on timeline 'audio' or its children (0 events of its own)`) and a dict without `start` (`Pair 1: the side on timeline 'audio' names no event of it and states no 'start': ...`) after a projected pair add nothing; the provenance given lands on the claim made and on the claim read back; `agent`, `agent_identifier` and `decision_criteria` are refused (`TypeError`), nothing added; a seconds position projected onto a samples timeline (C-Map samples → seconds at 1/44100): 2.0 s is sample 88200, so the claim between the note `o1` (2.5 s) and `projection_1` stores `Coordinate(88200, samples)` with an `int` value, read back equal, and the Projection's `projection_of` is `{"timeline_id": "performance", "event_id": "o1"}` |
 | `TestBeliefFilter` | 2 | `claim_1` (0 → 0, ana true), `claim_2` (100 → 60, ana false), `claim_3` (200 → 100, no belief). `get_match_claims`: no believer → all three; `believer="ana"` → `claim_1`, `claim_3`; `beliefs=["true"]` → `claim_1`; `["undecided"]` → `claim_3`; `["true", "false"]` → `claim_1`, `claim_2`. `get_matchstamp_at(100, "score")`: no believer → `claim_2`'s anchor, audio and midi 60.0, not interpolated; ana → interpolated between `claim_1` and `claim_3`, audio and midi 50.0; ana, `["true"]` → one claim cannot interpolate: score 100 and image 200 alone |
 | `TestBeliefFilterIris` | 6 | the three claims with ana's full IRI, prefix `people` declared: `believer="people:ana"` and the full IRI both → `claim_1`, `claim_3`, with `["true"]` → `claim_1`; beliefs recorded as `people:ana`, believer the full IRI → `claim_1`, `claim_3`; `get_matchstamp_at(100, "score", believer="people:ana")` interpolated, audio and midi 50.0; `get_matchstamps(claims=all three, believer="people:ana")` → two stamps, at score 0.0 and 200.0; `ClaimFilter(believer="people:ana").matches_claim` → `[True, False, True]` on the bundle's claims, `True` on a free copy of `claim_2`; `MatchGraph(all three, believer="people:ana", source=bundle)` holds `claim_1`, `claim_3`; before the declaration `people:ana` keeps all three, after it `claim_1`, `claim_3` |
 | `TestAddMatchClaimField` | 6 | chaining; the five rows join the table, the bundle minting `claim_1`–`claim_5`, equal to the field's claims but for the ids, the field left as given (ids `None`); two `from_columns` fields (two loaders' fields) join one bundle as `claim_1`–`claim_5` and `claim_6`–`claim_10`; score 100 → audio 50 exactly; score 123.456 interpolates to audio and midi 61.728 (50 + 23.456 / 2) and image 246.912, flagged interpolated; a claim added after the field is minted `claim_6`, read as the sixth, and score 175 answers audio 87.5 exactly |

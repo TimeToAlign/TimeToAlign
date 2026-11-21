@@ -273,7 +273,7 @@ class TestWriting:
                 "projection_of": None,
             },
             {
-                "id": "projection_1",
+                "id": "projection_4",
                 "timeline_id": "audio",
                 "unit": "seconds",
                 "number_type": "float",
@@ -310,9 +310,16 @@ class TestWriting:
             },
         ]
         manifest = timetoshare.loads(path.read_text(encoding="utf-8"))
-        check_match_claims(pq.read_table(tmp_path / "match_claims.parquet"), manifest)
-        # An event ID is unique on its timeline: ``projection_1`` on ``audio``
-        # and on ``pcm`` are two events, as TimeToShare's check agrees.
+        claims = pq.read_table(tmp_path / "match_claims.parquet")
+        check_match_claims(claims, manifest)
+        # A Projection's ID is unique in the package: ``audio``'s Projection,
+        # created after ``pcm``'s three, is ``projection_4``, and the claim
+        # naming it follows.
+        assert claims.select(["id", "event_a_id", "event_b_id"]).to_pylist()[3] == {
+            "id": "claim_4",
+            "event_a_id": "p1",
+            "event_b_id": "projection_4",
+        }
         assert projection_problems(projections, manifest) == []
 
         expected = []
@@ -754,19 +761,47 @@ class TestWriting:
         with pytest.raises(TableError):
             AlignmentBundle.from_file(tmp_path / "package.yaml")
 
-    def test_an_id_one_timeline_holds_twice_is_refused(self, tmp_path: Path) -> None:
+    @pytest.mark.parametrize("row", [3, 1], ids=["one_timeline", "two_timelines"])
+    def test_a_projection_id_given_twice_in_the_package_is_refused(
+        self, tmp_path: Path, row: int
+    ) -> None:
         _bundle().to_file(tmp_path / "package.yaml")
         table = pq.read_table(tmp_path / "projections.parquet")
         ids = table.column("id").to_pylist()
-        ids[3] = "projection_1"
+        ids[row] = "projection_1"
         pq.write_table(
             table.set_column(0, "id", pa.array(ids, pa.string())),
             tmp_path / "projections.parquet",
         )
 
-        message = "the ID 'projection_1' is given twice on the timeline 'pcm'"
+        message = "the ID 'projection_1' is given twice"
         with pytest.raises(TableError, match=f"^{re.escape(message)}$"):
             AlignmentBundle.from_file(tmp_path / "package.yaml")
+
+    def test_one_projection_id_on_two_timelines_is_not_written(
+        self, tmp_path: Path
+    ) -> None:
+        pcm = DiscretePhysicalTimeline(length=705600, uid="pcm")
+        audio = ContinuousPhysicalTimeline(length=16.0, uid="audio")
+        # Each free, so each mints on its own.
+        assert pcm.add_projections(
+            Projection(start=Coordinate(22050, TimeUnit.samples))
+        ) == ["projection_1"]
+        assert audio.add_projections(
+            Projection(start=Coordinate(0.5, TimeUnit.seconds))
+        ) == ["projection_1"]
+        bundle = AlignmentBundle(id="package")
+        bundle.add_timeline(pcm)
+        bundle.add_timeline(audio)
+
+        message = (
+            "Projection ID 'projection_1' names a Projection on the timeline "
+            "'audio' and one on 'pcm': a Projection's ID is unique among all "
+            "Projections of a manifest and its package"
+        )
+        with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+            bundle.to_file(tmp_path / "package.yaml")
+        assert list(tmp_path.iterdir()) == []
 
 
 def _coordinate(timeline_id: str, value: Any) -> dict[str, Any]:

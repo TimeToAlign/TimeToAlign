@@ -10,6 +10,7 @@ from fractions import Fraction
 import pyarrow as pa
 import pytest
 
+from timetoalign.alignment import AlignmentBundle
 from timetoalign.core import (
     Coordinate,
     Duration,
@@ -204,6 +205,82 @@ class TestIds:
                 {"event_type": "Projection", "start": 6},
             ]
         ) == ["projection_3", "projection_4"]
+
+
+class TestIdsAcrossTheManifest:
+    """A Projection's ID is unique among all Projections of its manifest."""
+
+    @staticmethod
+    def _bundle() -> AlignmentBundle:
+        """A bundle of ``dpt_1`` and ``clt_6``; it lives as long as the test
+        holds it, since a timeline records the bundles holding it weakly."""
+        bundle = AlignmentBundle()
+        bundle.add_timeline(_samples())
+        bundle.add_timeline(_quarters())
+        return bundle
+
+    def test_minted_above_every_projection_of_the_bundle(self) -> None:
+        bundle = self._bundle()
+        samples, quarters = bundle.timelines["dpt_1"], bundle.timelines["clt_6"]
+        assert samples.add_projections(
+            [
+                Projection(start=Coordinate(22050, TimeUnit.samples)),
+                Projection(start=Coordinate(44100, TimeUnit.samples)),
+            ]
+        ) == ["projection_1", "projection_2"]
+        assert quarters.add_events(
+            [{"event_type": "Projection", "start": Fraction(1)}]
+        ) == ["projection_3"]
+
+    def test_minted_above_every_projection_of_the_tree(self) -> None:
+        samples = _samples()
+        part = DiscretePhysicalTimeline(length=1000, uid="part")
+        samples.add_child(part, 0)
+        assert samples.add_events([{"event_type": "Projection", "start": 5}]) == [
+            "projection_1"
+        ]
+        assert part.add_events([{"event_type": "Projection", "start": 5}]) == [
+            "projection_2"
+        ]
+
+    def test_a_timeline_of_no_shared_manifest_mints_on_its_own(self) -> None:
+        bundle = self._bundle()
+        samples = bundle.timelines["dpt_1"]
+        samples.add_events([{"event_type": "Projection", "start": 5}])
+        free = _quarters()
+        assert free.add_events(
+            [{"event_type": "Projection", "start": Fraction(1)}]
+        ) == ["projection_1"]
+
+    def test_a_given_id_another_timeline_holds_is_refused(self) -> None:
+        bundle = self._bundle()
+        samples, quarters = bundle.timelines["dpt_1"], bundle.timelines["clt_6"]
+        samples.add_events([{"event_type": "Projection", "start": 5}])
+        message = (
+            "Projection ID 'projection_1' names a Projection on the timeline "
+            "'dpt_1' and one on 'clt_6': a Projection's ID is unique among all "
+            "Projections of a manifest and its package"
+        )
+        with pytest.raises(ValueError) as raised:
+            quarters.add_events(
+                [
+                    {
+                        "event_type": "Projection",
+                        "id": "projection_1",
+                        "start": Fraction(1),
+                    }
+                ]
+            )
+        assert str(raised.value) == message
+        with pytest.raises(ValueError) as raised:
+            quarters.add_projections(
+                Projection(
+                    id="projection_1",
+                    start=Coordinate(Fraction(1), TimeUnit.quarters),
+                )
+            )
+        assert str(raised.value) == message
+        assert len(quarters.events) == 0
 
 
 class TestProjectionObjects:

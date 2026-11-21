@@ -1401,6 +1401,141 @@ only the installed `timetoshare` and always run.
 
 ---
 
+## A Package: the Manifest and Its Tables (`test_bundle_package.py`)
+
+### What We're Validating
+
+A manifest and the files it names make a package. The manifest's
+`resources` is a modelled list (`timelines/manifest.py::Resource`, with
+`Integrity`), read and written by the one manifest module, and
+`AlignmentBundle.to_file` writes the bundle's two tables beside the manifest
+— the MatchClaim table (`match_claims.parquet`) and the Projections table
+(`projections.parquet`, every Projection of every timeline of the bundle's
+trees with its `timeline_id`) — naming each in `resources`;
+`AlignmentBundle.from_file` reads them back through those entries. What
+would show the feature broken: a resource read as an opaque blob (an unknown
+key would be lost, a malformed one accepted), a table written but not named
+or named with a size or digest that is not its file's, a round trip that
+changes a value, a Projection added twice, a table written over another
+that drops a MatchClaim, a manifest that names a table that is absent and
+then fails to load. Each test pins one of these with exact values.
+
+- **Resources are read and refused as the format says.** TimeToShare's
+  fixture `bundles/bundle_resources.yaml` reads to `bundle.resources ==
+  [Resource("resource_1", "MatchClaim", ("score", "take_1"),
+  "match_claims.parquet", "application/vnd.apache.parquet"),
+  Resource("resource_2", "Projection", ("take_1",), "projections.parquet")]`
+  (IDs bare). An unknown key of a resource and of its `integrity` is kept
+  and written back. A one-root manifest read by `Timeline.from_dict` writes
+  its resource back. `Manifest.read` refuses, each with its exact message:
+  a resource naming a timeline the manifest lacks, a second resource of the
+  type `MatchClaim`, an integrity algorithm outside PREMIS's five, an ID
+  that is not `resource_N`, a resource ID a timeline holds too. (The four
+  rejection cases of TimeToShare are also in
+  `test_timetoshare_conformance.py`'s refusal test.)
+- **The synthetic package, written.** Three roots — `score` (quarters,
+  fraction, 16, its child `part` at 8, length 4, the notes `n1` at 0 with
+  duration 1 and `n2` at 3/2; `part` holds `p1` at 1), `pcm` (samples, int,
+  705600) and `audio` (seconds, float, 16.0) — and, through
+  `create_match_claims` with one shared provenance (`method` `imported`):
+  `claim_1` `n1` ↔ a span 0–44100 on `pcm` (an interval claim),
+  `claim_2` `n2` ↔ 66150 on `pcm`, `claim_3` the position 0.5 s named
+  `onset_a` on `audio` ↔ 22050 on `pcm` (both sides positions),
+  `claim_4` `p1` (the child's note) ↔ 9.0 s on `audio`, `claim_5` a NOMATCH
+  of `n2` towards `audio`. `to_file(dir / "package.yaml")` leaves exactly
+  three files. The Projections table holds five rows, timelines sorted by
+  ID and each timeline's Projections in the order they were added:
+  `onset_a` on `audio` (0.5 s as `1/2` beside `0.5`, no source),
+  `projection_1` on `audio` (9.0 s, of `part`/`p1`), `projection_1` on `pcm`
+  (0, duration 44100, of `score`/`n1`), `projection_2` (66150, of
+  `score`/`n2`), `projection_3` (22050, no source) — each ID minted on its
+  own timeline, so `projection_1` is held twice, once per timeline. The
+  MatchClaim table passes TimeToShare's check against the manifest written
+  (`check_match_claims`); the Projections table's one problem is the one
+  below. `bundle.resources` and the
+  manifest name `resource_1` (`MatchClaim`, timelines `audio`, `part`,
+  `pcm`, `score`) and `resource_2` (`Projection`, `audio`, `pcm`), each
+  with the Parquet media type, and `size` and `integrity` equal to the
+  file's byte count and the SHA-256 of its bytes, computed in the test from
+  the file itself (a Parquet file's bytes depend on the writing library's
+  version, so the test pins the relation, not a digest literal).
+- **Read back exactly.** `from_file` gives a bundle whose
+  `match_claim_table` equals the written one row for row (provenance
+  included), whose timelines hold the same Projections (`projection_table`
+  of the bundle read equals the file's table), and whose `to_dict()` equals
+  the writer's. Written again into a fresh directory, all three files are
+  byte for byte the first ones.
+- **The succession rule binds the writer.** Writing the same bundle over
+  its own files succeeds and changes no byte. A bundle holding only
+  `claim_1`–`claim_4` of those claims, written over them, is refused (`The
+  new MatchClaim table lacks the MatchClaim 'claim_5' of the existing
+  one: ...`) before anything is written: the three files keep their bytes.
+- **No claims, no table.** A bundle with timelines and no MatchClaims
+  writes the manifest alone, which holds no `resources`.
+- **A named table that is absent.** The fixture `bundle_resources.yaml`
+  copied alone into a directory loads (decision: the manifest draws without
+  its tables), holds no claims, keeps both entries, and written back gives
+  the same bytes and no table file.
+- **Event rows and Projections together.** Written with `events=True`, the
+  Projections are in the manifest's event rows and in the Projections
+  table; read back, each timeline holds each once (`pcm` 3 events, `audio`
+  2), the second reading reusing the Projection held under its ID.
+- **Placement.** An entry read with the manifest keeps its ID and URL:
+  with `bundle.resources = [Resource("resource_7", "MatchClaim",
+  ("score",), "tables/claims.parquet")]` the table is written to
+  `tables/claims.parquet`, the entry keeps `resource_7` and its URL and
+  names the four timelines the claims name; the Projections table, new,
+  gets `resource_8` beside the manifest. A URL with a scheme
+  (`https://example.org/claims.parquet`) is refused.
+- **Merged claims.** A bundle from `from_bundles` of two bundles holding
+  claims keeps the second's in its own scope, which the table file cannot
+  name yet: `to_file` is refused with its exact message and writes nothing.
+- **A Projections table that breaks the format** (a row naming the
+  timeline `ghost`) makes `from_file` raise TimeToShare's `TableError`.
+- **Event IDs are unique per timeline.** `projection_1` on `audio` and on
+  `pcm` are two events (an event is named by its timeline and its ID), and
+  the reader accepts them; TimeToShare's check, which asks every ID of the
+  table once, reports exactly that one problem (`duplicate_id`, row 2) and
+  nothing else. One timeline holding an ID twice (row 3 of the file
+  rewritten to `projection_1`) is refused: `Projections table row 3:
+  timeline 'pcm' holds the Projection 'projection_1' twice`.
+
+### Conformance with TimeToShare's fixture package
+
+TimeToShare's `fixtures/tables/<version>/` is a package: `manifest.yaml`
+naming `match_claims.parquet` and `projections.parquet`, and
+`expected.yaml` holding, for four belief filters (none; the actor
+`0000-0002-1825-0097` with `not_false` and with `true`; the actor
+`0000-0001-5109-3700` with `true`), the expected unique alignment anchors
+with the MatchClaims stating each and the expected potential MatchStamps.
+Those values are literal data written by hand in TimeToShare's emission
+script, never computed by a derivation, so they are an independent oracle.
+
+- `AlignmentBundle.from_file(manifest.yaml)` holds the fifteen MatchClaims
+  and the nine Projections (eight on `dpt_1`, one on `cpt_1`); the bundle's
+  Projections table equals the fixture's sorted by timeline (a stable sort,
+  so each timeline keeps its order).
+- Written to a fresh directory, `match_claims.parquet` is the fixture's
+  byte for byte and the MatchClaim entry equals the fixture's (its size and
+  digest included); the Projection entry differs from the fixture's only in
+  `size` and `integrity`, those of the file written.
+- For each case, `MatchGraph(bundle.get_match_claims(), believer=,
+  belief=, source=bundle)`: the unique anchors (each synchronous claim's
+  start and end anchors, both coordinates sorted, with the IDs of the claims
+  stating them) equal the expected anchors, and the graph has one edge per
+  unique anchor; the coordinates of each connected component
+  (`split_components`) with the IDs of the claims stating its anchors equal
+  the expected potential MatchStamps. Both are compared as TimeToShare's
+  `dumps` text of the sorted lists, so a fraction must be `[n, d]`, an
+  integer an integer and a float a float. End anchors are included
+  (`claim_2`, `claim_9`). The bundle's own belief filter
+  (`get_match_claims(believer=, belief=)`) keeps the same claims as the
+  graph's.
+- Skipped with its reason when no sibling `TimeToShare/` checkout holds the
+  fixture, as `test_timetoshare_conformance.py` is.
+
+---
+
 ## AlignmentBundle Dictionary Form and Identity (`test_bundle_dict.py`)
 
 ### What We're Validating

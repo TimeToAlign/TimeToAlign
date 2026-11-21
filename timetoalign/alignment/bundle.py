@@ -21,6 +21,7 @@ import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from fractions import Fraction
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 
 import numpy as np
@@ -73,7 +74,17 @@ from timetoalign.timelines.groups import (
     _root,
     _tree,
 )
-from timetoalign.timelines.manifest import Manifest, ManifestFileMixin
+from timetoalign.timelines.manifest import (
+    PROJECTIONS_FILE_NAME,
+    TABLE_RESOURCE_TYPES,
+    Manifest,
+    ManifestFileMixin,
+    Resource,
+    projection_table,
+    read_projection_table,
+    resource_path,
+    write_projection_table,
+)
 from timetoalign.timelines.statements import MutableStatementsMixin, rename_references
 
 from .claims import (
@@ -217,6 +228,10 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         statements: What the manifest stands for, as property–value pairs,
             with their :attr:`provenance` (see
             :mod:`~timetoalign.timelines.statements`).
+        resources: The files the manifest names (its ``resources``), each a
+            :class:`~timetoalign.timelines.manifest.Resource`: the
+            MatchClaim table and the Projections table that :meth:`to_file`
+            writes beside the manifest, and any other kept as read.
 
     Note:
         Every reader of the MatchClaims (queries, the matchstamp getters,
@@ -267,6 +282,10 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
     # The members of the manifest's ``graphical`` other than ``order``,
     # kept as given and never interpreted.
     styling: dict[str, Any] = field(default_factory=dict)
+
+    # The files the manifest names; ``to_file`` rewrites the entries of the
+    # MatchClaim table and the Projections table it writes.
+    resources: list[Resource] = field(default_factory=list)
 
     # The manifest's statements and provenance as the file writes them, and
     # the prefixes they need beyond the catalogue's.
@@ -348,7 +367,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         each group is rebuilt from its ``Group`` object, its members resolved
         among the roots and all their descendants and ordered by its
         ``graphical.order`` entry (``members`` order without one).
-        ``graphical``'s other keys are kept as :attr:`styling`, and the
+        The manifest's ``resources`` are kept as :attr:`resources`; the
+        tables they name are read by :meth:`from_file`, which knows where
+        the manifest lies. ``graphical``'s other keys are kept as :attr:`styling`, and the
         entries of ``graphical.order`` keyed by a timeline, its band orders,
         are kept too, both unread. The manifest's statements and provenance
         become the bundle's, with the prefixes of its ``@context`` they need.
@@ -395,6 +416,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             name=manifest.name,
             meta=manifest.meta,
             styling=manifest.styling,
+            resources=manifest.resources,
         )
         bundle._unknown_keys = manifest._unknown_keys
         bundle._has_graphical = manifest.has_graphical
@@ -4253,6 +4275,130 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             "meta": self.meta,
         }
 
+    def _read_tables(self, directory: Path, data: Mapping[str, Any]) -> None:
+        """Read the package tables the manifest names, lying in *directory*.
+
+        The Projections table first: each Projection is added to the
+        timeline its row names (:meth:`Timeline.add_projections
+        <timetoalign.timelines.Timeline.add_projections>`, which keeps the
+        IDs and reuses a Projection the timeline already holds, as one read
+        from the manifest's event rows), after TimeToShare's check of the
+        table against the manifest. Then the MatchClaim table, added as
+        :meth:`add_match_claim_field` adds a field, every ID kept. A table
+        the manifest names that does not lie there is not read: the
+        manifest loads without it, and its entry stays in
+        :attr:`resources`. A table is read as it lies, whatever it was
+        when its entry's size and digest were stated.
+
+        Raises:
+            ValueError: If a resource lies elsewhere than on disk relative
+                to the manifest, or a table breaks a rule (a
+                ``timetoshare.tables.TableError`` for the Projections table;
+                as :meth:`MatchClaimField.from_parquet` and
+                :meth:`add_match_claim_field` for the MatchClaim table).
+        """
+        named = {r.type: r for r in self.resources if r.type in TABLE_RESOURCE_TYPES}
+        if "Projection" in named:
+            path = named["Projection"].path_in(directory)
+            if path.is_file():
+                for timeline_id, projections in read_projection_table(
+                    path, data
+                ).items():
+                    self._require_known_timeline(timeline_id).add_projections(
+                        projections
+                    )
+        if "MatchClaim" in named:
+            path = named["MatchClaim"].path_in(directory)
+            if path.is_file():
+                self.add_match_claim_field(MatchClaimField.from_parquet(path))
+
+    def _write_tables(self, directory: Path) -> None:
+        """Write the package tables into *directory* and name them in :attr:`resources`.
+
+        A bundle holding MatchClaims writes its MatchClaim table
+        (:attr:`match_claim_table`, :meth:`MatchClaimField.to_parquet`, so
+        that a table already lying there must be succeeded) and, where a
+        timeline holds Projections, the Projections table of every timeline
+        of its trees, sorted by timeline ID
+        (:func:`~timetoalign.timelines.manifest.projection_table`). Each
+        lies where its entry read with the manifest places it, else beside
+        the manifest (``match_claims.parquet``, ``projections.parquet``);
+        its entry keeps its ID (a new one is minted, ``resource_N``) and
+        names the timelines it holds data for (sorted, or in the order the
+        entry read lists them where it lists the same), the Parquet media
+        type, the file's size and its SHA-256 digest. An entry of either
+        type naming no table written goes. A bundle without MatchClaims
+        writes no table and keeps its :attr:`resources` as they are.
+
+        Raises:
+            ValueError: If a MatchClaim of the bundle lies in another
+                bundle's scope (:meth:`from_bundles`), which the MatchClaim
+                table cannot name yet; or as
+                :meth:`MatchClaimField.to_parquet` refuses the table.
+        """
+        claims = self.match_claim_table
+        if len(claims) == 0:
+            return
+        if (
+            self._claim_scope is not None
+            and pc.any(pc.not_equal(self._claim_scope, 0)).as_py()
+        ):
+            raise ValueError(
+                f"Bundle {quote_id(self.id)} holds MatchClaims merged from other "
+                f"bundles, which keep the ids of their scopes ({list(self.claim_scopes)}); "
+                f"the MatchClaim table file names no scope yet: write each "
+                f"bundle's own package."
+            )
+        named = {r.type: r for r in self.resources if r.type in TABLE_RESOURCE_TYPES}
+        taken = {*self._scope_ids(), *(r.id for r in self.resources)}
+        written: dict[str, Resource] = {}
+
+        def entry(table_type: str, url: str, path: Path, timelines: list[str]) -> None:
+            held = named.get(table_type)
+            resource_id = held.id if held is not None else mint_id("resource", taken)
+            taken.add(resource_id)
+            if held is not None and set(held.timelines) == set(timelines):
+                timelines = list(held.timelines)
+            written[table_type] = Resource.of_file(
+                path, id=resource_id, type=table_type, timelines=timelines, url=url
+            )
+
+        def place(table_type: str, default: str) -> tuple[str, Path]:
+            held = named.get(table_type)
+            url = held.url if held is not None else default
+            path = resource_path(directory, url)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            return url, path
+
+        known = self._known_timelines()
+        projections = projection_table(known[tid] for tid in sorted(known))
+        url, path = place("MatchClaim", MatchClaimField.file_name)
+        if projections.num_rows:
+            projection_place = place("Projection", PROJECTIONS_FILE_NAME)
+        claims.to_parquet(path)
+        table = claims.table
+        named_timelines = pc.unique(
+            pa.concat_arrays(
+                [
+                    table.column("timeline_a_id").combine_chunks(),
+                    table.column("timeline_b_id").combine_chunks(),
+                ]
+            )
+        )
+        entry("MatchClaim", url, path, sorted(named_timelines.to_pylist()))
+        if projections.num_rows:
+            url, path = projection_place
+            write_projection_table(projections, path)
+            holders = pc.unique(projections.column("timeline_id")).to_pylist()
+            entry("Projection", url, path, sorted(holders))
+        resources = [
+            written.pop(r.type, None) if r.type in TABLE_RESOURCE_TYPES else r
+            for r in self.resources
+        ]
+        self.resources = [r for r in resources if r is not None] + list(
+            written.values()
+        )
+
     def to_dict(
         self,
         *,
@@ -4273,8 +4419,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         of every timeline written, beside the members of :attr:`styling`. A
         root no group names is ungrouped. The bundle's statements and
         provenance are the manifest's, and the manifest carries its inline
-        JSON-LD ``@context`` with the prefixes its statements use.
-        MatchClaims are not written; the
+        JSON-LD ``@context`` with the prefixes its statements use, and its
+        :attr:`resources`. MatchClaims are not written into the manifest:
+        :meth:`to_file` writes them into the MatchClaim table beside it. The
         support policy is a setting of the bundle, not part of the manifest.
 
         Args:
@@ -4323,6 +4470,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             band_orders=self._band_orders,
             has_graphical=self._has_graphical,
             measure_maps=self._measure_maps,
+            resources=self.resources,
         )
         manifest._unknown_keys = self._unknown_keys
         return manifest.write(

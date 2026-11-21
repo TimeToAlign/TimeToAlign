@@ -2110,6 +2110,19 @@ write fractions):
   reuses a Projection of its own timeline only), the same message. Nothing
   here mints again: a test that passed with per-timeline minting would
   see `clt_6` mint `projection_1` and accept the given one.
+- **A child joins under the same rule.** `add_child` of a child whose
+  manifest holds a Projection ID that a Projection of the parent's
+  manifest holds is refused before anything changes, through the check a
+  group or bundle join makes (the parent's manifest first in the message):
+  `dpt_1` holding `projection_1` refuses a free `part` whose own
+  `projection_1` was minted alone, `Projection ID 'projection_1' names a
+  Projection on the timeline 'dpt_1' and one on 'part': ...`; afterwards
+  `dpt_1` holds no child and its one event (no Segment row), `part` no
+  parent and no lock, its ID unchanged (a Projection's ID is never minted
+  again, a MatchClaim may name it). The control: `other` holding
+  `onset_a` joins. In a bundle, `dpt_1` refuses `part` because `clt_6`,
+  another root of the bundle, holds `projection_1` (`... on the timeline
+  'clt_6' and one on 'part' ...`), `dpt_1` unchanged.
 - **A Projection object stands for its row.** `add_events` takes a
   `Projection` alone or in a list beside dicts: `Projection(start=
   Coordinate(1/2, seconds), projection_of=EventReference(clt_6, x1azmn68))`

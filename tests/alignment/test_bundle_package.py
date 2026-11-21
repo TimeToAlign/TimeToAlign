@@ -778,9 +778,7 @@ class TestWriting:
         with pytest.raises(TableError, match=f"^{re.escape(message)}$"):
             AlignmentBundle.from_file(tmp_path / "package.yaml")
 
-    def test_one_projection_id_on_two_timelines_is_not_written(
-        self, tmp_path: Path
-    ) -> None:
+    def test_one_projection_id_on_two_timelines_is_not_written(self) -> None:
         pcm = DiscretePhysicalTimeline(length=705600, uid="pcm")
         audio = ContinuousPhysicalTimeline(length=16.0, uid="audio")
         bundle = AlignmentBundle(id="package")
@@ -789,22 +787,24 @@ class TestWriting:
         assert audio.add_projections(
             Projection(start=Coordinate(0.5, TimeUnit.seconds))
         ) == ["projection_1"]
-        # Free, so it mints on its own; a child joining its parent's tree is
-        # not checked for Projection IDs.
+        # Free, so it mints on its own.
         part = DiscretePhysicalTimeline(length=1000, uid="part")
         assert part.add_projections(
             Projection(start=Coordinate(5, TimeUnit.samples))
         ) == ["projection_1"]
-        pcm.add_child(part, 0)
 
         message = (
             "Projection ID 'projection_1' names a Projection on the timeline "
             "'audio' and one on 'part': a Projection's ID is unique among all "
             "Projections of a manifest and its package"
         )
+        # Joining the bundle's tree as a child is refused ...
         with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
-            bundle.to_file(tmp_path / "package.yaml")
-        assert list(tmp_path.iterdir()) == []
+            pcm.add_child(part, 0)
+        assert pcm.n_children == 0
+        # ... and the table of both timelines is not written either.
+        with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+            projection_table([audio, part])
 
 
 def _apart() -> tuple[DiscretePhysicalTimeline, ContinuousPhysicalTimeline]:

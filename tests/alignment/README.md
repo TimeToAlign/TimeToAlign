@@ -1836,19 +1836,19 @@ then fails to load. Each test pins one of these with exact values.
   rewritten to `projection_1`, the same ID on two timelines, with the
   same message. Writing: IDs are minted unique when the Projection is
   created, and a timeline joining refuses a Projection ID its new
-  manifest holds (next item); a child added to a timeline of the bundle
-  (`add_child`) is not checked on joining its parent's tree, so a child
-  `part` given a Projection while free (`projection_1` at sample 5) and
-  then added at offset 0 to `pcm` of a bundle whose `audio` holds
-  `projection_1` (minted there at 0.5 s) holds one ID twice; nothing is
-  minted again on writing (an ID once given is stable), so `to_file`
-  refuses before any file is written: `Projection ID 'projection_1' names
-  a Projection on the timeline 'audio' and one on 'part': a Projection's
-  ID is unique among all Projections of a manifest and its package` (the
-  timelines in the table's order, sorted by ID), and the directory stays
-  empty. A writer that let it pass would write a table TimeToShare's
-  check refuses; one that minted again would change an ID a MatchClaim
-  may name.
+  manifest holds (next item), a child joining a timeline's tree
+  (`add_child`) included: a child `part` given a Projection while free
+  (`projection_1` at sample 5) and then added at offset 0 to `pcm` of a
+  bundle whose `audio` holds `projection_1` (minted there at 0.5 s) is
+  refused, `pcm` keeping no child. Nothing is minted again on writing (an
+  ID once given is stable), so the writer refuses such a table as well:
+  `projection_table` of `audio` and the free `part` raises `Projection ID
+  'projection_1' names a Projection on the timeline 'audio' and one on
+  'part': a Projection's ID is unique among all Projections of a manifest
+  and its package` (the timelines in the table's order), the same message
+  as the refused join. A writer that let it pass would write a table
+  TimeToShare's check refuses; one that minted again would change an ID a
+  MatchClaim may name.
 - **A join refuses a Projection ID the manifest holds** (`TestProjectionIdsAtAJoin`).
   Two timelines given Projections apart each mint `projection_1` (`pcm`
   at 22050 samples, `audio` at 0.5 s). Every way a timeline joins a

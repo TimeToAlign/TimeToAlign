@@ -102,7 +102,9 @@ to the relevant section of the conceptual model.
     parent never grows because a child grew. A child holds its parent's
     positions from its start up to its end, and its end only where no
     sibling starts there; a nested timeline is reached only through
-    parents that all hold the position.
+    parents that all hold the position. A child created with
+    `measures=True` holds the slice of its parent's measure map over its
+    span; by default it holds none.
     See [Nested timelines](concepts.qmd#nested-timelines).
 
 **ClaimType**
@@ -410,7 +412,10 @@ to the relevant section of the conceptual model.
     {{< glossary MatchClaimField >}}. Its ID never changes: a claim given
     none holds no ID until the {{< glossary AlignmentBundle >}} it joins
     mints `claim_N`, `N` above the highest held there; a MatchClaimField
-    mints nothing, and an ID already held in a scope is refused.
+    mints nothing. A MatchClaim is addressed by its ID alone: a bundle or
+    field already holding an ID refuses a second claim under it, and
+    merging bundles (`from_bundles()`) refuses, before anything is merged,
+    two sources holding one ID.
     See [Alignment](concepts.qmd#alignment).
 
 **MatchClaimField**
@@ -503,9 +508,9 @@ to the relevant section of the conceptual model.
     identical structure, methods, and behaviour the `Stamp` contract
     guarantees; only the caller-visible default for one keyword argument
     varies by producing context. `within=` on a MatchStamp getter (and on
-    `get_matchstamp_table()`, `MatchStamp.filter_by_timelines()` and a
-    group's `get_timestamp_table()`) narrows the answer to the named
-    timelines' coordinates; the MatchClaims the stamp is read from are
+    `MatchStamp.filter_by_timelines()`) always keeps the queried timeline
+    and selects among the others; on `get_matchstamp_table()` and a group's
+    `get_timestamp_table()` it selects the table's columns; the MatchClaims the stamp is read from are
     chosen by the belief filter (`believer=`, `beliefs=`), and a stamp
     counts apart the timeline pairs a MatchClaim's anchor links and those
     an inferred edge links (`n_stated_pairs`, `n_inferred_pairs`).
@@ -651,7 +656,12 @@ to the relevant section of the conceptual model.
     number type; the table writes them in the package form: the timeline's
     `unit` and `number_type` once per row, each number once, in the member
     its number type names (see {{< glossary MatchClaimField >}}). A
-    Projection's ID is unique on its timeline.
+    Projection's ID is unique among all Projections of its manifest: a
+    missing one is minted above every Projection ID the manifest holds, a
+    given one another timeline's Projection already holds is refused, and
+    an ID once given is never re-minted. Timelines given Projections apart
+    and joined later may hold one ID twice; writing their package refuses
+    it, naming both timelines.
     See [Alignment Bundles and MatchClaims](tutorials/tut06_alignment_bundles.ipynb) and
     [How to Keep MatchClaims, Projections and Beliefs in a Package](howto/how03_match_claims_package.ipynb).
 

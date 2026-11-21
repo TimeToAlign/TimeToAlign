@@ -449,7 +449,11 @@ Four operations are associated with Children:
 - **Addition**: adding a timeline as a Child, including all its events
   and C-maps.
 - **Partitioning**: creating a new Child from a parent timeline and a
-  TimeInterval.
+  TimeInterval. With `measures=True` (on `create_child()`,
+  `create_child_from_region()` and the two `create_children_from_*()`
+  methods) the Child takes the slice of its parent's measure map over its
+  span, re-based to its origin (`MeasureMap.get_slice()`); by default it
+  has none.
 - **Boundary-driven creation**: `create_children_from_boundaries()` creates
   *k* named, concrete Child timelines from *k*+1 coordinates. Boundaries
   spanning the full parent produce the structure accepted by
@@ -637,7 +641,8 @@ critical of the two. Without `believer=` nothing is filtered.
 An {{< glossary AlignmentBundle >}} holds all its claims in one MatchClaim
 table, a {{< glossary MatchClaimField >}} (`match_claim_table`): one row per
 claim, one column per property of a MatchClaim. The bundle gives a claim
-without an ID the next `claim_N`. On disk the MatchClaim table is
+without an ID the next `claim_N`. A MatchClaim is addressed by its ID alone,
+so `AlignmentBundle.from_bundles()` refuses two sources holding one ID. On disk the MatchClaim table is
 `match_claims.parquet`, and the Projections of every timeline form one
 Projections table, `projections.parquet`. Both write each number once, in
 the member its number type names (a fraction as numerator and

@@ -71,7 +71,9 @@ Child: |
   unlocked child may grow, contained by its parent like any content. A child
   holds its parent's positions from its start up to its end, and its end only
   where no sibling starts there; a nested timeline is reached only through
-  parents that all hold the position.
+  parents that all hold the position. A child created with measures=True
+  holds the slice of its parent's measure map over its span; by default it
+  holds none.
 
 ClaimType: |
   The semantic kind of a MatchClaim, derived from its structure rather than
@@ -295,7 +297,10 @@ MatchClaim: |
   individually, or in the bundle's one MatchClaim table, a MatchClaimField.
   Its ID never changes: a claim given none holds no ID until the
   AlignmentBundle it joins mints claim_N, N above the highest held there; a
-  MatchClaimField mints nothing, and an ID already held in a scope is refused.
+  MatchClaimField mints nothing. A MatchClaim is addressed by its ID alone: a
+  bundle or field already holding an ID refuses a second claim under it, and
+  merging bundles (from_bundles()) refuses, before anything is merged, two
+  sources holding one ID.
 
 MatchClaimField: |
   The MatchClaim table: a columnar, PyArrow-backed store holding a set of
@@ -361,9 +366,9 @@ MatchStamp: |
   get_conversion_for() reads label and structured map values,
   present_timelines lists available timelines, and is_interpolated identifies
   interpolation fallback. within= on a MatchStamp getter (and on
-  get_matchstamp_table(), MatchStamp.filter_by_timelines() and a group's
-  get_timestamp_table()) narrows the answer to the named timelines'
-  coordinates; the MatchClaims the stamp is read from are chosen by the belief
+  MatchStamp.filter_by_timelines()) always keeps the queried timeline and
+  selects among the others; on get_matchstamp_table() and a group's
+  get_timestamp_table() it selects the table's columns; the MatchClaims the stamp is read from are chosen by the belief
   filter (believer=, beliefs=), and a stamp counts apart the timeline pairs a
   MatchClaim's anchor links and those an inferred edge links (n_stated_pairs,
   n_inferred_pairs).
@@ -475,7 +480,12 @@ Projection: |
   cells, each naming its unit and number type; the table writes them in the
   package form: the timeline's unit and number_type once per row, each number
   once, in the member its number type names (see MatchClaimField). A
-  Projection's ID is unique on its timeline.
+  Projection's ID is unique among all Projections of its manifest: a missing
+  one is minted above every Projection ID the manifest holds, a given one
+  another timeline's Projection already holds is refused, and an ID once
+  given is never re-minted. Timelines given Projections apart and joined
+  later may hold one ID twice; writing their package refuses it, naming both
+  timelines.
 
 Provenance: |
   How an item was made and who believes it, one facility for statements and

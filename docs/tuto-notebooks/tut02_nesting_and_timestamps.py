@@ -35,7 +35,7 @@ from fractions import Fraction
 
 from timetoalign import IdCoordinate, TimeIntervalStamp, TimeStamp, TimeUnit
 from timetoalign.maps import TicksToQuarters
-from timetoalign.timelines import ContinuousLogicalTimeline
+from timetoalign.timelines import ContinuousLogicalTimeline, MeasureMap
 
 # %% [markdown]
 # ## Why nesting
@@ -186,6 +186,52 @@ phrase_inventory
 # Four boundaries produced three named phrase timelines. The inventory shows
 # how to list and count direct children, retrieve one by ID, and inspect its
 # offset on the movement.
+
+# %% [markdown]
+# ## Children that keep their measures
+#
+# A parent may carry a measure map: its bars, each with a number, a time
+# signature and a position. A child takes its share of those bars only when
+# you ask for it with `measures=True`; by default it has no measure map. The
+# share is the slice of the parent's map over the child's span, re-based to
+# the child's origin. Four bars of 3/4 make a twelve-quarter song.
+
+# %%
+bars = MeasureMap.from_rows([{"count": 1, "time_signature": "3/4"}, {"count": 4}])
+song = ContinuousLogicalTimeline(length=Fraction(12), uid="song").add_measure_map(bars)
+halves = song.create_children_from_boundaries(
+    [Fraction(0), Fraction(6), Fraction(12)],
+    names=["first half", "second half"],
+    measures=True,
+)
+late_entry = song.create_child(
+    length=Fraction(4), offset=Fraction(5), uid="late entry", measures=True
+)
+plain = song.create_child(length=Fraction(4), offset=Fraction(5), uid="plain")
+
+
+def bar_rows(timeline):
+    return [
+        (measure.number, measure.qstamp, measure.actual_length, type(measure).__name__)
+        for measure in timeline.measure_map
+    ]
+
+
+measure_view = {
+    "second half": bar_rows(halves[1]),
+    "late entry": bar_rows(late_entry),
+    "plain child": plain.measure_map,
+}
+measure_view
+
+# %% [markdown]
+# Each row is a bar's number, its position on the child's own axis, the part
+# of it the child holds, and its class. The second half holds bars 3 and 4,
+# re-based to start at 0. The late entry starts on the third beat of bar 2, so
+# it holds that bar's last quarter as a {{< glossary MeasureConstituent >}},
+# then the whole of bar 3. The same child created without `measures=True` has
+# no measure map. `bars.get_slice(start, end)` gives the same slice of a map
+# without creating a child.
 
 # %% [markdown]
 # ## Seeing the shape
@@ -442,6 +488,8 @@ interval_view
 # - You can append a child at the current end of a parent.
 # - You can transfer a coordinate down and up with an exact round trip.
 # - You can create, list, count, retrieve, and locate many named children.
+# - You can give a child the slice of its parent's measure map with
+#   `measures=True`.
 # - You can inspect the full hierarchy or limit a diagram's depth.
 # - You can resolve a grandchild coordinate to the root and invert the path.
 # - You can recognize a segment line, find its child at a position, and slice it.

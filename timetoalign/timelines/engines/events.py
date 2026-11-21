@@ -515,12 +515,7 @@ class EventsMixin:
         Returns:
             The IDs and, row for row, the ID of the timeline holding each.
         """
-        roots = [self._tree_root()]
-        for container in self._scope_containers():
-            for root in container._member_roots():
-                if not any(seen is root for seen in roots):
-                    roots.append(root)
-        return tree_projection_ids(roots, skip=self)
+        return tree_projection_ids(self._manifest_roots(), skip=self)
 
     def _rows_with_ids(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Return *rows*, each with an ID new to this timeline.

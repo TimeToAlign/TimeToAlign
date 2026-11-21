@@ -985,6 +985,19 @@ class Timeline(
                 ids.setdefault(element_id, description)
         return ids
 
+    def _manifest_roots(self) -> list[Timeline]:
+        """Return the root of every tree of this timeline's manifest, once each.
+
+        The manifest is as for :meth:`_manifest_ids`: this timeline's tree,
+        first, and every tree the groups and bundles holding it hold.
+        """
+        roots = [self._tree_root()]
+        for container in self._scope_containers():
+            for root in container._member_roots():
+                if not any(seen is root for seen in roots):
+                    roots.append(root)
+        return roots
+
     def _settle_scope(self, given: set[str], joining: Sequence[_IdScope] = ()) -> None:
         """Mint again every minted group id that the *given* ids now take.
 

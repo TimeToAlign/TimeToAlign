@@ -282,6 +282,51 @@ class TestIdsAcrossTheManifest:
         assert str(raised.value) == message
         assert len(quarters.events) == 0
 
+    def test_a_child_sharing_a_projection_id_is_refused(self) -> None:
+        parent = _samples()
+        parent.add_events([{"event_type": "Projection", "start": 5}])
+        part = DiscretePhysicalTimeline(length=1000, uid="part")
+        # Minted in the child's own manifest, never minted again on joining.
+        assert part.add_events([{"event_type": "Projection", "start": 7}]) == [
+            "projection_1"
+        ]
+        with pytest.raises(ValueError) as raised:
+            parent.add_child(part, 0)
+        assert str(raised.value) == (
+            "Projection ID 'projection_1' names a Projection on the timeline "
+            "'dpt_1' and one on 'part': a Projection's ID is unique among all "
+            "Projections of a manifest and its package"
+        )
+        assert parent.n_children == 0
+        assert parent.events.table.column("id").to_pylist() == ["projection_1"]
+        assert parent.events.table.column("event_type").to_pylist() == ["Projection"]
+        assert part._parent is None
+        assert part.is_locked is False
+        assert part.events.table.column("id").to_pylist() == ["projection_1"]
+
+        other = DiscretePhysicalTimeline(length=1000, uid="other")
+        other.add_events([{"event_type": "Projection", "id": "onset_a", "start": 7}])
+        parent.add_child(other, 0)
+        assert parent.n_children == 1
+        assert other.events.table.column("id").to_pylist() == ["onset_a"]
+
+    def test_a_child_sharing_a_projection_id_of_the_bundle_is_refused(self) -> None:
+        bundle = self._bundle()
+        samples, quarters = bundle.timelines["dpt_1"], bundle.timelines["clt_6"]
+        quarters.add_events([{"event_type": "Projection", "start": Fraction(1)}])
+        part = DiscretePhysicalTimeline(length=1000, uid="part")
+        part.add_events([{"event_type": "Projection", "start": 7}])
+        with pytest.raises(ValueError) as raised:
+            samples.add_child(part, 0)
+        assert str(raised.value) == (
+            "Projection ID 'projection_1' names a Projection on the timeline "
+            "'clt_6' and one on 'part': a Projection's ID is unique among all "
+            "Projections of a manifest and its package"
+        )
+        assert samples.n_children == 0
+        assert len(samples.events) == 0
+        assert part._parent is None
+
 
 class TestProjectionObjects:
     def test_an_instant_without_id(self) -> None:

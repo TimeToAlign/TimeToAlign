@@ -1446,6 +1446,7 @@ the claims are `from_events` between named notes and onsets on those axes.
 | `test_two_runs_merged` | a subprocess and this process store the same bundle's MatchClaim table: ids equal (`claim_1`–`claim_4`), tables equal; one bundle takes the first and refuses the second (`claim id 'claim_1' is already held ...`), keeping 4 rows; two bundles, one run each, are refused by `from_bundles` with the exact message `MatchClaim id 'claim_1' is held by bundle '<first>' and by bundle '<second>' (bundles 0 and 1 of the merge): a MatchClaim is addressed by its id alone, so the two merge once one of them states its MatchClaims under other ids.`, each still holding its run's table |
 | `test_given_id_refused_atomically` | a bundle holding a given `"a"` refuses a claim and a field with a given `"a"` (`claim id 'a' is already held by another claim of this bundle`); after each refusal the bundle's claims are exactly `[held]` and the newcomer keeps its id (`None` for the one made without) and no bundle |
 | `test_merge_keeps_ids_and_refuses_a_shared_one` | `from_bundles` of two bundles each holding `claim_1`, `claim_2` is refused with the message above (naming `claim_1` and both bundles), the sources unchanged (`claim_1`, `claim_2`, each claim recording its source); two bundles holding a minted `claim_1` and a given `claim_2` merge: the merge's claims are `claim_1`, `claim_2`, equal to the two added, each recording the merge, and its table holds the twelve MatchClaim columns alone; a free claim added to the merge is given `claim_3`; a claim another bundle holds, added to a third bundle, joins as a copy: the original keeps its bundle, the third bundle's row records the third |
+| `test_merge_refuses_an_id_two_distant_sources_hold` | the merge's one check, made before anything is built, compares every pair of sources (so nothing checks the ids again while the merge appends each source's rows): of three sources holding `claim_1`, `claim_2` and `claim_1`, `from_bundles` is refused naming the first and the third (`... (bundles 0 and 2 of the merge) ...`, the message above), every source unchanged (its ids, each claim recording it) |
 
 ---
 
@@ -1836,19 +1837,19 @@ then fails to load. Each test pins one of these with exact values.
   rewritten to `projection_1`, the same ID on two timelines, with the
   same message. Writing: IDs are minted unique when the Projection is
   created, and a timeline joining refuses a Projection ID its new
-  manifest holds (next item); a child added to a timeline of the bundle
-  (`add_child`) is not checked on joining its parent's tree, so a child
-  `part` given a Projection while free (`projection_1` at sample 5) and
-  then added at offset 0 to `pcm` of a bundle whose `audio` holds
-  `projection_1` (minted there at 0.5 s) holds one ID twice; nothing is
-  minted again on writing (an ID once given is stable), so `to_file`
-  refuses before any file is written: `Projection ID 'projection_1' names
-  a Projection on the timeline 'audio' and one on 'part': a Projection's
-  ID is unique among all Projections of a manifest and its package` (the
-  timelines in the table's order, sorted by ID), and the directory stays
-  empty. A writer that let it pass would write a table TimeToShare's
-  check refuses; one that minted again would change an ID a MatchClaim
-  may name.
+  manifest holds (next item), a child joining a timeline's tree
+  (`add_child`) included: a child `part` given a Projection while free
+  (`projection_1` at sample 5) and then added at offset 0 to `pcm` of a
+  bundle whose `audio` holds `projection_1` (minted there at 0.5 s) is
+  refused, `pcm` keeping no child. Nothing is minted again on writing (an
+  ID once given is stable), so the writer refuses such a table as well:
+  `projection_table` of `audio` and the free `part` raises `Projection ID
+  'projection_1' names a Projection on the timeline 'audio' and one on
+  'part': a Projection's ID is unique among all Projections of a manifest
+  and its package` (the timelines in the table's order), the same message
+  as the refused join. A writer that let it pass would write a table
+  TimeToShare's check refuses; one that minted again would change an ID a
+  MatchClaim may name.
 - **A join refuses a Projection ID the manifest holds** (`TestProjectionIdsAtAJoin`).
   Two timelines given Projections apart each mint `projection_1` (`pcm`
   at 22050 samples, `audio` at 0.5 s). Every way a timeline joins a

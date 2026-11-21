@@ -361,7 +361,7 @@ the library writes back against the same literal text.
   `order`) in TimeToShare's minimal form and has no default table of its
   own: `styles: {}`, `rules: []`, `timestamps: []` and `matchstamps: []`
   are each read to no member, a named timestamp's default `display` and
-  its default `"matchstamp": false` to none and a
+  its defaults `"matchstamp": false` and `"groupstamp": false` to none and a
   non-default `display` to its canonical order. Each case is asserted
   twice, against a literal written from the format's defaults and against
   `timetoshare.minimal` of a manifest holding only that `graphical`, so the
@@ -378,14 +378,31 @@ the library writes back against the same literal text.
   one-root manifest through `Timeline` and `AlignmentBundle` alike: a
   timestamp without `display` is written with the default in the complete
   form and without it in the minimal one; the complete form of every one
-  of these ordinary timestamps also states `"matchstamp": false`, the
-  format's default, which the minimal form leaves out; one stating the default as
+  of these ordinary timestamps also states `"matchstamp": false` and
+  `"groupstamp": false`, the format's defaults (TimeToShare's schema gives
+  both the default `false`), which the minimal form leaves out; one stating the default as
   `["cross_section", "wedge", "name"]` is written exactly as the first in
   both forms; one stating `["name", "wedge"]` is written `["wedge",
   "name"]` in both; one stating `["flag", "coordinate", "wedge"]` is
   written `["wedge", "coordinate", "flag"]`; every other member of a
   timestamp, an unknown one included, is written as given, and the input
   is never changed.
+- **A groupstamp lies in a group.** A named timestamp with `"groupstamp":
+  true` draws its line across the frame of the groups its timeline lies in,
+  so the format refuses one whose timeline lies in none, and the library
+  refuses it where it checks the named MatchStamps, on reading and on
+  writing, with TimeToShare's message. Read: a one-root manifest without
+  groups holding a groupstamp on its root raises, through `Timeline` and
+  `AlignmentBundle` alike, `#/graphical/timestamps/0/groupstamp:
+  'timestamp_1' is a groupstamp, but its timeline 'r' is a member of no
+  group and lies in none`; the same groupstamp on a child `c` of a root
+  `r` that is a group's member is read and written back with
+  `"groupstamp": true`, since a member's descendants lie in its group.
+  Written: a bundle read with a group of `r` and `s` and a groupstamp on
+  `s`, whose group then loses `s`, raises the same refusal naming
+  `timestamp_1` and `s` on `to_dict`, so a manifest that breaks the rule
+  is never emitted. (The shared rejection cases cover the parent of a
+  member and a child of an ungrouped root.)
 - **A root's offset.** A seconds root with `"offset": -5.5` and a child at
   offset 2 round-trips with `root_offset == Coordinate(-5.5, seconds)`, and
   its timestamps and child positions equal those of the same root without

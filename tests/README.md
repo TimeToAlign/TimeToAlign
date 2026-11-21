@@ -96,15 +96,23 @@ exists, so the list cannot outgrow the truth; each band-order case is also
 written back by `AlignmentBundle.from_dict` with its `graphical.order`
 unchanged, and each named-timestamp case, written in the complete form,
 with its `graphical.timestamps` as the package's `complete` writes them
-(the cases predate the default `matchstamp: false`, which the complete
-form states). The named MatchStamps are no exception: the library keeps
+(the complete form states the defaults `matchstamp: false` and
+`groupstamp: false` where a case leaves them out). The list follows the
+package's cases: a case the package deleted leaves it (IDs are free, so
+no case about a malformed timestamp ID remains). The named MatchStamps are no exception: the library keeps
 `graphical.matchstamps` and the match timestamps as given but refuses what
 the format refuses about them, by the package's own check of them alone
 (`timetoshare.matchstamp_problems`), so the nine MatchStamp cases (a
 malformed MatchStamp ID, a claim listed twice, an anchor ID repeated, an
 anchor naming an unknown, an unflagged or a same-timeline timestamp,
 anchors not connected, two match timestamps on one coordinate, a match
-timestamp no MatchStamp names) are refused like any other.
+timestamp no MatchStamp names) are refused like any other. Nor are the
+groupstamps: a named timestamp with `groupstamp: true` must lie in a group
+(its timeline, or an ancestor of it, a member of one), which the library
+checks itself where it checks the MatchStamps (`check_groupstamps`), so
+the three cases (a groupstamp in a manifest without groups, on a child of
+an ungrouped root, on the parent of a member) are refused, and the fixture
+whose groupstamp lies on a member's child is read.
 
 **The shared warning cases.** `warning_paths()` lists manifests carrying
 unknown keys at many depths, each with the `unknown_keys` the validators

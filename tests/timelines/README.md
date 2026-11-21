@@ -540,6 +540,12 @@ library's own output: each is `timetoshare.dumps` of a manifest written by
 hand (or of a package fixture), in the serialization and form under test,
 so a writer that agreed only with itself could not pass.
 
+The manifest's `resources` and the tables a bundle writes and reads beside
+it (the MatchClaim table, the Projections table) are tested in
+`../alignment/test_bundle_package.py` (its README section "A Package: the
+Manifest and Its Tables"); here the fixture `bundle_resources.yaml`, whose
+tables are absent, is one more byte-identical round trip.
+
 - **Byte-identical round trips.** Every package fixture and its minimal twin,
   read by the class its directory names, is written to text with
   `timetoshare.dumps` in each of the three serializations; `from_file`

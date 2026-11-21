@@ -3,15 +3,17 @@
 A TimeToShare manifest is one JSON object: the version marker
 ``timetoshare``, an array of root ``timelines`` and, optionally, the
 manifest's ``id``, ``name`` and ``meta``, its ``groups``, its
-``measure_maps``, its ``graphical``, and its inline JSON-LD ``@context``
-with the manifest's ``statements`` and ``provenance`` (see
+``measure_maps``, its ``resources`` (the files it names, such as the
+MatchClaim table beside it), its ``graphical``, and its inline JSON-LD
+``@context`` with the manifest's ``statements`` and ``provenance`` (see
 :mod:`~timetoalign.timelines.statements`).
 :class:`~timetoalign.timelines.Timeline`,
 :class:`~timetoalign.timelines.TimelineGroup` and
 :class:`~timetoalign.alignment.AlignmentBundle` each write one with
 ``to_dict`` and read one with ``from_dict``. This module holds what they
 share: the version marker, the reading of the manifest around its timelines
-and groups, the writing of that envelope, of the measure maps its
+and groups, its resources (:class:`Resource`), the writing of that
+envelope, of the measure maps its
 timelines name and of the ``@context`` its statements need, the check of
 the statements, and the codec of a bare value on a timeline's own axis.
 
@@ -40,22 +42,41 @@ value naming an element is ``{"id": "#clt_1"}`` in memory too.
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import math
-from collections.abc import Iterable, Iterator, Mapping
+import os
+import re
+from collections.abc import Container, Iterable, Iterator, Mapping
 from dataclasses import asdict, dataclass, field, replace
 from fractions import Fraction
 from os import PathLike
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Self
+from urllib.parse import unquote, urlsplit
 
+import pyarrow as pa
+import pyarrow.compute as pc
+import pyarrow.parquet as pq
 import timetoshare
 from timetoshare import FORMAT_CONTEXT, child_ends, load_catalogue, loads
 from timetoshare.serialization import Serialization
+from timetoshare.tables import (
+    PROJECTION_OF_TYPE,
+    PROJECTION_SCHEMA,
+    TableError,
+    projection_problems,
+)
 
-from timetoalign.core import Coordinate, NumberType, TimeUnit
+from timetoalign.core import Coordinate, NumberType, Projection, TimeUnit
 from timetoalign.core.ids import _OpenObject, mint_id, quote_id, validate_id
-from timetoalign.core.time import is_fraction_json, number_from_json, number_to_json
+from timetoalign.core.time import (
+    COORDINATE_CELL_TYPE,
+    RATIONAL_STRUCT_TYPE,
+    is_fraction_json,
+    number_from_json,
+    number_to_json,
+)
 from timetoalign.maps.base import MEASURE_MAP_ID_PREFIX
 
 from .statements import (
@@ -364,6 +385,479 @@ def _leave_out_unwritten(
 # endregion
 
 
+# region Resources
+
+_RESOURCE_SCHEMA = timetoshare.load_schema()["$defs"]["Resource"]["properties"]
+
+INTEGRITY_ALGORITHMS: tuple[str, ...] = tuple(
+    _RESOURCE_SCHEMA["integrity"]["properties"]["algorithm"]["enum"]
+)
+"""The hash functions a resource's ``integrity`` may name, as PREMIS names them."""
+
+PARQUET_MEDIA_TYPE = "application/vnd.apache.parquet"
+"""The media type of the Parquet tables a package holds."""
+
+TABLE_RESOURCE_TYPES: tuple[str, ...] = ("MatchClaim", "Projection")
+"""The resource types a manifest names at most once: its two package tables."""
+
+_RESOURCE_ID = re.compile(r"resource_[1-9][0-9]*")
+_MEDIA_TYPE = re.compile(_RESOURCE_SCHEMA["media_type"]["pattern"])
+_DIGEST = re.compile(r"[0-9a-f]+")
+
+
+@dataclass(frozen=True)
+class Integrity(_OpenObject):
+    """The digest of a resource's raw bytes and the hash function computing it.
+
+    Attributes:
+        algorithm: The hash function as the PREMIS vocabulary of
+            cryptographic hash functions names it, one of
+            :data:`INTEGRITY_ALGORITHMS` (``"SHA-256"``).
+        digest: The digest in lower-case hexadecimal.
+
+    Raises:
+        ValueError: If the algorithm is none of :data:`INTEGRITY_ALGORITHMS`
+            or the digest is no lower-case hexadecimal string.
+
+    Examples:
+        >>> Integrity("SHA-256", "5f9a").to_dict()
+        {'algorithm': 'SHA-256', 'digest': '5f9a'}
+    """
+
+    _dict_keys: ClassVar[tuple[str, ...]] = ("algorithm", "digest")
+
+    algorithm: str
+    digest: str
+    _unknown_keys: Mapping[str, Any] = field(
+        default_factory=dict, kw_only=True, repr=False, compare=False
+    )
+
+    def __post_init__(self) -> None:
+        if self.algorithm not in INTEGRITY_ALGORITHMS:
+            raise ValueError(
+                f"{self.algorithm!r} is no hash function a resource's integrity "
+                f"names: write one of {list(INTEGRITY_ALGORITHMS)}"
+            )
+        if not isinstance(self.digest, str) or not _DIGEST.fullmatch(self.digest):
+            raise ValueError(
+                f"the digest {self.digest!r} is not written in lower-case hexadecimal"
+            )
+
+    @classmethod
+    def of_bytes(cls, data: bytes) -> Integrity:
+        """The SHA-256 digest of *data*.
+
+        Examples:
+            >>> Integrity.of_bytes(b"").digest[:12]
+            'e3b0c44298fc'
+        """
+        return cls("SHA-256", hashlib.sha256(data).hexdigest())
+
+    @classmethod
+    def from_dict(cls, data: Any, what: str = "a resource's integrity") -> Integrity:
+        """Read an ``integrity`` object, keeping its unknown keys.
+
+        Raises:
+            ValueError: If *data* is no object holding ``algorithm`` and
+                ``digest``, or either is malformed.
+        """
+        require_object(data, what, cls._dict_keys)
+        integrity = cls(data["algorithm"], data["digest"])
+        integrity._keep_unknown_keys(data)
+        return integrity
+
+    def to_dict(self) -> dict[str, Any]:
+        """Write the ``integrity`` object."""
+        return self._dict_form(
+            {"algorithm": self.algorithm, "digest": self.digest}, minimal=False
+        )
+
+
+@dataclass(frozen=True)
+class Resource(_OpenObject):
+    """A file the manifest names: one entry of its ``resources``.
+
+    A package is a manifest and the files it names. Each resource says what
+    its rows are (``type``: ``"MatchClaim"`` for the MatchClaim table,
+    ``"Projection"`` for the Projections table, or the type of the events
+    an event table holds), for which timelines it holds data and where it
+    lies, relative to the manifest, so that a bare file name lies beside
+    it; optionally its media type, size in bytes and the digest of its
+    bytes. IDs are bare, as the library holds them.
+
+    Attributes:
+        id: The resource's ID, ``resource_N``.
+        type: What the file's rows are.
+        timelines: The IDs of the timelines the file holds data for.
+        url: Its location, relative to the manifest's own.
+        media_type: Its media type, or None.
+        size: Its size in bytes, or None.
+        integrity: The digest of its bytes, or None.
+
+    Raises:
+        ValueError: If the ID is not ``resource_N``, the type is empty, a
+            timeline ID is invalid or given twice, the URL is no string, the
+            media type is malformed, or the size is no integer at least 0.
+
+    Examples:
+        >>> resource = Resource(
+        ...     "resource_1", "MatchClaim", ("clt_1", "dpt_1"), "match_claims.parquet"
+        ... )
+        >>> resource.to_dict()
+        {'id': 'resource_1', 'type': 'MatchClaim', 'timelines': ['clt_1', 'dpt_1'], 'url': 'match_claims.parquet'}
+        >>> Resource.from_dict(resource.to_dict()) == resource
+        True
+    """
+
+    _dict_keys: ClassVar[tuple[str, ...]] = (
+        "id",
+        "type",
+        "timelines",
+        "url",
+        "media_type",
+        "size",
+        "integrity",
+    )
+
+    id: str
+    type: str
+    timelines: tuple[str, ...]
+    url: str
+    media_type: str | None = None
+    size: int | None = None
+    integrity: Integrity | None = None
+    _unknown_keys: Mapping[str, Any] = field(
+        default_factory=dict, kw_only=True, repr=False, compare=False
+    )
+
+    def __post_init__(self) -> None:
+        validate_id(self.id)
+        if not _RESOURCE_ID.fullmatch(self.id):
+            raise ValueError(
+                f"resource {quote_id(self.id)}: a resource's ID is 'resource_' "
+                f"followed by a positive integer"
+            )
+        what = f"resource {quote_id(self.id)}"
+        if not isinstance(self.type, str) or not self.type:
+            raise ValueError(f"{what} has no type")
+        object.__setattr__(self, "timelines", tuple(self.timelines))
+        for timeline_id in self.timelines:
+            read_id(timeline_id, f"{what}: a timeline")
+        if len(set(self.timelines)) != len(self.timelines):
+            raise ValueError(f"{what} names a timeline twice: {list(self.timelines)}")
+        if not isinstance(self.url, str):
+            raise ValueError(f"{what} has a non-string url {self.url!r}")
+        if self.media_type is not None and (
+            not isinstance(self.media_type, str)
+            or not _MEDIA_TYPE.fullmatch(self.media_type)
+        ):
+            raise ValueError(f"{what} has a malformed media type {self.media_type!r}")
+        if self.size is not None and (
+            isinstance(self.size, bool)
+            or not isinstance(self.size, int)
+            or self.size < 0
+        ):
+            raise ValueError(
+                f"{what} has the size {self.size!r}: a number of bytes, at least 0"
+            )
+
+    @classmethod
+    def of_file(
+        cls,
+        path: str | PathLike[str],
+        *,
+        id: str,  # noqa: A002 - the key's name
+        type: str,  # noqa: A002 - the key's name
+        timelines: Iterable[str],
+        url: str,
+        media_type: str | None = PARQUET_MEDIA_TYPE,
+    ) -> Resource:
+        """Describe the file *path*: its size and SHA-256 digest from its bytes.
+
+        Args:
+            path: The file.
+            id: The resource's ID.
+            type: What its rows are.
+            timelines: The timelines it holds data for.
+            url: Its location relative to the manifest.
+            media_type: Its media type, Parquet's by default.
+        """
+        data = Path(path).read_bytes()
+        return cls(
+            id,
+            type,
+            tuple(timelines),
+            url,
+            media_type,
+            len(data),
+            Integrity.of_bytes(data),
+        )
+
+    @classmethod
+    def from_dict(cls, data: Any, what: str = "a resource") -> Resource:
+        """Read one entry of ``resources``, IDs bare, keeping its unknown keys.
+
+        Raises:
+            ValueError: If *data* is no object holding ``id``, ``type``,
+                ``timelines`` and ``url``, or an entry is malformed.
+        """
+        require_object(data, what, ("id", "type", "timelines", "url"))
+        resource_id = read_id(data["id"], what)
+        timelines = data["timelines"]
+        if not isinstance(timelines, list):
+            raise ValueError(
+                f"resource {quote_id(resource_id)}'s 'timelines' must be an array"
+            )
+        integrity = data.get("integrity")
+        resource = cls(
+            resource_id,
+            data["type"],
+            tuple(timelines),
+            data["url"],
+            data.get("media_type"),
+            data.get("size"),
+            (
+                None
+                if integrity is None
+                else Integrity.from_dict(
+                    integrity, f"resource {quote_id(resource_id)}'s integrity"
+                )
+            ),
+        )
+        resource._keep_unknown_keys(data)
+        return resource
+
+    def to_dict(self) -> dict[str, Any]:
+        """Write the entry, IDs bare: the optional keys only with a value.
+
+        A resource has no defaults, so its minimal and complete forms are
+        one.
+        """
+        fields: dict[str, Any] = {
+            "id": self.id,
+            "type": self.type,
+            "timelines": list(self.timelines),
+            "url": self.url,
+        }
+        if self.media_type is not None:
+            fields["media_type"] = self.media_type
+        if self.size is not None:
+            fields["size"] = self.size
+        if self.integrity is not None:
+            fields["integrity"] = self.integrity.to_dict()
+        return self._dict_form(fields, minimal=False)
+
+    def path_in(self, directory: str | PathLike[str]) -> Path:
+        """The file's path for a manifest lying in *directory* (:func:`resource_path`)."""
+        return resource_path(directory, self.url)
+
+
+def resource_path(directory: str | PathLike[str], url: str) -> Path:
+    """The path of the file *url* names for a manifest lying in *directory*.
+
+    Raises:
+        ValueError: If the URL names a scheme or a host, or no path: the
+            library reads and writes the files of a package on disk,
+            relative to its manifest.
+
+    Examples:
+        >>> resource_path("package", "tables/match%20claims.parquet").as_posix()
+        'package/tables/match claims.parquet'
+    """
+    parts = urlsplit(url)
+    if parts.scheme or parts.netloc or not parts.path:
+        raise ValueError(
+            f"a resource lies at {url!r}; the library reads and writes only a "
+            f"file named relative to the manifest"
+        )
+    return Path(directory) / unquote(parts.path)
+
+
+def read_resources(items: list[Any], timelines: Container[str]) -> list[Resource]:
+    """Read ``resources``: every entry, each timeline it names known.
+
+    Args:
+        items: The entries, IDs bare.
+        timelines: The IDs of every timeline of the manifest, at any depth.
+
+    Raises:
+        ValueError: If an entry is malformed (:meth:`Resource.from_dict`),
+            names a timeline the manifest lacks, or a second resource has
+            the type ``MatchClaim`` or ``Projection``.
+    """
+    resources = [
+        Resource.from_dict(item, f"resource {index}")
+        for index, item in enumerate(items)
+    ]
+    for resource in resources:
+        unknown = [tid for tid in resource.timelines if tid not in timelines]
+        if unknown:
+            raise ValueError(
+                f"resource {quote_id(resource.id)} names timelines the manifest "
+                f"lacks: {unknown}"
+            )
+    for table_type in TABLE_RESOURCE_TYPES:
+        held = [resource.id for resource in resources if resource.type == table_type]
+        if len(held) > 1:
+            raise ValueError(
+                f"at most one resource has the type {table_type!r}; the manifest "
+                f"names {len(held)}: {held}"
+            )
+    return resources
+
+
+# endregion
+
+
+# region The Projections table
+
+PROJECTIONS_FILE_NAME = "projections.parquet"
+"""The file name of a package's Projections table beside its manifest."""
+
+
+def _cells_on(column: Any, timeline: Timeline) -> pa.StructArray:
+    """The coordinate cells of an event column on *timeline*'s axis.
+
+    The column's number structs keep both sides of every number; each
+    non-null cell gains the timeline's unit and number type.
+    """
+    numbers = column.combine_chunks() if isinstance(column, pa.ChunkedArray) else column
+    valid = numbers.is_valid()
+    n = len(numbers)
+    named = [
+        pc.if_else(valid, pa.scalar(text), pa.nulls(n, pa.string()))
+        for text in (timeline.unit.value, timeline.number_type.name)
+    ]
+    return pa.StructArray.from_arrays(
+        [numbers.field(key) for key in ("value", "numerator", "denominator")] + named,
+        fields=list(COORDINATE_CELL_TYPE),
+        mask=pc.invert(valid),
+    )
+
+
+def projection_table(timelines: Iterable[Timeline]) -> pa.Table:
+    """The Projections table of *timelines*: every Projection each holds itself.
+
+    One row per Projection, timeline by timeline in the order given and in
+    each timeline's event order, in TimeToShare's Projections table form
+    (:data:`timetoshare.tables.PROJECTION_SCHEMA`): ``id``, the
+    ``timeline_id`` of the timeline holding it (a child's Projection is the
+    child's), ``start`` and ``duration`` as coordinate cells on that
+    timeline's axis, exact numbers kept on both sides, and
+    ``projection_of``.
+
+    Args:
+        timelines: The timelines, each once.
+
+    Returns:
+        The table, empty when no timeline holds a Projection.
+    """
+    parts = []
+    for timeline in timelines:
+        events = timeline.events.table
+        if events.num_rows == 0 or "event_type" not in events.column_names:
+            continue
+        rows = events.filter(pc.equal(events.column("event_type"), "Projection"))
+        n = rows.num_rows
+        if n == 0:
+            continue
+        number = pa.nulls(n, RATIONAL_STRUCT_TYPE)
+
+        def column(name: str, empty: pa.Array, rows: pa.Table = rows) -> Any:
+            return rows.column(name) if name in rows.column_names else empty
+
+        parts.append(
+            pa.Table.from_arrays(
+                [
+                    rows.column("id").combine_chunks().cast(pa.string()),
+                    pa.array([timeline.id] * n, pa.string()),
+                    _cells_on(column("start", number), timeline),
+                    _cells_on(column("duration", number), timeline),
+                    column("projection_of", pa.nulls(n, PROJECTION_OF_TYPE))
+                    .combine_chunks()
+                    .cast(PROJECTION_OF_TYPE),
+                ],
+                schema=PROJECTION_SCHEMA,
+            )
+        )
+    return pa.concat_tables(parts) if parts else PROJECTION_SCHEMA.empty_table()
+
+
+def write_projection_table(table: pa.Table, path: str | PathLike[str]) -> Path:
+    """Write a Projections table to its Parquet file, replacing it whole.
+
+    A write that fails leaves the file as it was and no temporary file.
+
+    Args:
+        table: The table, as :func:`projection_table` builds it.
+        path: The file.
+
+    Returns:
+        The path written.
+    """
+    target = Path(path)
+    temporary = target.with_name(f".{target.name}.writing")
+    try:
+        pq.write_table(table, temporary)
+        os.replace(temporary, target)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return target
+
+
+def read_projection_table(
+    path: str | PathLike[str], manifest: Mapping[str, Any]
+) -> dict[str, list[Projection]]:
+    """Read a Projections table: the Projections of each timeline, in row order.
+
+    The table is checked by TimeToShare's rules against the manifest naming
+    it (:func:`timetoshare.tables.projection_problems`): every column of the
+    table type, every timeline one of the manifest's, every cell on its
+    timeline's own axis. An event ID is unique on its timeline (an event is
+    named by its timeline and its ID), so an ID is refused when one timeline
+    holds it twice; two timelines may each hold ``projection_1``, which
+    TimeToShare's check reports as an ID given twice and this reader
+    accepts.
+
+    Args:
+        path: The file.
+        manifest: The manifest naming it, as the file holds it.
+
+    Returns:
+        The Projections by the ID of the timeline holding them.
+
+    Raises:
+        timetoshare.tables.TableError: A ``ValueError``, the first problem
+            of the table.
+        ValueError: If one timeline holds an ID twice.
+    """
+    table = pq.read_table(path)
+    problems = [
+        problem
+        for problem in projection_problems(table, manifest)
+        if problem.code != "duplicate_id"
+    ]
+    if problems:
+        raise TableError(problems[0])
+    by_timeline: dict[str, list[Projection]] = {}
+    held: set[tuple[str, str]] = set()
+    for index, row in enumerate(
+        table.select(list(PROJECTION_SCHEMA.names)).to_pylist()
+    ):
+        key = (row["timeline_id"], row["id"])
+        if key in held:
+            raise ValueError(
+                f"Projections table row {index}: timeline {quote_id(key[0])} holds "
+                f"the Projection {quote_id(key[1])} twice"
+            )
+        held.add(key)
+        by_timeline.setdefault(key[0], []).append(Projection.from_row(row))
+    return by_timeline
+
+
+# endregion
+
+
 # region The manifest
 
 
@@ -399,6 +893,8 @@ class Manifest(_OpenObject):
             default.
         measure_maps: The entries of ``measure_maps`` no timeline names,
             written back with the measure maps the timelines name.
+        resources: The files the manifest names (``resources``), each one
+            :class:`Resource`.
     """
 
     _dict_keys: ClassVar[tuple[str, ...]] = (
@@ -410,6 +906,7 @@ class Manifest(_OpenObject):
         "timelines",
         "groups",
         "measure_maps",
+        "resources",
         *STATE_KEYS,
         "graphical",
     )
@@ -423,6 +920,7 @@ class Manifest(_OpenObject):
     band_orders: dict[str, Any] = field(default_factory=dict)
     has_graphical: bool = False
     measure_maps: list[MeasureMap] = field(default_factory=list)
+    resources: list[Resource] = field(default_factory=list)
 
     @classmethod
     def read(cls, data: Any) -> tuple[Manifest, ManifestContent]:
@@ -442,7 +940,8 @@ class Manifest(_OpenObject):
         as JSON for the class reading them. ``graphical.order`` is split by
         its keys: a group's display order goes to the content, a timeline's
         band order to the envelope, unchecked. The measure maps no timeline
-        names are kept on the envelope. The manifest, every timeline and
+        names are kept on the envelope, and so are its resources, each
+        naming timelines of the manifest. The manifest, every timeline and
         every region keep their statements and provenance as written, each
         with the prefixes of the manifest's ``@context`` it uses that the
         catalogue lacks or gives another namespace. A manifest without
@@ -460,7 +959,10 @@ class Manifest(_OpenObject):
                 first problem, a ``timetoshare.SchemaValidationError``), an id
                 held twice anywhere in the manifest (see
                 :func:`unique_ids`), a ``graphical.order`` that is no object
-                or names no group or timeline.
+                or names no group or timeline; a resource that is malformed,
+                names a timeline the manifest lacks, or is a second
+                resource of the type ``MatchClaim`` or ``Projection``
+                (:func:`read_resources`).
         """
         if not isinstance(data, dict) or "timetoshare" not in data:
             raise ValueError("not a TimeToShare manifest")
@@ -508,6 +1010,13 @@ class Manifest(_OpenObject):
             (element_id, description)
             for root in roots
             for element_id, description in root._tree_ids().items()
+        )
+        manifest.resources = read_resources(
+            read_list(data, "resources", "the manifest"), timelines
+        )
+        holders.extend(
+            (resource.id, f"resource {quote_id(resource.id)}")
+            for resource in manifest.resources
         )
         groups = read_list(data, "groups", "the manifest")
         group_ids = [
@@ -584,7 +1093,9 @@ class Manifest(_OpenObject):
         written, removed or given another id, is left out, so that every
         key names a timeline or group of the manifest. ``graphical`` is
         written when there is an order to keep, styling, or a ``graphical``
-        read with the manifest; ``id`` only when the manifest has one. The
+        read with the manifest; ``id`` only when the manifest has one.
+        ``resources`` holds the manifest's resources, each naming only the
+        timelines written among its own. The
         manifest's, every timeline's and every region's statements and
         provenance are written where not empty; a value naming an element
         of the manifests the roots belong to that this one leaves out is
@@ -639,6 +1150,10 @@ class Manifest(_OpenObject):
         holders.extend(
             (group["id"], f"group {quote_id(group['id'])}") for group in groups
         )
+        holders.extend(
+            (resource.id, f"resource {quote_id(resource.id)}")
+            for resource in self.resources
+        )
         entries = MeasureMapEntries(
             unique_ids(holders),
             [
@@ -680,6 +1195,13 @@ class Manifest(_OpenObject):
         )
         prefixes = self._prefix_table(fields, trees)
         written = _timeline_ids(fields["timelines"])
+        fields["resources"] = [
+            {
+                **resource.to_dict(),
+                "timelines": [tid for tid in resource.timelines if tid in written],
+            }
+            for resource in self.resources
+        ]
         band_orders = {
             key: copy.deepcopy(entry)
             for key, entry in self.band_orders.items()
@@ -1085,10 +1607,32 @@ class ManifestFileMixin:
     pretty JSON or RFC 8785 JSON keeps its bytes; any other text is written
     back in the canonical form of the serialization it was read as. A file
     read, changed and written back changes only where the object changed.
+
+    A manifest and the files it names make a package. Reading a file, the
+    object reads the tables its manifest names beside it
+    (:meth:`_read_tables`); writing one, it writes its tables beside the
+    manifest first and names them (:meth:`_write_tables`). A timeline and a
+    group hold no package table; the bundle holds its MatchClaim table and
+    the Projections of its timelines.
     """
 
     _file_form: FileForm | None = None
     """The form of the file the object was read from, or None."""
+
+    def _read_tables(self, directory: Path, data: Mapping[str, Any]) -> None:
+        """Read the tables the manifest names, lying in *directory*.
+
+        Args:
+            directory: The manifest's directory.
+            data: The manifest as the file holds it.
+        """
+
+    def _write_tables(self, directory: Path) -> None:
+        """Write the object's tables into *directory* and name them as resources.
+
+        Args:
+            directory: The manifest's directory.
+        """
 
     @classmethod
     def from_dict(cls, data: dict[str, Any], **selection: str | None) -> Self:
@@ -1127,7 +1671,9 @@ class ManifestFileMixin:
         records the file's form, styling and serialization, as
         ``timetoshare.file_form`` reads them, and whether its timeline
         objects hold ``events`` and ``external_references``, which
-        :meth:`to_file` writes back.
+        :meth:`to_file` writes back. An
+        :class:`~timetoalign.alignment.AlignmentBundle` reads the tables its
+        manifest names beside it, where they lie there.
 
         Args:
             path: The manifest file, UTF-8.
@@ -1147,6 +1693,7 @@ class ManifestFileMixin:
             text = file.read()
         data = loads(text)
         result = cls.from_dict(data, **selection)
+        result._read_tables(Path(path).parent, data)
         result._file_form = FileForm.of(text, data)
         return result
 
@@ -1169,7 +1716,10 @@ class ManifestFileMixin:
         lines it touches. Each argument left None takes the value the file
         the object was read from had (see :meth:`from_file`); for an object
         not read from a file, the minimal form, the styling included, in
-        canonical YAML, without event rows or external references.
+        canonical YAML, without event rows or external references. An
+        :class:`~timetoalign.alignment.AlignmentBundle` holding MatchClaims
+        writes its tables beside the manifest first and names them in its
+        ``resources``.
 
         Args:
             path: The file to write, UTF-8 with line feeds; it is
@@ -1222,13 +1772,14 @@ class ManifestFileMixin:
             self._file_form or _NEW_FILE,
             **{key: value for key, value in given.items() if value is not None},
         )
+        path = Path(path)
+        self._write_tables(path.parent)
         manifest = self.to_dict(
             minimal=False,
             events=form.events,
             external_references=form.external_references,
         )
         text = timetoshare.dumps_file(manifest, form)
-        path = Path(path)
         path.write_text(text, encoding="utf-8", newline="")
         return path
 

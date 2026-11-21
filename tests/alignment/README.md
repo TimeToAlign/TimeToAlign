@@ -1191,7 +1191,21 @@ has no column that could mark one derived: what a `MatchGraph` infers is
 its own, never a row). A failed write leaves no temporary file beside it.
 
 `to_parquet(path)` / `from_parquet(path)` write and read the canonical
-`match_claims.parquet` (a directory takes that file name). A round trip
+`match_claims.parquet` (a directory takes that file name). The file holds
+the package form (`package_table`; `from_package_table` reads it): every
+anchor coordinate cell writes its number once, in the member its
+`number_type` names, the others null (`test_coordinate_cell.py`'s
+"package form"); memory keeps both sides. So the file's schema equals
+`package_table`'s, not `pa_schema`, and the cells written for the field
+below, as `(numerator, denominator, value)` of each start anchor's
+coordinates A and B, are exactly: `c1` `(7, 3, null)` and `(null, null,
+1.25)` (its end anchor `(10, 3, null)` and `(null, null, 2.5)`), `midi
+96` `(96, null, null)` and `(44100, null, null)`, `c3` `(null, null, 1.5)`
+on the float-declared quarters and `(null, null, 0.75)`; the NOMATCH and
+conceptual rows' anchors are null. A file whose int cell keeps the
+denominator `1` (the `midi 96` row's `coordinate_b` rewritten to `(44100,
+1, null)`) is refused on reading, with the message naming `MatchClaim
+table start_anchor.coordinate_b row 1` and what the cell holds. A round trip
 proves losslessness only when compared **claim by claim against the original
 claims** — a table-to-table comparison would pass a column both sides drop
 alike — so the field holds one claim per stored representation: exact
@@ -1377,9 +1391,12 @@ expectations would prove nothing here — the two could agree with each other
 and both differ from the format — so every assertion is against
 TimeToShare's own artifacts:
 
-- **Schema.** `MatchClaimField.pa_schema`, as a schema, equals TimeToShare's
-  `MATCH_CLAIM_SCHEMA` (names, types and order); the coordinate cell equals
-  its `COORDINATE_TYPE`; the provenance key is its `PROVENANCE_METADATA_KEY`.
+- **Schema.** What the library writes, an empty field's `package_table`
+  schema, equals TimeToShare's `MATCH_CLAIM_SCHEMA` (names, types and
+  order); the package coordinate cell equals its `COORDINATE_TYPE`; the
+  provenance key is its `PROVENANCE_METADATA_KEY`. In memory the cells
+  keep both sides of a number, so `pa_schema` is the same columns with
+  `COORDINATE_CELL_TYPE` cells.
 - **The fixture table, read and written back.** TimeToShare's fixture
   `fixtures/tables/<version>/match_claims.parquet` is read with
   `MatchClaimField.from_parquet`: fifteen claims, `claim_1`–`claim_15`,
@@ -1390,9 +1407,10 @@ TimeToShare's own artifacts:
   `clt_1` 1 quarter ↔ `dpt_1` 44100 samples. Written back with `to_parquet`, the file read again
   `equals` the fixture's table, schema metadata included; the claims
   materialised and stored again with `from_claims` give the same table. Both
-  are content identity, so a dropped, retyped or rewritten cell fails.
-- **Columns by name.** The fixture's columns in reverse order read to the
-  same claims.
+  are content identity, so a dropped, retyped or rewritten cell fails. The
+  claims stored again give a `package_table` equal to the fixture table.
+- **Columns by name.** The fixture's columns in reverse order read
+  (`from_package_table`) to the same claims.
 - **What the library writes, TimeToShare accepts.** TimeToShare's table
   requires every id, and a field built from columns or claims mints none
   (the bundle mints, `id_system_spec.md` §2), so what is written is a
@@ -1401,13 +1419,17 @@ TimeToShare's own artifacts:
   among the cells), with a shared provenance, holds three null ids; added to
   a bundle of those three timelines it becomes rows `claim_1`–`claim_3`, and
   the bundle's table written with `to_parquet` gives
-  `match_claim_problems(...) == []`, the float cells holding their exact
-  ratios and TimeToShare's `row_provenance` reading the shared provenance on
-  every row. An interval claim (`c1`), a NOMATCH claim (`c2`) and a
+  `match_claim_problems(...) == []`, each cell's number written once by its
+  number type: `(numerator, denominator, value)` of the start anchors'
+  cells A and B are `(1, 3, null)` and `(null, null, 0.1)`, `(4, 1, null)`
+  and `(88200, null, null)`, `(44100, null, null)` and `(null, null, 1.0)`
+  (the float `0.1` never written as a ratio, the ints without
+  denominator), and TimeToShare's `row_provenance` reads the shared
+  provenance on every row. An interval claim (`c1`), a NOMATCH claim (`c2`) and a
   conceptual claim without an id, stored with `from_claims`, hold the ids
   `["c1", "c2", None]`; added to a bundle, its table holds
   `["c1", "c2", "claim_1"]` (minted above the highest held number, none) and
-  gives `match_claim_problems(...) == []`.
+  its `package_table` gives `match_claim_problems(...) == []`.
 
 **Where the fixture comes from.** The installed `timetoshare` package ships
 it: the test reads `timetoshare.tables.fixture_path("match_claims.parquet")`.
@@ -1576,8 +1598,11 @@ then fails to load. Each test pins one of these with exact values.
   and written back. A one-root manifest read by `Timeline.from_dict` writes
   its resource back. `Manifest.read` refuses, each with its exact message:
   a resource naming a timeline the manifest lacks, a second resource of the
-  type `MatchClaim`, an integrity algorithm outside PREMIS's five, an ID
-  that is not `resource_N`, a resource ID a timeline holds too. (The four
+  type `MatchClaim`, an integrity algorithm outside PREMIS's five, a
+  resource ID a timeline holds too. A resource ID of any other shape
+  (`table_1`) is an ID like any other: it reads and is written back as it
+  stands (minted IDs will not be numbered, so nothing assumes
+  `resource_N`). (The four
   rejection cases of TimeToShare are also in
   `test_timetoshare_conformance.py`'s refusal test.)
 - **The synthetic package, written.** Three roots — `score` (quarters,
@@ -1592,11 +1617,17 @@ then fails to load. Each test pins one of these with exact values.
   of `n2` towards `audio`. `to_file(dir / "package.yaml")` leaves exactly
   three files. The Projections table holds five rows, timelines sorted by
   ID and each timeline's Projections in the order they were added:
-  `onset_a` on `audio` (0.5 s as `1/2` beside `0.5`, no source),
-  `projection_1` on `audio` (9.0 s, of `part`/`p1`), `projection_1` on `pcm`
-  (0, duration 44100, of `score`/`n1`), `projection_2` (66150, of
-  `score`/`n2`), `projection_3` (22050, no source) — each ID minted on its
-  own timeline, so `projection_1` is held twice, once per timeline. The
+  `onset_a` on `audio` (no source), `projection_1` on `audio` (of
+  `part`/`p1`), `projection_1` on `pcm` (of `score`/`n1`), `projection_2`
+  (of `score`/`n2`), `projection_3` (no source) — each ID minted on its
+  own timeline, so `projection_1` is held twice, once per timeline. Each
+  row states its axis once, `unit` and `number_type` (`seconds`/`float`
+  on `audio`, `samples`/`int` on `pcm`), and `start` and `duration` their
+  number once, as `(numerator, denominator, value)`: `onset_a` start
+  `(null, null, 0.5)` (no mirror), `projection_1` on `audio` `(null, null,
+  9.0)`, on `pcm` start `(0, null, null)` and duration `(44100, null,
+  null)`, `projection_2` `(66150, null, null)`, `projection_3` `(22050,
+  null, null)`; every instant's duration null. The
   MatchClaim table passes TimeToShare's check against the manifest written
   (`check_match_claims`), and so does the Projections table
   (`projection_problems` is empty). `bundle.resources` and the
@@ -1709,11 +1740,13 @@ then fails to load. Each test pins one of these with exact values.
 
 TimeToShare's `fixtures/tables/<version>/` is a package: `manifest.yaml`
 naming `match_claims.parquet` and `projections.parquet`, and
-`expected.yaml` holding, for six belief filters, each a `believer` and its
+`expected.yaml` holding, for seven belief filters, each a `believer` and its
 `beliefs` (states of the four: none with the default; the actor
 `0000-0002-1825-0097` with the default `["true", "undecided",
 "unlikely"]`, with `["true"]`, with `["undecided"]` and with
-`["unlikely", "false"]`; the actor `0000-0001-5109-3700` with `["true"]`),
+`["unlikely", "false"]`; the actor `0000-0001-5109-3700` with `["true"]`;
+the first actor written compact, `orcid:0000-0002-1825-0097`, with
+`["true"]`, which must keep what its absolute IRI keeps),
 the expected unique alignment anchors
 with the MatchClaims stating each and the expected potential MatchStamps.
 Those values are literal data written by hand in TimeToShare's emission
@@ -1729,7 +1762,7 @@ script, never computed by a derivation, so they are an independent oracle.
   `size` and `integrity`, those of the file written.
 - For each case, `MatchGraph(bundle.get_match_claims(), believer=,
   beliefs=, source=bundle)`, the case's `believer` and `beliefs` read as
-  they stand (the fixture holds exactly the six cases): the unique anchors (each synchronous claim's
+  they stand (the fixture holds exactly the seven cases): the unique anchors (each synchronous claim's
   start and end anchors, both coordinates sorted, with the IDs of the claims
   stating them) equal the expected anchors, and the graph has one edge per
   unique anchor; the coordinates of each connected component
@@ -2573,7 +2606,7 @@ these lazily on first use and caches them until the table changes.
 | `TestCommensurabilityWithClaims` | 4 | claims make score–audio and image–audio commensurable; without claims, or with a NOMATCH claim only, they are not |
 | `TestCacheInvalidation` | 4 | no WarpMap before the first transfer, one after; a second transfer reuses the cached objects; a new claim clears the cache; the rebuilt map still gives score 100 → audio 50 |
 | `TestAddMatchClaims` | 6 | chaining; three claims are three rows, `claim_1`–`claim_3`, read back equal to the claims added and recording the bundle; a fourth call adds one row minted `claim_4`; an unknown timeline (`['ghost'] that this bundle does not hold`) and an off-axis coordinate (`Row 1 start_anchor.coordinate_b is in quarters (fraction)` / `in seconds (fraction)`, `but timeline 'audio' counts in seconds (float)`) are refused with nothing added |
-| `TestCreateMatchClaims` | 8 | a second call with the same pairs names the same Projections and adds no event (audio `o1` + `projection_1`, score `projection_1` of `o1` + `projection_2`, before and after), its claims `claim_3`, `claim_4`; a pair naming an unknown event id (`Pair 1: no event with id 'nope' on timeline 'audio' or its children (0 events of its own)`) and a dict without `start` (`Pair 1: the side on timeline 'audio' names no event of it and states no 'start': ...`) after a projected pair add nothing; the provenance given lands on the claim made and on the claim read back; `agent`, `agent_identifier` and `decision_criteria` are refused (`TypeError`), nothing added; a seconds position projected onto a samples timeline (C-Map samples → seconds at 1/44100): 2.0 s is sample 88200, so the claim between the note `o1` (2.5 s) and `projection_1` stores `Coordinate(88200, samples)` with an `int` value, read back equal, and the Projection's `projection_of` is `{"timeline_id": "performance", "event_id": "o1"}` |
+| `TestCreateMatchClaims` | 11 | an event ID names an event of the timeline or of a descendant, and one ID held twice there names none (an event ID is unique on its own timeline only): on `score` (quarters, 8) with children `c` at 0 and `d` at 4 (length 4 each), `c` holding `n1` at 1, `d` holding `n1` at 1 and `n3` at 2, the pair `n3` ↔ audio `o1` makes one claim at score 6 (the descendant's event, at `score`'s coordinate); the pair `n1` ↔ `o1`, after a projected pair in the same call, is refused (`ValueError`, `The event ID 'n1' is held by 2 events of timeline 'score' and its descendants (on 'c', 'd'), so it names no one event: name the timeline holding the event instead.`) and nothing is added (no claim, no Projection); `n3` added to `score` itself (at 3) is refused alike (`... held by 2 events of timeline 'score' and its descendants (on 'score', 'd') ...`), and naming the child itself (`n3` on `d`) resolves at `d`'s 2; a second call with the same pairs names the same Projections and adds no event (audio `o1` + `projection_1`, score `projection_1` of `o1` + `projection_2`, before and after), its claims `claim_3`, `claim_4`; a pair naming an unknown event id (`Pair 1: no event with id 'nope' on timeline 'audio' or its children (0 events of its own)`) and a dict without `start` (`Pair 1: the side on timeline 'audio' names no event of it and states no 'start': ...`) after a projected pair add nothing; the provenance given lands on the claim made and on the claim read back; `agent`, `agent_identifier` and `decision_criteria` are refused (`TypeError`), nothing added; a seconds position projected onto a samples timeline (C-Map samples → seconds at 1/44100): 2.0 s is sample 88200, so the claim between the note `o1` (2.5 s) and `projection_1` stores `Coordinate(88200, samples)` with an `int` value, read back equal, and the Projection's `projection_of` is `{"timeline_id": "performance", "event_id": "o1"}` |
 | `TestBeliefFilter` | 2 | `claim_1` (0 → 0, ana true), `claim_2` (100 → 60, ana false), `claim_3` (200 → 100, no belief). `get_match_claims`: no believer → all three; `believer="ana"` → `claim_1`, `claim_3`; `beliefs=["true"]` → `claim_1`; `["undecided"]` → `claim_3`; `["true", "false"]` → `claim_1`, `claim_2`. `get_matchstamp_at(100, "score")`: no believer → `claim_2`'s anchor, audio and midi 60.0, not interpolated; ana → interpolated between `claim_1` and `claim_3`, audio and midi 50.0; ana, `["true"]` → one claim cannot interpolate: score 100 and image 200 alone |
 | `TestBeliefFilterIris` | 6 | the three claims with ana's full IRI, prefix `people` declared: `believer="people:ana"` and the full IRI both → `claim_1`, `claim_3`, with `["true"]` → `claim_1`; beliefs recorded as `people:ana`, believer the full IRI → `claim_1`, `claim_3`; `get_matchstamp_at(100, "score", believer="people:ana")` interpolated, audio and midi 50.0; `get_matchstamps(claims=all three, believer="people:ana")` → two stamps, at score 0.0 and 200.0; `ClaimFilter(believer="people:ana").matches_claim` → `[True, False, True]` on the bundle's claims, `True` on a free copy of `claim_2`; `MatchGraph(all three, believer="people:ana", source=bundle)` holds `claim_1`, `claim_3`; before the declaration `people:ana` keeps all three, after it `claim_1`, `claim_3` |
 | `TestAddMatchClaimField` | 6 | chaining; the five rows join the table, the bundle minting `claim_1`–`claim_5`, equal to the field's claims but for the ids, the field left as given (ids `None`); two `from_columns` fields (two loaders' fields) join one bundle as `claim_1`–`claim_5` and `claim_6`–`claim_10`; score 100 → audio 50 exactly; score 123.456 interpolates to audio and midi 61.728 (50 + 23.456 / 2) and image 246.912, flagged interpolated; a claim added after the field is minted `claim_6`, read as the sixth, and score 175 answers audio 87.5 exactly |

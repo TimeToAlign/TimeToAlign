@@ -71,11 +71,14 @@ from timetoshare.tables import (
 from timetoalign.core import Coordinate, NumberType, Projection, TimeUnit
 from timetoalign.core.ids import _OpenObject, mint_id, quote_id, validate_id
 from timetoalign.core.time import (
+    COORDINATE_CELL_TYPE,
     RATIONAL_STRUCT_TYPE,
-    axis_coordinate_cells,
+    build_number_struct_array,
     is_fraction_json,
     number_from_json,
     number_to_json,
+    numbers_from_package,
+    package_numbers,
 )
 from timetoalign.maps.base import MEASURE_MAP_ID_PREFIX
 
@@ -425,7 +428,6 @@ PARQUET_MEDIA_TYPE = "application/vnd.apache.parquet"
 TABLE_RESOURCE_TYPES: tuple[str, ...] = ("MatchClaim", "Projection")
 """The resource types a manifest names at most once: its two package tables."""
 
-_RESOURCE_ID = re.compile(r"resource_[1-9][0-9]*")
 _MEDIA_TYPE = re.compile(_RESOURCE_SCHEMA["media_type"]["pattern"])
 _DIGEST = re.compile(r"[0-9a-f]+")
 
@@ -511,7 +513,8 @@ class Resource(_OpenObject):
     bytes. IDs are bare, as the library holds them.
 
     Attributes:
-        id: The resource's ID, ``resource_N``.
+        id: The resource's ID, held by no other element of the manifest
+            (a new entry's is minted).
         type: What the file's rows are.
         timelines: The IDs of the timelines the file holds data for.
         url: Its location, relative to the manifest's own.
@@ -520,7 +523,7 @@ class Resource(_OpenObject):
         integrity: The digest of its bytes, or None.
 
     Raises:
-        ValueError: If the ID is not ``resource_N``, the type is empty, a
+        ValueError: If the ID is not a valid ID, the type is empty, a
             timeline ID is invalid or given twice, the URL is no string, the
             media type is malformed, or the size is no integer at least 0.
 
@@ -557,11 +560,6 @@ class Resource(_OpenObject):
 
     def __post_init__(self) -> None:
         validate_id(self.id)
-        if not _RESOURCE_ID.fullmatch(self.id):
-            raise ValueError(
-                f"resource {quote_id(self.id)}: a resource's ID is 'resource_' "
-                f"followed by a positive integer"
-            )
         what = f"resource {quote_id(self.id)}"
         if not isinstance(self.type, str) or not self.type:
             raise ValueError(f"{what} has no type")
@@ -747,9 +745,10 @@ def projection_table(timelines: Iterable[Timeline]) -> pa.Table:
     each timeline's event order, in TimeToShare's Projections table form
     (:data:`timetoshare.tables.PROJECTION_SCHEMA`): ``id``, the
     ``timeline_id`` of the timeline holding it (a child's Projection is the
-    child's), ``start`` and ``duration`` as coordinate cells on that
-    timeline's axis, exact numbers kept on both sides, and
-    ``projection_of``.
+    child's), the ``unit`` and ``number_type`` of that timeline's axis, once
+    for the row, ``start`` and ``duration`` each its number written once, in
+    the member the number type names (the package form,
+    :func:`~timetoalign.core.time.package_numbers`), and ``projection_of``.
 
     Args:
         timelines: The timelines, each once.
@@ -766,33 +765,57 @@ def projection_table(timelines: Iterable[Timeline]) -> pa.Table:
         n = rows.num_rows
         if n == 0:
             continue
-        number = pa.nulls(n, RATIONAL_STRUCT_TYPE)
+        number_type = NumberType(timeline.number_type)
+        number_types = pa.array([number_type.name] * n, pa.string())
 
         def column(name: str, empty: pa.Array, rows: pa.Table = rows) -> Any:
             return rows.column(name) if name in rows.column_names else empty
 
-        def cells(name: str, number: pa.Array = number) -> pa.StructArray:
-            return axis_coordinate_cells(
-                column(name, number),
-                unit=timeline.unit,
-                number_type=timeline.number_type,
+        def numbers(
+            name: str,
+            number_type: NumberType = number_type,
+            types: pa.Array = number_types,
+        ) -> pa.StructArray:
+            stored = build_number_struct_array(
+                column(name, pa.nulls(n, RATIONAL_STRUCT_TYPE)), number_type=number_type
             )
+            return package_numbers(stored, pc.if_else(stored.is_valid(), types, None))
 
+        columns = {
+            "id": rows.column("id").combine_chunks().cast(pa.string()),
+            "timeline_id": pa.array([timeline.id] * n, pa.string()),
+            "unit": pa.array([TimeUnit(timeline.unit).value] * n, pa.string()),
+            "number_type": number_types,
+            "start": numbers("start"),
+            "duration": numbers("duration"),
+            "projection_of": column("projection_of", pa.nulls(n, PROJECTION_OF_TYPE))
+            .combine_chunks()
+            .cast(PROJECTION_OF_TYPE),
+        }
         parts.append(
             pa.Table.from_arrays(
                 [
-                    rows.column("id").combine_chunks().cast(pa.string()),
-                    pa.array([timeline.id] * n, pa.string()),
-                    cells("start"),
-                    cells("duration"),
-                    column("projection_of", pa.nulls(n, PROJECTION_OF_TYPE))
-                    .combine_chunks()
-                    .cast(PROJECTION_OF_TYPE),
+                    _in_type(columns[field.name], field.type)
+                    for field in PROJECTION_SCHEMA
                 ],
                 schema=PROJECTION_SCHEMA,
             )
         )
     return pa.concat_tables(parts) if parts else PROJECTION_SCHEMA.empty_table()
+
+
+def _in_type(array: pa.Array, type_: pa.DataType) -> pa.Array:
+    """*array* as *type_*: a struct's members reordered by name, else as it stands."""
+    if array.type == type_ or not pa.types.is_struct(type_):
+        return array
+    members = dict(
+        zip((field.name for field in array.type), array.flatten(), strict=True)
+    )
+    return pa.StructArray.from_arrays(
+        [members[field.name] for field in type_],
+        fields=list(type_),
+        mask=array.is_null(),
+    )
 
 
 def write_projection_table(table: pa.Table, path: str | PathLike[str]) -> Path:
@@ -827,7 +850,9 @@ def read_projection_table(
     table type, every timeline one of the manifest's, every cell on its
     timeline's own axis, every ID given once on its timeline (an event is
     named by its timeline and its ID, so two timelines may each hold
-    ``projection_1``).
+    ``projection_1``). Each ``start`` and ``duration`` is read in the
+    number type its row states (:func:`~timetoalign.core.time.numbers_from_package`),
+    and a number not standing as that type says is refused.
 
     Args:
         path: The file.
@@ -839,13 +864,43 @@ def read_projection_table(
     Raises:
         timetoshare.tables.TableError: A ``ValueError``, the first problem
             of the table.
+        ValueError: If a ``start`` or ``duration`` does not hold its number
+            as its row's number type says.
     """
     table = pq.read_table(path)
     problems = projection_problems(table, manifest)
     if problems:
         raise TableError(problems[0])
+    units = table.column("unit").combine_chunks()
+    number_types = table.column("number_type").combine_chunks()
+
+    def cells(name: str) -> pa.StructArray:
+        numbers = numbers_from_package(
+            table.column(name), number_types, where=f"Projections table {name!r}"
+        )
+        valid = numbers.is_valid()
+        return pa.StructArray.from_arrays(
+            [
+                *numbers.flatten(),
+                pc.if_else(valid, units, None),
+                pc.if_else(valid, number_types, None),
+            ],
+            fields=list(COORDINATE_CELL_TYPE),
+            mask=pc.invert(valid),
+        )
+
+    rows = pa.Table.from_arrays(
+        [
+            table.column("id").combine_chunks(),
+            table.column("timeline_id").combine_chunks(),
+            cells("start"),
+            cells("duration"),
+            table.column("projection_of").combine_chunks(),
+        ],
+        names=["id", "timeline_id", "start", "duration", "projection_of"],
+    )
     by_timeline: dict[str, list[Projection]] = {}
-    for row in table.select(list(PROJECTION_SCHEMA.names)).to_pylist():
+    for row in rows.to_pylist():
         by_timeline.setdefault(row["timeline_id"], []).append(Projection.from_row(row))
     return by_timeline
 

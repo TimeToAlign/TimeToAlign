@@ -3638,8 +3638,9 @@ every non-null cell (a float mirrored by its exact ratio), followed by the
 ``unit`` (the :class:`TimeUnit` value) and the ``number_type`` (``"int"``,
 ``"float"`` or ``"fraction"``), which says which side is authoritative. It
 is the cell of a table whose rows may lie on different timelines, such as
-the MatchClaim table and the Projections table, where no field can record
-one axis for all rows.
+the MatchClaim table and the Projections table in memory, where no field
+can record one axis for all rows. A package's files write the number once
+instead (:data:`PACKAGE_COORDINATE_CELL_TYPE`, :data:`PACKAGE_NUMBER_TYPE`).
 """
 
 
@@ -3785,6 +3786,315 @@ def cell_coordinate(
         struct_to_coordinate(cell, number_type),
         TimeUnit(cell["unit"]),
         number_type=number_type,
+    )
+
+
+# ---------------------------------------------------------------------------
+# The package form: a number written once, by its number type
+# ---------------------------------------------------------------------------
+
+PACKAGE_NUMBER_TYPE: pa.StructType = pa.struct(
+    [
+        pa.field("numerator", pa.int64(), nullable=True),
+        pa.field("denominator", pa.int64(), nullable=True),
+        pa.field("value", pa.float64(), nullable=True),
+    ]
+)
+"""A number as a package's tables write it: once, never mirrored.
+
+The member its number type names holds it, the others are null:
+
+============  =============  ===============  =========
+number type   ``numerator``  ``denominator``  ``value``
+============  =============  ===============  =========
+``int``       n              null             null
+``fraction``  n              d ≥ 1            null
+``float``     null           null             x (finite)
+============  =============  ===============  =========
+
+The number type is not in the struct: a Projections table states it once
+per row, a MatchClaim table's coordinate cell beside the number
+(:data:`PACKAGE_COORDINATE_CELL_TYPE`). In memory every number keeps both
+sides (:data:`RATIONAL_STRUCT_TYPE`); :func:`package_numbers` and
+:func:`numbers_from_package` convert at the file boundary, and nowhere else.
+"""
+
+PACKAGE_COORDINATE_CELL_TYPE: pa.StructType = pa.struct(
+    [
+        *PACKAGE_NUMBER_TYPE,
+        pa.field("unit", pa.string(), nullable=True),
+        pa.field("number_type", pa.string(), nullable=True),
+    ]
+)
+"""A coordinate cell as a package's MatchClaim table writes it.
+
+The number of :data:`PACKAGE_NUMBER_TYPE`, then the ``unit`` and the
+``number_type`` of the coordinate: :data:`COORDINATE_CELL_TYPE` in the
+package form (:func:`package_cells`, :func:`cells_from_package`).
+"""
+
+_NUMBER_MEMBERS = ("numerator", "denominator", "value")
+
+
+def _members(array: Any, members: Sequence[str], what: str) -> dict[str, pa.Array]:
+    """The members of a struct column by name, nulls of a null cell applied.
+
+    Raises:
+        ValueError: If *array* is not a struct holding exactly *members*.
+    """
+    if isinstance(array, pa.ChunkedArray):
+        array = array.combine_chunks()
+    names = (
+        [field.name for field in array.type] if pa.types.is_struct(array.type) else []
+    )
+    if sorted(names) != sorted(members):
+        raise ValueError(
+            f"{what} is not a struct of the members {list(members)}: its type is "
+            f"{array.type}"
+        )
+    # flatten() applies the slice offset and nulls every member of a null cell.
+    return dict(zip(names, array.flatten(), strict=True))
+
+
+def _is(number_types: pa.Array, name: str) -> pa.Array:
+    """Mask: the rows whose number type is *name* (a null type is no type)."""
+    return pc.fill_null(pc.equal(number_types, name), False)
+
+
+def package_numbers(numbers: Any, number_types: Any) -> pa.StructArray:
+    """Write a column of numbers in the package form, each by its number type.
+
+    The encoder of the pair (:func:`numbers_from_package` reads): of each
+    cell's two sides, the one its number type names is written, the other
+    left null, so a float is never also written as a ratio, and an int has
+    no denominator.
+
+    Args:
+        numbers: A column of :data:`RATIONAL_STRUCT_TYPE` (both sides filled).
+        number_types: Per row ``"int"``, ``"fraction"`` or ``"float"``, as a
+            string column; a null cell takes a null type.
+
+    Returns:
+        A ``pa.StructArray`` of :data:`PACKAGE_NUMBER_TYPE`, null where
+        *numbers* is null.
+
+    Raises:
+        ValueError: If a non-null number names no number type of the three.
+
+    Examples:
+        >>> numbers = build_number_struct_array([0.5], number_type=NumberType.float)
+        >>> package_numbers(numbers, pa.array(["float"])).to_pylist()
+        [{'numerator': None, 'denominator': None, 'value': 0.5}]
+    """
+    sides = _members(numbers, _NUMBER_MEMBERS, "A number column")
+    if isinstance(number_types, pa.ChunkedArray):
+        number_types = number_types.combine_chunks()
+    if isinstance(numbers, pa.ChunkedArray):
+        numbers = numbers.combine_chunks()
+    valid = numbers.is_valid()
+    is_int = _is(number_types, "int")
+    is_fraction = _is(number_types, "fraction")
+    is_float = _is(number_types, "float")
+    typeless = pc.and_(valid, pc.invert(pc.or_(is_int, pc.or_(is_fraction, is_float))))
+    if pc.any(typeless).as_py():
+        row = pc.index(typeless, True).as_py()
+        raise ValueError(
+            f"Row {row} holds a number of the number type "
+            f"{number_types[row].as_py()!r}, not 'int', 'fraction' or 'float'"
+        )
+    return pa.StructArray.from_arrays(
+        [
+            pc.if_else(is_float, pa.scalar(None, pa.int64()), sides["numerator"]),
+            pc.if_else(is_fraction, sides["denominator"], pa.scalar(None, pa.int64())),
+            pc.if_else(is_float, sides["value"], pa.scalar(None, pa.float64())),
+        ],
+        fields=list(PACKAGE_NUMBER_TYPE),
+        mask=pc.invert(valid),
+    )
+
+
+def numbers_from_package(
+    numbers: Any, number_types: Any, *, where: str = "A package number"
+) -> pa.StructArray:
+    """Read a column of numbers in the package form, each by its number type.
+
+    The decoder of the pair (:func:`package_numbers` writes): every cell must
+    hold its number as its number type says (an int ``(n, null, null)``, a
+    fraction ``(n, d ≥ 1, null)``, a float ``(null, null, x)`` with *x*
+    finite), and the other side is filled again as memory holds it: an int's
+    denominator 1 and its float, a fraction's float ``n / d``, a float's
+    exact ratio (:func:`build_number_struct_array`'s mirrors). Vectorized.
+
+    Args:
+        numbers: A column of :data:`PACKAGE_NUMBER_TYPE` (its members read by
+            name, in any order).
+        number_types: Per row the number type, as a string column.
+        where: What the column is, for a message (``"MatchClaim table
+            start_anchor.coordinate_a"``); the row follows.
+
+    Returns:
+        A ``pa.StructArray`` of :data:`RATIONAL_STRUCT_TYPE`, null where
+        *numbers* is null.
+
+    Raises:
+        ValueError: If the column is not of the three members, or a
+            non-null cell does not hold its number as its number type says
+            (an unknown or null number type included), naming the first such
+            row and what it holds.
+
+    Examples:
+        >>> numbers = pa.array(
+        ...     [{"numerator": 3, "denominator": None, "value": None}],
+        ...     PACKAGE_NUMBER_TYPE,
+        ... )
+        >>> numbers_from_package(numbers, pa.array(["int"])).to_pylist()
+        [{'value': 3.0, 'numerator': 3, 'denominator': 1}]
+    """
+    sides = _members(numbers, _NUMBER_MEMBERS, where)
+    if isinstance(numbers, pa.ChunkedArray):
+        numbers = numbers.combine_chunks()
+    if isinstance(number_types, pa.ChunkedArray):
+        number_types = number_types.combine_chunks()
+    valid = numbers.is_valid()
+    numerator, denominator, value = (sides[name] for name in _NUMBER_MEMBERS)
+    has_numerator = numerator.is_valid()
+    has_denominator = denominator.is_valid()
+    has_value = value.is_valid()
+    is_int = _is(number_types, "int")
+    is_fraction = _is(number_types, "fraction")
+    is_float = _is(number_types, "float")
+    held = pc.or_(
+        pc.and_(
+            is_int,
+            pc.and_(has_numerator, pc.invert(pc.or_(has_denominator, has_value))),
+        ),
+        pc.or_(
+            pc.and_(
+                is_fraction,
+                pc.and_(
+                    pc.and_(has_numerator, pc.invert(has_value)),
+                    pc.fill_null(pc.greater_equal(denominator, 1), False),
+                ),
+            ),
+            pc.and_(
+                is_float,
+                pc.and_(
+                    pc.invert(pc.or_(has_numerator, has_denominator)),
+                    pc.fill_null(pc.is_finite(value), False),
+                ),
+            ),
+        ),
+    )
+    wrong = pc.and_(valid, pc.invert(held))
+    if pc.any(wrong).as_py():
+        row = pc.index(wrong, True).as_py()
+        number_type = number_types[row].as_py()
+        cell = (numerator[row].as_py(), denominator[row].as_py(), value[row].as_py())
+        spelled = "(" + ", ".join("null" if x is None else repr(x) for x in cell) + ")"
+        if number_type not in ("int", "fraction", "float"):
+            problem = (
+                f"its number type is {number_type!r}, not 'int', 'fraction' or 'float'"
+            )
+        else:
+            problem = (
+                f"the {number_type} cell (numerator, denominator, value) holds "
+                f"{spelled}, where an int is (n, null, null), a fraction "
+                f"(n, d >= 1, null) and a float (null, null, x) with x finite"
+            )
+        raise ValueError(f"{where} row {row}: {problem}")
+
+    int_rows = is_int.to_numpy(zero_copy_only=False)
+    float_rows = is_float.to_numpy(zero_copy_only=False)
+    n = numerator.fill_null(0).to_numpy(zero_copy_only=False).astype(np.int64)
+    d = denominator.fill_null(1).to_numpy(zero_copy_only=False).astype(np.int64)
+    x = value.fill_null(0.0).to_numpy(zero_copy_only=False).astype(np.float64)
+    d[int_rows] = 1
+    mirror_n, mirror_d = _pairs_from_float_array(np.where(float_rows, x, 0.0))
+    out_n = np.where(float_rows, mirror_n, n)
+    out_d = np.where(float_rows, mirror_d, d)
+    out_x = np.where(float_rows, x, n.astype(np.float64) / d.astype(np.float64))
+    null = pc.invert(valid).to_numpy(zero_copy_only=False)
+    return pa.StructArray.from_arrays(
+        [
+            pa.array(out_x, pa.float64(), mask=null),
+            pa.array(out_n, pa.int64(), mask=null),
+            pa.array(out_d, pa.int64(), mask=null),
+        ],
+        fields=list(RATIONAL_STRUCT_TYPE),
+        mask=pa.array(null),
+    )
+
+
+def package_cells(cells: Any) -> pa.StructArray:
+    """Write a column of coordinate cells in the package form.
+
+    Each cell's number by :func:`package_numbers`, in its own number type;
+    ``unit`` and ``number_type`` kept.
+
+    Args:
+        cells: A column of :data:`COORDINATE_CELL_TYPE`.
+
+    Returns:
+        A ``pa.StructArray`` of :data:`PACKAGE_COORDINATE_CELL_TYPE`.
+    """
+    members = _members(
+        cells, list(COORDINATE_CELL_TYPE.names), "A coordinate cell column"
+    )
+    if isinstance(cells, pa.ChunkedArray):
+        cells = cells.combine_chunks()
+    valid = cells.is_valid()
+    numbers = pa.StructArray.from_arrays(
+        [members[name] for name in RATIONAL_STRUCT_TYPE.names],
+        fields=list(RATIONAL_STRUCT_TYPE),
+        mask=pc.invert(valid),
+    )
+    written = package_numbers(numbers, members["number_type"])
+    return pa.StructArray.from_arrays(
+        [*written.flatten(), members["unit"], members["number_type"]],
+        fields=list(PACKAGE_COORDINATE_CELL_TYPE),
+        mask=pc.invert(valid),
+    )
+
+
+def cells_from_package(
+    cells: Any, *, where: str = "A coordinate cell"
+) -> pa.StructArray:
+    """Read a column of coordinate cells in the package form.
+
+    Each cell's number by :func:`numbers_from_package`, in the number type
+    the cell names; a non-null cell must name its unit.
+
+    Args:
+        cells: A column of :data:`PACKAGE_COORDINATE_CELL_TYPE` (members
+            read by name, in any order).
+        where: What the column is, for a message; the row follows.
+
+    Returns:
+        A ``pa.StructArray`` of :data:`COORDINATE_CELL_TYPE`.
+
+    Raises:
+        ValueError: As :func:`numbers_from_package`, or if a non-null cell
+            names no unit.
+    """
+    members = _members(cells, list(PACKAGE_COORDINATE_CELL_TYPE.names), where)
+    if isinstance(cells, pa.ChunkedArray):
+        cells = cells.combine_chunks()
+    valid = cells.is_valid()
+    unitless = pc.and_(valid, members["unit"].is_null())
+    if pc.any(unitless).as_py():
+        raise ValueError(
+            f"{where} row {pc.index(unitless, True).as_py()}: it names no unit"
+        )
+    numbers = pa.StructArray.from_arrays(
+        [members[name] for name in _NUMBER_MEMBERS],
+        fields=list(PACKAGE_NUMBER_TYPE),
+        mask=pc.invert(valid),
+    )
+    read = numbers_from_package(numbers, members["number_type"], where=where)
+    return pa.StructArray.from_arrays(
+        [*read.flatten(), members["unit"], members["number_type"]],
+        fields=list(COORDINATE_CELL_TYPE),
+        mask=pc.invert(valid),
     )
 
 

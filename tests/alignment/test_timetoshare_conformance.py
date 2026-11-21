@@ -28,7 +28,7 @@ from timetoalign.alignment import (
     Provenance,
 )
 from timetoalign.core import Coordinate, TimeUnit
-from timetoalign.core.time import COORDINATE_CELL_TYPE
+from timetoalign.core.time import COORDINATE_CELL_TYPE, PACKAGE_COORDINATE_CELL_TYPE
 from timetoalign.timelines.types import (
     ContinuousLogicalTimeline,
     ContinuousPhysicalTimeline,
@@ -54,8 +54,13 @@ def _bundle() -> AlignmentBundle:
 
 class TestSchema:
     def test_the_table_type_is_timetoshare_s(self) -> None:
-        assert pa.schema(list(MatchClaimField.pa_schema)).equals(MATCH_CLAIM_SCHEMA)
-        assert COORDINATE_CELL_TYPE == COORDINATE_TYPE
+        written = MatchClaimField.from_claims([]).package_table.schema
+        assert written.remove_metadata().equals(MATCH_CLAIM_SCHEMA)
+        assert PACKAGE_COORDINATE_CELL_TYPE == COORDINATE_TYPE
+        in_memory = pa.schema(list(MatchClaimField.pa_schema))
+        assert in_memory.names == MATCH_CLAIM_SCHEMA.names
+        anchor = in_memory.field("start_anchor").type
+        assert [anchor.field(i).type for i in range(2)] == [COORDINATE_CELL_TYPE] * 2
         assert MatchClaimField._PROVENANCE_KEY == PROVENANCE_METADATA_KEY.encode()
 
 
@@ -97,7 +102,7 @@ class TestFixtureTable:
         assert written.schema.metadata == fixture.schema.metadata
         # In memory a list's item is named "item", in Parquet "element": the
         # values and types are compared, and the schema metadata apart.
-        stored_again = MatchClaimField.from_claims(field.to_claims()).table
+        stored_again = MatchClaimField.from_claims(field.to_claims()).package_table
         assert stored_again.equals(fixture)
         assert stored_again.schema.metadata == fixture.schema.metadata
 
@@ -105,8 +110,8 @@ class TestFixtureTable:
         fixture = pq.read_table(_FIXTURE)
         reversed_table = fixture.select(list(reversed(fixture.column_names)))
         assert (
-            MatchClaimField.from_table(reversed_table).to_claims()
-            == MatchClaimField.from_table(fixture).to_claims()
+            MatchClaimField.from_package_table(reversed_table).to_claims()
+            == MatchClaimField.from_package_table(fixture).to_claims()
         )
 
 
@@ -134,19 +139,18 @@ class TestWhatTheLibraryWrites:
         ]
         table = pq.read_table(claims.to_parquet(tmp_path))
         assert match_claim_problems(table) == []
+        members = ("numerator", "denominator", "value")
         cells = [
-            (
-                anchor["coordinate_a"]["numerator"],
-                anchor["coordinate_a"]["denominator"],
-                anchor["coordinate_b"]["numerator"],
-                anchor["coordinate_b"]["denominator"],
+            tuple(
+                tuple(anchor[side][member] for member in members)
+                for side in ("coordinate_a", "coordinate_b")
             )
             for anchor in table.column("start_anchor").to_pylist()
         ]
         assert cells == [
-            (1, 3, 3602879701896397, 36028797018963968),
-            (4, 1, 88200, 1),
-            (44100, 1, 1, 1),
+            ((1, 3, None), (None, None, 0.1)),
+            ((4, 1, None), (88200, None, None)),
+            ((44100, None, None), (None, None, 1.0)),
         ]
         expected = {
             "stated_by": None,
@@ -186,6 +190,6 @@ class TestWhatTheLibraryWrites:
         assert field.table.column("id").to_pylist() == ["c1", "c2", None]
         bundle = _bundle()
         bundle.add_match_claims(claims)
-        table = bundle.match_claim_table.table
+        table = bundle.match_claim_table.package_table
         assert match_claim_problems(table) == []
         assert table.column("id").to_pylist() == ["c1", "c2", "claim_1"]

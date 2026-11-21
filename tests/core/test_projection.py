@@ -11,9 +11,9 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
+import timetoshare
 from pydantic import ValidationError
 from timetoshare.tables import (
-    PROJECTION_COLUMNS,
     PROJECTION_SCHEMA,
     fixture_path,
     projection_problems,
@@ -30,7 +30,12 @@ from timetoalign.core import (
     TimeUnit,
 )
 from timetoalign.core.fields import field_metadata
-from timetoalign.core.time import COORDINATE_CELL_TYPE
+from timetoalign.core.time import (
+    COORDINATE_CELL_TYPE,
+    PACKAGE_NUMBER_TYPE,
+    package_cells,
+)
+from timetoalign.timelines.manifest import read_projection_table
 
 REFERENCE = EventReference(timeline_id="clt_6", event_id="x1azmn68")
 
@@ -349,34 +354,46 @@ FIXTURE_PROJECTIONS = [
 ]
 
 
+def _package_numbers(cells: pa.StructArray) -> pa.StructArray:
+    """The numbers of coordinate cells, each written once, as a package writes them."""
+    written = package_cells(cells)
+    return pa.StructArray.from_arrays(
+        [written.field(name) for name in PACKAGE_NUMBER_TYPE.names],
+        fields=list(PACKAGE_NUMBER_TYPE),
+        mask=written.is_null(),
+    )
+
+
 class TestTimeToShareFixture:
     def test_the_fixture_rows_read_as_projections(self) -> None:
-        table = _fixture_projections()
-        read = [Projection.from_row(row) for row in table.to_pylist()]
-        assert read == FIXTURE_PROJECTIONS
-        assert [type(p.start.value) for p in read] == [int] * 6 + [float] + [int] * 2
+        manifest = timetoshare.loads(
+            fixture_path("manifest.yaml").read_text(encoding="utf-8")
+        )
+        read = read_projection_table(fixture_path("projections.parquet"), manifest)
+        assert read == {
+            "dpt_1": FIXTURE_PROJECTIONS[:6] + FIXTURE_PROJECTIONS[7:],
+            "cpt_1": [FIXTURE_PROJECTIONS[6]],
+        }
+        timelines = _fixture_projections().column("timeline_id").to_pylist()
+        assert timelines == ["dpt_1"] * 6 + ["cpt_1"] + ["dpt_1"] * 2
+        assert [type(p.start.value) for p in read["dpt_1"]] == [int] * 8
+        assert type(read["cpt_1"][0].start.value) is float
 
-    def test_the_field_writes_the_fixture_columns(self) -> None:
+    def test_the_field_in_the_package_form_is_the_fixture_table(self) -> None:
         table = _fixture_projections()
         field = ProjectionField.from_projections(FIXTURE_PROJECTIONS)
-        for name in ("id", "start", "duration", "projection_of"):
-            assert field.data.field(name).to_pylist() == (
-                table.column(name).to_pylist()
-            ), name
-            assert field.data.field(name).type == table.schema.field(name).type
-
-    def test_the_field_with_its_timelines_is_a_valid_projections_table(self) -> None:
-        table = _fixture_projections()
-        field = ProjectionField.from_projections(FIXTURE_PROJECTIONS)
+        start = field.data.field("start")
         written = pa.Table.from_arrays(
             [
                 field.data.field("id"),
                 table.column("timeline_id").combine_chunks(),
-                field.data.field("start"),
-                field.data.field("duration"),
+                start.field("unit"),
+                start.field("number_type"),
+                _package_numbers(start),
+                _package_numbers(field.data.field("duration")),
                 field.data.field("projection_of"),
             ],
             schema=PROJECTION_SCHEMA,
         )
         assert projection_problems(written) == []
-        assert written.equals(table.select(PROJECTION_COLUMNS))
+        assert written.equals(table)

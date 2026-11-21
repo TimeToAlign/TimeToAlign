@@ -114,17 +114,13 @@ def _bundle(*, nomatch: bool = True) -> AlignmentBundle:
     return bundle
 
 
-def _cell(
-    numerator: int, denominator: int, unit: str, number_type: str
+def _number(
+    numerator: int | None = None,
+    denominator: int | None = None,
+    value: float | None = None,
 ) -> dict[str, Any]:
-    """A coordinate cell: the number as a float and as its exact ratio."""
-    return {
-        "value": numerator / denominator,
-        "numerator": numerator,
-        "denominator": denominator,
-        "unit": unit,
-        "number_type": number_type,
-    }
+    """A number as a package writes it: once, the other members null."""
+    return {"numerator": numerator, "denominator": denominator, "value": value}
 
 
 def _merged(*ids: str | None) -> AlignmentBundle:
@@ -194,6 +190,14 @@ class TestResources:
 
         assert Timeline.from_dict(manifest).to_dict()["resources"] == [entry]
 
+    def test_a_resource_id_of_any_shape_is_kept(self) -> None:
+        entry = _resource(id="#table_1")
+
+        bundle = AlignmentBundle.from_dict(_manifest(resources=[entry]))
+
+        assert bundle.resources[0].id == "table_1"
+        assert bundle.to_dict()["resources"] == [entry]
+
     @pytest.mark.parametrize(
         ("resources", "message"),
         [
@@ -212,17 +216,12 @@ class TestResources:
                 "one of ['MD5', 'SHA-1', 'SHA-256', 'SHA-384', 'SHA-512']",
             ),
             (
-                [_resource(id="#table_1")],
-                "resource 'table_1': a resource's ID is 'resource_' followed by a "
-                "positive integer",
-            ),
-            (
                 [_resource(id="#resource_1"), _resource(id="#resource_1", type="Note")],
                 "the id 'resource_1' is held twice in the manifest: by resource "
                 "'resource_1' and by resource 'resource_1'",
             ),
         ],
-        ids=["timeline_unknown", "match_claim_twice", "algorithm", "id", "id_twice"],
+        ids=["timeline_unknown", "match_claim_twice", "algorithm", "id_twice"],
     )
     def test_malformed_resources_are_refused(
         self, resources: list[dict[str, Any]], message: str
@@ -243,35 +242,45 @@ class TestWriting:
             {
                 "id": "onset_a",
                 "timeline_id": "audio",
-                "start": _cell(1, 2, "seconds", "float"),
+                "unit": "seconds",
+                "number_type": "float",
+                "start": _number(value=0.5),
                 "duration": None,
                 "projection_of": None,
             },
             {
                 "id": "projection_1",
                 "timeline_id": "audio",
-                "start": _cell(9, 1, "seconds", "float"),
+                "unit": "seconds",
+                "number_type": "float",
+                "start": _number(value=9.0),
                 "duration": None,
                 "projection_of": {"timeline_id": "part", "event_id": "p1"},
             },
             {
                 "id": "projection_1",
                 "timeline_id": "pcm",
-                "start": _cell(0, 1, "samples", "int"),
-                "duration": _cell(44100, 1, "samples", "int"),
+                "unit": "samples",
+                "number_type": "int",
+                "start": _number(0),
+                "duration": _number(44100),
                 "projection_of": {"timeline_id": "score", "event_id": "n1"},
             },
             {
                 "id": "projection_2",
                 "timeline_id": "pcm",
-                "start": _cell(66150, 1, "samples", "int"),
+                "unit": "samples",
+                "number_type": "int",
+                "start": _number(66150),
                 "duration": None,
                 "projection_of": {"timeline_id": "score", "event_id": "n2"},
             },
             {
                 "id": "projection_3",
                 "timeline_id": "pcm",
-                "start": _cell(22050, 1, "samples", "int"),
+                "unit": "samples",
+                "number_type": "int",
+                "start": _number(22050),
                 "duration": None,
                 "projection_of": None,
             },
@@ -750,7 +759,7 @@ class TestTimeToShareFixturePackage:
 
     @pytest.mark.parametrize(
         "index",
-        [0, 1, 2, 3, 4, 5],
+        [0, 1, 2, 3, 4, 5, 6],
         ids=[
             "no_filter",
             "actor_default",
@@ -758,6 +767,7 @@ class TestTimeToShareFixturePackage:
             "other_actor_true",
             "actor_undecided",
             "actor_unlikely_false",
+            "compact_actor_true",
         ],
     )
     def test_anchors_and_potential_matchstamps_are_the_expected(
@@ -766,7 +776,7 @@ class TestTimeToShareFixturePackage:
         cases = timetoshare.loads(
             (_TABLES / "expected.yaml").read_text(encoding="utf-8")
         )["cases"]
-        assert len(cases) == 6
+        assert len(cases) == 7
         case = cases[index]
 
         anchors, stamps, edges = _derived(bundle, case)

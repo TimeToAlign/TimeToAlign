@@ -388,10 +388,16 @@ def _normalise_cell(cell: dict[str, Any]) -> dict[str, Any]:
         if value is None:
             return {"value": None, "numerator": None, "denominator": None}
         return number_cell(float(value), NumberType.float)
+    numerator = _coerce_ratio_component(numerator, "numerator")
+    denominator = _coerce_ratio_component(denominator, "denominator")
+    if denominator:
+        # One spelling per value in memory: 2/4 is held as 1/2.
+        ratio = Fraction(numerator, denominator)
+        numerator, denominator = ratio.numerator, ratio.denominator
     return {
         "value": (None if cell["value"] is None else float(cell["value"])),
-        "numerator": _coerce_ratio_component(numerator, "numerator"),
-        "denominator": _coerce_ratio_component(denominator, "denominator"),
+        "numerator": numerator,
+        "denominator": denominator,
     }
 
 
@@ -889,10 +895,11 @@ def _pass_number_struct_array(values: Any) -> pa.StructArray | None:
     """Take a column of complete number structs whole; ``None`` if inapplicable.
 
     Vectorised counterpart of what :func:`number_cell` does to one cell dict
-    with both sides present: the cell is kept as it stands. A column of
-    another struct type, or one holding a non-null cell with a null
-    numerator or denominator, is left to the per-row reader, which knows
-    what such a cell means.
+    with both sides present: the cell is kept, its ratio in lowest terms
+    (:func:`in_lowest_terms`), so memory holds one spelling of each value. A
+    column of another struct type, or one holding a non-null cell with a
+    null numerator or denominator, is left to the per-row reader, which
+    knows what such a cell means.
     """
     if isinstance(values, pa.ChunkedArray):
         values = values.combine_chunks()
@@ -906,8 +913,70 @@ def _pass_number_struct_array(values: Any) -> pa.StructArray | None:
     incomplete = pc.and_(valid, pc.or_(sides[1].is_null(), sides[2].is_null()))
     if pc.any(incomplete).as_py():
         return None
+    return in_lowest_terms(
+        pa.StructArray.from_arrays(
+            sides, fields=list(RATIONAL_STRUCT_TYPE), mask=pc.invert(valid)
+        )
+    )
+
+
+def _lowest_terms(
+    numerator: np.ndarray, denominator: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """Each ratio as ``Fraction(n, d)`` holds it: lowest terms, sign on top.
+
+    Vectorized over two int64 columns; a zero denominator is left as it
+    stands.
+    """
+    divisor = np.gcd(numerator, denominator)
+    divisor = np.where(denominator < 0, -divisor, divisor)
+    divisor = np.where(divisor == 0, 1, divisor)
+    return numerator // divisor, denominator // divisor
+
+
+def in_lowest_terms(numbers: Any) -> pa.StructArray:
+    """A column of numbers or coordinate cells, every ratio in lowest terms.
+
+    Memory holds one spelling of each value, the one ``Fraction(n, d)``
+    holds: a cell holding ``2/4`` holds ``1/2``, ``1/-2`` is ``-1/2``. The
+    other members (the float, a cell's ``unit`` and ``number_type``) are
+    kept, and so is a cell missing its numerator or denominator. Every
+    entry into memory of a column of number structs reduces through here
+    (:func:`build_number_struct_array` and the MatchClaim table's reader),
+    so cells compare by value wherever they are compared. Vectorized.
+
+    Args:
+        numbers: A struct column holding the members ``numerator`` and
+            ``denominator`` (:data:`RATIONAL_STRUCT_TYPE`,
+            :data:`COORDINATE_CELL_TYPE`).
+
+    Returns:
+        A ``pa.StructArray`` of the type of *numbers*.
+
+    Examples:
+        >>> numbers = pa.array(
+        ...     [{"value": 0.5, "numerator": 2, "denominator": 4}],
+        ...     RATIONAL_STRUCT_TYPE,
+        ... )
+        >>> in_lowest_terms(numbers).to_pylist()
+        [{'value': 0.5, 'numerator': 1, 'denominator': 2}]
+    """
+    if isinstance(numbers, pa.ChunkedArray):
+        numbers = numbers.combine_chunks()
+    names = numbers.type.names
+    # flatten() applies the slice offset and nulls every member of a null cell.
+    members = numbers.flatten()
+    at_n, at_d = names.index("numerator"), names.index("denominator")
+    numerator, denominator = members[at_n], members[at_d]
+    complete = pc.and_(numerator.is_valid(), denominator.is_valid())
+    n, d = _lowest_terms(
+        numerator.fill_null(0).to_numpy(zero_copy_only=False).astype(np.int64),
+        denominator.fill_null(1).to_numpy(zero_copy_only=False).astype(np.int64),
+    )
+    members[at_n] = pc.if_else(complete, pa.array(n, pa.int64()), numerator)
+    members[at_d] = pc.if_else(complete, pa.array(d, pa.int64()), denominator)
     return pa.StructArray.from_arrays(
-        sides, fields=list(RATIONAL_STRUCT_TYPE), mask=pc.invert(valid)
+        members, fields=list(numbers.type), mask=numbers.is_null()
     )
 
 
@@ -3871,8 +3940,7 @@ def package_numbers(numbers: Any, number_types: Any) -> pa.StructArray:
     The encoder of the pair (:func:`numbers_from_package` reads): of each
     cell's two sides, the one its number type names is written, the other
     left null, so a float is never also written as a ratio, and an int has
-    no denominator. A fraction is written in lowest terms, the one spelling
-    a reader accepts (a ratio memory holds unreduced is the same value).
+    no denominator. A fraction is written as memory holds it.
 
     Args:
         numbers: A column of :data:`RATIONAL_STRUCT_TYPE` (both sides filled).
@@ -3907,46 +3975,14 @@ def package_numbers(numbers: Any, number_types: Any) -> pa.StructArray:
             f"Row {row} holds a number of the number type "
             f"{number_types[row].as_py()!r}, not 'int', 'fraction' or 'float'"
         )
-    numerator, denominator = _in_lowest_terms(
-        sides["numerator"], sides["denominator"], is_fraction
-    )
     return pa.StructArray.from_arrays(
         [
-            pc.if_else(is_float, pa.scalar(None, pa.int64()), numerator),
-            pc.if_else(is_fraction, denominator, pa.scalar(None, pa.int64())),
+            pc.if_else(is_float, pa.scalar(None, pa.int64()), sides["numerator"]),
+            pc.if_else(is_fraction, sides["denominator"], pa.scalar(None, pa.int64())),
             pc.if_else(is_float, sides["value"], pa.scalar(None, pa.float64())),
         ],
         fields=list(PACKAGE_NUMBER_TYPE),
         mask=pc.invert(valid),
-    )
-
-
-def _in_lowest_terms(
-    numerator: pa.Array, denominator: pa.Array, rows: pa.Array
-) -> tuple[pa.Array, pa.Array]:
-    """The ratios of *rows* divided by their greatest common divisor.
-
-    The same value in its one spelling, the form a package writes a fraction
-    in; a ratio already in lowest terms (any a ``Fraction`` builds) is kept
-    as it is, and so is every row outside *rows*. Vectorized.
-    """
-    n = numerator.fill_null(0).to_numpy(zero_copy_only=False).astype(np.int64)
-    d = denominator.fill_null(1).to_numpy(zero_copy_only=False).astype(np.int64)
-    divisor = np.where(rows.to_numpy(zero_copy_only=False), np.gcd(n, d), 1)
-    divisor[divisor == 0] = 1
-    if (divisor == 1).all():
-        return numerator, denominator
-    return (
-        pa.array(
-            n // divisor,
-            pa.int64(),
-            mask=numerator.is_null().to_numpy(zero_copy_only=False),
-        ),
-        pa.array(
-            d // divisor,
-            pa.int64(),
-            mask=denominator.is_null().to_numpy(zero_copy_only=False),
-        ),
     )
 
 
@@ -3957,11 +3993,12 @@ def numbers_from_package(
 
     The decoder of the pair (:func:`package_numbers` writes): every cell must
     hold its number as its number type says (an int ``(n, null, null)``, a
-    fraction ``(n, d ≥ 1, null)`` in lowest terms, a float ``(null, null,
-    x)`` with *x* finite), and the other side is filled again as memory holds
-    it: an int's denominator 1 and its float, a fraction's float ``n / d``
-    (correctly rounded, as ``float(Fraction(n, d))``), a float's exact ratio
-    (:func:`build_number_struct_array`'s mirrors). Vectorized.
+    fraction ``(n, d ≥ 1, null)``, a float ``(null, null, x)`` with *x*
+    finite), and the other side is filled again as memory holds it: an int's
+    denominator 1 and its float, a fraction's ratio as ``Fraction(n, d)``
+    holds it (``(2, 4, null)`` reads as ``1/2``, the same value) and its float
+    ``n / d`` (correctly rounded, as ``float(Fraction(n, d))``), a float's
+    exact ratio (:func:`build_number_struct_array`'s mirrors). Vectorized.
 
     Args:
         numbers: A column of :data:`PACKAGE_NUMBER_TYPE` (its members read by
@@ -3977,8 +4014,8 @@ def numbers_from_package(
     Raises:
         ValueError: If the column is not of the three members, or a
             non-null cell does not hold its number as its number type says
-            (an unknown or null number type included, and a fraction not in
-            lowest terms), naming the first such row and what it holds.
+            (an unknown or null number type included), naming the first such
+            row and what it holds.
 
     Examples:
         >>> numbers = pa.array(
@@ -4047,15 +4084,7 @@ def numbers_from_package(
     d = denominator.fill_null(1).to_numpy(zero_copy_only=False).astype(np.int64)
     x = value.fill_null(0.0).to_numpy(zero_copy_only=False).astype(np.float64)
     d[int_rows] = 1
-    unreduced = is_fraction.to_numpy(zero_copy_only=False) & (np.gcd(n, d) != 1)
-    if unreduced.any():
-        row = int(np.argmax(unreduced))
-        lowest = Fraction(int(n[row]), int(d[row]))
-        raise ValueError(
-            f"{where} row {row}: the fraction cell (numerator, denominator, value) "
-            f"holds ({n[row]}, {d[row]}, null), not in lowest terms "
-            f"({lowest.numerator}, {lowest.denominator}, null)"
-        )
+    n, d = _lowest_terms(n, d)
     mirror_n, mirror_d = _pairs_from_float_array(np.where(float_rows, x, 0.0))
     out_n = np.where(float_rows, mirror_n, n)
     out_d = np.where(float_rows, mirror_d, d)

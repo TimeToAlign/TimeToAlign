@@ -40,8 +40,9 @@ import pandas as pd
 from timetoshare import DEFAULT_BELIEFS, BeliefState
 
 from timetoalign.alignment.claims import AlignmentAnchor, MatchClaim
-from timetoalign.alignment.filters import ClaimFilter, _meet, belief_context, believed
+from timetoalign.alignment.filters import ClaimFilter, belief_context, believed, meet
 from timetoalign.core.enums import Domain, NumberType, TimeUnit
+from timetoalign.core.ids import quote_id
 from timetoalign.core.retrieval import (
     CoordinateCollection,
     CoordinateFormat,
@@ -450,42 +451,67 @@ class MatchStamp(Stamp):
 
         Returns:
             New MatchStamp with filtered timelines.
+
+        Raises:
+            ValueError: If the filter keeps none of the stamp's timelines,
+                naming them.
         """
-        filt = ClaimFilter.from_kwargs(
-            within=within,
-            id_pattern=id_pattern,
+        return self._narrowed(
+            ClaimFilter.from_kwargs(within=within, id_pattern=id_pattern)
         )
-        filtered_coords = {}
-        for tl_id, coord in self.coordinates.items():
-            if not filt.matches_timeline(tl_id):
-                continue
-            filtered_coords[tl_id] = coord
 
-        # Filter edges to only include those between remaining timelines
-        remaining = set(filtered_coords.keys())
+    def _narrowed(
+        self,
+        filt: ClaimFilter,
+        *,
+        timelines: dict[str, Any] | None = None,
+    ) -> "MatchStamp":
+        """The stamp holding only the timelines *filt* passes.
 
-        filtered_stated_pairs = [
-            (a, b) for a, b in self.stated_pairs if a in remaining and b in remaining
-        ]
-        filtered_inferred_pairs = [
-            (a, b) for a, b in self.inferred_pairs if a in remaining and b in remaining
-        ]
+        The one narrowing of a stamp's timelines
+        (:meth:`ClaimFilter.matches_timeline`), for :meth:`filter_by_timelines`
+        and the bundle's matchstamp getters. The pairs between kept
+        timelines are kept; the source stays the source where it is kept,
+        else the first kept timeline is, and the interval claims are kept
+        with the source only.
 
+        Args:
+            filt: The filter.
+            timelines: The timelines by id, where the filter reads their
+                domains or units.
+
+        Raises:
+            ValueError: If the filter keeps none of the stamp's timelines,
+                naming them.
+        """
+        coordinates = {
+            tl_id: coord
+            for tl_id, coord in self.coordinates.items()
+            if filt.matches_timeline(tl_id, timelines=timelines)
+        }
+        if not coordinates:
+            raise ValueError(
+                f"The filter keeps none of the timelines of the MatchStamp: "
+                f"{', '.join(quote_id(tl_id) for tl_id in self.coordinates)}."
+            )
+        kept_source = self.source_id in coordinates
         return MatchStamp(
-            coordinates=filtered_coords,
-            source_id=(
-                self.source_id
-                if self.source_id in filtered_coords
-                else next(iter(filtered_coords))
-            ),
-            stated_pairs=filtered_stated_pairs,
-            inferred_pairs=filtered_inferred_pairs,
+            coordinates=coordinates,
+            source_id=self.source_id if kept_source else next(iter(coordinates)),
+            stated_pairs=[
+                (a, b)
+                for a, b in self.stated_pairs
+                if a in coordinates and b in coordinates
+            ],
+            inferred_pairs=[
+                (a, b)
+                for a, b in self.inferred_pairs
+                if a in coordinates and b in coordinates
+            ],
             source=self.source,
             is_interpolated=self.is_interpolated,
             conversion_maps=self.conversion_maps,
-            interval_claims=(
-                self.interval_claims if self.source_id in filtered_coords else []
-            ),
+            interval_claims=self.interval_claims if kept_source else [],
         )
 
     def to_dict(
@@ -1015,10 +1041,10 @@ class _Extension:
         """Extend *graph* as this call did, reaching only what it also admits."""
         return graph.extend_to_groups(
             self.groups,
-            within=_meet(self.within, within),
+            within=meet(self.within, within),
             id_pattern=self.id_pattern,
-            include_domains=_meet(self.include_domains, include_domains),
-            include_units=_meet(self.include_units, include_units),
+            include_domains=meet(self.include_domains, include_domains),
+            include_units=meet(self.include_units, include_units),
         )
 
 

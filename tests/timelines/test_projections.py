@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from fractions import Fraction
 
+import pyarrow as pa
 import pytest
 
 from timetoalign.core import (
@@ -17,7 +18,9 @@ from timetoalign.core import (
     TimeUnit,
 )
 from timetoalign.core.fields import field_metadata
+from timetoalign.core.time import RATIONAL_STRUCT_TYPE
 from timetoalign.maps import LinearMap
+from timetoalign.storage import EventData
 from timetoalign.timelines import ContinuousLogicalTimeline, DiscretePhysicalTimeline
 
 
@@ -344,6 +347,38 @@ class TestGetOrAdd:
             [{"event_type": "Projection", "start": 22050, "projection_of": n1}]
         ) == ["projection_1"]
         assert len(timeline.events) == 4
+
+    def test_one_value_is_one_key_however_the_cell_is_spelled(self) -> None:
+        timeline = _quarters()
+        unreduced = {"value": 0.5, "numerator": 2, "denominator": 4}
+        assert timeline.add_projections(
+            [{"event_type": "Projection", "start": unreduced}]
+        ) == ["projection_1"]
+        assert _row(timeline, "projection_1")["start"] == {
+            "value": 0.5,
+            "numerator": 1,
+            "denominator": 2,
+        }
+        assert timeline.add_projections(
+            [Projection(start=Coordinate(Fraction(1, 2), TimeUnit.quarters))]
+        ) == ["projection_1"]
+        assert len(timeline.events) == 1
+
+    def test_an_event_table_given_whole_is_held_in_lowest_terms(self) -> None:
+        start = pa.array(
+            [
+                {"value": 0.5, "numerator": 2, "denominator": 4},
+                {"value": 0.75, "numerator": 3, "denominator": 4},
+            ],
+            RATIONAL_STRUCT_TYPE,
+        )
+        events = EventData.from_arrays(
+            {"id": ["a", "b"], "start": start}, TimeUnit.quarters
+        )
+        assert events.table.column("start").to_pylist() == [
+            {"value": 0.5, "numerator": 1, "denominator": 2},
+            {"value": 0.75, "numerator": 3, "denominator": 4},
+        ]
 
     def test_equal_rows_of_one_call_are_one_projection(self) -> None:
         timeline = _samples()

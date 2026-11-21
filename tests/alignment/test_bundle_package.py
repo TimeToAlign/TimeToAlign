@@ -7,7 +7,6 @@ section "A Package: the Manifest and Its Tables").
 from __future__ import annotations
 
 import hashlib
-import io
 import re
 import shutil
 from fractions import Fraction
@@ -28,7 +27,13 @@ from timetoshare.tables import (
 )
 
 from timetoalign.alignment import AlignmentBundle, MatchClaimField, MatchGraph
-from timetoalign.core import Coordinate, Projection, Provenance, TimeUnit
+from timetoalign.core import (
+    Coordinate,
+    EventReference,
+    Projection,
+    Provenance,
+    TimeUnit,
+)
 from timetoalign.core.time import number_to_json
 from timetoalign.timelines import Timeline
 from timetoalign.timelines.manifest import (
@@ -615,6 +620,85 @@ class TestWriting:
             merged.to_file(tmp_path / "merged.yaml")
         assert list(tmp_path.iterdir()) == []
 
+    def test_unreduced_fractions_in_the_tables_read_as_their_value(
+        self, tmp_path: Path
+    ) -> None:
+        score = ContinuousLogicalTimeline(length=Fraction(8), uid="score")
+        score.add_events([{"id": "n1", "start": Fraction(1, 2), "event_type": "Note"}])
+        audio = ContinuousPhysicalTimeline(length=60.0, uid="audio")
+        audio.add_events([{"id": "o1", "start": 1.0, "event_type": "Note"}])
+        bundle = AlignmentBundle(id="halves")
+        bundle.add_timeline(score)
+        bundle.add_timeline(audio)
+        pair = ({"start": Fraction(3, 2)}, "score", "o1", "audio")
+        bundle.create_match_claims([("n1", "score", "o1", "audio"), pair])
+        bundle.to_file(tmp_path / "package.yaml")
+        first = _bytes(tmp_path)
+
+        def doubled(number: dict[str, Any] | None) -> None:
+            if number is not None and number["denominator"] is not None:
+                number["numerator"] *= 2
+                number["denominator"] *= 2
+
+        claims = pq.read_table(tmp_path / "match_claims.parquet")
+        index = claims.schema.get_field_index("start_anchor")
+        anchors = claims.column(index).to_pylist()
+        for anchor in anchors:
+            doubled(anchor["coordinate_a"])
+        assert [a["coordinate_a"] for a in anchors] == [
+            {
+                "numerator": n,
+                "denominator": 4,
+                "value": None,
+                "unit": "quarters",
+                "number_type": "fraction",
+            }
+            for n in (2, 6)
+        ]
+        pq.write_table(
+            claims.set_column(
+                index,
+                claims.schema.field(index),
+                pa.array(anchors, claims.schema.field(index).type),
+            ),
+            tmp_path / "match_claims.parquet",
+        )
+        projections = pq.read_table(tmp_path / "projections.parquet")
+        index = projections.schema.get_field_index("start")
+        starts = projections.column(index).to_pylist()
+        for start in starts:
+            doubled(start)
+        assert starts == [_number(6, 4)]
+        pq.write_table(
+            projections.set_column(
+                index,
+                projections.schema.field(index),
+                pa.array(starts, projections.schema.field(index).type),
+            ),
+            tmp_path / "projections.parquet",
+        )
+
+        read = AlignmentBundle.from_file(tmp_path / "package.yaml")
+        assert read.match_claim_table == bundle.match_claim_table
+        held = read.get_timeline("score").get_events(event_type="Projection")
+        assert [(row["id"], row["start"]) for row in held] == [
+            ("projection_1", {"value": 1.5, "numerator": 3, "denominator": 2})
+        ]
+        # The package holds no Note (a manifest names no event), so the score
+        # read holds the Projection alone, and get-or-add names it again.
+        again = AlignmentBundle.from_file(tmp_path / "package.yaml").get_timeline(
+            "score"
+        )
+        projection = Projection(
+            start=Coordinate(Fraction(3, 2), TimeUnit.quarters),
+            projection_of=EventReference(timeline_id="audio", event_id="o1"),
+        )
+        assert again.add_projections([projection]) == ["projection_1"]
+        assert len(again.events) == 1
+
+        read.to_file(tmp_path / "package.yaml")
+        assert _bytes(tmp_path) == first
+
     def test_a_projections_table_breaking_the_format_is_refused(
         self, tmp_path: Path
     ) -> None:
@@ -728,9 +812,7 @@ class TestTimeToShareFixturePackage:
             "cpt_1": 2,
             "dpt_1": 8,
         }
-        assert projection_table(known[tid] for tid in sorted(known)).equals(
-            fixture.sort_by("timeline_id")
-        )
+        assert projection_table(known[tid] for tid in sorted(known)).equals(fixture)
 
     def test_the_package_is_written_back(self, tmp_path: Path) -> None:
         bundle = AlignmentBundle.from_file(_TABLES / "manifest.yaml")
@@ -746,25 +828,10 @@ class TestTimeToShareFixturePackage:
         assert (tmp_path / "match_claims.parquet").read_bytes() == (
             _TABLES / "match_claims.parquet"
         ).read_bytes()
-        claims, projections = written["resources"]
-        assert claims == fixture["resources"][0]
-        data = (tmp_path / "projections.parquet").read_bytes()
-        # The rows by timeline, each in its event order: the fixture sorted
-        # (stably) by timeline and written with Parquet's defaults.
-        sorted_fixture = io.BytesIO()
-        pq.write_table(
-            pq.read_table(_TABLES / "projections.parquet").sort_by("timeline_id"),
-            sorted_fixture,
-        )
-        assert data == sorted_fixture.getvalue()
-        assert projections == {
-            **fixture["resources"][1],
-            "size": len(data),
-            "integrity": {
-                "algorithm": "SHA-256",
-                "digest": hashlib.sha256(data).hexdigest(),
-            },
-        }
+        assert (tmp_path / "projections.parquet").read_bytes() == (
+            _TABLES / "projections.parquet"
+        ).read_bytes()
+        assert written["resources"] == fixture["resources"]
 
     @pytest.mark.parametrize(
         "index",

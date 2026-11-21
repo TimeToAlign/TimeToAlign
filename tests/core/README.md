@@ -678,15 +678,15 @@ timeline is tested in `tests/timelines/test_projections.py`.
   (each row's `unit` and `number_type` once, `start` and `duration` their
   number once): read by the package reader (`read_projection_table`
   against the fixture manifest), its eleven rows equal the eleven
-  Projections spelled out in the test, by timeline in row order (eight ints
-  on `dpt_1`, one of them an interval; two floats on `cpt_1`, the instant
-  10.0 seconds and the interval 12.5 seconds lasting 0.75; one fraction on
-  `clt_2`, the interval 7/2 quarters lasting 1/2; two without
-  `projection_of`), each start and duration of its number type's Python type
-  (`int`, `float`, `Fraction`), so each of the three number types is read
+  Projections spelled out in the test, in the fixture's row order, by
+  timeline ID and each timeline's own order (one fraction on `clt_2`, the
+  interval 7/2 quarters lasting 1/2; two floats on `cpt_1`, the instant
+  10.0 seconds and the interval 12.5 seconds lasting 0.75; eight ints on
+  `dpt_1`, one of them an interval; two without `projection_of`), each
+  start and duration of its number type's Python type (`int`, `float`,
+  `Fraction`), so each of the three number types is read
   from the member the package form writes it in. The fixture's `timeline_id`
-  column is pinned in its row order (`dpt_1` ×6, `cpt_1`, `dpt_1` ×2,
-  `clt_2`, `cpt_1`).
+  column is pinned in its row order (`clt_2`, `cpt_1` ×2, `dpt_1` ×8).
   `ProjectionField.from_projections` of those eleven, its cells written in
   the package form (`package_numbers` of each position's number by its
   number type, the row's `unit` and `number_type` from its start cell) and
@@ -848,16 +848,31 @@ shape and holds exactly the number written.
   of an event table is of the number struct type, and a builder that read it
   cell by cell would be correct and slow, so the proof has two halves. Same
   cells: the struct column `[{0.75, 3, 4}, null, {0.5, 2, 4}]` on a quarters
-  axis gives `{0.75, 3, 4, "quarters", "fraction"}`, null, `{0.5, 2, 4,
-  "quarters", "fraction"}` (a cell is kept as it stands, its ratio not
-  reduced), exactly what the per-row reader makes of the same cells given as
-  dicts; a slice of a longer column, whose dropped first row and whose null
+  axis gives `{0.75, 3, 4, "quarters", "fraction"}`, null, `{0.5, 1, 2,
+  "quarters", "fraction"}` (a cell keeps its members, its ratio in lowest
+  terms: memory holds one spelling of a value, so `2/4` is held as `1/2`),
+  exactly what the per-row reader makes of the same cells given as dicts; a slice of a longer column, whose dropped first row and whose null
   cell hold numbers underneath, gives the cells of its own rows, and a
   chunked column the cells of all its chunks. No Python per row: with the
   per-row cell encoder replaced by one that fails, the struct column still
   builds the same cells. A non-null cell missing its ratio, `{0.5, null,
   null}`, is left to the per-row reader, which mirrors the float:
   `{0.5, 1, 2, "seconds", "float"}`.
+- **One spelling of a value in memory** (`in_lowest_terms`). Every entry
+  of whole number structs into memory reduces through it, so two spellings of
+  one value never stand side by side to be compared member by member (the
+  MatchClaim table's succession check, field equality and the Projection
+  keys all compare members). What would show it broken: a ratio kept
+  unreduced, a sign left on the denominator, another member touched, a
+  null cell or a cell missing a side altered, a row moved. Evidence: the
+  number column `[{0.5, 2, 4}, {-1.5, 6, -4}, {0.0, 0, 5}, {3.0, 3, 1},
+  null, {0.5, null, null}]` gives exactly `[{0.5, 1, 2}, {-1.5, -3, 2},
+  {0.0, 0, 1}, {3.0, 3, 1}, null, {0.5, null, null}]`; a coordinate cell
+  column `[{0.5, 2, 4, "quarters", "fraction"}, {0.25, 1, 4, "seconds",
+  "float"}]` gives `[{0.5, 1, 2, "quarters", "fraction"}, {0.25, 1, 4,
+  "seconds", "float"}]` (its type kept, `unit` and `number_type` kept); a
+  slice reduces its own rows. `number_cell` of the dict `{0.5, 2, 4}` gives
+  `{0.5, 1, 2}` and of `{-1.5, 6, -4}` gives `{-1.5, -3, 2}`.
 - **Reading back keeps the number type.** `cell_coordinate` of each built
   cell equals the coordinate written, and its value has the written Python
   type (`Fraction`, `float`, `int`); `scalar=Duration` gives a `Duration`; a
@@ -866,15 +881,16 @@ shape and holds exactly the number written.
 
 **The package form** (`TestPackageForm`). A package writes a number once:
 the member its number type names holds it, the others are null — an int
-`(n, null, null)`, a fraction `(n, d ≥ 1, null)` in lowest terms, a float
-`(null, null, x)` with x finite — so a float is never also a ratio, an int
-has no denominator, and a fraction has one spelling. One encoder/decoder pair (`package_numbers` /
+`(n, null, null)`, a fraction `(n, d ≥ 1, null)`, a float
+`(null, null, x)` with x finite — so a float is never also a ratio and an
+int has no denominator. One encoder/decoder pair (`package_numbers` /
 `numbers_from_package`, with `package_cells` / `cells_from_package` for a
 cell that names its axis) converts at the file boundary; memory keeps both
 sides. What would show it broken: a mirror left in the file, a side not
 filled again on reading (an int read with a null denominator, a float
-without its ratio), a malformed cell read as some number, a fraction read
-or written in two spellings, a fraction's float not the one memory holds,
+without its ratio), a malformed cell read as some number, an unreduced
+fraction refused or read as another value than its reduced form, a
+fraction rewritten on writing, a fraction's float not the one memory holds,
 a wrong row named. Evidence:
 
 - **The types.** `PACKAGE_NUMBER_TYPE` is `struct<numerator: int64,
@@ -885,11 +901,11 @@ a wrong row named. Evidence:
   `{1, 3, null, "quarters", "fraction"}`, null, `{null, null, 0.1,
   "seconds", "float"}`, `{139776, null, null, "samples", "int"}`, `{2, 3,
   null, "quarters", "fraction"}`; a fraction cell holding `4/1` keeps its
-  denominator `1` (it is a fraction). A memory number column holding the
-  unreduced ratio `2/4` (value `0.5`), `-6/4` and `0/5` as fractions is
-  written `(1, 2, null)`, `(-3, 2, null)`, `(0, 1, null)` (the same values
-  in their one spelling, not a guessed ratio), and its int and float rows
-  are written as they stand.
+  denominator `1` (it is a fraction). The encoder writes the ratio it is
+  given and nothing else: a number column built by hand holding `2/4`
+  (value `0.5`), `-6/4` and `0/5` as fractions (memory never holds them:
+  every entry reduces) is written `(2, 4, null)`, `(-6, 4, null)`,
+  `(0, 5, null)`, and its int and float rows are written as they stand.
 - **Read back whole.** `cells_from_package` of that column equals the
   memory column built by `coordinate_cells` (`equals`, every member, the
   float's ratio `3602879701896397/36028797018963968` and the int's
@@ -908,12 +924,16 @@ a wrong row named. Evidence:
   value) holds (3, 1, null), where an int is (n, null, null), a fraction
   (n, d >= 1, null) and a float (null, null, x) with x finite`); a null
   cell is no problem.
-- **A fraction not in lowest terms is refused** (TimeToShare's rule):
-  `(2, 4, null)` after a reduced `(1, 2, null)` gives exactly `Test row 1:
-  the fraction cell (numerator, denominator, value) holds (2, 4, null), not
-  in lowest terms (1, 2, null)`; `(0, 2, null)` (zero is `0/1`) and
-  `(-2, 4, null)` are refused alike, while `(-1, 2, null)`, `(0, 1, null)`
-  and `(4, 1, null)` read.
+- **An unreduced fraction is read, as its reduced form.** Any fraction is
+  a valid cell: `(2, 4, null)`, `(-2, 4, null)`, `(0, 2, null)` and
+  `(-6, 4, null)` read without error as exactly the memory cells of
+  `1/2`, `-1/2`, `0/1` and `-3/2` (numerator, denominator and float each
+  equal to those of the reduced cells `(1, 2, null)`, `(-1, 2, null)`,
+  `(0, 1, null)`, `(-3, 2, null)` read alike), so `cell_coordinate` gives
+  `Coordinate(Fraction(1, 2), "quarters")` for both spellings and an
+  unreduced cell compares equal to its reduced form wherever cells are
+  compared; `(-1, 2, null)`, `(0, 1, null)` and `(4, 1, null)` read as
+  `-1/2`, `0` and `4`.
 - **A fraction's float is correctly rounded.** `(1152921504606847009, 3,
   null)`, whose numerator is past `2**53`, reads with value `3.843071682022824e+17`, which is `float(Fraction(n,
   3))` and which a float64 division of the two members does not give

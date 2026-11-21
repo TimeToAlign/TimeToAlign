@@ -24,6 +24,8 @@ from timetoalign.core.time import (
     cell_coordinate,
     cells_from_package,
     coordinate_cells,
+    in_lowest_terms,
+    number_cell,
     numbers_from_package,
     package_cells,
     package_numbers,
@@ -152,7 +154,8 @@ class TestNumberStructColumns:
         None,
         {"value": 0.5, "numerator": 2, "denominator": 4},
     ]
-    EXPECTED = [_quarters(3, 4), None, _quarters(2, 4)]
+    # Memory holds one spelling of a value: 2/4 is held as 1/2.
+    EXPECTED = [_quarters(3, 4), None, _quarters(1, 2)]
 
     def _column(self) -> pa.StructArray:
         return pa.array(self.NUMBERS, type=RATIONAL_STRUCT_TYPE)
@@ -213,6 +216,80 @@ class TestNumberStructColumns:
                 "number_type": "float",
             }
         ]
+
+
+class TestLowestTerms:
+    def test_a_number_column_is_held_in_lowest_terms(self) -> None:
+        column = pa.array(
+            [
+                {"value": 0.5, "numerator": 2, "denominator": 4},
+                {"value": -1.5, "numerator": 6, "denominator": -4},
+                {"value": 0.0, "numerator": 0, "denominator": 5},
+                {"value": 3.0, "numerator": 3, "denominator": 1},
+                None,
+                {"value": 0.5, "numerator": None, "denominator": None},
+            ],
+            RATIONAL_STRUCT_TYPE,
+        )
+        reduced = in_lowest_terms(column)
+        assert reduced.type == RATIONAL_STRUCT_TYPE
+        assert reduced.to_pylist() == [
+            {"value": 0.5, "numerator": 1, "denominator": 2},
+            {"value": -1.5, "numerator": -3, "denominator": 2},
+            {"value": 0.0, "numerator": 0, "denominator": 1},
+            {"value": 3.0, "numerator": 3, "denominator": 1},
+            None,
+            {"value": 0.5, "numerator": None, "denominator": None},
+        ]
+
+    def test_a_cell_column_keeps_its_axis(self) -> None:
+        cells = pa.array(
+            [
+                _quarters(2, 4),
+                {
+                    "value": 0.25,
+                    "numerator": 1,
+                    "denominator": 4,
+                    "unit": "seconds",
+                    "number_type": "float",
+                },
+            ],
+            COORDINATE_CELL_TYPE,
+        )
+        reduced = in_lowest_terms(cells)
+        assert reduced.type == COORDINATE_CELL_TYPE
+        assert reduced.to_pylist() == [
+            _quarters(1, 2),
+            {
+                "value": 0.25,
+                "numerator": 1,
+                "denominator": 4,
+                "unit": "seconds",
+                "number_type": "float",
+            },
+        ]
+
+    def test_a_slice_reduces_its_own_rows(self) -> None:
+        column = pa.array(
+            [_quarters(9, 3), _quarters(2, 4), _quarters(6, 4)],
+            COORDINATE_CELL_TYPE,
+        ).slice(1)
+        assert in_lowest_terms(column).to_pylist() == [
+            _quarters(1, 2),
+            _quarters(3, 2),
+        ]
+
+    def test_a_cell_given_whole_is_reduced(self) -> None:
+        assert number_cell({"value": 0.5, "numerator": 2, "denominator": 4}) == {
+            "value": 0.5,
+            "numerator": 1,
+            "denominator": 2,
+        }
+        assert number_cell({"value": -1.5, "numerator": 6, "denominator": -4}) == {
+            "value": -1.5,
+            "numerator": -3,
+            "denominator": 2,
+        }
 
 
 class TestCellCoordinate:
@@ -421,7 +498,7 @@ class TestPackageForm:
             )
         assert message == f"Test row 0: {problem}"
 
-    def test_an_unreduced_fraction_is_written_in_lowest_terms(self) -> None:
+    def test_a_fraction_is_written_as_memory_holds_it(self) -> None:
         memory = pa.array(
             [
                 {"value": 0.5, "numerator": 2, "denominator": 4},
@@ -437,49 +514,54 @@ class TestPackageForm:
             ["fraction", "fraction", "fraction", "int", "float", None]
         )
         assert package_numbers(memory, number_types).to_pylist() == [
-            {"numerator": 1, "denominator": 2, "value": None},
-            {"numerator": -3, "denominator": 2, "value": None},
-            {"numerator": 0, "denominator": 1, "value": None},
+            {"numerator": 2, "denominator": 4, "value": None},
+            {"numerator": -6, "denominator": 4, "value": None},
+            {"numerator": 0, "denominator": 5, "value": None},
             {"numerator": 3, "denominator": None, "value": None},
             {"numerator": None, "denominator": None, "value": 0.5},
             None,
         ]
 
-    def test_a_fraction_not_in_lowest_terms_is_refused(self) -> None:
-        written = pa.array(
+    def test_an_unreduced_fraction_reads_as_its_reduced_form(self) -> None:
+        unreduced = pa.array(
             [
-                _package_cell(1, 2, None, "fraction", "quarters"),
-                _package_cell(2, 4, None, "fraction", "quarters"),
+                _package_cell(n, d, None, "fraction", "quarters")
+                for n, d in ((2, 4), (-2, 4), (0, 2), (-6, 4))
             ],
             PACKAGE_COORDINATE_CELL_TYPE,
         )
-        with pytest.raises(ValueError) as raised:
-            cells_from_package(written, where="Test")
-        assert str(raised.value) == (
-            "Test row 1: the fraction cell (numerator, denominator, value) holds "
-            "(2, 4, null), not in lowest terms (1, 2, null)"
-        )
-
-    @pytest.mark.parametrize(
-        ("numerator", "denominator", "lowest"),
-        [(0, 2, "(0, 1, null)"), (-2, 4, "(-1, 2, null)")],
-        ids=["zero", "negative"],
-    )
-    def test_zero_and_negative_fractions_in_lowest_terms(
-        self, numerator: int, denominator: int, lowest: str
-    ) -> None:
-        written = pa.array(
-            [_package_cell(numerator, denominator, None, "fraction", "quarters")],
+        reduced = pa.array(
+            [
+                _package_cell(n, d, None, "fraction", "quarters")
+                for n, d in ((1, 2), (-1, 2), (0, 1), (-3, 2))
+            ],
             PACKAGE_COORDINATE_CELL_TYPE,
         )
-        with pytest.raises(ValueError) as raised:
-            cells_from_package(written, where="Test")
-        assert str(raised.value) == (
-            f"Test row 0: the fraction cell (numerator, denominator, value) holds "
-            f"({numerator}, {denominator}, null), not in lowest terms {lowest}"
-        )
+        read = cells_from_package(unreduced)
+        assert read.to_pylist() == [
+            {
+                "value": value,
+                "numerator": numerator,
+                "denominator": denominator,
+                "unit": "quarters",
+                "number_type": "fraction",
+            }
+            for value, numerator, denominator in (
+                (0.5, 1, 2),
+                (-0.5, -1, 2),
+                (0.0, 0, 1),
+                (-1.5, -3, 2),
+            )
+        ]
+        assert read.equals(cells_from_package(reduced))
+        assert [cell_coordinate(cell) for cell in read.to_pylist()] == [
+            Coordinate(Fraction(1, 2), "quarters"),
+            Coordinate(Fraction(-1, 2), "quarters"),
+            Coordinate(Fraction(0), "quarters"),
+            Coordinate(Fraction(-3, 2), "quarters"),
+        ]
 
-    def test_fractions_in_lowest_terms_are_read(self) -> None:
+    def test_reduced_fractions_are_read(self) -> None:
         written = pa.array(
             [
                 _package_cell(n, d, None, "fraction", "quarters")

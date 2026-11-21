@@ -265,6 +265,24 @@ class TestMatchStamp:
         assert "tl_c" not in filtered.coordinates
         assert len(filtered.stated_pairs) == 1
 
+    def test_filter_by_timelines_keeping_none_is_refused(self) -> None:
+        """A filter keeping no timeline names the stamp's, never ``StopIteration``."""
+        stamp = MatchStamp(
+            coordinates={"tl_a": 100.0, "tl_b": 50.0, "tl_c": 25.0},
+            stated_pairs=[("tl_a", "tl_b"), ("tl_b", "tl_c")],
+        )
+        for narrowing in (
+            {"within": {"zzz"}},
+            {"within": set()},
+            {"id_pattern": r"^zzz$"},
+        ):
+            with pytest.raises(ValueError) as raised:
+                stamp.filter_by_timelines(**narrowing)
+            assert str(raised.value) == (
+                "The filter keeps none of the timelines of the MatchStamp: "
+                "'tl_a', 'tl_b', 'tl_c'."
+            )
+
     def test_to_dict_roundtrip(self) -> None:
         """Serialize and deserialize MatchStamp."""
         stamp = MatchStamp(

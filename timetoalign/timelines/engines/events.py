@@ -175,6 +175,20 @@ def _held_by_key(
     ]
 
 
+def _held_by(row: dict[str, Any], child_id: str) -> dict[str, Any]:
+    """*row*, an event a child reported, tagged with the timeline holding it.
+
+    ``source_timeline`` names the timeline that holds the event: the child
+    for its own events, which carry no tag (or a null one, beside a
+    descendant's tagged rows), a deeper descendant's name kept. A row of the
+    timeline's own events is never passed here, so in a parent's table a
+    null ``source_timeline`` means the parent's own event at every depth.
+    """
+    if row.get("source_timeline") is None:
+        row["source_timeline"] = child_id
+    return row
+
+
 def _decoded_rows(data: EventData) -> list[dict[str, Any]]:
     """Return rows with every rational-shaped column decoded."""
     rows = list(data)
@@ -645,8 +659,7 @@ class EventsMixin:
                         result[coord_key] = shift_coordinate(
                             val, child_offset, subtract=False
                         )
-                result.setdefault("source_timeline", child_id)
-                return result
+                return _held_by(result, child_id)
 
         return None
 
@@ -663,8 +676,11 @@ class EventsMixin:
 
         When ``include_children=True`` (the default), events from all
         children are included with their coordinates adjusted to the
-        root timeline's coordinate system. Segment events (internal
-        bookkeeping) are always excluded.
+        root timeline's coordinate system. Each of them names the
+        timeline holding it in the column ``source_timeline`` (a child, or
+        a deeper descendant), at every depth; the timeline's own events
+        leave it null. Segment events (internal bookkeeping) are always
+        excluded.
 
         Args:
             temporal_type: Filter by "instant" or "interval".
@@ -731,9 +747,7 @@ class EventsMixin:
                             row[coord_key] = shift_coordinate(
                                 val, child_offset, subtract=False
                             )
-                    # Tag with source timeline for provenance
-                    row.setdefault("source_timeline", child_id)
-                    all_rows.append(row)
+                    all_rows.append(_held_by(row, child_id))
             result = EventData.from_dicts(all_rows, self._unit, self._number_type)
 
         if temporal_type is not None:

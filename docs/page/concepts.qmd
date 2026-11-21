@@ -624,11 +624,13 @@ records a belief instead (`AlignmentBundle.add_match_claim_belief()`), and a cor
 is a new claim. Nothing derives a truth value from the beliefs; the
 **belief filter** reads them for one actor. Every query that reads
 MatchClaims takes it (`get_match_claims()`, the MatchStamp getters and the
-bundle's coordinate getters): `believer=` names the actor, and `belief=`
-keeps every claim the believer does not believe `"false"` (`"not_false"`,
-the default, so a claim without a belief and an `"unlikely"` one pass) or
-only those the believer believes `"true"`. Without `believer=` nothing is
-filtered.
+bundle's coordinate getters): `believer=` names the actor, and `beliefs=`
+the states kept, any of `"true"`, `"undecided"` (the believer holds no
+belief on the claim), `"unlikely"` and `"false"`. The default keeps every
+state but `"false"`, so a claim without a belief and an `"unlikely"` one
+pass. Where one believer is spelled twice in a claim's beliefs (actors
+compare as the IRIs they stand for), the claim is read as the most
+critical of the two. Without `believer=` nothing is filtered.
 
 #### The MatchClaim table and the package
 
@@ -637,7 +639,11 @@ table, a {{< glossary MatchClaimField >}} (`match_claim_table`): one row per
 claim, one column per property of a MatchClaim. The bundle gives a claim
 without an ID the next `claim_N`. On disk the MatchClaim table is
 `match_claims.parquet`, and the Projections of every timeline form one
-Projections table, `projections.parquet`. Both lie beside the
+Projections table, `projections.parquet`. Both write each number once, in
+the member its number type names (a fraction as numerator and
+denominator), where memory keeps the float beside the exact ratio; this **package form** is
+what `MatchClaimField.package_table` gives and `from_package_table()`
+reads. Both lie beside the
 {{< glossary "TimeToShare manifest" >}}, which names each in its `resources`
 (see {{< glossary Resource >}}); a manifest and the files it names make a
 **package**. The manifest names no event: the claims name events by their
@@ -679,10 +685,10 @@ using the same or a similar visual style as the Matches they derive from.
 #### MatchClaim cases
 
 A MatchClaim always knows which pair of timelines it connects. It contains
-0--2 {{< glossary AlignmentAnchor >}}s (only if synchronous), synchrony and
-explicitness flags, its provenance and its certainty. Its kind, the
+0--2 {{< glossary AlignmentAnchor >}}s (only if synchronous), the synchrony
+flag, its provenance and its certainty. Its kind, the
 {{< glossary ClaimType >}}, is derived from that structure and never stored.
-Four kinds are distinguished:
+Three kinds are distinguished:
 
 1. **event_match**: synchronous, an event on each side, a Projection
    included---the core alignment operation, and the kind that yields
@@ -693,10 +699,11 @@ Four kinds are distinguished:
    that lacks it.
 3. **conceptual**: non-synchronous, an event on each side---a structural
    correspondence without temporal commitment.
-4. **implicit**: generated automatically by
-   {{< glossary MatchGraph >}} group extension and naming no events---e.g.,
-   when a match between two timelines implies coordinates on sibling
-   timelines within the same {{< glossary TimelineGroup >}}.
+
+What a {{< glossary MatchGraph >}} infers through a
+{{< glossary TimelineGroup >}} (a match between two timelines implying
+coordinates on the sibling members of their groups) is not a MatchClaim
+and has no kind: it is the graph's own inferred edge.
 
 A Projection is not a kind of claim: it is an event, and a claim joining a
 Projection is an `event_match` like any other. Transferring an annotation to
@@ -709,8 +716,9 @@ A **MatchGraph** is an on-demand analytical structure built from
 MatchClaims. Nodes are `(timeline_id, coordinate)` tuples; edges derive
 from the {{< glossary AlignmentAnchor >}}s of synchronous claims. Each
 connected component yields a **MatchStamp**---a synchronised instant across
-multiple timelines. A MatchGraph can be extended with implicit claims based
-on {{< glossary TimelineGroup >}} membership. In the Hendrix example, each
+multiple timelines. A MatchGraph can be extended through
+{{< glossary TimelineGroup >}} membership; the edges it infers are its own
+(`inferred_edges`), apart from the stated ones. In the Hendrix example, each
 Match box M1--M15 is a MatchGraph, not a single MatchClaim.
 
 ::: {.definition}

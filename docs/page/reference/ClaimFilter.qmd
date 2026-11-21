@@ -6,12 +6,13 @@ alignment.ClaimFilter(
     timeline_ids=None,
     id_pattern=None,
     between=None,
+    within=None,
     synchronous_only=False,
     nomatch_only=False,
     include_domains=None,
     include_units=None,
     believer=None,
-    belief='not_false',
+    beliefs=DEFAULT_BELIEFS,
 )
 ```
 
@@ -21,8 +22,9 @@ All fields are optional. When multiple fields are set, they are combined
 with AND logic: a claim must satisfy every non-None criterion.
 
 The ``matches_claim()`` method tests a single MatchClaim against all
-criteria. The ``matches_timeline()`` method tests a single timeline ID
-(used by MatchGraph node-level filtering).
+criteria; ``select()`` is its list form, asking the belief filter once
+for the whole list. The ``matches_timeline()`` method tests a single
+timeline ID (used to narrow the timelines of a stamp).
 
 ## Examples {.doc-section .doc-section-examples}
 
@@ -40,18 +42,19 @@ Filter for synchronous claims between score and one performer::
 
 ## Attributes {.doc-section .doc-section-attributes}
 
-| Name             | Type                                                                  | Description                                                                                                               |
-|------------------|-----------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------|
-| timeline_id      | [str](`str`) \| None                                                  | Return claims involving this exact timeline ID.                                                                           |
-| timeline_ids     | [set](`set`)\[[str](`str`)\] \| None                                  | Return claims involving any of these timeline IDs.                                                                        |
-| id_pattern       | [str](`str`) \| None                                                  | Regex pattern matched against timeline IDs via ``re.search()``. Example: ``r"^perf:"`` matches all performance timelines. |
-| between          | [tuple](`tuple`)\[[str](`str`), [str](`str`)\] \| None                | Return claims connecting exactly these two timelines (order-independent).                                                 |
-| synchronous_only | [bool](`bool`)                                                        | If True, exclude non-synchronous (NOMATCH) claims.                                                                        |
-| nomatch_only     | [bool](`bool`)                                                        | If True, return only non-synchronous (NOMATCH) claims.                                                                    |
-| include_domains  | [set](`set`)\[[Domain](`timetoalign.core.enums.Domain`)\] \| None     | Only include timelines in these domains. Requires a ``timelines`` dict for resolution.                                    |
-| include_units    | [set](`set`)\[[TimeUnit](`timetoalign.core.enums.TimeUnit`)\] \| None | Only include timelines with these units. Requires a ``timelines`` dict for resolution.                                    |
-| believer         | [str](`str`) \| None                                                  | The actor whose beliefs filter claims (the belief filter); ``None`` filters nothing.                                      |
-| belief           | [BeliefFilter](`timetoalign.core.provenance.BeliefFilter`)            | ``"not_false"`` keeps every claim the believer does not believe ``false``; ``"true"`` only those believed ``true``.       |
+| Name             | Type                                                                                   | Description                                                                                                                                                                    |
+|------------------|----------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| timeline_id      | [str](`str`) \| None                                                                   | Return claims involving this exact timeline ID, on either side.                                                                                                                |
+| timeline_ids     | [set](`set`)\[[str](`str`)\] \| None                                                   | Return claims involving any of these timeline IDs, on either side.                                                                                                             |
+| id_pattern       | [str](`str`) \| None                                                                   | Regex pattern matched against timeline IDs via ``re.search()``; a claim passes when either of its timelines matches. Example: ``r"^perf:"`` matches all performance timelines. |
+| between          | [tuple](`tuple`)\[[str](`str`), [str](`str`)\] \| None                                 | Return claims connecting exactly these two timelines (order-independent).                                                                                                      |
+| within           | [set](`set`)\[[str](`str`)\] \| None                                                   | Return claims whose both timelines are in this set.                                                                                                                            |
+| synchronous_only | [bool](`bool`)                                                                         | If True, only synchronous claims (conceptual and NOMATCH claims excluded).                                                                                                     |
+| nomatch_only     | [bool](`bool`)                                                                         | If True, only NOMATCH claims (one event, the sentinel on the other side).                                                                                                      |
+| include_domains  | [set](`set`)\[[Domain](`timetoalign.core.enums.Domain`)\] \| None                      | Only claims whose both timelines are in these domains. Requires a ``timelines`` dict for resolution.                                                                           |
+| include_units    | [set](`set`)\[[TimeUnit](`timetoalign.core.enums.TimeUnit`)\] \| None                  | Only claims whose both timelines have these units. Requires a ``timelines`` dict for resolution.                                                                               |
+| believer         | [str](`str`) \| None                                                                   | The actor whose beliefs filter claims (the belief filter); ``None`` filters nothing.                                                                                           |
+| beliefs          | [Collection](`collections.abc.Collection`)\[[BeliefState](`timetoshare.BeliefState`)\] | The states kept for the believer (``"true"``, ``"undecided"``, ``"unlikely"``, ``"false"``), held as a frozen set; default all but ``"false"``.                                |
 
 ## Methods
 
@@ -61,6 +64,7 @@ Filter for synchronous claims between score and one performer::
 | [from_kwargs](#timetoalign.alignment.ClaimFilter.from_kwargs) | Create a ClaimFilter from keyword arguments. |
 | [matches_claim](#timetoalign.alignment.ClaimFilter.matches_claim) | Test whether a MatchClaim passes all filter criteria. |
 | [matches_timeline](#timetoalign.alignment.ClaimFilter.matches_timeline) | Test whether a single timeline ID passes the filter criteria. |
+| [select](#timetoalign.alignment.ClaimFilter.select) | Return the claims that pass every criterion, in their order. |
 
 ### domain_unit_timeline_ids { #timetoalign.alignment.ClaimFilter.domain_unit_timeline_ids }
 
@@ -100,12 +104,13 @@ alignment.ClaimFilter.from_kwargs(
     timeline_ids=None,
     id_pattern=None,
     between=None,
+    within=None,
     synchronous_only=False,
     nomatch_only=False,
     include_domains=None,
     include_units=None,
     believer=None,
-    belief='not_false',
+    beliefs=DEFAULT_BELIEFS,
 )
 ```
 
@@ -116,18 +121,19 @@ signature used across the API.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name             | Type                                                                  | Description                                           | Default       |
-|------------------|-----------------------------------------------------------------------|-------------------------------------------------------|---------------|
-| timeline_id      | [str](`str`) \| None                                                  | Return claims involving this timeline.                | `None`        |
-| timeline_ids     | [set](`set`)\[[str](`str`)\] \| None                                  | Return claims involving any of these timelines.       | `None`        |
-| id_pattern       | [str](`str`) \| None                                                  | Regex pattern matched against timeline IDs.           | `None`        |
-| between          | [tuple](`tuple`)\[[str](`str`), [str](`str`)\] \| None                | Return claims connecting exactly these two timelines. | `None`        |
-| synchronous_only | [bool](`bool`)                                                        | Exclude non-synchronous claims.                       | `False`       |
-| nomatch_only     | [bool](`bool`)                                                        | Return only non-synchronous claims.                   | `False`       |
-| include_domains  | [set](`set`)\[[Domain](`timetoalign.core.enums.Domain`)\] \| None     | Only timelines in these domains.                      | `None`        |
-| include_units    | [set](`set`)\[[TimeUnit](`timetoalign.core.enums.TimeUnit`)\] \| None | Only timelines with these units.                      | `None`        |
-| believer         | [str](`str`) \| None                                                  | The actor whose beliefs filter claims.                | `None`        |
-| belief           | [BeliefFilter](`timetoalign.core.provenance.BeliefFilter`)            | ``"not_false"`` or ``"true"`` (the belief filter).    | `'not_false'` |
+| Name             | Type                                                                                   | Description                                            | Default           |
+|------------------|----------------------------------------------------------------------------------------|--------------------------------------------------------|-------------------|
+| timeline_id      | [str](`str`) \| None                                                                   | Return claims involving this timeline.                 | `None`            |
+| timeline_ids     | [set](`set`)\[[str](`str`)\] \| None                                                   | Return claims involving any of these timelines.        | `None`            |
+| id_pattern       | [str](`str`) \| None                                                                   | Regex pattern matched against timeline IDs.            | `None`            |
+| between          | [tuple](`tuple`)\[[str](`str`), [str](`str`)\] \| None                                 | Return claims connecting exactly these two timelines.  | `None`            |
+| within           | [set](`set`)\[[str](`str`)\] \| None                                                   | Return claims whose both timelines are in this set.    | `None`            |
+| synchronous_only | [bool](`bool`)                                                                         | Only synchronous claims.                               | `False`           |
+| nomatch_only     | [bool](`bool`)                                                                         | Only NOMATCH claims.                                   | `False`           |
+| include_domains  | [set](`set`)\[[Domain](`timetoalign.core.enums.Domain`)\] \| None                      | Only claims whose both timelines are in these domains. | `None`            |
+| include_units    | [set](`set`)\[[TimeUnit](`timetoalign.core.enums.TimeUnit`)\] \| None                  | Only claims whose both timelines have these units.     | `None`            |
+| believer         | [str](`str`) \| None                                                                   | The actor whose beliefs filter claims.                 | `None`            |
+| beliefs          | [Collection](`collections.abc.Collection`)\[[BeliefState](`timetoshare.BeliefState`)\] | The states kept for the believer (the belief filter).  | `DEFAULT_BELIEFS` |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -142,6 +148,9 @@ alignment.ClaimFilter.matches_claim(claim, *, timelines=None)
 ```
 
 Test whether a MatchClaim passes all filter criteria.
+
+The belief filter compares actors under the context of the claim's
+bundle (:func:`belief_context`).
 
 #### Parameters {.doc-section .doc-section-parameters}
 
@@ -164,9 +173,9 @@ alignment.ClaimFilter.matches_timeline(timeline_id, *, timelines=None)
 
 Test whether a single timeline ID passes the filter criteria.
 
-Used for node-level filtering in MatchGraph. Only the timeline-ID
+Used to narrow the timelines of a stamp. Only the timeline-ID
 related filters are applied (``timeline_id``, ``timeline_ids``,
-``id_pattern``, ``include_domains``, ``include_units``). The
+``id_pattern``, ``within``, ``include_domains``, ``include_units``). The
 claim-level filters (``synchronous_only``, ``nomatch_only``,
 ``between``, the belief filter) are ignored.
 
@@ -182,3 +191,29 @@ claim-level filters (``synchronous_only``, ``nomatch_only``,
 | Name   | Type           | Description                                         |
 |--------|----------------|-----------------------------------------------------|
 |        | [bool](`bool`) | True if the timeline passes all applicable filters. |
+
+### select { #timetoalign.alignment.ClaimFilter.select }
+
+```python
+alignment.ClaimFilter.select(claims, *, timelines=None, context=None)
+```
+
+Return the claims that pass every criterion, in their order.
+
+The list form of :meth:`matches_claim`: the belief filter is asked
+once for the whole list (:func:`believed`), then each claim's kind
+and timelines are tested.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name      | Type                                                                                              | Description                                                                                                                                                       | Default    |
+|-----------|---------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| claims    | [Sequence](`collections.abc.Sequence`)\[[MatchClaim](`timetoalign.alignment.claims.MatchClaim`)\] | The claims to filter.                                                                                                                                             | _required_ |
+| timelines | [Mapping](`collections.abc.Mapping`)\[[str](`str`), [Any](`typing.Any`)\] \| None                 | Timeline ID -> object with a ``unit`` (a :class:`~timetoalign.timelines.Timeline`), for resolving domain/unit filters; a timeline missing from it passes neither. | `None`     |
+| context   | [Mapping](`collections.abc.Mapping`)\[[str](`str`), [Any](`typing.Any`)\] \| None                 | The JSON-LD context under which the believer and the actors compare as IRIs (:func:`belief_context`); ``None`` declares no prefix.                                | `None`     |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                                      | Description                                        |
+|--------|---------------------------------------------------------------------------|----------------------------------------------------|
+|        | [list](`list`)\[[MatchClaim](`timetoalign.alignment.claims.MatchClaim`)\] | The kept claims, the same objects, in their order. |

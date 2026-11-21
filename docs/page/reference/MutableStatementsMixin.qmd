@@ -119,7 +119,8 @@ Declare a prefix the holder's statements may use.
 
 The catalogue's prefixes need no declaration. A manifest written
 holding the holder carries the prefix in its ``@context`` when the
-statements use it.
+statements use it, a bundle's prefix also when its MatchClaim
+table's actors use it.
 
 #### Raises {.doc-section .doc-section-raises}
 

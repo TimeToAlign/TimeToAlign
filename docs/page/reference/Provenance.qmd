@@ -34,8 +34,10 @@ loader or a service with how the item was made and no belief.
 ...     Belief(actor="ana", belief="false", date="2026-11-21")
 ... ).get_belief("ana").belief
 'false'
->>> entry.passes_belief_filter("ana"), entry.passes_belief_filter("ana", "true")
+>>> entry.passes_belief_filter("ana"), entry.passes_belief_filter("ana", ["true"])
 (True, False)
+>>> entry.passes_belief_filter("bea", ["undecided"])
+True
 ```
 
 ## Methods
@@ -91,7 +93,7 @@ The belief *actor* holds, if any.
 ```python
 core.Provenance.passes_belief_filter(
     believer,
-    belief='not_false',
+    beliefs=DEFAULT_BELIEFS,
     *,
     context=None,
 )
@@ -101,11 +103,11 @@ Whether the belief filter for *believer* keeps the item.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name     | Type                                                                              | Description                                                                                                              | Default       |
-|----------|-----------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------|---------------|
-| believer | [str](`str`) \| None                                                              | The actor whose beliefs filter; ``None`` keeps all.                                                                      | _required_    |
-| belief   | [BeliefFilter](`timetoalign.core.provenance.BeliefFilter`)                        | ``"not_false"`` keeps what the believer does not believe ``false``; ``"true"`` only what the believer believes ``true``. | `'not_false'` |
-| context  | [Mapping](`collections.abc.Mapping`)\[[str](`str`), [Any](`typing.Any`)\] \| None | The JSON-LD context under which actors compare as IRIs (:func:`belief_mask`).                                            | `None`        |
+| Name     | Type                                                                                   | Description                                                                                                                                                                                      | Default           |
+|----------|----------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------|
+| believer | [str](`str`) \| None                                                                   | The actor whose beliefs filter; ``None`` keeps all.                                                                                                                                              | _required_        |
+| beliefs  | [Collection](`collections.abc.Collection`)\[[BeliefState](`timetoshare.BeliefState`)\] | The states kept (:data:`BeliefState`): the item passes when the believer's belief in it, or ``"undecided"`` where the believer holds none, is one of them. Default: every state but ``"false"``. | `DEFAULT_BELIEFS` |
+| context  | [Mapping](`collections.abc.Mapping`)\[[str](`str`), [Any](`typing.Any`)\] \| None      | The JSON-LD context under which actors compare as IRIs (:func:`belief_mask`).                                                                                                                    | `None`            |
 
 #### Returns {.doc-section .doc-section-returns}
 

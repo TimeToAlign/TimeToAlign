@@ -22,7 +22,10 @@ mints one (:meth:`Timeline.add_events`).
 Storage struct (derived): ``{id, start, duration, projection_of}``, the
 two positions as coordinate cells
 (:data:`~timetoalign.core.time.COORDINATE_CELL_TYPE`), each naming its
-unit and number type, as the Projections table of a package holds them.
+unit and number type, both sides of the number filled. A package's
+Projections table writes them otherwise: the timeline's unit and number
+type once per row, each number once, as its number type says
+(:func:`~timetoalign.timelines.manifest.projection_table`).
 
 ## Examples {.doc-section .doc-section-examples}
 

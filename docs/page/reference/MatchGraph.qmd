@@ -9,7 +9,7 @@ alignment.MatchGraph(
     source=None,
     source_id=None,
     believer=None,
-    belief='not_false',
+    beliefs=DEFAULT_BELIEFS,
 )
 ```
 
@@ -17,20 +17,23 @@ A graph of MatchClaims connecting events across timelines/groups.
 
 The MatchGraph builds a networkx graph where:
 - Nodes: (timeline_id, coordinate) tuples
-- Edges: synchronous AlignmentAnchors (explicit or implicit)
+- Edges: synchronous AlignmentAnchors, stated by a MatchClaim or
+  inferred through a group (:class:`InferredEdge`)
 
 Only synchronous claims produce graph edges. Non-synchronous claims
 (conceptual matches, NOMATCH) are stored in ``_claims`` but do not
-create nodes or edges.
+create nodes or edges. The graph's MatchClaims are those it was given;
+what it infers is held apart, in :attr:`inferred_edges`.
 
 Each Hendrix M-box (M1–M15) is a separate MatchGraph. The system
 is NOT a global graph; MatchGraphs are created on demand.
 
 ## Attributes {.doc-section .doc-section-attributes}
 
-| Name   | Type                                                                      | Description                                                              |
-|--------|---------------------------------------------------------------------------|--------------------------------------------------------------------------|
-| claims | [list](`list`)\[[MatchClaim](`timetoalign.alignment.claims.MatchClaim`)\] | List of all MatchClaims in this graph (synchronous and non-synchronous). |
+| Name           | Type                                                                         | Description                                                      |
+|----------------|------------------------------------------------------------------------------|------------------------------------------------------------------|
+| claims         | [list](`list`)\[[MatchClaim](`timetoalign.alignment.claims.MatchClaim`)\]    | The MatchClaims of this graph (synchronous and non-synchronous). |
+| inferred_edges | [list](`list`)\[[InferredEdge](`timetoalign.alignment.graph.InferredEdge`)\] | The edges the graph inferred through groups.                     |
 
 ## Examples {.doc-section .doc-section-examples}
 
@@ -65,8 +68,12 @@ Extend it through the group the score shares with its parts:
 >>> parts = Timeline(length=8, unit=TimeUnit.quarters, uid="parts")
 >>> group = TimelineGroup(name="edition", timelines=[score, parts])
 >>> extended = graph.extend_to_groups({group.id: group})
->>> extended.n_nodes, extended.n_edges
-(6, 4)
+>>> extended.n_nodes, extended.n_edges, extended.n_claims
+(6, 4, 2)
+>>> extended.inferred_edges[0].group_id == group.id
+True
+>>> extended.inferred_edges[0].source_claim.event_a_id
+'note_0'
 ```
 
 One stamp per synchronized position:
@@ -75,17 +82,17 @@ One stamp per synchronized position:
 >>> stamps = extended.get_stamps()
 >>> print(stamps[1])
 MatchStamp (3 timelines, 2 edges)
-  audio   2 seconds  anchor
+  audio   2 seconds  stated
   parts  4 quarters  inferred
-  score  4 quarters  anchor
+  score  4 quarters  stated
 ```
 
 ## Methods
 
 | Name | Description |
 | --- | --- |
-| [extend_to_groups](#timetoalign.alignment.MatchGraph.extend_to_groups) | Extend anchors to full group timestamps via implicit claims. |
-| [filter](#timetoalign.alignment.MatchGraph.filter) | Create filtered view of the graph. |
+| [extend_to_groups](#timetoalign.alignment.MatchGraph.extend_to_groups) | Extend anchors to full group timestamps via inferred edges. |
+| [filter](#timetoalign.alignment.MatchGraph.filter) | Return the graph of the MatchClaims the filters keep. |
 | [from_dict](#timetoalign.alignment.MatchGraph.from_dict) | Deserialize from dictionary. |
 | [get_connected_nodes](#timetoalign.alignment.MatchGraph.get_connected_nodes) | Get all public nodes connected to a given node. |
 | [get_connected_timelines](#timetoalign.alignment.MatchGraph.get_connected_timelines) | Get all timelines connected to a given timeline. |
@@ -106,28 +113,28 @@ alignment.MatchGraph.extend_to_groups(
     groups,
     *,
     include_inferred=True,
-    timeline_ids=None,
+    within=None,
     id_pattern=None,
     include_domains=None,
     include_units=None,
 )
 ```
 
-Extend anchors to full group timestamps via implicit claims.
+Extend anchors to full group timestamps via inferred edges.
 
 For each coordinate in the graph, computes the equivalent coordinate
 for every other member of every group its timeline belongs to and
-adds an implicit ``MatchClaim`` (case d) plus the corresponding edge.
-Membership is read from *groups* alone, and a timeline may belong to
-several. A coordinate reached this way is extended in turn through
-the other groups of its timeline, so a timeline shared by two groups
-carries a coordinate from the members of one to the members of the
-other. Filters control which timelines receive implicit claims; a
-timeline they exclude receives no coordinate, so no extension passes
-through it. The implicit claims' ids are minted among the ids of
-this graph's claims (``claim_N``, above the highest N held, in the
-order the claims are made), so each names one claim of the extended
-graph.
+adds an edge between the two, recorded as an :class:`InferredEdge`
+(the anchor, the group, and the MatchClaim the coordinate traces
+back to) in the extended graph's :attr:`inferred_edges`. The
+extended graph holds the same MatchClaims as this one: an inferred
+edge is the graph's own, never a MatchClaim. Membership is read from
+*groups* alone, and a timeline may belong to several. A coordinate
+reached this way is extended in turn through the other groups of its
+timeline, so a timeline shared by two groups carries a coordinate
+from the members of one to the members of the other. Filters control
+which timelines receive inferred edges; a timeline they exclude
+receives no coordinate, so no extension passes through it.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
@@ -135,7 +142,7 @@ graph.
 |------------------|-----------------------------------------------------------------------|--------------------------------------------|------------|
 | groups           | [dict](`dict`)\[[str](`str`), \'TimelineGroup\'\]                     | Dict of group_id -> TimelineGroup.         | _required_ |
 | include_inferred | [bool](`bool`)                                                        | Whether to add inferred edges.             | `True`     |
-| timeline_ids     | [set](`set`)\[[str](`str`)\] \| None                                  | Only extend to these timeline IDs.         | `None`     |
+| within           | [set](`set`)\[[str](`str`)\] \| None                                  | Only extend to these timeline IDs.         | `None`     |
 | id_pattern       | [str](`str`) \| None                                                  | Regex filter for timeline IDs.             | `None`     |
 | include_domains  | [set](`set`)\[[Domain](`timetoalign.core.enums.Domain`)\] \| None     | Only extend to timelines in these domains. | `None`     |
 | include_units    | [set](`set`)\[[TimeUnit](`timetoalign.core.enums.TimeUnit`)\] \| None | Only extend to timelines with these units. | `None`     |
@@ -150,34 +157,69 @@ graph.
 
 ```python
 alignment.MatchGraph.filter(
-    synchronous_only=False,
-    explicit_only=False,
-    *,
+    timeline_id=None,
     timeline_ids=None,
     id_pattern=None,
+    within=None,
+    synchronous_only=False,
+    nomatch_only=False,
+    stated_only=False,
     include_domains=None,
     include_units=None,
+    believer=None,
+    beliefs=DEFAULT_BELIEFS,
 )
 ```
 
-Create filtered view of the graph.
+Return the graph of the MatchClaims the filters keep.
+
+The filters choose claims, with the meaning they have on every
+MatchClaim query (:meth:`~timetoalign.alignment.AlignmentBundle.get_match_claims`),
+decided by :meth:`~timetoalign.alignment.filters.ClaimFilter.select`.
+The result is the graph of the kept claims: a graph extended through
+groups (:meth:`extend_to_groups`) is extended again through the same
+groups, under the same filters, and reaches only the timelines
+``within``, ``include_domains`` and ``include_units`` admit. So it
+holds exactly what a graph built from the kept claims and extended
+the same way holds.
+
+Domains and units are read from the source bundle's timelines when
+the graph has a source, else from the units of the graph's anchors
+and of the graph it was filtered from (a filtered graph keeps the
+units its own source graph knew, so filters compose in any order):
+without a source, a claim on a timeline no anchor names (a NOMATCH
+or conceptual claim, say) passes no domain or unit filter.
+
+The groups are read as they stand when filtering: a member added to
+a group after the extension is reached by the filtered graph.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name             | Type                                                                  | Description                                | Default   |
-|------------------|-----------------------------------------------------------------------|--------------------------------------------|-----------|
-| synchronous_only | [bool](`bool`)                                                        | Include only synchronous edges.            | `False`   |
-| explicit_only    | [bool](`bool`)                                                        | Include only explicit edges (no inferred). | `False`   |
-| timeline_ids     | [set](`set`)\[[str](`str`)\] \| None                                  | Only include these timeline IDs.           | `None`    |
-| id_pattern       | [str](`str`) \| None                                                  | Regex filter for timeline IDs.             | `None`    |
-| include_domains  | [set](`set`)\[[Domain](`timetoalign.core.enums.Domain`)\] \| None     | Only include timelines in these domains.   | `None`    |
-| include_units    | [set](`set`)\[[TimeUnit](`timetoalign.core.enums.TimeUnit`)\] \| None | Only include timelines with these units.   | `None`    |
+| Name             | Type                                                                                   | Description                                                                                                                                                       | Default           |
+|------------------|----------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------|
+| timeline_id      | [str](`str`) \| None                                                                   | Only the claims with this timeline on either side; a timeline the graph does not know gives no claim.                                                             | `None`            |
+| timeline_ids     | [set](`set`)\[[str](`str`)\] \| None                                                   | Only the claims with any of these timelines on either side.                                                                                                       | `None`            |
+| id_pattern       | [str](`str`) \| None                                                                   | Only the claims with a timeline whose ID the regex finds (``re.search``) on either side.                                                                          | `None`            |
+| within           | [set](`set`)\[[str](`str`)\] \| None                                                   | Only the claims whose both timelines are in this set; the extension reaches only these timelines.                                                                 | `None`            |
+| synchronous_only | [bool](`bool`)                                                                         | Only the synchronous claims (conceptual and NOMATCH claims excluded).                                                                                             | `False`           |
+| nomatch_only     | [bool](`bool`)                                                                         | Only the NOMATCH claims (an event on one side, the sentinel on the other); they hold no anchor, so the result has no edge.                                        | `False`           |
+| stated_only      | [bool](`bool`)                                                                         | Only the edges MatchClaims state: the result is not extended through groups.                                                                                      | `False`           |
+| include_domains  | [set](`set`)\[[Domain](`timetoalign.core.enums.Domain`)\] \| None                      | Only the claims whose both timelines are in these domains; the extension reaches only these domains.                                                              | `None`            |
+| include_units    | [set](`set`)\[[TimeUnit](`timetoalign.core.enums.TimeUnit`)\] \| None                  | Only the claims whose both timelines have these units; the extension reaches only these units.                                                                    | `None`            |
+| believer         | [str](`str`) \| None                                                                   | The actor whose beliefs filter the claims (the belief filter, actors compared as IRIs under the source bundle's manifest ``@context``); ``None`` filters nothing. | `None`            |
+| beliefs          | [Collection](`collections.abc.Collection`)\[[BeliefState](`timetoshare.BeliefState`)\] | The states kept for the believer (``"true"``, ``"undecided"``, ``"unlikely"``, ``"false"``); default all but ``"false"``.                                         | `DEFAULT_BELIEFS` |
 
 #### Returns {.doc-section .doc-section-returns}
 
-| Name   | Type           | Description                               |
-|--------|----------------|-------------------------------------------|
-|        | \'MatchGraph\' | New MatchGraph with filtered edges/nodes. |
+| Name   | Type           | Description                          |
+|--------|----------------|--------------------------------------|
+|        | \'MatchGraph\' | A new MatchGraph of the kept claims. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                     |
+|--------|----------------------------|-----------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If ``synchronous_only`` and ``nomatch_only`` are both set, or ``beliefs`` is not a collection of belief states. |
 
 ### from_dict { #timetoalign.alignment.MatchGraph.from_dict }
 
@@ -451,4 +493,6 @@ alignment.MatchGraph.to_dict()
 Serialize to dictionary.
 
 Note: This serializes the claims, not the full graph.
-The graph can be rebuilt from claims.
+The graph can be rebuilt from claims; its inferred edges are not
+written, and extending the rebuilt graph through the same groups
+infers them again.

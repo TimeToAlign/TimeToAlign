@@ -330,6 +330,35 @@ class TestWriting:
         read.to_file(tmp_path / "second" / "package.yaml")
         assert _bytes(tmp_path / "second") == _bytes(tmp_path / "first")
 
+    def test_the_actor_context_survives_the_package(self, tmp_path: Path) -> None:
+        bundle = _bundle().add_prefix("orcid", "https://orcid.org/")
+        bundle.add_match_claim_belief(
+            "claim_2", actor="orcid:0000-0001", belief="true", date="2026-11-21"
+        )
+        believer = "https://orcid.org/0000-0001"
+        (tmp_path / "first").mkdir()
+        path = bundle.to_file(tmp_path / "first" / "package.yaml")
+
+        read = AlignmentBundle.from_file(path)
+
+        context = timetoshare.loads(path.read_text(encoding="utf-8"))["@context"]
+        assert context == {**timetoshare.FORMAT_CONTEXT, "orcid": "https://orcid.org/"}
+        assert read.prefixes == {"orcid": "https://orcid.org/"}
+        assert [
+            belief.actor
+            for claim in read.get_match_claims()
+            if claim.provenance is not None
+            for belief in claim.provenance.beliefs
+        ] == ["orcid:0000-0001"]
+        for holder in (bundle, read):
+            assert [
+                claim.id
+                for claim in holder.get_match_claims(believer=believer, belief="true")
+            ] == ["claim_2"]
+        (tmp_path / "second").mkdir()
+        read.to_file(tmp_path / "second" / "package.yaml")
+        assert _bytes(tmp_path / "second") == _bytes(tmp_path / "first")
+
     def test_writing_over_the_package_obeys_the_succession_rule(
         self, tmp_path: Path
     ) -> None:

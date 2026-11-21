@@ -4768,7 +4768,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         of every timeline written, beside the members of :attr:`styling`. A
         root no group names is ungrouped. The bundle's statements and
         provenance are the manifest's, and the manifest carries its inline
-        JSON-LD ``@context`` with the prefixes its statements use, and its
+        JSON-LD ``@context`` with the prefixes its statements use and every
+        prefix the bundle declares (:attr:`prefixes`, the context of its
+        MatchClaims' actors), and its
         :attr:`resources`. MatchClaims are not written into the manifest:
         :meth:`to_file` writes them into the MatchClaim table beside it. The
         support policy is a setting of the bundle, not part of the manifest.

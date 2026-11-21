@@ -13,8 +13,8 @@ from __future__ import annotations
 
 import pytest
 
-from timetoalign.alignment import Agent, AlignmentAnchor, MatchClaim, MatchMetadata
-from timetoalign.core import AgentType, Coordinate, TimeUnit
+from timetoalign.alignment import AlignmentAnchor, MatchClaim
+from timetoalign.core import Coordinate, Provenance, TimeUnit
 from timetoalign.testdata import ensure_data
 from timetoalign.timelines import (
     ContinuousPhysicalTimeline,
@@ -202,12 +202,8 @@ def thoresen_segment_claims() -> list[MatchClaim]:
                     offset_dgt2 + DGT2_SEGMENT_LENGTHS[i], TimeUnit.pixels
                 ),
             ),
-            metadata=MatchMetadata(
-                agent=Agent(
-                    name="thoresen_analysis",
-                    type=AgentType.human,
-                    identifier="segment_correspondence",
-                ),
+            provenance=Provenance(
+                method="manual", note="thoresen_analysis segment_correspondence"
             ),
         )
         claims.append(claim)

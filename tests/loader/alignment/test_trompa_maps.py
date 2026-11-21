@@ -14,12 +14,8 @@ pytest.importorskip("verovio")
 
 from timetoalign import MapsLoader  # noqa: E402
 from timetoalign.alignment.bundle import AlignmentBundle  # noqa: E402
-from timetoalign.alignment.claims import (  # noqa: E402
-    Agent,
-    MatchClaim,
-    MatchMetadata,
-)
-from timetoalign.core import AgentType, Coordinate, TimeUnit  # noqa: E402
+from timetoalign.alignment.claims import MatchClaim  # noqa: E402
+from timetoalign.core import Coordinate, Provenance, TimeUnit  # noqa: E402
 from timetoalign.loader.score import VerovioLoader  # noqa: E402
 from timetoalign.maps import SamplesToSeconds  # noqa: E402
 from timetoalign.timelines import (  # noqa: E402
@@ -184,15 +180,14 @@ def test_one_claim_per_listed_id(
         assert anchor.coordinate_b.value == seconds
 
 
-def test_metadata_is_recorded_on_every_claim(score: Timeline, maps_path: Path) -> None:
-    metadata = MatchMetadata(
-        agent=Agent(name="aligner", type=AgentType.software, identifier="1.0"),
-        certainty=0.5,
-    )
+def test_provenance_is_recorded_on_every_claim(
+    score: Timeline, maps_path: Path
+) -> None:
+    provenance = Provenance(method="inferred", note="aligner 1.0")
     claims = MapsLoader.from_file(maps_path).create_match_claims(
-        score, _seconds_timeline(), metadata=metadata
+        score, _seconds_timeline(), provenance=provenance
     )
-    assert [claim.metadata for claim in claims] == [metadata] * 13
+    assert [claim.provenance for claim in claims] == [provenance] * 13
 
 
 def test_stated_rows_are_kept_verbatim(stated_path: Path) -> None:

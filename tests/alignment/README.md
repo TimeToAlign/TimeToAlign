@@ -2099,7 +2099,7 @@ python -m pytest tests/alignment/ -v
 | `conftest.py` | — | Shared fixtures and constants: Thoresen timeline fixtures (`dgt1_timeline`, `dgt2_timeline`, `audio_timeline`, `thoresen_segment_claims`), DGT1/DGT2 coordinate constants, `autouse` ID reset fixture, graphical bundle fixtures |
 | `test_bundle.py` | 94 | AlignmentBundle: linear alignment, a child joining with its root, cross-group transfer, timestamps, commensurability, caching, edge cases, coordinate-type parity (raw/Coordinate/IdCoordinate) |
 | `test_bundle_dict.py` | — | AlignmentBundle dictionary form and identity: round trips of direct constructions and of every alignment loader's bundle, minted ids, collisions, a child bringing its root, refusals |
-| `test_anchors.py` | 62 | AlignmentAnchor, MatchClaim (incl. NOMATCH coordinate preservation + repr), MatchMetadata |
+| `test_anchors.py` | 62 | AlignmentAnchor, MatchClaim (incl. NOMATCH coordinate preservation + repr), Provenance |
 | `test_graph.py` | 54 | MatchGraph operations (implicit claims, filtering, stamps); imports Thoresen fixtures from conftest |
 | Robustness coverage | — | Bundle graph stamp units/context, coordinate-bearing claim factories, Fraction serialization, inferred-edge completeness, and MatchStamp container isolation/axis handling |
 | `test_matchline.py` | 33 | MatchLine construction, from_claims, from_graphs, coordinate pairs, serialization; imports Thoresen fixtures from conftest |

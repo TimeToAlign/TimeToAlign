@@ -85,8 +85,8 @@ from typing import TYPE_CHECKING, Any
 
 from typing_extensions import Self
 
-from timetoalign.alignment.claims import Agent, MatchClaim, MatchMetadata
-from timetoalign.core import AgentType, TimeUnit
+from timetoalign.alignment.claims import MatchClaim
+from timetoalign.core import Provenance, TimeUnit
 from timetoalign.display.html import code
 from timetoalign.loader.base import AlignmentLoader
 from timetoalign.loader.physical.audio import AudioLoader
@@ -570,14 +570,7 @@ class ParangonadaLoader(AlignmentLoader):
         present side is the claim's source.  Duplicated rows in the source
         data are preserved as duplicate claims.
         """
-        meta = MatchMetadata(
-            agent=Agent(
-                name="parangonada",
-                type=AgentType.software,
-                identifier=performer_key,
-            ),
-            certainty=1.0,
-        )
+        meta = Provenance(method="imported", note=f"parangonada {performer_key}")
         for row in self._read_csv(performer_dir / "align.csv"):
             matchtype = row["matchtype"]
             partid = row["partid"]
@@ -593,7 +586,7 @@ class ParangonadaLoader(AlignmentLoader):
                         source_unit=TimeUnit.quarters,
                         target_unit=TimeUnit.seconds,
                         coord_key="start",
-                        metadata=meta,
+                        provenance=meta,
                     )
                 )
             elif matchtype == _SCORE_ONLY:
@@ -603,7 +596,7 @@ class ParangonadaLoader(AlignmentLoader):
                         source_tl_id=_SCORE_CLT_ID,
                         target_tl_id=cpt_id,
                         unit=TimeUnit.quarters,
-                        metadata=meta,
+                        provenance=meta,
                     )
                 )
             elif matchtype == _PERF_ONLY:
@@ -613,7 +606,7 @@ class ParangonadaLoader(AlignmentLoader):
                         source_tl_id=cpt_id,
                         target_tl_id=_SCORE_CLT_ID,
                         unit=TimeUnit.seconds,
-                        metadata=meta,
+                        provenance=meta,
                     )
                 )
 

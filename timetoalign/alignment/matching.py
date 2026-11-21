@@ -28,13 +28,8 @@ from typing import Any, Sequence
 
 import pandas as pd
 
-from timetoalign.alignment.claims import (
-    Agent,
-    AlignmentAnchor,
-    MatchClaim,
-    MatchMetadata,
-)
-from timetoalign.core import AgentType, Coordinate, TimeUnit
+from timetoalign.alignment.claims import AlignmentAnchor, MatchClaim
+from timetoalign.core import Coordinate, Provenance, TimeUnit
 
 module_logger = logging.getLogger(__name__)
 
@@ -131,7 +126,7 @@ def match_notes_by_attributes(
     source_unit: TimeUnit | str,
     target_unit: TimeUnit | str,
     create_claims: bool = True,
-    metadata: MatchMetadata | None = None,
+    provenance: Provenance | None = None,
 ) -> MatchResult:
     """Match notes between two DataFrames using greedy sequential matching.
 
@@ -157,7 +152,9 @@ def match_notes_by_attributes(
         source_unit: Unit of the source coordinates used in MatchClaims.
         target_unit: Unit of the target coordinates used in MatchClaims.
         create_claims: If True, generate MatchClaim objects for each match.
-        metadata: Optional MatchMetadata to attach to each MatchClaim.
+        provenance: How the MatchClaims were made, recorded on each; by
+            default the method ``"inferred"`` and a note naming the matching
+            rule.
 
     Returns:
         MatchResult with matched pairs, unmatched rows, and MatchClaims.
@@ -268,13 +265,10 @@ def match_notes_by_attributes(
     # Generate MatchClaims
     claims: list[MatchClaim] = []
     if create_claims and len(matched_df) > 0:
-        if metadata is None:
-            metadata = MatchMetadata(
-                agent=Agent(
-                    name="timetoalign.alignment.matching",
-                    type=AgentType.software,
-                    identifier="greedy_sequential_by_" + "+".join(match_columns),
-                ),
+        if provenance is None:
+            provenance = Provenance(
+                method="inferred",
+                note="greedy sequential matching by " + "+".join(match_columns),
             )
 
         for _, row in matched_df.iterrows():
@@ -288,7 +282,7 @@ def match_notes_by_attributes(
                 timeline_a_id=source_timeline_id,
                 timeline_b_id=target_timeline_id,
                 start_anchor=anchor,
-                metadata=metadata,
+                provenance=provenance,
             )
             claims.append(claim)
 

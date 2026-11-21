@@ -66,13 +66,8 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 from typing_extensions import Self
 
-from timetoalign.alignment.claims import (
-    Agent,
-    MatchClaim,
-    MatchClaimField,
-    MatchMetadata,
-)
-from timetoalign.core import AgentType, TimeUnit
+from timetoalign.alignment.claims import MatchClaim, MatchClaimField
+from timetoalign.core import Provenance, TimeUnit
 from timetoalign.core.fields import SemanticField
 from timetoalign.display.html import code
 from timetoalign.loader.base import AlignmentLoader
@@ -89,9 +84,9 @@ module_logger = logging.getLogger(__name__)
 
 # region Constants
 
-#: Provenance recorded on every materialised claim.  The agent is read from the
-#: file's ``header.createdBy`` (falling back to a generic label); the agent
-#: identifier names the alignment method Listen Here! uses (chroma-feature DTW).
+#: Provenance recorded on every materialised claim: imported, with a note
+#: naming the file's ``header.createdBy`` (falling back to a generic label) and
+#: the alignment method Listen Here! uses (chroma-feature DTW).
 _DEFAULT_AGENT = "Listen Here!"
 _AGENT_IDENTIFIER = "dtw_chroma_alignment"
 
@@ -287,7 +282,8 @@ class ListenHereLoader(AlignmentLoader):
             keys: The sorted audio keys.
             times_by_key: Each key's per-grid-column times (seconds).
             sample_rates: The resolved sample rate for each recording.
-            agent: The provenance agent (``header.createdBy``).
+            agent: Who created the export (``header.createdBy``), named in the
+                provenance note.
 
         Returns:
             A :class:`MatchClaimField` of ``C(R, 2) × N`` synchronous claims.
@@ -325,14 +321,7 @@ class ListenHereLoader(AlignmentLoader):
             else np.empty(0, dtype=np.float64)
         )
 
-        metadata = MatchMetadata(
-            agent=Agent(
-                name=agent,
-                type=AgentType.software,
-                identifier=_AGENT_IDENTIFIER,
-            ),
-            certainty=1.0,
-        )
+        provenance = Provenance(method="imported", note=f"{agent} {_AGENT_IDENTIFIER}")
         return MatchClaimField.from_columns(
             timeline_a_ids,
             timeline_b_ids,
@@ -340,7 +329,7 @@ class ListenHereLoader(AlignmentLoader):
             coordinate_b,
             unit_a=TimeUnit.samples,
             unit_b=TimeUnit.samples,
-            metadata=metadata,
+            provenance=provenance,
         )
 
     @staticmethod

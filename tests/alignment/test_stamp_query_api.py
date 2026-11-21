@@ -26,19 +26,14 @@ from __future__ import annotations
 import pytest
 
 from timetoalign.alignment.bundle import AlignmentBundle
-from timetoalign.alignment.claims import (
-    Agent,
-    AlignmentAnchor,
-    MatchClaim,
-    MatchMetadata,
-)
+from timetoalign.alignment.claims import AlignmentAnchor, MatchClaim
 from timetoalign.alignment.graph import MatchGraph
 from timetoalign.alignment.graph import MatchStamp as MatchStampType
 from timetoalign.core import (
-    AgentType,
     Coordinate,
     IdCoordinate,
     IdCoordinateField,
+    Provenance,
     TimeUnit,
 )
 from timetoalign.timelines import Timeline
@@ -913,14 +908,7 @@ class TestMatchClaimDisplay:
                 timeline_b_id="perf:dlt_1",
                 coordinate_b=Coordinate(128.0, TimeUnit.number),
             ),
-            metadata=MatchMetadata(
-                agent=Agent(
-                    name="partitura",
-                    type=AgentType.software,
-                    identifier="note_matching",
-                ),
-                certainty=0.95,
-            ),
+            provenance=Provenance(method="inferred", note="partitura note_matching"),
         )
         s = str(claim)
         assert "Metadata:" in s

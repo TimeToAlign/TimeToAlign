@@ -20,22 +20,18 @@ from typing import Any, Callable
 import pytest
 
 from timetoalign.alignment import AlignmentBundle
-from timetoalign.alignment.claims import (
-    Agent,
-    AlignmentAnchor,
-    MatchClaim,
-    MatchMetadata,
-)
+from timetoalign.alignment.claims import AlignmentAnchor, MatchClaim
 from timetoalign.alignment.graph import MatchGraph
 from timetoalign.alignment.matchline import MatchLine
 from timetoalign.alignment.warpmap import WarpMap
 from timetoalign.core import (
-    AgentType,
+    Belief,
     Coordinate,
     FlowControlElement,
     IdCoordinate,
     Measure,
     NumberType,
+    Provenance,
     Tempo,
     TimeUnit,
 )
@@ -497,7 +493,15 @@ def _json_safety_cases() -> list[tuple[str, dict[str, Any]]]:
     claim = _claim()
     anchor = claim.start_anchor
     assert anchor is not None
-    agent = Agent(name="dtw", type=AgentType.software, identifier="v2")
+    provenance = Provenance(
+        method="inferred",
+        note="dtw v2",
+        beliefs=(
+            Belief(
+                actor="https://orcid.org/0000", belief="unlikely", date="2026-11-21"
+            ),
+        ),
+    )
     graph = MatchGraph([claim])
     cases: list[tuple[str, dict[str, Any]]] = [
         (
@@ -508,8 +512,7 @@ def _json_safety_cases() -> list[tuple[str, dict[str, Any]]]:
             "Timeline.float",
             _float_timeline().to_dict(events=True, external_references=True),
         ),
-        ("Agent", agent.to_dict()),
-        ("MatchMetadata", MatchMetadata(agent=agent, certainty=0.85).to_dict()),
+        ("Provenance", provenance.to_dict()),
         ("AlignmentAnchor", anchor.to_dict()),
         ("MatchClaim", claim.to_dict()),
         ("MatchGraph", graph.to_dict()),

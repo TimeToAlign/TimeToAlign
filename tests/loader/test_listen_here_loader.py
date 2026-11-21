@@ -28,8 +28,8 @@ It verifies:
   ``get_claim_fields``, both matchstamp-table modes, commensurability,
   and a ``MatchLine`` → ``WarpMap`` transfer);
 - the bare-array ``body.audio`` value form (``length == max(times)``);
-- field-level ``MatchMetadata`` (agent from ``header.createdBy``,
-  identifier ``dtw_chroma_alignment``); and
+- the field-level provenance (method ``imported``, a note naming
+  ``header.createdBy`` and ``dtw_chroma_alignment``); and
 - the ``ValueError`` paths (unequal ``times`` lengths, ``header.ref``
   absent from ``body.audio``, fewer than two recordings).
 

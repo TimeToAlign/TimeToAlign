@@ -231,16 +231,16 @@ rejected, doubted = bundle.create_match_claims(
 claim_rows([rejected, doubted])
 
 # %% [markdown]
-# The editor reviews the proposals later. `add_belief()` records a belief
-# in a claim the bundle holds, named by its id: the editor believes the
-# first `"false"` and finds the second `"unlikely"`. A belief replaces the
-# actor's earlier one in that claim and leaves every other actor's belief
-# as it is. It changes only the claim's provenance and never removes the
-# claim.
+# The editor reviews the proposals later. `add_match_claim_belief()`
+# records a belief in a claim the bundle holds, named by its id: the editor
+# believes the first `"false"` and finds the second `"unlikely"`. A belief
+# replaces the actor's earlier one in that claim and leaves every other
+# actor's belief as it is. It changes only the claim's provenance and never
+# removes the claim.
 
 # %%
-bundle.add_belief(rejected.id, actor=EDITOR, belief="false", date=DAY)
-bundle.add_belief(doubted.id, actor=EDITOR, belief="unlikely", date=DAY)
+bundle.add_match_claim_belief(rejected.id, actor=EDITOR, belief="false", date=DAY)
+bundle.add_match_claim_belief(doubted.id, actor=EDITOR, belief="unlikely", date=DAY)
 claim_rows(bundle.get_match_claims())
 
 # %% [markdown]
@@ -376,7 +376,7 @@ read.to_file(copy / "song.yaml")
 bundle.create_match_claims(
     [("n2", score.id, "o2", recording.id)], synchronous=False, actor=EDITOR, date=DAY
 )
-bundle.add_belief(doubted.id, actor=EDITOR, belief="false", date=DAY)
+bundle.add_match_claim_belief(doubted.id, actor=EDITOR, belief="false", date=DAY)
 bundle.to_file(manifest_path)
 claim_rows(AlignmentBundle.from_file(manifest_path).get_match_claims())
 

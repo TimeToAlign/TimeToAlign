@@ -1404,9 +1404,10 @@ Nothing is skipped; a missing fixture fails.
 ### What We're Validating
 
 A MatchClaim is never removed and never changed; who believes it is the
-one thing that may change, in its provenance. `AlignmentBundle.add_belief(
-claim_id, *, actor, belief, date=None, note=None, scope_key=0)` records a
-belief in a claim the bundle holds, `MatchClaimField.with_belief` and
+one thing that may change, in its provenance.
+`AlignmentBundle.add_match_claim_belief(claim_id, *, actor, belief,
+date=None, note=None, scope_key=0)` records a belief in a claim the bundle
+holds, `MatchClaimField.with_belief` and
 `MatchClaim.with_belief` are its copy-on-write forms, and
 `create_match_claims(..., actor=, date=)` records the stating person's
 belief `true`. Every query of the bundle reads the belief filter, the
@@ -1415,7 +1416,11 @@ belief that changes another column or another row, an actor holding two
 beliefs because one spelling is compact and the other absolute, a belief
 the filter does not see (a cache built before it), a file the succession
 rule refuses after a belief, a coordinate getter that still moves through a
-claim its believer holds `false`.
+claim its believer holds `false`, a bundle that can no longer record a belief
+in a pair of its own statements (the statements' `add_belief(property,
+value, ...)`, which every holder of statements has, shadowed by the
+MatchClaim method), an actor spelled with a prefix the manifest declares
+only for the MatchClaim table's actors that does not expand.
 
 ### Fixture
 
@@ -1433,14 +1438,14 @@ without `claim_2` the WarpMap of `claim_1` and `claim_3` places quarter 2 at
 
 ### Exact Expected Values
 
-- **The belief is recorded, nothing else changes.** `add_belief("claim_2",
+- **The belief is recorded, nothing else changes.** `add_match_claim_belief("claim_2",
   actor=Q42, belief="false", date="2026-11-21")` returns the bundle; the
   provenance of `claim_2` is the shared entry plus that one belief,
   `claim_1` and `claim_3` keep the shared entry, every column but
   `provenance` of the table is equal to the one before, and the table holds
   no shared provenance any more (each row carries its own, since one
   differs).
-- **One belief per actor, compared as IRIs.** A second `add_belief` on
+- **One belief per actor, compared as IRIs.** A second `add_match_claim_belief` on
   `claim_2` by `wd:Q42`, `true`, 2026-11-22, replaces the first: the claim
   holds exactly that one belief, as written (`wd:Q42`).
 - **The filter reads it at once.** Before any belief, `get_match_claims(
@@ -1466,11 +1471,33 @@ without `claim_2` the WarpMap of `claim_1` and `claim_3` places quarter 2 at
   Available scopes: {0: 'beliefs'}`) and a belief word outside the three
   raise, the table equal to the one before. `ClaimFilter(belief="maybe")`
   and `believed([], None, "maybe")` refuse the word as the getters do.
+- **A statement and a MatchClaim each take their belief.** On the fixture
+  bundle, `add_statement("dcterms:title", "Beliefs")` then
+  `add_belief("dcterms:title", "Beliefs", actor=Q42, belief="unlikely",
+  date="2026-11-21")` (the statements' method) and
+  `add_match_claim_belief("claim_2", actor=Q42, belief="false",
+  date="2026-11-21")`: the bundle's provenance is exactly one entry
+  `{"property": "dcterms:title", "value": "Beliefs", "beliefs": [{"actor":
+  Q42, "belief": "unlikely", "date": "2026-11-21"}]}`, its statements still
+  `{"dcterms:title": ["Beliefs"]}`, and the MatchClaims hold the one belief
+  in `claim_2` (`claim_1` and `claim_3` keep the shared provenance). Neither
+  belief reaches the other's holder.
+- **The actor context is every prefix the manifest declares.** The fixture
+  bundle's manifest (`to_dict()`) with `"orcid": "https://orcid.org/"`
+  added to its `@context`, a prefix no statement uses and the catalogue
+  lacks, read by `from_dict`: `bundle.prefixes == {"orcid":
+  "https://orcid.org/"}` and `belief_context(bundle)["orcid"] ==
+  "https://orcid.org/"`. A MatchClaim between quarter 0 and sample 0 stated
+  with `actor="orcid:0000-0001"` (date 2026-11-21) is kept by
+  `get_match_claims(believer="https://orcid.org/0000-0001", belief="true")`
+  (one claim, `claim_1`) — under a context holding only the prefixes the
+  statements use, the compact actor would stay as written and the filter
+  would keep none.
 - **The date defaults to today**, read where statements read it: with
   `timetoalign.timelines.statements._today` patched to 2026-11-21, a belief
   without `date` is dated `2026-11-21`.
 - **Scopes.** `from_bundles` of two bundles each holding `claim_1`
-  (`source_a`, `source_b`): `add_belief("claim_1", ..., scope_key=2)`
+  (`source_a`, `source_b`): `add_match_claim_belief("claim_1", ..., scope_key=2)`
   changes the row of `source_b` alone; `get_match_claims(believer=Q42)`
   keeps the row of `source_a` and drops that of `source_b`.
 - **The package succeeds itself.** The bundle written with `to_file`, then

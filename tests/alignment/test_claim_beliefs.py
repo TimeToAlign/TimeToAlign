@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from timetoalign.alignment import AlignmentBundle, ClaimFilter, MatchClaimField
-from timetoalign.alignment.filters import believed
+from timetoalign.alignment.filters import belief_context, believed
 from timetoalign.core import Belief, IdCoordinate, Provenance, TimeUnit
 from timetoalign.timelines import statements
 from timetoalign.timelines.types import (
@@ -73,7 +73,7 @@ class TestAddBelief:
         bundle = _bundle()
         before = bundle.match_claim_table.table.drop_columns(["provenance"])
 
-        returned = bundle.add_belief(
+        returned = bundle.add_match_claim_belief(
             "claim_2", actor=Q42, belief="false", date="2026-11-21"
         )
 
@@ -94,9 +94,13 @@ class TestAddBelief:
 
     def test_one_belief_per_actor_compared_as_iris(self) -> None:
         bundle = _bundle()
-        bundle.add_belief("claim_2", actor=Q42, belief="false", date="2026-11-21")
+        bundle.add_match_claim_belief(
+            "claim_2", actor=Q42, belief="false", date="2026-11-21"
+        )
 
-        bundle.add_belief("claim_2", actor=WD_Q42, belief="true", date="2026-11-22")
+        bundle.add_match_claim_belief(
+            "claim_2", actor=WD_Q42, belief="true", date="2026-11-22"
+        )
 
         assert [claim.provenance.beliefs for claim in bundle.get_match_claims()] == [
             (),
@@ -108,12 +112,16 @@ class TestAddBelief:
         bundle = _bundle()
         assert _ids(bundle, believer=Q42) == ["claim_1", "claim_2", "claim_3"]
 
-        bundle.add_belief("claim_2", actor=Q42, belief="false", date="2026-11-21")
+        bundle.add_match_claim_belief(
+            "claim_2", actor=Q42, belief="false", date="2026-11-21"
+        )
         assert _ids(bundle, believer=Q42) == ["claim_1", "claim_3"]
         assert _ids(bundle, believer=WD_Q42) == ["claim_1", "claim_3"]
         assert _ids(bundle, believer=Q42, belief="true") == []
 
-        bundle.add_belief("claim_2", actor=WD_Q42, belief="true", date="2026-11-22")
+        bundle.add_match_claim_belief(
+            "claim_2", actor=WD_Q42, belief="true", date="2026-11-22"
+        )
         assert _ids(bundle, believer=Q42, belief="true") == ["claim_2"]
 
     def test_refusals_change_nothing(self) -> None:
@@ -127,14 +135,16 @@ class TestAddBelief:
                 "'claim_9' (3 MatchClaims)."
             ),
         ):
-            bundle.add_belief("claim_9", actor=Q42, belief="true")
+            bundle.add_match_claim_belief("claim_9", actor=Q42, belief="true")
         with pytest.raises(
             KeyError,
             match=re.escape("No scope has the key 3. Available scopes: {0: 'beliefs'}"),
         ):
-            bundle.add_belief("claim_1", actor=Q42, belief="true", scope_key=3)
+            bundle.add_match_claim_belief(
+                "claim_1", actor=Q42, belief="true", scope_key=3
+            )
         with pytest.raises(ValueError):
-            bundle.add_belief("claim_1", actor=Q42, belief="maybe")  # type: ignore[arg-type]
+            bundle.add_match_claim_belief("claim_1", actor=Q42, belief="maybe")  # type: ignore[arg-type]
         assert bundle.match_claim_table == before
         assert bundle.match_claim_table.provenance == SHARED
 
@@ -142,11 +152,59 @@ class TestAddBelief:
         monkeypatch.setattr(statements, "_today", lambda: datetime.date(2026, 11, 21))
         bundle = _bundle()
 
-        bundle.add_belief("claim_1", actor=Q42, belief="unlikely", note="by ear")
+        bundle.add_match_claim_belief(
+            "claim_1", actor=Q42, belief="unlikely", note="by ear"
+        )
 
         assert bundle.get_match_claims()[0].provenance.beliefs == (
             Belief(actor=Q42, belief="unlikely", date="2026-11-21", note="by ear"),
         )
+
+    def test_a_statement_and_a_claim_each_take_their_belief(self) -> None:
+        bundle = _bundle()
+        bundle.add_statement("dcterms:title", "Beliefs")
+
+        bundle.add_belief(
+            "dcterms:title", "Beliefs", actor=Q42, belief="unlikely", date="2026-11-21"
+        )
+        bundle.add_match_claim_belief(
+            "claim_2", actor=Q42, belief="false", date="2026-11-21"
+        )
+
+        assert bundle.statements == {"dcterms:title": ["Beliefs"]}
+        assert bundle.provenance == [
+            {
+                "beliefs": [{"actor": Q42, "belief": "unlikely", "date": "2026-11-21"}],
+                "property": "dcterms:title",
+                "value": "Beliefs",
+            }
+        ]
+        assert [claim.provenance for claim in bundle.get_match_claims()] == [
+            SHARED,
+            SHARED.model_copy(
+                update={
+                    "beliefs": (Belief(actor=Q42, belief="false", date="2026-11-21"),)
+                }
+            ),
+            SHARED,
+        ]
+
+    def test_the_actor_context_is_every_prefix_the_manifest_declares(self) -> None:
+        data = _bundle().to_dict()
+        data["@context"] = {**data["@context"], "orcid": "https://orcid.org/"}
+        bundle = AlignmentBundle.from_dict(data)
+
+        bundle.create_match_claims(
+            [({"start": 0}, "score", {"start": 0}, "pcm")],
+            actor="orcid:0000-0001",
+            date="2026-11-21",
+        )
+
+        assert bundle.prefixes == {"orcid": "https://orcid.org/"}
+        assert belief_context(bundle)["orcid"] == "https://orcid.org/"  # type: ignore[index]
+        assert _ids(bundle, believer="https://orcid.org/0000-0001", belief="true") == [
+            "claim_1"
+        ]
 
     def test_a_claim_is_addressed_in_its_scope(self) -> None:
         sources = []
@@ -158,7 +216,7 @@ class TestAddBelief:
             sources.append(source)
         merged = AlignmentBundle.from_bundles(sources, id="merged")
 
-        merged.add_belief(
+        merged.add_match_claim_belief(
             "claim_1", actor=Q42, belief="false", date="2026-11-21", scope_key=2
         )
 
@@ -174,7 +232,9 @@ class TestAddBelief:
         bundle = _bundle()
         bundle.to_file(tmp_path / "package.yaml")
 
-        bundle.add_belief("claim_2", actor=Q42, belief="false", date="2026-11-21")
+        bundle.add_match_claim_belief(
+            "claim_2", actor=Q42, belief="false", date="2026-11-21"
+        )
         bundle.to_file(tmp_path / "package.yaml")
 
         read = AlignmentBundle.from_file(tmp_path / "package.yaml")
@@ -193,7 +253,9 @@ class TestCoordinateGettersTakeTheBeliefFilter:
             == 100000
         )
 
-        bundle.add_belief("claim_2", actor=Q42, belief="false", date="2026-11-21")
+        bundle.add_match_claim_belief(
+            "claim_2", actor=Q42, belief="false", date="2026-11-21"
+        )
 
         for believer in (Q42, WD_Q42):
             assert (

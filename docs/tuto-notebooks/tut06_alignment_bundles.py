@@ -161,10 +161,11 @@ construction_comparison
 # ## Who believes a claim
 #
 # A claim is never deleted. Someone who disagrees records a belief instead:
-# `"true"`, `"false"`, or `"unlikely"`, with `add_belief()` on the bundle,
-# naming the claim by its id. Software that proposes a claim states how it
-# worked but believes nothing, so it gives no `actor=`. Every reader of
-# claims takes the same two filter parameters, `believer=` and `belief=`.
+# `"true"`, `"false"`, or `"unlikely"`, with `add_match_claim_belief()` on
+# the bundle, naming the claim by its id. Software that proposes a claim
+# states how it worked but believes nothing, so it gives no `actor=`. Every
+# reader of claims takes the same two filter parameters, `believer=` and
+# `belief=`.
 
 # %%
 ALIGNER = "https://example.org/tools/cue-aligner"
@@ -172,7 +173,7 @@ doubted_claim = claim_bundle.create_match_claims(
     [("score-c3", score.id, "perf-ornament", performance.id)],
     provenance=Provenance(service=ALIGNER, method="inferred"),
 )[0]
-claim_bundle.add_belief(
+claim_bundle.add_match_claim_belief(
     doubted_claim.id, actor=MUSICOLOGIST, belief="false", date="2026-11-21"
 )
 belief_view = {

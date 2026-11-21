@@ -303,7 +303,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
     resources: list[Resource] = field(default_factory=list)
 
     # The manifest's statements and provenance as the file writes them, and
-    # the prefixes they need beyond the catalogue's.
+    # the prefixes its ``@context`` declares beyond the catalogue's.
     _statement_state: dict[str, Any] = field(
         default_factory=dict, init=False, repr=False
     )
@@ -387,7 +387,10 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         the manifest lies. ``graphical``'s other keys are kept as :attr:`styling`, and the
         entries of ``graphical.order`` keyed by a timeline, its band orders,
         are kept too, both unread. The manifest's statements and provenance
-        become the bundle's, with the prefixes of its ``@context`` they need.
+        become the bundle's, with every prefix its ``@context`` declares
+        beyond the catalogue's, used or not: they are the context under which
+        the MatchClaims' actors compare (a prefix declared only for the
+        actors of the MatchClaim table expands).
         Every root no group names joins
         ungrouped. A timeline several groups name is a member of each, one
         object shared by them. Keys the library does not know are kept on the
@@ -1678,7 +1681,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         self._append_rows(claim_field._joined(self._own_claim_ids(), scope="bundle"))
         return self
 
-    def add_belief(
+    def add_match_claim_belief(
         self,
         claim_id: str,
         *,
@@ -1694,12 +1697,14 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         believing it ``"false"``, and a correction is a new MatchClaim. Only
         the claim's provenance changes. The belief replaces the actor's
         earlier one in that claim, actors compared as IRIs under the
-        bundle's ``@context`` (a compact and an absolute spelling of one
-        actor are one actor); every other actor's belief stands. A claim
-        stated without provenance gets an entry holding the belief alone.
-        The belief filter (``believer=``, ``belief=`` on every query) reads
-        it at once; the MatchClaim table written by :meth:`to_file` succeeds
-        the one written before.
+        bundle's ``@context``, every prefix it declares (a compact and an
+        absolute spelling of one actor are one actor); every other actor's
+        belief stands. A claim stated without provenance gets an entry
+        holding the belief alone. The belief filter (``believer=``,
+        ``belief=`` on every query) reads it at once; the MatchClaim table
+        written by :meth:`to_file` succeeds the one written before. A belief
+        in a pair of the bundle's own statements is recorded by
+        :meth:`add_belief`.
 
         Args:
             claim_id: The MatchClaim's id.
@@ -1732,7 +1737,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             >>> _ = bundle.add_timeline(ContinuousLogicalTimeline(length=16, uid="score"))
             >>> _ = bundle.add_timeline(DiscretePhysicalTimeline(length=705600, uid="pcm"))
             >>> _ = bundle.create_match_claims([({"start": 0}, "score", {"start": 0}, "pcm")])
-            >>> _ = bundle.add_belief(
+            >>> _ = bundle.add_match_claim_belief(
             ...     "claim_1", actor="https://orcid.org/0000-0001", belief="false",
             ...     date="2026-11-21",
             ... )

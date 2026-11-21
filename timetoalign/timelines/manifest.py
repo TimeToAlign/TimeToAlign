@@ -81,7 +81,7 @@ from timetoalign.maps.base import MEASURE_MAP_ID_PREFIX
 
 from .statements import (
     STATE_KEYS,
-    needed_prefixes,
+    declared_prefixes,
     read_statement_state,
     renamed_state,
 )
@@ -861,7 +861,7 @@ class Manifest(_OpenObject):
     """What a manifest holds beside its timelines and groups.
 
     The manifest's ``id`` (absent when it has none), ``name`` and ``meta``,
-    its statements and provenance with the prefixes they need, the members
+    its statements and provenance with the prefixes it declares, the members
     of its ``graphical`` other than ``order``
     (``styling``) and the band orders of its timelines (``band_orders``),
     both kept as given and never interpreted (the named MatchStamps among
@@ -876,8 +876,9 @@ class Manifest(_OpenObject):
         meta: The manifest's free metadata.
         statement_state: The manifest's ``statements`` and ``provenance``,
             each only when not empty, as the file writes them.
-        prefixes: The prefixes those use that the catalogue lacks or gives
-            another namespace, from the manifest's ``@context``.
+        prefixes: The prefixes the manifest's ``@context`` declares that the
+            catalogue lacks or gives another namespace, used by its
+            statements or not.
         styling: ``graphical`` without ``order``: ``styles``,
             ``rules``, ``timestamps`` and any other key, kept as given;
             a named timestamp's ``display`` is written in canonical order,
@@ -939,9 +940,11 @@ class Manifest(_OpenObject):
         band order to the envelope, unchecked. The measure maps no timeline
         names are kept on the envelope, and so are its resources, each
         naming timelines of the manifest. The manifest, every timeline and
-        every region keep their statements and provenance as written, each
-        with the prefixes of the manifest's ``@context`` it uses that the
-        catalogue lacks or gives another namespace. A manifest without
+        every region keep their statements and provenance as written; every
+        timeline and region with the prefixes of the manifest's ``@context``
+        it uses that the catalogue lacks or gives another namespace, the
+        manifest with every such prefix its ``@context`` declares, used or
+        not (the context its MatchClaims' actors are read under). A manifest without
         ``@context`` and without statements reads; the format's warnings
         are not reported.
 
@@ -987,7 +990,7 @@ class Manifest(_OpenObject):
             name=read_name(data, "the manifest"),
             meta=read_meta(data, "the manifest"),
             statement_state=state,
-            prefixes=needed_prefixes(state, own),
+            prefixes=declared_prefixes(own),
         )
         manifest._keep_unknown_keys(data)
 

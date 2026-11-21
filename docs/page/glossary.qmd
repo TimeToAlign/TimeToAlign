@@ -395,7 +395,7 @@ to the relevant section of the conceptual model.
     extension and name no events. A person stating claims is recorded as
     believing them `"true"` (`create_match_claims(..., actor=)`). A claim
     is never deleted: who disagrees records a belief `"false"` in it
-    (`AlignmentBundle.add_belief()`), and every reader of claims, the
+    (`AlignmentBundle.add_match_claim_belief()`), and every reader of claims, the
     MatchStamp and coordinate getters included, filters by `believer=` and
     `belief=`. Held individually, or in the bundle's one
     MatchClaim table, a {{< glossary MatchClaimField >}}. Its id never
@@ -642,7 +642,7 @@ to the relevant section of the conceptual model.
     `get_candidates()` and `get_provenance()` take the belief filter. For a
     MatchClaim, the entry is the claim's `provenance`:
     `create_match_claims(..., actor=)` records the stating person's belief
-    `"true"`, and `AlignmentBundle.add_belief()` records a belief in a claim
+    `"true"`, and `AlignmentBundle.add_match_claim_belief()` records a belief in a claim
     the bundle holds.
     See [How to Describe What a Bundle and Its Timelines Stand For](howto/how03_describe_the_work.ipynb),
     [Alignment Bundles and MatchClaims](tutorials/tut06_alignment_bundles.ipynb) and

@@ -620,7 +620,7 @@ the beliefs about the claim: at most one per actor, `"true"`, `"false"` or
 service records how it made the claim and believes nothing.
 
 A MatchClaim is never deleted and its ID never changes. Whoever disagrees
-records a belief instead (`AlignmentBundle.add_belief()`), and a correction
+records a belief instead (`AlignmentBundle.add_match_claim_belief()`), and a correction
 is a new claim. Nothing derives a truth value from the beliefs; the
 **belief filter** reads them for one actor. Every query that reads
 MatchClaims takes it (`get_match_claims()`, the MatchStamp getters and the

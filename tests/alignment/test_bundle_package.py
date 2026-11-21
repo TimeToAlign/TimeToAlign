@@ -342,7 +342,7 @@ class TestWriting:
         message = (
             "The new MatchClaim table lacks the MatchClaim 'claim_5' of the "
             "existing one: a MatchClaim is never removed; record the belief "
-            "'false' in it instead (AlignmentBundle.add_belief)."
+            "'false' in it instead (AlignmentBundle.add_match_claim_belief)."
         )
         with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
             _bundle(nomatch=False).to_file(tmp_path / "package.yaml")
@@ -531,7 +531,7 @@ class TestWriting:
         message = (
             "The new MatchClaim table lacks the MatchClaim 'claim_1' of the scope "
             "'source_b' of the existing one: a MatchClaim is never removed; record "
-            "the belief 'false' in it instead (AlignmentBundle.add_belief)."
+            "the belief 'false' in it instead (AlignmentBundle.add_match_claim_belief)."
         )
         with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
             _merged("source_a", "source_c").to_file(tmp_path / "merged.yaml")

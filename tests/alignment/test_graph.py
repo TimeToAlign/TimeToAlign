@@ -174,12 +174,12 @@ class TestMatchStamp:
         """Create a basic MatchStamp."""
         stamp = MatchStamp(
             coordinates={"tl_a": 100.0, "tl_b": 50.0},
-            anchor_edges=[("tl_a", "tl_b")],
-            inferred_edges=[],
+            stated_pairs=[("tl_a", "tl_b")],
+            inferred_pairs=[],
         )
         assert stamp.n_timelines == 2
-        assert stamp.n_explicit_edges == 1
-        assert stamp.n_inferred_edges == 0
+        assert stamp.n_stated_pairs == 1
+        assert stamp.n_inferred_pairs == 0
 
     def test_empty_stamp_is_invalid(self) -> None:
         """Reject a stamp without the required source-axis coordinate."""
@@ -224,7 +224,7 @@ class TestMatchStamp:
         """Filter stamp to include only specific timelines."""
         stamp = MatchStamp(
             coordinates={"tl_a": 100.0, "tl_b": 50.0, "tl_c": 25.0},
-            anchor_edges=[("tl_a", "tl_b"), ("tl_b", "tl_c")],
+            stated_pairs=[("tl_a", "tl_b"), ("tl_b", "tl_c")],
         )
         filtered = stamp.filter_by_timelines(
             timeline_ids={"tl_a", "tl_b"},
@@ -233,53 +233,53 @@ class TestMatchStamp:
 
         assert filtered.n_timelines == 2
         assert "tl_c" not in filtered.coordinates
-        assert len(filtered.anchor_edges) == 1
-        assert ("tl_a", "tl_b") in filtered.anchor_edges
+        assert len(filtered.stated_pairs) == 1
+        assert ("tl_a", "tl_b") in filtered.stated_pairs
 
     def test_filter_by_timelines_id_pattern(self) -> None:
         """Filter stamp with a canonical timeline ID pattern."""
         stamp = MatchStamp(
             coordinates={"tl_a": 100.0, "tl_b": 50.0, "tl_c": 25.0},
-            anchor_edges=[("tl_a", "tl_b"), ("tl_b", "tl_c")],
+            stated_pairs=[("tl_a", "tl_b"), ("tl_b", "tl_c")],
         )
         filtered = stamp.filter_by_timelines(id_pattern=r"^(?!tl_c$).*")
 
         assert filtered.n_timelines == 2
         assert "tl_c" not in filtered.coordinates
-        assert len(filtered.anchor_edges) == 1
+        assert len(filtered.stated_pairs) == 1
 
     def test_to_dict_roundtrip(self) -> None:
         """Serialize and deserialize MatchStamp."""
         stamp = MatchStamp(
             coordinates={"tl_a": 100.0, "tl_b": 50.0},
-            anchor_edges=[("tl_a", "tl_b")],
-            inferred_edges=[("tl_b", "tl_c")],
+            stated_pairs=[("tl_a", "tl_b")],
+            inferred_pairs=[("tl_b", "tl_c")],
         )
         data = stamp.to_dict(format="graph")
         restored = MatchStampType.from_dict(data)
 
         assert restored.coordinates == stamp.coordinates
-        assert restored.anchor_edges == stamp.anchor_edges
-        assert restored.inferred_edges == stamp.inferred_edges
+        assert restored.stated_pairs == stamp.stated_pairs
+        assert restored.inferred_pairs == stamp.inferred_pairs
 
     def test_graph_dict_isolation(self) -> None:
         """Graph dictionaries do not expose the stamp's mutable containers."""
         stamp = MatchStamp(
             coordinates={"tl_a": 100.0, "tl_b": 50.0},
-            anchor_edges=[("tl_a", "tl_b")],
-            inferred_edges=[("tl_b", "tl_c")],
+            stated_pairs=[("tl_a", "tl_b")],
+            inferred_pairs=[("tl_b", "tl_c")],
         )
         data = stamp.to_dict(format="graph")
         data["coordinates"]["tl_a"] = 999.0
-        data["anchor_edges"].append(("tl_c", "tl_d"))
-        data["inferred_edges"].clear()
+        data["stated_pairs"].append(("tl_c", "tl_d"))
+        data["inferred_pairs"].clear()
 
         assert stamp.coordinates == {
             "tl_a": Coordinate(100.0, TimeUnit.number),
             "tl_b": Coordinate(50.0, TimeUnit.number),
         }
-        assert stamp.anchor_edges == [("tl_a", "tl_b")]
-        assert stamp.inferred_edges == [("tl_b", "tl_c")]
+        assert stamp.stated_pairs == [("tl_a", "tl_b")]
+        assert stamp.inferred_pairs == [("tl_b", "tl_c")]
 
     def test_from_dict_isolation(self) -> None:
         """Mutating input dictionaries does not mutate the restored stamp."""
@@ -296,20 +296,20 @@ class TestMatchStamp:
                     "value": 50.0,
                 },
             },
-            "anchor_edges": [("tl_a", "tl_b")],
-            "inferred_edges": [("tl_b", "tl_c")],
+            "stated_pairs": [("tl_a", "tl_b")],
+            "inferred_pairs": [("tl_b", "tl_c")],
         }
         stamp = MatchStampType.from_dict(data)
         data["coordinates"]["tl_a"] = 999.0
-        data["anchor_edges"].append(("tl_c", "tl_d"))
-        data["inferred_edges"].clear()
+        data["stated_pairs"].append(("tl_c", "tl_d"))
+        data["inferred_pairs"].clear()
 
         assert stamp.coordinates == {
             "tl_a": Coordinate(100.0, TimeUnit.number),
             "tl_b": Coordinate(50.0, TimeUnit.number),
         }
-        assert stamp.anchor_edges == [("tl_a", "tl_b")]
-        assert stamp.inferred_edges == [("tl_b", "tl_c")]
+        assert stamp.stated_pairs == [("tl_a", "tl_b")]
+        assert stamp.inferred_pairs == [("tl_b", "tl_c")]
 
     def test_source_axis_is_required(self) -> None:
         """A stamp cannot be constructed without a source-axis coordinate."""
@@ -328,14 +328,14 @@ class TestMatchStamp:
         stamp = MatchStamp(
             coordinates={"audio": Fraction(25, 2), "score": Fraction(415, 24)},
             coordinate_units={"audio": "seconds", "score": "quarters"},
-            anchor_edges=[("audio", "score")],
+            stated_pairs=[("audio", "score")],
         )
 
         assert repr(stamp) == "MatchStamp(audio=25/2 seconds, score=415/24 quarters)"
         assert str(stamp) == (
             "MatchStamp (2 timelines, 1 edges)\n"
-            "  audio     25/2 seconds  anchor\n"
-            "  score  415/24 quarters  anchor"
+            "  audio     25/2 seconds  stated\n"
+            "  score  415/24 quarters  stated"
         )
         assert stamp._repr_html_() == (
             "<div style='font-family: monospace;'><strong>MatchStamp</strong> "
@@ -346,9 +346,9 @@ class TestMatchStamp:
             "padding: 2px 8px;'>ID</th><th style='text-align: right; padding: 2px 8px;'>"
             "Coordinate</th><th style='text-align: left; padding: 2px 8px;'>Type</th>"
             "</tr></thead><tbody><tr><td><strong>audio</strong></td><td "
-            "style='text-align: right;'>25/2 seconds</td><td><em>anchor</em></td></tr>"
+            "style='text-align: right;'>25/2 seconds</td><td><em>stated</em></td></tr>"
             "<tr><td><strong>score</strong></td><td style='text-align: right;'>"
-            "415/24 quarters</td><td><em>anchor</em></td></tr></tbody></table><div "
+            "415/24 quarters</td><td><em>stated</em></td></tr></tbody></table><div "
             "style='margin-top: 4px; color: #666; font-size: 0.85em;'>Try: "
             "<code>stamp.get_coordinate_for(&lt;tl_id&gt;)</code>, "
             "<code>stamp.get_coordinates_for(&lt;tl_ids&gt;)</code>, "
@@ -459,7 +459,7 @@ class TestMatchGraphStamps:
         stamp = stamps[0]
         assert stamp.get_coordinate_for("tl_a", format="float") == 100.0
         assert stamp.get_coordinate_for("tl_b", format="float") == 50.0
-        assert len(stamp.anchor_edges) == 1
+        assert len(stamp.stated_pairs) == 1
 
     def test_interval_claim_yields_two_stamps(
         self, simple_interval_claim: MatchClaim
@@ -534,7 +534,7 @@ class TestMatchGraphGroupExtension:
 
         # Original graph: 2 nodes, 1 edge
         # Extended graph should have 3 nodes (dgt1, external, audio)
-        # and 2 edges (dgt1-external explicit, dgt1-audio inferred)
+        # and 2 edges (dgt1-external stated, dgt1-audio inferred)
         assert extended.n_nodes == 3
         assert extended.n_edges == 2
 
@@ -561,7 +561,7 @@ class TestMatchGraphGroupExtension:
         self,
         dgt1_group: TimelineGroup,
     ) -> None:
-        """Extended edges are marked as inferred, not explicit."""
+        """Extended edges are marked as inferred, not stated."""
         claim = _claim("dgt_1", 500, "external", 25.0, unit_a=TimeUnit.pixels)
         graph = MatchGraph([claim])
 
@@ -572,10 +572,10 @@ class TestMatchGraphGroupExtension:
         assert len(stamps) == 1
         stamp = stamps[0]
 
-        # Should have 1 explicit edge (dgt1-external)
-        # and 1 inferred edge (dgt1-audio or audio-external)
-        assert stamp.n_explicit_edges == 1
-        assert stamp.n_inferred_edges == 1
+        # Should have 1 stated pair (dgt1-external)
+        # and 1 inferred pair (dgt1-audio or audio-external)
+        assert stamp.n_stated_pairs == 1
+        assert stamp.n_inferred_pairs == 1
 
     def test_extend_with_include_inferred_false(
         self,
@@ -648,20 +648,20 @@ class TestMatchGraphFilter:
         # tl_c should be removed (isolated after edge removal)
         assert "tl_c" not in filtered.timeline_ids
 
-    def test_filter_explicit_only(
+    def test_filter_stated_only(
         self,
         dgt1_group: TimelineGroup,
     ) -> None:
-        """Filter to include only explicit edges (remove inferred)."""
+        """Filter to include only the edges MatchClaims state (remove inferred)."""
         claim = _claim("dgt_1", 500, "external", 25.0, unit_a=TimeUnit.pixels)
         graph = MatchGraph([claim])
 
         groups = {"group1": dgt1_group}
 
         extended = graph.extend_to_groups(groups)
-        filtered = extended.filter(explicit_only=True)
+        filtered = extended.filter(stated_only=True)
 
-        # Should only have the explicit edge
+        # Should only have the stated edge
         assert filtered.n_edges == 1
         # Audio should be removed (only connected via inferred edge)
         assert "audio" not in filtered.timeline_ids
@@ -1309,8 +1309,8 @@ class TestMatchStampGroupRetrieval:
         """Plural retrieval uses timeline_ids in the group's declared order."""
         stamp = MatchStamp(
             coordinates={"dgt_1": 500.0, "audio": 50.0, "external": 25.0},
-            anchor_edges=[("dgt_1", "external")],
-            inferred_edges=[("dgt_1", "audio")],
+            stated_pairs=[("dgt_1", "external")],
+            inferred_pairs=[("dgt_1", "audio")],
         )
 
         values = stamp.get_coordinates_for(dgt1_group.timeline_ids, format="float")

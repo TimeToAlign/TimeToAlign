@@ -77,17 +77,17 @@ def linear_match_line() -> MatchLine:
         MatchStamp(
             coordinates={"score": 0.0, "audio": 0.0},
             coordinate_units={"score": "quarters", "audio": "seconds"},
-            anchor_edges=[("score", "audio")],
+            stated_pairs=[("score", "audio")],
         ),
         MatchStamp(
             coordinates={"score": 100.0, "audio": 50.0},
             coordinate_units={"score": "quarters", "audio": "seconds"},
-            anchor_edges=[("score", "audio")],
+            stated_pairs=[("score", "audio")],
         ),
         MatchStamp(
             coordinates={"score": 200.0, "audio": 100.0},
             coordinate_units={"score": "quarters", "audio": "seconds"},
-            anchor_edges=[("score", "audio")],
+            stated_pairs=[("score", "audio")],
         ),
     ]
     return MatchLine(source_timeline_id="score", stamps=stamps)
@@ -105,19 +105,19 @@ def nonlinear_match_line() -> MatchLine:
     stamps = [
         MatchStamp(
             coordinates={"score": 0.0, "audio": 0.0},
-            anchor_edges=[("score", "audio")],
+            stated_pairs=[("score", "audio")],
         ),
         MatchStamp(
             coordinates={"score": 100.0, "audio": 60.0},
-            anchor_edges=[("score", "audio")],
+            stated_pairs=[("score", "audio")],
         ),
         MatchStamp(
             coordinates={"score": 200.0, "audio": 100.0},
-            anchor_edges=[("score", "audio")],
+            stated_pairs=[("score", "audio")],
         ),
         MatchStamp(
             coordinates={"score": 300.0, "audio": 120.0},
-            anchor_edges=[("score", "audio")],
+            stated_pairs=[("score", "audio")],
         ),
     ]
     return MatchLine(source_timeline_id="score", stamps=stamps)
@@ -133,11 +133,11 @@ def multi_target_match_line() -> MatchLine:
     stamps = [
         MatchStamp(
             coordinates={"score": 0.0, "audio": 0.0, "pixels": 0.0, "ticks": 0},
-            anchor_edges=[("score", "audio"), ("score", "pixels")],
+            stated_pairs=[("score", "audio"), ("score", "pixels")],
         ),
         MatchStamp(
             coordinates={"score": 100.0, "audio": 50.0, "pixels": 500.0, "ticks": 480},
-            anchor_edges=[("score", "audio"), ("score", "pixels")],
+            stated_pairs=[("score", "audio"), ("score", "pixels")],
         ),
         MatchStamp(
             coordinates={
@@ -146,7 +146,7 @@ def multi_target_match_line() -> MatchLine:
                 "pixels": 1000.0,
                 "ticks": 960,
             },
-            anchor_edges=[("score", "audio"), ("score", "pixels")],
+            stated_pairs=[("score", "audio"), ("score", "pixels")],
         ),
     ]
     return MatchLine(source_timeline_id="score", stamps=stamps)
@@ -279,7 +279,7 @@ class TestConstruction:
         stamps = [
             MatchStamp(
                 coordinates={"score": 0.0, "audio": 0.0},
-                anchor_edges=[("score", "audio")],
+                stated_pairs=[("score", "audio")],
             ),
         ]
         line = MatchLine(source_timeline_id="score", stamps=stamps)
@@ -333,20 +333,20 @@ class TestConstruction:
         stamps = [
             MatchStamp(
                 coordinates={"score": 0.0, "audio": 0.0},
-                anchor_edges=[("score", "audio")],
+                stated_pairs=[("score", "audio")],
             ),
             # Two stamps at the same source coord (chord)
             MatchStamp(
                 coordinates={"score": 100.0, "audio": 48.0},
-                anchor_edges=[("score", "audio")],
+                stated_pairs=[("score", "audio")],
             ),
             MatchStamp(
                 coordinates={"score": 100.0, "audio": 52.0},
-                anchor_edges=[("score", "audio")],
+                stated_pairs=[("score", "audio")],
             ),
             MatchStamp(
                 coordinates={"score": 200.0, "audio": 100.0},
-                anchor_edges=[("score", "audio")],
+                stated_pairs=[("score", "audio")],
             ),
         ]
         line = MatchLine(source_timeline_id="score", stamps=stamps)
@@ -364,19 +364,19 @@ class TestConstruction:
             stamps=[
                 MatchStamp(
                     coordinates={"edition": 0.0, "spine": 0.0},
-                    anchor_edges=[("edition", "spine")],
+                    stated_pairs=[("edition", "spine")],
                 ),
                 MatchStamp(
                     coordinates={"edition": 50.0, "spine": 0.0},
-                    anchor_edges=[("edition", "spine")],
+                    stated_pairs=[("edition", "spine")],
                 ),
                 MatchStamp(
                     coordinates={"edition": 50.0, "spine": 22272.0},
-                    anchor_edges=[("edition", "spine")],
+                    stated_pairs=[("edition", "spine")],
                 ),
                 MatchStamp(
                     coordinates={"edition": 100.0, "spine": 44544.0},
-                    anchor_edges=[("edition", "spine")],
+                    stated_pairs=[("edition", "spine")],
                 ),
             ],
         )

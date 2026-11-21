@@ -162,11 +162,11 @@ def two_stamp_matchline() -> MatchLine:
     stamps = [
         MatchStamp(
             coordinates={"score": 0.0, "perf": 0.0},
-            anchor_edges=[("score", "perf")],
+            stated_pairs=[("score", "perf")],
         ),
         MatchStamp(
             coordinates={"score": 0.5, "perf": 680.0},
-            anchor_edges=[("score", "perf")],
+            stated_pairs=[("score", "perf")],
         ),
     ]
     return MatchLine(source_timeline_id="score", stamps=stamps)
@@ -341,11 +341,11 @@ class TestMinimalExport:
         stamps = [
             MatchStamp(
                 coordinates={"score": 0.0, "perf": 0.0},
-                anchor_edges=[("score", "perf")],
+                stated_pairs=[("score", "perf")],
             ),
             MatchStamp(
                 coordinates={"score": 100.0, "perf": 45000.0},
-                anchor_edges=[("score", "perf")],
+                stated_pairs=[("score", "perf")],
             ),
         ]
         line = MatchLine(source_timeline_id="score", stamps=stamps)
@@ -518,7 +518,7 @@ class TestRoundTripMatchfileLoader:
         stamps = [
             MatchStamp(
                 coordinates={"score": 0.0, "perf": 0.0},
-                anchor_edges=[("score", "perf")],
+                stated_pairs=[("score", "perf")],
             ),
         ]
         line = MatchLine(source_timeline_id="score", stamps=stamps)

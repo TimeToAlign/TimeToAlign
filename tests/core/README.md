@@ -1624,6 +1624,20 @@ What proves the entry is the format's and holds nothing else:
   another actor and is appended. Construction, which has no context,
   compares the same way: two beliefs of `https://example.org/people/ana`
   are refused.
+- **Two spellings of one believer on one row.** Construction has no
+  context, so an entry may hold `ex:ana` and
+  `https://example.org/people/ana`, which the context makes one believer.
+  The filter then reads the row as the most critical of the two beliefs
+  (false, unlikely, true: the order in which a drawing colours an anchor
+  stated by several MatchClaims), whatever the order they are written in,
+  so the answer never depends on which came last. Two rows, `ex:ana`
+  `true` + absolute `false` and absolute `false` + `ex:ana` `true`, read
+  as `false` under the context for `ex:ana`: the default mask is `[False,
+  False]`, `["false"]` `[True, True]`, `["true"]` `[False, False]`. Two
+  more rows, `true` + `unlikely` in both orders, read as `unlikely`:
+  `["unlikely"]` `[True, True]`, `["true"]` `[False, False]`. Without the
+  context the two spellings are two actors, so `ex:ana` reads its own
+  belief: `["true"]` `[True, True]` on the first pair.
 - **One check of the states.** `check_belief_filter` takes a collection of
   the four states and answers it as a frozen set (`["true", "unlikely"]` →
   `{"true", "unlikely"}`; a repeated state counts once; `[]` is the empty

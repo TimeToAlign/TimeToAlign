@@ -1538,6 +1538,19 @@ def register_value_projector(
     _derive_arrow_fields.cache_clear()
 
 
+def drop_from_schema(
+    _model_cls: type[BaseModel], _name: str, _info: object
+) -> list[pa.Field]:
+    """A value projector leaving a scalar's property out of its derived schema.
+
+    Registered with :func:`register_value_projector` for a property that is
+    stored elsewhere: in field metadata (a coordinate's ``unit``), in a
+    column of its own (``Note.pitch``), or in the row that holds the struct
+    (an anchor's two timeline IDs, which are its MatchClaim's).
+    """
+    return []
+
+
 def _is_tuple_type(py_type: Any) -> bool:
     origin = get_origin(py_type)
     return origin is tuple

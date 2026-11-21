@@ -74,6 +74,7 @@ from timetoalign.core import (
 from timetoalign.core.fields import (
     SemanticField,
     StructField,
+    drop_from_schema,
     register_value_projector,
 )
 from timetoalign.core.ids import mint_ids, quote_id, validate_id
@@ -1229,8 +1230,8 @@ class MatchClaim(BaseModel):
             return MatchStamp(
                 coordinates=coords,
                 source_id=self.timeline_a_id,
-                anchor_edges=[(self.timeline_a_id, self.timeline_b_id)],
-                inferred_edges=[],
+                stated_pairs=[(self.timeline_a_id, self.timeline_b_id)],
+                inferred_pairs=[],
                 source=effective_bundle,
                 is_interpolated=False,
                 conversion_maps=conversion_maps,
@@ -1765,15 +1766,9 @@ class MatchClaim(BaseModel):
 # region MatchClaimField
 
 
-def _drop_from_table(
-    _model_cls: type[BaseModel], _name: str, _info: object
-) -> list[pa.Field]:
-    """Leave a property out of the table: an anchor's timelines are its row's."""
-    return []
-
-
-register_value_projector(AlignmentAnchor, "timeline_a_id", _drop_from_table)
-register_value_projector(AlignmentAnchor, "timeline_b_id", _drop_from_table)
+# An anchor's timelines are its row's: the table cell holds its coordinates.
+register_value_projector(AlignmentAnchor, "timeline_a_id", drop_from_schema)
+register_value_projector(AlignmentAnchor, "timeline_b_id", drop_from_schema)
 register_value_projector(AlignmentAnchor, "coordinate_a", coordinate_cell_projector)
 register_value_projector(AlignmentAnchor, "coordinate_b", coordinate_cell_projector)
 

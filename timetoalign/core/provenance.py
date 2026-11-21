@@ -52,6 +52,10 @@ BELIEF_STATES: tuple[BeliefState, ...] = ("true", "undecided", "unlikely", "fals
 DEFAULT_BELIEFS: tuple[BeliefState, ...] = ("true", "undecided", "unlikely")
 """The states the belief filter keeps by default: every state but ``"false"``."""
 
+_CRITICAL_FIRST: tuple[BeliefValue, ...] = ("false", "unlikely", "true")
+"""The beliefs, the most critical first: one row holding two beliefs of one
+believer (two spellings of the actor) is read as the first of them."""
+
 _DATE_PATTERN = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 
 #: An IRI as the format tells one from a method word: a scheme, a colon and
@@ -467,7 +471,9 @@ def belief_mask(
     TimeToShare compares them (:func:`timetoshare.expand_iri`), so a compact
     and an absolute IRI of one actor name the same actor; an actor that
     expands to nothing (a compact IRI whose prefix *context* does not
-    declare) compares as written.
+    declare) compares as written. Where two spellings of the believer hold
+    two beliefs on one row, the row is read as the most critical of them
+    (``"false"``, then ``"unlikely"``, then ``"true"``).
 
     Args:
         provenance: A struct array of ``ProvenanceField.pa_schema`` (null
@@ -516,17 +522,24 @@ def belief_mask(
     held = provenance.flatten()[provenance.type.get_field_index("beliefs")]
     stated = pc.list_flatten(held)
     owners = pc.cast(pc.list_parent_indices(held), pa.int64())
-    # At most one belief per actor and entry: each row's state is the
-    # believer's belief where the row holds one, else "undecided".
+    # Each row's state is the believer's belief where the row holds one,
+    # else "undecided". An entry holds at most one belief per actor as
+    # written, but two spellings of one actor (``ex:ana`` and the IRI it
+    # expands to) name one believer only under *context*: the row then
+    # takes the most critical of them, in :data:`_CRITICAL_FIRST` order.
     own = pc.fill_null(_names_actor(stated.field("actor"), believer, context), False)
-    state = np.full(n, "undecided", dtype=object)
-    state[owners.filter(own).to_numpy()] = (
-        stated.field("belief").filter(own).to_numpy(zero_copy_only=False)
+    beliefs_held = stated.field("belief").filter(own)
+    # One rank per row, the most critical belief held; a row holding none
+    # keeps the rank past the last belief, which reads as "undecided".
+    rank = np.full(n, len(_CRITICAL_FIRST), dtype=np.int64)
+    np.minimum.at(
+        rank,
+        owners.filter(own).to_numpy(),
+        pc.index_in(beliefs_held, value_set=pa.array(_CRITICAL_FIRST)).to_numpy(),
     )
-    return pc.is_in(
-        pa.array(state, type=pa.string()),
-        value_set=pa.array(sorted(states), type=pa.string()),
-    )
+    state = np.array([*_CRITICAL_FIRST, "undecided"], dtype=object)[rank]
+    kept = np.isin(state, sorted(states))
+    return pa.array(kept, type=pa.bool_())
 
 
 def _names_actor(

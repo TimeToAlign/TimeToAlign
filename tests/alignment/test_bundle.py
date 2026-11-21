@@ -825,15 +825,15 @@ class TestCrossGroupTransfer:
             stamps=[
                 MatchStamp(
                     coordinates={score_tl.id: 0.0, audio_tl.id: 0.0},
-                    anchor_edges=[(score_tl.id, audio_tl.id)],
+                    stated_pairs=[(score_tl.id, audio_tl.id)],
                 ),
                 MatchStamp(
                     coordinates={score_tl.id: 50.0, audio_tl.id: 0.0},
-                    anchor_edges=[(score_tl.id, audio_tl.id)],
+                    stated_pairs=[(score_tl.id, audio_tl.id)],
                 ),
                 MatchStamp(
                     coordinates={score_tl.id: 50.0, audio_tl.id: 22272.0},
-                    anchor_edges=[(score_tl.id, audio_tl.id)],
+                    stated_pairs=[(score_tl.id, audio_tl.id)],
                 ),
             ],
         )
@@ -1007,7 +1007,7 @@ class TestGetMatchstampAtCrossGroup:
 
         stamp = bundle.get_matchstamp_at(75.0, "score")
 
-        assert stamp.inferred_edges == [
+        assert stamp.inferred_pairs == [
             ("score", "image"),
             ("score", "audio"),
             ("audio", "midi"),

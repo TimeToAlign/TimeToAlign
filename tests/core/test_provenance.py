@@ -370,6 +370,34 @@ class TestActorsCompareAsIris:
         ):
             Provenance(beliefs=(_belief(_ANA, "true"), _belief(_ANA, "false")))
 
+    def test_two_spellings_of_the_believer_read_as_the_most_critical(self) -> None:
+        false_pair = provenance_array(
+            [
+                Provenance(beliefs=(_belief("ex:ana", "true"), _belief(_ANA, "false"))),
+                Provenance(beliefs=(_belief(_ANA, "false"), _belief("ex:ana", "true"))),
+            ]
+        )
+        unlikely_pair = provenance_array(
+            [
+                Provenance(
+                    beliefs=(_belief("ex:ana", "true"), _belief(_ANA, "unlikely"))
+                ),
+                Provenance(
+                    beliefs=(_belief(_ANA, "unlikely"), _belief("ex:ana", "true"))
+                ),
+            ]
+        )
+
+        def mask(column: pa.Array, beliefs, context=_CONTEXT) -> list[bool]:
+            return belief_mask(column, "ex:ana", beliefs, context=context).to_pylist()
+
+        assert mask(false_pair, DEFAULT_BELIEFS) == [False, False]
+        assert mask(false_pair, ["false"]) == [True, True]
+        assert mask(false_pair, ["true"]) == [False, False]
+        assert mask(unlikely_pair, ["unlikely"]) == [True, True]
+        assert mask(unlikely_pair, ["true"]) == [False, False]
+        assert mask(false_pair, ["true"], context=None) == [True, True]
+
     def test_one_check_of_the_states(self) -> None:
         assert check_belief_filter(["true", "unlikely"]) == frozenset(
             {"true", "unlikely"}

@@ -57,7 +57,8 @@
 # `pip install "timetoalign[verovio]"`. The files this guide writes go to a
 # temporary directory. Three helpers keep the cells short: `notes_at` lists
 # the score's notes in a span of quarters, `ids_at` names the notes starting
-# at one position, and `claims_table` shows a list of claims one row each.
+# at one position, and `claims_table` shows a list of claims one row each,
+# a NOMATCH claim at the start of the one event it names.
 
 # %%
 from __future__ import annotations
@@ -98,12 +99,15 @@ def ids_at(timeline, position) -> list[str]:
     return list(notes_at(timeline, position, position + Fraction(1, 1000))["id"])
 
 
-def claims_table(claims) -> pd.DataFrame:
+def claims_table(claims, *timelines) -> pd.DataFrame:
     """One row per claim: its type, the events it names, and both sides.
 
-    A NOMATCH claim holds no coordinate (its event's position is the event's
-    own), so its ``at`` and ``there`` are empty.
+    A synchronous claim gives the two coordinates of its anchor. A NOMATCH
+    claim holds no coordinate: it names one event, on its timeline A, and
+    the sentinel on timeline B. Its ``at`` is that event's start, read from
+    the event on its timeline among *timelines*; its ``there`` is empty.
     """
+    by_id = {timeline.id: timeline for timeline in timelines}
     rows = []
     for claim in claims:
         if claim.is_synchronous:
@@ -112,13 +116,16 @@ def claims_table(claims) -> pd.DataFrame:
                 claim.start_anchor.coordinate_b,
             )
         else:
-            here, there = None, None
+            here = by_id[claim.timeline_a_id].get_coordinate_for(
+                claim.event_a_id, format="coordinate"
+            )
+            there = None
         rows.append(
             {
                 "claim_type": claim.claim_type.value,
                 "event": claim.event_a_id,
                 "from": claim.timeline_a_id,
-                "at": "" if here is None else str(here),
+                "at": str(here),
                 "to": claim.timeline_b_id,
                 "there": "" if there is None else str(there),
                 "event there": claim.event_b_id or "",
@@ -235,7 +242,7 @@ maps
 # %%
 recording = ContinuousPhysicalTimeline(length=4.0, unit="seconds", name="Recording")
 claims = maps.create_match_claims(score, recording)
-claims_table(claims)
+claims_table(claims, score, recording)
 
 # %% [markdown]
 # A bundle relates the two timelines through the claims. Added with

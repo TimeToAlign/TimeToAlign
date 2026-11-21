@@ -2741,7 +2741,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         assembly walks outward across groups to closure: every reached timeline
         expands into its own group (by interpolation) and warps into
         not-yet-reached groups (by WarpMap). ``is_interpolated`` is ``False``
-        exactly when the query node itself carries an explicit anchor.
+        exactly when the query node itself carries an anchor a claim states.
 
         A timeline whose transferred coordinate falls outside alignment
         support — the entering coordinate lies outside the transferring
@@ -2902,8 +2902,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             )
 
         interval_coordinates: dict[str, CoordinateValue] = {}
-        interval_anchor_edges: list[tuple[str, str]] = []
-        interval_inferred_edges: list[tuple[str, str]] = []
+        interval_stated_pairs: list[tuple[str, str]] = []
+        interval_inferred_pairs: list[tuple[str, str]] = []
         for target_id, candidates in candidate_groups.items():
             values = [candidate for _, candidate, _ in candidates]
             if any(candidate is None for candidate in values):
@@ -2918,9 +2918,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             interval_coordinates[target_id] = unique[0].value
             edge = (timeline_id, target_id)
             if any(is_anchor for _, _, is_anchor in candidates):
-                interval_anchor_edges.append(edge)
+                interval_stated_pairs.append(edge)
             else:
-                interval_inferred_edges.append(edge)
+                interval_inferred_pairs.append(edge)
 
         policy = (
             self.support_policy
@@ -2928,7 +2928,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             else self._coerce_support_policy(support_policy)
         )
 
-        coordinates, anchor_edges, inferred_edges, query_has_anchor = (
+        coordinates, stated_pairs, inferred_pairs, query_has_anchor = (
             self._assemble_matchstamp(
                 queried,
                 timeline_id,
@@ -2936,8 +2936,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 conversion_maps=conversion_maps,
                 belief_key=belief_key,
                 interval_coordinates=interval_coordinates,
-                interval_anchor_edges=interval_anchor_edges,
-                interval_inferred_edges=interval_inferred_edges,
+                interval_stated_pairs=interval_stated_pairs,
+                interval_inferred_pairs=interval_inferred_pairs,
                 interval_withheld=set(candidate_groups).difference(
                     interval_coordinates
                 ),
@@ -2973,8 +2973,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         stamp = MatchStamp(
             coordinates=typed_coordinates,
             source_id=timeline_id,
-            anchor_edges=list(anchor_edges),
-            inferred_edges=list(inferred_edges),
+            stated_pairs=list(stated_pairs),
+            inferred_pairs=list(inferred_pairs),
             source=self,
             is_interpolated=not query_has_anchor,
             conversion_maps=conversion_maps,
@@ -3016,14 +3016,14 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                     if stamp.source_id in filtered_coords
                     else next(iter(filtered_coords))
                 ),
-                anchor_edges=[
+                stated_pairs=[
                     (a, b)
-                    for a, b in stamp.anchor_edges
+                    for a, b in stamp.stated_pairs
                     if a in remaining and b in remaining
                 ],
-                inferred_edges=[
+                inferred_pairs=[
                     (a, b)
-                    for a, b in stamp.inferred_edges
+                    for a, b in stamp.inferred_pairs
                     if a in remaining and b in remaining
                 ],
                 source=stamp.source,
@@ -3358,8 +3358,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         conversion_maps: "ConversionMapsSpec",
         belief_key: _BeliefKey = _ALL_BELIEFS,
         interval_coordinates: dict[str, CoordinateValue] | None = None,
-        interval_anchor_edges: list[tuple[str, str]] | None = None,
-        interval_inferred_edges: list[tuple[str, str]] | None = None,
+        interval_stated_pairs: list[tuple[str, str]] | None = None,
+        interval_inferred_pairs: list[tuple[str, str]] | None = None,
         interval_withheld: set[str] | None = None,
         query_has_interval_anchor: bool = False,
     ) -> tuple[
@@ -3385,41 +3385,41 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             conversion_maps: C-map spec forwarded to group timestamps.
             belief_key: The belief filter every claim is read under.
             interval_coordinates: Unambiguous interval-derived seed values.
-            interval_anchor_edges: Interval-claim edges reached at an anchor.
-            interval_inferred_edges: Interval-claim edges reached in an interior.
+            interval_stated_pairs: Interval-claim edges reached at an anchor.
+            interval_inferred_pairs: Interval-claim edges reached in an interior.
             interval_withheld: Timelines the query's interval claims map to
                 no single coordinate. Each stays unresolved unless an exact
                 anchor of the query's MatchGraph gives it a coordinate, which
                 then wins; no interpolation or warp fills it, so no transfer
                 collapses the claims' alternatives into one value.
-            query_has_interval_anchor: Whether an interval claim explicitly
-                anchors the query position.
+            query_has_interval_anchor: Whether an interval claim's anchor
+                names the query position.
 
         Returns:
-            ``(coordinates, anchor_edges, inferred_edges, query_has_anchor)``.
+            ``(coordinates, stated_pairs, inferred_pairs, query_has_anchor)``.
             ``query_has_anchor`` is True when the query node carries an
-            explicit anchor (making the stamp non-interpolated).
+            anchor a claim states (making the stamp non-interpolated).
         """
         coordinates: dict[str, CoordinateValue | None] = {}
-        anchor_edges: list[tuple[str, str]] = []
-        inferred_edges: list[tuple[str, str]] = []
+        stated_pairs: list[tuple[str, str]] = []
+        inferred_pairs: list[tuple[str, str]] = []
 
-        def add_inferred_edge(timeline_a: str, timeline_b: str) -> None:
+        def add_inferred_pair(timeline_a: str, timeline_b: str) -> None:
             """Record an inferred relationship once, regardless of orientation."""
             if timeline_a == timeline_b:
                 return
-            if (timeline_a, timeline_b) in inferred_edges:
+            if (timeline_a, timeline_b) in inferred_pairs:
                 return
-            if (timeline_b, timeline_a) in inferred_edges:
+            if (timeline_b, timeline_a) in inferred_pairs:
                 return
-            if (timeline_a, timeline_b) in anchor_edges:
+            if (timeline_a, timeline_b) in stated_pairs:
                 return
-            if (timeline_b, timeline_a) in anchor_edges:
+            if (timeline_b, timeline_a) in stated_pairs:
                 return
-            inferred_edges.append((timeline_a, timeline_b))
+            inferred_pairs.append((timeline_a, timeline_b))
 
-        # 1. Exact-anchor seed: the query's connected component of explicit
-        #    (and any graph-inferred) claims.
+        # 1. Exact-anchor seed: the query's connected component of stated
+        #    claims (and any graph-inferred edges).
         try:
             mg = self._get_or_build_matchgraph(
                 actual_timeline_id, coordinate, belief_key
@@ -3439,17 +3439,17 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                         for timeline_id, stored in graph_stamp.coordinates.items()
                     }
                 )
-                anchor_edges.extend(graph_stamp.anchor_edges)
-                inferred_edges.extend(graph_stamp.inferred_edges)
+                stated_pairs.extend(graph_stamp.stated_pairs)
+                inferred_pairs.extend(graph_stamp.inferred_pairs)
         for timeline_id, value in (interval_coordinates or {}).items():
             coordinates.setdefault(timeline_id, value)
         for timeline_id in interval_withheld or ():
             coordinates.setdefault(timeline_id, None)
-        for edge in interval_anchor_edges or []:
-            if edge not in anchor_edges and edge[::-1] not in anchor_edges:
-                anchor_edges.append(edge)
-        for edge in interval_inferred_edges or []:
-            add_inferred_edge(*edge)
+        for edge in interval_stated_pairs or []:
+            if edge not in stated_pairs and edge[::-1] not in stated_pairs:
+                stated_pairs.append(edge)
+        for edge in interval_inferred_pairs or []:
+            add_inferred_pair(*edge)
         # The query timeline's coordinate is authoritative and never altered.
         coordinates[actual_timeline_id] = coordinate
 
@@ -3491,11 +3491,11 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 else:
                     target_id = anchor.timeline_a_id
                     target_coordinate = anchor.coordinate_a.value
-                if (node_id, target_id) not in anchor_edges and (
+                if (node_id, target_id) not in stated_pairs and (
                     target_id,
                     node_id,
-                ) not in anchor_edges:
-                    anchor_edges.append((node_id, target_id))
+                ) not in stated_pairs:
+                    stated_pairs.append((node_id, target_id))
                 if target_id in coordinates:
                     continue
                 coordinates[target_id] = target_coordinate
@@ -3513,7 +3513,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                         continue
                     coordinates[relative_id] = relative_coordinate
                     tree_reached.add(relative_id)
-                    add_inferred_edge(node_id, relative_id)
+                    add_inferred_pair(node_id, relative_id)
                     worklist.append(relative_id)
 
             # The node's units: each of its groups, or the node alone when it
@@ -3533,7 +3533,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                         if member_id in coordinates or member_coordinate is None:
                             continue
                         coordinates[member_id] = member_coordinate
-                        add_inferred_edge(node_id, member_id)
+                        add_inferred_pair(node_id, member_id)
                         worklist.append(member_id)
 
                 # 2b. Cross-group warp into every not-yet-reached unit the
@@ -3557,10 +3557,10 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                     if target_id in coordinates:
                         continue
                     coordinates[target_id] = target_coordinate
-                    add_inferred_edge(node_id, target_id)
+                    add_inferred_pair(node_id, target_id)
                     worklist.append(target_id)
 
-        return coordinates, anchor_edges, inferred_edges, query_has_anchor
+        return coordinates, stated_pairs, inferred_pairs, query_has_anchor
 
     def get_matchstamps(
         self,

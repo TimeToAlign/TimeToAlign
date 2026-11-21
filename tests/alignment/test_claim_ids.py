@@ -296,27 +296,27 @@ def test_graph_filter_unaffected(tmp_path: Path) -> None:
     bundle = _bundle()
     bundle.add_match_claim_field(_stored(tmp_path / "claims.parquet"))
     bundle.add_match_claims(_claims(NEW))
-    explicit = bundle.get_match_claims()
-    assert sorted(claim.id for claim in explicit) == [f"claim_{n}" for n in range(1, 7)]
+    claims = bundle.get_match_claims()
+    assert sorted(claim.id for claim in claims) == [f"claim_{n}" for n in range(1, 7)]
 
-    graph = MatchGraph(explicit).extend_to_groups(bundle.groups)
+    graph = MatchGraph(claims).extend_to_groups(bundle.groups)
     # The graph's claims are the six it was given; what it infers is its own.
-    assert graph.claims == explicit
+    assert graph.claims == claims
     inferred = graph.inferred_edges
     assert len(inferred) == 6
-    assert all(edge.source_claim in explicit for edge in inferred)
+    assert all(edge.source_claim in claims for edge in inferred)
     for edge in inferred:
         assert edge.anchor.timelines == ("score", "score_copy")
         assert edge.anchor.coordinate_a == edge.source_claim.start_anchor.coordinate_a
     edges = [data for _, _, data in graph._graph.edges(data=True)]
-    stated = [data for data in edges if "claim" in data]
-    assert [data["claim_id"] for data in stated] == [
-        data["claim"].id for data in stated
+    stated_edges = [data for data in edges if "claim" in data]
+    assert [data["claim_id"] for data in stated_edges] == [
+        data["claim"].id for data in stated_edges
     ]
-    assert len({data["claim_id"] for data in stated}) == len(stated) == 6
+    assert len({data["claim_id"] for data in stated_edges}) == len(stated_edges) == 6
     assert [data["inferred"] for data in edges if "claim" not in data] == inferred
 
-    kept = graph.filter(explicit_only=True)
+    kept = graph.filter(stated_only=True)
     assert sorted(claim.id for claim in kept.claims) == [
         f"claim_{n}" for n in range(1, 7)
     ]

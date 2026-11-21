@@ -89,18 +89,18 @@ def three_stamp_line() -> MatchLine:
     stamps = [
         MatchStamp(
             coordinates={"score": 0.0, "audio": 0.0, "video": 0.0},
-            anchor_edges=[("score", "audio")],
-            inferred_edges=[("audio", "video")],
+            stated_pairs=[("score", "audio")],
+            inferred_pairs=[("audio", "video")],
         ),
         MatchStamp(
             coordinates={"score": 100.0, "audio": 45.5, "video": 1365.0},
-            anchor_edges=[("score", "audio")],
-            inferred_edges=[("audio", "video")],
+            stated_pairs=[("score", "audio")],
+            inferred_pairs=[("audio", "video")],
         ),
         MatchStamp(
             coordinates={"score": 200.0, "audio": 91.0, "video": 2730.0},
-            anchor_edges=[("score", "audio")],
-            inferred_edges=[("audio", "video")],
+            stated_pairs=[("score", "audio")],
+            inferred_pairs=[("audio", "video")],
         ),
     ]
     return MatchLine(source_timeline_id="score", stamps=stamps)

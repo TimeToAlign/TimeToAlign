@@ -179,8 +179,8 @@ def test_matchstamp_to_dict_formats_are_exact() -> None:
     assert stamp.to_dict(format="nested") == {"group_1": {"clock (seconds)": data}}
     assert stamp.to_dict(format="graph") == {
         "coordinates": {"clock": data},
-        "anchor_edges": [],
-        "inferred_edges": [],
+        "stated_pairs": [],
+        "inferred_pairs": [],
     }
 
 

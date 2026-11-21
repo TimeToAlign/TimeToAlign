@@ -1357,7 +1357,7 @@ the claims are `from_events` between named notes and onsets on those axes.
 |------|-----------|
 | `test_two_free_claims_become_distinct` | two free claims, `score ↔ audio` (0, 0.0) and `score ↔ score_copy` (4, 4), both hold `None`: a graph built from them filters by object, so `filter(timeline_ids={"score", "audio"})` keeps the first alone and `{"score", "score_copy"}` the second alone, both edges carrying `claim_id is None`; `from_claims` stores them without ids and leaves the objects unchanged; a bundle gives the objects `claim_1`, `claim_2` in place, and a graph of the bundle's claims keeps `claim_2` for `{"score", "score_copy"}` |
 | `test_stored_and_new_claims_are_distinct` | the stored field (a bundle's MatchClaim table of the four `STORED` claims, written and read back) keeps `claim_1`–`claim_4`; the same four built again plus the two new ones, all without an id, added to the bundle, are given `claim_5`–`claim_10` in order; the caller's objects carry them and `claim.bundle is bundle`; the bundle's claims read back are `claim_1`–`claim_10`, the last six equal to the caller's objects, each with `bundle` the bundle |
-| `test_graph_filter_unaffected` | a bundle of the stored field and the two new claims (`claim_1`–`claim_6`): `MatchGraph(bundle.get_match_claims()).extend_to_groups(bundle.groups)` holds exactly those six claims (an inferred edge is no claim and takes no id) and six inferred edges, each on `score`→`score_copy`, its `source_claim` one of the six and its `score` coordinate that claim's; the six stated edges' `claim_id` equal their claims' ids, all distinct, and the other six edges carry the inferred-edge records, in the graph's order; `filter(explicit_only=True)` and `filter(timeline_ids={"score", "audio"})` keep exactly `claim_1`–`claim_6` and no inferred edge |
+| `test_graph_filter_unaffected` | a bundle of the stored field and the two new claims (`claim_1`–`claim_6`): `MatchGraph(bundle.get_match_claims()).extend_to_groups(bundle.groups)` holds exactly those six claims (an inferred edge is no claim and takes no id) and six inferred edges, each on `score`→`score_copy`, its `source_claim` one of the six and its `score` coordinate that claim's; the six stated edges' `claim_id` equal their claims' ids, all distinct, and the other six edges carry the inferred-edge records, in the graph's order; `filter(stated_only=True)` and `filter(timeline_ids={"score", "audio"})` keep exactly `claim_1`–`claim_6` and no inferred edge |
 | `test_held_ids_are_refused_never_reminted` | `from_claims` of a claim given `"anchor"` and a free claim stores `"anchor"` and no id; a bundle holding `claim_1`, `claim_2` takes that field as `"anchor"`, `claim_3`; another bundle's MatchClaim table (`claim_1`, `claim_2`, minted) is refused by it (`claim id 'claim_1' is already held by another claim of this bundle`), which still holds its four; a bundle holding `"anchor"` and a minted `claim_1` gives a free claim `claim_2` |
 | `test_two_runs_merged` | a subprocess and this process store the same bundle's MatchClaim table: ids equal (`claim_1`–`claim_4`), tables equal; one bundle takes the first and refuses the second (`claim id 'claim_1' is already held ...`), keeping 4 rows; two bundles, one run each, merged by `from_bundles`: `claim_scopes` is the merge's id then the two sources', the ids read `claim_1`–`claim_4` twice, the `scope_key` column `[1, 1, 1, 1, 2, 2, 2, 2]`, every table column equal to the two source tables concatenated |
 | `test_given_id_refused_atomically` | a bundle holding a given `"a"` refuses a claim and a field with a given `"a"` (`claim id 'a' is already held by another claim of this bundle`); after each refusal the bundle's claims are exactly `[held]` and the newcomer keeps its id (`None` for the one made without) and no bundle |
@@ -1483,6 +1483,13 @@ without `claim_2` the WarpMap of `claim_1` and `claim_3` places quarter 2 at
   state (`beliefs=["maybe"]`) is refused by each getter, by
   `get_match_claims` and by `get_matchstamp_at` (`The belief filter keeps
   the states ['true', 'undecided', 'unlikely', 'false'], not ['maybe']`).
+- **A MatchLine built from a bundle's claims compares actors as the bundle
+  does.** After `Q42` believes `claim_2` false,
+  `MatchLine.from_claims(bundle.get_match_claims(), "score",
+  believer=WD_Q42, source=bundle)` holds two stamps, at 0 and 4 quarters:
+  under the bundle's `@context` the compact believer is the absolute actor.
+  The same call without `source` declares no prefix, so `wd:Q42` names
+  nobody who believes anything and all three stamps (0, 2, 4) remain.
 - **Refusals change nothing.** A claim the scope does not hold (`The scope
   0 ('beliefs') of bundle 'beliefs' holds no MatchClaim 'claim_9' (3
   MatchClaims).`), a scope key no scope has (`No scope has the key 3.
@@ -2146,7 +2153,7 @@ deterministic order was chosen, so "stable but wrong" also fails.
 | `TestMatchGraphBasic` | 8 | Node, edge and claim counts; node and coordinate retrieval; connectivity |
 | `TestMatchGraphStamps` | 4 | Instant claim → one stamp, interval claim → two, components → stamps |
 | `TestMatchGraphGroupExtension` | 4 | Inferred edges, converted coordinates, `include_inferred=False` |
-| `TestMatchGraphFilter` | 5 | `filter()` by timeline ids, id pattern, synchronous / explicit only, isolated nodes dropped |
+| `TestMatchGraphFilter` | 5 | `filter()` by timeline ids, id pattern, synchronous / stated only, isolated nodes dropped |
 | `TestMatchGraphBeliefFilter` | 2 (9 cases) | The graph holds exactly the claims the belief filter keeps; a word that is no state is refused |
 | `TestMatchGraphSerialization` | 2 | `to_dict()`/`from_dict()` counts, repr |
 | `TestMatchGraphThoresenIntegration` | 3 | Thoresen segment claims: 12 nodes, 6 edges, boundary coordinates and stamps |

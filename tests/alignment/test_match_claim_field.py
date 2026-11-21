@@ -1378,7 +1378,8 @@ class TestParquetFile:
             ValueError,
             match=re.escape(
                 "The new MatchClaim table lacks the MatchClaim 'c3' of the existing "
-                "one: a MatchClaim is never removed (state the belief 'false' instead)."
+                "one: a MatchClaim is never removed; record the belief 'false' in it "
+                "instead (AlignmentBundle.add_belief)."
             ),
         ):
             MatchClaimField.from_claims(lacking).to_parquet(tmp_path)

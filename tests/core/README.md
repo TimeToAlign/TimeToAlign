@@ -1606,6 +1606,23 @@ What proves the entry is the format's and holds nothing else:
   2026-11-20 becomes `false` of 2026-11-21, `jo`'s `true` after it stays) and
   appends a new actor's, leaving the original unchanged (copy-on-write);
   `get_belief` answers the actor's belief or `None`.
+- **One actor however spelled.** Actors compare as the IRIs they stand for
+  (`actor_iri`, TimeToShare's `expand_iri`, the text as written where it
+  expands to nothing), the comparison TimeToShare's `belief_actor` check
+  makes. `actor_iri("ex:ana", _CONTEXT)` is
+  `https://example.org/people/ana`; without a context `ex:ana` stays as
+  written. On an entry where `https://example.org/people/ana` believes
+  `true` and `jo` `unlikely`, `with_belief` of `ex:ana` `false` under the
+  context replaces the absolute spelling's belief in its place (two beliefs:
+  `ex:ana` `false`, then `jo`'s), and `get_belief("ex:ana", context=...)`
+  answers it; without the context no prefix is declared, so `ex:ana` is
+  another actor and is appended. Construction, which has no context,
+  compares the same way: two beliefs of `https://example.org/people/ana`
+  are refused.
+- **One check of the filter word.** `check_belief_filter` accepts
+  `not_false` and `true` and refuses `maybe` with `The belief filter keeps
+  'not_false' or 'true', not 'maybe'`; `belief_mask` refuses through it with that
+  message (and so do `ClaimFilter` and `believed`, `test_claim_beliefs.py`).
 - **Dictionary.** `to_dict` leaves absent keys out (an entry of `service`
   alone is `{"service": ...}`; a belief without a note has no `note` key),
   writes lists for `stated_by`, `basis` and `beliefs`, and `from_dict` gives

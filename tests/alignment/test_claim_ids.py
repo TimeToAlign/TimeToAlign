@@ -435,7 +435,7 @@ def test_two_runs_merged(tmp_path: Path) -> None:
     assert merged.claim_scopes == (merged.id, runs[0].id, runs[1].id)
     table = merged.claim_table
     assert table.column("id").to_pylist() == _ids(first) + _ids(second)
-    assert table.column("scope").to_pylist() == [1] * 4 + [2] * 4
+    assert table.column("scope_key").to_pylist() == [1] * 4 + [2] * 4
     stored = pa.concat_tables([first.table, second.table])
     for name in MatchClaimField.pa_schema.names:
         assert table.column(name).equals(stored.column(name))
@@ -473,7 +473,7 @@ def test_merge_keeps_ids_in_their_scopes() -> None:
     merged = AlignmentBundle.from_bundles(sources)
     held = merged.get_match_claims()
     assert [claim.id for claim in held] == ["claim_1", "claim_2"] * 2
-    assert merged.claim_table.column("scope").to_pylist() == [1, 1, 2, 2]
+    assert merged.claim_table.column("scope_key").to_pylist() == [1, 1, 2, 2]
     assert merged.claim_scopes == (merged.id, sources[0].id, sources[1].id)
     assert all(claim.bundle is merged for claim in held)
     for source in sources:
@@ -481,12 +481,12 @@ def test_merge_keeps_ids_in_their_scopes() -> None:
             "claim_1",
             "claim_2",
         ]
-        assert "scope" not in source.claim_table.column_names
+        assert "scope_key" not in source.claim_table.column_names
 
     added = _claims(STORED[:1])
     merged.add_match_claims(added)
     assert added[0].id == "claim_1"
-    assert merged.claim_table.column("scope").to_pylist() == [1, 1, 2, 2, 0]
+    assert merged.claim_table.column("scope_key").to_pylist() == [1, 1, 2, 2, 0]
 
     taken = sources[0].get_match_claims()[0]
     other = _holding(taken)

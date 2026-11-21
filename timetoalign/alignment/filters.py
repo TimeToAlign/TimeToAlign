@@ -30,7 +30,12 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from timetoalign.core.enums import Domain, TimeUnit
-from timetoalign.core.provenance import BeliefFilter, belief_mask, provenance_array
+from timetoalign.core.provenance import (
+    BeliefFilter,
+    belief_mask,
+    check_belief_filter,
+    provenance_array,
+)
 
 if TYPE_CHECKING:
     from timetoalign.alignment.bundle import AlignmentBundle
@@ -72,8 +77,7 @@ def believed(
     """
     claims = list(claims)
     if believer is None:
-        # Still refuse an unknown belief value, as the predicate does.
-        belief_mask(None, None, belief)
+        check_belief_filter(belief)
         return claims
     mask = belief_mask(
         provenance_array([claim.provenance for claim in claims]),
@@ -157,10 +161,7 @@ class ClaimFilter:
         """Validate mutually exclusive options and the belief filter."""
         if self.synchronous_only and self.nomatch_only:
             raise ValueError("synchronous_only and nomatch_only are mutually exclusive")
-        if self.belief not in ("not_false", "true"):
-            raise ValueError(
-                f"The belief filter keeps 'not_false' or 'true', not {self.belief!r}"
-            )
+        check_belief_filter(self.belief)
 
     @property
     def _compiled_pattern(self) -> re.Pattern[str] | None:

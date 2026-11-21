@@ -122,7 +122,7 @@ properties are proven with a synthetic fixture that owns no corpus data:
 
 Merging keeps every claim id in the scope it comes from: the two source
 bundles both hold `claim_1`, and the claim the merged bundle adds afterwards
-is minted in its own scope. The test pins the ids and the scope column of the
+is minted in its own scope. The test pins the ids and the `scope_key` column of the
 merged MatchClaim table, so a merge that re-mints ids or loses a scope fails.
 
 ### Synthetic Fixture Topology
@@ -1310,7 +1310,7 @@ joins a table would break every reference to it. The rule tested:
   re-minted. **A merge keeps every id in
   its scope** (`from_bundles`): each source bundle stays the scope of its
   claims' ids, so two sources may both hold `claim_1`; the scope of a row is
-  a key into `claim_scopes`, the key column `scope` of `claim_table` (never a
+  a key into `claim_scopes`, the key column `scope_key` of `claim_table` (never a
   string joined onto the id), and claims added to the merge afterwards are
   in its own scope, key 0.
 
@@ -1345,9 +1345,9 @@ the claims are `from_events` between named notes and onsets on those axes.
 | `test_stored_and_new_claims_are_distinct` | the stored field (a bundle's MatchClaim table of the four `STORED` claims, written and read back) keeps `claim_1`–`claim_4`; the same four built again plus the two new ones, all without an id, added to the bundle, are given `claim_5`–`claim_10` in order; the caller's objects carry them and `claim.bundle is bundle`; the bundle's claims read back are `claim_1`–`claim_10`, the last six equal to the caller's objects, each with `bundle` the bundle |
 | `test_graph_filter_unaffected` | a bundle of the stored field and the two new claims (`claim_1`–`claim_6`): `MatchGraph(bundle.get_match_claims()).extend_to_groups(bundle.groups)` adds six implicit claims, `claim_7`–`claim_12` in the order made, `id_minted` True; every edge's `claim_id` equals its claim's id and the twelve are distinct; each implicit claim's `source_claim_id` is one of `claim_1`–`claim_6`, the explicit claim whose `score` coordinate it carries; `filter(explicit_only=True)` keeps exactly `claim_1`–`claim_6` and no implicit claim; `filter(timeline_ids={"score", "audio"})` keeps the same six |
 | `test_held_ids_are_refused_never_reminted` | `from_claims` of a claim given `"anchor"` and the implicit claim made from it stores `"anchor"` and no id, the reference `"anchor"` kept; a bundle holding `claim_1`, `claim_2` takes that field as `"anchor"`, `claim_3`; another bundle's MatchClaim table (`claim_1`, `claim_2`, minted) is refused by it (`claim id 'claim_1' is already held by another claim of this bundle`), which still holds its four; a bundle holding `"anchor"` and a minted `claim_1` takes an implicit claim made from `"anchor"`: its id becomes `claim_2`, its `source_claim_id` stays `"anchor"` |
-| `test_two_runs_merged` | a subprocess and this process store the same bundle's MatchClaim table: ids equal (`claim_1`–`claim_4`), tables equal; one bundle takes the first and refuses the second (`claim id 'claim_1' is already held ...`), keeping 4 rows; two bundles, one run each, merged by `from_bundles`: `claim_scopes` is the merge's id then the two sources', the ids read `claim_1`–`claim_4` twice, the `scope` column `[1, 1, 1, 1, 2, 2, 2, 2]`, every table column equal to the two source tables concatenated |
+| `test_two_runs_merged` | a subprocess and this process store the same bundle's MatchClaim table: ids equal (`claim_1`–`claim_4`), tables equal; one bundle takes the first and refuses the second (`claim id 'claim_1' is already held ...`), keeping 4 rows; two bundles, one run each, merged by `from_bundles`: `claim_scopes` is the merge's id then the two sources', the ids read `claim_1`–`claim_4` twice, the `scope_key` column `[1, 1, 1, 1, 2, 2, 2, 2]`, every table column equal to the two source tables concatenated |
 | `test_given_id_refused_atomically` | a bundle holding a given `"a"` refuses a claim and a field with a given `"a"` (`claim id 'a' is already held by another claim of this bundle`); after each refusal the bundle's claims are exactly `[held]` and the newcomer keeps its id (`None` for the one made without) and no bundle |
-| `test_merge_keeps_ids_in_their_scopes` | `from_bundles` of two bundles each holding `claim_1`, `claim_2`: the merge holds `claim_1`, `claim_2`, `claim_1`, `claim_2`, `scope` `[1, 1, 2, 2]`, each claim read back recording the merge; the sources still hold `claim_1`, `claim_2` and their `claim_table` has no `scope` column; a free claim added to the merge is given `claim_1` in the merge's own scope (`scope` 0 appended); a claim another bundle holds, added to a third bundle, joins as a copy: the original keeps its bundle, the third bundle's row records the third |
+| `test_merge_keeps_ids_in_their_scopes` | `from_bundles` of two bundles each holding `claim_1`, `claim_2`: the merge holds `claim_1`, `claim_2`, `claim_1`, `claim_2`, `scope_key` `[1, 1, 2, 2]`, each claim read back recording the merge; the sources still hold `claim_1`, `claim_2` and their `claim_table` has no `scope_key` column; a free claim added to the merge is given `claim_1` in the merge's own scope (`scope_key` 0 appended); a claim another bundle holds, added to a third bundle, joins as a copy: the original keeps its bundle, the third bundle's row records the third |
 
 ---
 
@@ -1398,6 +1398,103 @@ the sibling of this repository (`../TimeToShare`, the layout of the parent
 project) and reads the fixture there; where no sibling checkout holds the
 fixture, the test is skipped with that reason. The schema assertions need
 only the installed `timetoshare` and always run.
+
+---
+
+## Beliefs in Held MatchClaims (`test_claim_beliefs.py`)
+
+### What We're Validating
+
+A MatchClaim is never removed and never changed; who believes it is the
+one thing that may change, in its provenance. `AlignmentBundle.add_belief(
+claim_id, *, actor, belief, date=None, note=None, scope_key=0)` records a
+belief in a claim the bundle holds, `MatchClaimField.with_belief` and
+`MatchClaim.with_belief` are its copy-on-write forms, and
+`create_match_claims(..., actor=, date=)` records the stating person's
+belief `true`. Every query of the bundle reads the belief filter, the
+coordinate getters and `transfer` included. What would show it broken: a
+belief that changes another column or another row, an actor holding two
+beliefs because one spelling is compact and the other absolute, a belief
+the filter does not see (a cache built before it), a file the succession
+rule refuses after a belief, a coordinate getter that still moves through a
+claim its believer holds `false`.
+
+### Fixture
+
+`score` (quarters, fraction, length 16; notes `n1` at 0, `n2` at 2, `n3`
+at 4) and `pcm` (samples, int, length 705600; notes `o1` at 0, `o2` at
+100000, `o3` at 176400), both ungrouped roots of the bundle `beliefs`;
+`create_match_claims` of `n1`↔`o1`, `n2`↔`o2`, `n3`↔`o3` with one shared
+provenance (`method` `imported`, `service` `https://example.org/aligner`)
+gives `claim_1`–`claim_3`. The actor is Wikidata's `Q42`, written absolutely
+(`http://www.wikidata.org/entity/Q42`) or compactly (`wd:Q42`, a prefix of
+the catalogue, hence of every bundle's `@context`). `claim_2` is not on the
+line through the other two: 2 quarters lie halfway between 0 and 4, so
+without `claim_2` the WarpMap of `claim_1` and `claim_3` places quarter 2 at
+176400 / 2 = 88200 samples, and with it at 100000.
+
+### Exact Expected Values
+
+- **The belief is recorded, nothing else changes.** `add_belief("claim_2",
+  actor=Q42, belief="false", date="2026-11-21")` returns the bundle; the
+  provenance of `claim_2` is the shared entry plus that one belief,
+  `claim_1` and `claim_3` keep the shared entry, every column but
+  `provenance` of the table is equal to the one before, and the table holds
+  no shared provenance any more (each row carries its own, since one
+  differs).
+- **One belief per actor, compared as IRIs.** A second `add_belief` on
+  `claim_2` by `wd:Q42`, `true`, 2026-11-22, replaces the first: the claim
+  holds exactly that one belief, as written (`wd:Q42`).
+- **The filter reads it at once.** Before any belief, `get_match_claims(
+  believer=Q42)` holds the three; after `false` it holds `claim_1`,
+  `claim_3`, with `belief="true"` none; after the compact `true`,
+  `believer=Q42, belief="true"` holds `claim_2` alone.
+- **The coordinate getters take the belief filter.** Quarter 2 on `score`
+  onto `pcm`: `get_coordinate_at` gives 100000 without a believer and with
+  `Q42` before the belief; after `Q42` believes `claim_2` false it gives
+  88200 for `Q42` (absolute or compact) and 100000 without a believer
+  (the cache built before the belief is not read). The same holds for
+  `get_coordinate_for("n2", "pcm")` (88200), `get_coordinates_at` of
+  quarters 2 and 3 (88200, 132300), the dispatcher `get_coordinate`
+  (88200), `transfer(2, "score", "pcm")` (88200.0 for `Q42`, 100000.0
+  without) and `transfer_interval(1, 3, ...)` ((44100.0, 132300.0) for
+  `Q42`, (50000.0, 138200.0) without: 1 and 3 quarters lie at a quarter and
+  three quarters of the segments either way). A belief filter word other
+  than `not_false` and `true` is refused by each getter (`The belief filter
+  keeps 'not_false' or 'true', not 'maybe'`).
+- **Refusals change nothing.** A claim the scope does not hold (`The scope
+  0 ('beliefs') of bundle 'beliefs' holds no MatchClaim 'claim_9' (3
+  MatchClaims).`), a scope key no scope has (`No scope has the key 3.
+  Available scopes: {0: 'beliefs'}`) and a belief word outside the three
+  raise, the table equal to the one before. `ClaimFilter(belief="maybe")`
+  and `believed([], None, "maybe")` refuse the word as the getters do.
+- **The date defaults to today**, read where statements read it: with
+  `timetoalign.timelines.statements._today` patched to 2026-11-21, a belief
+  without `date` is dated `2026-11-21`.
+- **Scopes.** `from_bundles` of two bundles each holding `claim_1`
+  (`source_a`, `source_b`): `add_belief("claim_1", ..., scope_key=2)`
+  changes the row of `source_b` alone; `get_match_claims(believer=Q42)`
+  keeps the row of `source_a` and drops that of `source_b`.
+- **The package succeeds itself.** The bundle written with `to_file`, then
+  given a belief and written over its own files, is accepted by the
+  succession rule; read back, `claim_2` holds the belief and the table
+  equals the bundle's.
+- **`create_match_claims(..., actor=)`.** With `actor=wd:Q42,
+  date="2026-11-21"` and no provenance, the claim's provenance is exactly
+  `Provenance(beliefs=(Belief("wd:Q42", "true", "2026-11-21"),))`; given a
+  provenance in which the absolute `Q42` believes `false`, the claim holds
+  the paradata and one belief, the compact `true`, in its place. Without
+  `actor`, the given provenance stands unchanged (a loader states no
+  belief). `date` without `actor` is refused (`a date dates the belief of
+  the actor stating the MatchClaims; give actor=`) and nothing is added.
+- **Copy-on-write forms.** `MatchClaimField.with_belief("claim_2", belief)`
+  over the bundle's table returns a field whose `claim_2` holds the belief
+  and leaves the table unchanged; an id the field lacks raises `KeyError`
+  (`The MatchClaim table holds no MatchClaim 'claim_9' (3 MatchClaims).`);
+  a one-row field holding a shared provenance keeps it shared, with the
+  belief. `MatchClaim.with_belief` returns a copy holding the belief and no
+  bundle, the claim read from the bundle unchanged and still its bundle's;
+  a claim stated without provenance gets an entry holding the belief alone.
 
 ---
 
@@ -1470,16 +1567,29 @@ then fails to load. Each test pins one of these with exact values.
   `claim_1`–`claim_4` of those claims, written over them, is refused (`The
   new MatchClaim table lacks the MatchClaim 'claim_5' of the existing
   one: ...`) before anything is written: the three files keep their bytes.
-- **No claims, no table.** A bundle with timelines and no MatchClaims
-  writes the manifest alone, which holds no `resources`.
+- **No claims and no Projections, no table.** A bundle with timelines and
+  neither MatchClaims nor Projections writes the manifest alone, which
+  holds no `resources`.
+- **Projections without claims.** A bundle whose `pcm` holds one
+  Projection (`Timeline.add_projections`, 22050, no source) and no
+  MatchClaim writes the manifest and `projections.parquet`, named by
+  `resource_1` (`Projection`, `pcm`); read back, `pcm` holds that
+  Projection (the bundle's Projections table equals the file's).
 - **A named table that is absent.** The fixture `bundle_resources.yaml`
-  copied alone into a directory loads (decision: the manifest draws without
-  its tables), holds no claims, keeps both entries, and written back gives
-  the same bytes and no table file.
-- **Event rows and Projections together.** Written with `events=True`, the
-  Projections are in the manifest's event rows and in the Projections
-  table; read back, each timeline holds each once (`pcm` 3 events, `audio`
-  2), the second reading reusing the Projection held under its ID.
+  copied alone into a directory loads (a manifest is read without its
+  tables), holds no claims, keeps both entries, and written back gives
+  the same bytes and no table file. Written into a directory where neither
+  file lies, after a Projection is added to `take_1` (no claim), the
+  Projections table is written under its entry (`resource_2`) and the
+  MatchClaim entry, whose file is neither written nor lying there, goes.
+- **No event row beside the tables.** A manifest never names an event's
+  ID: `to_file(..., events=True)` of the synthetic package is refused
+  before any file is written (`A package's manifest names no event ID: ...
+  write it with events=False.`), and so is a bundle holding Projections
+  alone. A manifest whose event rows name a Projection the Projections
+  table holds too (written by hand: the package's manifest with the rows of
+  `pcm` and `audio` added) reads each Projection once (`pcm` 3 events,
+  `audio` 2), the table's row reusing the Projection held under its ID.
 - **Placement.** An entry read with the manifest keeps its ID and URL:
   with `bundle.resources = [Resource("resource_7", "MatchClaim",
   ("score",), "tables/claims.parquet")]` the table is written to
@@ -1496,7 +1606,7 @@ then fails to load. Each test pins one of these with exact values.
   against the manifest written, and which `MatchClaimField.from_parquet`
   refuses (`This MatchClaim table mixes scopes ...`: a field holds no
   scopes, a bundle reads them); read back, `claim_scopes` is `("merged",
-  "source_a", "source_b")`, `claim_table` (the scope keys `[1, 2, 0]`
+  "source_a", "source_b")`, `claim_table` (its `scope_key` column `[1, 2, 0]`
   included) and `to_dict()` equal the writer's, and a second write gives
   the same bytes. Written over its own files the merged bundle changes no
   byte; a merge of `source_a` and `source_c` written over them lacks
@@ -1549,8 +1659,9 @@ script, never computed by a derivation, so they are an independent oracle.
   (`claim_2`, `claim_9`). The bundle's own belief filter
   (`get_match_claims(believer=, belief=)`) keeps the same claims as the
   graph's.
-- Skipped with its reason when no sibling `TimeToShare/` checkout holds the
-  fixture, as `test_timetoshare_conformance.py` is.
+- The fixtures are TimeToShare's own, found through its package
+  (`timetoshare.tables.fixture_path`, `timetoshare.fixtures.fixture_paths`),
+  which every installation of `timetoshare` carries: the tests never skip.
 
 ---
 

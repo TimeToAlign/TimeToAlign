@@ -18,7 +18,9 @@ from timetoalign.core.provenance import (
     BeliefField,
     Provenance,
     ProvenanceField,
+    actor_iri,
     belief_mask,
+    check_belief_filter,
     provenance_array,
 )
 
@@ -301,6 +303,50 @@ class TestActorsCompareAsIris:
         column = provenance_array(_IRI_ROWS)
         mask = belief_mask(column, believer, belief, context=context)
         assert mask.to_pylist() == expected
+
+    def test_actor_iri(self) -> None:
+        assert actor_iri("ex:ana", _CONTEXT) == _ANA
+        assert actor_iri("ex:ana") == "ex:ana"
+        assert actor_iri(_ANA) == _ANA
+        assert actor_iri("jo", _CONTEXT) == "jo"
+
+    def test_one_actor_however_spelled_holds_one_belief(self) -> None:
+        entry = Provenance(
+            method="manual",
+            beliefs=(_belief(_ANA, "true"), _belief("jo", "unlikely")),
+        )
+
+        replaced = entry.with_belief(_belief("ex:ana", "false"), context=_CONTEXT)
+
+        assert replaced.beliefs == (
+            _belief("ex:ana", "false"),
+            _belief("jo", "unlikely"),
+        )
+        assert entry.get_belief("ex:ana", context=_CONTEXT) == _belief(_ANA, "true")
+        assert replaced.get_belief(_ANA, context=_CONTEXT) == _belief("ex:ana", "false")
+        assert entry.get_belief("ex:ana") is None
+        appended = entry.with_belief(_belief("ex:ana", "false"))
+        assert appended.beliefs == (
+            _belief(_ANA, "true"),
+            _belief("jo", "unlikely"),
+            _belief("ex:ana", "false"),
+        )
+        with pytest.raises(
+            ValidationError,
+            match=re.escape(f"An actor holds at most one belief; {_ANA!r} holds 2"),
+        ):
+            Provenance(beliefs=(_belief(_ANA, "true"), _belief(_ANA, "false")))
+
+    def test_one_check_of_the_filter_word(self) -> None:
+        check_belief_filter("not_false")
+        check_belief_filter("true")
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "The belief filter keeps 'not_false' or 'true', not 'maybe'"
+            ),
+        ):
+            check_belief_filter("maybe")
 
 
 class TestField:

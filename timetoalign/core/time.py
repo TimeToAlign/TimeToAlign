@@ -3619,6 +3619,19 @@ one axis for all rows.
 """
 
 
+def coordinate_cell_projector(
+    _model_cls: type[BaseModel], name: str, _info: object
+) -> list[pa.Field]:
+    """Store a scalar's coordinate field as one :data:`COORDINATE_CELL_TYPE` cell.
+
+    The value projector (``core.fields.register_value_projector``) of every
+    coordinate that names its own axis in a table whose rows may lie on
+    different timelines: a MatchClaim's anchors and ``source_coordinate``, a
+    Projection's ``start`` and ``duration``.
+    """
+    return [pa.field(name, COORDINATE_CELL_TYPE, nullable=True)]
+
+
 def axis_coordinate_cells(
     values: Any,
     *,

@@ -27,6 +27,7 @@ import pytest
 
 from timetoalign.core import (
     Coordinate,
+    Duration,
     FlowControlElement,
     IrregularMeasure,
     MeasureConstituent,
@@ -35,10 +36,11 @@ from timetoalign.core import (
     Tempo,
     TimeUnit,
 )
-from timetoalign.maps import ScalarMap
+from timetoalign.maps import LinearMap, ScalarMap
 from timetoalign.timelines import (
     ContinuousLogicalTimeline,
     ContinuousPhysicalTimeline,
+    DiscretePhysicalTimeline,
     MeasureMap,
     MetricHierarchy,
     SegmentLine,
@@ -348,6 +350,128 @@ class TestEventManagement:
         events = timeline_with_events.get_events(min_coord=1.0, max_coord=2.5)
         # Should include beat_2 (1.0), beat_3 (2.0), note_2 (1.0-1.25), note_3 (2.0-3.0)
         assert len(events) == 4
+
+
+def _samples_timeline() -> DiscretePhysicalTimeline:
+    """A samples timeline (int) converting into seconds at 44.1 kHz."""
+    timeline = DiscretePhysicalTimeline(length=1_000_000, uid="dpt_1")
+    timeline.add_conversion_map(
+        LinearMap(
+            source_unit="samples",
+            target_unit="seconds",
+            scalar=Fraction(1, 44100),
+            uid="s2s",
+        )
+    )
+    return timeline
+
+
+class TestAddEventsAxisAndIds:
+    """``add_events`` stores positions on the axis and IDs unique on it."""
+
+    def test_duration_in_seconds_is_the_span_from_its_start(self) -> None:
+        timeline = _samples_timeline()
+        timeline.add_events(
+            [
+                {
+                    "event_type": "Note",
+                    "id": "n",
+                    "start": Coordinate(Fraction(1), TimeUnit.seconds),
+                    "duration": Duration(Fraction(1, 2), TimeUnit.seconds),
+                }
+            ]
+        )
+        row = timeline.events.table.to_pylist()[0]
+        assert row["start"] == {"value": 44100.0, "numerator": 44100, "denominator": 1}
+        assert row["duration"] == {
+            "value": 22050.0,
+            "numerator": 22050,
+            "denominator": 1,
+        }
+        assert row["end"] == {"value": 66150.0, "numerator": 66150, "denominator": 1}
+
+    def test_duration_in_the_timeline_unit_is_its_value(self) -> None:
+        timeline = _samples_timeline()
+        timeline.add_events(
+            [
+                {
+                    "event_type": "Note",
+                    "id": "n",
+                    "start": 0,
+                    "duration": Duration(10, TimeUnit.samples),
+                }
+            ]
+        )
+        assert timeline.events.column_values("duration") == [Fraction(10)]
+        assert timeline.events.column_values("end") == [Fraction(10)]
+
+    def test_duration_in_another_unit_needs_its_start_in_that_unit(self) -> None:
+        timeline = _samples_timeline()
+        with pytest.raises(ValueError) as refused:
+            timeline.add_events(
+                [
+                    {
+                        "event_type": "Note",
+                        "start": 44100,
+                        "duration": Duration(Fraction(1, 2), TimeUnit.seconds),
+                    }
+                ]
+            )
+        assert str(refused.value) == (
+            "A duration in seconds added to timeline 'dpt_1' (in samples) is a span "
+            "from its start, so the start must be given as a Coordinate in seconds too"
+        )
+        assert len(timeline.events) == 0
+
+    def test_an_id_already_held_is_refused(self) -> None:
+        timeline = _samples_timeline()
+        timeline.add_events([{"event_type": "Note", "id": "n1", "start": 1}])
+        with pytest.raises(ValueError) as refused:
+            timeline.add_events(
+                [
+                    {"event_type": "Note", "id": "n2", "start": 2},
+                    {"event_type": "Beat", "id": "n1", "instant": 3},
+                ]
+            )
+        assert str(refused.value) == (
+            "Event id 'n1' is already held by an event of timeline 'dpt_1'"
+        )
+        assert timeline.events.column_values("id") == ["n1"]
+
+    def test_an_id_given_twice_is_refused(self) -> None:
+        timeline = _samples_timeline()
+        with pytest.raises(ValueError) as refused:
+            timeline.add_events(
+                [
+                    {"event_type": "Note", "id": "n1", "start": 1},
+                    {"event_type": "Note", "id": "n1", "start": 2},
+                ]
+            )
+        assert str(refused.value) == (
+            "Event id 'n1' is given twice in one call to add_events on timeline "
+            "'dpt_1'"
+        )
+        assert len(timeline.events) == 0
+
+    def test_two_calls_mint_two_ids(self) -> None:
+        timeline = _samples_timeline()
+        assert timeline.add_events([{"event_type": "Note", "start": 1}]) == [
+            "note:000001"
+        ]
+        assert timeline.add_events([{"event_type": "Note", "start": 2}]) == [
+            "note:000002"
+        ]
+        assert timeline.events.column_values("id") == ["note:000001", "note:000002"]
+
+    def test_returns_the_ids_in_row_order(self) -> None:
+        timeline = _samples_timeline()
+        assert timeline.add_events(
+            [
+                {"event_type": "Beat", "instant": 1},
+                {"event_type": "Note", "id": "given", "start": 2},
+                {"event_type": "Beat", "instant": 3},
+            ]
+        ) == ["beat:000001", "given", "beat:000002"]
 
 
 # endregion

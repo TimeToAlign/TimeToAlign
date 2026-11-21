@@ -10,7 +10,8 @@ from fractions import Fraction
 import pyarrow as pa
 
 from timetoalign.core import NumberType, TimeUnit
-from timetoalign.storage.events import EventData
+from timetoalign.core.fields import field_metadata
+from timetoalign.storage.events import EventData, mint_event_ids
 from timetoalign.timelines import ContinuousLogicalTimeline
 
 
@@ -317,3 +318,75 @@ class TestHead:
         # Not raw struct dicts — the same conversion `to_dataframe` applies.
         df = self._data(2).head()
         assert list(df["start"]) == [Fraction(0, 4), Fraction(1, 4)]
+
+
+class TestMintedIds:
+    """One minting function; a declared ``projection_of`` column."""
+
+    def test_mint_event_ids(self) -> None:
+        assert mint_event_ids(
+            ["Note", "Projection", "Note", None],
+            {"note:000001", "projection_2"},
+        ) == ["note:000002", "projection_1", "note:000003", "event:000001"]
+
+    def test_from_dicts_mints_against_the_given_ids(self) -> None:
+        data = EventData.from_dicts(
+            [
+                {"event_type": "Note", "id": "note:000001", "start": 0},
+                {"event_type": "Note", "start": 1},
+            ],
+            TimeUnit.samples,
+        )
+        assert data.column_values("id") == ["note:000001", "note:000002"]
+
+    def test_from_arrays_mints_from_the_event_types(self) -> None:
+        data = EventData.from_arrays(
+            {
+                "event_type": ["Projection", "Projection", "Note"],
+                "start": [0, 1, 2],
+            },
+            TimeUnit.samples,
+        )
+        assert data.column_values("id") == [
+            "projection_1",
+            "projection_2",
+            "note:000001",
+        ]
+
+    def test_projection_of_is_typed_by_declaration(self) -> None:
+        data = EventData.from_dicts(
+            [
+                {
+                    "event_type": "Projection",
+                    "id": "a",
+                    "start": 0,
+                    "projection_of": None,
+                }
+            ],
+            TimeUnit.samples,
+        )
+        column = data.schema.field("projection_of")
+        assert column.type == pa.struct(
+            [pa.field("timeline_id", pa.string()), pa.field("event_id", pa.string())]
+        )
+        assert field_metadata(column)["field_type"] == "EventReferenceField"
+        data.extend(
+            EventData.from_dicts(
+                [
+                    {
+                        "event_type": "Projection",
+                        "id": "b",
+                        "start": 1,
+                        "projection_of": {
+                            "timeline_id": "clt_6",
+                            "event_id": "x1azmn68",
+                        },
+                    }
+                ],
+                TimeUnit.samples,
+            )
+        )
+        assert data.column_values("projection_of") == [
+            None,
+            {"timeline_id": "clt_6", "event_id": "x1azmn68"},
+        ]

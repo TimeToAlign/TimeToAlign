@@ -2,21 +2,75 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from fractions import Fraction
 from typing import Any, Literal
 
+import pyarrow as pa
 import pyarrow.compute as pc
 
-from timetoalign.core import Coordinate, CoordinateSpec, CoordinateValue
+from timetoalign.core import (
+    Coordinate,
+    CoordinateSpec,
+    CoordinateValue,
+    Duration,
+    EventReference,
+)
+from timetoalign.core.ids import quote_id
 from timetoalign.core.time import (
     coordinate_numeric_value,
     exact_coordinate_value,
+    express_as,
     shift_coordinate,
 )
 from timetoalign.core.timestamp import _format_coordinate_value
 from timetoalign.storage import EventData
+from timetoalign.storage.events import PROJECTION_EVENT_TYPE, mint_event_ids
 
 SEGMENT_EVENT_TYPE = "Segment"
+
+#: The keys a Projection row may hold a value under: its ID, its type, its
+#: position and the event it stands for.
+_PROJECTION_KEYS = frozenset(
+    {
+        "id",
+        "event_type",
+        "temporal_type",
+        "start",
+        "instant",
+        "end",
+        "duration",
+        "projection_of",
+    }
+)
+
+
+def _check_projection_row(row: dict[str, Any]) -> None:
+    """Refuse a Projection row that repeats more than a Projection holds.
+
+    Raises:
+        ValueError: If the row holds a value under another key, or its
+            ``projection_of`` is not an event reference.
+    """
+    extra = sorted(
+        key
+        for key, value in row.items()
+        if value is not None and key not in _PROJECTION_KEYS
+    )
+    if extra:
+        raise ValueError(
+            f"A Projection holds its ID, its position and projection_of, nothing "
+            f"else of the event it stands for; the row also gives {extra}"
+        )
+    reference = row.get("projection_of")
+    if reference is not None and not isinstance(reference, EventReference):
+        try:
+            EventReference.model_validate(reference)
+        except ValueError as error:
+            raise ValueError(
+                f"A Projection's projection_of is {{'timeline_id': ..., "
+                f"'event_id': ...}} or None, not {reference!r}"
+            ) from error
 
 
 def _decoded_rows(data: EventData) -> list[dict[str, Any]]:
@@ -99,36 +153,61 @@ class EventsMixin:
         self,
         rows: list[dict[str, Any]],
         allow_expansion: bool = False,
-    ) -> None:
+    ) -> list[str]:
         """Add events to the timeline.
 
         Only ``event_type`` and a coordinate are strictly required per dict.
         Missing fields are filled in automatically:
 
-        - **id**: auto-generated (``e000001``, ``e000002``, ...).
+        - **id**: minted free on this timeline (:func:`mint_event_ids`):
+          ``note:000001``, ``beat:000001``, ``projection_1`` for a Projection.
         - **temporal_type**: inferred from keys -- ``"interval"`` when both
           ``start`` and ``end`` (or ``duration``) are present, ``"instant"``
           otherwise.
 
+        Positions are stored on this timeline's axis. A ``start``, ``end`` or
+        ``instant`` given as a :class:`~timetoalign.core.Coordinate` in another
+        unit is converted through the timeline's C-Map; a ``duration`` given as
+        a :class:`~timetoalign.core.Duration` (or ``Coordinate``) in another
+        unit is the span from the start it is added to, converted as the two
+        ends of that span are, so its start must be given in the same unit.
+        Each converted value is written in the timeline's number type. Bare
+        numbers and struct dicts are taken as on this timeline's axis.
+
+        A Projection (``event_type`` ``"Projection"``) holds ``id``, its
+        position and ``projection_of``, the event it stands for, as a dict
+        ``{"timeline_id": ..., "event_id": ...}`` or an
+        :class:`~timetoalign.core.EventReference` (``None`` where none is
+        known); it repeats nothing else of that event.
+
         Args:
             rows: List of event dictionaries. Required keys:
-                - event_type: class name (e.g. ``"Beat"``, ``"Note"``)
+                - event_type: class name (e.g. ``"Beat"``, ``"Note"``,
+                  ``"Projection"``)
                 - instant: coordinate (for instant events), **or**
                 - start, end: coordinates (for interval events)
             allow_expansion: If True, expand timeline if events exceed length.
 
+        Returns:
+            The IDs of the added events, in the order of *rows*.
+
         Raises:
-            ValueError: If events exceed length and expansion not allowed.
-            RuntimeError: If timeline is locked and expansion not allowed.
+            ValueError: If an ID is already held by an event of this timeline
+                or given twice, a Projection row holds a key a Projection does
+                not have, a position cannot be converted, or the events exceed
+                the length and expansion is not allowed. Nothing is added then.
 
         Examples:
+            >>> from timetoalign.timelines import ContinuousPhysicalTimeline
+            >>> tl = ContinuousPhysicalTimeline(length=10.0)
             >>> tl.add_events([
             ...     {"event_type": "Beat", "instant": 0.0},
             ...     {"event_type": "Note", "start": 0.0, "end": 0.5},
             ... ])
+            ['beat:000001', 'note:000001']
         """
         if not rows:
-            return
+            return []
 
         # Resolve unit-qualified coordinates into this timeline's native unit
         # before anything measures or stores them. A ``Coordinate`` whose unit
@@ -136,8 +215,12 @@ class EventsMixin:
         # on a samples timeline) is converted through the timeline's C-Maps;
         # bare numbers, struct dicts and native-unit coordinates pass through
         # unchanged. Without this, a derived-unit value would be stored verbatim
-        # under the native unit label — a silent mis-unit.
+        # under the native unit label -- a silent mis-unit.
         rows = [self._resolve_row_coordinates(row) for row in rows]
+        for row in rows:
+            if row.get("event_type") == PROJECTION_EVENT_TYPE:
+                _check_projection_row(row)
+        rows = self._rows_with_ids(rows)
 
         # Validate and find max coordinate
         max_coord = 0.0
@@ -150,22 +233,67 @@ class EventsMixin:
 
         # Add events
         self._add_events_unchecked(rows)
+        return [row["id"] for row in rows]
+
+    def _rows_with_ids(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Return *rows*, each with an ID free on this timeline.
+
+        A given ID is kept; one already held by an event of this timeline, or
+        given twice, is refused. A missing one is minted free among both.
+
+        Raises:
+            ValueError: If a given ID is held already or given twice.
+        """
+        given = [row["id"] for row in rows if row.get("id") is not None]
+        held = self._events.table.column("id")
+        if given:
+            repeated = sorted(
+                event_id for event_id, count in Counter(given).items() if count > 1
+            )
+            if repeated:
+                raise ValueError(
+                    f"Event id {quote_id(repeated[0])} is given twice in one "
+                    f"call to add_events on timeline {quote_id(self._id)}"
+                )
+            clash = pc.filter(
+                pa.array(given, type=pa.string()),
+                pc.is_in(pa.array(given, type=pa.string()), value_set=held),
+            )
+            if len(clash):
+                raise ValueError(
+                    f"Event id {quote_id(clash[0].as_py())} is already held by an "
+                    f"event of timeline {quote_id(self._id)}"
+                )
+        missing = [row.get("event_type") for row in rows if row.get("id") is None]
+        if not missing:
+            return rows
+        minted = iter(mint_event_ids(missing, set(held.to_pylist()) | set(given)))
+        return [
+            row if row.get("id") is not None else {**row, "id": next(minted)}
+            for row in rows
+        ]
 
     def _resolve_row_coordinates(self, row: dict[str, Any]) -> dict[str, Any]:
         """Return a row whose coordinate fields are in the native unit.
 
         Each of ``start`` / ``end`` / ``instant`` given as a unit-qualified
         :class:`~timetoalign.core.Coordinate` is resolved through
-        :meth:`get_coordinate`, so a value expressed in a derived unit is
-        converted into the timeline's native unit via its C-Maps. Raw numbers,
-        coordinate struct dicts and durations are left untouched, and the input
-        dict is never mutated in place.
+        :meth:`get_coordinate_at`, so a value expressed in a derived unit is
+        converted into the timeline's native unit via its C-Maps. A
+        unit-qualified ``duration`` is the span from its start: the span's end
+        is converted as the start is, and the duration is the difference of
+        the two, on this timeline's axis. Raw numbers and coordinate struct
+        dicts are left untouched, and the input dict is never mutated in place.
 
         Args:
             row: An event dictionary as passed to :meth:`add_events`.
 
         Returns:
             The row, copied only when a coordinate needed resolving.
+
+        Raises:
+            ValueError: If a duration in another unit is added to a start not
+                given in that unit, or a unit has no conversion.
         """
         resolved: dict[str, Any] | None = None
         for key in ("start", "end", "instant"):
@@ -174,7 +302,40 @@ class EventsMixin:
                 if resolved is None:
                     resolved = dict(row)
                 resolved[key] = self.get_coordinate_at(value, format="coordinate").value
+        duration = row.get("duration")
+        if isinstance(duration, (Coordinate, Duration)):
+            if resolved is None:
+                resolved = dict(row)
+            resolved["duration"] = self._native_duration(row, duration)
         return resolved if resolved is not None else row
+
+    def _native_duration(
+        self, row: dict[str, Any], duration: Coordinate | Duration
+    ) -> int | float | Fraction:
+        """Return a unit-qualified *duration* of *row* on this timeline's axis.
+
+        In this timeline's unit it is the value itself, written in the
+        timeline's number type. In another unit it is the span from the row's
+        start: start and ``start + duration`` are converted through the C-Map
+        and the duration is their difference, exact on an exact axis.
+
+        Raises:
+            ValueError: If the duration is in another unit and the row's start
+                is not given as a ``Coordinate`` in that unit.
+        """
+        if duration.unit == self._unit:
+            return express_as(duration.value, self._number_type)
+        start = row.get("start", row.get("instant"))
+        if not isinstance(start, Coordinate) or start.unit != duration.unit:
+            raise ValueError(
+                f"A duration in {duration.unit} added to timeline "
+                f"{quote_id(self._id)} (in {self._unit}) is a span from its start, "
+                f"so the start must be given as a Coordinate in {duration.unit} too"
+            )
+        span = Duration(duration.value, duration.unit, number_type=duration.number_type)
+        start_native = self.get_coordinate_at(start, format="coordinate").value
+        end_native = self.get_coordinate_at(start + span, format="coordinate").value
+        return express_as(end_native - start_native, self._number_type)
 
     def _add_events_unchecked(self, rows: list[dict[str, Any]]) -> None:
         """Add events without validation (internal use).

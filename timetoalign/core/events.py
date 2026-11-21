@@ -13,7 +13,8 @@ Sections (in file order):
 * Pitch scalars + paired Fields (7 pairs)
 * Harmony scalars + paired Fields (5 pairs) — plus the DCML import
   schemas (``DcmlStorageSchema`` etc.) and the ``Inversion`` enum.
-* Event scalars + paired Fields (Note, Measure, MeasureNumber, Id)
+* Event scalars + paired Fields (Note, Measure, MeasureNumber, Id,
+  EventReference, Projection)
 * MIDI event scalars + paired Fields (``MidiEvent`` base +
   ``ScoreMidiEvent`` subclass).
 """
@@ -22,6 +23,7 @@ from __future__ import annotations
 
 import math
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import IntEnum
 from fractions import Fraction
@@ -42,8 +44,10 @@ from pydantic import (
 from .fields import (
     ScalarVocabulary,
     SemanticField,
+    blob_metadata,
     build_struct_array,
     data_shaped,
+    field_metadata,
     install_paired_field_registry,
     register_value_projector,
 )
@@ -1929,7 +1933,7 @@ class DcmlHarmonyField(SemanticField[DcmlHarmony]):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 3. EVENT SCALARS — Note, Measure, MeasureNumber, Id
+# 3. EVENT SCALARS — Note, Measure, MeasureNumber, Id, Projection
 # ═══════════════════════════════════════════════════════════════════════════
 
 
@@ -3372,6 +3376,288 @@ class IdField(SemanticField[Id]):
     paired-class shape (``Object`` + ``ObjectField``) a stable home and
     to integrate with ``EventData.get_field(Id)`` dispatch.
     """
+
+
+# ---------------------------------------------------------------------------
+# EventReference + Projection
+# ---------------------------------------------------------------------------
+
+
+class EventReference(ScalarVocabulary, BaseModel):
+    """The address of one event: the timeline holding it and its ID there.
+
+    An event ID is unique on its timeline, not beyond it, so an event is
+    named by the pair, kept as two values and never joined into one string.
+
+    Storage struct (derived): ``{timeline_id: string, event_id: string}``.
+
+    Examples:
+        >>> EventReference(timeline_id="clt_6", event_id="x1azmn68")
+        EventReference(timeline_id='clt_6', event_id='x1azmn68')
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    timeline_id: str
+    event_id: str
+
+    @field_validator("timeline_id", "event_id")
+    @classmethod
+    def _valid_id(cls, value: str) -> str:
+        from .ids import validate_id
+
+        return validate_id(value)
+
+    @classmethod
+    def from_row(cls, row: dict[str, Any]) -> EventReference | None:
+        """Construct from a storage-row dict; ``None`` for a null cell."""
+        if row is None:
+            return None
+        return cls(timeline_id=row["timeline_id"], event_id=row["event_id"])
+
+    def __repr__(self) -> str:
+        return (
+            f"EventReference(timeline_id={self.timeline_id!r}, "
+            f"event_id={self.event_id!r})"
+        )
+
+
+class EventReferenceField(SemanticField[EventReference]):
+    """Paired Field for :class:`EventReference`.
+
+    The ``projection_of`` column of a timeline's events is one: a row whose
+    dict matches the struct is stored under this field type.
+    """
+
+
+class Projection(ScalarVocabulary, BaseModel):
+    """An event standing on a timeline for an event not held there.
+
+    A Projection is an event type of its own (``event_type`` ``"Projection"``
+    in a timeline's events). It holds its own ID, its position on the
+    timeline's axis and, when the event it stands for is known, the
+    reference to it; it repeats nothing else of that event (its pitch, its
+    name, its other properties stay where the event lives). A Projection
+    without ``projection_of`` stands for a position a source states without
+    an event of its own.
+
+    ``start`` and ``duration`` are on one axis: the duration has the start's
+    unit and number type. An instant has no duration.
+
+    Storage struct (derived): ``{id, start, duration, projection_of}``, the
+    two positions as number cells whose unit and number type the field
+    records once (:class:`ProjectionField`).
+
+    Examples:
+        >>> from timetoalign.core import Coordinate, TimeUnit
+        >>> Projection(
+        ...     id="projection_1",
+        ...     start=Coordinate(850176, TimeUnit.samples),
+        ...     projection_of=EventReference(timeline_id="clt_6", event_id="x1azmn68"),
+        ... ).end is None
+        True
+    """
+
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+
+    #: The prefix of a minted Projection ID, ``projection_N``.
+    _id_prefix: ClassVar[str] = "projection"
+
+    id: str  # noqa: A003 - the event's ID, a column of its table
+    start: Coordinate
+    duration: Duration | None = None
+    projection_of: EventReference | None = None
+
+    @field_validator("id")
+    @classmethod
+    def _valid_id(cls, value: str) -> str:
+        from .ids import validate_id
+
+        return validate_id(value)
+
+    @model_validator(mode="after")
+    def _duration_on_the_start_axis(self) -> Projection:
+        duration = self.duration
+        if duration is None:
+            return self
+        if duration.unit != self.start.unit:
+            raise ValueError(
+                f"Projection '{self.id}': its duration is in {duration.unit}, "
+                f"its start in {self.start.unit}; both are on one axis"
+            )
+        if duration.number_type is not self.start.number_type:
+            raise ValueError(
+                f"Projection '{self.id}': its duration is written as "
+                f"{duration.number_type}, its start as {self.start.number_type}; "
+                "both are on one axis"
+            )
+        return self
+
+    @property
+    def semantic_type(self) -> str:
+        """The event type a Projection is stored under: ``"Projection"``."""
+        return "Projection"
+
+    @property
+    def end(self) -> Coordinate | None:
+        """``start + duration``; ``None`` for an instant."""
+        if self.duration is None:
+            return None
+        return self.start + self.duration
+
+    @classmethod
+    def from_row(
+        cls,
+        row: dict[str, Any],
+        *,
+        unit: Any,
+        number_type: Any,
+    ) -> Projection | None:
+        """Construct from a storage-row dict on the axis its field records.
+
+        Args:
+            row: The struct cell, ``None`` for a null one.
+            unit: The ``TimeUnit`` of both positions.
+            number_type: The ``NumberType`` they are written in; the cell's
+                side that holds it is read, so an exact value stays exact.
+
+        Returns:
+            The Projection, or ``None`` for a null cell.
+        """
+        if row is None:
+            return None
+        from .time import struct_to_coordinate
+
+        start = Coordinate(
+            struct_to_coordinate(row["start"], number_type),
+            unit,
+            number_type=number_type,
+        )
+        duration_cell = row.get("duration")
+        duration = (
+            None
+            if duration_cell is None
+            else Duration(
+                struct_to_coordinate(duration_cell, number_type),
+                unit,
+                number_type=number_type,
+            )
+        )
+        return cls(
+            id=row["id"],
+            start=start,
+            duration=duration,
+            projection_of=EventReference.from_row(row.get("projection_of")),
+        )
+
+    def __repr__(self) -> str:
+        parts = [f"id={self.id!r}", f"start={self.start}"]
+        if self.duration is not None:
+            parts.append(f"duration={self.duration}")
+        if self.projection_of is not None:
+            parts.append(f"projection_of={self.projection_of!r}")
+        return f"Projection({', '.join(parts)})"
+
+
+class ProjectionField(SemanticField[Projection]):
+    """Paired Field for :class:`Projection`: Projections on one axis.
+
+    The struct cells carry the numbers; the unit and number type of the
+    axis are recorded once, in the field's metadata, as a timeline records
+    them once for all its events. :meth:`from_projections` builds one from
+    scalars and refuses Projections on different axes.
+    """
+
+    @classmethod
+    def from_projections(
+        cls,
+        projections: Sequence[Projection],
+        *,
+        unit: Any = None,
+        number_type: Any = None,
+        name: str = "projection",
+    ) -> ProjectionField:
+        """Build the field of *projections*, all on one axis.
+
+        Args:
+            projections: The Projections, in row order.
+            unit: The axis's ``TimeUnit``; read from the Projections when
+                omitted (an empty sequence needs it).
+            number_type: The axis's ``NumberType``; read from the
+                Projections when omitted, else the unit's default.
+            name: The field's name.
+
+        Returns:
+            The field, its metadata recording the unit and number type.
+
+        Raises:
+            ValueError: If a Projection is not on that axis, or the axis
+                cannot be told (no Projection and no unit).
+        """
+        from .enums import NumberType, TimeUnit
+
+        if unit is None:
+            if not projections:
+                raise ValueError(
+                    "ProjectionField.from_projections: an empty field needs a unit"
+                )
+            unit = projections[0].start.unit
+        unit = TimeUnit(unit)
+        if number_type is None:
+            number_type = (
+                projections[0].start.number_type
+                if projections
+                else unit.resolve_number_type(None)
+            )
+        number_type = NumberType(number_type)
+        for projection in projections:
+            start = projection.start
+            if start.unit != unit or start.number_type is not number_type:
+                raise ValueError(
+                    f"Projection '{projection.id}' is at {start.unit} written as "
+                    f"{start.number_type}; the field's axis is {unit} written as "
+                    f"{number_type}"
+                )
+        array = build_struct_array(Projection, list(projections))
+        pa_field = pa.field(
+            name,
+            array.type,
+            metadata=blob_metadata(
+                field_type=cls.field_type(),
+                unit=unit.value,
+                number_type=number_type.name,
+            ),
+        )
+        return cls.from_field((array, pa_field))
+
+    @property
+    def unit(self) -> Any:
+        """The ``TimeUnit`` of every position in the field."""
+        from .enums import TimeUnit
+
+        return TimeUnit(field_metadata(self.field)["unit"])
+
+    @property
+    def number_type(self) -> Any:
+        """The ``NumberType`` every position in the field is written in."""
+        from .enums import NumberType
+
+        return NumberType(field_metadata(self.field)["number_type"])
+
+    def metadata_dict(self) -> dict[str, str]:
+        recorded = field_metadata(self.field)
+        return {
+            **super().metadata_dict(),
+            **{
+                key: recorded[key] for key in ("unit", "number_type") if key in recorded
+            },
+        }
+
+    def __getitem__(self, i: int) -> Projection | None:
+        """Return the *i*-th Projection, positions read on the field's axis."""
+        return Projection.from_row(
+            self._raw[i], unit=self.unit, number_type=self.number_type
+        )
 
 
 # ═══════════════════════════════════════════════════════════════════════════

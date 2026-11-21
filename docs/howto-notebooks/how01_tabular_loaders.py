@@ -70,21 +70,55 @@ THORESEN = ensure_data("thoresen")
 # typed fields. For a standard ms3 score export, use the score `Ms3Loader`
 # instead; it understands its notes, measures, chords, and harmonies facets.
 #
-# **Three lines of code:**
+# The file gives each note's length twice: `duration_qb` in quarters, written
+# as a decimal (a twelfth as `0.08333333333333333`), and `duration` in whole
+# notes, written as an exact ratio (`1/48`). On an exact (`Fraction`) axis
+# the loader completes each end as start + duration exactly, and for a note
+# starting at `529/12` the sum with that decimal's binary value needs a
+# numerator wider than the 64 bits an exact value is stored in, so a
+# `duration_column = "duration_qb"` is refused rather than guessed back into
+# a ratio. Complete the ends from the exact `duration` column instead, with a
+# `ComputedField` as below, or declare `coordinate_type = NumberType.float`
+# for a file that gives its durations only as decimals.
 
 # %%
-from timetoalign.core import NumberType, TimeUnit  # noqa: E402
+from fractions import Fraction  # noqa: E402
+
+import pyarrow as pa  # noqa: E402
+
+from timetoalign.core import NumberType, RedundantNumberField, TimeUnit  # noqa: E402
+from timetoalign.loader import ComputedField  # noqa: E402
 from timetoalign.loader.tabular import TsvLoader  # noqa: E402
+
+
+def end_in_quarters(table: pa.Table) -> pa.Array:
+    """A note's end in quarters: its start plus four times its whole-note duration."""
+    starts = table["quarterbeats"].to_pylist()
+    wholes = table["duration"].to_pylist()
+    # Written as "n/d" text, which the loader reads exactly.
+    return pa.array(
+        [
+            None if s is None else str(Fraction(s) + 4 * Fraction(w))
+            for s, w in zip(starts, wholes)
+        ]
+    )
 
 
 class BeethovenNotesLoader(TsvLoader):
     """Generic TSV configuration for the coordinate and pitch columns used here."""
 
     start_column = "quarterbeats"
-    duration_column = "duration_qb"
+    end_column = ComputedField("end", expr=end_in_quarters)
     _default_unit = TimeUnit.quarters
     coordinate_type = NumberType.fraction
-    column_specs = {"midi": int, "staff": int, "voice": int}
+    # The whole-note column keeps its exact values under its own name, so it
+    # is not read as the events' duration, which is in quarters.
+    column_specs = {
+        "duration": RedundantNumberField(name="duration_whole"),
+        "midi": int,
+        "staff": int,
+        "voice": int,
+    }
 
 
 loader = BeethovenNotesLoader()
@@ -222,7 +256,7 @@ typed.events.to_dataframe()
 # small formula over those nested values:
 
 # %%
-from timetoalign.loader import ComputedField, Field  # noqa: E402
+from timetoalign.loader import Field  # noqa: E402
 
 
 class ThoresenGraphicalLoader(TsvLoader):
@@ -302,13 +336,17 @@ from timetoalign.timelines import create_timeline  # noqa: E402
 grouped_tl = create_timeline(typed, group_by="image_filename")
 grouped_tl
 
+# %% [markdown]
+# Each child gets a minted ID (`cpt_2`, `cpt_3`, …) and is named after its
+# column value, so the image a child holds is its `name`:
+
 # %%
 # Each child timeline represents events from one image
 {
     "parent_id": grouped_tl.id,
     "n_children": grouped_tl.n_children,
     "children": {
-        child.id: len(child._events) if child._events else 0
+        child.id: (child.name, child.n_events)
         for _, child in grouped_tl.iter_children()
     },
 }

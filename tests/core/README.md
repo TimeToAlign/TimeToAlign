@@ -760,6 +760,42 @@ the constructor refuses. Tests assert both sides of that line, since a single
 rule in both places would either forbid legitimate conversion or license the
 silent rounding the refusal exists to prevent.
 
+### `test_coordinate_cell.py` - A coordinate cell names its own axis
+
+**Purpose:** A table whose rows lie on different timelines (the MatchClaim
+table, the Projections table) cannot record one unit and number type in its
+field metadata, so each cell carries them: `COORDINATE_CELL_TYPE` is the
+number struct above followed by `unit` and `number_type`. It is TimeToShare's
+coordinate cell, so a table the library writes passes TimeToShare's check.
+These tests prove the cell is that shape and holds exactly the number written.
+
+**What proves it:**
+
+- **The type is TimeToShare's.** `COORDINATE_CELL_TYPE` equals
+  `struct<value: double, numerator: int64, denominator: int64, unit: string,
+  number_type: string>` spelled out in the test, and equals
+  `timetoshare.tables.COORDINATE_TYPE` (skipped with a reason when the
+  installed `timetoshare` has no `tables` module).
+- **Both sides on every non-null cell, a float included.** `coordinate_cells`
+  of `[1/3 quarters (fraction), None, 0.1 seconds (float), 139776 samples
+  (int), 2/3 quarters]` gives exactly, in that order: `{0.3333333333333333,
+  1, 3, "quarters", "fraction"}`, a null cell, `{0.1, 3602879701896397,
+  36028797018963968, "seconds", "float"}` (the double's exact ratio, never a
+  guessed tidier one), `{139776.0, 139776, 1, "samples", "int"}`,
+  `{0.6666666666666666, 2, 3, "quarters", "fraction"}`. Rows of one axis that
+  are not adjacent keep their places. A `Duration` makes the same cell as a
+  `Coordinate` of its value.
+- **The column builder on one axis.** `axis_coordinate_cells([0, None,
+  44100], unit="samples")` gives `{0.0, 0, 1, "samples", "int"}`, null,
+  `{44100.0, 44100, 1, "samples", "int"}`; on a float axis `[0.25]` gives
+  `{0.25, 1, 4, "seconds", "float"}`; without `number_type` the unit's
+  default applies.
+- **Reading back keeps the number type.** `cell_coordinate` of each built
+  cell equals the coordinate written, and its value has the written Python
+  type (`Fraction`, `float`, `int`); `scalar=Duration` gives a `Duration`; a
+  null cell gives `None`; a cell without unit or number type is refused.
+- **Empty input** gives an empty array of the cell type.
+
 ### `test_numpy_portability_hygiene.py` - Integer widths the library chooses
 
 **Purpose:** Keeps the storage guarantee ("an int64 numerator means 64 bits of

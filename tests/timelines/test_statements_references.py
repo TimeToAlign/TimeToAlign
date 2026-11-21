@@ -55,7 +55,6 @@ def _entry(element: str) -> dict[str, Any]:
         "method": "manual",
         "property": SOURCE,
         "stated_by": [EDITOR],
-        "status": "confirmed",
         "value": {"id": f"#{element}"},
     }
 

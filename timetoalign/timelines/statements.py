@@ -4,16 +4,27 @@ A TimeToShare manifest describes the things its elements stand for — a
 work, a recording, a printed edition, a performer — by property–value
 pairs: the bundle (the manifest itself), every timeline at any depth and
 every region may hold ``statements`` (``{property: [value, ...]}``) and
-``provenance``, the entries saying who stated, proposed, confirmed or
-rejected a pair, when and how. A value naming an element of the manifest is
-the node ``{"id": "#cpt_1"}`` (:func:`timetoshare.to_file_id` builds the
-reference); the element's own ``id`` stays ``cpt_1``. Statements are the
-same in a file and in memory.
+``provenance``, the entries saying how a pair was made (who stated it,
+when, how, on what basis) and who believes it. A value naming an element
+of the manifest is the node ``{"id": "#cpt_1"}``
+(:func:`timetoshare.to_file_id` builds the reference); the element's own
+``id`` stays ``cpt_1``. Statements are the same in a file and in memory.
+
+A pair listed in ``statements`` is stated by the manifest; a pair held only
+in ``provenance`` is a **candidate**, offered for someone to state. A
+person who states a pair is recorded with the belief ``"true"``
+(``actor=``); a loader or a service proposing a candidate records how it
+was made and holds no belief. Every actor may record a belief in any pair,
+``"true"``, ``"false"`` or ``"unlikely"``: believing a stated pair
+``"false"`` records that belief and never removes the pair, and a candidate
+an actor believes ``"false"`` is not offered to that actor again. The
+belief filter (``believer=``, ``belief=``) is decided by
+:func:`~timetoalign.core.provenance.belief_mask`, as for MatchClaims.
 
 Everything about the pairs themselves is TimeToShare's
 (:mod:`timetoshare.statements`, :mod:`timetoshare.catalogue`): matching,
-adding, removing, proposals, confirmation, rejection, the rectangles a
-catalogue reads, the prefixes used. This module adds where statements live:
+adding, removing, candidates, beliefs, the rectangles a catalogue reads,
+the prefixes used. This module adds where statements live:
 :class:`StatementsMixin` is the one read surface of
 :class:`~timetoalign.timelines.Timeline`,
 :class:`~timetoalign.timelines.Region` and
@@ -38,15 +49,21 @@ Examples:
     {'type': ['schema:VideoObject'], 'wdt:P175': [{'id': 'wd:Q235650', 'label': 'Maria João Pires'}]}
     >>> [(rectangle.verb, rectangle.label) for rectangle in video.get_rectangles()]
     [('is_a', None), ('performed_by', 'Maria João Pires')]
+    >>> editor = "https://example.org/people/editor"
     >>> wav = DiscretePhysicalTimeline(length=1470868, uid="dpt_1")
-    >>> _ = wav.propose_statement("dcterms:source", {"id": "#cpt_1"},
-    ...     stated_by="https://example.org/people/editor", method="inferred", date="2026-11-18")
-    >>> wav.statements, [entry["status"] for entry in wav.provenance]
-    ({}, ['proposed'])
-    >>> _ = wav.confirm_statement("dcterms:source", {"id": "#cpt_1"},
-    ...     stated_by="https://example.org/people/editor", date="2026-11-19")
-    >>> wav.statements, [entry["status"] for entry in wav.provenance]
-    ({'dcterms:source': [{'id': '#cpt_1'}]}, ['confirmed'])
+    >>> _ = wav.add_candidate("dcterms:source", {"id": "#cpt_1"},
+    ...     stated_by="https://example.org/agents/aligner", method="inferred", date="2026-11-18")
+    >>> wav.statements, [entry["method"] for entry in wav.get_candidates()]
+    ({}, ['inferred'])
+    >>> _ = wav.add_statement("dcterms:source", {"id": "#cpt_1"}, actor=editor, date="2026-11-19")
+    >>> wav.statements, wav.get_candidates()
+    ({'dcterms:source': [{'id': '#cpt_1'}]}, [])
+    >>> wav.provenance[0]["beliefs"]
+    [{'actor': 'https://example.org/people/editor', 'belief': 'true', 'date': '2026-11-19'}]
+    >>> _ = wav.add_belief("dcterms:source", {"id": "#cpt_1"}, actor="https://example.org/people/reviewer",
+    ...     belief="false", date="2026-11-20")
+    >>> wav.statements, wav.get_provenance(believer="https://example.org/people/reviewer")
+    ({'dcterms:source': [{'id': '#cpt_1'}]}, [])
     >>> from timetoalign.timelines import ContinuousLogicalTimeline
     >>> score = ContinuousLogicalTimeline(length=27, uid="clt_6")
     >>> intro = score.create_region(0, 12, id="region_1")
@@ -71,11 +88,20 @@ from __future__ import annotations
 import copy
 import datetime
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from typing import Any, Final, Literal
+from typing import Any, Final
 
 import timetoshare
 from timetoshare import FORMAT_CONTEXT, Catalogue, Rectangle, load_catalogue
 from typing_extensions import Self
+
+from ..core.provenance import (
+    Belief,
+    BeliefFilter,
+    BeliefValue,
+    Provenance,
+    belief_mask,
+    provenance_array,
+)
 
 __all__ = ["LIBRARY_AGENT", "MutableStatementsMixin", "NodePath", "StatementsMixin"]
 
@@ -92,10 +118,11 @@ NodePath = tuple[str | int, ...]
 STATE_KEYS: Final[tuple[str, str]] = ("statements", "provenance")
 """The two keys of a manifest object that hold its statements."""
 
-Status = Literal["confirmed", "proposed", "rejected"]
+PAIR_KEYS: Final[tuple[str, str]] = ("property", "value")
+"""The keys a statement's provenance entry adds to the entry of the format."""
 
-# The day a proposal, confirmation or rejection is dated when no date is
-# given; a module attribute, so that a test can fix the day.
+# The day a candidate or a belief is dated when no date is given; a module
+# attribute, so that a test can fix the day.
 _today = datetime.date.today
 
 
@@ -189,6 +216,115 @@ def _day(date: str | datetime.date | None) -> str:
     if date is None:
         return _today().isoformat()
     return date.isoformat() if isinstance(date, datetime.date) else date
+
+
+def _entry_members(provenance: Provenance | Mapping[str, Any]) -> dict[str, Any]:
+    """The members of a pair's entry *provenance* gives, beliefs included.
+
+    A mapping is read as :class:`~timetoalign.core.provenance.Provenance`
+    reads one, so a statement's entry is checked as a MatchClaim's is.
+
+    Raises:
+        ValueError: If a key is unknown or a value invalid.
+    """
+    if not isinstance(provenance, Provenance):
+        provenance = Provenance.from_dict(dict(provenance))
+    return provenance.to_dict()
+
+
+def _actor_belief(actor: str | None, date: str | datetime.date | None) -> Belief | None:
+    """The belief ``"true"`` of the person *actor* stating a pair, or None.
+
+    Raises:
+        ValueError: If *date* is given without *actor*, or is no calendar
+            date.
+    """
+    if actor is None:
+        if date is not None:
+            raise ValueError(
+                "a date dates the belief of the actor stating the pair; give actor="
+            )
+        return None
+    return Belief(actor=actor, belief="true", date=_day(date))
+
+
+def _believed(
+    document: dict[str, Any],
+    subject: tuple[str | int, ...],
+    property: str,
+    value: Any,
+    held: Belief,
+) -> dict[str, Any]:
+    """*document* with *held* recorded in the pair's entry (:func:`timetoshare.with_belief`)."""
+    return timetoshare.with_belief(
+        document,
+        subject,
+        property,
+        value,
+        actor=held.actor,
+        belief=held.belief,
+        date=held.date,
+        note=held.note,
+    )
+
+
+def _stating(
+    document: dict[str, Any],
+    subject: tuple[str | int, ...],
+    property: str,
+    value: Any,
+    members: Mapping[str, Any] | None,
+    believed: Belief | None,
+) -> dict[str, Any]:
+    """*document* with the pair stated (:func:`timetoshare.with_pair`).
+
+    The pair's entry takes *members* (an entry's members, as
+    :func:`_entry_members` gives them), their beliefs recorded in order, and
+    then *believed*, the stating actor's belief, which replaces an earlier
+    one of that actor.
+    """
+    document = timetoshare.with_pair(
+        document, subject, property, value, provenance=members
+    )
+    beliefs = [Belief.from_dict(held) for held in (members or {}).get("beliefs", ())]
+    for held in [*beliefs, *([believed] if believed is not None else [])]:
+        document = _believed(document, subject, property, value, held)
+    return document
+
+
+def _believing(
+    entries: list[dict[str, Any]],
+    context: Mapping[str, Any],
+    believer: str | None,
+    belief: BeliefFilter,
+) -> list[dict[str, Any]]:
+    """The *entries* the belief filter keeps for *believer*.
+
+    The filter is :func:`~timetoalign.core.provenance.belief_mask`'s;
+    actors compare as their IRIs under *context*, as TimeToShare compares
+    them, so ``believer`` may be compact or absolute.
+    """
+    if believer is None:
+        # The mask keeps every row without a believer; its belief is still checked.
+        belief_mask(None, None, belief)
+        return entries
+
+    def iri(actor: str) -> str:
+        return timetoshare.expand_iri(context, actor) or actor
+
+    rows: list[Provenance | None] = []
+    for entry in entries:
+        members = {key: item for key, item in entry.items() if key not in PAIR_KEYS}
+        members["beliefs"] = [
+            {**held, "actor": iri(held["actor"])} for held in members.get("beliefs", ())
+        ]
+        # An entry holding the pair alone states no provenance: a null row.
+        stated = members["beliefs"] or len(members) > 1
+        rows.append(Provenance.from_dict(members) if stated else None)
+    mask = belief_mask(provenance_array(rows), iri(believer), belief)
+    return [
+        entry for entry, kept in zip(entries, mask.to_pylist(), strict=True) if kept
+    ]
 
 
 # endregion
@@ -313,18 +449,70 @@ class StatementsMixin:
         return timetoshare.pairs(self._statement_document(), _subject(node))
 
     def get_provenance(
-        self, status: Status | None = None, *, node: NodePath = ()
+        self,
+        *,
+        node: NodePath = (),
+        believer: str | None = None,
+        belief: BeliefFilter = "not_false",
     ) -> list[dict[str, Any]]:
         """Return the provenance entries of the holder or of a value node.
 
+        Entries of stated pairs and candidates alike, in their order
+        (:func:`timetoshare.entries`), kept by the belief filter.
+
         Args:
-            status: Only the entries of this status; all of them when None.
             node: The value node whose entries to return; ``()`` the holder.
+            believer: The actor whose beliefs filter, an IRI (compact or
+                absolute); every entry when None.
+            belief: ``"not_false"`` keeps the entries of pairs the believer
+                does not believe ``"false"``; ``"true"`` only those the
+                believer believes ``"true"``.
 
         Raises:
-            ValueError: If *node* addresses no value node.
+            ValueError: If *node* addresses no value node, or *belief* is
+                neither ``"not_false"`` nor ``"true"``.
         """
-        return timetoshare.entries(self._statement_document(), _subject(node), status)
+        document = self._statement_document()
+        return _believing(
+            timetoshare.entries(document, _subject(node)),
+            document["@context"],
+            believer,
+            belief,
+        )
+
+    def get_candidates(
+        self,
+        *,
+        node: NodePath = (),
+        believer: str | None = None,
+        belief: BeliefFilter = "not_false",
+    ) -> list[dict[str, Any]]:
+        """Return the candidates: the entries of pairs the holder does not state.
+
+        A candidate is offered for someone to state (:meth:`add_statement`
+        with the same pair). With *believer*, a candidate the believer
+        believes ``"false"`` is left out: it is not offered to that actor
+        again (:func:`timetoshare.candidates` with ``actor=``).
+
+        Args:
+            node: The value node whose candidates to return; ``()`` the
+                holder.
+            believer: The actor whose beliefs filter, an IRI (compact or
+                absolute); every candidate when None.
+            belief: ``"not_false"`` or ``"true"``, as for
+                :meth:`get_provenance`.
+
+        Raises:
+            ValueError: If *node* addresses no value node, or *belief* is
+                neither ``"not_false"`` nor ``"true"``.
+        """
+        document = self._statement_document()
+        return _believing(
+            timetoshare.candidates(document, _subject(node)),
+            document["@context"],
+            believer,
+            belief,
+        )
 
     def get_rectangles(self, catalogue: Catalogue | None = None) -> list[Rectangle]:
         """Return the holder's pairs gathered by verb: one verb about one thing.
@@ -351,11 +539,15 @@ class StatementsMixin:
         value: Any,
         *,
         node: NodePath,
-        provenance: Mapping[str, Any] | None,
+        provenance: Provenance | Mapping[str, Any] | None,
+        actor: str | None,
+        date: str | datetime.date | None,
     ) -> dict[str, Any]:
+        members = None if provenance is None else _entry_members(provenance)
+        believed = _actor_belief(actor, date)
         return self._applied(
-            lambda document: timetoshare.with_pair(
-                document, _subject(node), property, value, provenance=provenance
+            lambda document: _stating(
+                document, _subject(node), property, value, members, believed
             )
         )
 
@@ -368,7 +560,7 @@ class StatementsMixin:
             )
         )
 
-    def _state_with_proposal(
+    def _state_with_candidate(
         self,
         property: str,
         value: Any,
@@ -382,62 +574,45 @@ class StatementsMixin:
         note: str | None,
         node: NodePath,
     ) -> dict[str, Any]:
+        entry = Provenance(
+            stated_by=tuple(_agents(stated_by)),
+            date=_day(date),
+            method=method,
+            service=service,
+            basis=tuple(basis) or None,
+            match=match,
+            note=note,
+        )
         return self._applied(
-            lambda document: timetoshare.with_proposal(
+            lambda document: timetoshare.with_candidate(
                 document,
                 _subject(node),
                 property,
                 value,
-                stated_by=_agents(stated_by),
-                date=_day(date),
-                method=method,
-                service=service,
-                basis=basis,
-                match=match,
-                note=note,
+                stated_by=list(entry.stated_by or ()),
+                date=entry.date,
+                method=entry.method,
+                service=entry.service,
+                basis=list(entry.basis or ()),
+                match=entry.match,
+                note=entry.note,
             )
         )
 
-    def _state_with_confirmation(
+    def _state_with_belief(
         self,
         property: str,
         value: Any,
         *,
-        stated_by: str | Sequence[str],
-        date: str | datetime.date | None,
-        node: NodePath,
-    ) -> dict[str, Any]:
-        return self._applied(
-            lambda document: timetoshare.with_confirmation(
-                document,
-                _subject(node),
-                property,
-                value,
-                stated_by=_agents(stated_by),
-                date=_day(date),
-            )
-        )
-
-    def _state_with_rejection(
-        self,
-        property: str,
-        value: Any,
-        *,
-        stated_by: str | Sequence[str],
+        actor: str,
+        belief: BeliefValue,
         date: str | datetime.date | None,
         note: str | None,
         node: NodePath,
     ) -> dict[str, Any]:
+        held = Belief(actor=actor, belief=belief, date=_day(date), note=note)
         return self._applied(
-            lambda document: timetoshare.with_rejection(
-                document,
-                _subject(node),
-                property,
-                value,
-                stated_by=_agents(stated_by),
-                date=_day(date),
-                note=note,
-            )
+            lambda document: _believed(document, _subject(node), property, value, held)
         )
 
     def _state_with_verb(
@@ -449,9 +624,13 @@ class StatementsMixin:
         label: str | None,
         slots: Mapping[str, Any] | None,
         alternative: int,
-        provenance: Mapping[str, Any] | None,
+        provenance: Provenance | Mapping[str, Any] | None,
+        actor: str | None,
+        date: str | datetime.date | None,
         catalogue: Catalogue | None,
     ) -> dict[str, Any]:
+        members = None if provenance is None else _entry_members(provenance)
+        believed = _actor_belief(actor, date)
         pairs = timetoshare.instantiate(
             catalogue or load_catalogue(),
             verb,
@@ -464,8 +643,8 @@ class StatementsMixin:
 
         def edit(document: dict[str, Any]) -> dict[str, Any]:
             for property, pair_value in pairs:
-                document = timetoshare.with_pair(
-                    document, (), property, pair_value, provenance=provenance
+                document = _stating(
+                    document, (), property, pair_value, members, believed
                 )
             return document
 
@@ -541,12 +720,17 @@ class MutableStatementsMixin(StatementsMixin):
         value: Any,
         *,
         node: NodePath = (),
-        provenance: Mapping[str, Any] | None = None,
+        provenance: Provenance | Mapping[str, Any] | None = None,
+        actor: str | None = None,
+        date: str | datetime.date | None = None,
     ) -> Self:
         """State the pair ``(property, value)``.
 
-        A ``proposed`` or ``rejected`` entry of the pair is removed. With
-        *provenance*, a ``confirmed`` entry records who stated the pair.
+        A candidate of the pair becomes the stated pair's entry, its
+        beliefs kept (:func:`timetoshare.with_pair`). *provenance* sets the
+        entry's members; *actor*, the person stating the pair, is recorded
+        with the belief ``"true"``, replacing that actor's earlier belief.
+        A loader or a service gives *provenance* alone and holds no belief.
 
         Args:
             property: ``type`` ("is a"), a compact IRI or an absolute IRI.
@@ -554,26 +738,38 @@ class MutableStatementsMixin(StatementsMixin):
                 object, a node (``{"id": ...}``) or ``{"list": [...]}``;
                 ``type`` takes a class IRI.
             node: The value node to state the pair of; ``()`` the holder.
-            provenance: The members of the confirmed entry but
-                ``property``, ``value`` and ``status``, as the file writes
-                them (``stated_by``, ``date``, ``method``, ...).
+            provenance: How the pair was made, a
+                :class:`~timetoalign.core.provenance.Provenance` or its
+                dictionary (``stated_by``, ``date``, ``method``, ...);
+                its ``beliefs`` are recorded too.
+            actor: The person stating the pair, an IRI.
+            date: The day of *actor*'s belief, ``YYYY-MM-DD`` or a
+                :class:`datetime.date`; today when None.
 
         Raises:
             ValueError: If the pair is stated already (``'wdt:P175' already
                 has this value``), the property is no property, *node*
-                addresses no value node, or a prefix is declared neither by
-                the catalogue nor on the holder.
+                addresses no value node, *provenance* is no provenance
+                entry, *date* is given without *actor*, or a prefix is
+                declared neither by the catalogue nor on the holder.
         """
         return self._with_statement_state(
             self._state_with_statement(
-                property, value, node=node, provenance=provenance
+                property,
+                value,
+                node=node,
+                provenance=provenance,
+                actor=actor,
+                date=date,
             )
         )
 
     def remove_statement(
         self, property: str, value: Any, *, node: NodePath = ()
     ) -> Self:
-        """Remove the pair ``(property, value)`` and its ``confirmed`` entry.
+        """Remove the pair ``(property, value)`` and its entry.
+
+        Removing is an edit of its own: no belief removes a pair.
 
         Raises:
             ValueError: If the pair is not stated (``'type' does not have
@@ -583,7 +779,7 @@ class MutableStatementsMixin(StatementsMixin):
             self._state_without_statement(property, value, node=node)
         )
 
-    def propose_statement(
+    def add_candidate(
         self,
         property: str,
         value: Any,
@@ -597,32 +793,35 @@ class MutableStatementsMixin(StatementsMixin):
         note: str | None = None,
         node: NodePath = (),
     ) -> Self:
-        """Propose the pair ``(property, value)`` without stating it.
+        """Offer the pair ``(property, value)`` as a candidate, without stating it.
 
-        A ``proposed`` entry takes the place of another entry of the pair.
+        The candidate is an entry of the pair alone; it takes the place of
+        another entry of the pair, whose beliefs it keeps
+        (:func:`timetoshare.with_candidate`). A loader or a service
+        offering it holds no belief; :meth:`add_statement` states it.
 
         Args:
             property: The property, as for :meth:`add_statement`.
             value: The value, as for :meth:`add_statement`.
-            stated_by: Who proposes: an IRI, or several.
+            stated_by: Who offers it: an IRI, or several.
             method: ``manual``, ``reconciled``, ``imported``, ``inferred``
                 or an IRI.
             date: The day, ``YYYY-MM-DD`` or a :class:`datetime.date`;
                 today when None.
-            service: The service that proposed it, an IRI.
-            basis: The sources the proposal rests on, IRIs.
+            service: The service that offered it, an IRI.
+            basis: The sources the candidate rests on, IRIs.
             match: ``exact``, ``close``, ``broad``, ``narrow`` or
                 ``related``.
             note: A remark.
-            node: The value node to propose the pair of.
+            node: The value node to offer the pair of.
 
         Raises:
             ValueError: If the pair is stated (``'wdt:P175' already has
-                this value; a stated pair is not proposed``), the date is
-                no calendar date, or a prefix is undeclared.
+                this value; a stated pair is no candidate``), a member is
+                no valid provenance member, or a prefix is undeclared.
         """
         return self._with_statement_state(
-            self._state_with_proposal(
+            self._state_with_candidate(
                 property,
                 value,
                 stated_by=stated_by,
@@ -636,53 +835,50 @@ class MutableStatementsMixin(StatementsMixin):
             )
         )
 
-    def confirm_statement(
+    def add_belief(
         self,
         property: str,
         value: Any,
         *,
-        stated_by: str | Sequence[str],
-        date: str | datetime.date | None = None,
-        node: NodePath = (),
-    ) -> Self:
-        """Confirm a proposed or rejected pair: state it, its entry ``confirmed``.
-
-        *value* is stated as given, its label included; the entry keeps its
-        other members and takes *stated_by* and *date*.
-
-        Raises:
-            ValueError: If the pair has no proposed or rejected entry (``no
-                proposal or rejection of this value of 'dcterms:source'``)
-                or is stated already.
-        """
-        return self._with_statement_state(
-            self._state_with_confirmation(
-                property, value, stated_by=stated_by, date=date, node=node
-            )
-        )
-
-    def reject_statement(
-        self,
-        property: str,
-        value: Any,
-        *,
-        stated_by: str | Sequence[str],
+        actor: str,
+        belief: BeliefValue,
         date: str | datetime.date | None = None,
         note: str | None = None,
         node: NodePath = (),
     ) -> Self:
-        """Reject a pair: no longer stated, kept as a ``rejected`` entry.
+        """Record *actor*'s belief in the pair ``(property, value)``.
 
-        A stated pair is removed; the pair's entry, created where it has
-        none, takes *stated_by*, *date* and, where given, *note*.
+        The pair's entry, made where the pair has none, records the belief,
+        replacing the actor's earlier one (:func:`timetoshare.with_belief`).
+        Whether the pair is stated is left as it is: believing a stated
+        pair ``"false"`` records the belief and never removes the pair, and
+        every other actor's belief stands. A candidate the actor believes
+        ``"false"`` is left out of :meth:`get_candidates` for that actor.
+
+        Args:
+            property: The property, as for :meth:`add_statement`.
+            value: The value, as for :meth:`add_statement`.
+            actor: Who holds the belief, an IRI.
+            belief: ``"true"``, ``"false"`` or ``"unlikely"``.
+            date: The day, ``YYYY-MM-DD`` or a :class:`datetime.date`;
+                today when None.
+            note: A remark.
+            node: The value node whose pair is meant.
 
         Raises:
-            ValueError: If the date is no calendar date or *node* addresses
-                no value node.
+            ValueError: If *belief* is none of the three, the date is no
+                calendar date, *node* addresses no value node, or a prefix
+                is undeclared.
         """
         return self._with_statement_state(
-            self._state_with_rejection(
-                property, value, stated_by=stated_by, date=date, note=note, node=node
+            self._state_with_belief(
+                property,
+                value,
+                actor=actor,
+                belief=belief,
+                date=date,
+                note=note,
+                node=node,
             )
         )
 
@@ -695,14 +891,16 @@ class MutableStatementsMixin(StatementsMixin):
         label: str | None = None,
         slots: Mapping[str, Any] | None = None,
         alternative: int = 0,
-        provenance: Mapping[str, Any] | None = None,
+        provenance: Provenance | Mapping[str, Any] | None = None,
+        actor: str | None = None,
+        date: str | datetime.date | None = None,
         catalogue: Catalogue | None = None,
     ) -> Self:
         """State a verb of the catalogue in one system's vocabulary.
 
         The pairs of the system's pattern for the verb are stated in their
-        order, all or none (:func:`timetoshare.instantiate`), each with a
-        ``confirmed`` entry when *provenance* is given.
+        order, all or none (:func:`timetoshare.instantiate`), each as
+        :meth:`add_statement` states a pair, with *provenance* and *actor*.
 
         Args:
             verb: The verb's ID in the catalogue (``performed_by``).
@@ -713,6 +911,8 @@ class MutableStatementsMixin(StatementsMixin):
                 "piano"}``).
             alternative: Which of the system's patterns to use.
             provenance: As for :meth:`add_statement`.
+            actor: As for :meth:`add_statement`.
+            date: As for :meth:`add_statement`.
             catalogue: The catalogue; the shipped one when None.
 
         Raises:
@@ -729,6 +929,8 @@ class MutableStatementsMixin(StatementsMixin):
                 slots=slots,
                 alternative=alternative,
                 provenance=provenance,
+                actor=actor,
+                date=date,
                 catalogue=catalogue,
             )
         )

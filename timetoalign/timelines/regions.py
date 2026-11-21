@@ -22,6 +22,7 @@ from timetoshare import Catalogue
 
 from timetoalign.core import Coordinate, IdCoordinate, NumberType, TimeUnit
 from timetoalign.core.ids import _IdentifiedElement, quote_id
+from timetoalign.core.provenance import BeliefValue, Provenance
 from timetoalign.core.time import Duration, Interval
 
 from .manifest import (
@@ -272,7 +273,9 @@ end=Coordinate(Fraction(32, 1), quarters))
         value: Any,
         *,
         node: NodePath = (),
-        provenance: Mapping[str, Any] | None = None,
+        provenance: Provenance | Mapping[str, Any] | None = None,
+        actor: str | None = None,
+        date: str | datetime.date | None = None,
     ) -> Region:
         """Return a copy stating the pair ``(property, value)``; this region is left as it is.
 
@@ -288,14 +291,19 @@ end=Coordinate(Fraction(32, 1), quarters))
         """
         return self._with_statement_state(
             self._state_with_statement(
-                property, value, node=node, provenance=provenance
+                property,
+                value,
+                node=node,
+                provenance=provenance,
+                actor=actor,
+                date=date,
             )
         )
 
     def without_statement(
         self, property: str, value: Any, *, node: NodePath = ()
     ) -> Region:
-        """Return a copy without the pair ``(property, value)`` and its confirmed entry.
+        """Return a copy without the pair ``(property, value)`` and its entry.
 
         See :meth:`MutableStatementsMixin.remove_statement
         <timetoalign.timelines.MutableStatementsMixin.remove_statement>`.
@@ -304,7 +312,7 @@ end=Coordinate(Fraction(32, 1), quarters))
             self._state_without_statement(property, value, node=node)
         )
 
-    def with_proposal(
+    def with_candidate(
         self,
         property: str,
         value: Any,
@@ -318,13 +326,13 @@ end=Coordinate(Fraction(32, 1), quarters))
         note: str | None = None,
         node: NodePath = (),
     ) -> Region:
-        """Return a copy proposing the pair ``(property, value)``.
+        """Return a copy offering the pair ``(property, value)`` as a candidate.
 
-        See :meth:`MutableStatementsMixin.propose_statement
-        <timetoalign.timelines.MutableStatementsMixin.propose_statement>`.
+        See :meth:`MutableStatementsMixin.add_candidate
+        <timetoalign.timelines.MutableStatementsMixin.add_candidate>`.
         """
         return self._with_statement_state(
-            self._state_with_proposal(
+            self._state_with_candidate(
                 property,
                 value,
                 stated_by=stated_by,
@@ -338,44 +346,31 @@ end=Coordinate(Fraction(32, 1), quarters))
             )
         )
 
-    def with_confirmation(
+    def with_belief(
         self,
         property: str,
         value: Any,
         *,
-        stated_by: str | Sequence[str],
-        date: str | datetime.date | None = None,
-        node: NodePath = (),
-    ) -> Region:
-        """Return a copy with a proposed or rejected pair confirmed and stated.
-
-        See :meth:`MutableStatementsMixin.confirm_statement
-        <timetoalign.timelines.MutableStatementsMixin.confirm_statement>`.
-        """
-        return self._with_statement_state(
-            self._state_with_confirmation(
-                property, value, stated_by=stated_by, date=date, node=node
-            )
-        )
-
-    def with_rejection(
-        self,
-        property: str,
-        value: Any,
-        *,
-        stated_by: str | Sequence[str],
+        actor: str,
+        belief: BeliefValue,
         date: str | datetime.date | None = None,
         note: str | None = None,
         node: NodePath = (),
     ) -> Region:
-        """Return a copy with the pair rejected.
+        """Return a copy recording *actor*'s belief in the pair ``(property, value)``.
 
-        See :meth:`MutableStatementsMixin.reject_statement
-        <timetoalign.timelines.MutableStatementsMixin.reject_statement>`.
+        See :meth:`MutableStatementsMixin.add_belief
+        <timetoalign.timelines.MutableStatementsMixin.add_belief>`.
         """
         return self._with_statement_state(
-            self._state_with_rejection(
-                property, value, stated_by=stated_by, date=date, note=note, node=node
+            self._state_with_belief(
+                property,
+                value,
+                actor=actor,
+                belief=belief,
+                date=date,
+                note=note,
+                node=node,
             )
         )
 
@@ -388,7 +383,9 @@ end=Coordinate(Fraction(32, 1), quarters))
         label: str | None = None,
         slots: Mapping[str, Any] | None = None,
         alternative: int = 0,
-        provenance: Mapping[str, Any] | None = None,
+        provenance: Provenance | Mapping[str, Any] | None = None,
+        actor: str | None = None,
+        date: str | datetime.date | None = None,
         catalogue: Catalogue | None = None,
     ) -> Region:
         """Return a copy stating a verb of the catalogue in one system's vocabulary.
@@ -405,6 +402,8 @@ end=Coordinate(Fraction(32, 1), quarters))
                 slots=slots,
                 alternative=alternative,
                 provenance=provenance,
+                actor=actor,
+                date=date,
                 catalogue=catalogue,
             )
         )

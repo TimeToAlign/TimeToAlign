@@ -949,7 +949,7 @@ all ids within one manifest to be distinct, and no id to start with `tl:`.
 A bundle (the manifest), every timeline at any depth and every region hold
 `statements` and `provenance` exactly as the file writes them; the manifest
 written carries an inline JSON-LD `@context`. The library's API is a
-delegation: matching, adding, removing, proposing, confirming, rejecting,
+delegation: matching, adding, removing, candidates, beliefs,
 the rectangles a catalogue reads and the prefixes a document uses are
 TimeToShare's (`timetoshare.statements`, `timetoshare.catalogue`), run on a
 one-subject document built from the holder's own state. Re-testing those
@@ -986,19 +986,62 @@ by calling the package):
   them; `foaf` redeclared with another namespace raises `the prefix 'foaf'
   already stands for 'http://xmlns.com/foaf/0.1/' on <holder>`, and the same
   declaration again changes nothing.
-- **Provenance.** On `cpt_1`, the sequence of the package's own test values
-  (a pair stated with `provenance=`, a `type` pair with an entry, a
-  proposal resting on `basis: ["#cpt_2"]`, its confirmation with a label, its
-  rejection with a note), `stated_by` given once as a string: every entry is
-  compared whole, so the string's becoming a one-item list and every member
-  kept or replaced is visible. With `date` omitted and the module's `_today`
-  fixed to 2026-11-21 the entry is dated `"2026-11-21"`: the date is the
-  library's, the rest the package's.
+- **Candidates and beliefs agree on every face.** On each holder a
+  candidate (`add_candidate`, `stated_by` `TILIE` given as a string,
+  `method="inferred"`) followed by the belief `"false"` of `EDITOR` gives
+  the same whole entry (`stated_by` a one-item list, the belief's
+  `actor`, `belief`, `date`), `statements == {}`, `get_candidates()` that
+  entry and `get_candidates(believer=EDITOR) == []`: a face whose
+  copy-on-write method did not delegate the same way would differ.
+- **Provenance.** On `cpt_1`, every entry is compared whole, so each
+  member kept, replaced or added is visible:
+  - a pair stated with `provenance=` as a dictionary and a `type` pair
+    stated with a `Provenance` object write the same members (the `type`
+    entry's property `rdf:type`, its value `{"id": ...}`); removing both
+    leaves `{}` and `[]`;
+  - a candidate resting on `basis: ["#cpt_2"]` is held in `provenance`
+    alone: `statements == {}`, `get_candidates() == provenance`;
+    offering it again with `date` omitted and the module's `_today` fixed
+    to 2026-11-21 replaces the entry in place, dated `"2026-11-21"`: the
+    date is the library's, the rest the package's;
+  - `EDITOR` believing it `"false"` leaves it out of
+    `get_candidates(believer=EDITOR)` and in `get_candidates()` and
+    `get_candidates(believer=REVIEWER)`: one actor's belief filters for
+    that actor alone;
+  - `EDITOR` stating it with `actor=EDITOR` and a `datetime.date` puts the
+    pair (with its label) in `statements`, keeps the candidate's members,
+    and leaves EDITOR one belief, `"true"`, dated `"2026-11-20"`: the
+    later belief replaces the earlier one; `get_candidates() == []` and
+    `get_provenance(believer=EDITOR, belief="true")` is the entry;
+  - `REVIEWER` believing the stated pair `"false"` (with a note) leaves
+    `statements` unchanged and appends REVIEWER's belief after EDITOR's:
+    believing `"false"` never removes a pair, and the entry then leaves
+    `get_provenance(believer=REVIEWER)` while
+    `get_provenance(believer=EDITOR, belief="true")` keeps it;
+  - `REVIEWER` changing to `"unlikely"` passes the default filter
+    (`get_provenance(believer=REVIEWER)` is the entry) and not
+    `belief="true"`.
+- **Actors compare as IRIs.** A belief recorded by the compact actor
+  `wd:Q4700` filters for the believer written
+  `http://www.wikidata.org/entity/Q4700`, and the other way round, as
+  TimeToShare's `candidates(..., actor=)` compares them; the filter is the
+  library's one `belief_mask`.
+- **Refusals change nothing.** The belief `"maybe"` is refused by the
+  library's `Belief` scalar (a `ValueError` whose one error is the
+  `literal_error` at `belief`); the filter value `"false"` with the
+  `belief_mask` message `The belief filter keeps 'not_false' or 'true', not
+  'false'` (even without a believer); a `date=` without `actor=` with `a
+  date dates the belief of the actor stating the pair; give actor=`; and
+  a candidate of a stated pair with the package's `'wdt:P2550' already has
+  this value; a stated pair is no candidate`. The holder's `statements`
+  and `provenance` are compared before and after each.
 - **Node paths.** A `wdt:P629` node holding its own `schema:sameAs` pair; a
-  proposal of a second `schema:sameAs` at `node=("wdt:P629", 0)` and its
-  rejection leave the node's `provenance` exactly one `rejected` entry
-  (method, note, date and `stated_by` as given) and `get_pairs(node=...)`
-  the one pair stated, so the path reaches the node and not the holder.
+  candidate of a second `schema:sameAs` at `node=("wdt:P629", 0)` and
+  `EDITOR`'s belief `"false"` in it (with a note) leave the node's
+  `provenance` exactly one entry (method, service, date, `stated_by` and
+  the belief as given), `get_candidates(node=..., believer=EDITOR) == []`
+  and `get_pairs(node=...)` the one pair stated, so the path reaches the
+  node and not the holder, whose `provenance` stays `[]`.
 - **Copy-on-write.** A region's `with_statement` leaves the original's
   statements `{}`; `replace_region` stores the copy, and `get_region` reads
   it back. Regions with different statements are unequal.
@@ -1029,7 +1072,7 @@ by calling the package):
 The reference plumbing (`test_statements_references.py`) keeps what a value
 names true when IDs change and when part of a manifest is written. A part of
 a manifest naming another is a pair `dcterms:source: [{"id": "#X"}]` with a
-`confirmed` entry whose `basis` is `["#X"]`, so every case checks the three
+provenance entry whose `basis` is `["#X"]`, so every case checks the three
 places a reference can stand, value, entry value and basis item:
 
 - **Renamed.** An element given a new ID — a timeline or region minted again

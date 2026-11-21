@@ -40,9 +40,9 @@
 # This guide describes the LayerIt example: an MEI encoding of the first six
 # bars of Debussy's *Clair de lune*, a concert video of Maria João Pires and
 # a WAV file cut from its sound. It states what each timeline is, who
-# performs, who said so, decides on proposals, describes a region, writes
-# the manifest, and imports the description of an MEI header and of a
-# MeLODy repository. The format is specified in TimeToShare's
+# performs, who said so and who believes it, offers candidates, describes a
+# region, writes the manifest, and imports the description of an MEI header
+# and of a MeLODy repository. The format is specified in TimeToShare's
 # [description of a manifest](https://github.com/TimeToAlign/TimeToShare/blob/main/docs/description.md).
 
 # %% [markdown]
@@ -55,8 +55,9 @@
 # states the pairs and the days are invented.
 #
 # `show` prints the pairs of a subject, or of a value node inside it, and
-# the {{< glossary "provenance entry" >}} of each pair that has one; a value
-# node's own entries are shown when `show` is given that node.
+# the {{< glossary "provenance entry" >}} of each pair that has one, marked
+# `stated` or `candidate`; a value node's own entries are shown when `show`
+# is given that node.
 # `show_manifest` prints a manifest as canonical YAML, leaving the format's
 # own terms out of `@context` so that only the prefixes remain.
 
@@ -71,6 +72,7 @@ import timetoalign as tta
 from timetoalign.loader import MeiHeadLoader, MelodyLoader
 
 EDITOR = "https://example.org/people/editor"
+REVIEWER = "https://example.org/people/reviewer"
 DAY = "2026-11-18"
 FOLDER = Path(tempfile.mkdtemp())
 
@@ -89,13 +91,15 @@ def show(holder, node=()):
         if isinstance(value, dict):
             value = {key: item for key, item in value.items() if key != "provenance"}
         print(f"{property}: {text(value)}")
+    candidates = holder.get_candidates(node=node)
     for entry in holder.get_provenance(node=node):
+        kind = "candidate" if entry in candidates else "stated"
         rest = {
             key: value
             for key, value in entry.items()
-            if key not in ("property", "value", "status")
+            if key not in ("property", "value")
         }
-        print(f"[{entry['status']}] {entry['property']}: {text(entry['value'])}")
+        print(f"[{kind}] {entry['property']}: {text(entry['value'])}")
         print(f"    {text(rest)}")
 
 
@@ -179,12 +183,14 @@ video.add_statement("schema:sameAs", {"id": "viaf:113931950"}, node=("wdt:P175",
 ]
 
 # %% [markdown]
-# ## Who said so
+# ## Who said so, and who believes it
 #
 # A pair without a provenance entry is stated by the manifest's publisher.
-# `provenance=` adds a `confirmed` entry naming who stated the pair, when,
-# how and why; the keys are those the file writes. `get_provenance()`
-# answers the entries, optionally of one status.
+# `provenance=` gives the pair an entry naming who stated it, when, how and
+# why; the keys are those the file writes. `actor=` records the person
+# stating the pair as believing it, with the belief `"true"` and the day.
+# A loader or a service records how a pair was made and holds no belief.
+# `get_provenance()` answers the entries.
 
 # %%
 video.add_statement(
@@ -196,21 +202,23 @@ video.add_statement(
         "method": "manual",
         "note": "pasted URL",
     },
+    actor=EDITOR,
+    date=DAY,
 )
 video.get_provenance()
 
 # %% [markdown]
-# ## Propose, confirm and reject
+# ## Candidates and beliefs
 #
-# A proposal is a candidate awaiting a decision: it exists only as its
-# entry, and the subject does not state it. The WAV file was cut from the
-# video's sound, which is an inference. A value naming an element of the
-# manifest is the node of its reference, `#` followed by its ID, which
-# `to_file_id()` builds.
+# A candidate is a pair held only as its entry: the subject does not state
+# it, and it waits for someone to. `add_candidate()` offers one. The WAV
+# file was cut from the video's sound, which is an inference. A value
+# naming an element of the manifest is the node of its reference, `#`
+# followed by its ID, which `to_file_id()` builds.
 
 # %%
 source = {"id": to_file_id(video.id)}
-wav.propose_statement(
+wav.add_candidate(
     "dcterms:source",
     source,
     stated_by=EDITOR,
@@ -221,23 +229,45 @@ wav.propose_statement(
 show(wav)
 
 # %% [markdown]
-# Confirming states the pair and turns its entry `confirmed`, with the new
-# agent and day and every other key kept.
+# Stating the candidate with `add_statement()` makes it a pair of the
+# subject; its entry keeps every key and records the person stating it as
+# believing it.
 
 # %%
-wav.confirm_statement("dcterms:source", source, stated_by=EDITOR, date="2026-11-19")
+wav.add_statement("dcterms:source", source, actor=EDITOR, date="2026-11-19")
 show(wav)
 
 # %% [markdown]
-# A rejection keeps a candidate that was examined and refused, so that no
-# tool proposes it again. A lookup in the GND proposes its entry "Clair de
-# lune" as the work the encoding is an example of; it is Debussy's song on
-# Verlaine's poem, not the piano piece. The rejected entry keeps how the
-# candidate was found.
+# Any actor may record a belief in any pair with `add_belief()`: `"true"`,
+# `"false"` or `"unlikely"`, at most one per actor, a later one replacing
+# the earlier. A belief never changes what is stated: a reviewer who
+# believes the source `"false"` leaves the pair in place, and nothing
+# derives a truth value from the beliefs. The belief filter reads them for
+# one actor, the believer: everything the believer does not believe
+# `"false"` (the default), or only what the believer believes `"true"`.
+
+# %%
+wav.add_belief(
+    "dcterms:source", source, actor=REVIEWER, belief="false", date="2026-11-20"
+)
+(
+    wav.statements,
+    len(wav.get_provenance(believer=REVIEWER)),
+    len(wav.get_provenance(believer=EDITOR, belief="true")),
+)
+
+# %% [markdown]
+# A candidate an actor believes `"false"` was examined and refused; it is
+# kept, so that it is not offered to that actor again. A lookup in the GND
+# offers its entry "Clair de lune" as the work the encoding is an example
+# of; it is Debussy's song on Verlaine's poem, not the piano piece. The
+# entry keeps how the candidate was found beside the belief.
+# `get_candidates()` answers every candidate, and with `believer=` those the
+# believer does not believe `"false"`.
 
 # %%
 score.add_statement("type", "melod:Manifestation")
-score.propose_statement(
+score.add_candidate(
     "schema:exampleOfWork",
     {"id": "gnd:1156628156"},
     stated_by=EDITOR,
@@ -245,23 +275,25 @@ score.propose_statement(
     service="https://lobid.org/gnd/search",
     date=DAY,
 )
-score.reject_statement(
+score.add_belief(
     "schema:exampleOfWork",
     {"id": "gnd:1156628156"},
-    stated_by=EDITOR,
+    actor=EDITOR,
+    belief="false",
     date=DAY,
     note="GND 'Clair de lune' is Debussy's song L 32 on Verlaine, not the piano piece",
 )
 show(score)
+len(score.get_candidates()), score.get_candidates(believer=EDITOR)
 
 # %% [markdown]
-# Proposals and decisions take a node path as statements do. The encoding
+# Candidates and beliefs take a node path as statements do. The encoding
 # is an edition of the work (`wdt:P629`), and the GND entry for the piano
-# piece is proposed as the same work, inside that node.
+# piece is offered as the same work, inside that node.
 
 # %%
 score.add_statement("wdt:P629", {"id": "wd:Q29117946", "label": "Clair de lune"})
-score.propose_statement(
+score.add_candidate(
     "schema:sameAs",
     {"id": "gnd:300042558"},
     node=("wdt:P629", 0),
@@ -279,9 +311,10 @@ show(score, node=("wdt:P629", 0))
 # A region stands for the stretch of its timeline's manifestation it marks.
 # Regions are frozen: `with_statement()` returns a copy holding the pair,
 # and `replace_region()` stores it in the place of the region with its ID.
-# The region's siblings `without_statement()`, `with_proposal()`,
-# `with_confirmation()`, `with_rejection()`, `with_verb()` and
-# `with_prefix()` mirror the timeline's methods.
+# The region's siblings `without_statement()`, `with_candidate()`,
+# `with_belief()`, `with_verb()` and `with_prefix()` mirror the timeline's
+# `remove_statement()`, `add_candidate()`, `add_belief()`, `add_verb()` and
+# `add_prefix()`.
 
 # %%
 opening = score.create_region(0, 9, id="region_1", name="mm. 1–2")
@@ -392,7 +425,7 @@ show(song)
 # `stated_by=` names another, and as its basis
 # the MEI element it comes from. What the header encodes with an IRI is
 # stated: the lyricist, whom the header names by a GND number. A name
-# without an IRI is proposed for reconciliation: the composer.
+# without an IRI is a candidate, for reconciliation: the composer.
 
 # %%
 WORK = ("schema:about", 0)
@@ -406,23 +439,21 @@ show(song, node=WORK)
 show(song.get_timeline("cgt_1"))
 
 # %% [markdown]
-# A proposal is decided as any other. Here the editor confirms the
+# An imported candidate is stated as any other. Here the editor states the
 # composer's name as the header writes it; a lookup service could instead
-# propose the person's IRI, as the GND entry was proposed above.
+# offer the person's IRI, as the GND entry was offered above.
 
 # %%
-song.confirm_statement(
-    "rel:cmp", {"label": "Carl Nielsen"}, stated_by=EDITOR, date="2026-11-19", node=WORK
+song.add_statement(
+    "rel:cmp", {"label": "Carl Nielsen"}, actor=EDITOR, date="2026-11-19", node=WORK
 )
-song.get_provenance("proposed", node=WORK), song.statements["schema:about"][0][
-    "rel:cmp"
-]
+song.get_candidates(node=WORK), song.statements["schema:about"][0]["rel:cmp"]
 
 # %% [markdown]
 # `create_bundle(into=…)` states the description on an existing bundle, and
 # `subjects=` maps the `xml:id` of a manifestation or an item to one of its
 # timelines or regions. Importing again adds nothing: a pair already
-# stated, proposed or rejected is passed over, so a decision stays.
+# stated or held as a candidate is passed over, so a decision stays.
 # `base=` gives the MEI file's published address, from which every IRI and
 # basis built from an `xml:id` then begins.
 

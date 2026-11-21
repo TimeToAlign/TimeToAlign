@@ -5,7 +5,9 @@ See ``README.md`` for the documented contract.
 
 from __future__ import annotations
 
+import logging
 from fractions import Fraction
+from typing import Any
 
 import pyarrow as pa
 import pytest
@@ -15,6 +17,7 @@ from timetoalign.core import (
     Coordinate,
     Duration,
     EventReference,
+    IntervalPolicy,
     NumberType,
     Projection,
     TimeUnit,
@@ -340,6 +343,60 @@ def _build(path: str, starts: list, unit: TimeUnit, **others: list) -> EventData
     return EventData.from_arrays(_arrays(starts, **others), unit=unit)
 
 
+# A duration a float tolerance would take for 1/3.
+_NEAR_THIRD = Fraction(1, 3) + Fraction(1, 2**40)
+_NEAR_MISS = (
+    "start=0, end=1/3, duration=1099511627779/3298534883328 " "(expected duration=1/3)"
+)
+_NEAR_MISS_WARNINGS = {
+    "row": f"Interval inconsistency: {_NEAR_MISS}. Recomputing duration from end.",
+    "column": (
+        "Interval inconsistency in 1 event(s): end - start != duration. "
+        f"Recomputing duration from end. First at index 0: {_NEAR_MISS}."
+    ),
+}
+_NEAR_MISS_REFUSALS = {
+    "row": f"Interval inconsistency: {_NEAR_MISS}.",
+    "column": (
+        "Interval inconsistency in 1 event(s): end - start != duration. "
+        f"First at index 0: {_NEAR_MISS}."
+    ),
+}
+
+
+def _stated(
+    path: str,
+    unit: TimeUnit,
+    start: Any,
+    end: Any,
+    duration: Any,
+    policy: IntervalPolicy,
+) -> EventData:
+    """One note stating start, end and duration, built on *path*."""
+    if path == "row":
+        return EventData.from_dicts(
+            [{"event_type": "Note", "start": start, "end": end, "duration": duration}],
+            unit=unit,
+            interval_policy=policy,
+        )
+    return EventData.from_arrays(
+        {
+            "event_type": ["Note"],
+            "start": [start],
+            "end": [end],
+            "duration": [duration],
+        },
+        unit=unit,
+        interval_policy=policy,
+    )
+
+
+def _ratios(data: EventData, name: str) -> list[Fraction]:
+    return [
+        Fraction(cell["numerator"], cell["denominator"]) for cell in _cells(data, name)
+    ]
+
+
 class TestIntervalCompletion:
     """Completion of ``end`` / ``duration`` in the declared number type."""
 
@@ -414,6 +471,85 @@ class TestIntervalCompletion:
             {"value": 1200.0, "numerator": 1200, "denominator": 1},
             {"value": 961.0, "numerator": 961, "denominator": 1},
         ]
+
+    @pytest.mark.parametrize("path", ["row", "column"])
+    @pytest.mark.parametrize(
+        ("policy", "end", "duration", "warned"),
+        [
+            (IntervalPolicy.warn, Fraction(1, 3), Fraction(1, 3), True),
+            (IntervalPolicy.prefer_end, Fraction(1, 3), Fraction(1, 3), False),
+            (IntervalPolicy.prefer_duration, _NEAR_THIRD, _NEAR_THIRD, False),
+        ],
+    )
+    def test_quarters_near_miss_is_inconsistent(
+        self,
+        path: str,
+        policy: IntervalPolicy,
+        end: Fraction,
+        duration: Fraction,
+        warned: bool,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        with caplog.at_level(logging.WARNING, logger="timetoalign.storage.events"):
+            data = _stated(
+                path, TimeUnit.quarters, 0, Fraction(1, 3), _NEAR_THIRD, policy
+            )
+        assert _ratios(data, "end") == [end]
+        assert _ratios(data, "duration") == [duration]
+        assert [record.getMessage() for record in caplog.records] == (
+            [_NEAR_MISS_WARNINGS[path]] if warned else []
+        )
+
+    @pytest.mark.parametrize("path", ["row", "column"])
+    def test_quarters_near_miss_is_refused_under_strict(self, path: str) -> None:
+        with pytest.raises(ValueError) as refused:
+            _stated(
+                path,
+                TimeUnit.quarters,
+                0,
+                Fraction(1, 3),
+                _NEAR_THIRD,
+                IntervalPolicy.strict,
+            )
+        assert str(refused.value) == _NEAR_MISS_REFUSALS[path]
+
+    @pytest.mark.parametrize("path", ["row", "column"])
+    def test_ticks_inconsistency_is_exact(self, path: str) -> None:
+        with pytest.raises(ValueError, match="^Interval inconsistency"):
+            _stated(path, TimeUnit.ticks, 0, 4, 3, IntervalPolicy.strict)
+        data = _stated(path, TimeUnit.ticks, 0, 4, 3, IntervalPolicy.warn)
+        assert _cells(data, "duration") == [
+            {"value": 4.0, "numerator": 4, "denominator": 1}
+        ]
+
+    @pytest.mark.parametrize("path", ["row", "column"])
+    def test_seconds_consistency_is_a_float_comparison(self, path: str) -> None:
+        data = _stated(path, TimeUnit.seconds, 0.1, 0.3, 0.2, IntervalPolicy.strict)
+        assert [cell["value"] for cell in _cells(data, "duration")] == [0.2]
+        assert [cell["value"] for cell in _cells(data, "end")] == [0.3]
+
+    def test_int_column_past_two_to_the_53_is_refused(self) -> None:
+        with pytest.raises(ValueError) as refused:
+            _build("column", [2**53 + 1], TimeUnit.ticks, end=[2**53 + 4])
+        assert str(refused.value) == (
+            "Completing the events' duration (end - start) on an int axis: The int "
+            "operand 9007199254740996 reaches 2**53: an int column computes on "
+            "doubles, exact below 2**53 only, and refuses it"
+        )
+        with pytest.raises(ValueError) as refused:
+            _build("column", [1], TimeUnit.ticks, duration=[2**53 - 1])
+        assert str(refused.value) == (
+            "Completing the events' end on an int axis: The int result "
+            "9007199254740992 reaches 2**53: an int column computes on doubles, "
+            "exact below 2**53 only, and refuses it"
+        )
+
+    def test_int_row_past_two_to_the_53_is_exact(self) -> None:
+        data = _build("row", [2**53 + 1], TimeUnit.ticks, end=[2**53 + 4])
+        assert [
+            (cell["numerator"], cell["denominator"])
+            for cell in _cells(data, "duration")
+        ] == [(3, 1)]
 
     @pytest.mark.parametrize(
         ("unit", "starts", "others"),

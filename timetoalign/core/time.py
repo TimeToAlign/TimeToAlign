@@ -1181,6 +1181,8 @@ def combine_number_columns(
         )
 
     result = _COLUMN_KERNELS[operation](left_values, right_values)
+    if number_type is NumberType.int:
+        _refuse_past_exact_doubles(result, "result")
     return build_number_struct_array(result, number_type=number_type, rounding=rounding)
 
 
@@ -1206,11 +1208,11 @@ _CROSS_MULTIPLICATION_TYPE = pa.decimal256(37, 0)
 
 def compare_number_column(
     column: pa.Array,
-    number: int | float | Fraction,
+    number: int | float | Fraction | pa.Array,
     comparison: str,
     number_type: NumberType,
 ) -> pa.Array:
-    """Compare a column of storage cells with one number, as the column reads.
+    """Compare a column of storage cells with a number, as the column reads.
 
     An ``int`` or ``fraction`` column is compared exactly, on its ratio side:
     ``n/d`` against ``p/q`` is ``n·q`` against ``p·d``, cross-multiplied in
@@ -1221,33 +1223,49 @@ def compare_number_column(
 
     Args:
         column: A ``pa.StructArray`` of :data:`RATIONAL_STRUCT_TYPE`.
-        number: The number to compare every row with.
+        number: The number to compare every row with, or a second column of
+            storage cells, compared row for row.
         comparison: ``"equal"``, ``"less"``, ``"less_equal"`` or
             ``"greater_equal"`` (row against *number*).
         number_type: How the column declares its numbers.
 
     Returns:
-        A boolean array, null where the row is null.
+        A boolean array, null where a compared row is null.
     """
-    if isinstance(column, pa.ChunkedArray):
-        column = column.combine_chunks()
+    column = _combined(column)
+    valid = column.is_valid()
     kernel = _COMPARISON_KERNELS[comparison]
-    if number_type is NumberType.float:
-        compared = kernel(column.field("value"), pa.scalar(float(number)))
+    if isinstance(number, (pa.Array, pa.ChunkedArray)):
+        number = _combined(number)
+        valid = pc.and_(valid, number.is_valid())
+        float_side: Any = number.field("value")
+        numerator: Any = number.field("numerator")
+        denominator: Any = number.field("denominator")
     else:
         exact = Fraction(number)
+        float_side = pa.scalar(float(number))
+        numerator = pa.scalar(Decimal(exact.numerator), _CROSS_MULTIPLICATION_TYPE)
+        denominator = pa.scalar(Decimal(exact.denominator), _CROSS_MULTIPLICATION_TYPE)
+    if number_type is NumberType.float:
+        compared = kernel(column.field("value"), float_side)
+    else:
         wide = _CROSS_MULTIPLICATION_TYPE
         left = pc.multiply(
-            pc.cast(column.field("numerator"), wide),
-            pa.scalar(Decimal(exact.denominator), type=wide),
+            pc.cast(column.field("numerator"), wide), pc.cast(denominator, wide)
         )
         right = pc.multiply(
-            pc.cast(column.field("denominator"), wide),
-            pa.scalar(Decimal(exact.numerator), type=wide),
+            pc.cast(column.field("denominator"), wide), pc.cast(numerator, wide)
         )
         compared = kernel(left, right)
     # A struct's own nulls do not reach its members; carry them over.
-    return pc.if_else(column.is_valid(), compared, pa.scalar(None, type=pa.bool_()))
+    return pc.if_else(valid, compared, pa.scalar(None, type=pa.bool_()))
+
+
+def _combined(array: pa.Array | pa.ChunkedArray) -> pa.Array:
+    """*array* as one contiguous array."""
+    if isinstance(array, pa.ChunkedArray):
+        return array.combine_chunks()
+    return array
 
 
 def _canonical_column(array: pa.Array, number_type: NumberType) -> pa.Array:
@@ -1257,10 +1275,37 @@ def _canonical_column(array: pa.Array, number_type: NumberType) -> pa.Array:
     valid = array.is_valid()
     if number_type is NumberType.int:
         canonical = array.field("numerator")
+        _refuse_past_exact_doubles(canonical, "operand")
         canonical = pc.cast(canonical, pa.float64())
     else:
         canonical = pc.cast(array.field("value"), pa.float64())
     return pc.if_else(valid, canonical, pa.scalar(None, type=pa.float64()))
+
+
+def _refuse_past_exact_doubles(values: pa.Array, role: str) -> None:
+    """Refuse an int-lane *values* row whose magnitude reaches ``2**53``.
+
+    The ``int`` lane of :func:`combine_number_columns` computes on doubles,
+    which hold every integer below ``2**53`` exactly. An operand or a result
+    at or past it (``2**53 + 1`` rounds to ``2**53``) could be stored as
+    another integer than the exact one, so it is refused.
+
+    Raises:
+        ValueError: Naming the first such value.
+    """
+    beyond = pc.fill_null(
+        pc.or_(
+            pc.greater_equal(values, _EXACT_DOUBLE_INT),
+            pc.less_equal(values, -_EXACT_DOUBLE_INT),
+        ),
+        False,
+    )
+    if pc.any(beyond).as_py():
+        value = int(values.filter(beyond)[0].as_py())
+        raise ValueError(
+            f"The int {role} {value} reaches 2**53: an int column computes on "
+            f"doubles, exact below 2**53 only, and refuses it"
+        )
 
 
 def _combine_exact_columns(

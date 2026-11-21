@@ -53,6 +53,28 @@ arithmetic that cannot overflow. What proves it, in `test_events.py`
   `duration == Fraction(15·2³⁹ + 1, 15·2³⁹)` exactly, both directions (`end`
   from `start + duration` gives back the `end`). On ticks (`int`) the result is
   the integer difference / sum with denominator 1.
+- **Consistency is decided in the axis's number type.** A row stating `start`,
+  `end` and `duration` is consistent when `duration == end − start`. On an
+  exact axis the test is exact, so a near miss no float tolerance would see is
+  caught: on quarters, `start = 0`, `end = 1/3`, `duration = 1/3 + 1/2⁴⁰`
+  (a twelve-digit decimal duration beside an exact end has this shape). Under
+  `warn` the stored duration is `1/3` and one warning names the row; under
+  `strict` construction raises `Interval inconsistency`; under `prefer_end`
+  the duration is `1/3` without a warning; under `prefer_duration` the
+  duration stays `1/3 + 1/2⁴⁰` and `end` becomes `1/3 + 1/2⁴⁰`. Every case runs
+  on both paths with the same cells. On ticks the same holds for `start = 0`,
+  `end = 4`, `duration = 3` (`strict` raises, `warn` stores `4`). On a float
+  axis the comparison is a float comparison within `1e-9`: seconds `start =
+  0.1`, `end = 0.3`, `duration = 0.2` (whose double difference is
+  `0.19999999999999998`) is consistent under `strict` and keeps `0.2`.
+- **The int lane refuses what doubles cannot hold.** The column path computes
+  `int` axes on doubles, exact below `2⁵³`. Ticks `start = 2⁵³ + 1`, `end = 2⁵³
+  + 4` through `from_arrays` raises a `ValueError` whose message names the
+  computation (`Completing the events' duration (end - start) on an int
+  axis`) and the value `9007199254740996`; never a cell holding another
+  integer. A result reaching `2⁵³` from smaller operands (`start = 1`,
+  `duration = 2⁵³ − 1`) is refused alike. The row path computes on Python
+  integers and stores `duration = 3` exactly.
 - **One rule for both construction paths.** The same rows through `from_dicts`
   (row path) and `from_arrays` (column path) give identical `end` and
   `duration` cells, on float, int and fraction axes.

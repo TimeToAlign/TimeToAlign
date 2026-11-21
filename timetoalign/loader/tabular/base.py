@@ -52,7 +52,11 @@ from timetoalign.core.fields import (
     metadata_blob_from_dict,
     parse_metadata_blob,
 )
-from timetoalign.core.time import build_number_struct_array, combine_number_columns
+from timetoalign.core.time import (
+    RATIONAL_STRUCT_TYPE,
+    build_number_struct_array,
+    combine_number_columns,
+)
 from timetoalign.loader.base import EventLoader
 from timetoalign.storage.schema import (
     ComputedField,
@@ -1100,28 +1104,26 @@ class TabularLoader(EventLoader):
                 "numerator",
                 "denominator",
             }:
-                num = synth.field("numerator").to_numpy(zero_copy_only=False)
-                den = synth.field("denominator").to_numpy(zero_copy_only=False)
-                from fractions import Fraction
-
-                dur_values = np.empty(n, dtype=object)
-                for i in range(n):
-                    if pd.isna(num[i]) or pd.isna(den[i]):
-                        dur_values[i] = None
-                    else:
-                        dur_values[i] = Fraction(int(num[i]), int(den[i]))
+                # Number cells, taken whole: each side keeps the role its
+                # number type gives it, so the mirror is never read as the
+                # number.
+                if synth.null_count == len(synth):
+                    return pa.nulls(n, type=columns["start"].type)
+                dur_values = synth.cast(RATIONAL_STRUCT_TYPE)
             elif isinstance(synth, (pa.Array, pa.ChunkedArray)):
                 dur_values = synth.to_numpy(zero_copy_only=False)
             else:
                 dur_values = np.asarray(synth)
-            if all(v is None for v in dur_values):
+            if not isinstance(dur_values, pa.Array) and all(
+                v is None for v in dur_values
+            ):
                 return pa.nulls(n, type=columns["start"].type)
 
         # The duration column through the one number builder, then end =
         # start + duration in the declared number type: a float axis adds its
         # doubles and mirrors each sum once, an exact axis adds its ratios
         # without overflow.
-        if dur_values.dtype == object:
+        if not isinstance(dur_values, pa.Array) and dur_values.dtype == object:
             dur_values = np.where(pd.isna(dur_values), None, dur_values)
         duration = build_number_struct_array(dur_values, number_type=self._number_type)
         columns["duration"] = duration

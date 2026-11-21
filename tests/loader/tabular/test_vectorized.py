@@ -16,7 +16,7 @@ import pandas as pd
 import pyarrow as pa
 
 from timetoalign.core import NumberType, TimeUnit
-from timetoalign.core.time import build_number_struct_array
+from timetoalign.core.time import DenominateNumberField, build_number_struct_array
 from timetoalign.loader.tabular import CsvLoader, TabularLoader, TsvLoader
 
 # region Vectorized Pipeline Tests
@@ -226,6 +226,33 @@ class TestCoordinateTypeParsing:
         assert loader.events.column_values("end") == [
             Fraction(3 * 2**40 + 1, 3 * 2**40)
         ]
+
+    def test_synthesised_duration_cells_are_taken_whole(self, tmp_path: Path) -> None:
+        """A column_specs duration keeps its float side on a seconds axis."""
+
+        class SynthesisedDurationLoader(TabularLoader):
+            start_column = "start"
+            duration_column = "dur"
+            _default_unit = TimeUnit.seconds
+            column_specs = {
+                "duration_s": DenominateNumberField(
+                    name="dur", unit=TimeUnit.seconds, number_type=NumberType.float
+                )
+            }
+
+        path = tmp_path / "synthesised_duration.csv"
+        path.write_text(
+            "start,duration_s,event_type\n0.0,0.000123,Note\n1.5,0.000123,Note\n"
+        )
+
+        loader = SynthesisedDurationLoader()
+        loader.load(path)
+
+        table = loader.events.table
+        durations = table.column("duration").combine_chunks().to_pylist()
+        ends = table.column("end").combine_chunks().to_pylist()
+        assert [cell["value"] for cell in durations] == [0.000123, 0.000123]
+        assert [cell["value"] for cell in ends] == [0.000123, 1.5 + 0.000123]
 
 
 class TestEventDataFromArrays:

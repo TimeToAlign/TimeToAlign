@@ -24,9 +24,11 @@ from timetoalign import (
     ContinuousPhysicalTimeline,
     Timeline,
 )
+from timetoalign.core.provenance import Provenance
 from timetoalign.timelines import statements as statements_module
 
 EDITOR = "https://example.org/people/editor"
+REVIEWER = "https://example.org/people/reviewer"
 TILIE = "https://example.org/agents/tilie"
 FOAF = "http://xmlns.com/foaf/0.1/"
 PIRES = {"id": "wd:Q235650", "label": "Maria João Pires"}
@@ -54,9 +56,8 @@ def _context(*prefixes: str, **declared: str) -> dict[str, Any]:
 _COPY_ON_WRITE = {
     "add_statement": "with_statement",
     "remove_statement": "without_statement",
-    "propose_statement": "with_proposal",
-    "confirm_statement": "with_confirmation",
-    "reject_statement": "with_rejection",
+    "add_candidate": "with_candidate",
+    "add_belief": "with_belief",
     "add_verb": "with_verb",
     "add_prefix": "with_prefix",
 }
@@ -188,6 +189,28 @@ def test_a_prefix_the_format_refuses_is_refused_with_the_package_s_problem(
     assert holder.prefixes == {}
 
 
+def test_a_candidate_and_a_belief_agree_on_every_face(face: tuple[Any, str]) -> None:
+    holder, _ = face
+    holder.add_candidate(
+        "wdt:P175", PIRES, stated_by=TILIE, method="inferred", date="2026-11-18"
+    )
+    holder.add_belief(
+        "wdt:P175", PIRES, actor=EDITOR, belief="false", date="2026-11-19"
+    )
+    entry = {
+        "beliefs": [{"actor": EDITOR, "belief": "false", "date": "2026-11-19"}],
+        "date": "2026-11-18",
+        "method": "inferred",
+        "property": "wdt:P175",
+        "stated_by": [TILIE],
+        "value": {"id": "wd:Q235650"},
+    }
+    assert holder.statements == {}
+    assert holder.provenance == [entry]
+    assert holder.get_candidates() == [entry]
+    assert holder.get_candidates(believer=EDITOR) == []
+
+
 def test_removing_every_pair_leaves_nothing(face: tuple[Any, str]) -> None:
     holder, _ = face
     _described(holder)
@@ -202,89 +225,158 @@ def test_removing_every_pair_leaves_nothing(face: tuple[Any, str]) -> None:
 # region Provenance
 
 
-def test_the_provenance_sequence_writes_every_entry(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_a_stated_pair_s_provenance_is_written_whole() -> None:
     video = ContinuousPhysicalTimeline(length=None, uid="cpt_1")
     stated = {"stated_by": [EDITOR], "date": "2026-11-18", "method": "manual"}
     video.add_statement("wdt:P175", PIRES, provenance=stated)
-    video.add_statement("type", "schema:VideoObject", provenance=stated)
+    video.add_statement(
+        "type",
+        "schema:VideoObject",
+        provenance=Provenance(stated_by=(EDITOR,), date="2026-11-18", method="manual"),
+    )
     assert video.statements == {"type": ["schema:VideoObject"], "wdt:P175": [PIRES]}
     assert video.provenance == [
-        {
-            **stated,
-            "property": "wdt:P175",
-            "status": "confirmed",
-            "value": {"id": "wd:Q235650"},
-        },
-        {
-            **stated,
-            "property": "rdf:type",
-            "status": "confirmed",
-            "value": {"id": "schema:VideoObject"},
-        },
+        {**stated, "property": "wdt:P175", "value": {"id": "wd:Q235650"}},
+        {**stated, "property": "rdf:type", "value": {"id": "schema:VideoObject"}},
     ]
     video.remove_statement("wdt:P175", PIRES)
     video.remove_statement("type", "schema:VideoObject")
     assert (video.statements, video.provenance) == ({}, [])
 
+
+def test_a_candidate_is_offered_believed_and_stated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    video = ContinuousPhysicalTimeline(length=None, uid="cpt_1")
     work = {"id": "wd:Q29117946"}
-    proposed = {
+    candidate = {
         "basis": ["#cpt_2"],
         "date": "2026-11-18",
         "method": "inferred",
         "property": "wdt:P2550",
         "stated_by": [TILIE],
-        "status": "proposed",
         "value": work,
     }
-    video.propose_statement(
-        "wdt:P2550",
-        work,
-        stated_by=TILIE,
-        date="2026-11-18",
-        method="inferred",
-        basis=["#cpt_2"],
-    )
-    assert (video.statements, video.provenance) == ({}, [proposed])
-    assert video.get_provenance("proposed") == [proposed]
-    assert video.get_provenance("confirmed") == []
-
-    labelled = {**work, "label": "Clair de lune"}
-    video.confirm_statement(
-        "wdt:P2550", labelled, stated_by=[EDITOR], date=datetime.date(2026, 11, 19)
-    )
-    confirmed = {
-        **proposed,
-        "date": "2026-11-19",
-        "stated_by": [EDITOR],
-        "status": "confirmed",
-    }
-    assert (video.statements, video.provenance) == (
-        {"wdt:P2550": [labelled]},
-        [confirmed],
-    )
-
-    video.reject_statement(
-        "wdt:P2550",
-        work,
-        stated_by=[EDITOR],
-        date="2026-11-20",
-        note="the video holds an excerpt",
-    )
-    rejected = {
-        **confirmed,
-        "date": "2026-11-20",
-        "note": "the video holds an excerpt",
-        "status": "rejected",
-    }
-    assert (video.statements, video.provenance) == ({}, [rejected])
+    offer = {"stated_by": TILIE, "method": "inferred", "basis": ["#cpt_2"]}
+    video.add_candidate("wdt:P2550", work, date="2026-11-18", **offer)
+    assert (video.statements, video.provenance) == ({}, [candidate])
+    assert video.get_candidates() == [candidate]
 
     monkeypatch.setattr(
         statements_module, "_today", lambda: datetime.date(2026, 11, 21)
     )
-    video.reject_statement("wdt:P2550", work, stated_by=EDITOR)
-    assert video.provenance == [{**rejected, "date": "2026-11-21"}]
+    video.add_candidate("wdt:P2550", work, **offer)
+    candidate["date"] = "2026-11-21"
+    assert video.provenance == [candidate]
+
+    video.add_belief("wdt:P2550", work, actor=EDITOR, belief="false", date="2026-11-19")
+    disbelieved = {
+        **candidate,
+        "beliefs": [{"actor": EDITOR, "belief": "false", "date": "2026-11-19"}],
+    }
+    assert video.get_candidates() == [disbelieved]
+    assert video.get_candidates(believer=EDITOR) == []
+    assert video.get_candidates(believer=REVIEWER) == [disbelieved]
+
+    labelled = {**work, "label": "Clair de lune"}
+    video.add_statement(
+        "wdt:P2550", labelled, actor=EDITOR, date=datetime.date(2026, 11, 20)
+    )
+    stated = {
+        **candidate,
+        "beliefs": [{"actor": EDITOR, "belief": "true", "date": "2026-11-20"}],
+    }
+    assert (video.statements, video.provenance) == ({"wdt:P2550": [labelled]}, [stated])
+    assert video.get_candidates() == []
+    assert video.get_provenance(believer=EDITOR, belief="true") == [stated]
+
+    video.add_belief(
+        "wdt:P2550",
+        work,
+        actor=REVIEWER,
+        belief="false",
+        date="2026-11-21",
+        note="the video holds an excerpt",
+    )
+    doubted = {
+        **stated,
+        "beliefs": [
+            *stated["beliefs"],
+            {
+                "actor": REVIEWER,
+                "belief": "false",
+                "date": "2026-11-21",
+                "note": "the video holds an excerpt",
+            },
+        ],
+    }
+    assert (video.statements, video.provenance) == (
+        {"wdt:P2550": [labelled]},
+        [doubted],
+    )
+    assert video.get_provenance(believer=REVIEWER) == []
+    assert video.get_provenance(believer=EDITOR, belief="true") == [doubted]
+
+    video.add_belief("wdt:P2550", work, actor=REVIEWER, belief="unlikely")
+    unlikely = {
+        **stated,
+        "beliefs": [
+            *stated["beliefs"],
+            {"actor": REVIEWER, "belief": "unlikely", "date": "2026-11-21"},
+        ],
+    }
+    assert video.provenance == [unlikely]
+    assert video.get_provenance(believer=REVIEWER) == [unlikely]
+    assert video.get_provenance(believer=REVIEWER, belief="true") == []
+
+
+@pytest.mark.parametrize(
+    ("actor", "believer"),
+    [
+        ("wd:Q4700", "http://www.wikidata.org/entity/Q4700"),
+        ("http://www.wikidata.org/entity/Q4700", "wd:Q4700"),
+    ],
+)
+def test_actors_compare_as_their_iris(actor: str, believer: str) -> None:
+    video = ContinuousPhysicalTimeline(length=None, uid="cpt_1")
+    video.add_candidate(
+        "wdt:P175", PIRES, stated_by=TILIE, method="inferred", date="2026-11-18"
+    )
+    video.add_belief("wdt:P175", PIRES, actor=actor, belief="false", date="2026-11-19")
+    assert video.get_candidates(believer=believer) == []
+    assert video.get_provenance(believer=believer) == []
+    assert video.get_provenance(believer=believer, belief="true") == []
+    assert len(video.get_candidates(believer=EDITOR)) == 1
+
+
+def test_refusals_change_nothing() -> None:
+    video = ContinuousPhysicalTimeline(length=None, uid="cpt_1")
+    work = {"id": "wd:Q29117946"}
+    video.add_statement("wdt:P2550", work)
+    before = (video.statements, video.provenance)
+
+    with pytest.raises(ValueError) as refused:
+        video.add_belief("wdt:P2550", work, actor=EDITOR, belief="maybe")  # type: ignore[arg-type]
+    assert [(error["type"], error["loc"]) for error in refused.value.errors()] == [
+        ("literal_error", ("belief",))
+    ]
+    for filtered in (video.get_provenance, video.get_candidates):
+        for believer in (None, EDITOR):
+            _raises(
+                "The belief filter keeps 'not_false' or 'true', not 'false'",
+                lambda: filtered(believer=believer, belief="false"),  # type: ignore[arg-type]
+            )
+    _raises(
+        "a date dates the belief of the actor stating the pair; give actor=",
+        lambda: video.add_statement("rdfs:comment", "x", date="2026-11-19"),
+    )
+    _raises(
+        "'wdt:P2550' already has this value; a stated pair is no candidate",
+        lambda: video.add_candidate(
+            "wdt:P2550", work, stated_by=TILIE, method="inferred"
+        ),
+    )
+    assert (video.statements, video.provenance) == before
 
 
 def test_a_node_path_reaches_the_node_and_not_the_holder() -> None:
@@ -299,34 +391,45 @@ def test_a_node_path_reaches_the_node_and_not_the_holder() -> None:
     )
     node = ("wdt:P629", 0)
     song = {"id": "gnd:1156628156"}
-    video.propose_statement(
+    video.add_candidate(
         "schema:sameAs",
         song,
         node=node,
-        stated_by=EDITOR,
+        stated_by=TILIE,
         method="reconciled",
+        service="https://lobid.org/gnd/search",
         date="2026-11-18",
     )
-    video.reject_statement(
+    video.add_belief(
         "schema:sameAs",
         song,
         node=node,
-        stated_by=EDITOR,
+        actor=EDITOR,
+        belief="false",
         date="2026-11-19",
         note="Debussy's song L 32",
     )
     expected = [
         {
-            "date": "2026-11-19",
+            "beliefs": [
+                {
+                    "actor": EDITOR,
+                    "belief": "false",
+                    "date": "2026-11-19",
+                    "note": "Debussy's song L 32",
+                }
+            ],
+            "date": "2026-11-18",
             "method": "reconciled",
-            "note": "Debussy's song L 32",
             "property": "schema:sameAs",
-            "stated_by": [EDITOR],
-            "status": "rejected",
+            "service": "https://lobid.org/gnd/search",
+            "stated_by": [TILIE],
             "value": song,
         }
     ]
     assert video.get_provenance(node=node) == expected
+    assert video.get_candidates(node=node) == expected
+    assert video.get_candidates(node=node, believer=EDITOR) == []
     assert video.statements["wdt:P629"][0]["provenance"] == expected
     assert video.get_pairs(node=node) == [("schema:sameAs", {"id": "gnd:300042558"})]
     assert video.provenance == []
@@ -589,7 +692,7 @@ def test_a_timeline_read_whole_writes_the_manifest_s_statements_back() -> None:
                 "method": "manual",
                 "property": "wdt:P175",
                 "stated_by": [EDITOR],
-                "status": "confirmed",
+                "beliefs": [{"actor": EDITOR, "belief": "true", "date": "2026-11-18"}],
                 "value": {"id": "wd:Q235650"},
             }
         ],

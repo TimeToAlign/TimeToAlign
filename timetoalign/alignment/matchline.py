@@ -27,10 +27,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import pandas as pd
+from timetoshare import DEFAULT_BELIEFS
 
 from timetoalign.alignment.claims import AlignmentAnchor
 from timetoalign.alignment.graph import MatchGraph, MatchStamp
-from timetoalign.core.provenance import DEFAULT_BELIEFS
 from timetoalign.core.retrieval import (
     CoordinateCollection,
     CoordinateFormat,
@@ -44,11 +44,12 @@ from timetoalign.core.retrieval import (
 from timetoalign.core.time import Coordinate, IdCoordinate
 
 if TYPE_CHECKING:
+    from timetoshare import BeliefState
+
     from timetoalign.alignment.bundle import AlignmentBundle
     from timetoalign.alignment.claims import MatchClaim
     from timetoalign.alignment.match_format import MatchFileContext
     from timetoalign.core.enums import Domain, TimeUnit
-    from timetoalign.core.provenance import BeliefState
     from timetoalign.timelines.groups import TimelineGroup
 
 module_logger = logging.getLogger(__name__)
@@ -450,7 +451,7 @@ class MatchLine:
         source_timeline_id: str,
         *,
         groups: dict[str, TimelineGroup] | None = None,
-        timeline_ids: set[str] | None = None,
+        within: set[str] | None = None,
         id_pattern: str | None = None,
         include_domains: set[Domain] | None = None,
         include_units: set[TimeUnit] | None = None,
@@ -471,7 +472,7 @@ class MatchLine:
             groups: Dict of group_id -> TimelineGroup for group extension
                 (see :meth:`MatchGraph.extend_to_groups`). If None, no group
                 extension is performed.
-            timeline_ids: Only extend to these timeline IDs.
+            within: Only extend to these timeline IDs.
             id_pattern: Regex filter for timeline IDs.
             include_domains: Only extend to timelines in these domains.
             include_units: Only extend to timelines with these units.
@@ -494,7 +495,7 @@ class MatchLine:
         if groups is not None:
             graph = graph.extend_to_groups(
                 groups,
-                timeline_ids=timeline_ids,
+                within=within,
                 id_pattern=id_pattern,
                 include_domains=include_domains,
                 include_units=include_units,

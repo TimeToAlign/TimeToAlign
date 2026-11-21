@@ -24,11 +24,11 @@ from __future__ import annotations
 import re
 
 import pytest
+from timetoshare import DEFAULT_BELIEFS
 
-from timetoalign.alignment.claims import MatchClaim
+from timetoalign.alignment.claims import MatchClaim, MatchClaimField
 from timetoalign.alignment.filters import ClaimFilter
 from timetoalign.core import Belief, Coordinate, Provenance, TimeUnit
-from timetoalign.core.provenance import DEFAULT_BELIEFS
 
 from .helpers import event_id, match_claim
 
@@ -480,8 +480,8 @@ class TestClaimFilterBelief:
         with pytest.raises(
             ValueError,
             match=re.escape(
-                "The belief filter keeps the states ['true', 'undecided', "
-                "'unlikely', 'false'], not ['not_false']"
+                "'not_false' is no belief state: write 'true', 'undecided', "
+                "'unlikely' or 'false'"
             ),
         ):
             ClaimFilter(believer="ana", beliefs=["not_false"])
@@ -522,6 +522,92 @@ class TestClaimFilterSelect:
         expected = [claim for claim in claims if f.matches_claim(claim)]
         assert [id(claim) for claim in selected] == [id(claim) for claim in expected]
         assert len(selected) == 3
+
+
+# endregion
+
+
+# region Test the two forms of the filter agree
+
+
+def _parity_claims() -> list[MatchClaim]:
+    """One claim of every kind, each with its id, the interval one disbelieved."""
+    return [
+        _claim("score:clt_1", 0.0, "perf:dlt_1", 0.0, id="sync"),
+        MatchClaim(
+            id="nm_a",
+            timeline_a_id="score:clt_1",
+            timeline_b_id="perf:dlt_5",
+            is_synchronous=False,
+            event_a_id="score:clt_1@20.0",
+        ),
+        MatchClaim(
+            id="nm_b",
+            timeline_a_id="score:clt_1",
+            timeline_b_id="audio:cpt_1",
+            is_synchronous=False,
+            event_b_id="audio:cpt_1@3.0",
+        ),
+        MatchClaim(
+            id="conceptual",
+            timeline_a_id="perf:dlt_1",
+            timeline_b_id="perf:dlt_5",
+            is_synchronous=False,
+            event_a_id="perf:dlt_1@section",
+            event_b_id="perf:dlt_5@section",
+        ),
+        match_claim(
+            "score:clt_1",
+            Coordinate(4.0, TimeUnit.number),
+            "audio:cpt_1",
+            Coordinate(2.0, TimeUnit.number),
+            end_a=Coordinate(8.0, TimeUnit.number),
+            end_b=Coordinate(4.0, TimeUnit.number),
+            id="interval",
+            provenance=_believed_by("ana", "false"),
+        ),
+    ]
+
+
+class TestClaimFilterFieldParity:
+    """``ClaimFilter.select`` and ``MatchClaimField.filter`` keep the same claims."""
+
+    @pytest.mark.parametrize(
+        ("criteria", "kept"),
+        [
+            ({}, ["sync", "nm_a", "nm_b", "conceptual", "interval"]),
+            ({"timeline_id": "perf:dlt_5"}, ["nm_a", "conceptual"]),
+            ({"timeline_ids": {"audio:cpt_1"}}, ["nm_b", "interval"]),
+            ({"id_pattern": r"^perf:"}, ["sync", "nm_a", "conceptual"]),
+            ({"between": ("perf:dlt_1", "score:clt_1")}, ["sync"]),
+            (
+                {"within": {"score:clt_1", "perf:dlt_1", "perf:dlt_5"}},
+                ["sync", "nm_a", "conceptual"],
+            ),
+            ({"synchronous_only": True}, ["sync", "interval"]),
+            ({"nomatch_only": True}, ["nm_a", "nm_b"]),
+            ({"believer": "ana"}, ["sync", "nm_a", "nm_b", "conceptual"]),
+            ({"believer": "ana", "beliefs": ["false"]}, ["interval"]),
+            ({"timeline_id": "score:clt_1", "nomatch_only": True}, ["nm_a", "nm_b"]),
+            (
+                {"within": {"score:clt_1", "audio:cpt_1"}, "synchronous_only": True},
+                ["interval"],
+            ),
+            ({"id_pattern": r"^audio:", "believer": "ana"}, ["nm_b"]),
+            (
+                {"between": ("score:clt_1", "audio:cpt_1"), "synchronous_only": True},
+                ["interval"],
+            ),
+        ],
+    )
+    def test_both_forms_keep_the_same_claims(
+        self, criteria: dict, kept: list[str]
+    ) -> None:
+        claims = _parity_claims()
+        selected = ClaimFilter(**criteria).select(claims)
+        filtered = MatchClaimField.from_claims(claims).filter(**criteria)
+        assert [claim.id for claim in selected] == kept
+        assert filtered.table.column("id").to_pylist() == kept
 
 
 # endregion

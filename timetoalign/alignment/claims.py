@@ -56,6 +56,7 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+from timetoshare import DEFAULT_BELIEFS, BeliefState, check_belief_filter
 from timetoshare.statements import used_prefixes
 from timetoshare.tables import PROVENANCE_METADATA_KEY, SCOPE_FIELD
 
@@ -79,12 +80,9 @@ from timetoalign.core.fields import (
 )
 from timetoalign.core.ids import mint_ids, quote_id, validate_id
 from timetoalign.core.provenance import (
-    DEFAULT_BELIEFS,
     Belief,
-    BeliefState,
     Provenance,
     belief_mask,
-    check_belief_filter,
     provenance_array,
 )
 from timetoalign.core.retrieval import (
@@ -2171,7 +2169,9 @@ class MatchClaimField(SemanticField[MatchClaim]):
             A new :class:`MatchClaimField`.
 
         Raises:
-            ValueError: If two claims hold the same id.
+            ValueError: If two claims hold the same id, or an anchor holds a
+                coordinate no cell can hold (a non-finite number), which
+                every reader of the MatchClaim table refuses.
         """
         claims = list(claims)
         if provenance is None:
@@ -2195,7 +2195,11 @@ class MatchClaimField(SemanticField[MatchClaim]):
             columns["provenance"] = provenance_array(
                 [claim.provenance for claim in claims]
             )
-        return cls._scoped(cls._assemble(len(claims), columns), provenance=provenance)
+        # Each claim holds the scalar's rules; a coordinate no cell can hold
+        # (a non-finite number) shows only once the cells are written.
+        struct_array = cls._assemble(len(claims), columns)
+        cls._refuse_null_coordinates(struct_array)
+        return cls._scoped(struct_array, provenance=provenance)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "MatchClaimField":
@@ -2543,8 +2547,10 @@ class MatchClaimField(SemanticField[MatchClaim]):
         same one; ``is_synchronous`` stated; a synchronous row holds a start
         anchor, a non-synchronous one no anchor; a synchronous row names an
         event on each side, a non-synchronous one at least one event; a
-        stated certainty lies in [0, 1]. Across rows, every coordinate of
-        one timeline is in one unit and number type (:meth:`_refuse_two_axes`).
+        stated certainty lies in [0, 1]; an anchor holds both its
+        coordinates (:meth:`_refuse_null_coordinates`). Across rows, every
+        coordinate of one timeline is in one unit and number type
+        (:meth:`_refuse_two_axes`).
         An anchor's coordinates are on the row's timelines, ``coordinate_a``
         on timeline A and ``coordinate_b`` on timeline B.
 
@@ -2599,7 +2605,34 @@ class MatchClaimField(SemanticField[MatchClaim]):
             if pc.any(mask).as_py():
                 row = pc.index(mask, True).as_py()
                 raise ValueError(f"MatchClaim table row {row} {reason}.")
+        MatchClaimField._refuse_null_coordinates(data)
         MatchClaimField._refuse_two_axes(data)
+
+    @staticmethod
+    def _refuse_null_coordinates(data: pa.StructArray) -> None:
+        """Refuse an anchor holding a null coordinate, naming the first.
+
+        An anchor joins two coordinates; a null one (a non-finite number
+        written into a cell, say) is TimeToShare's ``invalid_coordinate``,
+        and a claim could not be made of the row.
+
+        Raises:
+            ValueError: ``MatchClaim table row {i} start_anchor.coordinate_a:
+                the coordinate is null.``
+        """
+        for anchor_name in ("start_anchor", "end_anchor"):
+            anchor = data.field(anchor_name)
+            for side in ("a", "b"):
+                missing = pc.and_(
+                    anchor.is_valid(),
+                    anchor.field(f"coordinate_{side}").is_null(),
+                )
+                if pc.any(missing).as_py():
+                    row = pc.index(missing, True).as_py()
+                    raise ValueError(
+                        f"MatchClaim table row {row} {anchor_name}.coordinate_{side}: "
+                        f"the coordinate is null."
+                    )
 
     @staticmethod
     def _refuse_two_axes(data: pa.StructArray) -> None:
@@ -3755,16 +3788,18 @@ def _held_events(timeline: Any, ids: list[str]) -> list[dict[str, Any] | None]:
     positions on its axis, are read once and the ids found in the id column
     (:func:`pyarrow.compute.index_in`). An event of a descendant counts as an
     event of the timeline, at the timeline's coordinate. An event ID is
-    unique on its own timeline only, so two of these timelines may hold one:
-    such an ID names no one event and is refused, never resolved to the
-    first that holds it.
+    unique on its own timeline only: the timeline's own event answers for
+    its ID, whatever its descendants hold; an ID the timeline does not hold
+    and two of its descendants do names no one event and is refused, never
+    resolved to the first that holds it.
 
     Returns:
         Per id its event row, ``None`` where the timeline holds none.
 
     Raises:
-        ValueError: If two events of the timeline and its descendants hold
-            one of *ids*, naming the timelines holding it.
+        ValueError: If the timeline does not hold one of *ids* itself and
+            two events of its descendants do, naming the timelines holding
+            it.
     """
     if not ids:
         return []
@@ -3773,29 +3808,39 @@ def _held_events(timeline: Any, ids: list[str]) -> list[dict[str, Any] | None]:
         return [None] * len(ids)
     wanted = pa.array(ids, type=pa.string())
     held = pc.cast(table.column("id").combine_chunks(), pa.string())
-    named = pc.is_in(held, value_set=wanted)
-    counts = pc.value_counts(held.filter(named))
+    # A descendant's row names the timeline holding it; the timeline's own
+    # rows name none.
+    holders = (
+        table.column("source_timeline").combine_chunks()
+        if "source_timeline" in table.column_names
+        else pa.nulls(table.num_rows, pa.string())
+    )
+    own = holders.is_null()
+    # The rows that may answer: the timeline's own, and a descendant's whose
+    # ID the timeline does not hold itself.
+    answering = pc.and_(
+        pc.is_in(held, value_set=wanted),
+        pc.or_(own, pc.invert(pc.is_in(held, value_set=held.filter(own)))),
+    )
+    counts = pc.value_counts(held.filter(answering))
     repeated = counts.filter(pc.greater(counts.field("counts"), 1))
     if len(repeated):
         event_id = repeated.field("values")[0].as_py()
-        holders = (
-            table.column("source_timeline")
-            .combine_chunks()
-            .filter(pc.equal(held, event_id))
-            if "source_timeline" in table.column_names
-            else pa.nulls(repeated.field("counts")[0].as_py(), pa.string())
-        )
         spelled = ", ".join(
-            quote_id(timeline.id if holder is None else holder)
-            for holder in holders.to_pylist()
+            quote_id(holder)
+            for holder in holders.filter(pc.equal(held, event_id)).to_pylist()
         )
         raise ValueError(
             f"The event ID {quote_id(event_id)} is held by "
-            f"{repeated.field('counts')[0].as_py()} events of timeline "
-            f"{quote_id(timeline.id)} and its descendants (on {spelled}), so it "
-            f"names no one event: name the timeline holding the event instead."
+            f"{repeated.field('counts')[0].as_py()} events of descendants of "
+            f"timeline {quote_id(timeline.id)} (on {spelled}) and not by the "
+            f"timeline itself, so it names no one event: name the timeline "
+            f"holding the event instead."
         )
-    positions = pc.index_in(wanted, value_set=held)
+    table = table.filter(answering)
+    if table.num_rows == 0:
+        return [None] * len(ids)
+    positions = pc.index_in(wanted, value_set=held.filter(answering))
     found = table.take(pc.fill_null(positions, 0)).to_pylist()
     return [
         row if valid else None

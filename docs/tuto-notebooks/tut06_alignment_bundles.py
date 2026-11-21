@@ -374,7 +374,7 @@ batch_summary = {
         stamp.get_coordinate(performance.id) for stamp in batch_stamps
     ],
     "coordinate-query table shape": batch_table.shape,
-    "whole-alignment table shape (one row per synchronous MatchClaim)": (
+    "whole-alignment table shape (one row per alignment anchor)": (
         alignment_table.shape
     ),
 }

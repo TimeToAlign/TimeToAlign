@@ -29,6 +29,7 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.compute as pc
+from timetoshare import DEFAULT_BELIEFS, BeliefState, check_belief_filter
 
 from timetoalign.core import (
     Coordinate,
@@ -45,13 +46,7 @@ from timetoalign.core import (
 )
 from timetoalign.core.enums import NumberType
 from timetoalign.core.ids import _OpenObject, mint_id, quote_id, validate_id
-from timetoalign.core.provenance import (
-    DEFAULT_BELIEFS,
-    Belief,
-    BeliefState,
-    BeliefValue,
-    check_belief_filter,
-)
+from timetoalign.core.provenance import Belief, BeliefValue
 from timetoalign.core.retrieval import (
     CoordinateCollection,
     CoordinateFormat,
@@ -106,7 +101,7 @@ from .claims import (
     _join_claims,
     _refuse_held_claim_ids,
 )
-from .filters import ClaimFilter, belief_context, believed
+from .filters import ClaimFilter, _meet, belief_context, believed
 from .graph import MatchGraph, MatchIntervalStamp, MatchStamp
 from .matchline import MatchLine
 from .warpmap import AmbiguousWarpMapError, WarpMap
@@ -1486,7 +1481,10 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         timeline_a_id, event_b, timeline_b_id)`` names one side per
         timeline, each side one of:
 
-        - the ``id`` of an event its timeline (or a descendant of it) holds;
+        - the ``id`` of an event its timeline (or a descendant of it) holds:
+          the timeline's own event answers for its ID; an ID the timeline does
+          not hold and two of its descendants do names no one event and is
+          refused (name the descendant holding the event instead);
         - an event dict whose ``id`` its timeline holds: that event;
         - an event dict stating a position: ``start``, and ``end`` for a
           span, each a number on the timeline's axis or a
@@ -1539,10 +1537,12 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             gave it.
 
         Raises:
-            ValueError: If both sides of a pair are ``None``, a dict naming
-                no held event states no ``start``, a position cannot be
-                placed on its timeline's axis, or *date* is given without
-                *actor* or is no calendar date.
+            ValueError: If both sides of a pair are ``None``, an event ID
+                names no one event (the timeline does not hold it and two
+                of its descendants do), a dict naming no held event states
+                no ``start``, a position cannot be placed on its timeline's
+                axis, or *date* is given without *actor* or is no calendar
+                date.
             KeyError: If a timeline id names no timeline of the bundle's
                 trees (a nested timeline is found whether or not it was
                 registered), or an id string names no event of its timeline.
@@ -2025,6 +2025,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         timeline_ids: set[str] | None = None,
         id_pattern: str | None = None,
         between: tuple[str, str] | None = None,
+        within: set[str] | None = None,
         synchronous_only: bool = False,
         nomatch_only: bool = False,
         include_domains: set["Domain"] | None = None,
@@ -2052,6 +2053,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 performance timelines.
             between: Return claims connecting exactly these two timeline IDs
                 (order-independent).
+            within: Return claims whose both timelines are in this set.
             synchronous_only: Only the synchronous claims (with anchors).
             nomatch_only: Only the NOMATCH claims.
             include_domains: Only timelines in these domains.
@@ -2115,6 +2117,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 timeline_ids=timeline_ids,
                 id_pattern=id_pattern,
                 between=between,
+                within=within,
                 synchronous_only=synchronous_only,
                 nomatch_only=nomatch_only,
                 include_domains=include_domains,
@@ -2131,6 +2134,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         timeline_ids: set[str] | None = None,
         id_pattern: str | None = None,
         between: tuple[str, str] | None = None,
+        within: set[str] | None = None,
         synchronous_only: bool = False,
         nomatch_only: bool = False,
         include_domains: set["Domain"] | None = None,
@@ -2151,6 +2155,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             id_pattern: Regex matched against timeline IDs via ``re.search()``.
             between: Keep claims connecting exactly these two timeline IDs
                 (order-independent).
+            within: Keep claims whose both timelines are in this set.
             synchronous_only: Only the synchronous claims (with anchors).
             nomatch_only: Only the NOMATCH claims.
             include_domains: Only timelines in these domains.
@@ -2193,6 +2198,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             timeline_ids=timeline_ids,
             id_pattern=id_pattern,
             between=between,
+            within=within,
             synchronous_only=synchronous_only,
             nomatch_only=nomatch_only,
             include_domains=include_domains,
@@ -2209,7 +2215,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             timeline_ids=filt.timeline_ids,
             id_pattern=filt.id_pattern,
             between=filt.between,
-            within=filt.domain_unit_timeline_ids(self._known_timelines()),
+            within=_meet(
+                filt.within, filt.domain_unit_timeline_ids(self._known_timelines())
+            ),
             synchronous_only=filt.synchronous_only,
             nomatch_only=filt.nomatch_only,
         )
@@ -2221,6 +2229,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         timeline_ids: set[str] | None,
         id_pattern: str | None,
         between: tuple[str, str] | None,
+        within: set[str] | None,
         synchronous_only: bool,
         nomatch_only: bool,
         include_domains: set["Domain"] | None,
@@ -2253,6 +2262,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             ),
             id_pattern=self._known_id_pattern(id_pattern),
             between=between,
+            within=within,
             synchronous_only=synchronous_only,
             nomatch_only=nomatch_only,
             include_domains=include_domains,
@@ -2721,7 +2731,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         *,
         support_policy: "SupportPolicy | str | None" = None,
         conversion_maps: "ConversionMapsSpec" = False,
-        timeline_ids: set[str] | None = None,
+        within: set[str] | None = None,
         id_pattern: str | None = None,
         include_domains: set["Domain"] | None = None,
         include_units: set["TimeUnit"] | None = None,
@@ -2768,7 +2778,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 coordinate is never dropped, clamped, or altered.
             conversion_maps: C-map conversions available through unit lookup
                 and display. Opt-in: defaults to ``False``.
-            timeline_ids: Only include these timeline IDs in the result.
+            within: Only these timelines' coordinates in the result.
             id_pattern: Regex filter for timeline IDs in the result.
             include_domains: Only these domains in the result.
             include_units: Only these units in the result.
@@ -2826,7 +2836,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 timeline_id,
                 support_policy=support_policy,
                 conversion_maps=conversion_maps,
-                timeline_ids=timeline_ids,
+                within=within,
                 id_pattern=id_pattern,
                 include_domains=include_domains,
                 include_units=include_units,
@@ -2838,7 +2848,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 timeline_id,
                 support_policy=support_policy,
                 conversion_maps=conversion_maps,
-                timeline_ids=timeline_ids,
+                within=within,
                 id_pattern=id_pattern,
                 include_domains=include_domains,
                 include_units=include_units,
@@ -2983,18 +2993,14 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
 
         # Apply post-hoc filtering if requested
         has_filter = (
-            timeline_ids is not None
+            within is not None
             or id_pattern is not None
             or include_domains is not None
             or include_units is not None
         )
         if has_filter:
             filt = ClaimFilter.from_kwargs(
-                timeline_ids=(
-                    {selected for selected in timeline_ids if selected in known}
-                    if timeline_ids is not None
-                    else None
-                ),
+                within=within,
                 id_pattern=self._known_id_pattern(id_pattern),
                 include_domains=include_domains,
                 include_units=include_units,
@@ -3050,7 +3056,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         *,
         support_policy: "SupportPolicy | str | None" = None,
         conversion_maps: "ConversionMapsSpec" = False,
-        timeline_ids: set[str] | None = None,
+        within: set[str] | None = None,
         id_pattern: str | None = None,
         include_domains: set["Domain"] | None = None,
         include_units: set["TimeUnit"] | None = None,
@@ -3071,7 +3077,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             timeline_id: ID of the source timeline.
             support_policy: How to treat out-of-support timelines.
             conversion_maps: C-map conversions available through the stamps.
-            timeline_ids: Only include these timeline IDs in each result.
+            within: Only these timelines' coordinates in each result.
             id_pattern: Regex filter for timeline IDs in each result.
             include_domains: Only these domains in each result.
             include_units: Only these units in each result.
@@ -3123,7 +3129,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 timeline_id,
                 support_policy=support_policy,
                 conversion_maps=conversion_maps,
-                timeline_ids=timeline_ids,
+                within=within,
                 id_pattern=id_pattern,
                 include_domains=include_domains,
                 include_units=include_units,
@@ -3140,7 +3146,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         *,
         support_policy: "SupportPolicy | str | None" = None,
         conversion_maps: "ConversionMapsSpec" = False,
-        timeline_ids: set[str] | None = None,
+        within: set[str] | None = None,
         id_pattern: str | None = None,
         include_domains: set["Domain"] | None = None,
         include_units: set["TimeUnit"] | None = None,
@@ -3155,7 +3161,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 event's owner.
             support_policy: How to treat out-of-support timelines.
             conversion_maps: C-map conversions available through the stamp.
-            timeline_ids: Only include these timeline IDs in the result.
+            within: Only these timelines' coordinates in the result.
             id_pattern: Regex filter for timeline IDs in the result.
             include_domains: Only these domains in the result.
             include_units: Only these units in the result.
@@ -3212,7 +3218,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             timeline_id or owner,
             support_policy=support_policy,
             conversion_maps=conversion_maps,
-            timeline_ids=timeline_ids,
+            within=within,
             id_pattern=id_pattern,
             include_domains=include_domains,
             include_units=include_units,
@@ -3227,7 +3233,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         *,
         support_policy: "SupportPolicy | str | None" = None,
         conversion_maps: "ConversionMapsSpec" = False,
-        timeline_ids: set[str] | None = None,
+        within: set[str] | None = None,
         id_pattern: str | None = None,
         include_domains: set["Domain"] | None = None,
         include_units: set["TimeUnit"] | None = None,
@@ -3242,7 +3248,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 each event's own owner.
             support_policy: How to treat out-of-support timelines.
             conversion_maps: C-map conversions available through the stamps.
-            timeline_ids: Only include these timeline IDs in each result.
+            within: Only these timelines' coordinates in each result.
             id_pattern: Regex filter for timeline IDs in each result.
             include_domains: Only these domains in each result.
             include_units: Only these units in each result.
@@ -3267,7 +3273,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 timeline_id,
                 support_policy=support_policy,
                 conversion_maps=conversion_maps,
-                timeline_ids=timeline_ids,
+                within=within,
                 id_pattern=id_pattern,
                 include_domains=include_domains,
                 include_units=include_units,
@@ -3291,7 +3297,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         *,
         support_policy: "SupportPolicy | str | None" = None,
         conversion_maps: "ConversionMapsSpec" = False,
-        timeline_ids: set[str] | None = None,
+        within: set[str] | None = None,
         id_pattern: str | None = None,
         include_domains: set["Domain"] | None = None,
         include_units: set["TimeUnit"] | None = None,
@@ -3305,7 +3311,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             timeline_id: ID of the timeline the query is expressed on.
             support_policy: How to treat out-of-support timelines.
             conversion_maps: C-map conversions available through the stamps.
-            timeline_ids: Only include these timeline IDs in each result.
+            within: Only these timelines' coordinates in each result.
             id_pattern: Regex filter for timeline IDs in each result.
             include_domains: Only these domains in each result.
             include_units: Only these units in each result.
@@ -3325,7 +3331,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         options = {
             "support_policy": support_policy,
             "conversion_maps": conversion_maps,
-            "timeline_ids": timeline_ids,
+            "within": within,
             "id_pattern": id_pattern,
             "include_domains": include_domains,
             "include_units": include_units,

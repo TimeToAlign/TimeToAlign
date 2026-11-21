@@ -33,15 +33,10 @@ from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from timetoshare import BELIEF_STATES, DEFAULT_BELIEFS, BeliefState, check_belief_filter
+
 from timetoalign.core.enums import Domain, TimeUnit
-from timetoalign.core.provenance import (
-    BELIEF_STATES,
-    DEFAULT_BELIEFS,
-    BeliefState,
-    belief_mask,
-    check_belief_filter,
-    provenance_array,
-)
+from timetoalign.core.provenance import belief_mask, provenance_array
 
 if TYPE_CHECKING:
     from timetoalign.alignment.bundle import AlignmentBundle
@@ -49,6 +44,15 @@ if TYPE_CHECKING:
     from timetoalign.timelines import Timeline
 
 module_logger = logging.getLogger(__name__)
+
+
+def _meet(first: set | None, second: set | None) -> set | None:
+    """Both restrictions at once (``None`` restricts nothing)."""
+    if first is None:
+        return second
+    if second is None:
+        return first
+    return first & second
 
 
 def believed(

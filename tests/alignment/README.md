@@ -1061,7 +1061,16 @@ a synchronous row without a start anchor, a non-synchronous row with an
 anchor, a synchronous row not naming an event on each side, a
 non-synchronous row naming none, a row naming one timeline twice, a
 certainty outside `[0, 1]` (a null certainty is read, as TimeToShare allows
-it). Across rows, the coordinates of one
+it), an anchor holding a null coordinate (a non-finite number becomes a null
+cell: `MatchClaim table row 0 start_anchor.coordinate_a: the coordinate is
+null.`, TimeToShare's `invalid_coordinate`). The last is refused by every
+reader, `from_claims` included: a claim made of `Coordinate(nan, seconds)`
+on side A of its start anchor, or `Coordinate(nan, quarters)` on side B of
+its end anchor (`... row 1 end_anchor.coordinate_b: ...`), is refused by
+`from_claims`, `from_dict` of that row, `from_table` and `from_parquet` of a
+table holding the null cell, `from_package_table` and `from_columns` (a NaN
+coordinate column), so no MatchClaim table TimeToShare refuses is ever
+written; a NOMATCH row (no anchor) is no problem. Across rows, the coordinates of one
 timeline are on one axis: a table holding `audio` in `seconds (float)` in
 one row and in `samples (int)` in another is refused, naming the timeline
 and both axes, though no timelines are given. These are the rules
@@ -1369,9 +1378,9 @@ the claims are `from_events` between named notes and onsets on those axes.
 
 | Test | Validates |
 |------|-----------|
-| `test_two_free_claims_become_distinct` | two free claims, `score ↔ audio` (0, 0.0) and `score ↔ score_copy` (4, 4), both hold `None`: a graph built from them filters by object, so `filter(timeline_ids={"score", "audio"})` keeps the first alone and `{"score", "score_copy"}` the second alone, both edges carrying `claim_id is None`; `from_claims` stores them without ids and leaves the objects unchanged; a bundle gives the objects `claim_1`, `claim_2` in place, and a graph of the bundle's claims keeps `claim_2` for `{"score", "score_copy"}` |
+| `test_two_free_claims_become_distinct` | two free claims, `score ↔ audio` (0, 0.0) and `score ↔ score_copy` (4, 4), both hold `None`: a graph built from them filters by object, so `filter(within={"score", "audio"})` keeps the first alone and `{"score", "score_copy"}` the second alone, both edges carrying `claim_id is None`; `from_claims` stores them without ids and leaves the objects unchanged; a bundle gives the objects `claim_1`, `claim_2` in place, and a graph of the bundle's claims keeps `claim_2` for `{"score", "score_copy"}` |
 | `test_stored_and_new_claims_are_distinct` | the stored field (a bundle's MatchClaim table of the four `STORED` claims, written and read back) keeps `claim_1`–`claim_4`; the same four built again plus the two new ones, all without an id, added to the bundle, are given `claim_5`–`claim_10` in order; the caller's objects carry them and `claim.bundle is bundle`; the bundle's claims read back are `claim_1`–`claim_10`, the last six equal to the caller's objects, each with `bundle` the bundle |
-| `test_graph_filter_unaffected` | a bundle of the stored field and the two new claims (`claim_1`–`claim_6`): `MatchGraph(bundle.get_match_claims()).extend_to_groups(bundle.groups)` holds exactly those six claims (an inferred edge is no claim and takes no id) and six inferred edges, each on `score`→`score_copy`, its `source_claim` one of the six and its `score` coordinate that claim's; the six stated edges' `claim_id` equal their claims' ids, all distinct, and the other six edges carry the inferred-edge records, in the graph's order; `filter(stated_only=True)` and `filter(timeline_ids={"score", "audio"})` keep exactly `claim_1`–`claim_6` and no inferred edge |
+| `test_graph_filter_unaffected` | a bundle of the stored field and the two new claims (`claim_1`–`claim_6`): `MatchGraph(bundle.get_match_claims()).extend_to_groups(bundle.groups)` holds exactly those six claims (an inferred edge is no claim and takes no id) and six inferred edges, each on `score`→`score_copy`, its `source_claim` one of the six and its `score` coordinate that claim's; the six stated edges' `claim_id` equal their claims' ids, all distinct, and the other six edges carry the inferred-edge records, in the graph's order; `filter(stated_only=True)` and `filter(within={"score", "audio"})` keep exactly `claim_1`–`claim_6` and no inferred edge |
 | `test_held_ids_are_refused_never_reminted` | `from_claims` of a claim given `"anchor"` and a free claim stores `"anchor"` and no id; a bundle holding `claim_1`, `claim_2` takes that field as `"anchor"`, `claim_3`; another bundle's MatchClaim table (`claim_1`, `claim_2`, minted) is refused by it (`claim id 'claim_1' is already held by another claim of this bundle`), which still holds its four; a bundle holding `"anchor"` and a minted `claim_1` gives a free claim `claim_2` |
 | `test_two_runs_merged` | a subprocess and this process store the same bundle's MatchClaim table: ids equal (`claim_1`–`claim_4`), tables equal; one bundle takes the first and refuses the second (`claim id 'claim_1' is already held ...`), keeping 4 rows; two bundles, one run each, merged by `from_bundles`: `claim_scopes` is the merge's id then the two sources', the ids read `claim_1`–`claim_4` twice, the `scope_key` column `[1, 1, 1, 1, 2, 2, 2, 2]`, every table column equal to the two source tables concatenated |
 | `test_given_id_refused_atomically` | a bundle holding a given `"a"` refuses a claim and a field with a given `"a"` (`claim id 'a' is already held by another claim of this bundle`); after each refusal the bundle's claims are exactly `[held]` and the newcomer keeps its id (`None` for the one made without) and no bundle |
@@ -1755,7 +1764,10 @@ script, never computed by a derivation, so they are an independent oracle.
 - `AlignmentBundle.from_file(manifest.yaml)` holds the fifteen MatchClaims
   and the nine Projections (eight on `dpt_1`, one on `cpt_1`); the bundle's
   Projections table equals the fixture's sorted by timeline (a stable sort,
-  so each timeline keeps its order).
+  so each timeline keeps its order). The Projections file is equal as a
+  table, not as bytes: the library writes the rows by timeline ID, the
+  fixture holds them in its emitter's order (`dpt_1` ×6, `cpt_1`, `dpt_1`
+  ×2).
 - Written to a fresh directory, `match_claims.parquet` is the fixture's
   byte for byte and the MatchClaim entry equals the fixture's (its size and
   digest included); the Projection entry differs from the fixture's only in
@@ -1772,7 +1784,12 @@ script, never computed by a derivation, so they are an independent oracle.
   integer an integer and a float a float. End anchors are included
   (`claim_2`, `claim_9`). The bundle's own belief filter
   (`get_match_claims(believer=, beliefs=)`) keeps the same claims as the
-  graph's.
+  graph's, and so does the MatchClaim table filtered under the fixture
+  manifest's own `@context`, read from the file
+  (`match_claim_table.filter(believer=, beliefs=, context=)`): the seventh
+  case names its believer by the compact IRI `orcid:…`, which only that
+  context expands, so every case is read under it, as TimeToShare reads
+  them.
 - The fixtures are TimeToShare's own, found through its package
   (`timetoshare.tables.fixture_path`, `timetoshare.fixtures.fixture_paths`),
   which every installation of `timetoshare` carries: the tests never skip.
@@ -2245,7 +2262,7 @@ different answer:
   no claim, 0 nodes, 0 edges, no inferred edge and no stamp (the node
   pruning kept an inferred edge nobody states); `within={"dgt_1",
   "external"}` → the claim, 2 nodes, 1 edge, no inferred edge, equal to
-  `MatchGraph([claim]).extend_to_groups(groups, timeline_ids={"dgt_1",
+  `MatchGraph([claim]).extend_to_groups(groups, within={"dgt_1",
   "external"})`; `timeline_ids={"dgt_1", "audio"}` → the claim and the
   whole extended graph (3 nodes, 2 edges, one inferred edge).
 - `test_filter_stated_only`: the extended graph of one claim
@@ -2286,6 +2303,13 @@ Domain and unit filters (`TestMatchGraphFilterByDomainAndUnit`):
   graphical}` → `[nm_cd]`; the same graph without a source and
   `include_units={seconds, pixels}` → `[sync]` (no anchor names `tl_c` or
   `tl_d`, so their units are unknown to it: the documented limit).
+- `test_filters_compose_without_a_source`: an extended graph of
+  `dgt_1@500 px ↔ external@25` and a NOMATCH claim on `audio` (sentinel on
+  `external`; `audio`'s unit known to the graph only through its inferred
+  edge), no source. `filter(nomatch_only=True, include_units={seconds,
+  number})`, `filter(nomatch_only=True).filter(include_units={seconds,
+  number})` and the other order all give `[nm]`: a filtered graph keeps the
+  units of the graph it was filtered from, so filters compose in any order.
 - `test_canonical_id_filters_combine`: `timeline_ids={"tl_a", "tl_b"}`
   and `id_pattern=r"^tl_[ab]$"` over `tl_a ↔ tl_b`, `tl_b ↔ tl_c` keep both
   claims (each involves `tl_a` or `tl_b`, and each has a side the pattern
@@ -2342,8 +2366,8 @@ deterministic order was chosen, so "stable but wrong" also fails.
 | `TestMatchGraphGetStamps` | 4 | `get_stamps()` returns one stamp per connected component |
 | `TestMatchGraphInferredEdges` | 3 | Inferred edges: the record, its source claim, two-group connectivity; the claims stay the ones given |
 | `TestExtendToSeveralGroups` | 1 | A shared member carries group extension into its other group |
-| `TestMatchGraphExtendToGroupsFilters` | 6 | `timeline_ids`, `id_pattern`, `include_domains`, `include_units`; `MatchLine.from_claims` forwards them |
-| `TestMatchGraphFilterByDomainAndUnit` | 5 | `filter()` by domain and unit, read from the source bundle; `timeline_ids` and `id_pattern` combined; non-synchronous claims `within` |
+| `TestMatchGraphExtendToGroupsFilters` | 6 | `within`, `id_pattern`, `include_domains`, `include_units`; `MatchLine.from_claims` forwards them |
+| `TestMatchGraphFilterByDomainAndUnit` | 6 | `filter()` by domain and unit, read from the source bundle; filters composed without a source; `timeline_ids` and `id_pattern` combined; non-synchronous claims `within` |
 | `TestMatchStampGroupRetrieval` | 1 | Retrieves group members with the plural key getter and `timeline_ids` |
 | `TestMatchStampDeterminism` | 3 | Stamp source and entry order are the same in every process |
 
@@ -2358,7 +2382,7 @@ deterministic order was chosen, so "stable but wrong" also fails.
 | `test_inferred_edge_names_its_source_claim` | The inferred edge traces back to the originating claim (`claim_1`); exact repr |
 | `test_graph_keeps_the_believed_claims` | The belief filter decides the graph's claims, nodes and edges (table above) |
 | `test_two_groups_three_inferred_edges` | One claim between TL1∈{TL1,TL4,TL5} and TL2∈{TL2,TL6} connects 5 timelines with exact interpolated coordinates through three inferred edges, `tl1→tl4`, `tl1→tl5`, `tl2→tl6` |
-| `test_timeline_ids_filter` | Only specified timelines appear in extension |
+| `test_within_filter` | Only the timelines `within` names appear in the extension |
 | `test_include_domains_filter` | Only timelines from specified domains appear |
 | `test_filter_keeps_non_synchronous_claims` | `filter(within=)` keeps the non-synchronous claims whose two timelines are in the set |
 | `test_group_coordinates` | Returns group-member coordinates in the group's declared order |
@@ -2606,12 +2630,12 @@ these lazily on first use and caches them until the table changes.
 | `TestCommensurabilityWithClaims` | 4 | claims make score–audio and image–audio commensurable; without claims, or with a NOMATCH claim only, they are not |
 | `TestCacheInvalidation` | 4 | no WarpMap before the first transfer, one after; a second transfer reuses the cached objects; a new claim clears the cache; the rebuilt map still gives score 100 → audio 50 |
 | `TestAddMatchClaims` | 6 | chaining; three claims are three rows, `claim_1`–`claim_3`, read back equal to the claims added and recording the bundle; a fourth call adds one row minted `claim_4`; an unknown timeline (`['ghost'] that this bundle does not hold`) and an off-axis coordinate (`Row 1 start_anchor.coordinate_b is in quarters (fraction)` / `in seconds (fraction)`, `but timeline 'audio' counts in seconds (float)`) are refused with nothing added |
-| `TestCreateMatchClaims` | 11 | an event ID names an event of the timeline or of a descendant, and one ID held twice there names none (an event ID is unique on its own timeline only): on `score` (quarters, 8) with children `c` at 0 and `d` at 4 (length 4 each), `c` holding `n1` at 1, `d` holding `n1` at 1 and `n3` at 2, the pair `n3` ↔ audio `o1` makes one claim at score 6 (the descendant's event, at `score`'s coordinate); the pair `n1` ↔ `o1`, after a projected pair in the same call, is refused (`ValueError`, `The event ID 'n1' is held by 2 events of timeline 'score' and its descendants (on 'c', 'd'), so it names no one event: name the timeline holding the event instead.`) and nothing is added (no claim, no Projection); `n3` added to `score` itself (at 3) is refused alike (`... held by 2 events of timeline 'score' and its descendants (on 'score', 'd') ...`), and naming the child itself (`n3` on `d`) resolves at `d`'s 2; a second call with the same pairs names the same Projections and adds no event (audio `o1` + `projection_1`, score `projection_1` of `o1` + `projection_2`, before and after), its claims `claim_3`, `claim_4`; a pair naming an unknown event id (`Pair 1: no event with id 'nope' on timeline 'audio' or its children (0 events of its own)`) and a dict without `start` (`Pair 1: the side on timeline 'audio' names no event of it and states no 'start': ...`) after a projected pair add nothing; the provenance given lands on the claim made and on the claim read back; `agent`, `agent_identifier` and `decision_criteria` are refused (`TypeError`), nothing added; a seconds position projected onto a samples timeline (C-Map samples → seconds at 1/44100): 2.0 s is sample 88200, so the claim between the note `o1` (2.5 s) and `projection_1` stores `Coordinate(88200, samples)` with an `int` value, read back equal, and the Projection's `projection_of` is `{"timeline_id": "performance", "event_id": "o1"}` |
+| `TestCreateMatchClaims` | 11 | an event ID names an event of the timeline or of a descendant, and one ID held twice there names none (an event ID is unique on its own timeline only): on `score` (quarters, 8) with children `c` at 0 and `d` at 4 (length 4 each), `c` holding `n1` at 1, `d` holding `n1` at 1 and `n3` at 2, the pair `n3` ↔ audio `o1` makes one claim at score 6 (the descendant's event, at `score`'s coordinate); the pair `n1` ↔ `o1`, after a projected pair in the same call, is refused (`ValueError`, `The event ID 'n1' is held by 2 events of descendants of timeline 'score' (on 'c', 'd') and not by the timeline itself, so it names no one event: name the timeline holding the event instead.`) and nothing is added (no claim, no Projection), and the advice works: `n1` on `c` resolves to `c`'s event at 1, on `d` to `d`'s at 1; the timeline's own event answers for its ID: with `n3` added to `score` itself (at 3), `n3` on `score` resolves to `score`'s own event at 3 (not `d`'s at 6), `n3` on `d` still to `d`'s at 2, and `n1` added to `score` (at 7) makes `n1` on `score` resolve at 7 where it was refused before; a second call with the same pairs names the same Projections and adds no event (audio `o1` + `projection_1`, score `projection_1` of `o1` + `projection_2`, before and after), its claims `claim_3`, `claim_4`; a pair naming an unknown event id (`Pair 1: no event with id 'nope' on timeline 'audio' or its children (0 events of its own)`) and a dict without `start` (`Pair 1: the side on timeline 'audio' names no event of it and states no 'start': ...`) after a projected pair add nothing; the provenance given lands on the claim made and on the claim read back; `agent`, `agent_identifier` and `decision_criteria` are refused (`TypeError`), nothing added; a seconds position projected onto a samples timeline (C-Map samples → seconds at 1/44100): 2.0 s is sample 88200, so the claim between the note `o1` (2.5 s) and `projection_1` stores `Coordinate(88200, samples)` with an `int` value, read back equal, and the Projection's `projection_of` is `{"timeline_id": "performance", "event_id": "o1"}` |
 | `TestBeliefFilter` | 2 | `claim_1` (0 → 0, ana true), `claim_2` (100 → 60, ana false), `claim_3` (200 → 100, no belief). `get_match_claims`: no believer → all three; `believer="ana"` → `claim_1`, `claim_3`; `beliefs=["true"]` → `claim_1`; `["undecided"]` → `claim_3`; `["true", "false"]` → `claim_1`, `claim_2`. `get_matchstamp_at(100, "score")`: no believer → `claim_2`'s anchor, audio and midi 60.0, not interpolated; ana → interpolated between `claim_1` and `claim_3`, audio and midi 50.0; ana, `["true"]` → one claim cannot interpolate: score 100 and image 200 alone |
 | `TestBeliefFilterIris` | 6 | the three claims with ana's full IRI, prefix `people` declared: `believer="people:ana"` and the full IRI both → `claim_1`, `claim_3`, with `["true"]` → `claim_1`; beliefs recorded as `people:ana`, believer the full IRI → `claim_1`, `claim_3`; `get_matchstamp_at(100, "score", believer="people:ana")` interpolated, audio and midi 50.0; `get_matchstamps(claims=all three, believer="people:ana")` → two stamps, at score 0.0 and 200.0; `ClaimFilter(believer="people:ana").matches_claim` → `[True, False, True]` on the bundle's claims, `True` on a free copy of `claim_2`; `MatchGraph(all three, believer="people:ana", source=bundle)` holds `claim_1`, `claim_3`; before the declaration `people:ana` keeps all three, after it `claim_1`, `claim_3` |
 | `TestAddMatchClaimField` | 6 | chaining; the five rows join the table, the bundle minting `claim_1`–`claim_5`, equal to the field's claims but for the ids, the field left as given (ids `None`); two `from_columns` fields (two loaders' fields) join one bundle as `claim_1`–`claim_5` and `claim_6`–`claim_10`; score 100 → audio 50 exactly; score 123.456 interpolates to audio and midi 61.728 (50 + 23.456 / 2) and image 246.912, flagged interpolated; a claim added after the field is minted `claim_6`, read as the sixth, and score 175 answers audio 87.5 exactly |
 | `TestBundleEquality` | 3 | two bundles built alike over the same timelines are equal, also after one of them was queried (`transfer` 75 → 37.5 fills its caches); one claim more, or a belief added to one claim's provenance, makes them unequal |
-| `TestBundleClaimFilters` | 3 | (`score` quarters as Fractions, `audio` and `other` seconds as floats; one claim at the origins per pair) `timeline_id="score"` → the first two; `timeline_ids={"audio"}` and `id_pattern="^audio$"` → the first and third; `between=("score", "audio")` → the first; `include_units={seconds}` → the third only (both its timelines count seconds), `{pixels}` → none; a stamp filtered to `{"score", "audio"}` holds exactly score `0` (quarters, Fraction) and audio `0.0` (seconds) |
+| `TestBundleClaimFilters` | 4 | (`score` quarters as Fractions, `audio` and `other` seconds as floats; one claim at the origins per pair) `timeline_id="score"` → the first two; `timeline_ids={"audio"}` and `id_pattern="^audio$"` → the first and third; `between=("score", "audio")` → the first; `include_units={seconds}` → the third only (both its timelines count seconds), `{pixels}` → none; `within={"score", "audio"}` → the first alone (both its timelines in the set; `timeline_ids` of the same set keeps all three, each has a side in it), on `get_match_claims` and `get_claim_field` alike, and `within` meets `include_units={seconds}` (`within={"score", "audio"}` with it → none, `within={"audio", "other"}` with it → the third); a stamp filtered with `within={"score", "audio"}` holds exactly score `0` (quarters, Fraction) and audio `0.0` (seconds), and the stamp getters take no `timeline_ids` (`TypeError`): one name, one meaning |
 | `TestAddGroup` | 3 | a pre-built group with its timelines; a duplicate group id refused; cross-group transfer through added groups (100 → 50) |
 | `TestSeveralGroups` | 11 | a timeline in several groups (see "A Timeline in Several Groups") |
 | Creation, timelines, groups, within-group transfer, a part as a child, order independence, commensurability, chaining | 32 | ids and names, registration and lookup, `grouped_with`/`as_group`, a child joining with its root (section 0 s = reference 25 s, section 100 s = reference 125 s), linear transfer within a group (tl1 50 → tl2 100), exact ratios within a group (1/3 of 3 quarters → 7/9 of 7), results independent of the order timelines are added |
@@ -2831,15 +2855,15 @@ python -m pytest tests/alignment/ -v
 | File | Tests | Description |
 |------|-------|-------------|
 | `conftest.py` | — | Shared fixtures and constants: Thoresen timeline fixtures (`dgt1_timeline`, `dgt2_timeline`, `audio_timeline`, `thoresen_segment_claims`), DGT1/DGT2 coordinate constants, `autouse` ID reset fixture, graphical bundle fixtures |
-| `test_bundle.py` | 121 | AlignmentBundle: linear alignment, a child joining with its root, cross-group transfer, timestamps, commensurability, caching, the MatchClaim table and its entry checks, Projections, the belief filter, coordinate-type parity (raw/Coordinate/IdCoordinate) |
+| `test_bundle.py` | 131 | AlignmentBundle: linear alignment, a child joining with its root, cross-group transfer, timestamps, commensurability, caching, the MatchClaim table and its entry checks, Projections, the belief filter, coordinate-type parity (raw/Coordinate/IdCoordinate) |
 | `test_bundle_dict.py` | — | AlignmentBundle dictionary form and identity: round trips of direct constructions and of every alignment loader's bundle, minted ids, collisions, a child bringing its root, refusals |
 | `test_anchors.py` | 62 | AlignmentAnchor, MatchClaim (incl. NOMATCH coordinate preservation + repr), Provenance |
-| `test_graph.py` | 74 | MatchGraph operations (inferred edges, filtering, the belief filter, stamps); imports Thoresen fixtures from conftest |
+| `test_graph.py` | 93 | MatchGraph operations (inferred edges, filtering, the belief filter, stamps); imports Thoresen fixtures from conftest |
 | Robustness coverage | — | Bundle graph stamp units/context, coordinate-bearing claim factories, Fraction serialization, inferred-edge completeness, and MatchStamp container isolation/axis handling |
 | `test_matchline.py` | 33 | MatchLine construction, from_claims, from_graphs, coordinate pairs, serialization; imports Thoresen fixtures from conftest |
 | `test_warpmap.py` | 39 | WarpMap construction, forward/inverse, materialise (events, children, regions, type conversion), serialization, end-to-end pipeline |
-| `test_filters.py` | 37 | `ClaimFilter` dataclass: exact ID, set-of-IDs, regex, between, synchronous/nomatch, the belief filter, combined filters, timeline-level filtering |
-| `test_stamp_query_api.py` | 73 | Unified Stamp & Query API: `get_match_claims()`, `get_matchstamp_at()`, position batches, `MatchGraph.get_matchstamp()`/`split_components()`, `MatchClaim.get_matchstamp()`, MatchGraph cache, display methods (`__str__`/`_repr_html_` incl. the affordance `Try` footer on `MatchStamp`/`MatchClaim`), the events a claim names, `transfer()` docstring, top-level exports |
+| `test_filters.py` | 62 | `ClaimFilter` dataclass: exact ID, set-of-IDs, regex, between, within, synchronous/nomatch, the belief filter, combined filters, timeline-level filtering, parity with `MatchClaimField.filter` |
+| `test_stamp_query_api.py` | 72 | Unified Stamp & Query API: `get_match_claims()`, `get_matchstamp_at()`, position batches, `MatchGraph.get_matchstamp()`/`split_components()`, `MatchClaim.get_matchstamp()`, MatchGraph cache, display methods (`__str__`/`_repr_html_` incl. the affordance `Try` footer on `MatchStamp`/`MatchClaim`), the events a claim names, `transfer()` docstring, top-level exports |
 | `test_supra_integration.py` | 13 | SUPRA piano roll workflow (partial alignment as a child) |
 | `test_thoresen_poc.py` | 21 | Thoresen graphical analysis workflow; imports Thoresen fixtures from conftest |
 | `../timelines/test_offset_arithmetic.py` | 11 | Parent–child offset arithmetic |
@@ -2864,10 +2888,13 @@ Tests for the `ClaimFilter` dataclass — the Unified Filter API. Covers all fil
 | `TestClaimFilterCombined` | 5 | AND logic across multiple filters; a unit criterion rejects a timeline missing from the lookup |
 | `TestClaimFilterBelief` | 5 (13 cases) | The belief filter (`believer`, `beliefs`) |
 | `TestClaimFilterSelect` | 2 | `select`, the list form, keeps what `matches_claim` keeps, in order |
+| `TestClaimFilterFieldParity` | 14 | `ClaimFilter.select` and `MatchClaimField.filter` keep the same claims, criterion by criterion |
 
 The kinds: `synchronous_only` keeps a synchronous claim only, `nomatch_only` a NOMATCH claim only (one event, the sentinel on the other side). A conceptual claim (two events, not synchronous) is the case that tells "NOMATCH" from "not synchronous" apart, so `TestClaimFilterSynchronous` asks both criteria of one (`_conceptual`, `score:clt_1` ↔ `perf:dlt_5`): `nomatch_only` → `False`, `synchronous_only` → `False`; a filter equating NOMATCH with non-synchronous passes the first. `within={"score:clt_1", "perf:dlt_1"}` keeps the claim between those two and refuses `score:clt_1 ↔ perf:dlt_5` (one side out), and `matches_timeline` takes the same set (`score:clt_1` in, `perf:dlt_5` out). `select(claims, context=)` is the list form the MatchGraph filters with: over the four fixture claims plus a conceptual one, `ClaimFilter(nomatch_only=True).select(...)` is exactly `[claim_nomatch]`, and over the belief claims `ClaimFilter(timeline_id="score:clt_1", believer="ana").select(...)` equals `[c for c in claims if filter.matches_claim(c)]`, the same objects in order.
 
 The claims name fixture events (`match_claim`; the NOMATCH claim one event and the sentinel). The belief tests use four claims on `score:clt_1`/`perf:dlt_1`, one per case: no provenance, believed `false` by `ana`, believed `true` by `ana`, believed `false` by `ben`. `matches_claim` keeps exactly: without a believer all four (for the default and for `["true"]`); `ana` with the default states (all but `false`) all but ana's false one (ben's belief is not hers); `ana`/`["true"]` only ana's true one; `ana`/`["undecided"]` the unstated claim and ben's (those ana holds no belief on); `ana`/`["false"]` only ana's false one; `ben` with the default all but ben's false one; `ben`/`["true"]` none; `ben`/`["true", "false"]` ben's false one. The states are held as a frozen set (`["false", "true", "false"]` → `{"true", "false"}`, repr `ClaimFilter(believer='ana', beliefs=['true', 'false'])` in the order of the four states; the default states are left out of the repr, and a filter given them in another order equals the default one). Combined with `timeline_id`, the belief filter is ANDed (ana's true claim kept; the unstated claim and a claim off the timeline dropped). `beliefs=["not_false"]` and the bare string `"unlikely"` are refused at construction (`ValueError`, the messages of `check_belief_filter`). `matches_timeline` ignores the belief filter, as it ignores every claim-level criterion.
+
+**Two forms of one filter agree** (`TestClaimFilterFieldParity`). The claim criteria are decided twice: by `ClaimFilter._passes`, claim by claim (the MatchGraph filters with it), and by `MatchClaimField.filter`'s vectorized masks (the bundle filters its table with them). The library keeps both forms, the scalar one for claims held as objects and the columnar one for the table, so what proves them one filter is agreement on every criterion over every kind of claim. The claims: a synchronous event match `score:clt_1 ↔ perf:dlt_1`, a NOMATCH claim with its event on side A (`score:clt_1`, sentinel on `perf:dlt_5`), a NOMATCH claim with its event on side B (sentinel on `score:clt_1`, the event on `audio:cpt_1`), a conceptual claim `perf:dlt_1 ↔ perf:dlt_5`, and an interval claim `score:clt_1 ↔ audio:cpt_1`, believed `false` by `ana`. Each criterion is asked of both forms with the same arguments, and the kept claims' ids must be equal, in order, and equal to the ids written in the test: `timeline_id="perf:dlt_5"` → the side-A NOMATCH and the conceptual claim; `timeline_ids={"audio:cpt_1"}` → the side-B NOMATCH and the interval claim; `id_pattern=r"^perf:"` → the event match, the side-A NOMATCH and the conceptual claim; `between=("perf:dlt_1", "score:clt_1")` → the event match; `within={"score:clt_1", "perf:dlt_1", "perf:dlt_5"}` → the event match, the side-A NOMATCH and the conceptual claim; `synchronous_only` → the event match and the interval claim; `nomatch_only` → the two NOMATCH claims; `believer="ana"` → all but the interval claim; `believer="ana", beliefs=["false"]` → the interval claim; no criterion → all five; and four combinations (`timeline_id` with `nomatch_only`, `within` with `synchronous_only`, `id_pattern` with `believer`, `between` with `synchronous_only`).
 
 ### Stamp & Query API Tests (`test_stamp_query_api.py`)
 

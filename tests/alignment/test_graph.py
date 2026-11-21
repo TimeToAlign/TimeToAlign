@@ -10,6 +10,7 @@ from __future__ import annotations
 from fractions import Fraction
 
 import pytest
+from timetoshare import DEFAULT_BELIEFS
 
 from timetoalign.alignment import (
     AlignmentAnchor,
@@ -24,7 +25,6 @@ from timetoalign.alignment.graph import MatchGraph
 from timetoalign.alignment.graph import MatchStamp as MatchStampType
 from timetoalign.core import Coordinate, IdCoordinate
 from timetoalign.core.enums import Domain, TimeUnit
-from timetoalign.core.provenance import DEFAULT_BELIEFS
 from timetoalign.timelines import (
     ContinuousPhysicalTimeline,
     DiscreteGraphicalTimeline,
@@ -244,7 +244,7 @@ class TestMatchStamp:
             stated_pairs=[("tl_a", "tl_b"), ("tl_b", "tl_c")],
         )
         filtered = stamp.filter_by_timelines(
-            timeline_ids={"tl_a", "tl_b"},
+            within={"tl_a", "tl_b"},
             id_pattern=r"^tl_[ab]$",
         )
 
@@ -694,7 +694,7 @@ class TestMatchGraphBeliefFilter:
 
     def test_invalid_state_is_refused(self) -> None:
         """A word that is no belief state is refused."""
-        with pytest.raises(ValueError, match="not \\['not_false'\\]"):
+        with pytest.raises(ValueError, match="'not_false' is no belief state"):
             MatchGraph(self._claims(), believer="ana", beliefs=["not_false"])
 
 
@@ -995,9 +995,7 @@ class TestMatchGraphFilterByClaims:
         assert (stated.n_nodes, stated.n_edges, stated.inferred_edges) == (2, 1, [])
         _assert_rebuilt(
             stated,
-            MatchGraph([claim]).extend_to_groups(
-                groups, timeline_ids={"dgt_1", "external"}
-            ),
+            MatchGraph([claim]).extend_to_groups(groups, within={"dgt_1", "external"}),
         )
 
         either = extended.filter(timeline_ids={"dgt_1", "audio"})
@@ -1447,18 +1445,18 @@ class TestMatchGraphExtendToGroupsFilters:
 
         return claim, groups, timelines
 
-    def test_timeline_ids_filter(
+    def test_within_filter(
         self,
         multi_group_setup: tuple,
     ) -> None:
-        """timeline_ids restricts which timelines get inferred edges."""
+        """``within`` restricts which timelines get inferred edges."""
         claim, groups, timelines = multi_group_setup
         graph = MatchGraph([claim])
 
         # Only extend to dgt1 (should NOT add audio)
         extended = graph.extend_to_groups(
             groups,
-            timeline_ids={"dgt_1", "external"},
+            within={"dgt_1", "external"},
         )
 
         # Audio should NOT be in the graph
@@ -1491,7 +1489,7 @@ class TestMatchGraphExtendToGroupsFilters:
 
         extended = MatchGraph([claim]).extend_to_groups(
             groups,
-            timeline_ids={"dgt_1", "external"},
+            within={"dgt_1", "external"},
             id_pattern=r"^(dgt_1|external)$",
         )
 
@@ -1509,7 +1507,7 @@ class TestMatchGraphExtendToGroupsFilters:
             [claim],
             source_timeline_id="dgt_1",
             groups=groups,
-            timeline_ids={"dgt_1", "external"},
+            within={"dgt_1", "external"},
             id_pattern=r"^(dgt_1|external)$",
         )
 
@@ -1625,6 +1623,21 @@ class TestMatchGraphFilterByDomainAndUnit:
             .claims,
             [sync],
         )
+
+    def test_filters_compose_without_a_source(self, dgt1_group: TimelineGroup) -> None:
+        """A filtered graph keeps the units of the graph it was filtered from."""
+        claim = _claim("dgt_1", 500, "external", 25.0, unit_a=TimeUnit.pixels)
+        nm = _nomatch("audio", 30.0, "external", unit=TimeUnit.seconds, id="nm")
+        extended = MatchGraph([claim, nm]).extend_to_groups({"group1": dgt1_group})
+        units = {TimeUnit.seconds, TimeUnit.number}
+
+        at_once = extended.filter(nomatch_only=True, include_units=units)
+        nomatch_first = extended.filter(nomatch_only=True).filter(include_units=units)
+        units_first = extended.filter(include_units=units).filter(nomatch_only=True)
+
+        assert _is(at_once.claims, [nm])
+        assert _is(nomatch_first.claims, [nm])
+        assert _is(units_first.claims, [nm])
 
     def test_canonical_id_filters_combine(self) -> None:
         """``timeline_ids`` and ``id_pattern`` combine with AND semantics."""

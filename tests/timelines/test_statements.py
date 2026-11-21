@@ -366,8 +366,8 @@ def test_refusals_change_nothing() -> None:
     for filtered in (video.get_provenance, video.get_candidates):
         for believer in (None, EDITOR):
             _raises(
-                "The belief filter keeps the states ['true', 'undecided', "
-                "'unlikely', 'false'], not ['not_false']",
+                "'not_false' is no belief state: write 'true', 'undecided', "
+                "'unlikely' or 'false'",
                 lambda: filtered(believer=believer, beliefs=["not_false"]),  # type: ignore[arg-type]
             )
     _raises(

@@ -483,13 +483,13 @@ class TestGetMatchstampAt:
         assert "perf:dlt_2" in stamp.coordinates
         assert "perf:dlt_3" not in stamp.coordinates
 
-    def test_filtered_by_timeline_ids(self):
-        """timeline_ids filter reduces output."""
+    def test_filtered_by_within(self):
+        """``within`` keeps only the coordinates of the timelines it names."""
         bundle, _ = _make_star_bundle()
         stamp = bundle.get_matchstamp_at(
             0.0,
             "score:clt_1",
-            timeline_ids={"score:clt_1", "perf:dlt_1"},
+            within={"score:clt_1", "perf:dlt_1"},
         )
         assert stamp.n_timelines == 2
         assert "score:clt_1" in stamp.coordinates

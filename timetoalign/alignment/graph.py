@@ -37,11 +37,11 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import networkx as nx
 import pandas as pd
+from timetoshare import DEFAULT_BELIEFS, BeliefState
 
 from timetoalign.alignment.claims import AlignmentAnchor, MatchClaim
-from timetoalign.alignment.filters import ClaimFilter, belief_context, believed
+from timetoalign.alignment.filters import ClaimFilter, _meet, belief_context, believed
 from timetoalign.core.enums import Domain, NumberType, TimeUnit
-from timetoalign.core.provenance import DEFAULT_BELIEFS, BeliefState
 from timetoalign.core.retrieval import (
     CoordinateCollection,
     CoordinateFormat,
@@ -439,20 +439,20 @@ class MatchStamp(Stamp):
     def filter_by_timelines(
         self,
         *,
-        timeline_ids: set[str] | None = None,
+        within: set[str] | None = None,
         id_pattern: str | None = None,
     ) -> "MatchStamp":
         """Create filtered stamp with subset of timelines.
 
         Args:
-            timeline_ids: Only include these timelines (None = all).
+            within: Only these timelines' coordinates (None = all).
             id_pattern: Regex filter for timeline IDs.
 
         Returns:
             New MatchStamp with filtered timelines.
         """
         filt = ClaimFilter.from_kwargs(
-            timeline_ids=timeline_ids,
+            within=within,
             id_pattern=id_pattern,
         )
         filtered_coords = {}
@@ -994,21 +994,12 @@ class InferredEdge:
         return f"InferredEdge({self.anchor!r} via {self.group_id}{source})"
 
 
-def _meet(first: set | None, second: set | None) -> set | None:
-    """Both restrictions at once (``None`` restricts nothing)."""
-    if first is None:
-        return second
-    if second is None:
-        return first
-    return first & second
-
-
 @dataclass(frozen=True)
 class _Extension:
     """One :meth:`MatchGraph.extend_to_groups` call, kept to make it again."""
 
     groups: dict[str, TimelineGroup]
-    timeline_ids: set[str] | None = None
+    within: set[str] | None = None
     id_pattern: str | None = None
     include_domains: set[Domain] | None = None
     include_units: set[TimeUnit] | None = None
@@ -1024,7 +1015,7 @@ class _Extension:
         """Extend *graph* as this call did, reaching only what it also admits."""
         return graph.extend_to_groups(
             self.groups,
-            timeline_ids=_meet(self.timeline_ids, within),
+            within=_meet(self.within, within),
             id_pattern=self.id_pattern,
             include_domains=_meet(self.include_domains, include_domains),
             include_units=_meet(self.include_units, include_units),
@@ -1550,7 +1541,7 @@ class MatchGraph:
         groups: dict[str, "TimelineGroup"],
         *,
         include_inferred: bool = True,
-        timeline_ids: set[str] | None = None,
+        within: set[str] | None = None,
         id_pattern: str | None = None,
         include_domains: set[Domain] | None = None,
         include_units: set[TimeUnit] | None = None,
@@ -1574,7 +1565,7 @@ class MatchGraph:
         Args:
             groups: Dict of group_id -> TimelineGroup.
             include_inferred: Whether to add inferred edges.
-            timeline_ids: Only extend to these timeline IDs.
+            within: Only extend to these timeline IDs.
             id_pattern: Regex filter for timeline IDs.
             include_domains: Only extend to timelines in these domains.
             include_units: Only extend to timelines with these units.
@@ -1617,7 +1608,7 @@ class MatchGraph:
                     group_id,
                     groups[group_id],
                     source_claim,
-                    timeline_ids=timeline_ids,
+                    within=within,
                     id_pattern=id_pattern,
                     include_domains=include_domains,
                     include_units=include_units,
@@ -1631,7 +1622,7 @@ class MatchGraph:
             + (
                 _Extension(
                     dict(groups),
-                    timeline_ids=None if timeline_ids is None else set(timeline_ids),
+                    within=None if within is None else set(within),
                     id_pattern=id_pattern,
                     include_domains=(
                         None if include_domains is None else set(include_domains)
@@ -1655,7 +1646,7 @@ class MatchGraph:
         group: "TimelineGroup",
         source_claim: MatchClaim | None,
         *,
-        timeline_ids: set[str] | None,
+        within: set[str] | None,
         id_pattern: str | None,
         include_domains: set[Domain] | None,
         include_units: set[TimeUnit] | None,
@@ -1677,7 +1668,7 @@ class MatchGraph:
                     member_id: group.get_timeline(member_id)
                     for member_id in group.timeline_ids
                 },
-                timeline_ids=timeline_ids,
+                within=within,
                 id_pattern=id_pattern,
                 include_domains=include_domains,
                 include_units=include_units,
@@ -1756,7 +1747,7 @@ class MatchGraph:
         timeline_id: str,
         *,
         timelines: dict[str, "Timeline"] | None = None,
-        timeline_ids: set[str] | None = None,
+        within: set[str] | None = None,
         id_pattern: str | None = None,
         include_domains: set[Domain] | None = None,
         include_units: set[TimeUnit] | None = None,
@@ -1766,7 +1757,7 @@ class MatchGraph:
         Args:
             timeline_id: The timeline ID to check.
             timelines: Dict of timeline_id -> Timeline for metadata.
-            timeline_ids: Only these timeline IDs pass.
+            within: Only these timeline IDs pass.
             id_pattern: Regex filter for timeline IDs.
             include_domains: Only timelines in these domains pass.
             include_units: Only timelines with these units pass.
@@ -1780,7 +1771,7 @@ class MatchGraph:
                 for tl_id, unit in self._timeline_units.items()
             }
         return ClaimFilter.from_kwargs(
-            timeline_ids=timeline_ids,
+            within=within,
             id_pattern=id_pattern,
             include_domains=include_domains,
             include_units=include_units,
@@ -2070,9 +2061,14 @@ class MatchGraph:
         the same way holds.
 
         Domains and units are read from the source bundle's timelines when
-        the graph has a source, else from the units of the graph's anchors:
+        the graph has a source, else from the units of the graph's anchors
+        and of the graph it was filtered from (a filtered graph keeps the
+        units its own source graph knew, so filters compose in any order):
         without a source, a claim on a timeline no anchor names (a NOMATCH
         or conceptual claim, say) passes no domain or unit filter.
+
+        The groups are read as they stand when filtering: a member added to
+        a group after the extension is reached by the filtered graph.
 
         Args:
             timeline_id: Only the claims with this timeline on either side;
@@ -2127,7 +2123,10 @@ class MatchGraph:
         )
         graph = MatchGraph(
             kept,
-            units=self._units,
+            units={
+                timeline_id: unit.value
+                for timeline_id, unit in self._known_units().items()
+            },
             axis=self._axis,
             source=self._source,
             source_id=self._source_id,
@@ -2147,15 +2146,27 @@ class MatchGraph:
         """The timelines whose unit (and so domain) the filters can read.
 
         Those of the source bundle, else a stand-in holding the unit the
-        graph's anchors record.
+        graph knows (:meth:`_known_units`).
         """
         timelines: dict[str, Any] = {
             timeline_id: SimpleNamespace(unit=unit)
-            for timeline_id, unit in self._timeline_units.items()
+            for timeline_id, unit in self._known_units().items()
         }
         if self._source is not None:
             timelines.update(self._source._known_timelines())
         return timelines
+
+    def _known_units(self) -> dict[str, TimeUnit]:
+        """The unit of every timeline the graph knows.
+
+        The units its anchors record, and those given as ``units`` (where a
+        filtered graph carries the units of the graph it was filtered from).
+        """
+        known = {
+            timeline_id: TimeUnit(unit) for timeline_id, unit in self._units.items()
+        }
+        known.update(self._timeline_units)
+        return known
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary.

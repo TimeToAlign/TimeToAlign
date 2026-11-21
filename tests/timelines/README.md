@@ -157,6 +157,21 @@ proved right by evidence that does not come from the slicer itself:
    following ID. ``[9/4, 27)`` cuts measure 1 at its middle: it becomes a
    ``MeasureConstituent`` at offset ``9/4`` with actual length ``9/4``, the
    map's total actual length is ``99/4`` and the last row's qstamp ``81/4``.
+   A second fixture holds what a uniform map lacks: seven 4/4 bars (28
+   quarters, IDs ``str(count)``) with a plain repeat (bar 2 ``start_repeat``,
+   bar 3 ``end_repeat`` with ``next: ["2", "4"]``), a repeat with two voltas
+   (bar 4 ``start_repeat``; bar 5 ``volta: 1``, ``end_repeat``, ``next:
+   ["4"]``; bar 6 ``volta: 2``, ``next: ["7"]``) and an unknown row key
+   (``tempo: "Allegro"`` on bar 6, read with ``keep_unknown_keys``). Four
+   slices, rows written by hand: ``[6, 22)`` is cut at both ends (bar 2 a
+   ``MeasureConstituent`` at offset 2 with actual length 2, bar 6 clipped to
+   actual length 2 while its nominal length stays 4, hence an
+   ``IrregularMeasure``), keeps both successors of bar 3, both repeat signs,
+   both voltas and ``tempo``, and bar 6 loses its successor ``"7"``; ``[10,
+   22)`` drops the backward ``"2"`` of bar 3 (``next: ["4"]``); ``[16, 22)``
+   leaves bar 5, mid-slice, with ``next: []`` since its only successor lies
+   before the slice; slicing ``[6, 22)`` again at ``[1, 6)`` cuts the
+   constituent further, its offset the sum ``2 + 1 = 3``.
 2. **Same measure at the same position.** For positions of the child the
    child's ``MeasureRecordMap`` answers the measure (by ``id``) that the
    parent's answers at offset + position: ``"1"``, ``"2"``, ``"6"`` at 0,
@@ -165,6 +180,13 @@ proved right by evidence that does not come from the slicer itself:
    ``LinearMap`` to quarters) proves the span is read in quarters and the
    child reaches its slice through the same scalar: the child at ticks 12960
    of length 12960 holds the ``[27, 54)`` rows and answers ``"7"`` at tick 0.
+   The child's map is the parent's map from the child's origin, in the
+   number type the parent's map was given: a parent map given
+   ``output_number_type=float`` gives a child map answering ``float``
+   (``1.0`` at tick 480, the parent's answer), with the same ``[27, 54)``
+   rows. A whole-notes parent (81 whole notes, its map read through the
+   default ``LinearMap`` multiplying by 4) gives the child at ``27/4`` of
+   length ``27/4`` exactly the quarters child's rows.
    ``create_child_from_region`` over a region ``[27, 54)`` and
    ``create_children_from_boundaries([27, 54])`` hold the same rows: one
    slice, whichever call derives the child. ``create_children_from_regions``
@@ -182,6 +204,23 @@ proved right by evidence that does not come from the slicer itself:
    its child, written by ``to_dict()`` and read by ``from_dict()``, holds two
    ``measure_maps`` entries, and the child read back carries a measure map
    equal to the slice.
+5. **The child affords its parent's measure views.** A view of the measure
+   map (``FloatingMeasureMap``, ``MeasureNumberMap``, ``MeasureBeatMap``) is
+   built from the measure map alone, so the child gets each view its parent
+   holds, built over its slice by the same constructor. A quarters parent
+   holding a ``FloatingMeasureMap`` and a ``MeasureNumberMap`` of its map
+   gives the child at ``[27, 54)`` both, reading the child's own measure map:
+   floating measures ``1.0``, ``2.0``, ``7.0`` at 0, ``9/2``, 27 (the
+   lattice counts the slice's measures from 1, as its ``count`` does), bar
+   numbers ``7`` at 0 and ``12`` at 26 (numbers are kept). The child at
+   ``[9/4, 27)`` is cut in bar 1, which the lattice reads as an anacrusis,
+   the shape it has: ``0.5`` at 0 and ``1.0`` at ``9/4``, where bar 2
+   begins. A parent without
+   views gives a child without views (only its ``MeasureRecordMap``). The
+   bundle written from the parent with its two children holds three
+   ``measure_maps`` entries (the views share their timeline's entry), and
+   the child read back holds a ``FloatingMeasureMap`` reading a measure map
+   equal to its slice.
 
 ### Merged Score Event Coordinates
 

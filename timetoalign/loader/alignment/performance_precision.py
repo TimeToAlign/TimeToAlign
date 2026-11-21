@@ -32,9 +32,13 @@ with:
   per granularity — synchronous claims for located onsets and NOMATCH
   claims for the dangling (``"N"``) score positions.  A row states a score
   position, not a score note, so each claim names a
-  :class:`~timetoalign.core.Projection` the loader adds to the score
-  timeline there, and on the performance side the performer's Note event
-  (note rows) or a Projection at the row's time (bar and beat rows).
+  :class:`~timetoalign.core.Projection` on the score timeline there, and
+  on the performance side the performer's Note event (note rows) or a
+  Projection at the row's time (bar and beat rows).  A timeline holds one
+  Projection per position and event it stands for: a note row's score
+  Projection stands for the performer's Note, while the bar, beat and
+  dangling rows of every performer that name one score position share
+  one Projection standing for no event.
 
 The score's measure → quarter conversion runs through a
 :class:`~timetoalign.maps.meter.MetricalPositionMap`, which the loader
@@ -58,14 +62,8 @@ from typing import TYPE_CHECKING, Any
 
 from typing_extensions import Self
 
-from timetoalign.alignment.claims import MatchClaim
-from timetoalign.core import (
-    Coordinate,
-    EventReference,
-    Projection,
-    Provenance,
-    TimeUnit,
-)
+from timetoalign.alignment.claims import ClaimSide, MatchClaim, _claims_between_events
+from timetoalign.core import Provenance, TimeUnit
 from timetoalign.loader.base import AlignmentLoader
 from timetoalign.loader.tabular.solo import SoloLoader
 from timetoalign.maps.meter import MetricalPositionMap, MetricMap
@@ -411,7 +409,7 @@ class PerformancePrecisionLoader(AlignmentLoader):
         row (dangling ``"N"`` rows have no audio coordinate).  A row's
         ``LABEL`` states a score position, not a score note (a chord holds
         several notes at one position), so the score side of every claim is a
-        :class:`~timetoalign.core.Projection` added to the score timeline at
+        :class:`~timetoalign.core.Projection` on the score timeline at
         that position.  Claims are emitted for all three granularities:
 
         * an aligned note-level row: the score Projection stands for the
@@ -472,12 +470,15 @@ class PerformancePrecisionLoader(AlignmentLoader):
         starts: list[Fraction],
         m0_downbeat: Fraction,
     ) -> None:
-        """Add the Projections of one performer's rows and claim between events.
+        """State one performer's rows as MatchClaims between events.
 
-        The score Projections of all three granularities are added to the
-        score timeline in one call, the performance Projections of the bar-
-        and beat-level rows to *perf_tl* in another; the claims then name
-        the events those calls return.
+        Each row's score side is its LABEL's position; its performance side
+        the performed Note (an aligned note-level row), the position of its
+        TIME (an aligned bar- or beat-level row), or the NOMATCH sentinel (a
+        dangling row). The library's projection operation gives each
+        position its Projection, one per position and event it stands for,
+        so the bar and beat positions every performer shares stand once on
+        the score timeline.
 
         Args:
             granularity_rows: The rows of each granularity, in file order.
@@ -490,64 +491,26 @@ class PerformancePrecisionLoader(AlignmentLoader):
         score_tl = self._score_timeline
         assert score_tl is not None
         notes = iter(perf_note_ids)
-        # One entry per row: its granularity, its score position, and the
-        # performance event it is matched to (a Note's id, the index of a
-        # performance Projection, or None for a dangling row).
-        stated: list[tuple[str, Fraction, str | int | None, float | None]] = []
-        score_projections: list[Projection] = []
-        perf_projections: list[Projection] = []
         for gran, rows in granularity_rows.items():
+            pairs: list[tuple[ClaimSide, Timeline, ClaimSide, Timeline]] = []
             for measure, offset_wn, time_str in rows:
                 quarters = self._resolve_label(measure, offset_wn, starts, m0_downbeat)
-                seconds = None if time_str == _DANGLING else float(time_str)
-                projection_of = None
-                if seconds is None:
-                    performed: str | int | None = None
+                performed: ClaimSide
+                if time_str == _DANGLING:
+                    performed = None
                 elif gran == "note":
                     performed = next(notes)
-                    projection_of = EventReference(
-                        timeline_id=perf_tl.id, event_id=performed
-                    )
                 else:
-                    performed = len(perf_projections)
-                    perf_projections.append(
-                        Projection(start=self._on_axis(seconds, perf_tl))
-                    )
-                score_projections.append(
-                    Projection(
-                        start=self._on_axis(quarters, score_tl),
-                        projection_of=projection_of,
-                    )
-                )
-                stated.append((gran, quarters, performed, seconds))
-        score_ids = score_tl.add_events(score_projections)
-        perf_ids = perf_tl.add_events(perf_projections) if perf_projections else []
-
-        for (gran, quarters, performed, seconds), score_id in zip(
-            stated, score_ids, strict=True
-        ):
-            meta = Provenance(method="imported", note=f"performance_precision {gran}")
-            projection = {"id": score_id, "start": quarters}
-            if performed is None:
-                self._claims.append(
-                    MatchClaim.nomatch(projection, score_tl, perf_tl, provenance=meta)
-                )
-                continue
-            perf_id = performed if isinstance(performed, str) else perf_ids[performed]
-            self._claims.append(
-                MatchClaim.from_events(
-                    projection,
-                    score_tl,
-                    {"id": perf_id, "start": seconds},
-                    perf_tl,
-                    provenance=meta,
+                    performed = {"start": float(time_str)}
+                pairs.append(({"start": quarters}, score_tl, performed, perf_tl))
+            self._claims.extend(
+                _claims_between_events(
+                    pairs,
+                    provenance=Provenance(
+                        method="imported", note=f"performance_precision {gran}"
+                    ),
                 )
             )
-
-    @staticmethod
-    def _on_axis(value: Fraction | float, timeline: Timeline) -> Coordinate:
-        """Return a position given in *timeline*'s unit on its declared axis."""
-        return Coordinate(value, timeline.unit, number_type=timeline.number_type)
 
     @staticmethod
     def _read_alignment_csv(path: Path) -> list[tuple[int, Fraction, str]]:

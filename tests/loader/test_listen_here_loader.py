@@ -25,7 +25,7 @@ It verifies:
   coordinates at one reference instant via the columnar query path;
 - every other bundle claim reader answering the columnar store with
   exact values (claim counts, filtered queries, the vectorized
-  ``get_claim_fields``, both matchstamp-table modes, commensurability,
+  ``get_claim_field``, both matchstamp-table modes, commensurability,
   and a ``MatchLine`` → ``WarpMap`` transfer);
 - the bare-array ``body.audio`` value form (``length == max(times)``);
 - the field-level provenance (method ``imported``, a note naming
@@ -371,9 +371,10 @@ def test_matchstamp_at_first_grid_coordinate(loader: ListenHereLoader) -> None:
 
 
 def test_bundle_claim_count(loader: ListenHereLoader) -> None:
-    # The bundle's claim count spans both stores, so a columnar bundle
-    # reports its real total rather than its empty Python list.
-    assert loader.create_bundle().n_cross_group_claims == 15
+    # The field's rows are the bundle's MatchClaim table, ids minted there.
+    table = loader.create_bundle().match_claim_table
+    assert len(table) == 15
+    assert table.table.column("id").to_pylist() == [f"claim_{n}" for n in range(1, 16)]
 
 
 def test_bundle_get_match_claims(loader: ListenHereLoader) -> None:
@@ -390,12 +391,12 @@ def test_bundle_get_match_claims_filtered(loader: ListenHereLoader) -> None:
     assert len(bundle.get_match_claims(between=("rec-a:dpt_1", "rec-b:dpt_1"))) == 5
 
 
-def test_bundle_get_claim_fields(loader: ListenHereLoader) -> None:
+def test_bundle_get_claim_field(loader: ListenHereLoader) -> None:
     # The vectorized accessor answers the same query without materialising.
     bundle = loader.create_bundle()
-    assert [len(f) for f in bundle.get_claim_fields()] == [15]
-    assert [len(f) for f in bundle.get_claim_fields(timeline_id="rec-a:dpt_1")] == [10]
-    assert bundle.get_claim_fields(timeline_id="missing:dpt_1") == []
+    assert len(bundle.get_claim_field()) == 15
+    assert len(bundle.get_claim_field(timeline_id="rec-a:dpt_1")) == 10
+    assert len(bundle.get_claim_field(timeline_id="missing:dpt_1")) == 0
 
 
 def test_bundle_matchstamp_table_per_claim(loader: ListenHereLoader) -> None:

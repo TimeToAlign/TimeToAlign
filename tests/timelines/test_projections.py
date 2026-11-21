@@ -298,3 +298,121 @@ class TestRefusals:
             "timeline; its projection_of names 'dpt_1' itself"
         )
         assert len(timeline.events) == 0
+
+
+class TestGetOrAdd:
+    """``add_projections`` keeps one Projection per thing it stands for."""
+
+    @staticmethod
+    def _projections() -> list[Projection]:
+        n1 = EventReference(timeline_id="clt_6", event_id="n1")
+        n2 = EventReference(timeline_id="clt_6", event_id="n2")
+        half = Coordinate(Fraction(1, 2), TimeUnit.seconds)
+        one = Coordinate(Fraction(1), TimeUnit.seconds)
+        return [
+            Projection(start=half, projection_of=n1),
+            Projection(start=half, projection_of=n2),
+            Projection(start=one),
+            Projection(start=one, duration=Duration(Fraction(1, 2), TimeUnit.seconds)),
+        ]
+
+    def test_a_second_call_reuses_every_projection(self) -> None:
+        timeline = _samples()
+        expected = [f"projection_{n}" for n in (1, 2, 3, 4)]
+        assert timeline.add_projections(self._projections()) == expected
+        assert timeline.add_projections(self._projections()) == expected
+        assert len(timeline.events) == 4
+        assert [
+            (row["id"], row["start"]["numerator"], row["duration"])
+            for row in timeline.events.table.to_pylist()
+        ] == [
+            ("projection_1", 22050, None),
+            ("projection_2", 22050, None),
+            ("projection_3", 44100, None),
+            (
+                "projection_4",
+                44100,
+                {"value": 22050.0, "numerator": 22050, "denominator": 1},
+            ),
+        ]
+
+    def test_the_position_is_compared_on_the_axis(self) -> None:
+        timeline = _samples()
+        timeline.add_projections(self._projections())
+        n1 = EventReference(timeline_id="clt_6", event_id="n1")
+        assert timeline.add_projections(
+            [{"event_type": "Projection", "start": 22050, "projection_of": n1}]
+        ) == ["projection_1"]
+        assert len(timeline.events) == 4
+
+    def test_equal_rows_of_one_call_are_one_projection(self) -> None:
+        timeline = _samples()
+        rows = [Projection(start=Coordinate(22050, TimeUnit.samples))] * 3 + [
+            Projection(start=Coordinate(44100, TimeUnit.samples))
+        ]
+        assert timeline.add_projections(rows) == [
+            "projection_1",
+            "projection_1",
+            "projection_1",
+            "projection_2",
+        ]
+        assert len(timeline.events) == 2
+
+    def test_what_tells_projections_apart(self) -> None:
+        timeline = _samples()
+        n1 = EventReference(timeline_id="clt_6", event_id="n1")
+        at = Coordinate(22050, TimeUnit.samples)
+        later = Coordinate(66150, TimeUnit.samples)
+        ids = timeline.add_projections(
+            [
+                Projection(start=at, projection_of=n1),
+                Projection(start=at),
+                Projection(start=later, projection_of=n1),
+                Projection(start=at, duration=Duration(100, TimeUnit.samples)),
+            ]
+        )
+        assert ids == [f"projection_{n}" for n in (1, 2, 3, 4)]
+        assert len(timeline.events) == 4
+
+    def test_a_given_id_is_kept_and_reused(self) -> None:
+        timeline = _samples()
+        given = Projection(id="x1azmn68", start=Coordinate(22050, TimeUnit.samples))
+        assert timeline.add_projections(given) == ["x1azmn68"]
+        assert timeline.add_projections([given, given]) == ["x1azmn68", "x1azmn68"]
+        assert len(timeline.events) == 1
+
+    def test_refusals_change_nothing(self) -> None:
+        timeline = _samples()
+        timeline.add_events([{"id": "n9", "event_type": "Note", "instant": 0}])
+        timeline.add_projections(
+            Projection(id="x1azmn68", start=Coordinate(22050, TimeUnit.samples))
+        )
+        at = Coordinate(44100, TimeUnit.samples)
+        cases = [
+            (
+                [Projection(id="n9", start=at)],
+                "Event id 'n9' is already held by another event of timeline 'dpt_1'",
+            ),
+            (
+                [Projection(id="x1azmn68", start=at)],
+                "Event id 'x1azmn68' is already held by another event of timeline "
+                "'dpt_1'",
+            ),
+            (
+                [
+                    Projection(id="p", start=at),
+                    Projection(id="p", start=Coordinate(66150, TimeUnit.samples)),
+                ],
+                "Projection id 'p' is given twice for different positions in one "
+                "call on timeline 'dpt_1'",
+            ),
+            (
+                [Projection(start=at), {"event_type": "Note", "instant": 3}],
+                "add_projections adds Projections, not a row of type 'Note'",
+            ),
+        ]
+        for rows, message in cases:
+            with pytest.raises(ValueError) as raised:
+                timeline.add_projections(rows)
+            assert str(raised.value) == message
+            assert len(timeline.events) == 2

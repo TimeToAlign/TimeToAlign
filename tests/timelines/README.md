@@ -1984,6 +1984,34 @@ write fractions):
     for an event of another timeline; its projection_of names 'dpt_1'
     itself`.
 
+**Get-or-add: `Timeline.add_projections`.** A timeline keeps one Projection
+per thing it stands for. What proves it is the identity of the returned IDs
+and the number of rows the timeline holds afterwards, never a count of calls:
+
+- **A second call reuses every Projection.** On the samples timeline,
+  `add_projections` of a Projection of `clt_6:n1` at `Coordinate(1/2, s)`,
+  one of `clt_6:n2` at the same position, one of no event at
+  `Coordinate(1, s)` and one of no event from `Coordinate(1, s)` for
+  `Duration(1/2, s)` returns `projection_1` … `projection_4`; the same call
+  again returns the same four IDs and the timeline still holds four events.
+  The position is compared after conversion, exactly: `22050` given as a
+  bare sample number is `projection_1` again.
+- **Equal rows of one call are one Projection.** Three rows standing for
+  no event at sample 22050 and one at 44100 give `['projection_1',
+  'projection_1', 'projection_1', 'projection_2']` and two events.
+- **What tells Projections apart.** The event stood for (a Projection of
+  `n1` and one of no event at one position are two), the start (`n1` at two
+  positions, a repeat played against one score note, are two), and the
+  duration (an instant and a span from one start are two).
+- **A given ID.** A Projection given `x1azmn68` is added under it; the same
+  Projection given again returns `x1azmn68` and adds nothing. Refused,
+  atomically: the ID held by a Note, the ID held by a Projection at another
+  position (`Event id 'x1azmn68' is already held by another event of
+  timeline 'dpt_1'`), the ID given twice in one call for two positions
+  (`Projection id 'p' is given twice for different positions in one call on
+  timeline 'dpt_1'`), and a row that is no Projection (`add_projections adds
+  Projections, not a row of type 'Note'`).
+
 ---
 
 ### `test_external_references.py` - Incoming External References and `to_dict()` Flags

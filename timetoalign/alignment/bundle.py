@@ -32,11 +32,8 @@ from timetoalign.core import (
     Coordinate,
     CoordinateSpec,
     CoordinateValue,
-    Duration,
-    EventReference,
     IdCoordinate,
     Interval,
-    Projection,
     Provenance,
     SupportPolicy,
     TimeUnit,
@@ -46,7 +43,7 @@ from timetoalign.core import (
 )
 from timetoalign.core.enums import NumberType
 from timetoalign.core.ids import _OpenObject, mint_id, quote_id, validate_id
-from timetoalign.core.provenance import BeliefFilter, provenance_array
+from timetoalign.core.provenance import BeliefFilter
 from timetoalign.core.retrieval import (
     CoordinateCollection,
     CoordinateFormat,
@@ -79,7 +76,12 @@ from timetoalign.timelines.groups import (
 from timetoalign.timelines.manifest import Manifest, ManifestFileMixin
 from timetoalign.timelines.statements import MutableStatementsMixin, rename_references
 
-from .claims import MatchClaim, MatchClaimField, _event_coordinate, _join_claims
+from .claims import (
+    MatchClaim,
+    MatchClaimField,
+    _claims_between_events,
+    _join_claims,
+)
 from .filters import ClaimFilter, believed
 from .graph import MatchGraph, MatchIntervalStamp, MatchStamp
 from .matchline import MatchLine
@@ -133,147 +135,6 @@ def _resolve_coordinate_and_timeline(
     """
     resolved = resolve_coordinate_spec(coordinate, timeline_id=timeline_id)
     return resolved.value, resolved.timeline_id, resolved.unit
-
-
-def _held_event(event: dict | str | None, timeline: "Timeline") -> dict | None:
-    """The event of *timeline* a side of a claimed pair names, if it holds one.
-
-    An id string must name an event of the timeline; an event dict names one
-    by its ``id`` when the timeline holds it. ``None`` (the NOMATCH
-    sentinel) and a dict naming no event the timeline holds give ``None``.
-
-    Raises:
-        ValueError: If an id string names no event of the timeline.
-        TypeError: If *event* is neither a dict, a string nor ``None``.
-    """
-    if event is None:
-        return None
-    if isinstance(event, str):
-        held = timeline.get_event(event)
-        if held is None:
-            raise ValueError(
-                f"No event with id {quote_id(event)} on timeline {quote_id(timeline.id)}"
-            )
-        return held
-    if not isinstance(event, dict):
-        raise TypeError(
-            f"A side of a claimed pair is an event id, an event dict or None, "
-            f"not {type(event).__name__}"
-        )
-    event_id = event.get("id")
-    return None if event_id is None else timeline.get_event(str(event_id))
-
-
-def _reference(timeline: "Timeline", held: dict | None) -> EventReference | None:
-    """The reference to an event *timeline* holds, or ``None`` without one."""
-    if held is None:
-        return None
-    return EventReference(timeline_id=timeline.id, event_id=str(held["id"]))
-
-
-def _event_position(raw: Any, timeline: "Timeline") -> Coordinate | None:
-    """A position an event dict states, as a coordinate (``None`` if null).
-
-    A number, or a storage cell, is a position on the timeline's axis; a
-    :class:`Coordinate` (or a coordinate dict) keeps its unit, which
-    :meth:`Timeline.add_events` converts through the timeline's C-Map.
-    """
-    if raw is None or (isinstance(raw, dict) and raw.get("value") is None):
-        return None
-    value = _event_coordinate(raw)
-    if isinstance(value, Coordinate):
-        return value
-    return Coordinate(value, timeline.unit, number_type=timeline.number_type)
-
-
-def _projected_event(
-    event: dict | None, timeline: "Timeline", other: EventReference | None
-) -> dict | None:
-    """Add a Projection standing for one side of a claimed pair; its event.
-
-    The Projection is placed at the dict's ``start`` (and spans to its
-    ``end``), converted onto the timeline's axis by
-    :meth:`Timeline.add_events`. It takes the dict's ``id`` when it gives one
-    (an event the bundle does not hold: ``projection_of`` stays null), else
-    the timeline mints ``projection_N`` and the Projection names *other*,
-    the event of the other side, if any.
-
-    Returns:
-        The Projection as its timeline holds it, or ``None`` for the
-        NOMATCH sentinel.
-
-    Raises:
-        ValueError: If the dict states no ``start``, or its end is in
-            another unit than its start.
-    """
-    if event is None:
-        return None
-    event_id = event.get("id")
-    start = _event_position(event.get("start"), timeline)
-    if start is None:
-        raise ValueError(
-            f"An event dict for timeline {quote_id(timeline.id)} names no event "
-            f"of it and states no 'start': a side of a MatchClaim is an event, "
-            f"or a position where a Projection stands for one."
-        )
-    end = _event_position(event.get("end"), timeline)
-    duration = None
-    if end is not None:
-        if end.unit != start.unit:
-            raise ValueError(
-                f"An event dict for timeline {quote_id(timeline.id)} states its "
-                f"start in {start.unit.value} and its end in {end.unit.value}"
-            )
-        duration = Duration(
-            end.value - start.value, start.unit, number_type=start.number_type
-        )
-    projection = Projection(
-        id=None if event_id is None else str(event_id),
-        start=start,
-        duration=duration,
-        projection_of=other if event_id is None else None,
-    )
-    (projection_id,) = timeline.add_events(projection)
-    return timeline.get_event(projection_id)
-
-
-def _with_own_provenance(rows: MatchClaimField) -> pa.StructArray:
-    """The rows' struct, each row carrying the provenance it is read with.
-
-    A field's shared provenance is written into every row's ``provenance``
-    cell, so the rows can join rows of another provenance.
-    """
-    data = rows._struct_array()
-    shared = rows.provenance
-    if shared is None:
-        return data
-    schema = MatchClaimField.pa_schema
-    children = data.flatten()
-    children[schema.get_field_index("provenance")] = provenance_array([shared]).take(
-        pa.array(np.zeros(len(data), dtype=np.int64))
-    )
-    return pa.StructArray.from_arrays(children, fields=list(schema))
-
-
-def _concatenated(first: MatchClaimField, second: MatchClaimField) -> MatchClaimField:
-    """The rows of two MatchClaim tables, one after the other, in one table.
-
-    A provenance both share stays shared; otherwise every row carries its
-    own. The ids are neither checked nor changed here.
-    """
-    if len(first) == 0:
-        return second
-    if len(second) == 0:
-        return first
-    if first.provenance == second.provenance:
-        provenance = first.provenance
-        parts = [first._struct_array(), second._struct_array()]
-    else:
-        provenance = None
-        parts = [_with_own_provenance(first), _with_own_provenance(second)]
-    return MatchClaimField._from_struct_array(
-        pa.concat_arrays(parts), provenance=provenance
-    )
 
 
 def _table_anchors(
@@ -359,11 +220,11 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
 
     Note:
         Every reader of the MatchClaims (queries, the matchstamp getters,
-        the table lane, the MatchLines and WarpMaps behind transfer) reads
-        the one table, through the belief filter (``believer``, ``belief``)
-        where the reader takes it. The table is compared by
-        :meth:`MatchClaimField` identity only, so two bundles holding equal
-        claims in different tables compare by their other fields.
+        the table getter :meth:`get_matchstamp_table`, the MatchLines and
+        WarpMaps behind transfer) reads the one table, through the belief
+        filter (``believer``, ``belief``) where the reader takes it. Two
+        bundles are equal when their claims are too: the tables are compared
+        row by row, provenance included (:class:`MatchClaimField` equality).
 
     Examples:
         >>> from timetoalign.alignment import AlignmentBundle
@@ -391,12 +252,10 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
     meta: dict[str, Any] = field(default_factory=dict)
     # The one store of the bundle's MatchClaims, changed only through
     # ``add_match_claims``, ``add_match_claim_field`` and ``from_bundles``,
-    # which check what joins it. Not compared: a MatchClaimField has no value
-    # equality.
+    # which check what joins it. Compared row by row, provenance included.
     match_claim_table: MatchClaimField = field(
         default_factory=lambda: MatchClaimField.from_claims([]),
         init=False,
-        compare=False,
     )
 
     # Persistent per-bundle setting: how ``get_matchstamp_at`` treats a
@@ -420,16 +279,16 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
     # WarpMap | None. None values are cached as negative results to avoid
     # repeated expensive MatchLine construction for unreachable pairs.
     _warp_map_cache: dict[tuple[_BeliefKey, str, str], WarpMap | None] = field(
-        default_factory=dict, repr=False
+        default_factory=dict, repr=False, compare=False
     )
     # Cached MatchLines: (belief filter, source_tl_id) -> MatchLine (avoids
     # rebuilding the MatchGraph for every target lookup)
     _matchline_cache: dict[tuple[_BeliefKey, str], MatchLine | None] = field(
-        default_factory=dict, repr=False
+        default_factory=dict, repr=False, compare=False
     )
     # Cached MatchGraphs: (belief filter, timeline_id, coordinate) -> MatchGraph
     _matchgraph_cache: dict[tuple[_BeliefKey, str, CoordinateValue], MatchGraph] = (
-        field(default_factory=dict, repr=False)
+        field(default_factory=dict, repr=False, compare=False)
     )
     # The claims in force under each belief filter, and those of them naming
     # each timeline; emptied whenever the table changes.
@@ -1539,31 +1398,35 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         timeline_a_id, event_b, timeline_b_id)`` names one side per
         timeline, each side one of:
 
-        - the ``id`` of an event its timeline holds;
+        - the ``id`` of an event its timeline (or a descendant of it) holds;
         - an event dict whose ``id`` its timeline holds: that event;
         - an event dict stating a position: ``start``, and ``end`` for a
           span, each a number on the timeline's axis or a
           :class:`~timetoalign.core.Coordinate` in any unit one of the
-          timeline's C-Maps converts. A **Projection** is added to the
-          timeline there (:meth:`Timeline.add_events`), converted onto the
-          timeline's axis, and stands for the side: under the dict's ``id``
-          (an event the bundle does not hold, ``projection_of`` null), or,
-          without one, under a minted ``projection_N`` naming the other
-          side's event in ``projection_of`` when the other side is an event
-          the timeline holds (null when both sides are positions);
+          timeline's C-Maps converts, and optionally ``name``. A
+          **Projection** stands for the side there, on the timeline's axis
+          (:meth:`Timeline.add_projections`): under the dict's ``id`` (an
+          event the bundle does not hold, ``projection_of`` null), or,
+          without one, naming the other side's event in ``projection_of``
+          when the other side is an event its timeline holds (null when both
+          sides are positions). The timeline keeps one Projection per event
+          and position: a second call with the same pairs reuses every
+          Projection the first added;
         - ``None``, the NOMATCH sentinel, on one side at most.
 
         The MatchClaim is then made between the two events, on the two
         timelines' own axes (:meth:`MatchClaim.from_events`); an end on both
         sides makes an interval claim. A pair with ``None`` makes a NOMATCH
         claim for the other side's event (:meth:`MatchClaim.nomatch`). The
-        claims join the bundle (:meth:`add_match_claims`).
+        claims join the bundle (:meth:`add_match_claims`), which mints their
+        ids.
 
         Every pair is checked before any Projection is added: the timelines
         are the bundle's, an id names an event of its timeline, at most one
-        side is ``None``. A pair refused later (a position no C-Map
-        converts) leaves the Projections of the pairs before it on their
-        timelines, and no claim is added.
+        side is ``None``, every position is placed on its timeline's axis.
+        Known limit: a Projection beyond the end of a locked timeline is
+        refused when its timeline's Projections are added, after those of
+        the timelines before it.
 
         Args:
             event_pairs: The pairs, ``(event_a, timeline_a_id, event_b,
@@ -1581,12 +1444,12 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             gave it.
 
         Raises:
-            ValueError: If an id string names no event of its timeline, both
-                sides of a pair are ``None``, or a position cannot be placed
-                on its timeline's axis.
+            ValueError: If both sides of a pair are ``None``, a dict naming
+                no held event states no ``start``, or a position cannot be
+                placed on its timeline's axis.
             KeyError: If a timeline id names no timeline of the bundle's
-                trees. A nested timeline is found whether or not it was
-                registered.
+                trees (a nested timeline is found whether or not it was
+                registered), or an id string names no event of its timeline.
 
         Examples:
             >>> from timetoalign.alignment import AlignmentBundle
@@ -1619,65 +1482,24 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             [('n10', 'o42'), ('n99', 'projection_1'), ('n99', None)]
             >>> audio.get_event("projection_1")["projection_of"]
             {'timeline_id': 'score', 'event_id': 'n99'}
+            >>> again = bundle.create_match_claims([("n99", "score", {"start": 55.0}, "audio")])
+            >>> again[0].event_b_id, again[0].id
+            ('projection_1', 'claim_4')
         """
-        sides: list[tuple[Timeline, dict | None, Timeline, dict | None]] = []
-        for event_a, tl_a, event_b, tl_b in event_pairs:
-            if event_a is None and event_b is None:
-                raise ValueError("event_a and event_b cannot both be None")
-            timeline_a = self._require_known_timeline(tl_a)
-            timeline_b = self._require_known_timeline(tl_b)
-            sides.append(
-                (
-                    timeline_a,
-                    _held_event(event_a, timeline_a),
-                    timeline_b,
-                    _held_event(event_b, timeline_b),
-                )
-            )
-
-        claims: list[MatchClaim] = []
-        for (event_a, _, event_b, _), (timeline_a, held_a, timeline_b, held_b) in zip(
-            event_pairs, sides, strict=True
-        ):
-            resolved_a = held_a or _projected_event(
-                event_a, timeline_a, _reference(timeline_b, held_b)
-            )
-            resolved_b = held_b or _projected_event(
-                event_b, timeline_b, _reference(timeline_a, held_a)
-            )
-            if resolved_b is None:
-                assert resolved_a is not None
-                claim = MatchClaim.nomatch(
-                    resolved_a,
-                    timeline_a,
-                    timeline_b,
-                    certainty=certainty,
-                    provenance=provenance,
-                )
-            elif resolved_a is None:
-                claim = MatchClaim.nomatch(
-                    resolved_b,
-                    timeline_b,
-                    timeline_a,
-                    certainty=certainty,
-                    provenance=provenance,
-                )
-            else:
-                ends = resolved_a.get("end") is not None and (
-                    resolved_b.get("end") is not None
-                )
-                claim = MatchClaim.from_events(
-                    resolved_a,
-                    timeline_a,
-                    resolved_b,
-                    timeline_b,
-                    end_coord_key="end" if ends and synchronous else None,
-                    is_synchronous=synchronous,
-                    certainty=certainty,
-                    provenance=provenance,
-                )
-            claims.append(claim)
-
+        timelines = {
+            timeline_id: self._require_known_timeline(timeline_id)
+            for _, tl_a, _, tl_b in event_pairs
+            for timeline_id in (tl_a, tl_b)
+        }
+        claims = _claims_between_events(
+            [
+                (event_a, timelines[tl_a], event_b, timelines[tl_b])
+                for event_a, tl_a, event_b, tl_b in event_pairs
+            ],
+            synchronous=synchronous,
+            certainty=certainty,
+            provenance=provenance,
+        )
         if claims:
             self.add_match_claims(claims)
         return claims
@@ -1762,15 +1584,6 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         return self
 
     @property
-    def n_cross_group_claims(self) -> int:
-        """The number of MatchClaims the bundle holds (rows of its table).
-
-        A row count: no claim is materialised, so this is the cheap way to
-        ask "does this bundle carry any alignment at all?".
-        """
-        return len(self.match_claim_table)
-
-    @property
     def claim_scopes(self) -> tuple[str, ...]:
         """The scopes of the claims' ids, each named by its bundle's id.
 
@@ -1851,7 +1664,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             self._claim_scope = pa.concat_arrays(
                 [self._scope_keys(), pc.cast(new_keys, pa.int32())]
             )
-        self.match_claim_table = _concatenated(self.match_claim_table, rows)
+        self.match_claim_table = self.match_claim_table._concatenated(rows)
         self._invalidate_warp_cache()
 
     def _take_claims_of(self, bundle: "AlignmentBundle") -> None:
@@ -1874,7 +1687,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         """The claims the belief filter keeps: the one point every reader reads.
 
         Every reader of the bundle's MatchClaims — the queries, the
-        matchstamp getters, the table lane, the MatchGraphs, MatchLines and
+        matchstamp getters, the table getter, the MatchGraphs, MatchLines and
         WarpMaps behind them — takes its claims from here, so the belief
         filter (:func:`~timetoalign.core.provenance.belief_mask`, through
         :meth:`MatchClaimField.filter`) is applied once, vectorized, per
@@ -2121,7 +1934,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         )
         if filt is None:
             return self.match_claim_table._empty()
-        return self.match_claim_table.filter(
+        # The belief filter is the one shared point's; the rest filters what
+        # it keeps.
+        return self._claims_in_force((filt.believer, filt.belief)).filter(
             timeline_id=filt.timeline_id,
             timeline_ids=filt.timeline_ids,
             id_pattern=filt.id_pattern,
@@ -2129,8 +1944,6 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             within=filt.domain_unit_timeline_ids(self._known_timelines()),
             synchronous_only=filt.synchronous_only,
             nomatch_only=filt.nomatch_only,
-            believer=filt.believer,
-            belief=filt.belief,
         )
 
     def _claim_filter(

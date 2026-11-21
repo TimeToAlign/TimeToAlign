@@ -489,28 +489,6 @@ class TestConnectsGroups:
         assert MatchClaimField.from_claims([]).connects_groups({"A"}, {"B"}) is False
 
 
-class TestBulkReads:
-    """Column reads that never materialise a claim."""
-
-    def test_max_coordinate(self, gold_field: MatchClaimField) -> None:
-        assert gold_field.max_coordinate("A") == 0.0
-        assert gold_field.max_coordinate("C") == 21.0
-        # B is 10.0 on side b (row 0) and 1.0 on side a (row 2).
-        assert gold_field.max_coordinate("B") == 10.0
-        assert gold_field.max_coordinate("Z") is None
-
-    def test_coordinate_pairs(self, gold_field: MatchClaimField) -> None:
-        pairs = gold_field.coordinate_pairs()
-        assert pairs == (
-            ["A", "A", "B"],
-            ["B", "C", "C"],
-            [Fraction(0), Fraction(0), 1.0],
-            [10.0, 20.0, 21.0],
-        )
-        assert [type(value) for value in pairs[2]] == [Fraction, Fraction, float]
-        assert MatchClaimField.from_claims([]).coordinate_pairs() == ([], [], [], [])
-
-
 # endregion
 
 
@@ -557,12 +535,6 @@ class TestEveryKind:
         assert field.connects_groups({"score"}, {"audio"}) is True
         anchorless = MatchClaimField.from_claims(_every_kind(NONE6)[3:5])
         assert anchorless.connects_groups({"score"}, {"audio"}) is False
-        assert anchorless.coordinate_pairs() == (
-            ["score", "score"],
-            ["audio", "audio"],
-            [None, None],
-            [None, None],
-        )
 
     def test_repr_html_of_an_anchorless_row(self) -> None:
         field = MatchClaimField.from_claims(_every_kind(NONE6)[3:4])
@@ -763,10 +735,11 @@ def _two_claim_field() -> MatchClaimField:
     )
 
 
-def _literal_row(claim_id: str, a: tuple, b: tuple) -> dict:
+def _literal_row(claim_id: str | None, a: tuple, b: tuple) -> dict:
     """The ``to_dict`` row of an instant event match between *a* and *b*.
 
-    *a* and *b* are ``(timeline id, event id, unit, number type, value)``.
+    *a* and *b* are ``(timeline id, event id, unit, number type, value)``;
+    a row without an id holds no minted one.
     """
     return {
         "timeline_a_id": a[0],
@@ -789,7 +762,7 @@ def _literal_row(claim_id: str, a: tuple, b: tuple) -> dict:
         "event_b_name": None,
         "source_coordinate": None,
         "id": claim_id,
-        "id_minted": True,
+        "id_minted": claim_id is not None,
     }
 
 
@@ -877,12 +850,12 @@ class TestDictRoundTrip:
             "provenance": None,
             "rows": [
                 _literal_row(
-                    "claim_1",
+                    None,
                     ("score", "n1", "quarters", "fraction", [1, 3]),
                     ("audio", "o1", "seconds", "float", 0.5),
                 ),
                 _literal_row(
-                    "claim_2",
+                    None,
                     ("midi", "t96", "ticks", "int", 96),
                     ("pcm", "s44100", "samples", "int", 44100),
                 ),
@@ -1339,10 +1312,24 @@ class TestParquetFile:
     def test_shared_provenance_through_the_file(
         self, gold_field: MatchClaimField, tmp_path: Path
     ) -> None:
-        path = gold_field.to_parquet(tmp_path / "claims.parquet")
+        # The gold vector holds no ids; the bundle it joins mints them.
+        bundle = AlignmentBundle()
+        for uid, timeline_class in (
+            ("A", ContinuousLogicalTimeline),
+            ("B", ContinuousPhysicalTimeline),
+            ("C", ContinuousPhysicalTimeline),
+        ):
+            bundle.add_timeline(timeline_class(length=32, uid=uid))
+        held = bundle.add_match_claim_field(gold_field).match_claim_table
+        path = held.to_parquet(tmp_path / "claims.parquet")
         restored = MatchClaimField.from_parquet(path)
         assert restored.provenance == SHARED
-        assert restored.table.equals(gold_field.table, check_metadata=True)
+        assert restored.table.column("id").to_pylist() == [
+            "claim_1",
+            "claim_2",
+            "claim_3",
+        ]
+        assert restored.table.equals(held.table, check_metadata=True)
 
     def test_implicit_claims_stay_out_of_the_file(self, tmp_path: Path) -> None:
         field = MatchClaimField.from_claims(_every_kind(NONE6))
@@ -1445,6 +1432,36 @@ class TestEquality:
         claims = MatchClaimField.from_claims(_every_kind(NONE6)).to_claims()
         assert [claim.bundle for claim in claims] == [None] * 6
         assert MatchClaimField.from_claims(claims).to_claims() == claims
+
+    def test_tables_of_equal_rows_are_equal(self, gold_field: MatchClaimField) -> None:
+        provenance = [None, HUMAN, SOFTWARE, None, HUMAN]
+        field = MatchClaimField.from_claims(_every_kind(provenance))
+        assert field == MatchClaimField.from_dict(field.to_dict())
+        assert gold_field == MatchClaimField.from_dict(gold_field.to_dict())
+        assert field != gold_field
+        assert MatchClaimField.from_claims([]) == MatchClaimField.from_claims([])
+
+    def test_a_shared_provenance_counts_as_every_row_s(
+        self, gold_field: MatchClaimField
+    ) -> None:
+        per_row = MatchClaimField._from_struct_array(gold_field._rows_with_provenance())
+        assert (per_row.provenance, gold_field.provenance) == (None, SHARED)
+        assert per_row.table.column("provenance").null_count == 0
+        assert per_row == gold_field
+        claims = gold_field.to_claims()
+        one_without = MatchClaimField.from_claims(
+            [claims[0].model_copy(update={"provenance": None}), *claims[1:]]
+        )
+        assert one_without != gold_field
+
+    def test_a_belief_added_is_unequal(self) -> None:
+        claims = _every_kind([None, HUMAN, SOFTWARE, None, HUMAN])
+        believed = claims[1].model_copy(
+            update={"provenance": HUMAN.with_belief(_belief("jo", "false"))}
+        )
+        assert MatchClaimField.from_claims(claims) != MatchClaimField.from_claims(
+            [claims[0], believed, *claims[2:]]
+        )
 
 
 # endregion

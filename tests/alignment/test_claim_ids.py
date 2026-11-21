@@ -14,7 +14,6 @@ import textwrap
 from pathlib import Path
 
 import pyarrow as pa
-import pyarrow.parquet as pq
 import pytest
 
 from timetoalign.alignment import AlignmentBundle, MatchClaim, MatchClaimField
@@ -67,9 +66,9 @@ def _bundle() -> AlignmentBundle:
 
 
 def _stored(path: Path) -> MatchClaimField:
-    """Store the four ``STORED`` claims as a Parquet file and read them back."""
-    pq.write_table(MatchClaimField.from_claims(_claims(STORED)).table, path)
-    return MatchClaimField.from_table(pq.read_table(path))
+    """Store a bundle's four ``STORED`` claims as a Parquet file, read them back."""
+    _holding(*_claims(STORED)).match_claim_table.to_parquet(path)
+    return MatchClaimField.from_parquet(path)
 
 
 def _ids(field: MatchClaimField) -> list[str]:
@@ -113,14 +112,14 @@ def test_field_is_a_scope() -> None:
 
     free = _claims(NEW)
     field = MatchClaimField.from_claims(free)
-    assert _ids(field) == ["claim_1", "claim_2"]
-    assert [claim.id_minted for claim in field] == [True, True]
+    assert _ids(field) == [None, None]
+    assert [claim.id_minted for claim in field] == [False, False]
     assert [claim.id for claim in free] == [None, None]
     with pytest.raises(ValueError, match=re.escape("claim id 'a' is held by 2 claims")):
         MatchClaimField.from_claims(_claims(NEW, ["a", "a"]))
 
 
-def test_from_columns_mints_ids() -> None:
+def test_from_columns_mints_no_id() -> None:
     field = MatchClaimField.from_columns(
         timeline_a_ids=["A", "A", "B"],
         timeline_b_ids=["B", "C", "C"],
@@ -134,8 +133,37 @@ def test_from_columns_mints_ids() -> None:
             "C": ("seconds", "float"),
         },
     )
-    assert _ids(field) == ["claim_1", "claim_2", "claim_3"]
-    assert [claim.id_minted for claim in field] == [True, True, True]
+    assert _ids(field) == [None, None, None]
+    assert [claim.id_minted for claim in field] == [False, False, False]
+
+    bundle = AlignmentBundle()
+    for uid, timeline_class in (
+        ("A", ContinuousLogicalTimeline),
+        ("B", ContinuousPhysicalTimeline),
+        ("C", ContinuousPhysicalTimeline),
+    ):
+        bundle.add_timeline(timeline_class(length=32, uid=uid))
+    bundle.add_match_claim_field(field)
+    held = bundle.get_match_claims()
+    assert [claim.id for claim in held] == ["claim_1", "claim_2", "claim_3"]
+    assert [claim.id_minted for claim in held] == [True, True, True]
+    assert _ids(field) == [None, None, None]
+
+
+def test_two_fields_join_one_bundle() -> None:
+    later = MatchClaimField.from_columns(
+        timeline_a_ids=["score"] * 2,
+        timeline_b_ids=["audio"] * 2,
+        event_a_ids=[f"note_{q}" for q, _ in NEW],
+        event_b_ids=[f"onset_{s}" for _, s in NEW],
+        coordinate_a=[q for q, _ in NEW],
+        coordinate_b=[s for _, s in NEW],
+        timelines=[SCORE, AUDIO],
+    )
+    bundle = _holding().add_match_claim_field(_columns()).add_match_claim_field(later)
+    assert [claim.id for claim in bundle.get_match_claims()] == [
+        f"claim_{n}" for n in range(1, 7)
+    ]
 
 
 def test_null_ids_are_minted_around_held_ones() -> None:
@@ -151,33 +179,52 @@ def test_null_ids_are_minted_around_held_ones() -> None:
         pa.array([False, None, False, None], type=pa.bool_()),
     )
     field = MatchClaimField.from_table(table)
-    assert _ids(field) == ["claim_2", "claim_3", "x", "claim_4"]
-    assert [claim.id_minted for claim in field] == [False, True, False, True]
+    assert _ids(field) == ["claim_2", None, "x", None]
+    assert [claim.id_minted for claim in field] == [False] * 4
+    held = _holding().add_match_claim_field(field).get_match_claims()
+    assert [claim.id for claim in held] == ["claim_2", "claim_3", "x", "claim_4"]
+    assert [claim.id_minted for claim in held] == [False, True, False, True]
+
+
+def test_a_field_without_ids_is_not_written(tmp_path: Path) -> None:
+    path = tmp_path / "claims.parquet"
+    with pytest.raises(ValueError) as raised:
+        _columns().to_parquet(path)
+    assert str(raised.value) == (
+        "MatchClaim table row 0 holds no id, and every MatchClaim of the file "
+        "holds one: add the field to an AlignmentBundle, which mints the ids, "
+        "and write its match_claim_table."
+    )
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_two_runs_store_the_same_ids(tmp_path: Path) -> None:
     program = textwrap.dedent("""
         import sys
 
-        from timetoalign.alignment import MatchClaimField
+        from timetoalign.alignment import AlignmentBundle, MatchClaimField
         from timetoalign.timelines.types import (
             ContinuousLogicalTimeline,
             ContinuousPhysicalTimeline,
         )
 
         pairs = [(0, 0.0), (4, 2.0), (8, 4.0), (12, 6.0)]
-        MatchClaimField.from_columns(
-            timeline_a_ids=["score"] * 4,
-            timeline_b_ids=["audio"] * 4,
-            event_a_ids=[f"note_{q}" for q, _ in pairs],
-            event_b_ids=[f"onset_{s}" for _, s in pairs],
-            coordinate_a=[q for q, _ in pairs],
-            coordinate_b=[s for _, s in pairs],
-            timelines=[
-                ContinuousLogicalTimeline(length=16, uid="score"),
-                ContinuousPhysicalTimeline(length=8.0, uid="audio"),
-            ],
-        ).to_parquet(sys.argv[1])
+        score = ContinuousLogicalTimeline(length=16, uid="score")
+        audio = ContinuousPhysicalTimeline(length=8.0, uid="audio")
+        bundle = AlignmentBundle()
+        bundle.add_timeline(score)
+        bundle.add_timeline(audio)
+        bundle.add_match_claim_field(
+            MatchClaimField.from_columns(
+                timeline_a_ids=["score"] * 4,
+                timeline_b_ids=["audio"] * 4,
+                event_a_ids=[f"note_{q}" for q, _ in pairs],
+                event_b_ids=[f"onset_{s}" for _, s in pairs],
+                coordinate_a=[q for q, _ in pairs],
+                coordinate_b=[s for _, s in pairs],
+                timelines=[score, audio],
+            )
+        ).match_claim_table.to_parquet(sys.argv[1])
         """)
     first_path = tmp_path / "first"
     first_path.mkdir()
@@ -188,7 +235,9 @@ def test_two_runs_store_the_same_ids(tmp_path: Path) -> None:
     )
     first = MatchClaimField.from_parquet(first_path)
     second = MatchClaimField.from_parquet(
-        _columns().to_parquet(tmp_path / "second.parquet")
+        _holding()
+        .add_match_claim_field(_columns())
+        .match_claim_table.to_parquet(tmp_path / "second.parquet")
     )
     assert _ids(first) == _ids(second) == ["claim_1", "claim_2", "claim_3", "claim_4"]
     assert first.table.equals(second.table, check_metadata=True)
@@ -230,7 +279,7 @@ def test_two_free_claims_become_distinct() -> None:
     edge_ids = [data["claim_id"] for _, _, data in graph._graph.edges(data=True)]
     assert edge_ids == [None, None]
 
-    assert _ids(MatchClaimField.from_claims([first, second])) == ["claim_1", "claim_2"]
+    assert _ids(MatchClaimField.from_claims([first, second])) == [None, None]
     assert (first.id, second.id) == (None, None)
 
     bundle = _bundle()
@@ -304,18 +353,21 @@ def test_held_ids_are_refused_never_reminted() -> None:
         source_claim=source,
     )
     field = MatchClaimField.from_claims([source, implicit])
-    assert _ids(field) == ["anchor", "claim_1"]
+    assert _ids(field) == ["anchor", None]
     assert [claim.source_claim_id for claim in field] == [None, "anchor"]
 
     bundle = _bundle().add_match_claims(_claims(NEW))
+    bundle.add_match_claim_field(field)
+    held = ["claim_1", "claim_2", "anchor", "claim_3"]
+    assert [claim.id for claim in bundle.get_match_claims()] == held
     with pytest.raises(
         ValueError,
         match=re.escape(
             "claim id 'claim_1' is already held by another claim of this bundle"
         ),
     ):
-        bundle.add_match_claim_field(field)
-    assert [claim.id for claim in bundle.get_match_claims()] == ["claim_1", "claim_2"]
+        bundle.add_match_claim_field(_holding(*_claims(NEW)).match_claim_table)
+    assert [claim.id for claim in bundle.get_match_claims()] == held
 
     bundle = _bundle().add_match_claims([source, _claims(NEW[:1])[0]])
     implicit = MatchClaim.implicit(
@@ -335,7 +387,7 @@ def test_two_runs_merged(tmp_path: Path) -> None:
     program = textwrap.dedent("""
         import sys
 
-        from timetoalign.alignment import MatchClaim, MatchClaimField
+        from timetoalign.alignment import AlignmentBundle, MatchClaim
         from timetoalign.timelines.types import (
             ContinuousLogicalTimeline,
             ContinuousPhysicalTimeline,
@@ -352,7 +404,10 @@ def test_two_runs_merged(tmp_path: Path) -> None:
             )
             for quarters, seconds in [(0, 0.0), (4, 2.0), (8, 4.0), (12, 6.0)]
         ]
-        MatchClaimField.from_claims(claims).to_parquet(sys.argv[1])
+        bundle = AlignmentBundle()
+        bundle.add_timeline(score)
+        bundle.add_timeline(audio)
+        bundle.add_match_claims(claims).match_claim_table.to_parquet(sys.argv[1])
         """)
     first_path = tmp_path / "first.parquet"
     subprocess.run(

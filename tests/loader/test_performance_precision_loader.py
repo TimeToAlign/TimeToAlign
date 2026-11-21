@@ -15,7 +15,8 @@ It verifies:
 - per-performer MatchClaim counts (559 note = 480 sync + 79 NOMATCH;
   32 bar; 376 beat) and the bundle totals (8 timelines, 6769 claims),
 - the events every claim names (Projections where a row states a position
-  only) and the Projections the loader adds for them.
+  only) and the Projections standing for them, one per position and event
+  stood for.
 
 All counts and coordinates are exact per the Zero Tolerance Validation
 Policy.  Validation logic is documented in ``tests/loader/README.md``.
@@ -152,10 +153,13 @@ def _events_by_id(timeline: Any) -> dict[str, dict[str, Any]]:
 
 
 def test_score_timeline_basics(loader: PerformancePrecisionLoader) -> None:
-    """2494 notes, and one Projection per alignment row of the 21 files."""
+    """2494 notes; Projections: 3360 of a performer's Note, 455 positions of none."""
     score = loader.create_timeline("score")
-    assert _event_type_counts(score) == {"Note": 2494, "Projection": 6769}
-    assert len(score.events) == 9263
+    assert _event_type_counts(score) == {"Note": 2494, "Projection": 3815}
+    assert len(score.events) == 6309
+    projections = score.events.filter(event_type="Projection").table
+    of_no_event = projections.column("projection_of").null_count
+    assert (of_no_event, projections.num_rows - of_no_event) == (455, 3360)
     assert score.unit == TimeUnit.quarters
     assert score.length.value == 212.5
 
@@ -248,10 +252,10 @@ def test_per_performer_counts(bundle, performer_key: str) -> None:
 
 
 def test_performer_physical_timeline(loader: PerformancePrecisionLoader) -> None:
-    """One Note per aligned note row (480), one Projection per bar/beat row."""
+    """One Note per aligned note row (480), one Projection per bar/beat time."""
     perf = loader.create_timeline("Chopin_Ashkenazy")
     assert perf.unit == TimeUnit.seconds
-    assert _event_type_counts(perf) == {"Note": 480, "Projection": 408}
+    assert _event_type_counts(perf) == {"Note": 480, "Projection": 376}
 
 
 def test_claim_provenance(bundle) -> None:

@@ -7,6 +7,7 @@ section "A Package: the Manifest and Its Tables").
 from __future__ import annotations
 
 import hashlib
+import io
 import re
 import shutil
 from fractions import Fraction
@@ -723,8 +724,8 @@ class TestTimeToShareFixturePackage:
         assert len(bundle.match_claim_table) == 15
         assert {tid: known[tid].n_events for tid in sorted(known)} == {
             "clt_1": 0,
-            "clt_2": 0,
-            "cpt_1": 1,
+            "clt_2": 1,
+            "cpt_1": 2,
             "dpt_1": 8,
         }
         assert projection_table(known[tid] for tid in sorted(known)).equals(
@@ -748,6 +749,14 @@ class TestTimeToShareFixturePackage:
         claims, projections = written["resources"]
         assert claims == fixture["resources"][0]
         data = (tmp_path / "projections.parquet").read_bytes()
+        # The rows by timeline, each in its event order: the fixture sorted
+        # (stably) by timeline and written with Parquet's defaults.
+        sorted_fixture = io.BytesIO()
+        pq.write_table(
+            pq.read_table(_TABLES / "projections.parquet").sort_by("timeline_id"),
+            sorted_fixture,
+        )
+        assert data == sorted_fixture.getvalue()
         assert projections == {
             **fixture["resources"][1],
             "size": len(data),

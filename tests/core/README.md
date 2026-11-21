@@ -677,11 +677,17 @@ timeline is tested in `tests/timelines/test_projections.py`.
   the installed package; never skipped), which is in the package form
   (each row's `unit` and `number_type` once, `start` and `duration` their
   number once): read by the package reader (`read_projection_table`
-  against the fixture manifest), its nine rows equal the nine Projections
-  spelled out in the test, by timeline in row order (eight ints on `dpt_1`,
-  the float 10.0 seconds on `cpt_1`, one interval, two without
-  `projection_of`), each value of its number type's Python type.
-  `ProjectionField.from_projections` of those nine, its cells written in
+  against the fixture manifest), its eleven rows equal the eleven
+  Projections spelled out in the test, by timeline in row order (eight ints
+  on `dpt_1`, one of them an interval; two floats on `cpt_1`, the instant
+  10.0 seconds and the interval 12.5 seconds lasting 0.75; one fraction on
+  `clt_2`, the interval 7/2 quarters lasting 1/2; two without
+  `projection_of`), each start and duration of its number type's Python type
+  (`int`, `float`, `Fraction`), so each of the three number types is read
+  from the member the package form writes it in. The fixture's `timeline_id`
+  column is pinned in its row order (`dpt_1` ×6, `cpt_1`, `dpt_1` ×2,
+  `clt_2`, `cpt_1`).
+  `ProjectionField.from_projections` of those eleven, its cells written in
   the package form (`package_numbers` of each position's number by its
   number type, the row's `unit` and `number_type` from its start cell) and
   the fixture's `timeline_id` column added, in `PROJECTION_SCHEMA`'s order,

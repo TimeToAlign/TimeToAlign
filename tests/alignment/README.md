@@ -1762,12 +1762,18 @@ Those values are literal data written by hand in TimeToShare's emission
 script, never computed by a derivation, so they are an independent oracle.
 
 - `AlignmentBundle.from_file(manifest.yaml)` holds the fifteen MatchClaims
-  and the nine Projections (eight on `dpt_1`, one on `cpt_1`); the bundle's
-  Projections table equals the fixture's sorted by timeline (a stable sort,
-  so each timeline keeps its order). The Projections file is equal as a
-  table, not as bytes: the library writes the rows by timeline ID, the
-  fixture holds them in its emitter's order (`dpt_1` ×6, `cpt_1`, `dpt_1`
-  ×2).
+  and the eleven Projections (eight on `dpt_1`, two on `cpt_1`, one on
+  `clt_2`; `clt_1` holds none), so every timeline's events are its
+  Projections alone; the bundle's Projections table equals the fixture's
+  sorted by timeline (a stable sort, so each timeline keeps its order). The
+  Projections file is equal as a table, not as bytes: the library writes
+  the rows by timeline ID, each timeline in its event order (`clt_2`,
+  `cpt_1` ×2, `dpt_1` ×8), the fixture holds them in its emitter's order
+  (`dpt_1` ×6, `cpt_1`, `dpt_1` ×2, `clt_2`, `cpt_1`). The bundle holds
+  each timeline's Projections in that timeline's events and keeps no order
+  across timelines, so it cannot write the fixture's; the fixture sorted by
+  timeline and written with Parquet's defaults is the library's file byte
+  for byte.
 - Written to a fresh directory, `match_claims.parquet` is the fixture's
   byte for byte and the MatchClaim entry equals the fixture's (its size and
   digest included); the Projection entry differs from the fixture's only in

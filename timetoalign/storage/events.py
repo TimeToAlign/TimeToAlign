@@ -43,7 +43,7 @@ from timetoalign.core import (
     resolve_coordinate_spec,
 )
 from timetoalign.core.fields import SemanticField, field_metadata
-from timetoalign.core.ids import id_column, mint_ids
+from timetoalign.core.ids import id_column, mint_ids, quote_id
 from timetoalign.core.time import (
     RATIONAL_STRUCT_TYPE,
     build_number_struct_array,
@@ -140,6 +140,54 @@ def mint_event_ids(
         count = pc.sum(rows).as_py()
         ids = pc.replace_with_mask(ids, rows, mint_ids(prefix, held, count))
     return ids
+
+
+def projection_ids(events: pa.Table) -> pa.Array:
+    """The IDs of the Projection rows of an event table, in row order.
+
+    Args:
+        events: An event table (``EventData.table``).
+
+    Returns:
+        A string array, empty where the table holds no Projection.
+    """
+    if events.num_rows == 0 or "event_type" not in events.column_names:
+        return pa.array([], pa.string())
+    rows = pc.fill_null(
+        pc.equal(events.column("event_type"), PROJECTION_EVENT_TYPE), False
+    )
+    return pc.cast(events.column("id").filter(rows).combine_chunks(), pa.string())
+
+
+def refuse_shared_projection_ids(
+    ids: pa.Array | pa.ChunkedArray, timeline_ids: pa.Array | pa.ChunkedArray
+) -> None:
+    """Refuse a Projection ID that names two Projections.
+
+    A Projection's ID is unique among all Projections of the manifest it
+    belongs to (its timeline's tree and every tree of the groups and bundles
+    holding it), hence of the Projections table of the package written from
+    it: two timelines never hold one Projection ID.
+
+    Args:
+        ids: Projection IDs.
+        timeline_ids: The ID of the timeline holding each, row for row.
+
+    Raises:
+        ValueError: Naming the first ID given twice, in row order, and the
+            timelines of its first two rows.
+    """
+    counts = pc.value_counts(ids)
+    shared = counts.filter(pc.greater(counts.field("counts"), 1))
+    if not len(shared):
+        return
+    shared_id = shared.field("values")[0].as_py()
+    first, second = pc.filter(timeline_ids, pc.equal(ids, shared_id)).to_pylist()[:2]
+    raise ValueError(
+        f"Projection ID {quote_id(shared_id)} names a Projection on the timeline "
+        f"{quote_id(first)} and one on {quote_id(second)}: a Projection's ID is "
+        f"unique among all Projections of a manifest and its package"
+    )
 
 
 def _event_rows(

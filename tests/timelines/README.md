@@ -167,7 +167,10 @@ proved right by evidence that does not come from the slicer itself:
    of length 12960 holds the ``[27, 54)`` rows and answers ``"7"`` at tick 0.
    ``create_child_from_region`` over a region ``[27, 54)`` and
    ``create_children_from_boundaries([27, 54])`` hold the same rows: one
-   slice, whichever call derives the child.
+   slice, whichever call derives the child. ``create_children_from_regions``
+   over the regions ``[0, 27)`` and ``[27, 54)`` with ``measures=True`` gives
+   two children holding exactly ``BARS_1_TO_6`` and ``BARS_7_TO_12``, in
+   region order; without it, neither holds a measure map.
 3. **Refusals change nothing.** ``get_slice`` refuses ``start >= end``, a
    range outside ``[0, total actual length]`` and a map with a measure lacking
    ``actual_length`` (``ValueError``), and leaves its source map equal to a
@@ -2038,6 +2041,26 @@ write fractions):
   call mints `projection_1`, `projection_2`; with `projection_2` held by a
   Note, the next call mints `projection_3` and `projection_4` for two rows
   (the call returns them in row order), never `projection_1` below it.
+- **A Projection's ID is unique in its manifest** (the timeline's tree
+  and every tree of the groups and bundles holding it, as a bundle writes
+  one Projections table for all of them; TimeToShare's table check keys
+  the ID alone). In a bundle holding `dpt_1` and `clt_6` (both roots),
+  `add_projections` of two Projections on `dpt_1` mints `projection_1`,
+  `projection_2`; one Projection then added to `clt_6` through
+  `add_events` is minted `projection_3`, never `projection_1` again. In
+  one tree without a bundle the same holds: with `projection_1` on
+  `dpt_1`, a Projection on its child `part` is minted `projection_2`. A
+  timeline in no manifest with them mints on its own: a free `clt_6`
+  holding nothing mints `projection_1` (the scope is the manifest, not
+  the process). A given Projection ID another timeline of the manifest
+  holds as a Projection is refused, atomically (`clt_6` still holds 0
+  events), naming both timelines — through `add_events`, `Projection ID
+  'projection_1' names a Projection on the timeline 'dpt_1' and one on
+  'clt_6': a Projection's ID is unique among all Projections of a
+  manifest and its package`, and through `add_projections` (get-or-add
+  reuses a Projection of its own timeline only), the same message. Nothing
+  here mints again: a test that passed with per-timeline minting would
+  see `clt_6` mint `projection_1` and accept the given one.
 - **A Projection object stands for its row.** `add_events` takes a
   `Projection` alone or in a list beside dicts: `Projection(start=
   Coordinate(1/2, seconds), projection_of=EventReference(clt_6, x1azmn68))`

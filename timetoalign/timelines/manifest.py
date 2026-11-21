@@ -81,6 +81,7 @@ from timetoalign.core.time import (
     package_numbers,
 )
 from timetoalign.maps.base import MEASURE_MAP_ID_PREFIX
+from timetoalign.storage.events import refuse_shared_projection_ids
 
 from .statements import (
     STATE_KEYS,
@@ -823,11 +824,18 @@ def projection_table(timelines: Iterable[Timeline]) -> pa.Table:
     the member the number type names (the package form,
     :func:`~timetoalign.core.time.package_numbers`), and ``projection_of``.
 
+    A Projection's ID is unique among all Projections of the package, so
+    two timelines holding one Projection ID (built apart, then brought into
+    one bundle) are refused, naming both; no ID is minted again.
+
     Args:
         timelines: The timelines, each once.
 
     Returns:
         The table, empty when no timeline holds a Projection.
+
+    Raises:
+        ValueError: If one Projection ID names Projections on two timelines.
     """
     parts = []
     for timeline in timelines:
@@ -874,7 +882,11 @@ def projection_table(timelines: Iterable[Timeline]) -> pa.Table:
                 schema=PROJECTION_SCHEMA,
             )
         )
-    return pa.concat_tables(parts) if parts else PROJECTION_SCHEMA.empty_table()
+    if not parts:
+        return PROJECTION_SCHEMA.empty_table()
+    table = pa.concat_tables(parts)
+    refuse_shared_projection_ids(table.column("id"), table.column("timeline_id"))
+    return table
 
 
 def _in_type(array: pa.Array, type_: pa.DataType) -> pa.Array:
@@ -921,8 +933,8 @@ def read_projection_table(
     The table is checked by TimeToShare's rules against the manifest naming
     it (:func:`timetoshare.tables.projection_problems`): every column of the
     table type, every timeline one of the manifest's, every cell on its
-    timeline's own axis, every ID given once on its timeline (an event is
-    named by its timeline and its ID, so two timelines may each hold
+    timeline's own axis, every ID given once in the table (a Projection's
+    ID is unique in the package, so two timelines never both hold
     ``projection_1``). Each ``start`` and ``duration`` is read in the
     number type its row states (:func:`~timetoalign.core.time.numbers_from_package`),
     and a number not standing as that type says is refused.

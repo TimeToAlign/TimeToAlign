@@ -552,6 +552,29 @@ class TestChildMeasureMap:
         assert child.measure_map.to_rows() == BARS_7_TO_12
         assert section.measure_map.to_rows() == BARS_7_TO_12
 
+    def test_children_from_regions_hold_the_bars_of_their_regions(self) -> None:
+        score = _measured_score()
+        first = score.create_region(0, 27, id="bars_1_6")
+        second = score.create_region(27, 54, id="bars_7_12")
+
+        children = score.create_children_from_regions(
+            [first.id, second.id], measures=True
+        )
+
+        assert [child.measure_map.to_rows() for child in children] == [
+            BARS_1_TO_6,
+            BARS_7_TO_12,
+        ]
+        plain = _measured_score()
+        plain.create_region(0, 27, id="bars_1_6")
+        plain.create_region(27, 54, id="bars_7_12")
+        assert [
+            child.measure_map for child in plain.create_children_from_regions()
+        ] == [
+            None,
+            None,
+        ]
+
     def test_by_default_a_child_holds_no_measure_map(self) -> None:
         child = _measured_score().create_child(27, 0)
 

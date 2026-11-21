@@ -1416,13 +1416,15 @@ class TestCreateMatchClaims:
         counts = (len(audio_tl.events), len(score_tl.events))
         assert counts == (2, 2)
         again = bundle.create_match_claims(self._pairs(score_tl.id, audio_tl.id))
+        # A Projection's ID is unique in the bundle: the score's two come
+        # first (the first pair gives the score one), the audio's is the third.
         assert named(first) == [
             ("claim_1", "o1", "projection_1"),
-            ("claim_2", "projection_1", "projection_2"),
+            ("claim_2", "projection_3", "projection_2"),
         ]
         assert named(again) == [
             ("claim_3", "o1", "projection_1"),
-            ("claim_4", "projection_1", "projection_2"),
+            ("claim_4", "projection_3", "projection_2"),
         ]
         assert (len(audio_tl.events), len(score_tl.events)) == counts
         assert score_tl.get_event("projection_1")["projection_of"] == {
@@ -1430,7 +1432,7 @@ class TestCreateMatchClaims:
             "event_id": "o1",
         }
         assert score_tl.get_event("projection_2")["projection_of"] is None
-        assert audio_tl.get_event("projection_1")["projection_of"] is None
+        assert audio_tl.get_event("projection_3")["projection_of"] is None
 
     def test_an_unknown_event_id_adds_nothing(self) -> None:
         bundle, score_tl, _, audio_tl, _ = _make_cross_group_bundle()

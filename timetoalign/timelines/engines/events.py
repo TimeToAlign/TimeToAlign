@@ -32,6 +32,8 @@ from timetoalign.storage.events import (
     PROJECTION_EVENT_TYPE,
     _event_rows,
     mint_event_ids,
+    projection_ids,
+    refuse_shared_projection_ids,
 )
 
 SEGMENT_EVENT_TYPE = "Segment"
@@ -471,19 +473,77 @@ class EventsMixin:
         minted = self.add_events(added, allow_expansion) if added else []
         return [minted[entry] if isinstance(entry, int) else entry for entry in ids]
 
+    def _manifest_projection_ids(self) -> tuple[pa.Array, pa.Array]:
+        """The Projection IDs every other timeline of this one's manifest holds.
+
+        The manifest is this timeline's tree and every tree the groups and
+        bundles holding it hold, as for every other ID of the manifest
+        (``_manifest_ids``): the package written from a bundle holds one
+        Projections table for all of them.
+
+        Returns:
+            The IDs and, row for row, the ID of the timeline holding each.
+        """
+        roots = [self._tree_root()]
+        for container in self._scope_containers():
+            for root in container._member_roots():
+                if not any(seen is root for seen in roots):
+                    roots.append(root)
+        ids: list[pa.Array] = []
+        holders: list[pa.Array] = []
+        for root in roots:
+            for timeline in (root, *(child for _, child in root._iter_descendants())):
+                if timeline is self:
+                    continue
+                held = projection_ids(timeline._events.table)
+                if len(held):
+                    ids.append(held)
+                    holders.append(pa.array([timeline.id] * len(held), pa.string()))
+        if not ids:
+            return pa.array([], pa.string()), pa.array([], pa.string())
+        return pa.concat_arrays(ids), pa.concat_arrays(holders)
+
     def _rows_with_ids(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Return *rows*, each with an ID new to this timeline.
 
         A given ID is kept; one already held by an event of this timeline, or
-        given twice, is refused. A missing one is minted above both. The held
-        IDs are read column-wise, never as Python objects.
+        given twice, is refused. A missing one is minted above both. A
+        Projection's ID is unique in the timeline's manifest
+        (:meth:`_manifest_projection_ids`): where the rows hold a Projection,
+        a given Projection ID another timeline of the manifest holds as a
+        Projection is refused, naming both timelines, and every ID is minted
+        above the Projection IDs held there too. The held IDs are read
+        column-wise, never as Python objects.
 
         Raises:
-            ValueError: If a given ID is held already or given twice.
+            ValueError: If a given ID is held already or given twice, or a
+                given Projection ID names a Projection of another timeline of
+                the manifest.
         """
         given = [row["id"] for row in rows if row.get("id") is not None]
         held = self._events.table.column("id")
         given_ids = pa.array(given, type=pa.string())
+        around = pa.array([], pa.string())
+        if any(row.get("event_type") == PROJECTION_EVENT_TYPE for row in rows):
+            around, holders = self._manifest_projection_ids()
+            given_projections = pa.array(
+                [
+                    row["id"]
+                    for row in rows
+                    if row.get("id") is not None
+                    and row.get("event_type") == PROJECTION_EVENT_TYPE
+                ],
+                pa.string(),
+            )
+            refuse_shared_projection_ids(
+                pa.concat_arrays([around, given_projections]),
+                pa.concat_arrays(
+                    [
+                        holders,
+                        pa.array([self._id] * len(given_projections), pa.string()),
+                    ]
+                ),
+            )
         if given:
             repeated = sorted(
                 event_id for event_id, count in Counter(given).items() if count > 1
@@ -506,7 +566,8 @@ class EventsMixin:
             mint_event_ids(
                 missing,
                 pa.chunked_array(
-                    [*pc.cast(held, pa.string()).chunks, given_ids], pa.string()
+                    [*pc.cast(held, pa.string()).chunks, given_ids, around],
+                    pa.string(),
                 ),
             ).to_pylist()
         )

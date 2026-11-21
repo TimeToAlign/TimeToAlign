@@ -156,7 +156,7 @@ class TestTransitiveUnion:
         (bridge,) = merged.get_match_claims(between=("a1:clt_1", "b_bridge:dpt_1"))
         assert (bridge.event_a_id, bridge.event_b_id) == (
             "projection_1",
-            "projection_1",
+            "projection_2",
         )
         assert bridge.start_anchor.coordinate_b == Coordinate(500, TimeUnit.samples)
 

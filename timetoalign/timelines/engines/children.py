@@ -1130,6 +1130,7 @@ class ChildrenMixin:
         region_ids: Sequence[str] | None = None,
         *,
         copy_events: bool = True,
+        measures: bool = False,
     ) -> list["Timeline"]:
         """Create children from multiple regions (batch partitioning).
 
@@ -1139,6 +1140,8 @@ class ChildrenMixin:
         Args:
             region_ids: Region ids. None = all regions in insertion order.
             copy_events: Copy events to children.
+            measures: Give each child the slice of this timeline's measure
+                map over its region, as :meth:`create_child` does.
 
         Returns:
             List of child timelines in region order.
@@ -1146,6 +1149,8 @@ class ChildrenMixin:
         Raises:
             KeyError: If any region id is not found.
             RuntimeError: If timeline is locked.
+            ValueError: With *measures*, as :meth:`create_child_from_region`
+                raises.
 
         Examples:
             >>> tl.create_regions_by_grouping("@pageIndex",
@@ -1157,7 +1162,9 @@ class ChildrenMixin:
 
         result: list[Timeline] = []
         for region_id in region_ids:
-            child = self.create_child_from_region(region_id, copy_events=copy_events)
+            child = self.create_child_from_region(
+                region_id, copy_events=copy_events, measures=measures
+            )
             result.append(child)
         return result
 

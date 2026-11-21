@@ -167,13 +167,12 @@ TWO_WORKS = """<mei xmlns="http://www.music-encoding.org/ns/mei"><meiHead><workL
 
 
 def entry(
-    status: str, property: str, value: Any, basis: str, note: str | None = None
+    property: str, value: Any, basis: str, note: str | None = None
 ) -> dict[str, Any]:
-    """A provenance entry of the import."""
+    """A provenance entry of the import: how the pair was made, and no belief."""
     result = {
         "property": property,
         "value": value,
-        "status": status,
         "stated_by": [AGENT],
         "date": DATE,
         "method": "imported",
@@ -184,12 +183,11 @@ def entry(
     return result
 
 
-def confirmed(
+def stated(
     property: str, value: Any, xml_id: str | None, base: str = "cnw0133.xml", **kw: Any
 ) -> dict[str, Any]:
-    """C(p, v, x): a confirmed entry whose basis is the element *xml_id* of *base*."""
+    """The entry of a stated pair whose basis is the element *xml_id* of *base*."""
     return entry(
-        "confirmed",
         property,
         value,
         base if xml_id is None else f"{base}#{xml_id}",
@@ -197,15 +195,15 @@ def confirmed(
     )
 
 
-def proposed(
+def candidate(
     property: str,
     value: Any,
     xml_id: str,
     base: str = "cnw0133.xml",
     note: str = "unreconciled",
 ) -> dict[str, Any]:
-    """P(p, v, x): a proposal of an unreconciled name."""
-    return entry("proposed", property, value, f"{base}#{xml_id}", note=note)
+    """The entry of a candidate: an unreconciled name, offered and not stated."""
+    return entry(property, value, f"{base}#{xml_id}", note=note)
 
 
 def title(text: str, language: str | None, title_type: str | None) -> dict[str, Any]:
@@ -257,6 +255,8 @@ ITEM_PAIRS = {
 ITEM = {"id": "cnw0133.xml#item_1", **ITEM_PAIRS}
 KEEPER = "cidoc:P50_has_current_keeper"
 EDITOR = "https://example.org/people/editor"
+AGAIN = {"source_1": "cgt_1", "source_2": "cgt_2"}
+"""The second import maps each manifestation to the timeline the first gave it."""
 
 
 def work_node(
@@ -278,28 +278,26 @@ def work_node(
         "melod:isArrangementOf": [{"id": related}],
         "dcterms:source": [{"id": related}],
         "provenance": [
-            confirmed("rdf:type", {"id": "melod:Work"}, "work_1", base),
-            confirmed(
+            stated("rdf:type", {"id": "melod:Work"}, "work_1", base),
+            stated(
                 "melod:hasTitle",
                 title("Hr. Olufs Sang", "da", "MainTitle"),
                 "title_1",
                 base,
             ),
-            confirmed(
+            stated(
                 "melod:hasTitle",
                 title("Sir Oluf's Song", "en", "AlternativeTitle"),
                 "title_2",
                 base,
             ),
-            confirmed("melod:hasIdentifier", CNW_IDENTIFIER, "identifier_1", base),
-            proposed("rel:cmp", {"label": "Carl Nielsen"}, "persName_1", base),
-            confirmed("rel:lyr", {"id": "gnd:119018934"}, "persName_2", base),
-            confirmed("schema:dateCreated", CREATED, "date_1", base),
-            confirmed(
-                "lrmoo:R3_is_realised_in", {"id": expression}, "expression_1", base
-            ),
-            confirmed("melod:isArrangementOf", {"id": related}, "relation_1", base),
-            confirmed("dcterms:source", {"id": related}, "relation_1", base),
+            stated("melod:hasIdentifier", CNW_IDENTIFIER, "identifier_1", base),
+            candidate("rel:cmp", {"label": "Carl Nielsen"}, "persName_1", base),
+            stated("rel:lyr", {"id": "gnd:119018934"}, "persName_2", base),
+            stated("schema:dateCreated", CREATED, "date_1", base),
+            stated("lrmoo:R3_is_realised_in", {"id": expression}, "expression_1", base),
+            stated("melod:isArrangementOf", {"id": related}, "relation_1", base),
+            stated("dcterms:source", {"id": related}, "relation_1", base),
         ],
     }
 
@@ -314,12 +312,12 @@ def expression_node(base: str = "cnw0133.xml") -> dict[str, Any]:
         "melod:hasMeter": [METER],
         MEDIUM: [VOICE, PIANO],
         "provenance": [
-            confirmed("rdf:type", {"id": "melod:Expression"}, "expression_1", base),
-            confirmed("rdfs:label", "Version for voice and piano", "title_3", base),
-            confirmed("mus:U11_has_key", KEY, "key_1", base),
-            confirmed("melod:hasMeter", METER, "meter_1", base),
-            confirmed(MEDIUM, VOICE, "perfRes_1", base),
-            confirmed(MEDIUM, PIANO, "perfRes_2", base),
+            stated("rdf:type", {"id": "melod:Expression"}, "expression_1", base),
+            stated("rdfs:label", "Version for voice and piano", "title_3", base),
+            stated("mus:U11_has_key", KEY, "key_1", base),
+            stated("melod:hasMeter", METER, "meter_1", base),
+            stated(MEDIUM, VOICE, "perfRes_1", base),
+            stated(MEDIUM, PIANO, "perfRes_2", base),
         ],
     }
 
@@ -339,10 +337,10 @@ def print_provenance(
 ) -> list[dict[str, Any]]:
     """source_1's entries; *relation* is the relation placing the expression."""
     return [
-        confirmed("rdf:type", {"id": "melod:Manifestation"}, "source_1", base),
-        confirmed("melod:hasTitle", title("Score, print", None, None), "title_4", base),
-        confirmed("melod:hasIdentifier", SOURCE_IDENTIFIER, "identifier_2", base),
-        confirmed("lrmoo:R4_embodies", {"id": f"{base}#expression_1"}, relation, base),
+        stated("rdf:type", {"id": "melod:Manifestation"}, "source_1", base),
+        stated("melod:hasTitle", title("Score, print", None, None), "title_4", base),
+        stated("melod:hasIdentifier", SOURCE_IDENTIFIER, "identifier_2", base),
+        stated("lrmoo:R4_embodies", {"id": f"{base}#expression_1"}, relation, base),
     ]
 
 
@@ -351,18 +349,14 @@ AUTOGRAPH_STATEMENTS = {
     "melod:hasTitle": [title("Score, autograph", None, "MainTitle")],
     "owl:sameAs": [{"id": "https://example.org/sources/autograph"}],
     "lrmoo:R7i_is_exemplified_by": [
-        {**ITEM, "provenance": [proposed(KEEPER, {"label": "DK-Kk"}, "corpName_1")]}
+        {**ITEM, "provenance": [candidate(KEEPER, {"label": "DK-Kk"}, "corpName_1")]}
     ],
 }
 AUTOGRAPH_PROVENANCE = [
-    confirmed("rdf:type", {"id": "melod:Manifestation"}, "source_2"),
-    confirmed(
-        "melod:hasTitle", title("Score, autograph", None, "MainTitle"), "title_5"
-    ),
-    confirmed(
-        "owl:sameAs", {"id": "https://example.org/sources/autograph"}, "source_2"
-    ),
-    confirmed("lrmoo:R7i_is_exemplified_by", {"id": "cnw0133.xml#item_1"}, "item_1"),
+    stated("rdf:type", {"id": "melod:Manifestation"}, "source_2"),
+    stated("melod:hasTitle", title("Score, autograph", None, "MainTitle"), "title_5"),
+    stated("owl:sameAs", {"id": "https://example.org/sources/autograph"}, "source_2"),
+    stated("lrmoo:R7i_is_exemplified_by", {"id": "cnw0133.xml#item_1"}, "item_1"),
 ]
 
 PREFIXES = "cidoc dcterms gnd lrmoo melod melodTerms mus owl rdf rdfs rel schema skos xsd".split()
@@ -430,8 +424,8 @@ class TestNewBundle:
             "schema:about": [work_node()],
         }
         assert bundle.provenance == [
-            confirmed("schema:about", {"id": WORK}, "work_1"),
-            confirmed("rdfs:seeAlso", {"id": "cnw0133.xml"}, None),
+            stated("schema:about", {"id": WORK}, "work_1"),
+            stated("rdfs:seeAlso", {"id": "cnw0133.xml"}, None),
         ]
 
     def test_manifestations(self, cnw0133: Path) -> None:
@@ -496,17 +490,17 @@ class TestVariants:
         assert autograph.statements["lrmoo:R7i_is_exemplified_by"] == [
             {
                 **ITEM,
-                "provenance": [proposed(KEEPER, {"label": "DK-Kk"}, "corpName_1")],
+                "provenance": [candidate(KEEPER, {"label": "DK-Kk"}, "corpName_1")],
             },
             {
                 "id": "cnw0133.xml#item_2",
                 **ITEM_PAIRS,
-                "provenance": [proposed(KEEPER, {"label": "DK-Kk"}, "corpName_2")],
+                "provenance": [candidate(KEEPER, {"label": "DK-Kk"}, "corpName_2")],
             },
         ]
         assert autograph.provenance == [
             *AUTOGRAPH_PROVENANCE,
-            confirmed(
+            stated(
                 "lrmoo:R7i_is_exemplified_by", {"id": "cnw0133.xml#item_2"}, "item_2"
             ),
         ]
@@ -558,18 +552,18 @@ class TestSecondHeader:
             "melod:hasMeter": [meter],
             MEDIUM: [organ, treader],
             "provenance": [
-                confirmed("rdf:type", {"id": "melod:Expression"}, "expression_1", base),
-                confirmed("rdfs:label", label, "title_2", base),
-                confirmed(
+                stated("rdf:type", {"id": "melod:Expression"}, "expression_1", base),
+                stated("rdfs:label", label, "title_2", base),
+                stated(
                     "rel:ctb",
                     {"id": "viaf:1"},
                     "persName_2",
                     base,
                     note="role 'organ builder'",
                 ),
-                confirmed("melod:hasMeter", meter, "meter_1", base),
-                confirmed(MEDIUM, organ, "perfRes_1", base),
-                confirmed(MEDIUM, treader, "perfRes_2", base),
+                stated("melod:hasMeter", meter, "meter_1", base),
+                stated(MEDIUM, organ, "perfRes_1", base),
+                stated(MEDIUM, treader, "perfRes_2", base),
             ],
         }
         titles = [
@@ -590,26 +584,26 @@ class TestSecondHeader:
                     "owl:sameAs": [{"id": "gnd:300000001"}],
                     "lrmoo:R3_is_realised_in": [expression],
                     "provenance": [
-                        confirmed("rdf:type", {"id": "melod:Work"}, "work_1", base),
-                        confirmed("melod:hasTitle", titles[0], "title_1", base),
-                        confirmed("melod:hasTitle", titles[1], "title_4", base),
-                        confirmed("melod:hasIdentifier", opus, "identifier_2", base),
-                        proposed("rel:dte", {"label": "Anna"}, "persName_1", base),
-                        proposed("rel:cph", {"label": "Verlag Y"}, "persName_3", base),
-                        proposed(
+                        stated("rdf:type", {"id": "melod:Work"}, "work_1", base),
+                        stated("melod:hasTitle", titles[0], "title_1", base),
+                        stated("melod:hasTitle", titles[1], "title_4", base),
+                        stated("melod:hasIdentifier", opus, "identifier_2", base),
+                        candidate("rel:dte", {"label": "Anna"}, "persName_1", base),
+                        candidate("rel:cph", {"label": "Verlag Y"}, "persName_3", base),
+                        candidate(
                             "rel:ctb",
                             {"label": "Tuner Z"},
                             "persName_4",
                             base,
                             note="unreconciled; role 'organ tuner'",
                         ),
-                        proposed("rel:cmp", {"label": "Anonymous"}, "composer_1", base),
-                        confirmed("schema:dateCreated", dated, "date_1", base),
-                        confirmed("melod:hasMeter", work_meter, "meter_2", base),
-                        confirmed(
-                            "owl:sameAs", {"id": "gnd:300000001"}, "work_1", base
+                        candidate(
+                            "rel:cmp", {"label": "Anonymous"}, "composer_1", base
                         ),
-                        confirmed(
+                        stated("schema:dateCreated", dated, "date_1", base),
+                        stated("melod:hasMeter", work_meter, "meter_2", base),
+                        stated("owl:sameAs", {"id": "gnd:300000001"}, "work_1", base),
+                        stated(
                             "lrmoo:R3_is_realised_in",
                             {"id": "andante.xml#expression_1"},
                             "expression_1",
@@ -620,8 +614,8 @@ class TestSecondHeader:
             ],
         }
         assert bundle.provenance == [
-            confirmed("schema:about", {"id": "andante.xml#work_1"}, "work_1", base),
-            confirmed("rdfs:seeAlso", {"id": "andante.xml"}, None, base),
+            stated("schema:about", {"id": "andante.xml#work_1"}, "work_1", base),
+            stated("rdfs:seeAlso", {"id": "andante.xml"}, None, base),
         ]
 
     def test_singleton_manifestation(self, andante: Path) -> None:
@@ -650,14 +644,12 @@ class TestSecondHeader:
             "dcterms:hasPart": [part],
         }
         assert autograph.provenance == [
-            confirmed("rdf:type", {"id": "melod:Manifestation"}, "source_1", base),
-            confirmed(
-                "melod:hasTitle", title("Autograph", None, None), "title_3", base
-            ),
-            confirmed("schema:datePublished", published, "date_2", base),
-            confirmed("lrmoo:R7i_is_exemplified_by", item, "source_1", base),
-            confirmed("melod:hasManifestationPart", part, "relation_1", base),
-            confirmed("dcterms:hasPart", part, "relation_1", base),
+            stated("rdf:type", {"id": "melod:Manifestation"}, "source_1", base),
+            stated("melod:hasTitle", title("Autograph", None, None), "title_3", base),
+            stated("schema:datePublished", published, "date_2", base),
+            stated("lrmoo:R7i_is_exemplified_by", item, "source_1", base),
+            stated("melod:hasManifestationPart", part, "relation_1", base),
+            stated("dcterms:hasPart", part, "relation_1", base),
         ]
 
     def test_manifest_written(self, andante: Path) -> None:
@@ -707,88 +699,115 @@ class TestInto:
         region = bundle.get_timeline("cgt_6").get_region("region_1")
         assert region.statements == ITEM_PAIRS
         assert region.provenance == [
-            confirmed("rdf:type", {"id": "melod:Item"}, "item_1"),
-            confirmed(
+            stated("rdf:type", {"id": "melod:Item"}, "item_1"),
+            stated(
                 "melod:hasIdentifier",
                 ITEM_PAIRS["melod:hasIdentifier"][0],
                 "identifier_4",
             ),
-            confirmed("melod:hasShelfmark", "CNS 342e", "identifier_3"),
-            proposed(KEEPER, {"label": "DK-Kk"}, "corpName_1"),
+            stated("melod:hasShelfmark", "CNS 342e", "identifier_3"),
+            candidate(KEEPER, {"label": "DK-Kk"}, "corpName_1"),
         ]
         autograph = bundle.get_timeline("cgt_1")
         assert autograph.statements["lrmoo:R7i_is_exemplified_by"] == [
             {"id": "#region_1"}
         ]
-        assert autograph.provenance[-1] == confirmed(
+        assert autograph.provenance[-1] == stated(
             "lrmoo:R7i_is_exemplified_by", {"id": "#region_1"}, "item_1"
         )
         assert_written(bundle)
 
-    def test_rejection_is_kept(self, cnw0133: Path) -> None:
+    def test_a_candidate_believed_false_is_not_offered_again(
+        self, cnw0133: Path
+    ) -> None:
         loader = MeiHeadLoader.from_file(cnw0133)
         bundle = loader.create_bundle(date=DATE)
-        bundle.reject_statement(
+        work = ("schema:about", 0)
+        bundle.add_belief(
             "rel:cmp",
             {"label": "Carl Nielsen"},
-            stated_by="https://example.org/people/editor",
+            actor=EDITOR,
+            belief="false",
             date="2026-11-20",
             note="reconciled by hand elsewhere",
-            node=("schema:about", 0),
+            node=work,
         )
-        rejected = bundle.to_dict()
-        loader.create_bundle(
-            into=bundle,
-            subjects={"source_1": "cgt_1", "source_2": "cgt_2"},
-            date="2026-11-21",
-        )
-        assert bundle.to_dict() == rejected
-        statuses = [
-            e["status"]
-            for e in bundle.get_provenance(node=("schema:about", 0))
-            if e["property"] == "rel:cmp"
-        ]
-        assert statuses == ["rejected"]
+        decided = bundle.to_dict()
+        loader.create_bundle(into=bundle, subjects=AGAIN, date="2026-11-21")
+        assert bundle.to_dict() == decided
+        refused = {
+            **candidate("rel:cmp", {"label": "Carl Nielsen"}, "persName_1"),
+            "beliefs": [
+                {
+                    "actor": EDITOR,
+                    "belief": "false",
+                    "date": "2026-11-20",
+                    "note": "reconciled by hand elsewhere",
+                }
+            ],
+        }
+        assert bundle.get_candidates(node=work) == [refused]
+        assert bundle.get_candidates(node=work, believer=EDITOR) == []
 
 
 class TestDecisionsKept:
     """A decision taken on a value node survives a second import."""
 
-    AGAIN = {"source_1": "cgt_1", "source_2": "cgt_2"}
-
-    def test_rejected_work(self, cnw0133: Path) -> None:
+    def test_work_believed_false(self, cnw0133: Path) -> None:
         loader = MeiHeadLoader.from_file(cnw0133)
         bundle = loader.create_bundle(date=DATE)
-        bundle.reject_statement(
-            "schema:about", {"id": WORK}, stated_by=EDITOR, date="2026-11-20"
+        statements = bundle.statements
+        bundle.add_belief(
+            "schema:about",
+            {"id": WORK},
+            actor=EDITOR,
+            belief="false",
+            date="2026-11-20",
         )
         decided = bundle.to_dict()
-        loader.create_bundle(into=bundle, subjects=self.AGAIN, date="2026-11-21")
+        loader.create_bundle(into=bundle, subjects=AGAIN, date="2026-11-21")
         assert bundle.to_dict() == decided
-        assert bundle.statements == {"rdfs:seeAlso": [{"id": "cnw0133.xml"}]}
+        assert bundle.statements == statements
+        see_also = stated("rdfs:seeAlso", {"id": "cnw0133.xml"}, None)
+        assert bundle.provenance == [
+            {
+                **stated("schema:about", {"id": WORK}, "work_1"),
+                "beliefs": [{"actor": EDITOR, "belief": "false", "date": "2026-11-20"}],
+            },
+            see_also,
+        ]
+        assert bundle.get_provenance(believer=EDITOR) == [see_also]
 
-    def test_rejected_embodiment(self, cnw0133: Path) -> None:
+    def test_embodiment_withdrawn(self, cnw0133: Path) -> None:
         loader = MeiHeadLoader.from_file(cnw0133)
         bundle = loader.create_bundle(date=DATE)
         printed = bundle.get_timeline("cgt_1")
-        printed.reject_statement(
-            "lrmoo:R4_embodies", {"id": EXPRESSION}, stated_by=EDITOR, date="2026-11-20"
-        )
+        embodies = ("lrmoo:R4_embodies", {"id": EXPRESSION})
+        printed.remove_statement(*embodies)
+        printed.add_belief(*embodies, actor=EDITOR, belief="false", date="2026-11-20")
         decided = bundle.to_dict()
-        loader.create_bundle(into=bundle, subjects=self.AGAIN, date="2026-11-21")
+        loader.create_bundle(into=bundle, subjects=AGAIN, date="2026-11-21")
         assert bundle.to_dict() == decided
         assert "lrmoo:R4_embodies" not in printed.statements
+        assert printed.get_candidates() == [
+            {
+                "property": "lrmoo:R4_embodies",
+                "value": {"id": EXPRESSION},
+                "beliefs": [{"actor": EDITOR, "belief": "false", "date": "2026-11-20"}],
+            }
+        ]
+        assert printed.get_candidates(believer=EDITOR) == []
 
-    def test_confirmed_keeper_in_an_item(self, cnw0133: Path) -> None:
+    def test_keeper_stated_in_an_item(self, cnw0133: Path) -> None:
         loader = MeiHeadLoader.from_file(cnw0133)
         bundle = loader.create_bundle(date=DATE)
         autograph = bundle.get_timeline("cgt_2")
         item = ("lrmoo:R7i_is_exemplified_by", 0)
-        autograph.confirm_statement(
-            KEEPER, {"label": "DK-Kk"}, stated_by=EDITOR, date="2026-11-20", node=item
+        autograph.add_statement(
+            KEEPER, {"label": "DK-Kk"}, actor=EDITOR, date="2026-11-20", node=item
         )
         decided = bundle.to_dict()
-        loader.create_bundle(into=bundle, subjects=self.AGAIN, date="2026-11-21")
+        loader.create_bundle(into=bundle, subjects=AGAIN, date="2026-11-21")
         assert bundle.to_dict() == decided
         assert autograph.get_pairs(node=item) == [
             (KEEPER, {"label": "DK-Kk"}),
@@ -796,9 +815,13 @@ class TestDecisionsKept:
             ("melod:hasShelfmark", "CNS 342e"),
             ("type", "melod:Item"),
         ]
-        assert [e["status"] for e in autograph.get_provenance(node=item)] == [
-            "confirmed"
+        assert autograph.get_provenance(node=item) == [
+            {
+                **candidate(KEEPER, {"label": "DK-Kk"}, "corpName_1"),
+                "beliefs": [{"actor": EDITOR, "belief": "true", "date": "2026-11-20"}],
+            }
         ]
+        assert autograph.get_candidates(node=item) == []
 
 
 class TestBase:
@@ -811,8 +834,8 @@ class TestBase:
             "schema:about": [work_node(base, related)],
         }
         assert bundle.provenance == [
-            confirmed("schema:about", {"id": f"{base}#work_1"}, "work_1", base),
-            confirmed("rdfs:seeAlso", {"id": base}, None, base),
+            stated("schema:about", {"id": f"{base}#work_1"}, "work_1", base),
+            stated("rdfs:seeAlso", {"id": base}, None, base),
         ]
         assert bundle.get_timeline("cgt_1").statements == print_statements(base)
         assert_written(bundle)

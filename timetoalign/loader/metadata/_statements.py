@@ -2,10 +2,12 @@
 
 An import states many pairs on a bundle, its timelines and regions, and
 adds a timeline per manifestation. :class:`Plan` makes it all or nothing:
-every pair is first stated, proposed or passed over on a scratch copy of its
-holder's statements, through the very methods a holder runs (TimeToShare's
-functions and the library's prefix check); only then are the new timelines
-added and the copies stored. A refusal leaves the bundle as it was.
+every pair is first stated, offered as a candidate or passed over on a
+scratch copy of its holder's statements, through the very methods a holder
+runs (TimeToShare's functions and the library's prefix check); only then
+are the new timelines added and the copies stored. A refusal leaves the
+bundle as it was. An import records how each pair was made and holds no
+belief.
 """
 
 from __future__ import annotations
@@ -122,9 +124,10 @@ class Plan:
     """The pairs of one import, stated on scratch copies of their holders.
 
     The importer finds its targets (:meth:`mapped`, :meth:`new_timeline`,
-    :attr:`bundle_target`), then states and proposes pairs on them
-    (:meth:`state`, :meth:`propose`); a pair a holder already states,
-    proposes or rejects is passed over. Each change runs on the copy,
+    :attr:`bundle_target`), then states pairs and offers candidates on
+    them (:meth:`state`, :meth:`offer`); a pair a holder already states or
+    holds an entry of (a candidate, a pair someone believes) is passed
+    over, so a belief recorded in it stands. Each change runs on the copy,
     through the methods the holder runs, so a refusal (a prefix no context
     declares, a pair TimeToShare refuses) is raised while the bundle is
     untouched. :meth:`commit` then changes the bundle.
@@ -188,7 +191,7 @@ class Plan:
     def known(
         self, target: Target, property: str, value: Any, node: NodePath = ()
     ) -> bool:
-        """Whether the target states, proposes or rejects the pair at *node*."""
+        """Whether the target states the pair at *node* or holds an entry of it."""
         scratch = self._scratch(target)
         context = scratch._statement_context()
         wanted = (property, value)
@@ -205,7 +208,7 @@ class Plan:
     ) -> int | None:
         """The position of the value in its property's list at *node*, or None.
 
-        None when the pair is not stated there: proposed, rejected or absent.
+        None when the pair is not stated there: a candidate, or absent.
         """
         scratch = self._scratch(target)
         context = scratch._statement_context()
@@ -227,13 +230,16 @@ class Plan:
         provenance: Mapping[str, Any],
         node: NodePath = (),
     ) -> None:
-        """State the pair with its confirmed entry, unless the target knows it."""
+        """State the pair with its entry *provenance*, unless the target knows it.
+
+        The importer holds no belief: the entry says how the pair was made.
+        """
         if not self.known(target, property, value, node):
             self._scratch(target).add_statement(
                 property, value, node=node, provenance=provenance
             )
 
-    def propose(
+    def offer(
         self,
         target: Target,
         property: str,
@@ -245,9 +251,9 @@ class Plan:
         note: str | None,
         node: NodePath = (),
     ) -> None:
-        """Propose the pair (method ``imported``), unless the target knows it."""
+        """Offer the pair as a candidate (method ``imported``), unless the target knows it."""
         if not self.known(target, property, value, node):
-            self._scratch(target).propose_statement(
+            self._scratch(target).add_candidate(
                 property,
                 value,
                 stated_by=stated_by,

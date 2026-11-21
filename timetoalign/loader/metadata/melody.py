@@ -16,8 +16,9 @@ statements are already property–value pairs and small nodes, so
   the manifestation's ``lrmoo:R7i_is_exemplified_by`` (or the element
   ``subjects`` maps it to).
 
-Every pair stated carries a ``confirmed`` provenance entry naming the file
-it was read from as its ``basis``. IRIs are compacted with the prefixes of
+Every pair stated carries a provenance entry naming the file it was read
+from as its ``basis``; the import records how a pair was made and holds no
+belief. IRIs are compacted with the prefixes of
 TimeToShare's catalogue, which reads MeLODy's ``https://schema.org/`` as
 ``schema:``; an IRI of a namespace the catalogue lacks stays a full IRI.
 
@@ -218,13 +219,13 @@ class MelodyLoader(Loader[MelodyRecord]):
         an element is ``{"id": "#<element>"}``; another IRI ``{"id": ...}``
         with the ``label`` and ``owl:sameAs`` the graph states of it; a
         blank node a node of its own triples, an ``rdf:List`` ``{"list":
-        [...]}``. Each pair stated carries a ``confirmed`` entry: method
-        ``imported``, basis the subject's file (and the file of the entity
-        whose node the value is, where it differs). A pair the subject
-        already states, proposes or rejects is skipped, so importing twice
-        into one bundle adds nothing and a rejection is never undone. Every
-        pair is checked before the bundle changes: a refused one leaves it
-        as it was.
+        [...]}``. Each pair stated carries an entry holding no belief:
+        method ``imported``, basis the subject's file (and the file of the
+        entity whose node the value is, where it differs). A pair the
+        subject already states or holds an entry of (a candidate, a pair
+        someone believes) is skipped, so importing twice into one bundle
+        adds nothing and every belief recorded stands. Every pair is checked
+        before the bundle changes: a refused one leaves it as it was.
 
         Args:
             work: The IRI of the ``melod:Work`` the bundle is about; the

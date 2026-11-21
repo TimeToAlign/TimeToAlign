@@ -8,10 +8,18 @@ from __future__ import annotations
 from fractions import Fraction
 
 import pyarrow as pa
+import pytest
 
-from timetoalign.core import NumberType, TimeUnit
+from timetoalign.core import (
+    Coordinate,
+    Duration,
+    EventReference,
+    NumberType,
+    Projection,
+    TimeUnit,
+)
 from timetoalign.core.fields import field_metadata
-from timetoalign.storage.events import EventData, mint_event_ids
+from timetoalign.storage.events import EventData, _mint_event_ids
 from timetoalign.timelines import ContinuousLogicalTimeline
 
 
@@ -324,20 +332,20 @@ class TestMintedIds:
     """One minting function; a declared ``projection_of`` column."""
 
     def test_mint_event_ids(self) -> None:
-        assert mint_event_ids(
+        assert _mint_event_ids(
             ["Note", "Projection", "Note", None],
-            {"note:000001", "projection_2"},
-        ) == ["note:000002", "projection_1", "note:000003", "event:000001"]
+            {"note_1", "projection_2", "note:000005"},
+        ).to_pylist() == ["note_2", "projection_3", "note_3", "event_1"]
 
-    def test_from_dicts_mints_against_the_given_ids(self) -> None:
+    def test_from_dicts_mints_above_the_given_ids(self) -> None:
         data = EventData.from_dicts(
             [
-                {"event_type": "Note", "id": "note:000001", "start": 0},
+                {"event_type": "Note", "id": "note_4", "start": 0},
                 {"event_type": "Note", "start": 1},
             ],
             TimeUnit.samples,
         )
-        assert data.column_values("id") == ["note:000001", "note:000002"]
+        assert data.column_values("id") == ["note_4", "note_5"]
 
     def test_from_arrays_mints_from_the_event_types(self) -> None:
         data = EventData.from_arrays(
@@ -350,7 +358,7 @@ class TestMintedIds:
         assert data.column_values("id") == [
             "projection_1",
             "projection_2",
-            "note:000001",
+            "note_1",
         ]
 
     def test_projection_of_is_typed_by_declaration(self) -> None:
@@ -390,3 +398,68 @@ class TestMintedIds:
             None,
             {"timeline_id": "clt_6", "event_id": "x1azmn68"},
         ]
+
+
+class TestProjectionRows:
+    """A Projection object stands for its event row."""
+
+    def test_from_dicts_takes_projections_beside_dicts(self) -> None:
+        data = EventData.from_dicts(
+            [
+                Projection(
+                    start=Coordinate(2, TimeUnit.samples),
+                    duration=Duration(3, TimeUnit.samples),
+                    projection_of=EventReference(timeline_id="clt_6", event_id="x1"),
+                ),
+                {"event_type": "Note", "start": 7},
+            ],
+            TimeUnit.samples,
+        )
+        rows = data.table.select(
+            ["id", "event_type", "start", "duration", "projection_of"]
+        ).to_pylist()
+        assert rows == [
+            {
+                "id": "projection_1",
+                "event_type": "Projection",
+                "start": {"value": 2.0, "numerator": 2, "denominator": 1},
+                "duration": {"value": 3.0, "numerator": 3, "denominator": 1},
+                "projection_of": {"timeline_id": "clt_6", "event_id": "x1"},
+            },
+            {
+                "id": "note_1",
+                "event_type": "Note",
+                "start": {"value": 7.0, "numerator": 7, "denominator": 1},
+                "duration": None,
+                "projection_of": None,
+            },
+        ]
+
+    def test_one_projection_with_its_id(self) -> None:
+        data = EventData.from_dicts(
+            Projection(id="given", start=Coordinate(2, TimeUnit.samples)),
+            TimeUnit.samples,
+        )
+        assert data.column_values("id") == ["given"]
+
+    def test_a_coordinate_in_the_unit_is_written_in_the_number_type(self) -> None:
+        data = EventData.from_dicts(
+            [{"event_type": "Note", "start": Coordinate(1.5, TimeUnit.quarters)}],
+            TimeUnit.quarters,
+            NumberType.fraction,
+        )
+        assert data.table.column("start").to_pylist() == [
+            {"value": 1.5, "numerator": 3, "denominator": 2}
+        ]
+
+    def test_a_coordinate_in_another_unit_is_refused(self) -> None:
+        with pytest.raises(
+            ValueError,
+            match=(
+                "^The event's start is in seconds, the events are in samples; add it "
+                "to a timeline, which converts it through its C-Map$"
+            ),
+        ):
+            EventData.from_dicts(
+                Projection(start=Coordinate(2.0, TimeUnit.seconds)), TimeUnit.samples
+            )

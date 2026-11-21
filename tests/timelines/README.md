@@ -739,8 +739,9 @@ a jump, a marker) carries an `id` for identification and a `name` for
 display. The tests prove four properties, each against literal expected ids.
 
 - **One form, one generator, no process state.** An element constructed
-  without an id is minted `{prefix}_{N}` with N the smallest positive integer
-  no id in its scope holds. A standalone element's scope is empty, so each
+  without an id is minted `{prefix}_{N}` with N above the highest number
+  an id of its scope holds under that prefix (never a gap's number, so no
+  id is given again). A standalone element's scope is empty, so each
   class answers `_1`: the six timeline classes `clt_1`, `dlt_1`, `cpt_1`,
   `dpt_1`, `cgt_1`, `dgt_1`; the base `Timeline` and a segment line by their
   unit (`Timeline(unit="seconds")` is `cpt_1`, ticks `dlt_1`, pixels `dgt_1`);
@@ -759,9 +760,9 @@ display. The tests prove four properties, each against literal expected ids.
   `jump_to_1`; `jump_from_1` targeting `jump_to_1`; `lmap_1`). A
   process-global counter gives
   different ids in the second build; insertion order may decide which
-  element holds which id, never which ids exist. Smallest-free
+  element holds which id, never which ids exist. Minting above the highest
   is pinned by a given child id `clt_3` on a `clt_1` root: the next two
-  `create_child` calls mint `clt_2`, then `clt_4`. No minted timeline id
+  `create_child` calls mint `clt_4`, then `clt_5`, never `clt_2`. No minted timeline id
   starts with `tl:` and none lacks the `_` separator.
 - **Whatever is given is the id.** Hand-chosen ids (`performance`, `a`,
   `Bass Kick`, `score:clt_7`, `score/1`, `part 2`,
@@ -1293,8 +1294,8 @@ Any other key of `graphical` (`frame`) is kept and written back, never read.
 The band orders of `graphical.order`, keyed by a timeline's id, are carried
 beside the styling; their tests are those of "Manifests" above.
 
-**Identity.** The default id is `group_1` (minted statelessly: the smallest
-free number, so two fresh groups in one process are both `group_1`). The
+**Identity.** The default id is `group_1` (minted statelessly, above the
+highest number held, so two fresh groups in one process are both `group_1`). The
 members' trees share one manifest, in which every id is unique whatever
 element holds it (the other kinds are proved under "Manifest identity"). A
 newcomer whose given id, or any given descendant id, is held by another
@@ -1819,10 +1820,13 @@ the axis's declared canonical number type.
    - an ID already held by an event of the timeline is refused naming the ID
      and the timeline, and so is one given twice in one call; nothing is
      added either time, so the refusal is atomic;
-   - two calls without IDs mint `note:000001` and then `note:000002`, never
-     the same ID twice (a per-call counter minted `note:000001` twice);
+   - two calls without IDs mint `note_1` and then `note_2`, never the same
+     ID twice (a per-call counter minted the first ID twice);
+   - a minted ID continues above the highest held: a timeline holding the
+     given `note_5` mints `note_6` for the next Note, never `note_1` below
+     it (an ID is never given again);
    - `add_events` returns the IDs of the rows it added, in row order, the
-     minted ones included.
+     minted ones included (`beat_1`, `given`, `beat_2`).
 
 4. **Length and Expansion Tests** (7 tests)
    - Length can expand (unlocked)
@@ -1920,10 +1924,19 @@ write fractions):
   one concatenates (the column of the second Projection reads back its
   dict).
 - **IDs.** A source's ID is kept (`x1azmn68`); a missing one is minted
-  `projection_N`, the smallest N free among the timeline's events of every
-  type: the first call mints `projection_1`, `projection_2`; with
-  `projection_2` held by a Note, the next call mints `projection_1` and
-  `projection_3` for two rows (the call returns them in row order).
+  `projection_N`, N above the highest held among the timeline's events of
+  every type, so no ID is given twice and a gap is never filled: the first
+  call mints `projection_1`, `projection_2`; with `projection_2` held by a
+  Note, the next call mints `projection_3` and `projection_4` for two rows
+  (the call returns them in row order), never `projection_1` below it.
+- **A Projection object stands for its row.** `add_events` takes a
+  `Projection` alone or in a list beside dicts: `Projection(start=
+  Coordinate(1/2, seconds), projection_of=EventReference(clt_6, x1azmn68))`
+  without an ID is minted `projection_1` and stored at sample 22050 with its
+  reference, exactly as the same dict; with `duration=Duration(0.5,
+  seconds)` from start `Coordinate(1.0, seconds)` (one axis, both float) it
+  is stored as start 44100, duration 22050; a Projection given its ID keeps it. A Note dict
+  beside it in the same list mints `note_1`.
 - **Refusals**, each atomic (the number of events unchanged):
   - an ID held by any event of the timeline (a Note's ID reused by a
     Projection);
@@ -1931,7 +1944,12 @@ write fractions):
     `A Projection holds its ID, its position and projection_of, nothing else
     of the event it stands for; the row also gives ['pitch']`;
   - a `projection_of` that is not an event reference (the joined string
-    `"clt_6:x1azmn68"`).
+    `"clt_6:x1azmn68"`);
+  - a `projection_of` naming the timeline the Projection is added to (a
+    Projection stands for an event of another timeline, as TimeToShare's
+    table check requires): `A Projection added to timeline 'dpt_1' stands
+    for an event of another timeline; its projection_of names 'dpt_1'
+    itself`.
 
 ---
 

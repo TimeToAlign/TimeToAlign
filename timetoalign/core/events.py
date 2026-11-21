@@ -47,14 +47,17 @@ from .fields import (
     blob_metadata,
     build_struct_array,
     data_shaped,
-    field_metadata,
     install_paired_field_registry,
     register_value_projector,
 )
+from .ids import quote_id, validate_id
 from .protocols import TwelveTETPitchMixin
 from .time import (
+    COORDINATE_CELL_TYPE,
     Coordinate,
     Duration,
+    cell_coordinate,
+    coordinate_cells,
     number_from_json,
     number_to_json,
     struct_to_rational,
@@ -3404,8 +3407,6 @@ class EventReference(ScalarVocabulary, BaseModel):
     @field_validator("timeline_id", "event_id")
     @classmethod
     def _valid_id(cls, value: str) -> str:
-        from .ids import validate_id
-
         return validate_id(value)
 
     @classmethod
@@ -3442,38 +3443,35 @@ class Projection(ScalarVocabulary, BaseModel):
     an event of its own.
 
     ``start`` and ``duration`` are on one axis: the duration has the start's
-    unit and number type. An instant has no duration.
+    unit and number type. An instant has no duration. A Projection made
+    without an ID has ``id`` ``None`` until the timeline it is added to
+    mints one (:meth:`Timeline.add_events`).
 
     Storage struct (derived): ``{id, start, duration, projection_of}``, the
-    two positions as number cells whose unit and number type the field
-    records once (:class:`ProjectionField`).
+    two positions as coordinate cells
+    (:data:`~timetoalign.core.time.COORDINATE_CELL_TYPE`), each naming its
+    unit and number type, as the Projections table of a package holds them.
 
     Examples:
         >>> from timetoalign.core import Coordinate, TimeUnit
         >>> Projection(
-        ...     id="projection_1",
         ...     start=Coordinate(850176, TimeUnit.samples),
         ...     projection_of=EventReference(timeline_id="clt_6", event_id="x1azmn68"),
         ... ).end is None
         True
     """
 
-    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+    model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
 
-    #: The prefix of a minted Projection ID, ``projection_N``.
-    _id_prefix: ClassVar[str] = "projection"
-
-    id: str  # noqa: A003 - the event's ID, a column of its table
+    id: str | None = None  # noqa: A003 - the event's ID, a column of its table
     start: Coordinate
     duration: Duration | None = None
     projection_of: EventReference | None = None
 
     @field_validator("id")
     @classmethod
-    def _valid_id(cls, value: str) -> str:
-        from .ids import validate_id
-
-        return validate_id(value)
+    def _valid_id(cls, value: str | None) -> str | None:
+        return None if value is None else validate_id(value)
 
     @model_validator(mode="after")
     def _duration_on_the_start_axis(self) -> Projection:
@@ -3482,16 +3480,21 @@ class Projection(ScalarVocabulary, BaseModel):
             return self
         if duration.unit != self.start.unit:
             raise ValueError(
-                f"Projection '{self.id}': its duration is in {duration.unit}, "
+                f"{self._name}: its duration is in {duration.unit}, "
                 f"its start in {self.start.unit}; both are on one axis"
             )
         if duration.number_type is not self.start.number_type:
             raise ValueError(
-                f"Projection '{self.id}': its duration is written as "
+                f"{self._name}: its duration is written as "
                 f"{duration.number_type}, its start as {self.start.number_type}; "
                 "both are on one axis"
             )
         return self
+
+    @property
+    def _name(self) -> str:
+        """The Projection as a message names it."""
+        return "A Projection" if self.id is None else f"Projection {quote_id(self.id)}"
 
     @property
     def semantic_type(self) -> str:
@@ -3506,52 +3509,49 @@ class Projection(ScalarVocabulary, BaseModel):
         return self.start + self.duration
 
     @classmethod
-    def from_row(
-        cls,
-        row: dict[str, Any],
-        *,
-        unit: Any,
-        number_type: Any,
-    ) -> Projection | None:
-        """Construct from a storage-row dict on the axis its field records.
+    def from_row(cls, row: dict[str, Any] | None) -> Projection | None:
+        """Construct from a storage-row dict; ``None`` for a null cell.
 
-        Args:
-            row: The struct cell, ``None`` for a null one.
-            unit: The ``TimeUnit`` of both positions.
-            number_type: The ``NumberType`` they are written in; the cell's
-                side that holds it is read, so an exact value stays exact.
-
-        Returns:
-            The Projection, or ``None`` for a null cell.
+        Each position is read from its coordinate cell, on the axis the cell
+        names, so an exact value stays exact. Keys beside the four of the
+        struct (a Projections table's ``timeline_id``) are not read.
         """
         if row is None:
             return None
-        from .time import struct_to_coordinate
-
-        start = Coordinate(
-            struct_to_coordinate(row["start"], number_type),
-            unit,
-            number_type=number_type,
-        )
-        duration_cell = row.get("duration")
-        duration = (
-            None
-            if duration_cell is None
-            else Duration(
-                struct_to_coordinate(duration_cell, number_type),
-                unit,
-                number_type=number_type,
-            )
-        )
         return cls(
-            id=row["id"],
-            start=start,
-            duration=duration,
+            id=row.get("id"),
+            start=cell_coordinate(row["start"]),
+            duration=cell_coordinate(row.get("duration"), Duration),
             projection_of=EventReference.from_row(row.get("projection_of")),
         )
 
+    def to_event_row(self) -> dict[str, Any]:
+        """The Projection as an event row of a timeline.
+
+        The row :meth:`Timeline.add_events` and
+        :meth:`~timetoalign.storage.EventData.from_dicts` take: ``event_type``
+        ``"Projection"``, the positions as the scalars they are, ``id`` only
+        where the Projection holds one.
+
+        Examples:
+            >>> from timetoalign.core import Coordinate, TimeUnit
+            >>> row = Projection(id="p", start=Coordinate(3, TimeUnit.samples)).to_event_row()
+            >>> row["event_type"], row["id"], row["start"], row["duration"]
+            ('Projection', 'p', Coordinate(3, samples), None)
+        """
+        row: dict[str, Any] = {"event_type": self.semantic_type}
+        if self.id is not None:
+            row["id"] = self.id
+        row.update(
+            start=self.start,
+            duration=self.duration,
+            projection_of=self.projection_of,
+        )
+        return row
+
     def __repr__(self) -> str:
-        parts = [f"id={self.id!r}", f"start={self.start}"]
+        parts = [] if self.id is None else [f"id={self.id!r}"]
+        parts.append(f"start={self.start}")
         if self.duration is not None:
             parts.append(f"duration={self.duration}")
         if self.projection_of is not None:
@@ -3559,105 +3559,59 @@ class Projection(ScalarVocabulary, BaseModel):
         return f"Projection({', '.join(parts)})"
 
 
-class ProjectionField(SemanticField[Projection]):
-    """Paired Field for :class:`Projection`: Projections on one axis.
+def _projection_coordinate_projector(
+    _model_cls: type[BaseModel], name: str, _info: object
+) -> list[pa.Field]:
+    """Store a Projection's position as a coordinate cell naming its axis."""
+    return [pa.field(name, COORDINATE_CELL_TYPE, nullable=True)]
 
-    The struct cells carry the numbers; the unit and number type of the
-    axis are recorded once, in the field's metadata, as a timeline records
-    them once for all its events. :meth:`from_projections` builds one from
-    scalars and refuses Projections on different axes.
+
+register_value_projector(Projection, "start", _projection_coordinate_projector)
+register_value_projector(Projection, "duration", _projection_coordinate_projector)
+
+
+class ProjectionField(SemanticField[Projection]):
+    """Paired Field for :class:`Projection`.
+
+    Every position is a coordinate cell naming its own unit and number type,
+    so one field holds Projections of any timelines, as a package's
+    Projections table does (it adds the ``timeline_id`` column).
     """
 
     @classmethod
     def from_projections(
         cls,
-        projections: Sequence[Projection],
+        projections: Sequence[Projection | None],
         *,
-        unit: Any = None,
-        number_type: Any = None,
         name: str = "projection",
     ) -> ProjectionField:
-        """Build the field of *projections*, all on one axis.
+        """Build the field of *projections*, in row order.
 
         Args:
-            projections: The Projections, in row order.
-            unit: The axis's ``TimeUnit``; read from the Projections when
-                omitted (an empty sequence needs it).
-            number_type: The axis's ``NumberType``; read from the
-                Projections when omitted, else the unit's default.
+            projections: The Projections (``None`` for a null row).
             name: The field's name.
 
         Returns:
-            The field, its metadata recording the unit and number type.
-
-        Raises:
-            ValueError: If a Projection is not on that axis, or the axis
-                cannot be told (no Projection and no unit).
+            The field, its struct ``{id, start, duration, projection_of}``.
         """
-        from .enums import NumberType, TimeUnit
-
-        if unit is None:
-            if not projections:
-                raise ValueError(
-                    "ProjectionField.from_projections: an empty field needs a unit"
-                )
-            unit = projections[0].start.unit
-        unit = TimeUnit(unit)
-        if number_type is None:
-            number_type = (
-                projections[0].start.number_type
-                if projections
-                else unit.resolve_number_type(None)
-            )
-        number_type = NumberType(number_type)
-        for projection in projections:
-            start = projection.start
-            if start.unit != unit or start.number_type is not number_type:
-                raise ValueError(
-                    f"Projection '{projection.id}' is at {start.unit} written as "
-                    f"{start.number_type}; the field's axis is {unit} written as "
-                    f"{number_type}"
-                )
-        array = build_struct_array(Projection, list(projections))
+        items = list(projections)
+        present = [projection is not None for projection in items]
+        array = pa.StructArray.from_arrays(
+            [
+                pa.array([p and p.id for p in items], pa.string()),
+                coordinate_cells([p and p.start for p in items]),
+                coordinate_cells([p and p.duration for p in items]),
+                build_struct_array(
+                    EventReference, [p and p.projection_of for p in items]
+                ),
+            ],
+            fields=list(cls.pa_schema),
+            mask=pa.array([not flag for flag in present], pa.bool_()),
+        )
         pa_field = pa.field(
-            name,
-            array.type,
-            metadata=blob_metadata(
-                field_type=cls.field_type(),
-                unit=unit.value,
-                number_type=number_type.name,
-            ),
+            name, array.type, metadata=blob_metadata(field_type=cls.field_type())
         )
         return cls.from_field((array, pa_field))
-
-    @property
-    def unit(self) -> Any:
-        """The ``TimeUnit`` of every position in the field."""
-        from .enums import TimeUnit
-
-        return TimeUnit(field_metadata(self.field)["unit"])
-
-    @property
-    def number_type(self) -> Any:
-        """The ``NumberType`` every position in the field is written in."""
-        from .enums import NumberType
-
-        return NumberType(field_metadata(self.field)["number_type"])
-
-    def metadata_dict(self) -> dict[str, str]:
-        recorded = field_metadata(self.field)
-        return {
-            **super().metadata_dict(),
-            **{
-                key: recorded[key] for key in ("unit", "number_type") if key in recorded
-            },
-        }
-
-    def __getitem__(self, i: int) -> Projection | None:
-        """Return the *i*-th Projection, positions read on the field's axis."""
-        return Projection.from_row(
-            self._raw[i], unit=self.unit, number_type=self.number_type
-        )
 
 
 # ═══════════════════════════════════════════════════════════════════════════

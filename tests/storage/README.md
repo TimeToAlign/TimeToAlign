@@ -121,26 +121,37 @@ values without reaching into `EventData`'s private `_table`.
 - **Numeric rendering**: coordinate columns decode to `Fraction`, never
   raw struct dicts.
 
-### `test_events.py` - Minted event IDs and the declared `projection_of` column
+### `test_events.py` - Minted event IDs, Projections as rows and the declared `projection_of` column
 
 **Purpose:** Every path that builds an `EventData` mints a missing event ID
-through one function, `mint_event_ids`, and a Projection's reference column is
-typed by declaration rather than by the rows of one batch.
+through the library's one minter (`core/ids.py::mint_ids`), a Projection
+object stands for its event row, and a Projection's reference column is typed
+by declaration rather than by the rows of one batch.
 
 **Contract and what proves it:**
 
-- `mint_event_ids(event_types, taken)` mints one ID per type, in order, free
-  in `taken` and among the IDs it mints: a Projection `projection_N`, any
-  other type `{type}:{N:06d}` in lower case, a missing type counting as
-  `Event`, N the smallest number free for that form.
-  `["Note", "Projection", "Note", None]` against `{"note:000001",
-  "projection_2"}` gives exactly `["note:000002", "projection_1",
-  "note:000003", "event:000001"]`.
-- `EventData.from_dicts` mints against the IDs its rows give: a row given
-  `note:000001` and one without an ID end with `note:000001` and
-  `note:000002` (no repeated ID within the table); `from_arrays` without an
-  `id` column mints `projection_1`, `projection_2`, `note:000001` for the
-  types `Projection, Projection, Note`.
+- `_mint_event_ids(event_types, taken)` mints one ID per type, in order: the
+  prefix is the event type in lower case (a missing type counts as
+  `Event`), N continues above the highest number held under that prefix,
+  so a gap is never filled. `["Note", "Projection", "Note", None]` against
+  `{"note_1", "projection_2", "note:000005"}` gives exactly `["note_2",
+  "projection_3", "note_3", "event_1"]` (`projection_1` is free but lies
+  below `projection_2`, so it is not given; `note:000005` is no minted ID).
+- `EventData.from_dicts` mints above the IDs its rows give: a row given
+  `note_4` and one without an ID end with `note_4` and `note_5` (no
+  repeated ID within the table); `from_arrays` without an `id` column mints
+  `projection_1`, `projection_2`, `note_1` for the types `Projection,
+  Projection, Note`.
+- `EventData.from_dicts` takes a `Projection` object, alone or in the list
+  beside dicts, as its event row: `Projection(start=Coordinate(2, samples),
+  duration=Duration(3, samples), projection_of=EventReference(clt_6, x1))`
+  and a Note dict give the IDs `projection_1`, `note_1`, the event type
+  `Projection`, the cells `{2.0, 2, 1}` and `{3.0, 3, 1}` and the reference
+  as its two values; a Projection given its ID keeps it. A position given as
+  a `Coordinate` in the table's unit is written in the table's number type
+  (`Coordinate(1.5, quarters)` on a fraction table: the cell `{1.5, 3, 2}`);
+  one in another unit is refused with a message pointing to a timeline,
+  which converts.
 - A batch whose rows hold `projection_of` only as `None` still has the
   column typed `struct<timeline_id: string, event_id: string>` with the
   `EventReferenceField` field type in its metadata, so `extend` with a batch

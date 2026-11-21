@@ -9,7 +9,13 @@ from fractions import Fraction
 
 import pytest
 
-from timetoalign.core import Coordinate, Duration, EventReference, TimeUnit
+from timetoalign.core import (
+    Coordinate,
+    Duration,
+    EventReference,
+    Projection,
+    TimeUnit,
+)
 from timetoalign.core.fields import field_metadata
 from timetoalign.maps import LinearMap
 from timetoalign.timelines import ContinuousLogicalTimeline, DiscretePhysicalTimeline
@@ -186,7 +192,7 @@ class TestIds:
             ]
         ) == ["projection_1", "projection_2"]
 
-    def test_minted_ids_are_free_among_every_event_type(self) -> None:
+    def test_minted_ids_continue_above_every_event_type(self) -> None:
         timeline = _samples()
         timeline.add_events([{"event_type": "Note", "id": "projection_2", "start": 1}])
         assert timeline.add_events(
@@ -194,7 +200,46 @@ class TestIds:
                 {"event_type": "Projection", "start": 5},
                 {"event_type": "Projection", "start": 6},
             ]
-        ) == ["projection_1", "projection_3"]
+        ) == ["projection_3", "projection_4"]
+
+
+class TestProjectionObjects:
+    def test_an_instant_without_id(self) -> None:
+        timeline = _samples()
+        ids = timeline.add_events(
+            Projection(
+                start=Coordinate(Fraction(1, 2), TimeUnit.seconds),
+                projection_of=EventReference(timeline_id="clt_6", event_id="x1azmn68"),
+            )
+        )
+        assert ids == ["projection_1"]
+        row = _row(timeline, "projection_1")
+        assert row["event_type"] == "Projection"
+        assert row["start"] == {"value": 22050.0, "numerator": 22050, "denominator": 1}
+        assert row["duration"] is None
+        assert row["projection_of"] == {"timeline_id": "clt_6", "event_id": "x1azmn68"}
+
+    def test_an_interval_beside_a_dict(self) -> None:
+        timeline = _samples()
+        ids = timeline.add_events(
+            [
+                Projection(
+                    id="given",
+                    start=Coordinate(1.0, TimeUnit.seconds),
+                    duration=Duration(0.5, TimeUnit.seconds),
+                ),
+                {"event_type": "Note", "start": 3},
+            ]
+        )
+        assert ids == ["given", "note_1"]
+        row = _row(timeline, "given")
+        assert row["start"] == {"value": 44100.0, "numerator": 44100, "denominator": 1}
+        assert row["duration"] == {
+            "value": 22050.0,
+            "numerator": 22050,
+            "denominator": 1,
+        }
+        assert row["projection_of"] is None
 
 
 class TestRefusals:
@@ -236,5 +281,20 @@ class TestRefusals:
         assert str(refused.value) == (
             "A Projection's projection_of is {'timeline_id': ..., 'event_id': ...} "
             "or None, not 'clt_6:x1azmn68'"
+        )
+        assert len(timeline.events) == 0
+
+    def test_a_reference_to_its_own_timeline(self) -> None:
+        timeline = _samples()
+        with pytest.raises(ValueError) as refused:
+            timeline.add_events(
+                Projection(
+                    start=Coordinate(2, TimeUnit.samples),
+                    projection_of=EventReference(timeline_id="dpt_1", event_id="n1"),
+                )
+            )
+        assert str(refused.value) == (
+            "A Projection added to timeline 'dpt_1' stands for an event of another "
+            "timeline; its projection_of names 'dpt_1' itself"
         )
         assert len(timeline.events) == 0

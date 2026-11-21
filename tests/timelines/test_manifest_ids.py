@@ -175,11 +175,11 @@ class TestDeterminism:
     def test_reverse_insertion_order_mints_the_same_ids(self) -> None:
         assert _ids(bare(_reference(reverse=True).to_dict())) == REFERENCE_IDS
 
-    def test_smallest_free_number(self) -> None:
+    def test_above_the_highest_number(self) -> None:
         root = ContinuousLogicalTimeline(length=32)
         root.add_child(ContinuousLogicalTimeline(length=4, uid="clt_3"), 0)
-        assert root.create_child(length=4, offset=4).id == "clt_2"
-        assert root.create_child(length=4, offset=8).id == "clt_4"
+        assert root.create_child(length=4, offset=4).id == "clt_4"
+        assert root.create_child(length=4, offset=8).id == "clt_5"
 
     def test_no_old_form(self) -> None:
         for cls in (

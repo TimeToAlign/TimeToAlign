@@ -6,9 +6,9 @@ partial/regex ID patterns.
 
 Includes:
 - ScopedId: An identifier with scope:local format.
-- mint_id: The one generator of minted ids, ``{prefix}_{N}``
-  (e.g., ``clt_1``, ``region_2``, ``score:clt_1``); ``mint_ids`` mints many
-  at once by the same rule.
+- mint_ids: The one generator of minted ids, ``{prefix}_{N}`` with N above
+  the highest held (e.g., ``clt_1``, ``region_2``, ``score:clt_1``,
+  ``note_3``); ``mint_id`` mints one.
 - validate_id: The rule every given id obeys.
 - resolve_id: Resolve a partial string or regex to a single ID.
 - resolve_ids: Resolve a pattern to all matching IDs.
@@ -200,16 +200,75 @@ def quote_id(element_id: str) -> str:
     return f"'{element_id}'"
 
 
-def mint_id(prefix: str, taken: Container[str]) -> str:
-    """Mint ``{prefix}_{N}`` with N the smallest positive integer not taken.
+#: The most digits of a minted number read back from a held id: the numbers
+#: are compared as int64, and an id with more digits is no minted id.
+_MINTED_DIGITS = 18
 
-    This is the one id generator of the library. It holds no state: the same
-    prefix and the same taken ids always give the same id, whatever was built
-    before in the process.
+
+def _highest_minted_number(prefix: str, taken: pa.Array) -> int:
+    """The highest N among the ids ``{prefix}_{N}`` in *taken*, 0 for none.
+
+    Read column-wise: no id of *taken* becomes a Python object.
+    """
+    pattern = rf"^{re.escape(prefix)}_[1-9][0-9]{{0,{_MINTED_DIGITS - 1}}}$"
+    minted = taken.filter(pc.match_substring_regex(taken, pattern=pattern))
+    if not len(minted):
+        return 0
+    numbers = pc.utf8_slice_codeunits(minted, start=len(prefix) + 1)
+    return pc.max(pc.cast(numbers, pa.int64())).as_py()
+
+
+def _id_column(taken: pa.Array | pa.ChunkedArray | Iterable[str]) -> pa.Array:
+    """*taken* as one string array without nulls."""
+    if isinstance(taken, pa.ChunkedArray):
+        taken = taken.combine_chunks()
+    if not isinstance(taken, pa.Array):
+        taken = pa.array(list(taken), pa.string())
+    return pc.drop_null(pc.cast(taken, pa.string()))
+
+
+def mint_ids(
+    prefix: str,
+    taken: pa.Array | pa.ChunkedArray | Iterable[str],
+    count: int,
+) -> pa.Array:
+    """Mint *count* ids ``{prefix}_{N}``, the N above the highest held.
+
+    This is the one id generator of the library, for timelines, maps,
+    manifest elements, MatchClaims and events alike. N continues above the
+    highest number held in the scope under that prefix, so an id is never
+    given again: a number freed by a gap is not reissued, and the ids minted
+    one after another grow with the scope. It holds no state: the same
+    prefix and the same taken ids always give the same ids, whatever was
+    built before in the process. The taken ids are read column-wise, so a
+    scope of a million events costs no Python object per id.
 
     Args:
         prefix: The type prefix, optionally led by a role
-            (``"clt"``, ``"region"``, ``"score:clt"``).
+            (``"clt"``, ``"claim"``, ``"score:clt"``).
+        taken: The ids already held in the scope (a string array or any
+            iterable of strings; nulls are ignored).
+        count: How many ids to mint.
+
+    Returns:
+        A string array of *count* ids, ascending by number.
+
+    Examples:
+        >>> mint_ids("claim", pa.array(["claim_2", "x"]), 3).to_pylist()
+        ['claim_3', 'claim_4', 'claim_5']
+        >>> len(mint_ids("claim", pa.array([], pa.string()), 0))
+        0
+    """
+    first = _highest_minted_number(prefix, _id_column(taken)) + 1
+    numbers = pa.array(np.arange(first, first + count, dtype=np.int64))
+    return pc.binary_join_element_wise(f"{prefix}_", pc.cast(numbers, pa.string()), "")
+
+
+def mint_id(prefix: str, taken: pa.Array | pa.ChunkedArray | Iterable[str]) -> str:
+    """Mint one id ``{prefix}_{N}``, N above the highest held (:func:`mint_ids`).
+
+    Args:
+        prefix: The type prefix, optionally led by a role.
         taken: The ids already held in the scope the new id must be unique in.
 
     Returns:
@@ -219,45 +278,13 @@ def mint_id(prefix: str, taken: Container[str]) -> str:
         >>> mint_id("clt", ())
         'clt_1'
         >>> mint_id("clt", {"clt_1", "clt_3"})
-        'clt_2'
-        >>> mint_id("score:clt", {"score:clt_1"})
+        'clt_4'
+        >>> mint_id("score:clt", {"score:clt_1", "clt_7"})
         'score:clt_2'
     """
-    number = 1
-    while f"{prefix}_{number}" in taken:
-        number += 1
-    return f"{prefix}_{number}"
-
-
-def mint_ids(prefix: str, taken: pa.Array, count: int) -> pa.Array:
-    """Mint *count* ids ``{prefix}_{N}``, the N the smallest numbers not taken.
-
-    The columnar sibling of :func:`mint_id`, by the same rule and as
-    stateless: minting one id after another into a growing taken set gives
-    exactly these ids, in this order.
-
-    Args:
-        prefix: The type prefix (``"claim"``).
-        taken: The ids already held in the scope (a string array; nulls are
-            ignored).
-        count: How many ids to mint.
-
-    Returns:
-        A string array of *count* ids, ascending by number.
-
-    Examples:
-        >>> mint_ids("claim", pa.array(["claim_2", "x"]), 3).to_pylist()
-        ['claim_1', 'claim_3', 'claim_4']
-        >>> len(mint_ids("claim", pa.array([], pa.string()), 0))
-        0
-    """
-    occupied = pc.unique(pc.drop_null(pc.cast(taken, pa.string())))
-    numbers = pa.array(np.arange(1, count + len(occupied) + 1, dtype=np.int64))
-    candidates = pc.binary_join_element_wise(
-        f"{prefix}_", pc.cast(numbers, pa.string()), ""
-    )
-    free = candidates.filter(pc.invert(pc.is_in(candidates, value_set=occupied)))
-    return free.slice(0, count)
+    if not taken:
+        return f"{prefix}_1"
+    return mint_ids(prefix, taken, 1)[0].as_py()
 
 
 def timeline_id_prefix(unit: TimeUnit) -> str:

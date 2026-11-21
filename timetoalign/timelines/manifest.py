@@ -1107,10 +1107,13 @@ class Manifest(_OpenObject):
         :func:`timetoshare.minimal` or :func:`timetoshare.complete`, and
         every ID is written as a file writes it, ``#`` followed by the ID
         (:func:`timetoshare.with_file_ids`). Every manifest written carries
-        its inline JSON-LD ``@context``: the format's terms and the prefixes
-        its statements use (:func:`timetoshare.with_context`), each prefix
-        standing for the namespace the holders using it declare, else the
-        catalogue's (:meth:`_prefix_table`). The statements and provenance
+        its inline JSON-LD ``@context``: the format's terms, then, sorted by
+        name, the prefixes its statements use (:func:`timetoshare.with_context`),
+        each standing for the namespace the holders using it declare, else
+        the catalogue's (:meth:`_prefix_table`), and every prefix the
+        manifest declares (:attr:`prefixes`), used or not: the context the
+        actors of a MatchClaim table beside it are read under, which a
+        reload must give again. The statements and provenance
         written, and the named MatchStamps, are checked as a manifest read
         is, so that a manifest whose statements or MatchStamps break a rule
         of the format is never emitted.
@@ -1216,6 +1219,11 @@ class Manifest(_OpenObject):
         built = self._dict_form(fields, minimal=False)
         result = timetoshare.minimal(built) if minimal else timetoshare.complete(built)
         result = timetoshare.with_context(timetoshare.with_file_ids(result), prefixes)
+        declared = {
+            **{k: v for k, v in result["@context"].items() if k not in FORMAT_CONTEXT},
+            **self.prefixes,
+        }
+        result["@context"] = {**FORMAT_CONTEXT, **dict(sorted(declared.items()))}
         check_statements(result)
         check_matchstamps(result)
         return result
@@ -1228,10 +1236,13 @@ class Manifest(_OpenObject):
         The catalogue's prefixes, then holder by holder in written order
         (the manifest; each timeline object, depth first, followed by its
         regions): a prefix a holder uses stands for the namespace the holder
-        declares, else the catalogue's.
+        declares, else the catalogue's. A prefix the manifest declares
+        (:attr:`prefixes`) is written whether used or not, so it stands for
+        the manifest's namespace wherever it is used.
 
         Raises:
-            ValueError: If two holders use one prefix for two namespaces.
+            ValueError: If two holders use one prefix for two namespaces, the
+                manifest counting as a holder of each prefix it declares.
         """
         catalogue = load_catalogue().prefixes
         held: dict[str, Any] = {}
@@ -1239,7 +1250,7 @@ class Manifest(_OpenObject):
             held[timeline.id] = timeline
             held.update(timeline._regions)
         table = dict(catalogue)
-        fixed: dict[str, tuple[str, str]] = {}
+        fixed = {prefix: (iri, "the manifest") for prefix, iri in self.prefixes.items()}
         for _path, element, kind in timetoshare.subjects(fields):
             state = {key: element[key] for key in STATE_KEYS if key in element}
             if not state:

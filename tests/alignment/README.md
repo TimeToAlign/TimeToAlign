@@ -1587,6 +1587,20 @@ then fails to load. Each test pins one of these with exact values.
   of the bundle read equals the file's table), and whose `to_dict()` equals
   the writer's. Written again into a fresh directory, all three files are
   byte for byte the first ones.
+- **The actor context survives the package.** The synthetic package with
+  `add_prefix("orcid", "https://orcid.org/")` on the bundle and the belief
+  `true` of `orcid:0000-0001` recorded in `claim_2`
+  (`add_match_claim_belief`, date 2026-11-21): no statement uses `orcid`,
+  only a MatchClaim table actor does. The manifest written holds `"orcid":
+  "https://orcid.org/"` in its `@context` beside the format's terms and
+  nothing else; read
+  back, `bundle.prefixes == {"orcid": "https://orcid.org/"}`, the belief is
+  still written `orcid:0000-0001` in the table, and
+  `get_match_claims(believer="https://orcid.org/0000-0001", belief="true")`
+  keeps `claim_2` alone, as it does on the bundle written. A writer keeping
+  only the prefixes statements use would drop the declaration: the compact
+  actor would then expand to nothing after the reload and the filter would
+  keep no claim. Written again, the files are byte for byte the first ones.
 - **The succession rule binds the writer.** Writing the same bundle over
   its own files succeeds and changes no byte. A bundle holding only
   `claim_1`–`claim_4` of those claims, written over them, is refused (`The

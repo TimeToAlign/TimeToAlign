@@ -294,6 +294,52 @@ class TestAddChildDurationExactness:
         assert duration == number_to_json(Fraction(7, 3))
 
 
+class TestExactChildShift:
+    """A child offset written as a float shifts exact positions exactly.
+
+    ``0.1`` on a fraction axis is its dyadic ``3602879701896397/2**55``; its
+    cross-products with ``0.7`` pass int64, while every result fits.
+    """
+
+    @staticmethod
+    def _family(child_length: float | Fraction) -> ContinuousLogicalTimeline:
+        parent = ContinuousLogicalTimeline(
+            length=Fraction(4), number_type=NumberType.fraction, uid="clt_1"
+        )
+        child = ContinuousLogicalTimeline(
+            length=child_length, number_type=NumberType.fraction, uid="clt_2"
+        )
+        parent.add_child(child, offset=0.1)
+        return parent
+
+    def test_parent_positions_shift_onto_the_child_exactly(self):
+        table = self._family(Fraction(2)).get_timestamp_table(
+            at=[0.7, Fraction(1, 3)], format="table"
+        )
+
+        assert table.column("clt_2").to_pylist() == [
+            {
+                "value": 0.6,
+                "numerator": 21617278211378379,
+                "denominator": 2**55,
+            },
+            {
+                "value": 0.23333333333333334,
+                "numerator": 25220157913274777,
+                "denominator": 3 * 2**55,
+            },
+        ]
+
+    def test_child_positions_shift_onto_the_root_exactly(self):
+        table = self._family(0.7).get_timestamp_table(format="table")
+
+        assert table.column("clt_1").to_pylist()[-1] == {
+            "value": 0.7999999999999999,
+            "numerator": 28823037615171173,
+            "denominator": 2**55,
+        }
+
+
 class TestEventHolder:
     """Every row a child reports names the timeline holding the event."""
 

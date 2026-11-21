@@ -528,28 +528,69 @@ class TestIntervalCompletion:
         assert [cell["value"] for cell in _cells(data, "duration")] == [0.2]
         assert [cell["value"] for cell in _cells(data, "end")] == [0.3]
 
-    def test_int_column_past_two_to_the_53_is_refused(self) -> None:
-        with pytest.raises(ValueError) as refused:
-            _build("column", [2**53 + 1], TimeUnit.ticks, end=[2**53 + 4])
-        assert str(refused.value) == (
-            "Completing the events' duration (end - start) on an int axis: The int "
-            "operand 9007199254740996 reaches 2**53: an int column computes on "
-            "doubles, exact below 2**53 only, and refuses it"
-        )
-        with pytest.raises(ValueError) as refused:
-            _build("column", [1], TimeUnit.ticks, duration=[2**53 - 1])
-        assert str(refused.value) == (
-            "Completing the events' end on an int axis: The int result "
-            "9007199254740992 reaches 2**53: an int column computes on doubles, "
-            "exact below 2**53 only, and refuses it"
-        )
+    @pytest.mark.parametrize("path", ["row", "column"])
+    def test_int_past_two_to_the_53_is_exact(self, path: str) -> None:
+        data = _build(path, [2**53 + 1], TimeUnit.ticks, end=[2**53 + 4])
+        assert _cells(data, "duration") == [
+            {"value": 3.0, "numerator": 3, "denominator": 1}
+        ]
+        data = _build(path, [1], TimeUnit.ticks, duration=[2**53 - 1])
+        assert _cells(data, "end") == [
+            {"value": 9007199254740992.0, "numerator": 2**53, "denominator": 1}
+        ]
 
-    def test_int_row_past_two_to_the_53_is_exact(self) -> None:
-        data = _build("row", [2**53 + 1], TimeUnit.ticks, end=[2**53 + 4])
-        assert [
-            (cell["numerator"], cell["denominator"])
-            for cell in _cells(data, "duration")
-        ] == [(3, 1)]
+    @pytest.mark.parametrize("path", ["row", "column"])
+    def test_fraction_duration_is_exact_past_int64_cross_products(
+        self, path: str
+    ) -> None:
+        starts, ends = [0.1, 0.7], [0.3, 0.9]
+        if path == "row":
+            rows = [
+                {"event_type": "Note", "start": start, "end": end}
+                for start, end in zip(starts, ends, strict=True)
+            ]
+            data = EventData.from_dicts(
+                rows, unit=TimeUnit.quarters, number_type=NumberType.fraction
+            )
+        else:
+            data = EventData.from_arrays(
+                {"event_type": ["Note"] * 2, "start": starts, "end": ends},
+                unit=TimeUnit.quarters,
+                number_type=NumberType.fraction,
+            )
+        assert _cells(data, "duration") == [
+            {
+                "value": 0.19999999999999998,
+                "numerator": 7205759403792793,
+                "denominator": 2**55,
+            },
+            {
+                "value": 0.20000000000000007,
+                "numerator": 1801439850948199,
+                "denominator": 2**53,
+            },
+        ]
+
+    def test_fraction_end_past_int64_in_lowest_terms_is_refused(self) -> None:
+        with pytest.raises(ValueError) as refused:
+            EventData.from_arrays(
+                {
+                    "event_type": ["Note"] * 2,
+                    "start": [Fraction(0), Fraction(1129, 12)],
+                    "duration": [Fraction(1), 0.1],
+                },
+                unit=TimeUnit.quarters,
+                number_type=NumberType.fraction,
+            )
+        assert str(refused.value) == (
+            "Completing the events' end on a fraction axis: row 1: 1129/12 + "
+            "3602879701896397/36028797018963968 = "
+            "10179936597708269159/108086391056891904, whose numerator "
+            "10179936597708269159 in lowest terms does not fit int64, the width "
+            "of an exact cell; the result cannot be stored exactly. Give the "
+            "operands exact values (a ratio written as a ratio, not as a "
+            "decimal), or declare the axis number_type float"
+        )
 
     @pytest.mark.parametrize(
         ("unit", "starts", "others"),

@@ -89,6 +89,18 @@ sub-millisecond `0.000123` (whose mirror is capped at a `2⁶²` denominator, so
 IEEE sums. Reading the mirror as the number would store
 `0.00012300000000000006`.
 
+The how-to's configuration (a `TsvLoader` with `start_column =
+"quarterbeats"` written as ratios, `duration_column = "duration_qb"` written
+as decimals, a quarters/`fraction` axis, `midi`/`staff`/`voice` as `int`) runs
+in `test_vectorized.py` on a five-row TSV written to `tmp_path`. Its starts
+`0`, `1/2`, `0.7`, `1/3`, `3/2` and durations `1.0`, `0.5`, `0.2`, `0.25`,
+`0.1` give the ends `1`, `1`, `16212958658533785/2⁵⁴`, `7/12` and
+`57646075230342349/2⁵⁵` exactly: `0.7 + 0.2` cross-multiplies past `2⁶³`
+and must still be exact. A sixth row `1129/12 + 0.1`, whose exact end has a
+numerator past `2⁶³ − 1` in lowest terms, makes `load` raise a `ValueError`
+whose whole message is asserted: it names the duration column, the axis
+(`fraction`, `quarters`), the row (`row 5`), the operands and the result.
+
 ### How We Know the Parser is Correct
 
 1. **EXACT COUNT VALIDATION**: Event counts are validated against the source file line counts minus header. For example:

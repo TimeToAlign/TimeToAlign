@@ -67,14 +67,22 @@ arithmetic that cannot overflow. What proves it, in `test_events.py`
   axis the comparison is a float comparison within `1e-9`: seconds `start =
   0.1`, `end = 0.3`, `duration = 0.2` (whose double difference is
   `0.19999999999999998`) is consistent under `strict` and keeps `0.2`.
-- **The int lane refuses what doubles cannot hold.** The column path computes
-  `int` axes on doubles, exact below `2⁵³`. Ticks `start = 2⁵³ + 1`, `end = 2⁵³
-  + 4` through `from_arrays` raises a `ValueError` whose message names the
-  computation (`Completing the events' duration (end - start) on an int
-  axis`) and the value `9007199254740996`; never a cell holding another
-  integer. A result reaching `2⁵³` from smaller operands (`start = 1`,
-  `duration = 2⁵³ − 1`) is refused alike. The row path computes on Python
-  integers and stores `duration = 3` exactly.
+- **Exact axes compute exactly on both paths.** The column path computes an
+  `int` or `fraction` axis on integers, never on doubles, and no
+  intermediate product can overflow. Ticks `start = 2⁵³ + 1`, `end = 2⁵³ + 4`
+  give `duration = 3` on both paths, and `start = 1`, `duration = 2⁵³ − 1`
+  give `end = 2⁵³` (numerator `9007199254740992`). On quarters, float ends
+  and starts whose exact dyadic ratios cross-multiply past `2⁶³`
+  (`end = 0.3`, `start = 0.1`; `end = 0.9`, `start = 0.7`) give the exact
+  durations `7205759403792793/2⁵⁵` and `1801439850948199/2⁵³` on both paths,
+  with the floats `0.19999999999999998` and `0.20000000000000007` — no
+  tolerance, no rounded difference. Only a result whose lowest terms do not
+  fit int64 is refused: quarters `start = [0, 1129/12]`,
+  `duration = [1, 0.1]` through `from_arrays` raises a `ValueError` whose
+  whole message is asserted — it names the computation and the axis
+  (`Completing the events' end on a fraction axis`), the row (`row 1`, the
+  row of the table, not of the rows being completed), the operands and the
+  reduced result.
 - **One rule for both construction paths.** The same rows through `from_dicts`
   (row path) and `from_arrays` (column path) give identical `end` and
   `duration` cells, on float, int and fraction axes.

@@ -1122,14 +1122,20 @@ class TabularLoader(EventLoader):
         # The duration column through the one number builder, then end =
         # start + duration in the declared number type: a float axis adds its
         # doubles and mirrors each sum once, an exact axis adds its ratios
-        # without overflow.
+        # exactly and refuses only a sum whose lowest terms int64 cannot hold.
         if not isinstance(dur_values, pa.Array) and dur_values.dtype == object:
             dur_values = np.where(pd.isna(dur_values), None, dur_values)
         duration = build_number_struct_array(dur_values, number_type=self._number_type)
         columns["duration"] = duration
-        return combine_number_columns(
-            columns["start"], duration, "add", self._number_type
-        )
+        try:
+            return combine_number_columns(
+                columns["start"], duration, "add", self._number_type
+            )
+        except ValueError as error:
+            raise ValueError(
+                f"Completing the events' end as start + {self.duration_column!r} "
+                f"on a {self._number_type} axis in {self._unit}: {error}"
+            ) from error
 
     def _parse_nullable_coordinates(
         self, values: np.ndarray, valid_mask: np.ndarray

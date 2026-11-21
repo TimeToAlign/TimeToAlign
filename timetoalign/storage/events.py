@@ -253,7 +253,8 @@ def _completed_column(
     duration``) runs in the number type the table declares, through the
     library's column arithmetic (:func:`combine_number_columns`): a float
     axis computes on its doubles and mirrors each result once, an exact
-    axis computes on its ratios without overflow. The rows not selected
+    axis computes on its ratios, exactly, and refuses (naming the row) only
+    a result whose lowest terms do not fit int64. The rows not selected
     keep their cells.
     """
     if not rows.any():
@@ -262,7 +263,11 @@ def _completed_column(
     target = "duration (end - start)" if operation == "subtract" else "end"
     with _naming_the_computation(f"Completing the events' {target}", number_type):
         computed = combine_number_columns(
-            left.take(selected), right.take(selected), operation, number_type
+            left.take(selected),
+            right.take(selected),
+            operation,
+            number_type,
+            row_numbers=selected,
         )
     positions = np.arange(len(cells))
     positions[selected] = len(cells) + np.arange(len(selected))
@@ -338,7 +343,11 @@ def _inconsistent_rows(
         "Checking the events' durations against end - start", number_type
     ):
         expected = combine_number_columns(
-            end.take(indices), start.take(indices), "subtract", number_type
+            end.take(indices),
+            start.take(indices),
+            "subtract",
+            number_type,
+            row_numbers=selected,
         )
     equal = compare_number_column(
         duration.take(indices), expected, "equal", number_type

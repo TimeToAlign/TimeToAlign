@@ -1142,18 +1142,25 @@ def combine_number_columns(
     number_type: NumberType,
     *,
     rounding: str = "round",
+    row_numbers: Sequence[int] | np.ndarray | None = None,
 ) -> pa.StructArray:
     """Combine a column of storage cells with another column or a scalar.
 
-    Same rules as :func:`combine_numbers`, applied to whole columns: the
-    operation runs on the canonical side and the mirror is rebuilt from the
-    result, so the two sides of the output never disagree.
+    Same rules as :func:`combine_numbers`, applied to whole columns, and held
+    to the same result cell for cell: the operation runs on the canonical
+    side and the mirror is rebuilt from the result, so the two sides of the
+    output never disagree.
 
-    Vectorisation is honest about what it can do. The ``int`` and ``float``
-    lanes run as PyArrow kernels over the canonical sub-field. The
-    ``fraction`` lane reads rows into Python, because exact ratio arithmetic
-    over int64 columns would overflow on the very denominators that make
-    exactness worth having.
+    A ``float`` axis runs as PyArrow kernels over its doubles. An ``int`` or
+    ``fraction`` axis is computed exactly, on the ratio side, and never on
+    doubles: ``n1/d1 + n2/d2`` is ``(n1·d2 + n2·d1) / (d1·d2)``, then reduced
+    to lowest terms (an ``int`` axis rounds that ratio once, under
+    *rounding*, where :func:`combine_numbers` would). The products of a row
+    are computed in int64 wherever a bound on its magnitudes proves they fit,
+    which is every row of a table of small-denominator positions; any other
+    row is computed with Python's unbounded integers. Either way no
+    intermediate can overflow, and only a result whose lowest terms do not
+    fit the cell's int64 members is refused.
 
     Args:
         left: A ``pa.StructArray`` of :data:`RATIONAL_STRUCT_TYPE`.
@@ -1161,29 +1168,25 @@ def combine_number_columns(
         operation: One of the keys of :data:`_OPERATIONS`.
         number_type: The representation the result declares.
         rounding: How to make inexact results integral for an ``int`` result.
+        row_numbers: The caller's number of the row at each position of
+            *left*, by which a refused row is named; defaults to the
+            positions themselves.
 
     Returns:
         A ``pa.StructArray`` of :data:`RATIONAL_STRUCT_TYPE`.
+
+    Raises:
+        ValueError: On an unknown operation, or, naming the row, its operands
+            and its result, on an exact result whose lowest terms do not fit
+            int64.
     """
     if operation not in _OPERATIONS:
         raise ValueError(f"Unknown field arithmetic operation: {operation}")
-
-    if number_type is NumberType.fraction:
-        return _combine_exact_columns(left, right, operation, rounding=rounding)
-
-    left_values = _canonical_column(left, number_type)
-    if isinstance(right, (pa.Array, pa.ChunkedArray)):
-        right_values = _canonical_column(right, number_type)
-    else:
-        right_values = pa.scalar(
-            to_canonical(right, number_type, rounding=rounding),
-            type=left_values.type,
-        )
-
-    result = _COLUMN_KERNELS[operation](left_values, right_values)
-    if number_type is NumberType.int:
-        _refuse_past_exact_doubles(result, "result")
-    return build_number_struct_array(result, number_type=number_type, rounding=rounding)
+    if number_type is NumberType.float:
+        return _combine_float_columns(left, right, operation)
+    return _combine_exact_columns(
+        left, right, operation, number_type, rounding=rounding, row_numbers=row_numbers
+    )
 
 
 _COLUMN_KERNELS: dict[str, Any] = {
@@ -1193,6 +1196,15 @@ _COLUMN_KERNELS: dict[str, Any] = {
     "divide": pc.divide,
     "floor_divide": lambda a, b: pc.floor(pc.divide(a, b)),
 }
+
+_OPERATION_SYMBOLS: dict[str, str] = {
+    "add": "+",
+    "subtract": "-",
+    "multiply": "*",
+    "divide": "/",
+    "floor_divide": "//",
+}
+
 
 _COMPARISON_KERNELS: dict[str, Any] = {
     "equal": pc.equal,
@@ -1268,91 +1280,235 @@ def _combined(array: pa.Array | pa.ChunkedArray) -> pa.Array:
     return array
 
 
-def _canonical_column(array: pa.Array, number_type: NumberType) -> pa.Array:
-    """Extract the canonical sub-field of a storage column, nulls preserved."""
-    if isinstance(array, pa.ChunkedArray):
-        array = array.combine_chunks()
-    valid = array.is_valid()
-    if number_type is NumberType.int:
-        canonical = array.field("numerator")
-        _refuse_past_exact_doubles(canonical, "operand")
-        canonical = pc.cast(canonical, pa.float64())
+def _combine_float_columns(
+    left: pa.Array, right: pa.Array | int | float | Fraction, operation: str
+) -> pa.StructArray:
+    """The ``float`` lane of :func:`combine_number_columns`: PyArrow kernels."""
+    left_values = _float_side(left)
+    if isinstance(right, (pa.Array, pa.ChunkedArray)):
+        right_values: Any = _float_side(right)
     else:
-        canonical = pc.cast(array.field("value"), pa.float64())
-    return pc.if_else(valid, canonical, pa.scalar(None, type=pa.float64()))
+        right_values = pa.scalar(float(parse_number(right)), type=pa.float64())
+    result = _COLUMN_KERNELS[operation](left_values, right_values)
+    return build_number_struct_array(result, number_type=NumberType.float)
 
 
-def _refuse_past_exact_doubles(values: pa.Array, role: str) -> None:
-    """Refuse an int-lane *values* row whose magnitude reaches ``2**53``.
-
-    The ``int`` lane of :func:`combine_number_columns` computes on doubles,
-    which hold every integer below ``2**53`` exactly. An operand or a result
-    at or past it (``2**53 + 1`` rounds to ``2**53``) could be stored as
-    another integer than the exact one, so it is refused.
-
-    Raises:
-        ValueError: Naming the first such value.
-    """
-    beyond = pc.fill_null(
-        pc.or_(
-            pc.greater_equal(values, _EXACT_DOUBLE_INT),
-            pc.less_equal(values, -_EXACT_DOUBLE_INT),
-        ),
-        False,
+def _float_side(array: pa.Array | pa.ChunkedArray) -> pa.Array:
+    """The float side of a storage column, null where a cell is null."""
+    array = _combined(array)
+    return pc.if_else(
+        array.is_valid(),
+        pc.cast(array.field("value"), pa.float64()),
+        pa.scalar(None, type=pa.float64()),
     )
-    if pc.any(beyond).as_py():
-        value = int(values.filter(beyond)[0].as_py())
-        raise ValueError(
-            f"The int {role} {value} reaches 2**53: an int column computes on "
-            f"doubles, exact below 2**53 only, and refuses it"
-        )
+
+
+# A row whose cross-products stay below this bound (estimated on doubles, so
+# a relative error far below the factor of two to ``2**62``) is computed in
+# int64; doubling a remainder below it, as half-to-even rounding does, still
+# fits.
+_INT64_PRODUCT_BOUND = float(2**61)
 
 
 def _combine_exact_columns(
     left: pa.Array,
     right: pa.Array | int | float | Fraction,
     operation: str,
+    number_type: NumberType,
     *,
     rounding: str,
+    row_numbers: Sequence[int] | np.ndarray | None,
 ) -> pa.StructArray:
-    """Row-wise exact arithmetic for the ``fraction`` lane."""
-    if isinstance(left, pa.ChunkedArray):
-        left = left.combine_chunks()
-    left_rows = left.to_pylist()
-    if isinstance(right, (pa.Array, pa.ChunkedArray)):
-        if isinstance(right, pa.ChunkedArray):
-            right = right.combine_chunks()
-        right_rows: list[Any] = right.to_pylist()
-    else:
-        right_rows = [right] * len(left_rows)
+    """The ``int`` and ``fraction`` lanes of :func:`combine_number_columns`.
 
-    rows: list[dict[str, Any] | None] = []
-    for left_row, right_row in zip(left_rows, right_rows):
-        if left_row is None or right_row is None:
-            rows.append(None)
-            continue
-        # Decode through struct_to_coordinate, not struct_to_rational: a
-        # hand-built or legacy cell may carry the number on the float side
-        # only, and arithmetic should read it rather than refuse it.
-        left_value = struct_to_coordinate(left_row, NumberType.fraction)
+    Each row is ``combine_numbers`` of its two operands. The rows whose
+    operands are complete ratios and whose cross-products provably fit int64
+    are computed as numpy int64 columns; every other row (a cell carrying
+    only its float side, an operand past int64, a zero divisor, products
+    past the bound) is computed one at a time, exactly, by
+    :func:`combine_numbers` itself.
+    """
+    left = _combined(left)
+    left_n, left_d, left_complete = _ratio_sides(left, number_type)
+    valid = left.is_valid().to_numpy(zero_copy_only=False)
+    right_column = isinstance(right, (pa.Array, pa.ChunkedArray))
+    if right_column:
+        right = _combined(right)
+        right_n, right_d, right_complete = _ratio_sides(right, number_type)
+        valid = valid & right.is_valid().to_numpy(zero_copy_only=False)
+    else:
+        operand = _exact_operand(right, operation, number_type, rounding)
+        right_n = np.full(len(left), 0 if operand is None else operand.numerator)
+        right_d = np.full(len(left), 1 if operand is None else operand.denominator)
+        right_complete = np.full(len(left), operand is not None)
+    right_n, right_d = right_n.astype(np.int64), right_d.astype(np.int64)
+
+    fast = valid & left_complete & right_complete
+    if operation in ("divide", "floor_divide"):
+        fast &= right_n != 0
+    magnitude = np.abs(left_n.astype(np.float64)), np.abs(right_n.astype(np.float64))
+    if operation in _ADDITIVE_OPERATIONS:
+        bounds = (
+            magnitude[0] * right_d + magnitude[1] * left_d,
+            left_d * 1.0 * right_d,
+        )
+    elif operation == "multiply":
+        bounds = (magnitude[0] * magnitude[1], left_d * 1.0 * right_d)
+    else:
+        bounds = (magnitude[0] * right_d, left_d * magnitude[1])
+    fast &= (bounds[0] < _INT64_PRODUCT_BOUND) & (bounds[1] < _INT64_PRODUCT_BOUND)
+    # Neutral operands where a row is not computed here, so that no column
+    # operation below divides by zero; those rows are filled in below.
+    left_n = np.where(fast, left_n, 0)
+    left_d = np.where(fast, left_d, 1)
+    right_n = np.where(fast, right_n, 1)
+    right_d = np.where(fast, right_d, 1)
+
+    if operation == "add":
+        numerator, denominator = left_n * right_d + right_n * left_d, left_d * right_d
+    elif operation == "subtract":
+        numerator, denominator = left_n * right_d - right_n * left_d, left_d * right_d
+    elif operation == "multiply":
+        numerator, denominator = left_n * right_n, left_d * right_d
+    else:
+        numerator, denominator = left_n * right_d, left_d * right_n
+        numerator = np.where(denominator < 0, -numerator, numerator)
+        denominator = np.abs(denominator)
+        if operation == "floor_divide":
+            numerator, denominator = numerator // denominator, np.ones_like(denominator)
+    if number_type is NumberType.int:
+        if np.any(denominator != 1):
+            numerator = _round_ratios(numerator, denominator, rounding)
+        denominator = np.ones_like(numerator)
+        values = numerator.astype(np.float64)
+    else:
+        numerator, denominator = _lowest_terms(numerator, denominator)
+        values = _ratio_values(numerator, denominator)
+
+    for position in np.flatnonzero(valid & ~fast):
+        left_value = struct_to_coordinate(left[position].as_py(), number_type)
         right_value = (
-            struct_to_coordinate(right_row, NumberType.fraction)
-            if isinstance(right_row, dict)
-            else right_row
+            struct_to_coordinate(right[position].as_py(), number_type)
+            if right_column
+            else right
         )
-        rows.append(
-            number_cell(
-                combine_numbers(
-                    left_value,
-                    right_value,
-                    operation,
-                    NumberType.fraction,
-                    rounding=rounding,
-                ),
-                NumberType.fraction,
-            )
+        result = combine_numbers(
+            left_value, right_value, operation, number_type, rounding=rounding
         )
-    return pa.array(rows, type=RATIONAL_STRUCT_TYPE)
+        row = position if row_numbers is None else row_numbers[position]
+        exact = Fraction(result)
+        for side, component in (
+            ("numerator", exact.numerator),
+            ("denominator", exact.denominator),
+        ):
+            if not _fits_int64(component):
+                raise ValueError(
+                    f"row {row}: {left_value} {_OPERATION_SYMBOLS[operation]} "
+                    f"{right_value} = {result}, whose {side} {component} in lowest "
+                    f"terms does not fit int64, the width of an exact cell; the "
+                    f"result cannot be stored exactly. Give the operands exact "
+                    f"values (a ratio written as a ratio, not as a decimal), or "
+                    f"declare the axis number_type float"
+                )
+        numerator[position], denominator[position] = exact.numerator, exact.denominator
+        values[position] = float(result)
+
+    null = ~valid
+    return pa.StructArray.from_arrays(
+        [
+            pa.array(values, pa.float64(), mask=null),
+            pa.array(numerator, pa.int64(), mask=null),
+            pa.array(denominator, pa.int64(), mask=null),
+        ],
+        fields=list(RATIONAL_STRUCT_TYPE),
+        mask=pa.array(null),
+    )
+
+
+def _ratio_sides(
+    column: pa.Array, number_type: NumberType
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """The ratio members of a storage column, and where they are complete.
+
+    A row is complete when it holds both members, a positive denominator,
+    and, on an ``int`` axis, the denominator 1: only then is the ratio the
+    number :func:`struct_to_coordinate` reads. The members of other rows are
+    placeholders.
+    """
+    members = dict(zip(column.type.names, column.flatten(), strict=True))
+    numerator, denominator = members["numerator"], members["denominator"]
+    complete = pc.and_(numerator.is_valid(), denominator.is_valid()).to_numpy(
+        zero_copy_only=False
+    )
+    n = numerator.fill_null(0).to_numpy(zero_copy_only=False).astype(np.int64)
+    d = denominator.fill_null(1).to_numpy(zero_copy_only=False).astype(np.int64)
+    complete &= (d == 1) if number_type is NumberType.int else (d > 0)
+    return n, d, complete
+
+
+def _exact_operand(
+    value: Any, operation: str, number_type: NumberType, rounding: str
+) -> Fraction | None:
+    """A scalar operand as :func:`combine_numbers` reads it, if int64 holds it.
+
+    ``None`` when it does not, or when reading it fails; the rows are then
+    computed one at a time, which raises what :func:`combine_numbers` raises.
+    """
+    try:
+        if operation in _ADDITIVE_OPERATIONS:
+            exact = Fraction(to_canonical(value, number_type, rounding=rounding))
+        else:
+            exact = Fraction(parse_number(value))
+    except (TypeError, ValueError, OverflowError, ZeroDivisionError):
+        return None
+    if _fits_int64(exact.numerator) and _fits_int64(exact.denominator):
+        return exact
+    return None
+
+
+def _round_ratios(
+    numerator: np.ndarray, denominator: np.ndarray, rounding: str
+) -> np.ndarray:
+    """Each ``n/d`` (``d > 0``) made integral as :func:`_round_to_int` would.
+
+    Integer arithmetic only, so no ratio passes through a double.
+    """
+    floor = numerator // denominator
+    if rounding == "floor":
+        return floor
+    remainder = numerator - floor * denominator
+    if rounding == "ceil":
+        return floor + (remainder != 0)
+    if rounding == "truncate":
+        return floor + ((remainder != 0) & (numerator < 0))
+    if rounding == "round":
+        twice = 2 * remainder
+        return floor + (
+            (twice > denominator) | ((twice == denominator) & (floor % 2 != 0))
+        )
+    raise ValueError(
+        f"Unknown rounding mode: {rounding!r}. Use one of {', '.join(ROUNDING_MODES)}."
+    )
+
+
+def _ratio_values(numerator: np.ndarray, denominator: np.ndarray) -> np.ndarray:
+    """Each ratio's double, the one ``float(Fraction(n, d))`` gives (``d > 0``).
+
+    Dividing the two members as doubles rounds once, and so is correctly
+    rounded, wherever both are doubles exactly (magnitudes up to ``2**53``)
+    or the denominator is a power of two (the numerator's one rounding is
+    then only scaled). The rare other rows are divided exactly.
+    """
+    values = numerator.astype(np.float64) / denominator.astype(np.float64)
+    dyadic = (denominator & (denominator - 1)) == 0
+    inexact = ~dyadic & (
+        (numerator > _EXACT_DOUBLE_INT)
+        | (numerator < -_EXACT_DOUBLE_INT)
+        | (denominator > _EXACT_DOUBLE_INT)
+    )
+    for row in np.flatnonzero(inexact):
+        values[row] = float(Fraction(int(numerator[row]), int(denominator[row])))
+    return values
 
 
 # ---------------------------------------------------------------------------
@@ -4133,14 +4289,10 @@ def numbers_from_package(
     mirror_n, mirror_d = _pairs_from_float_array(np.where(float_rows, x, 0.0))
     out_n = np.where(float_rows, mirror_n, n)
     out_d = np.where(float_rows, mirror_d, d)
-    out_x = np.where(float_rows, x, n.astype(np.float64) / d.astype(np.float64))
-    # Past 2**53 the float division of two rounded doubles may miss the
-    # correctly rounded quotient a Fraction gives in memory; those rows (rare)
-    # are divided exactly, so a position read from a file and the same
-    # position built in memory share their float key.
-    inexact = ~float_rows & ((np.abs(n) > _EXACT_DOUBLE_INT) | (d > _EXACT_DOUBLE_INT))
-    for row in np.flatnonzero(inexact):
-        out_x[row] = float(Fraction(int(n[row]), int(d[row])))
+    # The correctly rounded quotient a Fraction gives in memory, so a position
+    # read from a file and the same position built in memory share their
+    # float key.
+    out_x = np.where(float_rows, x, _ratio_values(n, d))
     null = pc.invert(valid).to_numpy(zero_copy_only=False)
     return pa.StructArray.from_arrays(
         [

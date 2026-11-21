@@ -26,7 +26,12 @@ from timetoshare.tables import (
     projection_problems,
 )
 
-from timetoalign.alignment import AlignmentBundle, MatchClaimField, MatchGraph
+from timetoalign.alignment import (
+    AlignmentBundle,
+    MatchClaim,
+    MatchClaimField,
+    MatchGraph,
+)
 from timetoalign.core import (
     Coordinate,
     EventReference,
@@ -129,27 +134,40 @@ def _number(
     return {"numerator": numerator, "denominator": denominator, "value": value}
 
 
-def _merged(*ids: str | None) -> AlignmentBundle:
-    """``from_bundles`` of two bundles, ``a`` and ``b``, each holding ``claim_1``.
+def _merged(b_claim: str = "claim_2") -> AlignmentBundle:
+    """``from_bundles`` of ``source_a`` holding ``claim_1`` and ``source_b``.
 
     Each source holds a score and a samples timeline (``a_score``,
-    ``a_pcm``; ``b_score``, ``b_pcm``) and one instant claim between them;
-    a source given ``None`` has no ID of its own (it is minted).
+    ``a_pcm``; ``b_score``, ``b_pcm``), the Note ``n1`` and the onset ``o1``
+    at their origins, and one instant claim between them: ``source_a``'s
+    minted ``claim_1``, ``source_b``'s given *b_claim*. A MatchClaim is
+    addressed by its id alone, so the two sources hold different ids.
+    ``a_score`` also holds ``n2`` at 1 quarter and ``b_pcm`` ``o2`` at
+    44100 samples, for a claim the merged bundle adds.
     """
     sources = []
-    for prefix, identifier in zip(("a", "b"), ids, strict=True):
-        source = (
-            AlignmentBundle() if identifier is None else AlignmentBundle(id=identifier)
+    for prefix in ("a", "b"):
+        source = AlignmentBundle(id=f"source_{prefix}")
+        score = ContinuousLogicalTimeline(length=Fraction(16), uid=f"{prefix}_score")
+        pcm = DiscretePhysicalTimeline(length=705600, uid=f"{prefix}_pcm")
+        notes = [("n1", Fraction(0))] + ([("n2", Fraction(1))] if prefix == "a" else [])
+        onsets = [("o1", 0)] + ([("o2", 44100)] if prefix == "b" else [])
+        score.add_events(
+            [{"id": i, "start": at, "event_type": "Note"} for i, at in notes]
         )
-        source.add_timeline(
-            ContinuousLogicalTimeline(length=Fraction(16), uid=f"{prefix}_score")
+        pcm.add_events(
+            [{"id": i, "start": at, "event_type": "Note"} for i, at in onsets]
         )
-        source.add_timeline(
-            DiscretePhysicalTimeline(length=705600, uid=f"{prefix}_pcm")
+        source.add_timeline(score)
+        source.add_timeline(pcm)
+        claim = MatchClaim.from_events(
+            {"id": "n1", "start": Fraction(0)},
+            score,
+            {"id": "o1", "start": 0},
+            pcm,
+            id=None if prefix == "a" else b_claim,
         )
-        source.create_match_claims(
-            [({"start": 0}, f"{prefix}_score", {"start": 0}, f"{prefix}_pcm")]
-        )
+        source.add_match_claims([claim])
         sources.append(source)
     return AlignmentBundle.from_bundles(sources, id="merged")
 
@@ -553,39 +571,23 @@ class TestWriting:
             bundle.to_file(tmp_path / "package.yaml")
         assert list(tmp_path.iterdir()) == []
 
-    def test_claims_merged_from_other_bundles_keep_their_scopes(
+    def test_claims_merged_from_other_bundles_keep_their_ids(
         self, tmp_path: Path
     ) -> None:
-        merged = _merged("source_a", "source_b")
-        merged.create_match_claims(
-            [({"start": 1}, "a_score", {"start": 44100}, "b_pcm")]
-        )
+        merged = _merged()
+        merged.create_match_claims([("n2", "a_score", "o2", "b_pcm")])
         (tmp_path / "first").mkdir()
 
         path = merged.to_file(tmp_path / "first" / "merged.yaml")
 
         table = pq.read_table(tmp_path / "first" / "match_claims.parquet")
-        assert table.column_names[-1] == "scope"
-        assert table.select(["id", "scope"]).to_pylist() == [
-            {"id": "claim_1", "scope": "source_a"},
-            {"id": "claim_1", "scope": "source_b"},
-            {"id": "claim_1", "scope": None},
-        ]
+        assert table.column_names == list(MatchClaimField.pa_schema.names)
+        assert table.column("id").to_pylist() == ["claim_1", "claim_2", "claim_3"]
         manifest = timetoshare.loads(path.read_text(encoding="utf-8"))
         assert match_claim_problems(table, manifest) == []
-        message = (
-            "This MatchClaim table mixes scopes (its column 'scope'), which a "
-            "MatchClaimField does not hold: read the package with "
-            "AlignmentBundle.from_file."
-        )
-        with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
-            MatchClaimField.from_parquet(tmp_path / "first" / "match_claims.parquet")
 
         read = AlignmentBundle.from_file(path)
 
-        assert read.claim_scopes == ("merged", "source_a", "source_b")
-        assert read.claim_table.column("scope_key").to_pylist() == [1, 2, 0]
-        assert read.claim_table.equals(merged.claim_table)
         assert read.match_claim_table == merged.match_claim_table
         assert read.to_dict() == merged.to_dict()
         (tmp_path / "second").mkdir()
@@ -593,32 +595,70 @@ class TestWriting:
         assert _bytes(tmp_path / "second") == _bytes(tmp_path / "first")
 
     def test_a_merged_package_obeys_the_succession_rule(self, tmp_path: Path) -> None:
-        _merged("source_a", "source_b").to_file(tmp_path / "merged.yaml")
+        _merged().to_file(tmp_path / "merged.yaml")
         before = _bytes(tmp_path)
 
-        _merged("source_a", "source_b").to_file(tmp_path / "merged.yaml")
+        _merged().to_file(tmp_path / "merged.yaml")
         assert _bytes(tmp_path) == before
 
         message = (
-            "The new MatchClaim table lacks the MatchClaim 'claim_1' of the scope "
-            "'source_b' of the existing one: a MatchClaim is never removed; record "
-            "the belief 'false' in it instead (AlignmentBundle.add_match_claim_belief)."
+            "The new MatchClaim table lacks the MatchClaim 'claim_2' of the "
+            "existing one: a MatchClaim is never removed; record the belief "
+            "'false' in it instead (AlignmentBundle.add_match_claim_belief)."
         )
         with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
-            _merged("source_a", "source_c").to_file(tmp_path / "merged.yaml")
+            _merged("claim_7").to_file(tmp_path / "merged.yaml")
         assert _bytes(tmp_path) == before
 
-    def test_two_scopes_of_one_name_are_refused(self, tmp_path: Path) -> None:
-        merged = _merged(None, None)
+    def test_a_scope_column_is_kept_as_a_further_column(self, tmp_path: Path) -> None:
+        (tmp_path / "first").mkdir()
+        path = _merged().to_file(tmp_path / "first" / "merged.yaml")
+        file = tmp_path / "first" / "match_claims.parquet"
+        written = pq.read_table(file)
+        scope = pa.array(["source_a", None], pa.string())
+        with_scope = written.append_column("scope", scope)
+        pq.write_table(with_scope, file)
 
-        message = (
-            "Bundle 'merged' holds MatchClaims of 2 scopes named 'bundle_1' "
-            "(keys [1, 2] of claim_scopes), which the MatchClaim table's column "
-            "'scope' cannot tell apart: give the bundles merged distinct ids."
+        field = MatchClaimField.from_parquet(file)
+        assert field.table.column_names[-1] == "scope"
+        assert field.table.column("scope").to_pylist() == ["source_a", None]
+        assert field.package_table.equals(with_scope)
+        read = AlignmentBundle.from_file(path)
+        assert read.match_claim_table == field
+        assert read.match_claim_table.filter(timeline_id="b_score").table.column(
+            "scope"
+        ).to_pylist() == [None]
+
+        (tmp_path / "second").mkdir()
+        read.to_file(tmp_path / "second" / "merged.yaml")
+        assert pq.read_table(tmp_path / "second" / "match_claims.parquet").equals(
+            with_scope, check_metadata=True
         )
-        with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
-            merged.to_file(tmp_path / "merged.yaml")
-        assert list(tmp_path.iterdir()) == []
+
+        # The manifest holds no event rows: the claim names the events it read.
+        read.add_match_claims(
+            [
+                MatchClaim.from_events(
+                    {"id": "n2", "start": Fraction(1)},
+                    read.get_timeline("a_score"),
+                    {"id": "o2", "start": 44100},
+                    read.get_timeline("b_pcm"),
+                )
+            ]
+        )
+        read.add_match_claim_belief(
+            "claim_1",
+            actor="https://orcid.org/0000-0001",
+            belief="false",
+            date="2026-11-21",
+        )
+        read.to_file(tmp_path / "second" / "merged.yaml")
+        rewritten = pq.read_table(tmp_path / "second" / "match_claims.parquet")
+        assert rewritten.select(["id", "scope"]).to_pylist() == [
+            {"id": "claim_1", "scope": "source_a"},
+            {"id": "claim_2", "scope": None},
+            {"id": "claim_3", "scope": None},
+        ]
 
     def test_unreduced_fractions_in_the_tables_read_as_their_value(
         self, tmp_path: Path

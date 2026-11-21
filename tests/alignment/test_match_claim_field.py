@@ -1000,10 +1000,10 @@ def _with_child(table: pa.Table, name: str, child: pa.Array) -> pa.Table:
     return table.set_column(table.column_names.index(name), name, child)
 
 
-#: The refusal of a table whose columns are not the MatchClaim properties.
-_NOT_THE_PROPERTIES = (
-    "A MatchClaimField table holds one column per MatchClaim property, {}; "
-    "this table has the columns {}."
+#: The refusal of a table lacking columns of the MatchClaim properties.
+_LACKS_PROPERTIES = (
+    "A MatchClaim table holds one column per MatchClaim property, {}; "
+    "this table lacks {}."
 )
 
 
@@ -1053,24 +1053,28 @@ class TestTableRoundTrip:
         restored = MatchClaimField.from_table(chunked)
         assert restored.table.equals(gold_field.table, check_metadata=True)
 
-    def test_refuses_other_columns(self, gold_field: MatchClaimField) -> None:
+    def test_keeps_further_columns(self, gold_field: MatchClaimField) -> None:
+        extra = pa.array([1, 2, 3])
+        table = gold_field.table.append_column("extra", extra)
+        field = MatchClaimField.from_table(table)
+        assert field.table.equals(table, check_metadata=True)
+        assert field.package_table.equals(
+            gold_field.package_table.append_column("extra", extra), check_metadata=True
+        )
+        assert field.filter(timeline_id="C").table.column("extra").to_pylist() == [2, 3]
+        assert field != gold_field
+
+    def test_refuses_missing_columns(self, gold_field: MatchClaimField) -> None:
         columns = gold_field.table.column_names
         with pytest.raises(
             ValueError,
-            match=re.escape(_NOT_THE_PROPERTIES.format(columns, [*columns, "extra"])),
-        ):
-            MatchClaimField.from_table(
-                gold_field.table.append_column("extra", pa.array([1, 2, 3]))
-            )
-        with pytest.raises(
-            ValueError,
-            match=re.escape(_NOT_THE_PROPERTIES.format(columns, columns[:-1])),
+            match=re.escape(_LACKS_PROPERTIES.format(columns, ["id"])),
         ):
             MatchClaimField.from_table(gold_field.table.drop_columns(["id"]))
         single = pa.table({"match_claim": gold_field.table.to_struct_array()})
         with pytest.raises(
             ValueError,
-            match=re.escape(_NOT_THE_PROPERTIES.format(columns, ["match_claim"])),
+            match=re.escape(_LACKS_PROPERTIES.format(columns, columns)),
         ):
             MatchClaimField.from_table(single)
 

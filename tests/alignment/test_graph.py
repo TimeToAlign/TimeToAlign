@@ -265,8 +265,8 @@ class TestMatchStamp:
         assert "tl_c" not in filtered.coordinates
         assert len(filtered.stated_pairs) == 1
 
-    def test_filter_by_timelines_keeping_none_is_refused(self) -> None:
-        """A filter keeping no timeline names the stamp's, never ``StopIteration``."""
+    def test_filter_by_timelines_keeps_the_source(self) -> None:
+        """The source is always kept; the filter selects the other timelines."""
         stamp = MatchStamp(
             coordinates={"tl_a": 100.0, "tl_b": 50.0, "tl_c": 25.0},
             stated_pairs=[("tl_a", "tl_b"), ("tl_b", "tl_c")],
@@ -276,12 +276,24 @@ class TestMatchStamp:
             {"within": set()},
             {"id_pattern": r"^zzz$"},
         ):
-            with pytest.raises(ValueError) as raised:
-                stamp.filter_by_timelines(**narrowing)
-            assert str(raised.value) == (
-                "The filter keeps none of the timelines of the MatchStamp: "
-                "'tl_a', 'tl_b', 'tl_c'."
-            )
+            filtered = stamp.filter_by_timelines(**narrowing)
+            assert filtered.source_id == "tl_a"
+            assert filtered.coordinates == {"tl_a": stamp.coordinates["tl_a"]}
+            assert filtered.stated_pairs == []
+
+        filtered = stamp.filter_by_timelines(within={"tl_b"})
+        assert list(filtered.coordinates) == ["tl_a", "tl_b"]
+        assert filtered.stated_pairs == [("tl_a", "tl_b")]
+
+        from_c = MatchStamp(
+            coordinates={"tl_a": 100.0, "tl_b": 50.0, "tl_c": 25.0},
+            source_id="tl_c",
+            stated_pairs=[("tl_a", "tl_b"), ("tl_b", "tl_c")],
+        )
+        filtered = from_c.filter_by_timelines(within={"tl_b"})
+        assert filtered.source_id == "tl_c"
+        assert list(filtered.coordinates) == ["tl_b", "tl_c"]
+        assert filtered.stated_pairs == [("tl_b", "tl_c")]
 
     def test_to_dict_roundtrip(self) -> None:
         """Serialize and deserialize MatchStamp."""

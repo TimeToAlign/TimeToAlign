@@ -26,6 +26,7 @@ from timetoalign.alignment import (
     AlignmentBundle,
     MatchClaim,
     MatchClaimField,
+    MatchIntervalStamp,
 )
 from timetoalign.alignment.bundle import _ALL_BELIEFS
 from timetoalign.alignment.filters import ClaimFilter
@@ -37,6 +38,7 @@ from timetoalign.core import (
     CoordinateField,
     IdCoordinate,
     IdCoordinateField,
+    Interval,
     Provenance,
     TimeUnit,
 )
@@ -691,6 +693,37 @@ def _make_claim_filter_bundle() -> tuple[
     return bundle, claims
 
 
+def _make_warped_bundle() -> AlignmentBundle:
+    """``score`` (quarters) warped onto ``audio`` and ``other`` (seconds).
+
+    Two claims per pair, at the origins and at 4 quarters (2 seconds on
+    ``audio``, 4 on ``other``), so every position between them is warped:
+    1 quarter is 0.5 seconds on ``audio`` and 1.0 on ``other``.
+    """
+    score = Timeline(length=Fraction(16), unit=TimeUnit.quarters, uid="score")
+    audio = Timeline(length=8.0, unit=TimeUnit.seconds, uid="audio")
+    other = Timeline(length=16.0, unit=TimeUnit.seconds, uid="other")
+    bundle = AlignmentBundle(id="warped")
+    for timeline in (score, audio, other):
+        bundle.add_timeline(timeline, as_group=f"{timeline.id}-group")
+    bundle.add_match_claims(
+        [
+            match_claim(
+                "score",
+                Coordinate(Fraction(quarters), TimeUnit.quarters),
+                target,
+                Coordinate(seconds, TimeUnit.seconds),
+            )
+            for target, pairs in (
+                ("audio", ((0, 0.0), (4, 2.0))),
+                ("other", ((0, 0.0), (4, 4.0))),
+            )
+            for quarters, seconds in pairs
+        ]
+    )
+    return bundle
+
+
 # endregion
 
 
@@ -809,21 +842,57 @@ class TestBundleClaimFilters:
             {"include_units": {TimeUnit.pixels}},
         ],
     )
-    def test_a_narrowing_keeping_no_timeline_is_refused(self, narrowing: dict) -> None:
-        """No bare ``StopIteration``: the error names the stamp's timelines."""
+    def test_a_narrowing_keeping_none_of_the_others_keeps_the_queried_timeline(
+        self, narrowing: dict
+    ) -> None:
+        """The queried timeline is always kept; the narrowing selects the others."""
         bundle, _ = _make_claim_filter_bundle()
-        message = (
-            "The filter keeps none of the timelines of the MatchStamp: "
-            "'score', 'audio', 'other'."
+        score = {"score": Coordinate(Fraction(0), TimeUnit.quarters)}
+
+        stamp = bundle.get_matchstamp_at(0.0, "score", **narrowing)
+        assert (stamp.source_id, stamp.coordinates) == ("score", score)
+        assert (stamp.stated_pairs, stamp.inferred_pairs) == ([], [])
+        stamps = bundle.get_matchstamps_at([0.0, 0.0], "score", **narrowing)
+        assert [s.coordinates for s in stamps] == [score, score]
+        assert bundle.get_matchstamp(0.0, "score", **narrowing).coordinates == score
+
+    def test_within_keeps_the_queried_timeline(self) -> None:
+        """``within`` names the others: the queried timeline is kept beside them."""
+        bundle = _make_warped_bundle()
+
+        stamp = bundle.get_matchstamp_at(1, "score", within={"audio"})
+        assert stamp.source_id == "score"
+        assert stamp.coordinates == {
+            "score": Coordinate(Fraction(1), TimeUnit.quarters),
+            "audio": Coordinate(0.5, TimeUnit.seconds),
+        }
+
+        query = Interval(
+            Coordinate(Fraction(0), TimeUnit.quarters),
+            Coordinate(Fraction(1), TimeUnit.quarters),
         )
-        for getter, at in (
-            (bundle.get_matchstamp_at, 0.0),
-            (bundle.get_matchstamps_at, [0.0, 1.0]),
-            (bundle.get_matchstamp, 0.0),
-        ):
-            with pytest.raises(ValueError) as raised:
-                getter(at, "score", **narrowing)
-            assert str(raised.value) == message
+        interval = bundle.get_matchstamp_at(query, "score", within={"audio"})
+        assert type(interval) is MatchIntervalStamp
+        assert interval.source_id == "score"
+        assert interval.interval == query
+        assert interval.start_stamp.coordinates == {
+            "score": Coordinate(Fraction(0), TimeUnit.quarters),
+            "audio": Coordinate(0.0, TimeUnit.seconds),
+        }
+        assert interval.end_stamp.coordinates == {
+            "score": Coordinate(Fraction(1), TimeUnit.quarters),
+            "audio": Coordinate(0.5, TimeUnit.seconds),
+        }
+
+    def test_a_table_s_within_projects_its_columns(self) -> None:
+        """A table's ``within`` keeps only the columns it names, the queried one too."""
+        bundle = _make_warped_bundle()
+
+        table = bundle.get_matchstamp_table([0, 1], "score", within={"audio"})
+        assert table.column_names == ["audio"]
+        assert bundle.get_matchstamp_table(
+            [0, 1], "score", within={"audio"}, format="dataframe"
+        )["audio (seconds)"].tolist() == [0.0, 0.5]
 
 
 # endregion

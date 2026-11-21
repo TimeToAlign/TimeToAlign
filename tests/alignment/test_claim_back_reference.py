@@ -122,7 +122,7 @@ class TestCopyingABundle:
         copied = copy.deepcopy(bundle)
         assert copies == []
         assert copied.match_claim_table is not bundle.match_claim_table
-        assert copied.claim_table.equals(bundle.claim_table)
+        assert copied.match_claim_table.table.equals(bundle.match_claim_table.table)
         assert len(copied.match_claim_table) == N_CHAIN + len(OVERLAPPING)
         claims = copied.get_match_claims()
         assert all(claim.bundle is copied for claim in claims)

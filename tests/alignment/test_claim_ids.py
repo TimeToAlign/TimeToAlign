@@ -1,4 +1,4 @@
-"""Claim ids: unique in the scope holding the claims, the same in every process.
+"""Claim ids: each addresses one claim of its table or bundle, the same in every process.
 
 Validation strategy, fixture and exact values: ``tests/alignment/README.md``
 (the "Claim Ids" section).
@@ -35,7 +35,7 @@ def _claims(
 ) -> list[MatchClaim]:
     """Fresh claims between a ``score`` note and an ``audio`` onset at each pair.
 
-    Without *ids* every claim holds none until a scope mints it one.
+    Without *ids* every claim holds none until a bundle mints it one.
     """
     return [
         MatchClaim.from_events(
@@ -99,7 +99,7 @@ def test_free_claim_holds_no_id() -> None:
         MatchClaim.from_dict(first.to_dict() | {"id": "a\tb"})
 
 
-def test_field_is_a_scope() -> None:
+def test_field_holds_each_id_once() -> None:
     field = MatchClaimField.from_claims(_claims(STORED[:3], ["s0", "s1", "s2"]))
     assert _ids(field) == ["s0", "s1", "s2"]
 
@@ -400,14 +400,16 @@ def test_two_runs_merged(tmp_path: Path) -> None:
     assert len(bundle.match_claim_table) == 4
 
     runs = [_holding().add_match_claim_field(run) for run in (first, second)]
-    merged = AlignmentBundle.from_bundles(runs)
-    assert merged.claim_scopes == (merged.id, runs[0].id, runs[1].id)
-    table = merged.claim_table
-    assert table.column("id").to_pylist() == _ids(first) + _ids(second)
-    assert table.column("scope_key").to_pylist() == [1] * 4 + [2] * 4
-    stored = pa.concat_tables([first.table, second.table])
-    for name in MatchClaimField.pa_schema.names:
-        assert table.column(name).equals(stored.column(name))
+    with pytest.raises(ValueError) as raised:
+        AlignmentBundle.from_bundles(runs)
+    assert str(raised.value) == (
+        f"MatchClaim id 'claim_1' is held by bundle '{runs[0].id}' and by bundle "
+        f"'{runs[1].id}' (bundles 0 and 1 of the merge): a MatchClaim is "
+        f"addressed by its id alone, so the two merge once one of them states "
+        f"its MatchClaims under other ids."
+    )
+    for run, stored in zip(runs, (first, second), strict=True):
+        assert run.match_claim_table.table.equals(stored.table, check_metadata=True)
 
 
 def test_given_id_refused_atomically() -> None:
@@ -431,31 +433,42 @@ def test_given_id_refused_atomically() -> None:
     assert _ids(field) == ["a"]
 
 
-def test_merge_keeps_ids_in_their_scopes() -> None:
+def test_merge_keeps_ids_and_refuses_a_shared_one() -> None:
     sources = [_holding(*_claims(NEW)) for _ in range(2)]
     for source in sources:
         assert [claim.id for claim in source.get_match_claims()] == [
             "claim_1",
             "claim_2",
         ]
-
-    merged = AlignmentBundle.from_bundles(sources)
-    held = merged.get_match_claims()
-    assert [claim.id for claim in held] == ["claim_1", "claim_2"] * 2
-    assert merged.claim_table.column("scope_key").to_pylist() == [1, 1, 2, 2]
-    assert merged.claim_scopes == (merged.id, sources[0].id, sources[1].id)
-    assert all(claim.bundle is merged for claim in held)
+    with pytest.raises(ValueError) as raised:
+        AlignmentBundle.from_bundles(sources)
+    assert str(raised.value) == (
+        f"MatchClaim id 'claim_1' is held by bundle '{sources[0].id}' and by "
+        f"bundle '{sources[1].id}' (bundles 0 and 1 of the merge): a MatchClaim "
+        f"is addressed by its id alone, so the two merge once one of them "
+        f"states its MatchClaims under other ids."
+    )
     for source in sources:
         assert [claim.id for claim in source.get_match_claims()] == [
             "claim_1",
             "claim_2",
         ]
-        assert "scope_key" not in source.claim_table.column_names
+        assert all(claim.bundle is source for claim in source.get_match_claims())
+
+    first, second = _claims(NEW[:1]), _claims(NEW[1:], ["claim_2"])
+    sources = [_holding(*first), _holding(*second)]
+    merged = AlignmentBundle.from_bundles(sources)
+    held = merged.get_match_claims()
+    assert [claim.id for claim in held] == ["claim_1", "claim_2"]
+    assert held == [*first, *second]
+    assert all(claim.bundle is merged for claim in held)
+    assert merged.match_claim_table.table.column_names == list(
+        MatchClaimField.pa_schema.names
+    )
 
     added = _claims(STORED[:1])
     merged.add_match_claims(added)
-    assert added[0].id == "claim_1"
-    assert merged.claim_table.column("scope_key").to_pylist() == [1, 1, 2, 2, 0]
+    assert added[0].id == "claim_3"
 
     taken = sources[0].get_match_claims()[0]
     other = _holding(taken)

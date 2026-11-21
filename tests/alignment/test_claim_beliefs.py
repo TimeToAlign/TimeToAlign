@@ -16,6 +16,7 @@ import pytest
 from timetoalign.alignment import (
     AlignmentBundle,
     ClaimFilter,
+    MatchClaim,
     MatchClaimField,
     MatchLine,
 )
@@ -160,18 +161,10 @@ class TestAddBelief:
         with pytest.raises(
             KeyError,
             match=re.escape(
-                "The scope 0 ('beliefs') of bundle 'beliefs' holds no MatchClaim "
-                "'claim_9' (3 MatchClaims)."
+                "Bundle 'beliefs' holds no MatchClaim 'claim_9' (3 MatchClaims)."
             ),
         ):
             bundle.add_match_claim_belief("claim_9", actor=Q42, belief="true")
-        with pytest.raises(
-            KeyError,
-            match=re.escape("No scope has the key 3. Available scopes: {0: 'beliefs'}"),
-        ):
-            bundle.add_match_claim_belief(
-                "claim_1", actor=Q42, belief="true", scope_key=3
-            )
         with pytest.raises(ValueError):
             bundle.add_match_claim_belief("claim_1", actor=Q42, belief="maybe")  # type: ignore[arg-type]
         assert bundle.match_claim_table == before
@@ -235,18 +228,29 @@ class TestAddBelief:
             bundle, believer="https://orcid.org/0000-0001", beliefs=["true"]
         ) == ["claim_1"]
 
-    def test_a_claim_is_addressed_in_its_scope(self) -> None:
+    def test_a_claim_is_addressed_by_its_id(self) -> None:
         sources = []
-        for prefix in ("a_", "b_"):
+        for prefix, claim_id in (("a_", "claim_1"), ("b_", "claim_2")):
             source = AlignmentBundle(id=f"source_{prefix[0]}")
-            for timeline in _timelines(prefix):
-                source.add_timeline(timeline)
-            source.create_match_claims([("n1", f"{prefix}score", "o1", f"{prefix}pcm")])
+            score, pcm = _timelines(prefix)
+            source.add_timeline(score)
+            source.add_timeline(pcm)
+            source.add_match_claims(
+                [
+                    MatchClaim.from_events(
+                        {"id": "n1", "start": Fraction(0)},
+                        score,
+                        {"id": "o1", "start": 0},
+                        pcm,
+                        id=claim_id,
+                    )
+                ]
+            )
             sources.append(source)
         merged = AlignmentBundle.from_bundles(sources, id="merged")
 
         merged.add_match_claim_belief(
-            "claim_1", actor=Q42, belief="false", date="2026-11-21", scope_key=2
+            "claim_2", actor=Q42, belief="false", date="2026-11-21"
         )
 
         assert [claim.provenance for claim in merged.get_match_claims()] == [

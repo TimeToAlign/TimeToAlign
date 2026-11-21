@@ -20,8 +20,9 @@ property–value pairs with provenance (see
 
 What is linked-data-ready as encoded (relations, ``@sameas``, authority
 IRIs, identifiers, titles, dates, keys, meters, media of performance) is
-stated; a name without an IRI is proposed, for reconciliation. Every pair's
-provenance names the MEI element it comes from as its basis. History,
+stated; a name without an IRI is offered as a candidate, for reconciliation.
+Every pair's provenance entry names the MEI element it comes from as its
+basis; the import records how a pair was made and holds no belief. History,
 notes, bibliography and incipits stay in the MEI file.
 
 Examples:
@@ -40,8 +41,13 @@ Examples:
     >>> work = bundle.statements["schema:about"][0]
     >>> work["id"], work["type"], work["melod:hasTitle"]
     ('song.mei#work_1', ['melod:Work'], [{'type': ['melod:Title'], 'rdfs:label': ['Hr. Olufs Sang']}])
-    >>> [(entry["property"], entry["status"]) for entry in work["provenance"]]
-    [('rdf:type', 'confirmed'), ('melod:hasTitle', 'confirmed'), ('rel:cmp', 'proposed')]
+    >>> [entry["property"] for entry in work["provenance"]]
+    ['rdf:type', 'melod:hasTitle', 'rel:cmp']
+    >>> candidates = bundle.get_candidates(node=("schema:about", 0))
+    >>> [(entry["value"], entry["basis"], entry["note"]) for entry in candidates]
+    [({'label': 'Carl Nielsen'}, ['song.mei#persName_1'], 'unreconciled')]
+    >>> "beliefs" in candidates[0]
+    False
 """
 
 from __future__ import annotations
@@ -248,7 +254,7 @@ class MeiHead:
 
 @dataclass(frozen=True)
 class _Pair:
-    """One pair to state or propose, and the MEI element it comes from.
+    """One pair to state or offer as a candidate, and the MEI element it comes from.
 
     *inner* are the pairs of the value node this pair states, applied inside
     it once it is stated.
@@ -257,7 +263,7 @@ class _Pair:
     property: str
     value: Any
     source: ET.Element | None
-    proposed: bool = False
+    candidate: bool = False
     note: str | None = None
     inner: tuple[_Pair, ...] = ()
 
@@ -332,10 +338,12 @@ class MeiHeadLoader(Loader[MeiHead]):
         The work becomes a value node under the bundle's ``schema:about``,
         each manifestation a new graphical timeline in millimetres of
         unknown length, named by its first title; expressions and items are
-        value nodes. A pair a subject already states, proposes or rejects is
-        passed over, and the pairs of a value node go into it only while
-        the subject states it, so importing a header twice into one bundle
-        adds nothing, a rejection stays and a confirmation too. Every pair
+        value nodes. A name without an IRI is offered as a candidate. A
+        pair a subject already states or holds an entry of (a candidate, a
+        pair someone believes) is passed over, and the pairs of a value node
+        go into it only while the subject states it, so importing a header
+        twice into one bundle adds nothing and every belief recorded
+        stands. The import holds no belief. Every pair
         is checked before the bundle changes: a refused one leaves it as it
         was.
 
@@ -527,14 +535,15 @@ class _Import:
         return self.base if xml_id is None else f"{self.base}#{xml_id}"
 
     def _apply(self, plan: Plan, target: Target, node: NodePath, pair: _Pair) -> None:
-        """State or propose *pair* at *node* of *target*, then its inner pairs.
+        """State *pair* at *node* of *target*, then its inner pairs; or offer it.
 
-        The inner pairs go into the value as the target holds it now; a value
-        the target does not hold (rejected, or still proposed) takes none.
+        A candidate pair is offered, never stated. The inner pairs go into
+        the value as the target holds it now; a value the target does not
+        state (a candidate, or one withdrawn) takes none.
         """
         basis = [self._basis(pair.source)]
-        if pair.proposed:
-            plan.propose(
+        if pair.candidate:
+            plan.offer(
                 target,
                 pair.property,
                 pair.value,
@@ -722,7 +731,7 @@ class _Import:
             return _Pair(f"rel:{code}", {"id": iris[0], "label": text}, name, note=note)
         unreconciled = "unreconciled" if note is None else f"unreconciled; {note}"
         return _Pair(
-            f"rel:{code}", {"label": text}, name, proposed=True, note=unreconciled
+            f"rel:{code}", {"label": text}, name, candidate=True, note=unreconciled
         )
 
     def _date(self, property: str, date: ET.Element) -> _Pair:
@@ -817,7 +826,7 @@ class _Import:
                             property,
                             {"label": text},
                             keeper,
-                            proposed=True,
+                            candidate=True,
                             note="unreconciled",
                         )
                     )
@@ -869,7 +878,7 @@ class _Import:
         return pairs
 
     def _item_node(self, pairs: list[_Pair], source: ET.Element) -> _Pair:
-        """An item as one value node: its stated pairs inside, its proposals after.
+        """An item as one value node: its stated pairs inside, its candidates after.
 
         An item with an ``xml:id`` is the node of the IRI ``<base>#<xml:id>``,
         as works and expressions are; any other item (and the item a
@@ -879,13 +888,13 @@ class _Import:
         if _local(source) == "item" and _xml_id(source) is not None:
             node["id"] = self._iri(source)
         for pair in pairs:
-            if not pair.proposed:
+            if not pair.candidate:
                 node.setdefault(pair.property, []).append(pair.value)
         return _Pair(
             "lrmoo:R7i_is_exemplified_by",
             node,
             source,
-            inner=tuple(pair for pair in pairs if pair.proposed),
+            inner=tuple(pair for pair in pairs if pair.candidate),
         )
 
     def _targets(

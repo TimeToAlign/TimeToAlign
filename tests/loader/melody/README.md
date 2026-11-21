@@ -35,9 +35,9 @@ follows from that rule alone:
 | a blank node is a node; an `rdf:List` is `{"list": [...]}` in its order; a blank node containing itself is refused | titles, meters, dates; the kinds repository; the cycle case |
 | literals: plain and `xsd:string` a string, `xsd:integer` an integer, `xsd:boolean` a boolean, a language tag a value object with `@language`, any other datatype a value object with `@type` (so `xsd:decimal` never becomes a float) | the meter count, the duration, the French title; the kinds repository |
 | `https://schema.org/` compacts to `schema:` through the catalogue's alias | `schema:creativeWorkStatus`, `schema:dateCreated` |
-| every pair stated carries a `confirmed` entry: `stated_by` the library, the date given, `method: imported`, `basis` the base followed by the subject's file (percent-encoded per segment); a pair whose value is an entity's node adds that entity's file when it differs | every subject; the base and file-name cases |
+| every pair stated carries one entry, holding no `beliefs` (a loader believes nothing): `stated_by` the library, the date given, `method: imported`, `basis` the base followed by the subject's file (percent-encoded per segment); a pair whose value is an entity's node adds that entity's file when it differs | every subject; the base and file-name cases |
 | files under `indexes/`, `configuration/`, `datasets/` are not read | the main repository's `indexes/works.ttl`, which types the work `melod:WorkEntity`: read, it would type the work twice and become the work's file |
-| a pair already stated, proposed or rejected is skipped | importing twice; a rejected pair |
+| a pair the subject states or holds an entry of is skipped, so a recorded belief stands | importing twice; a pair an editor believes `false` |
 | a file is read per source and relative path: two sources holding files of one relative path are both read, each named by that path in a `basis` | two files `x.ttl` in two folders, given directly |
 | every pair is checked before the bundle changes | a manifestation stating `owl:sameAs <doi:10.1000/x>`, a prefix no context declares |
 
@@ -73,9 +73,11 @@ library's reader and writer keep it.
    melodTerms owl rdf rdfs schema wd xsd`, and it round-trips.
 2. **Re-import** into the bundle of case 1 with the manifestation mapped to
    `cgt_1`: `to_dict()` unchanged.
-3. **A rejected pair** stays rejected: the manifestation's title rejected on
-   `cgt_1`, then a re-import leaves the title unstated and the entry
-   rejected.
+3. **A pair believed `false`** keeps its belief: an editor believes the
+   manifestation's title on `cgt_1` `false`; a re-import leaves `to_dict()`
+   unchanged, the title stated (a belief never removes a pair), its entry
+   the import's members plus the editor's belief, and the editor's filtered
+   provenance (`get_provenance(believer=)`) without the title's entry.
 4. **Mapped elements**: the repository plus a second work; `into` holds
    `clt_6` (quarters, 27) with `region_1` (0 to 12); the manifestation maps
    to `clt_6` and the item to `region_1`: no timeline is added, `clt_6`

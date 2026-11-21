@@ -63,7 +63,7 @@ another basis fails.
   statement, so a value naming it (`{"id": "#cgt_1"}`) carries its final ID.
 * An **item** is a value node under its manifestation's
   `lrmoo:R7i_is_exemplified_by`, its pairs stated inside the node; a
-  repository without an IRI is proposed inside the node. An item with an
+  repository without an IRI is a candidate inside the node. An item with an
   `xml:id` has the IRI `<base>#<xml:id>` as its `id`, so two items of equal
   content stay two nodes (the variant with two such items); the item of a
   singleton manifestation, which has no element of its own, is a blank node.
@@ -75,12 +75,15 @@ prefixes used, and it reads back to an equal manifest.
 
 ## Provenance
 
-Every stated pair has one `confirmed` entry: `stated_by` the library (or the
-agent given), the date given, `method: imported`, and as `basis` the MEI file
-followed by `#<xml:id>` of the element the pair comes from (the file alone
-when that element has no `xml:id`). A name without an IRI is proposed, never
-stated, with the note `unreconciled`. The default date is not tested here: it
-is the statement API's.
+Every pair the import writes has one entry saying how it was made:
+`stated_by` the library (or the agent given), the date given, `method:
+imported`, and as `basis` the MEI file followed by `#<xml:id>` of the element
+the pair comes from (the file alone when that element has no `xml:id`). The
+entry holds no `beliefs`: a loader records how a pair was made and believes
+nothing, so the expected entries are written without the key and the whole
+dictionaries compared. A name without an IRI is a candidate (an entry with
+no stated pair), never stated, with the note `unreconciled`. The default
+date is not tested here: it is the statement API's.
 
 ## Importing into a bundle
 
@@ -89,14 +92,19 @@ is the statement API's.
   names by `{"id": "#region_1"}`); no timeline is added for a mapped entity.
 * Importing the same header again, with every manifestation mapped to the
   element the first import gave it, leaves the manifest written unchanged:
-  a pair the subject states, proposes or rejects is skipped. A rejected
-  proposal is not proposed again.
+  a pair the subject states or holds an entry of is skipped. A candidate an
+  editor believes `false` is not offered again: the manifest is unchanged,
+  the entry keeps the editor's belief, and `get_candidates(believer=)` of
+  that editor leaves it out while the unfiltered call keeps it.
 * A decision taken on a value node survives a second import, which then
-  changes nothing: the work rejected under `schema:about` (its pairs are not
-  put back, since the bundle no longer holds the node); an expression
-  rejected under a manifestation's `lrmoo:R4_embodies`; the keeper proposed
-  inside an item node confirmed there (the item is found by its IRI though
-  its content changed, and the confirmation stays).
+  changes nothing: the work an editor believes `false` under `schema:about`
+  stays stated with that belief, and the editor's filtered provenance leaves
+  it out; an expression an editor withdrew from a manifestation's
+  `lrmoo:R4_embodies` (removed, then believed `false`) is not stated again
+  and its pairs are not put back, since the manifestation no longer holds
+  the node; the keeper candidate inside an item node stated there by an
+  editor (the item is found by its IRI though its content changed; the
+  entry keeps the import's members and gains the editor's belief `true`).
 * `base` sets the address against which relative targets resolve and from
   which every basis and IRI is built; the default is the file name,
   percent-encoded, and the bundle's default ID is the file's stem with every

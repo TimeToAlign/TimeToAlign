@@ -207,11 +207,10 @@ def manifestation_statements(item: dict[str, Any]) -> dict[str, list[Any]]:
 
 
 def C(property: str, value: Any, *basis: str) -> dict[str, Any]:
-    """A confirmed entry of the import."""
+    """The entry of a pair the import states: how it was made, and no belief."""
     return {
         "property": property,
         "value": value,
-        "status": "confirmed",
         "stated_by": [LIBRARY_AGENT],
         "date": DATE,
         "method": "imported",
@@ -353,12 +352,12 @@ class TestRepository:
         assert again is bundle
         assert bundle.to_dict() == written
 
-    def test_a_rejected_pair_stays_rejected(self, repo: Path) -> None:
+    def test_a_pair_believed_false_keeps_its_belief(self, repo: Path) -> None:
         loader = MelodyLoader.from_file(repo)
         bundle = loader.create_bundle(id="clair_de_lune", date=DATE)
         edition = bundle.timelines["cgt_1"]
-        edition.reject_statement(
-            "melod:hasTitle", TITLE, stated_by=EDITOR, date="2026-11-20"
+        edition.add_belief(
+            "melod:hasTitle", TITLE, actor=EDITOR, belief="false", date="2026-11-20"
         )
         written = bundle.to_dict()
         loader.create_bundle(
@@ -367,17 +366,17 @@ class TestRepository:
             date="2026-11-21",
         )
         assert bundle.to_dict() == written
-        assert "melod:hasTitle" not in edition.statements
-        assert edition.get_provenance("rejected") == [
-            {
-                "property": "melod:hasTitle",
-                "value": TITLE,
-                "status": "rejected",
-                "stated_by": [EDITOR],
-                "date": "2026-11-20",
-                "method": "imported",
-                "basis": ["manifestations/4.ttl"],
-            }
+        assert edition.statements == manifestation_statements(item_node("cgt_1"))
+        provenance = manifestation_provenance({"id": "urn:uuid:items/5"})
+        believed = {"actor": EDITOR, "belief": "false", "date": "2026-11-20"}
+        assert edition.provenance == [
+            *provenance[:3],
+            {**provenance[3], "beliefs": [believed]},
+            provenance[4],
+        ]
+        assert edition.get_provenance(believer=EDITOR) == [
+            *provenance[:3],
+            provenance[4],
         ]
 
 

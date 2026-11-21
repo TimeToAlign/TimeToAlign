@@ -311,8 +311,22 @@ def _fixture_projections() -> pa.Table:
     return pq.read_table(fixture_path("projections.parquet"))
 
 
-#: The Projections of TimeToShare's fixture table, in row order.
+#: The Projections of TimeToShare's fixture table, in row order: by timeline
+#: (clt_2, cpt_1, dpt_1), each timeline's own order kept.
 FIXTURE_PROJECTIONS = [
+    Projection(
+        id="projection_10",
+        start=Coordinate(Fraction(7, 2), TimeUnit.quarters),
+        duration=Duration(Fraction(1, 2), TimeUnit.quarters),
+        projection_of=EventReference(timeline_id="dpt_1", event_id="onset_1"),
+    ),
+    Projection(id="projection_7", start=Coordinate(10.0, TimeUnit.seconds)),
+    Projection(
+        id="projection_11",
+        start=Coordinate(12.5, TimeUnit.seconds),
+        duration=Duration(0.75, TimeUnit.seconds),
+        projection_of=EventReference(timeline_id="clt_1", event_id="note_16"),
+    ),
     Projection(
         id="projection_1",
         start=Coordinate(0, TimeUnit.samples),
@@ -340,7 +354,6 @@ FIXTURE_PROJECTIONS = [
         projection_of=EventReference(timeline_id="clt_1", event_id="note_5"),
     ),
     Projection(id="projection_6", start=Coordinate(441000, TimeUnit.samples)),
-    Projection(id="projection_7", start=Coordinate(10.0, TimeUnit.seconds)),
     Projection(
         id="projection_8",
         start=Coordinate(441000, TimeUnit.samples),
@@ -350,18 +363,6 @@ FIXTURE_PROJECTIONS = [
         id="projection_9",
         start=Coordinate(396900, TimeUnit.samples),
         projection_of=EventReference(timeline_id="clt_2", event_id="note_13"),
-    ),
-    Projection(
-        id="projection_10",
-        start=Coordinate(Fraction(7, 2), TimeUnit.quarters),
-        duration=Duration(Fraction(1, 2), TimeUnit.quarters),
-        projection_of=EventReference(timeline_id="dpt_1", event_id="onset_1"),
-    ),
-    Projection(
-        id="projection_11",
-        start=Coordinate(12.5, TimeUnit.seconds),
-        duration=Duration(0.75, TimeUnit.seconds),
-        projection_of=EventReference(timeline_id="clt_1", event_id="note_16"),
     ),
 ]
 
@@ -383,14 +384,12 @@ class TestTimeToShareFixture:
         )
         read = read_projection_table(fixture_path("projections.parquet"), manifest)
         assert read == {
-            "dpt_1": FIXTURE_PROJECTIONS[:6] + FIXTURE_PROJECTIONS[7:9],
-            "cpt_1": [FIXTURE_PROJECTIONS[6], FIXTURE_PROJECTIONS[10]],
-            "clt_2": [FIXTURE_PROJECTIONS[9]],
+            "dpt_1": FIXTURE_PROJECTIONS[3:],
+            "cpt_1": FIXTURE_PROJECTIONS[1:3],
+            "clt_2": [FIXTURE_PROJECTIONS[0]],
         }
         timelines = _fixture_projections().column("timeline_id").to_pylist()
-        assert timelines == (
-            ["dpt_1"] * 6 + ["cpt_1"] + ["dpt_1"] * 2 + ["clt_2", "cpt_1"]
-        )
+        assert timelines == ["clt_2"] + ["cpt_1"] * 2 + ["dpt_1"] * 8
 
         def types(projections: list[Projection]) -> list[tuple[type, type | None]]:
             return [

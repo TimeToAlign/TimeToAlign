@@ -7,7 +7,6 @@ section "A Package: the Manifest and Its Tables").
 from __future__ import annotations
 
 import hashlib
-import io
 import re
 import shutil
 from fractions import Fraction
@@ -728,9 +727,7 @@ class TestTimeToShareFixturePackage:
             "cpt_1": 2,
             "dpt_1": 8,
         }
-        assert projection_table(known[tid] for tid in sorted(known)).equals(
-            fixture.sort_by("timeline_id")
-        )
+        assert projection_table(known[tid] for tid in sorted(known)).equals(fixture)
 
     def test_the_package_is_written_back(self, tmp_path: Path) -> None:
         bundle = AlignmentBundle.from_file(_TABLES / "manifest.yaml")
@@ -746,25 +743,10 @@ class TestTimeToShareFixturePackage:
         assert (tmp_path / "match_claims.parquet").read_bytes() == (
             _TABLES / "match_claims.parquet"
         ).read_bytes()
-        claims, projections = written["resources"]
-        assert claims == fixture["resources"][0]
-        data = (tmp_path / "projections.parquet").read_bytes()
-        # The rows by timeline, each in its event order: the fixture sorted
-        # (stably) by timeline and written with Parquet's defaults.
-        sorted_fixture = io.BytesIO()
-        pq.write_table(
-            pq.read_table(_TABLES / "projections.parquet").sort_by("timeline_id"),
-            sorted_fixture,
-        )
-        assert data == sorted_fixture.getvalue()
-        assert projections == {
-            **fixture["resources"][1],
-            "size": len(data),
-            "integrity": {
-                "algorithm": "SHA-256",
-                "digest": hashlib.sha256(data).hexdigest(),
-            },
-        }
+        assert (tmp_path / "projections.parquet").read_bytes() == (
+            _TABLES / "projections.parquet"
+        ).read_bytes()
+        assert written["resources"] == fixture["resources"]
 
     @pytest.mark.parametrize(
         "index",

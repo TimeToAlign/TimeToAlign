@@ -680,10 +680,9 @@ timeline is tested in `tests/timelines/test_projections.py`.
   trip every Projection equals the one written and every cell names its own
   unit and number type. An empty field has the field's struct type.
 - **TimeToShare's fixture Projections table**
-  (`timetoshare.tables.fixture_path("projections.parquet")`; skipped with a
-  reason when `timetoshare.tables` or the fixture is absent): its nine rows
-  read through `Projection.from_row` equal the nine Projections spelled out
-  in the test (ints on `dpt_1`, the float 10.0 seconds on `cpt_1`, one
+  (`timetoshare.tables.fixture_path("projections.parquet")`, shipped with
+  the installed package; never skipped): its nine rows read through
+  `Projection.from_row` equal the nine Projections spelled out in the test (ints on `dpt_1`, the float 10.0 seconds on `cpt_1`, one
   interval, two without `projection_of`); `ProjectionField.from_projections`
   of those nine writes the columns `id`, `start`, `duration`,
   `projection_of` equal to the fixture's, values and types; with the
@@ -826,8 +825,7 @@ These tests prove the cell is that shape and holds exactly the number written.
 - **The type is TimeToShare's.** `COORDINATE_CELL_TYPE` equals
   `struct<value: double, numerator: int64, denominator: int64, unit: string,
   number_type: string>` spelled out in the test, and equals
-  `timetoshare.tables.COORDINATE_TYPE` (skipped with a reason when the
-  installed `timetoshare` has no `tables` module).
+  `timetoshare.tables.COORDINATE_TYPE`.
 - **Both sides on every non-null cell, a float included.** `coordinate_cells`
   of `[1/3 quarters (fraction), None, 0.1 seconds (float), 139776 samples
   (int), 2/3 quarters]` gives exactly, in that order: `{0.3333333333333333,
@@ -842,6 +840,20 @@ These tests prove the cell is that shape and holds exactly the number written.
   `{44100.0, 44100, 1, "samples", "int"}`; on a float axis `[0.25]` gives
   `{0.25, 1, 4, "seconds", "float"}`; without `number_type` the unit's
   default applies.
+- **A column already of number structs is taken whole.** The `start` column
+  of an event table is of the number struct type, and a builder that read it
+  cell by cell would be correct and slow, so the proof has two halves. Same
+  cells: the struct column `[{0.75, 3, 4}, null, {0.5, 2, 4}]` on a quarters
+  axis gives `{0.75, 3, 4, "quarters", "fraction"}`, null, `{0.5, 2, 4,
+  "quarters", "fraction"}` (a cell is kept as it stands, its ratio not
+  reduced), exactly what the per-row reader makes of the same cells given as
+  dicts; a slice of a longer column, whose dropped first row and whose null
+  cell hold numbers underneath, gives the cells of its own rows, and a
+  chunked column the cells of all its chunks. No Python per row: with the
+  per-row cell encoder replaced by one that fails, the struct column still
+  builds the same cells. A non-null cell missing its ratio, `{0.5, null,
+  null}`, is left to the per-row reader, which mirrors the float:
+  `{0.5, 1, 2, "seconds", "float"}`.
 - **Reading back keeps the number type.** `cell_coordinate` of each built
   cell equals the coordinate written, and its value has the written Python
   type (`Fraction`, `float`, `int`); `scalar=Duration` gives a `Duration`; a

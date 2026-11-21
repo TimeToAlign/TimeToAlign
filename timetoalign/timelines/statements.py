@@ -100,6 +100,7 @@ from ..core.provenance import (
     BeliefValue,
     Provenance,
     belief_mask,
+    check_belief_filter,
     provenance_array,
 )
 
@@ -305,8 +306,8 @@ def _believing(
     may be compact or absolute.
     """
     if believer is None:
-        # The mask keeps every row without a believer; its belief is still checked.
-        belief_mask(None, None, belief)
+        # Without a believer every entry is kept; the filter word is still checked.
+        check_belief_filter(belief)
         return entries
     rows: list[Provenance | None] = []
     for entry in entries:

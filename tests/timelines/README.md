@@ -2090,7 +2090,7 @@ write fractions):
   call mints `projection_1`, `projection_2`; with `projection_2` held by a
   Note, the next call mints `projection_3` and `projection_4` for two rows
   (the call returns them in row order), never `projection_1` below it.
-- **A Projection's ID is unique in its manifest** (the timeline's tree
+- **A new Projection's ID is unique in its manifest** (the timeline's tree
   and every tree of the groups and bundles holding it, as a bundle writes
   one Projections table for all of them; TimeToShare's table check keys
   the ID alone). In a bundle holding `dpt_1` and `clt_6` (both roots),
@@ -2110,19 +2110,24 @@ write fractions):
   reuses a Projection of its own timeline only), the same message. Nothing
   here mints again: a test that passed with per-timeline minting would
   see `clt_6` mint `projection_1` and accept the given one.
-- **A child joins under the same rule.** `add_child` of a child whose
-  manifest holds a Projection ID that a Projection of the parent's
-  manifest holds is refused before anything changes, through the check a
-  group or bundle join makes (the parent's manifest first in the message):
-  `dpt_1` holding `projection_1` refuses a free `part` whose own
-  `projection_1` was minted alone, `Projection ID 'projection_1' names a
-  Projection on the timeline 'dpt_1' and one on 'part': ...`; afterwards
-  `dpt_1` holds no child and its one event (no Segment row), `part` no
-  parent and no lock, its ID unchanged (a Projection's ID is never minted
-  again, a MatchClaim may name it). The control: `other` holding
-  `onset_a` joins. In a bundle, `dpt_1` refuses `part` because `clt_6`,
-  another root of the bundle, holds `projection_1` (`... on the timeline
-  'clt_6' and one on 'part' ...`), `dpt_1` unchanged.
+- **A child joins whatever Projection IDs it holds.** The rule binds the
+  creation of a Projection, not a join: a timeline that created its
+  Projections before joining keeps their IDs (a MatchClaim names an event
+  by its timeline and ID, so it stays unambiguous in memory; the package
+  writer refuses the shared ID, tested in `tests/alignment/`). `dpt_1`
+  holding `projection_1` takes a free `part` whose own `projection_1` was
+  minted alone as a child at offset 0: `dpt_1` then has one child, `part`
+  has `dpt_1` as its parent and still holds `projection_1` (never minted
+  again). The manifest now holds `projection_1` twice, and that refuses
+  nothing on creation: a Projection then added to `dpt_1` without an ID
+  is minted `projection_2` (above every Projection of the manifest), one
+  given the free ID `onset_a` on `part` is added, and one given
+  `projection_2` on `part` is refused, `Projection ID 'projection_2' names
+  a Projection on the timeline 'dpt_1' and one on 'part': ...`, `part`
+  keeping its two events. A check that compared the manifest's IDs among
+  themselves would refuse both of the first two. In a bundle, `dpt_1`
+  takes `part` likewise although `clt_6`, another root of the bundle,
+  holds `projection_1`.
 - **A Projection object stands for its row.** `add_events` takes a
   `Projection` alone or in a list beside dicts: `Projection(start=
   Coordinate(1/2, seconds), projection_of=EventReference(clt_6, x1azmn68))`

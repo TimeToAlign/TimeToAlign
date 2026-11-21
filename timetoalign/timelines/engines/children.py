@@ -35,11 +35,9 @@ from timetoalign.maps import (
     MeasureBeatMap,
     MeasureNumberMap,
 )
-from timetoalign.storage.events import refuse_shared_projection_ids
 
 from ..manifest import spell
 from ..regions import Region
-from .events import tree_projection_ids
 from .regions import _resolve_boundary_names
 
 if TYPE_CHECKING:
@@ -485,8 +483,7 @@ class ChildrenMixin:
         every id is unique across all element kinds: an element of the
         subtree whose minted id is already held here receives a freshly
         minted one, and an element whose given id is already held here makes
-        the call raise without changing anything. A Projection's ID is never
-        minted again, so one held by a Projection on both sides raises too.
+        the call raise without changing anything.
 
         A timeline can accommodate events and other timelines, called
         Children, as long as they use the same measuring unit.
@@ -529,15 +526,13 @@ class ChildrenMixin:
                 already a child of this timeline, ``locked=True`` asks to lock
                 a plain segment, ``locked=False`` asks to leave a segment line
                 unlocked, an id given in the child's subtree is already
-                held in this manifest, a Projection ID of the child's
-                manifest is held by a Projection of this one, or this
-                timeline is locked and the child would end beyond its length
-                without ``allow_expansion``. An unlocked timeline expands
-                to fit the child instead, provided its own parent contains
-                its new end. A child of unknown length has no end, so only
-                its offset must fit; a parent of unknown length has no end
-                to exceed, unless it is a segment, which ends at its
-                successor's offset.
+                held in this manifest, or this timeline is locked and the child
+                would end beyond its length without ``allow_expansion``. An
+                unlocked timeline expands to fit the child instead, provided
+                its own parent contains its new end. A child of unknown
+                length has no end, so only its offset must fit; a parent of
+                unknown length has no end to exceed, unless it is a segment,
+                which ends at its successor's offset.
         """
         # Convert child's unit if a conversion map is specified
         if use_conversion_map is not None and child.unit != self._unit:
@@ -584,7 +579,6 @@ class ChildrenMixin:
         child_end = (
             None if child.length is None else offset_coord.value + child.length.value
         )
-        self._refuse_shared_projection_ids(child)
         # The whole subtree joins this manifest: a minted id held here is
         # minted again, a given one raises before anything changes.
         entries, rename = child._subtree_entries()
@@ -614,28 +608,6 @@ class ChildrenMixin:
             f"Added child '{child.id}' at offset "
             f"{_format_coordinate_value(float(offset_coord.value))}"
         )
-
-    def _refuse_shared_projection_ids(self, child: Timeline) -> None:
-        """Refuse *child* when its manifest and this one share a Projection ID.
-
-        A Projection's ID is unique among all Projections of a manifest and
-        is never minted again (a MatchClaim may name it), so a Projection ID
-        held in both manifests raises, as when a tree joins a group or a
-        bundle. Nothing is read when the child's manifest holds no
-        Projection.
-
-        Raises:
-            ValueError: Naming the ID, the timeline holding it in this
-                manifest and the one holding it in the child's.
-        """
-        newcomers = child._manifest_roots()
-        if not len(tree_projection_ids(newcomers)[0]):
-            return
-        roots = self._manifest_roots()
-        for root in newcomers:
-            if not any(root is seen for seen in roots):
-                roots.append(root)
-        refuse_shared_projection_ids(*tree_projection_ids(roots))
 
     def create_child(
         self,

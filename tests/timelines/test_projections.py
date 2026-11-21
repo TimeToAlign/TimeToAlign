@@ -282,7 +282,7 @@ class TestIdsAcrossTheManifest:
         assert str(raised.value) == message
         assert len(quarters.events) == 0
 
-    def test_a_child_sharing_a_projection_id_is_refused(self) -> None:
+    def test_a_child_sharing_a_projection_id_joins(self) -> None:
         parent = _samples()
         parent.add_events([{"event_type": "Projection", "start": 5}])
         part = DiscretePhysicalTimeline(length=1000, uid="part")
@@ -290,42 +290,45 @@ class TestIdsAcrossTheManifest:
         assert part.add_events([{"event_type": "Projection", "start": 7}]) == [
             "projection_1"
         ]
+        parent.add_child(part, 0)
+        assert parent.n_children == 1
+        assert part._parent is parent
+        assert part.events.table.column("id").to_pylist() == ["projection_1"]
+
+        # The shared ID refuses nothing on creation: a missing ID is minted
+        # above every Projection of the manifest, a free one is kept ...
+        assert parent.add_events([{"event_type": "Projection", "start": 9}]) == [
+            "projection_2"
+        ]
+        assert part.add_events(
+            [{"event_type": "Projection", "id": "onset_a", "start": 8}]
+        ) == ["onset_a"]
+        # ... and one another timeline of the manifest holds is refused.
         with pytest.raises(ValueError) as raised:
-            parent.add_child(part, 0)
+            part.add_events(
+                [{"event_type": "Projection", "id": "projection_2", "start": 9}]
+            )
         assert str(raised.value) == (
-            "Projection ID 'projection_1' names a Projection on the timeline "
+            "Projection ID 'projection_2' names a Projection on the timeline "
             "'dpt_1' and one on 'part': a Projection's ID is unique among all "
             "Projections of a manifest and its package"
         )
-        assert parent.n_children == 0
-        assert parent.events.table.column("id").to_pylist() == ["projection_1"]
-        assert parent.events.table.column("event_type").to_pylist() == ["Projection"]
-        assert part._parent is None
-        assert part.is_locked is False
-        assert part.events.table.column("id").to_pylist() == ["projection_1"]
+        assert part.events.table.column("id").to_pylist() == [
+            "projection_1",
+            "onset_a",
+        ]
 
-        other = DiscretePhysicalTimeline(length=1000, uid="other")
-        other.add_events([{"event_type": "Projection", "id": "onset_a", "start": 7}])
-        parent.add_child(other, 0)
-        assert parent.n_children == 1
-        assert other.events.table.column("id").to_pylist() == ["onset_a"]
-
-    def test_a_child_sharing_a_projection_id_of_the_bundle_is_refused(self) -> None:
+    def test_a_child_sharing_a_projection_id_of_the_bundle_joins(self) -> None:
         bundle = self._bundle()
         samples, quarters = bundle.timelines["dpt_1"], bundle.timelines["clt_6"]
         quarters.add_events([{"event_type": "Projection", "start": Fraction(1)}])
         part = DiscretePhysicalTimeline(length=1000, uid="part")
         part.add_events([{"event_type": "Projection", "start": 7}])
-        with pytest.raises(ValueError) as raised:
-            samples.add_child(part, 0)
-        assert str(raised.value) == (
-            "Projection ID 'projection_1' names a Projection on the timeline "
-            "'clt_6' and one on 'part': a Projection's ID is unique among all "
-            "Projections of a manifest and its package"
-        )
-        assert samples.n_children == 0
-        assert len(samples.events) == 0
-        assert part._parent is None
+        samples.add_child(part, 0)
+        assert samples.n_children == 1
+        assert part._parent is samples
+        assert part.events.table.column("id").to_pylist() == ["projection_1"]
+        assert quarters.events.table.column("id").to_pylist() == ["projection_1"]
 
 
 class TestProjectionObjects:

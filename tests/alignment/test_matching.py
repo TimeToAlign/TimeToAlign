@@ -10,6 +10,7 @@ from fractions import Fraction
 import pandas as pd
 import pytest
 
+from timetoalign.alignment import AlignmentBundle
 from timetoalign.alignment.matching import (
     match_notes_by_attributes,
     prepare_abc_notes_for_matching,
@@ -17,7 +18,11 @@ from timetoalign.alignment.matching import (
 from timetoalign.core import Coordinate, Provenance, TimeUnit
 from timetoalign.core.time import struct_to_rational
 from timetoalign.maps import SamplesToSeconds
-from timetoalign.timelines import ContinuousLogicalTimeline, DiscretePhysicalTimeline
+from timetoalign.timelines import (
+    ContinuousLogicalTimeline,
+    DiscretePhysicalTimeline,
+    TimelineGroup,
+)
 
 IDS = ["a", "b", "c", "d", "e", "f", "g"]
 # untied, a chain 1 0 0 -1, a two-note tie 1 -1
@@ -259,6 +264,52 @@ def test_claims_need_both_timelines():
 def _timelines() -> tuple[DiscretePhysicalTimeline, ContinuousLogicalTimeline]:
     """A fresh performance and score timeline (each test changes its own)."""
     return _performance(), _score()
+
+
+def test_matching_before_bundling():
+    performance, score = _timelines()
+    performance_group = TimelineGroup(timelines=[performance])
+    score_group = TimelineGroup(timelines=[score])
+    # Neither side named: each timeline mints projection_1 .. projection_3 alone.
+    claims = _match(performance, score).match_claims
+
+    bundle = AlignmentBundle()
+    bundle.add_group(performance_group)
+    bundle.add_group(score_group)
+    bundle.add_match_claims(claims)
+
+    assert [group.timeline_ids for group in bundle.groups.values()] == [
+        ["dpt_1"],
+        ["clt_1"],
+    ]
+    held = bundle.get_match_claims()
+    assert [claim.id for claim in held] == ["claim_1", "claim_2", "claim_3"]
+    assert _named(held) == [
+        ("dpt_1", f"projection_{k}", "clt_1", f"projection_{k}") for k in (1, 2, 3)
+    ]
+    resolved = [
+        (
+            bundle.timelines[claim.timeline_a_id].get_event(claim.event_a_id),
+            bundle.timelines[claim.timeline_b_id].get_event(claim.event_b_id),
+        )
+        for claim in held
+    ]
+    assert [
+        (a["id"], a["event_type"], struct_to_rational(a["start"])) for a, _ in resolved
+    ] == [
+        (f"projection_{k}", "Projection", sample)
+        for k, sample in enumerate(SAMPLES, start=1)
+    ]
+    assert [
+        (b["id"], b["event_type"], struct_to_rational(b["start"])) for _, b in resolved
+    ] == [
+        (f"projection_{k}", "Projection", quarter)
+        for k, quarter in enumerate(QUARTERS, start=1)
+    ]
+    stamp = bundle.get_matchstamp_at(44100, "dpt_1")
+    assert stamp.get_coordinate_for("clt_1", format="coordinate") == Coordinate(
+        Fraction(3, 2), TimeUnit.quarters
+    )
 
 
 # endregion

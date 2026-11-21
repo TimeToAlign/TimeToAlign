@@ -74,7 +74,7 @@ from timetoalign.display.html import code
 from timetoalign.loader.base import AlignmentLoader
 from timetoalign.loader.physical.audio import AudioLoader
 from timetoalign.maps import SamplesToSeconds
-from timetoalign.storage.events import _mint_event_ids
+from timetoalign.storage.events import mint_event_ids
 from timetoalign.timelines.types import DiscretePhysicalTimeline
 
 if TYPE_CHECKING:
@@ -105,9 +105,9 @@ def _point_ids(n_columns: int) -> pa.Array:
     Every recording holds one point per grid column under the same id, the
     id the timeline would mint for it (``listenherepoint_1`` for column 0),
     given by the one event-ID minter
-    (:func:`~timetoalign.storage.events._mint_event_ids`, nothing taken).
+    (:func:`~timetoalign.storage.events.mint_event_ids`, nothing taken).
     """
-    return _mint_event_ids(pa.repeat(pa.scalar(_POINT_EVENT_TYPE), n_columns))
+    return mint_event_ids(pa.repeat(pa.scalar(_POINT_EVENT_TYPE), n_columns))
 
 
 # endregion

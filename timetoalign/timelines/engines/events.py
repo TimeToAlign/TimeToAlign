@@ -31,7 +31,7 @@ from timetoalign.storage import EventData
 from timetoalign.storage.events import (
     PROJECTION_EVENT_TYPE,
     _event_rows,
-    _mint_event_ids,
+    mint_event_ids,
 )
 
 SEGMENT_EVENT_TYPE = "Segment"
@@ -489,7 +489,7 @@ class EventsMixin:
         if not missing:
             return rows
         minted = iter(
-            _mint_event_ids(
+            mint_event_ids(
                 missing,
                 pa.chunked_array(
                     [*pc.cast(held, pa.string()).chunks, given_ids], pa.string()

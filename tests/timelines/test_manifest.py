@@ -210,6 +210,7 @@ COMPLETE: dict[str, Any] = {
     ],
     "groups": [],
     "measure_maps": [],
+    "resources": [],
 }
 
 
@@ -1435,11 +1436,13 @@ ONE_ROOT = {
         "timelines": [SCORE_COMPLETE],
         "groups": [],
         "measure_maps": [],
+        "resources": [],
         "graphical": {
             "order": ONE_ROOT_BANDS,
             "styles": {},
             "rules": [],
             "timestamps": [],
+            "matchstamps": [],
         },
     },
 }
@@ -1459,11 +1462,13 @@ GROUPED = {
         "timelines": [PERF_COMPLETE, SCORE_COMPLETE],
         "groups": [{"id": "g", "name": None, "meta": {}, "members": ["part", "perf"]}],
         "measure_maps": [],
+        "resources": [],
         "graphical": {
             "order": GROUPED_BANDS,
             "styles": {},
             "rules": [],
             "timestamps": [],
+            "matchstamps": [],
         },
     },
 }
@@ -2029,6 +2034,7 @@ def test_a_graphical_object_read_is_written_back(reader: Any) -> None:
         "rules": [],
         "styles": {},
         "timestamps": [],
+        "matchstamps": [],
     }
     assert "graphical" not in bare(reader(copy.deepcopy(data)).to_dict())
 
@@ -2069,10 +2075,12 @@ def test_a_timestamp_display_is_written_in_canonical_order_with_its_default(
 
     default = ["wedge", "name", "cross_section"]
     assert bare(read.to_dict(minimal=False))["graphical"]["timestamps"] == [
-        _stamp(1, display=default),
-        _stamp(2, display=default),
-        _stamp(3, display=["wedge", "name"]),
-        _stamp(4, display=["wedge", "coordinate", "flag"], note={"x": 1}),
+        _stamp(1, display=default, matchstamp=False),
+        _stamp(2, display=default, matchstamp=False),
+        _stamp(3, display=["wedge", "name"], matchstamp=False),
+        _stamp(
+            4, display=["wedge", "coordinate", "flag"], note={"x": 1}, matchstamp=False
+        ),
     ]
     assert bare(read.to_dict(minimal=True))["graphical"]["timestamps"] == [
         _stamp(1),
@@ -2087,6 +2095,11 @@ STYLING_CASES = {
     "styles_default": ({"styles": {}}, {}),
     "rules_default": ({"rules": []}, {}),
     "timestamps_default": ({"timestamps": []}, {}),
+    "matchstamps_default": ({"matchstamps": []}, {}),
+    "matchstamp_flag_default": (
+        {"timestamps": [_stamp(1, matchstamp=False)]},
+        {"timestamps": [_stamp(1)]},
+    ),
     "display_default": (
         {"timestamps": [_stamp(1, display=["cross_section", "name", "wedge"])]},
         {"timestamps": [_stamp(1)]},

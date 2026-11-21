@@ -211,8 +211,11 @@ structure should be partitioned.
 
 `Timeline`, `TimelineGroup` and `AlignmentBundle` write and read one shape of
 TimeToShare manifest: `{"timetoshare": "0.2.0", "timelines": [...]}` with an
-optional `id`, `name`, `meta`, `groups`, `measure_maps`, `graphical`,
-`@context`, `statements` and `provenance` (*Statements* below). A
+optional `id`, `name`, `meta`, `groups`, `measure_maps`, `resources`,
+`graphical`, `@context`, `statements` and `provenance` (*Statements*
+below). The library does not read `resources` yet: a manifest's resource
+entries are kept as read and written back unchanged, and the complete form
+states their default `[]` as TimeToShare's `complete` does. A
 reader that only
 reads what its own writer produced proves nothing about the format, so the
 tests read manifests written by hand from the format's rules, and compare what
@@ -348,14 +351,17 @@ the library writes back against the same literal text.
   writes an anonymous bundle.
 - **A `graphical` object read is written back.** `"graphical": {}` on a
   one-root manifest is written back as `{}` in the minimal form and as
-  `{"order": {}, "rules": [], "styles": {}}` in the complete form,
+  `{"order": {}, "rules": [], "styles": {}, "timestamps": [],
+  "matchstamps": []}` in the complete form (every member of `graphical`
+  with a default, as TimeToShare's `complete` writes it),
   through `Timeline` and `AlignmentBundle` alike; a manifest read without
   `graphical` is written without it. Presence is part of the round trip.
 - **A styling member at its default is dropped as TimeToShare drops it.**
   The library keeps the styling read (every member of `graphical` but
   `order`) in TimeToShare's minimal form and has no default table of its
-  own: `styles: {}`, `rules: []` and `timestamps: []` are each read to
-  no member, a named timestamp's default `display` to none and a
+  own: `styles: {}`, `rules: []`, `timestamps: []` and `matchstamps: []`
+  are each read to no member, a named timestamp's default `display` and
+  its default `"matchstamp": false` to none and a
   non-default `display` to its canonical order. Each case is asserted
   twice, against a literal written from the format's defaults and against
   `timetoshare.minimal` of a manifest holding only that `graphical`, so the
@@ -371,7 +377,9 @@ the library writes back against the same literal text.
   `cross_section`, an unknown word after them by code point. Read from a
   one-root manifest through `Timeline` and `AlignmentBundle` alike: a
   timestamp without `display` is written with the default in the complete
-  form and without it in the minimal one; one stating the default as
+  form and without it in the minimal one; the complete form of every one
+  of these ordinary timestamps also states `"matchstamp": false`, the
+  format's default, which the minimal form leaves out; one stating the default as
   `["cross_section", "wedge", "name"]` is written exactly as the first in
   both forms; one stating `["name", "wedge"]` is written `["wedge",
   "name"]` in both; one stating `["flag", "coordinate", "wedge"]` is
@@ -1320,8 +1328,8 @@ rebuilt group's `styling` must not share an object with the input, so a later
 edit of the input dictionary cannot reach the group. Each member alone
 (`styles` only, `rules` only) round-trips alone in the minimal form, so
 neither is invented when absent; a group without styling writes `graphical`
-as `{"order": {...}}` in the minimal form and adds `styles: {}` and
-`rules: []` in the complete one. A `graphical` holding styling but no
+as `{"order": {...}}` in the minimal form and adds `styles: {}`,
+`rules: []`, `timestamps: []` and `matchstamps: []` in the complete one. A `graphical` holding styling but no
 `order` reads its members in `members` order, as an absent `graphical` does.
 Any other key of `graphical` (`frame`) is kept and written back, never read.
 The band orders of `graphical.order`, keyed by a timeline's id, are carried

@@ -296,6 +296,7 @@ READ_COMPLETE: dict[str, Any] = {
     ],
     "groups": [],
     "measure_maps": READ_MINIMAL["measure_maps"],
+    "resources": [],
 }
 
 

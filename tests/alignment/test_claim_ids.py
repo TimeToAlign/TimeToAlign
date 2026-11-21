@@ -13,6 +13,7 @@ import sys
 import textwrap
 from pathlib import Path
 
+import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
@@ -27,19 +28,26 @@ from timetoalign.timelines.types import (
 STORED = [(0, 0.0), (4, 2.0), (8, 4.0), (12, 6.0)]
 NEW = [(2, 1.0), (6, 3.0)]
 
+SCORE = ContinuousLogicalTimeline(length=16, uid="score")
+AUDIO = ContinuousPhysicalTimeline(length=8.0, uid="audio")
 
-def _claims(pairs: list[tuple[int, float]]) -> list[MatchClaim]:
-    """Fresh projections ``score`` (quarters) -> ``audio`` (seconds)."""
+
+def _claims(
+    pairs: list[tuple[int, float]], ids: list[str] | None = None
+) -> list[MatchClaim]:
+    """Fresh claims between a ``score`` note and an ``audio`` onset at each pair.
+
+    Without *ids* every claim mints its own ``claim_1``.
+    """
     return [
-        MatchClaim.from_projection(
-            event={"start": quarters},
-            source_tl_id="score",
-            target_tl_id="audio",
-            target_coord=seconds,
-            source_unit=TimeUnit.quarters,
-            target_unit=TimeUnit.seconds,
+        MatchClaim.from_events(
+            {"id": f"note_{quarters}", "start": quarters},
+            SCORE,
+            {"id": f"onset_{seconds}", "start": seconds},
+            AUDIO,
+            id=None if ids is None else ids[index],
         )
-        for quarters, seconds in pairs
+        for index, (quarters, seconds) in enumerate(pairs)
     ]
 
 
@@ -68,6 +76,22 @@ def _ids(field: MatchClaimField) -> list[str]:
     return field.table.column("id").to_pylist()
 
 
+def _columns() -> MatchClaimField:
+    """The ``STORED`` pairs as event matches built by ``from_columns``."""
+    return MatchClaimField.from_columns(
+        timeline_a_ids=["score"] * 4,
+        timeline_b_ids=["audio"] * 4,
+        event_a_ids=[f"note_{q}" for q, _ in STORED],
+        event_b_ids=[f"onset_{s}" for _, s in STORED],
+        coordinate_a=[q for q, _ in STORED],
+        coordinate_b=[s for _, s in STORED],
+        timelines=[SCORE, AUDIO],
+    )
+
+
+# region Field part
+
+
 def test_free_claim_mints_claim_1() -> None:
     first, second = _claims(NEW)
     assert [(c.id, c.id_minted) for c in (first, second)] == [
@@ -80,6 +104,99 @@ def test_free_claim_mints_claim_1() -> None:
     assert (named.id, named.id_minted) == ("onset 7", False)
     with pytest.raises(ValueError, match=re.escape("Invalid id 'a\\tb'")):
         MatchClaim.from_dict(first.to_dict() | {"id": "a\tb", "id_minted": False})
+
+
+def test_field_is_a_scope() -> None:
+    field = MatchClaimField.from_claims(_claims(STORED[:3], ["s0", "s1", "s2"]))
+    assert _ids(field) == ["s0", "s1", "s2"]
+    assert [claim.id_minted for claim in field] == [False, False, False]
+
+    with pytest.raises(
+        ValueError, match=re.escape("claim id 'claim_1' is held by 2 claims")
+    ):
+        MatchClaimField.from_claims(_claims(NEW))
+    with pytest.raises(ValueError, match=re.escape("claim id 'a' is held by 2 claims")):
+        MatchClaimField.from_claims(_claims(NEW, ["a", "a"]))
+
+
+def test_from_columns_mints_ids() -> None:
+    field = MatchClaimField.from_columns(
+        timeline_a_ids=["A", "A", "B"],
+        timeline_b_ids=["B", "C", "C"],
+        event_a_ids=["a0", "a0", "b1"],
+        event_b_ids=["b0", "c0", "c1"],
+        coordinate_a=[0, 0, 1],
+        coordinate_b=[10.0, 20.0, 21.0],
+        timelines={
+            "A": ("quarters", "fraction"),
+            "B": ("seconds", "float"),
+            "C": ("seconds", "float"),
+        },
+    )
+    assert _ids(field) == ["claim_1", "claim_2", "claim_3"]
+    assert [claim.id_minted for claim in field] == [True, True, True]
+
+
+def test_null_ids_are_minted_around_held_ones() -> None:
+    table = _columns().table
+    table = table.set_column(
+        table.column_names.index("id"),
+        "id",
+        pa.array(["claim_2", None, "x", None], type=pa.string()),
+    )
+    table = table.set_column(
+        table.column_names.index("id_minted"),
+        "id_minted",
+        pa.array([False, None, False, None], type=pa.bool_()),
+    )
+    field = MatchClaimField.from_table(table)
+    assert _ids(field) == ["claim_2", "claim_1", "x", "claim_3"]
+    assert [claim.id_minted for claim in field] == [False, True, False, True]
+
+
+def test_two_runs_store_the_same_ids(tmp_path: Path) -> None:
+    program = textwrap.dedent("""
+        import sys
+
+        from timetoalign.alignment import MatchClaimField
+        from timetoalign.timelines.types import (
+            ContinuousLogicalTimeline,
+            ContinuousPhysicalTimeline,
+        )
+
+        pairs = [(0, 0.0), (4, 2.0), (8, 4.0), (12, 6.0)]
+        MatchClaimField.from_columns(
+            timeline_a_ids=["score"] * 4,
+            timeline_b_ids=["audio"] * 4,
+            event_a_ids=[f"note_{q}" for q, _ in pairs],
+            event_b_ids=[f"onset_{s}" for _, s in pairs],
+            coordinate_a=[q for q, _ in pairs],
+            coordinate_b=[s for _, s in pairs],
+            timelines=[
+                ContinuousLogicalTimeline(length=16, uid="score"),
+                ContinuousPhysicalTimeline(length=8.0, uid="audio"),
+            ],
+        ).to_parquet(sys.argv[1])
+        """)
+    first_path = tmp_path / "first"
+    first_path.mkdir()
+    subprocess.run(
+        [sys.executable, "-c", program, str(first_path)],
+        check=True,
+        env=dict(os.environ),
+    )
+    first = MatchClaimField.from_parquet(first_path)
+    second = MatchClaimField.from_parquet(
+        _columns().to_parquet(tmp_path / "second.parquet")
+    )
+    assert _ids(first) == _ids(second) == ["claim_1", "claim_2", "claim_3", "claim_4"]
+    assert first.table.equals(second.table, check_metadata=True)
+
+
+# endregion
+
+
+# region Bundle part
 
 
 def test_two_free_claims_become_distinct() -> None:
@@ -116,36 +233,6 @@ def test_two_free_claims_become_distinct() -> None:
         timeline_ids={"score", "score_copy"}
     )
     assert [claim.id for claim in kept.claims] == ["claim_2"]
-
-
-def test_field_is_a_scope() -> None:
-    field = MatchClaimField.from_claims(_claims(STORED[:3]))
-    assert _ids(field) == ["claim_1", "claim_2", "claim_3"]
-    assert [claim.id_minted for claim in field] == [True, True, True]
-
-    minted, given = _claims(NEW)
-    given = given.model_copy(update={"id": "claim_1", "id_minted": False})
-    assert _ids(MatchClaimField.from_claims([minted, given])) == ["claim_2", "claim_1"]
-
-    twice = [
-        claim.model_copy(update={"id": "a", "id_minted": False})
-        for claim in _claims(NEW)
-    ]
-    with pytest.raises(ValueError, match=re.escape("claim id 'a' is given twice")):
-        MatchClaimField.from_claims(twice)
-
-
-def test_from_columns_mints_ids() -> None:
-    field = MatchClaimField.from_columns(
-        timeline_a_ids=["A", "A", "B"],
-        timeline_b_ids=["B", "C", "C"],
-        coordinate_a=[0.0, 0.0, 1.0],
-        coordinate_b=[10.0, 20.0, 21.0],
-        unit_a=TimeUnit.number,
-        unit_b=TimeUnit.number,
-    )
-    assert _ids(field) == ["claim_1", "claim_2", "claim_3"]
-    assert [claim.id_minted for claim in field] == [True, True, True]
 
 
 def test_stored_and_new_claims_are_distinct(tmp_path: Path) -> None:
@@ -341,3 +428,6 @@ def test_held_claim_joins_as_copy() -> None:
             "claim_2",
         ]
         assert all(claim.bundle is source for claim in source.cross_group_claims)
+
+
+# endregion

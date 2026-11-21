@@ -1,0 +1,236 @@
+"""Provenance: paradata and beliefs, one entry.
+
+Validation strategy and exact values: ``tests/core/README.md`` (the
+``test_provenance.py`` section).
+"""
+
+from __future__ import annotations
+
+import re
+
+import pyarrow as pa
+import pytest
+from pydantic import ValidationError
+
+from timetoalign.core.fields import derive_arrow_struct
+from timetoalign.core.provenance import (
+    Belief,
+    BeliefField,
+    Provenance,
+    ProvenanceField,
+    belief_mask,
+    provenance_array,
+)
+
+
+def _belief(actor: str, belief: str, date: str = "2026-11-21") -> Belief:
+    return Belief(actor=actor, belief=belief, date=date)
+
+
+#: The five rows of the belief-filter column.
+_ROWS: list[Provenance | None] = [
+    None,
+    Provenance(service="https://example.org/aligner"),
+    Provenance(method="manual", beliefs=(_belief("jo", "false"),)),
+    Provenance(method="manual", beliefs=(_belief("jo", "true"),)),
+    Provenance(
+        method="manual",
+        beliefs=(_belief("jo", "unlikely"), _belief("ana", "false")),
+    ),
+]
+
+
+class TestKeys:
+    def test_entry_keys_are_the_format_s(self) -> None:
+        assert derive_arrow_struct(Provenance).names == [
+            "stated_by",
+            "date",
+            "method",
+            "service",
+            "basis",
+            "match",
+            "note",
+            "beliefs",
+        ]
+        assert derive_arrow_struct(Belief).names == ["actor", "belief", "date", "note"]
+        assert ProvenanceField.pa_schema == derive_arrow_struct(Provenance)
+        assert BeliefField.pa_schema == derive_arrow_struct(Belief)
+
+    def test_unknown_key_refused(self) -> None:
+        with pytest.raises(ValidationError, match="status"):
+            Provenance.from_dict({"service": "s", "status": "confirmed"})
+        with pytest.raises(ValidationError, match="weight"):
+            Belief.from_dict(
+                {"actor": "jo", "belief": "true", "date": "2026-11-21", "weight": 1}
+            )
+
+    def test_empty_entry_refused(self) -> None:
+        with pytest.raises(
+            ValidationError, match="A provenance entry states at least one key"
+        ):
+            Provenance()
+
+
+class TestValues:
+    @pytest.mark.parametrize(
+        ("date", "message"),
+        [
+            ("2026-1-5", "A date is written YYYY-MM-DD, not '2026-1-5'"),
+            ("2026-02-30", "'2026-02-30' is no date of the calendar"),
+        ],
+    )
+    def test_dates(self, date: str, message: str) -> None:
+        with pytest.raises(ValidationError, match=re.escape(message)):
+            Provenance(date=date)
+        with pytest.raises(ValidationError, match=re.escape(message)):
+            _belief("jo", "true", date)
+        assert Provenance(date="2026-02-28").date == "2026-02-28"
+
+    def test_iri_lists(self) -> None:
+        with pytest.raises(ValidationError, match="stated_by lists at least one IRI"):
+            Provenance(stated_by=())
+        with pytest.raises(ValidationError, match="basis lists each IRI once"):
+            Provenance(basis=("a", "a"))
+        assert Provenance(stated_by=["a", "b"]).stated_by == ("a", "b")
+
+    def test_closed_vocabularies(self) -> None:
+        for kind in ("exact", "close", "broad", "narrow", "related"):
+            assert Provenance(match=kind).match == kind
+        with pytest.raises(ValidationError):
+            Provenance(match="similar")
+        for value in ("true", "false", "unlikely"):
+            assert _belief("jo", value).belief == value
+        with pytest.raises(ValidationError):
+            _belief("jo", "maybe")
+        with pytest.raises(ValidationError, match="A belief names its actor"):
+            _belief("", "true")
+
+
+class TestOneBeliefPerActor:
+    def test_two_beliefs_of_one_actor_refused(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match=re.escape("An actor holds at most one belief; 'ana' holds 2"),
+        ):
+            Provenance(beliefs=(_belief("ana", "true"), _belief("ana", "false")))
+
+    def test_with_belief_replaces_in_place_and_appends(self) -> None:
+        entry = Provenance(
+            beliefs=(
+                _belief("ana", "unlikely", "2026-11-20"),
+                _belief("jo", "true"),
+            )
+        )
+        replaced = entry.with_belief(_belief("ana", "false", "2026-11-21"))
+        assert replaced.beliefs == (
+            _belief("ana", "false", "2026-11-21"),
+            _belief("jo", "true"),
+        )
+        appended = replaced.with_belief(_belief("kim", "true"))
+        assert [belief.actor for belief in appended.beliefs] == ["ana", "jo", "kim"]
+        assert entry.beliefs == (
+            _belief("ana", "unlikely", "2026-11-20"),
+            _belief("jo", "true"),
+        )
+        assert replaced.get_belief("ana") == _belief("ana", "false", "2026-11-21")
+        assert replaced.get_belief("kim") is None
+
+
+class TestDictionary:
+    def test_literal_round_trip(self) -> None:
+        entry = Provenance(
+            stated_by=("https://orcid.org/0000-0001",),
+            date="2026-11-21",
+            method="manual",
+            basis=("https://example.org/score", "https://example.org/audio"),
+            match="exact",
+            note="checked by ear",
+            beliefs=(
+                Belief(
+                    actor="https://orcid.org/0000-0001",
+                    belief="true",
+                    date="2026-11-21",
+                    note="mine",
+                ),
+                _belief("jo", "unlikely"),
+            ),
+        )
+        data = {
+            "stated_by": ["https://orcid.org/0000-0001"],
+            "date": "2026-11-21",
+            "method": "manual",
+            "basis": ["https://example.org/score", "https://example.org/audio"],
+            "match": "exact",
+            "note": "checked by ear",
+            "beliefs": [
+                {
+                    "actor": "https://orcid.org/0000-0001",
+                    "belief": "true",
+                    "date": "2026-11-21",
+                    "note": "mine",
+                },
+                {"actor": "jo", "belief": "unlikely", "date": "2026-11-21"},
+            ],
+        }
+        assert entry.to_dict() == data
+        assert Provenance.from_dict(data) == entry
+        assert Provenance(service="s").to_dict() == {"service": "s"}
+        assert Belief.from_dict(_belief("jo", "true").to_dict()) == _belief(
+            "jo", "true"
+        )
+
+
+class TestBeliefFilter:
+    @pytest.mark.parametrize(
+        ("believer", "belief", "expected"),
+        [
+            ("jo", "not_false", [True, True, False, True, True]),
+            ("jo", "true", [False, False, False, True, False]),
+            ("ana", "not_false", [True, True, True, True, False]),
+            ("ana", "true", [False, False, False, False, False]),
+            (None, "not_false", [True, True, True, True, True]),
+            (None, "true", [True, True, True, True, True]),
+        ],
+    )
+    def test_one_predicate(
+        self, believer: str | None, belief: str, expected: list[bool]
+    ) -> None:
+        column = provenance_array(_ROWS)
+        assert belief_mask(column, believer, belief).to_pylist() == expected
+        assert (
+            ProvenanceField.from_provenances(_ROWS)
+            .passes_belief_filter(believer, belief)
+            .to_pylist()
+            == expected
+        )
+        assert [
+            entry.passes_belief_filter(believer, belief)
+            for entry in _ROWS
+            if entry is not None
+        ] == expected[1:]
+
+    def test_default_is_not_false(self) -> None:
+        column = provenance_array(_ROWS)
+        assert belief_mask(column, "jo").equals(belief_mask(column, "jo", "not_false"))
+
+    def test_empty_column_and_unknown_filter(self) -> None:
+        assert belief_mask(provenance_array([]), "jo").to_pylist() == []
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "The belief filter keeps 'not_false' or 'true', not 'false'"
+            ),
+        ):
+            belief_mask(provenance_array(_ROWS), "jo", "false")  # type: ignore[arg-type]
+
+    def test_chunked_column(self) -> None:
+        column = provenance_array(_ROWS)
+        chunked = pa.chunked_array([column.slice(0, 2), column.slice(2)])
+        assert belief_mask(chunked, "jo").to_pylist() == [True, True, False, True, True]
+
+
+class TestField:
+    def test_rows_read_back(self) -> None:
+        field = ProvenanceField.from_provenances(_ROWS)
+        assert field.value.data.type == derive_arrow_struct(Provenance)
+        assert [field[i] for i in range(len(_ROWS))] == _ROWS

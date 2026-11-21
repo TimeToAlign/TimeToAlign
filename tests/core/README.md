@@ -1431,6 +1431,45 @@ embed storage cells unchanged.
 
 ---
 
+### `test_provenance.py` - Paradata and beliefs, one entry
+
+`Provenance` (`core/provenance.py`) is the one entry stating how an item was
+made and who believes it; `Belief` is one actor's `true`, `false` or
+`unlikely` at a date. Each is a frozen scalar followed by its paired Field.
+What proves the entry is the format's and holds nothing else:
+
+- **Keys.** Exactly `stated_by, date, method, service, basis, match, note,
+  beliefs` (the derived struct's names, asserted as a literal list), a belief
+  exactly `actor, belief, date, note`. An unknown key is refused, and so is an
+  entry stating nothing (`A provenance entry states at least one key`).
+- **Values.** A date written other than `YYYY-MM-DD` (`2026-1-5`) or not of
+  the calendar (`2026-02-30`) is refused with its own message; `stated_by` and
+  `basis` list at least one IRI, each once; `match` takes the five SKOS kinds
+  only; `belief` the three values only.
+- **One belief per actor.** An entry holding two beliefs of `ana` is refused;
+  `with_belief` replaces `ana`'s belief in its place (her `unlikely` of
+  2026-11-20 becomes `false` of 2026-11-21, `jo`'s `true` after it stays) and
+  appends a new actor's, leaving the original unchanged (copy-on-write);
+  `get_belief` answers the actor's belief or `None`.
+- **Dictionary.** `to_dict` leaves absent keys out (an entry of `service`
+  alone is `{"service": ...}`; a belief without a note has no `note` key),
+  writes lists for `stated_by`, `basis` and `beliefs`, and `from_dict` gives
+  back an equal entry; asserted on one whole literal.
+- **The belief filter** is decided in one place, `belief_mask`, over a column
+  of entries; `Provenance.passes_belief_filter` and
+  `ProvenanceField.passes_belief_filter` ask it. The column of five rows — no
+  entry, an entry without beliefs, `jo` `false`, `jo` `true`, `jo`
+  `unlikely` with `ana` `false` — gives for `jo` with `"not_false"`
+  `[True, True, False, True, True]`, with `"true"`
+  `[False, False, False, True, False]`, for `ana` with `"not_false"`
+  `[True, True, True, True, False]`, and for no believer all `True` (either
+  filter). An empty column gives an empty mask; a filter word other than the
+  two is refused. The scalar answers equal the column's row for row, and the
+  Field's equal the function's, so neither can drift from the one predicate.
+- **Field.** `ProvenanceField.from_provenances` of entries and `None` reads
+  each row back equal (`None` where none), its type the scalar's derived
+  struct.
+
 ## Running Tests
 
 ```bash

@@ -87,6 +87,7 @@ def _manifest(timeline: dict[str, Any]) -> dict[str, Any]:
         "timelines": [timeline],
         "groups": [],
         "measure_maps": [],
+        "resources": [],
     }
 
 

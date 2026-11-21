@@ -380,7 +380,7 @@ def test_selection_passes_through(tmp_path: Path) -> None:
 EDITED_DIFF = """\
 --- before.yaml
 +++ after.yaml
-@@ -59,4 +59,8 @@
+@@ -63,4 +63,8 @@
      id: "#take_1"
      length: 64.5
      unit: seconds

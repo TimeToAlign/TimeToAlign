@@ -202,6 +202,7 @@ def test_child_member_writes_its_root() -> None:
         "styles": {},
         "rules": [],
         "timestamps": [],
+        "matchstamps": [],
     }
 
 
@@ -237,11 +238,13 @@ def test_group_dict_is_exact() -> None:
             }
         ],
         "measure_maps": [],
+        "resources": [],
         "graphical": {
             "order": {"group_1": ["score", "image"]},
             "styles": {},
             "rules": [],
             "timestamps": [],
+            "matchstamps": [],
         },
     }
     assert bare(group.to_dict(minimal=True)) == {

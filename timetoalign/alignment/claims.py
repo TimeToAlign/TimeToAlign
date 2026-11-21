@@ -56,7 +56,7 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from timetoshare.tables import PROVENANCE_METADATA_KEY
+from timetoshare.tables import PROVENANCE_METADATA_KEY, SCOPE_FIELD
 
 from timetoalign.core import (
     ClaimType,
@@ -234,7 +234,9 @@ def _on_timeline(value: Any, timeline: Any, where: str) -> Coordinate:
 # region Claim ids
 
 
-def _refuse_held_claim_ids(ids: pa.Array, taken: pa.Array, *, scope: str) -> None:
+def _refuse_held_claim_ids(
+    ids: pa.Array, taken: pa.Array, *, scope: str, within: pa.Array | None = None
+) -> None:
     """Refuse claim ids a scope already holds, or that newcomers hold twice.
 
     A claim's id never changes once it holds one, so an id held in the
@@ -246,6 +248,10 @@ def _refuse_held_claim_ids(ids: pa.Array, taken: pa.Array, *, scope: str) -> Non
         ids: The newcomers' ids (a string array; null for a row without one).
         taken: The ids the scope already holds.
         scope: What the scope is, for the message (``"bundle"``, ``"field"``).
+        within: Where newcomers come from several scopes (a table read with
+            its key column ``scope``), the scope of each, null for the
+            package's own: an id is then refused only when one scope holds
+            it twice.
 
     Raises:
         ValueError: If an id is already held in the scope or held twice.
@@ -258,6 +264,24 @@ def _refuse_held_claim_ids(ids: pa.Array, taken: pa.Array, *, scope: str) -> Non
             f"claim id {quote_id(held[0].as_py())} is already held by another "
             f"claim of this {scope}"
         )
+    if within is not None:
+        pairs = pa.table({"scope": within, "id": ids}).filter(pc.is_valid(ids))
+        counts = pairs.group_by(["scope", "id"], use_threads=False).aggregate(
+            [("id", "count")]
+        )
+        repeated = counts.filter(pc.greater(counts.column("id_count"), 1))
+        if repeated.num_rows:
+            name = repeated.column("scope")[0].as_py()
+            where = (
+                "the package's own scope"
+                if name is None
+                else f"the scope {quote_id(name)}"
+            )
+            raise ValueError(
+                f"claim id {quote_id(repeated.column('id')[0].as_py())} is held "
+                f"by {repeated.column('id_count')[0].as_py()} claims of {where}"
+            )
+        return
     counts = pc.value_counts(present)
     repeated = counts.filter(pc.greater(counts.field("counts"), 1))
     if len(repeated):
@@ -265,6 +289,35 @@ def _refuse_held_claim_ids(ids: pa.Array, taken: pa.Array, *, scope: str) -> Non
             f"claim id {quote_id(repeated.field('values')[0].as_py())} is held "
             f"by {repeated.field('counts')[0].as_py()} claims"
         )
+
+
+def _positions_by_scope(
+    old_ids: pa.Array,
+    old_scopes: pa.Array | None,
+    new_ids: pa.Array,
+    new_scopes: pa.Array | None,
+) -> pa.Array:
+    """Per old row, the index of the new row of the same scope and id (null if none).
+
+    Rows are matched by a hash join on the pair; a null scope, the
+    package's own, is keyed as the empty string, which names no scope (a
+    scope is named by a bundle's id).
+    """
+
+    def keyed(ids: pa.Array, scopes: pa.Array | None, row: str) -> pa.Table:
+        scope = pa.nulls(len(ids), pa.string()) if scopes is None else scopes
+        return pa.table(
+            {
+                "scope": pc.fill_null(pc.cast(scope, pa.string()), ""),
+                "id": pc.cast(ids, pa.string()),
+                row: pa.array(np.arange(len(ids), dtype=np.int64)),
+            }
+        )
+
+    joined = keyed(old_ids, old_scopes, "old").join(
+        keyed(new_ids, new_scopes, "new"), keys=["scope", "id"], join_type="left outer"
+    )
+    return joined.sort_by("old").column("new").combine_chunks()
 
 
 def _admitted_claim_ids(
@@ -2407,8 +2460,46 @@ class MatchClaimField(SemanticField[MatchClaim]):
                 ``MatchClaim`` properties, or a column's type is not the
                 property's; if a row is not a MatchClaim (:meth:`_read`); if
                 the table carries provenance both in its schema metadata and
-                in its rows; or if two rows hold the same id.
+                in its rows; if two rows hold the same id; or if the table
+                mixes scopes (a row naming one in the key column ``scope``),
+                which a bundle reads (:meth:`AlignmentBundle.from_file
+                <timetoalign.alignment.bundle.AlignmentBundle.from_file>`).
         """
+        field, scopes = cls._from_table(table)
+        if scopes is not None:
+            raise ValueError(
+                "This MatchClaim table mixes scopes (its column 'scope'), which "
+                "a MatchClaimField does not hold: read the package with "
+                "AlignmentBundle.from_file."
+            )
+        return field
+
+    @classmethod
+    def _from_table(cls, table: pa.Table) -> tuple["MatchClaimField", pa.Array | None]:
+        """Read a MatchClaim table and the scope of each of its rows.
+
+        TimeToShare's key column ``scope`` names the scope of a row's id,
+        null for the package's own; the column is optional. An id is
+        refused only when one scope holds it twice.
+
+        Returns:
+            The field, and the rows' scopes, or ``None`` where every row is
+            the package's own (no column, or a column of nulls alone).
+
+        Raises:
+            ValueError: As :meth:`from_table`, but for the scopes; or if
+                the column ``scope`` is not of strings.
+        """
+        scopes = None
+        if SCOPE_FIELD.name in table.column_names:
+            scopes = table.column(SCOPE_FIELD.name).combine_chunks()
+            if scopes.type != SCOPE_FIELD.type:
+                raise ValueError(
+                    f"Column 'scope' has type {scopes.type}, not {SCOPE_FIELD.type}."
+                )
+            table = table.drop_columns([SCOPE_FIELD.name])
+            if not pc.any(pc.is_valid(scopes)).as_py():
+                scopes = None
         columns = cls.pa_schema.names
         if sorted(table.column_names) != sorted(columns):
             raise ValueError(
@@ -2431,12 +2522,14 @@ class MatchClaimField(SemanticField[MatchClaim]):
         provenance = (
             None if stored is None else Provenance.from_dict(json.loads(stored))
         )
-        return cls._read(
+        field = cls._read(
             struct_array,
             provenance,
             source="table",
             where=f"in its schema metadata ({cls._PROVENANCE_KEY.decode()!r})",
+            within=scopes,
         )
+        return field, scopes
 
     @classmethod
     def from_parquet(
@@ -2469,6 +2562,21 @@ class MatchClaimField(SemanticField[MatchClaim]):
         return field if timelines is None else field.check_on_timelines(timelines)
 
     @classmethod
+    def _read_parquet(
+        cls, path: str | os.PathLike[str]
+    ) -> tuple["MatchClaimField", pa.Array | None]:
+        """Read a MatchClaim table file and the scope of each row.
+
+        As :meth:`from_parquet`, the key column ``scope`` included
+        (:meth:`_from_table`): the reading of a bundle's package.
+        """
+        import pyarrow.parquet as pq
+
+        field, scopes = cls._from_table(pq.read_table(cls._file_path(path)))
+        cls._refuse_implicit(field._struct_array(), "read from a file")
+        return field, scopes
+
+    @classmethod
     def _file_path(cls, path: str | os.PathLike[str]) -> Path:
         """The file *path* names: itself, or :attr:`file_name` in a directory."""
         path = Path(path)
@@ -2482,6 +2590,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
         *,
         source: str,
         where: str,
+        within: pa.Array | None = None,
     ) -> "MatchClaimField":
         """Admit rows read from a table, a dictionary or columns.
 
@@ -2494,12 +2603,13 @@ class MatchClaimField(SemanticField[MatchClaim]):
             provenance: The field-level provenance the source states, if any.
             source: What is read, for the messages (``"table"``).
             where: Where the source states the field-level provenance.
+            within: The scope of each row, where the rows mix scopes.
         """
         cls._refuse_malformed(struct_array)
         cls._refuse_provenance_twice(
             provenance, struct_array.field("provenance"), source=source, where=where
         )
-        return cls._scoped(struct_array, provenance=provenance)
+        return cls._scoped(struct_array, provenance=provenance, within=within)
 
     @staticmethod
     def _refuse_malformed(data: pa.StructArray) -> None:
@@ -2711,6 +2821,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
         taken: pa.Array | None = None,
         scope: str = "field",
         mint: bool = False,
+        within: pa.Array | None = None,
     ) -> "MatchClaimField":
         """Wrap *struct_array* with its ids admitted into a scope.
 
@@ -2726,6 +2837,9 @@ class MatchClaimField(SemanticField[MatchClaim]):
                 own scope).
             scope: What the scope is, for the message.
             mint: Whether a row without an id is minted one.
+            within: The scope of each row, where the rows mix scopes (read
+                with a table's key column ``scope``; never minted): an id is
+                held twice only within one of them.
         """
         taken = pa.array([], type=pa.string()) if taken is None else taken
         if mint:
@@ -2737,7 +2851,7 @@ class MatchClaimField(SemanticField[MatchClaim]):
             )
         else:
             ids = struct_array.field("id")
-            _refuse_held_claim_ids(ids, taken, scope=scope)
+            _refuse_held_claim_ids(ids, taken, scope=scope, within=within)
             # A row's id is not minted until a bundle mints it.
             minted = pc.fill_null(struct_array.field("id_minted"), False)
         children = {"id": ids, "id_minted": minted}
@@ -3340,17 +3454,22 @@ class MatchClaimField(SemanticField[MatchClaim]):
             "rows": rows,
         }
 
-    def to_parquet(self, path: str | os.PathLike[str]) -> Path:
+    def to_parquet(
+        self, path: str | os.PathLike[str], *, scopes: pa.Array | None = None
+    ) -> Path:
         """Write the MatchClaim table to its Parquet file.
 
         The file holds :attr:`table`, the field-level provenance in its
         schema metadata, so :meth:`from_parquet` reads back every value
-        exactly. Where the file exists, the new table must succeed it: every
-        id of the existing table is in this one, with the same timelines,
-        events, anchors and every other value; only its provenance may
-        differ (a MatchClaim is never removed and never changed, only
-        believed or disbelieved). The file is replaced whole, never in part:
-        a write that fails leaves the file as it was and no temporary file.
+        exactly. Where the rows mix scopes, TimeToShare's key column
+        ``scope`` follows the others, per row the name of its scope (null
+        for the package's own). Where the file exists, the new table must
+        succeed it: every MatchClaim of the existing table, by its scope and
+        its id, is in this one, with the same timelines, events, anchors and
+        every other value; only its provenance may differ (a MatchClaim is
+        never removed and never changed, only believed or disbelieved). The
+        file is replaced whole, never in part: a write that fails leaves the
+        file as it was and no temporary file.
 
         The file holds what was stated: an implicit MatchClaim, which a
         :class:`~timetoalign.alignment.graph.MatchGraph` derives, is never
@@ -3359,6 +3478,12 @@ class MatchClaimField(SemanticField[MatchClaim]):
         Args:
             path: The file, or a directory to hold :attr:`file_name`
                 (``match_claims.parquet``).
+            scopes: The scope of each row, a string array, null for the
+                package's own; a bundle merging others passes it
+                (:meth:`AlignmentBundle.to_file
+                <timetoalign.alignment.bundle.AlignmentBundle.to_file>`).
+                Without it, or with nulls alone, every row is the package's
+                own and the file has no column ``scope``.
 
         Returns:
             The path of the file written.
@@ -3385,23 +3510,40 @@ class MatchClaimField(SemanticField[MatchClaim]):
                 f"of the file holds one: add the field to an AlignmentBundle, "
                 f"which mints the ids, and write its match_claim_table."
             )
+        if scopes is not None and not pc.any(pc.is_valid(scopes)).as_py():
+            scopes = None
+        table = self.table
+        if scopes is not None:
+            table = table.append_column(SCOPE_FIELD, pc.cast(scopes, SCOPE_FIELD.type))
         target = self._file_path(path)
         if target.exists():
-            self._refuse_unless_succeeding(type(self).from_parquet(target))
+            self._refuse_unless_succeeding(*type(self)._read_parquet(target), scopes)
         temporary = target.with_name(f".{target.name}.writing")
         try:
-            pq.write_table(self.table, temporary)
+            pq.write_table(table, temporary)
             os.replace(temporary, target)
         finally:
             temporary.unlink(missing_ok=True)
         return target
 
-    def _refuse_unless_succeeding(self, existing: "MatchClaimField") -> None:
+    def _refuse_unless_succeeding(
+        self,
+        existing: "MatchClaimField",
+        existing_scopes: pa.Array | None = None,
+        scopes: pa.Array | None = None,
+    ) -> None:
         """Refuse this table as a successor of *existing* unless it keeps it.
 
-        Every id of *existing* must be here, its row equal in every column
-        but ``provenance``. Vectorized: the rows are matched by id and
-        compared leaf column by leaf column.
+        Every MatchClaim of *existing*, by its scope and its id, must be
+        here, its row equal in every column but ``provenance``. Vectorized:
+        the rows are matched by scope and id and compared leaf column by
+        leaf column.
+
+        Args:
+            existing: The table written before.
+            existing_scopes: Its rows' scopes, ``None`` for the package's
+                own alone.
+            scopes: This table's rows' scopes, likewise.
 
         Raises:
             ValueError: Naming the first MatchClaim missing or changed, and
@@ -3410,13 +3552,19 @@ class MatchClaimField(SemanticField[MatchClaim]):
         old_ids = existing._ids
         if len(old_ids) == 0:
             return
-        positions = pc.index_in(old_ids, value_set=self._ids)
+        if existing_scopes is None and scopes is None:
+            positions = pc.index_in(old_ids, value_set=self._ids)
+        else:
+            positions = _positions_by_scope(old_ids, existing_scopes, self._ids, scopes)
         if positions.null_count:
             row = pc.index(pc.is_null(positions), True).as_py()
+            name = quote_id(old_ids[row].as_py())
+            if existing_scopes is not None and existing_scopes[row].is_valid:
+                name += f" of the scope {quote_id(existing_scopes[row].as_py())}"
             raise ValueError(
-                f"The new MatchClaim table lacks the MatchClaim "
-                f"{quote_id(old_ids[row].as_py())} of the existing one: a "
-                f"MatchClaim is never removed (state the belief 'false' instead)."
+                f"The new MatchClaim table lacks the MatchClaim {name} of the "
+                f"existing one: a MatchClaim is never removed (state the belief "
+                f"'false' instead)."
             )
         old = _leaf_columns(existing.table.drop_columns(["provenance"]))
         new = _leaf_columns(self.table.drop_columns(["provenance"]).take(positions))

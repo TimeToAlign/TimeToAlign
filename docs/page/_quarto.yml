@@ -213,6 +213,8 @@ quartodoc:
           package: timetoalign.timelines
         - name: SegmentLine
           package: timetoalign.timelines
+        - name: MeasureMap
+          package: timetoalign.timelines
         - name: UnknownLengthError
           package: timetoalign.timelines
 

@@ -907,8 +907,9 @@ len(stamp.present_timelines)
 # children of the unfolded score's timelines and of each recording, so the
 # stamp holds 114 timelines. To keep the output readable, the cells below
 # narrow it to the bundle's own members (`bundle.timeline_ids`) with the
-# getter's `within=` filter; the children's coordinates are still
-# there whenever you ask without the filter.
+# getter's `within=` filter, which always keeps the queried timeline and
+# selects among the others; the children's coordinates are still there
+# whenever you ask without the filter.
 
 # %%
 members = set(bundle.timeline_ids)

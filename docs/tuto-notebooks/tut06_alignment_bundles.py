@@ -541,7 +541,9 @@ vienna_result
 # ## Merging
 #
 # `AlignmentBundle.from_bundles([...])` registers the source groups, timelines,
-# and claims in a new bundle, every claim keeping its id. It does not invent
+# and claims in a new bundle, every claim keeping its id. A MatchClaim is
+# addressed by its id alone, so two sources holding one claim id are refused
+# before anything is merged. It does not invent
 # evidence between the sources; add bridge claims when you know how the two
 # sides correspond. The facsimile has no events, so each bridge claim gives
 # its page position and a Projection of the score cue is added there.

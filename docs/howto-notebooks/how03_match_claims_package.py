@@ -324,8 +324,11 @@ pq.read_table(package / "match_claims.parquet").select(
 pq.read_table(package / "projections.parquet").to_pylist()
 
 # %% [markdown]
-# A Projection's id is unique on its timeline: the score's `projection_1`
-# and the recording's `projection_1` are two events.
+# A Projection's id is unique among all the Projections of the manifest,
+# whichever timeline holds it, so the table names each id once: the
+# score's Projection is numbered after the recording's. An id once given is
+# never re-minted, and a Projection given an id another timeline's
+# Projection holds is refused.
 
 # %% [markdown]
 # ## Read the package

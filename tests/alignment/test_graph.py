@@ -61,13 +61,29 @@ def _claim(
     )
 
 
-def _nomatch(timeline_id: str, value: float, other_timeline_id: str) -> MatchClaim:
+def _nomatch(
+    timeline_id: str,
+    value: float | int,
+    other_timeline_id: str,
+    *,
+    unit: TimeUnit = TimeUnit.number,
+    **kwargs,
+) -> MatchClaim:
     """A NOMATCH claim: the event at *value* has no counterpart on the other side."""
     return MatchClaim(
         timeline_a_id=timeline_id,
         timeline_b_id=other_timeline_id,
         is_synchronous=False,
-        event_a_id=event_id(timeline_id, Coordinate(value, TimeUnit.number)),
+        event_a_id=event_id(timeline_id, Coordinate(value, unit)),
+        **kwargs,
+    )
+
+
+def _believed_by(actor: str, belief: str) -> Provenance:
+    """Provenance holding one actor's belief."""
+    return Provenance(
+        method="manual",
+        beliefs=(Belief(actor=actor, belief=belief, date="2026-11-21"),),
     )
 
 
@@ -680,18 +696,31 @@ class TestMatchGraphFilter:
         assert filtered.timeline_ids == {"tl_a", "tl_b"}
 
 
+# The belief filter over TestMatchGraphBeliefFilter's four claims: the
+# believer, the states kept, the ids kept in order.
+_BELIEF_CASES = [
+    # No believer: nothing is filtered.
+    (None, DEFAULT_BELIEFS, ["claim_1", "claim_2", "claim_3", "claim_4"]),
+    (None, ["true"], ["claim_1", "claim_2", "claim_3", "claim_4"]),
+    # ana believes claim_2 false; ben's belief in claim_4 is not hers.
+    ("ana", DEFAULT_BELIEFS, ["claim_1", "claim_3", "claim_4"]),
+    # Only what ana believes true.
+    ("ana", ["true"], ["claim_3"]),
+    # What ana holds no belief on.
+    ("ana", ["undecided"], ["claim_1", "claim_4"]),
+    # ben believes claim_4 false; ana's beliefs are not his.
+    ("ben", DEFAULT_BELIEFS, ["claim_1", "claim_2", "claim_3"]),
+    ("ben", ["true"], []),
+    ("ben", ["false"], ["claim_4"]),
+]
+
+
 class TestMatchGraphBeliefFilter:
     """A graph holds exactly the claims the belief filter keeps."""
 
     @staticmethod
     def _claims() -> list[MatchClaim]:
         """Four claims, one per belief case, at distinct positions."""
-
-        def believed_by(actor: str, belief: str) -> Provenance:
-            return Provenance(
-                method="manual",
-                beliefs=(Belief(actor=actor, belief=belief, date="2026-11-21"),),
-            )
 
         return [
             _claim("tl_a", 1.0, "tl_b", 10.0, id="claim_1"),
@@ -701,7 +730,7 @@ class TestMatchGraphBeliefFilter:
                 "tl_b",
                 20.0,
                 id="claim_2",
-                provenance=believed_by("ana", "false"),
+                provenance=_believed_by("ana", "false"),
             ),
             _claim(
                 "tl_a",
@@ -709,7 +738,7 @@ class TestMatchGraphBeliefFilter:
                 "tl_b",
                 30.0,
                 id="claim_3",
-                provenance=believed_by("ana", "true"),
+                provenance=_believed_by("ana", "true"),
             ),
             _claim(
                 "tl_a",
@@ -717,28 +746,11 @@ class TestMatchGraphBeliefFilter:
                 "tl_b",
                 40.0,
                 id="claim_4",
-                provenance=believed_by("ben", "false"),
+                provenance=_believed_by("ben", "false"),
             ),
         ]
 
-    @pytest.mark.parametrize(
-        ("believer", "beliefs", "kept"),
-        [
-            # No believer: nothing is filtered.
-            (None, DEFAULT_BELIEFS, ["claim_1", "claim_2", "claim_3", "claim_4"]),
-            (None, ["true"], ["claim_1", "claim_2", "claim_3", "claim_4"]),
-            # ana believes claim_2 false; ben's belief in claim_4 is not hers.
-            ("ana", DEFAULT_BELIEFS, ["claim_1", "claim_3", "claim_4"]),
-            # Only what ana believes true.
-            ("ana", ["true"], ["claim_3"]),
-            # What ana holds no belief on.
-            ("ana", ["undecided"], ["claim_1", "claim_4"]),
-            # ben believes claim_4 false; ana's beliefs are not his.
-            ("ben", DEFAULT_BELIEFS, ["claim_1", "claim_2", "claim_3"]),
-            ("ben", ["true"], []),
-            ("ben", ["false"], ["claim_4"]),
-        ],
-    )
+    @pytest.mark.parametrize(("believer", "beliefs", "kept"), _BELIEF_CASES)
     def test_graph_keeps_the_believed_claims(
         self, believer: str | None, beliefs: list[str], kept: list[str]
     ) -> None:
@@ -753,6 +765,171 @@ class TestMatchGraphBeliefFilter:
         """A word that is no belief state is refused."""
         with pytest.raises(ValueError, match="not \\['not_false'\\]"):
             MatchGraph(self._claims(), believer="ana", beliefs=["not_false"])
+
+
+def _edges(graph: MatchGraph) -> set[frozenset]:
+    """A graph's edges, each as the set of the two nodes it joins."""
+    return {frozenset(edge) for edge in graph._graph.edges()}
+
+
+class TestMatchGraphFilterByClaims:
+    """``filter`` holds what a graph of the claims it keeps holds."""
+
+    @pytest.mark.parametrize(("believer", "beliefs", "kept"), _BELIEF_CASES)
+    def test_filter_keeps_the_believed_claims(
+        self, believer: str | None, beliefs: list[str], kept: list[str]
+    ) -> None:
+        """The constructor's answer, asked of a whole graph."""
+        graph = MatchGraph(TestMatchGraphBeliefFilter._claims())
+
+        filtered = graph.filter(believer=believer, beliefs=beliefs)
+
+        assert [claim.id for claim in filtered.claims] == kept
+        assert filtered.n_edges == len(kept)
+        assert filtered.n_nodes == 2 * len(kept)
+
+    def test_filter_drops_the_inferred_edges_of_a_disbelieved_claim(
+        self, dgt1_group: TimelineGroup
+    ) -> None:
+        """An inferred edge goes with the only claims it was inferred from."""
+        claims = [
+            _claim(
+                "dgt_1",
+                500,
+                "external",
+                25.0,
+                unit_a=TimeUnit.pixels,
+                id="claim_1",
+                provenance=_believed_by("ana", "false"),
+            ),
+            _claim(
+                "dgt_1", 200, "external", 10.0, unit_a=TimeUnit.pixels, id="claim_2"
+            ),
+        ]
+        groups = {"group1": dgt1_group}
+        extended = MatchGraph(claims).extend_to_groups(groups)
+        assert (extended.n_edges, len(extended.inferred_edges)) == (4, 2)
+
+        filtered = extended.filter(believer="ana")
+
+        assert [claim is claims[1] for claim in filtered.claims] == [True]
+        assert (filtered.n_edges, filtered.n_nodes) == (2, 3)
+        assert filtered.timeline_ids == {"dgt_1", "external", "audio"}
+        assert [edge.anchor for edge in filtered.inferred_edges] == [
+            AlignmentAnchor(
+                timeline_a_id="dgt_1",
+                coordinate_a=Coordinate(200, TimeUnit.pixels),
+                timeline_b_id="audio",
+                coordinate_b=Coordinate(20.0, TimeUnit.seconds),
+            )
+        ]
+        rebuilt = MatchGraph(claims, believer="ana").extend_to_groups(groups)
+        assert _edges(filtered) == _edges(rebuilt)
+
+    def test_filter_keeps_an_inferred_edge_another_kept_claim_grounds(
+        self, dgt1_group: TimelineGroup
+    ) -> None:
+        """A node still stated by a kept claim keeps its inferred edges."""
+        claims = [
+            _claim(
+                "dgt_1",
+                500,
+                "external",
+                25.0,
+                unit_a=TimeUnit.pixels,
+                id="claim_1",
+                provenance=_believed_by("ana", "false"),
+            ),
+            _claim("dgt_1", 500, "score", 7, unit_a=TimeUnit.pixels, id="claim_2"),
+        ]
+        groups = {"group1": dgt1_group}
+        extended = MatchGraph(claims).extend_to_groups(groups)
+        # The node dgt_1@500 traces back to the first claim naming it.
+        assert extended.inferred_edges[0].source_claim is claims[0]
+
+        filtered = extended.filter(believer="ana")
+
+        assert [claim is claims[1] for claim in filtered.claims] == [True]
+        assert (filtered.n_edges, filtered.n_nodes) == (2, 3)
+        assert filtered.timeline_ids == {"dgt_1", "score", "audio"}
+        assert [edge.anchor for edge in filtered.inferred_edges] == [
+            AlignmentAnchor(
+                timeline_a_id="dgt_1",
+                coordinate_a=Coordinate(500, TimeUnit.pixels),
+                timeline_b_id="audio",
+                coordinate_b=Coordinate(50.0, TimeUnit.seconds),
+            )
+        ]
+        rebuilt = MatchGraph(claims, believer="ana").extend_to_groups(groups)
+        assert _edges(filtered) == _edges(rebuilt)
+
+    def test_filter_keeps_an_anchor_a_kept_claim_also_states(self) -> None:
+        """An edge two claims state stays, naming the kept claim."""
+        kept = _claim("tl_a", 1.0, "tl_b", 10.0, id="claim_2")
+        dropped = _claim(
+            "tl_a",
+            1.0,
+            "tl_b",
+            10.0,
+            id="claim_1",
+            provenance=_believed_by("ana", "false"),
+        )
+        graph = MatchGraph([kept, dropped])
+
+        filtered = graph.filter(believer="ana")
+
+        assert [claim is kept for claim in filtered.claims] == [True]
+        assert filtered.n_edges == 1
+        [(_, _, data)] = filtered._graph.edges(data=True)
+        assert data["claim"] is kept
+        assert data["claim_id"] == "claim_2"
+        # The graph filtered keeps its own edge as it was.
+        [(_, _, original)] = graph._graph.edges(data=True)
+        assert original["claim"] is dropped
+
+    def test_filter_nomatch_only(self) -> None:
+        """NOMATCH claims alone, under the other filters; sync claims alone."""
+        sync = _claim("tl_a", 1.0, "tl_b", 10.0, id="sync")
+        nomatch_1 = _nomatch(
+            "tl_a", 2.0, "tl_b", id="nomatch_1", provenance=_believed_by("ana", "false")
+        )
+        nomatch_2 = _nomatch("tl_a", 3.0, "tl_c", id="nomatch_2")
+        conceptual = _conceptual("tl_b", "tl_c", id="conceptual")
+        graph = MatchGraph([sync, nomatch_1, nomatch_2, conceptual])
+
+        def ids(filtered: MatchGraph) -> list[str | None]:
+            return [claim.id for claim in filtered.claims]
+
+        nomatches = graph.filter(nomatch_only=True)
+        assert ids(nomatches) == ["nomatch_1", "nomatch_2"]
+        assert (nomatches.n_nodes, nomatches.n_edges) == (0, 0)
+        assert ids(graph.filter(nomatch_only=True, timeline_ids={"tl_a", "tl_b"})) == [
+            "nomatch_1"
+        ]
+        assert ids(graph.filter(nomatch_only=True, believer="ana")) == ["nomatch_2"]
+        synchronous = graph.filter(synchronous_only=True)
+        assert ids(synchronous) == ["sync"]
+        assert synchronous.n_edges == 1
+        assert ids(graph.filter()) == ["sync", "nomatch_1", "nomatch_2", "conceptual"]
+        with pytest.raises(
+            ValueError,
+            match="^synchronous_only and nomatch_only are mutually exclusive$",
+        ):
+            graph.filter(synchronous_only=True, nomatch_only=True)
+
+    def test_filter_nomatch_only_on_an_extended_graph(
+        self, dgt1_group: TimelineGroup
+    ) -> None:
+        """A NOMATCH claim holds no anchor: no stated and no inferred edge."""
+        sync = _claim("dgt_1", 500, "external", 25.0, unit_a=TimeUnit.pixels)
+        nomatch = _nomatch("dgt_1", 100, "external", unit=TimeUnit.pixels)
+        extended = MatchGraph([sync, nomatch]).extend_to_groups({"group1": dgt1_group})
+
+        filtered = extended.filter(nomatch_only=True)
+
+        assert [claim is nomatch for claim in filtered.claims] == [True]
+        assert (filtered.n_nodes, filtered.n_edges) == (0, 0)
+        assert filtered.inferred_edges == []
 
 
 # endregion

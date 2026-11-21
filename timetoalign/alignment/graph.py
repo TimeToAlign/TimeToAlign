@@ -82,6 +82,14 @@ module_logger = logging.getLogger(__name__)
 _GraphNode = tuple[str, CoordinateValue]
 
 
+def _anchor_nodes(anchor: AlignmentAnchor) -> tuple[_GraphNode, _GraphNode]:
+    """The two graph nodes an anchor joins."""
+    return (
+        (anchor.timeline_a_id, anchor.coordinate_a.value),
+        (anchor.timeline_b_id, anchor.coordinate_b.value),
+    )
+
+
 # region MatchStamp
 
 
@@ -1204,12 +1212,8 @@ class MatchGraph:
             anchor: The AlignmentAnchor to add.
             claim: The parent MatchClaim for metadata.
         """
-        node_a: _GraphNode = (anchor.timeline_a_id, anchor.coordinate_a.value)
-        node_b: _GraphNode = (anchor.timeline_b_id, anchor.coordinate_b.value)
-
         G.add_edge(
-            node_a,
-            node_b,
+            *_anchor_nodes(anchor),
             synchronous=claim.is_synchronous,
             claim_id=claim.id,
             claim=claim,
@@ -1987,87 +1991,109 @@ class MatchGraph:
         self,
         *,
         synchronous_only: bool = False,
+        nomatch_only: bool = False,
         stated_only: bool = False,
         timeline_ids: set[str] | None = None,
         id_pattern: str | None = None,
         include_domains: set[Domain] | None = None,
         include_units: set[TimeUnit] | None = None,
+        believer: str | None = None,
+        beliefs: Collection[BeliefState] = DEFAULT_BELIEFS,
     ) -> "MatchGraph":
-        """Create filtered view of the graph.
+        """Create a filtered view of the graph.
+
+        The claim filters (``synchronous_only``, ``nomatch_only``, the belief
+        filter) decide which MatchClaims the view holds, with the meaning
+        they have on every MatchClaim query; the view then holds what a graph
+        of those claims holds, extended through the same groups: an edge no
+        kept claim states goes, and so does every inferred edge left without
+        a stated edge to start from. The timeline filters then drop the
+        nodes of the timelines they exclude, and a claim on such a timeline.
 
         Args:
-            synchronous_only: Include only synchronous edges.
-            stated_only: Include only the edges MatchClaims state (no
-                inferred edges).
+            synchronous_only: Only the synchronous claims (with anchors).
+            nomatch_only: Only the NOMATCH claims (an event on one side, the
+                sentinel on the other); they hold no anchor, so the view has
+                no edge.
+            stated_only: Only the edges MatchClaims state (no inferred
+                edges).
             timeline_ids: Only include these timeline IDs.
             id_pattern: Regex filter for timeline IDs.
             include_domains: Only include timelines in these domains.
             include_units: Only include timelines with these units.
+            believer: The actor whose beliefs filter the claims (the belief
+                filter, actors compared as IRIs under the source bundle's
+                manifest ``@context``); ``None`` filters nothing.
+            beliefs: The states kept for the believer (``"true"``,
+                ``"undecided"``, ``"unlikely"``, ``"false"``); default all
+                but ``"false"``.
 
         Returns:
-            New MatchGraph with filtered edges/nodes.
+            New MatchGraph with filtered claims, edges and nodes.
+
+        Raises:
+            ValueError: If ``synchronous_only`` and ``nomatch_only`` are both
+                set, or ``beliefs`` is not a collection of belief states.
         """
-        # Start with a copy
+        if synchronous_only and nomatch_only:
+            raise ValueError("synchronous_only and nomatch_only are mutually exclusive")
+        kept = believed(
+            self._claims, believer, beliefs, context=belief_context(self._source)
+        )
+        if synchronous_only:
+            kept = [claim for claim in kept if claim.is_synchronous]
+        if nomatch_only:
+            kept = [claim for claim in kept if claim.is_nomatch]
+
         filtered = nx.Graph(self._graph)
+        if len(kept) < len(self._claims):
+            self._keep_edges_of(filtered, kept)
 
         # Filter by timeline IDs and domain/unit
-        nodes_to_remove = []
-        for node in filtered.nodes():
-            timeline_id = node[0]
-            if not self._passes_filters(
+        passing = {
+            timeline_id
+            for timeline_id in self.timeline_ids
+            | {
+                tid
+                for claim in self._claims
+                for tid in (claim.timeline_a_id, claim.timeline_b_id)
+            }
+            if self._passes_filters(
                 timeline_id,
                 timeline_ids=timeline_ids,
                 id_pattern=id_pattern,
                 include_domains=include_domains,
                 include_units=include_units,
-            ):
-                nodes_to_remove.append(node)
-        filtered.remove_nodes_from(nodes_to_remove)
+            )
+        }
+        filtered.remove_nodes_from(
+            [node for node in filtered.nodes() if node[0] not in passing]
+        )
 
-        # Filter edges by attributes
-        if synchronous_only or stated_only:
-            edges_to_remove = []
-            for u, v, data in filtered.edges(data=True):
-                if synchronous_only and not data.get("synchronous", True):
-                    edges_to_remove.append((u, v))
-                elif stated_only and "inferred" in data:
-                    edges_to_remove.append((u, v))
-            filtered.remove_edges_from(edges_to_remove)
+        if stated_only:
+            filtered.remove_edges_from(
+                [
+                    (u, v)
+                    for u, v, data in filtered.edges(data=True)
+                    if "inferred" in data
+                ]
+            )
 
         # Remove isolated nodes (nodes with no edges after filtering)
-        isolated = list(nx.isolates(filtered))
-        filtered.remove_nodes_from(isolated)
-
-        # Filter claims to match remaining edges
-        # By identity: claims built outside one scope may share an id.
-        remaining_claims = {
-            id(data["claim"])
-            for _, _, data in filtered.edges(data=True)
-            if "claim" in data
-        }
+        filtered.remove_nodes_from(list(nx.isolates(filtered)))
 
         remaining_inferred = {
             id(data["inferred"])
             for _, _, data in filtered.edges(data=True)
             if "inferred" in data
         }
-
-        # Keep non-synchronous claims that connect remaining timelines
-        remaining_tl_ids = {node[0] for node in filtered.nodes()}
-        filtered_claims = []
-        for c in self._claims:
-            if id(c) in remaining_claims:
-                filtered_claims.append(c)
-            elif (
-                not c.is_synchronous
-                and c.timeline_a_id in remaining_tl_ids
-                and c.timeline_b_id in remaining_tl_ids
-            ):
-                filtered_claims.append(c)
-
         return MatchGraph._from_graph(
             filtered,
-            filtered_claims,
+            [
+                claim
+                for claim in kept
+                if claim.timeline_a_id in passing and claim.timeline_b_id in passing
+            ],
             inferred=[
                 edge for edge in self._inferred if id(edge) in remaining_inferred
             ],
@@ -2076,6 +2102,41 @@ class MatchGraph:
             source=self._source,
             source_id=self._source_id,
         )
+
+    @staticmethod
+    def _keep_edges_of(graph: nx.Graph, kept: list[MatchClaim]) -> None:
+        """Keep in *graph* only what the *kept* claims ground, in place.
+
+        A stated edge stays when a kept claim states its anchor (recording the
+        last one, as building the graph does); an inferred edge stays when its
+        part of the graph still holds a stated edge, which is where extending
+        a graph of the kept claims would infer it.
+        """
+        stating: dict[frozenset[_GraphNode], MatchClaim] = {}
+        for claim in kept:
+            if not claim.is_synchronous:
+                continue
+            for anchor in claim.anchors:
+                stating[frozenset(_anchor_nodes(anchor))] = claim
+        dropped = []
+        for u, v, data in graph.edges(data=True):
+            if "claim" not in data:
+                continue
+            claim = stating.get(frozenset((u, v)))
+            if claim is None:
+                dropped.append((u, v))
+            elif claim is not data["claim"]:
+                data["claim"], data["claim_id"] = claim, claim.id
+        graph.remove_edges_from(dropped)
+        seen: set[_GraphNode] = set()
+        for node in {node for edge in dropped for node in edge}:
+            if node in seen:
+                continue
+            part = nx.node_connected_component(graph, node)
+            seen |= part
+            edges = list(graph.subgraph(part).edges(data=True))
+            if not any("claim" in data for _, _, data in edges):
+                graph.remove_edges_from([(u, v) for u, v, _ in edges])
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary.

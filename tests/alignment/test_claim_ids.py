@@ -476,4 +476,33 @@ def test_merge_keeps_ids_and_refuses_a_shared_one() -> None:
     assert other.get_match_claims()[0].bundle is other
 
 
+def test_merge_refuses_an_id_two_distant_sources_hold() -> None:
+    """The one check, before the merge begins, compares every pair of sources."""
+    sources = [
+        _holding(*_claims(NEW[:1], ["claim_1"])),
+        _holding(*_claims(NEW[1:], ["claim_2"])),
+        _holding(*_claims(STORED[:1], ["claim_1"])),
+    ]
+    with pytest.raises(ValueError) as raised:
+        AlignmentBundle.from_bundles(sources)
+    assert str(raised.value) == (
+        f"MatchClaim id 'claim_1' is held by bundle '{sources[0].id}' and by "
+        f"bundle '{sources[2].id}' (bundles 0 and 2 of the merge): a MatchClaim "
+        f"is addressed by its id alone, so the two merge once one of them "
+        f"states its MatchClaims under other ids."
+    )
+    assert [
+        [claim.id for claim in source.get_match_claims()] for source in sources
+    ] == [
+        ["claim_1"],
+        ["claim_2"],
+        ["claim_1"],
+    ]
+    assert all(
+        claim.bundle is source
+        for source in sources
+        for claim in source.get_match_claims()
+    )
+
+
 # endregion

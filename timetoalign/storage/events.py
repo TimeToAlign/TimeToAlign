@@ -1147,7 +1147,8 @@ class EventData(SemanticFieldAccessMixin):
                 - list: Python lists (converted to numpy)
 
                 For coordinate fields (start, end, duration):
-                - If pa.StructArray: used as given, each ratio in lowest terms
+                - If pa.StructArray: taken whole; any ratio is accepted and
+                  read by its value (``2/4`` is ``1/2``), held reduced
                 - If numeric/string array: parsed via build_number_struct_array
 
             unit: The time unit for coordinates.

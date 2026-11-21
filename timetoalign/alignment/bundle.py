@@ -98,7 +98,6 @@ from .claims import (
     _believed_entry,
     _claims_between_events,
     _join_claims,
-    _refuse_held_claim_ids,
 )
 from .filters import ClaimFilter, belief_context, believed, meet
 from .graph import MatchGraph, MatchIntervalStamp, MatchStamp
@@ -1830,14 +1829,13 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
     def _take_claims_of(self, bundle: "AlignmentBundle") -> None:
         """Append another bundle's claims, every id kept.
 
-        Raises:
-            ValueError: If this bundle holds one of their ids already.
+        The merge refused sources sharing a claim id before it began
+        (:func:`_refuse_shared_claim_ids`), so the ids are not checked again.
         """
         rows = bundle.match_claim_table
         if len(rows) == 0:
             return
         self._check_rows(rows)
-        _refuse_held_claim_ids(rows._ids, self.match_claim_table._ids, holder="bundle")
         self._append_rows(rows)
 
     def _claims_in_force(

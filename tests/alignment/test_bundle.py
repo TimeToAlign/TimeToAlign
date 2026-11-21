@@ -28,6 +28,8 @@ from timetoalign.alignment import (
     MatchClaimField,
 )
 from timetoalign.alignment.bundle import _ALL_BELIEFS
+from timetoalign.alignment.filters import ClaimFilter
+from timetoalign.alignment.graph import MatchGraph
 from timetoalign.alignment.matchline import MatchLine
 from timetoalign.core import (
     Belief,
@@ -1442,8 +1444,8 @@ class TestCreateMatchClaims:
 # region Test: the belief filter
 
 
-def _believed_claims_bundle() -> AlignmentBundle:
-    """Three claims score -> audio, of which ``ana`` believes one false.
+def _believed_claims_bundle(actor: str = "ana") -> AlignmentBundle:
+    """Three claims score -> audio, of which *actor* (ana) believes one false.
 
     ``claim_1`` (0 -> 0) ana believes true; ``claim_2`` (100 -> 60) ana
     believes false; ``claim_3`` (200 -> 100) states no belief.
@@ -1453,7 +1455,7 @@ def _believed_claims_bundle() -> AlignmentBundle:
     def believed(value: str) -> Provenance:
         return Provenance(
             method="manual",
-            beliefs=(Belief(actor="ana", belief=value, date="2026-11-21"),),
+            beliefs=(Belief(actor=actor, belief=value, date="2026-11-21"),),
         )
 
     bundle.add_match_claims(
@@ -1525,6 +1527,82 @@ class TestBeliefFilter:
             "score": Coordinate(100.0, TimeUnit.seconds),
             "image": Coordinate(200.0, TimeUnit.seconds),
         }
+
+
+ANA = "https://example.org/people/ana"
+
+
+def _iri_believed_bundle(actor: str = ANA) -> AlignmentBundle:
+    """The three believed claims, the bundle declaring ``people`` for ana's namespace."""
+    return _believed_claims_bundle(actor).add_prefix(
+        "people", "https://example.org/people/"
+    )
+
+
+class TestBeliefFilterIris:
+    """A believer and the actors of the beliefs compare as IRIs under the bundle's context."""
+
+    @pytest.mark.parametrize("believer", ["people:ana", ANA])
+    def test_compact_and_full_believer_select_alike(self, believer: str) -> None:
+        bundle = _iri_believed_bundle()
+        assert [claim.id for claim in bundle.get_match_claims(believer=believer)] == [
+            "claim_1",
+            "claim_3",
+        ]
+        assert [
+            claim.id
+            for claim in bundle.get_match_claims(believer=believer, belief="true")
+        ] == ["claim_1"]
+
+    def test_a_compact_belief_is_found_by_the_full_iri(self) -> None:
+        bundle = _iri_believed_bundle("people:ana")
+        assert [claim.id for claim in bundle.get_match_claims(believer=ANA)] == [
+            "claim_1",
+            "claim_3",
+        ]
+
+    def test_matchstamps_read_through_the_context(self) -> None:
+        bundle = _iri_believed_bundle()
+        stamp = bundle.get_matchstamp_at(100.0, "score", believer="people:ana")
+        assert stamp.is_interpolated is True
+        assert stamp.coordinates == {
+            "score": Coordinate(100.0, TimeUnit.seconds),
+            "image": Coordinate(200.0, TimeUnit.seconds),
+            "audio": Coordinate(50.0, TimeUnit.seconds),
+            "midi": Coordinate(50.0, TimeUnit.seconds),
+        }
+        stamps = bundle.get_matchstamps(
+            bundle.get_match_claims(), believer="people:ana"
+        )
+        assert [stamp.coordinates["score"] for stamp in stamps] == [
+            Coordinate(0.0, TimeUnit.seconds),
+            Coordinate(200.0, TimeUnit.seconds),
+        ]
+
+    def test_claim_filter_and_graph_use_the_bundle_s_context(self) -> None:
+        bundle = _iri_believed_bundle()
+        claims = bundle.get_match_claims()
+        believes = ClaimFilter(believer="people:ana")
+        assert [believes.matches_claim(claim) for claim in claims] == [
+            True,
+            False,
+            True,
+        ]
+        # A free copy belongs to no bundle: no prefix declared, so the compact
+        # believer names nobody among the beliefs.
+        assert believes.matches_claim(claims[1].model_copy(deep=True)) is True
+        graph = MatchGraph(claims, believer="people:ana", source=bundle)
+        assert [claim.id for claim in graph._claims] == ["claim_1", "claim_3"]
+
+    def test_declaring_the_prefix_changes_the_answer(self) -> None:
+        bundle = _believed_claims_bundle(ANA)
+        assert [
+            claim.id for claim in bundle.get_match_claims(believer="people:ana")
+        ] == ["claim_1", "claim_2", "claim_3"]
+        bundle.add_prefix("people", "https://example.org/people/")
+        assert [
+            claim.id for claim in bundle.get_match_claims(believer="people:ana")
+        ] == ["claim_1", "claim_3"]
 
 
 # endregion

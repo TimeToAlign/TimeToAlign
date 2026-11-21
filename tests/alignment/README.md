@@ -1377,13 +1377,21 @@ TimeToShare's own artifacts:
   are content identity, so a dropped, retyped or rewritten cell fails.
 - **Columns by name.** The fixture's columns in reverse order read to the
   same claims.
-- **What the library writes, TimeToShare accepts.** A field from
-  `from_columns` over a fraction `quarters`, an int `samples` and a float
-  `seconds` timeline (a float `0.1` among the cells), with a shared
-  provenance, and a field from `from_claims` holding an interval claim, a
-  NOMATCH claim and a conceptual claim, each give `match_claim_problems(...)
-  == []`; the float cells hold their exact ratios, and TimeToShare's
-  `row_provenance` reads the shared provenance on every row.
+- **What the library writes, TimeToShare accepts.** TimeToShare's table
+  requires every id, and a field built from columns or claims mints none
+  (the bundle mints, `id_system_spec.md` §2), so what is written is a
+  bundle's `match_claim_table`. A field from `from_columns` over a fraction
+  `quarters`, an int `samples` and a float `seconds` timeline (a float `0.1`
+  among the cells), with a shared provenance, holds three null ids; added to
+  a bundle of those three timelines it becomes rows `claim_1`–`claim_3`, and
+  the bundle's table written with `to_parquet` gives
+  `match_claim_problems(...) == []`, the float cells holding their exact
+  ratios and TimeToShare's `row_provenance` reading the shared provenance on
+  every row. An interval claim (`c1`), a NOMATCH claim (`c2`) and a
+  conceptual claim without an id, stored with `from_claims`, hold the ids
+  `["c1", "c2", None]`; added to a bundle, its table holds
+  `["c1", "c2", "claim_1"]` (minted above the highest held number, none) and
+  gives `match_claim_problems(...) == []`.
 
 **Where the fixture comes from.** The test locates TimeToShare's checkout as
 the sibling of this repository (`../TimeToShare`, the layout of the parent
@@ -2038,6 +2046,19 @@ these lazily on first use and caches them until the table changes.
   (believed true, believed false, no belief), with the false claim at a value
   (audio 60) the other two would never give (they interpolate to 50): which
   value a stamp holds shows which claims were read.
+- **Actors compare as IRIs under the bundle's `@context`.** The same three
+  claims with ana named by her full IRI `https://example.org/people/ana`,
+  in a bundle declaring the prefix `people` for `https://example.org/people/`:
+  a believer given compactly (`people:ana`) must select exactly what the full
+  IRI selects, and a belief recorded compactly must be found by the full
+  IRI, through every consumer of the filter — the table's one point
+  (`get_match_claims`, the matchstamp getters), the list form given claims
+  (`get_matchstamps(claims=...)`), `ClaimFilter.matches_claim` (a claim
+  read from the bundle; a free copy has no bundle, hence no prefix) and a
+  `MatchGraph` built with the bundle as its `source`. Before the prefix is
+  declared `people:ana` names nobody and keeps all three; declaring it
+  afterwards changes the answer, which proves the filtered table is not
+  served from a cache made under the old context.
 - **Private state only where the subject is the cache.** The cache tests read
   `_warp_map_cache`; the ambiguity test places a MatchLine in the bundle's
   MatchLine cache, because claims cannot state the ambiguous line it needs.
@@ -2053,6 +2074,7 @@ these lazily on first use and caches them until the table changes.
 | `TestAddMatchClaims` | 6 | chaining; three claims are three rows, `claim_1`–`claim_3`, read back equal to the claims added and recording the bundle; a fourth call adds one row minted `claim_4`; an unknown timeline (`['ghost'] that this bundle does not hold`) and an off-axis coordinate (`Row 1 start_anchor.coordinate_b is in quarters (fraction)` / `in seconds (fraction)`, `but timeline 'audio' counts in seconds (float)`) are refused with nothing added |
 | `TestCreateMatchClaims` | 8 | a second call with the same pairs names the same Projections and adds no event (audio `o1` + `projection_1`, score `projection_1` of `o1` + `projection_2`, before and after), its claims `claim_3`, `claim_4`; a pair naming an unknown event id (`Pair 1: no event with id 'nope' on timeline 'audio' or its children (0 events of its own)`) and a dict without `start` (`Pair 1: the side on timeline 'audio' names no event of it and states no 'start': ...`) after a projected pair add nothing; the provenance given lands on the claim made and on the claim read back; `agent`, `agent_identifier` and `decision_criteria` are refused (`TypeError`), nothing added; a seconds position projected onto a samples timeline (C-Map samples → seconds at 1/44100): 2.0 s is sample 88200, so the claim between the note `o1` (2.5 s) and `projection_1` stores `Coordinate(88200, samples)` with an `int` value, read back equal, and the Projection's `projection_of` is `{"timeline_id": "performance", "event_id": "o1"}` |
 | `TestBeliefFilter` | 2 | `claim_1` (0 → 0, ana true), `claim_2` (100 → 60, ana false), `claim_3` (200 → 100, no belief). `get_match_claims`: no believer → all three; `believer="ana"` → `claim_1`, `claim_3`; `belief="true"` → `claim_1`. `get_matchstamp_at(100, "score")`: no believer → `claim_2`'s anchor, audio and midi 60.0, not interpolated; ana → interpolated between `claim_1` and `claim_3`, audio and midi 50.0; ana, `"true"` → one claim cannot interpolate: score 100 and image 200 alone |
+| `TestBeliefFilterIris` | 6 | the three claims with ana's full IRI, prefix `people` declared: `believer="people:ana"` and the full IRI both → `claim_1`, `claim_3`, with `"true"` → `claim_1`; beliefs recorded as `people:ana`, believer the full IRI → `claim_1`, `claim_3`; `get_matchstamp_at(100, "score", believer="people:ana")` interpolated, audio and midi 50.0; `get_matchstamps(claims=all three, believer="people:ana")` → two stamps, at score 0.0 and 200.0; `ClaimFilter(believer="people:ana").matches_claim` → `[True, False, True]` on the bundle's claims, `True` on a free copy of `claim_2`; `MatchGraph(all three, believer="people:ana", source=bundle)` holds `claim_1`, `claim_3`; before the declaration `people:ana` keeps all three, after it `claim_1`, `claim_3` |
 | `TestAddMatchClaimField` | 6 | chaining; the five rows join the table, the bundle minting `claim_1`–`claim_5`, equal to the field's claims but for the ids, the field left as given (ids `None`); two `from_columns` fields (two loaders' fields) join one bundle as `claim_1`–`claim_5` and `claim_6`–`claim_10`; score 100 → audio 50 exactly; score 123.456 interpolates to audio and midi 61.728 (50 + 23.456 / 2) and image 246.912, flagged interpolated; a claim added after the field is minted `claim_6`, read as the sixth, and score 175 answers audio 87.5 exactly |
 | `TestBundleEquality` | 3 | two bundles built alike over the same timelines are equal, also after one of them was queried (`transfer` 75 → 37.5 fills its caches); one claim more, or a belief added to one claim's provenance, makes them unequal |
 | `TestBundleClaimFilters` | 3 | (`score` quarters as Fractions, `audio` and `other` seconds as floats; one claim at the origins per pair) `timeline_id="score"` → the first two; `timeline_ids={"audio"}` and `id_pattern="^audio$"` → the first and third; `between=("score", "audio")` → the first; `include_units={seconds}` → the third only (both its timelines count seconds), `{pixels}` → none; a stamp filtered to `{"score", "audio"}` holds exactly score `0` (quarters, Fraction) and audio `0.0` (seconds) |

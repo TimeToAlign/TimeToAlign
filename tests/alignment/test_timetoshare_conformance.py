@@ -21,7 +21,12 @@ from timetoshare.tables import (
     row_provenance,
 )
 
-from timetoalign.alignment import MatchClaim, MatchClaimField, Provenance
+from timetoalign.alignment import (
+    AlignmentBundle,
+    MatchClaim,
+    MatchClaimField,
+    Provenance,
+)
 from timetoalign.core import Coordinate, TimeUnit
 from timetoalign.core.time import COORDINATE_CELL_TYPE
 from timetoalign.timelines.types import (
@@ -51,6 +56,15 @@ needs_fixture = pytest.mark.skipif(
 SCORE = ContinuousLogicalTimeline(length=16, uid="score")
 AUDIO = ContinuousPhysicalTimeline(length=60.0, uid="audio")
 PCM = DiscretePhysicalTimeline(length=44_100 * 60, uid="pcm")
+
+
+def _bundle() -> AlignmentBundle:
+    """A bundle of fresh twins of the three timelines: the scope that mints ids."""
+    bundle = AlignmentBundle(id="conformance")
+    bundle.add_timeline(ContinuousLogicalTimeline(length=16, uid="score"))
+    bundle.add_timeline(ContinuousPhysicalTimeline(length=60.0, uid="audio"))
+    bundle.add_timeline(DiscretePhysicalTimeline(length=44_100 * 60, uid="pcm"))
+    return bundle
 
 
 class TestSchema:
@@ -108,7 +122,16 @@ class TestWhatTheLibraryWrites:
             timelines=[SCORE, AUDIO, PCM],
             provenance=shared,
         )
-        table = pq.read_table(field.to_parquet(tmp_path))
+        assert field.table.column("id").to_pylist() == [None, None, None]
+        bundle = _bundle()
+        bundle.add_match_claim_field(field)
+        claims = bundle.match_claim_table
+        assert claims.table.column("id").to_pylist() == [
+            "claim_1",
+            "claim_2",
+            "claim_3",
+        ]
+        table = pq.read_table(claims.to_parquet(tmp_path))
         assert match_claim_problems(table) == []
         cells = [
             (
@@ -158,6 +181,10 @@ class TestWhatTheLibraryWrites:
                 is_synchronous=False,
             ),
         ]
-        table = MatchClaimField.from_claims(claims).table
+        field = MatchClaimField.from_claims(claims)
+        assert field.table.column("id").to_pylist() == ["c1", "c2", None]
+        bundle = _bundle()
+        bundle.add_match_claims(claims)
+        table = bundle.match_claim_table.table
         assert match_claim_problems(table) == []
         assert table.column("id").to_pylist() == ["c1", "c2", "claim_1"]

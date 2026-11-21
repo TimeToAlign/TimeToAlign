@@ -663,7 +663,7 @@ class TestBundleDiagram:
 
         result = bundle_diagram(bundle)
 
-        assert bundle.n_cross_group_claims == 3
+        assert len(bundle.match_claim_table) == 3
         assert "MatchClaims: 3" in result
 
     def test_claims_and_field_rows_counted_together(self) -> None:
@@ -694,7 +694,7 @@ class TestBundleDiagram:
         )
 
         result = bundle_diagram(bundle)
-        assert bundle.n_cross_group_claims == 5
+        assert len(bundle.match_claim_table) == 5
         assert "MatchClaims: 5" in result
 
 

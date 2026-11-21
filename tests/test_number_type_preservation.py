@@ -840,6 +840,6 @@ def test_a_claim_off_its_axes_is_refused_when_added() -> None:
     )
     assert "'score' counts in quarters (fraction)" in str(refused.value)
 
-    assert bundle.n_cross_group_claims == 0
+    assert len(bundle.match_claim_table) == 0
     bundle.add_match_claims([on_axes])
-    assert bundle.n_cross_group_claims == 1
+    assert len(bundle.match_claim_table) == 1

@@ -760,7 +760,7 @@ class TestClaims:
 
         assert len(loader.get_field(MatchClaim)) == los + notational + audio
         assert len(loader) == los + notational + audio
-        assert bundle.n_cross_group_claims == los + notational + audio
+        assert len(bundle.match_claim_table) == los + notational + audio
         assert _claims_per_layer(loader) == {
             "los": los,
             "notational": notational,
@@ -1234,7 +1234,7 @@ class TestLargeSpecimens:
             "notational": 1162,
             "audio": 616,
         }
-        assert bundle.n_cross_group_claims == 2848
+        assert len(bundle.match_claim_table) == 2848
         assert bundle.get_matchstamp_table(from_graph=True).num_rows == 294
 
     def test_pazzariello_undefined_accidentals(self, ieee1599_loader) -> None:
@@ -1290,7 +1290,7 @@ class TestLargeSpecimens:
             "notational": 3442,
             "audio": 18395,
         }
-        assert bundle.n_cross_group_claims == 25280
+        assert len(bundle.match_claim_table) == 25280
         assert bundle.get_matchstamp_table(from_graph=True).num_rows == 1154
 
     def test_serie_track_recordings(self, ieee1599_loader) -> None:
@@ -1321,7 +1321,7 @@ class TestLargeSpecimens:
             "notational": 3397,
             "audio": 4576,
         }
-        assert bundle.n_cross_group_claims == 9105
+        assert len(bundle.match_claim_table) == 9105
         assert bundle.get_matchstamp_table(from_graph=True).num_rows == 571
 
     def test_bach_media_references_are_dangling(

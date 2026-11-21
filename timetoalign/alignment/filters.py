@@ -25,14 +25,15 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from timetoalign.core.enums import Domain, TimeUnit
 from timetoalign.core.provenance import BeliefFilter, belief_mask, provenance_array
 
 if TYPE_CHECKING:
+    from timetoalign.alignment.bundle import AlignmentBundle
     from timetoalign.alignment.claims import MatchClaim
     from timetoalign.timelines import Timeline
 
@@ -43,6 +44,8 @@ def believed(
     claims: Sequence[MatchClaim],
     believer: str | None,
     belief: BeliefFilter = "not_false",
+    *,
+    context: Mapping[str, Any] | None = None,
 ) -> list[MatchClaim]:
     """Return the claims the belief filter keeps for *believer*, in order.
 
@@ -57,6 +60,9 @@ def believed(
         belief: ``"not_false"`` keeps every claim the believer does not
             believe ``false``; ``"true"`` only those the believer believes
             ``true``.
+        context: The JSON-LD context under which the believer and the
+            actors compare as IRIs (the bundle's manifest ``@context``,
+            :func:`belief_context`); ``None`` declares no prefix.
 
     Returns:
         The kept claims, in their order.
@@ -70,9 +76,26 @@ def believed(
         belief_mask(None, None, belief)
         return claims
     mask = belief_mask(
-        provenance_array([claim.provenance for claim in claims]), believer, belief
+        provenance_array([claim.provenance for claim in claims]),
+        believer,
+        belief,
+        context=context,
     )
     return [claim for claim, kept in zip(claims, mask.to_pylist(), strict=True) if kept]
+
+
+def belief_context(bundle: AlignmentBundle | None) -> dict[str, Any] | None:
+    """The context under which a bundle's MatchClaims compare actors.
+
+    The ``@context`` of the bundle's manifest (the format's terms, the
+    catalogue's prefixes and the bundle's own), as the bundle's statements
+    use it, so a believer named by a compact IRI matches a belief recorded
+    under the full IRI; ``None`` for no bundle (no prefix declared).
+
+    Args:
+        bundle: The bundle holding the claims, or ``None``.
+    """
+    return None if bundle is None else bundle._statement_context()
 
 
 @dataclass(frozen=True)
@@ -199,7 +222,8 @@ class ClaimFilter:
 
         # The belief filter, decided where every consumer decides it.
         if self.believer is not None:
-            if not believed([claim], self.believer, self.belief):
+            context = belief_context(claim.bundle)
+            if not believed([claim], self.believer, self.belief, context=context):
                 return False
 
         return True

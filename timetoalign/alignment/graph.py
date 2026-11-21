@@ -40,7 +40,7 @@ from timetoalign.alignment.claims import (
     AlignmentAnchor,
     MatchClaim,
 )
-from timetoalign.alignment.filters import ClaimFilter, believed
+from timetoalign.alignment.filters import ClaimFilter, belief_context, believed
 from timetoalign.core.enums import Domain, NumberType, TimeUnit
 from timetoalign.core.ids import mint_ids
 from timetoalign.core.provenance import BeliefFilter
@@ -1034,11 +1034,14 @@ class MatchGraph:
             source: The bundle the claims come from.
             source_id: The queried timeline, when the graph answers one query.
             believer: The actor whose beliefs filter the claims (the belief
-                filter); ``None`` keeps every claim.
+                filter, actors compared as IRIs under the *source* bundle's
+                manifest ``@context``); ``None`` keeps every claim.
             belief: ``"not_false"`` keeps every claim the believer does not
                 believe ``false``; ``"true"`` only those believed ``true``.
         """
-        self._claims: list[MatchClaim] = believed(claims or [], believer, belief)
+        self._claims: list[MatchClaim] = believed(
+            claims or [], believer, belief, context=belief_context(source)
+        )
         self._graph: nx.Graph = self._build_graph()
         self._logger = module_logger.getChild("MatchGraph")
         self._units = dict(units or {})

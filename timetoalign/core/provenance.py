@@ -274,7 +274,11 @@ class Provenance(BaseModel):
 
     @data_shaped
     def passes_belief_filter(
-        self, believer: str | None, belief: BeliefFilter = "not_false"
+        self,
+        believer: str | None,
+        belief: BeliefFilter = "not_false",
+        *,
+        context: Mapping[str, Any] | None = None,
     ) -> bool:
         """Whether the belief filter for *believer* keeps the item.
 
@@ -282,11 +286,13 @@ class Provenance(BaseModel):
             believer: The actor whose beliefs filter; ``None`` keeps all.
             belief: ``"not_false"`` keeps what the believer does not believe
                 ``false``; ``"true"`` only what the believer believes ``true``.
+            context: The JSON-LD context under which actors compare as IRIs
+                (:func:`belief_mask`).
 
         Returns:
             Whether the item passes, decided by :func:`belief_mask`.
         """
-        mask = belief_mask(provenance_array([self]), believer, belief)
+        mask = belief_mask(provenance_array([self]), believer, belief, context=context)
         return bool(mask[0].as_py())
 
     def to_dict(self) -> dict[str, Any]:
@@ -309,14 +315,18 @@ class ProvenanceField(SemanticField[Provenance]):
         return cls.from_field((array, pa.field(name, cls.pa_schema)))
 
     def passes_belief_filter(
-        self, believer: str | None, belief: BeliefFilter = "not_false"
+        self,
+        believer: str | None,
+        belief: BeliefFilter = "not_false",
+        *,
+        context: Mapping[str, Any] | None = None,
     ) -> pa.BooleanArray:
         """Per row, whether the belief filter for *believer* keeps it.
 
         The vectorized mirror of :meth:`Provenance.passes_belief_filter`,
         decided by :func:`belief_mask`.
         """
-        return belief_mask(self._raw.data, believer, belief)
+        return belief_mask(self._raw.data, believer, belief, context=context)
 
 
 install_paired_field_registry()

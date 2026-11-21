@@ -2398,6 +2398,17 @@ need contents opt in.
      exact Fraction pair (`number_to_json`) for the child's length — not a
      rounded float projection.
 
+9. **Exact child shift** (2 tests)
+   - On a quarters/`fraction` parent, a child at offset `0.1` (held as its
+     exact dyadic `3602879701896397/2⁵⁵`) receives the parent positions
+     `0.7` and `1/3` as `21617278211378379/2⁵⁵` and
+     `25220157913274777/(3·2⁵⁵)` in `get_timestamp_table(at=..., format="table")`
+     (`0.7 − 0.1` cross-multiplies past `2⁶³`); the expected ratios are
+     Python `Fraction` arithmetic, written out.
+   - The other direction: a child of length `0.7` at offset `0.1` puts its
+     end on the root axis at exactly `28823037615171173/2⁵⁵`
+     (`0.7999999999999999`), the default table's last row.
+
 9. **The holder of an event, at every depth** (`TestEventHolder`)
    - `get_events(include_children=True)` tags every row a child reports with
      the timeline holding the event (`source_timeline`): the child for its

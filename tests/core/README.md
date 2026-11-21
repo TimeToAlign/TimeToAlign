@@ -111,6 +111,63 @@ other catches the subtler failure: a cell that is internally inconsistent
 answers different questions differently depending on which accessor a caller
 reaches for.
 
+### `test_exact_column_arithmetic.py` - Exact column arithmetic never overflows
+
+**Purpose:** Proves that column arithmetic on an exact axis (`int`,
+`fraction`) is exact whatever the size of its intermediates, refuses only a
+result whose lowest terms do not fit the cell's int64 members, and gives
+every cell the scalar engine gives.
+
+**What would prove it.** `n1/d1 + n2/d2` is computed as
+`(n1·d2 + n2·d1) / (d1·d2)` and then reduced. A float written into a
+`fraction` axis becomes its exact dyadic ratio, with a denominator up to
+`2⁵⁵` for a value like `0.1`; two such operands cross-multiply past `2⁶³`
+although their sum, reduced, has a denominator of `2⁵⁵` again. An engine
+that multiplies in int64 wraps silently or overflows on those rows; one that
+detours through doubles returns a rounded sum. Each test therefore fixes
+operands whose cross-products exceed int64 and asserts the exact reduced
+result, written out as a literal ratio computed independently with Python's
+`Fraction` (never by the engine under test), and the float side as the
+correctly rounded double of that ratio:
+
+- **Float-mirrored sums.** A quarters/`fraction` column of starts
+  `[0.1, 3/2, 0.7, 1/3, -0.3]` plus durations `[0.2, 0.1, 0.2, 0.25, 0.1]`
+  gives exactly `10808639105689191/2⁵⁵`, `57646075230342349/2⁵⁵`,
+  `16212958658533785/2⁵⁴`, `7/12` and `-7205759403792793/2⁵⁵`, with floats
+  `0.30000000000000004`, `1.6`, `0.8999999999999999`, `0.5833333333333334`,
+  `-0.19999999999999998`. Rows 1 and 3 have small products, rows 0, 2 and 4
+  do not, so one column mixes both ways of computing a row.
+- **Subtraction** (`end - start`, a duration): `0.3 - 0.1` is
+  `7205759403792793/2⁵⁵` (`0.19999999999999998`) and `7/2 - 0.7` is
+  `12610078956637389/2⁵²` (`2.8`).
+- **The refusal.** `1129/12 + 0.1` is, in lowest terms,
+  `10179936597708269159/108086391056891904`: its numerator exceeds
+  `2⁶³ − 1`, so no int64 cell holds it. The engine raises a `ValueError`
+  whose whole message is asserted: it names the row (the position, or the
+  caller's row number when one is passed), both operands, the reduced result
+  and the member that does not fit. On an `int` axis `2⁶² + 2⁶²` is refused
+  alike (`9223372036854775808`). The `int` lane computes on integers, never
+  on doubles: `(2⁵³ + 4) - (2⁵³ + 1)` is exactly `3`, and `2⁵³ + 1` plus
+  `0` stays `2⁵³ + 1`, which a double cannot hold.
+- **Column and row agree.** A seeded table of 400 rows mixing small ratios,
+  float-mirrored dyadics, negatives, integers, a few `null`s and value-only
+  cells (a cell carrying only its float side) is combined under all five
+  operations on both exact lanes, against a column operand and a scalar
+  operand. Every output cell must equal
+  `number_cell(combine_numbers(a, b, op, number_type), number_type)` of its
+  row, all three members, the float compared bit for bit (`==` on a double
+  that is the correctly rounded quotient, never a tolerance). The `int` lane
+  also runs `multiply` and `divide` by a non-integral factor under each of
+  the four rounding modes, so the rounding of a ratio is checked against
+  Python's own on ties, negatives and exact quotients.
+
+**Validity Rationale:** The expected ratios come from Python's
+arbitrary-precision `Fraction`, which cannot overflow, so a test passes only
+if the engine is exact on the rows where int64 would not be. The agreement
+test closes the remaining gap: whichever way a row is computed, the scalar
+engine is the reference, so a fast path that diverged from it on any cell
+(a sign, a rounding tie, a mirror off by one ulp) fails.
+
 ### Display shows what the value carries
 
 One formatter (`format_number`) sits behind every pretty rendering — scalar

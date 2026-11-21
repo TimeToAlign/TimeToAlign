@@ -14,6 +14,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pyarrow as pa
+import pytest
 
 from timetoalign.core import NumberType, TimeUnit
 from timetoalign.core.time import DenominateNumberField, build_number_struct_array
@@ -226,6 +227,62 @@ class TestCoordinateTypeParsing:
         assert loader.events.column_values("end") == [
             Fraction(3 * 2**40 + 1, 3 * 2**40)
         ]
+
+    _NOTES_HEADER = "mc\tquarterbeats\tduration_qb\tstaff\tvoice\tmidi\n"
+    _NOTES_ROWS = [
+        "1\t0\t1.0\t2\t1\t57\n",
+        "1\t1/2\t0.5\t1\t1\t64\n",
+        "1\t0.7\t0.2\t1\t1\t65\n",
+        "2\t1/3\t0.25\t1\t2\t67\n",
+        "2\t3/2\t0.1\t2\t1\t69\n",
+    ]
+
+    class _NotesLoader(TsvLoader):
+        """Ratio-written starts, decimal-written durations, an exact axis."""
+
+        start_column = "quarterbeats"
+        duration_column = "duration_qb"
+        _default_unit = TimeUnit.quarters
+        coordinate_type = NumberType.fraction
+        column_specs = {"midi": int, "staff": int, "voice": int}
+
+    def test_decimal_durations_on_a_fraction_axis_end_exactly(
+        self, tmp_path: Path
+    ) -> None:
+        """Float-mirrored durations whose cross-products pass int64."""
+        path = tmp_path / "notes.tsv"
+        path.write_text(self._NOTES_HEADER + "".join(self._NOTES_ROWS))
+
+        loader = self._NotesLoader()
+        loader.load(path)
+
+        assert loader.events.column_values("end") == [
+            Fraction(1),
+            Fraction(1),
+            Fraction(16212958658533785, 2**54),
+            Fraction(7, 12),
+            Fraction(57646075230342349, 2**55),
+        ]
+
+    def test_an_end_past_int64_in_lowest_terms_is_refused(self, tmp_path: Path) -> None:
+        path = tmp_path / "notes.tsv"
+        path.write_text(
+            self._NOTES_HEADER
+            + "".join(self._NOTES_ROWS)
+            + "3\t1129/12\t0.1\t1\t1\t60\n"
+        )
+
+        with pytest.raises(ValueError) as refused:
+            self._NotesLoader().load(path)
+        assert str(refused.value) == (
+            "Completing the events' end as start + 'duration_qb' on a fraction "
+            "axis in quarters: row 5: 1129/12 + 3602879701896397/36028797018963968 "
+            "= 10179936597708269159/108086391056891904, whose numerator "
+            "10179936597708269159 in lowest terms does not fit int64, the width "
+            "of an exact cell; the result cannot be stored exactly. Give the "
+            "operands exact values (a ratio written as a ratio, not as a "
+            "decimal), or declare the axis number_type float"
+        )
 
     def test_synthesised_duration_cells_are_taken_whole(self, tmp_path: Path) -> None:
         """A column_specs duration keeps its float side on a seconds axis."""

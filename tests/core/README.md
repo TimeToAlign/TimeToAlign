@@ -601,43 +601,66 @@ changing exact rational values.
 ### `test_projection.py` - The Projection event and its reference
 
 **Purpose:** A `Projection` is an event standing on a timeline for an event
-not held there: its ID, its position on the timeline's axis (`start`, and
-`duration`, `None` for an instant) and `projection_of`, an `EventReference`
-`{timeline_id, event_id}` or `None`. It repeats nothing else of its source.
-These tests prove the scalar holds exactly that and the paired
-`ProjectionField` stores it without losing a value; adding Projections to a
+not held there: its ID (`None` until a timeline mints one), its position on
+the timeline's axis (`start`, and `duration`, `None` for an instant) and
+`projection_of`, an `EventReference` `{timeline_id, event_id}` or `None`. It
+repeats nothing else of its source. These tests prove the scalar holds
+exactly that and the paired `ProjectionField` stores it as TimeToShare's
+Projections table does, without losing a value; adding Projections to a
 timeline is tested in `tests/timelines/test_projections.py`.
 
 **What proves it:**
 
-- **The stored shape is the scalar's properties and nothing else.**
-  `ProjectionField.pa_schema` is exactly `struct<id: string, start:
-  struct<value, numerator, denominator>, duration: <the same>,
-  projection_of: struct<timeline_id: string, event_id: string>>`, and
-  `EventReferenceField.pa_schema` exactly `struct<timeline_id, event_id>`:
-  a reference is an object of two values, never a joined string.
+- **The stored shape is the scalar's properties and nothing else, each
+  position a coordinate cell.** `ProjectionField.pa_schema` is exactly
+  `struct<id: string, start: COORDINATE_CELL_TYPE, duration:
+  COORDINATE_CELL_TYPE, projection_of: struct<timeline_id: string,
+  event_id: string>>` (the cell of `test_coordinate_cell.py`, the same as a
+  MatchClaim's anchors), and `EventReferenceField.pa_schema` exactly
+  `struct<timeline_id, event_id>`: a reference is an object of two values,
+  never a joined string.
 - **Construction.** An instant has `duration` and `end` `None`; an interval
   `start` 27/2 quarters with `duration` 1/3 has `end` exactly 83/6 quarters
-  (a `Fraction`, not a float). `EventReference` refuses a key it does not
-  have and an empty ID; `Projection` refuses an empty ID, a duration in
-  another unit than its start and a duration written in another number type
-  (both messages pinned): start and duration are on one axis.
+  (a `Fraction`, not a float). A Projection without an ID has `id` `None`
+  (`repr` `Projection(start=3 samples)`). `EventReference` and `Projection`
+  refuse a key they do not have; both refuse an empty ID; `Projection`
+  refuses a duration in another unit than its start and a duration written
+  in another number type (both messages pinned, naming the Projection by its
+  ID or as `A Projection` without one): start and duration are on one axis.
+- **The event row.** `to_event_row()` is exactly `{event_type:
+  "Projection", id, start, duration, projection_of}` with the scalars
+  themselves; without an ID the row has no `id` key, so the timeline mints
+  one.
 - **Arrow round trip with exact values**, on three axes: quarters written as
   fractions (start 27/2, duration 1/3), samples as integers (850176,
-  duration 22050), seconds as floats (0.1, a float with no exact short
-  ratio). Each field is written to a Parquet file in `tmp_path` and read
-  back: every Projection read back equals the one written, its positions
-  in the number type of the axis (`Fraction`, `int`, `float`), and the
-  stored cells carry the exact numerator and denominator (27 and 2, 850176
-  and 1). The unit and number type are recorded once, in the field's
-  metadata (`unit`, `number_type`), as a timeline records them for its
-  events.
+  duration 22050), seconds as floats (0.1). Each field is written to a
+  Parquet file in `tmp_path` and read back: every Projection read back
+  equals the one written, its positions in the number type of the axis
+  (`Fraction`, `int`, `float`), and the stored cells are exactly `{13.5,
+  27, 2, "quarters", "fraction"}`, `{0.333…, 1, 3, "quarters",
+  "fraction"}`, `{850176.0, 850176, 1, "samples", "int"}` and `{0.1,
+  3602879701896397, 36028797018963968, "seconds", "float"}` (a float's
+  exact ratio filled). The field metadata holds only the field type and the
+  blob version: no axis is recorded per field.
 - **`projection_of` set and `None`** survive the round trip alike: the
   first Projection keeps `EventReference(clt_6, x1azmn68)`, the second
   reads back `None` from a null cell.
-- **One axis per field.** `ProjectionField.from_projections` refuses
-  Projections at two units, and a quarters axis mixing fractions and
-  floats; an empty field needs its unit.
+- **Axes per cell.** One field holds Projections at samples (int), seconds
+  (float), quarters written as float and quarters written as fraction,
+  with a null row and a Projection without ID among them; after the round
+  trip every Projection equals the one written and every cell names its own
+  unit and number type. An empty field has the field's struct type.
+- **TimeToShare's fixture Projections table**
+  (`timetoshare.tables.fixture_path("projections.parquet")`; skipped with a
+  reason when `timetoshare.tables` or the fixture is absent): its nine rows
+  read through `Projection.from_row` equal the nine Projections spelled out
+  in the test (ints on `dpt_1`, the float 10.0 seconds on `cpt_1`, one
+  interval, two without `projection_of`); `ProjectionField.from_projections`
+  of those nine writes the columns `id`, `start`, `duration`,
+  `projection_of` equal to the fixture's, values and types; with the
+  fixture's `timeline_id` column added in `PROJECTION_SCHEMA`'s order the
+  table equals the fixture table and TimeToShare's `projection_problems`
+  finds nothing.
 
 ### `test_number_storage.py` - One struct, one canonical side, one builder
 
@@ -759,6 +782,42 @@ a given resolution quantizes by definition, so `quantize_to_unit` rounds where
 the constructor refuses. Tests assert both sides of that line, since a single
 rule in both places would either forbid legitimate conversion or license the
 silent rounding the refusal exists to prevent.
+
+### `test_coordinate_cell.py` - A coordinate cell names its own axis
+
+**Purpose:** A table whose rows lie on different timelines (the MatchClaim
+table, the Projections table) cannot record one unit and number type in its
+field metadata, so each cell carries them: `COORDINATE_CELL_TYPE` is the
+number struct above followed by `unit` and `number_type`. It is TimeToShare's
+coordinate cell, so a table the library writes passes TimeToShare's check.
+These tests prove the cell is that shape and holds exactly the number written.
+
+**What proves it:**
+
+- **The type is TimeToShare's.** `COORDINATE_CELL_TYPE` equals
+  `struct<value: double, numerator: int64, denominator: int64, unit: string,
+  number_type: string>` spelled out in the test, and equals
+  `timetoshare.tables.COORDINATE_TYPE` (skipped with a reason when the
+  installed `timetoshare` has no `tables` module).
+- **Both sides on every non-null cell, a float included.** `coordinate_cells`
+  of `[1/3 quarters (fraction), None, 0.1 seconds (float), 139776 samples
+  (int), 2/3 quarters]` gives exactly, in that order: `{0.3333333333333333,
+  1, 3, "quarters", "fraction"}`, a null cell, `{0.1, 3602879701896397,
+  36028797018963968, "seconds", "float"}` (the double's exact ratio, never a
+  guessed tidier one), `{139776.0, 139776, 1, "samples", "int"}`,
+  `{0.6666666666666666, 2, 3, "quarters", "fraction"}`. Rows of one axis that
+  are not adjacent keep their places. A `Duration` makes the same cell as a
+  `Coordinate` of its value.
+- **The column builder on one axis.** `axis_coordinate_cells([0, None,
+  44100], unit="samples")` gives `{0.0, 0, 1, "samples", "int"}`, null,
+  `{44100.0, 44100, 1, "samples", "int"}`; on a float axis `[0.25]` gives
+  `{0.25, 1, 4, "seconds", "float"}`; without `number_type` the unit's
+  default applies.
+- **Reading back keeps the number type.** `cell_coordinate` of each built
+  cell equals the coordinate written, and its value has the written Python
+  type (`Fraction`, `float`, `int`); `scalar=Duration` gives a `Duration`; a
+  null cell gives `None`; a cell without unit or number type is refused.
+- **Empty input** gives an empty array of the cell type.
 
 ### `test_numpy_portability_hygiene.py` - Integer widths the library chooses
 
@@ -1039,23 +1098,27 @@ deleted, so no test of one exists.
 
 5. **The manifest id generator** (`mint_id`, `validate_id`,
    `timeline_id_prefix`)
-   - `mint_id(prefix, taken)` answers `{prefix}_{N}` with N the smallest
-     positive integer not taken: `("clt", ())` → `clt_1`;
-     `("clt", {"clt_1", "clt_3"})` → `clt_2`; `("clt", {"clt_2"})` →
-     `clt_1`; with a role, `("score:clt", {"score:clt_1"})` →
-     `score:clt_2`. Called twice with the same arguments it answers the same
-     id, because it keeps no state. It is the library's only id generator:
-     an element held by no scope mints from an empty taken set, so every
-     free `MatchClaim` is `claim_1`, every free `Region` `region_1` and
-     every `TimeSkeleton` built without an id `skeleton_1` (the skeleton
-     case is tested in `tests/alignment/test_skeleton.py`).
-   - `mint_ids(prefix, taken, count)` is the same rule for many ids at once
-     (claim scopes admit whole columns): it must answer exactly what
-     `mint_id` answers called `count` times with each answer added to the
-     taken set. Checked against that loop: `("claim", ["claim_2", "x"], 3)`
-     → `claim_1`, `claim_3`, `claim_4`; nulls in `taken` are ignored; a
+   - `mint_ids(prefix, taken, count)` is the library's one id generator
+     (timelines, maps, manifest elements, MatchClaims, events): N continues
+     above the highest number held under that prefix, so an id once given is
+     never given again, a gap is never filled. `("claim", ["claim_2", "x"],
+     3)` → `claim_3`, `claim_4`, `claim_5`; nulls in `taken` are ignored; a
      `count` of 0 answers an empty array; taken `claim_1`…`claim_5` with
-     `count` 2 → `claim_6`, `claim_7`.
+     `count` 2 → `claim_6`, `claim_7`; ids that are not minted ones under the
+     prefix do not count: `claim_0`, `claim_01`, `claimx_9`,
+     `other:claim_9` and a number of more than 18 digits leave the next
+     id `claim_1`; a role prefix is matched literally, `.` included
+     (`("a.b", ["axb_4"])` → `a.b_1`). It must answer exactly what `mint_id`
+     answers called `count` times with each answer added to the taken set
+     (checked against that loop), and `taken` may be a `pa.ChunkedArray`.
+   - `mint_id(prefix, taken)` mints one by the same rule: `("clt", ())` →
+     `clt_1`; `("clt", {"clt_1", "clt_3"})` → `clt_4`; `("clt",
+     {"clt_2"})` → `clt_3`; with a role, `("score:clt", {"score:clt_1"})` →
+     `score:clt_2`. Called twice with the same arguments it answers the same
+     id, because it keeps no state: an element held by no scope mints from
+     an empty taken set, so every free `Region` is `region_1` and every
+     `TimeSkeleton` built without an id `skeleton_1` (the skeleton case is
+     tested in `tests/alignment/test_skeleton.py`).
    - An id is free: any non-empty string without a control character.
      `validate_id` returns unchanged `"performance"`, `"a"`, `"Bass Kick"`,
      `"score:clt_7"`, `"a/b"` (a slash), `"intro to part 2"` (spaces), the

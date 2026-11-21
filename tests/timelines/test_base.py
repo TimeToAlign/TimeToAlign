@@ -455,13 +455,14 @@ class TestAddEventsAxisAndIds:
 
     def test_two_calls_mint_two_ids(self) -> None:
         timeline = _samples_timeline()
-        assert timeline.add_events([{"event_type": "Note", "start": 1}]) == [
-            "note:000001"
-        ]
-        assert timeline.add_events([{"event_type": "Note", "start": 2}]) == [
-            "note:000002"
-        ]
-        assert timeline.events.column_values("id") == ["note:000001", "note:000002"]
+        assert timeline.add_events([{"event_type": "Note", "start": 1}]) == ["note_1"]
+        assert timeline.add_events([{"event_type": "Note", "start": 2}]) == ["note_2"]
+        assert timeline.events.column_values("id") == ["note_1", "note_2"]
+
+    def test_a_minted_id_continues_above_the_highest_held(self) -> None:
+        timeline = _samples_timeline()
+        timeline.add_events([{"event_type": "Note", "id": "note_5", "start": 1}])
+        assert timeline.add_events([{"event_type": "Note", "start": 2}]) == ["note_6"]
 
     def test_returns_the_ids_in_row_order(self) -> None:
         timeline = _samples_timeline()
@@ -471,7 +472,7 @@ class TestAddEventsAxisAndIds:
                 {"event_type": "Note", "id": "given", "start": 2},
                 {"event_type": "Beat", "instant": 3},
             ]
-        ) == ["beat:000001", "given", "beat:000002"]
+        ) == ["beat_1", "given", "beat_2"]
 
 
 # endregion

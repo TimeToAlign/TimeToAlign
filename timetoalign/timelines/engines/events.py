@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Sequence
 from fractions import Fraction
 from typing import Any, Literal
 
@@ -15,6 +16,7 @@ from timetoalign.core import (
     CoordinateValue,
     Duration,
     EventReference,
+    Projection,
 )
 from timetoalign.core.ids import quote_id
 from timetoalign.core.time import (
@@ -25,7 +27,11 @@ from timetoalign.core.time import (
 )
 from timetoalign.core.timestamp import _format_coordinate_value
 from timetoalign.storage import EventData
-from timetoalign.storage.events import PROJECTION_EVENT_TYPE, mint_event_ids
+from timetoalign.storage.events import (
+    PROJECTION_EVENT_TYPE,
+    _event_rows,
+    _mint_event_ids,
+)
 
 SEGMENT_EVENT_TYPE = "Segment"
 
@@ -45,12 +51,17 @@ _PROJECTION_KEYS = frozenset(
 )
 
 
-def _check_projection_row(row: dict[str, Any]) -> None:
+def _check_projection_row(row: dict[str, Any], timeline_id: str) -> None:
     """Refuse a Projection row that repeats more than a Projection holds.
 
+    Args:
+        row: The event row.
+        timeline_id: The ID of the timeline the row is added to.
+
     Raises:
-        ValueError: If the row holds a value under another key, or its
-            ``projection_of`` is not an event reference.
+        ValueError: If the row holds a value under another key, its
+            ``projection_of`` is not an event reference, or it names an
+            event of the timeline the Projection is added to.
     """
     extra = sorted(
         key
@@ -63,14 +74,22 @@ def _check_projection_row(row: dict[str, Any]) -> None:
             f"else of the event it stands for; the row also gives {extra}"
         )
     reference = row.get("projection_of")
-    if reference is not None and not isinstance(reference, EventReference):
+    if reference is None:
+        return
+    if not isinstance(reference, EventReference):
         try:
-            EventReference.model_validate(reference)
+            reference = EventReference.model_validate(reference)
         except ValueError as error:
             raise ValueError(
                 f"A Projection's projection_of is {{'timeline_id': ..., "
                 f"'event_id': ...}} or None, not {reference!r}"
             ) from error
+    if reference.timeline_id == timeline_id:
+        raise ValueError(
+            f"A Projection added to timeline {quote_id(timeline_id)} stands for an "
+            f"event of another timeline; its projection_of names "
+            f"{quote_id(timeline_id)} itself"
+        )
 
 
 def _decoded_rows(data: EventData) -> list[dict[str, Any]]:
@@ -151,7 +170,7 @@ class EventsMixin:
 
     def add_events(
         self,
-        rows: list[dict[str, Any]],
+        rows: Projection | Sequence[dict[str, Any] | Projection],
         allow_expansion: bool = False,
     ) -> list[str]:
         """Add events to the timeline.
@@ -159,8 +178,9 @@ class EventsMixin:
         Only ``event_type`` and a coordinate are strictly required per dict.
         Missing fields are filled in automatically:
 
-        - **id**: minted free on this timeline (:func:`mint_event_ids`):
-          ``note:000001``, ``beat:000001``, ``projection_1`` for a Projection.
+        - **id**: minted above every ID held on this timeline, its prefix the
+          event type in lower case: ``note_1``, ``beat_1``, ``projection_1``.
+          An ID once given on the timeline is never given again.
         - **temporal_type**: inferred from keys -- ``"interval"`` when both
           ``start`` and ``end`` (or ``duration``) are present, ``"instant"``
           otherwise.
@@ -175,13 +195,16 @@ class EventsMixin:
         numbers and struct dicts are taken as on this timeline's axis.
 
         A Projection (``event_type`` ``"Projection"``) holds ``id``, its
-        position and ``projection_of``, the event it stands for, as a dict
-        ``{"timeline_id": ..., "event_id": ...}`` or an
+        position and ``projection_of``, the event of another timeline it
+        stands for, as a dict ``{"timeline_id": ..., "event_id": ...}`` or an
         :class:`~timetoalign.core.EventReference` (``None`` where none is
-        known); it repeats nothing else of that event.
+        known); it repeats nothing else of that event. A
+        :class:`~timetoalign.core.Projection` object may be given in place of
+        its row, alone or in the list.
 
         Args:
-            rows: List of event dictionaries. Required keys:
+            rows: Event dictionaries or Projections (one or a list).
+                Required keys of a dictionary:
                 - event_type: class name (e.g. ``"Beat"``, ``"Note"``,
                   ``"Projection"``)
                 - instant: coordinate (for instant events), **or**
@@ -194,8 +217,9 @@ class EventsMixin:
         Raises:
             ValueError: If an ID is already held by an event of this timeline
                 or given twice, a Projection row holds a key a Projection does
-                not have, a position cannot be converted, or the events exceed
-                the length and expansion is not allowed. Nothing is added then.
+                not have or names an event of this timeline, a position cannot
+                be converted, or the events exceed the length and expansion is
+                not allowed. Nothing is added then.
 
         Examples:
             >>> from timetoalign.timelines import ContinuousPhysicalTimeline
@@ -204,8 +228,9 @@ class EventsMixin:
             ...     {"event_type": "Beat", "instant": 0.0},
             ...     {"event_type": "Note", "start": 0.0, "end": 0.5},
             ... ])
-            ['beat:000001', 'note:000001']
+            ['beat_1', 'note_1']
         """
+        rows = _event_rows(rows)
         if not rows:
             return []
 
@@ -219,7 +244,7 @@ class EventsMixin:
         rows = [self._resolve_row_coordinates(row) for row in rows]
         for row in rows:
             if row.get("event_type") == PROJECTION_EVENT_TYPE:
-                _check_projection_row(row)
+                _check_projection_row(row, self._id)
         rows = self._rows_with_ids(rows)
 
         # Validate and find max coordinate
@@ -236,16 +261,18 @@ class EventsMixin:
         return [row["id"] for row in rows]
 
     def _rows_with_ids(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """Return *rows*, each with an ID free on this timeline.
+        """Return *rows*, each with an ID new to this timeline.
 
         A given ID is kept; one already held by an event of this timeline, or
-        given twice, is refused. A missing one is minted free among both.
+        given twice, is refused. A missing one is minted above both. The held
+        IDs are read column-wise, never as Python objects.
 
         Raises:
             ValueError: If a given ID is held already or given twice.
         """
         given = [row["id"] for row in rows if row.get("id") is not None]
         held = self._events.table.column("id")
+        given_ids = pa.array(given, type=pa.string())
         if given:
             repeated = sorted(
                 event_id for event_id, count in Counter(given).items() if count > 1
@@ -255,10 +282,7 @@ class EventsMixin:
                     f"Event id {quote_id(repeated[0])} is given twice in one "
                     f"call to add_events on timeline {quote_id(self._id)}"
                 )
-            clash = pc.filter(
-                pa.array(given, type=pa.string()),
-                pc.is_in(pa.array(given, type=pa.string()), value_set=held),
-            )
+            clash = pc.filter(given_ids, pc.is_in(given_ids, value_set=held))
             if len(clash):
                 raise ValueError(
                     f"Event id {quote_id(clash[0].as_py())} is already held by an "
@@ -267,7 +291,14 @@ class EventsMixin:
         missing = [row.get("event_type") for row in rows if row.get("id") is None]
         if not missing:
             return rows
-        minted = iter(mint_event_ids(missing, set(held.to_pylist()) | set(given)))
+        minted = iter(
+            _mint_event_ids(
+                missing,
+                pa.chunked_array(
+                    [*pc.cast(held, pa.string()).chunks, given_ids], pa.string()
+                ),
+            ).to_pylist()
+        )
         return [
             row if row.get("id") is not None else {**row, "id": next(minted)}
             for row in rows

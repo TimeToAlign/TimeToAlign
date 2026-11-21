@@ -172,18 +172,18 @@ class TestScopedIdMethods:
 
 
 class TestMintId:
-    """mint_id answers the smallest free {prefix}_{N}, statelessly."""
+    """mint_id answers {prefix}_{N} above the highest N held, statelessly."""
 
     @pytest.mark.parametrize(
         ("prefix", "taken", "expected"),
         [
             ("clt", (), "clt_1"),
-            ("clt", {"clt_1", "clt_3"}, "clt_2"),
-            ("clt", {"clt_2"}, "clt_1"),
+            ("clt", {"clt_1", "clt_3"}, "clt_4"),
+            ("clt", {"clt_2"}, "clt_3"),
             ("score:clt", {"score:clt_1"}, "score:clt_2"),
         ],
     )
-    def test_smallest_free_number(
+    def test_above_the_highest_number(
         self, prefix: str, taken: set[str], expected: str
     ) -> None:
         assert mint_id(prefix, taken) == expected
@@ -208,10 +208,21 @@ class TestMintIds:
     @pytest.mark.parametrize(
         ("taken", "count", "expected"),
         [
-            (["claim_2", "x"], 3, ["claim_1", "claim_3", "claim_4"]),
+            (["claim_2", "x"], 3, ["claim_3", "claim_4", "claim_5"]),
             (["claim_1", None], 1, ["claim_2"]),
             (["claim_1"], 0, []),
             ([f"claim_{n}" for n in range(1, 6)], 2, ["claim_6", "claim_7"]),
+            (
+                [
+                    "claim_0",
+                    "claim_01",
+                    "claimx_9",
+                    "other:claim_9",
+                    "claim_1234567890123456789",
+                ],
+                1,
+                ["claim_1"],
+            ),
         ],
     )
     def test_same_as_minting_one_by_one(
@@ -220,6 +231,13 @@ class TestMintIds:
         minted = mint_ids("claim", pa.array(taken, type=pa.string()), count)
         assert minted.to_pylist() == expected
         assert expected == self._one_by_one("claim", taken, count)
+
+    def test_a_role_prefix_is_matched_literally(self) -> None:
+        assert mint_id("a.b", ["axb_4"]) == "a.b_1"
+
+    def test_a_chunked_column_is_read(self) -> None:
+        taken = pa.chunked_array([["claim_4"], ["claim_9", None]])
+        assert mint_ids("claim", taken, 2).to_pylist() == ["claim_10", "claim_11"]
 
 
 class TestValidateId:

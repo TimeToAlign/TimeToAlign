@@ -18,7 +18,7 @@ Design principles:
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Container, Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from fractions import Fraction
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
@@ -34,6 +34,7 @@ from typing_extensions import Self
 from timetoalign.core import (
     Coordinate,
     CoordinateSpec,
+    Duration,
     EventReferenceField,
     IntervalPolicy,
     NumberType,
@@ -42,9 +43,11 @@ from timetoalign.core import (
     resolve_coordinate_spec,
 )
 from timetoalign.core.fields import SemanticField, field_metadata
+from timetoalign.core.ids import _id_column, mint_ids
 from timetoalign.core.time import (
     build_number_struct_array,
     coordinate_to_struct,
+    express_as,
     number_from_json,
     struct_to_coordinate,
     struct_to_rational,
@@ -89,47 +92,77 @@ _DECLARED_EXTRA_FIELDS: dict[str, type[SemanticField[Any]]] = {
 }
 
 
-def mint_event_ids(
-    event_types: Iterable[object],
-    taken: Container[str] = (),
-) -> list[str]:
-    """Mint one event ID per event type, each free in *taken* and in the result.
+def _mint_event_ids(
+    event_types: pa.Array | pa.ChunkedArray | Iterable[object],
+    taken: pa.Array | pa.ChunkedArray | Iterable[str] = (),
+) -> pa.Array:
+    """Mint one event ID per event type, each new to *taken* and to the others.
 
-    A Projection mints ``projection_N`` (the ID scheme's ``{prefix}_{N}``);
-    every other type mints ``{type}:{N:06d}`` with its name in lower case
-    (``note:000001``), a missing type counting as ``Event``. N is the
-    smallest number free for that form, so a batch minted against a table's
-    IDs never repeats one of them.
+    The prefix of an event's ID is its event type in lower case (a missing
+    or empty type counts as ``Event``): ``note_N``, ``projection_N``,
+    ``event_N``. The rows of one prefix take the next numbers above the
+    highest held (:func:`~timetoalign.core.ids.mint_ids`, the one minter), in
+    row order.
 
     Args:
         event_types: One event type per ID to mint, in order.
         taken: The IDs already held.
 
     Returns:
-        The minted IDs, in the order of *event_types*.
+        A string array of the minted IDs, in the order of *event_types*.
 
     Examples:
-        >>> mint_event_ids(["Note", "Projection", "Note"], taken={"note:000001"})
-        ['note:000002', 'projection_1', 'note:000003']
+        >>> _mint_event_ids(["Note", "Projection", "Note", None], {"note_1"}).to_pylist()
+        ['note_2', 'projection_1', 'note_3', 'event_1']
     """
-    numbers: dict[str, int] = {}
-    minted: set[str] = set()
-    result: list[str] = []
-    for event_type in event_types:
-        name = str(event_type) if event_type else "Event"
-        number = numbers.get(name, 0)
-        while True:
-            number += 1
-            if name == PROJECTION_EVENT_TYPE:
-                candidate = f"{Projection._id_prefix}_{number}"
-            else:
-                candidate = f"{name.lower()}:{number:06d}"
-            if candidate not in taken and candidate not in minted:
-                break
-        numbers[name] = number
-        minted.add(candidate)
-        result.append(candidate)
-    return result
+    if isinstance(event_types, pa.ChunkedArray):
+        event_types = event_types.combine_chunks()
+    if not isinstance(event_types, pa.Array):
+        event_types = pa.array(
+            [None if value is None else str(value) for value in event_types],
+            pa.string(),
+        )
+    types = pc.cast(event_types, pa.string())
+    types = pc.if_else(pc.equal(pc.fill_null(types, ""), ""), "Event", types)
+    prefixes = pc.utf8_lower(types)
+    held = _id_column(taken)
+    ids = pa.nulls(len(prefixes), pa.string())
+    for prefix in pc.unique(prefixes).to_pylist():
+        rows = pc.equal(prefixes, prefix)
+        count = pc.sum(rows).as_py()
+        ids = pc.replace_with_mask(ids, rows, mint_ids(prefix, held, count))
+    return ids
+
+
+def _event_rows(
+    rows: Projection | Sequence[dict[str, Any] | Projection],
+) -> list[dict[str, Any]]:
+    """The event rows of *rows*: a Projection as its row, a dict as it is."""
+    if isinstance(rows, Projection):
+        rows = [rows]
+    return [row.to_event_row() if isinstance(row, Projection) else row for row in rows]
+
+
+def _native_position(
+    value: Any, key: str, unit: TimeUnit, number_type: NumberType
+) -> Any:
+    """A position given as a Coordinate or Duration, as the number it stores.
+
+    A scalar in the table's unit is written in the table's number type;
+    other values are returned as given.
+
+    Raises:
+        ValueError: If the scalar is in another unit: no table converts a
+            unit, a timeline does (:meth:`Timeline.add_events`).
+    """
+    if not isinstance(value, (Coordinate, Duration)):
+        return value
+    if value.unit != unit:
+        raise ValueError(
+            f"The event's {key} is in {value.unit}, the events are in {unit}; "
+            "add it to a timeline, which converts it through its C-Map"
+        )
+    return express_as(value.value, number_type)
 
 
 def _has_value_subfield(pa_type: pa.DataType) -> bool:
@@ -1009,7 +1042,7 @@ class EventData(SemanticFieldAccessMixin):
     @classmethod
     def from_dicts(
         cls,
-        rows: list[dict[str, Any]],
+        rows: Projection | Sequence[dict[str, Any] | Projection],
         unit: TimeUnit,
         number_type: NumberType | None = None,
         *,
@@ -1021,9 +1054,9 @@ class EventData(SemanticFieldAccessMixin):
         converted to the internal struct format. Convenience defaults are
         applied so that callers can omit boilerplate fields:
 
-        - **id**: Minted by :func:`mint_event_ids` if missing, free among
-          the IDs the rows give: ``note:000001``, ``beat:000001``, and
-          ``projection_1`` for a Projection.
+        - **id**: Minted if missing, above the IDs the rows give, its prefix
+          the event type in lower case: ``note_1``, ``beat_1``,
+          ``projection_1``.
         - **temporal_type**: Inferred from the keys present in the dict --
           ``"interval"`` when *both* ``start`` and ``end`` (or ``duration``)
           are given, ``"instant"`` otherwise.
@@ -1034,9 +1067,13 @@ class EventData(SemanticFieldAccessMixin):
         inconsistent is controlled by *interval_policy*.
 
         Args:
-            rows: List of event dictionaries. At minimum each dict needs a
-                coordinate (``instant`` *or* ``start``/``end``) and an
-                ``event_type``. All other fields have sensible defaults.
+            rows: Event dictionaries, or :class:`~timetoalign.core.Projection`
+                objects (one or a list), each standing for its event row
+                (:meth:`~timetoalign.core.Projection.to_event_row`). At
+                minimum each dict needs a coordinate (``instant`` *or*
+                ``start``/``end``) and an ``event_type``. A position may be
+                a ``Coordinate`` or ``Duration`` in *unit*. All other fields
+                have sensible defaults.
             unit: The time unit for coordinates.
             number_type: The number type for coordinates.
             interval_policy: How to handle end/duration inconsistencies.
@@ -1052,16 +1089,16 @@ class EventData(SemanticFieldAccessMixin):
             ... ], unit=TimeUnit.seconds)
         """
         number_type = unit.resolve_number_type(number_type)
+        rows = _event_rows(rows)
         if not rows:
             return cls.empty(unit, number_type)
 
-        # Mint the IDs the rows lack, free among the IDs the rows give.
-        given = {row["id"] for row in rows if row.get("id") is not None}
+        # Mint the IDs the rows lack, above the IDs the rows give.
         minted = iter(
-            mint_event_ids(
-                (row.get("event_type") for row in rows if row.get("id") is None),
-                given,
-            )
+            _mint_event_ids(
+                [row.get("event_type") for row in rows if row.get("id") is None],
+                [row["id"] for row in rows if row.get("id") is not None],
+            ).to_pylist()
         )
 
         # Convert coordinate values to struct format
@@ -1070,6 +1107,11 @@ class EventData(SemanticFieldAccessMixin):
             processed = dict(row)
             if processed.get("id") is None:
                 processed["id"] = next(minted)
+            for key in ("instant", "start", "end", "duration"):
+                if key in processed:
+                    processed[key] = _native_position(
+                        processed[key], key, unit, number_type
+                    )
 
             # Map 'instant' to 'start'
             if "instant" in processed and processed.get("start") is None:
@@ -1310,16 +1352,10 @@ class EventData(SemanticFieldAccessMixin):
                     # Mint the IDs from the event types, if there are any.
                     event_types = get_arr("event_type")
                     if event_types is None:
-                        et_py: list[Any] = [None] * n_rows
-                    elif isinstance(event_types, (pa.Array, pa.ChunkedArray)):
-                        et_py = event_types.to_pylist()
+                        event_types = pa.nulls(n_rows, pa.string())
                     elif isinstance(event_types, np.ndarray):
-                        et_py = event_types.tolist()
-                    else:
-                        et_py = list(event_types)
-                    processed[field_name] = pa.array(
-                        mint_event_ids(et_py), type=pa.string()
-                    )
+                        event_types = event_types.tolist()
+                    processed[field_name] = _mint_event_ids(event_types)
             elif arr_data is not None:
                 # Regular field - convert to PyArrow array
                 if isinstance(arr_data, (pa.Array, pa.ChunkedArray)):

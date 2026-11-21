@@ -933,7 +933,7 @@ its anchor written the other way round is refused before any query.
 | `test_one_timeline_twice_refused` | a claim naming one timeline on both sides is refused |
 | `test_synchronous_requires_anchor` | a synchronous claim without anchors is refused |
 | `test_non_synchronous_rejects_anchor` | a non-synchronous claim with anchors is refused |
-| `test_explicit_claim_names_its_events` | a synchronous claim naming one event, or none, and a non-synchronous claim naming none are refused with the exact messages |
+| `test_claim_names_its_events` | a synchronous claim naming one event, or none, and a non-synchronous claim naming none are refused with the exact messages |
 | `test_from_events_places_numbers_on_the_axes` | raw numbers on `quarters` / `seconds` / `ticks` timelines, and a storage cell on `seconds`, take the timeline's unit and number type |
 | `test_from_events_converts_another_unit` | `3.16952381` seconds → `139776` samples through the C-Map; an `IdCoordinate` of another timeline and an unconvertible unit are refused |
 | `test_from_events_refuses_another_number_type` | a `float` quarters coordinate on a `fraction` timeline is refused with the check's exact message |
@@ -2043,7 +2043,7 @@ This test validates that MatchClaims can represent the segment-to-segment corres
 
 ### What We're Validating
 
-The MatchGraph enforces the design principle that only synchronous claims produce graph edges, while non-synchronous claims are stored as metadata. The `extend_to_groups()` method infers edges through group membership and records each as the graph's own `InferredEdge` (the anchor, the group, the MatchClaim it traces back to), never as a MatchClaim: the extended graph's `claims` are exactly the claims it was given. Filtering supports domain/unit/timeline constraints, and the belief filter decides which claims a graph holds at all.
+The MatchGraph enforces the design principle that only synchronous claims produce graph edges, while non-synchronous claims are stored as metadata. The `extend_to_groups()` method infers edges through group membership and records each as the graph's own `InferredEdge` (the anchor, the group, the MatchClaim it traces back to), never as a MatchClaim: the extended graph's `claims` are exactly the claims it was given. The belief filter decides which claims a graph holds at all, and `filter()` holds exactly what a graph rebuilt from the claims it keeps holds.
 
 ### Local Fixtures (no conftest shadowing)
 
@@ -2097,19 +2097,21 @@ shared-member tests count the inferred edges (3, and 5 with their groups
 ### The belief filter
 
 `MatchGraph(claims, believer=..., beliefs=...)` keeps exactly the claims the
-belief filter keeps, and builds its nodes and edges from them alone. Four
-claims at distinct positions on `tl_a`/`tl_b`, one per case: `claim_1`
-without provenance, `claim_2` believed `false` by `ana`, `claim_3` believed
-`true` by `ana`, `claim_4` believed `false` by `ben`. The kept ids, in order,
-and `n_edges == len(kept)`, `n_nodes == 2·len(kept)`:
+belief filter keeps, and builds its nodes and edges from them alone. Five
+claims at distinct positions on `tl_a`/`tl_b`, so that each of the four
+states occurs: `claim_1` without provenance, `claim_2` believed `false` by
+`ana`, `claim_3` believed `true` by `ana`, `claim_4` believed `false` by
+`ben`, `claim_5` believed `unlikely` by `ana`. The kept ids, in order, and
+`n_edges == len(kept)`, `n_nodes == 2·len(kept)`:
 
 | believer | beliefs | kept |
 |---|---|---|
-| none | default / `["true"]` | all four (no believer filters nothing) |
-| `ana` | default (all but `false`) | `claim_1`, `claim_3`, `claim_4` (ben's belief is not hers) |
+| none | default / `["true"]` | all five (no believer filters nothing) |
+| `ana` | default (all but `false`) | `claim_1`, `claim_3`, `claim_4`, `claim_5` (ben's belief is not hers) |
 | `ana` | `["true"]` | `claim_3` |
 | `ana` | `["undecided"]` | `claim_1`, `claim_4` |
-| `ben` | default | `claim_1`, `claim_2`, `claim_3` |
+| `ana` | `["unlikely"]` | `claim_5` |
+| `ben` | default | `claim_1`, `claim_2`, `claim_3`, `claim_5` |
 | `ben` | `["true"]` | none |
 | `ben` | `["false"]` | `claim_4` |
 
@@ -2117,17 +2119,48 @@ A word that is no belief state (`["not_false"]`) is refused with `ValueError`.
 
 ### Filtering a graph by its claims
 
-`MatchGraph.filter` takes the claim-level filter parameters under the names
-and meanings every other MatchClaim query uses (`believer`, `beliefs`,
-`synchronous_only`, `nomatch_only`), decided by the shared implementation
-(`believed`, i.e. `belief_mask`, under the graph's source bundle's
-`@context`; a claim's own `is_synchronous` / `is_nomatch`). The property
-that proves it is **equivalence with building the graph from the kept
-claims**: filtering a graph must give exactly what a graph made of the
-claims the filter keeps (and, for an extended graph, extended through the
-same groups) holds — nothing more survives, nothing more is lost.
+`MatchGraph.filter` takes the filter parameters every MatchClaim query takes,
+under the same names and meanings as `AlignmentBundle.get_match_claims`, and
+decides them through ONE implementation, `ClaimFilter.select` (the belief
+filter asked once over the list, `believed` under the graph's source
+bundle's `@context`, then the claim's own kind and timelines):
 
-- `test_filter_keeps_the_believed_claims`: the eight belief cases of the
+- `timeline_id`, `timeline_ids`, `id_pattern`: a claim with a matching
+  timeline on EITHER side (any of the set, any id the pattern finds); a
+  timeline the graph does not know gives no claim.
+- `within`, `include_domains`, `include_units`: a claim whose BOTH
+  timelines pass. Units and domains are read from the graph's source bundle
+  (every timeline it knows), else from the units of the graph's anchors, so
+  without a source a claim on a timeline no anchor names never passes them.
+- `synchronous_only`: synchronous claims only (conceptual and NOMATCH claims
+  excluded); `nomatch_only`: NOMATCH claims only (one event, the sentinel on
+  the other side), never a conceptual claim.
+
+The property that proves it is **equality with the graph rebuilt from the
+kept claims**: `filter` must hold exactly what `MatchGraph(kept)` holds, and
+for an extended graph what `MatchGraph(kept).extend_to_groups(...)` holds
+through the same groups, the extension reaching only the timelines `within`
+and the domain/unit filters admit (on top of the filters the extension was
+made with); `stated_only` is the rebuilt graph not extended. Every test of
+this section therefore builds the rebuilt graph by hand and compares,
+through one helper `_assert_rebuilt(filtered, rebuilt)`:
+
+1. the claims, as objects and in order (`is`, never ids: free claims may
+   share or lack ids);
+2. the edge sets (each edge the set of its two nodes);
+3. the inferred edges in order, each by anchor, group and `source_claim`
+   identity (a kept record naming a dropped claim fails here);
+4. the stamps, by their rendered text (`str`), which carries every
+   timeline, coordinate and `stated`/`inferred` tag.
+
+A test that only counts nodes and edges would pass a filter that keeps the
+right number of the wrong things, so each test also pins the exact claims,
+the timelines and, where an extension is involved, the exact inferred
+anchors, beside the comparison. The cases are chosen where a filter that
+removes edges from the graph it was given (instead of rebuilding) gives a
+different answer:
+
+- `test_filter_keeps_the_believed_claims`: the nine belief cases of the
   table above, asked of `MatchGraph(claims).filter(believer=, beliefs=)`:
   the same kept ids in order, `n_edges == len(kept)`,
   `n_nodes == 2·len(kept)`, i.e. exactly the constructor's answer.
@@ -2135,41 +2168,98 @@ same groups) holds — nothing more survives, nothing more is lost.
   group `{dgt_1 1000 px, audio 100 s}`, `claim_1` `dgt_1@500 px ↔
   external@25` believed `false` by `ana`, `claim_2` `dgt_1@200 px ↔
   external@10` with no belief. The extended graph holds 2 stated and 2
-  inferred edges; `filter(believer="ana")` holds `claims == [claim_2]` (the
-  object), 2 edges, 3 nodes, timelines `{dgt_1, external, audio}`, one
-  inferred edge `dgt_1@200 pixels ↔ audio@20.0 seconds` — and its edge set
-  equals that of `MatchGraph(claims, believer="ana").extend_to_groups(groups)`.
-  An inferred edge left without the claims it was inferred from would be a
-  correspondence nobody states.
-- `test_filter_keeps_an_inferred_edge_another_kept_claim_grounds`: as above,
-  but `claim_2` is `dgt_1@500 px ↔ score@7`: the node `dgt_1@500` is still
-  stated by a kept claim, so its inferred edge to `audio@50.0` stays (2
-  edges, timelines `{dgt_1, score, audio}`, one inferred edge), again equal
-  to the graph rebuilt from the kept claim. This fails a rule that drops an
-  inferred edge with the claim recorded as its `source_claim` (`claim_1`
-  here, the first claim naming the node).
+  inferred edges; `filter(believer="ana")` holds `[claim_2]`, 2 edges, 3
+  nodes, timelines `{dgt_1, external, audio}`, one inferred edge `dgt_1@200
+  pixels ↔ audio@20.0 seconds` via `group1` from `claim_2`, equal to the
+  rebuilt graph.
+- `test_filter_keeps_an_inferred_edge_another_kept_claim_grounds`: as
+  above, but `claim_2` is `dgt_1@500 px ↔ score@7`: the node `dgt_1@500`
+  is still stated, so the inferred edge to `audio@50.0` stays, now from
+  `claim_2` (the extended graph's record named `claim_1`, the first claim
+  naming the node); 2 edges, timelines `{dgt_1, score, audio}`.
+- `test_filter_infers_again_an_anchor_a_dropped_claim_stated`: `claim_1` `dgt_1@500 px ↔ audio@50.0 s` (believed `false` by
+  `ana`) states exactly the anchor the group gives, so the extended graph
+  infers nothing (0 inferred edges, 2 stated). `filter(believer="ana")`
+  keeps `[claim_2]` (`dgt_1@500 px ↔ external@25`), and the group infers
+  `dgt_1@500 pixels ↔ audio@50.0 seconds` again, via `group1` from
+  `claim_2`: 3 nodes, 2 edges, one stamp over `audio`, `dgt_1`, `external`
+  — the timeline a node-removing filter loses.
+- `test_inferred_edges_name_only_kept_claims`: `claim_3`
+  `dgt_1@200 px ↔ external@10` (believed `false` by `ana`) and `claim_4`
+  `dgt_1@200 px ↔ score@3`. The extended graph's one inferred edge names
+  `claim_3`; filtered for `ana`, the same anchor `dgt_1@200 pixels ↔
+  audio@20.0 seconds` names `claim_4`.
 - `test_filter_keeps_an_anchor_a_kept_claim_also_states`: two claims state
   the same anchor `tl_a@1 ↔ tl_b@10`, `claim_2` without belief first,
-  `claim_1` believed `false` by `ana` last (the edge records the last
-  claim). `filter(believer="ana")` keeps `claims == [claim_2]`, 1 edge, and
-  the edge names `claim_2` (`claim` is the object, `claim_id ==
-  "claim_2"`), never the dropped claim.
+  `claim_1` believed `false` by `ana` last. `filter(believer="ana")` keeps
+  `[claim_2]`, 1 edge naming `claim_2` (`claim` the object, `claim_id ==
+  "claim_2"`); the graph filtered still names `claim_1` on its own edge.
+- `test_filter_by_timeline_id_ids_and_pattern`: claims `claim_1` `tl_a@100
+  ↔ tl_b@50`, `claim_2` `tl_b@50 ↔ tl_c@25`. `timeline_ids={"tl_a"}` →
+  `[claim_1]` (timelines `{tl_a, tl_b}`, 1 edge); `timeline_ids={"tl_a",
+  "tl_b"}` → both claims (timelines `{tl_a, tl_b, tl_c}`, 2 edges, one
+  stamp of three timelines); `timeline_id="tl_c"` → `[claim_2]`;
+  `timeline_id="tl_x"` (unknown) → no claim, 0 nodes;
+  `id_pattern=r"^tl_c$"` → `[claim_2]`; `id_pattern=r"^(?!tl_c$).*"` → both
+  claims (each has a side the pattern finds); `timeline_ids={"tl_a",
+  "tl_b"}` with `id_pattern=r"^tl_c$"` → `[claim_2]` (AND). Each equal to
+  the rebuilt graph.
+- `test_filter_within`: the same claims; `within={"tl_a", "tl_b"}` →
+  `[claim_1]`, timelines `{tl_a, tl_b}`, 1 edge; `within={"tl_a"}` → no
+  claim.
+- `test_filter_within_on_an_extended_graph`: `dgt_1@500 px
+  ↔ external@25` extended through the group. `within={"dgt_1", "audio"}` →
+  no claim, 0 nodes, 0 edges, no inferred edge and no stamp (the node
+  pruning kept an inferred edge nobody states); `within={"dgt_1",
+  "external"}` → the claim, 2 nodes, 1 edge, no inferred edge, equal to
+  `MatchGraph([claim]).extend_to_groups(groups, timeline_ids={"dgt_1",
+  "external"})`; `timeline_ids={"dgt_1", "audio"}` → the claim and the
+  whole extended graph (3 nodes, 2 edges, one inferred edge).
+- `test_filter_stated_only`: the extended graph of one claim
+  `filter(stated_only=True)` → the claim, 1 edge, no `audio`, no inferred
+  edge, equal to `MatchGraph([claim])`.
 - `test_filter_nomatch_only`: claims `sync` (`tl_a@1 ↔ tl_b@10`),
   `nomatch_1` (`tl_a@2`, sentinel on `tl_b`, believed `false` by `ana`),
-  `nomatch_2` (`tl_a@3`, sentinel on `tl_c`) and a conceptual `tl_b ↔
-  tl_c` (two events, no anchor: not a NOMATCH claim).
-  `filter(nomatch_only=True)` → `[nomatch_1, nomatch_2]`, 0 nodes, 0
-  edges (a NOMATCH claim holds no anchor); with `timeline_ids={"tl_a",
-  "tl_b"}` → `[nomatch_1]`; with `believer="ana"` → `[nomatch_2]`;
-  `filter(synchronous_only=True)` → `[sync]`, 1 edge (the conceptual claim
-  is not synchronous); `filter()` → all four claims (a filter without
-  criteria changes nothing, NOMATCH claims on timelines without nodes
-  included); `synchronous_only` with `nomatch_only` → `ValueError`
-  `synchronous_only and nomatch_only are mutually exclusive`.
+  `nomatch_2` (`tl_a@3`, sentinel on `tl_c`) and a conceptual `tl_b ↔ tl_c`
+  (two events, no anchor: not a NOMATCH claim).
+  `filter(nomatch_only=True)` → `[nomatch_1, nomatch_2]`, 0 nodes, 0 edges;
+  with `timeline_ids={"tl_a", "tl_b"}` → `[nomatch_1, nomatch_2]` (both
+  involve `tl_a`), with `within={"tl_a", "tl_b"}` → `[nomatch_1]`; with
+  `believer="ana"` → `[nomatch_2]`; `filter(synchronous_only=True)` →
+  `[sync]`, 1 edge; `filter()` → all four claims; `synchronous_only` with
+  `nomatch_only` → `ValueError` `synchronous_only and nomatch_only are
+  mutually exclusive`.
+- `test_filter_timeline_ids_keeps_either_side`: `sync`
+  (`tl_a@1 ↔ tl_b@10`), `nm` (`tl_c`, sentinel `tl_d`), `nm_ab` (`tl_a`,
+  sentinel `tl_b`): `timeline_ids={"tl_a"}` → `[sync, nm_ab]`, the
+  bundle's answer.
 - `test_filter_nomatch_only_on_an_extended_graph`: `dgt_1@500 px ↔
   external@25` and a NOMATCH claim on `dgt_1@100 px` (sentinel on
-  `external`), extended through the group: `filter(nomatch_only=True)` →
-  claims `[nomatch]`, 0 edges, no inferred edge.
+  `external`), extended: `filter(nomatch_only=True)` → `[nomatch]`, 0
+  edges, no inferred edge.
+
+Domain and unit filters (`TestMatchGraphFilterByDomainAndUnit`):
+
+- `test_filter_by_include_domains` / `test_filter_by_include_units`: one
+  claim `dgt_1@500 px ↔ audio@50 s`; `include_domains={graphical}` → no
+  claim, 0 nodes (the audio side fails); `include_domains={graphical,
+  physical}` → the claim; `include_units={seconds}` → no claim;
+  `include_units={pixels, seconds}` → the claim.
+- `test_domain_and_unit_filters_read_the_source_bundle`: a bundle holding `tl_a`, `tl_b`, `tl_c` (seconds) and `tl_d`
+  (pixels), claims `sync` (`tl_a@1 s ↔ tl_b@10 s`) and a NOMATCH `nm_cd`
+  (`tl_c`, sentinel `tl_d`): with the bundle as source,
+  `include_units={seconds}` → `[sync]`, `include_units={seconds, pixels}`
+  → `[sync, nm_cd]`, `nomatch_only=True, include_domains={physical,
+  graphical}` → `[nm_cd]`; the same graph without a source and
+  `include_units={seconds, pixels}` → `[sync]` (no anchor names `tl_c` or
+  `tl_d`, so their units are unknown to it: the documented limit).
+- `test_canonical_id_filters_combine`: `timeline_ids={"tl_a", "tl_b"}`
+  and `id_pattern=r"^tl_[ab]$"` over `tl_a ↔ tl_b`, `tl_b ↔ tl_c` keep both
+  claims (each involves `tl_a` or `tl_b`, and each has a side the pattern
+  finds); 3 nodes, 2 edges.
+- `test_filter_keeps_non_synchronous_claims`: `within={"tl_a", "tl_b"}`
+  keeps the synchronous and the NOMATCH claim between `tl_a` and `tl_b` and
+  drops the NOMATCH claim on `tl_c`.
 
 ### A stamp renders the same in every process
 
@@ -2211,9 +2301,8 @@ deterministic order was chosen, so "stable but wrong" also fails.
 | `TestMatchGraphBasic` | 8 | Node, edge and claim counts; node and coordinate retrieval; connectivity |
 | `TestMatchGraphStamps` | 4 | Instant claim → one stamp, interval claim → two, components → stamps |
 | `TestMatchGraphGroupExtension` | 4 | Inferred edges, converted coordinates, `include_inferred=False` |
-| `TestMatchGraphFilter` | 5 | `filter()` by timeline ids, id pattern, synchronous / stated only, isolated nodes dropped |
-| `TestMatchGraphBeliefFilter` | 2 (9 cases) | The graph holds exactly the claims the belief filter keeps; a word that is no state is refused |
-| `TestMatchGraphFilterByClaims` | 6 (13 cases) | `filter()` by the belief filter, `synchronous_only` and `nomatch_only` holds what a graph of the kept claims holds (above) |
+| `TestMatchGraphBeliefFilter` | 2 (10 cases) | The graph holds exactly the claims the belief filter keeps; a word that is no state is refused |
+| `TestMatchGraphFilterByClaims` | 13 (21 cases) | `filter()` holds what the graph rebuilt from the kept claims holds, for every filter parameter (above) |
 | `TestMatchGraphSerialization` | 2 | `to_dict()`/`from_dict()` counts, repr |
 | `TestMatchGraphThoresenIntegration` | 3 | Thoresen segment claims: 12 nodes, 6 edges, boundary coordinates and stamps |
 | `TestMatchGraphNonSynchronousClaims` | 3 | Non-synchronous claims stored as metadata, no edges created |
@@ -2221,7 +2310,7 @@ deterministic order was chosen, so "stable but wrong" also fails.
 | `TestMatchGraphInferredEdges` | 3 | Inferred edges: the record, its source claim, two-group connectivity; the claims stay the ones given |
 | `TestExtendToSeveralGroups` | 1 | A shared member carries group extension into its other group |
 | `TestMatchGraphExtendToGroupsFilters` | 6 | `timeline_ids`, `id_pattern`, `include_domains`, `include_units`; `MatchLine.from_claims` forwards them |
-| `TestMatchGraphFilterPhase64` | 4 | `filter()` by domain and unit; keeps non-synchronous claims of remaining timelines |
+| `TestMatchGraphFilterByDomainAndUnit` | 5 | `filter()` by domain and unit, read from the source bundle; `timeline_ids` and `id_pattern` combined; non-synchronous claims `within` |
 | `TestMatchStampGroupRetrieval` | 1 | Retrieves group members with the plural key getter and `timeline_ids` |
 | `TestMatchStampDeterminism` | 3 | Stamp source and entry order are the same in every process |
 
@@ -2238,7 +2327,7 @@ deterministic order was chosen, so "stable but wrong" also fails.
 | `test_two_groups_three_inferred_edges` | One claim between TL1∈{TL1,TL4,TL5} and TL2∈{TL2,TL6} connects 5 timelines with exact interpolated coordinates through three inferred edges, `tl1→tl4`, `tl1→tl5`, `tl2→tl6` |
 | `test_timeline_ids_filter` | Only specified timelines appear in extension |
 | `test_include_domains_filter` | Only timelines from specified domains appear |
-| `test_filter_keeps_non_synchronous_claims` | `filter()` keeps non-synchronous claims whose two timelines pass the timeline filters |
+| `test_filter_keeps_non_synchronous_claims` | `filter(within=)` keeps the non-synchronous claims whose two timelines are in the set |
 | `test_group_coordinates` | Returns group-member coordinates in the group's declared order |
 
 ### The Two-Groups Connectivity Test
@@ -2246,7 +2335,7 @@ deterministic order was chosen, so "stable but wrong" also fails.
 ```python
 def test_two_groups_three_inferred_edges(self):
     # Group A = {tl1 1000px, tl4 500px, tl5 200px}, Group B = {tl2 800px, tl6 400px}
-    # One explicit claim: tl1@500px <-> tl2@400px
+    # One claim: tl1@500px <-> tl2@400px
     # After extend_to_groups():
     #   - tl4 at 250, tl5 at 100 via Group A from tl1@500
     #   - tl6 at 200 via Group B from tl2@400
@@ -2256,7 +2345,7 @@ def test_two_groups_three_inferred_edges(self):
     assert stamps[0].n_timelines == 5
 ```
 
-This is the core group-extension test: it verifies that group extension infers edges with coordinates derived from the typed group retrieval API, producing a fully connected component from a single explicit claim.
+This is the core group-extension test: it verifies that group extension infers edges with coordinates derived from the typed group retrieval API, producing a fully connected component from a single claim.
 
 ---
 
@@ -2392,7 +2481,7 @@ float detour would show.
    reader restores a shared member, not two copies of it.
 8. **Group extension of a `MatchGraph` follows a shared member**
    (`test_graph.py`). The same topology in pixels (`t` 1200, `a` 800, `u`
-   600, `b` 900) and one explicit claim `a@400 ↔ e@100` (`a` at 400 integer
+   600, `b` 900) and one claim `a@400 ↔ e@100` (`a` at 400 integer
    pixels, its axis; `e` in no group),
    extended through `{g1, g2}`, yield one stamp over exactly `a`, `e`, `t`,
    `u`, `b`, with `t` at `600.0`, `u` at `300.0` and `b` at `450.0` — `b` is
@@ -2737,9 +2826,13 @@ Tests for the `ClaimFilter` dataclass — the Unified Filter API. Covers all fil
 | `TestClaimFilterIdSet` | 3 | `timeline_ids` set filter |
 | `TestClaimFilterRegex` | 4 | `id_pattern` regex: prefix, suffix, range, timeline-level |
 | `TestClaimFilterBetween` | 3 | `between` pair filter: exact, reversed, mismatch |
-| `TestClaimFilterSynchronous` | 4 | `synchronous_only` and `nomatch_only` |
+| `TestClaimFilterWithin` | 3 | `within`: both timelines in the set, on claims and on timelines |
+| `TestClaimFilterSynchronous` | 6 | `synchronous_only` and `nomatch_only`, a conceptual claim included |
 | `TestClaimFilterCombined` | 5 | AND logic across multiple filters; a unit criterion rejects a timeline missing from the lookup |
 | `TestClaimFilterBelief` | 5 (13 cases) | The belief filter (`believer`, `beliefs`) |
+| `TestClaimFilterSelect` | 2 | `select`, the list form, keeps what `matches_claim` keeps, in order |
+
+The kinds: `synchronous_only` keeps a synchronous claim only, `nomatch_only` a NOMATCH claim only (one event, the sentinel on the other side). A conceptual claim (two events, not synchronous) is the case that tells "NOMATCH" from "not synchronous" apart, so `TestClaimFilterSynchronous` asks both criteria of one (`_conceptual`, `score:clt_1` ↔ `perf:dlt_5`): `nomatch_only` → `False`, `synchronous_only` → `False`; a filter equating NOMATCH with non-synchronous passes the first. `within={"score:clt_1", "perf:dlt_1"}` keeps the claim between those two and refuses `score:clt_1 ↔ perf:dlt_5` (one side out), and `matches_timeline` takes the same set (`score:clt_1` in, `perf:dlt_5` out). `select(claims, context=)` is the list form the MatchGraph filters with: over the four fixture claims plus a conceptual one, `ClaimFilter(nomatch_only=True).select(...)` is exactly `[claim_nomatch]`, and over the belief claims `ClaimFilter(timeline_id="score:clt_1", believer="ana").select(...)` equals `[c for c in claims if filter.matches_claim(c)]`, the same objects in order.
 
 The claims name fixture events (`match_claim`; the NOMATCH claim one event and the sentinel). The belief tests use four claims on `score:clt_1`/`perf:dlt_1`, one per case: no provenance, believed `false` by `ana`, believed `true` by `ana`, believed `false` by `ben`. `matches_claim` keeps exactly: without a believer all four (for the default and for `["true"]`); `ana` with the default states (all but `false`) all but ana's false one (ben's belief is not hers); `ana`/`["true"]` only ana's true one; `ana`/`["undecided"]` the unstated claim and ben's (those ana holds no belief on); `ana`/`["false"]` only ana's false one; `ben` with the default all but ben's false one; `ben`/`["true"]` none; `ben`/`["true", "false"]` ben's false one. The states are held as a frozen set (`["false", "true", "false"]` → `{"true", "false"}`, repr `ClaimFilter(believer='ana', beliefs=['true', 'false'])` in the order of the four states; the default states are left out of the repr, and a filter given them in another order equals the default one). Combined with `timeline_id`, the belief filter is ANDed (ana's true claim kept; the unstated claim and a claim off the timeline dropped). `beliefs=["not_false"]` and the bare string `"unlikely"` are refused at construction (`ValueError`, the messages of `check_belief_filter`). `matches_timeline` ignores the belief filter, as it ignores every claim-level criterion.
 

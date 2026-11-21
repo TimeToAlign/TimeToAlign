@@ -7,11 +7,13 @@ Covers:
 - Set-of-IDs matching
 - Regex (id_pattern) matching
 - Between (pair) matching
+- Within (both timelines in a set) matching
 - synchronous_only / nomatch_only filters
 - Mutual exclusion of synchronous_only and nomatch_only
 - Combined filters
 - The belief filter (believer / belief)
 - Timeline-level filtering (matches_timeline)
+- The list form (select)
 - Domain / unit filtering
 - ClaimFilter.from_kwargs convenience constructor
 - __repr__
@@ -70,6 +72,18 @@ def claim_nomatch() -> MatchClaim:
         timeline_b_id="perf:dlt_5",
         is_synchronous=False,
         event_a_id=event_id("score:clt_1", Coordinate(20.0, TimeUnit.number)),
+    )
+
+
+@pytest.fixture
+def claim_conceptual() -> MatchClaim:
+    """Conceptual claim: two events of score:clt_1 and perf:dlt_5, not synchronous."""
+    return MatchClaim(
+        timeline_a_id="score:clt_1",
+        timeline_b_id="perf:dlt_5",
+        is_synchronous=False,
+        event_a_id="score:clt_1@section",
+        event_b_id="perf:dlt_5@section",
     )
 
 
@@ -281,6 +295,41 @@ class TestClaimFilterSynchronous:
         f = ClaimFilter(nomatch_only=True)
         assert f.matches_claim(claim_score_perf1) is False
 
+    def test_nomatch_only_rejects_conceptual(self, claim_conceptual):
+        """A conceptual claim is no NOMATCH claim: two events, no sentinel."""
+        assert ClaimFilter(nomatch_only=True).matches_claim(claim_conceptual) is False
+
+    def test_synchronous_only_rejects_conceptual(self, claim_conceptual):
+        """A conceptual claim is not synchronous."""
+        f = ClaimFilter(synchronous_only=True)
+        assert f.matches_claim(claim_conceptual) is False
+
+
+# endregion
+
+
+# region Test within
+
+
+class TestClaimFilterWithin:
+    """``within``: both timelines of a claim are in the set."""
+
+    def test_both_sides_in(self, claim_score_perf1):
+        """A claim between two timelines of the set passes."""
+        f = ClaimFilter(within={"score:clt_1", "perf:dlt_1"})
+        assert f.matches_claim(claim_score_perf1) is True
+
+    def test_one_side_out(self, claim_score_perf5):
+        """A claim with one timeline outside the set fails."""
+        f = ClaimFilter(within={"score:clt_1", "perf:dlt_1"})
+        assert f.matches_claim(claim_score_perf5) is False
+
+    def test_matches_timeline(self):
+        """A timeline passes when it is in the set."""
+        f = ClaimFilter(within={"score:clt_1", "perf:dlt_1"})
+        assert f.matches_timeline("score:clt_1") is True
+        assert f.matches_timeline("perf:dlt_5") is False
+
 
 # endregion
 
@@ -340,6 +389,34 @@ def _believed_by(actor: str, belief: str) -> Provenance:
     )
 
 
+def _belief_claims() -> dict[str, MatchClaim]:
+    """Four claims by name, one per belief case."""
+    return {
+        "unstated": _claim("score:clt_1", 1.0, "perf:dlt_1", 1.0),
+        "ana_false": _claim(
+            "score:clt_1",
+            2.0,
+            "perf:dlt_1",
+            2.0,
+            provenance=_believed_by("ana", "false"),
+        ),
+        "ana_true": _claim(
+            "score:clt_1",
+            3.0,
+            "perf:dlt_1",
+            3.0,
+            provenance=_believed_by("ana", "true"),
+        ),
+        "ben_false": _claim(
+            "score:clt_1",
+            4.0,
+            "perf:dlt_1",
+            4.0,
+            provenance=_believed_by("ben", "false"),
+        ),
+    }
+
+
 class TestClaimFilterBelief:
     """Tests for the belief filter (believer, beliefs).
 
@@ -350,30 +427,7 @@ class TestClaimFilterBelief:
     @pytest.fixture
     def claims(self) -> dict[str, MatchClaim]:
         """The four claims by name."""
-        return {
-            "unstated": _claim("score:clt_1", 1.0, "perf:dlt_1", 1.0),
-            "ana_false": _claim(
-                "score:clt_1",
-                2.0,
-                "perf:dlt_1",
-                2.0,
-                provenance=_believed_by("ana", "false"),
-            ),
-            "ana_true": _claim(
-                "score:clt_1",
-                3.0,
-                "perf:dlt_1",
-                3.0,
-                provenance=_believed_by("ana", "true"),
-            ),
-            "ben_false": _claim(
-                "score:clt_1",
-                4.0,
-                "perf:dlt_1",
-                4.0,
-                provenance=_believed_by("ben", "false"),
-            ),
-        }
+        return _belief_claims()
 
     @pytest.mark.parametrize(
         ("believer", "beliefs", "kept"),
@@ -438,6 +492,36 @@ class TestClaimFilterBelief:
         """The belief filter is claim-level: a timeline test ignores it."""
         f = ClaimFilter(believer="ana", beliefs=["true"])
         assert f.matches_timeline("score:clt_1") is True
+
+
+# endregion
+
+
+# region Test the list form
+
+
+class TestClaimFilterSelect:
+    """``select``, the list form of ``matches_claim``."""
+
+    def test_nomatch_only(self, all_claims, claim_nomatch, claim_conceptual):
+        """Only the NOMATCH claim, the same object."""
+        selected = ClaimFilter(nomatch_only=True).select(
+            [*all_claims, claim_conceptual]
+        )
+        assert len(selected) == 1
+        assert selected[0] is claim_nomatch
+
+    def test_keeps_what_matches_claim_keeps(self, claim_audio_video):
+        """The same objects in the same order as ``matches_claim``."""
+        claims = [
+            *_belief_claims().values(),
+            claim_audio_video,
+        ]
+        f = ClaimFilter(timeline_id="score:clt_1", believer="ana")
+        selected = f.select(claims)
+        expected = [claim for claim in claims if f.matches_claim(claim)]
+        assert [id(claim) for claim in selected] == [id(claim) for claim in expected]
+        assert len(selected) == 3
 
 
 # endregion

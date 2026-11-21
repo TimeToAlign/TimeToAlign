@@ -335,9 +335,7 @@ class TestMatchClaim:
         with pytest.raises(ValueError, match="must not have anchors"):
             _claim(anchor, is_synchronous=False)
 
-    def test_explicit_claim_names_its_events(
-        self, basic_anchor: AlignmentAnchor
-    ) -> None:
+    def test_claim_names_its_events(self, basic_anchor: AlignmentAnchor) -> None:
         both = (
             "A synchronous MatchClaim names an event on each side (event_a_id and "
             "event_b_id). Give a side without an event of its own a Projection event "

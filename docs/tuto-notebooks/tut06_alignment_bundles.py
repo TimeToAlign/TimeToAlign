@@ -367,14 +367,16 @@ stamp_comparison
 query_coordinates = score_cue_frame.loc[1:2, "start"].tolist()
 batch_stamps = bundle.get_matchstamps_at(query_coordinates, score.id)
 batch_table = bundle.get_matchstamp_table(query_coordinates, score.id)
-claim_table = bundle.get_matchstamp_table()
+alignment_table = bundle.get_matchstamp_table()
 batch_summary = {
     "query coordinates": query_coordinates,
     "performance coordinates": [
         stamp.get_coordinate(performance.id) for stamp in batch_stamps
     ],
     "coordinate-query table shape": batch_table.shape,
-    "one-row-per-claim table shape": claim_table.shape,
+    "whole-alignment table shape (one row per synchronous MatchClaim)": (
+        alignment_table.shape
+    ),
 }
 batch_summary
 

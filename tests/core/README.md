@@ -848,16 +848,31 @@ shape and holds exactly the number written.
   of an event table is of the number struct type, and a builder that read it
   cell by cell would be correct and slow, so the proof has two halves. Same
   cells: the struct column `[{0.75, 3, 4}, null, {0.5, 2, 4}]` on a quarters
-  axis gives `{0.75, 3, 4, "quarters", "fraction"}`, null, `{0.5, 2, 4,
-  "quarters", "fraction"}` (a cell is kept as it stands, its ratio not
-  reduced), exactly what the per-row reader makes of the same cells given as
-  dicts; a slice of a longer column, whose dropped first row and whose null
+  axis gives `{0.75, 3, 4, "quarters", "fraction"}`, null, `{0.5, 1, 2,
+  "quarters", "fraction"}` (a cell keeps its members, its ratio in lowest
+  terms: memory holds one spelling of a value, so `2/4` is held as `1/2`),
+  exactly what the per-row reader makes of the same cells given as dicts; a slice of a longer column, whose dropped first row and whose null
   cell hold numbers underneath, gives the cells of its own rows, and a
   chunked column the cells of all its chunks. No Python per row: with the
   per-row cell encoder replaced by one that fails, the struct column still
   builds the same cells. A non-null cell missing its ratio, `{0.5, null,
   null}`, is left to the per-row reader, which mirrors the float:
   `{0.5, 1, 2, "seconds", "float"}`.
+- **One spelling of a value in memory** (`in_lowest_terms`). Every entry
+  of whole number structs into memory reduces through it, so two spellings of
+  one value never stand side by side to be compared member by member (the
+  MatchClaim table's succession check, field equality and the Projection
+  keys all compare members). What would show it broken: a ratio kept
+  unreduced, a sign left on the denominator, another member touched, a
+  null cell or a cell missing a side altered, a row moved. Evidence: the
+  number column `[{0.5, 2, 4}, {-1.5, 6, -4}, {0.0, 0, 5}, {3.0, 3, 1},
+  null, {0.5, null, null}]` gives exactly `[{0.5, 1, 2}, {-1.5, -3, 2},
+  {0.0, 0, 1}, {3.0, 3, 1}, null, {0.5, null, null}]`; a coordinate cell
+  column `[{0.5, 2, 4, "quarters", "fraction"}, {0.25, 1, 4, "seconds",
+  "float"}]` gives `[{0.5, 1, 2, "quarters", "fraction"}, {0.25, 1, 4,
+  "seconds", "float"}]` (its type kept, `unit` and `number_type` kept); a
+  slice reduces its own rows. `number_cell` of the dict `{0.5, 2, 4}` gives
+  `{0.5, 1, 2}` and of `{-1.5, 6, -4}` gives `{-1.5, -3, 2}`.
 - **Reading back keeps the number type.** `cell_coordinate` of each built
   cell equals the coordinate written, and its value has the written Python
   type (`Fraction`, `float`, `int`); `scalar=Duration` gives a `Duration`; a
@@ -886,11 +901,11 @@ a wrong row named. Evidence:
   `{1, 3, null, "quarters", "fraction"}`, null, `{null, null, 0.1,
   "seconds", "float"}`, `{139776, null, null, "samples", "int"}`, `{2, 3,
   null, "quarters", "fraction"}`; a fraction cell holding `4/1` keeps its
-  denominator `1` (it is a fraction). The encoder writes what memory
-  holds and nothing else: a memory number column holding `2/4` (value
-  `0.5`), `-6/4` and `0/5` as fractions is written `(2, 4, null)`,
-  `(-6, 4, null)`, `(0, 5, null)`, and its int and float rows are written
-  as they stand (a ratio a `Fraction` builds is reduced already).
+  denominator `1` (it is a fraction). The encoder writes the ratio it is
+  given and nothing else: a number column built by hand holding `2/4`
+  (value `0.5`), `-6/4` and `0/5` as fractions (memory never holds them:
+  every entry reduces) is written `(2, 4, null)`, `(-6, 4, null)`,
+  `(0, 5, null)`, and its int and float rows are written as they stand.
 - **Read back whole.** `cells_from_package` of that column equals the
   memory column built by `coordinate_cells` (`equals`, every member, the
   float's ratio `3602879701896397/36028797018963968` and the int's

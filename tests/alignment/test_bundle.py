@@ -801,6 +801,30 @@ class TestBundleClaimFilters:
         with pytest.raises(TypeError, match="timeline_ids"):
             bundle.get_matchstamp_at(0.0, "score", timeline_ids={"score"})
 
+    @pytest.mark.parametrize(
+        "narrowing",
+        [
+            {"within": {"zzz"}},
+            {"within": set()},
+            {"include_units": {TimeUnit.pixels}},
+        ],
+    )
+    def test_a_narrowing_keeping_no_timeline_is_refused(self, narrowing: dict) -> None:
+        """No bare ``StopIteration``: the error names the stamp's timelines."""
+        bundle, _ = _make_claim_filter_bundle()
+        message = (
+            "The filter keeps none of the timelines of the MatchStamp: "
+            "'score', 'audio', 'other'."
+        )
+        for getter, at in (
+            (bundle.get_matchstamp_at, 0.0),
+            (bundle.get_matchstamps_at, [0.0, 1.0]),
+            (bundle.get_matchstamp, 0.0),
+        ):
+            with pytest.raises(ValueError) as raised:
+                getter(at, "score", **narrowing)
+            assert str(raised.value) == message
+
 
 # endregion
 
@@ -1421,6 +1445,50 @@ class TestCreateMatchClaims:
             "n3",
             "n1",
         ]
+
+    @staticmethod
+    def _deep() -> tuple[AlignmentBundle, Timeline, Timeline, Timeline, Timeline]:
+        """``score`` ⊃ ``c`` (at 2) ⊃ ``g`` (at 1 in ``c``), and ``audio``."""
+        score = ContinuousLogicalTimeline(length=8, uid="score")
+        c = ContinuousLogicalTimeline(length=4, uid="c")
+        g = ContinuousLogicalTimeline(length=2, uid="g")
+        c.add_child(g, 1)
+        score.add_child(c, 2)
+        audio = ContinuousPhysicalTimeline(length=60.0, uid="audio")
+        audio.add_events([{"id": "o1", "start": 1.0}])
+        bundle = AlignmentBundle(id="deep")
+        bundle.add_timeline(score)
+        bundle.add_timeline(audio)
+        return bundle, score, c, g, audio
+
+    def test_the_own_event_answers_beside_a_child_with_descendants(self) -> None:
+        bundle, score, c, g, _ = self._deep()
+        score.add_events([{"id": "n1", "start": 7}])
+        c.add_events([{"id": "n1", "start": 1}])
+        g.add_events([{"id": "x9", "start": 1}])
+        (claim,) = bundle.create_match_claims([("n1", "score", "o1", "audio")])
+        assert (claim.timeline_a_id, claim.event_a_id) == ("score", "n1")
+        assert claim.start_anchor.coordinate_a == Coordinate(7, TimeUnit.quarters)
+
+    def test_an_id_a_child_and_its_descendant_hold_names_no_event(self) -> None:
+        bundle, score, c, g, audio = self._deep()
+        c.add_events([{"id": "n1", "start": 1}])
+        g.add_events([{"id": "n1", "start": 1}])
+        counts = (len(score.events), len(c.events), len(g.events), len(audio.events))
+        with pytest.raises(ValueError) as raised:
+            bundle.create_match_claims([("n1", "score", "o1", "audio")])
+        assert str(raised.value) == (
+            "The event ID 'n1' is held by 2 events of descendants of timeline "
+            "'score' (on 'c', 'g') and not by the timeline itself, so it names "
+            "no one event: name the timeline holding the event instead."
+        )
+        assert (
+            len(score.events),
+            len(c.events),
+            len(g.events),
+            len(audio.events),
+        ) == counts
+        assert len(bundle.match_claim_table) == 0
 
     def test_a_side_without_start_adds_nothing(self) -> None:
         bundle, score_tl, _, audio_tl, _ = _make_cross_group_bundle()

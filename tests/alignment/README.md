@@ -1119,6 +1119,45 @@ is a row naming a timeline not given; there is no coordinate-only form. The
 gold vector below exercises the per-row axes (a `fraction` quarters timeline
 beside two `float` ones) and the end columns make one row an interval claim.
 
+**Only a row without an end on either side is an instant claim.** An end
+given on one side alone, or one that is no number a cell holds (a NaN),
+must not turn an interval claim into an instant claim that is then written
+without complaint: the end anchor keeps its null coordinate and the reader
+refuses it. Evidence (`TestNullCoordinateRefused`), on `score` (quarters)
+↔ `audio` (seconds), row 0 an interval claim with both ends and row 1 the
+case: an end on side A only (`[2/3, 1]`, `[0.75, None]`) is refused with
+`MatchClaim table row 1 end_anchor.coordinate_b: the coordinate is null.`,
+an end on side B only (`[2/3, None]`, `[0.75, 2.0]`) with `... row 1
+end_anchor.coordinate_a: ...`, a NaN end on side B (`[2/3, 1]`, `[0.75,
+nan]`) with `... row 1 end_anchor.coordinate_b: ...`, and NaN on both sides
+(`[2/3, nan]`, `[0.75, nan]`) with `... row 1 end_anchor.coordinate_a:
+...`; a null end on both sides stays the instant claim of
+`test_from_columns_end_columns`.
+
+### One spelling of a value in memory (`TestOneSpelling`)
+
+Any fraction is valid, `2/4` included, and compares by value. Three places
+compare a table's cells member by member: field equality, the succession
+check of a file written over (its leaf columns) and the Projection keys. They
+compare values because memory holds one spelling of each value: every entry
+of whole cells reduces their ratio (`in_lowest_terms`). What would show it
+broken: a field built from `2/4` unequal to the one built from `1/2`, a
+field refused when written over its own file or over the `1/2` file, a file
+read back unequal to the field written. Evidence, on `score` (quarters,
+fraction) ↔ `audio` (seconds, float), one claim `n1` ↔ `o1` at `1/2` ↔
+`1.0`:
+
+- `from_columns` with `coordinate_a` a number-struct column holding
+  `{0.5, 2, 4}` equals the field built from `Fraction(1, 2)`, and its cell
+  holds `{0.5, 1, 2, "quarters", "fraction"}`;
+- `from_table` of that field's table with the cell rewritten to `(2, 4)`
+  equals it;
+- through a file (the fields held by a bundle, which mints `claim_1`): the
+  `2/4` field written, written again over its own file, then the `1/2`
+  field written over it, all accepted; and the other way round, the `1/2`
+  field written first and the `2/4` field over it; `from_parquet` of the
+  file equals both fields.
+
 ### The belief filter
 
 `filter(believer=..., beliefs=...)` is the belief filter of the unified
@@ -1271,6 +1310,8 @@ timeline.
 | `test_from_columns_writes_each_row_on_its_axis` | row 0 `A` is `Fraction(0)` quarters, row 2 `B` `1.0` seconds, the events named, `certainty` 1.0 |
 | `test_from_columns_end_columns` | an end on both sides makes the row an interval claim, a null end an instant |
 | `test_from_columns_refusals` | unequal lengths, a null event id, a timeline not given, one end column alone |
+| `TestNullCoordinateRefused` | a null coordinate refused by every reader; an end on one side only or a NaN end refused by `from_columns`, as specified above |
+| `TestOneSpelling` | an unreduced fraction is held reduced, so fields compare and succeed by value, as specified above |
 | `test_getitem_first_row` | `f[0]` is a `MatchClaim`, `A`↔`B`, synchronous instant, events `a0`/`b0`, provenance identity `is` the field's |
 | `test_getitem_injects_provenance` | the `provenance` column is null and a materialised claim carries the field's |
 | `test_getitem_out_of_range` | `f[3]` / `f[-4]` raise `IndexError` |
@@ -1735,6 +1776,24 @@ then fails to load. Each test pins one of these with exact values.
   given ID, both minted `bundle_1`) cannot be told apart: `to_file` refuses
   with its exact message and writes nothing. A bundle of one scope writes
   no `scope` column (the synthetic package above).
+- **An unreduced fraction in the package's tables** (T104's "any fraction
+  is valid" at the file boundary, through the whole path). A package of
+  `score` (quarters, fraction, 8; `n1` at 1/2) and `audio` (seconds, float,
+  60.0; `o1` at 1.0) with `claim_1` `n1` ↔ `o1` and `claim_2` the position
+  3/2 on `score` ↔ `o1` (a Projection `projection_1` on `score` at 3/2, of
+  `audio`/`o1`) is written, then both files are rewritten by hand with every
+  fraction spelled doubled: the MatchClaim cells `(2, 4, null)` and
+  `(6, 4, null)`, the Projection's start `(6, 4, null)`. `from_file` reads
+  it: its `match_claim_table` equals the writer's and `score` holds one
+  Projection, `projection_1` at `Coordinate(3/2, quarters)` (cell
+  `{1.5, 3, 2}`). `add_projections` of the Projection of `audio`/`o1` at
+  `Coordinate(3/2, quarters)` on the `score` read (the package holds no
+  Note: a manifest names no event, so the Projection is its one event)
+  returns `["projection_1"]` and `score` still holds one event: get-or-add
+  matches a cell read as `6/4` with one placed as `3/2`. Written
+  back over the rewritten files (the succession rule compares values, so
+  the file's `6/4` is the bundle's `3/2`), the three files are byte for byte
+  the ones first written (a writer respells reduced).
 - **A Projections table that breaks the format** (a row naming the
   timeline `ghost`) makes `from_file` raise TimeToShare's `TableError`.
 - **Event IDs are unique per timeline.** `projection_1` on `audio` and on
@@ -2354,7 +2413,7 @@ deterministic order was chosen, so "stable but wrong" also fails.
 
 | Class | Tests | Purpose |
 |-------|-------|---------|
-| `TestMatchStamp` | 14 | Stamp construction, retrieval, filtering, dictionary round trip, renderings |
+| `TestMatchStamp` | 15 | Stamp construction, retrieval, filtering, dictionary round trip, renderings; `filter_by_timelines` keeping none of the stamp's timelines (`within={"zzz"}`, `within=set()`, `id_pattern=r"^zzz$"` on a stamp of `tl_a`, `tl_b`, `tl_c`) raises `ValueError` `The filter keeps none of the timelines of the MatchStamp: 'tl_a', 'tl_b', 'tl_c'.`, never a bare `StopIteration` |
 | `TestMatchGraphBasic` | 8 | Node, edge and claim counts; node and coordinate retrieval; connectivity |
 | `TestMatchGraphStamps` | 4 | Instant claim → one stamp, interval claim → two, components → stamps |
 | `TestMatchGraphGroupExtension` | 4 | Inferred edges, converted coordinates, `include_inferred=False` |
@@ -2630,12 +2689,12 @@ these lazily on first use and caches them until the table changes.
 | `TestCommensurabilityWithClaims` | 4 | claims make score–audio and image–audio commensurable; without claims, or with a NOMATCH claim only, they are not |
 | `TestCacheInvalidation` | 4 | no WarpMap before the first transfer, one after; a second transfer reuses the cached objects; a new claim clears the cache; the rebuilt map still gives score 100 → audio 50 |
 | `TestAddMatchClaims` | 6 | chaining; three claims are three rows, `claim_1`–`claim_3`, read back equal to the claims added and recording the bundle; a fourth call adds one row minted `claim_4`; an unknown timeline (`['ghost'] that this bundle does not hold`) and an off-axis coordinate (`Row 1 start_anchor.coordinate_b is in quarters (fraction)` / `in seconds (fraction)`, `but timeline 'audio' counts in seconds (float)`) are refused with nothing added |
-| `TestCreateMatchClaims` | 11 | an event ID names an event of the timeline or of a descendant, and one ID held twice there names none (an event ID is unique on its own timeline only): on `score` (quarters, 8) with children `c` at 0 and `d` at 4 (length 4 each), `c` holding `n1` at 1, `d` holding `n1` at 1 and `n3` at 2, the pair `n3` ↔ audio `o1` makes one claim at score 6 (the descendant's event, at `score`'s coordinate); the pair `n1` ↔ `o1`, after a projected pair in the same call, is refused (`ValueError`, `The event ID 'n1' is held by 2 events of descendants of timeline 'score' (on 'c', 'd') and not by the timeline itself, so it names no one event: name the timeline holding the event instead.`) and nothing is added (no claim, no Projection), and the advice works: `n1` on `c` resolves to `c`'s event at 1, on `d` to `d`'s at 1; the timeline's own event answers for its ID: with `n3` added to `score` itself (at 3), `n3` on `score` resolves to `score`'s own event at 3 (not `d`'s at 6), `n3` on `d` still to `d`'s at 2, and `n1` added to `score` (at 7) makes `n1` on `score` resolve at 7 where it was refused before; a second call with the same pairs names the same Projections and adds no event (audio `o1` + `projection_1`, score `projection_1` of `o1` + `projection_2`, before and after), its claims `claim_3`, `claim_4`; a pair naming an unknown event id (`Pair 1: no event with id 'nope' on timeline 'audio' or its children (0 events of its own)`) and a dict without `start` (`Pair 1: the side on timeline 'audio' names no event of it and states no 'start': ...`) after a projected pair add nothing; the provenance given lands on the claim made and on the claim read back; `agent`, `agent_identifier` and `decision_criteria` are refused (`TypeError`), nothing added; a seconds position projected onto a samples timeline (C-Map samples → seconds at 1/44100): 2.0 s is sample 88200, so the claim between the note `o1` (2.5 s) and `projection_1` stores `Coordinate(88200, samples)` with an `int` value, read back equal, and the Projection's `projection_of` is `{"timeline_id": "performance", "event_id": "o1"}` |
+| `TestCreateMatchClaims` | 13 | an event ID names an event of the timeline or of a descendant, and one ID held twice there names none (an event ID is unique on its own timeline only): on `score` (quarters, 8) with children `c` at 0 and `d` at 4 (length 4 each), `c` holding `n1` at 1, `d` holding `n1` at 1 and `n3` at 2, the pair `n3` ↔ audio `o1` makes one claim at score 6 (the descendant's event, at `score`'s coordinate); the pair `n1` ↔ `o1`, after a projected pair in the same call, is refused (`ValueError`, `The event ID 'n1' is held by 2 events of descendants of timeline 'score' (on 'c', 'd') and not by the timeline itself, so it names no one event: name the timeline holding the event instead.`) and nothing is added (no claim, no Projection), and the advice works: `n1` on `c` resolves to `c`'s event at 1, on `d` to `d`'s at 1; the timeline's own event answers for its ID: with `n3` added to `score` itself (at 3), `n3` on `score` resolves to `score`'s own event at 3 (not `d`'s at 6), `n3` on `d` still to `d`'s at 2, and `n1` added to `score` (at 7) makes `n1` on `score` resolve at 7 where it was refused before; one level deeper (`score` (quarters, 8) ⊃ `c` (offset 2, length 4) ⊃ `g` (offset 1 in `c`, length 2)), where `c` reports its own events beside a descendant's: with `score` holding `n1` at 7, `c` `n1` at 1 and `g` `x9` at 1, `n1` on `score` resolves to `score`'s own event at 7 (a holder read from a null `source_timeline` alone would take `c`'s row for `score`'s and refuse, naming `'None'`); with `c` and `g` each holding `n1` at 1 and `score` none, `n1` on `score` is refused (`The event ID 'n1' is held by 2 events of descendants of timeline 'score' (on 'c', 'g') and not by the timeline itself, so it names no one event: name the timeline holding the event instead.`), nothing added, never resolved to `c`'s; a second call with the same pairs names the same Projections and adds no event (audio `o1` + `projection_1`, score `projection_1` of `o1` + `projection_2`, before and after), its claims `claim_3`, `claim_4`; a pair naming an unknown event id (`Pair 1: no event with id 'nope' on timeline 'audio' or its children (0 events of its own)`) and a dict without `start` (`Pair 1: the side on timeline 'audio' names no event of it and states no 'start': ...`) after a projected pair add nothing; the provenance given lands on the claim made and on the claim read back; `agent`, `agent_identifier` and `decision_criteria` are refused (`TypeError`), nothing added; a seconds position projected onto a samples timeline (C-Map samples → seconds at 1/44100): 2.0 s is sample 88200, so the claim between the note `o1` (2.5 s) and `projection_1` stores `Coordinate(88200, samples)` with an `int` value, read back equal, and the Projection's `projection_of` is `{"timeline_id": "performance", "event_id": "o1"}` |
 | `TestBeliefFilter` | 2 | `claim_1` (0 → 0, ana true), `claim_2` (100 → 60, ana false), `claim_3` (200 → 100, no belief). `get_match_claims`: no believer → all three; `believer="ana"` → `claim_1`, `claim_3`; `beliefs=["true"]` → `claim_1`; `["undecided"]` → `claim_3`; `["true", "false"]` → `claim_1`, `claim_2`. `get_matchstamp_at(100, "score")`: no believer → `claim_2`'s anchor, audio and midi 60.0, not interpolated; ana → interpolated between `claim_1` and `claim_3`, audio and midi 50.0; ana, `["true"]` → one claim cannot interpolate: score 100 and image 200 alone |
 | `TestBeliefFilterIris` | 6 | the three claims with ana's full IRI, prefix `people` declared: `believer="people:ana"` and the full IRI both → `claim_1`, `claim_3`, with `["true"]` → `claim_1`; beliefs recorded as `people:ana`, believer the full IRI → `claim_1`, `claim_3`; `get_matchstamp_at(100, "score", believer="people:ana")` interpolated, audio and midi 50.0; `get_matchstamps(claims=all three, believer="people:ana")` → two stamps, at score 0.0 and 200.0; `ClaimFilter(believer="people:ana").matches_claim` → `[True, False, True]` on the bundle's claims, `True` on a free copy of `claim_2`; `MatchGraph(all three, believer="people:ana", source=bundle)` holds `claim_1`, `claim_3`; before the declaration `people:ana` keeps all three, after it `claim_1`, `claim_3` |
 | `TestAddMatchClaimField` | 6 | chaining; the five rows join the table, the bundle minting `claim_1`–`claim_5`, equal to the field's claims but for the ids, the field left as given (ids `None`); two `from_columns` fields (two loaders' fields) join one bundle as `claim_1`–`claim_5` and `claim_6`–`claim_10`; score 100 → audio 50 exactly; score 123.456 interpolates to audio and midi 61.728 (50 + 23.456 / 2) and image 246.912, flagged interpolated; a claim added after the field is minted `claim_6`, read as the sixth, and score 175 answers audio 87.5 exactly |
 | `TestBundleEquality` | 3 | two bundles built alike over the same timelines are equal, also after one of them was queried (`transfer` 75 → 37.5 fills its caches); one claim more, or a belief added to one claim's provenance, makes them unequal |
-| `TestBundleClaimFilters` | 4 | (`score` quarters as Fractions, `audio` and `other` seconds as floats; one claim at the origins per pair) `timeline_id="score"` → the first two; `timeline_ids={"audio"}` and `id_pattern="^audio$"` → the first and third; `between=("score", "audio")` → the first; `include_units={seconds}` → the third only (both its timelines count seconds), `{pixels}` → none; `within={"score", "audio"}` → the first alone (both its timelines in the set; `timeline_ids` of the same set keeps all three, each has a side in it), on `get_match_claims` and `get_claim_field` alike, and `within` meets `include_units={seconds}` (`within={"score", "audio"}` with it → none, `within={"audio", "other"}` with it → the third); a stamp filtered with `within={"score", "audio"}` holds exactly score `0` (quarters, Fraction) and audio `0.0` (seconds), and the stamp getters take no `timeline_ids` (`TypeError`): one name, one meaning |
+| `TestBundleClaimFilters` | 5 | (`score` quarters as Fractions, `audio` and `other` seconds as floats; one claim at the origins per pair) `timeline_id="score"` → the first two; `timeline_ids={"audio"}` and `id_pattern="^audio$"` → the first and third; `between=("score", "audio")` → the first; `include_units={seconds}` → the third only (both its timelines count seconds), `{pixels}` → none; `within={"score", "audio"}` → the first alone (both its timelines in the set; `timeline_ids` of the same set keeps all three, each has a side in it), on `get_match_claims` and `get_claim_field` alike, and `within` meets `include_units={seconds}` (`within={"score", "audio"}` with it → none, `within={"audio", "other"}` with it → the third); a stamp filtered with `within={"score", "audio"}` holds exactly score `0` (quarters, Fraction) and audio `0.0` (seconds), and the stamp getters take no `timeline_ids` (`TypeError`): one name, one meaning; a narrowing that keeps none of the stamp's timelines (`within={"zzz"}`, `within=set()`, `include_units={pixels}`) raises `ValueError` `The filter keeps none of the timelines of the MatchStamp: 'score', 'audio', 'other'.` on `get_matchstamp_at`, `get_matchstamps_at` and the dispatcher `get_matchstamp`, never a bare `StopIteration` (which a generator would turn into a `RuntimeError`) |
 | `TestAddGroup` | 3 | a pre-built group with its timelines; a duplicate group id refused; cross-group transfer through added groups (100 → 50) |
 | `TestSeveralGroups` | 11 | a timeline in several groups (see "A Timeline in Several Groups") |
 | Creation, timelines, groups, within-group transfer, a part as a child, order independence, commensurability, chaining | 32 | ids and names, registration and lookup, `grouped_with`/`as_group`, a child joining with its root (section 0 s = reference 25 s, section 100 s = reference 125 s), linear transfer within a group (tl1 50 → tl2 100), exact ratios within a group (1/3 of 3 quarters → 7/9 of 7), results independent of the order timelines are added |

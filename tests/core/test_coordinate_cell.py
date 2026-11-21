@@ -24,6 +24,8 @@ from timetoalign.core.time import (
     cell_coordinate,
     cells_from_package,
     coordinate_cells,
+    in_lowest_terms,
+    number_cell,
     numbers_from_package,
     package_cells,
     package_numbers,
@@ -152,7 +154,8 @@ class TestNumberStructColumns:
         None,
         {"value": 0.5, "numerator": 2, "denominator": 4},
     ]
-    EXPECTED = [_quarters(3, 4), None, _quarters(2, 4)]
+    # Memory holds one spelling of a value: 2/4 is held as 1/2.
+    EXPECTED = [_quarters(3, 4), None, _quarters(1, 2)]
 
     def _column(self) -> pa.StructArray:
         return pa.array(self.NUMBERS, type=RATIONAL_STRUCT_TYPE)
@@ -213,6 +216,80 @@ class TestNumberStructColumns:
                 "number_type": "float",
             }
         ]
+
+
+class TestLowestTerms:
+    def test_a_number_column_is_held_in_lowest_terms(self) -> None:
+        column = pa.array(
+            [
+                {"value": 0.5, "numerator": 2, "denominator": 4},
+                {"value": -1.5, "numerator": 6, "denominator": -4},
+                {"value": 0.0, "numerator": 0, "denominator": 5},
+                {"value": 3.0, "numerator": 3, "denominator": 1},
+                None,
+                {"value": 0.5, "numerator": None, "denominator": None},
+            ],
+            RATIONAL_STRUCT_TYPE,
+        )
+        reduced = in_lowest_terms(column)
+        assert reduced.type == RATIONAL_STRUCT_TYPE
+        assert reduced.to_pylist() == [
+            {"value": 0.5, "numerator": 1, "denominator": 2},
+            {"value": -1.5, "numerator": -3, "denominator": 2},
+            {"value": 0.0, "numerator": 0, "denominator": 1},
+            {"value": 3.0, "numerator": 3, "denominator": 1},
+            None,
+            {"value": 0.5, "numerator": None, "denominator": None},
+        ]
+
+    def test_a_cell_column_keeps_its_axis(self) -> None:
+        cells = pa.array(
+            [
+                _quarters(2, 4),
+                {
+                    "value": 0.25,
+                    "numerator": 1,
+                    "denominator": 4,
+                    "unit": "seconds",
+                    "number_type": "float",
+                },
+            ],
+            COORDINATE_CELL_TYPE,
+        )
+        reduced = in_lowest_terms(cells)
+        assert reduced.type == COORDINATE_CELL_TYPE
+        assert reduced.to_pylist() == [
+            _quarters(1, 2),
+            {
+                "value": 0.25,
+                "numerator": 1,
+                "denominator": 4,
+                "unit": "seconds",
+                "number_type": "float",
+            },
+        ]
+
+    def test_a_slice_reduces_its_own_rows(self) -> None:
+        column = pa.array(
+            [_quarters(9, 3), _quarters(2, 4), _quarters(6, 4)],
+            COORDINATE_CELL_TYPE,
+        ).slice(1)
+        assert in_lowest_terms(column).to_pylist() == [
+            _quarters(1, 2),
+            _quarters(3, 2),
+        ]
+
+    def test_a_cell_given_whole_is_reduced(self) -> None:
+        assert number_cell({"value": 0.5, "numerator": 2, "denominator": 4}) == {
+            "value": 0.5,
+            "numerator": 1,
+            "denominator": 2,
+        }
+        assert number_cell({"value": -1.5, "numerator": 6, "denominator": -4}) == {
+            "value": -1.5,
+            "numerator": -3,
+            "denominator": 2,
+        }
 
 
 class TestCellCoordinate:

@@ -101,7 +101,7 @@ from .claims import (
     _join_claims,
     _refuse_held_claim_ids,
 )
-from .filters import ClaimFilter, _meet, belief_context, believed
+from .filters import ClaimFilter, belief_context, believed, meet
 from .graph import MatchGraph, MatchIntervalStamp, MatchStamp
 from .matchline import MatchLine
 from .warpmap import AmbiguousWarpMapError, WarpMap
@@ -2215,7 +2215,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             timeline_ids=filt.timeline_ids,
             id_pattern=filt.id_pattern,
             between=filt.between,
-            within=_meet(
+            within=meet(
                 filt.within, filt.domain_unit_timeline_ids(self._known_timelines())
             ),
             synchronous_only=filt.synchronous_only,
@@ -2796,7 +2796,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         Raises:
             TypeError: If ``at`` is not a supported coordinate or Interval.
             ValueError: If timeline_id is None and ``at`` is not an
-                IdCoordinate.
+                IdCoordinate, or if ``within``, ``id_pattern``,
+                ``include_domains`` and ``include_units`` keep none of the
+                stamp's timelines (the message names them).
             KeyError: If timeline_id is not in the bundle.
 
         Examples:
@@ -3005,40 +3007,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 include_domains=include_domains,
                 include_units=include_units,
             )
-            filter_timelines = known
-            filtered_coords = {
-                tl_id: coord
-                for tl_id, coord in stamp.coordinates.items()
-                if filt.matches_timeline(
-                    tl_id,
-                    timelines=filter_timelines,
-                )
-            }
-            remaining = set(filtered_coords.keys())
-            stamp = MatchStamp(
-                coordinates=filtered_coords,
-                source_id=(
-                    stamp.source_id
-                    if stamp.source_id in filtered_coords
-                    else next(iter(filtered_coords))
-                ),
-                stated_pairs=[
-                    (a, b)
-                    for a, b in stamp.stated_pairs
-                    if a in remaining and b in remaining
-                ],
-                inferred_pairs=[
-                    (a, b)
-                    for a, b in stamp.inferred_pairs
-                    if a in remaining and b in remaining
-                ],
-                source=stamp.source,
-                is_interpolated=stamp.is_interpolated,
-                conversion_maps=stamp.conversion_maps,
-                interval_claims=(
-                    stamp.interval_claims if stamp.source_id in filtered_coords else []
-                ),
-            )
+            stamp = stamp._narrowed(filt, timelines=known)
 
         return stamp
 

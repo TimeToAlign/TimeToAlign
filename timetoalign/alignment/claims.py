@@ -104,6 +104,7 @@ from timetoalign.core.time import (
     compare_number_column,
     coordinate_cell_projector,
     coordinate_cells,
+    in_lowest_terms,
     package_cells,
     struct_to_coordinate,
     struct_to_rational,
@@ -1777,6 +1778,37 @@ register_value_projector(AlignmentAnchor, "coordinate_b", coordinate_cell_projec
 _COORDINATE_DICT_KEYS: tuple[str, ...] = ("unit", "number_type", "value")
 
 
+def _number_column(
+    values: Sequence[int | float | Fraction | None] | pa.Array | pa.ChunkedArray,
+) -> pa.Array | np.ndarray:
+    """One number per row as an Arrow array, or as objects where Arrow has no type.
+
+    Exact numbers (Fractions) have no Arrow type and are kept as objects.
+    """
+    if isinstance(values, pa.ChunkedArray):
+        return values.combine_chunks()
+    if isinstance(values, pa.Array):
+        return values
+    try:
+        return pa.array(values)
+    except (pa.ArrowInvalid, pa.ArrowTypeError):
+        return np.asarray(list(values), dtype=object)
+
+
+def _given(
+    values: Sequence[int | float | Fraction | None] | pa.Array | pa.ChunkedArray,
+) -> pa.BooleanArray:
+    """Per row whether a number is given (not null), whatever number it is.
+
+    A NaN is given, so that its cell (a null, since no cell holds it) is
+    refused rather than read as no number.
+    """
+    values = _number_column(values)
+    if isinstance(values, pa.Array):
+        return values.is_valid()
+    return pa.array([value is not None for value in values], type=pa.bool_())
+
+
 def _timeline_cells(
     values: Sequence[int | float | Fraction | None] | pa.Array | pa.ChunkedArray,
     timeline_ids: pa.Array,
@@ -1799,14 +1831,7 @@ def _timeline_cells(
         ValueError: If a row names a timeline whose axis is not given, or
             the values and the timeline ids differ in length.
     """
-    if isinstance(values, pa.ChunkedArray):
-        values = values.combine_chunks()
-    if not isinstance(values, pa.Array):
-        try:
-            values = pa.array(values)
-        except (pa.ArrowInvalid, pa.ArrowTypeError):
-            # Exact numbers (Fractions) have no Arrow type: kept as objects.
-            values = np.asarray(list(values), dtype=object)
+    values = _number_column(values)
     if len(values) != len(timeline_ids):
         raise ValueError("Coordinate values and timeline ids must have equal length.")
     named = pc.unique(timeline_ids).to_pylist()
@@ -2056,8 +2081,8 @@ class MatchClaimField(SemanticField[MatchClaim]):
             timelines: Every timeline the rows name: timelines, or a mapping
                 from a timeline id to a timeline or its ``(unit,
                 number_type)`` pair.
-            end_coordinate_a: The end of each event on timeline A (null for
-                an instant).
+            end_coordinate_a: The end of each event on timeline A (null on
+                both sides for an instant claim).
             end_coordinate_b: The end of each event on timeline B.
             certainty: How certain every claim is, in [0, 1].
             provenance: Shared provenance for every claim in the field.
@@ -2068,8 +2093,9 @@ class MatchClaimField(SemanticField[MatchClaim]):
         Raises:
             ValueError: If the inputs do not all have the same length, a row
                 names no event, a row names a timeline not among
-                *timelines*, or the end columns are given one without the
-                other.
+                *timelines*, the end columns are given one without the
+                other, a row gives an end on one side only, or a coordinate
+                is a number no cell holds (a NaN).
         """
         axes = _axes(timelines)
         tl_a = cls._string_array(timeline_a_ids)
@@ -2115,10 +2141,17 @@ class MatchClaimField(SemanticField[MatchClaim]):
             )
         }
         if end_coordinate_a is not None:
-            end_a = _timeline_cells(end_coordinate_a, tl_a, axes)
-            end_b = _timeline_cells(end_coordinate_b, tl_b, axes)
+            # Only a row without an end on either side is an instant claim:
+            # an end given on one side alone, or one no cell can hold (a
+            # non-finite number), leaves a null coordinate in the end
+            # anchor, which the reader refuses.
             anchors["end_anchor"] = cls._anchor_array(
-                end_a, end_b, mask=pc.or_(pc.is_null(end_a), pc.is_null(end_b))
+                _timeline_cells(end_coordinate_a, tl_a, axes),
+                _timeline_cells(end_coordinate_b, tl_b, axes),
+                mask=pc.and_(
+                    pc.invert(_given(end_coordinate_a)),
+                    pc.invert(_given(end_coordinate_b)),
+                ),
             )
         true_column = pa.array(np.ones(n, dtype=bool), type=pa.bool_())
         struct_array = cls._assemble(
@@ -2445,6 +2478,9 @@ class MatchClaimField(SemanticField[MatchClaim]):
                     f"Column {sub_field.name!r} has type {stored}, which is not "
                     f"the type of the MatchClaim property, {sub_field.type}."
                 )
+        # Memory holds one spelling of a value (2/4 is held as 1/2), so the
+        # cells compare by value wherever they are compared.
+        table = _anchors_converted(table, lambda cells, _name: in_lowest_terms(cells))
         struct_array = pa.StructArray.from_arrays(
             [table.column(name).combine_chunks() for name in columns],
             fields=list(cls.pa_schema),

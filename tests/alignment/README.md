@@ -1451,8 +1451,8 @@ then fails to load. Each test pins one of these with exact values.
   `score`/`n2`), `projection_3` (22050, no source) — each ID minted on its
   own timeline, so `projection_1` is held twice, once per timeline. The
   MatchClaim table passes TimeToShare's check against the manifest written
-  (`check_match_claims`); the Projections table's one problem is the one
-  below. `bundle.resources` and the
+  (`check_match_claims`), and so does the Projections table
+  (`projection_problems` is empty). `bundle.resources` and the
   manifest name `resource_1` (`MatchClaim`, timelines `audio`, `part`,
   `pcm`, `score`) and `resource_2` (`Projection`, `audio`, `pcm`), each
   with the Parquet media type, and `size` and `integrity` equal to the
@@ -1487,18 +1487,36 @@ then fails to load. Each test pins one of these with exact values.
   names the four timelines the claims name; the Projections table, new,
   gets `resource_8` beside the manifest. A URL with a scheme
   (`https://example.org/claims.parquet`) is refused.
-- **Merged claims.** A bundle from `from_bundles` of two bundles holding
-  claims keeps the second's in its own scope, which the table file cannot
-  name yet: `to_file` is refused with its exact message and writes nothing.
+- **Merged claims, in their scopes.** `from_bundles` of `source_a` and
+  `source_b`, each holding `claim_1` (an instant claim between its own two
+  timelines), with `claim_1` then created in the merged bundle `merged`
+  itself: three claims named `claim_1`, in three scopes. `to_file` writes
+  the MatchClaim table with the key column `scope`, per row `source_a`,
+  `source_b`, null (the package's own), which TimeToShare's check accepts
+  against the manifest written, and which `MatchClaimField.from_parquet`
+  refuses (`This MatchClaim table mixes scopes ...`: a field holds no
+  scopes, a bundle reads them); read back, `claim_scopes` is `("merged",
+  "source_a", "source_b")`, `claim_table` (the scope keys `[1, 2, 0]`
+  included) and `to_dict()` equal the writer's, and a second write gives
+  the same bytes. Written over its own files the merged bundle changes no
+  byte; a merge of `source_a` and `source_c` written over them lacks
+  `claim_1` of the scope `source_b` and is refused (`The new MatchClaim
+  table lacks the MatchClaim 'claim_1' of the scope 'source_b' of the
+  existing one: ...`), the files keeping their bytes: a MatchClaim is its
+  scope and its ID. Scopes are named in the file by their bundles' IDs, so
+  two scopes holding claims under one name (two source bundles without a
+  given ID, both minted `bundle_1`) cannot be told apart: `to_file` refuses
+  with its exact message and writes nothing. A bundle of one scope writes
+  no `scope` column (the synthetic package above).
 - **A Projections table that breaks the format** (a row naming the
   timeline `ghost`) makes `from_file` raise TimeToShare's `TableError`.
 - **Event IDs are unique per timeline.** `projection_1` on `audio` and on
   `pcm` are two events (an event is named by its timeline and its ID), and
-  the reader accepts them; TimeToShare's check, which asks every ID of the
-  table once, reports exactly that one problem (`duplicate_id`, row 2) and
-  nothing else. One timeline holding an ID twice (row 3 of the file
-  rewritten to `projection_1`) is refused: `Projections table row 3:
-  timeline 'pcm' holds the Projection 'projection_1' twice`.
+  the reader accepts them, as TimeToShare's check does. One timeline
+  holding an ID twice (row 3 of the file rewritten to `projection_1`) is
+  refused by that check, which the reader raises as it stands: a
+  `TableError` `the ID 'projection_1' is given twice on the timeline
+  'pcm'`.
 
 ### Conformance with TimeToShare's fixture package
 

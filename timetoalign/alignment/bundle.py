@@ -92,6 +92,7 @@ from .claims import (
     MatchClaimField,
     _claims_between_events,
     _join_claims,
+    _refuse_held_claim_ids,
 )
 from .filters import ClaimFilter, belief_context, believed
 from .graph import MatchGraph, MatchIntervalStamp, MatchStamp
@@ -1688,6 +1689,66 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             )
         self.match_claim_table = self.match_claim_table._concatenated(rows)
         self._invalidate_warp_cache()
+
+    def _take_scoped_rows(self, rows: MatchClaimField, scopes: pa.Array) -> None:
+        """Append rows read with the scope of each: null the bundle's own.
+
+        Every scope a row names becomes a scope of this bundle, after those
+        it holds, in the order of its first row (:attr:`claim_scopes`); the
+        ids are kept, each in its scope, the bundle's own refused where the
+        bundle holds them already.
+
+        Raises:
+            ValueError: If a row holds no id, or one of the bundle's own an
+                id the bundle holds.
+        """
+        missing = pc.is_null(rows._ids)
+        if pc.any(missing).as_py():
+            row = pc.index(missing, True).as_py()
+            raise ValueError(
+                f"MatchClaim table row {row} holds no id, and a table mixing "
+                f"scopes names every MatchClaim by its scope and its id."
+            )
+        own = pc.is_null(scopes)
+        _refuse_held_claim_ids(
+            rows._ids.filter(own), self._own_claim_ids(), scope="bundle"
+        )
+        self._check_rows(rows)
+        names = pc.unique(scopes.filter(pc.invert(own)))
+        offset = len(self.claim_scopes)
+        self._claim_scope_ids.extend(names.to_pylist())
+        keys = pc.add(
+            pc.cast(pc.index_in(scopes, value_set=names), pa.int32()), np.int32(offset)
+        )
+        self._append_rows(rows, pc.fill_null(keys, np.int32(0)))
+
+    def _scope_names(self) -> pa.Array | None:
+        """The name of each row's scope as the MatchClaim table file holds it.
+
+        Null for the bundle's own, else the id of the bundle the scope comes
+        from (:attr:`claim_scopes`); ``None`` while every row is the
+        bundle's own.
+
+        Raises:
+            ValueError: If two scopes holding MatchClaims share a name, which
+                the file could not tell apart.
+        """
+        keys = self._claim_scope
+        if keys is None or not pc.any(pc.not_equal(keys, 0)).as_py():
+            return None
+        scopes = self.claim_scopes
+        by_name: dict[str, list[int]] = {}
+        for key in sorted(set(pc.unique(keys).to_pylist()) - {0}):
+            by_name.setdefault(scopes[key], []).append(key)
+        for name, held in by_name.items():
+            if len(held) > 1:
+                raise ValueError(
+                    f"Bundle {quote_id(self.id)} holds MatchClaims of {len(held)} "
+                    f"scopes named {quote_id(name)} (keys {held} of claim_scopes), "
+                    f"which the MatchClaim table's column 'scope' cannot tell "
+                    f"apart: give the bundles merged distinct ids."
+                )
+        return pa.array([None, *scopes[1:]], pa.string()).take(keys)
 
     def _take_claims_of(self, bundle: "AlignmentBundle") -> None:
         """Append another bundle's claims, every id kept in its scope.
@@ -4284,7 +4345,11 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         IDs and reuses a Projection the timeline already holds, as one read
         from the manifest's event rows), after TimeToShare's check of the
         table against the manifest. Then the MatchClaim table, added as
-        :meth:`add_match_claim_field` adds a field, every ID kept. A table
+        :meth:`add_match_claim_field` adds a field, every ID kept; where its
+        key column ``scope`` names other scopes than the package's own (a
+        merged bundle written), each becomes a scope of the bundle, in the
+        order of its first row, its rows keeping their IDs in it
+        (:attr:`claim_scopes`). A table
         the manifest names that does not lie there is not read: the
         manifest loads without it, and its entry stays in
         :attr:`resources`. A table is read as it lies, whatever it was
@@ -4310,14 +4375,22 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         if "MatchClaim" in named:
             path = named["MatchClaim"].path_in(directory)
             if path.is_file():
-                self.add_match_claim_field(MatchClaimField.from_parquet(path))
+                claims, scopes = MatchClaimField._read_parquet(path)
+                if scopes is None:
+                    self.add_match_claim_field(claims)
+                else:
+                    self._take_scoped_rows(claims, scopes)
 
     def _write_tables(self, directory: Path) -> None:
         """Write the package tables into *directory* and name them in :attr:`resources`.
 
         A bundle holding MatchClaims writes its MatchClaim table
         (:attr:`match_claim_table`, :meth:`MatchClaimField.to_parquet`, so
-        that a table already lying there must be succeeded) and, where a
+        that a table already lying there must be succeeded), with the key
+        column ``scope`` where it holds MatchClaims merged from other
+        bundles (:meth:`from_bundles`): per row the id of the bundle its
+        scope comes from (:attr:`claim_scopes`), null for its own. A scope
+        holding no MatchClaim is not written, so it is not read back. And, where a
         timeline holds Projections, the Projections table of every timeline
         of its trees, sorted by timeline ID
         (:func:`~timetoalign.timelines.manifest.projection_table`). Each
@@ -4331,24 +4404,15 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         writes no table and keeps its :attr:`resources` as they are.
 
         Raises:
-            ValueError: If a MatchClaim of the bundle lies in another
-                bundle's scope (:meth:`from_bundles`), which the MatchClaim
-                table cannot name yet; or as
-                :meth:`MatchClaimField.to_parquet` refuses the table.
+            ValueError: If two scopes holding MatchClaims share a name (two
+                bundles merged under one id), which the file could not tell
+                apart; or as :meth:`MatchClaimField.to_parquet` refuses the
+                table.
         """
         claims = self.match_claim_table
         if len(claims) == 0:
             return
-        if (
-            self._claim_scope is not None
-            and pc.any(pc.not_equal(self._claim_scope, 0)).as_py()
-        ):
-            raise ValueError(
-                f"Bundle {quote_id(self.id)} holds MatchClaims merged from other "
-                f"bundles, which keep the ids of their scopes ({list(self.claim_scopes)}); "
-                f"the MatchClaim table file names no scope yet: write each "
-                f"bundle's own package."
-            )
+        scopes = self._scope_names()
         named = {r.type: r for r in self.resources if r.type in TABLE_RESOURCE_TYPES}
         taken = {*self._scope_ids(), *(r.id for r in self.resources)}
         written: dict[str, Resource] = {}
@@ -4375,7 +4439,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         url, path = place("MatchClaim", MatchClaimField.file_name)
         if projections.num_rows:
             projection_place = place("Projection", PROJECTIONS_FILE_NAME)
-        claims.to_parquet(path)
+        claims.to_parquet(path, scopes=scopes)
         table = claims.table
         named_timelines = pc.unique(
             pa.concat_arrays(

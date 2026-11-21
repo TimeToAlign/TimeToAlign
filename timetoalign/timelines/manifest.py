@@ -813,11 +813,9 @@ def read_projection_table(
     The table is checked by TimeToShare's rules against the manifest naming
     it (:func:`timetoshare.tables.projection_problems`): every column of the
     table type, every timeline one of the manifest's, every cell on its
-    timeline's own axis. An event ID is unique on its timeline (an event is
-    named by its timeline and its ID), so an ID is refused when one timeline
-    holds it twice; two timelines may each hold ``projection_1``, which
-    TimeToShare's check reports as an ID given twice and this reader
-    accepts.
+    timeline's own axis, every ID given once on its timeline (an event is
+    named by its timeline and its ID, so two timelines may each hold
+    ``projection_1``).
 
     Args:
         path: The file.
@@ -829,29 +827,14 @@ def read_projection_table(
     Raises:
         timetoshare.tables.TableError: A ``ValueError``, the first problem
             of the table.
-        ValueError: If one timeline holds an ID twice.
     """
     table = pq.read_table(path)
-    problems = [
-        problem
-        for problem in projection_problems(table, manifest)
-        if problem.code != "duplicate_id"
-    ]
+    problems = projection_problems(table, manifest)
     if problems:
         raise TableError(problems[0])
     by_timeline: dict[str, list[Projection]] = {}
-    held: set[tuple[str, str]] = set()
-    for index, row in enumerate(
-        table.select(list(PROJECTION_SCHEMA.names)).to_pylist()
-    ):
-        key = (row["timeline_id"], row["id"])
-        if key in held:
-            raise ValueError(
-                f"Projections table row {index}: timeline {quote_id(key[0])} holds "
-                f"the Projection {quote_id(key[1])} twice"
-            )
-        held.add(key)
-        by_timeline.setdefault(key[0], []).append(Projection.from_row(row))
+    for row in table.select(list(PROJECTION_SCHEMA.names)).to_pylist():
+        by_timeline.setdefault(row["timeline_id"], []).append(Projection.from_row(row))
     return by_timeline
 
 

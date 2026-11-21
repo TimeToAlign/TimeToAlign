@@ -50,7 +50,6 @@ from timetoshare import dumps, loads
 
 from timetoalign import (
     AlignmentBundle,
-    Belief,
     ContinuousLogicalTimeline,
     ContinuousPhysicalTimeline,
     Coordinate,
@@ -136,17 +135,13 @@ bundle.add_timeline(recording, as_group="recording")
 # A MatchClaim connects two events, one on each timeline. Give
 # `create_match_claims()` one tuple per claim, `(event_a, timeline_a_id,
 # event_b, timeline_b_id)`, each event by its id. Its `provenance` records
-# who stated the claims, how and when; the editor states them and so
-# believes them `"true"`. The bundle gives every claim its id, `claim_N`,
-# which never changes.
+# how the claims were made, by whom and when. `actor=` names the person
+# stating them: a person who states a claim believes it, so the editor's
+# belief `"true"` is recorded in the provenance, dated `date=`. The bundle
+# gives every claim its id, `claim_N`, which never changes.
 
 # %%
-stated = Provenance(
-    stated_by=(EDITOR,),
-    method="manual",
-    date=DAY,
-    beliefs=(Belief(actor=EDITOR, belief="true", date=DAY),),
-)
+stated = Provenance(stated_by=(EDITOR,), method="manual", date=DAY)
 event_claims = bundle.create_match_claims(
     [
         ("n1", score.id, "o1", recording.id),
@@ -154,6 +149,8 @@ event_claims = bundle.create_match_claims(
         ("n3", score.id, "o3", recording.id),
     ],
     provenance=stated,
+    actor=EDITOR,
+    date=DAY,
 )
 claim_rows(event_claims)
 
@@ -175,7 +172,10 @@ event_claims[2]
 
 # %%
 projected = bundle.create_match_claims(
-    [("n4", score.id, {"start": 3.5}, recording.id)], provenance=stated
+    [("n4", score.id, {"start": 3.5}, recording.id)],
+    provenance=stated,
+    actor=EDITOR,
+    date=DAY,
 )[0]
 recording.get_event(projected.event_b_id)
 
@@ -186,7 +186,10 @@ recording.get_event(projected.event_b_id)
 
 # %%
 again = bundle.create_match_claims(
-    [("n4", score.id, {"start": 3.5}, recording.id)], provenance=stated
+    [("n4", score.id, {"start": 3.5}, recording.id)],
+    provenance=stated,
+    actor=EDITOR,
+    date=DAY,
 )[0]
 {"claim": again.id, "its recording event": again.event_b_id}
 
@@ -209,23 +212,35 @@ recording.add_projections(
 # %% [markdown]
 # ## Who believes a claim
 #
-# The aligner proposes two claims. One matches the third note to the second
-# onset; the editor believes it `"false"`. The other places quarter 6, where
-# the score has no event, at 5 seconds, where the recording has none: both
-# sides are positions, so each gets a Projection whose `projection_of` is
-# empty. The editor finds it `"unlikely"`. A belief is part of the claim's
-# provenance and never removes it.
+# The aligner proposes two claims. Software records how it made a claim and
+# believes nothing, so the aligner gives a `provenance` and no `actor`. One
+# claim matches the third note to the second onset. The other places
+# quarter 6, where the score has no event, at 5 seconds, where the recording
+# has none: both sides are positions, so each gets a Projection whose
+# `projection_of` is empty.
 
 # %%
 proposed = Provenance(service=ALIGNER, method="inferred", date=DAY)
-rejected = bundle.create_match_claims(
-    [("n3", score.id, "o2", recording.id)],
-    provenance=proposed.with_belief(Belief(actor=EDITOR, belief="false", date=DAY)),
+rejected, doubted = bundle.create_match_claims(
+    [
+        ("n3", score.id, "o2", recording.id),
+        ({"start": Fraction(6)}, score.id, {"start": 5.0}, recording.id),
+    ],
+    provenance=proposed,
 )
-doubted = bundle.create_match_claims(
-    [({"start": Fraction(6)}, score.id, {"start": 5.0}, recording.id)],
-    provenance=proposed.with_belief(Belief(actor=EDITOR, belief="unlikely", date=DAY)),
-)
+claim_rows([rejected, doubted])
+
+# %% [markdown]
+# The editor reviews the proposals later. `add_belief()` records a belief
+# in a claim the bundle holds, named by its id: the editor believes the
+# first `"false"` and finds the second `"unlikely"`. A belief replaces the
+# actor's earlier one in that claim and leaves every other actor's belief
+# as it is. It changes only the claim's provenance and never removes the
+# claim.
+
+# %%
+bundle.add_belief(rejected.id, actor=EDITOR, belief="false", date=DAY)
+bundle.add_belief(doubted.id, actor=EDITOR, belief="unlikely", date=DAY)
 claim_rows(bundle.get_match_claims())
 
 # %% [markdown]
@@ -244,9 +259,10 @@ claim_rows(bundle.get_match_claims())
 }
 
 # %% [markdown]
-# MatchStamps read the same filter. At quarter 6, the doubted claim reaches
-# the recording under the default filter; with `belief="true"` the stamp
-# holds the score alone.
+# MatchStamps read the same filter, and so do the bundle's coordinate
+# getters (`get_coordinate_at` and the rest of its row). At quarter 6, the
+# doubted claim reaches the recording under the default filter; with
+# `belief="true"` the stamp holds the score alone.
 
 # %%
 [
@@ -258,14 +274,17 @@ claim_rows(bundle.get_match_claims())
 # ## Write the package
 #
 # `to_file()` writes the MatchClaim table and the Projections table beside
-# the manifest, then the manifest naming them. The claims name the score's
-# notes and the recording's onsets by their ids, and a manifest holds event
-# rows only when asked to, so pass `events=True` to keep the package whole.
+# the manifest, then the manifest naming them. A manifest names no event:
+# the claims name the score's notes and the recording's onsets by their
+# ids, and those events stay with the sources they came from, here the
+# score and the onset list. The package holds the events it made itself,
+# the Projections, in their own table. Writing event rows into the manifest
+# of a package (`events=True`) is therefore refused.
 
 # %%
 package = FILES / "song"
 package.mkdir()
-manifest_path = bundle.to_file(package / "song.yaml", events=True)
+manifest_path = bundle.to_file(package / "song.yaml")
 files(package)
 
 # %% [markdown]
@@ -309,17 +328,25 @@ pq.read_table(package / "projections.parquet").to_pylist()
 # `from_file()` reads the manifest, then the tables it names: each
 # Projection onto its timeline, then the MatchClaim table. The bundle read
 # holds the same claims and the same manifest, and its belief filter gives
-# the same answers.
+# the same answers. Its timelines hold their Projections but not the notes
+# and onsets, which the manifest does not carry (the score read holds one
+# event, its Projection). Each claim keeps the coordinates of its two
+# events, so MatchStamps need no event: under the editor's beliefs the
+# third note, at quarter 2, still lies at 1.75 seconds.
 
 # %%
 read = AlignmentBundle.from_file(manifest_path)
 {
     "same MatchClaim table": read.match_claim_table == bundle.match_claim_table,
-    "same manifest": read.to_dict(events=True) == bundle.to_dict(events=True),
+    "same manifest": read.to_dict() == bundle.to_dict(),
     "believed true by the editor": [
         claim.id for claim in read.get_match_claims(believer=EDITOR, belief="true")
     ],
+    "events of the score read": len(read.get_timeline(score.id).get_events()),
 }
+
+# %%
+read.get_matchstamp_at(Fraction(2), score.id, believer=EDITOR)
 
 # %% [markdown]
 # Writing the bundle read gives the same bytes, file by file.
@@ -340,22 +367,29 @@ read.to_file(copy / "song.yaml")
 # states a belief instead. So writing over a package's MatchClaim table
 # obeys the succession rule: every claim of the old table is in the new
 # one, with the same timelines, events and anchors; only its provenance
-# may differ. Adding a claim and writing the bundle back is fine.
+# may differ. Adding a claim, stating a belief and writing the bundle back
+# is fine. The editor goes on in the bundle that holds the events: a
+# conceptual claim between the second note and the second onset, and a
+# change of mind about the doubted claim.
 
 # %%
-read.create_match_claims([("n2", score.id, "o2", recording.id)], synchronous=False)
-read.to_file(manifest_path)
-len(AlignmentBundle.from_file(manifest_path).get_match_claims())
+bundle.create_match_claims(
+    [("n2", score.id, "o2", recording.id)], synchronous=False, actor=EDITOR, date=DAY
+)
+bundle.add_belief(doubted.id, actor=EDITOR, belief="false", date=DAY)
+bundle.to_file(manifest_path)
+claim_rows(AlignmentBundle.from_file(manifest_path).get_match_claims())
 
 # %% [markdown]
 # A bundle that lacks claims the table holds cannot be written over it.
 # Here a draft is built from the manifest alone (`from_dict()` reads no
-# tables) and states one claim: the write is refused before any file is
-# touched, and the package keeps its claims.
+# tables, and the manifest holds no event) and states one claim between two
+# positions: the write is refused before any file is touched, and the
+# package keeps its claims.
 
 # %%
-draft = AlignmentBundle.from_dict(read.to_dict(events=True))
-draft.create_match_claims([("n1", score.id, "o1", recording.id)])
+draft = AlignmentBundle.from_dict(read.to_dict())
+draft.create_match_claims([({"start": 0}, score.id, {"start": 0.25}, recording.id)])
 try:
     draft.to_file(manifest_path)
 except ValueError as refusal:

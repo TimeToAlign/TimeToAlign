@@ -35,7 +35,6 @@ from fractions import Fraction
 
 from timetoalign import (
     AlignmentBundle,
-    Belief,
     ClaimType,
     ContinuousGraphicalTimeline,
     ContinuousLogicalTimeline,
@@ -106,8 +105,8 @@ observed_pairs
 # One claim says that an event on one timeline corresponds to an event on
 # another. `create_match_claims()` accepts several such pairs; its
 # {{< glossary Provenance >}} records who stated them and how. A person who
-# states a claim believes it, so the entry also holds that person's `Belief`,
-# `"true"`.
+# states a claim believes it: name that person with `actor=`, and the entry
+# also holds their `Belief`, `"true"`, dated `date=`.
 
 # %%
 claim_bundle = AlignmentBundle(name="Visible teaching claims")
@@ -122,13 +121,10 @@ event_pairs = [
 ]
 MUSICOLOGIST = "https://example.org/people/musicologist"
 cue_alignment = Provenance(
-    stated_by=(MUSICOLOGIST,),
-    method="manual",
-    date="2026-11-21",
-    beliefs=(Belief(actor=MUSICOLOGIST, belief="true", date="2026-11-21"),),
+    stated_by=(MUSICOLOGIST,), method="manual", date="2026-11-21"
 )
 evidence_claims = claim_bundle.create_match_claims(
-    event_pairs, provenance=cue_alignment
+    event_pairs, provenance=cue_alignment, actor=MUSICOLOGIST, date="2026-11-21"
 )
 shown_claim = evidence_claims[1]
 shown_claim
@@ -165,19 +161,20 @@ construction_comparison
 # ## Who believes a claim
 #
 # A claim is never deleted. Someone who disagrees records a belief instead:
-# `"true"`, `"false"`, or `"unlikely"`. Software that proposes a claim states
-# how it worked but believes nothing. Every reader of claims takes the same
-# two filter parameters, `believer=` and `belief=`.
+# `"true"`, `"false"`, or `"unlikely"`, with `add_belief()` on the bundle,
+# naming the claim by its id. Software that proposes a claim states how it
+# worked but believes nothing, so it gives no `actor=`. Every reader of
+# claims takes the same two filter parameters, `believer=` and `belief=`.
 
 # %%
 ALIGNER = "https://example.org/tools/cue-aligner"
-aligner_guess = Provenance(service=ALIGNER, method="inferred").with_belief(
-    Belief(actor=MUSICOLOGIST, belief="false", date="2026-11-21")
-)
 doubted_claim = claim_bundle.create_match_claims(
     [("score-c3", score.id, "perf-ornament", performance.id)],
-    provenance=aligner_guess,
+    provenance=Provenance(service=ALIGNER, method="inferred"),
 )[0]
+claim_bundle.add_belief(
+    doubted_claim.id, actor=MUSICOLOGIST, belief="false", date="2026-11-21"
+)
 belief_view = {
     "every claim": len(claim_bundle.get_match_claims()),
     "not believed false by the musicologist": len(
@@ -596,7 +593,8 @@ merge_summary
 # - You can replace a constant-ratio guess with explicit coordinate evidence.
 # - You can create and inspect a MatchClaim between two events, with recorded
 #   provenance.
-# - You can filter claims by who believes them, without deleting any.
+# - You can record who believes a claim and filter claims by those beliefs,
+#   without deleting any.
 # - You can give a side without an event a Projection, distinguish every
 #   derived ClaimType, and orient a NOMATCH correctly.
 # - You can start and extend timeline groups inside an AlignmentBundle.

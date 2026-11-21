@@ -113,6 +113,8 @@ Classes for connecting and aligning timelines.
 | [Belief](Belief.qmd#timetoalign.core.Belief) | One actor's belief in an item, at a date. |
 | [Projection](Projection.qmd#timetoalign.core.Projection) | An event standing on a timeline for an event not held there. |
 | [EventReference](EventReference.qmd#timetoalign.core.EventReference) | The address of one event: the timeline holding it and its ID there. |
+| [Resource](Resource.qmd#timetoalign.timelines.Resource) | A file the manifest names: one entry of its ``resources``. |
+| [Integrity](Integrity.qmd#timetoalign.timelines.Integrity) | The digest of a resource's raw bytes and the hash function computing it. |
 | [MatchGraph](MatchGraph.qmd#timetoalign.alignment.MatchGraph) | A graph of MatchClaims connecting events across timelines/groups. |
 | [MatchStamp](MatchStamp.qmd#timetoalign.alignment.MatchStamp) | A synchronized timestamp across multiple timelines. |
 | [MatchLine](MatchLine.qmd#timetoalign.alignment.MatchLine) | Ordered sequence of MatchStamps for a source timeline. |

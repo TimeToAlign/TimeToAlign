@@ -1,0 +1,124 @@
+# Resource { #timetoalign.timelines.Resource }
+
+```python
+timelines.Resource(
+    id,
+    type,
+    timelines,
+    url,
+    media_type=None,
+    size=None,
+    integrity=None,
+    *,
+    _unknown_keys=dict(),
+)
+```
+
+A file the manifest names: one entry of its ``resources``.
+
+A package is a manifest and the files it names. Each resource says what
+its rows are (``type``: ``"MatchClaim"`` for the MatchClaim table,
+``"Projection"`` for the Projections table, or the type of the events
+an event table holds), for which timelines it holds data and where it
+lies, relative to the manifest, so that a bare file name lies beside
+it; optionally its media type, size in bytes and the digest of its
+bytes. IDs are bare, as the library holds them.
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name       | Type                                                            | Description                                       |
+|------------|-----------------------------------------------------------------|---------------------------------------------------|
+| id         | [str](`str`)                                                    | The resource's ID, ``resource_N``.                |
+| type       | [str](`str`)                                                    | What the file's rows are.                         |
+| timelines  | [tuple](`tuple`)\[[str](`str`), ...\]                           | The IDs of the timelines the file holds data for. |
+| url        | [str](`str`)                                                    | Its location, relative to the manifest's own.     |
+| media_type | [str](`str`) \| None                                            | Its media type, or None.                          |
+| size       | [int](`int`) \| None                                            | Its size in bytes, or None.                       |
+| integrity  | [Integrity](`timetoalign.timelines.manifest.Integrity`) \| None | The digest of its bytes, or None.                 |
+
+## Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                                                                                           |
+|--------|----------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the ID is not ``resource_N``, the type is empty, a timeline ID is invalid or given twice, the URL is no string, the media type is malformed, or the size is no integer at least 0. |
+
+## Examples {.doc-section .doc-section-examples}
+
+```python
+>>> resource = Resource(
+...     "resource_1", "MatchClaim", ("clt_1", "dpt_1"), "match_claims.parquet"
+... )
+>>> resource.to_dict()
+{'id': 'resource_1', 'type': 'MatchClaim', 'timelines': ['clt_1', 'dpt_1'], 'url': 'match_claims.parquet'}
+>>> Resource.from_dict(resource.to_dict()) == resource
+True
+```
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [from_dict](#timetoalign.timelines.Resource.from_dict) | Read one entry of ``resources``, IDs bare, keeping its unknown keys. |
+| [of_file](#timetoalign.timelines.Resource.of_file) | Describe the file *path*: its size and SHA-256 digest from its bytes. |
+| [path_in](#timetoalign.timelines.Resource.path_in) | The file's path for a manifest lying in *directory* (:func:`resource_path`). |
+| [to_dict](#timetoalign.timelines.Resource.to_dict) | Write the entry, IDs bare: the optional keys only with a value. |
+
+### from_dict { #timetoalign.timelines.Resource.from_dict }
+
+```python
+timelines.Resource.from_dict(data, what='a resource')
+```
+
+Read one entry of ``resources``, IDs bare, keeping its unknown keys.
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                           |
+|--------|----------------------------|-------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If *data* is no object holding ``id``, ``type``, ``timelines`` and ``url``, or an entry is malformed. |
+
+### of_file { #timetoalign.timelines.Resource.of_file }
+
+```python
+timelines.Resource.of_file(
+    path,
+    *,
+    id,
+    type,
+    timelines,
+    url,
+    media_type=PARQUET_MEDIA_TYPE,
+)
+```
+
+Describe the file *path*: its size and SHA-256 digest from its bytes.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name       | Type                                                      | Description                            | Default              |
+|------------|-----------------------------------------------------------|----------------------------------------|----------------------|
+| path       | [str](`str`) \| [PathLike](`os.PathLike`)\[[str](`str`)\] | The file.                              | _required_           |
+| id         | [str](`str`)                                              | The resource's ID.                     | _required_           |
+| type       | [str](`str`)                                              | What its rows are.                     | _required_           |
+| timelines  | [Iterable](`collections.abc.Iterable`)\[[str](`str`)\]    | The timelines it holds data for.       | _required_           |
+| url        | [str](`str`)                                              | Its location relative to the manifest. | _required_           |
+| media_type | [str](`str`) \| None                                      | Its media type, Parquet's by default.  | `PARQUET_MEDIA_TYPE` |
+
+### path_in { #timetoalign.timelines.Resource.path_in }
+
+```python
+timelines.Resource.path_in(directory)
+```
+
+The file's path for a manifest lying in *directory* (:func:`resource_path`).
+
+### to_dict { #timetoalign.timelines.Resource.to_dict }
+
+```python
+timelines.Resource.to_dict()
+```
+
+Write the entry, IDs bare: the optional keys only with a value.
+
+A resource has no defaults, so its minimal and complete forms are
+one.

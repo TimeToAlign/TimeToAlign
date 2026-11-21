@@ -282,9 +282,12 @@ MatchClaim: |
   given a Projection. May be synchronous (producing AlignmentAnchors) or not:
   conceptual (structural equivalence without temporal commitment) or NOMATCH
   (the event has no counterpart). Implicit claims are inferred by group
-  extension and name no events. A claim is never deleted: who disagrees
-  records a belief "false", and every reader of claims filters by believer=
-  and belief=. Held individually, or in the bundle's one MatchClaim table, a
+  extension and name no events. A person stating claims is recorded as
+  believing them "true" (create_match_claims(..., actor=)). A claim is never
+  deleted: who disagrees records a belief "false" in it
+  (AlignmentBundle.add_belief()), and every reader of claims, the
+  MatchStamp and coordinate getters included, filters by believer= and
+  belief=. Held individually, or in the bundle's one MatchClaim table, a
   MatchClaimField. Its id never changes: a claim given none holds no id until
   the AlignmentBundle it joins mints claim_N above the highest held there, and
   id_minted records which; a MatchClaimField mints nothing, and an id already
@@ -441,8 +444,9 @@ Projection: |
   position. A package holds every timeline's Projections in one table, the
   Projections table (projections.parquet, one row per Projection with its
   timeline_id), which an AlignmentBundle's to_file() writes beside the
-  manifest, named in its resources, and from_file() reads back onto the
-  timelines. A Projection's ID is unique on its timeline.
+  manifest whenever one of its timelines holds Projections, named in its
+  resources, and from_file() reads back onto the timelines. A Projection's
+  ID is unique on its timeline.
 
 Provenance: |
   How an item was made and who believes it, one facility for statements and
@@ -459,7 +463,9 @@ Provenance: |
   value node) and names the pair again by property and value; a pair without
   one is stated by the manifest's publisher, and a pair held only as its
   entry is a candidate. For a MatchClaim, the entry is the claim's
-  provenance.
+  provenance: create_match_claims(..., actor=) records the stating person's
+  belief "true", and AlignmentBundle.add_belief() records a belief in a
+  claim the bundle holds.
 
 Reach: |
   The farthest coordinate on a timeline's own axis that its content reaches:
@@ -480,11 +486,15 @@ Resource: |
   (what its rows are: MatchClaim for the MatchClaim table, Projection for
   the Projections table), the ids of the timelines it holds data for, its url
   relative to the manifest, and optionally its media type, size in bytes and
-  integrity (algorithm and digest). At most one resource has each of the two
-  types. A manifest and the files it names make a package; the manifest reads
-  and draws without them. An AlignmentBundle holding MatchClaims writes both
-  tables and their entries with to_file() and reads them with from_file(); a
-  named file that is absent is not read and its entry is kept.
+  integrity (an Integrity: algorithm and digest). At most one resource has
+  each of the two types. A manifest and the files it names make a package;
+  the manifest reads and draws without them, and names no event. An
+  AlignmentBundle keeps the entries as Resource objects in its resources; its
+  to_file() writes the MatchClaim table when it holds MatchClaims and the
+  Projections table when a timeline holds Projections, each with its entry,
+  and refuses to write event rows into the manifest beside them; from_file()
+  reads them back. A named file that is absent is not read and its entry is
+  kept.
 
 raw_quarters: |
   The conventional name for the ShiftMap attached to a score timeline. The

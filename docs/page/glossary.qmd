@@ -392,9 +392,12 @@ to the relevant section of the conceptual model.
     {{< glossary AlignmentAnchor >}}s) or not: conceptual (structural
     equivalence without temporal commitment) or {{< glossary NOMATCH >}}
     (the event has no counterpart). Implicit claims are inferred by group
-    extension and name no events. A claim is never deleted: who disagrees
-    records a belief `"false"`, and every reader of claims filters by
-    `believer=` and `belief=`. Held individually, or in the bundle's one
+    extension and name no events. A person stating claims is recorded as
+    believing them `"true"` (`create_match_claims(..., actor=)`). A claim
+    is never deleted: who disagrees records a belief `"false"` in it
+    (`AlignmentBundle.add_belief()`), and every reader of claims, the
+    MatchStamp and coordinate getters included, filters by `believer=` and
+    `belief=`. Held individually, or in the bundle's one
     MatchClaim table, a {{< glossary MatchClaimField >}}. Its id never
     changes: a claim given none holds no id until the
     {{< glossary AlignmentBundle >}} it joins mints `claim_N` above the
@@ -609,8 +612,9 @@ to the relevant section of the conceptual model.
     side stated as a position. A package holds every timeline's Projections
     in one table, the Projections table (`projections.parquet`, one row per
     Projection with its `timeline_id`), which an AlignmentBundle's
-    `to_file()` writes beside the manifest, named in its `resources`, and
-    `from_file()` reads back onto the timelines. A Projection's ID is unique
+    `to_file()` writes beside the manifest whenever one of its timelines
+    holds Projections, named in its `resources`, and `from_file()` reads
+    back onto the timelines. A Projection's ID is unique
     on its timeline.
     See [Alignment Bundles and MatchClaims](tutorials/tut06_alignment_bundles.ipynb) and
     [How to Keep MatchClaims, Projections and Beliefs in a Package](howto/how03_match_claims_package.ipynb).
@@ -636,7 +640,10 @@ to the relevant section of the conceptual model.
     its entry is a candidate: `add_candidate()` offers one,
     `add_statement()` states it, `add_belief()` records a belief, and
     `get_candidates()` and `get_provenance()` take the belief filter. For a
-    MatchClaim, the entry is the claim's `provenance`.
+    MatchClaim, the entry is the claim's `provenance`:
+    `create_match_claims(..., actor=)` records the stating person's belief
+    `"true"`, and `AlignmentBundle.add_belief()` records a belief in a claim
+    the bundle holds.
     See [How to Describe What a Bundle and Its Timelines Stand For](howto/how03_describe_the_work.ipynb),
     [Alignment Bundles and MatchClaims](tutorials/tut06_alignment_bundles.ipynb) and
     [TimeToShare's description of a manifest](https://github.com/TimeToAlign/TimeToShare/blob/main/docs/description.md), section 9.
@@ -678,14 +685,19 @@ to the relevant section of the conceptual model.
     MatchClaim table, a {{< glossary MatchClaimField >}}, `Projection` for
     the Projections table, see {{< glossary Projection >}}), the IDs of the
     `timelines` it holds data for, its `url` relative to the manifest, and
-    optionally its `media_type`, `size` in bytes and `integrity`
-    (`algorithm` and `digest`). At most one resource has each of the two
-    types. A manifest and the files it names make a package; the manifest
-    reads and draws without them. An {{< glossary AlignmentBundle >}}
-    holding MatchClaims writes both tables and their entries with
-    `to_file()` and reads them with `from_file()`; a named file that is
-    absent is not read and its entry is kept.
-    See [How to Keep MatchClaims, Projections and Beliefs in a Package](howto/how03_match_claims_package.ipynb) and
+    optionally its `media_type`, `size` in bytes and `integrity` (an
+    `Integrity`: `algorithm` and `digest`). At most one resource has each of
+    the two types. A manifest and the files it names make a package; the
+    manifest reads and draws without them, and names no event. An
+    {{< glossary AlignmentBundle >}} keeps the entries as `Resource` objects
+    in its `resources`; its `to_file()` writes the MatchClaim table when it
+    holds MatchClaims and the Projections table when a timeline holds
+    Projections, each with its entry, and refuses to write event rows into
+    the manifest beside them (`events=True`); `from_file()` reads them back.
+    A named file that is absent is not read and its entry is kept.
+    See the API reference ([Resource](reference/Resource.qmd),
+    [Integrity](reference/Integrity.qmd)),
+    [How to Keep MatchClaims, Projections and Beliefs in a Package](howto/how03_match_claims_package.ipynb) and
     [TimeToShare's README, "Resources and tables"](https://github.com/TimeToAlign/TimeToShare#resources-and-tables).
 
 **Root**

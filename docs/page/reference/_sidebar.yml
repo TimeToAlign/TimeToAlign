@@ -85,6 +85,8 @@ website:
       - reference/Belief.qmd
       - reference/Projection.qmd
       - reference/EventReference.qmd
+      - reference/Resource.qmd
+      - reference/Integrity.qmd
       - reference/MatchGraph.qmd
       - reference/MatchStamp.qmd
       - reference/MatchLine.qmd

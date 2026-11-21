@@ -82,7 +82,7 @@ row by row, provenance included (:class:`MatchClaimField` equality).
 
 | Name | Description |
 | --- | --- |
-| [add_belief](#timetoalign.alignment.AlignmentBundle.add_belief) | Record *actor*'s belief in the pair ``(property, value)``. |
+| [add_belief](#timetoalign.alignment.AlignmentBundle.add_belief) | Record *actor*'s belief in the MatchClaim *claim_id*. |
 | [add_candidate](#timetoalign.alignment.AlignmentBundle.add_candidate) | Offer the pair ``(property, value)`` as a candidate, without stating it. |
 | [add_group](#timetoalign.alignment.AlignmentBundle.add_group) | Add a pre-built TimelineGroup with all its timelines at once. |
 | [add_match_claim_field](#timetoalign.alignment.AlignmentBundle.add_match_claim_field) | Add the rows of a :class:`MatchClaimField` to the bundle's table. |
@@ -123,7 +123,7 @@ row by row, provenance included (:class:`MatchClaimField` equality).
 | [remove_statement](#timetoalign.alignment.AlignmentBundle.remove_statement) | Remove the pair ``(property, value)`` and its entry. |
 | [summary](#timetoalign.alignment.AlignmentBundle.summary) | Get a summary of the bundle contents. |
 | [to_dict](#timetoalign.alignment.AlignmentBundle.to_dict) | Write the bundle as a TimeToShare manifest. |
-| [to_file](#timetoalign.alignment.AlignmentBundle.to_file) | Write the object's manifest to a file. |
+| [to_file](#timetoalign.alignment.AlignmentBundle.to_file) | Write the package: the manifest and, beside it, the bundle's tables. |
 | [transfer](#timetoalign.alignment.AlignmentBundle.transfer) | Transfer a coordinate from one timeline to another. |
 | [transfer_interval](#timetoalign.alignment.AlignmentBundle.transfer_interval) | Transfer an interval from one timeline to another. |
 
@@ -131,43 +131,72 @@ row by row, provenance included (:class:`MatchClaimField` equality).
 
 ```python
 alignment.AlignmentBundle.add_belief(
-    property,
-    value,
+    claim_id,
     *,
     actor,
     belief,
     date=None,
     note=None,
-    node=(),
+    scope_key=0,
 )
 ```
 
-Record *actor*'s belief in the pair ``(property, value)``.
+Record *actor*'s belief in the MatchClaim *claim_id*.
 
-The pair's entry, made where the pair has none, records the belief,
-replacing the actor's earlier one (:func:`timetoshare.with_belief`).
-Whether the pair is stated is left as it is: believing a stated
-pair ``"false"`` records the belief and never removes the pair, and
-every other actor's belief stands. A candidate the actor believes
-``"false"`` is left out of :meth:`get_candidates` for that actor.
+A MatchClaim is never removed and never changed: invalidating one is
+believing it ``"false"``, and a correction is a new MatchClaim. Only
+the claim's provenance changes. The belief replaces the actor's
+earlier one in that claim, actors compared as IRIs under the
+bundle's ``@context`` (a compact and an absolute spelling of one
+actor are one actor); every other actor's belief stands. A claim
+stated without provenance gets an entry holding the belief alone.
+The belief filter (``believer=``, ``belief=`` on every query) reads
+it at once; the MatchClaim table written by :meth:`to_file` succeeds
+the one written before.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name     | Type                                                                   | Description                                                           | Default    |
-|----------|------------------------------------------------------------------------|-----------------------------------------------------------------------|------------|
-| property | [str](`str`)                                                           | The property, as for :meth:`add_statement`.                           | _required_ |
-| value    | [Any](`typing.Any`)                                                    | The value, as for :meth:`add_statement`.                              | _required_ |
-| actor    | [str](`str`)                                                           | Who holds the belief, an IRI.                                         | _required_ |
-| belief   | [BeliefValue](`timetoalign.core.provenance.BeliefValue`)               | ``"true"``, ``"false"`` or ``"unlikely"``.                            | _required_ |
-| date     | [str](`str`) \| [datetime](`datetime`).[date](`datetime.date`) \| None | The day, ``YYYY-MM-DD`` or a :class:`datetime.date`; today when None. | `None`     |
-| note     | [str](`str`) \| None                                                   | A remark.                                                             | `None`     |
-| node     | [NodePath](`timetoalign.timelines.statements.NodePath`)                | The value node whose pair is meant.                                   | `()`       |
+| Name      | Type                                                                   | Description                                                                                                                                                                                       | Default    |
+|-----------|------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| claim_id  | [str](`str`)                                                           | The MatchClaim's id.                                                                                                                                                                              | _required_ |
+| actor     | [str](`str`)                                                           | Who holds the belief, an IRI (compact or absolute).                                                                                                                                               | _required_ |
+| belief    | [BeliefValue](`timetoalign.core.provenance.BeliefValue`)               | ``"true"``, ``"false"`` or ``"unlikely"``.                                                                                                                                                        | _required_ |
+| date      | [str](`str`) \| [datetime](`datetime`).[date](`datetime.date`) \| None | The day, ``YYYY-MM-DD`` or a :class:`datetime.date`; today when None.                                                                                                                             | `None`     |
+| note      | [str](`str`) \| None                                                   | A remark.                                                                                                                                                                                         | `None`     |
+| scope_key | [int](`int`)                                                           | The scope holding the claim's id, a key into :attr:`claim_scopes`: 0, the default, the bundle's own; another for a claim merged in by :meth:`from_bundles` (:attr:`claim_table`'s ``scope_key``). | `0`        |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                | Description                |
+|--------|---------------------|----------------------------|
+|        | \'AlignmentBundle\' | self (for method chaining) |
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                |
-|--------|----------------------------|----------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If *belief* is none of the three, the date is no calendar date, *node* addresses no value node, or a prefix is undeclared. |
+| Name   | Type                       | Description                                                                 |
+|--------|----------------------------|-----------------------------------------------------------------------------|
+|        | [KeyError](`KeyError`)     | If the scope holds no MatchClaim *claim_id*, or *scope_key* names no scope. |
+|        | [ValueError](`ValueError`) | If *belief* is none of the three words, or *date* is no calendar date.      |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> from timetoalign.alignment import AlignmentBundle
+>>> from timetoalign.timelines.types import (
+...     ContinuousLogicalTimeline,
+...     DiscretePhysicalTimeline,
+... )
+>>> bundle = AlignmentBundle()
+>>> _ = bundle.add_timeline(ContinuousLogicalTimeline(length=16, uid="score"))
+>>> _ = bundle.add_timeline(DiscretePhysicalTimeline(length=705600, uid="pcm"))
+>>> _ = bundle.create_match_claims([({"start": 0}, "score", {"start": 0}, "pcm")])
+>>> _ = bundle.add_belief(
+...     "claim_1", actor="https://orcid.org/0000-0001", belief="false",
+...     date="2026-11-21",
+... )
+>>> len(bundle.get_match_claims(believer="https://orcid.org/0000-0001"))
+0
+```
 
 ### add_candidate { #timetoalign.alignment.AlignmentBundle.add_candidate }
 
@@ -578,6 +607,8 @@ alignment.AlignmentBundle.create_match_claims(
     synchronous=True,
     certainty=1.0,
     provenance=None,
+    actor=None,
+    date=None,
 )
 ```
 
@@ -619,12 +650,14 @@ the timelines before it.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name        | Type                                                                                                                                                                     | Description                                                                                                                                                         | Default    |
-|-------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
-| event_pairs | [Sequence](`collections.abc.Sequence`)\[[tuple](`tuple`)\[[dict](`dict`) \| [str](`str`) \| None, [str](`str`), [dict](`dict`) \| [str](`str`) \| None, [str](`str`)\]\] | The pairs, ``(event_a, timeline_a_id, event_b, timeline_b_id)`` each.                                                                                               | _required_ |
-| synchronous | [bool](`bool`)                                                                                                                                                           | Whether the matches are temporally synchronous; a non-synchronous (conceptual) claim holds no anchors. Ignored for NOMATCH pairs, which are always non-synchronous. | `True`     |
-| certainty   | [float](`float`)                                                                                                                                                         | How certain every claim is, in [0, 1].                                                                                                                              | `1.0`      |
-| provenance  | [Provenance](`timetoalign.core.Provenance`) \| None                                                                                                                      | How the claims were made and who believes them (:class:`~timetoalign.core.provenance.Provenance`); a person stating them records their belief ``true`` there.       | `None`     |
+| Name        | Type                                                                                                                                                                     | Description                                                                                                                                                                                                                                                                           | Default    |
+|-------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| event_pairs | [Sequence](`collections.abc.Sequence`)\[[tuple](`tuple`)\[[dict](`dict`) \| [str](`str`) \| None, [str](`str`), [dict](`dict`) \| [str](`str`) \| None, [str](`str`)\]\] | The pairs, ``(event_a, timeline_a_id, event_b, timeline_b_id)`` each.                                                                                                                                                                                                                 | _required_ |
+| synchronous | [bool](`bool`)                                                                                                                                                           | Whether the matches are temporally synchronous; a non-synchronous (conceptual) claim holds no anchors. Ignored for NOMATCH pairs, which are always non-synchronous.                                                                                                                   | `True`     |
+| certainty   | [float](`float`)                                                                                                                                                         | How certain every claim is, in [0, 1].                                                                                                                                                                                                                                                | `1.0`      |
+| provenance  | [Provenance](`timetoalign.core.Provenance`) \| None                                                                                                                      | How the claims were made and who believes them (:class:`~timetoalign.core.provenance.Provenance`), shared by every claim.                                                                                                                                                             | `None`     |
+| actor       | [str](`str`) \| None                                                                                                                                                     | The person stating the claims, an IRI: recorded in their provenance with the belief ``"true"``, replacing that actor's belief in *provenance* (actors compared as IRIs under the bundle's ``@context``). A loader or a service records how the claims were made and states no belief. | `None`     |
+| date        | [str](`str`) \| [datetime](`datetime`).[date](`datetime.date`) \| None                                                                                                   | The day of *actor*'s belief, ``YYYY-MM-DD`` or a :class:`datetime.date`; today when None.                                                                                                                                                                                             | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -635,10 +668,10 @@ the timelines before it.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                             |
-|--------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If both sides of a pair are ``None``, a dict naming no held event states no ``start``, or a position cannot be placed on its timeline's axis.                           |
-|        | [KeyError](`KeyError`)     | If a timeline id names no timeline of the bundle's trees (a nested timeline is found whether or not it was registered), or an id string names no event of its timeline. |
+| Name   | Type                       | Description                                                                                                                                                                                           |
+|--------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If both sides of a pair are ``None``, a dict naming no held event states no ``start``, a position cannot be placed on its timeline's axis, or *date* is given without *actor* or is no calendar date. |
+|        | [KeyError](`KeyError`)     | If a timeline id names no timeline of the bundle's trees (a nested timeline is found whether or not it was registered), or an id string names no event of its timeline.                               |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -676,6 +709,13 @@ the timelines before it.
 >>> again = bundle.create_match_claims([("n99", "score", {"start": 55.0}, "audio")])
 >>> again[0].event_b_id, again[0].id
 ('projection_1', 'claim_4')
+>>> stated = bundle.create_match_claims(
+...     [("n10", "score", "o42", "audio")],
+...     actor="https://orcid.org/0000-0002-1825-0097",
+...     date="2026-11-21",
+... )
+>>> stated[0].provenance.beliefs[0].belief
+'true'
 ```
 
 ### diagram { #timetoalign.alignment.AlignmentBundle.diagram }
@@ -759,7 +799,7 @@ each source bundle stays the scope of the ids of its claims (its own
 and those it merged in), so two sources may both hold ``claim_1``.
 The merged :attr:`match_claim_table` holds every row once; the scope
 of each row is a key into :attr:`claim_scopes`, the key column
-``scope`` of :attr:`claim_table` (never a string joined onto the
+``scope_key`` of :attr:`claim_table` (never a string joined onto the
 id). Claims added to the merged bundle afterwards are in its own
 scope, key 0. The statements of the
 timelines and regions travel with them, and their prefixes; the
@@ -1035,6 +1075,8 @@ alignment.AlignmentBundle.get_coordinate(
     *,
     format='id_coordinate',
     rounding='round',
+    believer=None,
+    belief='not_false',
 )
 ```
 
@@ -1042,12 +1084,14 @@ Dispatch a positional or event-key bundle coordinate query.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name        | Type                                                                                                                                                                                                                        | Description                                        | Default           |
-|-------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------|-------------------|
-| at          | [CoordinateInput](`timetoalign.core.retrieval.CoordinateInput`) \| [CoordinateCollection](`timetoalign.core.retrieval.CoordinateCollection`) \| [str](`str`) \| [KeyCollection](`timetoalign.core.retrieval.KeyCollection`) | Scalar or plural coordinate position or event key. | _required_        |
-| timeline_id | [str](`str`) \| None                                                                                                                                                                                                        | Requested result timeline ID when required.        | `None`            |
-| format      | [CoordinateFormat](`timetoalign.core.retrieval.CoordinateFormat`)                                                                                                                                                           | Requested coordinate output format.                | `'id_coordinate'` |
-| rounding    | [Rounding](`timetoalign.core.retrieval.Rounding`)                                                                                                                                                                           | Integral projection mode.                          | `'round'`         |
+| Name        | Type                                                                                                                                                                                                                        | Description                                                                                                                   | Default           |
+|-------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------|-------------------|
+| at          | [CoordinateInput](`timetoalign.core.retrieval.CoordinateInput`) \| [CoordinateCollection](`timetoalign.core.retrieval.CoordinateCollection`) \| [str](`str`) \| [KeyCollection](`timetoalign.core.retrieval.KeyCollection`) | Scalar or plural coordinate position or event key.                                                                            | _required_        |
+| timeline_id | [str](`str`) \| None                                                                                                                                                                                                        | Requested result timeline ID when required.                                                                                   | `None`            |
+| format      | [CoordinateFormat](`timetoalign.core.retrieval.CoordinateFormat`)                                                                                                                                                           | Requested coordinate output format.                                                                                           | `'id_coordinate'` |
+| rounding    | [Rounding](`timetoalign.core.retrieval.Rounding`)                                                                                                                                                                           | Integral projection mode.                                                                                                     | `'round'`         |
+| believer    | [str](`str`) \| None                                                                                                                                                                                                        | The actor whose beliefs filter the MatchClaims read (the belief filter); ``None`` reads every claim.                          | `None`            |
+| belief      | [BeliefFilter](`timetoalign.core.provenance.BeliefFilter`)                                                                                                                                                                  | ``"not_false"`` (default) reads every claim the believer does not believe ``false``; ``"true"`` only those believed ``true``. | `'not_false'`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -1064,19 +1108,27 @@ alignment.AlignmentBundle.get_coordinate_at(
     *,
     format='id_coordinate',
     rounding='round',
+    believer=None,
+    belief='not_false',
 )
 ```
 
 Resolve one coordinate onto a requested timeline axis.
 
+Another timeline is reached through the MatchStamp at the position
+(:meth:`get_matchstamp_at`), read from the MatchClaims the belief
+filter keeps, as every query of the bundle reads them.
+
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name        | Type                                                              | Description                                 | Default           |
-|-------------|-------------------------------------------------------------------|---------------------------------------------|-------------------|
-| at          | [CoordinateInput](`timetoalign.core.retrieval.CoordinateInput`)   | Raw, plain, or ID-bearing coordinate input. | _required_        |
-| timeline_id | [str](`str`) \| None                                              | Requested result timeline ID.               | `None`            |
-| format      | [CoordinateFormat](`timetoalign.core.retrieval.CoordinateFormat`) | Requested coordinate output format.         | `'id_coordinate'` |
-| rounding    | [Rounding](`timetoalign.core.retrieval.Rounding`)                 | Integral projection mode.                   | `'round'`         |
+| Name        | Type                                                              | Description                                                                                                                   | Default           |
+|-------------|-------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------|-------------------|
+| at          | [CoordinateInput](`timetoalign.core.retrieval.CoordinateInput`)   | Raw, plain, or ID-bearing coordinate input.                                                                                   | _required_        |
+| timeline_id | [str](`str`) \| None                                              | Requested result timeline ID.                                                                                                 | `None`            |
+| format      | [CoordinateFormat](`timetoalign.core.retrieval.CoordinateFormat`) | Requested coordinate output format.                                                                                           | `'id_coordinate'` |
+| rounding    | [Rounding](`timetoalign.core.retrieval.Rounding`)                 | Integral projection mode.                                                                                                     | `'round'`         |
+| believer    | [str](`str`) \| None                                              | The actor whose beliefs filter the MatchClaims read (the belief filter); ``None`` reads every claim.                          | `None`            |
+| belief      | [BeliefFilter](`timetoalign.core.provenance.BeliefFilter`)        | ``"not_false"`` (default) reads every claim the believer does not believe ``false``; ``"true"`` only those believed ``true``. | `'not_false'`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -1093,6 +1145,8 @@ alignment.AlignmentBundle.get_coordinate_for(
     *,
     format='id_coordinate',
     rounding='round',
+    believer=None,
+    belief='not_false',
 )
 ```
 
@@ -1100,12 +1154,14 @@ Return a uniquely owned event's start on a selected bundle axis.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name        | Type                                                              | Description                                            | Default           |
-|-------------|-------------------------------------------------------------------|--------------------------------------------------------|-------------------|
-| key         | [str](`str`)                                                      | Event ID with exactly one owning registered timeline.  | _required_        |
-| timeline_id | [str](`str`) \| None                                              | Requested result timeline ID, or the owner by default. | `None`            |
-| format      | [CoordinateFormat](`timetoalign.core.retrieval.CoordinateFormat`) | Requested coordinate output format.                    | `'id_coordinate'` |
-| rounding    | [Rounding](`timetoalign.core.retrieval.Rounding`)                 | Integral projection mode.                              | `'round'`         |
+| Name        | Type                                                              | Description                                                                                                                   | Default           |
+|-------------|-------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------|-------------------|
+| key         | [str](`str`)                                                      | Event ID with exactly one owning registered timeline.                                                                         | _required_        |
+| timeline_id | [str](`str`) \| None                                              | Requested result timeline ID, or the owner by default.                                                                        | `None`            |
+| format      | [CoordinateFormat](`timetoalign.core.retrieval.CoordinateFormat`) | Requested coordinate output format.                                                                                           | `'id_coordinate'` |
+| rounding    | [Rounding](`timetoalign.core.retrieval.Rounding`)                 | Integral projection mode.                                                                                                     | `'round'`         |
+| believer    | [str](`str`) \| None                                              | The actor whose beliefs filter the MatchClaims read (the belief filter); ``None`` reads every claim.                          | `None`            |
+| belief      | [BeliefFilter](`timetoalign.core.provenance.BeliefFilter`)        | ``"not_false"`` (default) reads every claim the believer does not believe ``false``; ``"true"`` only those believed ``true``. | `'not_false'`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -1122,6 +1178,8 @@ alignment.AlignmentBundle.get_coordinates_at(
     *,
     format='id_coordinate',
     rounding='round',
+    believer=None,
+    belief='not_false',
 )
 ```
 
@@ -1129,12 +1187,14 @@ Resolve a coordinate collection onto one timeline axis.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name        | Type                                                                      | Description                                 | Default           |
-|-------------|---------------------------------------------------------------------------|---------------------------------------------|-------------------|
-| at          | [CoordinateCollection](`timetoalign.core.retrieval.CoordinateCollection`) | Coordinate positions to resolve atomically. | _required_        |
-| timeline_id | [str](`str`) \| None                                                      | Requested result timeline ID.               | `None`            |
-| format      | [CoordinateFormat](`timetoalign.core.retrieval.CoordinateFormat`)         | Requested coordinate output format.         | `'id_coordinate'` |
-| rounding    | [Rounding](`timetoalign.core.retrieval.Rounding`)                         | Integral projection mode.                   | `'round'`         |
+| Name        | Type                                                                      | Description                                                                                                                   | Default           |
+|-------------|---------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------|-------------------|
+| at          | [CoordinateCollection](`timetoalign.core.retrieval.CoordinateCollection`) | Coordinate positions to resolve atomically.                                                                                   | _required_        |
+| timeline_id | [str](`str`) \| None                                                      | Requested result timeline ID.                                                                                                 | `None`            |
+| format      | [CoordinateFormat](`timetoalign.core.retrieval.CoordinateFormat`)         | Requested coordinate output format.                                                                                           | `'id_coordinate'` |
+| rounding    | [Rounding](`timetoalign.core.retrieval.Rounding`)                         | Integral projection mode.                                                                                                     | `'round'`         |
+| believer    | [str](`str`) \| None                                                      | The actor whose beliefs filter the MatchClaims read (the belief filter); ``None`` reads every claim.                          | `None`            |
+| belief      | [BeliefFilter](`timetoalign.core.provenance.BeliefFilter`)                | ``"not_false"`` (default) reads every claim the believer does not believe ``false``; ``"true"`` only those believed ``true``. | `'not_false'`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -1151,6 +1211,8 @@ alignment.AlignmentBundle.get_coordinates_for(
     *,
     format='id_coordinate',
     rounding='round',
+    believer=None,
+    belief='not_false',
 )
 ```
 
@@ -1158,12 +1220,14 @@ Return event-start coordinates for a key collection.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name        | Type                                                              | Description                                             | Default           |
-|-------------|-------------------------------------------------------------------|---------------------------------------------------------|-------------------|
-| keys        | [KeyCollection](`timetoalign.core.retrieval.KeyCollection`)       | Event IDs to resolve atomically.                        | _required_        |
-| timeline_id | [str](`str`) \| None                                              | Requested result timeline ID, or each owner by default. | `None`            |
-| format      | [CoordinateFormat](`timetoalign.core.retrieval.CoordinateFormat`) | Requested coordinate output format.                     | `'id_coordinate'` |
-| rounding    | [Rounding](`timetoalign.core.retrieval.Rounding`)                 | Integral projection mode.                               | `'round'`         |
+| Name        | Type                                                              | Description                                                                                                                   | Default           |
+|-------------|-------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------|-------------------|
+| keys        | [KeyCollection](`timetoalign.core.retrieval.KeyCollection`)       | Event IDs to resolve atomically.                                                                                              | _required_        |
+| timeline_id | [str](`str`) \| None                                              | Requested result timeline ID, or each owner by default.                                                                       | `None`            |
+| format      | [CoordinateFormat](`timetoalign.core.retrieval.CoordinateFormat`) | Requested coordinate output format.                                                                                           | `'id_coordinate'` |
+| rounding    | [Rounding](`timetoalign.core.retrieval.Rounding`)                 | Integral projection mode.                                                                                                     | `'round'`         |
+| believer    | [str](`str`) \| None                                              | The actor whose beliefs filter the MatchClaims read (the belief filter); ``None`` reads every claim.                          | `None`            |
+| belief      | [BeliefFilter](`timetoalign.core.provenance.BeliefFilter`)        | ``"not_false"`` (default) reads every claim the believer does not believe ``false``; ``"true"`` only those believed ``true``. | `'not_false'`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -2190,70 +2254,34 @@ alignment.AlignmentBundle.to_file(
 )
 ```
 
-Write the object's manifest to a file.
+Write the package: the manifest and, beside it, the bundle's tables.
 
-The manifest is ``to_dict``'s complete form, written with
-``timetoshare.dumps_file`` in the form, styling and serialization
-chosen: every object's keys sorted, its arrays in canonical order, so
-that equal manifests give equal text and a change shows in a diff as the
-lines it touches. Each argument left None takes the value the file
-the object was read from had (see :meth:`from_file`); for an object
-not read from a file, the minimal form, the styling included, in
-canonical YAML, without event rows or external references. An
-:class:`~timetoalign.alignment.AlignmentBundle` holding MatchClaims
-writes its tables beside the manifest first and names them in its
-``resources``.
-
-#### Parameters {.doc-section .doc-section-parameters}
-
-| Name                | Type                                                               | Description                                                                                | Default    |
-|---------------------|--------------------------------------------------------------------|--------------------------------------------------------------------------------------------|------------|
-| path                | [str](`str`) \| [PathLike](`os.PathLike`)\[[str](`str`)\]          | The file to write, UTF-8 with line feeds; it is overwritten.                               | _required_ |
-| minimal             | [bool](`bool`) \| None                                             | Write the minimal form (True) or the complete form (False).                                | `None`     |
-| styling             | [bool](`bool`) \| None                                             | Write the ``graphical`` object, when the manifest has one (True), or leave it out (False). | `None`     |
-| serialization       | [Serialization](`timetoshare.serialization.Serialization`) \| None | ``"yaml"`` (canonical YAML), ``"json"`` (pretty JSON) or ``"jcs"`` (RFC 8785 JSON).        | `None`     |
-| events              | [bool](`bool`) \| None                                             | Write every timeline's event rows (``events``).                                            | `None`     |
-| external_references | [bool](`bool`) \| None                                             | Write every timeline's external reference table (``external_references``).                 | `None`     |
-
-#### Returns {.doc-section .doc-section-returns}
-
-| Name   | Type                   | Description       |
-|--------|------------------------|-------------------|
-|        | [Path](`pathlib.Path`) | The path written. |
+As :meth:`ManifestFileMixin.to_file
+<timetoalign.timelines.manifest.ManifestFileMixin.to_file>` writes
+a manifest, after the MatchClaim table and the Projections table
+(:meth:`_write_tables`). A manifest never names an event's ID: where
+the bundle writes a table, its Projections lie in
+``projections.parquet`` alone and the events of its timelines are
+not written into the manifest, so writing event rows (``events``,
+given or as read) is refused before any file is written.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                           |
-|--------|----------------------------|---------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If ``to_dict`` cannot write the manifest, or the serialization refuses a value of it. |
-
-#### Examples {.doc-section .doc-section-examples}
-
-```python
->>> import tempfile
->>> from fractions import Fraction
->>> from pathlib import Path
->>> from timetoalign.timelines import ContinuousLogicalTimeline, Timeline
->>> score = ContinuousLogicalTimeline(length=Fraction(32), uid="piece")
->>> path = score.to_file(Path(tempfile.mkdtemp()) / "piece.yaml")
->>> text = path.read_text(encoding="utf-8")
->>> text.startswith('"@context":')
-True
->>> print(text[text.index("\ntimelines:") + 1 :], end="")
-timelines:
-  -
-    id: "#piece"
-    length: [32, 1]
-    unit: quarters
-timetoshare: "0.2.0"
->>> Timeline.from_file(path).length
-Coordinate(Fraction(32, 1), quarters)
-```
+| Name   | Type                       | Description                                                                                                                                                                         |
+|--------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If event rows would be written beside a table, or as :meth:`ManifestFileMixin.to_file <timetoalign.timelines.manifest.ManifestFileMixin.to_file>` and :meth:`_write_tables` refuse. |
 
 ### transfer { #timetoalign.alignment.AlignmentBundle.transfer }
 
 ```python
-alignment.AlignmentBundle.transfer(coord, from_timeline, to_timeline)
+alignment.AlignmentBundle.transfer(
+    coord,
+    from_timeline,
+    to_timeline,
+    *,
+    believer=None,
+    belief='not_false',
+)
 ```
 
 Transfer a coordinate from one timeline to another.
@@ -2272,11 +2300,13 @@ as a MatchStamp.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name          | Type                                                | Description                       | Default    |
-|---------------|-----------------------------------------------------|-----------------------------------|------------|
-| coord         | [CoordinateSpec](`timetoalign.core.CoordinateSpec`) | The coordinate value to transfer. | _required_ |
-| from_timeline | [str](`str`)                                        | ID of the source timeline.        | _required_ |
-| to_timeline   | [str](`str`)                                        | ID of the target timeline.        | _required_ |
+| Name          | Type                                                       | Description                                                                                                                   | Default       |
+|---------------|------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------|---------------|
+| coord         | [CoordinateSpec](`timetoalign.core.CoordinateSpec`)        | The coordinate value to transfer.                                                                                             | _required_    |
+| from_timeline | [str](`str`)                                               | ID of the source timeline.                                                                                                    | _required_    |
+| to_timeline   | [str](`str`)                                               | ID of the target timeline.                                                                                                    | _required_    |
+| believer      | [str](`str`) \| None                                       | The actor whose beliefs filter the MatchClaims read (the belief filter); ``None`` reads every claim.                          | `None`        |
+| belief        | [BeliefFilter](`timetoalign.core.provenance.BeliefFilter`) | ``"not_false"`` (default) reads every claim the believer does not believe ``false``; ``"true"`` only those believed ``true``. | `'not_false'` |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -2286,9 +2316,10 @@ as a MatchStamp.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                   | Description                                           |
-|--------|------------------------|-------------------------------------------------------|
-|        | [KeyError](`KeyError`) | If either id names no timeline of the bundle's trees. |
+| Name   | Type                       | Description                                            |
+|--------|----------------------------|--------------------------------------------------------|
+|        | [KeyError](`KeyError`)     | If either id names no timeline of the bundle's trees.  |
+|        | [ValueError](`ValueError`) | If *belief* is neither ``"not_false"`` nor ``"true"``. |
 
 ### transfer_interval { #timetoalign.alignment.AlignmentBundle.transfer_interval }
 
@@ -2298,6 +2329,9 @@ alignment.AlignmentBundle.transfer_interval(
     end,
     from_timeline,
     to_timeline,
+    *,
+    believer=None,
+    belief='not_false',
 )
 ```
 
@@ -2305,12 +2339,14 @@ Transfer an interval from one timeline to another.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name          | Type                                                | Description                                                                                              | Default    |
-|---------------|-----------------------------------------------------|----------------------------------------------------------------------------------------------------------|------------|
-| start         | [CoordinateSpec](`timetoalign.core.CoordinateSpec`) | Start coordinate in source timeline. Accepts a raw int/float/Fraction, a Coordinate, or an IdCoordinate. | _required_ |
-| end           | [CoordinateSpec](`timetoalign.core.CoordinateSpec`) | End coordinate in source timeline. Accepts a raw int/float/Fraction, a Coordinate, or an IdCoordinate.   | _required_ |
-| from_timeline | [str](`str`)                                        | ID of the source timeline.                                                                               | _required_ |
-| to_timeline   | [str](`str`)                                        | ID of the target timeline.                                                                               | _required_ |
+| Name          | Type                                                       | Description                                                                                                                   | Default       |
+|---------------|------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------|---------------|
+| start         | [CoordinateSpec](`timetoalign.core.CoordinateSpec`)        | Start coordinate in source timeline. Accepts a raw int/float/Fraction, a Coordinate, or an IdCoordinate.                      | _required_    |
+| end           | [CoordinateSpec](`timetoalign.core.CoordinateSpec`)        | End coordinate in source timeline. Accepts a raw int/float/Fraction, a Coordinate, or an IdCoordinate.                        | _required_    |
+| from_timeline | [str](`str`)                                               | ID of the source timeline.                                                                                                    | _required_    |
+| to_timeline   | [str](`str`)                                               | ID of the target timeline.                                                                                                    | _required_    |
+| believer      | [str](`str`) \| None                                       | The actor whose beliefs filter the MatchClaims read (the belief filter); ``None`` reads every claim.                          | `None`        |
+| belief        | [BeliefFilter](`timetoalign.core.provenance.BeliefFilter`) | ``"not_false"`` (default) reads every claim the believer does not believe ``false``; ``"true"`` only those believed ``true``. | `'not_false'` |
 
 #### Returns {.doc-section .doc-section-returns}
 

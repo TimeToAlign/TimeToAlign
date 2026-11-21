@@ -82,6 +82,7 @@ it joins mints it.
 | [to_claims](#timetoalign.alignment.MatchClaimField.to_claims) | Materialise every row into a list of :class:`MatchClaim` objects. |
 | [to_dict](#timetoalign.alignment.MatchClaimField.to_dict) | Render the :attr:`table` as a plain dictionary (inverse of :meth:`from_dict`). |
 | [to_parquet](#timetoalign.alignment.MatchClaimField.to_parquet) | Write the MatchClaim table to its Parquet file. |
+| [with_belief](#timetoalign.alignment.MatchClaimField.with_belief) | A copy of the table whose MatchClaim *claim_id* holds *belief*. |
 
 ### at { #timetoalign.alignment.MatchClaimField.at }
 
@@ -462,9 +463,9 @@ row is kept as stored; a row without an id is minted one.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                                                                                                                                 |
-|--------|----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If the table's columns are not exactly the ``MatchClaim`` properties, or a column's type is not the property's; if a row is not a MatchClaim (:meth:`_read`); if the table carries provenance both in its schema metadata and in its rows; or if two rows hold the same id. |
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+|--------|----------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the table's columns are not exactly the ``MatchClaim`` properties, or a column's type is not the property's; if a row is not a MatchClaim (:meth:`_read`); if the table carries provenance both in its schema metadata and in its rows; if two rows hold the same id; or if the table mixes scopes (a row naming one in the key column ``scope``), which a bundle reads (:meth:`AlignmentBundle.from_file <timetoalign.alignment.bundle.AlignmentBundle.from_file>`). |
 
 ### to_claims { #timetoalign.alignment.MatchClaimField.to_claims }
 
@@ -531,19 +532,22 @@ as JSON or YAML.
 ### to_parquet { #timetoalign.alignment.MatchClaimField.to_parquet }
 
 ```python
-alignment.MatchClaimField.to_parquet(path)
+alignment.MatchClaimField.to_parquet(path, *, scopes=None)
 ```
 
 Write the MatchClaim table to its Parquet file.
 
 The file holds :attr:`table`, the field-level provenance in its
 schema metadata, so :meth:`from_parquet` reads back every value
-exactly. Where the file exists, the new table must succeed it: every
-id of the existing table is in this one, with the same timelines,
-events, anchors and every other value; only its provenance may
-differ (a MatchClaim is never removed and never changed, only
-believed or disbelieved). The file is replaced whole, never in part:
-a write that fails leaves the file as it was and no temporary file.
+exactly. Where the rows mix scopes, TimeToShare's key column
+``scope`` follows the others, per row the name of its scope (null
+for the package's own). Where the file exists, the new table must
+succeed it: every MatchClaim of the existing table, by its scope and
+its id, is in this one, with the same timelines, events, anchors and
+every other value; only its provenance may differ (a MatchClaim is
+never removed and never changed, only believed or disbelieved). The
+file is replaced whole, never in part: a write that fails leaves the
+file as it was and no temporary file.
 
 The file holds what was stated: an implicit MatchClaim, which a
 :class:`~timetoalign.alignment.graph.MatchGraph` derives, is never
@@ -551,9 +555,10 @@ written.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name   | Type                                                                 | Description                                                                    | Default    |
-|--------|----------------------------------------------------------------------|--------------------------------------------------------------------------------|------------|
-| path   | [str](`str`) \| [os](`os`).[PathLike](`os.PathLike`)\[[str](`str`)\] | The file, or a directory to hold :attr:`file_name` (``match_claims.parquet``). | _required_ |
+| Name   | Type                                                                 | Description                                                                                                                                                                                                                                                                                          | Default    |
+|--------|----------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| path   | [str](`str`) \| [os](`os`).[PathLike](`os.PathLike`)\[[str](`str`)\] | The file, or a directory to hold :attr:`file_name` (``match_claims.parquet``).                                                                                                                                                                                                                       | _required_ |
+| scopes | [pa](`pyarrow`).[Array](`pyarrow.Array`) \| None                     | The scope of each row, a string array, null for the package's own; a bundle merging others passes it (:meth:`AlignmentBundle.to_file <timetoalign.alignment.bundle.AlignmentBundle.to_file>`). Without it, or with nulls alone, every row is the package's own and the file has no column ``scope``. | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -572,3 +577,37 @@ minted them (:attr:`AlignmentBundle.match_claim_table
 | Name   | Type                       | Description                                                                                                            |
 |--------|----------------------------|------------------------------------------------------------------------------------------------------------------------|
 |        | [ValueError](`ValueError`) | If a row is an implicit MatchClaim or holds no id, or the existing table holds a MatchClaim this one lacks or changes. |
+
+### with_belief { #timetoalign.alignment.MatchClaimField.with_belief }
+
+```python
+alignment.MatchClaimField.with_belief(claim_id, belief, *, context=None)
+```
+
+A copy of the table whose MatchClaim *claim_id* holds *belief*.
+
+Only that row's provenance changes, as :meth:`MatchClaim.with_belief`
+changes a claim's; every other row, and every other column, is kept.
+A provenance the field holds once for every row stays shared where
+the field has one row; otherwise every row then carries its own,
+since one row's differs.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name     | Type                                                                              | Description                                                                          | Default    |
+|----------|-----------------------------------------------------------------------------------|--------------------------------------------------------------------------------------|------------|
+| claim_id | [str](`str`)                                                                      | The MatchClaim's id, held by one row.                                                | _required_ |
+| belief   | [Belief](`timetoalign.core.provenance.Belief`)                                    | The belief.                                                                          | _required_ |
+| context  | [Mapping](`collections.abc.Mapping`)\[[str](`str`), [Any](`typing.Any`)\] \| None | The JSON-LD context under which actors compare as IRIs; ``None`` declares no prefix. | `None`     |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                | Description                               |
+|--------|---------------------|-------------------------------------------|
+|        | \'MatchClaimField\' | The new field; this one is left as it is. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                   | Description                 |
+|--------|------------------------|-----------------------------|
+|        | [KeyError](`KeyError`) | If no row holds *claim_id*. |

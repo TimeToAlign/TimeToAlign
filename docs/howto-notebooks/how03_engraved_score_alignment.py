@@ -48,7 +48,7 @@
 # 3. Write a ScoreWarp SVG, read its time axis, and take a point of the
 #    drawing to seconds and on to the score.
 # 4. Calibrate a drawn axis by hand with `create_calibrated_child`.
-# 5. Save the bundle to a file and read it back.
+# 5. Save the bundle as a package and read it back.
 
 # %% [markdown]
 # ## Setup
@@ -374,36 +374,32 @@ page.list_children()
 # ## 5. Saving the bundle
 #
 # The drawing joins the bundle like the other two timelines. `to_file()`
-# writes the bundle as a {{< glossary "TimeToShare manifest" >}}: the
-# timelines, their children and conversion maps, the score's measures. A
-# manifest holds no MatchClaims, and events only when asked for with
-# `events=True`; the claims stay in the MAPS file, which names the score's
-# events, so the events are written too, the recording's Projections among
-# them. The file opens with the
-# manifest's inline JSON-LD `@context`; the cell below prints it from
-# `timelines` on.
+# writes the bundle as a package: a
+# {{< glossary "TimeToShare manifest" >}} holding the timelines, their
+# children and conversion maps and the score's measures, and beside it the
+# MatchClaim table and the recording's Projections table, which the
+# manifest names in its `resources`. A manifest names no event: the claims
+# name the score's notes by their `xml:id`, which the MEI file holds. The
+# file opens with the manifest's inline JSON-LD `@context`; the cell below
+# lists the directory, where the MAPS file and the SVG are this guide's
+# own, and prints the manifest from `timelines` on.
 
 # %%
 bundle.add_timeline(drawing)
-bundle_path = bundle.to_file(FILES / "out_of_the_flow.yaml", events=True)
+bundle_path = bundle.to_file(FILES / "out_of_the_flow.yaml")
 text = bundle_path.read_text(encoding="utf-8").splitlines()
 start = text.index("timelines:")
+print(sorted(path.name for path in FILES.iterdir()))
 print("\n".join(text[start:][:24]))
 
 # %% [markdown]
-# `from_file()` reads the bundle back. The MAPS file states the claims again
-# on the timelines read, naming the Projections the recording was read with,
-# and the bundle answers as before: the drawing's
-# point at x = 258 is still 2.08 seconds, and the septuplet note still warps
-# to the same time.
+# `from_file()` reads the package back, the claims and the recording's
+# Projections with it, and the bundle answers as before: the drawing's
+# point at x = 258 is still 2.08 seconds, and the septuplet note still
+# warps to the same time.
 
 # %%
 read = AlignmentBundle.from_file(bundle_path)
-read.add_match_claims(
-    MapsLoader.from_file(maps_path).create_match_claims(
-        read.get_timeline(score.id), read.get_timeline(recording.id)
-    )
-)
 read.get_timeline(drawing.id).get_timestamp_at(258), read.get_matchstamp_at(
     Fraction(3, 7), score.id
 )

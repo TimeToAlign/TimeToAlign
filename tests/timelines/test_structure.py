@@ -38,14 +38,10 @@ from timetoalign.timelines import (
     MetricHierarchy,
     MetricNode,
     Reading,
-    SectionHierarchy,
     TempoEntry,
     TempoMap,
     Timeline,
 )
-
-SECTION_COUNTS = (78, 65, 60)
-TOTAL_MEASURES = 203
 
 SCORE_DATA = ensure_data("score")
 
@@ -560,108 +556,6 @@ def test_abstract_and_float_rows_keep_their_stated_semantics() -> None:
         [{"number": 0, "nominal_length": 1, "actual_length": 0.5}]
     )
     assert expanded[0]["actual_length"] == F(1, 2)
-
-
-class TestSectionHierarchyConstructionEquivalence:
-    """The same partition spelled every accepted way compares equal."""
-
-    def test_nested_measures_equal_measure_counts(self) -> None:
-        nested = SectionHierarchy.from_measures([_abstract(n) for n in SECTION_COUNTS])
-        counts = SectionHierarchy.from_measure_counts(list(SECTION_COUNTS))
-        assert nested == counts
-        assert counts.n_sections == 3
-        assert [section.n_measures for section in counts.sections] == list(
-            SECTION_COUNTS
-        )
-        assert counts.n_measures == TOTAL_MEASURES
-
-    def test_int_form_equals_every_single_section_spelling(self) -> None:
-        as_int = SectionHierarchy.from_measure_counts(TOTAL_MEASURES)
-        alternatives = (
-            SectionHierarchy.from_measure_counts([TOTAL_MEASURES]),
-            SectionHierarchy.from_measure_counts({"whole": TOTAL_MEASURES}),
-            SectionHierarchy.from_measure_counts([("whole", TOTAL_MEASURES)]),
-            SectionHierarchy.from_measure_counts(
-                zip(["whole"], [TOTAL_MEASURES], strict=True)
-            ),
-            SectionHierarchy.from_measures([_abstract(TOTAL_MEASURES)]),
-        )
-        assert as_int.n_sections == 1
-        assert all(as_int == other for other in alternatives)
-
-    def test_three_section_spellings_all_equal(self) -> None:
-        as_list = SectionHierarchy.from_measure_counts(list(SECTION_COUNTS))
-        alternatives = (
-            SectionHierarchy.from_measure_counts({"I": 78, "II": 65, "III": 60}),
-            SectionHierarchy.from_measure_counts([("I", 78), ("II", 65), ("III", 60)]),
-            SectionHierarchy.from_measure_counts(
-                zip(["I", "II", "III"], SECTION_COUNTS, strict=True)
-            ),
-        )
-        assert all(as_list == other for other in alternatives)
-
-    def test_consumed_once_zip_is_materialized(self) -> None:
-        consumed = zip(["I", "II", "III"], SECTION_COUNTS, strict=True)
-        from_zip = SectionHierarchy.from_measure_counts(consumed)
-        assert list(consumed) == []
-        assert from_zip == SectionHierarchy.from_measure_counts(
-            [("I", 78), ("II", 65), ("III", 60)]
-        )
-
-    def test_measure_map_accepted_where_measures_expected(self) -> None:
-        measure_map = MeasureMap(_abstract(TOTAL_MEASURES))
-        from_map = SectionHierarchy.from_measures(measure_map)
-        assert from_map.n_sections == 1
-        assert from_map.measure_map is measure_map
-        assert from_map == SectionHierarchy.from_measure_counts(TOTAL_MEASURES)
-
-    def test_existing_map_is_partitioned_without_rebuilding(self) -> None:
-        measure_map = MeasureMap(Measure(actual_length=F(1, 3)) for _ in range(6))
-        hierarchy = SectionHierarchy.from_measure_map(measure_map, counts=[1, 2, 3])
-        assert hierarchy.measure_map is measure_map
-        assert [section.n_measures for section in hierarchy.sections] == [1, 2, 3]
-        assert [
-            tuple(measure.id for measure in section.measure_map)
-            for section in hierarchy.sections
-        ] == [("1",), ("2", "3"), ("4", "5", "6")]
-
-    def test_existing_map_partition_must_cover_the_map_exactly(self) -> None:
-        measure_map = MeasureMap(_abstract(6))
-        with pytest.raises(
-            ValueError,
-            match=r"Section counts must sum to MeasureMap length 6, got \(2, 3\)",
-        ):
-            SectionHierarchy.from_measure_map(measure_map, counts=[2, 3])
-
-    def test_display_names_excluded_from_equality(self) -> None:
-        named = SectionHierarchy.from_measure_counts({"I": 78, "II": 65, "III": 60})
-        differently_named = SectionHierarchy.from_measure_counts(
-            [("intro", 78), ("middle", 65), ("finale", 60)]
-        )
-        anonymous = SectionHierarchy.from_measure_counts(list(SECTION_COUNTS))
-        assert named == differently_named == anonymous
-        assert [section.name for section in named.sections] == ["I", "II", "III"]
-        assert [section.name for section in anonymous.sections] == [None, None, None]
-
-    def test_different_section_shape_is_unequal(self) -> None:
-        assert SectionHierarchy.from_measure_counts(
-            list(SECTION_COUNTS)
-        ) != SectionHierarchy.from_measure_counts([78, 60, 65])
-        assert SectionHierarchy.from_measure_counts(
-            [3, 2, 2]
-        ) != SectionHierarchy.from_measure_counts([3, 3, 1])
-
-    def test_concrete_leaf_quarter_spans(self) -> None:
-        def bars(count: int) -> list[Measure]:
-            return [
-                Measure(actual_length=F(3), time_signature="3/4") for _ in range(count)
-            ]
-
-        hierarchy = SectionHierarchy.from_measures([bars(3), bars(2), bars(2)])
-        assert [
-            section.measure_map.total_actual_length for section in hierarchy.sections
-        ] == [F(9), F(6), F(6)]
-        assert hierarchy.measure_map.total_actual_length == F(21)
 
 
 class TestMeasureMapImmutability:

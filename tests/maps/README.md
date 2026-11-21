@@ -747,7 +747,7 @@ meets it before loading rather than after. Emitting a `UserWarning` on every
 load of such a score told a caller nothing they could act on and landed in the
 output of every notebook that loads one. **The validation logic is therefore
 that the load succeeds with no warning at all**: the score loads, its measure
-structure and every other conversion are intact, `TimeUnit.floating_measures`
+map holds all ``397`` measure rows of the TSV, every other conversion is intact, `TimeUnit.floating_measures`
 is simply not among its units, and a test asserts the silence explicitly rather
 than leaving it unobserved.
 

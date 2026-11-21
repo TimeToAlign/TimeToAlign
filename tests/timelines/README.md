@@ -1185,16 +1185,6 @@ maps of the same concrete measure classes are equal; changing only one element
 from ``RegularMeasure`` to ``IrregularMeasure`` makes the maps unequal even when
 all field values match.
 
-The same three-section hierarchy is constructed from nested measure lists, the
-counts ``[78, 65, 60]``, and the named counts
-``{"I": 78, "II": 65, "III": 60}``. All compare equal because their ordered
-leaf counts are exactly ``(78, 65, 60)`` and their total is exactly ``203``;
-at three quarters per ``3/4`` bar, the per-leaf quarter spans are exactly
-``(234, 195, 180)``. Display names do not alter structure. Building from an existing map must retain
-that exact map object. Counts partition it into consecutive normalized slices,
-and any count sum other than the map length raises instead of dropping or
-inventing measures.
-
 Metric dictionary tests cover a whole-note beat size, a quarters beat size, and a policy
 authored from division alone. Each reconstructed policy must equal the original
 full pydantic scalar, including its name and the authored beat-size unit. A metric

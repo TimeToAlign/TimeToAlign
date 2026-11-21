@@ -24,10 +24,11 @@ def _rondeau_timeline(*, flatten: bool = False) -> Timeline:
     return Ms3Loader.from_file(RONDEAU).create_timeline(flatten=flatten)
 
 
-def test_rondeau_stores_one_measure_map_shared_with_the_skeleton() -> None:
+def test_rondeau_stores_one_measure_map() -> None:
     timeline = _rondeau_timeline()
     assert isinstance(timeline.measure_map, MeasureMap)
-    assert timeline.skeleton.section_hierarchy.measure_map is timeline.measure_map
+    assert timeline.measure_map is timeline.measure_map
+    assert len(timeline.measure_map) == 60
 
 
 def test_repeat_end_jumps_follow_exact_measure_boundaries() -> None:
@@ -97,12 +98,11 @@ def test_break_and_marker_facts_are_derived_from_the_tsv_columns() -> None:
     ] == [("jump_to_1", "segno", Coordinate(Fraction(11), TimeUnit.quarters))]
 
 
-def test_flatten_keeps_source_structure_without_attaching_a_skeleton() -> None:
+def test_flatten_keeps_source_structure() -> None:
     timeline = _rondeau_timeline(flatten=True)
     structured = _rondeau_timeline()
     assert isinstance(timeline.measure_map, MeasureMap)
     assert timeline.measure_map == structured.measure_map
-    assert timeline.skeletons == ()
     assert timeline.flow_control.to_dict() == structured.flow_control.to_dict()
 
 

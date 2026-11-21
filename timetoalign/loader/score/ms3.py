@@ -92,7 +92,6 @@ class Ms3Loader(ScoreLoader):
         """
         super().__init__(*args, **kwargs)
         self._auto_discover = auto_discover
-        self._section_counts: list[int] = []
 
     @classmethod
     def from_file(cls, *paths: Path | str, auto_discover: bool = False) -> "Ms3Loader":
@@ -711,7 +710,7 @@ class Ms3Loader(ScoreLoader):
         flatten: bool = False,
         **kwargs: Any,
     ) -> ContinuousLogicalTimeline:
-        """Create a score timeline and, by default, attach parsed structure.
+        """Create a score timeline carrying the parsed measure structure.
 
         Known limitation: a score whose measures are **split** — two
         records sharing one notated downbeat, as when a bar is divided
@@ -722,8 +721,7 @@ class Ms3Loader(ScoreLoader):
         approximate lattice is built in its place, since an fm reading
         those measures do not support is worse than no fm reading.
         """
-        from timetoalign.alignment import TimeSkeleton
-        from timetoalign.timelines import ContinuousLogicalTimeline, SectionHierarchy
+        from timetoalign.timelines import ContinuousLogicalTimeline
 
         has_measures = len(self.store.measures) > 0
         if has_measures and all(
@@ -756,12 +754,6 @@ class Ms3Loader(ScoreLoader):
         if timeline.measure_map is not None:
             notated_length = timeline.measure_map.total_actual_length or Fraction(0)
             timeline.length = max(timeline.length.value, notated_length)
-            if not flatten:
-                counts = self._section_counts or [len(timeline.measure_map)]
-                hierarchy = SectionHierarchy.from_measure_map(
-                    timeline.measure_map, counts=counts
-                )
-                TimeSkeleton(hierarchy).attach(timeline)
         return timeline
 
     def _load_measures(self, df: pd.DataFrame, source: Path) -> ScoreStore:
@@ -987,17 +979,6 @@ class Ms3Loader(ScoreLoader):
             unit=TimeUnit.quarters,
             number_type=NumberType.fraction,
         )
-        section_ends = [
-            int(row["mc"])
-            for row in measure_rows
-            if "section" in str(row.get("breaks") or "").lower()
-        ]
-        previous = 0
-        self._section_counts = []
-        for end in [*section_ends, len(measure_rows)]:
-            self._section_counts.append(end - previous)
-            previous = end
-
         return ScoreStore(
             notes=NoteEventData.empty(),
             measures=measures_data,

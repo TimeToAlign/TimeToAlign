@@ -164,8 +164,6 @@ _DEFERRED_EXPORTS = {
     "Tempo": ("timetoalign.core", "Tempo"),
     "TempoEntry": ("timetoalign.timelines", "TempoEntry"),
     "TempoMap": ("timetoalign.timelines", "TempoMap"),
-    "SectionHierarchy": ("timetoalign.timelines", "SectionHierarchy"),
-    "TimeSkeleton": ("timetoalign.alignment", "TimeSkeleton"),
     # Loader layer
     "AudioInfo": ("timetoalign.loader", "AudioInfo"),
     "AudioLoader": ("timetoalign.loader", "AudioLoader"),
@@ -309,8 +307,6 @@ __all__ = [
     "OptionalCoordinate",
     "ResolvedCoordinate",
     "resolve_coordinate_spec",
-    "SectionHierarchy",
-    "TimeSkeleton",
     # Timestamps (first-class citizens)
     "TimeStamp",
     "TimeIntervalStamp",

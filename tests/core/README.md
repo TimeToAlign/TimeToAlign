@@ -40,7 +40,7 @@ serialization, while the largest permitted denominator survives.
 These cases rule out delayed serialization failures and invented ramp meaning.
 
 Negative-level beats demonstrate groove below the pulse, while a zero beat
-index remains invalid. Address storage contains no skeleton identifier.
+index remains invalid.
 Measure-map and forest values are deliberately absent from the paired-field
 registry: they are immutable timeline structure, not event columns. Tempo and
 BeatPolicy remain event scalars, so this separation rules out attaching
@@ -1026,7 +1026,7 @@ loses information:
   belongs on the `_at` getters rather than the string-key `_for` getters.
 * The Field round trip uses `"237b"` — the printed label of the second half of
   the split bar that is measure count 261 in Beethoven's WoO 71. The storage
-  struct also carries optional rendition, skeleton, and section qualifiers;
+  struct also carries optional rendition and section qualifiers;
   the round trip asserts the source facts because a
   struct that stored only an integer could not hold this label at all.
 
@@ -1116,9 +1116,7 @@ deleted, so no test of one exists.
      {"clt_2"})` → `clt_3`; with a role, `("score:clt", {"score:clt_1"})` →
      `score:clt_2`. Called twice with the same arguments it answers the same
      id, because it keeps no state: an element held by no scope mints from
-     an empty taken set, so every free `Region` is `region_1` and every
-     `TimeSkeleton` built without an id `skeleton_1` (the skeleton case is
-     tested in `tests/alignment/test_skeleton.py`).
+     an empty taken set, so every free `Region` is `region_1`.
    - An id is free: any non-empty string without a control character.
      `validate_id` returns unchanged `"performance"`, `"a"`, `"Bass Kick"`,
      `"score:clt_7"`, `"a/b"` (a slash), `"intro to part 2"` (spaces), the

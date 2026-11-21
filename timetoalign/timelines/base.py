@@ -65,7 +65,6 @@ from .engines import (
     ExternalReferencesMixin,
     RegionsMixin,
     SegmentsMixin,
-    SkeletonsMixin,
     TabularExportMixin,
 )
 from .engines import children as _children_engine
@@ -182,7 +181,6 @@ class Timeline(
     TabularExportMixin,
     RegionsMixin,
     SegmentsMixin,
-    SkeletonsMixin,
     MutableStatementsMixin,
     ManifestFileMixin,
     _OpenObject,
@@ -399,9 +397,6 @@ class Timeline(
         # FlowMaps enable unfold/fold coordinate conversion for timelines
         # that have flow control (repeats, jumps, etc.).
         self._flow_maps = {}
-
-        # Shared temporal structures enroll timelines through TimeSkeleton.
-        self._skeleton_attachments: list[Any] = []
 
         # What the timeline stands for: its statements and provenance as the
         # file writes them, and the prefixes they need beyond the catalogue's.

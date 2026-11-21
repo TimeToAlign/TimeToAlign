@@ -27,7 +27,6 @@ Statements (what a bundle, a timeline or a region stands for):
 Structural components:
 - Region: Named TimeInterval (not a timeline itself)
 - MeasureMap: Immutable printed-order measure structure
-- SectionHierarchy: Section partition over one MeasureMap
 - MetricNode: One timespan in a packed metrical forest
 - Expansion: An attributed partition of a metric node
 - Reading: Provenance and vocabulary for one forest reading
@@ -113,7 +112,6 @@ from .structure import (
     MetricHierarchy,
     MetricNode,
     Reading,
-    SectionHierarchy,
     TempoEntry,
     TempoMap,
 )
@@ -163,7 +161,6 @@ __all__ = [
     # Structural components
     "Region",
     "MeasureMap",
-    "SectionHierarchy",
     "MetricNode",
     "Expansion",
     "Reading",

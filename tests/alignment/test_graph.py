@@ -13,6 +13,7 @@ import pytest
 
 from timetoalign.alignment import (
     AlignmentAnchor,
+    AlignmentBundle,
     Belief,
     InferredEdge,
     MatchClaim,
@@ -616,100 +617,22 @@ class TestMatchGraphGroupExtension:
 # region MatchGraph Filter Tests
 
 
-class TestMatchGraphFilter:
-    """Tests for MatchGraph.filter() method."""
-
-    def test_filter_by_timeline_ids(self) -> None:
-        """Filter to include only specific timelines."""
-        claims = [
-            _claim("tl_a", 100.0, "tl_b", 50.0),
-            _claim("tl_b", 50.0, "tl_c", 25.0),
-        ]
-        graph = MatchGraph(claims)
-
-        filtered = graph.filter(timeline_ids={"tl_a", "tl_b"})
-
-        assert filtered.timeline_ids == {"tl_a", "tl_b"}
-        assert filtered.n_edges == 1
-
-    def test_filter_by_id_pattern(self) -> None:
-        """Filter to exclude a timeline through an ID pattern."""
-        claims = [
-            _claim("tl_a", 100.0, "tl_b", 50.0),
-            _claim("tl_b", 50.0, "tl_c", 25.0),
-        ]
-        graph = MatchGraph(claims)
-
-        filtered = graph.filter(id_pattern=r"^(?!tl_c$).*")
-
-        assert "tl_c" not in filtered.timeline_ids
-        assert filtered.n_edges == 1
-
-    def test_filter_synchronous_only(self) -> None:
-        """Filter to include only synchronous edges."""
-        claims = [
-            _claim("tl_a", 100.0, "tl_b", 50.0),
-            _conceptual(
-                "tl_b",
-                "tl_c",
-                provenance=Provenance(method="inferred", note="test structural"),
-            ),
-        ]
-        graph = MatchGraph(claims)
-
-        filtered = graph.filter(synchronous_only=True)
-
-        # Only the synchronous edge should remain
-        assert filtered.n_edges == 1
-        # tl_c should be removed (isolated after edge removal)
-        assert "tl_c" not in filtered.timeline_ids
-
-    def test_filter_stated_only(
-        self,
-        dgt1_group: TimelineGroup,
-    ) -> None:
-        """Filter to include only the edges MatchClaims state (remove inferred)."""
-        claim = _claim("dgt_1", 500, "external", 25.0, unit_a=TimeUnit.pixels)
-        graph = MatchGraph([claim])
-
-        groups = {"group1": dgt1_group}
-
-        extended = graph.extend_to_groups(groups)
-        filtered = extended.filter(stated_only=True)
-
-        # Should only have the stated edge
-        assert filtered.n_edges == 1
-        # Audio should be removed (only connected via inferred edge)
-        assert "audio" not in filtered.timeline_ids
-
-    def test_filter_removes_isolated_nodes(self) -> None:
-        """Filtering edges removes nodes that become isolated."""
-        claims = [
-            _claim("tl_a", 100.0, "tl_b", 50.0),
-            _conceptual("tl_c", "tl_d"),
-        ]
-        graph = MatchGraph(claims)
-
-        filtered = graph.filter(synchronous_only=True)
-
-        # tl_c and tl_d should be removed
-        assert filtered.timeline_ids == {"tl_a", "tl_b"}
-
-
-# The belief filter over TestMatchGraphBeliefFilter's four claims: the
+# The belief filter over TestMatchGraphBeliefFilter's five claims: the
 # believer, the states kept, the ids kept in order.
 _BELIEF_CASES = [
     # No believer: nothing is filtered.
-    (None, DEFAULT_BELIEFS, ["claim_1", "claim_2", "claim_3", "claim_4"]),
-    (None, ["true"], ["claim_1", "claim_2", "claim_3", "claim_4"]),
+    (None, DEFAULT_BELIEFS, ["claim_1", "claim_2", "claim_3", "claim_4", "claim_5"]),
+    (None, ["true"], ["claim_1", "claim_2", "claim_3", "claim_4", "claim_5"]),
     # ana believes claim_2 false; ben's belief in claim_4 is not hers.
-    ("ana", DEFAULT_BELIEFS, ["claim_1", "claim_3", "claim_4"]),
+    ("ana", DEFAULT_BELIEFS, ["claim_1", "claim_3", "claim_4", "claim_5"]),
     # Only what ana believes true.
     ("ana", ["true"], ["claim_3"]),
     # What ana holds no belief on.
     ("ana", ["undecided"], ["claim_1", "claim_4"]),
+    # What ana believes unlikely.
+    ("ana", ["unlikely"], ["claim_5"]),
     # ben believes claim_4 false; ana's beliefs are not his.
-    ("ben", DEFAULT_BELIEFS, ["claim_1", "claim_2", "claim_3"]),
+    ("ben", DEFAULT_BELIEFS, ["claim_1", "claim_2", "claim_3", "claim_5"]),
     ("ben", ["true"], []),
     ("ben", ["false"], ["claim_4"]),
 ]
@@ -720,7 +643,7 @@ class TestMatchGraphBeliefFilter:
 
     @staticmethod
     def _claims() -> list[MatchClaim]:
-        """Four claims, one per belief case, at distinct positions."""
+        """Five claims at distinct positions, every belief state occurring."""
 
         return [
             _claim("tl_a", 1.0, "tl_b", 10.0, id="claim_1"),
@@ -748,6 +671,14 @@ class TestMatchGraphBeliefFilter:
                 id="claim_4",
                 provenance=_believed_by("ben", "false"),
             ),
+            _claim(
+                "tl_a",
+                5.0,
+                "tl_b",
+                50.0,
+                id="claim_5",
+                provenance=_believed_by("ana", "unlikely"),
+            ),
         ]
 
     @pytest.mark.parametrize(("believer", "beliefs", "kept"), _BELIEF_CASES)
@@ -772,21 +703,73 @@ def _edges(graph: MatchGraph) -> set[frozenset]:
     return {frozenset(edge) for edge in graph._graph.edges()}
 
 
+def _assert_rebuilt(filtered: MatchGraph, rebuilt: MatchGraph) -> None:
+    """*filtered* holds exactly what *rebuilt* holds.
+
+    The claims as objects in order, the edge sets, the inferred edges by
+    anchor, group and source claim identity, and the rendered stamps.
+    """
+    assert len(filtered.claims) == len(rebuilt.claims)
+    assert all(
+        mine is theirs
+        for mine, theirs in zip(filtered.claims, rebuilt.claims, strict=True)
+    )
+    assert _edges(filtered) == _edges(rebuilt)
+    assert [
+        (edge.anchor, edge.group_id, id(edge.source_claim))
+        for edge in filtered.inferred_edges
+    ] == [
+        (edge.anchor, edge.group_id, id(edge.source_claim))
+        for edge in rebuilt.inferred_edges
+    ]
+    assert [str(stamp) for stamp in filtered.get_stamps()] == [
+        str(stamp) for stamp in rebuilt.get_stamps()
+    ]
+
+
+def _inferred(graph: MatchGraph) -> list[tuple[AlignmentAnchor, str, MatchClaim]]:
+    """A graph's inferred edges as (anchor, group, source claim)."""
+    return [
+        (edge.anchor, edge.group_id, edge.source_claim) for edge in graph.inferred_edges
+    ]
+
+
+def _pixels_to_seconds(pixels: int, seconds: float) -> AlignmentAnchor:
+    """The anchor the group {dgt_1 1000 px, audio 100 s} infers."""
+    return AlignmentAnchor(
+        timeline_a_id="dgt_1",
+        coordinate_a=Coordinate(pixels, TimeUnit.pixels),
+        timeline_b_id="audio",
+        coordinate_b=Coordinate(seconds, TimeUnit.seconds),
+    )
+
+
+def _is(found: list[MatchClaim], expected: list[MatchClaim]) -> bool:
+    """Whether *found* holds exactly the *expected* objects, in order."""
+    return len(found) == len(expected) and all(
+        mine is theirs for mine, theirs in zip(found, expected, strict=True)
+    )
+
+
 class TestMatchGraphFilterByClaims:
-    """``filter`` holds what a graph of the claims it keeps holds."""
+    """``filter`` holds what the graph rebuilt from the kept claims holds."""
 
     @pytest.mark.parametrize(("believer", "beliefs", "kept"), _BELIEF_CASES)
     def test_filter_keeps_the_believed_claims(
         self, believer: str | None, beliefs: list[str], kept: list[str]
     ) -> None:
         """The constructor's answer, asked of a whole graph."""
-        graph = MatchGraph(TestMatchGraphBeliefFilter._claims())
+        claims = TestMatchGraphBeliefFilter._claims()
+        graph = MatchGraph(claims)
 
         filtered = graph.filter(believer=believer, beliefs=beliefs)
 
         assert [claim.id for claim in filtered.claims] == kept
         assert filtered.n_edges == len(kept)
         assert filtered.n_nodes == 2 * len(kept)
+        _assert_rebuilt(
+            filtered, MatchGraph(claims, believer=believer, beliefs=beliefs)
+        )
 
     def test_filter_drops_the_inferred_edges_of_a_disbelieved_claim(
         self, dgt1_group: TimelineGroup
@@ -812,19 +795,14 @@ class TestMatchGraphFilterByClaims:
 
         filtered = extended.filter(believer="ana")
 
-        assert [claim is claims[1] for claim in filtered.claims] == [True]
+        assert _is(filtered.claims, [claims[1]])
         assert (filtered.n_edges, filtered.n_nodes) == (2, 3)
         assert filtered.timeline_ids == {"dgt_1", "external", "audio"}
-        assert [edge.anchor for edge in filtered.inferred_edges] == [
-            AlignmentAnchor(
-                timeline_a_id="dgt_1",
-                coordinate_a=Coordinate(200, TimeUnit.pixels),
-                timeline_b_id="audio",
-                coordinate_b=Coordinate(20.0, TimeUnit.seconds),
-            )
+        assert _inferred(filtered) == [
+            (_pixels_to_seconds(200, 20.0), "group1", claims[1])
         ]
         rebuilt = MatchGraph(claims, believer="ana").extend_to_groups(groups)
-        assert _edges(filtered) == _edges(rebuilt)
+        _assert_rebuilt(filtered, rebuilt)
 
     def test_filter_keeps_an_inferred_edge_another_kept_claim_grounds(
         self, dgt1_group: TimelineGroup
@@ -849,19 +827,84 @@ class TestMatchGraphFilterByClaims:
 
         filtered = extended.filter(believer="ana")
 
-        assert [claim is claims[1] for claim in filtered.claims] == [True]
+        assert _is(filtered.claims, [claims[1]])
         assert (filtered.n_edges, filtered.n_nodes) == (2, 3)
         assert filtered.timeline_ids == {"dgt_1", "score", "audio"}
-        assert [edge.anchor for edge in filtered.inferred_edges] == [
-            AlignmentAnchor(
-                timeline_a_id="dgt_1",
-                coordinate_a=Coordinate(500, TimeUnit.pixels),
-                timeline_b_id="audio",
-                coordinate_b=Coordinate(50.0, TimeUnit.seconds),
-            )
+        assert _inferred(filtered) == [
+            (_pixels_to_seconds(500, 50.0), "group1", claims[1])
         ]
         rebuilt = MatchGraph(claims, believer="ana").extend_to_groups(groups)
-        assert _edges(filtered) == _edges(rebuilt)
+        _assert_rebuilt(filtered, rebuilt)
+
+    def test_filter_infers_again_an_anchor_a_dropped_claim_stated(
+        self, dgt1_group: TimelineGroup
+    ) -> None:
+        """A dropped claim stating the group's own anchor leaves it inferred."""
+        claims = [
+            _claim(
+                "dgt_1",
+                500,
+                "audio",
+                50.0,
+                unit_a=TimeUnit.pixels,
+                unit_b=TimeUnit.seconds,
+                id="claim_1",
+                provenance=_believed_by("ana", "false"),
+            ),
+            _claim(
+                "dgt_1", 500, "external", 25.0, unit_a=TimeUnit.pixels, id="claim_2"
+            ),
+        ]
+        groups = {"group1": dgt1_group}
+        extended = MatchGraph(claims).extend_to_groups(groups)
+        assert (extended.n_edges, extended.inferred_edges) == (2, [])
+
+        filtered = extended.filter(believer="ana")
+
+        assert _is(filtered.claims, [claims[1]])
+        assert (filtered.n_nodes, filtered.n_edges) == (3, 2)
+        assert _inferred(filtered) == [
+            (_pixels_to_seconds(500, 50.0), "group1", claims[1])
+        ]
+        assert [str(stamp) for stamp in filtered.get_stamps()] == [
+            "MatchStamp (3 timelines, 2 edges)\n"
+            "  audio     50 seconds  inferred\n"
+            "  dgt_1     500 pixels  stated\n"
+            "  external   25 number  stated"
+        ]
+        rebuilt = MatchGraph(claims, believer="ana").extend_to_groups(groups)
+        _assert_rebuilt(filtered, rebuilt)
+
+    def test_inferred_edges_name_only_kept_claims(
+        self, dgt1_group: TimelineGroup
+    ) -> None:
+        """A kept inferred edge traces back to a kept claim."""
+        claims = [
+            _claim(
+                "dgt_1",
+                200,
+                "external",
+                10.0,
+                unit_a=TimeUnit.pixels,
+                id="claim_3",
+                provenance=_believed_by("ana", "false"),
+            ),
+            _claim("dgt_1", 200, "score", 3, unit_a=TimeUnit.pixels, id="claim_4"),
+        ]
+        groups = {"group1": dgt1_group}
+        extended = MatchGraph(claims).extend_to_groups(groups)
+        assert _inferred(extended) == [
+            (_pixels_to_seconds(200, 20.0), "group1", claims[0])
+        ]
+
+        filtered = extended.filter(believer="ana")
+
+        assert _is(filtered.claims, [claims[1]])
+        assert _inferred(filtered) == [
+            (_pixels_to_seconds(200, 20.0), "group1", claims[1])
+        ]
+        rebuilt = MatchGraph(claims, believer="ana").extend_to_groups(groups)
+        _assert_rebuilt(filtered, rebuilt)
 
     def test_filter_keeps_an_anchor_a_kept_claim_also_states(self) -> None:
         """An edge two claims state stays, naming the kept claim."""
@@ -878,7 +921,7 @@ class TestMatchGraphFilterByClaims:
 
         filtered = graph.filter(believer="ana")
 
-        assert [claim is kept for claim in filtered.claims] == [True]
+        assert _is(filtered.claims, [kept])
         assert filtered.n_edges == 1
         [(_, _, data)] = filtered._graph.edges(data=True)
         assert data["claim"] is kept
@@ -886,6 +929,94 @@ class TestMatchGraphFilterByClaims:
         # The graph filtered keeps its own edge as it was.
         [(_, _, original)] = graph._graph.edges(data=True)
         assert original["claim"] is dropped
+        _assert_rebuilt(filtered, MatchGraph([kept]))
+
+    def test_filter_by_timeline_id_ids_and_pattern(self) -> None:
+        """A claim with a matching timeline on either side is kept."""
+        claims = [
+            _claim("tl_a", 100.0, "tl_b", 50.0, id="claim_1"),
+            _claim("tl_b", 50.0, "tl_c", 25.0, id="claim_2"),
+        ]
+        graph = MatchGraph(claims)
+        first, second = claims
+
+        cases = [
+            ({"timeline_ids": {"tl_a"}}, [first]),
+            ({"timeline_ids": {"tl_a", "tl_b"}}, [first, second]),
+            ({"timeline_id": "tl_c"}, [second]),
+            ({"timeline_id": "tl_x"}, []),
+            ({"id_pattern": r"^tl_c$"}, [second]),
+            ({"id_pattern": r"^(?!tl_c$).*"}, [first, second]),
+            ({"timeline_ids": {"tl_a", "tl_b"}, "id_pattern": r"^tl_c$"}, [second]),
+        ]
+        for criteria, kept in cases:
+            filtered = graph.filter(**criteria)
+            assert _is(filtered.claims, kept), criteria
+            _assert_rebuilt(filtered, MatchGraph(kept))
+
+        both = graph.filter(timeline_ids={"tl_a", "tl_b"})
+        assert both.timeline_ids == {"tl_a", "tl_b", "tl_c"}
+        assert (both.n_edges, [stamp.n_timelines for stamp in both.get_stamps()]) == (
+            2,
+            [3],
+        )
+        assert graph.filter(timeline_ids={"tl_a"}).timeline_ids == {"tl_a", "tl_b"}
+        assert graph.filter(timeline_id="tl_x").n_nodes == 0
+
+    def test_filter_within(self) -> None:
+        """A claim is kept when both its timelines are in the set."""
+        claims = [
+            _claim("tl_a", 100.0, "tl_b", 50.0, id="claim_1"),
+            _claim("tl_b", 50.0, "tl_c", 25.0, id="claim_2"),
+        ]
+        graph = MatchGraph(claims)
+
+        within = graph.filter(within={"tl_a", "tl_b"})
+
+        assert _is(within.claims, [claims[0]])
+        assert (within.timeline_ids, within.n_edges) == ({"tl_a", "tl_b"}, 1)
+        _assert_rebuilt(within, MatchGraph([claims[0]]))
+        assert graph.filter(within={"tl_a"}).claims == []
+
+    def test_filter_within_on_an_extended_graph(
+        self, dgt1_group: TimelineGroup
+    ) -> None:
+        """The extension reaches only the timelines ``within`` admits."""
+        claim = _claim("dgt_1", 500, "external", 25.0, unit_a=TimeUnit.pixels)
+        groups = {"group1": dgt1_group}
+        extended = MatchGraph([claim]).extend_to_groups(groups)
+
+        nobody = extended.filter(within={"dgt_1", "audio"})
+        assert (nobody.claims, nobody.n_nodes, nobody.n_edges) == ([], 0, 0)
+        assert (nobody.inferred_edges, nobody.get_stamps()) == ([], [])
+
+        stated = extended.filter(within={"dgt_1", "external"})
+        assert _is(stated.claims, [claim])
+        assert (stated.n_nodes, stated.n_edges, stated.inferred_edges) == (2, 1, [])
+        _assert_rebuilt(
+            stated,
+            MatchGraph([claim]).extend_to_groups(
+                groups, timeline_ids={"dgt_1", "external"}
+            ),
+        )
+
+        either = extended.filter(timeline_ids={"dgt_1", "audio"})
+        assert _is(either.claims, [claim])
+        assert (either.n_nodes, either.n_edges) == (3, 2)
+        assert _inferred(either) == [(_pixels_to_seconds(500, 50.0), "group1", claim)]
+        _assert_rebuilt(either, extended)
+
+    def test_filter_stated_only(self, dgt1_group: TimelineGroup) -> None:
+        """``stated_only`` is the graph of the kept claims, not extended."""
+        claim = _claim("dgt_1", 500, "external", 25.0, unit_a=TimeUnit.pixels)
+        extended = MatchGraph([claim]).extend_to_groups({"group1": dgt1_group})
+
+        filtered = extended.filter(stated_only=True)
+
+        assert _is(filtered.claims, [claim])
+        assert (filtered.n_edges, filtered.inferred_edges) == (1, [])
+        assert filtered.timeline_ids == {"dgt_1", "external"}
+        _assert_rebuilt(filtered, MatchGraph([claim]))
 
     def test_filter_nomatch_only(self) -> None:
         """NOMATCH claims alone, under the other filters; sync claims alone."""
@@ -904,6 +1035,10 @@ class TestMatchGraphFilterByClaims:
         assert ids(nomatches) == ["nomatch_1", "nomatch_2"]
         assert (nomatches.n_nodes, nomatches.n_edges) == (0, 0)
         assert ids(graph.filter(nomatch_only=True, timeline_ids={"tl_a", "tl_b"})) == [
+            "nomatch_1",
+            "nomatch_2",
+        ]
+        assert ids(graph.filter(nomatch_only=True, within={"tl_a", "tl_b"})) == [
             "nomatch_1"
         ]
         assert ids(graph.filter(nomatch_only=True, believer="ana")) == ["nomatch_2"]
@@ -917,6 +1052,17 @@ class TestMatchGraphFilterByClaims:
         ):
             graph.filter(synchronous_only=True, nomatch_only=True)
 
+    def test_filter_timeline_ids_keeps_either_side(self) -> None:
+        """``timeline_ids`` keeps what the bundle's MatchClaim query keeps."""
+        sync = _claim("tl_a", 1.0, "tl_b", 10.0, id="sync")
+        nm = _nomatch("tl_c", 1.0, "tl_d", id="nm")
+        nm_ab = _nomatch("tl_a", 2.0, "tl_b", id="nm_ab")
+
+        filtered = MatchGraph([sync, nm, nm_ab]).filter(timeline_ids={"tl_a"})
+
+        assert _is(filtered.claims, [sync, nm_ab])
+        _assert_rebuilt(filtered, MatchGraph([sync, nm_ab]))
+
     def test_filter_nomatch_only_on_an_extended_graph(
         self, dgt1_group: TimelineGroup
     ) -> None:
@@ -927,7 +1073,7 @@ class TestMatchGraphFilterByClaims:
 
         filtered = extended.filter(nomatch_only=True)
 
-        assert [claim is nomatch for claim in filtered.claims] == [True]
+        assert _is(filtered.claims, [nomatch])
         assert (filtered.n_nodes, filtered.n_edges) == (0, 0)
         assert filtered.inferred_edges == []
 
@@ -1168,7 +1314,7 @@ class TestMatchGraphInferredEdges:
         Scenario:
         - Group A: tl1 (1000px), tl4 (500px), tl5 (200px)
         - Group B: tl2 (800px), tl6 (400px)
-        - Explicit claim: tl1@500 <-> tl2@400
+        - Claim: tl1@500 <-> tl2@400
         - Extension should add:
           - tl4 via group A (from tl1@500 -> tl4@250)
           - tl5 via group A (from tl1@500 -> tl5@100)
@@ -1192,7 +1338,7 @@ class TestMatchGraphInferredEdges:
         group_b.add_timeline(tl2)
         group_b.add_timeline(tl6)
 
-        # Explicit claim: tl1@500 <-> tl2@400
+        # The claim: tl1@500 <-> tl2@400
         claim = _claim(
             "tl1", 500, "tl2", 400, unit_a=TimeUnit.pixels, unit_b=TimeUnit.pixels
         )
@@ -1236,7 +1382,7 @@ class TestExtendToSeveralGroups:
 
         - Group g1: t (1200px), a (800px), u (600px)
         - Group g2: t, u, b (900px)
-        - Explicit claim: a@400 <-> e@100, ``e`` in no group
+        - Claim: a@400 <-> e@100, ``e`` in no group
         - g1 gives t@600 and u@300; their second group g2 gives b@450.
         """
         t = DiscreteGraphicalTimeline(length=1200, unit="pixels", uid="t")
@@ -1408,28 +1554,80 @@ class TestMatchGraphExtendToGroupsFilters:
         assert "audio" not in extended.timeline_ids
 
 
-class TestMatchGraphFilterPhase64:
-    """Tests for filter() method with domain/unit filters."""
+class TestMatchGraphFilterByDomainAndUnit:
+    """``filter()`` by domain and unit: both timelines of a claim pass."""
 
     def test_filter_by_include_domains(self) -> None:
-        """filter() with include_domains removes timelines of wrong domain."""
+        """A claim with one timeline in another domain is dropped."""
         claim = _claim(
             "dgt_1", 500, "audio", 50.0, unit_a=TimeUnit.pixels, unit_b=TimeUnit.seconds
         )
         graph = MatchGraph([claim])
 
-        # Filter to only graphical
-        filtered = graph.filter(
-            include_domains={Domain.graphical},
+        graphical = graph.filter(include_domains={Domain.graphical})
+        assert (graphical.claims, graphical.n_nodes) == ([], 0)
+        both = graph.filter(include_domains={Domain.graphical, Domain.physical})
+        assert _is(both.claims, [claim])
+        _assert_rebuilt(both, graph)
+
+    def test_filter_by_include_units(self) -> None:
+        """A claim with one timeline in another unit is dropped."""
+        claim = _claim(
+            "dgt_1", 500, "audio", 50.0, unit_a=TimeUnit.pixels, unit_b=TimeUnit.seconds
+        )
+        graph = MatchGraph([claim])
+
+        seconds = graph.filter(include_units={TimeUnit.seconds})
+        assert (seconds.claims, seconds.n_nodes) == ([], 0)
+        both = graph.filter(include_units={TimeUnit.pixels, TimeUnit.seconds})
+        assert _is(both.claims, [claim])
+        _assert_rebuilt(both, graph)
+
+    def test_domain_and_unit_filters_read_the_source_bundle(self) -> None:
+        """A claim on timelines no anchor names passes by its bundle's units."""
+        bundle = AlignmentBundle(id="units")
+        for uid in ("tl_a", "tl_b", "tl_c"):
+            bundle.add_timeline(
+                ContinuousPhysicalTimeline(length=100.0, unit="seconds", uid=uid)
+            )
+        bundle.add_timeline(
+            DiscreteGraphicalTimeline(length=100, unit="pixels", uid="tl_d")
+        )
+        sync = _claim(
+            "tl_a",
+            1.0,
+            "tl_b",
+            10.0,
+            unit_a=TimeUnit.seconds,
+            unit_b=TimeUnit.seconds,
+            id="sync",
+        )
+        nm_cd = _nomatch("tl_c", 1.0, "tl_d", unit=TimeUnit.seconds, id="nm_cd")
+        graph = MatchGraph([sync, nm_cd], source=bundle)
+
+        seconds = {TimeUnit.seconds}
+        assert _is(graph.filter(include_units=seconds).claims, [sync])
+        assert _is(
+            graph.filter(include_units={TimeUnit.seconds, TimeUnit.pixels}).claims,
+            [sync, nm_cd],
+        )
+        assert _is(
+            graph.filter(
+                nomatch_only=True,
+                include_domains={Domain.physical, Domain.graphical},
+            ).claims,
+            [nm_cd],
+        )
+        # Without a source, no anchor names tl_c or tl_d: their units are unknown.
+        assert _is(
+            MatchGraph([sync, nm_cd])
+            .filter(include_units={TimeUnit.seconds, TimeUnit.pixels})
+            .claims,
+            [sync],
         )
 
-        # Audio should be removed
-        assert "audio" not in filtered.timeline_ids
-        # Graph should have no edges (only dgt1 remains, isolated)
-        assert filtered.n_edges == 0
-
-    def test_canonical_id_filters_preserve_pinned_graph_count(self) -> None:
-        """timeline_ids and id_pattern combine with AND semantics."""
+    def test_canonical_id_filters_combine(self) -> None:
+        """``timeline_ids`` and ``id_pattern`` combine with AND semantics."""
         claims = [
             _claim("tl_a", 100.0, "tl_b", 50.0),
             _claim("tl_b", 50.0, "tl_c", 25.0),
@@ -1440,40 +1638,20 @@ class TestMatchGraphFilterPhase64:
             id_pattern=r"^tl_[ab]$",
         )
 
-        assert filtered.n_nodes == 2
-        assert filtered.n_edges == 1
-
-    def test_filter_by_include_units(self) -> None:
-        """filter() with include_units removes timelines of wrong unit."""
-        claim = _claim(
-            "dgt_1", 500, "audio", 50.0, unit_a=TimeUnit.pixels, unit_b=TimeUnit.seconds
-        )
-        graph = MatchGraph([claim])
-
-        filtered = graph.filter(
-            include_units={TimeUnit.seconds},
-        )
-
-        # dgt1 (pixels) should be removed, audio should remain but isolated
-        assert "dgt_1" not in filtered.timeline_ids
-        # No edges remain (isolated nodes removed)
-        assert filtered.n_edges == 0
+        assert _is(filtered.claims, claims)
+        assert (filtered.n_nodes, filtered.n_edges) == (3, 2)
 
     def test_filter_keeps_non_synchronous_claims(self) -> None:
-        """filter() preserves non-sync claims connecting remaining timelines."""
+        """``within`` keeps the non-synchronous claims between its timelines."""
         sync_claim = _claim("tl_a", 100.0, "tl_b", 50.0)
         nomatch_claim = _nomatch("tl_a", 200.0, "tl_b")
         unrelated_nomatch = _nomatch("tl_a", 300.0, "tl_c")
         graph = MatchGraph([sync_claim, nomatch_claim, unrelated_nomatch])
 
-        filtered = graph.filter(timeline_ids={"tl_a", "tl_b"})
+        filtered = graph.filter(within={"tl_a", "tl_b"})
 
-        # The sync claim and the nomatch between tl_a and tl_b should remain
-        # The nomatch involving tl_c should be dropped
-        assert len(filtered.claims) == 2
-        claim_tl_sets = [{c.timeline_a_id, c.timeline_b_id} for c in filtered.claims]
-        assert {"tl_a", "tl_b"} in claim_tl_sets
-        assert {"tl_a", "tl_c"} not in claim_tl_sets
+        assert _is(filtered.claims, [sync_claim, nomatch_claim])
+        _assert_rebuilt(filtered, MatchGraph([sync_claim, nomatch_claim]))
 
 
 class TestMatchStampGroupRetrieval:

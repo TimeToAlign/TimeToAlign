@@ -6,14 +6,18 @@ construction.
 
 The canonical filter parameters are:
 
-- ``timeline_id``: Exact single ID match.
-- ``timeline_ids``: Exact set-of-IDs match.
-- ``id_pattern``: Regex pattern matched via ``re.search()`` against timeline IDs.
+- ``timeline_id``: Claims involving this timeline, on either side.
+- ``timeline_ids``: Claims involving any of these timelines, on either side.
+- ``id_pattern``: Claims involving a timeline whose ID the regex finds
+  (``re.search()``), on either side.
 - ``between``: Tuple of two timeline IDs; matches claims connecting exactly those two.
-- ``synchronous_only``: Exclude non-synchronous (NOMATCH) claims.
-- ``nomatch_only``: Return only non-synchronous (NOMATCH) claims.
-- ``include_domains``: Only timelines in these domains.
-- ``include_units``: Only timelines with these units.
+- ``within``: Claims whose both timelines are in this set.
+- ``synchronous_only``: Only synchronous claims (conceptual and NOMATCH
+  claims excluded).
+- ``nomatch_only``: Only NOMATCH claims (one event, the sentinel on the
+  other side).
+- ``include_domains``: Claims whose both timelines are in these domains.
+- ``include_units``: Claims whose both timelines have these units.
 - ``believer``, ``beliefs``: The belief filter: for one actor, the claims
   whose state for the actor is one of ``beliefs`` (``"true"``,
   ``"undecided"`` where the actor holds no belief, ``"unlikely"``,
@@ -113,8 +117,9 @@ class ClaimFilter:
     with AND logic: a claim must satisfy every non-None criterion.
 
     The ``matches_claim()`` method tests a single MatchClaim against all
-    criteria. The ``matches_timeline()`` method tests a single timeline ID
-    (used by MatchGraph node-level filtering).
+    criteria; ``select()`` is its list form, asking the belief filter once
+    for the whole list. The ``matches_timeline()`` method tests a single
+    timeline ID (used to narrow the timelines of a stamp).
 
     Examples:
         Filter for claims involving a specific performer::
@@ -130,18 +135,24 @@ class ClaimFilter:
             )
 
     Attributes:
-        timeline_id: Return claims involving this exact timeline ID.
-        timeline_ids: Return claims involving any of these timeline IDs.
+        timeline_id: Return claims involving this exact timeline ID, on
+            either side.
+        timeline_ids: Return claims involving any of these timeline IDs,
+            on either side.
         id_pattern: Regex pattern matched against timeline IDs via
-            ``re.search()``. Example: ``r"^perf:"`` matches all
-            performance timelines.
+            ``re.search()``; a claim passes when either of its timelines
+            matches. Example: ``r"^perf:"`` matches all performance
+            timelines.
         between: Return claims connecting exactly these two timelines
             (order-independent).
-        synchronous_only: If True, exclude non-synchronous (NOMATCH) claims.
-        nomatch_only: If True, return only non-synchronous (NOMATCH) claims.
-        include_domains: Only include timelines in these domains.
-            Requires a ``timelines`` dict for resolution.
-        include_units: Only include timelines with these units.
+        within: Return claims whose both timelines are in this set.
+        synchronous_only: If True, only synchronous claims (conceptual and
+            NOMATCH claims excluded).
+        nomatch_only: If True, only NOMATCH claims (one event, the sentinel
+            on the other side).
+        include_domains: Only claims whose both timelines are in these
+            domains. Requires a ``timelines`` dict for resolution.
+        include_units: Only claims whose both timelines have these units.
             Requires a ``timelines`` dict for resolution.
         believer: The actor whose beliefs filter claims (the belief
             filter); ``None`` filters nothing.
@@ -154,6 +165,7 @@ class ClaimFilter:
     timeline_ids: set[str] | None = field(default=None)
     id_pattern: str | None = None
     between: tuple[str, str] | None = None
+    within: set[str] | None = field(default=None)
     synchronous_only: bool = False
     nomatch_only: bool = False
     include_domains: set[Domain] | None = field(default=None)
@@ -183,6 +195,9 @@ class ClaimFilter:
     ) -> bool:
         """Test whether a MatchClaim passes all filter criteria.
 
+        The belief filter compares actors under the context of the claim's
+        bundle (:func:`belief_context`).
+
         Args:
             claim: The MatchClaim to test.
             timelines: Dict of timeline_id -> Timeline for resolving
@@ -192,47 +207,59 @@ class ClaimFilter:
         Returns:
             True if the claim passes all filters.
         """
-        # Synchronous / NOMATCH filters
+        context = None if self.believer is None else belief_context(claim.bundle)
+        return bool(self.select([claim], timelines=timelines, context=context))
+
+    def select(
+        self,
+        claims: Sequence[MatchClaim],
+        *,
+        timelines: Mapping[str, Any] | None = None,
+        context: Mapping[str, Any] | None = None,
+    ) -> list[MatchClaim]:
+        """Return the claims that pass every criterion, in their order.
+
+        The list form of :meth:`matches_claim`: the belief filter is asked
+        once for the whole list (:func:`believed`), then each claim's kind
+        and timelines are tested.
+
+        Args:
+            claims: The claims to filter.
+            timelines: Timeline ID -> object with a ``unit`` (a
+                :class:`~timetoalign.timelines.Timeline`), for resolving
+                domain/unit filters; a timeline missing from it passes
+                neither.
+            context: The JSON-LD context under which the believer and the
+                actors compare as IRIs (:func:`belief_context`); ``None``
+                declares no prefix.
+
+        Returns:
+            The kept claims, the same objects, in their order.
+        """
+        kept = believed(claims, self.believer, self.beliefs, context=context)
+        return [claim for claim in kept if self._passes(claim, timelines)]
+
+    def _passes(self, claim: MatchClaim, timelines: Mapping[str, Any] | None) -> bool:
+        """Whether a claim's kind and timelines pass (the belief filter aside)."""
         if self.synchronous_only and not claim.is_synchronous:
             return False
-        if self.nomatch_only and claim.is_synchronous:
+        if self.nomatch_only and not claim.is_nomatch:
             return False
-
-        # timeline_id: claim must involve this timeline
-        if self.timeline_id is not None:
-            if not claim.connects(self.timeline_id):
-                return False
-
-        # timeline_ids: claim must involve at least one
-        if self.timeline_ids is not None:
-            if not any(claim.connects(tid) for tid in self.timeline_ids):
-                return False
-
-        # id_pattern: at least one of the claim's timelines must match
-        pat = self._compiled_pattern
-        if pat is not None:
-            if not (pat.search(claim.timeline_a_id) or pat.search(claim.timeline_b_id)):
-                return False
-
-        # between: must connect exactly these two (order-independent)
-        if self.between is not None:
-            if not claim.connects_both(self.between[0], self.between[1]):
-                return False
-
-        # Domain / unit filters: BOTH timelines must pass
-        if self.include_domains is not None or self.include_units is not None:
-            if not self._timeline_passes_domain_unit(claim.timeline_a_id, timelines):
-                return False
-            if not self._timeline_passes_domain_unit(claim.timeline_b_id, timelines):
-                return False
-
-        # The belief filter, decided where every consumer decides it.
-        if self.believer is not None:
-            context = belief_context(claim.bundle)
-            if not believed([claim], self.believer, self.beliefs, context=context):
-                return False
-
-        return True
+        ends = (claim.timeline_a_id, claim.timeline_b_id)
+        if self.timeline_id is not None and not claim.connects(self.timeline_id):
+            return False
+        if self.timeline_ids is not None and not any(
+            claim.connects(timeline_id) for timeline_id in self.timeline_ids
+        ):
+            return False
+        pattern = self._compiled_pattern
+        if pattern is not None and not any(pattern.search(end) for end in ends):
+            return False
+        if self.between is not None and not claim.connects_both(*self.between):
+            return False
+        if self.within is not None and not self.within.issuperset(ends):
+            return False
+        return all(self._timeline_passes_domain_unit(end, timelines) for end in ends)
 
     def matches_timeline(
         self,
@@ -242,9 +269,9 @@ class ClaimFilter:
     ) -> bool:
         """Test whether a single timeline ID passes the filter criteria.
 
-        Used for node-level filtering in MatchGraph. Only the timeline-ID
+        Used to narrow the timelines of a stamp. Only the timeline-ID
         related filters are applied (``timeline_id``, ``timeline_ids``,
-        ``id_pattern``, ``include_domains``, ``include_units``). The
+        ``id_pattern``, ``within``, ``include_domains``, ``include_units``). The
         claim-level filters (``synchronous_only``, ``nomatch_only``,
         ``between``, the belief filter) are ignored.
 
@@ -271,6 +298,9 @@ class ClaimFilter:
         if pat is not None:
             if not pat.search(timeline_id):
                 return False
+
+        if self.within is not None and timeline_id not in self.within:
+            return False
 
         # Domain / unit filters
         if not self._timeline_passes_domain_unit(timeline_id, timelines):
@@ -313,7 +343,7 @@ class ClaimFilter:
     def _timeline_passes_domain_unit(
         self,
         timeline_id: str,
-        timelines: dict[str, Timeline] | None,
+        timelines: Mapping[str, Any] | None,
     ) -> bool:
         """Check whether a timeline passes domain/unit filters.
 
@@ -356,6 +386,7 @@ class ClaimFilter:
         timeline_ids: set[str] | None = None,
         id_pattern: str | None = None,
         between: tuple[str, str] | None = None,
+        within: set[str] | None = None,
         synchronous_only: bool = False,
         nomatch_only: bool = False,
         include_domains: set[Domain] | None = None,
@@ -373,10 +404,12 @@ class ClaimFilter:
             timeline_ids: Return claims involving any of these timelines.
             id_pattern: Regex pattern matched against timeline IDs.
             between: Return claims connecting exactly these two timelines.
-            synchronous_only: Exclude non-synchronous claims.
-            nomatch_only: Return only non-synchronous claims.
-            include_domains: Only timelines in these domains.
-            include_units: Only timelines with these units.
+            within: Return claims whose both timelines are in this set.
+            synchronous_only: Only synchronous claims.
+            nomatch_only: Only NOMATCH claims.
+            include_domains: Only claims whose both timelines are in these
+                domains.
+            include_units: Only claims whose both timelines have these units.
             believer: The actor whose beliefs filter claims.
             beliefs: The states kept for the believer (the belief filter).
 
@@ -388,6 +421,7 @@ class ClaimFilter:
             timeline_ids=timeline_ids,
             id_pattern=id_pattern,
             between=between,
+            within=within,
             synchronous_only=synchronous_only,
             nomatch_only=nomatch_only,
             include_domains=include_domains,
@@ -406,6 +440,8 @@ class ClaimFilter:
             parts.append(f"id_pattern={self.id_pattern!r}")
         if self.between is not None:
             parts.append(f"between={self.between!r}")
+        if self.within is not None:
+            parts.append(f"within={self.within!r}")
         if self.synchronous_only:
             parts.append("synchronous_only=True")
         if self.nomatch_only:

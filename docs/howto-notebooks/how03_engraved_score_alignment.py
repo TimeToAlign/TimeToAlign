@@ -103,9 +103,10 @@ def claims_table(claims, *timelines) -> pd.DataFrame:
     """One row per claim: its type, the events it names, and both sides.
 
     A synchronous claim gives the two coordinates of its anchor. A NOMATCH
-    claim holds no coordinate: it names one event, on its timeline A, and
-    the sentinel on timeline B. Its ``at`` is that event's start, read from
-    the event on its timeline among *timelines*; its ``there`` is empty.
+    claim holds no coordinate: it names one event and the sentinel. MAPS
+    states that event on timeline A and the sentinel on timeline B, so its
+    ``at`` is the event's start, read from the event on timeline A among
+    *timelines*; its ``there`` is empty.
     """
     by_id = {timeline.id: timeline for timeline in timelines}
     rows = []

@@ -120,7 +120,6 @@ import logging
 import re
 import unicodedata
 import xml.etree.ElementTree as ET
-from collections import Counter
 from dataclasses import dataclass, field
 from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
 from pathlib import Path
@@ -135,7 +134,7 @@ from timetoalign.core.fields import SemanticField
 from timetoalign.display.html import code
 from timetoalign.loader.format.xml import XmlLoader
 from timetoalign.maps.interval import IntervalToConstantMap
-from timetoalign.storage.events import EventData
+from timetoalign.storage.events import EventData, _mint_event_ids
 from timetoalign.timelines.factory import _mint_timeline_id
 from timetoalign.timelines.types import (
     ContinuousPhysicalTimeline,
@@ -287,19 +286,19 @@ def _give_event_ids(rows: list[dict[str, Any]]) -> None:
 
     The document names no layer event (only the spine's), so each row of a
     layer is given ``{event type in lower case}_{N}``, counted per type in
-    document order. The id is fixed before any timeline exists, so that the
-    claim naming the event and the event itself agree wherever and whenever
-    the timeline is built.
+    document order, by the one event-ID minter
+    (:func:`~timetoalign.storage.events._mint_event_ids`, nothing taken). The
+    id is fixed before any timeline exists, so that the claim naming the
+    event and the event itself agree wherever and whenever the timeline is
+    built.
 
     Args:
         rows: The rows of one timeline (an edition's rows span its pages and
             accolades, so its ids are unique over the whole edition).
     """
-    counts: Counter[str] = Counter()
-    for row in rows:
-        prefix = str(row["event_type"]).lower()
-        counts[prefix] += 1
-        row["id"] = f"{prefix}_{counts[prefix]}"
+    ids = _mint_event_ids([row["event_type"] for row in rows])
+    for row, event_id in zip(rows, ids.to_pylist(), strict=True):
+        row["id"] = event_id
 
 
 def _table_from_rows(rows: list[dict[str, Any]]) -> pa.Table:

@@ -36,6 +36,7 @@ website:
       - reference/PhysicalTimeline.qmd
       - reference/GraphicalTimeline.qmd
       - reference/SegmentLine.qmd
+      - reference/MeasureMap.qmd
       - reference/UnknownLengthError.qmd
       section: Timelines
     - contents:

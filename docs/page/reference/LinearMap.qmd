@@ -2,12 +2,13 @@
 
 ```python
 LinearMap(
-    scalar=1.0,
+    scalar=1,
     offset=0,
     source_unit=None,
     target_unit=None,
     uid=None,
     name=None,
+    output_number_type=None,
 )
 ```
 
@@ -15,12 +16,15 @@ Affine transformation: y = scalar * x + offset.
 
 This is the most general linear map, combining scaling and offset.
 
+The format's ``LinearMap`` type, which every affine map of the library
+is written as.
+
 ## Attributes {.doc-section .doc-section-attributes}
 
-| Name   | Type                                                       | Description                              |
-|--------|------------------------------------------------------------|------------------------------------------|
-| scalar | [CoordinateValue](`timetoalign.core.time.CoordinateValue`) | The multiplicative factor (default 1.0). |
-| offset | [CoordinateValue](`timetoalign.core.time.CoordinateValue`) | The additive offset (default 0.0).       |
+| Name   | Type                                                       | Description                            |
+|--------|------------------------------------------------------------|----------------------------------------|
+| scalar | [CoordinateValue](`timetoalign.core.time.CoordinateValue`) | The multiplicative factor (default 1). |
+| offset | [CoordinateValue](`timetoalign.core.time.CoordinateValue`) | The additive offset (default 0).       |
 
 ## Examples {.doc-section .doc-section-examples}
 
@@ -52,9 +56,9 @@ This is the most general linear map, combining scaling and offset.
 | Name | Description |
 | --- | --- |
 | [compose_with](#timetoalign.LinearMap.compose_with) | Compose with another LinearMap: (self then other). |
-| [from_dict](#timetoalign.LinearMap.from_dict) | Deserialize from dictionary. |
+| [from_pairs](#timetoalign.LinearMap.from_pairs) | Build the line through the first and the last pair by position. |
 | [inverse](#timetoalign.LinearMap.inverse) | Return the inverse map: y = (x - b) / a. |
-| [to_dict](#timetoalign.LinearMap.to_dict) | Serialize to dictionary. |
+| [with_offset](#timetoalign.LinearMap.with_offset) | This map from another origin: the same line, shifted. |
 
 ### compose_with { #timetoalign.LinearMap.compose_with }
 
@@ -79,13 +83,61 @@ y2 = a2*(a1*x + b1) + b2 = (a1*a2)*x + (a2*b1 + b2)
 |--------|--------------------------------------------------|----------------------------------------------------------|
 |        | [LinearMap](`timetoalign.maps.linear.LinearMap`) | A new LinearMap equivalent to applying both in sequence. |
 
-### from_dict { #timetoalign.LinearMap.from_dict }
+### from_pairs { #timetoalign.LinearMap.from_pairs }
 
 ```python
-LinearMap.from_dict(data)
+LinearMap.from_pairs(pairs, *, source_unit, value_unit=None, origin=0)
 ```
 
-Deserialize from dictionary.
+Build the line through the first and the last pair by position.
+
+The positions are read from *origin* (``position - origin``). The
+scalar is the values' difference over the positions' difference, the
+offset what is left at the first position, both in the numbers' own
+arithmetic: exact pairs give an exact map, which writes its results
+as fractions where the value unit admits them, and pairs holding a
+float give a float map, which writes floats.
+
+Every inner pair is checked against the line through the end pairs,
+evaluated exactly on the positions as given, before *origin* is
+subtracted: the position at which the line reaches the pair's value
+must be its position, exactly for an exact calibration and within
+the error of a position computed in doubles otherwise (see
+:meth:`ConversionMap.from_pairs`). The line is never fitted.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name        | Type                                                                                                           | Description                                                                                                                                                           | Default    |
+|-------------|----------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| pairs       | [Sequence](`collections.abc.Sequence`)\[[CalibrationPair](`timetoalign.maps.base.CalibrationPair`)\]           | ``(position, value)`` pairs, in any order: positions as numbers or coordinates, values as coordinates carrying the one unit they share or as numbers in *value_unit*. | _required_ |
+| source_unit | [TimeUnit](`timetoalign.core.enums.TimeUnit`) \| [str](`str`) \| None                                          | The unit of the positions.                                                                                                                                            | _required_ |
+| value_unit  | [TimeUnit](`timetoalign.core.enums.TimeUnit`) \| [str](`str`) \| None                                          | The unit of the values, the map's target unit. Needed when a value is a number; a coordinate value must be in it.                                                     | `None`     |
+| origin      | [CoordinateValue](`timetoalign.core.time.CoordinateValue`) \| [Coordinate](`timetoalign.core.time.Coordinate`) | Where the source axis starts, in the coordinates of the positions.                                                                                                    | `0`        |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                             | Description                |
+|--------|----------------------------------|----------------------------|
+|        | [Self](`typing_extensions.Self`) | The map through the pairs. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                                                                                     |
+|--------|----------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [TypeError](`TypeError`)   | If a value is a number and no *value_unit* is given.                                                                                                                            |
+|        | [ValueError](`ValueError`) | If there are fewer than two pairs, two pairs share a position, a coordinate is in another unit than its axis, the end pairs read one value, or an inner pair lies off the line. |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> m = LinearMap.from_pairs(
+...     [(0, 1), (3, 2), (6, 3)], source_unit="points", value_unit="quarters"
+... )
+>>> m.scalar, m.offset
+(Fraction(1, 3), Fraction(1, 1))
+>>> m(1)
+Fraction(4, 3)
+```
 
 ### inverse { #timetoalign.LinearMap.inverse }
 
@@ -95,10 +147,39 @@ LinearMap.inverse()
 
 Return the inverse map: y = (x - b) / a.
 
-### to_dict { #timetoalign.LinearMap.to_dict }
+### with_offset { #timetoalign.LinearMap.with_offset }
 
 ```python
-LinearMap.to_dict(minimal=False)
+LinearMap.with_offset(offset)
 ```
 
-Serialize to dictionary.
+This map from another origin: the same line, shifted.
+
+A new map with this map's scalar, units and the output
+representation it was given, and *offset* in place of its own; it
+gets its own ID and no name. A child timeline reads its measure map
+through its parent's map from its own origin (``with_offset(0)``),
+in the same number type as the parent.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name   | Type                                                       | Description                         | Default    |
+|--------|------------------------------------------------------------|-------------------------------------|------------|
+| offset | [CoordinateValue](`timetoalign.core.time.CoordinateValue`) | The additive offset of the new map. | _required_ |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                             | Description   |
+|--------|--------------------------------------------------|---------------|
+|        | [LinearMap](`timetoalign.maps.linear.LinearMap`) | The new map.  |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> m = LinearMap(scalar=Fraction(1, 480), offset=3, output_number_type="float")
+>>> moved = m.with_offset(0)
+>>> moved.scalar, moved.offset
+(Fraction(1, 480), 0)
+>>> moved.output_number_type == m.output_number_type
+True
+```

@@ -325,8 +325,10 @@ pq.read_table(package / "projections.parquet").to_pylist()
 
 # %% [markdown]
 # A Projection's id is unique among all the Projections of the manifest,
-# whichever timeline holds it, so the table names each id once: the
-# score's Projection is numbered after the recording's. An id once given is
+# whichever timeline holds it, so the table names each id once, numbered in
+# the order the Projections were added: the recording's `projection_1` for
+# the fourth note, then the score's `projection_2` and the recording's
+# `projection_3` for the claim between two positions. An id once given is
 # never re-minted, and a Projection given an id another timeline's
 # Projection holds is refused.
 

@@ -30,7 +30,7 @@ is left null, and :meth:`__getitem__` gives each materialised claim the
 field's provenance. Claims whose provenance differs, given to
 :meth:`from_claims`, carry it per row.
 
-The field is the scope of its claims' ids: an id held twice is refused,
+A MatchClaim is addressed by its id alone: an id held twice is refused,
 and an id never changes. A field mints no id: a row without one keeps
 it missing until the :class:`~timetoalign.alignment.bundle.AlignmentBundle`
 it joins mints it.
@@ -271,8 +271,8 @@ Build a field from existing :class:`MatchClaim` objects.
 Every kind of claim is a row: synchronous claims with their anchors
 (interval claims with both), NOMATCH and conceptual claims without.
 Each row keeps every property of its claim, so every claim
-materialises equal to the one stored. The field is the scope of its
-claims' ids: two claims under one id are refused (an id is never
+materialises equal to the one stored. A MatchClaim is addressed by
+its id alone: two claims under one id are refused (an id is never
 renamed), and a claim without an id keeps it missing (the bundle the
 field joins mints it).
 
@@ -474,8 +474,13 @@ The table must hold one column per top-level property of
 :class:`MatchClaim`, named and typed as the fields of
 :attr:`pa_schema`; the columns are read by name, in any order, and
 may be chunked, as they are when the table was read from Parquet.
-The field-level provenance travels in the table's schema metadata
-under TimeToShare's key ``timetoshare:provenance`` (the JSON of
+Further columns (any other name, such as a ``scope`` column a
+package written by an earlier tool holds) are kept as they stand,
+after the properties, and never read: :attr:`table` and the file
+:meth:`to_parquet` writes hold them again, and the field's own
+queries carry them row for row. The field-level provenance travels
+in the table's schema metadata under TimeToShare's key
+``timetoshare:provenance`` (the JSON of
 :meth:`~timetoalign.core.provenance.Provenance.to_dict`); a table
 without that key gives a field whose provenance is ``None``. Every
 row is kept as stored; a row without an id keeps none (the bundle it
@@ -495,9 +500,9 @@ joins mints it).
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-|--------|----------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If the table's columns are not exactly the ``MatchClaim`` properties, or a column's type is not the property's; if a row is not a MatchClaim (:meth:`_read`); if the table carries provenance both in its schema metadata and in its rows; if two rows hold the same id; or if the table mixes scopes (a row naming one in the key column ``scope``), which a bundle reads (:meth:`AlignmentBundle.from_file <timetoalign.alignment.bundle.AlignmentBundle.from_file>`). |
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                 |
+|--------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the table lacks a column of a ``MatchClaim`` property, or a column's type is not the property's; if a row is not a MatchClaim (:meth:`_read`); if the table carries provenance both in its schema metadata and in its rows; or if two rows hold the same id (a MatchClaim is addressed by its id alone). |
 
 ### to_claims { #timetoalign.alignment.MatchClaimField.to_claims }
 
@@ -564,7 +569,7 @@ as JSON or YAML.
 ### to_parquet { #timetoalign.alignment.MatchClaimField.to_parquet }
 
 ```python
-alignment.MatchClaimField.to_parquet(path, *, scopes=None)
+alignment.MatchClaimField.to_parquet(path)
 ```
 
 Write the MatchClaim table to its Parquet file.
@@ -572,34 +577,32 @@ Write the MatchClaim table to its Parquet file.
 The file holds :attr:`package_table` (each anchor coordinate's
 number written once, by its number type), the field-level
 provenance in its schema metadata, so :meth:`from_parquet` reads
-back every value exactly. Where the rows mix scopes, TimeToShare's key column
-``scope`` follows the others, per row the name of its scope (null
-for the package's own). Where the file exists, the new table must
-succeed it: every MatchClaim of the existing table, by its scope and
+back every value exactly; further columns of a table read follow
+the properties (:meth:`from_table`). Where the file exists, the new
+table must succeed it: every MatchClaim of the existing table, by
 its id, is in this one, with the same timelines, events, anchors and
 every other value; only its provenance may differ (a MatchClaim is
 never removed and never changed, only believed or disbelieved). The
 file is replaced whole, never in part: a write that fails leaves the
 file as it was and no temporary file.
 
+Every MatchClaim written holds an id, which a named MatchStamp may
+record: a field whose rows hold none (built from columns or from
+claims without ids) is written from the bundle it joined, which
+minted them (:attr:`AlignmentBundle.match_claim_table
+<timetoalign.alignment.bundle.AlignmentBundle.match_claim_table>`).
+
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name   | Type                                                                 | Description                                                                                                                                                                                                                                                                                          | Default    |
-|--------|----------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
-| path   | [str](`str`) \| [os](`os`).[PathLike](`os.PathLike`)\[[str](`str`)\] | The file, or a directory to hold :attr:`file_name` (``match_claims.parquet``).                                                                                                                                                                                                                       | _required_ |
-| scopes | [pa](`pyarrow`).[Array](`pyarrow.Array`) \| None                     | The scope of each row, a string array, null for the package's own; a bundle merging others passes it (:meth:`AlignmentBundle.to_file <timetoalign.alignment.bundle.AlignmentBundle.to_file>`). Without it, or with nulls alone, every row is the package's own and the file has no column ``scope``. | `None`     |
+| Name   | Type                                                                 | Description                                                                    | Default    |
+|--------|----------------------------------------------------------------------|--------------------------------------------------------------------------------|------------|
+| path   | [str](`str`) \| [os](`os`).[PathLike](`os.PathLike`)\[[str](`str`)\] | The file, or a directory to hold :attr:`file_name` (``match_claims.parquet``). | _required_ |
 
 #### Returns {.doc-section .doc-section-returns}
 
 | Name   | Type                   | Description                   |
 |--------|------------------------|-------------------------------|
 |        | [Path](`pathlib.Path`) | The path of the file written. |
-
-Every MatchClaim written holds an id, which a named MatchStamp may
-record: a field whose rows hold none (built from columns or from
-claims without ids) is written from the bundle it joined, which
-minted them (:attr:`AlignmentBundle.match_claim_table
-<timetoalign.alignment.bundle.AlignmentBundle.match_claim_table>`).
 
 #### Raises {.doc-section .doc-section-raises}
 

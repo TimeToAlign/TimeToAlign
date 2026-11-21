@@ -72,8 +72,11 @@ loader.alignment.MapsLoader.create_bundle(
 Return a bundle of both timelines, related by the file's claims.
 
 The score joins as group ``"score"``, the performance as group
-``"performance"``, and :meth:`create_match_claims` gives the claims.
-The bundle is named after the file.
+``"performance"``, and then :meth:`create_match_claims` gives the
+claims: the Projections are added while both timelines are in the
+bundle, so their IDs are minted unique among all Projections of the
+bundle (above any the score holds) and the bundle's package can be
+written. The bundle is named after the file.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
@@ -91,11 +94,11 @@ The bundle is named after the file.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                           | Description                                                       |
-|--------|--------------------------------|-------------------------------------------------------------------|
-|        | [RuntimeError](`RuntimeError`) | If no file has been loaded.                                       |
-|        | [KeyError](`KeyError`)         | If an id of a score note names no event of ``score``.             |
-|        | [ValueError](`ValueError`)     | If ``performance`` is not in seconds and has no C-Map to seconds. |
+| Name   | Type                           | Description                                                                                                                                                                                                       |
+|--------|--------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [RuntimeError](`RuntimeError`) | If no file has been loaded.                                                                                                                                                                                       |
+|        | [KeyError](`KeyError`)         | If an id of a score note names no event of ``score``.                                                                                                                                                             |
+|        | [ValueError](`ValueError`)     | If ``performance`` is not in seconds and has no C-Map to seconds, or the two timelines cannot join one bundle (:meth:`AlignmentBundle.add_timeline <timetoalign.alignment.bundle.AlignmentBundle.add_timeline>`). |
 
 ### create_match_claims { #timetoalign.loader.alignment.MapsLoader.create_match_claims }
 

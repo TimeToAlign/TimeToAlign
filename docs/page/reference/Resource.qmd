@@ -26,21 +26,21 @@ bytes. IDs are bare, as the library holds them.
 
 ## Attributes {.doc-section .doc-section-attributes}
 
-| Name       | Type                                                            | Description                                       |
-|------------|-----------------------------------------------------------------|---------------------------------------------------|
-| id         | [str](`str`)                                                    | The resource's ID, ``resource_N``.                |
-| type       | [str](`str`)                                                    | What the file's rows are.                         |
-| timelines  | [tuple](`tuple`)\[[str](`str`), ...\]                           | The IDs of the timelines the file holds data for. |
-| url        | [str](`str`)                                                    | Its location, relative to the manifest's own.     |
-| media_type | [str](`str`) \| None                                            | Its media type, or None.                          |
-| size       | [int](`int`) \| None                                            | Its size in bytes, or None.                       |
-| integrity  | [Integrity](`timetoalign.timelines.manifest.Integrity`) \| None | The digest of its bytes, or None.                 |
+| Name       | Type                                                            | Description                                                                            |
+|------------|-----------------------------------------------------------------|----------------------------------------------------------------------------------------|
+| id         | [str](`str`)                                                    | The resource's ID, held by no other element of the manifest (a new entry's is minted). |
+| type       | [str](`str`)                                                    | What the file's rows are.                                                              |
+| timelines  | [tuple](`tuple`)\[[str](`str`), ...\]                           | The IDs of the timelines the file holds data for.                                      |
+| url        | [str](`str`)                                                    | Its location, relative to the manifest's own.                                          |
+| media_type | [str](`str`) \| None                                            | Its media type, or None.                                                               |
+| size       | [int](`int`) \| None                                            | Its size in bytes, or None.                                                            |
+| integrity  | [Integrity](`timetoalign.timelines.manifest.Integrity`) \| None | The digest of its bytes, or None.                                                      |
 
 ## Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                                           |
-|--------|----------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If the ID is not ``resource_N``, the type is empty, a timeline ID is invalid or given twice, the URL is no string, the media type is malformed, or the size is no integer at least 0. |
+| Name   | Type                       | Description                                                                                                                                                                       |
+|--------|----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the ID is not a valid ID, the type is empty, a timeline ID is invalid or given twice, the URL is no string, the media type is malformed, or the size is no integer at least 0. |
 
 ## Examples {.doc-section .doc-section-examples}
 

@@ -56,7 +56,7 @@ coordinate transfer results.
 Every reader of the MatchClaims (queries, the matchstamp getters,
 the table getter :meth:`get_matchstamp_table`, the MatchLines and
 WarpMaps behind transfer) reads the one table, through the belief
-filter (``believer``, ``belief``) where the reader takes it. Two
+filter (``believer``, ``beliefs``) where the reader takes it. Two
 bundles are equal when their claims are too: the tables are compared
 row by row, provenance included (:class:`MatchClaimField` equality).
 
@@ -291,7 +291,7 @@ bundle's ``@context``, every prefix it declares (a compact and an
 absolute spelling of one actor are one actor); every other actor's
 belief stands. A claim stated without provenance gets an entry
 holding the belief alone. The belief filter (``believer=``,
-``belief=`` on every query) reads it at once; the MatchClaim table
+``beliefs=`` on every query) reads it at once; the MatchClaim table
 written by :meth:`to_file` succeeds the one written before. A belief
 in a pair of the bundle's own statements is recorded by
 :meth:`add_belief`.
@@ -434,7 +434,8 @@ Declare a prefix the holder's statements may use.
 
 The catalogue's prefixes need no declaration. A manifest written
 holding the holder carries the prefix in its ``@context`` when the
-statements use it.
+statements use it, a bundle's prefix also when its MatchClaim
+table's actors use it.
 
 #### Raises {.doc-section .doc-section-raises}
 
@@ -617,7 +618,7 @@ alignment.AlignmentBundle.are_commensurable(
     timeline_b,
     *,
     believer=None,
-    belief='not_false',
+    beliefs=DEFAULT_BELIEFS,
 )
 ```
 
@@ -630,12 +631,12 @@ filter connects the timelines so connected to each.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name       | Type                                                       | Description                                                                                                                   | Default       |
-|------------|------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------|---------------|
-| timeline_a | [str](`str`)                                               | First timeline ID.                                                                                                            | _required_    |
-| timeline_b | [str](`str`)                                               | Second timeline ID.                                                                                                           | _required_    |
-| believer   | [str](`str`) \| None                                       | The actor whose beliefs filter the claims (the belief filter); ``None`` reads every claim.                                    | `None`        |
-| belief     | [BeliefFilter](`timetoalign.core.provenance.BeliefFilter`) | ``"not_false"`` (default) reads every claim the believer does not believe ``false``; ``"true"`` only those believed ``true``. | `'not_false'` |
+| Name       | Type                                                                                   | Description                                                                                                               | Default           |
+|------------|----------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------|-------------------|
+| timeline_a | [str](`str`)                                                                           | First timeline ID.                                                                                                        | _required_        |
+| timeline_b | [str](`str`)                                                                           | Second timeline ID.                                                                                                       | _required_        |
+| believer   | [str](`str`) \| None                                                                   | The actor whose beliefs filter the claims (the belief filter); ``None`` reads every claim.                                | `None`            |
+| beliefs    | [Collection](`collections.abc.Collection`)\[[BeliefState](`timetoshare.BeliefState`)\] | The states read for the believer (``"true"``, ``"undecided"``, ``"unlikely"``, ``"false"``); default all but ``"false"``. | `DEFAULT_BELIEFS` |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -663,7 +664,10 @@ A MatchClaim connects two events. Each tuple ``(event_a,
 timeline_a_id, event_b, timeline_b_id)`` names one side per
 timeline, each side one of:
 
-- the ``id`` of an event its timeline (or a descendant of it) holds;
+- the ``id`` of an event its timeline (or a descendant of it) holds:
+  the timeline's own event answers for its ID; an ID the timeline does
+  not hold and two of its descendants do names no one event and is
+  refused (name the descendant holding the event instead);
 - an event dict whose ``id`` its timeline holds: that event;
 - an event dict stating a position: ``start``, and ``end`` for a
   span, each a number on the timeline's axis or a
@@ -713,10 +717,10 @@ the timelines before it.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                                                           |
-|--------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If both sides of a pair are ``None``, a dict naming no held event states no ``start``, a position cannot be placed on its timeline's axis, or *date* is given without *actor* or is no calendar date. |
-|        | [KeyError](`KeyError`)     | If a timeline id names no timeline of the bundle's trees (a nested timeline is found whether or not it was registered), or an id string names no event of its timeline.                               |
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                         |
+|--------|----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If both sides of a pair are ``None``, an event ID names no one event (the timeline does not hold it and two of its descendants do), a dict naming no held event states no ``start``, a position cannot be placed on its timeline's axis, or *date* is given without *actor* or is no calendar date. |
+|        | [KeyError](`KeyError`)     | If a timeline id names no timeline of the bundle's trees (a nested timeline is found whether or not it was registered), or an id string names no event of its timeline.                                                                                                                             |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -1016,30 +1020,31 @@ manifest names beside it, where they lie there.
 alignment.AlignmentBundle.get_candidates(
     node=(),
     believer=None,
-    belief='not_false',
+    beliefs=DEFAULT_BELIEFS,
 )
 ```
 
 Return the candidates: the entries of pairs the holder does not state.
 
 A candidate is offered for someone to state (:meth:`add_statement`
-with the same pair). With *believer*, a candidate the believer
-believes ``"false"`` is left out: it is not offered to that actor
-again (:func:`timetoshare.candidates` with ``actor=``).
+with the same pair). With *believer* and the default *beliefs*, a
+candidate the believer believes ``"false"`` is left out: it is not
+offered to that actor again (:func:`timetoshare.candidates` with
+``actor=``).
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name     | Type                                                       | Description                                                                              | Default       |
-|----------|------------------------------------------------------------|------------------------------------------------------------------------------------------|---------------|
-| node     | [NodePath](`timetoalign.timelines.statements.NodePath`)    | The value node whose candidates to return; ``()`` the holder.                            | `()`          |
-| believer | [str](`str`) \| None                                       | The actor whose beliefs filter, an IRI (compact or absolute); every candidate when None. | `None`        |
-| belief   | [BeliefFilter](`timetoalign.core.provenance.BeliefFilter`) | ``"not_false"`` or ``"true"``, as for :meth:`get_provenance`.                            | `'not_false'` |
+| Name     | Type                                                                                   | Description                                                                              | Default           |
+|----------|----------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------|-------------------|
+| node     | [NodePath](`timetoalign.timelines.statements.NodePath`)                                | The value node whose candidates to return; ``()`` the holder.                            | `()`              |
+| believer | [str](`str`) \| None                                                                   | The actor whose beliefs filter, an IRI (compact or absolute); every candidate when None. | `None`            |
+| beliefs  | [Collection](`collections.abc.Collection`)\[[BeliefState](`timetoshare.BeliefState`)\] | The states kept, as for :meth:`get_provenance`.                                          | `DEFAULT_BELIEFS` |
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                               |
-|--------|----------------------------|-------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If *node* addresses no value node, or *belief* is neither ``"not_false"`` nor ``"true"``. |
+| Name   | Type                       | Description                                                                           |
+|--------|----------------------------|---------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If *node* addresses no value node, or *beliefs* is not a collection of belief states. |
 
 ### get_claim_field { #timetoalign.alignment.AlignmentBundle.get_claim_field }
 
@@ -1049,12 +1054,13 @@ alignment.AlignmentBundle.get_claim_field(
     timeline_ids=None,
     id_pattern=None,
     between=None,
+    within=None,
     synchronous_only=False,
     nomatch_only=False,
     include_domains=None,
     include_units=None,
     believer=None,
-    belief='not_false',
+    beliefs=DEFAULT_BELIEFS,
 )
 ```
 
@@ -1067,18 +1073,19 @@ filtered table (empty when nothing passes).
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name             | Type                                                       | Description                                                                              | Default       |
-|------------------|------------------------------------------------------------|------------------------------------------------------------------------------------------|---------------|
-| timeline_id      | [str](`str`) \| None                                       | Keep claims involving this timeline ID.                                                  | `None`        |
-| timeline_ids     | [set](`set`)\[[str](`str`)\] \| None                       | Keep claims involving any of these timeline IDs.                                         | `None`        |
-| id_pattern       | [str](`str`) \| None                                       | Regex matched against timeline IDs via ``re.search()``.                                  | `None`        |
-| between          | [tuple](`tuple`)\[[str](`str`), [str](`str`)\] \| None     | Keep claims connecting exactly these two timeline IDs (order-independent).               | `None`        |
-| synchronous_only | [bool](`bool`)                                             | Only the synchronous claims (with anchors).                                              | `False`       |
-| nomatch_only     | [bool](`bool`)                                             | Only the NOMATCH claims.                                                                 | `False`       |
-| include_domains  | [set](`set`)\[\'Domain\'\] \| None                         | Only timelines in these domains.                                                         | `None`        |
-| include_units    | [set](`set`)\[\'TimeUnit\'\] \| None                       | Only timelines with these units.                                                         | `None`        |
-| believer         | [str](`str`) \| None                                       | The actor whose beliefs filter the claims (the belief filter); ``None`` filters nothing. | `None`        |
-| belief           | [BeliefFilter](`timetoalign.core.provenance.BeliefFilter`) | ``"not_false"`` (default) or ``"true"``.                                                 | `'not_false'` |
+| Name             | Type                                                                                   | Description                                                                              | Default           |
+|------------------|----------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------|-------------------|
+| timeline_id      | [str](`str`) \| None                                                                   | Keep claims involving this timeline ID.                                                  | `None`            |
+| timeline_ids     | [set](`set`)\[[str](`str`)\] \| None                                                   | Keep claims involving any of these timeline IDs.                                         | `None`            |
+| id_pattern       | [str](`str`) \| None                                                                   | Regex matched against timeline IDs via ``re.search()``.                                  | `None`            |
+| between          | [tuple](`tuple`)\[[str](`str`), [str](`str`)\] \| None                                 | Keep claims connecting exactly these two timeline IDs (order-independent).               | `None`            |
+| within           | [set](`set`)\[[str](`str`)\] \| None                                                   | Keep claims whose both timelines are in this set.                                        | `None`            |
+| synchronous_only | [bool](`bool`)                                                                         | Only the synchronous claims (with anchors).                                              | `False`           |
+| nomatch_only     | [bool](`bool`)                                                                         | Only the NOMATCH claims.                                                                 | `False`           |
+| include_domains  | [set](`set`)\[\'Domain\'\] \| None                                                     | Only timelines in these domains.                                                         | `None`            |
+| include_units    | [set](`set`)\[\'TimeUnit\'\] \| None                                                   | Only timelines with these units.                                                         | `None`            |
+| believer         | [str](`str`) \| None                                                                   | The actor whose beliefs filter the claims (the belief filter); ``None`` filters nothing. | `None`            |
+| beliefs          | [Collection](`collections.abc.Collection`)\[[BeliefState](`timetoshare.BeliefState`)\] | The states kept for the believer; default all but ``"false"``.                           | `DEFAULT_BELIEFS` |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -1124,7 +1131,7 @@ alignment.AlignmentBundle.get_coordinate(
     format='id_coordinate',
     rounding='round',
     believer=None,
-    belief='not_false',
+    beliefs=DEFAULT_BELIEFS,
 )
 ```
 
@@ -1132,14 +1139,14 @@ Dispatch a positional or event-key bundle coordinate query.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name        | Type                                                                                                                                                                                                                        | Description                                                                                                                   | Default           |
-|-------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------|-------------------|
-| at          | [CoordinateInput](`timetoalign.core.retrieval.CoordinateInput`) \| [CoordinateCollection](`timetoalign.core.retrieval.CoordinateCollection`) \| [str](`str`) \| [KeyCollection](`timetoalign.core.retrieval.KeyCollection`) | Scalar or plural coordinate position or event key.                                                                            | _required_        |
-| timeline_id | [str](`str`) \| None                                                                                                                                                                                                        | Requested result timeline ID when required.                                                                                   | `None`            |
-| format      | [CoordinateFormat](`timetoalign.core.retrieval.CoordinateFormat`)                                                                                                                                                           | Requested coordinate output format.                                                                                           | `'id_coordinate'` |
-| rounding    | [Rounding](`timetoalign.core.retrieval.Rounding`)                                                                                                                                                                           | Integral projection mode.                                                                                                     | `'round'`         |
-| believer    | [str](`str`) \| None                                                                                                                                                                                                        | The actor whose beliefs filter the MatchClaims read (the belief filter); ``None`` reads every claim.                          | `None`            |
-| belief      | [BeliefFilter](`timetoalign.core.provenance.BeliefFilter`)                                                                                                                                                                  | ``"not_false"`` (default) reads every claim the believer does not believe ``false``; ``"true"`` only those believed ``true``. | `'not_false'`     |
+| Name        | Type                                                                                                                                                                                                                        | Description                                                                                                               | Default           |
+|-------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------|-------------------|
+| at          | [CoordinateInput](`timetoalign.core.retrieval.CoordinateInput`) \| [CoordinateCollection](`timetoalign.core.retrieval.CoordinateCollection`) \| [str](`str`) \| [KeyCollection](`timetoalign.core.retrieval.KeyCollection`) | Scalar or plural coordinate position or event key.                                                                        | _required_        |
+| timeline_id | [str](`str`) \| None                                                                                                                                                                                                        | Requested result timeline ID when required.                                                                               | `None`            |
+| format      | [CoordinateFormat](`timetoalign.core.retrieval.CoordinateFormat`)                                                                                                                                                           | Requested coordinate output format.                                                                                       | `'id_coordinate'` |
+| rounding    | [Rounding](`timetoalign.core.retrieval.Rounding`)                                                                                                                                                                           | Integral projection mode.                                                                                                 | `'round'`         |
+| believer    | [str](`str`) \| None                                                                                                                                                                                                        | The actor whose beliefs filter the MatchClaims read (the belief filter); ``None`` reads every claim.                      | `None`            |
+| beliefs     | [Collection](`collections.abc.Collection`)\[[BeliefState](`timetoshare.BeliefState`)\]                                                                                                                                      | The states read for the believer (``"true"``, ``"undecided"``, ``"unlikely"``, ``"false"``); default all but ``"false"``. | `DEFAULT_BELIEFS` |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -1157,7 +1164,7 @@ alignment.AlignmentBundle.get_coordinate_at(
     format='id_coordinate',
     rounding='round',
     believer=None,
-    belief='not_false',
+    beliefs=DEFAULT_BELIEFS,
 )
 ```
 
@@ -1169,14 +1176,14 @@ filter keeps, as every query of the bundle reads them.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name        | Type                                                              | Description                                                                                                                   | Default           |
-|-------------|-------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------|-------------------|
-| at          | [CoordinateInput](`timetoalign.core.retrieval.CoordinateInput`)   | Raw, plain, or ID-bearing coordinate input.                                                                                   | _required_        |
-| timeline_id | [str](`str`) \| None                                              | Requested result timeline ID.                                                                                                 | `None`            |
-| format      | [CoordinateFormat](`timetoalign.core.retrieval.CoordinateFormat`) | Requested coordinate output format.                                                                                           | `'id_coordinate'` |
-| rounding    | [Rounding](`timetoalign.core.retrieval.Rounding`)                 | Integral projection mode.                                                                                                     | `'round'`         |
-| believer    | [str](`str`) \| None                                              | The actor whose beliefs filter the MatchClaims read (the belief filter); ``None`` reads every claim.                          | `None`            |
-| belief      | [BeliefFilter](`timetoalign.core.provenance.BeliefFilter`)        | ``"not_false"`` (default) reads every claim the believer does not believe ``false``; ``"true"`` only those believed ``true``. | `'not_false'`     |
+| Name        | Type                                                                                   | Description                                                                                                               | Default           |
+|-------------|----------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------|-------------------|
+| at          | [CoordinateInput](`timetoalign.core.retrieval.CoordinateInput`)                        | Raw, plain, or ID-bearing coordinate input.                                                                               | _required_        |
+| timeline_id | [str](`str`) \| None                                                                   | Requested result timeline ID.                                                                                             | `None`            |
+| format      | [CoordinateFormat](`timetoalign.core.retrieval.CoordinateFormat`)                      | Requested coordinate output format.                                                                                       | `'id_coordinate'` |
+| rounding    | [Rounding](`timetoalign.core.retrieval.Rounding`)                                      | Integral projection mode.                                                                                                 | `'round'`         |
+| believer    | [str](`str`) \| None                                                                   | The actor whose beliefs filter the MatchClaims read (the belief filter); ``None`` reads every claim.                      | `None`            |
+| beliefs     | [Collection](`collections.abc.Collection`)\[[BeliefState](`timetoshare.BeliefState`)\] | The states read for the believer (``"true"``, ``"undecided"``, ``"unlikely"``, ``"false"``); default all but ``"false"``. | `DEFAULT_BELIEFS` |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -1194,7 +1201,7 @@ alignment.AlignmentBundle.get_coordinate_for(
     format='id_coordinate',
     rounding='round',
     believer=None,
-    belief='not_false',
+    beliefs=DEFAULT_BELIEFS,
 )
 ```
 
@@ -1202,14 +1209,14 @@ Return a uniquely owned event's start on a selected bundle axis.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name        | Type                                                              | Description                                                                                                                   | Default           |
-|-------------|-------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------|-------------------|
-| key         | [str](`str`)                                                      | Event ID with exactly one owning registered timeline.                                                                         | _required_        |
-| timeline_id | [str](`str`) \| None                                              | Requested result timeline ID, or the owner by default.                                                                        | `None`            |
-| format      | [CoordinateFormat](`timetoalign.core.retrieval.CoordinateFormat`) | Requested coordinate output format.                                                                                           | `'id_coordinate'` |
-| rounding    | [Rounding](`timetoalign.core.retrieval.Rounding`)                 | Integral projection mode.                                                                                                     | `'round'`         |
-| believer    | [str](`str`) \| None                                              | The actor whose beliefs filter the MatchClaims read (the belief filter); ``None`` reads every claim.                          | `None`            |
-| belief      | [BeliefFilter](`timetoalign.core.provenance.BeliefFilter`)        | ``"not_false"`` (default) reads every claim the believer does not believe ``false``; ``"true"`` only those believed ``true``. | `'not_false'`     |
+| Name        | Type                                                                                   | Description                                                                                                               | Default           |
+|-------------|----------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------|-------------------|
+| key         | [str](`str`)                                                                           | Event ID with exactly one owning registered timeline.                                                                     | _required_        |
+| timeline_id | [str](`str`) \| None                                                                   | Requested result timeline ID, or the owner by default.                                                                    | `None`            |
+| format      | [CoordinateFormat](`timetoalign.core.retrieval.CoordinateFormat`)                      | Requested coordinate output format.                                                                                       | `'id_coordinate'` |
+| rounding    | [Rounding](`timetoalign.core.retrieval.Rounding`)                                      | Integral projection mode.                                                                                                 | `'round'`         |
+| believer    | [str](`str`) \| None                                                                   | The actor whose beliefs filter the MatchClaims read (the belief filter); ``None`` reads every claim.                      | `None`            |
+| beliefs     | [Collection](`collections.abc.Collection`)\[[BeliefState](`timetoshare.BeliefState`)\] | The states read for the believer (``"true"``, ``"undecided"``, ``"unlikely"``, ``"false"``); default all but ``"false"``. | `DEFAULT_BELIEFS` |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -1227,7 +1234,7 @@ alignment.AlignmentBundle.get_coordinates_at(
     format='id_coordinate',
     rounding='round',
     believer=None,
-    belief='not_false',
+    beliefs=DEFAULT_BELIEFS,
 )
 ```
 
@@ -1235,14 +1242,14 @@ Resolve a coordinate collection onto one timeline axis.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name        | Type                                                                      | Description                                                                                                                   | Default           |
-|-------------|---------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------|-------------------|
-| at          | [CoordinateCollection](`timetoalign.core.retrieval.CoordinateCollection`) | Coordinate positions to resolve atomically.                                                                                   | _required_        |
-| timeline_id | [str](`str`) \| None                                                      | Requested result timeline ID.                                                                                                 | `None`            |
-| format      | [CoordinateFormat](`timetoalign.core.retrieval.CoordinateFormat`)         | Requested coordinate output format.                                                                                           | `'id_coordinate'` |
-| rounding    | [Rounding](`timetoalign.core.retrieval.Rounding`)                         | Integral projection mode.                                                                                                     | `'round'`         |
-| believer    | [str](`str`) \| None                                                      | The actor whose beliefs filter the MatchClaims read (the belief filter); ``None`` reads every claim.                          | `None`            |
-| belief      | [BeliefFilter](`timetoalign.core.provenance.BeliefFilter`)                | ``"not_false"`` (default) reads every claim the believer does not believe ``false``; ``"true"`` only those believed ``true``. | `'not_false'`     |
+| Name        | Type                                                                                   | Description                                                                                                               | Default           |
+|-------------|----------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------|-------------------|
+| at          | [CoordinateCollection](`timetoalign.core.retrieval.CoordinateCollection`)              | Coordinate positions to resolve atomically.                                                                               | _required_        |
+| timeline_id | [str](`str`) \| None                                                                   | Requested result timeline ID.                                                                                             | `None`            |
+| format      | [CoordinateFormat](`timetoalign.core.retrieval.CoordinateFormat`)                      | Requested coordinate output format.                                                                                       | `'id_coordinate'` |
+| rounding    | [Rounding](`timetoalign.core.retrieval.Rounding`)                                      | Integral projection mode.                                                                                                 | `'round'`         |
+| believer    | [str](`str`) \| None                                                                   | The actor whose beliefs filter the MatchClaims read (the belief filter); ``None`` reads every claim.                      | `None`            |
+| beliefs     | [Collection](`collections.abc.Collection`)\[[BeliefState](`timetoshare.BeliefState`)\] | The states read for the believer (``"true"``, ``"undecided"``, ``"unlikely"``, ``"false"``); default all but ``"false"``. | `DEFAULT_BELIEFS` |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -1260,7 +1267,7 @@ alignment.AlignmentBundle.get_coordinates_for(
     format='id_coordinate',
     rounding='round',
     believer=None,
-    belief='not_false',
+    beliefs=DEFAULT_BELIEFS,
 )
 ```
 
@@ -1268,14 +1275,14 @@ Return event-start coordinates for a key collection.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name        | Type                                                              | Description                                                                                                                   | Default           |
-|-------------|-------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------|-------------------|
-| keys        | [KeyCollection](`timetoalign.core.retrieval.KeyCollection`)       | Event IDs to resolve atomically.                                                                                              | _required_        |
-| timeline_id | [str](`str`) \| None                                              | Requested result timeline ID, or each owner by default.                                                                       | `None`            |
-| format      | [CoordinateFormat](`timetoalign.core.retrieval.CoordinateFormat`) | Requested coordinate output format.                                                                                           | `'id_coordinate'` |
-| rounding    | [Rounding](`timetoalign.core.retrieval.Rounding`)                 | Integral projection mode.                                                                                                     | `'round'`         |
-| believer    | [str](`str`) \| None                                              | The actor whose beliefs filter the MatchClaims read (the belief filter); ``None`` reads every claim.                          | `None`            |
-| belief      | [BeliefFilter](`timetoalign.core.provenance.BeliefFilter`)        | ``"not_false"`` (default) reads every claim the believer does not believe ``false``; ``"true"`` only those believed ``true``. | `'not_false'`     |
+| Name        | Type                                                                                   | Description                                                                                                               | Default           |
+|-------------|----------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------|-------------------|
+| keys        | [KeyCollection](`timetoalign.core.retrieval.KeyCollection`)                            | Event IDs to resolve atomically.                                                                                          | _required_        |
+| timeline_id | [str](`str`) \| None                                                                   | Requested result timeline ID, or each owner by default.                                                                   | `None`            |
+| format      | [CoordinateFormat](`timetoalign.core.retrieval.CoordinateFormat`)                      | Requested coordinate output format.                                                                                       | `'id_coordinate'` |
+| rounding    | [Rounding](`timetoalign.core.retrieval.Rounding`)                                      | Integral projection mode.                                                                                                 | `'round'`         |
+| believer    | [str](`str`) \| None                                                                   | The actor whose beliefs filter the MatchClaims read (the belief filter); ``None`` reads every claim.                      | `None`            |
+| beliefs     | [Collection](`collections.abc.Collection`)\[[BeliefState](`timetoshare.BeliefState`)\] | The states read for the believer (``"true"``, ``"undecided"``, ``"unlikely"``, ``"false"``); default all but ``"false"``. | `DEFAULT_BELIEFS` |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -1387,12 +1394,13 @@ alignment.AlignmentBundle.get_match_claims(
     timeline_ids=None,
     id_pattern=None,
     between=None,
+    within=None,
     synchronous_only=False,
     nomatch_only=False,
     include_domains=None,
     include_units=None,
     believer=None,
-    belief='not_false',
+    beliefs=DEFAULT_BELIEFS,
 )
 ```
 
@@ -1410,18 +1418,19 @@ suffices.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name             | Type                                                       | Description                                                                                                                                | Default       |
-|------------------|------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------|---------------|
-| timeline_id      | [str](`str`) \| None                                       | Return claims involving this timeline ID.                                                                                                  | `None`        |
-| timeline_ids     | [set](`set`)\[[str](`str`)\] \| None                       | Return claims involving any of these timeline IDs.                                                                                         | `None`        |
-| id_pattern       | [str](`str`) \| None                                       | Regex pattern matched against timeline IDs via ``re.search()``. Example: ``r"^perf:"`` matches all performance timelines.                  | `None`        |
-| between          | [tuple](`tuple`)\[[str](`str`), [str](`str`)\] \| None     | Return claims connecting exactly these two timeline IDs (order-independent).                                                               | `None`        |
-| synchronous_only | [bool](`bool`)                                             | Only the synchronous claims (with anchors).                                                                                                | `False`       |
-| nomatch_only     | [bool](`bool`)                                             | Only the NOMATCH claims.                                                                                                                   | `False`       |
-| include_domains  | [set](`set`)\[\'Domain\'\] \| None                         | Only timelines in these domains.                                                                                                           | `None`        |
-| include_units    | [set](`set`)\[\'TimeUnit\'\] \| None                       | Only timelines with these units.                                                                                                           | `None`        |
-| believer         | [str](`str`) \| None                                       | The actor whose beliefs filter the claims (the belief filter); ``None`` filters nothing.                                                   | `None`        |
-| belief           | [BeliefFilter](`timetoalign.core.provenance.BeliefFilter`) | ``"not_false"`` (default) keeps every claim the believer does not believe ``false``; ``"true"`` only those the believer believes ``true``. | `'not_false'` |
+| Name             | Type                                                                                   | Description                                                                                                               | Default           |
+|------------------|----------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------|-------------------|
+| timeline_id      | [str](`str`) \| None                                                                   | Return claims involving this timeline ID.                                                                                 | `None`            |
+| timeline_ids     | [set](`set`)\[[str](`str`)\] \| None                                                   | Return claims involving any of these timeline IDs.                                                                        | `None`            |
+| id_pattern       | [str](`str`) \| None                                                                   | Regex pattern matched against timeline IDs via ``re.search()``. Example: ``r"^perf:"`` matches all performance timelines. | `None`            |
+| between          | [tuple](`tuple`)\[[str](`str`), [str](`str`)\] \| None                                 | Return claims connecting exactly these two timeline IDs (order-independent).                                              | `None`            |
+| within           | [set](`set`)\[[str](`str`)\] \| None                                                   | Return claims whose both timelines are in this set.                                                                       | `None`            |
+| synchronous_only | [bool](`bool`)                                                                         | Only the synchronous claims (with anchors).                                                                               | `False`           |
+| nomatch_only     | [bool](`bool`)                                                                         | Only the NOMATCH claims.                                                                                                  | `False`           |
+| include_domains  | [set](`set`)\[\'Domain\'\] \| None                                                     | Only timelines in these domains.                                                                                          | `None`            |
+| include_units    | [set](`set`)\[\'TimeUnit\'\] \| None                                                   | Only timelines with these units.                                                                                          | `None`            |
+| believer         | [str](`str`) \| None                                                                   | The actor whose beliefs filter the claims (the belief filter); ``None`` filters nothing.                                  | `None`            |
+| beliefs          | [Collection](`collections.abc.Collection`)\[[BeliefState](`timetoshare.BeliefState`)\] | The states kept for the believer (``"true"``, ``"undecided"``, ``"unlikely"``, ``"false"``); default all but ``"false"``. | `DEFAULT_BELIEFS` |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -1483,12 +1492,12 @@ alignment.AlignmentBundle.get_matchstamp(
     *,
     support_policy=None,
     conversion_maps=False,
-    timeline_ids=None,
+    within=None,
     id_pattern=None,
     include_domains=None,
     include_units=None,
     believer=None,
-    belief='not_false',
+    beliefs=DEFAULT_BELIEFS,
 )
 ```
 
@@ -1496,18 +1505,18 @@ Dispatch a positional or event-key match-stamp query.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name            | Type                                                                                                                                                                                                                                                                                                                                                                                                                           | Description                                                                                                                   | Default       |
-|-----------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------|---------------|
-| at              | [CoordinateInput](`timetoalign.core.retrieval.CoordinateInput`) \| [Interval](`timetoalign.core.Interval`) \| [CoordinateCollection](`timetoalign.core.retrieval.CoordinateCollection`) \| [Sequence](`collections.abc.Sequence`)\[[CoordinateInput](`timetoalign.core.retrieval.CoordinateInput`) \| [Interval](`timetoalign.core.Interval`)\] \| [str](`str`) \| [KeyCollection](`timetoalign.core.retrieval.KeyCollection`) | Scalar or plural coordinate or Interval position, or event key.                                                               | _required_    |
-| timeline_id     | [str](`str`) \| None                                                                                                                                                                                                                                                                                                                                                                                                           | ID of the timeline the query is expressed on.                                                                                 | `None`        |
-| support_policy  | \'SupportPolicy \| str \| None\'                                                                                                                                                                                                                                                                                                                                                                                               | How to treat out-of-support timelines.                                                                                        | `None`        |
-| conversion_maps | \'ConversionMapsSpec\'                                                                                                                                                                                                                                                                                                                                                                                                         | C-map conversions available through the stamps.                                                                               | `False`       |
-| timeline_ids    | [set](`set`)\[[str](`str`)\] \| None                                                                                                                                                                                                                                                                                                                                                                                           | Only include these timeline IDs in each result.                                                                               | `None`        |
-| id_pattern      | [str](`str`) \| None                                                                                                                                                                                                                                                                                                                                                                                                           | Regex filter for timeline IDs in each result.                                                                                 | `None`        |
-| include_domains | [set](`set`)\[\'Domain\'\] \| None                                                                                                                                                                                                                                                                                                                                                                                             | Only these domains in each result.                                                                                            | `None`        |
-| include_units   | [set](`set`)\[\'TimeUnit\'\] \| None                                                                                                                                                                                                                                                                                                                                                                                           | Only these units in each result.                                                                                              | `None`        |
-| believer        | [str](`str`) \| None                                                                                                                                                                                                                                                                                                                                                                                                           | The actor whose beliefs filter the MatchClaims read (the belief filter); ``None`` reads every claim.                          | `None`        |
-| belief          | [BeliefFilter](`timetoalign.core.provenance.BeliefFilter`)                                                                                                                                                                                                                                                                                                                                                                     | ``"not_false"`` (default) reads every claim the believer does not believe ``false``; ``"true"`` only those believed ``true``. | `'not_false'` |
+| Name            | Type                                                                                                                                                                                                                                                                                                                                                                                                                           | Description                                                                                                               | Default           |
+|-----------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------|-------------------|
+| at              | [CoordinateInput](`timetoalign.core.retrieval.CoordinateInput`) \| [Interval](`timetoalign.core.Interval`) \| [CoordinateCollection](`timetoalign.core.retrieval.CoordinateCollection`) \| [Sequence](`collections.abc.Sequence`)\[[CoordinateInput](`timetoalign.core.retrieval.CoordinateInput`) \| [Interval](`timetoalign.core.Interval`)\] \| [str](`str`) \| [KeyCollection](`timetoalign.core.retrieval.KeyCollection`) | Scalar or plural coordinate or Interval position, or event key.                                                           | _required_        |
+| timeline_id     | [str](`str`) \| None                                                                                                                                                                                                                                                                                                                                                                                                           | ID of the timeline the query is expressed on.                                                                             | `None`            |
+| support_policy  | \'SupportPolicy \| str \| None\'                                                                                                                                                                                                                                                                                                                                                                                               | How to treat out-of-support timelines.                                                                                    | `None`            |
+| conversion_maps | \'ConversionMapsSpec\'                                                                                                                                                                                                                                                                                                                                                                                                         | C-map conversions available through the stamps.                                                                           | `False`           |
+| within          | [set](`set`)\[[str](`str`)\] \| None                                                                                                                                                                                                                                                                                                                                                                                           | Only these timelines' coordinates in each result.                                                                         | `None`            |
+| id_pattern      | [str](`str`) \| None                                                                                                                                                                                                                                                                                                                                                                                                           | Regex filter for timeline IDs in each result.                                                                             | `None`            |
+| include_domains | [set](`set`)\[\'Domain\'\] \| None                                                                                                                                                                                                                                                                                                                                                                                             | Only these domains in each result.                                                                                        | `None`            |
+| include_units   | [set](`set`)\[\'TimeUnit\'\] \| None                                                                                                                                                                                                                                                                                                                                                                                           | Only these units in each result.                                                                                          | `None`            |
+| believer        | [str](`str`) \| None                                                                                                                                                                                                                                                                                                                                                                                                           | The actor whose beliefs filter the MatchClaims read (the belief filter); ``None`` reads every claim.                      | `None`            |
+| beliefs         | [Collection](`collections.abc.Collection`)\[[BeliefState](`timetoshare.BeliefState`)\]                                                                                                                                                                                                                                                                                                                                         | The states read for the believer (``"true"``, ``"undecided"``, ``"unlikely"``, ``"false"``); default all but ``"false"``. | `DEFAULT_BELIEFS` |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -1530,12 +1539,12 @@ alignment.AlignmentBundle.get_matchstamp_at(
     *,
     support_policy=None,
     conversion_maps=False,
-    timeline_ids=None,
+    within=None,
     id_pattern=None,
     include_domains=None,
     include_units=None,
     believer=None,
-    belief='not_false',
+    beliefs=DEFAULT_BELIEFS,
 )
 ```
 
@@ -1552,7 +1561,7 @@ MatchGraph are overlaid first (exact wins over interpolated), then the
 assembly walks outward across groups to closure: every reached timeline
 expands into its own group (by interpolation) and warps into
 not-yet-reached groups (by WarpMap). ``is_interpolated`` is ``False``
-exactly when the query node itself carries an explicit anchor.
+exactly when the query node itself carries an anchor a claim states.
 
 A timeline whose transferred coordinate falls outside alignment
 support — the entering coordinate lies outside the transferring
@@ -1562,18 +1571,18 @@ ever yields a negative coordinate or one beyond a timeline's length.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name            | Type                                                                                           | Description                                                                                                                                                                                                                                                                                                                        | Default       |
-|-----------------|------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
-| at              | [CoordinateSpec](`timetoalign.core.CoordinateSpec`) \| [Interval](`timetoalign.core.Interval`) | The query position. Can be:  - int/float/Fraction: Raw value, ``timeline_id`` required. - Coordinate: Value with unit, ``timeline_id`` required. - IdCoordinate: Value with unit AND timeline_id   (``timeline_id`` param optional). - Interval: Two coordinate positions, ``timeline_id`` required.                               | _required_    |
-| timeline_id     | [str](`str`) \| None                                                                           | ID of the source timeline. Required unless ``at`` is an ``IdCoordinate``, in which case the coordinate's own ``timeline_id`` is used.                                                                                                                                                                                              | `None`        |
-| support_policy  | \'SupportPolicy \| str \| None\'                                                               | How to treat out-of-support timelines (``omit`` / ``clamp`` / ``extrapolate``). Accepts a :class:`~timetoalign.core.SupportPolicy` or its string name. ``None`` (the default) uses the bundle's ``support_policy`` setting, itself ``omit`` by default. The query timeline's own coordinate is never dropped, clamped, or altered. | `None`        |
-| conversion_maps | \'ConversionMapsSpec\'                                                                         | C-map conversions available through unit lookup and display. Opt-in: defaults to ``False``.                                                                                                                                                                                                                                        | `False`       |
-| timeline_ids    | [set](`set`)\[[str](`str`)\] \| None                                                           | Only include these timeline IDs in the result.                                                                                                                                                                                                                                                                                     | `None`        |
-| id_pattern      | [str](`str`) \| None                                                                           | Regex filter for timeline IDs in the result.                                                                                                                                                                                                                                                                                       | `None`        |
-| include_domains | [set](`set`)\[\'Domain\'\] \| None                                                             | Only these domains in the result.                                                                                                                                                                                                                                                                                                  | `None`        |
-| include_units   | [set](`set`)\[\'TimeUnit\'\] \| None                                                           | Only these units in the result.                                                                                                                                                                                                                                                                                                    | `None`        |
-| believer        | [str](`str`) \| None                                                                           | The actor whose beliefs filter the MatchClaims read (the belief filter); ``None`` reads every claim.                                                                                                                                                                                                                               | `None`        |
-| belief          | [BeliefFilter](`timetoalign.core.provenance.BeliefFilter`)                                     | ``"not_false"`` (default) reads every claim the believer does not believe ``false``; ``"true"`` only those believed ``true``.                                                                                                                                                                                                      | `'not_false'` |
+| Name            | Type                                                                                           | Description                                                                                                                                                                                                                                                                                                                        | Default           |
+|-----------------|------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------|
+| at              | [CoordinateSpec](`timetoalign.core.CoordinateSpec`) \| [Interval](`timetoalign.core.Interval`) | The query position. Can be:  - int/float/Fraction: Raw value, ``timeline_id`` required. - Coordinate: Value with unit, ``timeline_id`` required. - IdCoordinate: Value with unit AND timeline_id   (``timeline_id`` param optional). - Interval: Two coordinate positions, ``timeline_id`` required.                               | _required_        |
+| timeline_id     | [str](`str`) \| None                                                                           | ID of the source timeline. Required unless ``at`` is an ``IdCoordinate``, in which case the coordinate's own ``timeline_id`` is used.                                                                                                                                                                                              | `None`            |
+| support_policy  | \'SupportPolicy \| str \| None\'                                                               | How to treat out-of-support timelines (``omit`` / ``clamp`` / ``extrapolate``). Accepts a :class:`~timetoalign.core.SupportPolicy` or its string name. ``None`` (the default) uses the bundle's ``support_policy`` setting, itself ``omit`` by default. The query timeline's own coordinate is never dropped, clamped, or altered. | `None`            |
+| conversion_maps | \'ConversionMapsSpec\'                                                                         | C-map conversions available through unit lookup and display. Opt-in: defaults to ``False``.                                                                                                                                                                                                                                        | `False`           |
+| within          | [set](`set`)\[[str](`str`)\] \| None                                                           | Only these timelines' coordinates in the result.                                                                                                                                                                                                                                                                                   | `None`            |
+| id_pattern      | [str](`str`) \| None                                                                           | Regex filter for timeline IDs in the result.                                                                                                                                                                                                                                                                                       | `None`            |
+| include_domains | [set](`set`)\[\'Domain\'\] \| None                                                             | Only these domains in the result.                                                                                                                                                                                                                                                                                                  | `None`            |
+| include_units   | [set](`set`)\[\'TimeUnit\'\] \| None                                                           | Only these units in the result.                                                                                                                                                                                                                                                                                                    | `None`            |
+| believer        | [str](`str`) \| None                                                                           | The actor whose beliefs filter the MatchClaims read (the belief filter); ``None`` reads every claim.                                                                                                                                                                                                                               | `None`            |
+| beliefs         | [Collection](`collections.abc.Collection`)\[[BeliefState](`timetoshare.BeliefState`)\]         | The states read for the believer (``"true"``, ``"undecided"``, ``"unlikely"``, ``"false"``); default all but ``"false"``.                                                                                                                                                                                                          | `DEFAULT_BELIEFS` |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -1585,11 +1594,11 @@ ever yields a negative coordinate or one beyond a timeline's length.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                               |
-|--------|----------------------------|-----------------------------------------------------------|
-|        | [TypeError](`TypeError`)   | If ``at`` is not a supported coordinate or Interval.      |
-|        | [ValueError](`ValueError`) | If timeline_id is None and ``at`` is not an IdCoordinate. |
-|        | [KeyError](`KeyError`)     | If timeline_id is not in the bundle.                      |
+| Name   | Type                       | Description                                                                                                                                                                                        |
+|--------|----------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [TypeError](`TypeError`)   | If ``at`` is not a supported coordinate or Interval.                                                                                                                                               |
+|        | [ValueError](`ValueError`) | If timeline_id is None and ``at`` is not an IdCoordinate, or if ``within``, ``id_pattern``, ``include_domains`` and ``include_units`` keep none of the stamp's timelines (the message names them). |
+|        | [KeyError](`KeyError`)     | If timeline_id is not in the bundle.                                                                                                                                                               |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -1630,12 +1639,12 @@ alignment.AlignmentBundle.get_matchstamp_for(
     *,
     support_policy=None,
     conversion_maps=False,
-    timeline_ids=None,
+    within=None,
     id_pattern=None,
     include_domains=None,
     include_units=None,
     believer=None,
-    belief='not_false',
+    beliefs=DEFAULT_BELIEFS,
 )
 ```
 
@@ -1643,18 +1652,18 @@ Get the cross-group MatchStamp at a uniquely owned event.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name            | Type                                                       | Description                                                                                                                   | Default       |
-|-----------------|------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------|---------------|
-| key             | [str](`str`)                                               | Event ID with exactly one owning registered timeline.                                                                         | _required_    |
-| timeline_id     | [str](`str`) \| None                                       | ID of the timeline the stamp is anchored on; by default the event's owner.                                                    | `None`        |
-| support_policy  | \'SupportPolicy \| str \| None\'                           | How to treat out-of-support timelines.                                                                                        | `None`        |
-| conversion_maps | \'ConversionMapsSpec\'                                     | C-map conversions available through the stamp.                                                                                | `False`       |
-| timeline_ids    | [set](`set`)\[[str](`str`)\] \| None                       | Only include these timeline IDs in the result.                                                                                | `None`        |
-| id_pattern      | [str](`str`) \| None                                       | Regex filter for timeline IDs in the result.                                                                                  | `None`        |
-| include_domains | [set](`set`)\[\'Domain\'\] \| None                         | Only these domains in the result.                                                                                             | `None`        |
-| include_units   | [set](`set`)\[\'TimeUnit\'\] \| None                       | Only these units in the result.                                                                                               | `None`        |
-| believer        | [str](`str`) \| None                                       | The actor whose beliefs filter the MatchClaims read (the belief filter); ``None`` reads every claim.                          | `None`        |
-| belief          | [BeliefFilter](`timetoalign.core.provenance.BeliefFilter`) | ``"not_false"`` (default) reads every claim the believer does not believe ``false``; ``"true"`` only those believed ``true``. | `'not_false'` |
+| Name            | Type                                                                                   | Description                                                                                                               | Default           |
+|-----------------|----------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------|-------------------|
+| key             | [str](`str`)                                                                           | Event ID with exactly one owning registered timeline.                                                                     | _required_        |
+| timeline_id     | [str](`str`) \| None                                                                   | ID of the timeline the stamp is anchored on; by default the event's owner.                                                | `None`            |
+| support_policy  | \'SupportPolicy \| str \| None\'                                                       | How to treat out-of-support timelines.                                                                                    | `None`            |
+| conversion_maps | \'ConversionMapsSpec\'                                                                 | C-map conversions available through the stamp.                                                                            | `False`           |
+| within          | [set](`set`)\[[str](`str`)\] \| None                                                   | Only these timelines' coordinates in the result.                                                                          | `None`            |
+| id_pattern      | [str](`str`) \| None                                                                   | Regex filter for timeline IDs in the result.                                                                              | `None`            |
+| include_domains | [set](`set`)\[\'Domain\'\] \| None                                                     | Only these domains in the result.                                                                                         | `None`            |
+| include_units   | [set](`set`)\[\'TimeUnit\'\] \| None                                                   | Only these units in the result.                                                                                           | `None`            |
+| believer        | [str](`str`) \| None                                                                   | The actor whose beliefs filter the MatchClaims read (the belief filter); ``None`` reads every claim.                      | `None`            |
+| beliefs         | [Collection](`collections.abc.Collection`)\[[BeliefState](`timetoshare.BeliefState`)\] | The states read for the believer (``"true"``, ``"undecided"``, ``"unlikely"``, ``"false"``); default all but ``"false"``. | `DEFAULT_BELIEFS` |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -1705,14 +1714,14 @@ alignment.AlignmentBundle.get_matchstamp_table(
     timeline_id=None,
     *,
     claims=None,
-    timeline_filter=None,
+    within=None,
     from_graph=False,
     conversion_maps=False,
     format='table',
     fields=None,
     units=None,
     believer=None,
-    belief='not_false',
+    beliefs=DEFAULT_BELIEFS,
 )
 ```
 
@@ -1737,7 +1746,7 @@ When ``claims`` is None the claims are the bundle's
 is materialised. Every coordinate is written as the claim holds it,
 on its timeline's axis (a claim is checked against its timelines
 when it is added), so no cell is converted here. The belief filter
-(``believer``, ``belief``) selects the claims either way.
+(``believer``, ``beliefs``) selects the claims either way.
 
 When ``at`` is given instead of ``claims``, each position or event ID
 is resolved through :meth:`get_matchstamp_at` and becomes exactly one
@@ -1747,19 +1756,19 @@ are already collapsed cross-sections) and is ignored.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name            | Type                                                                                                                                                                                                                                                                                                                                                                                                                                   | Description                                                                                                                                                                                                                                                                                                                                                        | Default       |
-|-----------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
-| at              | [CoordinateInput](`timetoalign.core.retrieval.CoordinateInput`) \| [Interval](`timetoalign.core.Interval`) \| [CoordinateCollection](`timetoalign.core.retrieval.CoordinateCollection`) \| [Sequence](`collections.abc.Sequence`)\[[CoordinateInput](`timetoalign.core.retrieval.CoordinateInput`) \| [Interval](`timetoalign.core.Interval`)\] \| [str](`str`) \| [KeyCollection](`timetoalign.core.retrieval.KeyCollection`) \| None | Query positions or event IDs to resolve through :meth:`get_matchstamp_at`, one row each in input order. Each element is a raw ``int``/``float``/``Fraction`` or ``Coordinate`` (needing ``timeline_id``) or an ``IdCoordinate`` (carrying its own timeline). An ``Interval`` also needs ``timeline_id`` and has no table form. Mutually exclusive with ``claims``. | `None`        |
-| timeline_id     | [str](`str`) \| None                                                                                                                                                                                                                                                                                                                                                                                                                   | Source timeline for the ``at`` batch; may be ``None`` when every element is an ``IdCoordinate`` or an event ID. Ignored on the ``claims`` path.                                                                                                                                                                                                                    | `None`        |
-| claims          | [list](`list`)\[[MatchClaim](`timetoalign.alignment.claims.MatchClaim`)\] \| None                                                                                                                                                                                                                                                                                                                                                      | List of MatchClaims to tabulate.  If None, uses every cross-group claim in the bundle (both stores).  When given, only those claims are tabulated.  Mutually exclusive with ``at``.                                                                                                                                                                                | `None`        |
-| timeline_filter | [set](`set`)\[[str](`str`)\] \| None                                                                                                                                                                                                                                                                                                                                                                                                   | Only include these timeline fields.                                                                                                                                                                                                                                                                                                                                | `None`        |
-| from_graph      | [bool](`bool`)                                                                                                                                                                                                                                                                                                                                                                                                                         | Collapse claims into one row per connected component instead of one row per claim.  Ignored on the ``at`` path.                                                                                                                                                                                                                                                    | `False`       |
-| conversion_maps | \'ConversionMapsSpec\'                                                                                                                                                                                                                                                                                                                                                                                                                 | C-map conversions to add as derived columns, one per (timeline, enabled unit-conversion map). Opt-in: defaults to ``False``. Only numeric unit-conversion maps (a ``target_unit`` set) become columns; label/structured maps appear in stamp display but never as table columns.                                                                                   | `False`       |
-| format          | [TableFormat](`timetoalign.core.retrieval.TableFormat`)                                                                                                                                                                                                                                                                                                                                                                                | ``"table"`` (default) for a PyArrow table, ``"dataframe"`` for a pandas DataFrame.                                                                                                                                                                                                                                                                                 | `'table'`     |
-| fields          | \'ColumnNaming \| Callable\[\[str, dict\], str\] \| list\[str\] \| None\'                                                                                                                                                                                                                                                                                                                                                              | How to name the DataFrame fields (``format="dataframe"``).                                                                                                                                                                                                                                                                                                         | `None`        |
-| units           | [bool](`bool`) \| None                                                                                                                                                                                                                                                                                                                                                                                                                 | If True (the DataFrame default), append units to field names like "name (unit)".                                                                                                                                                                                                                                                                                   | `None`        |
-| believer        | [str](`str`) \| None                                                                                                                                                                                                                                                                                                                                                                                                                   | The actor whose beliefs filter the claims (the belief filter); ``None`` keeps every claim.                                                                                                                                                                                                                                                                         | `None`        |
-| belief          | [BeliefFilter](`timetoalign.core.provenance.BeliefFilter`)                                                                                                                                                                                                                                                                                                                                                                             | ``"not_false"`` (default) or ``"true"``.                                                                                                                                                                                                                                                                                                                           | `'not_false'` |
+| Name            | Type                                                                                                                                                                                                                                                                                                                                                                                                                                   | Description                                                                                                                                                                                                                                                                                                                                                        | Default           |
+|-----------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------|
+| at              | [CoordinateInput](`timetoalign.core.retrieval.CoordinateInput`) \| [Interval](`timetoalign.core.Interval`) \| [CoordinateCollection](`timetoalign.core.retrieval.CoordinateCollection`) \| [Sequence](`collections.abc.Sequence`)\[[CoordinateInput](`timetoalign.core.retrieval.CoordinateInput`) \| [Interval](`timetoalign.core.Interval`)\] \| [str](`str`) \| [KeyCollection](`timetoalign.core.retrieval.KeyCollection`) \| None | Query positions or event IDs to resolve through :meth:`get_matchstamp_at`, one row each in input order. Each element is a raw ``int``/``float``/``Fraction`` or ``Coordinate`` (needing ``timeline_id``) or an ``IdCoordinate`` (carrying its own timeline). An ``Interval`` also needs ``timeline_id`` and has no table form. Mutually exclusive with ``claims``. | `None`            |
+| timeline_id     | [str](`str`) \| None                                                                                                                                                                                                                                                                                                                                                                                                                   | Source timeline for the ``at`` batch; may be ``None`` when every element is an ``IdCoordinate`` or an event ID. Ignored on the ``claims`` path.                                                                                                                                                                                                                    | `None`            |
+| claims          | [list](`list`)\[[MatchClaim](`timetoalign.alignment.claims.MatchClaim`)\] \| None                                                                                                                                                                                                                                                                                                                                                      | List of MatchClaims to tabulate.  If None, uses every cross-group claim in the bundle (both stores).  When given, only those claims are tabulated.  Mutually exclusive with ``at``.                                                                                                                                                                                | `None`            |
+| within          | [set](`set`)\[[str](`str`)\] \| None                                                                                                                                                                                                                                                                                                                                                                                                   | Only these timelines' coordinates in the table, one column each; ``None`` keeps every timeline.                                                                                                                                                                                                                                                                    | `None`            |
+| from_graph      | [bool](`bool`)                                                                                                                                                                                                                                                                                                                                                                                                                         | Collapse claims into one row per connected component instead of one row per claim.  Ignored on the ``at`` path.                                                                                                                                                                                                                                                    | `False`           |
+| conversion_maps | \'ConversionMapsSpec\'                                                                                                                                                                                                                                                                                                                                                                                                                 | C-map conversions to add as derived columns, one per (timeline, enabled unit-conversion map). Opt-in: defaults to ``False``. Only numeric unit-conversion maps (a ``target_unit`` set) become columns; label/structured maps appear in stamp display but never as table columns.                                                                                   | `False`           |
+| format          | [TableFormat](`timetoalign.core.retrieval.TableFormat`)                                                                                                                                                                                                                                                                                                                                                                                | ``"table"`` (default) for a PyArrow table, ``"dataframe"`` for a pandas DataFrame.                                                                                                                                                                                                                                                                                 | `'table'`         |
+| fields          | \'ColumnNaming \| Callable\[\[str, dict\], str\] \| list\[str\] \| None\'                                                                                                                                                                                                                                                                                                                                                              | How to name the DataFrame fields (``format="dataframe"``).                                                                                                                                                                                                                                                                                                         | `None`            |
+| units           | [bool](`bool`) \| None                                                                                                                                                                                                                                                                                                                                                                                                                 | If True (the DataFrame default), append units to field names like "name (unit)".                                                                                                                                                                                                                                                                                   | `None`            |
+| believer        | [str](`str`) \| None                                                                                                                                                                                                                                                                                                                                                                                                                   | The actor whose beliefs filter the claims (the belief filter); ``None`` keeps every claim.                                                                                                                                                                                                                                                                         | `None`            |
+| beliefs         | [Collection](`collections.abc.Collection`)\[[BeliefState](`timetoshare.BeliefState`)\]                                                                                                                                                                                                                                                                                                                                                 | The states kept for the believer; default all but ``"false"``.                                                                                                                                                                                                                                                                                                     | `DEFAULT_BELIEFS` |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -1828,7 +1837,7 @@ alignment.AlignmentBundle.get_matchstamps(
     from_graph=True,
     conversion_maps=False,
     believer=None,
-    belief='not_false',
+    beliefs=DEFAULT_BELIEFS,
 )
 ```
 
@@ -1844,13 +1853,13 @@ Uses the bundle's caching mechanism for efficient retrieval.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name            | Type                                                                              | Description                                                                                                                                                               | Default       |
-|-----------------|-----------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
-| claims          | [list](`list`)\[[MatchClaim](`timetoalign.alignment.claims.MatchClaim`)\] \| None | List of MatchClaims to get stamps for. If None, every MatchClaim of the bundle (:meth:`get_match_claims`, which materialises the rows).                                   | `None`        |
-| from_graph      | [bool](`bool`)                                                                    | If True (default), return full MatchStamps (:meth:`get_matchstamp_at` at each claim's start anchor, all connected timelines). If False, return reduced 2-timeline stamps. | `True`        |
-| conversion_maps | \'ConversionMapsSpec\'                                                            | C-map conversions available through unit lookup and display. Opt-in: defaults to ``False``.                                                                               | `False`       |
-| believer        | [str](`str`) \| None                                                              | The actor whose beliefs filter the claims, those listed and those every full stamp reads (the belief filter); ``None`` keeps every claim.                                 | `None`        |
-| belief          | [BeliefFilter](`timetoalign.core.provenance.BeliefFilter`)                        | ``"not_false"`` (default) or ``"true"``.                                                                                                                                  | `'not_false'` |
+| Name            | Type                                                                                   | Description                                                                                                                                                               | Default           |
+|-----------------|----------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------|
+| claims          | [list](`list`)\[[MatchClaim](`timetoalign.alignment.claims.MatchClaim`)\] \| None      | List of MatchClaims to get stamps for. If None, every MatchClaim of the bundle (:meth:`get_match_claims`, which materialises the rows).                                   | `None`            |
+| from_graph      | [bool](`bool`)                                                                         | If True (default), return full MatchStamps (:meth:`get_matchstamp_at` at each claim's start anchor, all connected timelines). If False, return reduced 2-timeline stamps. | `True`            |
+| conversion_maps | \'ConversionMapsSpec\'                                                                 | C-map conversions available through unit lookup and display. Opt-in: defaults to ``False``.                                                                               | `False`           |
+| believer        | [str](`str`) \| None                                                                   | The actor whose beliefs filter the claims, those listed and those every full stamp reads (the belief filter); ``None`` keeps every claim.                                 | `None`            |
+| beliefs         | [Collection](`collections.abc.Collection`)\[[BeliefState](`timetoshare.BeliefState`)\] | The states kept for the believer; default all but ``"false"``.                                                                                                            | `DEFAULT_BELIEFS` |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -1898,12 +1907,12 @@ alignment.AlignmentBundle.get_matchstamps_at(
     *,
     support_policy=None,
     conversion_maps=False,
-    timeline_ids=None,
+    within=None,
     id_pattern=None,
     include_domains=None,
     include_units=None,
     believer=None,
-    belief='not_false',
+    beliefs=DEFAULT_BELIEFS,
 )
 ```
 
@@ -1915,18 +1924,18 @@ is preserved.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name            | Type                                                                                                                                                                                                                              | Description                                                                                                                                                                                                                          | Default       |
-|-----------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
-| at              | [CoordinateCollection](`timetoalign.core.retrieval.CoordinateCollection`) \| [Sequence](`collections.abc.Sequence`)\[[CoordinateInput](`timetoalign.core.retrieval.CoordinateInput`) \| [Interval](`timetoalign.core.Interval`)\] | Coordinate or Interval positions to resolve. Each element is a raw ``int``/``float``/``Fraction`` or ``Coordinate`` (needing ``timeline_id``), an ``IdCoordinate`` (carrying its own), or an ``Interval`` (needing ``timeline_id``). | _required_    |
-| timeline_id     | [str](`str`) \| None                                                                                                                                                                                                              | ID of the source timeline.                                                                                                                                                                                                           | `None`        |
-| support_policy  | \'SupportPolicy \| str \| None\'                                                                                                                                                                                                  | How to treat out-of-support timelines.                                                                                                                                                                                               | `None`        |
-| conversion_maps | \'ConversionMapsSpec\'                                                                                                                                                                                                            | C-map conversions available through the stamps.                                                                                                                                                                                      | `False`       |
-| timeline_ids    | [set](`set`)\[[str](`str`)\] \| None                                                                                                                                                                                              | Only include these timeline IDs in each result.                                                                                                                                                                                      | `None`        |
-| id_pattern      | [str](`str`) \| None                                                                                                                                                                                                              | Regex filter for timeline IDs in each result.                                                                                                                                                                                        | `None`        |
-| include_domains | [set](`set`)\[\'Domain\'\] \| None                                                                                                                                                                                                | Only these domains in each result.                                                                                                                                                                                                   | `None`        |
-| include_units   | [set](`set`)\[\'TimeUnit\'\] \| None                                                                                                                                                                                              | Only these units in each result.                                                                                                                                                                                                     | `None`        |
-| believer        | [str](`str`) \| None                                                                                                                                                                                                              | The actor whose beliefs filter the MatchClaims read (the belief filter); ``None`` reads every claim.                                                                                                                                 | `None`        |
-| belief          | [BeliefFilter](`timetoalign.core.provenance.BeliefFilter`)                                                                                                                                                                        | ``"not_false"`` (default) reads every claim the believer does not believe ``false``; ``"true"`` only those believed ``true``.                                                                                                        | `'not_false'` |
+| Name            | Type                                                                                                                                                                                                                              | Description                                                                                                                                                                                                                          | Default           |
+|-----------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------|
+| at              | [CoordinateCollection](`timetoalign.core.retrieval.CoordinateCollection`) \| [Sequence](`collections.abc.Sequence`)\[[CoordinateInput](`timetoalign.core.retrieval.CoordinateInput`) \| [Interval](`timetoalign.core.Interval`)\] | Coordinate or Interval positions to resolve. Each element is a raw ``int``/``float``/``Fraction`` or ``Coordinate`` (needing ``timeline_id``), an ``IdCoordinate`` (carrying its own), or an ``Interval`` (needing ``timeline_id``). | _required_        |
+| timeline_id     | [str](`str`) \| None                                                                                                                                                                                                              | ID of the source timeline.                                                                                                                                                                                                           | `None`            |
+| support_policy  | \'SupportPolicy \| str \| None\'                                                                                                                                                                                                  | How to treat out-of-support timelines.                                                                                                                                                                                               | `None`            |
+| conversion_maps | \'ConversionMapsSpec\'                                                                                                                                                                                                            | C-map conversions available through the stamps.                                                                                                                                                                                      | `False`           |
+| within          | [set](`set`)\[[str](`str`)\] \| None                                                                                                                                                                                              | Only these timelines' coordinates in each result.                                                                                                                                                                                    | `None`            |
+| id_pattern      | [str](`str`) \| None                                                                                                                                                                                                              | Regex filter for timeline IDs in each result.                                                                                                                                                                                        | `None`            |
+| include_domains | [set](`set`)\[\'Domain\'\] \| None                                                                                                                                                                                                | Only these domains in each result.                                                                                                                                                                                                   | `None`            |
+| include_units   | [set](`set`)\[\'TimeUnit\'\] \| None                                                                                                                                                                                              | Only these units in each result.                                                                                                                                                                                                     | `None`            |
+| believer        | [str](`str`) \| None                                                                                                                                                                                                              | The actor whose beliefs filter the MatchClaims read (the belief filter); ``None`` reads every claim.                                                                                                                                 | `None`            |
+| beliefs         | [Collection](`collections.abc.Collection`)\[[BeliefState](`timetoshare.BeliefState`)\]                                                                                                                                            | The states read for the believer (``"true"``, ``"undecided"``, ``"unlikely"``, ``"false"``); default all but ``"false"``.                                                                                                            | `DEFAULT_BELIEFS` |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -1972,12 +1981,12 @@ alignment.AlignmentBundle.get_matchstamps_for(
     *,
     support_policy=None,
     conversion_maps=False,
-    timeline_ids=None,
+    within=None,
     id_pattern=None,
     include_domains=None,
     include_units=None,
     believer=None,
-    belief='not_false',
+    beliefs=DEFAULT_BELIEFS,
 )
 ```
 
@@ -1985,18 +1994,18 @@ Get cross-group MatchStamps for a collection of event IDs.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name            | Type                                                        | Description                                                                                                                   | Default       |
-|-----------------|-------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------|---------------|
-| keys            | [KeyCollection](`timetoalign.core.retrieval.KeyCollection`) | Event IDs to resolve, each with exactly one owner.                                                                            | _required_    |
-| timeline_id     | [str](`str`) \| None                                        | ID of the timeline every stamp is anchored on; by default each event's own owner.                                             | `None`        |
-| support_policy  | \'SupportPolicy \| str \| None\'                            | How to treat out-of-support timelines.                                                                                        | `None`        |
-| conversion_maps | \'ConversionMapsSpec\'                                      | C-map conversions available through the stamps.                                                                               | `False`       |
-| timeline_ids    | [set](`set`)\[[str](`str`)\] \| None                        | Only include these timeline IDs in each result.                                                                               | `None`        |
-| id_pattern      | [str](`str`) \| None                                        | Regex filter for timeline IDs in each result.                                                                                 | `None`        |
-| include_domains | [set](`set`)\[\'Domain\'\] \| None                          | Only these domains in each result.                                                                                            | `None`        |
-| include_units   | [set](`set`)\[\'TimeUnit\'\] \| None                        | Only these units in each result.                                                                                              | `None`        |
-| believer        | [str](`str`) \| None                                        | The actor whose beliefs filter the MatchClaims read (the belief filter); ``None`` reads every claim.                          | `None`        |
-| belief          | [BeliefFilter](`timetoalign.core.provenance.BeliefFilter`)  | ``"not_false"`` (default) reads every claim the believer does not believe ``false``; ``"true"`` only those believed ``true``. | `'not_false'` |
+| Name            | Type                                                                                   | Description                                                                                                               | Default           |
+|-----------------|----------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------|-------------------|
+| keys            | [KeyCollection](`timetoalign.core.retrieval.KeyCollection`)                            | Event IDs to resolve, each with exactly one owner.                                                                        | _required_        |
+| timeline_id     | [str](`str`) \| None                                                                   | ID of the timeline every stamp is anchored on; by default each event's own owner.                                         | `None`            |
+| support_policy  | \'SupportPolicy \| str \| None\'                                                       | How to treat out-of-support timelines.                                                                                    | `None`            |
+| conversion_maps | \'ConversionMapsSpec\'                                                                 | C-map conversions available through the stamps.                                                                           | `False`           |
+| within          | [set](`set`)\[[str](`str`)\] \| None                                                   | Only these timelines' coordinates in each result.                                                                         | `None`            |
+| id_pattern      | [str](`str`) \| None                                                                   | Regex filter for timeline IDs in each result.                                                                             | `None`            |
+| include_domains | [set](`set`)\[\'Domain\'\] \| None                                                     | Only these domains in each result.                                                                                        | `None`            |
+| include_units   | [set](`set`)\[\'TimeUnit\'\] \| None                                                   | Only these units in each result.                                                                                          | `None`            |
+| believer        | [str](`str`) \| None                                                                   | The actor whose beliefs filter the MatchClaims read (the belief filter); ``None`` reads every claim.                      | `None`            |
+| beliefs         | [Collection](`collections.abc.Collection`)\[[BeliefState](`timetoshare.BeliefState`)\] | The states read for the believer (``"true"``, ``"undecided"``, ``"unlikely"``, ``"false"``); default all but ``"false"``. | `DEFAULT_BELIEFS` |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -2040,7 +2049,7 @@ is a pair ``("type", iri)`` (:func:`timetoshare.pairs`).
 alignment.AlignmentBundle.get_provenance(
     node=(),
     believer=None,
-    belief='not_false',
+    beliefs=DEFAULT_BELIEFS,
 )
 ```
 
@@ -2051,17 +2060,17 @@ Entries of stated pairs and candidates alike, in their order
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name     | Type                                                       | Description                                                                                                                                   | Default       |
-|----------|------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------|---------------|
-| node     | [NodePath](`timetoalign.timelines.statements.NodePath`)    | The value node whose entries to return; ``()`` the holder.                                                                                    | `()`          |
-| believer | [str](`str`) \| None                                       | The actor whose beliefs filter, an IRI (compact or absolute); every entry when None.                                                          | `None`        |
-| belief   | [BeliefFilter](`timetoalign.core.provenance.BeliefFilter`) | ``"not_false"`` keeps the entries of pairs the believer does not believe ``"false"``; ``"true"`` only those the believer believes ``"true"``. | `'not_false'` |
+| Name     | Type                                                                                   | Description                                                                                                                                                                                                   | Default           |
+|----------|----------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------|
+| node     | [NodePath](`timetoalign.timelines.statements.NodePath`)                                | The value node whose entries to return; ``()`` the holder.                                                                                                                                                    | `()`              |
+| believer | [str](`str`) \| None                                                                   | The actor whose beliefs filter, an IRI (compact or absolute); every entry when None.                                                                                                                          | `None`            |
+| beliefs  | [Collection](`collections.abc.Collection`)\[[BeliefState](`timetoshare.BeliefState`)\] | The states kept: the entries of pairs whose state for the believer (``"true"``, ``"undecided"`` where the believer holds no belief, ``"unlikely"``, ``"false"``) is one of them; default all but ``"false"``. | `DEFAULT_BELIEFS` |
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                               |
-|--------|----------------------------|-------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If *node* addresses no value node, or *belief* is neither ``"not_false"`` nor ``"true"``. |
+| Name   | Type                       | Description                                                                           |
+|--------|----------------------------|---------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If *node* addresses no value node, or *beliefs* is not a collection of belief states. |
 
 ### get_rectangles { #timetoalign.alignment.AlignmentBundle.get_rectangles }
 
@@ -2241,7 +2250,12 @@ under its id and, unchanged, the band order read with the manifest
 of every timeline written, beside the members of :attr:`styling`. A
 root no group names is ungrouped. The bundle's statements and
 provenance are the manifest's, and the manifest carries its inline
-JSON-LD ``@context`` with the prefixes its statements use, and its
+JSON-LD ``@context`` with the prefixes its statements use and those
+its MatchClaim table's provenance uses (its actors: the table
+:meth:`to_file` writes beside the manifest is read under this
+context), each standing for the namespace the bundle declares
+(:attr:`prefixes`), else the catalogue's; a declared prefix neither
+uses is not written. The manifest carries its
 :attr:`resources`. MatchClaims are not written into the manifest:
 :meth:`to_file` writes them into the MatchClaim table beside it. The
 support policy is a setting of the bundle, not part of the manifest.
@@ -2328,7 +2342,7 @@ alignment.AlignmentBundle.transfer(
     to_timeline,
     *,
     believer=None,
-    belief='not_false',
+    beliefs=DEFAULT_BELIEFS,
 )
 ```
 
@@ -2348,13 +2362,13 @@ as a MatchStamp.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name          | Type                                                       | Description                                                                                                                   | Default       |
-|---------------|------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------|---------------|
-| coord         | [CoordinateSpec](`timetoalign.core.CoordinateSpec`)        | The coordinate value to transfer.                                                                                             | _required_    |
-| from_timeline | [str](`str`)                                               | ID of the source timeline.                                                                                                    | _required_    |
-| to_timeline   | [str](`str`)                                               | ID of the target timeline.                                                                                                    | _required_    |
-| believer      | [str](`str`) \| None                                       | The actor whose beliefs filter the MatchClaims read (the belief filter); ``None`` reads every claim.                          | `None`        |
-| belief        | [BeliefFilter](`timetoalign.core.provenance.BeliefFilter`) | ``"not_false"`` (default) reads every claim the believer does not believe ``false``; ``"true"`` only those believed ``true``. | `'not_false'` |
+| Name          | Type                                                                                   | Description                                                                                                               | Default           |
+|---------------|----------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------|-------------------|
+| coord         | [CoordinateSpec](`timetoalign.core.CoordinateSpec`)                                    | The coordinate value to transfer.                                                                                         | _required_        |
+| from_timeline | [str](`str`)                                                                           | ID of the source timeline.                                                                                                | _required_        |
+| to_timeline   | [str](`str`)                                                                           | ID of the target timeline.                                                                                                | _required_        |
+| believer      | [str](`str`) \| None                                                                   | The actor whose beliefs filter the MatchClaims read (the belief filter); ``None`` reads every claim.                      | `None`            |
+| beliefs       | [Collection](`collections.abc.Collection`)\[[BeliefState](`timetoshare.BeliefState`)\] | The states read for the believer (``"true"``, ``"undecided"``, ``"unlikely"``, ``"false"``); default all but ``"false"``. | `DEFAULT_BELIEFS` |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -2364,10 +2378,10 @@ as a MatchStamp.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                            |
-|--------|----------------------------|--------------------------------------------------------|
-|        | [KeyError](`KeyError`)     | If either id names no timeline of the bundle's trees.  |
-|        | [ValueError](`ValueError`) | If *belief* is neither ``"not_false"`` nor ``"true"``. |
+| Name   | Type                       | Description                                           |
+|--------|----------------------------|-------------------------------------------------------|
+|        | [KeyError](`KeyError`)     | If either id names no timeline of the bundle's trees. |
+|        | [ValueError](`ValueError`) | If *beliefs* is not a collection of belief states.    |
 
 ### transfer_interval { #timetoalign.alignment.AlignmentBundle.transfer_interval }
 
@@ -2379,7 +2393,7 @@ alignment.AlignmentBundle.transfer_interval(
     to_timeline,
     *,
     believer=None,
-    belief='not_false',
+    beliefs=DEFAULT_BELIEFS,
 )
 ```
 
@@ -2387,14 +2401,14 @@ Transfer an interval from one timeline to another.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name          | Type                                                       | Description                                                                                                                   | Default       |
-|---------------|------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------|---------------|
-| start         | [CoordinateSpec](`timetoalign.core.CoordinateSpec`)        | Start coordinate in source timeline. Accepts a raw int/float/Fraction, a Coordinate, or an IdCoordinate.                      | _required_    |
-| end           | [CoordinateSpec](`timetoalign.core.CoordinateSpec`)        | End coordinate in source timeline. Accepts a raw int/float/Fraction, a Coordinate, or an IdCoordinate.                        | _required_    |
-| from_timeline | [str](`str`)                                               | ID of the source timeline.                                                                                                    | _required_    |
-| to_timeline   | [str](`str`)                                               | ID of the target timeline.                                                                                                    | _required_    |
-| believer      | [str](`str`) \| None                                       | The actor whose beliefs filter the MatchClaims read (the belief filter); ``None`` reads every claim.                          | `None`        |
-| belief        | [BeliefFilter](`timetoalign.core.provenance.BeliefFilter`) | ``"not_false"`` (default) reads every claim the believer does not believe ``false``; ``"true"`` only those believed ``true``. | `'not_false'` |
+| Name          | Type                                                                                   | Description                                                                                                               | Default           |
+|---------------|----------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------|-------------------|
+| start         | [CoordinateSpec](`timetoalign.core.CoordinateSpec`)                                    | Start coordinate in source timeline. Accepts a raw int/float/Fraction, a Coordinate, or an IdCoordinate.                  | _required_        |
+| end           | [CoordinateSpec](`timetoalign.core.CoordinateSpec`)                                    | End coordinate in source timeline. Accepts a raw int/float/Fraction, a Coordinate, or an IdCoordinate.                    | _required_        |
+| from_timeline | [str](`str`)                                                                           | ID of the source timeline.                                                                                                | _required_        |
+| to_timeline   | [str](`str`)                                                                           | ID of the target timeline.                                                                                                | _required_        |
+| believer      | [str](`str`) \| None                                                                   | The actor whose beliefs filter the MatchClaims read (the belief filter); ``None`` reads every claim.                      | `None`            |
+| beliefs       | [Collection](`collections.abc.Collection`)\[[BeliefState](`timetoshare.BeliefState`)\] | The states read for the believer (``"true"``, ``"undecided"``, ``"unlikely"``, ``"false"``); default all but ``"false"``. | `DEFAULT_BELIEFS` |
 
 #### Returns {.doc-section .doc-section-returns}
 

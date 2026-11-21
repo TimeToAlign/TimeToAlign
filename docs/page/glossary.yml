@@ -75,15 +75,15 @@ Child: |
 
 ClaimType: |
   The semantic kind of a MatchClaim, derived from its structure rather than
-  stored: read from whether the claim is explicit, whether it is synchronous,
-  and whether both of its sides name an event or one names the NOMATCH
-  sentinel. Every stated claim names an event on each side it aligns; a side
-  without an event of its own is given a Projection first. Four members:
-  event_match (synchronous, an event on each side — the case that yields
-  AlignmentAnchors), nomatch (non-synchronous, one event whose counterpart is
-  absent — see NOMATCH), conceptual (non-synchronous, an event on each side —
-  a structural correspondence with no temporal commitment), and implicit
-  (inferred by graph extension, naming no events; overrides all the above).
+  stored: read from whether the claim is synchronous and whether both of its
+  sides name an event or one names the NOMATCH sentinel. Every MatchClaim
+  names an event on each side it aligns; a side without an event of its own is
+  given a Projection first. Three members: event_match (synchronous, an event
+  on each side — the case that yields AlignmentAnchors), nomatch
+  (non-synchronous, one event and the sentinel on the other side — see
+  NOMATCH), and conceptual (non-synchronous, an event on each side — a
+  structural correspondence with no temporal commitment). What a MatchGraph
+  infers through groups is the graph's own inferred edge and has no kind here.
 
 CombinationMap: |
   A MultiMap yielding outputs from multiple ConversionMaps simultaneously
@@ -172,17 +172,18 @@ Domain: |
 element id: |
   The id that identifies an element of a manifest: the manifest's own, a
   timeline (root or descendant), TimelineGroup, MeasureMap, ConversionMap at
-  any nesting depth, Region, Break, Jump or Marker. It is unique across the
-  whole manifest and every kind, so the id alone names the element. An id is
-  whatever was given and is kept verbatim: any non-empty string without a
-  control character; spaces, colons, slashes and URIs are allowed. Only an
-  element given no id gets a minted one, {prefix}_{N} with N the smallest
-  positive integer the manifest does not yet hold. The prefix names the kind:
-  clt, dlt, cpt, dpt, cgt or dgt for a timeline (continuous or discrete,
-  logical, physical or graphical), group for a group, measuremap for a
-  MeasureMap, cmap, lmap, tmap or pmap for a conversion map, region for a
-  Region, and flow_marker (a Break), jump_from (a Jump) or jump_to (a
-  Marker); a loader role leads it (score:clt_1). When trees are
+  any nesting depth, Region, Break, Jump, Marker or Resource. It is unique
+  across the whole manifest and every kind, so the id alone names the element.
+  An id is free: whatever was given is kept verbatim, any non-empty string
+  without a control character; spaces, colons, slashes and URIs are allowed,
+  and no word is reserved. Only an element given no id gets a minted one,
+  {prefix}_{N} with N above the highest number held under that prefix, so a
+  number once given is never given again. The prefix names the kind: clt,
+  dlt, cpt, dpt, cgt or dgt for a timeline (continuous or discrete, logical,
+  physical or graphical), group for a group, measuremap for a MeasureMap,
+  cmap, lmap, tmap or pmap for a conversion map, region for a Region,
+  resource for a Resource, and flow_marker (a Break), jump_from (a Jump) or
+  jump_to (a Marker); a loader role leads it (score:clt_1). When trees are
   joined into a group or bundle, a minted id that collides is re-minted and a
   given id that collides raises, for every kind of element. The id
   identifies, the name displays: a name may be absent or repeat, and an id is
@@ -281,29 +282,40 @@ MatchClaim: |
   and who believes it) and a certainty. A side without an event of its own is
   given a Projection. May be synchronous (producing AlignmentAnchors) or not:
   conceptual (structural equivalence without temporal commitment) or NOMATCH
-  (the event has no counterpart). Implicit claims are inferred by group
-  extension and name no events. A person stating claims is recorded as
+  (an event on one side, the sentinel on the other). A MatchClaim is always
+  stated: what a MatchGraph infers through groups is the graph's own (its
+  inferred edges), never a MatchClaim. A person stating claims is recorded as
   believing them "true" (create_match_claims(..., actor=)). A claim is never
   deleted: who disagrees records a belief "false" in it
   (AlignmentBundle.add_match_claim_belief()), and every reader of claims, the
-  MatchStamp and coordinate getters included, filters by believer= and
-  belief=. Held individually, or in the bundle's one MatchClaim table, a
-  MatchClaimField. Its id never changes: a claim given none holds no id until
-  the AlignmentBundle it joins mints claim_N above the highest held there, and
-  id_minted records which; a MatchClaimField mints nothing, and an id already
-  held in a scope is refused.
+  MatchStamp and coordinate getters included, takes the belief filter
+  (believer=, beliefs=; see Provenance). Readers of claims take the same
+  timeline filters: timeline_ids keeps a claim with any of the named timelines
+  on either side, within a claim whose both timelines are in the set. Held
+  individually, or in the bundle's one MatchClaim table, a MatchClaimField.
+  Its ID never changes: a claim given none holds no ID until the
+  AlignmentBundle it joins mints claim_N, N above the highest held there; a
+  MatchClaimField mints nothing, and an ID already held in a scope is refused.
 
 MatchClaimField: |
   The MatchClaim table: a columnar, PyArrow-backed store holding a set of
   MatchClaims of every kind as Arrow columns, one per property of a MatchClaim
-  (the two timeline ids as strings, the anchors, the flags, the provenance and
-  certainty, the event ids and names, the source coordinate, id and
-  id_minted; each coordinate a struct of value, numerator, denominator, unit
-  and number_type), rather than as one frozen MatchClaim object per claim;
-  its columns are TimeToShare's MatchClaim table. Storing the exact ratio
-  beside the float mirror is what lets a claim's coordinate come back in its
-  axis's declared number type instead of being flattened on the way through
-  the column. Individual MatchClaims are materialised on demand when a row is
+  (the two timeline IDs, the start and end anchors, each holding coordinate_a
+  and coordinate_b only, the row's timelines being theirs, is_synchronous, the
+  provenance and certainty, the event IDs and names, and id), rather than as
+  one frozen MatchClaim object per claim; its columns are TimeToShare's
+  MatchClaim table. Each anchor coordinate is a cell naming its own unit and
+  number_type beside its number. In memory (table) the number keeps both
+  sides, value and the exact numerator / denominator; the package form
+  (package_table, the table to_parquet() writes) writes it once, in the member
+  its number type names (an int as numerator alone, a fraction as numerator
+  and denominator, a float as value alone), the others null, and
+  from_package_table() reads that form back, refusing a cell that does not
+  stand as its number type says and a null coordinate. A fraction is read in
+  any terms (2/4 is the value 1/2), and a claim gives an end on both sides or
+  on neither. Either way a claim's coordinate comes back in its axis's
+  declared number type instead of being flattened on the way through the
+  column. Individual MatchClaims are materialised on demand when a row is
   indexed or iterated. Built vectorized via from_columns(), it is the scalable
   backing for dense alignment matrices, where the complete pairwise topology
   of a whole work runs to roughly a million claims, and an AlignmentBundle
@@ -312,19 +324,26 @@ MatchClaimField: |
   The table property gives the field as an Arrow table, the shared provenance
   in its schema metadata under the key timetoshare:provenance, and
   from_table() reads it back unchanged; to_parquet() and from_parquet() write
-  and read match_claims.parquet. An AlignmentBundle's to_file() writes its
-  table there, beside the manifest, named in the manifest's resources, and
-  from_file() reads it back; writing over an existing table keeps every claim
-  it holds (the succession rule: same timelines, events and anchors, only
-  the provenance may differ). to_dict() renders the same table as
-  {"provenance": …, "rows": […]}, one mapping per claim keyed by the columns,
-  and from_dict() reads it back.
+  and read match_claims.parquet in the package form. An AlignmentBundle's
+  to_file() writes its table there, beside the manifest, named in the
+  manifest's resources, and from_file() reads it back; writing over an
+  existing table keeps every claim it holds (the succession rule: same
+  timelines, events and anchors, only the provenance may differ). to_dict()
+  renders the same table as {"provenance": …, "rows": […]}, one mapping per
+  claim keyed by the columns, and from_dict() reads it back.
 
 MatchGraph: |
   An auxiliary structure formed by extending MatchClaims through shared
   coordinates; may be viewed as a hyperedge connecting multiple coordinates
-  from different timelines. Connected components yield MatchStamps. Each
-  Match box M1–M15 in the Hendrix figure is a MatchGraph.
+  from different timelines. Connected components yield MatchStamps. Its edges
+  are the anchors of the synchronous MatchClaims it was given (stated) and
+  those extend_to_groups() infers through TimelineGroup membership
+  (inferred_edges, each naming its group and the claim it comes from); an
+  inferred edge is the graph's own, never a MatchClaim. filter() keeps the
+  claims the unified filters choose (timeline_id and timeline_ids on either
+  side, within both sides in the set, the belief filter, stated_only for no
+  inferred edges) and rebuilds the graph from them, extended through the same
+  groups. Each Match box M1–M15 in the Hendrix figure is a MatchGraph.
 
 MatchLine: |
   An ordered sequence of AlignmentAnchors derived from MatchClaims, sorted by
@@ -341,7 +360,13 @@ MatchStamp: |
   format="float"/"int"/"fraction", get_unit() converts through a C-map,
   get_conversion_for() reads label and structured map values,
   present_timelines lists available timelines, and is_interpolated identifies
-  interpolation fallback.
+  interpolation fallback. within= on a MatchStamp getter (and on
+  get_matchstamp_table(), MatchStamp.filter_by_timelines() and a group's
+  get_timestamp_table()) narrows the answer to the named timelines'
+  coordinates; the MatchClaims the stamp is read from are chosen by the belief
+  filter (believer=, beliefs=), and a stamp counts apart the timeline pairs a
+  MatchClaim's anchor links and those an inferred edge links (n_stated_pairs,
+  n_inferred_pairs).
 
 MeasureConstituent: |
   A measure of a measure map that is only part of its nominal measure: an
@@ -445,8 +470,12 @@ Projection: |
   Projections table (projections.parquet, one row per Projection with its
   timeline_id), which an AlignmentBundle's to_file() writes beside the
   manifest whenever one of its timelines holds Projections, named in its
-  resources, and from_file() reads back onto the timelines. A Projection's
-  ID is unique on its timeline.
+  resources, sorted by timeline ID, and from_file() reads back onto the
+  timelines. In memory a Projection's start and duration are coordinate
+  cells, each naming its unit and number type; the table writes them in the
+  package form: the timeline's unit and number_type once per row, each number
+  once, in the member its number type names (see MatchClaimField). A
+  Projection's ID is unique on its timeline.
 
 Provenance: |
   How an item was made and who believes it, one facility for statements and
@@ -457,15 +486,20 @@ Provenance: |
   "unlikely", with its date. A person stating an item is recorded as
   believing it "true"; a loader or a service records how it made the item and
   believes nothing. A belief never removes an item. The belief filter reads
-  one actor's beliefs: everything the believer does not believe "false" (the
-  default) or only what the believer believes "true". For a statement, the
-  entry sits in the provenance beside an element's statements (or inside a
-  value node) and names the pair again by property and value; a pair without
-  one is stated by the manifest's publisher, and a pair held only as its
-  entry is a candidate. For a MatchClaim, the entry is the claim's
-  provenance: create_match_claims(..., actor=) records the stating person's
-  belief "true", and AlignmentBundle.add_match_claim_belief() records a belief in a
-  claim the bundle holds.
+  one actor's beliefs: believer= names the actor, and beliefs= the states
+  kept, any of four: "true", "undecided" (the believer holds no belief on the
+  item), "unlikely" and "false"; the default keeps every state but "false",
+  and without a believer nothing is filtered. Actors compare as the IRIs they
+  stand for under the manifest's @context, so one believer may be spelled
+  twice in one entry; the entry is then read as the most critical of that
+  believer's beliefs ("false" before "unlikely" before "true"). For a
+  statement, the entry sits in the provenance beside an element's statements
+  (or inside a value node) and names the pair again by property and value; a
+  pair without one is stated by the manifest's publisher, and a pair held
+  only as its entry is a candidate. For a MatchClaim, the entry is the
+  claim's provenance: create_match_claims(..., actor=) records the stating
+  person's belief "true", and AlignmentBundle.add_match_claim_belief() records
+  a belief in a claim the bundle holds.
 
 Reach: |
   The farthest coordinate on a timeline's own axis that its content reaches:
@@ -482,7 +516,9 @@ Region: |
 
 Resource: |
   An entry of a TimeToShare manifest's resources, naming a file that holds
-  data for its timelines and lies beside it: its id (resource_N), its type
+  data for its timelines and lies beside it: its id (any element id no other
+  element of the manifest holds; an entry the library adds gets a minted
+  resource_N, and an entry read keeps its own when written back), its type
   (what its rows are: MatchClaim for the MatchClaim table, Projection for
   the Projections table), the ids of the timelines it holds data for, its url
   relative to the manifest, and optionally its media type, size in bytes and

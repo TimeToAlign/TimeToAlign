@@ -37,30 +37,31 @@ the subject ``()``.
 timelines.StatementsMixin.get_candidates(
     node=(),
     believer=None,
-    belief='not_false',
+    beliefs=DEFAULT_BELIEFS,
 )
 ```
 
 Return the candidates: the entries of pairs the holder does not state.
 
 A candidate is offered for someone to state (:meth:`add_statement`
-with the same pair). With *believer*, a candidate the believer
-believes ``"false"`` is left out: it is not offered to that actor
-again (:func:`timetoshare.candidates` with ``actor=``).
+with the same pair). With *believer* and the default *beliefs*, a
+candidate the believer believes ``"false"`` is left out: it is not
+offered to that actor again (:func:`timetoshare.candidates` with
+``actor=``).
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name     | Type                                                       | Description                                                                              | Default       |
-|----------|------------------------------------------------------------|------------------------------------------------------------------------------------------|---------------|
-| node     | [NodePath](`timetoalign.timelines.statements.NodePath`)    | The value node whose candidates to return; ``()`` the holder.                            | `()`          |
-| believer | [str](`str`) \| None                                       | The actor whose beliefs filter, an IRI (compact or absolute); every candidate when None. | `None`        |
-| belief   | [BeliefFilter](`timetoalign.core.provenance.BeliefFilter`) | ``"not_false"`` or ``"true"``, as for :meth:`get_provenance`.                            | `'not_false'` |
+| Name     | Type                                                                                   | Description                                                                              | Default           |
+|----------|----------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------|-------------------|
+| node     | [NodePath](`timetoalign.timelines.statements.NodePath`)                                | The value node whose candidates to return; ``()`` the holder.                            | `()`              |
+| believer | [str](`str`) \| None                                                                   | The actor whose beliefs filter, an IRI (compact or absolute); every candidate when None. | `None`            |
+| beliefs  | [Collection](`collections.abc.Collection`)\[[BeliefState](`timetoshare.BeliefState`)\] | The states kept, as for :meth:`get_provenance`.                                          | `DEFAULT_BELIEFS` |
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                               |
-|--------|----------------------------|-------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If *node* addresses no value node, or *belief* is neither ``"not_false"`` nor ``"true"``. |
+| Name   | Type                       | Description                                                                           |
+|--------|----------------------------|---------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If *node* addresses no value node, or *beliefs* is not a collection of belief states. |
 
 ### get_pairs { #timetoalign.timelines.StatementsMixin.get_pairs }
 
@@ -91,7 +92,7 @@ is a pair ``("type", iri)`` (:func:`timetoshare.pairs`).
 timelines.StatementsMixin.get_provenance(
     node=(),
     believer=None,
-    belief='not_false',
+    beliefs=DEFAULT_BELIEFS,
 )
 ```
 
@@ -102,17 +103,17 @@ Entries of stated pairs and candidates alike, in their order
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name     | Type                                                       | Description                                                                                                                                   | Default       |
-|----------|------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------|---------------|
-| node     | [NodePath](`timetoalign.timelines.statements.NodePath`)    | The value node whose entries to return; ``()`` the holder.                                                                                    | `()`          |
-| believer | [str](`str`) \| None                                       | The actor whose beliefs filter, an IRI (compact or absolute); every entry when None.                                                          | `None`        |
-| belief   | [BeliefFilter](`timetoalign.core.provenance.BeliefFilter`) | ``"not_false"`` keeps the entries of pairs the believer does not believe ``"false"``; ``"true"`` only those the believer believes ``"true"``. | `'not_false'` |
+| Name     | Type                                                                                   | Description                                                                                                                                                                                                   | Default           |
+|----------|----------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------|
+| node     | [NodePath](`timetoalign.timelines.statements.NodePath`)                                | The value node whose entries to return; ``()`` the holder.                                                                                                                                                    | `()`              |
+| believer | [str](`str`) \| None                                                                   | The actor whose beliefs filter, an IRI (compact or absolute); every entry when None.                                                                                                                          | `None`            |
+| beliefs  | [Collection](`collections.abc.Collection`)\[[BeliefState](`timetoshare.BeliefState`)\] | The states kept: the entries of pairs whose state for the believer (``"true"``, ``"undecided"`` where the believer holds no belief, ``"unlikely"``, ``"false"``) is one of them; default all but ``"false"``. | `DEFAULT_BELIEFS` |
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                               |
-|--------|----------------------------|-------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If *node* addresses no value node, or *belief* is neither ``"not_false"`` nor ``"true"``. |
+| Name   | Type                       | Description                                                                           |
+|--------|----------------------------|---------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If *node* addresses no value node, or *beliefs* is not a collection of belief states. |
 
 ### get_rectangles { #timetoalign.timelines.StatementsMixin.get_rectangles }
 

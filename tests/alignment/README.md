@@ -1765,19 +1765,13 @@ script, never computed by a derivation, so they are an independent oracle.
   and the eleven Projections (eight on `dpt_1`, two on `cpt_1`, one on
   `clt_2`; `clt_1` holds none), so every timeline's events are its
   Projections alone; the bundle's Projections table equals the fixture's
-  sorted by timeline (a stable sort, so each timeline keeps its order). The
-  Projections file is equal as a table, not as bytes: the library writes
-  the rows by timeline ID, each timeline in its event order (`clt_2`,
-  `cpt_1` ×2, `dpt_1` ×8), the fixture holds them in its emitter's order
-  (`dpt_1` ×6, `cpt_1`, `dpt_1` ×2, `clt_2`, `cpt_1`). The bundle holds
-  each timeline's Projections in that timeline's events and keeps no order
-  across timelines, so it cannot write the fixture's; the fixture sorted by
-  timeline and written with Parquet's defaults is the library's file byte
-  for byte.
-- Written to a fresh directory, `match_claims.parquet` is the fixture's
-  byte for byte and the MatchClaim entry equals the fixture's (its size and
-  digest included); the Projection entry differs from the fixture's only in
-  `size` and `integrity`, those of the file written.
+  rows (the table is read from the bundle's timelines sorted by ID, each
+  timeline in its event order: `clt_2`, `cpt_1` ×2, `dpt_1` ×8, the order
+  the fixture holds them in). The Projections file is the fixture's byte
+  for byte, as the MatchClaim file is.
+- Written to a fresh directory, `match_claims.parquet` and
+  `projections.parquet` are the fixture's byte for byte, and both resource
+  entries equal the fixture's (size and digest included).
 - For each case, `MatchGraph(bundle.get_match_claims(), believer=,
   beliefs=, source=bundle)`, the case's `believer` and `beliefs` read as
   they stand (the fixture holds exactly the seven cases): the unique anchors (each synchronous claim's

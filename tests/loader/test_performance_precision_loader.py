@@ -11,9 +11,11 @@ It verifies:
 - the composed ``SoloLoader`` (2494 events),
 - the ``MetricMap`` built from the timemap (38 measures, length 212.5),
 - the measure+offset → absolute-quarter resolver (validated anchors),
-- the score timeline (2494 events, quarters, pickup note at 0),
+- the score timeline (2494 notes, quarters, pickup note at 0),
 - per-performer MatchClaim counts (559 note = 480 sync + 79 NOMATCH;
-  32 bar; 376 beat) and the bundle totals (8 timelines, 6769 claims).
+  32 bar; 376 beat) and the bundle totals (8 timelines, 6769 claims),
+- the events every claim names (Projections where a row states a position
+  only) and the Projections the loader adds for them.
 
 All counts and coordinates are exact per the Zero Tolerance Validation
 Policy.  Validation logic is documented in ``tests/loader/README.md``.
@@ -22,11 +24,14 @@ Policy.  Validation logic is documented in ``tests/loader/README.md``.
 from __future__ import annotations
 
 from fractions import Fraction
+from typing import Any
 
+import pyarrow.compute as pc
 import pytest
 
 from timetoalign.alignment.claims import MatchClaim
-from timetoalign.core import TimeUnit
+from timetoalign.core import Provenance, TimeUnit
+from timetoalign.core.time import struct_to_rational
 from timetoalign.loader.alignment import PerformancePrecisionLoader
 from timetoalign.loader.tabular.solo import SoloLoader
 from timetoalign.maps.meter import MetricalPositionMap, MetricMap
@@ -135,9 +140,22 @@ def test_anacrusis_virtual_downbeat(loader: PerformancePrecisionLoader) -> None:
 # region Score timeline
 
 
+def _event_type_counts(timeline: Any) -> dict[str, int]:
+    """Count a timeline's own events per event type."""
+    counts = pc.value_counts(timeline.events._table.column("event_type"))
+    return {row["values"]: row["counts"] for row in counts.to_pylist()}
+
+
+def _events_by_id(timeline: Any) -> dict[str, dict[str, Any]]:
+    """A timeline's own events as stored rows, keyed by id."""
+    return {row["id"]: row for row in timeline.events._table.to_pylist()}
+
+
 def test_score_timeline_basics(loader: PerformancePrecisionLoader) -> None:
+    """2494 notes, and one Projection per alignment row of the 21 files."""
     score = loader.create_timeline("score")
-    assert len(score.events) == 2494
+    assert _event_type_counts(score) == {"Note": 2494, "Projection": 6769}
+    assert len(score.events) == 9263
     assert score.unit == TimeUnit.quarters
     assert score.length.value == 212.5
 
@@ -191,7 +209,7 @@ def test_bundle_timeline_count(bundle) -> None:
 
 
 def test_total_claim_counts(bundle) -> None:
-    claims = bundle.cross_group_claims
+    claims = bundle.get_match_claims()
     assert len(claims) == 6769
     sync = sum(1 for c in claims if c.is_synchronous)
     nomatch = sum(1 for c in claims if not c.is_synchronous)
@@ -201,11 +219,12 @@ def test_total_claim_counts(bundle) -> None:
 
 def _performer_claims(bundle, performer_key: str) -> list[MatchClaim]:
     perf_tl_id = f"perf:{performer_key}:cpt_1"
-    return [c for c in bundle.cross_group_claims if c.timeline_b_id == perf_tl_id]
+    return [c for c in bundle.get_match_claims() if c.timeline_b_id == perf_tl_id]
 
 
 def _by_granularity(claims: list[MatchClaim], granularity: str) -> list[MatchClaim]:
-    return [c for c in claims if c.metadata.agent.identifier == granularity]
+    note = f"performance_precision {granularity}"
+    return [c for c in claims if c.provenance.note == note]
 
 
 @pytest.mark.parametrize("performer_key", PERFORMERS)
@@ -229,19 +248,71 @@ def test_per_performer_counts(bundle, performer_key: str) -> None:
 
 
 def test_performer_physical_timeline(loader: PerformancePrecisionLoader) -> None:
-    """Each performer timeline holds one event per aligned note row (480)."""
+    """One Note per aligned note row (480), one Projection per bar/beat row."""
     perf = loader.create_timeline("Chopin_Ashkenazy")
     assert perf.unit == TimeUnit.seconds
-    assert len(perf.events) == 480
+    assert _event_type_counts(perf) == {"Note": 480, "Projection": 408}
 
 
-def test_claim_metadata(bundle) -> None:
-    """Claims carry the documented agent (name + per-granularity identifier)."""
+def test_claim_provenance(bundle) -> None:
+    """Every claim records how it was imported, per granularity."""
     claims = _performer_claims(bundle, "Chopin_Ashkenazy")
-    sample = claims[0]
-    assert sample.metadata.agent.name == "performance_precision"
-    assert sample.metadata.certainty == 1.0
-    assert sample.metadata.agent.identifier in {"note", "bar", "beats"}
+    assert {claim.provenance for claim in claims} == {
+        Provenance(method="imported", note=f"performance_precision {granularity}")
+        for granularity in ("note", "bar", "beats")
+    }
+    assert {claim.certainty for claim in claims} == {1.0}
+
+
+def _stored_start(row: dict[str, Any]) -> Fraction:
+    return struct_to_rational(row["start"])
+
+
+@pytest.mark.parametrize("performer_key", PERFORMERS)
+def test_every_claim_names_its_events(loader, bundle, performer_key: str) -> None:
+    """Each claim names events of its two timelines, at their own starts."""
+    score = _events_by_id(loader.create_timeline("score"))
+    perf_tl = loader.create_timeline(performer_key)
+    performance = _events_by_id(perf_tl)
+    for granularity in ("note", "bar", "beats"):
+        for claim in _by_granularity(
+            _performer_claims(bundle, performer_key), granularity
+        ):
+            projection = score[claim.event_a_id]
+            assert projection["event_type"] == "Projection"
+            if claim.is_nomatch:
+                assert claim.event_b_id is None
+                assert projection["projection_of"] is None
+                continue
+            performed = performance[claim.event_b_id]
+            assert claim.start_anchor.coordinate_a.value == _stored_start(projection)
+            assert claim.start_anchor.coordinate_b.value == float(
+                _stored_start(performed)
+            )
+            if granularity == "note":
+                assert performed["event_type"] == "Note"
+                assert projection["projection_of"] == {
+                    "timeline_id": perf_tl.id,
+                    "event_id": claim.event_b_id,
+                }
+            else:
+                assert performed["event_type"] == "Projection"
+                assert performed["projection_of"] is None
+                assert projection["projection_of"] is None
+
+
+def test_ashkenazy_first_note_claim(bundle, loader) -> None:
+    """The pickup (LABEL 0+11/8, 9.472 s) joins quarter 0 to Note ':0'."""
+    note_claims = _by_granularity(_performer_claims(bundle, "Chopin_Ashkenazy"), "note")
+    first = note_claims[0]
+    assert first.event_b_id == "Chopin_Ashkenazy:0"
+    assert first.start_anchor.coordinate_a.value == Fraction(0)
+    assert first.start_anchor.coordinate_b.value == 9.472
+    score = _events_by_id(loader.create_timeline("score"))
+    assert score[first.event_a_id]["projection_of"] == {
+        "timeline_id": "perf:Chopin_Ashkenazy:cpt_1",
+        "event_id": "Chopin_Ashkenazy:0",
+    }
 
 
 # endregion
@@ -256,6 +327,8 @@ def test_ashkenazy_bar_spot_check(bundle) -> None:
     synchronous = [c for c in bar_claims if c.is_synchronous]
     # The first bar row of the file is LABEL 1+0/1 (the first downbeat).
     first = synchronous[0]
+    assert first.event_a_id.startswith("projection_")
+    assert first.event_b_id.startswith("projection_")
     assert first.start_anchor.coordinate_a.value == Fraction(1, 2)
     assert first.start_anchor.coordinate_a.unit is TimeUnit.quarters
     assert first.start_anchor.coordinate_b.value == 10.272

@@ -1582,6 +1582,39 @@ function selects onsets and promises no duration.
 
 ---
 
+### Claims from matched notes
+
+`match_notes_by_attributes` pairs rows of two frames greedily and states one MatchClaim per
+pair. A claim joins two events, so the function takes the two timelines and, per side, an
+optional id column naming each row's event on its timeline; a side without one states
+positions only and each of its matched rows becomes a `Projection` added to its timeline.
+
+The fixture is built by hand so every expected value is read off it: a performance timeline
+in samples at 44100 Hz (with `SamplesToSeconds`), events `p1` `p2` `p3` at samples 22050,
+44100, 66150, and a score timeline in quarters, events `n1` `n2` `n3` at `1/2`, `1`, `3/2`.
+The performance frame holds the onsets in **seconds** (0.5, 1.0, 1.5) and the pitches
+`C4 D4 E4`; the score frame the onsets as the fraction strings `"1/2"`, `"1"`, `"3/2"` and
+the pitches `C4 E4 D4`, so a greedy pass pairs `p1–n1`, `p2–n3`, `p3–n2` (an order that
+differs from row order, so a claim built from row positions instead of matched pairs fails).
+
+* **Both sides named** (`source_id_column="id"`, `target_id_column="id"`): exactly the
+  claims `(p1, n1)`, `(p2, n3)`, `(p3, n2)`, side A the performance, each anchor at the
+  sample (22050, 44100, 66150: the seconds converted through the C-Map) and the exact
+  quarter (`1/2`, `3/2`, `1`, read from the strings, never through a float); no event is
+  added to either timeline.
+* **The score side states positions only** (no `target_id_column`): the score timeline gains
+  three Projections, `projection_1` … `projection_3`, at `1/2`, `3/2`, `1`, each
+  `projection_of` naming the performance note it was matched to; the claims name
+  `(p1, projection_1)`, `(p2, projection_2)`, `(p3, projection_3)`.
+* **Neither side names events**: each timeline gains three Projections standing for no
+  event (`projection_of` null), and the claims join them pairwise.
+* **Refusals**, each leaving both timelines as they were: an id column naming an id the
+  timeline does not hold (`ValueError` naming the timeline and the id); claims asked for
+  without both timelines (`ValueError`). With `create_claims=False` no timeline is needed
+  and the matched frame is unchanged.
+* **Provenance** defaults to `Provenance(method="inferred", note="greedy sequential matching
+  by pitch")`.
+
 ## SUPRA Integration Tests (`test_supra_integration.py`)
 
 ### What We're Validating

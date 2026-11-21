@@ -54,9 +54,10 @@ graphical):
   length is the spectrogram ``.png``'s width in frame columns — and a
   px→seconds :class:`~timetoalign.maps.linear.ScalarMap`
   (``seconds = px * hopSize / sample_rate``); and
-* a cross-group :class:`~timetoalign.alignment.anchors.MatchClaim` per
-  score note — a synchronous projection from ``score:clt_1`` (quarters)
-  onto ``perf:cpt_1`` (seconds), joined ``xml:id == ref``.
+* a cross-group :class:`~timetoalign.alignment.claims.MatchClaim` per
+  score note — a synchronous claim between the note on ``score:clt_1``
+  (quarters) and its observed onset on ``perf:cpt_1`` (seconds), both
+  events under the same id, joined ``xml:id == ref``.
 
 The ``ref`` → ``xml:id`` correspondence is a bijection (every score note
 has exactly one observed onset and vice versa), so every claim is
@@ -1010,12 +1011,13 @@ class MpmLoader(AlignmentLoader):
         score_notes: list[dict[str, Any]],
         alignment_notes: list[dict[str, Any]],
     ) -> None:
-        """Emit one synchronous cross-group MatchClaim per score note.
+        """Emit one synchronous cross-group MatchClaim per aligned score note.
 
-        The join ``xml_id == ref`` is a bijection, so each score note's
-        quarter onset is projected onto its observed seconds onset.  The
-        claim source is ``score:clt_1`` (quarters); the target is
-        ``perf:cpt_1`` (seconds).
+        A score note (``xml:id``) and its observed onset (``ref``) are both
+        events, under the same id, of ``score:clt_1`` (quarters) and
+        ``perf:cpt_1`` (seconds); the join ``xml_id == ref`` pairs them, and
+        each claim names the two notes at their coordinates there.  An
+        observed onset naming no score note gives no claim.
         """
         ppq = self._ppq
         quarter_by_id = {
@@ -1025,19 +1027,16 @@ class MpmLoader(AlignmentLoader):
             note["ref"]: note["milliseconds_date"] / 1000.0 for note in alignment_notes
         }
         meta = Provenance(method="imported", note=f"mpm {self._performance_name}")
-        for ref, target_seconds in seconds_by_ref.items():
-            source_quarters = quarter_by_id.get(ref)
-            if source_quarters is None:
+        for ref, seconds in seconds_by_ref.items():
+            quarters = quarter_by_id.get(ref)
+            if quarters is None:
                 continue
             self._claims.append(
-                MatchClaim.from_projection(
-                    event={"start": source_quarters},
-                    source_tl_id=_SCORE_CLT_ID,
-                    target_tl_id=_PERF_CPT_ID,
-                    target_coord=float(target_seconds),
-                    source_unit=TimeUnit.quarters,
-                    target_unit=TimeUnit.seconds,
-                    coord_key="start",
+                MatchClaim.from_events(
+                    {"id": ref, "start": quarters},
+                    self._score_clt,
+                    {"id": ref, "start": seconds},
+                    self._perf_cpt,
                     provenance=meta,
                 )
             )

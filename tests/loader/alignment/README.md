@@ -142,8 +142,9 @@ Track events are instants at `start_time` seconds.
 
 ### Claim-count arithmetic
 
-Every projected event contributes exactly one synchronous claim tying its own
-coordinate to the referenced spine event's VTU coordinate, so
+Every projected event contributes exactly one synchronous claim between itself,
+at its own coordinate, and the spine event its `event_ref` names, at its VTU
+coordinate, so
 
 ```
 claims = los_events + graphic_events + track_events
@@ -182,9 +183,23 @@ its `coordinate_a.unit` (ticks / pixels / seconds) against `coordinate_b.unit`
 (always ticks, always `spine:dlt_1`).  Per-layer row counts are recovered by
 counting the field's `timeline_a_id` column against the loader's `los_uid` /
 `edition_uids` / `track_uids`, which is what the arithmetic above is asserted
-through.  The bundle holds exactly one claim field and its per-claim Python
-list stays empty (`cross_group_claims == []`) while `n_cross_group_claims`
-reports the totals above.
+through.  The bundle's `n_cross_group_claims` reports the totals above.
+
+**Every claim names its two events.** The document names spine events only, so
+the loader gives each layer event the id its timeline would mint
+(`{event type in lower case}_{N}`, counted per type in document order:
+animals' LOS timeline holds `rest_1`…`rest_8`, `syllable_1`…`syllable_8`).
+For animals and khomus the test builds every timeline and checks, claim by
+claim: `(timeline_a_id, event_a_id)` is exactly one layer event (the set of
+claimed events equals the set of layer events, children included, so none is
+named twice or missed); `event_b_id` is that event's own `event_ref`; and the
+anchor equals `(timeline.get_coordinate_for(event_a_id),
+spine.get_coordinate_for(event_b_id))`. A graphic event lives on an accolade
+of its edition and the claim names it on the edition, at its edition-wide x:
+the edition's own lookup through its pages and accolades agreeing with the
+claim proves the running offsets the loader computes. Provenance is shared by
+the field: `Provenance(method="imported", note="<creator>
+ieee1599_event_ref")`.
 
 ### Structural layer → `external_references` on the spine
 
@@ -436,21 +451,30 @@ stated all the same.
   order and within a row in the file's id order. A loader making one claim per
   row would give 7; one per chord or per distinct score position would give 7
   as well, so the count alone tells them apart.
-* **Both sides of every claim.** For each claim: the score timeline's id and
-  the event's `xml:id` as `event_a_id`; the score coordinate, a `Fraction` in
-  quarters, equal to the table above (`Fraction(1, 2)` for all four ids of
-  row 1, `Fraction(15, 2)` for row 7); the performance timeline's id and the
-  performance coordinate as the file states it, in **seconds**, a float equal
-  to the row's onset. On the samples timeline the claim still says seconds:
-  the loader does not convert, the bundle does.
+* **Both sides of every claim are events.** The recording holds no event of
+  its own, so each listed id of a row at a non-negative onset becomes a
+  `Projection` added to the performance timeline, and the claim joins the
+  score note to it. For each claim: the score timeline's id and the event's
+  `xml:id` as `event_a_id`; the score coordinate, a `Fraction` in quarters,
+  equal to the table above (`Fraction(1, 2)` for all four ids of row 1,
+  `Fraction(15, 2)` for row 7); the performance timeline's id and
+  `projection_<n>` as `event_b_id` (`n` counting the claims, as the timeline
+  mints them); the performance coordinate **on the performance timeline's
+  own axis**: on the samples timeline the integer sample of the table (the
+  onset converted through `SamplesToSeconds(44100)` before the claim
+  exists), on the seconds timeline the onset as a float. A claim keeping
+  seconds on a samples timeline, or naming no event, fails.
+* **The Projections** (both timelines): the performance timeline holds
+  exactly 13 events, `projection_1` … `projection_13` in claim order, each of
+  event type `Projection`, its `projection_of` `{timeline_id: <score id>,
+  event_id: <xml:id>}` of the score note it stands for, and its start the
+  same sample (or seconds) as its claim.
 * **Through the bundle, on a samples timeline** (`DiscretePhysicalTimeline`
   in samples with `SamplesToSeconds(44100)`; the bundle is `create_bundle`'s): `get_matchstamp_at(q)` on the
   score gives, on the performance, the integer sample of the table for each
   anchor quarter, with `is_interpolated` false. At quarter 15/4, halfway
   between the anchors at 3 (88200) and 9/2 (154350), the WarpMap gives 121275,
-  with `is_interpolated` true. These values exist only if the bundle converted
-  the seconds of the claims through the timeline's C-Map: the claims never
-  name a sample.
+  with `is_interpolated` true.
 * **Through the bundle, on a seconds timeline**: the same queries give the
   onsets themselves (0.5 … 5.0) and 2.75 halfway.
 * **Before the first anchor**: quarter 1/4 lies on the score but before the
@@ -472,8 +496,16 @@ stated all the same.
   * claim 15, synchronous, `n7` at quarter `Fraction(15, 2)` and 5.5 s: the
     repeated id gives its own claim, not a refusal and not a merge;
   * claims 16 and 17, NOMATCH from the performance: timeline a the
-    performance and b the score, `event_a_id` `trompa-align_inserted_Cs4`
-    verbatim, `source_coordinate` 2.75 and 4.75 seconds, as floats.
+    performance and b the score, `event_a_id` `projection_15` and
+    `projection_16`, Projections standing for no score note (`projection_of`
+    null) at 2.75 and 4.75 seconds (`source_coordinate`, as floats). The file
+    gives both notes one id, which can name neither event, so the timeline
+    mints theirs and the claim keeps the file's id as `event_a_name`
+    (`trompa-align_inserted_Cs4`). The performance holds 16 Projections.
+* **A single inserted note keeps its id.** Adding one inserted row (2.75 s)
+  to the first fixture on the samples timeline gives a last claim naming the
+  Projection `trompa-align_inserted_Cs4` itself (no name), at sample 121275,
+  `projection_of` null: an id the file gives once identifies one note.
 * **The kinds are logged.** One INFO record names the file and the counts,
   14 score notes at a time of the recording, 1 not performed, 2 performed
   notes not in the score; one WARNING names `n7` in rows 8 and 9. The exact
@@ -481,7 +513,9 @@ stated all the same.
 * **`create_bundle`** builds what users would otherwise assemble by hand: the
   bundle is named after the file (`stated`), holds the score in group
   `score` and the performance in group `performance`, and carries the 17
-  claims of `create_match_claims`. On a samples timeline it answers the same
+  claims of `create_match_claims` (made again on a fresh recording, since
+  each call adds its Projections to the timeline it is given). On a samples
+  timeline it answers the same
   anchors as the hand-built bundle of the first fixture (quarter 3/2 →
   sample 55125, 15/4 → 121275 interpolated): the NOMATCH claims add no
   anchor, so the WarpMap is unchanged by them.
@@ -492,7 +526,9 @@ Each refusal raises before anything is created; each test changes one thing
 in an otherwise valid fixture, so the refusal can only come from that change.
 
 * **An id not on the score**: a row naming `zz9` → `KeyError` naming the id
-  and its `obs_num`.
+  and its `obs_num`; the performance timeline holds no event afterwards,
+  though rows 1–3 were read first (every lookup runs before a Projection is
+  added).
 * **No path to seconds**: a samples timeline without a C-Map, and a quarters
   timeline without one → `ValueError`.
 * **Malformed rows** (`load`): `obs_num` not consecutive from 1 (`1, 2, 4`),

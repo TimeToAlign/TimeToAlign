@@ -19,8 +19,8 @@ It verifies:
   recording's stored ``duration``;
 - faithful preservation of negative pre-onset warp coordinates (never
   clamped or dropped);
-- a columnar ``create_bundle`` that never explodes the field — the
-  bundle's Python claim list stays empty while the field is the store;
+- claims that name events: each joins the grid column's point event on
+  its two recordings (``listenherepoint_<column>``), at their instants;
 - a ``get_matchstamp_at`` headline read returning all recordings'
   coordinates at one reference instant via the columnar query path;
 - every other bundle claim reader answering the columnar store with
@@ -48,7 +48,7 @@ import pyarrow.compute as pc
 import pytest
 
 from timetoalign.alignment.claims import MatchClaim, MatchClaimField
-from timetoalign.core import IdCoordinateField, TimeUnit
+from timetoalign.core import Coordinate, IdCoordinateField, Provenance, TimeUnit
 from timetoalign.loader.alignment import ListenHereLoader
 from timetoalign.timelines import DiscretePhysicalTimeline
 
@@ -220,16 +220,6 @@ def test_create_timelines_id_pattern_no_match(loader: ListenHereLoader) -> None:
     assert loader.create_timelines(id_pattern=r"^missing:") == []
 
 
-def test_bundle_uses_columnar_claim_store(loader: ListenHereLoader) -> None:
-    # create_bundle hands the MatchClaimField to the columnar store, NOT the
-    # per-claim Python list, so the field is never exploded into objects.
-    bundle = loader.create_bundle()
-    assert len(bundle.cross_group_claims) == 0
-    assert len(bundle.cross_group_claim_fields) == 1
-    # The columnar field carries all 15 claims.
-    assert len(bundle.cross_group_claim_fields[0]) == 15
-
-
 def test_bundle_timeline_uids(loader: ListenHereLoader) -> None:
     bundle = loader.create_bundle()
     assert set(bundle.timelines.keys()) == {
@@ -358,18 +348,6 @@ def test_matchstamp_spans_all_recordings(loader: ListenHereLoader) -> None:
         assert coordinate.unit is TimeUnit.samples
 
 
-def test_matchstamp_does_not_explode_field(loader: ListenHereLoader) -> None:
-    # The columnar query path must answer get_matchstamp_at WITHOUT ever
-    # filling the bundle's Python claim list: it stays empty before AND after
-    # the query (the few matched rows are materialised transiently inside the
-    # MatchGraph, never appended to cross_group_claims).
-    bundle = loader.create_bundle()
-    assert len(bundle.cross_group_claims) == 0
-    stamp = bundle.get_matchstamp_at(1984, "rec-ref:dpt_1")
-    assert stamp.n_timelines == 3
-    assert len(bundle.cross_group_claims) == 0
-
-
 def test_matchstamp_at_first_grid_coordinate(loader: ListenHereLoader) -> None:
     # Query an exact grid coordinate read off one recording: rec-a column 0
     # is 0, where rec-b is -441 and rec-ref is 0. Same instant in all 3.
@@ -478,13 +456,50 @@ def test_bundle_diagram_reports_claim_count(loader: ListenHereLoader) -> None:
 # region Metadata
 
 
-def test_claim_metadata(loader: ListenHereLoader) -> None:
-    # Metadata is field-level, injected on read; pull a materialised claim
-    # from the columnar field (the bundle's Python claim list is empty).
+def test_claim_provenance(loader: ListenHereLoader) -> None:
+    # Provenance is field-level, injected on read; pull a materialised claim
+    # from the columnar field.
     claim = loader.get_field(MatchClaim)[0]
-    assert claim.metadata is not None
-    assert claim.metadata.agent.name == "Listen Here! v0.20.0"
-    assert claim.metadata.agent.identifier == "dtw_chroma_alignment"
+    assert claim.provenance == Provenance(
+        method="imported", note="Listen Here! v0.20.0 dtw_chroma_alignment"
+    )
+    assert loader.get_field(MatchClaim).provenance == claim.provenance
+
+
+def test_claims_name_the_grid_points(loader: ListenHereLoader) -> None:
+    # Every recording holds one point per grid column, column i under the id
+    # listenherepoint_{i+1}; each claim joins the same column's point on its
+    # two recordings, at the instants those points hold.
+    bundle = loader.create_bundle()
+    points = {
+        timeline_id: {
+            row["id"]: row["start"]["numerator"]
+            for row in timeline.events.table.to_pylist()
+        }
+        for timeline_id, timeline in bundle.timelines.items()
+    }
+    assert {timeline_id: list(by_id) for timeline_id, by_id in points.items()} == {
+        timeline_id: [f"listenherepoint_{i}" for i in range(1, 6)]
+        for timeline_id in ("rec-a:dpt_1", "rec-b:dpt_1", "rec-ref:dpt_1")
+    }
+    claims = list(loader.get_field(MatchClaim))
+    pairs = [
+        ("rec-a:dpt_1", "rec-b:dpt_1"),
+        ("rec-a:dpt_1", "rec-ref:dpt_1"),
+        ("rec-b:dpt_1", "rec-ref:dpt_1"),
+    ]
+    assert [
+        (c.timeline_a_id, c.event_a_id, c.timeline_b_id, c.event_b_id) for c in claims
+    ] == [
+        (a, f"listenherepoint_{i}", b, f"listenherepoint_{i}")
+        for a, b in pairs
+        for i in range(1, 6)
+    ]
+    for claim in claims:
+        assert claim.start_anchor.coordinates == (
+            Coordinate(points[claim.timeline_a_id][claim.event_a_id], TimeUnit.samples),
+            Coordinate(points[claim.timeline_b_id][claim.event_b_id], TimeUnit.samples),
+        )
 
 
 # endregion

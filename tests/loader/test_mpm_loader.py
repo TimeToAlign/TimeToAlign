@@ -410,10 +410,14 @@ def test_claims_all_synchronous(specimen: dict[str, Any]) -> None:
     assert len(claims) == specimen["claims"]
     assert len(bundle.get_match_claims(synchronous_only=True)) == specimen["claims"]
     assert len(bundle.get_match_claims(nomatch_only=True)) == 0
-    # All claims connect score:clt1 (quarters) -> perf:cpt1 (seconds).
+    # All claims connect score:clt1 (quarters) -> perf:cpt1 (seconds), each
+    # naming one note id on both timelines, every note once.
     for claim in claims:
         assert claim.is_synchronous
         assert claim.connects_both(SCORE_CLT_ID, PERF_CPT_ID)
+        assert claim.event_a_id == claim.event_b_id
+    score_ids = loader.create_timeline(SCORE_CLT_ID).events._table.column("id")
+    assert sorted(claim.event_a_id for claim in claims) == sorted(score_ids.to_pylist())
 
 
 def test_ref_xmlid_bijection(specimen: dict[str, Any]) -> None:
@@ -453,7 +457,8 @@ def test_beethoven_claim_coordinates() -> None:
     matches = [
         c
         for c in bundle.get_match_claims()
-        if c.start_anchor.coordinate_a.value == Fraction(360, 720)
+        if (c.event_a_id, c.event_b_id) == ("nbwxzb1", "nbwxzb1")
+        and c.start_anchor.coordinate_a.value == Fraction(360, 720)
         and c.start_anchor.coordinate_a.unit is TimeUnit.quarters
         and c.start_anchor.coordinate_b.value == expected_seconds
         and c.start_anchor.coordinate_b.unit is TimeUnit.seconds

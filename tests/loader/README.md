@@ -108,6 +108,17 @@ ticks→seconds map divides the header's clock rate by its clock units
 exactly (scalar `Fraction(1, 960)`), so 480 ticks, one quarter of
 500000 µs, are `0.5` seconds by equality, not within a tolerance.
 
+A matchfile names both notes of every alignment line, so each MatchClaim
+names them: a `snote(<id>,…)-note(<id>,…)` line is a synchronous interval
+claim between the score note on `score:clt_1` and the performed note on the
+performance timeline, a `snote(<id>,…)-deletion.` line a NOMATCH claim from
+the score note. The test reads the expected id pairs from the file's text
+with two regular expressions (never from the loader), compares them with
+the claims' `event_a_id` / `event_b_id`, and checks that each anchor holds
+exactly the start and end stored on the two events it names (quarters on
+the score, whole ticks on the performance). Every claim records
+`Provenance(method="imported", note="vienna_match v1.0.0")`.
+
 These assertions ensure that rhythmic positions remain exactly addressable
 after they are placed in PyArrow event storage, while performance and
 recording coordinates retain their native numeric representation.
@@ -199,9 +210,9 @@ Fraction(-11, 2)`` (−5.5).
 
 **Composed `SoloLoader`:** 2494 events.
 
-**Score timeline:** 2494 events, unit quarters, length `Fraction(425, 2)`
-(212.5).  The pickup note (`note_id == "n1b8xktz"`) resolves to start
-quarter `0`; a `1+0/1` note resolves to `1/2`.
+**Score timeline:** 2494 Note events, unit quarters, length
+`Fraction(425, 2)` (212.5).  The pickup note (`note_id == "n1b8xktz"`)
+resolves to start quarter `0`; a `1+0/1` note resolves to `1/2`.
 
 **Per performer (identical for all 7):** the note-level file has 559 data
 rows splitting 480 *aligned* (synchronous claims) + 79 *dangling*
@@ -214,9 +225,36 @@ true data-row counts; raw `wc -l` figures (560/33/377) include the
 NOMATCH.  The bundle holds 8 timelines (1 score group + 7 standalone
 performers).
 
+**Every claim names two events (or one and the NOMATCH sentinel).** A row's
+``LABEL`` is a score *position*, not a score note (a chord holds several
+notes at one position), so the score side of every row is a `Projection`
+added to the score timeline at the resolved quarter; the performance side
+of an aligned note row is the performer's Note event the loader built from
+that row, and of an aligned bar or beat row a `Projection` at its time.
+What proves it, counted from the files alone:
+
+- the score timeline holds 2494 Note events and 6769 Projections (one per
+  row of the 21 files, `7 × (559 + 32 + 376)`), 9263 events;
+- each performer timeline holds 480 Note events and 408 Projections
+  (`32 + 376`), 888 events;
+- for every claim, `event_a_id` is an event id of the score timeline and
+  `event_b_id` one of its performer timeline (or null on a NOMATCH claim),
+  checked against the stored id columns, and each anchor coordinate equals
+  the stored start of the event it names: the claim states the events'
+  own positions;
+- a note-level score Projection's `projection_of` names the performer's
+  Note event the claim joins it to; a bar- or beat-level Projection (both
+  sides) and a dangling row's score Projection stand for no event (null).
+
 **Coordinate spot-check:** Ashkenazy's bar-level claim for LABEL `1+0/1`
-has source coordinate `Fraction(1, 2)` (0.5 quarters) and target
-coordinate `10.272` seconds.
+joins a score Projection at `Fraction(1, 2)` (0.5 quarters) to a
+performance Projection at `10.272` seconds; its first aligned note-level
+claim joins the score Projection at quarter `0` (the pickup, `0+11/8`) to
+the Note event `Chopin_Ashkenazy:0`.
+
+**Provenance:** every claim records `Provenance(method="imported",
+note="performance_precision <granularity>")` with granularity `note`,
+`bar` or `beats`, certainty 1.0.
 
 The 6 of 1247 note onsets that do not resolve exactly are inherent tuplet
 rounding in the ``.solo``'s quantised representation; the
@@ -370,18 +408,26 @@ counts, timeline count (12), and group count (6) are derived from
 ### Cross-group MatchClaims
 
 One claim per ``align.csv`` row, per performer, faithfully (no
-deduplication):
+deduplication). Every row names its notes by the ids of ``part.csv``
+(``partid``) and ``ppart.csv`` (``ppartid``), and those are the ids of the
+Note events on ``score:clt_1`` and on ``perf:<key>:cpt_1``, so every claim
+names two events (or one and the NOMATCH sentinel) and no Projection is
+needed:
 
-* **matchtype 0** → `MatchClaim.from_projection` from ``score:clt_1`` to
-  ``perf:<key>:cpt_1``: source coordinate = the part note's
-  ``onset_quarter``, target coordinate = the ppart note's
+* **matchtype 0** → a synchronous claim between ``partid`` on
+  ``score:clt_1`` (timeline A) and ``ppartid`` on ``perf:<key>:cpt_1``;
+  its anchor holds the part note's ``onset_quarter`` and the ppart note's
   ``onset_sec``.
-* **matchtype 1** (score-only) → `MatchClaim.nomatch` with source
-  ``score:clt_1`` and target ``perf:<key>:cpt_1`` (source coordinate =
-  the part note's ``onset_quarter``).
-* **matchtype 2** (performance-only) → `MatchClaim.nomatch` with source
-  ``perf:<key>:cpt_1`` and target ``score:clt_1`` (source coordinate =
-  the ppart note's ``onset_sec``).
+* **matchtype 1** (score-only) → a NOMATCH claim naming ``partid`` on
+  ``score:clt_1``, timeline B ``perf:<key>:cpt_1``, source coordinate the
+  ``onset_quarter``.
+* **matchtype 2** (performance-only) → a NOMATCH claim naming ``ppartid``
+  on ``perf:<key>:cpt_1``, timeline B ``score:clt_1``, source coordinate
+  the ``onset_sec``.
+
+What proves it: for every performer, the claims read in order against the
+``align.csv`` rows give exactly the row's timelines and ids, side by side
+(the expected tuples are built from the CSV alone, never from the loader).
 
 Each performer's claims share the provenance
 ``Provenance(method="imported", note="parangonada <key>")`` (the
@@ -403,10 +449,11 @@ The bundle holds **12** timelines and **6** groups (1 ``score`` + 5
 events.
 
 **Coordinate spot-check:** Szegedi's ``align.csv`` row at ``idx 0`` is
-``0,0,ngx1f26,n149``. It produces a synchronous claim from
-``score:clt_1`` to ``perf:1966_Szegedi:cpt_1`` whose source coordinate is
-``40.0`` (``score_q_by_id["ngx1f26"]``, an exact quarter) and whose
-target coordinate is ``38.183334`` seconds (``perf_sec_by_id["n149"]``).
+``0,0,ngx1f26,n149``. It produces a synchronous claim between the note
+``ngx1f26`` of ``score:clt_1`` and the note ``n149`` of
+``perf:1966_Szegedi:cpt_1``, whose anchor holds ``40`` quarters (the part
+note's exact ``onset_quarter``) and ``38.183334`` seconds (the ppart
+note's ``onset_sec``).
 
 **Known data quirk (faithfully preserved, NOT a bug):** Brendel and
 Hewitt each contain exactly one *duplicated* matchtype-0 row — Brendel
@@ -590,6 +637,13 @@ specimens (zero orphan refs, zero unaligned MSM ids). Every score note
 has exactly one observed onset, so every claim is **synchronous** (no
 NOMATCH). Tests assert the bijection (0 orphans, 0 unaligned) and that
 the claim count equals the MSM note count.
+
+Both sides of the join are events under the same id: the MSM note on
+``score:clt_1`` and its observed onset on ``perf:cpt_1``. Every claim
+therefore names that id on both sides, and no Projection is added. The
+test reads the ids back from the claims and requires them to be exactly
+the bijection's id set, each claim naming the same id on both sides; the
+``nbwxzb1`` spot-check names its note on both timelines.
 
 ### Modelled quarters→seconds TableMap
 
@@ -811,17 +865,21 @@ holds a ``times`` array whose ``i``-th entry is that recording's clock-time
 length, so together they are a dense alignment matrix.  ``ListenHereLoader``
 reads it into one audio-to-audio ``AlignmentBundle``:
 
-* one empty seconds ``ContinuousPhysicalTimeline`` (``<stem>:cpt_1``) per
+* one samples ``DiscretePhysicalTimeline`` (``<stem>:dpt_1``) per
   recording, each in its **own** group named by the recording stem;
-  ``length`` is that recording's stored ``duration``;
+  ``length`` is that recording's stored ``duration`` in samples; it holds
+  one ``ListenHerePoint`` event per grid column, column ``i`` under the id
+  ``listenherepoint_<i+1>`` (the same id on every recording), at
+  ``rint(times[i] × sample_rate)`` with the source ``seconds`` kept;
 * the **complete pairwise topology** — for every unordered pair of recordings
   ``(a, b)`` and every grid column ``i``, one synchronous instant claim
-  ``a@times_a[i] ↔ b@times_b[i]`` — held columnar in a ``MatchClaimField``,
-  built vectorized via ``MatchClaimField.from_columns`` (never one
-  ``MatchClaim`` object per row).
+  joining the point ``i`` of ``a`` to the point ``i`` of ``b`` — held
+  columnar in a ``MatchClaimField``, built vectorized via
+  ``MatchClaimField.from_columns`` (never one ``MatchClaim`` object per
+  row).
 
-The recordings carry **no symbolic events**; all alignment lives in the claim
-field.  The reference named by ``header.ref`` is just another recording, not a
+The recordings carry **no symbolic events**; the grid points are the events
+the claims name, so no Projection is added.  The reference named by ``header.ref`` is just another recording, not a
 privileged hub.  The loader reads the existing alignment — it never runs an
 aligner.
 
@@ -856,19 +914,12 @@ exact ``<tr><td><b>Claims</b></td><td>N</td></tr>`` row, the absence of any
 - Parangonada: ``Performers`` (5), ``Dataset``, ``Performer keys``, and
   ``… in 6 group(s)``.
 
-### Columnar bundle query — the field is never exploded
+### Columnar bundle query
 
 ``create_bundle()`` hands the ``MatchClaimField`` to the bundle via
-``add_match_claim_field`` (the columnar store), **not** ``add_match_claims``.
-Consequently the bundle's Python-list ``cross_group_claims`` stays **empty**
-(length 0) while ``cross_group_claim_fields`` holds the one field.
-``get_matchstamp_at`` answers by filtering the field's struct column vectorized
-(exact-equality boolean mask on ``timeline_a/b_id`` + ``coordinate_a/b``) and
-materialising only the matched rows — a whole-work field is never turned into a
-million Python claims.  Tests pin this by asserting
-``len(bundle.cross_group_claims) == 0`` and
-``len(bundle.cross_group_claim_fields) == 1`` while the matchstamp read still
-succeeds.
+``add_match_claim_field``, never exploded into a list of ``MatchClaim``
+objects. ``get_matchstamp_at`` answers by filtering the field's struct column
+vectorized and materialising only the matched rows.
 
 Which store a bundle uses must not change **what** it answers, only how fast.
 So the loader-produced bundle is also tested on the readers that a columnar
@@ -878,16 +929,14 @@ bundle previously left unanswered, all with exact values:
 |------|-----------|
 | `test_bundle_claim_count` | `n_cross_group_claims == 15` (spans both stores) |
 | `test_bundle_get_match_claims` | 15 claims, all synchronous |
-| `test_bundle_get_match_claims_filtered` | `timeline_id="rec-a:cpt_1"` → 10; `between=("rec-a:cpt_1","rec-b:cpt_1")` → 5 |
+| `test_bundle_get_match_claims_filtered` | `timeline_id="rec-a:dpt_1"` → 10; `between=("rec-a:dpt_1","rec-b:dpt_1")` → 5 |
 | `test_bundle_get_claim_fields` | the vectorized accessor selects `[15]` / `[10]`, and `[]` for an unknown UID |
 | `test_bundle_matchstamp_table_per_claim` | 15 rows × 3 columns, exactly two filled cells per row |
 | `test_bundle_matchstamp_table_from_graph` | the 15 pairwise rows collapse into the 5 reference-grid cross-sections, exact coordinates, ordered by the `rec-a` coordinate |
 | `test_bundle_are_commensurable` | all recording pairs commensurable; an absent ID is not |
-| `test_bundle_transfer` | `transfer(0.02, "rec-a:cpt_1", "rec-b:cpt_1") == 0.01` — the `MatchLine` → `WarpMap` path over the columnar store |
+| `test_bundle_transfer` | `transfer(882, "rec-a:dpt_1", "rec-b:dpt_1") == 441` — the `MatchLine` → `WarpMap` path over the columnar store |
 | `test_bundle_diagram_reports_claim_count` | `diagram()` reports `MatchClaims: 15` |
 
-The general two-store parity contract is documented in
-``tests/alignment/README.md`` ("Claim-Store Parity").
 
 ### The synthetic specimen
 
@@ -906,8 +955,8 @@ Committed tests use an **inline synthetic** ``alignment.json`` written to
 ```
 
 Sorted keys → ``["rec-a.mp3", "rec-b.mp3", "rec-ref.mp3"]``; stems ``rec-a`` /
-``rec-b`` / ``rec-ref``; timeline uids ``rec-a:cpt_1`` / ``rec-b:cpt_1`` /
-``rec-ref:cpt_1``; pairs ``(a, b)``, ``(a, ref)``, ``(b, ref)``.  ``rec-b``'s
+``rec-b`` / ``rec-ref``; timeline uids ``rec-a:dpt_1`` / ``rec-b:dpt_1`` /
+``rec-ref:dpt_1``; pairs ``(a, b)``, ``(a, ref)``, ``(b, ref)``.  ``rec-b``'s
 first column is ``-0.01`` — a **negative** pre-onset warp coordinate that the
 loader keeps faithfully (never clamped or dropped).  ``peaks`` is
 waveform-display payload and is ignored.
@@ -920,29 +969,29 @@ waveform-display payload and is ignored.
   ``loader.reference == "rec-ref.mp3"``.
 * ``loader.get_field(MatchClaim)`` is a ``MatchClaimField``;
   ``loader.get_field(MatchClaimField)`` returns the same field.
-* ``get_field(MatchClaim).timeline_ids == {"rec-a:cpt_1", "rec-b:cpt_1",
-  "rec-ref:cpt_1"}``.
+* ``get_field(MatchClaim).timeline_ids == {"rec-a:dpt_1", "rec-b:dpt_1",
+  "rec-ref:dpt_1"}``.
 * **Faithfulness:** ``pc.min`` over both coordinate columns of the field is
-  exactly ``-0.01`` (negatives kept).
+  exactly ``-441`` samples (``-0.01`` s × 44100 Hz; negatives kept).
 * ``bundle = loader.create_bundle()``: exactly **3** timelines and **3**
-  groups; timeline uids equal the set above; each timeline holds **0** events;
-  ``rec-b:cpt_1`` length ``== 0.10``; the claim field is added columnar, so
-  ``len(bundle.cross_group_claims) == 0`` and
-  ``len(bundle.cross_group_claim_fields) == 1``.
-* ``bundle.get_matchstamp_at(0.045, "rec-ref:cpt_1")``: ``stamp.n_timelines ==
-  3``; ``stamp.get_coordinate("rec-a:cpt_1") == 0.04``;
-  ``stamp.get_coordinate("rec-b:cpt_1") == 0.03``;
-  ``stamp.get_coordinate("rec-ref:cpt_1") == 0.045``.  The exact float literals
-  from the specimen are reused so the equality is exact.  Because the bundle's
-  Python claim list is empty, this read proves the columnar path resolves the
-  matchstamp without exploding the field.
+  groups; timeline uids equal the set above; each timeline holds **5** point
+  events; ``rec-b:dpt_1`` length ``== 4410`` samples.
+* **Claims name events:** the claims, in field order, are the three pairs
+  ``(rec-a, rec-b)``, ``(rec-a, rec-ref)``, ``(rec-b, rec-ref)``, each over
+  the columns 1–5, naming ``listenherepoint_<column>`` on both sides; each
+  anchor equals the instants the two named points hold on their timelines
+  (read back from the stored event table, so a claim naming the wrong point
+  or a coordinate off its event fails).
+* ``bundle.get_matchstamp_at(1984, "rec-ref:dpt_1")`` (grid column 2):
+  ``stamp.n_timelines == 3``; ``rec-a:dpt_1`` at ``1764``, ``rec-b:dpt_1``
+  at ``1323``, ``rec-ref:dpt_1`` at ``1984`` samples.
 * **Bare-array form:** a second fixture where one entry is a bare list
   ``[0.0, 0.02, 0.04]`` (no ``peaks`` / ``duration``) parses, and that
   recording's timeline ``length == max(times)``.
-* **Metadata:** the field's first materialised claim (``get_field(MatchClaim)[0]``)
-  has ``.metadata.agent.name == "Listen Here! v0.20.0"`` (from ``header.createdBy``)
-  and ``.metadata.agent.identifier == "dtw_chroma_alignment"`` (the alignment
-  method).
+* **Provenance:** the field's first materialised claim
+  (``get_field(MatchClaim)[0]``) has ``Provenance(method="imported",
+  note="Listen Here! v0.20.0 dtw_chroma_alignment")`` (``header.createdBy``
+  and the alignment method), the field's shared provenance.
 
 ### Error cases
 

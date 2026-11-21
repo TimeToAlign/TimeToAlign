@@ -153,6 +153,11 @@ def test_rows_are_kept_verbatim(maps_path: Path) -> None:
     assert loader.sources == [maps_path]
 
 
+def _on_performance(performance: Timeline, onset: float | int, sample: int) -> Any:
+    """The onset of a row as the performance timeline's own axis states it."""
+    return sample if performance.unit == TimeUnit.samples else float(onset)
+
+
 @pytest.mark.parametrize("make_performance", [_samples_timeline, _seconds_timeline])
 def test_one_claim_per_listed_id(
     score: Timeline, maps_path: Path, make_performance
@@ -160,24 +165,59 @@ def test_one_claim_per_listed_id(
     performance = make_performance()
     claims = MapsLoader.from_file(maps_path).create_match_claims(score, performance)
     expected = [
-        (xml_id, quarter, float(onset))
-        for onset, ids, quarter, _ in ROWS
+        (xml_id, quarter, _on_performance(performance, onset, sample))
+        for onset, ids, quarter, sample in ROWS
         for xml_id in ids
     ]
     assert len(claims) == 13
-    for claim, (xml_id, quarter, seconds) in zip(claims, expected, strict=True):
+    for n, (claim, (xml_id, quarter, position)) in enumerate(
+        zip(claims, expected, strict=True), start=1
+    ):
         anchor = claim.start_anchor
         assert claim.is_synchronous
         assert claim.end_anchor is None
         assert claim.event_a_id == xml_id
-        assert claim.event_b_id is None
+        assert claim.event_b_id == f"projection_{n}"
         assert (claim.timeline_a_id, claim.timeline_b_id) == (score.id, performance.id)
         assert anchor.coordinate_a.unit == TimeUnit.quarters
         assert type(anchor.coordinate_a.value) is Fraction
         assert anchor.coordinate_a.value == quarter
-        assert anchor.coordinate_b.unit == TimeUnit.seconds
-        assert type(anchor.coordinate_b.value) is float
-        assert anchor.coordinate_b.value == seconds
+        assert anchor.coordinate_b.unit == performance.unit
+        assert type(anchor.coordinate_b.value) is type(position)
+        assert anchor.coordinate_b.value == position
+
+
+@pytest.mark.parametrize("make_performance", [_samples_timeline, _seconds_timeline])
+def test_projections_stand_for_the_score_notes(
+    score: Timeline, maps_path: Path, make_performance
+) -> None:
+    """Each onset is a Projection of its score note on the performance."""
+    performance = make_performance()
+    MapsLoader.from_file(maps_path).create_match_claims(score, performance)
+    rows = performance.events.table.to_pylist()
+    assert [(row["id"], row["event_type"], row["projection_of"]) for row in rows] == [
+        (
+            f"projection_{n}",
+            "Projection",
+            {"timeline_id": score.id, "event_id": xml_id},
+        )
+        for n, xml_id in enumerate(
+            (xml_id for _, ids, _, _ in ROWS for xml_id in ids), start=1
+        )
+    ]
+    starts = [
+        (
+            row["start"]["numerator"]
+            if performance.unit == TimeUnit.samples
+            else row["start"]["value"]
+        )
+        for row in rows
+    ]
+    assert starts == [
+        _on_performance(performance, onset, sample)
+        for onset, ids, _, sample in ROWS
+        for _ in ids
+    ]
 
 
 def test_provenance_is_recorded_on_every_claim(
@@ -220,19 +260,50 @@ def test_every_stated_row_gives_its_claims(score: Timeline, stated_path: Path) -
         for xml_id in ids
     ]
     aligned.append(("n7", Fraction(15, 2), 5.5))
-    for claim, (xml_id, quarter, seconds) in zip(claims[1:15], aligned, strict=True):
+    for n, (claim, (xml_id, quarter, seconds)) in enumerate(
+        zip(claims[1:15], aligned, strict=True), start=1
+    ):
         assert claim.is_synchronous
-        assert claim.event_a_id == xml_id
+        assert (claim.event_a_id, claim.event_b_id) == (xml_id, f"projection_{n}")
         assert claim.start_anchor.coordinate_a == Coordinate(quarter, TimeUnit.quarters)
         assert claim.start_anchor.coordinate_b == Coordinate(seconds, TimeUnit.seconds)
 
-    for claim, seconds in zip(claims[15:], [2.75, 4.75], strict=True):
+    # The file gives both inserted notes one id, so each Projection is minted
+    # its own and the claim keeps the file's id as the event's name.
+    for n, (claim, seconds) in enumerate(
+        zip(claims[15:], [2.75, 4.75], strict=True), start=15
+    ):
         assert claim.is_synchronous is False
         assert (claim.start_anchor, claim.end_anchor) == (None, None)
         assert (claim.timeline_a_id, claim.timeline_b_id) == (performance.id, score.id)
-        assert (claim.event_a_id, claim.event_b_id) == (INSERTED, None)
+        assert (claim.event_a_id, claim.event_b_id) == (f"projection_{n}", None)
+        assert claim.event_a_name == INSERTED
         assert claim.source_coordinate == Coordinate(seconds, TimeUnit.seconds)
         assert type(claim.source_coordinate.value) is float
+
+    # One Projection per performed note: 14 of score notes, 2 of none.
+    projections = performance.events.table.to_pylist()
+    assert len(projections) == 16
+    assert [row["projection_of"] for row in projections[14:]] == [None, None]
+    assert [row["start"]["value"] for row in projections[14:]] == [2.75, 4.75]
+
+
+def test_a_single_inserted_note_keeps_its_id(score: Timeline, tmp_path: Path) -> None:
+    """An inserted id the file gives once is the Projection's id."""
+    rows = _maps_rows() + [{"obs_mean_onset": 2.75, "xml_id": INSERTED, "obs_num": 8}]
+    performance = _samples_timeline()
+    claims = MapsLoader.from_file(
+        _write(tmp_path / "one.json", rows)
+    ).create_match_claims(score, performance)
+    inserted = claims[-1]
+    assert (inserted.event_a_id, inserted.event_a_name) == (INSERTED, None)
+    assert inserted.source_coordinate == Coordinate(121275, TimeUnit.samples)
+    row = performance.events.table.to_pylist()[-1]
+    assert (row["id"], row["projection_of"], row["start"]["numerator"]) == (
+        INSERTED,
+        None,
+        121275,
+    )
 
 
 def test_kinds_are_logged(stated_path: Path, caplog: pytest.LogCaptureFixture) -> None:
@@ -273,9 +344,12 @@ def test_create_bundle(score: Timeline, stated_path: Path) -> None:
     assert bundle.name == "stated"
     assert bundle.get_group_for_timeline(score.id).name == "score"
     assert bundle.get_group_for_timeline(performance.id).name == "performance"
-    # Claims carry generated ids, so they are compared by what they state.
+    # Claims carry generated ids, so they are compared by what they state;
+    # the claims alone are made on a fresh recording, since each call adds
+    # its Projections to the performance timeline it is given.
     assert [_stated(claim) for claim in bundle.get_match_claims()] == [
-        _stated(claim) for claim in loader.create_match_claims(score, performance)
+        _stated(claim)
+        for claim in loader.create_match_claims(score, _samples_timeline())
     ]
     for quarter, sample, interpolated in [
         (Fraction(3, 2), 55125, False),
@@ -348,8 +422,11 @@ def test_unknown_id_is_refused(score: Timeline, tmp_path: Path) -> None:
     rows = _maps_rows()
     rows[3]["xml_id"] = ["zz9"]
     loader = MapsLoader.from_file(_write(tmp_path / "unknown.json", rows))
+    performance = _seconds_timeline()
     with pytest.raises(KeyError, match=r"MAPS row 4 names xml:id 'zz9'"):
-        loader.create_match_claims(score, _seconds_timeline())
+        loader.create_match_claims(score, performance)
+    # Rows 1-3 were read before the refusal; none of their Projections stays.
+    assert len(performance.events) == 0
 
 
 @pytest.mark.parametrize(

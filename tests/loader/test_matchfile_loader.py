@@ -15,12 +15,14 @@ See the README.md of the vienna_1x22 test-data corpus for gold standard values.
 
 from __future__ import annotations
 
+import re
 from fractions import Fraction
 
 import pytest
 
 from timetoalign.alignment.bundle import AlignmentBundle
-from timetoalign.core import TimeUnit
+from timetoalign.core import Coordinate, Provenance, TimeUnit
+from timetoalign.core.time import struct_to_rational
 from timetoalign.loader.alignment.matchfile import MatchfileLoader
 from timetoalign.maps.linear import ScalarMap, ShiftMap
 from timetoalign.timelines.types import (
@@ -33,6 +35,8 @@ from .conftest import VIENNA_DATA_DIR
 # region Test Data
 
 P01_MATCH = VIENNA_DATA_DIR / "Chopin_op10_no3_p01.match"
+_MATCH_LINE = re.compile(r"^snote\(([^,]+),.*\)-note\(([^,]+),")
+_DELETION_LINE = re.compile(r"^snote\(([^,]+),.*-deletion\.$")
 ALL_MATCH_FILES = sorted(VIENNA_DATA_DIR.glob("*.match"))
 
 # Gold standard counts (from README.md)
@@ -300,21 +304,58 @@ class TestMatchfileLoaderSingle:
         nomatch_claims = [c for c in p01_loader._claims if not c.is_synchronous]
         assert len(nomatch_claims) == P01_DELETION_COUNT
 
-    def test_match_metadata_agent(self, p01_loader: MatchfileLoader):
-        """All claims carry the vienna_match software agent."""
-        for claim in p01_loader._claims:
-            assert claim.metadata is not None
-            assert claim.metadata.agent.name == "vienna_match"
+    def test_claim_provenance(self, p01_loader: MatchfileLoader):
+        """All claims record the import of vienna_match v1.0.0, certainty 1.0."""
+        assert {claim.provenance for claim in p01_loader._claims} == {
+            Provenance(method="imported", note="vienna_match v1.0.0")
+        }
+        assert {claim.certainty for claim in p01_loader._claims} == {1.0}
 
-    def test_match_metadata_agent_version(self, p01_loader: MatchfileLoader):
-        """All claims carry the vienna_match version as the agent identifier."""
-        for claim in p01_loader._claims:
-            assert claim.metadata.agent.identifier == "v1.0.0"
+    def test_claims_name_the_matched_notes(self, p01_loader: MatchfileLoader):
+        """Each claim names the score and performance notes its line names.
 
-    def test_match_metadata_certainty(self, p01_loader: MatchfileLoader):
-        """All claims carry certainty=1.0."""
+        The expected pairs are read from the file's own text: a
+        ``snote(<id>,...)-note(<id>,...)`` line is a match between the two
+        notes, a ``snote(<id>,...)-deletion.`` line a score note unperformed.
+        """
+        lines = P01_MATCH.read_text(encoding="utf-8").splitlines()
+        matched = [
+            (m.group(1), m.group(2))
+            for m in map(_MATCH_LINE.match, lines)
+            if m is not None
+        ]
+        deleted = [
+            m.group(1) for m in map(_DELETION_LINE.match, lines) if m is not None
+        ]
+        claims = p01_loader._claims
+        assert sorted(
+            (c.event_a_id, c.event_b_id) for c in claims if c.is_synchronous
+        ) == sorted(matched)
+        assert sorted(c.event_a_id for c in claims if c.is_nomatch) == sorted(deleted)
+        assert {c.event_b_id for c in claims if c.is_nomatch} == {None}
+
+    def test_claims_state_the_notes_own_positions(self, p01_loader: MatchfileLoader):
+        """Each anchor holds the start and end its two events hold."""
+        score = {
+            row["id"]: row
+            for row in p01_loader.create_timeline("score").events._table.to_pylist()
+        }
+        perf = {
+            row["id"]: row
+            for row in p01_loader.create_timeline("perf:1").events._table.to_pylist()
+        }
         for claim in p01_loader._claims:
-            assert claim.metadata.certainty == 1.0
+            if not claim.is_synchronous:
+                continue
+            note_a, note_b = score[claim.event_a_id], perf[claim.event_b_id]
+            assert claim.start_anchor.coordinates == (
+                Coordinate(struct_to_rational(note_a["start"]), TimeUnit.quarters),
+                Coordinate(note_b["start"]["numerator"], TimeUnit.ticks),
+            )
+            assert claim.end_anchor.coordinates == (
+                Coordinate(struct_to_rational(note_a["end"]), TimeUnit.quarters),
+                Coordinate(note_b["end"]["numerator"], TimeUnit.ticks),
+            )
 
     def test_synchronous_claims_have_anchors(self, p01_loader: MatchfileLoader):
         """Every synchronous claim has start_anchor and end_anchor."""
@@ -462,7 +503,7 @@ class TestMatchfileLoaderCreateBundle:
     def test_bundle_cross_group_claims(self, p01_loader: MatchfileLoader):
         """Bundle has 454 cross-group claims."""
         bundle = p01_loader.create_bundle()
-        assert len(bundle.cross_group_claims) == SNOTE_COUNT
+        assert len(bundle.get_match_claims()) == SNOTE_COUNT
 
     def test_no_load_raises(self):
         """RuntimeError raised if load() not called."""
@@ -590,7 +631,7 @@ class TestMatchfileLoaderMulti:
     def test_bundle_cross_group_claims_count(self, all_loader: MatchfileLoader):
         """Bundle has 9,988 cross-group claims."""
         bundle = all_loader.create_bundle()
-        assert len(bundle.cross_group_claims) == TOTAL_MATCH_FILES * SNOTE_COUNT
+        assert len(bundle.get_match_claims()) == TOTAL_MATCH_FILES * SNOTE_COUNT
 
     def test_perf_numeric_lookup_all(self, all_loader: MatchfileLoader):
         """perf:1 through perf:22 all resolve correctly."""
@@ -656,17 +697,17 @@ class TestMatchfileLoaderExternalScore:
         bundle = loader.create_bundle(score_timeline=external_score, verify=False)
 
         assert bundle.timelines["my edition"] is external_score
-        assert len(bundle.cross_group_claims) == len(internal_claims)
-        assert {claim.timeline_a_id for claim in bundle.cross_group_claims} == {
+        assert len(bundle.get_match_claims()) == len(internal_claims)
+        assert {claim.timeline_a_id for claim in bundle.get_match_claims()} == {
             "my edition"
         }
-        for claim in bundle.cross_group_claims:
+        for claim in bundle.get_match_claims():
             for anchor in (claim.start_anchor, claim.end_anchor):
                 if anchor is not None:
                     assert anchor.timeline_a_id == "my edition"
         assert {claim.timeline_a_id for claim in loader._claims} == {"score:clt_1"}
         first = next(
-            claim for claim in bundle.cross_group_claims if claim.is_synchronous
+            claim for claim in bundle.get_match_claims() if claim.is_synchronous
         )
         position = first.start_anchor.coordinate_a.value
         stamp = bundle.get_matchstamp_at(position, "my edition")

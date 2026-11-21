@@ -58,7 +58,7 @@ All Thoresen test data constants and shared fixtures are centralised in `tests/a
 
 ### No ID Reset
 
-Every id the alignment module mints is minted statelessly (`group_N`, `bundle_N`, `claim_N`, N the smallest free number in the scope), so no test resets a generator and no test depends on what an earlier test built.
+Every id the alignment module mints is minted statelessly (`group_N`, `bundle_N`, `claim_N`, N above the highest number its holder holds), so no test resets a generator and no test depends on what an earlier test built.
 
 ---
 
@@ -120,10 +120,12 @@ properties are proven with a synthetic fixture that owns no corpus data:
    coordinate under any policy**, and the three policies produce exact,
    distinct results.
 
-Merging keeps every claim id in the scope it comes from: the two source
-bundles both hold `claim_1`, and the claim the merged bundle adds afterwards
-is minted in its own scope. The test pins the ids and the `scope_key` column of the
-merged MatchClaim table, so a merge that re-mints ids or loses a scope fails.
+Merging keeps every claim id, and a MatchClaim is addressed by its id
+alone: the two source bundles hold different ids (bundle A states its
+claims as `star_1` … `star_6`, bundle B mints `claim_1` … `claim_8`), since
+a merge refuses two sources holding one id, and the claim the merged bundle
+adds afterwards is minted above the highest it holds. The test pins the ids
+of the merged MatchClaim table, so a merge that re-mints an id fails.
 
 ### Synthetic Fixture Topology
 
@@ -133,8 +135,8 @@ bridged with `create_match_claims`. Every claim names an event on each side.
 - **Bundle A — a star of single claims.** `a1` (score, quarters, exact axis,
   len 100), `a2` (seconds, len 100), `a3` (seconds, len 100), each in its own
   group. Six claims between fixture events (`helpers.match_claim`) at `a1`
-  coordinates `{0, 50, 100}`: `a2 = a1` and `a3 = a1 / 2`, ids `claim_1` …
-  `claim_6`. A query at `a1 = 50` reaches `a2 = 50`, `a3 = 25` by exact anchor.
+  coordinates `{0, 50, 100}`: `a2 = a1` and `a3 = a1 / 2`, given ids
+  `star_1` … `star_6`. A query at `a1 = 50` reaches `a2 = 50`, `a3 = 25` by exact anchor.
 - **Bundle B — a WarpMap-able columnar `MatchClaimField`.** `b_bridge`
   (samples, int axis, len 1000) carrying a `ScalarMap(0.01, samples→seconds)`
   C-Map, plus `b1` (samples, len 3000) and `b2` (samples, len 3000), each in
@@ -153,7 +155,7 @@ bridged with `create_match_claims`. Every claim names an event on each side.
   position `b_bridge = 5 seconds`. Each side becomes a Projection event
   (`projection_1` on each timeline); the bridge C-Map places 5 seconds at
   exactly `500 samples` (`5 / 0.01`), so the claim's `b_bridge` anchor is
-  `500` samples. The claim is the merged bundle's own: `claim_1` in scope 0.
+  `500` samples. The merged bundle mints it `claim_9`.
 - **Mixed units on one timeline.** A separate bundle (`source`, samples with
   the same C-Map; `target`, seconds) gets three claims from positions
   `source = 2.0 s, 400 samples, 6.0 s` to `target = 20.0, 40.0, 60.0`. Each
@@ -164,9 +166,8 @@ bridged with `create_match_claims`. Every claim names an event on each side.
 
 ### Exact Expected Values
 
-**Merged MatchClaim table:** `claim_scopes == (merged.id, "bundle_a",
-"bundle_b")`; ids `claim_1 … claim_6`, `claim_1 … claim_8`, `claim_1`, scope
-keys `[1] × 6 + [2] × 8 + [0]`.
+**Merged MatchClaim table:** ids `star_1 … star_6`, `claim_1 … claim_8`,
+`claim_9`.
 
 **Union query — `merged.get_matchstamp_at(50, "a1:clt_1")` (default `omit`):**
 
@@ -568,7 +569,10 @@ holds in the following cases:
    position table and the coordinate getter all give the same values as the
    singular stamp; they share one assembly path, and the test pins each of them.
 7. **Filters select among every known timeline.** `within`, `id_pattern`
-   and `include_units` keep exactly the nested timelines they name.
+   and `include_units` keep exactly the nested timelines they name, beside
+   the queried `clt_1`, which a stamp always keeps: `within={"clt_4",
+   "cpt_1"}` → `clt_1`, `cpt_1`, `clt_4`; `id_pattern=r"^clt_[47]$"` →
+   `clt_1`, `clt_7`, `clt_4`; `include_units={seconds}` → `clt_1`, `cpt_1`.
 8. **An unknown id** still raises `KeyError`, naming every timeline the bundle
    knows: the registered ones in registration order, then each root's other
    descendants depth-first.
@@ -1234,6 +1238,19 @@ under `timetoshare:provenance` (the JSON of `Provenance.to_dict()`, asserted
 byte-exact); no key means `None`. A table stating provenance both there and
 in rows is refused with its count of rows.
 
+**Further columns are kept, never read.** The MatchClaim table of the
+format may hold further columns, which a reader keeps and never checks. A
+table lacking a property's column is refused naming what it lacks (the
+gold field's table without `id`: `A MatchClaim table holds one column per
+MatchClaim property, [...]; this table lacks ['id'].`; a table of one
+struct column `match_claim` lacks all twelve). The gold field's table with
+a further column `extra` (`[1, 2, 3]`) is read: its `table` is the input
+with `extra` last, its `package_table` likewise; `filter(timeline_id="C")`
+keeps `extra` for its two rows (`[2, 3]`); the field read is not equal to
+the gold field (a further column takes part in equality). The carrying
+through a belief, a bundle's table and a write over the file is pinned in
+`test_bundle_package.py` ("A further column is kept").
+
 **The file holds statements.** Every row is a stated MatchClaim (the table
 has no column that could mark one derived: what a `MatchGraph` infers is
 its own, never a row). A failed write leaves no temporary file beside it.
@@ -1357,44 +1374,45 @@ set to `within`.
 
 ### What We're Validating
 
-A claim id names one claim in the scope that holds it, it **never changes**
-once given, and the same input gives the same ids in every process. Claims
+A claim id addresses one claim, alone (no scope, no prefix joined to it),
+in the table or bundle that holds it; it **never changes** once given, and
+the same input gives the same ids in every process. Claims
 persist (the MatchClaim table written to Parquet keeps its ids), and a stored
 id is what a manifest's named MatchStamp records, so renaming a claim when it
 joins a table would break every reference to it. The rule tested:
 
-- **A free claim** made without an id holds `None` until the first scope it
-  joins mints one; a given id is kept verbatim; an id with a control
+- **A free claim** made without an id holds `None` until the first bundle
+  it joins mints one; a given id is kept verbatim; an id with a control
   character is refused by `validate_id`. Nothing records whether an id was
   given or minted: an id never changes once given, so no reader needs to
   know (no flag, no re-minting that would read one).
-- **A field is a scope that mints nothing** (every constructor:
+- **A field holds each id once and mints nothing** (every constructor:
   `from_columns`, `from_claims`, `from_dict`, `from_table`, `from_parquet`):
   an id held by two rows is refused, **whether given or minted** (`claim id
   'a' is held by 2 claims`), before anything is built, and a row without an
   id keeps none. Were a field to mint, two loaders'
   fields would both hold `claim_1` and could never join one bundle; the
-  bundle they join is the one scope that mints. A field whose rows hold no
+  bundle they join is the one holder that mints. A field whose rows hold no
   id is not written to a file (TimeToShare's table requires every id):
   `MatchClaim table row 0 holds no id, and every MatchClaim of the file
   holds one: ...`.
 - **The id is stored**: a row read back keeps its id.
-- **A bundle is the scope that mints** for the claims added to it
+- **A bundle is the holder that mints** for the claims added to it
   (`add_match_claims`, `add_match_claim_field`): a row or claim without an
   id is minted `claim_N`, N above the highest number held (minting gives a
   first id, it renames nothing, and a number is never given twice), a claim
   object in place (its first id); a field's rows in the bundle's table (the
-  field passed in keeps its nulls). An id its scope holds is refused, never
-  re-minted. **A merge keeps every id in
-  its scope** (`from_bundles`): each source bundle stays the scope of its
-  claims' ids, so two sources may both hold `claim_1`; the scope of a row is
-  a key into `claim_scopes`, the key column `scope_key` of `claim_table` (never a
-  string joined onto the id), and claims added to the merge afterwards are
-  in its own scope, key 0.
+  field passed in keeps its nulls). An id the bundle holds is refused,
+  never re-minted. **A merge keeps every id and refuses a shared one**
+  (`from_bundles`): a MatchClaim is addressed by its id alone, so two
+  sources both holding `claim_1` are refused before anything is merged,
+  naming the id and both bundles (the accepted cost: one of them is stated
+  again under other ids first); claims added to the merge afterwards are
+  minted above the highest id it holds.
 
 ### Why this proves "beyond one process"
 
-The minted id depends only on the ids already in the scope, never on what
+The minted id depends only on the ids already held, never on what
 was built before in the process. One test builds and stores a field in a
 subprocess and asserts its ids and table equal the in-process build, so the
 determinism across processes is observed, not inferred.
@@ -1404,7 +1422,7 @@ determinism across processes is observed, not inferred.
 | Test | Validates |
 |------|-----------|
 | `test_free_claim_holds_no_id` | two fresh claims both hold `None`; a given `"onset 7"` is kept; `"a\tb"` raises |
-| `test_field_is_a_scope` | `from_claims` of claims given `s0`–`s2` keeps them; two free claims are two rows without an id, the objects still `None`; two claims given `"a"` are refused (`claim id 'a' is held by 2 claims`) |
+| `test_field_holds_each_id_once` | `from_claims` of claims given `s0`–`s2` keeps them; two free claims are two rows without an id, the objects still `None`; two claims given `"a"` are refused (`claim id 'a' is held by 2 claims`) |
 | `test_from_columns_mints_no_id` | the gold vector's ids are `None` ×3; the bundle it joins holds them as `claim_1`–`claim_3`, and the field passed in still holds `None` ×3 |
 | `test_two_fields_join_one_bundle` | the `STORED` field (`score ↔ audio`, 4 rows) and a field of the two `NEW` pairs, both from `from_columns`, join one bundle in that order as `claim_1`–`claim_4` and `claim_5`, `claim_6` |
 | `test_null_ids_are_minted_around_held_ones` | a table whose rows hold `claim_2`, null, `x`, null reads back as is (`claim_2`, `None`, `x`, `None`); the bundle it joins mints `claim_3` and `claim_4` (above the highest held, `claim_1` never given) |
@@ -1423,9 +1441,9 @@ the claims are `from_events` between named notes and onsets on those axes.
 | `test_stored_and_new_claims_are_distinct` | the stored field (a bundle's MatchClaim table of the four `STORED` claims, written and read back) keeps `claim_1`–`claim_4`; the same four built again plus the two new ones, all without an id, added to the bundle, are given `claim_5`–`claim_10` in order; the caller's objects carry them and `claim.bundle is bundle`; the bundle's claims read back are `claim_1`–`claim_10`, the last six equal to the caller's objects, each with `bundle` the bundle |
 | `test_graph_filter_unaffected` | a bundle of the stored field and the two new claims (`claim_1`–`claim_6`): `MatchGraph(bundle.get_match_claims()).extend_to_groups(bundle.groups)` holds exactly those six claims (an inferred edge is no claim and takes no id) and six inferred edges, each on `score`→`score_copy`, its `source_claim` one of the six and its `score` coordinate that claim's; the six stated edges' `claim_id` equal their claims' ids, all distinct, and the other six edges carry the inferred-edge records, in the graph's order; `filter(stated_only=True)` and `filter(within={"score", "audio"})` keep exactly `claim_1`–`claim_6` and no inferred edge |
 | `test_held_ids_are_refused_never_reminted` | `from_claims` of a claim given `"anchor"` and a free claim stores `"anchor"` and no id; a bundle holding `claim_1`, `claim_2` takes that field as `"anchor"`, `claim_3`; another bundle's MatchClaim table (`claim_1`, `claim_2`, minted) is refused by it (`claim id 'claim_1' is already held by another claim of this bundle`), which still holds its four; a bundle holding `"anchor"` and a minted `claim_1` gives a free claim `claim_2` |
-| `test_two_runs_merged` | a subprocess and this process store the same bundle's MatchClaim table: ids equal (`claim_1`–`claim_4`), tables equal; one bundle takes the first and refuses the second (`claim id 'claim_1' is already held ...`), keeping 4 rows; two bundles, one run each, merged by `from_bundles`: `claim_scopes` is the merge's id then the two sources', the ids read `claim_1`–`claim_4` twice, the `scope_key` column `[1, 1, 1, 1, 2, 2, 2, 2]`, every table column equal to the two source tables concatenated |
+| `test_two_runs_merged` | a subprocess and this process store the same bundle's MatchClaim table: ids equal (`claim_1`–`claim_4`), tables equal; one bundle takes the first and refuses the second (`claim id 'claim_1' is already held ...`), keeping 4 rows; two bundles, one run each, are refused by `from_bundles` with the exact message `MatchClaim id 'claim_1' is held by bundle '<first>' and by bundle '<second>' (bundles 0 and 1 of the merge): a MatchClaim is addressed by its id alone, so the two merge once one of them states its MatchClaims under other ids.`, each still holding its run's table |
 | `test_given_id_refused_atomically` | a bundle holding a given `"a"` refuses a claim and a field with a given `"a"` (`claim id 'a' is already held by another claim of this bundle`); after each refusal the bundle's claims are exactly `[held]` and the newcomer keeps its id (`None` for the one made without) and no bundle |
-| `test_merge_keeps_ids_in_their_scopes` | `from_bundles` of two bundles each holding `claim_1`, `claim_2`: the merge holds `claim_1`, `claim_2`, `claim_1`, `claim_2`, `scope_key` `[1, 1, 2, 2]`, each claim read back recording the merge; the sources still hold `claim_1`, `claim_2` and their `claim_table` has no `scope_key` column; a free claim added to the merge is given `claim_1` in the merge's own scope (`scope_key` 0 appended); a claim another bundle holds, added to a third bundle, joins as a copy: the original keeps its bundle, the third bundle's row records the third |
+| `test_merge_keeps_ids_and_refuses_a_shared_one` | `from_bundles` of two bundles each holding `claim_1`, `claim_2` is refused with the message above (naming `claim_1` and both bundles), the sources unchanged (`claim_1`, `claim_2`, each claim recording its source); two bundles holding a minted `claim_1` and a given `claim_2` merge: the merge's claims are `claim_1`, `claim_2`, equal to the two added, each recording the merge, and its table holds the twelve MatchClaim columns alone; a free claim added to the merge is given `claim_3`; a claim another bundle holds, added to a third bundle, joins as a copy: the original keeps its bundle, the third bundle's row records the third |
 
 ---
 
@@ -1494,7 +1512,7 @@ Nothing is skipped; a missing fixture fails.
 A MatchClaim is never removed and never changed; who believes it is the
 one thing that may change, in its provenance.
 `AlignmentBundle.add_match_claim_belief(claim_id, *, actor, belief,
-date=None, note=None, scope_key=0)` records a belief in a claim the bundle
+date=None, note=None)` records a belief in a claim the bundle
 holds, `MatchClaimField.with_belief` and
 `MatchClaim.with_belief` are its copy-on-write forms, and
 `create_match_claims(..., actor=, date=)` records the stating person's
@@ -1562,11 +1580,9 @@ without `claim_2` the WarpMap of `claim_1` and `claim_3` places quarter 2 at
   under the bundle's `@context` the compact believer is the absolute actor.
   The same call without `source` declares no prefix, so `wd:Q42` names
   nobody who believes anything and all three stamps (0, 2, 4) remain.
-- **Refusals change nothing.** A claim the scope does not hold (`The scope
-  0 ('beliefs') of bundle 'beliefs' holds no MatchClaim 'claim_9' (3
-  MatchClaims).`), a scope key no scope has (`No scope has the key 3.
-  Available scopes: {0: 'beliefs'}`) and a belief word outside the three
-  raise, the table equal to the one before. `ClaimFilter(beliefs=["maybe"])`
+- **Refusals change nothing.** A claim the bundle does not hold (`Bundle
+  'beliefs' holds no MatchClaim 'claim_9' (3 MatchClaims).`) and a belief
+  word outside the three raise, the table equal to the one before. `ClaimFilter(beliefs=["maybe"])`
   and `believed([], None, ["maybe"])` refuse the word as the getters do.
 - **A statement and a MatchClaim each take their belief.** On the fixture
   bundle, `add_statement("dcterms:title", "Beliefs")` then
@@ -1593,10 +1609,11 @@ without `claim_2` the WarpMap of `claim_1` and `claim_3` places quarter 2 at
 - **The date defaults to today**, read where statements read it: with
   `timetoalign.timelines.statements._today` patched to 2026-11-21, a belief
   without `date` is dated `2026-11-21`.
-- **Scopes.** `from_bundles` of two bundles each holding `claim_1`
-  (`source_a`, `source_b`): `add_match_claim_belief("claim_1", ..., scope_key=2)`
-  changes the row of `source_b` alone; `get_match_claims(believer=Q42)`
-  keeps the row of `source_a` and drops that of `source_b`.
+- **A claim is addressed by its id alone.** `from_bundles` of `source_a`
+  holding `claim_1` and `source_b` holding a given `claim_2` (each n1↔o1 on
+  its own timelines): `add_match_claim_belief("claim_2", ...)` changes the
+  row of `source_b` alone; `get_match_claims(believer=Q42)` keeps the row of
+  `source_a` and drops that of `source_b`.
 - **The package succeeds itself.** The bundle written with `to_file`, then
   given a belief and written over its own files, is accepted by the
   succession rule; read back, `claim_2` holds the belief and the table
@@ -1755,27 +1772,35 @@ then fails to load. Each test pins one of these with exact values.
   names the four timelines the claims name; the Projections table, new,
   gets `resource_8` beside the manifest. A URL with a scheme
   (`https://example.org/claims.parquet`) is refused.
-- **Merged claims, in their scopes.** `from_bundles` of `source_a` and
-  `source_b`, each holding `claim_1` (an instant claim between its own two
-  timelines), with `claim_1` then created in the merged bundle `merged`
-  itself: three claims named `claim_1`, in three scopes. `to_file` writes
-  the MatchClaim table with the key column `scope`, per row `source_a`,
-  `source_b`, null (the package's own), which TimeToShare's check accepts
-  against the manifest written, and which `MatchClaimField.from_parquet`
-  refuses (`This MatchClaim table mixes scopes ...`: a field holds no
-  scopes, a bundle reads them); read back, `claim_scopes` is `("merged",
-  "source_a", "source_b")`, `claim_table` (its `scope_key` column `[1, 2, 0]`
-  included) and `to_dict()` equal the writer's, and a second write gives
-  the same bytes. Written over its own files the merged bundle changes no
-  byte; a merge of `source_a` and `source_c` written over them lacks
-  `claim_1` of the scope `source_b` and is refused (`The new MatchClaim
-  table lacks the MatchClaim 'claim_1' of the scope 'source_b' of the
-  existing one: ...`), the files keeping their bytes: a MatchClaim is its
-  scope and its ID. Scopes are named in the file by their bundles' IDs, so
-  two scopes holding claims under one name (two source bundles without a
-  given ID, both minted `bundle_1`) cannot be told apart: `to_file` refuses
-  with its exact message and writes nothing. A bundle of one scope writes
-  no `scope` column (the synthetic package above).
+- **Merged claims keep their ids.** `from_bundles` of `source_a` and
+  `source_b`, each holding a score (quarters) and a samples timeline with
+  the Note `n1` and the onset `o1` at their origins and one claim
+  `n1` ↔ `o1`: `source_a`'s minted `claim_1`, `source_b`'s given `claim_2`;
+  `merged` then creates `claim_3` between `n2` (1 quarter on `a_score`)
+  and `o2` (44100 samples on `b_pcm`). No claim needs a Projection, so the
+  package holds no Projections table. `to_file` writes the MatchClaim table
+  with exactly the twelve MatchClaim columns, ids `claim_1`, `claim_2`,
+  `claim_3`, which TimeToShare's check accepts against the manifest
+  written; read back, the MatchClaim table and `to_dict()` equal the
+  writer's, and a second write gives the same bytes. Written over its own
+  files the merged bundle changes no byte; the same merge with
+  `source_b`'s claim given `claim_7` instead, written over them, lacks
+  `claim_2` and is refused (`The new MatchClaim table lacks the MatchClaim
+  'claim_2' of the existing one: ...`), the files keeping their bytes: a
+  MatchClaim is its ID.
+- **A further column is kept.** The merged package's MatchClaim table
+  (`claim_1`, `claim_2`) rewritten by hand with a `scope` column appended
+  (`source_a`, null), as a package written by an earlier tool holds one:
+  `MatchClaimField.from_parquet` reads it, the column last in `table`, its
+  values as written, and `package_table` equals the file's table;
+  `AlignmentBundle.from_file` holds the same field, and its
+  `filter(timeline_id="b_score")` keeps the row's `scope` (null). Written
+  to another directory, the MatchClaim table equals the hand-written one;
+  after a claim `n2` ↔ `o2` is added (minted `claim_3`) and `claim_1` is
+  believed `false`, the rewritten table's `id`/`scope` rows are `claim_1`
+  `source_a`, `claim_2` null, `claim_3` null: the column is carried row
+  for row, null for a row added, and never compared by the succession
+  rule.
 - **An unreduced fraction in the package's tables** (T104's "any fraction
   is valid" at the file boundary, through the whole path). A package of
   `score` (quarters, fraction, 8; `n1` at 1/2) and `audio` (seconds, float,
@@ -2413,7 +2438,7 @@ deterministic order was chosen, so "stable but wrong" also fails.
 
 | Class | Tests | Purpose |
 |-------|-------|---------|
-| `TestMatchStamp` | 15 | Stamp construction, retrieval, filtering, dictionary round trip, renderings; `filter_by_timelines` keeping none of the stamp's timelines (`within={"zzz"}`, `within=set()`, `id_pattern=r"^zzz$"` on a stamp of `tl_a`, `tl_b`, `tl_c`) raises `ValueError` `The filter keeps none of the timelines of the MatchStamp: 'tl_a', 'tl_b', 'tl_c'.`, never a bare `StopIteration` |
+| `TestMatchStamp` | 15 | Stamp construction, retrieval, filtering, dictionary round trip, renderings; `filter_by_timelines` always keeps the stamp's source, the filter selecting the others: on a stamp of `tl_a` (the source), `tl_b`, `tl_c`, a filter passing none of them (`within={"zzz"}`, `within=set()`, `id_pattern=r"^zzz$"`) gives the stamp of `tl_a` alone, source `tl_a`, no pair; `within={"tl_b"}` gives `tl_a`, `tl_b` and the pair `(tl_a, tl_b)`; on the same stamp with source `tl_c`, `within={"tl_b"}` gives `tl_b`, `tl_c` (stamp order), source `tl_c`, the pair `(tl_b, tl_c)` |
 | `TestMatchGraphBasic` | 8 | Node, edge and claim counts; node and coordinate retrieval; connectivity |
 | `TestMatchGraphStamps` | 4 | Instant claim → one stamp, interval claim → two, components → stamps |
 | `TestMatchGraphGroupExtension` | 4 | Inferred edges, converted coordinates, `include_inferred=False` |
@@ -2694,7 +2719,7 @@ these lazily on first use and caches them until the table changes.
 | `TestBeliefFilterIris` | 6 | the three claims with ana's full IRI, prefix `people` declared: `believer="people:ana"` and the full IRI both → `claim_1`, `claim_3`, with `["true"]` → `claim_1`; beliefs recorded as `people:ana`, believer the full IRI → `claim_1`, `claim_3`; `get_matchstamp_at(100, "score", believer="people:ana")` interpolated, audio and midi 50.0; `get_matchstamps(claims=all three, believer="people:ana")` → two stamps, at score 0.0 and 200.0; `ClaimFilter(believer="people:ana").matches_claim` → `[True, False, True]` on the bundle's claims, `True` on a free copy of `claim_2`; `MatchGraph(all three, believer="people:ana", source=bundle)` holds `claim_1`, `claim_3`; before the declaration `people:ana` keeps all three, after it `claim_1`, `claim_3` |
 | `TestAddMatchClaimField` | 6 | chaining; the five rows join the table, the bundle minting `claim_1`–`claim_5`, equal to the field's claims but for the ids, the field left as given (ids `None`); two `from_columns` fields (two loaders' fields) join one bundle as `claim_1`–`claim_5` and `claim_6`–`claim_10`; score 100 → audio 50 exactly; score 123.456 interpolates to audio and midi 61.728 (50 + 23.456 / 2) and image 246.912, flagged interpolated; a claim added after the field is minted `claim_6`, read as the sixth, and score 175 answers audio 87.5 exactly |
 | `TestBundleEquality` | 3 | two bundles built alike over the same timelines are equal, also after one of them was queried (`transfer` 75 → 37.5 fills its caches); one claim more, or a belief added to one claim's provenance, makes them unequal |
-| `TestBundleClaimFilters` | 5 | (`score` quarters as Fractions, `audio` and `other` seconds as floats; one claim at the origins per pair) `timeline_id="score"` → the first two; `timeline_ids={"audio"}` and `id_pattern="^audio$"` → the first and third; `between=("score", "audio")` → the first; `include_units={seconds}` → the third only (both its timelines count seconds), `{pixels}` → none; `within={"score", "audio"}` → the first alone (both its timelines in the set; `timeline_ids` of the same set keeps all three, each has a side in it), on `get_match_claims` and `get_claim_field` alike, and `within` meets `include_units={seconds}` (`within={"score", "audio"}` with it → none, `within={"audio", "other"}` with it → the third); a stamp filtered with `within={"score", "audio"}` holds exactly score `0` (quarters, Fraction) and audio `0.0` (seconds), and the stamp getters take no `timeline_ids` (`TypeError`): one name, one meaning; a narrowing that keeps none of the stamp's timelines (`within={"zzz"}`, `within=set()`, `include_units={pixels}`) raises `ValueError` `The filter keeps none of the timelines of the MatchStamp: 'score', 'audio', 'other'.` on `get_matchstamp_at`, `get_matchstamps_at` and the dispatcher `get_matchstamp`, never a bare `StopIteration` (which a generator would turn into a `RuntimeError`) |
+| `TestBundleClaimFilters` | 7 | (`score` quarters as Fractions, `audio` and `other` seconds as floats; one claim at the origins per pair) `timeline_id="score"` → the first two; `timeline_ids={"audio"}` and `id_pattern="^audio$"` → the first and third; `between=("score", "audio")` → the first; `include_units={seconds}` → the third only (both its timelines count seconds), `{pixels}` → none; `within={"score", "audio"}` → the first alone (both its timelines in the set; `timeline_ids` of the same set keeps all three, each has a side in it), on `get_match_claims` and `get_claim_field` alike, and `within` meets `include_units={seconds}` (`within={"score", "audio"}` with it → none, `within={"audio", "other"}` with it → the third); a stamp filtered with `within={"score", "audio"}` holds exactly score `0` (quarters, Fraction) and audio `0.0` (seconds), and the stamp getters take no `timeline_ids` (`TypeError`): one name, one meaning. **The queried timeline is always kept; the narrowing selects the others** (`within`, `id_pattern`, `include_domains`, `include_units` alike): a narrowing passing none of the others (`within={"zzz"}`, `within=set()`, `include_units={pixels}`) gives the stamp of `score` alone (score `0`, quarters, Fraction; source `score`; no pair) on `get_matchstamp_at`, on both stamps of `get_matchstamps_at([0.0, 0.0])` and on the dispatcher `get_matchstamp`. On a warped fixture (`score` quarters, `audio` and `other` seconds, each its own group; claims `score` 0 ↔ 0.0 and 4 ↔ 2.0 on `audio`, 0 ↔ 0.0 and 4 ↔ 4.0 on `other`), `get_matchstamp_at(1, "score", within={"audio"})` has source `score` and holds exactly score `1` (Fraction) and audio `0.5`; its Interval form, `Interval(0, 1)` in quarters, is a `MatchIntervalStamp` with source `score`, the query's interval, and endpoint stamps holding exactly score `0`, audio `0.0` and score `1`, audio `0.5` (the form that raised `KeyError` when `within` dropped the queried timeline). A table's `within` stays a projection of its columns: `get_matchstamp_table([0, 1], "score", within={"audio"})` has the one column `audio`, its dataframe `audio (seconds)` `[0.0, 0.5]` |
 | `TestAddGroup` | 3 | a pre-built group with its timelines; a duplicate group id refused; cross-group transfer through added groups (100 → 50) |
 | `TestSeveralGroups` | 11 | a timeline in several groups (see "A Timeline in Several Groups") |
 | Creation, timelines, groups, within-group transfer, a part as a child, order independence, commensurability, chaining | 32 | ids and names, registration and lookup, `grouped_with`/`as_group`, a child joining with its root (section 0 s = reference 25 s, section 100 s = reference 125 s), linear transfer within a group (tl1 50 → tl2 100), exact ratios within a group (1/3 of 3 quarters → 7/9 of 7), results independent of the order timelines are added |

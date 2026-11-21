@@ -42,7 +42,6 @@ from timetoshare import DEFAULT_BELIEFS, BeliefState
 from timetoalign.alignment.claims import AlignmentAnchor, MatchClaim
 from timetoalign.alignment.filters import ClaimFilter, belief_context, believed, meet
 from timetoalign.core.enums import Domain, NumberType, TimeUnit
-from timetoalign.core.ids import quote_id
 from timetoalign.core.retrieval import (
     CoordinateCollection,
     CoordinateFormat,
@@ -445,16 +444,16 @@ class MatchStamp(Stamp):
     ) -> "MatchStamp":
         """Create filtered stamp with subset of timelines.
 
+        The stamp's source (:attr:`source_id`, the queried timeline) is
+        always kept; the filter selects the others.
+
         Args:
-            within: Only these timelines' coordinates (None = all).
-            id_pattern: Regex filter for timeline IDs.
+            within: Only these timelines' coordinates beside the source
+                (None = all).
+            id_pattern: Regex filter for the other timelines' IDs.
 
         Returns:
             New MatchStamp with filtered timelines.
-
-        Raises:
-            ValueError: If the filter keeps none of the stamp's timelines,
-                naming them.
         """
         return self._narrowed(
             ClaimFilter.from_kwargs(within=within, id_pattern=id_pattern)
@@ -466,38 +465,29 @@ class MatchStamp(Stamp):
         *,
         timelines: dict[str, Any] | None = None,
     ) -> "MatchStamp":
-        """The stamp holding only the timelines *filt* passes.
+        """The stamp holding its source and the other timelines *filt* passes.
 
         The one narrowing of a stamp's timelines
         (:meth:`ClaimFilter.matches_timeline`), for :meth:`filter_by_timelines`
-        and the bundle's matchstamp getters. The pairs between kept
-        timelines are kept; the source stays the source where it is kept,
-        else the first kept timeline is, and the interval claims are kept
-        with the source only.
+        and the bundle's matchstamp getters. The source, the queried
+        timeline, is always kept, whatever the filter, and with it the
+        interval claims; the filter selects the others. The pairs between
+        kept timelines are kept.
 
         Args:
             filt: The filter.
             timelines: The timelines by id, where the filter reads their
                 domains or units.
-
-        Raises:
-            ValueError: If the filter keeps none of the stamp's timelines,
-                naming them.
         """
         coordinates = {
             tl_id: coord
             for tl_id, coord in self.coordinates.items()
-            if filt.matches_timeline(tl_id, timelines=timelines)
+            if tl_id == self.source_id
+            or filt.matches_timeline(tl_id, timelines=timelines)
         }
-        if not coordinates:
-            raise ValueError(
-                f"The filter keeps none of the timelines of the MatchStamp: "
-                f"{', '.join(quote_id(tl_id) for tl_id in self.coordinates)}."
-            )
-        kept_source = self.source_id in coordinates
         return MatchStamp(
             coordinates=coordinates,
-            source_id=self.source_id if kept_source else next(iter(coordinates)),
+            source_id=self.source_id,
             stated_pairs=[
                 (a, b)
                 for a, b in self.stated_pairs
@@ -511,7 +501,7 @@ class MatchStamp(Stamp):
             source=self.source,
             is_interpolated=self.is_interpolated,
             conversion_maps=self.conversion_maps,
-            interval_claims=self.interval_claims if kept_source else [],
+            interval_claims=self.interval_claims,
         )
 
     def to_dict(

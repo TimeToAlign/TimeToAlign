@@ -33,13 +33,14 @@ B_BRIDGE = [200, 400, 600, 800, 200, 400, 600, 800]
 B_TARGETS = [100, 900, 1700, 2500, 300, 600, 900, 1200]
 
 
-def _star_claim(a_coord: int, b_id: str, b_coord: float) -> MatchClaim:
-    """One synchronous instant claim a1:clt_1 <-> ``b_id``."""
+def _star_claim(a_coord: int, b_id: str, b_coord: float, claim_id: str) -> MatchClaim:
+    """One synchronous instant claim a1:clt_1 <-> ``b_id``, under *claim_id*."""
     return match_claim(
         "a1:clt_1",
         Coordinate(a_coord, TimeUnit.quarters),
         b_id,
         Coordinate(b_coord, TimeUnit.seconds),
+        id=claim_id,
     )
 
 
@@ -51,7 +52,9 @@ def _make_bundles() -> tuple[AlignmentBundle, AlignmentBundle]:
         b_bridge=5 seconds (a derived-unit position, placed at 500 samples).
         ``b_bundle`` is B alone, for the parity check.
     """
-    # Bundle A: a star of single claims, each timeline in its own group.
+    # Bundle A: a star of single claims, each timeline in its own group. Its
+    # claims are stated under ids of their own (star_1 ... star_6): a merge
+    # refuses two bundles holding one id, and bundle B mints claim_1 ...
     a1 = Timeline(length=100, unit=TimeUnit.quarters, uid="a1:clt_1")
     a2 = Timeline(length=100, unit=TimeUnit.seconds, uid="a2:cpt_1")
     a3 = Timeline(length=100, unit=TimeUnit.seconds, uid="a3:cpt_2")
@@ -61,8 +64,10 @@ def _make_bundles() -> tuple[AlignmentBundle, AlignmentBundle]:
     bundle_a.add_timeline(a3, as_group="ga3")
     star: list[MatchClaim] = []
     for a_coord in (0, 50, 100):
-        star.append(_star_claim(a_coord, "a2:cpt_1", float(a_coord)))  # a2 = a1
-        star.append(_star_claim(a_coord, "a3:cpt_2", a_coord / 2))  # a3 = a1 / 2
+        n = len(star)
+        # a2 = a1, a3 = a1 / 2
+        star.append(_star_claim(a_coord, "a2:cpt_1", float(a_coord), f"star_{n + 1}"))
+        star.append(_star_claim(a_coord, "a3:cpt_2", a_coord / 2, f"star_{n + 2}"))
     bundle_a.add_match_claims(star)
 
     # Bundle B: a WarpMap-able columnar field, b_bridge carries a derived-unit
@@ -137,16 +142,14 @@ class TestTransitiveUnion:
             "b2:dpt_3": 750.0,
         }
 
-    def test_merge_keeps_every_claim_id_in_its_scope(self) -> None:
+    def test_merge_keeps_every_claim_id(self) -> None:
         merged, _ = _make_bundles()
-        assert merged.claim_scopes == (merged.id, "bundle_a", "bundle_b")
-        table = merged.claim_table
+        table = merged.match_claim_table.table
         assert table.column("id").to_pylist() == (
-            [f"claim_{n}" for n in range(1, 7)]
+            [f"star_{n}" for n in range(1, 7)]
             + [f"claim_{n}" for n in range(1, 9)]
-            + ["claim_1"]
+            + ["claim_9"]
         )
-        assert table.column("scope_key").to_pylist() == [1] * 6 + [2] * 8 + [0]
 
     def test_bridge_position_is_placed_on_the_bridge_axis(self) -> None:
         merged, _ = _make_bundles()

@@ -386,13 +386,16 @@ def test_coordinate_getter_follows() -> None:
 @pytest.mark.parametrize(
     ("filters", "expected"),
     [
-        ({"within": {"clt_4", "cpt_1"}}, ["cpt_1", "clt_4"]),
-        ({"id_pattern": r"^clt_[47]$"}, ["clt_7", "clt_4"]),
-        ({"include_units": {TimeUnit.seconds}}, ["cpt_1"]),
+        ({"within": {"clt_4", "cpt_1"}}, ["clt_1", "cpt_1", "clt_4"]),
+        ({"id_pattern": r"^clt_[47]$"}, ["clt_1", "clt_7", "clt_4"]),
+        ({"include_units": {TimeUnit.seconds}}, ["clt_1", "cpt_1"]),
     ],
 )
 def test_filters_select_nested_timelines(filters: dict, expected: list[str]) -> None:
-    """Every filter selects among all known timelines, nested ones included."""
+    """Every filter selects among all known timelines, nested ones included.
+
+    The queried timeline, ``clt_1``, is always kept beside them.
+    """
     bundle, _ = _bundle()
 
     stamp = bundle.get_matchstamp_at(Fraction(1363, 2), "clt_1", **filters)

@@ -525,9 +525,11 @@ class EventsMixin:
         Projection's ID is unique in the timeline's manifest
         (:meth:`_manifest_projection_ids`): where the rows hold a Projection,
         a given Projection ID another timeline of the manifest holds as a
-        Projection is refused, naming both timelines, and every ID is minted
-        above the Projection IDs held there too. The held IDs are read
-        column-wise, never as Python objects.
+        Projection is refused, naming the first timeline holding it and this
+        one, and every ID is minted above the Projection IDs held there too.
+        Timelines that joined after creating their Projections may hold one
+        ID each; that refuses nothing here (the package writer refuses it).
+        The held IDs are read column-wise, never as Python objects.
 
         Raises:
             ValueError: If a given ID is held already or given twice, or a
@@ -549,13 +551,16 @@ class EventsMixin:
                 ],
                 pa.string(),
             )
+            # Only a given ID is checked: timelines that joined after creating
+            # their Projections may hold one ID each, refused by the writer.
+            at = pc.index_in(given_projections, value_set=around)
+            hits = at.filter(at.is_valid())
             refuse_shared_projection_ids(
-                pa.concat_arrays([around, given_projections]),
                 pa.concat_arrays(
-                    [
-                        holders,
-                        pa.array([self._id] * len(given_projections), pa.string()),
-                    ]
+                    [around.take(hits), given_projections.filter(at.is_valid())]
+                ),
+                pa.concat_arrays(
+                    [holders.take(hits), pa.array([self._id] * len(hits), pa.string())]
                 ),
             )
         if given:

@@ -1835,39 +1835,49 @@ then fails to load. Each test pins one of these with exact values.
   check, which the reader raises as it stands, a `TableError` `the ID
   'projection_1' is given twice`; so is row 1 (`projection_4` on `audio`)
   rewritten to `projection_1`, the same ID on two timelines, with the
-  same message. Writing: IDs are minted unique when the Projection is
-  created, and a timeline joining refuses a Projection ID its new
-  manifest holds (next item), a child joining a timeline's tree
-  (`add_child`) included: a child `part` given a Projection while free
-  (`projection_1` at sample 5) and then added at offset 0 to `pcm` of a
-  bundle whose `audio` holds `projection_1` (minted there at 0.5 s) is
-  refused, `pcm` keeping no child. Nothing is minted again on writing (an
-  ID once given is stable), so the writer refuses such a table as well:
-  `projection_table` of `audio` and the free `part` raises `Projection ID
+  same message. Writing: IDs are minted unique when a Projection is
+  created in its manifest, and nothing is minted again on writing (an ID
+  once given is stable, a MatchClaim may name it). Timelines that created
+  their Projections apart and joined afterwards may each hold one ID, so
+  the writer refuses such a table before any file is written: a free
+  `part` given `projection_1` at sample 5 joins `pcm` of a bundle whose
+  `audio` holds `projection_1` (minted there at 0.5 s) as a child (the
+  join succeeds: `pcm` has one child, `part` keeps `projection_1`), and
+  `projection_table` of `audio` and `part` raises `Projection ID
   'projection_1' names a Projection on the timeline 'audio' and one on
   'part': a Projection's ID is unique among all Projections of a manifest
-  and its package` (the timelines in the table's order), the same message
-  as the refused join. A writer that let it pass would write a table
-  TimeToShare's check refuses; one that minted again would change an ID a
-  MatchClaim may name.
-- **A join refuses a Projection ID the manifest holds** (`TestProjectionIdsAtAJoin`).
-  Two timelines given Projections apart each mint `projection_1` (`pcm`
-  at 22050 samples, `audio` at 0.5 s). Every way a timeline joins a
-  bundle's manifest passes one admission, so each is tried once with the
-  bundle holding `pcm`: `add_timeline(audio)`, `add_timeline(audio,
-  grouped_with="pcm")` (the group, held by the bundle, admits it),
-  `add_group` of a group holding `audio`, and `from_bundles` of a bundle
-  holding `pcm` and one holding `audio`. Each raises `ValueError`
-  `Projection ID 'projection_1' names a Projection on the timeline 'pcm'
-  and one on 'audio': a Projection's ID is unique among all Projections of
-  a manifest and its package` (the timeline already there first, the
-  newcomer second), and the bundle holding `pcm` is unchanged (for
-  `from_bundles`, the source holding it): its timelines are `['pcm']`, it
-  holds no group, and its package is written with the one Projection
-  `projection_1` on `pcm`. The control: `audio`'s Projection given the ID `onset_a` instead joins, and
-  the package holds `projection_1` on `pcm` and `onset_a` on `audio`. A
-  join that minted again would rename an ID a MatchClaim may name; one
-  that let it pass would build a bundle whose package cannot be written.
+  and its package. Create the MatchClaims once the timelines share the
+  bundle (for instance with AlignmentBundle.create_match_claims), so that
+  their Projection IDs are minted unique` (the timelines in the table's
+  order). A writer that let it pass would write a table TimeToShare's
+  check refuses; one that minted again would change an ID a MatchClaim may
+  name.
+- **A join keeps a Projection ID the manifest holds; the writer refuses
+  it** (`TestProjectionIdsAtAJoin`). Matching before bundling is a valid
+  workflow (each timeline of a separate group mints its own Projections),
+  and a MatchClaim addresses an event by its timeline and ID, so a join
+  is never refused for a Projection ID. Two timelines given Projections
+  apart each mint `projection_1` (`pcm` at 22050 samples, `audio` at
+  0.5 s). Every way a timeline joins a bundle's manifest passes one
+  admission, so each is tried once with the bundle holding `pcm`:
+  `add_timeline(audio)`, `add_timeline(audio, grouped_with="pcm")` (the
+  group, held by the bundle, admits it), `add_group` of a group holding
+  `audio`, and `from_bundles` of a bundle holding `pcm` and one holding
+  `audio` (the child join, `add_child`, is the item above). Each join
+  changes exactly what it changes otherwise: the bundle's timelines are
+  `['pcm', 'audio']`, its groups' members as the join makes them (none;
+  `[['pcm', 'audio']]`; `[['audio']]`; none), and each timeline keeps its
+  one Projection `projection_1` at its position (never minted again). A
+  Projection then added without an ID to `audio` is minted
+  `projection_2`, above every Projection of the manifest. Writing the
+  package raises `ValueError` before any file is written (the directory
+  stays empty), naming the ID and both timelines in the table's order
+  (sorted by timeline ID: `audio`, then `pcm`) and the remedy, the message
+  of the item above. The control: `audio`'s Projection given the ID
+  `onset_a` instead joins, and the package holds `onset_a` on `audio` and
+  `projection_1` on `pcm`. A bundle whose MatchClaims were created inside
+  it writes and reads back with its exact Projection IDs (the loader tests
+  of the Performance Precision and MAPS bundles).
 
 ### Conformance with TimeToShare's fixture package
 
@@ -2117,6 +2127,16 @@ differs from row order, so a claim built from row positions instead of matched p
   is unchanged.
 * **Provenance** defaults to `Provenance(method="inferred", note="greedy sequential matching
   by pitch")`.
+* **Matching before bundling.** Each timeline in a group of its own, neither side named, so
+  each mints `projection_1` … `projection_3` alone; then a bundle takes both groups
+  (`add_group`, one per group) and the claims (`add_match_claims`). Nothing refuses the
+  shared IDs: the bundle holds both timelines in two groups (`[['dpt_1'], ['clt_1']]`) and
+  the three claims `claim_1` … `claim_3`. Each claim resolves its two events by timeline and
+  ID: side A `get_event` on `dpt_1` returns the Projection `projection_k` at sample 22050,
+  44100, 66150, side B on `clt_1` the Projection `projection_k` at `1/2`, `3/2`, `1`.
+  `get_matchstamp_at(44100, "dpt_1")` places `clt_1` at exactly `Coordinate(3/2, quarters)`,
+  the anchor of the second claim. A join that refused the shared IDs fails at the first
+  `add_group`.
 
 ## SUPRA Integration Tests (`test_supra_integration.py`)
 

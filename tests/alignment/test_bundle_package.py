@@ -39,7 +39,7 @@ from timetoalign.core import (
     Provenance,
     TimeUnit,
 )
-from timetoalign.core.time import number_to_json
+from timetoalign.core.time import number_to_json, struct_to_rational
 from timetoalign.timelines import Timeline, TimelineGroup
 from timetoalign.timelines.manifest import (
     PARQUET_MEDIA_TYPE,
@@ -793,18 +793,27 @@ class TestWriting:
             Projection(start=Coordinate(5, TimeUnit.samples))
         ) == ["projection_1"]
 
-        message = (
-            "Projection ID 'projection_1' names a Projection on the timeline "
-            "'audio' and one on 'part': a Projection's ID is unique among all "
-            "Projections of a manifest and its package"
-        )
-        # Joining the bundle's tree as a child is refused ...
-        with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
-            pcm.add_child(part, 0)
-        assert pcm.n_children == 0
-        # ... and the table of both timelines is not written either.
-        with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+        # Joining the bundle's tree as a child keeps the ID ...
+        pcm.add_child(part, 0)
+        assert pcm.n_children == 1
+        assert part._parent is pcm
+        assert part.events.table.column("id").to_pylist() == ["projection_1"]
+        # ... and the table of both timelines is not written.
+        with pytest.raises(ValueError) as raised:
             projection_table([audio, part])
+        assert str(raised.value) == _shared_message("audio", "part")
+
+
+def _shared_message(first: str, second: str) -> str:
+    """The writer's refusal of ``projection_1`` on *first* and *second*."""
+    return (
+        f"Projection ID 'projection_1' names a Projection on the timeline "
+        f"'{first}' and one on '{second}': a Projection's ID is unique among all "
+        "Projections of a manifest and its package. Create the MatchClaims once "
+        "the timelines share the bundle (for instance with "
+        "AlignmentBundle.create_match_claims), so that their Projection IDs are "
+        "minted unique"
+    )
 
 
 def _apart() -> tuple[DiscretePhysicalTimeline, ContinuousPhysicalTimeline]:
@@ -829,51 +838,68 @@ def _package_projections(bundle: AlignmentBundle, path: Path) -> list[tuple[str,
     )
 
 
-class TestProjectionIdsAtAJoin:
-    """A timeline joining a manifest refuses a Projection ID held there."""
+def _held_projections(bundle: AlignmentBundle) -> dict[str, list[tuple[str, Any]]]:
+    """``(id, start)`` of the Projections of each timeline of *bundle*."""
+    return {
+        timeline_id: [
+            (row["id"], struct_to_rational(row["start"]))
+            for row in bundle.timelines[timeline_id]
+            .events.filter(event_type="Projection")
+            .table.to_pylist()
+        ]
+        for timeline_id in bundle.timelines
+    }
 
-    MESSAGE = (
-        "Projection ID 'projection_1' names a Projection on the timeline 'pcm' "
-        "and one on 'audio': a Projection's ID is unique among all Projections "
-        "of a manifest and its package"
-    )
+
+class TestProjectionIdsAtAJoin:
+    """A join keeps a Projection ID the manifest holds; the writer refuses it."""
+
+    HELD = {"pcm": [("projection_1", 22050)], "audio": [("projection_1", 0.5)]}
+
+    @staticmethod
+    def _not_written(bundle: AlignmentBundle, path: Path) -> None:
+        with pytest.raises(ValueError) as raised:
+            bundle.to_file(path / "package.yaml")
+        assert str(raised.value) == _shared_message("audio", "pcm")
+        assert list(path.iterdir()) == []
 
     @pytest.mark.parametrize("grouped", [False, True], ids=["standalone", "grouped"])
-    def test_add_timeline_refuses(self, tmp_path: Path, grouped: bool) -> None:
+    def test_add_timeline_joins(self, tmp_path: Path, grouped: bool) -> None:
         pcm, audio = _apart()
         bundle = AlignmentBundle(id="package")
         bundle.add_timeline(pcm, as_group="recording" if grouped else None)
-        with pytest.raises(ValueError) as raised:
-            bundle.add_timeline(audio, grouped_with="pcm" if grouped else None)
-        assert str(raised.value) == self.MESSAGE
-        assert list(bundle.timelines) == ["pcm"]
+        bundle.add_timeline(audio, grouped_with="pcm" if grouped else None)
+        assert list(bundle.timelines) == ["pcm", "audio"]
         assert [group.timeline_ids for group in bundle.groups.values()] == (
-            [["pcm"]] if grouped else []
+            [["pcm", "audio"]] if grouped else []
         )
-        assert _package_projections(bundle, tmp_path) == [("pcm", "projection_1")]
+        assert _held_projections(bundle) == self.HELD
+        self._not_written(bundle, tmp_path)
+        # A new Projection is minted above every Projection of the manifest.
+        assert audio.add_projections(
+            Projection(start=Coordinate(1.0, TimeUnit.seconds))
+        ) == ["projection_2"]
 
-    def test_add_group_refuses(self, tmp_path: Path) -> None:
+    def test_add_group_joins(self, tmp_path: Path) -> None:
         pcm, audio = _apart()
         bundle = AlignmentBundle(id="package")
         bundle.add_timeline(pcm)
-        with pytest.raises(ValueError) as raised:
-            bundle.add_group(TimelineGroup(timelines=[audio]))
-        assert str(raised.value) == self.MESSAGE
-        assert (list(bundle.timelines), bundle.groups) == (["pcm"], {})
-        assert _package_projections(bundle, tmp_path) == [("pcm", "projection_1")]
+        bundle.add_group(TimelineGroup(timelines=[audio]))
+        assert list(bundle.timelines) == ["pcm", "audio"]
+        assert [group.timeline_ids for group in bundle.groups.values()] == [["audio"]]
+        assert _held_projections(bundle) == self.HELD
+        self._not_written(bundle, tmp_path)
 
-    def test_from_bundles_refuses(self, tmp_path: Path) -> None:
+    def test_from_bundles_joins(self, tmp_path: Path) -> None:
         pcm, audio = _apart()
         first = AlignmentBundle(id="first").add_timeline(pcm)
         second = AlignmentBundle(id="second").add_timeline(audio)
-        with pytest.raises(ValueError) as raised:
-            AlignmentBundle.from_bundles([first, second])
-        assert str(raised.value) == self.MESSAGE
-        assert (list(first.timelines), first.groups) == (["pcm"], {})
-        assert list(second.timelines) == ["audio"]
-        assert _package_projections(first, tmp_path) == [("pcm", "projection_1")]
+        merged = AlignmentBundle.from_bundles([first, second])
+        assert (list(merged.timelines), merged.groups) == (["pcm", "audio"], {})
+        assert _held_projections(merged) == self.HELD
+        self._not_written(merged, tmp_path)
 
-    def test_another_id_joins(self, tmp_path: Path) -> None:
+    def test_another_id_is_written(self, tmp_path: Path) -> None:
         pcm, _ = _apart()
         audio = ContinuousPhysicalTimeline(length=16.0, uid="audio")
         audio.add_projections(

@@ -162,18 +162,24 @@ def projection_ids(events: pa.Table) -> pa.Array:
 
 
 def refuse_shared_projection_ids(
-    ids: pa.Array | pa.ChunkedArray, timeline_ids: pa.Array | pa.ChunkedArray
+    ids: pa.Array | pa.ChunkedArray,
+    timeline_ids: pa.Array | pa.ChunkedArray,
+    *,
+    remedy: str | None = None,
 ) -> None:
     """Refuse a Projection ID that names two Projections.
 
-    A Projection's ID is unique among all Projections of the manifest it
-    belongs to (its timeline's tree and every tree of the groups and bundles
-    holding it), hence of the Projections table of the package written from
-    it: two timelines never hold one Projection ID.
+    A Projection's ID is unique among all Projections of a package's
+    Projections table. A new Projection is minted (or its given ID checked)
+    against every Projection of the manifest it is added to; timelines that
+    joined after creating their Projections may hold one ID each, which the
+    package writer refuses.
 
     Args:
         ids: Projection IDs.
         timeline_ids: The ID of the timeline holding each, row for row.
+        remedy: A sentence appended to the message saying how to resolve
+            the collision, or None.
 
     Raises:
         ValueError: Naming the first ID given twice, in row order, and the
@@ -189,6 +195,7 @@ def refuse_shared_projection_ids(
         f"Projection ID {quote_id(shared_id)} names a Projection on the timeline "
         f"{quote_id(first)} and one on {quote_id(second)}: a Projection's ID is "
         f"unique among all Projections of a manifest and its package"
+        + ("" if remedy is None else f". {remedy}")
     )
 
 

@@ -822,8 +822,11 @@ def projection_table(timelines: Iterable[Timeline]) -> pa.Table:
     :func:`~timetoalign.core.time.package_numbers`), and ``projection_of``.
 
     A Projection's ID is unique among all Projections of the package, so
-    two timelines holding one Projection ID (built apart, then brought into
-    one bundle) are refused, naming both; no ID is minted again.
+    two timelines holding one Projection ID (each minted it before they
+    joined one bundle) are refused, naming both, and the message says how
+    to obtain a writable bundle: create the MatchClaims once the timelines
+    share the bundle, so that their Projection IDs are minted unique. No ID
+    is minted again, since a MatchClaim may name it.
 
     Args:
         timelines: The timelines, each once.
@@ -882,7 +885,15 @@ def projection_table(timelines: Iterable[Timeline]) -> pa.Table:
     if not parts:
         return PROJECTION_SCHEMA.empty_table()
     table = pa.concat_tables(parts)
-    refuse_shared_projection_ids(table.column("id"), table.column("timeline_id"))
+    refuse_shared_projection_ids(
+        table.column("id"),
+        table.column("timeline_id"),
+        remedy=(
+            "Create the MatchClaims once the timelines share the bundle (for "
+            "instance with AlignmentBundle.create_match_claims), so that their "
+            "Projection IDs are minted unique"
+        ),
+    )
     return table
 
 

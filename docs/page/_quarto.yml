@@ -286,6 +286,7 @@ quartodoc:
           include_inherited: true
           exclude:
             - transfer
+            - transfer_interval
         - name: SupportPolicy
           package: timetoalign.core
         - name: AlignmentAnchor
@@ -370,8 +371,10 @@ quartodoc:
           package: timetoalign.loader.tabular
         - name: JsonLoader
           package: timetoalign.loader.format
+          include_inherited: true
         - name: XmlLoader
           package: timetoalign.loader.format
+          include_inherited: true
         - name: Music21Loader
           package: timetoalign.loader.score
         - name: PartituraLoader

@@ -62,9 +62,18 @@ timelines.FlowControllerBase.create_flow_map(flow=None)
 
 Create a FlowMap from a computed Flow.
 
-If this controller has MeasureUnit data (i.e. is a ScoreFlowController),
-the FlowMap is built in **quarterbeat space** using `compute_qb_sections`.
-Otherwise falls back to MC-number space (legacy behaviour).
+The map is built in **quarterbeat space**: `compute_qb_sections`
+places each section of the flow by the durations of the controller's
+measure units (``iter_units``). Where that is impossible the map is
+built in **MC-number space** instead, each section spanning its
+measure counts ``[mc_start, mc_end)`` on the source axis and the
+sections laid end to end on the target axis, and nothing tells the
+caller so: this happens when the controller has no ``iter_units``
+(``AttributeError``), when the flow has no sections, or when a
+section starts or ends at a measure count the controller has no unit
+for (both ``ValueError``). ``ScoreFlowController`` overrides
+this method and always builds in quarterbeat space, raising instead
+of falling back.
 
 #### Parameters {.doc-section .doc-section-parameters}
 

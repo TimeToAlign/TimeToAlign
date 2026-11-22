@@ -288,8 +288,7 @@ The child's whole subtree joins this timeline's manifest, in which
 every id is unique across all element kinds: an element of the
 subtree whose minted id is already held here receives a freshly
 minted one, and an element whose given id is already held here makes
-the call raise without changing anything. A Projection's ID is never
-minted again, so one held by a Projection on both sides raises too.
+the call raise without changing anything.
 
 A timeline can accommodate events and other timelines, called
 Children, as long as they use the same measuring unit.
@@ -316,10 +315,10 @@ receives a minted id.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-|--------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [TypeError](`TypeError`)   | If child is not a Timeline.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-|        | [ValueError](`ValueError`) | If units don't match (and no conversion map given), the offset is negative (not supported yet), the child is already a child of this timeline, ``locked=True`` asks to lock a plain segment, ``locked=False`` asks to leave a segment line unlocked, an id given in the child's subtree is already held in this manifest, a Projection ID of the child's manifest is held by a Projection of this one, or this timeline is locked and the child would end beyond its length without ``allow_expansion``. An unlocked timeline expands to fit the child instead, provided its own parent contains its new end. A child of unknown length has no end, so only its offset must fit; a parent of unknown length has no end to exceed, unless it is a segment, which ends at its successor's offset. |
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+|--------|----------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [TypeError](`TypeError`)   | If child is not a Timeline.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+|        | [ValueError](`ValueError`) | If units don't match (and no conversion map given), the offset is negative (not supported yet), the child is already a child of this timeline, ``locked=True`` asks to lock a plain segment, ``locked=False`` asks to leave a segment line unlocked, an id given in the child's subtree is already held in this manifest, or this timeline is locked and the child would end beyond its length without ``allow_expansion``. An unlocked timeline expands to fit the child instead, provided its own parent contains its new end. A child of unknown length has no end, so only its offset must fit; a parent of unknown length has no end to exceed, unless it is a segment, which ends at its successor's offset. |
 
 ### add_conversion_map { #timetoalign.timelines.Timeline.add_conversion_map }
 
@@ -2461,9 +2460,12 @@ the root timeline's coordinate system.
 #### Examples {.doc-section .doc-section-examples}
 
 ```python
->>> event = timeline.get_event("notes:note:000001")
->>> event["id"]
-'notes:note:000001'
+>>> from timetoalign import Timeline, TimeUnit
+>>> timeline = Timeline(length=4, unit=TimeUnit.quarters)
+>>> timeline.add_events([{"event_type": "Note", "start": 0, "end": 1}])
+['note_1']
+>>> timeline.get_event("note_1")["id"]
+'note_1'
 >>> timeline.get_event("nonexistent") is None
 True
 ```
@@ -2963,24 +2965,24 @@ is not found on this timeline directly.
 
 ```python
 >>> from timetoalign.timelines import Timeline
->>> parent = Timeline(length=20, unit=TimeUnit.seconds, uid="timeline:1")
->>> child = Timeline(length=10, unit=TimeUnit.seconds, uid="clt_1")
+>>> parent = Timeline(length=20, unit=TimeUnit.seconds, uid="cpt_1")
+>>> child = Timeline(length=10, unit=TimeUnit.seconds, uid="cpt_2")
 >>> parent.add_child(child, offset=5)
 >>> parent.add_events([{"event_type": "Note", "instant": 5.0}])
->>> child.add_events(
-...     [{"id": "clt_1:note:000001", "event_type": "Note", "start": 0.0, "end": 2.5}]
-... )
->>> ts = parent.get_timestamp_for("note:000001")
+['note_1']
+>>> child.add_events([{"event_type": "Chord", "start": 0.0, "end": 2.5}])
+['chord_1']
+>>> ts = parent.get_timestamp_for("note_1")
 >>> ts.axis  # For instant events
-IdCoordinate(5.0, seconds, 'timeline:1')
+IdCoordinate(5.0, seconds, 'cpt_1')
 ```
 
 ```python
->>> ts = parent.get_timestamp_for("clt_1:note:000001")
+>>> ts = parent.get_timestamp_for("chord_1")  # found on the child
 >>> ts.start.axis  # For interval events
-IdCoordinate(5.0, seconds, 'timeline:1')
+IdCoordinate(5.0, seconds, 'cpt_1')
 >>> ts.end.axis
-IdCoordinate(7.5, seconds, 'timeline:1')
+IdCoordinate(7.5, seconds, 'cpt_1')
 ```
 
 #### See Also {.doc-section .doc-section-see-also}
@@ -3617,8 +3619,11 @@ the object was read from had (see :meth:`from_file`); for an object
 not read from a file, the minimal form, the styling included, in
 canonical YAML, without event rows or external references. An
 :class:`~timetoalign.alignment.AlignmentBundle` holding MatchClaims
-writes its tables beside the manifest first and names them in its
-``resources``.
+or Projections writes its tables beside the manifest and names them
+in its ``resources``: its manifest is written (validated and
+serialized) once before any table, and once more naming the tables
+written. The manifest is validated with its styling even where
+``styling=False`` leaves the styling out of the file.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
@@ -3639,9 +3644,9 @@ writes its tables beside the manifest first and names them in its
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                           |
-|--------|----------------------------|---------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If ``to_dict`` cannot write the manifest, or the serialization refuses a value of it. |
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                            |
+|--------|----------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If ``to_dict`` cannot write the manifest (the format's validator refusing it among others), the serialization is unknown or refuses a value of the manifest, or a table beside it is refused. Each of these refusals comes before any file is written and leaves the object's ``resources`` unchanged. |
 
 #### Examples {.doc-section .doc-section-examples}
 

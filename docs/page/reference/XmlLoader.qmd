@@ -66,21 +66,38 @@ timetoalign.loader.format.json.JsonLoader
 
 | Name | Description |
 | --- | --- |
+| [events](#timetoalign.loader.format.XmlLoader.events) | The EventData containing all loaded events. |
 | [file_metadata](#timetoalign.loader.format.XmlLoader.file_metadata) | Metadata from the root element's attributes. |
+| [metadata](#timetoalign.loader.format.XmlLoader.metadata) | Aggregated metadata from all sources. |
+| [number_type](#timetoalign.loader.format.XmlLoader.number_type) | The number type for coordinates. |
 | [raw_root](#timetoalign.loader.format.XmlLoader.raw_root) | The raw parsed XML root element from the last loaded file. |
+| [sources](#timetoalign.loader.format.XmlLoader.sources) | List of loaded source file paths. |
 | [store](#timetoalign.loader.format.XmlLoader.store) | The ``DictStore`` containing all normalised tables. |
 | [tables](#timetoalign.loader.format.XmlLoader.tables) | Dict mapping tag names to normalised ``pa.Table`` objects. |
+| [unit](#timetoalign.loader.format.XmlLoader.unit) | The time unit for coordinates. |
 
 ## Methods
 
 | Name | Description |
 | --- | --- |
 | [clear](#timetoalign.loader.format.XmlLoader.clear) | Clear all loaded data. |
+| [count_events_by_temporal_type](#timetoalign.loader.format.XmlLoader.count_events_by_temporal_type) | Count events grouped by temporal_type (instant/interval). |
+| [count_events_by_type](#timetoalign.loader.format.XmlLoader.count_events_by_type) | Count events grouped by event_type. |
+| [create_bundle](#timetoalign.loader.format.XmlLoader.create_bundle) | Create an `AlignmentBundle`. Override in subclasses that support bundles. |
+| [create_cmap](#timetoalign.loader.format.XmlLoader.create_cmap) | Create a ConversionMap from two coordinate fields. |
+| [create_group](#timetoalign.loader.format.XmlLoader.create_group) | Create a `TimelineGroup`. Override in subclasses that support groups. |
+| [create_timeline](#timetoalign.loader.format.XmlLoader.create_timeline) | Create a Timeline from the loaded events. |
+| [create_timelines](#timetoalign.loader.format.XmlLoader.create_timelines) | Create all timelines, optionally filtered by regex pattern. |
+| [event_summary](#timetoalign.loader.format.XmlLoader.event_summary) | Get a summary of loaded events. |
+| [from_file](#timetoalign.loader.format.XmlLoader.from_file) | Instantiate the loader, load *paths*, and return it. |
+| [from_parquet](#timetoalign.loader.format.XmlLoader.from_parquet) | Load a Loader from a Parquet file. |
+| [get_events](#timetoalign.loader.format.XmlLoader.get_events) | Return an EventData assembled from loaded data. |
 | [get_table](#timetoalign.loader.format.XmlLoader.get_table) | Retrieve a normalised table by element tag. |
-| [keys](#timetoalign.loader.format.XmlLoader.keys) | Return the list of available table tag names. |
+| [keys](#timetoalign.loader.format.XmlLoader.keys) | Return the names of the available tables. |
 | [load](#timetoalign.loader.format.XmlLoader.load) | Load one or more XML files. |
 | [load_element](#timetoalign.loader.format.XmlLoader.load_element) | Load from an already-parsed Element tree. |
 | [load_string](#timetoalign.loader.format.XmlLoader.load_string) | Load from an XML string. |
+| [to_parquet](#timetoalign.loader.format.XmlLoader.to_parquet) | Save the loaded events to a Parquet file. |
 
 ### clear { #timetoalign.loader.format.XmlLoader.clear }
 
@@ -89,6 +106,259 @@ loader.format.XmlLoader.clear()
 ```
 
 Clear all loaded data.
+
+### count_events_by_temporal_type { #timetoalign.loader.format.XmlLoader.count_events_by_temporal_type }
+
+```python
+loader.format.XmlLoader.count_events_by_temporal_type()
+```
+
+Count events grouped by temporal_type (instant/interval).
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                         | Description                                  |
+|--------|----------------------------------------------|----------------------------------------------|
+|        | [dict](`dict`)\[[str](`str`), [int](`int`)\] | Dict mapping "instant"/"interval" to counts. |
+
+### count_events_by_type { #timetoalign.loader.format.XmlLoader.count_events_by_type }
+
+```python
+loader.format.XmlLoader.count_events_by_type()
+```
+
+Count events grouped by event_type.
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                         | Description                              |
+|--------|----------------------------------------------|------------------------------------------|
+|        | [dict](`dict`)\[[str](`str`), [int](`int`)\] | Dict mapping event type names to counts. |
+
+### create_bundle { #timetoalign.loader.format.XmlLoader.create_bundle }
+
+```python
+loader.format.XmlLoader.create_bundle(**kwargs)
+```
+
+Create an `AlignmentBundle`. Override in subclasses that support bundles.
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                                         | Description                                      |
+|--------|----------------------------------------------|--------------------------------------------------|
+|        | [NotImplementedError](`NotImplementedError`) | If the concrete loader does not produce bundles. |
+
+### create_cmap { #timetoalign.loader.format.XmlLoader.create_cmap }
+
+```python
+loader.format.XmlLoader.create_cmap(
+    source_field,
+    target_field,
+    *,
+    map_type=None,
+    **kwargs,
+)
+```
+
+Create a ConversionMap from two coordinate fields.
+
+This method creates a C-Map from loaded coordinate data, enabling
+conversion between different coordinate systems (e.g., seconds to pixels).
+
+Both fields must contain coordinate data (either core coordinates like
+'start'/'end', or CoordinateField extra fields).
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name         | Type                   | Description                                                                                                                           | Default    |
+|--------------|------------------------|---------------------------------------------------------------------------------------------------------------------------------------|------------|
+| source_field | [str](`str`)           | Name of the source coordinate field.                                                                                                  | _required_ |
+| target_field | [str](`str`)           | Name of the target coordinate field.                                                                                                  | _required_ |
+| map_type     | [type](`type`) \| None | The map class to create. Defaults to TableMap. Supported: TableMap, LinearMap, ScalarMap.                                             | `None`     |
+| **kwargs     | [Any](`typing.Any`)    | Additional arguments passed to the map constructor. For TableMap: kind, extrapolate For LinearMap: (computed automatically from data) | `{}`       |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                | Description               |
+|--------|---------------------|---------------------------|
+|        | [Any](`typing.Any`) | A ConversionMap instance. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                        |
+|--------|----------------------------|----------------------------------------------------|
+|        | [ValueError](`ValueError`) | If fields don't exist or aren't coordinate fields. |
+|        | [ValueError](`ValueError`) | If insufficient data points for the map type.      |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> # Load data with dual coordinates
+>>> loader.load("data.tsv")
+```
+
+```python
+>>> # Create TableMap (default) from start -> x_pixels
+>>> cmap = loader.create_cmap("start", "x_pixels")
+```
+
+```python
+>>> # Create LinearMap (fits y = ax + b to data)
+>>> cmap = loader.create_cmap("start", "x_pixels", map_type=LinearMap)
+```
+
+```python
+>>> # TableMap with custom interpolation
+>>> cmap = loader.create_cmap("start", "x_pixels", kind="cubic")
+```
+
+### create_group { #timetoalign.loader.format.XmlLoader.create_group }
+
+```python
+loader.format.XmlLoader.create_group(**kwargs)
+```
+
+Create a `TimelineGroup`. Override in subclasses that support groups.
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                      | Description                                                           |
+|--------|---------------------------|-----------------------------------------------------------------------|
+|        | \'TimelineGroup \| None\' | A `TimelineGroup`, or ``None`` if the loader does not produce groups. |
+
+### create_timeline { #timetoalign.loader.format.XmlLoader.create_timeline }
+
+```python
+loader.format.XmlLoader.create_timeline(
+    uid=None,
+    store_filters=None,
+    include_stores=None,
+    exclude_stores=None,
+    flatten=False,
+)
+```
+
+Create a Timeline from the loaded events.
+
+Convenience method that delegates to self.store.create_timeline().
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name           | Type                                                                                        | Description                                                                                           | Default   |
+|----------------|---------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------|-----------|
+| uid            | [str](`str`) \| None                                                                        | Unique ID for the parent timeline. Auto-generated if None.                                            | `None`    |
+| store_filters  | [dict](`dict`)\[[str](`str`), [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\]\] \| None | Per-data filter kwargs to apply before timeline creation. Example: {"notes": {"event_type": "Note"}}. | `None`    |
+| include_stores | [list](`list`)\[[str](`str`)\] \| None                                                      | Only include these data (default: all non-empty).                                                     | `None`    |
+| exclude_stores | [list](`list`)\[[str](`str`)\] \| None                                                      | Exclude these data from the timeline.                                                                 | `None`    |
+| flatten        | [bool](`bool`)                                                                              | If True, merge all events into a single parent timeline.                                              | `False`   |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type         | Description                              |
+|--------|--------------|------------------------------------------|
+|        | \'Timeline\' | A Timeline containing the loaded events. |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> loader = Ms3Loader()
+>>> loader.load("notes.tsv")
+>>> timeline = loader.create_timeline(uid="my_score")
+```
+
+### create_timelines { #timetoalign.loader.format.XmlLoader.create_timelines }
+
+```python
+loader.format.XmlLoader.create_timelines(id_pattern=None)
+```
+
+Create all timelines, optionally filtered by regex pattern.
+
+The default implementation returns a single-element list with
+``create_timeline()``. Subclasses with multi-timeline output
+(e.g., ``TiliaJsonLoader``, ``MatchfileLoader``) override this.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name       | Type                 | Description                                    | Default   |
+|------------|----------------------|------------------------------------------------|-----------|
+| id_pattern | [str](`str`) \| None | Optional regex pattern to filter timeline IDs. | `None`    |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                 | Description                 |
+|--------|----------------------|-----------------------------|
+|        | \'list\[Timeline\]\' | List of `Timeline` objects. |
+
+### event_summary { #timetoalign.loader.format.XmlLoader.event_summary }
+
+```python
+loader.format.XmlLoader.event_summary()
+```
+
+Get a summary of loaded events.
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                                | Description                                           |
+|--------|-----------------------------------------------------|-------------------------------------------------------|
+|        | [dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] | Dict with event counts, types, coordinate range, etc. |
+
+### from_file { #timetoalign.loader.format.XmlLoader.from_file }
+
+```python
+loader.format.XmlLoader.from_file(*paths, **kwargs)
+```
+
+Instantiate the loader, load *paths*, and return it.
+
+### from_parquet { #timetoalign.loader.format.XmlLoader.from_parquet }
+
+```python
+loader.format.XmlLoader.from_parquet(path)
+```
+
+Load a Loader from a Parquet file.
+
+Note: This creates a new Loader with the EventData loaded,
+but source paths may not be accessible for re-loading.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name   | Type                                   | Description               | Default    |
+|--------|----------------------------------------|---------------------------|------------|
+| path   | [Path](`pathlib.Path`) \| [str](`str`) | Path to the Parquet file. | _required_ |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                             | Description                                    |
+|--------|----------------------------------|------------------------------------------------|
+|        | [Self](`typing_extensions.Self`) | A new Loader with events loaded from the file. |
+
+### get_events { #timetoalign.loader.format.XmlLoader.get_events }
+
+```python
+loader.format.XmlLoader.get_events(properties=True)
+```
+
+Return an EventData assembled from loaded data.
+
+This is the primary access method for the loader-first pipeline.
+It assembles EventData from the loaded data, with control over
+which property fields are included.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name       | Type                                                                    | Description                                                                                                                                                                                                                                                                                                                                                                                                       | Default   |
+|------------|-------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------|
+| properties | [bool](`bool`) \| [str](`str`) \| [tuple](`tuple`)\[[str](`str`), ...\] | Controls which non-field-spec data fields to include. - ``True``: Include all property fields (default). - ``False``: Only include semantic-field fields (start, end,   duration, pitch, etc.) and core fields (id, name,   event_type, temporal_type). - Single string: shorthand for a one-element tuple — include   only the named property field. - Tuple of strings: Include only the named property fields. | `True`    |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                         | Description                                       |
+|--------|----------------------------------------------|---------------------------------------------------|
+|        | [EventData](`timetoalign.storage.EventData`) | An ``EventData`` containing the assembled events. |
 
 ### get_table { #timetoalign.loader.format.XmlLoader.get_table }
 
@@ -122,7 +392,7 @@ Retrieve a normalised table by element tag.
 loader.format.XmlLoader.keys()
 ```
 
-Return the list of available table tag names.
+Return the names of the available tables.
 
 ### load { #timetoalign.loader.format.XmlLoader.load }
 
@@ -190,3 +460,19 @@ Convenient for programmatic use or testing.
 | Name   | Type                             | Description                |
 |--------|----------------------------------|----------------------------|
 |        | [Self](`typing_extensions.Self`) | Self, for method chaining. |
+
+### to_parquet { #timetoalign.loader.format.XmlLoader.to_parquet }
+
+```python
+loader.format.XmlLoader.to_parquet(path)
+```
+
+Save the loaded events to a Parquet file.
+
+The metadata (including source info) is preserved in the file.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name   | Type                                   | Description                     | Default    |
+|--------|----------------------------------------|---------------------------------|------------|
+| path   | [Path](`pathlib.Path`) \| [str](`str`) | Path to write the Parquet file. | _required_ |

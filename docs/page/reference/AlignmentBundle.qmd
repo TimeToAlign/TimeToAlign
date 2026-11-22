@@ -123,7 +123,6 @@ row by row, provenance included (:class:`MatchClaimField` equality).
 | [summary](#timetoalign.alignment.AlignmentBundle.summary) | Get a summary of the bundle contents. |
 | [to_dict](#timetoalign.alignment.AlignmentBundle.to_dict) | Write the bundle as a TimeToShare manifest. |
 | [to_file](#timetoalign.alignment.AlignmentBundle.to_file) | Write the package: the manifest and, beside it, the bundle's tables. |
-| [transfer_interval](#timetoalign.alignment.AlignmentBundle.transfer_interval) | Transfer an interval from one timeline to another. |
 
 ### add_belief { #timetoalign.alignment.AlignmentBundle.add_belief }
 
@@ -2321,36 +2320,3 @@ given or as read) is refused before any file is written.
 | Name   | Type                       | Description                                                                                                                                                                         |
 |--------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 |        | [ValueError](`ValueError`) | If event rows would be written beside a table, or as :meth:`ManifestFileMixin.to_file <timetoalign.timelines.manifest.ManifestFileMixin.to_file>` and :meth:`_write_tables` refuse. |
-
-### transfer_interval { #timetoalign.alignment.AlignmentBundle.transfer_interval }
-
-```python
-alignment.AlignmentBundle.transfer_interval(
-    start,
-    end,
-    from_timeline,
-    to_timeline,
-    *,
-    believer=None,
-    beliefs=DEFAULT_BELIEFS,
-)
-```
-
-Transfer an interval from one timeline to another.
-
-#### Parameters {.doc-section .doc-section-parameters}
-
-| Name          | Type                                                                                   | Description                                                                                                               | Default           |
-|---------------|----------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------|-------------------|
-| start         | [CoordinateSpec](`timetoalign.core.CoordinateSpec`)                                    | Start coordinate in source timeline. Accepts a raw int/float/Fraction, a Coordinate, or an IdCoordinate.                  | _required_        |
-| end           | [CoordinateSpec](`timetoalign.core.CoordinateSpec`)                                    | End coordinate in source timeline. Accepts a raw int/float/Fraction, a Coordinate, or an IdCoordinate.                    | _required_        |
-| from_timeline | [str](`str`)                                                                           | ID of the source timeline.                                                                                                | _required_        |
-| to_timeline   | [str](`str`)                                                                           | ID of the target timeline.                                                                                                | _required_        |
-| believer      | [str](`str`) \| None                                                                   | The actor whose beliefs filter the MatchClaims read (the belief filter); ``None`` reads every claim.                      | `None`            |
-| beliefs       | [Collection](`collections.abc.Collection`)\[[BeliefState](`timetoshare.BeliefState`)\] | The states read for the believer (``"true"``, ``"undecided"``, ``"unlikely"``, ``"false"``); default all but ``"false"``. | `DEFAULT_BELIEFS` |
-
-#### Returns {.doc-section .doc-section-returns}
-
-| Name   | Type                                                           | Description                                                   |
-|--------|----------------------------------------------------------------|---------------------------------------------------------------|
-|        | [tuple](`tuple`)\[[float](`float`), [float](`float`)\] \| None | Tuple of (start, end) in target timeline, or None if no path. |

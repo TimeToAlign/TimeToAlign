@@ -13,6 +13,19 @@ The loader handles:
 - Compressed MeasureMap (minimal entries, defaults inferred)
 - Expanded MeasureMap (all fields explicit)
 - Validation of structure (MC unique, qstamp monotonic, next valid)
+- The standard's anacrusis convention: a first row numbered 0 that is
+  shorter than its nominal length is the closing part of nominal bar 0,
+  at offset ``nominal_length - actual_length`` within it (see
+  :meth:`_apply_anacrusis_convention`)
+- ``-1`` in ``next``, the measure-table spelling of the end of the piece:
+  the rows are read without it (it names no row) and the measure map
+  leaves it out, while ``expanded_data``, the measure table and
+  :meth:`compute_default_traversal` keep it where the file states it
+
+Known limitation: a ``.mm.json`` file states no offset for the parts of
+an inner split bar, so they load as ``IrregularMeasure``s, whereas an
+``Ms3Loader`` measure table stating ``mc_offset`` yields
+``MeasureConstituent``s for the same bar.
 
 ## Attributes {.doc-section .doc-section-attributes}
 
@@ -58,31 +71,18 @@ loader.score.MeasureMapLoader.compute_default_traversal()
 
 Compute the default traversal sequence from the expanded data.
 
-The algorithm follows the 'next' field, using visit counts to
-choose which branch to take at repeat points.
-
-From the design spec:
-```python
-sequence = []
-current_mc = 1
-visit_counts = defaultdict(int)
-
-while current_mc != -1:
-    bar = get_bar_by_mc(mm_data, current_mc)
-    sequence.append(bar["ID"])
-    next_options = bar["next"]
-    visit_counts[current_mc] += 1
-    idx = min(visit_counts[current_mc] - 1, len(next_options) - 1)
-    current_mc = next_options[idx]
-
-return TraversalMap(sequence=sequence)
-```
+The walk starts at MC 1 and follows the 'next' field, using visit
+counts to choose which branch to take at repeat points: the n-th
+visit of a measure takes its n-th ``next`` entry, or its last one
+once the entries are used up. It stops at ``-1`` (the end of the
+piece), at a measure without ``next`` entries or not in the data,
+and after ten times as many steps as there are measures.
 
 #### Returns {.doc-section .doc-section-returns}
 
-| Name   | Type                           | Description                           |
-|--------|--------------------------------|---------------------------------------|
-|        | [list](`list`)\[[int](`int`)\] | List of MC values in traversal order. |
+| Name   | Type                           | Description                                                |
+|--------|--------------------------------|------------------------------------------------------------|
+|        | [list](`list`)\[[int](`int`)\] | List of MC values in traversal order (empty without data). |
 
 ### get_traversal_summary { #timetoalign.loader.score.MeasureMapLoader.get_traversal_summary }
 

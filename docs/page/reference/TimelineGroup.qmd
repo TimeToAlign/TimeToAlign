@@ -124,9 +124,9 @@ A segment line is locked when it joins, as when it becomes a child.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-|--------|----------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If the timeline is already a member; if it is nested with a member; or if a given id of its tree — of any timeline, conversion map, region or flow-control element of it — is held by an element of the group's trees, is the group's given id or is held in a bundle holding the group (a minted id held there is minted again instead, and a minted group id that a newcomer's given id takes is minted again); or if a Projection of its tree has an ID a Projection of the group's trees, or of a bundle holding the group, holds (naming the ID and both timelines). |
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                       |
+|--------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the timeline is already a member; if it is nested with a member; or if a given id of its tree — of any timeline, conversion map, region or flow-control element of it — is held by an element of the group's trees, is the group's given id or is held in a bundle holding the group (a minted id held there is minted again instead, and a minted group id that a newcomer's given id takes is minted again). |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -1127,8 +1127,11 @@ the object was read from had (see :meth:`from_file`); for an object
 not read from a file, the minimal form, the styling included, in
 canonical YAML, without event rows or external references. An
 :class:`~timetoalign.alignment.AlignmentBundle` holding MatchClaims
-writes its tables beside the manifest first and names them in its
-``resources``.
+or Projections writes its tables beside the manifest and names them
+in its ``resources``: its manifest is written (validated and
+serialized) once before any table, and once more naming the tables
+written. The manifest is validated with its styling even where
+``styling=False`` leaves the styling out of the file.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
@@ -1149,9 +1152,9 @@ writes its tables beside the manifest first and names them in its
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                           |
-|--------|----------------------------|---------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If ``to_dict`` cannot write the manifest, or the serialization refuses a value of it. |
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                            |
+|--------|----------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If ``to_dict`` cannot write the manifest (the format's validator refusing it among others), the serialization is unknown or refuses a value of the manifest, or a table beside it is refused. Each of these refusals comes before any file is written and leaves the object's ``resources`` unchanged. |
 
 #### Examples {.doc-section .doc-section-examples}
 

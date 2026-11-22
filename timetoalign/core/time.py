@@ -1239,12 +1239,16 @@ def compare_number_column(
 ) -> pa.Array:
     """Compare a column of storage cells with a number, as the column reads.
 
-    An ``int`` or ``fraction`` column is compared exactly, on its ratio side:
-    ``n/d`` against ``p/q`` is ``n·q`` against ``p·d``, cross-multiplied in
-    decimals wide enough that no product overflows. A ``float`` column is
-    compared on its float side, against the number as a float, which is what
-    comparing two floats means. Either way a row compares as the scalar it
-    holds would, so a column and a single position decide alike.
+    An ``int`` or ``fraction`` column is compared exactly with an exact
+    number (an ``int`` or a ``Fraction``), on its ratio side: ``n/d``
+    against ``p/q`` is ``n·q`` against ``p·d``, cross-multiplied in
+    decimals wide enough that no product overflows. A float compares as a
+    key: against the float side of the cells, which holds each stored value
+    as the nearest double, so ``0.1`` equals a cell holding ``1/10`` and
+    ``10.5`` lies between cells holding ``10`` and ``11``. A ``float``
+    column is compared on its float side whatever the number, which is what
+    comparing two floats means. An infinite float compares as an
+    infinite double does (every finite row lies below ``inf``).
 
     Args:
         column: A ``pa.StructArray`` of :data:`RATIONAL_STRUCT_TYPE`.
@@ -1256,22 +1260,31 @@ def compare_number_column(
 
     Returns:
         A boolean array, null where a compared row is null.
+
+    Raises:
+        ValueError: If *number* is NaN, which names no position.
     """
     column = _combined(column)
     valid = column.is_valid()
     kernel = _COMPARISON_KERNELS[comparison]
+    as_floats = number_type is NumberType.float
     if isinstance(number, (pa.Array, pa.ChunkedArray)):
         number = _combined(number)
         valid = pc.and_(valid, number.is_valid())
         float_side: Any = number.field("value")
         numerator: Any = number.field("numerator")
         denominator: Any = number.field("denominator")
+    elif isinstance(number, float):
+        if math.isnan(number):
+            raise ValueError("NaN names no position: it compares with no cell")
+        float_side = pa.scalar(number, pa.float64())
+        as_floats = True
     else:
         exact = Fraction(number)
-        float_side = pa.scalar(float(number))
+        float_side = pa.scalar(float(exact))
         numerator = pa.scalar(Decimal(exact.numerator), _CROSS_MULTIPLICATION_TYPE)
         denominator = pa.scalar(Decimal(exact.denominator), _CROSS_MULTIPLICATION_TYPE)
-    if number_type is NumberType.float:
+    if as_floats:
         compared = kernel(column.field("value"), float_side)
     else:
         wide = _CROSS_MULTIPLICATION_TYPE

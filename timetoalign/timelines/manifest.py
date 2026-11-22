@@ -58,6 +58,8 @@ import math
 import os
 import re
 from collections.abc import Collection, Iterable, Iterator, Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import asdict, dataclass, field, replace
 from fractions import Fraction
 from os import PathLike
@@ -1039,7 +1041,8 @@ class Manifest(_OpenObject):
         written is validated whole by the format's validator
         (:func:`timetoshare.validate`), as a manifest read is, so that a
         manifest the format refuses is never emitted; its warnings are not
-        reported.
+        reported. Writing a file, :meth:`ManifestFileMixin.to_file`
+        validates the manifest as the file holds it instead.
 
         Args:
             roots: The root timelines.
@@ -1157,7 +1160,8 @@ class Manifest(_OpenObject):
             **{p: prefixes[p] for p in table_prefixes if p in prefixes},
         }
         result["@context"] = {**FORMAT_CONTEXT, **dict(sorted(declared.items()))}
-        timetoshare.validate(result)
+        if not _VALIDATED_BY_THE_FILE.get():
+            timetoshare.validate(result)
         return result
 
     def _prefix_table(
@@ -1533,6 +1537,21 @@ class FileForm(timetoshare.FileForm):
 _NEW_FILE = FileForm(minimal=True, styling=True, serialization="yaml")
 """The form of an object not read from a file: minimal, styled, canonical YAML."""
 
+_VALIDATED_BY_THE_FILE: ContextVar[bool] = ContextVar(
+    "_VALIDATED_BY_THE_FILE", default=False
+)
+"""Set while :meth:`ManifestFileMixin._file_text` writes a manifest it validates itself."""
+
+
+@contextmanager
+def _validated_by_the_file() -> Iterator[None]:
+    """Leave the validation of the manifests written to the file being written."""
+    token = _VALIDATED_BY_THE_FILE.set(True)
+    try:
+        yield
+    finally:
+        _VALIDATED_BY_THE_FILE.reset(token)
+
 
 def _timeline_objects(data: Any) -> Iterator[dict[str, Any]]:
     """Yield every timeline object of a manifest, the children included."""
@@ -1675,8 +1694,10 @@ class ManifestFileMixin:
         or Projections writes its tables beside the manifest and names them
         in its ``resources``: its manifest is written (validated and
         serialized) once before any table, and once more naming the tables
-        written. The manifest is validated with its styling even where
-        ``styling=False`` leaves the styling out of the file.
+        written. The manifest validated is the one the file holds: without
+        its styling where ``styling=False`` leaves the styling out, so a
+        manifest whose styling the format refuses (a named timestamp beyond
+        the length its timeline was given since) is written without it.
 
         Args:
             path: The file to write, UTF-8 with line feeds; it is
@@ -1739,26 +1760,32 @@ class ManifestFileMixin:
         # the form or a value of it, leaves no table behind. A second manifest
         # differs from the first in its resources alone, so the serialization
         # refuses nothing in it that it accepted in the first.
-        text = timetoshare.dumps_file(
-            self.to_dict(
+        text = self._file_text(form)
+        if self._write_tables(path.parent):
+            # The resources now name the tables written.
+            text = self._file_text(form)
+        path.write_text(text, encoding="utf-8", newline="")
+        return path
+
+    def _file_text(self, form: FileForm) -> str:
+        """The text of the manifest file *form* writes, validated as written.
+
+        ``to_dict`` validates the whole manifest; here the form the file
+        holds is validated instead (``timetoshare.dumps_file`` leaves the
+        ``graphical`` object out where ``form.styling`` is False).
+        """
+        with _validated_by_the_file():
+            manifest = self.to_dict(
                 minimal=False,
                 events=form.events,
                 external_references=form.external_references,
-            ),
-            form,
-        )
-        if self._write_tables(path.parent):
-            # The resources now name the tables written.
-            text = timetoshare.dumps_file(
-                self.to_dict(
-                    minimal=False,
-                    events=form.events,
-                    external_references=form.external_references,
-                ),
-                form,
             )
-        path.write_text(text, encoding="utf-8", newline="")
-        return path
+        if not form.styling:
+            manifest = {
+                key: value for key, value in manifest.items() if key != "graphical"
+            }
+        timetoshare.validate(manifest)
+        return timetoshare.dumps_file(manifest, form)
 
 
 # endregion

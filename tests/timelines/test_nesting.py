@@ -925,14 +925,14 @@ class TestIterChildren:
         assert offsets == [0.0, 1.0, 10.0, 11.0, 15.0]
 
     def test_iter_children_nested_breadth_first(self, nested_timeline_structure):
-        """Breadth-first iteration yields levels in order."""
+        """Breadth-first iteration yields each depth in order."""
         parent = nested_timeline_structure
 
         results = list(parent.iter_children(order="breadth_first"))
         child_ids = [c.id for _, c in results]
 
-        # Level 1: child_a, child_b
-        # Level 2: grandchild_a1, grandchild_b1, grandchild_b2
+        # Depth 1: child_a, child_b
+        # Depth 2: grandchild_a1, grandchild_b1, grandchild_b2
         assert child_ids[:2] == ["child_a", "child_b"]
         assert set(child_ids[2:]) == {"grandchild_a1", "grandchild_b1", "grandchild_b2"}
 
@@ -1059,16 +1059,16 @@ class TestNestingScale:
         current = root
 
         for i in range(depth - 1):
-            child = Timeline(length=float(depth - i - 1), uid=f"level_{i + 1}")
+            child = Timeline(length=float(depth - i - 1), uid=f"depth_{i + 1}")
             current.add_child(child, offset=1.0)
             current = child
 
         results = list(root.iter_children(order="depth_first"))
 
         assert [child.id for _, child in results] == [
-            f"level_{i}" for i in range(1, depth)
+            f"depth_{i}" for i in range(1, depth)
         ]
-        # Each level sits at offset 1 on its parent, so level i is at i on the root.
+        # Each sits at offset 1 on its parent, so the one at depth i is at i on the root.
         assert [offset.value for offset, _ in results] == list(range(1, depth))
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from fractions import Fraction
 from typing import Any
 
@@ -325,33 +326,281 @@ def _tenth_and_third() -> Timeline:
     return timeline
 
 
-@pytest.mark.parametrize(
-    ("query", "ids"),
-    [
-        ({"min_coord": 0.1}, ["third"]),
-        ({"max_coord": 0.1}, ["tenth"]),
-        ({"min_coord": Fraction(1, 10)}, ["tenth", "third"]),
-    ],
-    ids=["min-float", "max-float", "min-fraction"],
-)
-def test_a_float_bound_on_a_fraction_axis_is_its_double(
-    query: dict[str, Any], ids: list[str]
-) -> None:
-    """A float bound is the exact value of its double, not a nearby ratio."""
-    assert _ids(_tenth_and_third().get_events(**query)) == ids
+def _found(found: dict[str, list[dict[str, Any]]]) -> dict[str, list[str]]:
+    """``get_events_at``'s answer as event IDs per timeline."""
+    return {key: _ids(rows) for key, rows in found.items()}
 
 
-@pytest.mark.parametrize(
-    ("at", "ids"),
-    [(0.1, []), (1 / 3, []), (Fraction(1, 10), ["tenth"])],
-    ids=["tenth-float", "third-float", "tenth-fraction"],
-)
-def test_a_float_query_on_a_fraction_axis_is_its_double(
-    at: Any, ids: list[str]
-) -> None:
-    """``get_events_at`` finds an event at the double's exact value only."""
-    found = _tenth_and_third().get_events_at(at)
-
-    assert {key: _ids(rows) for key, rows in found.items()} == (
-        {"score": ids} if ids else {}
+def _two_notes(number_type: str) -> Timeline:
+    """Notes at 1 and 2 on a timeline of *number_type* (seconds, quarters, ticks)."""
+    timeline = {
+        "float": ContinuousPhysicalTimeline(length=4.0, uid="axis"),
+        "fraction": ContinuousLogicalTimeline(length=Fraction(4), uid="axis"),
+        "int": DiscreteLogicalTimeline(length=4, uid="axis"),
+    }[number_type]
+    timeline.add_events(
+        [
+            {"id": "one", "event_type": "Note", "start": 1, "end": 2},
+            {"id": "two", "event_type": "Note", "start": 2, "end": 3},
+        ]
     )
+    return timeline
+
+
+class TestQueriesOnExactAxes:
+    """A float query compares as a key, an exact one exactly, never rounded."""
+
+    @pytest.mark.parametrize(
+        ("query", "ids"),
+        [
+            ({"min_coord": 0.1}, ["tenth", "third"]),
+            ({"max_coord": 0.1}, []),
+            ({"min_coord": Fraction(1, 10)}, ["tenth", "third"]),
+            ({"min_coord": Fraction(0.1)}, ["third"]),
+        ],
+        ids=["min-float", "max-float", "min-fraction", "min-double-ratio"],
+    )
+    def test_bounds_on_a_fraction_axis(
+        self, query: dict[str, Any], ids: list[str]
+    ) -> None:
+        assert _ids(_tenth_and_third().get_events(**query)) == ids
+
+    @pytest.mark.parametrize(
+        ("at", "ids"),
+        [
+            (0.1, ["tenth"]),
+            (1 / 3, ["third"]),
+            (Fraction(1, 10), ["tenth"]),
+            (Fraction(0.1), []),
+        ],
+        ids=["tenth-float", "third-float", "tenth-fraction", "tenth-double-ratio"],
+    )
+    def test_positions_on_a_fraction_axis(self, at: Any, ids: list[str]) -> None:
+        found = _tenth_and_third().get_events_at(at)
+
+        assert _found(found) == ({"score": ids} if ids else {})
+
+    @pytest.mark.parametrize("at", [2 / 3, Fraction(2, 3)], ids=["float", "fraction"])
+    def test_an_interval_ending_at_the_query_is_not_active(self, at: Any) -> None:
+        timeline = _fraction_timeline("score", Fraction(1))
+        timeline.add_events(
+            [
+                {
+                    "id": "b",
+                    "event_type": "Note",
+                    "start": Fraction(1, 3),
+                    "end": Fraction(2, 3),
+                },
+                {
+                    "id": "c",
+                    "event_type": "Note",
+                    "start": Fraction(1, 2),
+                    "end": Fraction(1),
+                },
+            ]
+        )
+
+        assert _found(timeline.get_events_at(at)) == {"score": ["c"]}
+
+    @staticmethod
+    def _ticks() -> Timeline:
+        timeline = DiscreteLogicalTimeline(length=20, uid="ticks")
+        timeline.add_events(
+            [
+                {"id": "x", "event_type": "Note", "start": 10, "end": 11},
+                {"id": "y", "event_type": "Note", "start": 11, "end": 12},
+            ]
+        )
+        return timeline
+
+    @pytest.mark.parametrize(
+        ("query", "ids"),
+        [
+            ({"min_coord": 10.5}, ["y"]),
+            ({"max_coord": 10.5}, ["x"]),
+            ({"min_coord": Fraction(21, 2)}, ["y"]),
+        ],
+        ids=["min-float", "max-float", "min-fraction"],
+    )
+    def test_bounds_on_an_int_axis_are_not_rounded(
+        self, query: dict[str, Any], ids: list[str]
+    ) -> None:
+        assert _ids(self._ticks().get_events(**query)) == ids
+
+    @pytest.mark.parametrize("at", [11.5, Fraction(23, 2)], ids=["float", "fraction"])
+    def test_positions_on_an_int_axis_are_not_rounded(self, at: Any) -> None:
+        assert _found(self._ticks().get_events_at(at)) == {"ticks": ["y"]}
+
+
+class TestFloatKeysAcrossChildren:
+    """A float key meets each child's exact boundaries on the queried axis."""
+
+    @staticmethod
+    def _adjoining() -> Timeline:
+        """``A`` [1/10, 3/10) beside ``B`` [3/10, 1), ``B1`` [2/5, 1/2) in ``B``."""
+        parent = _fraction_timeline("P", Fraction(1))
+        a = _fraction_timeline("A", Fraction(1, 5))
+        a.add_events(
+            [
+                {
+                    "id": "a_last",
+                    "event_type": "Note",
+                    "start": Fraction(1, 10),
+                    "end": Fraction(1, 5),
+                }
+            ]
+        )
+        b = _fraction_timeline("B", Fraction(7, 10))
+        b.add_events(
+            [
+                {
+                    "id": "b_first",
+                    "event_type": "Note",
+                    "start": 0,
+                    "end": Fraction(1, 10),
+                }
+            ]
+        )
+        b1 = _fraction_timeline("B1", Fraction(1, 10))
+        b1.add_events([{"id": "b1_start", "event_type": "Beat", "instant": 0}])
+        b.add_child(b1, offset=Fraction(1, 10))
+        parent.add_child(a, offset=Fraction(1, 10))
+        parent.add_child(b, offset=Fraction(3, 10))
+        return parent
+
+    @staticmethod
+    def _last_child() -> Timeline:
+        """``C`` [0, 1/10), the only child, with a Beat at its end."""
+        parent = _fraction_timeline("P", Fraction(1))
+        c = _fraction_timeline("C", Fraction(1, 10))
+        c.add_events(
+            [
+                {
+                    "id": "c_note",
+                    "event_type": "Note",
+                    "start": 0,
+                    "end": Fraction(1, 10),
+                },
+                {"id": "c_end", "event_type": "Beat", "instant": Fraction(1, 10)},
+            ]
+        )
+        parent.add_child(c, offset=0)
+        return parent
+
+    @pytest.mark.parametrize(
+        ("at", "found"),
+        [
+            (0.3, {"B": ["b_first"]}),
+            (Fraction(3, 10), {"B": ["b_first"]}),
+            (0.4, {"B1": ["b1_start"]}),
+            (Fraction(2, 5), {"B1": ["b1_start"]}),
+        ],
+        ids=[
+            "boundary-float",
+            "boundary-fraction",
+            "grandchild-float",
+            "grandchild-fraction",
+        ],
+    )
+    def test_a_boundary_of_two_siblings_is_counted_once(
+        self, at: Any, found: dict[str, list[str]]
+    ) -> None:
+        assert _found(self._adjoining().get_events_at(at)) == found
+
+    @pytest.mark.parametrize(
+        ("query", "ids"),
+        [
+            ({"min_coord": 0.3}, ["b_first", "b1_start"]),
+            ({"max_coord": 0.3}, ["a_last"]),
+        ],
+        ids=["min", "max"],
+    )
+    def test_bounds_place_the_boundary_as_the_position_does(
+        self, query: dict[str, Any], ids: list[str]
+    ) -> None:
+        assert _ids(self._adjoining().get_events(**query)) == ids
+
+    @pytest.mark.parametrize("at", [0.1, Fraction(1, 10)], ids=["float", "fraction"])
+    def test_the_end_of_a_last_child_is_held(self, at: Any) -> None:
+        assert _found(self._last_child().get_events_at(at)) == {"C": ["c_end"]}
+
+    @pytest.mark.parametrize(
+        ("query", "ids"),
+        [({"min_coord": 0.1}, ["c_end"]), ({"max_coord": 0.1}, ["c_note"])],
+        ids=["min", "max"],
+    )
+    def test_bounds_at_the_end_of_a_last_child(
+        self, query: dict[str, Any], ids: list[str]
+    ) -> None:
+        assert _ids(self._last_child().get_events(**query)) == ids
+
+    def test_a_child_is_reached_with_the_position_as_written(self) -> None:
+        parent = _fraction_timeline("parent", Fraction(1))
+        child = _fraction_timeline("child", Fraction(1, 2))
+        child.add_events([{"id": "downbeat", "event_type": "Beat", "instant": 0}])
+        parent.add_child(child, offset=Fraction(1, 10))
+
+        assert _found(parent.get_events_at(0.1)) == {"child": ["downbeat"]}
+
+
+@pytest.mark.parametrize("number_type", ["float", "fraction", "int"])
+class TestNonFinitePositions:
+    """An infinite float is an ordinary double; NaN names no position."""
+
+    @pytest.mark.parametrize(
+        ("query", "ids"),
+        [
+            ({"max_coord": math.inf}, ["one", "two"]),
+            ({"min_coord": -math.inf}, ["one", "two"]),
+            ({"min_coord": math.inf}, []),
+            ({"max_coord": -math.inf}, []),
+        ],
+        ids=["max-inf", "min-minus-inf", "min-inf", "max-minus-inf"],
+    )
+    def test_infinite_bounds(
+        self, number_type: str, query: dict[str, Any], ids: list[str]
+    ) -> None:
+        assert _ids(_two_notes(number_type).get_events(**query)) == ids
+
+    def test_an_infinite_position_finds_nothing(self, number_type: str) -> None:
+        assert _two_notes(number_type).get_events_at(math.inf) == {}
+
+    @pytest.mark.parametrize(
+        "query",
+        [{"min_coord": math.nan}, {"max_coord": math.nan}],
+        ids=["min", "max"],
+    )
+    def test_a_nan_bound_is_refused(
+        self, number_type: str, query: dict[str, Any]
+    ) -> None:
+        with pytest.raises(ValueError) as refusal:
+            _two_notes(number_type).get_events(**query)
+
+        assert str(refusal.value) == "NaN names no position: it compares with no cell"
+
+    def test_a_nan_position_is_refused(self, number_type: str) -> None:
+        with pytest.raises(ValueError) as refusal:
+            _two_notes(number_type).get_events_at(math.nan)
+
+        assert str(refusal.value) == "NaN names no position: it compares with no cell"
+
+
+class TestGetEventsIsACopy:
+    """``get_events`` never hands out the timeline's own table."""
+
+    def test_extending_the_result_leaves_the_timeline(self) -> None:
+        timeline = _fraction_timeline("short", Fraction(4))
+        timeline.add_events([{"id": "n", "event_type": "Note", "start": 0, "end": 1}])
+        late = type(timeline.events).from_dicts(
+            [{"id": "late", "event_type": "Note", "start": 10, "end": 11}],
+            TimeUnit.quarters,
+            NumberType.fraction,
+        )
+
+        result = timeline.get_events()
+        assert result is not timeline.events
+        result.extend(late)
+
+        assert _ids(result) == ["n", "late"]
+        assert _ids(timeline.get_events()) == ["n"]
+        assert timeline.length.value == Fraction(4)

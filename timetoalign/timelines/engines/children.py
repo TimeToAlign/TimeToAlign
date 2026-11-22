@@ -51,6 +51,33 @@ _MEASURE_VIEWS = (FloatingMeasureMap, MeasureNumberMap, MeasureBeatMap)
 """The conversion maps reading a measure map that a child rebuilds over its slice."""
 
 
+def placed_on(
+    value: CoordinateValue,
+    offsets: Sequence[CoordinateValue],
+    *,
+    as_float: bool,
+) -> CoordinateValue:
+    """*value*, a position on a descendant, placed on the axis of an ancestor.
+
+    The offsets of the path are added one at a time from the innermost out,
+    exactly where they are exact, as ``get_events`` shifts a descendant's rows
+    onto the axis queried, so both place a position on the same number.
+
+    Args:
+        value: A position on the descendant's own axis.
+        offsets: The offsets of the path from the ancestor down to the
+            descendant, outermost first.
+        as_float: Whether the position is compared as a key, with a float
+            query: then its double is returned.
+
+    Returns:
+        The position on the ancestor's axis, its double where *as_float*.
+    """
+    for offset in reversed(offsets):
+        value = shift_number(value, offset, subtract=False)
+    return float(value) if as_float else value
+
+
 class _MeasureSlice(NamedTuple):
     """The measure structure a child takes from its parent."""
 
@@ -152,7 +179,11 @@ class ChildrenMixin:
         )
 
     def _holds_position(
-        self, value: CoordinateValue, *, end_held: bool | None = None
+        self,
+        value: CoordinateValue,
+        *,
+        offsets: Sequence[CoordinateValue] = (),
+        end_held: bool | None = None,
     ) -> bool:
         """Whether a position carried down from a parent lies on this timeline.
 
@@ -170,8 +201,18 @@ class ChildrenMixin:
         that child. A timeline of unbounded extent holds everything from 0
         on.
 
+        A position written as a float is a key: it is compared with the
+        doubles of this timeline's start and end, never subtracted from an
+        exact boundary, since a float difference can put a key on a boundary
+        just inside it. With *offsets* the key stays on the axis it was
+        written on and the boundaries are placed there exactly first.
+
         Args:
-            value: A position on this timeline's own axis.
+            value: A position on this timeline's own axis, or, with
+                *offsets*, on the axis of the ancestor they lead down from.
+            offsets: The offsets of the path from that ancestor down to this
+                timeline, outermost first; none for a position on this
+                timeline's own axis.
             end_held: Whether the end is held; by default as
                 :attr:`_holds_own_end` says. A position asked of this timeline
                 itself holds its end whatever its siblings do, so the span is
@@ -180,14 +221,15 @@ class ChildrenMixin:
         Returns:
             Whether the position lies on this timeline.
         """
-        if value < 0:
+        if value < placed_on(0, offsets, as_float=isinstance(value, float)):
             return False
         extent = self._extent
-        if extent is None or value < extent:
+        if extent is None:
             return True
-        return value == extent and (
-            self._holds_own_end if end_held is None else end_held
-        )
+        end = placed_on(extent, offsets, as_float=isinstance(value, float))
+        if value < end:
+            return True
+        return value == end and (self._holds_own_end if end_held is None else end_held)
 
     def _holds_column(
         self,

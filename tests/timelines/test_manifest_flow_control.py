@@ -273,19 +273,19 @@ def test_only_a_repeat_end_has_a_repeat_count() -> None:
             [_element("dc", "jump_from", "da_capo", 8, repeat_count=2)],
             "schema",
             "#/timelines/0/flow_control/0/repeat_count",
-            "2 should not be valid under {}",
+            "the key 'repeat_count' is not admitted here",
         ),
         (
             [_element("s", "jump_to", "segno", 4, target="s")],
             "schema",
             "#/timelines/0/flow_control/0/target",
-            "'#s' should not be valid under {}",
+            "the key 'target' is not admitted here",
         ),
         (
             [_element("f", "flow_marker", "fine", 4, repeat_count=1)],
             "schema",
             "#/timelines/0/flow_control/0/repeat_count",
-            "1 should not be valid under {}",
+            "the key 'repeat_count' is not admitted here",
         ),
         (
             [_element("ds", "jump_from", "dal_segno", 8, target="nowhere")],

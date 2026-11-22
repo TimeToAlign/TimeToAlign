@@ -1801,6 +1801,46 @@ This file also carries the `__init_subclass__` parity-check failure-path test (`
 
 ---
 
+### `test_pitch_fields.py` - A null pitch row stays null
+
+**Claim:** every vectorized answer of a pitch field (`fifths`, `pitch_class`,
+`midi_number`, `octave`, `get()`, and the struct `convert_to` builds) is null
+on exactly the rows where the field's own column is null, and the stored
+value everywhere else.
+
+**Why the parity samples above did not see it:** a struct column built from
+scalars (`build_struct_array`) writes null children under a null row, so
+reading the children directly happens to give null. A loader's column does
+not: Arrow lets a null row's children hold anything, and the ms3 notes
+loader writes `""` for the step and `0` for alter and octave there. Read
+child by child, such a row answered `fifths` 0 (C), `midi_number` 12 (C0),
+`get()` `"0"`, and `convert_to` turned it into a valid struct.
+
+**Fixture:** each column is built with `pa.StructArray.from_arrays(...,
+mask=...)`, its null row holding exactly those placeholders (`""`, `0`;
+`0` for a MIDI pitch, a pitch class and a generic step), so the placeholder
+is a real pitch (C, MIDI 0) and a wrong answer is a plausible number, never
+an error. The spelled rows cover a flat, a double sharp and a negative
+octave; expected values from the line of fifths (C = 0, step F −1 … B 5,
+sharp +7, flat −7) and MIDI `(octave + 1)·12 + semitone + alter`:
+
+| Pitch | fifths | pitch class | MIDI |
+|---|---|---|---|
+| B♭3 | 5 − 7 = −2 | 10 | 48 + 11 − 1 = 58 |
+| F♯♯4 | −1 + 14 = 13 | 7 | 60 + 5 + 2 = 67 |
+| C-1 | 0 | 0 | 0 |
+
+`SpecificPitchClassField` (B♭, null, F♯♯), `EnharmonicPitchField` and
+`MidiPitchField` (MIDI 58, null, 67: pitch class 10, 7; octave 3, 4),
+`EnharmonicPitchClassField` (10, null), `GenericPitchField` (step 6 octave
+3 = `"B3"`, null) and `GenericPitchClassField` (6 = `"B"`, null) are read
+the same way, and every `convert_to` result is compared as a Python list,
+so the null row must come back `None`, not a struct of nulls. A slice
+starting on the null row (`[1:]`) repeats the `SpecificPitchField` case to
+show the null is read at the row's own offset.
+
+---
+
 ### `test_scalar_repr.py` - Uniform scalar `repr()` / `str()`
 
 **Purpose:** Pins the one uniform representation rule across every scalar:

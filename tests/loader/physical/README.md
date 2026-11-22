@@ -85,7 +85,7 @@ test on such a count can tell the two apart. What must hold:
 - a 15-sample WAV at 44100 Hz (written by the test file's own
   `create_wav_file`) loads as exactly 15 samples with `backend == "soundfile"`,
   and as exactly 15 with `backend == "wave"` when soundfile is reported as not
-  installed (the module's `_get_soundfile` patched to return `None`);
+  installed (`sys.modules["soundfile"]` set to `None`, so importing it fails);
 - three counts that the float round trip truncates load exactly through the
   default chain: **15**, the smallest affected count (`15 / 44100 * 44100` is
   `14.999999999999998`); **44109**, the first affected count past one second
@@ -171,6 +171,23 @@ afterwards **is** captured, since a muting that leaked would silence the rest
 of the session; and a WAV file that loads successfully is equally silent and
 still reports its exact sample count, which is what distinguishes muting the
 probe from muting the loader.
+
+### `test_eep_notes.py`
+
+`EepNotesLoader` reads EEP's `.notes` files, whose pitch names are ASCII (`Eb5`, `C#4`). It
+writes them as the score loaders do, accidentals `♯`/`♭` (`tests/core/README.md`, "Pitch
+names in one spelling"), so EEP names and score names compare equal. `RepoVizzLoader` reads
+the same files through this loader.
+
+* **Synthetic file.** One `*_align_vln1.notes` file in `tmp_path` holding, in row order,
+  `Eb5`, `rest`, the chord `G3,D4,Bb4,F#5`, `C#4` and `Fb3`. The `pitch` column must be
+  exactly `["E♭5", "rest", "G3,D4,B♭4,F♯5", "C♯4", "F♭3"]` (a chord respelled name by name,
+  `rest` kept), the `name` column the same, and `staff` 1 on every row.
+* **The EEP recording.** The four `.notes` files of `StringQuartetEEP_I_Normal` load 4026
+  rows. Their names hold 837 flats and 118 sharps (counted in the files' tokens: `Eb` 413,
+  `Ab` 200, `Bb` 177, `Db` 43, `Gb` 2, `Fb` 2; `F#` 79, `C#` 26, `G#` 9, `D#` 4), so the
+  loaded `pitch` column holds exactly 837 `♭` and 118 `♯`, and no `#` and no `b` after a step
+  letter.
 
 ### `test_repovizz_loader.py` (27 tests)
 

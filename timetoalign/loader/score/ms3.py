@@ -13,10 +13,12 @@ from typing import TYPE_CHECKING, Any
 from typing_extensions import Self
 
 from timetoalign.core import NumberType, TimeUnit
+from timetoalign.core.events import canonical_pitch_name
 from timetoalign.core.time import (
     coordinate_to_struct,
     rational_to_struct,
 )
+from timetoalign.loader._optional import missing_dependency
 
 from .base import ScoreLoader
 from .store import ScoreStore
@@ -290,11 +292,10 @@ class Ms3Loader(ScoreLoader):
         else:
             try:
                 import ms3
-            except ImportError:
+            except ModuleNotFoundError as error:
                 raise ImportError(
-                    "Ms3Loader requires 'ms3' for non-measure facets. "
-                    "Install with pip install ms3"
-                )
+                    missing_dependency("Ms3Loader", error.name, "ms3")
+                ) from error
             df = ms3.load_tsv(str(source))
 
         # Determine category from filename
@@ -586,9 +587,8 @@ class Ms3Loader(ScoreLoader):
                 step = name[0].upper() if name else "C"
                 alter = 0
                 if len(name) > 1:
-                    alter = (
-                        name[1:].count("#") - name[1:].count("b") - name[1:].count("-")
-                    )
+                    # A "-" after the step is a negative octave (C-1), never a flat.
+                    alter = name[1:].count("#") - name[1:].count("b")
 
                 specific_pitch = {
                     "step": step,
@@ -618,7 +618,12 @@ class Ms3Loader(ScoreLoader):
 
             note_rows.append(
                 {
-                    "name": str(row.get("name", "")),
+                    # An empty name cell states no name: null, never "nan".
+                    "name": (
+                        canonical_pitch_name(str(row["name"]))
+                        if pd.notna(row.get("name"))
+                        else None
+                    ),
                     "temporal_type": (
                         "interval" if (dur_qb is not None and dur_qb > 0) else "instant"
                     ),
@@ -670,7 +675,7 @@ class Ms3Loader(ScoreLoader):
                 }
             )
 
-        notes_data = getattr(NoteEventData, "from_" + "dicts")(
+        notes_data = NoteEventData.from_dicts(
             note_rows,
             unit=TimeUnit.quarters,
             number_type=NumberType.fraction,
@@ -1089,7 +1094,7 @@ class Ms3Loader(ScoreLoader):
                 }
             )
 
-        annotations_data = getattr(AnnotationEventData, "from_" + "dicts")(
+        annotations_data = AnnotationEventData.from_dicts(
             annotation_rows,
             unit=TimeUnit.quarters,
             number_type=NumberType.fraction,
@@ -1200,7 +1205,7 @@ class Ms3Loader(ScoreLoader):
                 }
             )
 
-        controls_data = getattr(ControlEventData, "from_" + "dicts")(
+        controls_data = ControlEventData.from_dicts(
             control_rows,
             unit=TimeUnit.quarters,
             number_type=NumberType.fraction,

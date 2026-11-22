@@ -187,7 +187,8 @@ class ScoreMidiLoader(MidiLoader):
                 "end": int(row["onset_div"] + row["duration_div"]),
                 "duration": int(row["duration_div"]),
                 "pitch": int(row["pitch"]),
-                "velocity": 64,  # Default for score
+                # A score states no velocity.
+                "velocity": None,
                 "voice": int(row["voice"]) if "voice" in row.dtype.names else None,
                 "staff": int(row["staff"]) if "staff" in row.dtype.names else None,
                 # Part ID is tricky in unified array, but partitura usually encodes it in ID

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import struct
+import sys
 from fractions import Fraction
 from pathlib import Path
 
@@ -95,7 +96,7 @@ def create_wav_file(
 @pytest.fixture
 def no_soundfile(monkeypatch: pytest.MonkeyPatch) -> None:
     """Report soundfile as not installed, so the loader's next backends answer."""
-    monkeypatch.setattr(audio_module, "_get_soundfile", lambda: None)
+    monkeypatch.setitem(sys.modules, "soundfile", None)
 
 
 @pytest.fixture

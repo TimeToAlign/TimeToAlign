@@ -12,6 +12,10 @@ If you attempt to import a loader whose dependency is not installed, an
 :exc:`ImportError` is raised with installation instructions.
 """
 
+from __future__ import annotations
+
+from timetoalign.loader._optional import import_optional, resolve_optional
+
 from .base import MidiLoader
 from .constants import CC_PURPOSE, MidiEventType
 from .events import MidiEventData, ScoreMidiEventData
@@ -26,20 +30,12 @@ __all__ = [
     "ScoreMidiEventData",
 ]
 
-# ---------------------------------------------------------------------------
-# Optional loader backends
-# ---------------------------------------------------------------------------
+# Optional loader backends: importing the package never fails because one
+# backend's dependency is absent; asking for that backend names its extra.
+_OPTIONAL_LOADERS = {
+    "PerformanceMidiLoader": ("performance", "midi"),
+    "ScoreMidiLoader": ("score", "partitura"),
+}
 
-try:
-    from .performance import PerformanceMidiLoader
-
-    __all__.append("PerformanceMidiLoader")
-except ImportError:
-    pass
-
-try:
-    from .score import ScoreMidiLoader
-
-    __all__.append("ScoreMidiLoader")
-except ImportError:
-    pass
+__all__ += import_optional(__name__, _OPTIONAL_LOADERS, globals())
+__getattr__ = resolve_optional(__name__, _OPTIONAL_LOADERS)

@@ -53,9 +53,10 @@ import pyarrow as pa
 from typing_extensions import Self
 
 from timetoalign.core import NumberType, TimeUnit
-from timetoalign.loader.base import EventLoader, LoadSourceResult
-from timetoalign.storage.events import EventData
+from timetoalign.loader.base import LoadSourceResult
 from timetoalign.storage.store import DictStore
+
+from ._tables import NormalisedTablesLoader
 
 module_logger = logging.getLogger(__name__)
 
@@ -286,7 +287,7 @@ def _detect_principal_tags(root: ET.Element, min_count: int = 2) -> list[str]:
 # region XmlLoader
 
 
-class XmlLoader(EventLoader):
+class XmlLoader(NormalisedTablesLoader):
     """Configurable XML normaliser producing flat ``pa.Table`` objects.
 
     ``XmlLoader`` parses one or more XML files and normalises their
@@ -488,31 +489,11 @@ class XmlLoader(EventLoader):
         Raises:
             KeyError: If *tag* was not normalised.
         """
-        try:
-            return self._store[tag]._table
-        except KeyError:
-            raise KeyError(
-                f"No table for tag {tag!r}. Available: {list(self._store.keys())}"
-            ) from None
-
-    def keys(self) -> list[str]:
-        """Return the list of available table tag names."""
-        return list(self._store.keys())
+        return self._table(tag, "tag")
 
     # endregion
 
     # region Internal
-
-    def _wrap_table(self, table: pa.Table) -> EventData:
-        """Wrap a raw ``pa.Table`` in an ``EventData`` for store compatibility.
-
-        Args:
-            table: The normalised PyArrow table.
-
-        Returns:
-            An ``EventData`` wrapping the table.
-        """
-        return EventData(table, self._unit, self._number_type)
 
     def _process_xml(self, root: ET.Element) -> None:
         """Process a parsed XML root into normalised tables.
@@ -588,10 +569,6 @@ class XmlLoader(EventLoader):
     # endregion
 
     # region Magic Methods
-
-    def __len__(self) -> int:
-        """Return the number of normalised tables."""
-        return len(self._store)
 
     def __repr__(self) -> str:
         entries = ", ".join(

@@ -1,7 +1,8 @@
-"""Ms3Loader: companion discovery, empty note cells, measures it cannot read.
+"""Ms3Loader: companion discovery, empty note cells, pitch names, measures it cannot read.
 
 Validation logic: ``tests/loader/score/README.md``, "MS3 facet discovery",
-"MS3 empty note cells" and "MS3 measures without a count or a length".
+"MS3 empty note cells", "MS3 pitch names" and "MS3 measures without a count or a
+length".
 """
 
 from __future__ import annotations
@@ -189,6 +190,32 @@ def test_an_empty_octave_states_no_specific_pitch(tmp_path):
         {"step": "F", "alter": 0, "octave": 4, "cents": 0.0},
         None,
     ]
+
+
+# ASCII accidentals, a negative octave, a double sharp, an empty name cell.
+NAMED_NOTES = (
+    "mc\tmn\tquarterbeats\tduration_qb\tduration\tmidi\tname\toctave\n"
+    "1\t1\t0\t1.0\t1/4\t58\tBb3\t3\n"
+    "1\t1\t1\t1.0\t1/4\t66\tF#4\t4\n"
+    "1\t1\t2\t1.0\t1/4\t0\tC-1\t-1\n"
+    "1\t1\t3\t1.0\t1/4\t67\tF##4\t4\n"
+    "2\t2\t4\t1.0\t1/4\t60\t\t4\n"
+)
+
+
+def test_names_are_spelled_with_sharp_and_flat_signs_and_an_empty_one_is_null(
+    tmp_path,
+):
+    path = tmp_path / "p.notes.tsv"
+    path.write_text(NAMED_NOTES, encoding="utf-8")
+    table = _load(path).store.notes.table
+
+    assert table.column("name").to_pylist() == ["B♭3", "F♯4", "C-1", "F♯♯4", None]
+    assert table.column("midi").to_pylist() == [58, 66, 0, 67, 60]
+    pitches = table.column("specific_pitch").to_pylist()
+    assert [
+        None if p is None else (p["step"], p["alter"], p["octave"]) for p in pitches
+    ] == [("B", -1, 3), ("F", 1, 4), ("C", 0, -1), ("F", 2, 4), None]
 
 
 # Three 4/4 measures; each refusal case removes one cell (see "MS3 measures

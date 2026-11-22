@@ -1252,6 +1252,38 @@ stores `grouping` and `division` and derives the rest. The specimens:
 
 ---
 
+### `test_pitch_names.py` - Pitch names in one spelling
+
+Every loader writes a pitch name's accidentals as `♯` and `♭`, so names from two sources
+compare equal as strings. `canonical_pitch_name` (`core/events.py`) is the one respelling, its
+column form `canonical_pitch_names` the one the loaders and the matching helpers call.
+
+The proof is a table of cases, each with one exact expected string:
+
+| Input | Output | What it shows |
+|---|---|---|
+| `Bb3` | `B♭3` | an ASCII flat |
+| `F#4` | `F♯4` | an ASCII sharp |
+| `F##4` | `F♯♯4` | a double sharp is two signs, as `SpecificPitch.get` writes it |
+| `Bbb2` | `B♭♭2` | a double flat, the step `B` kept apart from the signs |
+| `F#♯4` | `F♯♯4` | mixed spellings of one sign |
+| `C#` | `C♯` | no octave |
+| `C-1` | `C-1` | a negative octave is no flat |
+| `Cb-1` | `C♭-1` | a flat before a negative octave |
+| `eb5` | `e♭5` | the step is kept as written |
+| `bb3` | `b♭3` | a step written `b` stays a step |
+| `E♭5`, `C4` | unchanged | already canonical, no accidental |
+| `""`, `rest` | unchanged | no pitch name |
+
+A reading that counted `-` as a flat fails on `C-1`, one that respelled every `b` of the string
+fails on `bb3`, and one that rewrote the step fails on `eb5`. Every output
+written with an octave is read back by `SpecificPitch.from_string` to the pitch the input
+names, so the spelling is the library's own.
+
+The column form is checked on a column holding a null, `rest`, a chord `G3,D4,Bb4,F#5` (with
+`sep=","`: `G3,D4,B♭4,F♯5`) and a repeated name, against the scalar function cell by cell, and
+the input column is left unchanged.
+
 ### `test_ids.py` - Scoped ID System
 
 **Purpose:** Validates the `ScopedId` class and the stateless generator of

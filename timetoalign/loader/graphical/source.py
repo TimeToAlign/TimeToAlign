@@ -14,7 +14,10 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import ModuleType
 from typing import TYPE_CHECKING, Any
+
+from timetoalign.loader._optional import missing_dependency
 
 module_logger = logging.getLogger(__name__)
 
@@ -27,16 +30,25 @@ if TYPE_CHECKING:
 
 
 def _get_pymupdf() -> "pymupdf":
-    """Lazy import of pymupdf with helpful error message."""
+    """Lazy import of pymupdf, naming the extra that installs it."""
     try:
         import pymupdf
-
-        return pymupdf
-    except ImportError as e:
+    except ModuleNotFoundError as error:
         raise ImportError(
-            "pymupdf is required for graphical timeline loading. "
-            "Install it with: pip install pymupdf"
-        ) from e
+            missing_dependency("ImageSource", error.name, "graphical")
+        ) from error
+    return pymupdf
+
+
+def _image_draw() -> ModuleType:
+    """Lazy import of pillow's ``ImageDraw``, naming the extra that installs it."""
+    try:
+        from PIL import ImageDraw
+    except ModuleNotFoundError as error:
+        raise ImportError(
+            missing_dependency("Drawing on an ImageSource", error.name, "graphical")
+        ) from error
+    return ImageDraw
 
 
 # region ImageMetadata
@@ -371,12 +383,7 @@ class ImageSource:
         Returns:
             New ImageSource with rectangle drawn.
         """
-        try:
-            from PIL import ImageDraw
-        except ImportError as e:
-            raise ImportError(
-                "pillow is required for drawing. Install with: pip install pillow"
-            ) from e
+        ImageDraw = _image_draw()
 
         # Convert to PIL
         pil_img = self.to_pil()
@@ -436,12 +443,7 @@ class ImageSource:
         Returns:
             New ImageSource with line drawn.
         """
-        try:
-            from PIL import ImageDraw
-        except ImportError as e:
-            raise ImportError(
-                "pillow is required for drawing. Install with: pip install pillow"
-            ) from e
+        ImageDraw = _image_draw()
 
         pil_img = self.to_pil()
         if pil_img.mode not in ("RGB", "RGBA"):
@@ -483,12 +485,7 @@ class ImageSource:
         Returns:
             New ImageSource with path drawn.
         """
-        try:
-            from PIL import ImageDraw
-        except ImportError as e:
-            raise ImportError(
-                "pillow is required for drawing. Install with: pip install pillow"
-            ) from e
+        ImageDraw = _image_draw()
 
         pil_img = self.to_pil()
         if pil_img.mode not in ("RGB", "RGBA"):

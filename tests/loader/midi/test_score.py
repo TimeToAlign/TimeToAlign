@@ -162,6 +162,8 @@ class TestScoreMidiLoader:
         # Check events have score info
         df = loader.events.to_dataframe()
         assert not df["pitch"].isnull().all()
+        # A score states no velocity.
+        assert loader.events.table.column("velocity").null_count == 3751
 
     def test_load_empty_raises(self, tmp_path: Path) -> None:
         """Loading invalid/empty file raises error."""

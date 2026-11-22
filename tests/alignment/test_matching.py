@@ -1,6 +1,7 @@
-"""Note matching: sounding onsets of an ms3 notes table, and claims from matches.
+"""Note matching: sounding onsets of an ms3 notes table, claims from matches, spellings.
 
-Validation logic: ``tests/alignment/README.md``, "Note Onsets for Matching".
+Validation logic: ``tests/alignment/README.md``, "Note Onsets for Matching" and
+"Matching across spellings".
 """
 
 from __future__ import annotations
@@ -14,15 +15,20 @@ from timetoalign.alignment import AlignmentBundle
 from timetoalign.alignment.matching import (
     match_notes_by_attributes,
     prepare_abc_notes_for_matching,
+    prepare_eep_notes_for_matching,
 )
 from timetoalign.core import Coordinate, Provenance, TimeUnit
 from timetoalign.core.time import struct_to_rational
+from timetoalign.loader.physical.eep_notes import INSTRUMENT_TO_STAFF, EepNotesLoader
+from timetoalign.loader.score.ms3 import Ms3Loader
 from timetoalign.maps import SamplesToSeconds
 from timetoalign.timelines import (
     ContinuousLogicalTimeline,
     DiscretePhysicalTimeline,
     TimelineGroup,
 )
+
+from .conftest import SCORE_DIR
 
 IDS = ["a", "b", "c", "d", "e", "f", "g"]
 # untied, a chain 1 0 0 -1, a two-note tie 1 -1
@@ -309,6 +315,112 @@ def test_matching_before_bundling():
     stamp = bundle.get_matchstamp_at(44100, "dpt_1")
     assert stamp.get_coordinate_for("clt_1", format="coordinate") == Coordinate(
         Fraction(3, 2), TimeUnit.quarters
+    )
+
+
+# region Matching across spellings
+
+ASCII = ["Eb5", "F#4", "C4"]
+SIGNS = ["E♭5", "F♯4", "C4"]
+
+
+def _performance_frame(names: list[str]) -> pd.DataFrame:
+    return pd.DataFrame({"start": [0.5, 1.0, 1.5], "pitch": names, "staff": [1] * 3})
+
+
+def _score_frame(names: list[str]) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "name": names,
+            "staff": [1] * 3,
+            "tied": [None] * 3,
+            "quarterbeats_playthrough": ["0", "1", "2"],
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    ("performance", "score"),
+    [(ASCII, SIGNS), (SIGNS, ASCII)],
+    ids=["ascii-eep", "ascii-tsv"],
+)
+def test_names_spelled_either_way_match(performance, score):
+    eep = prepare_eep_notes_for_matching(_performance_frame(performance))
+    abc = prepare_abc_notes_for_matching(_score_frame(score))
+
+    result = match_notes_by_attributes(
+        eep,
+        abc,
+        ["pitch", "staff"],
+        target_coord_column="quarterbeats_playthrough",
+        create_claims=False,
+    )
+
+    assert eep["pitch"].tolist() == SIGNS
+    assert abc["pitch"].tolist() == SIGNS
+    assert (result.n_matched, result.n_unmatched_source, result.n_unmatched_target) == (
+        3,
+        0,
+        0,
+    )
+
+
+BEETHOVEN = SCORE_DIR / "beethoven_op18-4iv_multimodal"
+EEP_FILES = sorted((BEETHOVEN / "StringQuartetEEP_I_Normal").glob("*_align_*.notes"))
+SCORE_TSV = BEETHOVEN / "ABC" / "n04op18-4_04_unfolded.notes.tsv"
+
+
+def _eep_read_with_pandas() -> pd.DataFrame:
+    frames = []
+    for path in EEP_FILES:
+        frame = pd.read_csv(
+            path, sep=r"\s+", header=None, names=["start", "end", "pitch"]
+        )
+        frame["staff"] = INSTRUMENT_TO_STAFF[path.stem.rsplit("_", 1)[1]]
+        frames.append(frame)
+    return pd.concat(frames, ignore_index=True)
+
+
+def _eep_loaded() -> pd.DataFrame:
+    loader = EepNotesLoader()
+    loader.load(*EEP_FILES)
+    return loader.events.to_dataframe()
+
+
+def _score_read_with_pandas() -> pd.DataFrame:
+    return prepare_abc_notes_for_matching(pd.read_csv(SCORE_TSV, sep="\t"))
+
+
+def _score_loaded() -> pd.DataFrame:
+    notes = Ms3Loader.from_file(SCORE_TSV).store.notes.to_dataframe()
+    return prepare_abc_notes_for_matching(notes, coord_column="start").rename(
+        columns={"start": "quarterbeats_playthrough"}
+    )
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize(
+    ("eep", "score"),
+    [
+        (_eep_loaded, _score_read_with_pandas),
+        (_eep_loaded, _score_loaded),
+        (_eep_read_with_pandas, _score_loaded),
+    ],
+    ids=["loaded-eep-pandas-tsv", "loaded-eep-ms3", "pandas-eep-ms3"],
+)
+def test_the_recording_matches_the_score_whatever_the_spelling(eep, score):
+    result = match_notes_by_attributes(
+        prepare_eep_notes_for_matching(eep()),
+        score(),
+        ["pitch", "staff"],
+        target_coord_column="quarterbeats_playthrough",
+        create_claims=False,
+    )
+
+    assert (result.n_matched, result.n_unmatched_source, result.n_unmatched_target) == (
+        3741,
+        15,
+        10,
     )
 
 

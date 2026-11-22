@@ -186,30 +186,60 @@ def canonical_pitch_name(name: str) -> str:
     """Respell the accidentals of a pitch name with ``♯`` and ``♭``.
 
     ``"Bb3"`` becomes ``"B♭3"``, ``"F##4"`` ``"F♯♯4"`` and ``"C#"`` ``"C♯"``,
-    the spelling :meth:`SpecificPitch.get` writes. Only the signs after the
-    step letter change: the step and the octave stay as written (``"C-1"`` is
-    C in octave -1 and stays), and a string that is no pitch name (``""``,
-    ``"rest"``) is returned unchanged.
+    the spelling :meth:`SpecificPitch.get` writes. The name is read as
+    :meth:`SpecificPitch.from_string` reads it: whitespace around it is
+    ignored and the rest must be one pitch name as a whole. Only the signs
+    after the step letter change: the step, the octave and the surrounding
+    whitespace stay as written (``"C-1"`` is C in octave -1 and stays,
+    ``" Bb3"`` becomes ``" B♭3"``), and a string that is no pitch name
+    (``""``, ``"rest"``, ``"G3, Bb4"``) is returned unchanged.
 
     Args:
         name: A pitch name with or without an octave.
 
     Returns:
         The name with every accidental written ``♯`` or ``♭``.
+
+    Raises:
+        TypeError: If ``name`` is not a string.
     """
-    match = _PITCH_LABEL_RE.match(name)
+    if not isinstance(name, str):
+        raise TypeError(
+            f"A pitch name is a string, not {type(name).__name__}: {name!r}"
+        )
+    core = name.strip()
+    match = _PITCH_LABEL_RE.fullmatch(core)
     if match is None or not match.group(2):
         return name
     step, signs, octave = match.groups()
     sign = "♯" if signs[0] in ("#", "♯") else "♭"
-    return f"{step}{sign * len(signs)}{octave or ''}"
+    start, end = len(name) - len(name.lstrip()), len(name.rstrip())
+    leading, trailing = name[:start], name[end:]
+    return f"{leading}{step}{sign * len(signs)}{octave or ''}{trailing}"
+
+
+def _respelled_cell(value: Any, sep: str | None) -> Any:
+    """Respell one cell of a name column; a cell holding no string is kept."""
+    if not isinstance(value, str):
+        return value
+    if sep is None:
+        return canonical_pitch_name(value)
+    return sep.join(canonical_pitch_name(part) for part in value.split(sep))
 
 
 def canonical_pitch_names(names: pd.Series, *, sep: str | None = None) -> pd.Series:
     """Respell a column of pitch names with :func:`canonical_pitch_name`.
 
-    Each distinct string is respelled once, so the cost follows the number of
-    distinct names, not of rows. A cell holding no string (a null) is kept.
+    Each distinct string is respelled once and the column is rewritten by
+    looking its values up, so the cost follows the number of distinct names,
+    not of rows. A null stays null, and the column keeps its type:
+
+    * ``object``, ``str`` and the other string types: the same type, each
+      name replaced by its respelling;
+    * ``category``: a categorical of the respelled categories, in their
+      order; two categories that respell to one name become one category;
+    * an Arrow dictionary type: the same type, its dictionary respelled and
+      merged in the same way.
 
     Args:
         names: The column of pitch names.
@@ -219,15 +249,65 @@ def canonical_pitch_names(names: pd.Series, *, sep: str | None = None) -> pd.Ser
     Returns:
         A new column, the input left unchanged.
     """
+    import pandas as pd
+
+    dtype = names.dtype
+    if isinstance(dtype, pd.CategoricalDtype):
+        return _respelled_categorical(names, sep)
+    if isinstance(dtype, pd.ArrowDtype) and pa.types.is_dictionary(dtype.pyarrow_dtype):
+        return _respelled_dictionary(names, sep)
     respelled: dict[str, str] = {}
     for value in names.dropna().unique():
-        if not isinstance(value, str):
-            continue
-        parts = value.split(sep) if sep is not None else [value]
-        new = (sep or "").join(canonical_pitch_name(part) for part in parts)
-        if new != value:
+        new = _respelled_cell(value, sep)
+        if isinstance(value, str) and new != value:
             respelled[value] = new
-    return names.replace(respelled) if respelled else names.copy()
+    result = names.copy()
+    if respelled:
+        changed = names.isin(list(respelled))
+        result[changed] = names[changed].map(respelled)
+    return result
+
+
+def _respelled_categorical(names: pd.Series, sep: str | None) -> pd.Series:
+    """Respell the categories of a categorical column, merging equal results."""
+    import numpy as np
+    import pandas as pd
+
+    categories = names.cat.categories
+    new = [_respelled_cell(value, sep) for value in categories]
+    merged = pd.Index(new, dtype=categories.dtype).unique()
+    positions = merged.get_indexer(new)
+    codes = names.cat.codes.to_numpy()
+    new_codes = np.where(codes >= 0, positions[codes] if len(positions) else codes, -1)
+    respelled = pd.Categorical.from_codes(
+        new_codes, dtype=pd.CategoricalDtype(merged, ordered=names.cat.ordered)
+    )
+    return pd.Series(respelled, index=names.index, name=names.name)
+
+
+def _respelled_dictionary(names: pd.Series, sep: str | None) -> pd.Series:
+    """Respell the dictionary of an Arrow dictionary column, merging equal results."""
+    import pandas as pd
+
+    dictionary_type = names.dtype.pyarrow_dtype
+    column = pa.array(names.array)
+    chunks = []
+    for chunk in getattr(column, "chunks", [column]):
+        new = [_respelled_cell(value, sep) for value in chunk.dictionary.to_pylist()]
+        merged = list(dict.fromkeys(new))
+        position = {value: i for i, value in enumerate(merged)}
+        lookup = pa.array([position[value] for value in new], type=chunk.indices.type)
+        chunks.append(
+            pa.DictionaryArray.from_arrays(
+                pc.take(lookup, chunk.indices),
+                pa.array(merged, type=dictionary_type.value_type),
+                ordered=dictionary_type.ordered,
+            )
+        )
+    respelled = pa.chunked_array(chunks, type=dictionary_type)
+    return pd.Series(
+        pd.arrays.ArrowExtensionArray(respelled), index=names.index, name=names.name
+    )
 
 
 def _parse_octave_from_sp(sp: str | None, step: str) -> int:

@@ -2862,10 +2862,62 @@ only do so for the failures that mean it:
   over `[0, 50]` with `extrapolate="error"` on a 100-second `clock` gives
   the rows `25.0` and `75.0` the cells `25000.0` and null.
 
-The other catches of the bundle's transfer paths take the same narrowing
-(`ValueError`, and `KeyError` where a group conversion names a member);
-the existing transfer and closure tests pin that their answers are
-unchanged.
+The other six catches of the bundle's transfer paths take the same
+narrowing (`ValueError`, and `KeyError` where a group conversion names a
+member). Each is pinned twice: a callee replaced by one raising
+`RuntimeError("boom")` makes the public call raise it, from the frame and
+the statement of that catch (the traceback entry's statement is compared,
+so the error cannot have come through a neighbouring catch); and the
+documented error still gives the documented answer, with exact values that
+differ from the answer without the error, so the test sees which way the
+call went. The fixtures are the two groups of the cross-group tests
+(`score` 200 and `image` 400 in one group, `audio` and `midi` 100 in the
+other), with the claims named per case (`a ↔ b ×r`: `a` at 0, 50, 100
+matches `b` at 0, 50·r, 100·r), and a third member where a case needs a
+next one to fall back on (`image2` 400 beside `score`, `audio2` 100 beside
+`audio`):
+
+- `transfer`, the direct WarpMap (`score ↔ audio ×0.5`): `boom` from
+  `WarpMap._interpolate_float` propagates from
+  `return warp._interpolate_float(coord)`; a `ValueError` there answers
+  `None` (no other path is tried), where `transfer(60.0, "score",
+  "audio")` answers `30.0` without it.
+- `transfer`, through a member of the source's group (`image ↔ audio
+  ×0.5`, `image2 ↔ audio ×0.2`, so `score` has no WarpMap of its own):
+  `boom` from `_interpolate_float` propagates from
+  `return warp._interpolate_float(intermediate.value)`; the group refusing
+  the conversion to `image` (`KeyError` and `ValueError` each) skips it, so
+  `transfer(50.0, "score", "audio")` answers `20.0` through `image2`
+  (`score` 50 → `image2` 100 → `audio` 20) where it answers `50.0` through
+  `image` without it.
+- `transfer`, through a member of the target's group (`image ↔ audio
+  ×0.5`, `image ↔ audio2 ×0.2`; `transfer(50.0, "image", "midi")`, no
+  WarpMap names `midi` or starts at `score`/`image2`): `boom` from
+  `_interpolate_float` propagates from
+  `warped = warp._interpolate_float(coord)`; the group refusing the
+  conversion from `audio` (`KeyError` and `ValueError` each) skips it, so
+  the answer is `10.0` through `audio2` where it is `25.0` through `audio`.
+- the matchstamp closure's group conversion (`_get_group_timestamp`, no
+  claims): `boom` from `TimelineGroup.get_timestamp_at` propagates from
+  `ts = group.get_timestamp_at(`; a position outside the member (`300.0`
+  on `score`, length 200: the group's own `ValueError`) and a `KeyError`
+  from the group at `50.0` each give the stamp of `score` alone
+  (`{"score": 300.0}`, `{"score": 50.0}`), where `50.0` reaches
+  `image` `100.0` without the error.
+- the closure's WarpMap into another group, directly (`_transfer_to_group`;
+  `score ↔ audio ×0.5`, `score ↔ midi ×0.2`; `get_matchstamp_at(60.0,
+  "score")`, not on an anchor): `boom` from
+  `AlignmentBundle._transfer_coordinate` propagates from the statement
+  passing `coordinate`; a `ValueError` for `audio` skips it, so `midi` is
+  reached by its own WarpMap (`12.0`) and `audio` through the group
+  (`12.0`), where both are `30.0` without it.
+- the same, through a member of the source's group (`image ↔ audio ×0.5`,
+  `image ↔ midi ×0.2`; `get_matchstamp_at(40.0, "score")`, `score` 40 is
+  `image` 80, inside the claims' span `[0, 100]` on `image`, so no support
+  policy decides): `boom` from `_transfer_coordinate` propagates from the
+  statement passing `float(intermediate.value)`; a `ValueError` for
+  `audio` skips it, so `midi` and `audio` read `16.0`, where both are
+  `40.0` without it.
 
 ### `get_matchstamp_table` Conversion Columns
 

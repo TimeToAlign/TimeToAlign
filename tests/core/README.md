@@ -424,7 +424,7 @@ float: one answer per axis, not one per entry point. Each producer is asserted
 on the value *and* its Python type, since `Fraction(10, 1) == 10.0` compares
 equal and an equality-only check would pass on a wrong-typed axis.
 
-**The claims lane is a producer too.** A `MatchClaim` answers coordinate
+**MatchClaims are producers too.** A `MatchClaim` answers coordinate
 queries, and so does the `MatchStamp` built from it — the same position, twice.
 They disagreed. An event value read out of storage arrives as the cell's exact
 side (`{value: 2.5, numerator: 5, denominator: 2}`), the scalar
@@ -436,10 +436,10 @@ anchor reprs read `@5/2 seconds` and `@23/4 seconds`, and
 that declares float.
 
 An anchor coordinate is not a free-standing number; it is a position on a named
-timeline, so the axis decides, and it decides when the claim is made:
+timeline, so the axis decides, and it decides when the MatchClaim is made:
 `MatchClaim.from_events` receives the timelines and places each event's
-position on its timeline's axis (unit and declared number type). The fixture
-claims are made that way from the storage cells, so the claim holds `2.5`, not
+position on its timeline's axis (unit and declared number type). The fixture's
+MatchClaims are made that way from the storage cells, so the MatchClaim holds `2.5`, not
 `Fraction(5, 2)`, before any reader sees it. Both directions are asserted, for
 the reason given above:
 
@@ -461,18 +461,18 @@ what turns a float axis rational. A test built from hand-written literals would
 have gone green against the broken code, which is why the fixture reads its
 values out of an actual `EventData` table.
 
-A NOMATCH claim holds no coordinate (its event's position is the event's,
-on its timeline), so the anchors are the only claim coordinates the rule
-reaches.
+A NOMATCH MatchClaim holds no coordinate (its event's position is the
+event's, on its timeline), so the anchors are the only MatchClaim
+coordinates the rule reaches.
 
-**A claim is put on its axes when it is made, and only then.** A bundle reads
-its claims as they are held and converts nothing, so the conversion has one
-place: the claim's factory. A position in another unit goes through the
+**A MatchClaim is put on its axes when it is made, and only then.** A bundle
+reads its MatchClaims as they are held and converts nothing, so the
+conversion has one place: the MatchClaim's factory. A position in another unit goes through the
 timeline's C-Map there, and the result is written in the axis's declared type.
 Both directions of exactness are asserted, each on value and Python type
 (`160 == 160.0`):
 
-| Position given | Timeline (C-Map) | Claim holds |
+| Position given | Timeline (C-Map) | MatchClaim holds |
 |---|---|---|
 | `Coordinate(1/3, quarters)` | ticks, `int` (`TicksToQuarters(480)`) | `160` (`1/3 × 480`) |
 | `Coordinate(160, ticks)` | quarters, `fraction` (`QuartersToTicks(480)`) | `Fraction(1, 3)` |
@@ -481,16 +481,16 @@ Both directions of exactness are asserted, each on value and Python type
 End to end, `create_match_claims` projecting `1/3` quarters onto the ticks
 timeline adds a Projection at `160` and the MatchClaim table's frame reads
 `Fraction(1, 3)` in the quarters column and `160` in an `int64` ticks column:
-the cells are the claim's coordinates as held.
+the cells are the MatchClaim's coordinates as held.
 
-The other half of the rule is the refusal: `add_match_claims` refuses a claim
-whose coordinate is off its timeline's axis, whether in another unit (`1.5`
+The other half of the rule is the refusal: `add_match_claims` refuses a
+MatchClaim whose coordinate is off its timeline's axis, whether in another unit (`1.5`
 seconds on the samples timeline) or in the timeline's unit but another number
 type (a float `4.0` on the fraction quarters axis), with a `ValueError` naming
-the coordinate, the timeline and its axis. Each bad claim is sent in a batch
-with a valid one, and the bundle holds no claim afterwards: every check
-precedes any change. The valid claim is then added alone, so the refusal is
-the bad claim's and not the batch's.
+the coordinate, the timeline and its axis. Each bad MatchClaim is sent in a
+batch with a valid one, and the bundle holds no MatchClaim afterwards: every
+check precedes any change. The valid MatchClaim is then added alone, so the
+refusal is the bad MatchClaim's and not the batch's.
 
 #### Events are measured and found in the axis's number type
 
@@ -641,7 +641,7 @@ shaped.
 A frame holds one scalar per cell, never a dict, and its rows are the
 receiver's default row source: the timeline's two events (its boundaries
 only with `include_boundaries=True`), the group's common start and end, the
-bundle's three claim anchors — 2, 2 and 3 rows.
+bundle's three MatchClaim anchors — 2, 2 and 3 rows.
 
 **Cells are coordinate structs, and a frame cell is a scalar.** Every
 timestamp table — a timeline's, a group's, a bundle's match-stamp table —
@@ -1353,7 +1353,11 @@ it whole: a match anchored by `$` alone reads `Bb3\n` and drops its newline, one
 strip leaves ` Bb3` unrespelled although the parser reads it as B♭3, and one that matched a
 prefix would respell `G3, Bb4` into a string that names neither pitch. Every output written
 with an octave is read back by `SpecificPitch.from_string` to the pitch the input names, so the
-spelling is the library's own. A value that is not a string raises `TypeError` with exactly
+spelling is the library's own. The read-back is compared as the pitch's position on the line of
+fifths and its octave, `(fifths, octave)`, the model's own spelled pitch (C = 0, a sharp +7, a
+flat −7): `B♭3` → `(-2, 3)`, `F♯4` → `(6, 4)`, `F♯♯4` and `F#♯4` → `(13, 4)`, `B♭♭2` →
+`(-9, 2)`, `C-1` → `(0, -1)`, `C♭-1` → `(-7, -1)`, `e♭5` and `E♭5` → `(-3, 5)`, `b♭3` →
+`(-2, 3)`, `C4` → `(0, 4)`, and the three whitespace rows `(-2, 3)`. A value that is not a string raises `TypeError` with exactly
 `A pitch name is a string, not int: 60`.
 
 The column form is checked on a column holding a null, `rest`, a chord `G3,D4,Bb4,F#5` (with
@@ -1379,8 +1383,7 @@ name into the null. Two categories that respell to one name become one category:
 gives the values `B♭3`, `B♭3`, null, `F♯4` and the ordered categories `F♯4` < `B♭3`; as an
 `ArrowDtype(dictionary(int8, string))` column it gives the dictionary `B♭3`, `F♯4` and the
 indices 0, 0, null, 1. An Arrow column of two chunks with different dictionaries (`Bb3`, null
-and `F#4`, `Bb3`) gives `B♭3`, null, `F♯4`, `B♭3`. The function takes a pandas column only;
-a `pyarrow` array is not accepted.
+and `F#4`, `Bb3`) gives `B♭3`, null, `F♯4`, `B♭3`.
 
 ### `test_ids.py` - Scoped ID System
 
@@ -1605,14 +1608,43 @@ existing exact-value assertion in this file passes `conversion_maps=True`
 (or `False`) explicitly through `_matchstamp_with_maps`, so none depend on
 the getter default.
 
+**One spec, one answer** (`TestOneSpecOneAnswer`). A stamp's
+`conversion_maps` decides map by map whether a C-Map is enabled, through
+the one predicate every reader asks (`_conversion_map_enabled`): `get_unit`,
+`get_conversion_for` and the C-Map rows of the display. `TimeStamp.get_unit`
+re-read the spec unit by unit instead, so a spec enabling one map enabled
+every map into its unit. The probe is the case where the two readings part:
+a group of two 100-second clocks `left` and `right`, each with its own
+seconds→milliseconds map (`left-ms`, `right-ms`, `[0, 100] → [0, 100000]`),
+queried at 10 seconds on `left` with `conversion_maps=[left-ms]` (the map
+object). `get_unit(milliseconds, timeline_id="left")` answers `10000.0`
+(10 × 1000); `get_unit(milliseconds, timeline_id="right")` raises
+`KeyError` `No eligible conversion to 'milliseconds' on stamp from 'left'`,
+where the old reading answered `10000.0` through `right-ms`;
+`get_conversion_for("right-ms")` raises `KeyError` `Unknown conversion
+selector 'right-ms'`; and the display lists one C-Map row,
+`milliseconds  10000 milliseconds`, unqualified because no other row
+shares its label (exact `str()` asserted). The same three answers hold for
+the spec given as the selector string `"left-ms"`.
+
+Deciding per map also settles a spec that names one of two maps into one
+unit. The fixture clock gains a second seconds→milliseconds map,
+`clock-ms-offset` (`LinearMap` × 1000 + 5); at 25 seconds:
+
+| `conversion_maps` | `get_unit(milliseconds, format="float")` |
+|---|---|
+| `["clock-ms-offset"]` | `25005.0` (25 × 1000 + 5); it raised the ambiguity before |
+| `True` | `ValueError` `Timeline 'clock' has 2 conversion maps targeting 'milliseconds'; name the one you mean. Candidates: clock-ms (seconds_to_milliseconds), clock-ms-offset (seconds_to_milliseconds)` |
+| `False` | `KeyError` `No eligible conversion to 'milliseconds' on stamp from 'clock'` (the source is not asked to choose) |
+
 ### `test_stamp_display.py` - One display for both stamp classes
 
 **Purpose:** `TimeStamp` and `MatchStamp` share one implementation of
 `get_unit`, `get_conversion_for`, the C-Map rows, `__str__` and
 `_repr_html_`, all on `Stamp`; each class answers only the questions on
 which the two differ (how an error names the stamp, which unit map converts
-a timeline's coordinate, its coordinate rows, its claim rows, its header and
-its badge). Moving code may not change what anybody sees, so the proof is
+a timeline's coordinate, its coordinate rows, its MatchClaim rows, its
+header and its badge). Moving code may not change what anybody sees, so the proof is
 byte equality with the output from before the move, not a description of
 the output.
 
@@ -1631,30 +1663,100 @@ kind of row and every branch of both displays occurs at least once:
 | `matchstamp_bundle_maps` | a bundle stamp with its C-Map rows (right-aligned values) |
 | `matchstamp_bundle_no_maps` | the matchstamp getters' default `conversion_maps=False` |
 | `matchstamp_tags` | `stated`, `inferred` and untagged rows, an exact and a pixel value |
-| `matchstamp_crossfade` | interval-claim rows with their counterparts |
-| `matchstamp_loop_ambiguity` | two claim rows for one timeline that stays out of the coordinates |
-| `matchstamp_missing_counterpart` | a claim row reading `MISSING` |
+| `matchstamp_crossfade` | interval MatchClaim rows with their counterparts |
+| `matchstamp_loop_ambiguity` | two MatchClaim rows for one timeline that stays out of the coordinates |
+| `matchstamp_missing_counterpart` | a MatchClaim row reading `MISSING` |
 
 For each, `str()`, `_repr_html_()` and `repr()` are compared with string
-literals. **The literals were not written by hand**: they are the output of
-the same construction run once against the library as it stood before the
-shared implementation (its parent commit), pasted verbatim. A display that
-drifts by one space, one escaped character or one reordered row fails.
+literals.
 
-**Unexpected errors propagate.** A C-Map row is left out only where the map
-does not reach the coordinate, which a map states by raising `ValueError`
-(outside its domain, or `OutputNumberTypeError`, a `ValueError`, for a
-value its target cannot be written in); any other error is a defect. For
-each class two tests, following `TestUnexpectedErrorsPropagate` in
-`tests/alignment/test_bundle.py`:
+**These literals are a refactor pin, and labelled so in the module.** They
+are the output of the same construction run once against the library as it
+stood before the shared implementation (its parent commit), pasted
+verbatim: the one place in this suite where expected values were taken
+from the library's output. That is admitted for this file alone, for one
+reason: the claim under test is "moving the code changed no byte", and the
+display text has no other source of truth than the code before the move. A
+display that drifts by one space, one escaped character or one reordered
+row fails. The whitespace and markup inside the literals are pinned, not
+specified: a deliberate change of the display re-generates them and says so.
+The numbers inside are not taken on trust; each follows from the fixture:
 
-- `TableMap._evaluate` replaced by one raising `RuntimeError("boom")` makes
-  `str(stamp)` raise it, and the traceback passes `Stamp._conversion_rows`
-  at the statement `value = cmap._evaluate(coordinate.value)`, so the error
-  came through that catch and was not swallowed;
+- **The clock** (`_clock`): 100 seconds; a `TableMap` `[0, 100] → [0,
+  100000]` into milliseconds (× 1000; milliseconds are float-canonical, so
+  `repr` shows `25000.0` where `str` writes the integral value `25000`); a
+  `TableMap` `[0, 50] → [0, 2500]` into frames (× 50, whole frames;
+  `extrapolate="error"`, so it answers nothing past 50 seconds); a step
+  function `section` with boundaries 0, 20, 60 and labels `intro`, `verse`,
+  `coda`. `_with_children` adds `intro` (30 seconds at offset 0) and
+  `verse` (40 seconds at offset 20).
+- `timestamp_children_and_maps`, at 25 seconds: `intro` 25 − 0 = 25 (inside
+  its 30), `verse` 25 − 20 = 5; `milliseconds` 25 × 1000 = 25000; `frames`
+  25 × 50 = 1250; `section` `verse` (20 ≤ 25 < 60).
+- `timestamp_outside_a_map`, at 70 seconds: no child holds 70 (`intro` ends
+  at 30, `verse` at 20 + 40 = 60); `milliseconds` 70000; `frames` absent
+  (70 > 50); `section` `coda` (70 ≥ 60).
+- `timestamp_without_maps`: the coordinates of the first stamp, no C-Map row.
+- `timestamp_exact`: a 40-quarter score (fraction-canonical) with a
+  `LinearMap` × 480 into ticks, at `Fraction(19, 2)`: `19/2` quarters,
+  19/2 × 480 = 4560 ticks. Its child `bar` (20/3 at offset 8/3) ends at
+  28/3 < 19/2, so it holds no row.
+- `timestamp_interpolated`: the values given to the constructor (1.25
+  seconds, 30 frames, 7/3 quarters); no source, so no C-Map row; every row
+  but the source's is typed `child`.
+- `timestamp_group_colliding_labels`: two clocks `left` and `right` of equal
+  length 100, at 10 seconds on `left`: `right` 10 × 100 / 100 = 10;
+  interpolated, since 10 is neither the common start 0 nor the end 100;
+  `milliseconds` 10000, `frames` 10 × 50 = 500, `section` `intro` (10 < 20)
+  on each member, every label held twice and so qualified by its owner.
+- `matchstamp_bundle_maps` and `matchstamp_bundle_no_maps`: the clock alone in
+  a bundle, no MatchClaim, so `1 timelines, 0 edges`; the C-Map rows are the
+  first stamp's (25000, 1250, `verse`); `repr` of a MatchStamp lists its
+  coordinates only.
+- `matchstamp_tags`: the constructor's coordinates (4 and 9/2 quarters, 2.5
+  seconds, 1200 pixels); one stated pair (`score`, `audio`) and one
+  inferred (`score`, `parts`) make `2 edges`; `score` and `audio` are tagged
+  `stated`, `parts` `inferred`, `image` nothing.
+- `matchstamp_crossfade`, at 130 on `mix`: interval MatchClaim 1 maps
+  `[125, 135]` to `[33, 43]` on `track-a`, so 33 + (130 − 125) × 10 / 10 =
+  38; MatchClaim 2 maps `[128, 138]` to `[1, 11]` on `track-b`, so 1 + (130
+  − 128) × 10 / 10 = 3. Both timelines are reached through the interval
+  MatchClaims, so both pairs are inferred (`2 edges`, every row tagged
+  `inferred`).
+- `matchstamp_loop_ambiguity`, at 20 on `mix`: MatchClaim 1 (`[10, 20]` →
+  `[0, 10]`) gives 10 at its end, MatchClaim 2 (`[20, 30]` → `[100, 110]`)
+  100 at its start; two values for `loop`, so `loop` stays out of the
+  coordinates (`1 timelines, 0 edges`) and both MatchClaim rows are listed.
+- `matchstamp_missing_counterpart`, at 10 on `mix`: the MatchClaim maps the
+  instant `[10, 10]` to `[30, 40]`, which names no single coordinate, so
+  its row reads `MISSING`.
+
+**A failing map leaves its row out; asking for its value raises**
+(`TestAFailingMapLeavesItsRowOut`). The C-Map rows serve only `str`, `repr`
+and `_repr_html_`, which debuggers, logging and test reports call and which
+must therefore never raise. A row is left out where the map does not reach
+the coordinate (it raises `ValueError`: outside its domain, or
+`OutputNumberTypeError`, a `ValueError`, for a value its target cannot be
+written in) and equally where the map fails with any other error. The
+failure stays visible where a value is asked for: `get_unit` and
+`get_conversion_for` propagate it. For each class:
+
+- `TableMap._evaluate` replaced by one raising `RuntimeError("boom")` (the
+  clock's milliseconds and frames maps are `TableMap`s, its `section` map
+  is not): at 25 seconds `str(stamp)` is exactly the source row and the
+  `section` row; and all three displays of the stamp equal those of the same
+  construction over a clock holding the `section` map alone, built without
+  the patch, so nothing but the two failing rows went missing;
+- on that stamp `get_unit(milliseconds)` and
+  `get_conversion_for("milliseconds")` raise `RuntimeError("boom")`;
 - the documented case keeps its answer: a frames map over `[0, 50]` seconds
   with `extrapolate="error"` read at 70 seconds is absent from the display
   (exact `str()` asserted), while the milliseconds map beside it is shown.
+
+The tables are not displays and keep the narrow catch: a C-Map column of a
+group's or a bundle's timestamp table is left out (or its cell null) only on
+the map's `ValueError`, and any other error propagates
+(`tests/alignment/test_bundle.py::TestUnexpectedErrorsPropagate`).
 
 A result its target cannot be written in is the same documented case when
 the result is not finite. A `LinearMap` ×`1e300` from seconds into samples
@@ -1796,7 +1898,7 @@ it for `__setstate__`, and delegating that question asks for the missing
   as a `MatchClaimField`, gives a bundle equal to the original that is not
   the original, its MatchClaim table a `MatchClaimField` of zero rows that is
   not the original's. (`tests/alignment/test_claim_back_reference.py` copies
-  a bundle holding 303 claims and checks that they follow the copy.)
+  a bundle holding 303 MatchClaims and checks that they follow the copy.)
 
 ### `test_field_repr_html.py` - Field affordance `_repr_html_`
 

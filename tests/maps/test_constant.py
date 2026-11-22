@@ -257,3 +257,45 @@ class TestFloatParameters:
     def test_label_is_no_parameter(self):
         cmap = ConstantMap(value="page1.jpeg")
         assert cmap(0.1) == "page1.jpeg"
+
+
+class TestConstantOnATargetUnit:
+    """A constant a target unit holds is a number or a string."""
+
+    @pytest.mark.parametrize(
+        ("value", "message"),
+        [
+            (None, "not NoneType: None"),
+            (True, "not bool: True"),
+            (np.bool_(True), "not bool: np.True_"),
+            ({"a": 1}, "not dict: {'a': 1}"),
+        ],
+        ids=["None", "True", "numpy-bool", "dict"],
+    )
+    def test_anything_else_is_refused(self, value, message):
+        with pytest.raises(TypeError) as refusal:
+            ConstantMap(value=value, target_unit="milliseconds")
+        assert str(refusal.value) == (
+            "A ConstantMap on the target unit 'milliseconds' holds a number or a string, "
+            + message
+        )
+
+    @pytest.mark.parametrize(
+        ("value", "answer"),
+        [
+            (3, 3.0),
+            (Fraction(1, 3), 0.3333333333333333),
+            ("x", "x"),
+        ],
+        ids=["int", "fraction", "label"],
+    )
+    def test_numbers_and_labels_are_held(self, value, answer):
+        result = ConstantMap(value=value, target_unit="milliseconds")(0)
+        assert result == answer
+        assert type(result) is type(answer)
+
+    def test_a_label_on_a_target_unit_round_trips(self):
+        cmap = ConstantMap(
+            value="x", source_unit="seconds", target_unit="milliseconds", uid="k"
+        )
+        assert ConversionMap.from_dict(cmap.to_dict()) == cmap

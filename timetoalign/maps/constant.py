@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from fractions import Fraction
+from numbers import Real
 from typing import TYPE_CHECKING, Any, ClassVar
 
 import numpy as np
@@ -29,6 +30,23 @@ def _constant_to_json(value: Any) -> Any:
     return value
 
 
+def _refuse_unwritable_constant(value: Any, target_unit: TimeUnit | str | None) -> None:
+    """Refuse a constant a target unit can never hold: neither a number nor a string.
+
+    A number on a target unit is written as that unit writes numbers, and a
+    string is a label (the format holds a number or a string); anything else,
+    ``None`` or a ``bool`` say, would fail at every reading of the map.
+    """
+    if target_unit is None or isinstance(value, str):
+        return
+    if isinstance(value, Real) and not isinstance(value, (bool, np.bool_)):
+        return
+    raise TypeError(
+        f"A ConstantMap on the target unit {TimeUnit(target_unit).value!r} holds a "
+        f"number or a string, not {type(value).__name__}: {value!r}"
+    )
+
+
 # region ConstantMap
 
 
@@ -43,7 +61,8 @@ class ConstantMap(ConversionMap[Any]):
     The constant value can be of any type, though strings are the most
     common use case; a manifest holds a number or a string. The map has no
     source or target unit by default; a numeric constant on a target unit is
-    written as that unit writes numbers.
+    written as that unit writes numbers. With a target unit the constant must
+    be a number or a string: any other value is refused at construction.
 
     Attributes:
         value: The constant value returned for every input.
@@ -80,7 +99,12 @@ class ConstantMap(ConversionMap[Any]):
             target_unit: The unit of a numeric constant (optional).
             uid: Optional explicit ID.
             name: Human-readable name for this map. Defaults to the map's ID.
+
+        Raises:
+            TypeError: If a *target_unit* is given and *value* is neither a
+                number nor a string.
         """
+        _refuse_unwritable_constant(value, target_unit)
         # Set first: the base reads the parameters once, at construction.
         self._value = value
         super().__init__(

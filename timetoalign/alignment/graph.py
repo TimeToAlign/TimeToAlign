@@ -324,11 +324,20 @@ class MatchStamp(Stamp):
     def _unit_map_for(
         self, timeline_id: str, unit: TimeUnit
     ) -> "ConversionMap[Any] | None":
-        """The timeline's own unit map, where ``conversion_maps`` enables it."""
-        cmap = self.source.get_timeline(timeline_id)._get_unit_map(unit)
-        if cmap is None or not self._conversion_map_enabled(cmap):
-            return None
-        return cmap
+        """The one map into *unit* on *timeline_id* that ``conversion_maps`` enables.
+
+        ``None`` where none is enabled. Several enabled maps are ambiguous:
+        the timeline refuses to pick one (``ValueError`` naming them).
+        """
+        timeline = self.source.get_timeline(timeline_id)
+        enabled = [
+            cmap
+            for cmap in timeline._get_unit_maps(unit)
+            if self._conversion_map_enabled(cmap)
+        ]
+        if len(enabled) > 1:
+            return timeline._get_unit_map(unit)
+        return enabled[0] if enabled else None
 
     def filter_by_timelines(
         self,

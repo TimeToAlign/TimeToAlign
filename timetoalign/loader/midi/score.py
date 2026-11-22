@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import warnings
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -80,7 +81,11 @@ class ScoreMidiLoader(MidiLoader):
     it is appropriate when structural score information is not required.
     Both parsers write each note's ``velocity`` as its note-on message states
     it; partitura's score parse keeps none, so the default path reads the
-    velocities from the same file and joins them to partitura's notes.
+    velocities from the same file and joins them to partitura's notes by
+    partitura's note number, checking onset, pitch and duration. A note that
+    cannot be joined that way (a partitura release numbering its notes
+    otherwise) keeps an empty velocity, and one ``UserWarning`` per file names
+    the first such note; ``parser="mido"`` reads every velocity.
     """
 
     _event_data_class: ClassVar[type[MidiEventData]] = ScoreMidiEventData
@@ -141,36 +146,57 @@ class ScoreMidiLoader(MidiLoader):
         """Return the ticks per beat (PPQ) of the loaded file."""
         return self._ticks_per_beat
 
-    def _stated_velocity(
-        self, row: Any, stated: list[tuple[int, int, int, int]]
-    ) -> int | None:
-        """Return the velocity the file states for one of Partitura's notes.
+    def _stated_velocities(
+        self,
+        note_array: Any,
+        stated: list[tuple[int, int, int, int]],
+        source: Path,
+    ) -> list[int | None]:
+        """Return the velocity the file states for each of Partitura's notes.
+
+        A row is joined to the file's note of its number (``n{i}``) when that
+        note has the row's onset, pitch and duration. A row that cannot be
+        joined, because Partitura numbered its notes otherwise, keeps an empty
+        velocity: nothing is invented and the file is still read. One
+        ``UserWarning`` per file then names the first such note.
 
         Args:
-            row: A row of Partitura's note array.
+            note_array: Partitura's note array.
             stated: The file's notes in Partitura's numbering.
+            source: The file, named in the warning.
 
         Returns:
-            The note-on velocity, or None where Partitura assigned no note ID
-            (``assign_note_ids=False``), so no note of the file is named.
-
-        Raises:
-            ValueError: If the note Partitura numbers is not the file's note
-                of that number, so the velocity cannot be joined.
+            One velocity per row, None where Partitura assigned no note ID
+            (``assign_note_ids=False``, so no note of the file is named) or
+            where the row cannot be joined.
         """
         if not self._assign_note_ids:
-            return None
-        note_id = str(row["id"])
-        match = _PARTITURA_NOTE_ID.fullmatch(note_id)
-        number = int(match.group(1)) if match else None
-        note = (int(row["onset_div"]), int(row["pitch"]), int(row["duration_div"]))
-        if number is None or number >= len(stated) or stated[number][:3] != note:
-            raise ValueError(
-                f"Partitura's note {note_id!r} (onset {note[0]}, pitch {note[1]}, "
-                f"duration {note[2]}) is not the file's note of that number, so "
-                f"its velocity cannot be read; parser='mido' reads every velocity."
+            return [None] * len(note_array)
+        velocities: list[int | None] = []
+        first_unjoined: tuple[str, tuple[int, int, int]] | None = None
+        for row in note_array:
+            note_id = str(row["id"])
+            match = _PARTITURA_NOTE_ID.fullmatch(note_id)
+            number = int(match.group(1)) if match else len(stated)
+            note = (int(row["onset_div"]), int(row["pitch"]), int(row["duration_div"]))
+            if number < len(stated) and stated[number][:3] == note:
+                velocities.append(stated[number][3])
+                continue
+            velocities.append(None)
+            if first_unjoined is None:
+                first_unjoined = (note_id, note)
+        if first_unjoined is not None:
+            note_id, (onset, pitch, duration) = first_unjoined
+            warnings.warn(
+                f"{velocities.count(None)} of {len(velocities)} notes of '{source}' "
+                f"are left without a velocity: Partitura's note {note_id!r} (onset "
+                f"{onset}, pitch {pitch}, duration {duration}) is the first that is "
+                f"not the file's note of that number. parser='mido' reads every "
+                f"velocity.",
+                UserWarning,
+                stacklevel=4,
             )
-        return stated[number][3]
+        return velocities
 
     def _load_source(
         self, source: Path
@@ -251,13 +277,15 @@ class ScoreMidiLoader(MidiLoader):
             include_divs_per_quarter=True,  # To get PPQ info
         )
 
-        stated = _partitura_note_velocities(mid, self._quantization_unit)
+        velocities = self._stated_velocities(
+            note_array, _partitura_note_velocities(mid, self._quantization_unit), source
+        )
 
         # Extract events
         events = []
 
         # Iterate over structured array
-        for row in note_array:
+        for row, velocity in zip(note_array, velocities):
             # row fields: onset_div, duration_div, pitch, voice, id, staff, divs_pq, ...
 
             # Update PPQ if we found it
@@ -272,7 +300,7 @@ class ScoreMidiLoader(MidiLoader):
                 "end": int(row["onset_div"] + row["duration_div"]),
                 "duration": int(row["duration_div"]),
                 "pitch": int(row["pitch"]),
-                "velocity": self._stated_velocity(row, stated),
+                "velocity": velocity,
                 "voice": int(row["voice"]) if "voice" in row.dtype.names else None,
                 "staff": int(row["staff"]) if "staff" in row.dtype.names else None,
                 # Part ID is tricky in unified array, but partitura usually encodes it in ID

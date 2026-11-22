@@ -1968,7 +1968,7 @@ class TestScale:
         # The vectorized path builds no MatchClaim and no AlignmentAnchor.
         assert built == []
         claim = field[50_000]
-        # Reading one row back builds exactly its anchor and its claim.
+        # Reading one row back builds exactly its AlignmentAnchor and its MatchClaim.
         assert built == ["AlignmentAnchor", "MatchClaim"]
         assert claim.start_anchor.coordinate_a == Coordinate(50_000, TimeUnit.quarters)
         assert claim.start_anchor.coordinate_b == Coordinate(50_000.5, TimeUnit.seconds)

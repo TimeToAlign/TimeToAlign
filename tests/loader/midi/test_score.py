@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import warnings
 from collections import Counter
 from pathlib import Path
 
 import mido
 import pytest
 
+import timetoalign.loader.midi.score as score_module
 from timetoalign.loader.midi import (
     MidiEventData,
     MidiEventType,
@@ -143,23 +145,30 @@ PARTITURA_BEETHOVEN_SORTED_PITCH_MULTISETS = (
 )
 
 
-def _notes_in_the_file(path: Path) -> Counter:
+def _notes_in_the_file(path: Path, quantum: int | None = None) -> Counter:
     """Every note of a MIDI file as the bytes state it, read with mido alone.
 
     A note-on of velocity above 0 starts a note of its track, channel and
     pitch; the next note-off or zero-velocity note-on of the same key ends it.
+
+    Args:
+        path: The MIDI file.
+        quantum: Move every message time to the nearest multiple of it (ties
+            to the even multiple) before pairing, as ``quantization_unit``
+            asks of Partitura.
 
     Returns:
         The multiset of ``(start tick, pitch, duration in ticks, velocity)``.
     """
     notes: Counter = Counter()
     for track in mido.MidiFile(path).tracks:
-        tick = 0
+        time = 0
         sounding: dict[tuple[int, int], tuple[int, int]] = {}
         for message in track:
-            tick += message.time
+            time += message.time
             if message.type not in ("note_on", "note_off"):
                 continue
+            tick = quantum * round(time / quantum) if quantum else time
             key = (message.channel, message.note)
             if message.type == "note_on" and message.velocity > 0:
                 sounding[key] = (tick, message.velocity)
@@ -221,6 +230,56 @@ class TestScoreMidiVelocities:
             100: 3751
         }
         assert _notes_loaded(loader) == _notes_in_the_file(beethoven_score_path)
+
+    def test_quantized_notes_keep_their_velocities(self, score_midi_dir: Path) -> None:
+        path = score_midi_dir / "rachmaninoff_piano.mid"
+        loader = ScoreMidiLoader(quantization_unit=10).load(path)
+
+        assert Counter(loader.events.table.column("velocity").to_pylist()) == {
+            112: 98,
+            127: 13,
+        }
+        assert _notes_loaded(loader) == _notes_in_the_file(path, quantum=10)
+
+    def test_a_note_that_cannot_be_joined_keeps_an_empty_velocity(
+        self, score_midi_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        path = score_midi_dir / "rachmaninoff_piano.mid"
+        read = score_module._partitura_note_velocities
+
+        def renumbered(mid: mido.MidiFile, quantization_unit: int | None) -> list:
+            notes = read(mid, quantization_unit)
+            return notes[1:] + notes[:1]
+
+        monkeypatch.setattr(score_module, "_partitura_note_velocities", renumbered)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            loader = ScoreMidiLoader().load(path)
+
+        rows = loader.events.table.to_pylist()
+        assert [row["velocity"] for row in rows] == [None] * 111
+        assert Counter(
+            (start, pitch, duration)
+            for start, pitch, duration, _ in _notes_loaded(loader).elements()
+        ) == Counter(
+            (start, pitch, duration)
+            for start, pitch, duration, _ in _notes_in_the_file(path).elements()
+        )
+        first = next(row for row in rows if row["id"] == "n0")
+        assert (
+            first["start"]["numerator"],
+            first["pitch"],
+            first["duration"]["numerator"],
+        ) == (0, 24, 106)
+        assert [(w.category, str(w.message)) for w in caught] == [
+            (
+                UserWarning,
+                f"111 of 111 notes of '{path}' are left without a velocity: "
+                "Partitura's note 'n0' (onset 0, pitch 24, duration 106) is the first "
+                "that is not the file's note of that number. parser='mido' reads "
+                "every velocity.",
+            )
+        ]
 
 
 class TestScoreMidiLoader:

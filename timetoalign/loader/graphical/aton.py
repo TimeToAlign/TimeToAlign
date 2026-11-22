@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -484,6 +485,14 @@ class ATONLoader(Loader[list[ATONHole]]):
         coordinate view (first hole = 0), create an inherited
         DiscreteGraphicalTimeline child at ``first_hole``.
 
+        Each event is named by its hole's ``@ID`` and identified as
+        ``hole_<ID>``. The SUPRA analysis software gives every hole that is no
+        note the key ``0`` and counts per tracker-bar hole, so holes on
+        different tracker holes can share one ``@ID`` (``K0_N1``). A hole
+        whose ``@ID`` another hole of the file holds too is identified as
+        ``hole_<ID>_tracker<TRACKER_HOLE>`` instead; every other hole keeps
+        ``hole_<ID>``.
+
         Args:
             uid: Unique identifier for the timeline. Auto-generated if None.
             name: Human-readable name. Uses source filename if None.
@@ -519,9 +528,14 @@ class ATONLoader(Loader[list[ATONHole]]):
         )
 
         # Add holes as InstantEvents at absolute pixel coordinates
+        id_counts = Counter(hole.id for hole in self._holes)
         hole_events = [
             {
-                "id": f"hole_{hole.id}",
+                "id": (
+                    f"hole_{hole.id}"
+                    if id_counts[hole.id] == 1
+                    else f"hole_{hole.id}_tracker{hole.tracker_hole}"
+                ),
                 "name": hole.id,
                 "temporal_type": "instant",
                 "event_type": "Hole",

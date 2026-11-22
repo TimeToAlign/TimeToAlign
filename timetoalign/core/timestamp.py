@@ -250,10 +250,6 @@ class TimeStampSource(Protocol):
         """Get a map for unit-based conversion."""
         ...
 
-    def _get_unit_map_for_timeline(self, timeline_id: str, unit: "TimeUnit") -> "Any":
-        """Get a unit map associated with a specific timeline."""
-        ...
-
     def _get_unit_maps_for_timeline(
         self, timeline_id: str, unit: "TimeUnit"
     ) -> "list[Any]":

@@ -1130,7 +1130,7 @@ class TestTimelineGroupTimestampAt:
 
         # Check protocol compliance
         assert isinstance(group, TimeStampSource)
-        assert hasattr(group, "_get_unit_map_for_timeline")
+        assert hasattr(group, "_get_unit_maps_for_timeline")
         assert hasattr(group, "_get_unit_map")
         assert hasattr(group, "_get_related_timeline_ids")
         assert hasattr(group, "_get_available_units")

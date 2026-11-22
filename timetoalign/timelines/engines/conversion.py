@@ -454,20 +454,6 @@ class ConversionMapsMixin:
             f"'{self._id}'. Available: {[cmap.id for cmap in candidates]}"
         )
 
-    def _get_unit_map_for_timeline(
-        self, timeline_id: str, unit: TimeUnit
-    ) -> ConversionMap[Any] | None:
-        """Get a unit C-Map attached to this timeline or any descendant.
-
-        A timestamp is a cross-section, so a C-Map registered on a child
-        (or deeper descendant) is reachable through the ancestor whose
-        ``get_timestamp`` produced the stamp.
-        """
-        timeline = self._find_descendant(timeline_id)
-        if timeline is None:
-            return None
-        return timeline._get_unit_map(unit)
-
     def _get_unit_maps_for_timeline(
         self, timeline_id: str, unit: TimeUnit
     ) -> list[ConversionMap[Any]]:
@@ -542,7 +528,7 @@ class ConversionMapsMixin:
         """Get every conversion map attached to a timeline in the subtree.
 
         This method is part of the TimeStampSource protocol. Unlike
-        :meth:`_get_unit_map_for_timeline`, it returns C-Maps of *all* kinds
+        :meth:`_get_unit_maps_for_timeline`, it returns C-Maps of *all* kinds
         -- including those with no ``target_unit`` (label and structured-value
         maps) -- so a timestamp exposes them as a full cross-section.
         """

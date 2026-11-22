@@ -1933,39 +1933,14 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
 
         This method is part of the TimeStampSource protocol.
         For TimelineGroup, returns None as groups don't have their own C-Maps.
-        Use _get_unit_map_for_timeline() to get C-Maps from member timelines.
+        Use _get_unit_maps_for_timeline() to get C-Maps from member timelines.
 
         Args:
             unit: Target unit.
 
         Returns:
-            None (use _get_unit_map_for_timeline for member timeline C-Maps).
+            None (use _get_unit_maps_for_timeline for member timeline C-Maps).
         """
-        return None
-
-    def _get_unit_map_for_timeline(
-        self, timeline_id: str, unit: "TimeUnit"
-    ) -> "ConversionMap[Any] | None":
-        """Get a C-Map for a specific member timeline.
-
-        This method enables TimeStamp.get_unit() to access C-Maps from
-        member timelines when the source is a TimelineGroup.
-
-        Args:
-            timeline_id: The member timeline to look up C-Map on.
-            unit: The target unit.
-
-        Returns:
-            The C-Map, or None if not found.
-        """
-        timeline = self._timelines.get(timeline_id)
-        if timeline is not None:
-            return timeline._get_unit_map(unit)
-        # Member-descendant: locate the owning member and delegate.
-        for member in self._timelines.values():
-            descendant = member._find_descendant(timeline_id)
-            if descendant is not None:
-                return descendant._get_unit_map(unit)
         return None
 
     def _get_unit_maps_for_timeline(

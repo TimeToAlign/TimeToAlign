@@ -61,12 +61,62 @@ The tests also pin the mido tick resolution and exact narrow ``MidiEventData`` c
 explicitly excluding voice, staff, and part identifiers. Structural parser options are rejected
 for this path.
 
+## Score velocities
+
+A MIDI note states its velocity in its note-on message, and both score parsers write that value
+into `velocity`; no velocity is invented, and none is left out where the file states one.
+Partitura's score parse pairs note-ons with note-offs but drops the velocity, so the default path
+reads it from the same file in the same pairing and joins it to Partitura's notes by note number
+(Partitura numbers its notes `n0`, `n1`, … in its own pairing order), checking that the note of
+that number has the row's onset, pitch and duration.
+
+The expected values come from the bytes, never from the loader: the test reads each file with
+`mido`, pairs every note-on (velocity above 0) with the next note-off or zero-velocity note-on of
+the same track, channel and pitch, and takes `(start tick, pitch, duration in ticks, velocity)`
+of every note. Each parser's notes, read as the same tuple, must equal that multiset exactly, so
+a velocity joined to the wrong note fails as surely as a missing one. The velocities themselves
+are also pinned as written in the files:
+
+| File | Notes | Velocities |
+|---|---|---|
+| `beethoven_op18.mid` | 3,751 | 100 on every note |
+| `beethoven_mtd.mid` | 16 | 80 on every note |
+| `rachmaninoff_piano.mid` | 111 | 112 on 98 notes, 127 on 13 |
+
+`rachmaninoff_piano.mid` is the one that tells a correct join from a wrong one: its two values are
+spread over notes of different pitches and positions. The Beethoven quartet is checked on both
+parsers (`parser="mido"` reads the event stream directly); the two small files on the default
+parser.
+
+**Quantized times.** With `quantization_unit`, Partitura moves every note-on and note-off time to
+the nearest multiple of the unit (ties to the even multiple) before pairing, so a note's onset is
+its quantized note-on time and its duration the quantized note-off time minus the quantized onset.
+The join must apply the same quantization, or no quantized note would find its number. The test
+loads `rachmaninoff_piano.mid` with `quantization_unit=10` and quantizes the `mido` reading in the
+test itself (`10 * round(tick / 10)` on each message time, Python's `round` ties to even as
+Partitura's does): the loaded `(onset, pitch, duration, velocity)` multiset must equal that one
+exactly, velocities 112 on 98 notes and 127 on 13 as unquantized.
+
+**A note that cannot be joined is read without a velocity.** The file is valid MIDI and Partitura
+reads it; the join only reproduces Partitura's numbering, which a Partitura release could change.
+Such a change must not make the file unreadable, nor give a note another note's velocity: every
+note whose number does not name a note of equal onset, pitch and duration keeps an empty velocity,
+and one `UserWarning` per file names the first such note and points to `parser="mido"`. The test
+simulates a renumbering by replacing the file's reading with the same list rotated by one place
+(note `n{i}` then meets the file's note `i + 1`) on `rachmaninoff_piano.mid`, where no two
+consecutive notes agree in onset, pitch and duration. It asserts:
+
+- every one of the 111 velocities is null, while `(start, pitch, duration)` of every note still
+  equals the `mido` reading (the file is read whole, only the velocities are left out);
+- exactly one warning is raised, of class `UserWarning`, with the exact text naming the count
+  (`111 of 111 notes`), the file's path and Partitura's first note `'n0'` (onset 0, pitch 24,
+  duration 106); the loaded row `n0` is asserted to have these three values, so the literal is
+  tied to the file and not to the loader's message alone.
+
 ## Score loader and stores
 
 The Beethoven score test pins 3,751 events, the tick resolution 480 the file header states, Partitura metadata with four
-parts, and populated pitch data. Partitura's score parse carries no velocity, so every note's
-`velocity` is null; `parser="mido"` reads the file's own values (this file states 100 on every
-note). An empty MIDI file must raise `EOFError`. `ScoreMidiEventData`
+parts, and populated pitch data. An empty MIDI file must raise `EOFError`. `ScoreMidiEventData`
 must contain the three score-only fields, while both event-data classes retain their declared
 nullable fields and can be constructed from dictionaries.
 

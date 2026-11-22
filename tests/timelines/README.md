@@ -2135,7 +2135,7 @@ where `y` would not hold).
 on** (`TestFloatKeysAcrossChildren`). A float position is never carried
 down by float subtraction: `0.3 - 0.1` is `0.19999999999999998`, which lies
 inside a child of length `1/5` that ends at `3/10`, and `0.4 - 0.3 - 0.1`
-is not 0, so a lane subtracting doubles counts one boundary in two siblings
+is not 0, so a query subtracting doubles counts one boundary in two siblings
 and misses an instant at a grandchild's start. `get_events_at` carries the
 exact offsets of the path instead and compares the key with the double of
 each exact position on the queried axis: a child holds the key where

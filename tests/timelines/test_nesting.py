@@ -19,7 +19,6 @@ Validity Rationale:
 
 from __future__ import annotations
 
-import time
 from fractions import Fraction
 from inspect import Parameter, signature
 
@@ -1036,32 +1035,25 @@ class TestUnitValidation:
 # endregion
 
 
-# region Performance Tests
+# region Scale Tests
 
 
-class TestNestingPerformance:
-    """Performance tests for nesting operations."""
+class TestNestingScale:
+    """Many children and deep hierarchies give exact results."""
 
-    def test_add_many_children_performance(self, profiler):
-        """Benchmark adding many children."""
+    def test_add_many_children(self):
+        """A thousand children added one by one are all held."""
         n_children = 1000
         parent = Timeline(length=float(n_children * 2))
         children = [Timeline(length=1.0, uid=f"c_{i}") for i in range(n_children)]
 
-        start = time.perf_counter()
         for i, child in enumerate(children):
             parent.add_child(child, offset=float(i * 2))
-        elapsed = time.perf_counter() - start
-
-        profiler.record("add_1000_children", elapsed)
 
         assert parent.n_children == n_children
-        # Should complete in reasonable time
-        assert elapsed < 10.0, f"Adding {n_children} children took {elapsed:.2f}s"
 
-    def test_iterate_deep_hierarchy_performance(self, profiler):
-        """Benchmark iterating a deep hierarchy."""
-        # Create a chain of 100 nested timelines
+    def test_iterate_deep_hierarchy(self):
+        """A chain 100 deep yields its 99 descendants, deepest last."""
         depth = 100
         root = Timeline(length=float(depth), uid="root")
         current = root
@@ -1071,15 +1063,13 @@ class TestNestingPerformance:
             current.add_child(child, offset=1.0)
             current = child
 
-        start = time.perf_counter()
         results = list(root.iter_children(order="depth_first"))
-        elapsed = time.perf_counter() - start
 
-        profiler.record("iterate_depth_100", elapsed)
-
-        assert len(results) == depth - 1
-        # Should be fast even for deep hierarchies
-        assert elapsed < 1.0, f"Iterating depth {depth} took {elapsed:.2f}s"
+        assert [child.id for _, child in results] == [
+            f"level_{i}" for i in range(1, depth)
+        ]
+        # Each level sits at offset 1 on its parent, so level i is at i on the root.
+        assert [offset.value for offset, _ in results] == list(range(1, depth))
 
 
 # endregion

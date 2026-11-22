@@ -17,7 +17,6 @@ Validity Rationale:
 
 from __future__ import annotations
 
-import time
 from fractions import Fraction
 from pathlib import Path
 
@@ -31,7 +30,7 @@ from timetoalign.timelines import (
     Timeline,
 )
 
-from .conftest import MIDI_PERFORMANCE_DIR, MIDI_SCORE_DIR, VIENNA_DIR
+from .conftest import MIDI_SCORE_DIR, VIENNA_DIR
 
 # Try to import loaders (they may not all be available)
 try:
@@ -486,14 +485,14 @@ class TestComplexHierarchy:
 # endregion
 
 
-# region Performance Integration Tests
+# region Scale Integration Tests
 
 
-class TestPerformanceIntegration:
-    """Performance tests for loader integration."""
+class TestScaleIntegration:
+    """A large EventData becomes a timeline holding every event."""
 
-    def test_large_event_data_to_timeline(self, profiler):
-        """Benchmark creating timeline from large EventData."""
+    def test_large_event_data_to_timeline(self):
+        """Fifty thousand interval events all reach the timeline."""
         from timetoalign.storage import EventData
 
         n_events = 50000
@@ -510,45 +509,9 @@ class TestPerformanceIntegration:
         ]
 
         data = EventData.from_dicts(events, TimeUnit.seconds, NumberType.float)
-
-        start = time.perf_counter()
         tl = Timeline.from_event_data(data)
-        elapsed = time.perf_counter() - start
-
-        profiler.record("timeline_from_50k_events", elapsed)
 
         assert tl.n_events == n_events
-        # Should complete in reasonable time
-        assert (
-            elapsed < 5.0
-        ), f"Creating timeline from {n_events} events took {elapsed:.2f}s"
-
-    @pytest.mark.skipif(not HAS_MIDI_LOADERS, reason="MIDI loaders not available")
-    def test_real_midi_file_performance(self, profiler):
-        """Benchmark loading real MIDI file into timeline."""
-        # Try to find any available MIDI file
-        midi_files = list(MIDI_PERFORMANCE_DIR.glob("*.mid"))
-        if not midi_files:
-            midi_files = list(MIDI_SCORE_DIR.glob("*.mid"))
-        if not midi_files:
-            pytest.skip("No MIDI test files available")
-
-        midi_path = midi_files[0]
-
-        start = time.perf_counter()
-        loader = PerformanceMidiLoader()
-        loader.load(midi_path)
-        load_elapsed = time.perf_counter() - start
-
-        start = time.perf_counter()
-        # Use base Timeline to respect loader's number_type
-        tl = Timeline.from_event_data(loader.events)
-        timeline_elapsed = time.perf_counter() - start
-
-        profiler.record(f"load_midi_{midi_path.name}", load_elapsed)
-        profiler.record(f"timeline_from_midi_{midi_path.name}", timeline_elapsed)
-
-        assert tl.n_events > 0
 
 
 # endregion

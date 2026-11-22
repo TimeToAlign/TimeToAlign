@@ -1622,6 +1622,10 @@ pins the eleven names on each member, requires every descendant id to be a
 minted `clt_N`, and requires the group's trees to hold as many distinct
 timeline ids as they hold timelines and no id twice among all their elements
 (the regions each unfolded member mints are minted again across members).
+The unfolded reference `clt_1` holds 3869 Note events across its section
+children, the note count of ms3's own unfolding of the same score
+(`n04op18-4_04_unfolded.notes.tsv`), and exactly two FlowMaps, the reverse
+`source` map and one forward map.
 
 `test_three_timeline_group` places an image over audio seconds 0–150 and a
 score over audio seconds 45–135: each part is a child of the audio, grouped
@@ -2117,9 +2121,10 @@ the axis's declared canonical number type.
 
 8. **Future API Stubs Tests** (2 tests)
    - `add_conversion_map()`, `convert_to()` raise `NotImplementedError`
-9. **Performance Tests** (2 tests)
-   - Adding 10,000 events: < 5 seconds
-   - Creating 1,000 timelines: < 2 seconds
+9. **Scale Tests** (1 test)
+   - Adding 10,000 instants in one call holds exactly 10,000 events (the
+     input's count). No wall-clock threshold: a time budget fails under load
+     and proves nothing about the result.
 
 **Validity Rationale:**
 
@@ -2451,9 +2456,11 @@ need contents opt in.
    - Physical cannot contain logical
    - Same domain, different units rejected
 
-6. **Performance Tests** (2 tests)
-   - Adding 1,000 children: < 10 seconds
-   - Iterating depth-100 hierarchy: < 1 second
+6. **Scale Tests** (2 tests)
+   - Adding 1,000 children holds exactly 1,000.
+   - Depth-first iteration of a chain 100 deep yields `level_1` … `level_99`
+     in order, level *i* at root offset *i* (each level sits at offset 1 on
+     its parent).
 
 7. **Cross-Unit Child Addition via Conversion Map** (11 tests)
    - `use_conversion_map=True` auto-selects parent's C-Map (e.g., SamplesToSeconds)
@@ -2773,7 +2780,8 @@ The rule under test: **a beat of segment *k* is dropped when it falls within
 HALF of segment *k*'s beat duration before segment *k+1*'s start; at exactly
 half a beat it is kept.** The rule applies at segment boundaries only, never
 at the end of the grid, where the extent alone bounds the last segment
-(`instant < extent`).
+(`instant < extent`): the phantom grid's last beat, 29.81 s, is kept 19/100 s
+before its extent 30, within half a 120 BPM beat (1/4 s).
 
 **Why a rule is needed at all.** A DJ-software export rounds each grid's
 anchor to three decimals, and when the analyst nudges a later grid's anchor
@@ -2986,9 +2994,10 @@ MetricMap` for any timeline carrying one. The registry is now populated by
    - Multi-level nesting with events at each level
    - Serialization roundtrip of complex hierarchies
 
-5. **Performance Integration** (2 tests)
-   - 50,000 events to Timeline: < 5 seconds
-   - Real MIDI file loading benchmark
+5. **Scale Integration** (1 test)
+   - 50,000 interval events become a timeline holding exactly 50,000. Real
+     MIDI loading is pinned with exact note counts in
+     `tests/integration/test_loader_to_timeline.py`.
 
 6. **Edge Cases** (4 tests)
    - Empty event list
@@ -3002,21 +3011,6 @@ The Timeline class must integrate seamlessly with the loader infrastructure:
 - Events from EventStore can populate Timelines
 - Multiple sources can be combined hierarchically
 - Real-world test data produces valid timelines
-
----
-
-## Profiling Results
-
-Performance benchmarks are collected via the `profiler` fixture and reported
-at the end of test sessions. Key benchmarks:
-
-| Operation | Target | Actual |
-|-----------|--------|--------|
-| Add 10,000 events | < 5s | ~0.5s |
-| Create 1,000 timelines | < 2s | ~0.1s |
-| Add 1,000 children | < 10s | ~3s |
-| Iterate depth-100 | < 1s | ~0.01s |
-| Timeline from 50k events | < 5s | ~1s |
 
 ---
 
@@ -3986,7 +3980,7 @@ All tests follow these principles:
 1. **Positive Tests**: Verify correct behavior under normal conditions
 2. **Negative Tests**: Verify errors are raised for invalid input
 3. **Boundary Tests**: Test edge cases (empty, zero, max values)
-4. **Performance Tests**: Ensure operations complete within time budgets
+4. **Scale Tests**: Large inputs give exact results; no wall-clock thresholds
 5. **Roundtrip Tests**: Verify serialization preserves data
 
 Each test class includes a docstring explaining its validity rationale,

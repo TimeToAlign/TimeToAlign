@@ -216,9 +216,9 @@ class TestElementAccess:
         cf = CoordinateField.from_field(
             arr, unit=TimeUnit.seconds, number_type=NumberType.float
         )
-        assert cf[0] is not None
+        assert cf[0] == Coordinate(1.0, TimeUnit.seconds)
         assert cf[1] is None
-        assert cf[2] is not None
+        assert cf[2] == Coordinate(3.0, TimeUnit.seconds)
 
     def test_getitem_multiple_elements(self) -> None:
         """Iterate several elements, verify each."""

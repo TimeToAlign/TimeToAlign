@@ -30,7 +30,6 @@ from timetoalign.timelines import (
 # region Path Constants
 
 MIDI_DATA_DIR, VIENNA_DIR, SCORE_DIR = ensure_data("midi", "vienna_1x22", "score")
-MIDI_PERFORMANCE_DIR = MIDI_DATA_DIR / "performance"
 MIDI_SCORE_DIR = MIDI_DATA_DIR / "score"
 
 # endregion
@@ -327,36 +326,6 @@ def musicxml_score_path() -> Path:
     """Path to a sample MusicXML score file."""
     path = VIENNA_DIR / "Chopin_op10_no3.musicxml"
     return path
-
-
-# endregion
-
-
-# region Profiling Support
-
-
-class ProfileMarker:
-    """Marker class for profiling test results."""
-
-    def __init__(self):
-        self.timings: dict[str, float] = {}
-
-    def record(self, name: str, elapsed: float) -> None:
-        """Record a timing result."""
-        self.timings[name] = elapsed
-
-    def report(self) -> str:
-        """Generate a profiling report."""
-        lines = ["Profiling Results:", "-" * 40]
-        for name, elapsed in sorted(self.timings.items()):
-            lines.append(f"  {name}: {elapsed:.4f}s")
-        return "\n".join(lines)
-
-
-@pytest.fixture(scope="session")
-def profiler() -> ProfileMarker:
-    """Session-scoped profiler for collecting timing data."""
-    return ProfileMarker()
 
 
 # endregion

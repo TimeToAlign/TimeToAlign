@@ -489,8 +489,10 @@ class TestStructCells:
             _group().get_timestamp_table(format="dataframe"),
             _bundle().get_matchstamp_table(format="dataframe"),
         ]
+        # Rows: the timeline's two events (boundaries only on request), the
+        # group's common start and end, the bundle's three claim anchors.
+        assert [len(frame) for frame in frames] == [2, 2, 3]
         for frame in frames:
-            assert len(frame) > 0
             for name in frame.columns:
                 for cell in frame[name]:
                     assert not isinstance(cell, dict)

@@ -289,9 +289,9 @@ class TestRepoVizzXml:
         assert table.num_rows == 6
 
     def test_signal_elements_count(self, repovizz_loader: XmlLoader) -> None:
-        """Should find many Signal elements (descriptors + MoCap)."""
+        """Should find 318 Signal elements (descriptors + MoCap)."""
         table = repovizz_loader.get_table("Signal")
-        assert table.num_rows > 100  # There are 170+ Signal elements
+        assert table.num_rows == 318  # the file holds 318 Signal elements
 
     def test_annotation_elements_count(self, repovizz_loader: XmlLoader) -> None:
         """Should find 4 Annotation elements (.notes files)."""
@@ -396,13 +396,13 @@ class TestXmlLoaderEdgeCases:
             loader.load("/nonexistent/path.xml")
 
     def test_clear_resets_state(self, simple_loader: XmlLoader) -> None:
-        assert len(simple_loader) > 0
+        assert len(simple_loader) == 1  # one principal tag, one table
         simple_loader.clear()
         assert len(simple_loader) == 0
         assert simple_loader.raw_root is None
 
     def test_clear_resets_store(self, simple_loader: XmlLoader) -> None:
-        assert len(simple_loader.store) > 0
+        assert len(simple_loader.store) == 1
         simple_loader.clear()
         assert len(simple_loader.store) == 0
 

@@ -931,10 +931,8 @@ class TestThoresenIntegration:
 
         # Segment 2 of DGT2 is [866, 1733] -> DGT1 [967, 1934]
         # 378 / 867 * 967 + 967 = proportional position
+        # = 1388.6..., the nearest pixel 1389, inside segment 2 of DGT1.
         assert warped_h == 1389
-
-        # Verify Event H' lands in segment 2 of DGT1: [967, 1934)
-        assert 967.0 <= warped_h < 1934.0
 
 
 # endregion

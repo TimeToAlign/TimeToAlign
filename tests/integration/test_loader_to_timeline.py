@@ -249,8 +249,8 @@ class TestMidiLoaderToTimeline:
     def test_score_midi_to_timeline_structure(self, beethoven_midi: Path):
         """ScoreMidiLoader timeline has correct structure.
 
-        If controls store is empty, only notes remain, resulting in events
-        placed directly on the timeline (no children) per factory.py.
+        A score MIDI loader reads notes only (no control messages), so its
+        one filled store puts the notes on the timeline itself, no children.
         """
         from timetoalign.loader.midi import ScoreMidiLoader
 
@@ -260,13 +260,9 @@ class TestMidiLoaderToTimeline:
         timeline = loader.store.create_timeline(uid="beethoven")
 
         assert timeline.id == "beethoven"
-        # Events are on the timeline (either directly or as children)
-        # If only notes exist (controls empty), events are directly on timeline
-        # If both exist, they become children
-        if timeline.n_children > 0:
-            assert "notes" in _child_names(timeline)
-        else:
-            assert timeline.n_events > 0
+        # The file holds 3751 sounding note-ons, one note each.
+        assert timeline.n_children == 0
+        assert timeline.n_events == 3751
 
     def test_performance_midi_to_timeline(self, supra_midi: Path):
         """PerformanceMidiLoader creates timeline from piano roll."""
@@ -293,9 +289,8 @@ class TestMidiLoaderToTimeline:
         timeline = loader.store.create_timeline()
         notes_tl = _child_named(timeline, "notes")
 
-        # Supra raw has notes - verify non-zero
-        # Exact count depends on the specimen
-        assert notes_tl.n_events > 0
+        # The file holds 30092 sounding note-ons, one per punched hole.
+        assert notes_tl.n_events == 30092
 
 
 class TestCrossLoaderConsistency:

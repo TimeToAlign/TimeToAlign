@@ -344,7 +344,8 @@ All flow visualization tests are implemented (42 tests).
 | `TestDiffDiagramMethod` | 1 | `flow.diff_diagram(other)` delegates correctly |
 
 **What we validate:**
-- Identical flows show `=` match markers on all rows
+- Identical flows show `=` match markers on all rows: exactly one matching
+  row per section of the flow
 - Divergent flows show `≠` with diff explanation (mc_start, mc_end, sections)
 - Summary footer shows section counts, unfolded lengths, match ratio
 - `flow.diff_diagram(other)` produces identical output to `flow_comparison_diagram(flow, other)`

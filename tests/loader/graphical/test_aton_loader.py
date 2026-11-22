@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from timetoalign.core import Coordinate, TimeUnit
 from timetoalign.core.events import BoundingBox
 from timetoalign.loader.graphical.aton import ATONHole, ATONLoader
 from timetoalign.testdata import ensure_data
@@ -55,9 +56,10 @@ class TestATONLoading:
         # Returns self for chaining
         assert result is loader
 
-        # Data is now loaded
-        assert loader._rollinfo
-        assert loader._holes
+        # Data is now loaded: the file states MUSICAL_HOLES 30092 and
+        # FIRST_HOLE 15343px, and its HOLES block holds 30092 HOLE blocks.
+        assert loader.n_holes == 30092
+        assert loader.first_hole == Coordinate(15343, TimeUnit.pixels)
 
     def test_load_nonexistent_file_raises(self, tmp_path: Path) -> None:
         """Loading nonexistent file raises FileNotFoundError."""
@@ -145,7 +147,7 @@ class TestSUPRAHoleParsing:
 
     def test_first_hole_object_exists(self, loaded_supra_loader: ATONLoader) -> None:
         """First hole object exists and has expected structure."""
-        assert len(loaded_supra_loader.holes) > 0
+        assert len(loaded_supra_loader.holes) == 30092
         first = loaded_supra_loader.holes[0]
         assert isinstance(first, ATONHole)
 
@@ -162,26 +164,19 @@ class TestSUPRAHoleParsing:
         assert rows[-10:] == sorted(rows[-10:])
 
     def test_hole_has_required_fields(self, loaded_supra_loader: ATONLoader) -> None:
-        """Hole objects have all required fields populated."""
+        """The first hole carries the values of the file's first HOLE block (K0_N1)."""
         first = loaded_supra_loader.holes[0]
 
+        assert first.id == "K0_N1"
         # Coordinates
-        assert first.origin_row > 0
-        assert first.origin_col > 0
-        assert first.width_row > 0
-        assert first.width_col > 0
-
+        assert (first.origin_row, first.origin_col) == (15343, 445)
+        assert (first.width_row, first.width_col) == (41, 22)
         # Centroid
-        assert first.centroid_row > 0
-        assert first.centroid_col > 0
-
+        assert (first.centroid_row, first.centroid_col) == (15363.4, 455.816)
         # Shape
-        assert first.area > 0
-        assert first.perimeter > 0
-        assert 0 < first.circularity <= 1
-
-        # Tracker hole is in valid range (0-99 for Welte-Mignon)
-        assert 0 <= first.tracker_hole < 100
+        assert (first.area, first.perimeter, first.circularity) == (816, 114.473, 0.78)
+        # Tracker hole and MIDI key
+        assert (first.tracker_hole, first.midi_key) == (12, -1)
 
 
 # endregion

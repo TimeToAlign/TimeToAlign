@@ -411,7 +411,7 @@ class TestGetSlice:
         )
 
         assert sliced.length.value == Fraction(30)  # 55 - 25
-        assert sliced.n_children >= 1, "Sliced child should be present"
+        assert sliced.n_children == 1, "Sliced child should be present"
 
     def test_children_excluded(self, timeline_with_child: ContinuousLogicalTimeline):
         """Child timelines are excluded when include_children=False."""

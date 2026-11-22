@@ -783,7 +783,7 @@ assertions whose two sides execute the *identical* sequence of float
 operations (bit-exact — asserted with `==`) and assertions that round-trip an
 arbitrary float through a lossy composition or compare a float map's output to
 an independently-computed gold value (genuinely rounding — kept with
-`pytest.approx`). 13 `approx` sites remain, and they belong to these classes:
+`pytest.approx`). 12 `approx` sites remain, and they belong to these classes:
 
 - **Forward-then-inverse round-trips** — `inverse(forward(x)) == approx(x)`
   and `forward(inverse(x)) == approx(x)` for `LinearMap`, `ScalarMap`,
@@ -804,10 +804,13 @@ an independently-computed gold value (genuinely rounding — kept with
   float round-trips (`test_inverse_roundtrip_int` / `_float`) therefore pass
   through two rounding steps and are not bit-exact even for divisible integer
   inputs.
-- **Fraction gold vs. float output** — `test_ticks_to_quarters_fraction_exact`
-  compares the map's float output against `float(Fraction(ticks, ppq))`
-  (`rel=1e-12`). The `Fraction` gold is exact but the map's float output is
-  not, so equality only holds to tolerance.
+
+`test_ticks_to_quarters_fraction_exact` is exact: an integer tick count into
+quarters (a fraction-canonical target) answers `Fraction(ticks, ppq)`, of type
+`Fraction`, by equality.
+
+A `ScalarMap` inside a `CombinationMap` (`test_constant.py`) answers its
+float target as `scalar × input`: `433.0 * (30.0 / 866)`, compared with `==`.
 
 **Sites converted to exact `==`.** Five assertions whose two sides run the
 identical float arithmetic were hardened from `approx` to `==`:

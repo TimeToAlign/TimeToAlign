@@ -63,7 +63,7 @@ for this path.
 
 ## Score loader and stores
 
-The Beethoven score test pins 3,751 events, non-null tick resolution, Partitura metadata with four
+The Beethoven score test pins 3,751 events, the tick resolution 480 the file header states, Partitura metadata with four
 parts, and populated pitch data. Partitura's score parse carries no velocity, so every note's
 `velocity` is null; `parser="mido"` reads the file's own values (this file states 100 on every
 note). An empty MIDI file must raise `EOFError`. `ScoreMidiEventData`

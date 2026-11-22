@@ -284,7 +284,7 @@ def get_event_h_global_coords() -> tuple[float, float]:
     return (float(start), float(end))
 
 
-def calculate_expected_h_prime() -> tuple[float, float]:
+def calculate_expected_h_prime() -> tuple[Fraction, Fraction]:
     """Calculate expected H' position in DGT1 using proportional transfer.
 
     Returns:
@@ -294,8 +294,8 @@ def calculate_expected_h_prime() -> tuple[float, float]:
     dgt1_seg_length = DGT1_SEGMENT_LENGTHS[EVENT_H_SEGMENT_INDEX]
 
     # Proportional positions within segment
-    start_ratio = EVENT_H_START_IN_SEGMENT / dgt2_seg_length
-    end_ratio = EVENT_H_END_IN_SEGMENT / dgt2_seg_length
+    start_ratio = Fraction(EVENT_H_START_IN_SEGMENT, dgt2_seg_length)
+    end_ratio = Fraction(EVENT_H_END_IN_SEGMENT, dgt2_seg_length)
 
     # DGT1 segment offset
     dgt1_seg_offset = sum(DGT1_SEGMENT_LENGTHS[:EVENT_H_SEGMENT_INDEX])
@@ -333,9 +333,10 @@ class TestEventHCalculations:
         seg2_start = sum(DGT1_SEGMENT_LENGTHS[:EVENT_H_SEGMENT_INDEX])
         seg2_end = seg2_start + DGT1_SEGMENT_LENGTHS[EVENT_H_SEGMENT_INDEX]
 
-        assert seg2_start < h_prime_start < seg2_end
-        assert seg2_start < h_prime_end < seg2_end
-        assert h_prime_start < h_prime_end
+        # 967 + 378/867 * 967 and 967 + 517/867 * 967, both inside [967, 1934).
+        assert (seg2_start, seg2_end) == (967, 1934)
+        assert h_prime_start == Fraction(1203915, 867)
+        assert h_prime_end == Fraction(1338328, 867)
 
 
 # endregion

@@ -1617,7 +1617,8 @@ class TestFlowComparisonDiagram:
         match_count = sum(
             1 for ln in lines if FLOW_CHARS["match"] in ln and "#" not in ln
         )
-        assert match_count >= 1
+        # One matching row per section of the flow.
+        assert match_count == len(flow_a.sections)
 
     def test_divergent_flows_show_mismatch(self) -> None:
         """Different flows show mismatch markers with explanations."""

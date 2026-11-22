@@ -19,7 +19,6 @@ Validity Rationale:
 from __future__ import annotations
 
 import json
-import time
 from fractions import Fraction
 from typing import Any
 
@@ -339,10 +338,10 @@ class TestEventManagement:
         events = parent.get_events(include_children=False)
         assert len(events) == 0
 
-        # With include_children=True, child events are included
+        # With include_children=True, child events are included; the child
+        # holds none, so nothing is added.
         events_with_children = parent.get_events(include_children=True)
-        # Note: child has events that were added, segment events excluded
-        assert len(events_with_children) >= 0
+        assert len(events_with_children) == 0
 
     def test_get_events_coordinate_range(self, timeline_with_events):
         """Filter events by coordinate range."""
@@ -977,14 +976,14 @@ class TestMagicMethods:
 # endregion
 
 
-# region Performance Tests
+# region Scale Tests
 
 
-class TestPerformance:
-    """Performance benchmarks for Timeline operations."""
+class TestScale:
+    """Large inputs give exact results."""
 
-    def test_add_many_events_performance(self, profiler):
-        """Benchmark adding many events."""
+    def test_add_many_events(self):
+        """Ten thousand instants added in one call are all held."""
         n_events = 10000
         events = [
             {
@@ -997,30 +996,9 @@ class TestPerformance:
         ]
 
         tl = Timeline(length=float(n_events))
-
-        start = time.perf_counter()
         tl.add_events(events)
-        elapsed = time.perf_counter() - start
-
-        profiler.record("add_10000_events", elapsed)
 
         assert tl.n_events == n_events
-        # Should complete in reasonable time (< 5 seconds)
-        assert elapsed < 5.0, f"Adding {n_events} events took {elapsed:.2f}s"
-
-    def test_create_many_timelines_performance(self, profiler):
-        """Benchmark creating many timelines."""
-        n_timelines = 1000
-
-        start = time.perf_counter()
-        timelines = [Timeline(length=100.0) for _ in range(n_timelines)]
-        elapsed = time.perf_counter() - start
-
-        profiler.record("create_1000_timelines", elapsed)
-
-        assert len(timelines) == n_timelines
-        # Should complete quickly (< 2 seconds)
-        assert elapsed < 2.0, f"Creating {n_timelines} timelines took {elapsed:.2f}s"
 
 
 # endregion

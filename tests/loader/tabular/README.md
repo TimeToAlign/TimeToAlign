@@ -119,7 +119,7 @@ whose whole message is asserted: it names the duration column, the axis
 4. **TEMPORAL TYPE INFERENCE**:
    - Events with valid `duration_qb` -> "interval"
    - Events with null `duration_qb` or null `quarterbeats` -> "instant"
-   - Validated: all 4,753 events are intervals (EXACT, per `test_correctness.py` line 259)
+   - Validated: all 4,753 events are intervals and none is an instant (EXACT, `test_correctness.py`; every row of the TSV has a `duration_qb`)
 
 5. **ZERO ITERATION GUARANTEE**: Validated via monkey-patching:
    ```python

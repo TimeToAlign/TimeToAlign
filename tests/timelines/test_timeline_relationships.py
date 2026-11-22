@@ -2301,7 +2301,7 @@ class TestUnifiedAPIWithRealData:
 
         # All regions should be contiguous
         for i in range(1, len(regions)):
-            assert abs(regions[i].start.value - regions[i - 1].end.value) < 1e-10, (
+            assert regions[i].start == regions[i - 1].end, (
                 f"Gap between region {i - 1} ({regions[i - 1].name}) end="
                 f"{regions[i - 1].end.value} and region {i} ({regions[i].name}) "
                 f"start={regions[i].start.value}"
@@ -2346,7 +2346,7 @@ class TestUnifiedAPIWithRealData:
 
         # All regions contiguous
         for i in range(1, len(regions)):
-            assert abs(regions[i].start.value - regions[i - 1].end.value) < 1e-10
+            assert regions[i].start == regions[i - 1].end
 
     def test_create_regions_by_splitting_section_breaks(self, wagner_timeline):
         """Splitting by {'breaks': ['section']} finds section breaks.

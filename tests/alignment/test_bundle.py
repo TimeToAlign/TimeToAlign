@@ -1160,9 +1160,13 @@ class TestGetMatchstampAtCrossGroup:
 
         ts = bundle.get_matchstamp_at(100.0, "score").to_dict(format="prefix")
 
-        # Keys should be "group_id/timeline_id" format
+        # Keys are "group_id/timeline_id (unit)"; the stamp holds every member
+        # of the score's group, score and image, both on seconds axes.
         score_keys = [k for k in ts if k.startswith("group_1/")]
-        assert len(score_keys) >= 1  # at least "score"
+        assert sorted(score_keys) == [
+            "group_1/image (seconds)",
+            "group_1/score (seconds)",
+        ]
 
     def test_timestamp_no_claims_source_only(self) -> None:
         """Without claims, get_matchstamp_at returns only source group."""
@@ -1229,71 +1233,87 @@ class TestCommensurabilityWithClaims:
 # region Test: Cache Invalidation
 
 
+def _count_warp_map_builds(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Record the target of every ``WarpMap.from_match_line`` call from now on."""
+    built: list[str] = []
+    original = WarpMap.from_match_line.__func__
+
+    def counting(cls, match_line, target_timeline_id, *args, **kwargs):
+        built.append(target_timeline_id)
+        return original(cls, match_line, target_timeline_id, *args, **kwargs)
+
+    monkeypatch.setattr(WarpMap, "from_match_line", classmethod(counting))
+    return built
+
+
 class TestCacheInvalidation:
-    """Tests for WarpMap cache invalidation on add_match_claims()."""
+    """A WarpMap is built once per table state and rebuilt after a change.
 
-    def test_cache_populated_on_first_transfer(self) -> None:
-        """First transfer builds WarpMap and populates cache."""
+    The work the cache saves is counted (calls of
+    ``WarpMap.from_match_line``), never read off the private cache.
+    """
+
+    def test_first_transfer_builds_one_warp_map(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The first transfer between the two groups builds the one WarpMap."""
         bundle, score_tl, _, audio_tl, _ = _make_cross_group_bundle()
         claims = _make_linear_claims(score_tl.id, audio_tl.id, n_points=3)
         bundle.add_match_claims(claims)
+        built = _count_warp_map_builds(monkeypatch)
 
-        assert len(bundle._warp_map_cache) == 0  # No cache yet
+        assert bundle.transfer(50.0, "score", "audio") == 25.0
+        assert built == ["audio"]
 
-        bundle.transfer(50.0, "score", "audio")
-
-        assert len(bundle._warp_map_cache) >= 1  # Cache populated
-
-    def test_cache_reused_on_second_transfer(self) -> None:
-        """Second transfer reuses cached WarpMap (no rebuild)."""
+    def test_second_transfer_builds_nothing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A second transfer answers alike and builds no WarpMap."""
         bundle, score_tl, _, audio_tl, _ = _make_cross_group_bundle()
         claims = _make_linear_claims(score_tl.id, audio_tl.id, n_points=3)
         bundle.add_match_claims(claims)
+        built = _count_warp_map_builds(monkeypatch)
 
         result1 = bundle.transfer(50.0, "score", "audio")
-        cache_after_first = dict(bundle._warp_map_cache)
-
         result2 = bundle.transfer(50.0, "score", "audio")
 
-        assert result1 == result2
-        # Same WarpMap objects should be in cache
-        for key in cache_after_first:
-            if key in bundle._warp_map_cache:
-                assert bundle._warp_map_cache[key] is cache_after_first[key]
+        assert (result1, result2) == (25.0, 25.0)
+        assert built == ["audio"]
 
-    def test_cache_invalidated_on_new_claims(self) -> None:
-        """Adding new claims invalidates the cache."""
+    def test_new_claims_rebuild_the_warp_map(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Adding claims makes the next transfer build the WarpMap again."""
         bundle, score_tl, _, audio_tl, _ = _make_cross_group_bundle()
         claims = _make_linear_claims(score_tl.id, audio_tl.id, n_points=3)
         bundle.add_match_claims(claims)
+        built = _count_warp_map_builds(monkeypatch)
 
         bundle.transfer(50.0, "score", "audio")
-        assert len(bundle._warp_map_cache) >= 1
+        bundle.add_match_claims([_seconds_claim(score_tl.id, 175.0, audio_tl.id, 87.5)])
 
-        # Add more claims -> invalidates cache
-        more_claims = [_seconds_claim(score_tl.id, 175.0, audio_tl.id, 87.5)]
-        bundle.add_match_claims(more_claims)
+        assert built == ["audio"]
+        assert bundle.transfer(50.0, "score", "audio") == 25.0
+        assert built == ["audio", "audio"]
 
-        assert len(bundle._warp_map_cache) == 0  # Cache cleared
+    def test_rebuilt_warp_map_reaches_the_new_anchor(self) -> None:
+        """The rebuilt WarpMap answers past the old anchors, up to the new one.
 
-    def test_transfer_after_invalidation_rebuilds(self) -> None:
-        """Transfer after cache invalidation builds a new WarpMap."""
+        Three linear claims anchor score 0, 50, 100 to audio 0, 25, 50; a
+        fourth at score 150 / audio 75 extends the support, and the rebuilt
+        map transfers score 125 to 62.5 (coord_b = coord_a * 0.5).
+        """
         bundle, score_tl, _, audio_tl, _ = _make_cross_group_bundle()
-
-        # Start with 3 claims: linear mapping coord_b = coord_a * 0.5
         claims = _make_linear_claims(score_tl.id, audio_tl.id, n_points=3)
         bundle.add_match_claims(claims)
 
-        result1 = bundle.transfer(100.0, "score", "audio")
-        assert result1 == 50.0
+        assert bundle.transfer(100.0, "score", "audio") == 50.0
 
-        # Add an additional claim that is consistent with the linear mapping
         more_claims = [_seconds_claim(score_tl.id, 150.0, audio_tl.id, 75.0)]
         bundle.add_match_claims(more_claims)
 
-        # Transfer should still work after rebuild
-        result2 = bundle.transfer(100.0, "score", "audio")
-        assert result2 == 50.0
+        assert bundle.transfer(100.0, "score", "audio") == 50.0
+        assert bundle.transfer(125.0, "score", "audio") == 62.5
 
 
 # endregion
@@ -2599,8 +2619,8 @@ class TestUnexpectedErrorsPropagate:
             with pytest.raises(RuntimeError, match="^boom$") as excinfo:
                 bundle.transfer(50.0, "score", "audio")
         assert "_get_or_build_match_line" in _frames(excinfo)
-        assert (_ALL_BELIEFS, "score") not in bundle._matchline_cache
 
+        # Nothing was cached as "no line": the next transfer builds it and answers.
         assert bundle.transfer(50.0, "score", "audio") == 25.0
 
     def test_a_failing_conversion_map_propagates_from_the_table(

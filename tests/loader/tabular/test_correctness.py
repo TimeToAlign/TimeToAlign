@@ -265,8 +265,8 @@ class TestZeroToleranceTemporalTypes:
         interval_count = types.get("interval", 0)
         instant_count = types.get("instant", 0)
 
-        # All notes should be intervals
-        assert interval_count > 0, "No interval events found"
+        # All 4753 notes of the TSV have a duration, so all are intervals
+        assert (interval_count, instant_count) == (4753, 0)
         assert interval_count == len(loader.events), (
             f"Expected all {len(loader.events)} to be intervals, "
             f"got {interval_count} intervals and {instant_count} instants"

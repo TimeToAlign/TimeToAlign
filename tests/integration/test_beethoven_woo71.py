@@ -15,6 +15,8 @@ This piece is significantly larger than Chopin (4753 vs 498 notes) and tests:
 
 from __future__ import annotations
 
+from fractions import Fraction
+
 import pandas as pd
 import pytest
 
@@ -159,19 +161,13 @@ class TestBeethovenWoO71ScaleComparison:
 
         This validates that WoO71 is a meaningful stress test.
         """
-        ratio = BEETHOVEN_WOO71_GOLD_NOTES / self.CHOPIN_GOLD_NOTES
-        assert ratio > 5, f"Expected Beethoven to be >5x larger, got {ratio:.1f}x"
-
-        # Document the actual ratio
-        assert ratio == pytest.approx(9.54, rel=0.1), (
-            f"Beethoven is {ratio:.1f}x larger than Chopin "
-            f"({BEETHOVEN_WOO71_GOLD_NOTES} vs {self.CHOPIN_GOLD_NOTES} notes)"
-        )
+        ratio = Fraction(BEETHOVEN_WOO71_GOLD_NOTES, self.CHOPIN_GOLD_NOTES)
+        assert ratio == Fraction(4753, 498)  # about 9.5 times as many notes
 
     def test_beethoven_has_more_measures_than_chopin(self):
         """Beethoven WoO71 has significantly more measures than Chopin."""
-        ratio = BEETHOVEN_WOO71_GOLD_MEASURES / self.CHOPIN_GOLD_MEASURES
-        assert ratio > 10, f"Expected Beethoven to be >10x longer, got {ratio:.1f}x"
+        ratio = Fraction(BEETHOVEN_WOO71_GOLD_MEASURES, self.CHOPIN_GOLD_MEASURES)
+        assert ratio == Fraction(397, 22)  # about 18 times as many measures
 
 
 class TestBeethovenWoO71DataIntegrity:

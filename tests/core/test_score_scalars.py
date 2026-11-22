@@ -218,7 +218,7 @@ class TestNote:
         assert note.start == start
         assert note.pitch is not None
         assert note.pitch.midi_number == 59
-        assert note.duration is not None
+        assert note.duration.value == Fraction(1, 2)
         assert note.voice == 1
         assert note.staff == 1
 
@@ -235,7 +235,7 @@ class TestNote:
             velocity=None,
         )
         assert rest.pitch is None
-        assert rest.duration is not None
+        assert rest.duration.value == Fraction(1)
 
     def test_notelike_conformance(self) -> None:
         """Note satisfies NoteLike protocol."""

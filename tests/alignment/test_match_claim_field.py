@@ -12,7 +12,6 @@ from __future__ import annotations
 import copy
 import json
 import re
-import time
 from fractions import Fraction
 from pathlib import Path
 
@@ -1861,9 +1860,20 @@ class TestEdgeCases:
 class TestScale:
     """The vectorized path scales without building Python objects."""
 
-    def test_scale_builds_columnar(self) -> None:
+    def test_scale_builds_columnar(self, monkeypatch: pytest.MonkeyPatch) -> None:
         n = 100_000
-        start = time.perf_counter()
+        built: list[str] = []
+        for model in (MatchClaim, AlignmentAnchor):
+            original = model.__init__
+
+            def counting(
+                self, *args, _original=original, _name=model.__name__, **kwargs
+            ):
+                built.append(_name)
+                _original(self, *args, **kwargs)
+
+            monkeypatch.setattr(model, "__init__", counting)
+
         field = MatchClaimField.from_columns(
             timeline_a_ids=["A"] * n,
             timeline_b_ids=["B"] * n,
@@ -1873,11 +1883,10 @@ class TestScale:
             coordinate_b=[float(i) + 0.5 for i in range(n)],
             timelines=GOLD_AXES,
         )
-        elapsed = time.perf_counter() - start
 
         assert len(field) == n
-        # A generous ceiling: the vectorized path must not build N objects.
-        assert elapsed < 1.0
+        # The vectorized path builds no MatchClaim and no AlignmentAnchor.
+        assert built == []
         claim = field[50_000]
         assert claim.start_anchor.coordinate_a == Coordinate(50_000, TimeUnit.quarters)
         assert claim.start_anchor.coordinate_b == Coordinate(50_000.5, TimeUnit.seconds)

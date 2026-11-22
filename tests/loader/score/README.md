@@ -262,8 +262,12 @@ write is a defect of one of them.
   offset survives `to_parquet` / `from_parquet` as the Fraction pair `[1, 2]` in
   `metadata.json`, read back as `Fraction(1, 2)`; a float offset would be written as a
   float and read back as one.
+- The measures are shifted with the notes: the MusicXML's measure 1 holds one note of 8 divisions
+  at 16 per quarter (an anacrusis of `1/2`), so after the offset measure 1 starts at `0` and
+  measure 2 at `1/2`.
 - `ScoreStore` and loader parquet tests pin files, note/measure counts, metadata, units, empty
-  facets, missing paths, and event-property round trips.
+  facets, missing paths, and event-property round trips. The loader's `notes.parquet` holds
+  the notes TSV's 498 rows (the defect it guards wrote an empty file).
 
 The 498-note Chopin gold value is asserted once per loader in
 `TestNoteCountConsistency.test_note_counts_exact_match`. The same module requires exact MIDI
@@ -384,10 +388,12 @@ coordinates must retain their pair; instant events must keep null `end` and `dur
 The flattened Chopin timeline contains exactly 547 rows: 31 instants and 516 intervals. Known
 Partitura divisions include start `11/2` with duration `3/4` and start `3/4` with duration `1/4`.
 
-There are no `pytest.approx` calls in the score-loader tests. Exact integers, Fractions, binary
-halves, zero offsets, metadata values, and coordinate extents use equality. The only tolerance is
-the explicit `< 1e-6` comparison in `test_partitura_exactness.py`; it compares exact rational
-coordinates with values returned by Partitura's genuinely floating-point `quarter_map`.
+There are no `pytest.approx` calls and no tolerances in the score-loader tests. Exact integers,
+Fractions, binary halves, zero offsets, metadata values, and coordinate extents use equality.
+`test_partitura_exactness.py` compares every Partitura start with its division count over the
+divisions per quarter the file states (16 for Chopin Op. 10 No. 3, 72 for WoO71): a note at
+division `t` starts at exactly `t/16` (or `t/72`) quarters, the first note at division 0. The
+floating-point `quarter_map` is not the oracle, since it cannot state `t/72` exactly.
 
 ## MeasureMap and flow CSV contracts
 

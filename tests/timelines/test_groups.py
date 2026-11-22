@@ -1458,12 +1458,14 @@ class TestTimelineGroupUnfold:
         """Unfolded CLT1 has note events (now living in its appended children)."""
         clt1 = unfolded_group.get_timeline("clt_1")
         events = clt1.get_events(event_type="Note", include_children=True)
-        assert len(events) > 0
+        # ms3's own unfolding of the same score holds 3869 notes.
+        assert len(events) == 3869
 
     def test_unfold_reference_has_flow_maps(self, unfolded_group):
         """Reference timeline in unfolded group has FlowMaps attached."""
         clt1 = unfolded_group.get_timeline("clt_1")
-        assert clt1.n_flow_maps >= 2
+        # Unfolding attaches the reverse map and one forward map, no other.
+        assert clt1.n_flow_maps == 2
         assert clt1.has_flow_map("source")
 
     def test_unfold_invalid_reference_raises(self, score_data):

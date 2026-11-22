@@ -1921,6 +1921,13 @@ class EventData(SemanticFieldAccessMixin):
         highs: list[int | float | Fraction] = []
         for name in ("start", "end"):
             cells = self._table.column(name)
+            if pa.types.is_dictionary(cells.type):
+                # The kernels read struct members, which a dictionary-encoded
+                # column does not offer: decode it, chunk by chunk.
+                cells = pa.chunked_array(
+                    [chunk.dictionary_decode() for chunk in cells.chunks],
+                    type=cells.type.value_type,
+                )
             values = pc.struct_field(cells, "value")
             if values.null_count == len(values):
                 continue

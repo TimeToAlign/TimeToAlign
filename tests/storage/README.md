@@ -263,6 +263,17 @@ asserted as literals.
   empty table (`None`).
 - Cells holding only a `value` (older artifacts): read as their double's
   exact ratio, as before.
+- Dictionary-encoded `start` / `end` columns (a dictionary over the number
+  cells, which the constructor accepts): the kernels cannot read a member
+  of such a column, so the range must decode it first. The reference reads
+  them as it reads any column (`to_pylist` decodes), so agreement plus the
+  literal extremes prove the decoding. Cases: one chunk on each axis
+  (fractions `1/3` and `5/2` picked by indices `[1, 0, 1]`, range
+  `(1/3, 5/2)`); several chunks, each with its own dictionary, one of them
+  empty, and nulls among the indices; a sliced dictionary column, whose
+  extremes left out by the slice must not count; a dictionary `start` beside
+  a plain `end`; and `create_timeline()` of the one-chunk table, which reads
+  the range, building a timeline of length `5/2`.
 - The event tables the storage and core tests build (decimal durations on
   quarters, completions past int64 cross-products, ticks past `2⁵³`,
   three-decimal seconds, Projections) through `from_dicts` and

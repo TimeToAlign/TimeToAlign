@@ -2138,6 +2138,27 @@ differs from row order, so a claim built from row positions instead of matched p
   the anchor of the second claim. A join that refused the shared IDs fails at the first
   `add_group`.
 
+### Matching across spellings
+
+The library's loaders write pitch names with `♯`/`♭` (`Ms3Loader`, `EepNotesLoader`), a TSV
+read with plain pandas holds ms3's ASCII names (`Eb5`). `prepare_eep_notes_for_matching` and
+`prepare_abc_notes_for_matching` respell the column they compare on, so a caller matching
+either kind of frame against the other loses no note with an accidental.
+
+* **Hand-written.** A performance frame with the pitches `Eb5`, `F#4`, `C4` (ASCII, as a
+  `.notes` file read with pandas) and an ms3 frame with `E♭5`, `F♯4`, `C4` (as the loader
+  writes them), one staff, untied; and the reverse, ASCII on the score side. Each pairing
+  matches exactly 3 notes and leaves none unmatched on either side, and the prepared `pitch`
+  columns are `["E♭5", "F♯4", "C4"]` on both sides. Before the respelling only `C4` matched.
+* **The EEP recording against the score** (slow; `StringQuartetEEP_I_Normal` and
+  `ABC/n04op18-4_04_unfolded.notes.tsv`, matched on `pitch` and `staff`). Three pairings
+  give one count: the `EepNotesLoader` notes against the TSV read with pandas (ASCII), against
+  the TSV read by `Ms3Loader` (`♯`/`♭`), and the `.notes` files read with pandas (ASCII)
+  against the `Ms3Loader` notes. Each matches exactly 3741 notes, leaving 15 EEP notes and
+  10 score notes unmatched: the counts measured with ASCII names on both sides before the
+  score loader respelled its names. With the `Ms3Loader` names respelled and the EEP names
+  not, the same match gave 2792, 964 and 959.
+
 ## SUPRA Integration Tests (`test_supra_integration.py`)
 
 ### What We're Validating

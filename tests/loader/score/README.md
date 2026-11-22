@@ -323,6 +323,22 @@ Every other optional integer cell of the notes facet (`mc`, `midi`, `tpc`, `voic
 and now write null. By hand on Clair de lune: mm. 1–6 give start 20, end 19, middle 2, none 36;
 the whole movement 118, 118, 3 and 1441, exactly the TSV's counts.
 
+## MS3 pitch names
+
+ms3 spells accidentals in ASCII (`Bb3`, `F#4`); the loader writes the `name` column in the
+library's spelling, `♯` and `♭` after the step letter (`canonical_pitch_name`, see
+`tests/core/README.md`, "Pitch names in one spelling"), as the other score loaders do. An empty
+`name` cell states no name and reads as null: reading it as text gave the string `"nan"`, a
+name no note has. The octave of MIDI pitches 0 to 11 is `-1`, and its `-` is no flat: the
+specific pitch used to count it as one, so `C-1` read as C♭ in octave -1.
+
+The proof is one notes TSV in `tmp_path` with five notes whose `name` cells are, in row
+order, `Bb3`, `F#4`, `C-1`, `F##4` and empty (the last with MIDI 60 and octave 4). The loaded
+`name` column must be exactly `["B♭3", "F♯4", "C-1", "F♯♯4", None]` and the specific pitches'
+`(step, alter, octave)` exactly `("B", -1, 3)`, `("F", 1, 4)`, `("C", 0, -1)`, `("F", 2, 4)`
+and none for the nameless note (no spelling, no specific pitch), while its MIDI pitch 60
+stays.
+
 ## MS3 measures without a count or a length
 
 A measures table numbers every measure in `mc` and states its length in `act_dur` (whole

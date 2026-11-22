@@ -31,6 +31,7 @@ import pandas as pd
 
 from timetoalign.alignment.claims import ClaimSide, MatchClaim, _claims_between_events
 from timetoalign.core import Coordinate, Provenance, TimeUnit
+from timetoalign.core.events import canonical_pitch_names
 
 if TYPE_CHECKING:
     from timetoalign.timelines.base import Timeline
@@ -397,7 +398,7 @@ def prepare_eep_notes_for_matching(
     pitch_column: str = "pitch",
     staff_column: str = "staff",
 ) -> pd.DataFrame:
-    """Prepare EEP notes for matching: filter rests, explode chords.
+    """Prepare EEP notes for matching: filter rests, explode chords, respell.
 
     Args:
         eep_df: DataFrame from EepNotesLoader with columns including
@@ -408,7 +409,8 @@ def prepare_eep_notes_for_matching(
 
     Returns:
         DataFrame with rests removed and chords exploded into separate rows,
-        ready for matching.
+        the pitch names' accidentals written ``♯``/``♭`` (``Eb5`` ->
+        ``E♭5``, as the library's loaders write them), ready for matching.
     """
     # Filter rests
     notes_only = eep_df[eep_df[pitch_column] != "rest"].copy()
@@ -416,6 +418,7 @@ def prepare_eep_notes_for_matching(
     # Explode chords: "G3,D4,B4,F5" -> separate rows
     notes_only[pitch_column] = notes_only[pitch_column].str.split(",")
     exploded = notes_only.explode(pitch_column).reset_index(drop=True)
+    exploded[pitch_column] = canonical_pitch_names(exploded[pitch_column])
 
     return exploded
 
@@ -452,7 +455,9 @@ def prepare_abc_notes_for_matching(
         DataFrame of the sounding onsets, re-indexed from 0, ready for
         matching. A kept tie start carries its own notated duration, not the
         length of its tie. Includes a ``pitch`` column (renamed from
-        pitch_column) for compatibility with :func:`match_notes_by_attributes`.
+        pitch_column) for compatibility with :func:`match_notes_by_attributes`,
+        its accidentals written ``♯``/``♭`` (``Bb3`` -> ``B♭3``), so a TSV
+        read with plain pandas matches names from the library's loaders.
         The coordinate column values are converted to float.
 
     Raises:
@@ -475,6 +480,7 @@ def prepare_abc_notes_for_matching(
     # Rename pitch column to "pitch" for matching compatibility
     if pitch_column != "pitch":
         note_onsets = note_onsets.rename(columns={pitch_column: "pitch"})
+    note_onsets["pitch"] = canonical_pitch_names(note_onsets["pitch"])
 
     # Convert coordinate column from fraction strings to float
     if not pd.api.types.is_numeric_dtype(note_onsets[coord_column]):

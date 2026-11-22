@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 from typing_extensions import Self
 
 from timetoalign.core import NumberType, TimeUnit
+from timetoalign.core.events import canonical_pitch_name
 from timetoalign.core.time import (
     coordinate_to_struct,
     rational_to_struct,
@@ -37,19 +38,6 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from timetoalign.timelines import ContinuousLogicalTimeline, MeasureMap
-
-# ms3 spells accidentals in ASCII; the library's pitch names use the
-# canonical sharp and flat signs.
-_ACCIDENTAL_SIGNS = str.maketrans({"#": "\u266f", "b": "\u266d"})
-
-
-def _pitch_name(name: str) -> str:
-    """Respell an ms3 pitch name (``"F#4"``, ``"Bb3"``) with ``♯``/``♭``.
-
-    Only the characters after the step letter are respelled, so a step
-    written ``b`` stays a step.
-    """
-    return name[:1] + name[1:].translate(_ACCIDENTAL_SIGNS)
 
 
 class Ms3Loader(ScoreLoader):
@@ -599,9 +587,8 @@ class Ms3Loader(ScoreLoader):
                 step = name[0].upper() if name else "C"
                 alter = 0
                 if len(name) > 1:
-                    alter = (
-                        name[1:].count("#") - name[1:].count("b") - name[1:].count("-")
-                    )
+                    # A "-" after the step is a negative octave (C-1), never a flat.
+                    alter = name[1:].count("#") - name[1:].count("b")
 
                 specific_pitch = {
                     "step": step,
@@ -631,7 +618,12 @@ class Ms3Loader(ScoreLoader):
 
             note_rows.append(
                 {
-                    "name": _pitch_name(str(row.get("name", ""))),
+                    # An empty name cell states no name: null, never "nan".
+                    "name": (
+                        canonical_pitch_name(str(row["name"]))
+                        if pd.notna(row.get("name"))
+                        else None
+                    ),
                     "temporal_type": (
                         "interval" if (dur_qb is not None and dur_qb > 0) else "instant"
                     ),

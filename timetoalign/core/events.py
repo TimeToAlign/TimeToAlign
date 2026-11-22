@@ -27,7 +27,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import IntEnum
 from fractions import Fraction
-from typing import Any, ClassVar, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -63,6 +63,9 @@ from .time import (
     number_to_json,
     struct_to_rational,
 )
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 
 def _pc_mod(arr: pa.Array, n: int) -> pa.Array:
@@ -177,6 +180,54 @@ def _parse_pitch_label(label: str) -> tuple[str, int, int | None]:
 
     octave = int(octave_str) if octave_str is not None else None
     return step, alter, octave
+
+
+def canonical_pitch_name(name: str) -> str:
+    """Respell the accidentals of a pitch name with ``♯`` and ``♭``.
+
+    ``"Bb3"`` becomes ``"B♭3"``, ``"F##4"`` ``"F♯♯4"`` and ``"C#"`` ``"C♯"``,
+    the spelling :meth:`SpecificPitch.get` writes. Only the signs after the
+    step letter change: the step and the octave stay as written (``"C-1"`` is
+    C in octave -1 and stays), and a string that is no pitch name (``""``,
+    ``"rest"``) is returned unchanged.
+
+    Args:
+        name: A pitch name with or without an octave.
+
+    Returns:
+        The name with every accidental written ``♯`` or ``♭``.
+    """
+    match = _PITCH_LABEL_RE.match(name)
+    if match is None or not match.group(2):
+        return name
+    step, signs, octave = match.groups()
+    sign = "♯" if signs[0] in ("#", "♯") else "♭"
+    return f"{step}{sign * len(signs)}{octave or ''}"
+
+
+def canonical_pitch_names(names: pd.Series, *, sep: str | None = None) -> pd.Series:
+    """Respell a column of pitch names with :func:`canonical_pitch_name`.
+
+    Each distinct string is respelled once, so the cost follows the number of
+    distinct names, not of rows. A cell holding no string (a null) is kept.
+
+    Args:
+        names: The column of pitch names.
+        sep: Where a cell lists several names (``"G3,D4,Bb4"`` with
+            ``sep=","``), the separator; each listed name is respelled.
+
+    Returns:
+        A new column, the input left unchanged.
+    """
+    respelled: dict[str, str] = {}
+    for value in names.dropna().unique():
+        if not isinstance(value, str):
+            continue
+        parts = value.split(sep) if sep is not None else [value]
+        new = (sep or "").join(canonical_pitch_name(part) for part in parts)
+        if new != value:
+            respelled[value] = new
+    return names.replace(respelled) if respelled else names.copy()
 
 
 def _parse_octave_from_sp(sp: str | None, step: str) -> int:

@@ -44,7 +44,7 @@ from timetoalign.core import (
     TimeUnit,
     resolve_coordinate_spec,
 )
-from timetoalign.core.fields import SemanticField, field_metadata
+from timetoalign.core.fields import SemanticField, blob_metadata, field_metadata
 from timetoalign.core.ids import id_column, mint_ids, quote_id
 from timetoalign.core.time import (
     RATIONAL_STRUCT_TYPE,
@@ -437,12 +437,117 @@ def _in_lowest_terms(table: pa.Table) -> pa.Table:
     metadata are kept. One vectorized pass per coordinate column.
     """
     for index, field in enumerate(table.schema):
-        if is_coordinate_type(field.type) and all(
-            field.type.field(member).type == pa.int64()
-            for member in ("numerator", "denominator")
-        ):
+        if _is_number_column(field):
             table = table.set_column(index, field, in_lowest_terms(table.column(index)))
     return table
+
+
+def _is_number_column(field: pa.Field) -> bool:
+    """Whether *field* holds coordinate cells with an int64 ratio side."""
+    return is_coordinate_type(field.type) and all(
+        field.type.field(member).type == pa.int64()
+        for member in ("numerator", "denominator")
+    )
+
+
+def _on_number_type(
+    table: pa.Table, unit: TimeUnit, number_type: NumberType, target: NumberType
+) -> pa.Table:
+    """*table*, on *unit* in *number_type*, with its numbers written in *target*.
+
+    The number-type rule of every axis: each value lands in the type the
+    receiving table declares, ``float`` → ``fraction`` as the double's exact
+    ratio, ``fraction`` → ``float`` as the nearest double, onto ``int``
+    nearest with ties to even (as :func:`~timetoalign.core.time.express_as`
+    writes one value). Every coordinate column is re-expressed and its
+    field declares *target*. On an ``int`` or ``fraction`` target a row
+    holding ``start`` and ``end`` then has the duration ``end - start``, so
+    the row stays consistent in the exact arithmetic the table reads it in
+    (two rounded positions, or two doubles' exact ratios, need not differ
+    by the re-expressed duration). Vectorized, one pass per column.
+
+    Raises:
+        ValueError: If an exact ratio does not fit int64 (a double below
+            about ``2**-10`` on a ``fraction`` target).
+    """
+    for index, field in enumerate(table.schema):
+        if not _is_number_column(field):
+            continue
+        declared = field_metadata(field)
+        source = (
+            NumberType(declared["number_type"])
+            if "number_type" in declared
+            else number_type
+        )
+        if source is target:
+            continue
+        cells = _reexpressed(table.column(index), source, target)
+        payload = {key: declared[key] for key in declared if key != "version"}
+        payload.setdefault("unit", unit.value)
+        payload["number_type"] = target.name
+        retyped = pa.field(
+            field.name, field.type, field.nullable, metadata=blob_metadata(**payload)
+        )
+        table = table.set_column(index, retyped, cells)
+    names = table.schema.names
+    if target is not NumberType.float and {"start", "end", "duration"} <= set(names):
+        start, end = table.column("start"), table.column("end")
+        spans = combine_number_columns(
+            end.combine_chunks(), start.combine_chunks(), "subtract", target
+        )
+        index = names.index("duration")
+        duration = pc.if_else(
+            pc.and_(start.is_valid(), end.is_valid()),
+            spans,
+            table.column(index).combine_chunks(),
+        )
+        table = table.set_column(index, table.schema.field(index), duration)
+    return table
+
+
+def _reexpressed(
+    cells: pa.Array | pa.ChunkedArray, source: NumberType, target: NumberType
+) -> pa.StructArray:
+    """A column of number cells declared *source*, written in *target*."""
+    if isinstance(cells, pa.ChunkedArray):
+        cells = cells.combine_chunks()
+    if source is NumberType.int and target is NumberType.fraction:
+        return cells  # n/1 is a fraction cell as it stands
+    if source is NumberType.fraction and target is NumberType.int:
+        return _nearest_integers(cells)
+    # The float side mirrors the canonical one; flatten() nulls every
+    # member of a null cell, which the builder reads as missing.
+    doubles = cells.flatten()[cells.type.get_field_index("value")]
+    return build_number_struct_array(doubles, number_type=target)
+
+
+def _nearest_integers(cells: pa.StructArray) -> pa.StructArray:
+    """Integer cells of the ratios of *cells*, nearest, ties to even, exactly.
+
+    Computed on the ratio side in int64: ``n = q·d + r`` with ``0 <= r <
+    d``, rounded up where ``r > d - r`` or, at a tie, where ``q`` is odd.
+    """
+    members = cells.flatten()
+    names = cells.type.names
+    numerator = members[names.index("numerator")]
+    denominator = members[names.index("denominator")]
+    missing = pc.or_(numerator.is_null(), denominator.is_null())
+    n = numerator.fill_null(0).to_numpy(zero_copy_only=False).astype(np.int64)
+    d = denominator.fill_null(1).to_numpy(zero_copy_only=False).astype(np.int64)
+    quotient, remainder = np.divmod(n, d)
+    rest = d - remainder
+    up = (remainder > rest) | ((remainder == rest) & (quotient % 2 == 1))
+    rounded = quotient + up.astype(np.int64)
+    mask = missing.to_numpy(zero_copy_only=False)
+    return pa.StructArray.from_arrays(
+        [
+            pa.array(rounded.astype(np.float64), pa.float64(), mask=mask),
+            pa.array(rounded, pa.int64(), mask=mask),
+            pa.array(np.ones(len(rounded), np.int64), pa.int64(), mask=mask),
+        ],
+        fields=list(RATIONAL_STRUCT_TYPE),
+        mask=pa.array(mask),
+    )
 
 
 def _has_value_subfield(pa_type: pa.DataType) -> bool:
@@ -1493,7 +1598,12 @@ class EventData(SemanticFieldAccessMixin):
         # Handle extra fields not in base schema
         # These are fields passed by loaders via extra_fields configuration
         base_field_names = set(schema.names)
-        extra_field_names = set(fields.keys()) - base_field_names - {"instant"}
+        # In the order given, so the columns are the same in every process.
+        extra_field_names = [
+            name
+            for name in fields
+            if name not in base_field_names and name != "instant"
+        ]
 
         # Build lookup for provided extra_fields (has proper metadata)
         provided_fields: dict[str, pa.Field] = {}
@@ -1708,39 +1818,50 @@ class EventData(SemanticFieldAccessMixin):
 
     # region Extend/Merge
 
-    def _refuse_other_axis(self, other: "EventData") -> None:
-        """Refuse events on another axis than this table's.
+    def _joining(self, other: "EventData") -> pa.Table:
+        """*other*'s table as it joins this one: on this table's axis.
 
-        The cells of a table are read in its one number type, so rows of
-        another unit or number type cannot join it.
+        Rows of another number type are re-expressed in this table's
+        (:func:`_on_number_type`), as every value landing on an axis is;
+        rows of another unit cannot be.
 
         Raises:
-            ValueError: If *other* has another unit or number type.
+            ValueError: If *other* has another unit, or one of its values
+                cannot be stored in this table's number type (an exact ratio
+                past int64).
         """
         if other.unit != self.unit:
             raise ValueError(f"Unit mismatch: {self.unit} vs {other.unit}")
-        if other.number_type is not self.number_type:
-            raise ValueError(
-                f"Number type mismatch: {self.number_type} vs {other.number_type}"
-            )
+        if other.number_type is self.number_type:
+            return other._table
+        return _on_number_type(
+            other._table, other.unit, other.number_type, self.number_type
+        )
 
     def extend(self, other: "EventData") -> None:
         """Extend this data with events from another EventData (in-place).
 
+        Rows of another number type join re-expressed in this table's: a
+        float as its exact ratio on a ``fraction`` table, a ratio as the
+        nearest float on a ``float`` table, nearest (ties to even) on an
+        ``int`` table. On an ``int`` or ``fraction`` table an interval's
+        duration is then its end minus its start.
+
         Args:
-            other: Another EventData with compatible schema (extra fields
-                are allowed and will be merged using schema promotion).
+            other: Another EventData of the same unit (extra fields are
+                allowed and will be merged using schema promotion).
 
         Raises:
-            ValueError: If the units or the number types don't match.
+            ValueError: If the units don't match, or a value of *other*
+                cannot be stored in this table's number type.
         """
-        self._refuse_other_axis(other)
+        joining = self._joining(other)
 
         # Use promote_options="default" to handle schema differences
         # (e.g., extra fields from JSON loaders). Missing fields are
         # filled with nulls.
         self._table = pa.concat_tables(
-            [self._table, other._table], promote_options="default"
+            [self._table, joining], promote_options="default"
         )
         # The table was replaced in place; any cached SemanticField (incl.
         # an afforded pitch view over a raw column) now wraps the stale
@@ -1751,20 +1872,22 @@ class EventData(SemanticFieldAccessMixin):
     def concat(self, *others: "EventData") -> "EventData":
         """Concatenate with other EventData, returning a new EventData.
 
+        The result has this table's unit and number type; rows of another
+        number type join re-expressed in it, as :meth:`extend` says.
+
         Args:
-            *others: Other EventData to concatenate (extra fields are
-                allowed and will be merged using schema promotion).
+            *others: Other EventData of the same unit to concatenate (extra
+                fields are allowed and will be merged using schema
+                promotion).
 
         Returns:
             A new EventData containing all events.
 
         Raises:
-            ValueError: If any units or number types don't match.
+            ValueError: If any units don't match, or a value cannot be
+                stored in this table's number type.
         """
-        tables = [self._table]
-        for other in others:
-            self._refuse_other_axis(other)
-            tables.append(other._table)
+        tables = [self._table, *(self._joining(other) for other in others)]
 
         # Use promote_options="default" to handle schema differences
         new_table = pa.concat_tables(tables, promote_options="default")
@@ -1849,15 +1972,16 @@ class EventData(SemanticFieldAccessMixin):
             max_coord: Maximum coordinate (exclusive), optionally with a unit.
             **kwargs: Exact match filters for other fields (e.g. event_category="note").
 
-        Coordinate bounds are compared with each event's ``start`` as the
-        table's number type reads it: exactly on an ``int`` or ``fraction``
-        table (ratios cross-multiplied, so positions closer than a float
-        can tell apart are told apart), on the float side of a ``float``
-        table. The minimum is inclusive and the maximum exclusive. A float
-        bound on an exact table is the exact value of that double: on a
-        ``fraction`` table ``0.1`` is a little more than ``1/10``, so
-        ``min_coord=0.1`` leaves out a start at ``1/10``; pass
-        ``Fraction(1, 10)`` to name ``1/10``.
+        Coordinate bounds are compared with each event's ``start``
+        (:func:`~timetoalign.core.time.compare_number_column`). An exact
+        bound (an ``int``, a ``Fraction``) is compared exactly on an ``int``
+        or ``fraction`` table (ratios cross-multiplied, so positions closer
+        than a float can tell apart are told apart). A bound written as a
+        float is compared as a key, with the float side of the cells: on a
+        ``fraction`` table ``min_coord=0.1`` keeps a start at ``1/10``, and
+        ``max_coord=math.inf`` keeps every row. A ``float`` table compares
+        floats whatever the bound. The minimum is inclusive and the maximum
+        exclusive. A NaN bound is refused (``ValueError``).
 
         Returns:
             A new EventData with filtered events.

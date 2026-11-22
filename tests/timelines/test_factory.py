@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass
+from fractions import Fraction
 from typing import TYPE_CHECKING
 
 import pytest
@@ -323,6 +324,59 @@ class TestCreateTimelineFromStore:
         assert type(timeline) is DiscreteLogicalTimeline
         assert timeline.n_children == 0
         assert timeline.n_events == 2
+
+
+class TestStoresOfTwoNumberTypes:
+    """Stores of one unit and two number types make one timeline.
+
+    The first table's number type is the timeline's; the other table's rows
+    join re-expressed in it (a float as its double's exact ratio).
+    """
+
+    @pytest.fixture
+    def store(self) -> DictStore:
+        thirds = EventData.from_dicts(
+            [
+                {
+                    "id": "a",
+                    "event_type": "Note",
+                    "start": Fraction(1, 3),
+                    "end": Fraction(2, 3),
+                }
+            ],
+            TimeUnit.quarters,
+            NumberType.fraction,
+        )
+        decimals = EventData.from_dicts(
+            [{"id": "b", "event_type": "Beat", "instant": 0.75}],
+            TimeUnit.quarters,
+            NumberType.float,
+        )
+        return DictStore({"thirds": thirds, "decimals": decimals})
+
+    @staticmethod
+    def _starts(timeline: Timeline) -> list[tuple[str, Fraction]]:
+        events = timeline.get_events()
+        return list(zip(events.column_values("id"), events.column_values("start")))
+
+    def test_flattened(self, store: DictStore) -> None:
+        timeline = create_timeline(store, uid="t", flatten=True)
+
+        assert timeline.number_type is NumberType.fraction
+        assert timeline.n_children == 0
+        assert self._starts(timeline) == [
+            ("t:a", Fraction(1, 3)),
+            ("t:b", Fraction(3, 4)),
+        ]
+        assert timeline.length.value == Fraction(3, 4)
+
+    def test_grouped(self, store: DictStore) -> None:
+        timeline = create_timeline(store, uid="t", group_by="event_type")
+
+        assert timeline.number_type is NumberType.fraction
+        assert _child_names(timeline) == ["Beat", "Note"]
+        assert self._starts(_child_named(timeline, "Beat")) == [("b", Fraction(3, 4))]
+        assert self._starts(_child_named(timeline, "Note")) == [("a", Fraction(1, 3))]
 
 
 class TestCreateTimelineIncludeExclude:

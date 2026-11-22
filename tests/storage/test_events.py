@@ -6,6 +6,7 @@ See ``README.md`` for the documented contract.
 from __future__ import annotations
 
 import logging
+import math
 from fractions import Fraction
 from typing import Any
 
@@ -861,21 +862,6 @@ class TestOneAxisPerTable:
         assert onset[0].value == 0.3333333333333333
 
     @pytest.mark.parametrize("join", ["extend", "concat"])
-    def test_rows_of_another_number_type_are_refused(self, join):
-        exact = self._quarters({"id": "e1", "event_type": "Beat", "instant": 1})
-        floats = EventData.from_dicts(
-            [{"id": "e2", "event_type": "Beat", "instant": 0.5}],
-            TimeUnit.quarters,
-            NumberType.float,
-        )
-
-        with pytest.raises(ValueError) as refusal:
-            getattr(exact, join)(floats)
-
-        assert str(refusal.value) == "Number type mismatch: fraction vs float"
-        assert len(exact) == 1
-
-    @pytest.mark.parametrize("join", ["extend", "concat"])
     def test_rows_of_the_same_axis_join(self, join):
         first = self._quarters({"id": "e1", "event_type": "Beat", "instant": 1})
         second = self._quarters({"id": "e2", "event_type": "Beat", "instant": 2})
@@ -943,6 +929,246 @@ class TestOneAxisPerTable:
 
         assert read.add_projections([Projection(start=half)]) == ["projection_1"]
         assert read.n_events == 1
+
+
+def _joined(receiving: EventData, joining: EventData, join: str) -> EventData:
+    """*receiving* after *join* (``extend`` or ``concat``) with *joining*."""
+    if join == "concat":
+        return receiving.concat(joining)
+    receiving.extend(joining)
+    return receiving
+
+
+def _row_cells(data: EventData, *names: str) -> list[tuple[Any, ...]]:
+    """Each row's id and its cells under *names*, as ``(value, n, d)`` or None."""
+    return [
+        (
+            row["id"],
+            *(
+                (
+                    None
+                    if row[name] is None
+                    else (
+                        row[name]["value"],
+                        row[name]["numerator"],
+                        row[name]["denominator"],
+                    )
+                )
+                for name in names
+            ),
+        )
+        for row in data.table.to_pylist()
+    ]
+
+
+def _declared(data: EventData) -> dict[str, str]:
+    """The number type each coordinate field of *data* declares."""
+    return {
+        name: field_metadata(data.schema.field(name))["number_type"]
+        for name in ("start", "end", "duration")
+    }
+
+
+@pytest.mark.parametrize("join", ["extend", "concat"])
+class TestJoiningNumberTypes:
+    """Rows of another number type join, re-expressed in the receiving table's."""
+
+    @staticmethod
+    def _thirds() -> EventData:
+        return EventData.from_dicts(
+            [
+                {
+                    "id": "a",
+                    "event_type": "Note",
+                    "start": Fraction(1, 3),
+                    "end": Fraction(2, 3),
+                }
+            ],
+            TimeUnit.quarters,
+            NumberType.fraction,
+        )
+
+    @staticmethod
+    def _decimals() -> EventData:
+        return EventData.from_dicts(
+            [
+                {"id": "b", "event_type": "Note", "start": 0.1, "duration": 0.2},
+                {"id": "c", "event_type": "Beat", "instant": 0.5},
+            ],
+            TimeUnit.quarters,
+            NumberType.float,
+        )
+
+    @staticmethod
+    def _numbers(number_type: NumberType, *rows: tuple[str, Any, Any]) -> EventData:
+        return EventData.from_dicts(
+            [
+                {"id": name, "event_type": "Note", "start": start, "end": end}
+                for name, start, end in rows
+            ],
+            TimeUnit.number,
+            number_type,
+        )
+
+    def test_a_fraction_table_takes_floats_as_their_exact_ratios(self, join):
+        joined = _joined(self._thirds(), self._decimals(), join)
+
+        assert joined.number_type is NumberType.fraction
+        assert _declared(joined) == dict.fromkeys(
+            ("start", "end", "duration"), "fraction"
+        )
+        assert _row_cells(joined, "start", "end", "duration") == [
+            (
+                "a",
+                (0.3333333333333333, 1, 3),
+                (0.6666666666666666, 2, 3),
+                (0.3333333333333333, 1, 3),
+            ),
+            (
+                "b",
+                (0.1, 3602879701896397, 36028797018963968),
+                (0.30000000000000004, 1351079888211149, 4503599627370496),
+                (0.20000000000000004, 7205759403792795, 36028797018963968),
+            ),
+            ("c", (0.5, 1, 2), None, None),
+        ]
+        assert joined.column_values("start")[1] == Fraction(0.1)
+        assert joined.column_values("end")[1] == Fraction(0.1 + 0.2)
+
+    def test_a_float_table_takes_ratios_as_the_nearest_floats(self, join):
+        joined = _joined(self._decimals(), self._thirds(), join)
+
+        assert joined.number_type is NumberType.float
+        assert _declared(joined) == dict.fromkeys(("start", "end", "duration"), "float")
+        assert _row_cells(joined, "start", "end", "duration")[2] == (
+            "a",
+            (0.3333333333333333, 6004799503160661, 18014398509481984),
+            (0.6666666666666666, 6004799503160661, 9007199254740992),
+            (0.3333333333333333, 6004799503160661, 18014398509481984),
+        )
+        assert _row_cells(joined, "start")[:2] == [
+            ("b", (0.1, 3602879701896397, 36028797018963968)),
+            ("c", (0.5, 1, 2)),
+        ]
+
+    def test_an_int_table_takes_the_nearest_integers_ties_to_even(self, join):
+        receiving = self._numbers(NumberType.int, ("x", 10, 11))
+        ratios = self._numbers(
+            NumberType.fraction,
+            ("y", Fraction(5, 2), Fraction(7, 2)),
+            ("z", Fraction(3, 2), Fraction(9, 2)),
+        )
+        decimals = self._numbers(NumberType.float, ("w", 2.5, 3.5))
+
+        joined = _joined(_joined(receiving, ratios, join), decimals, join)
+
+        assert joined.number_type is NumberType.int
+        assert _declared(joined) == dict.fromkeys(("start", "end", "duration"), "int")
+        assert _row_cells(joined, "start", "end", "duration") == [
+            ("x", (10.0, 10, 1), (11.0, 11, 1), (1.0, 1, 1)),
+            ("y", (2.0, 2, 1), (4.0, 4, 1), (2.0, 2, 1)),
+            ("z", (2.0, 2, 1), (4.0, 4, 1), (2.0, 2, 1)),
+            ("w", (2.0, 2, 1), (4.0, 4, 1), (2.0, 2, 1)),
+        ]
+
+    def test_a_fraction_table_takes_integers_as_they_stand(self, join):
+        receiving = self._numbers(
+            NumberType.fraction, ("y", Fraction(5, 2), Fraction(7, 2))
+        )
+        joined = _joined(receiving, self._numbers(NumberType.int, ("x", 10, 11)), join)
+
+        assert _row_cells(joined, "start", "end", "duration") == [
+            ("y", (2.5, 5, 2), (3.5, 7, 2), (1.0, 1, 1)),
+            ("x", (10.0, 10, 1), (11.0, 11, 1), (1.0, 1, 1)),
+        ]
+        assert _declared(joined) == dict.fromkeys(
+            ("start", "end", "duration"), "fraction"
+        )
+
+    def test_another_unit_is_refused(self, join):
+        receiving = self._thirds()
+        seconds = EventData.from_dicts(
+            [{"id": "s", "event_type": "Note", "start": 1.0, "end": 2.0}],
+            TimeUnit.seconds,
+        )
+
+        with pytest.raises(ValueError) as refusal:
+            _joined(receiving, seconds, join)
+
+        assert str(refusal.value) == "Unit mismatch: quarters vs seconds"
+        assert len(receiving) == 1
+
+
+class TestFilterBounds:
+    """A float bound compares as a key, an exact one exactly; NaN is refused."""
+
+    @staticmethod
+    def _tenths() -> EventData:
+        return EventData.from_dicts(
+            [
+                {"id": "a", "event_type": "Beat", "instant": Fraction(1, 10)},
+                {"id": "b", "event_type": "Beat", "instant": Fraction(1, 3)},
+            ],
+            TimeUnit.quarters,
+            NumberType.fraction,
+        )
+
+    @staticmethod
+    def _ids(data: EventData) -> list[str]:
+        return data.column_values("id")
+
+    def test_a_float_bound_on_a_fraction_table_is_a_key(self):
+        data = self._tenths()
+
+        assert self._ids(data.filter(min_coord=0.1)) == ["a", "b"]
+        assert self._ids(data.filter(max_coord=0.1)) == []
+        assert self._ids(data.filter(min_coord=1 / 3)) == ["b"]
+
+    def test_an_exact_bound_on_a_fraction_table_is_exact(self):
+        data = self._tenths()
+
+        assert self._ids(data.filter(min_coord=Fraction(0.1))) == ["b"]
+        assert self._ids(data.filter(max_coord=Fraction(1, 3))) == ["a"]
+        assert self._ids(data.filter(min_coord=Fraction(1, 10))) == ["a", "b"]
+
+    def test_a_float_bound_on_an_int_table_is_not_rounded(self):
+        data = EventData.from_dicts(
+            [
+                {"id": "x", "event_type": "Beat", "instant": 10},
+                {"id": "y", "event_type": "Beat", "instant": 11},
+            ],
+            TimeUnit.number,
+            NumberType.int,
+        )
+
+        assert self._ids(data.filter(min_coord=10.5)) == ["y"]
+        assert self._ids(data.filter(max_coord=10.5)) == ["x"]
+        assert self._ids(data.filter(min_coord=Fraction(21, 2))) == ["y"]
+
+    @pytest.mark.parametrize(
+        "number_type", [NumberType.float, NumberType.fraction, NumberType.int]
+    )
+    def test_infinite_bounds_are_ordinary_doubles(self, number_type):
+        data = EventData.from_dicts(
+            [
+                {"id": "x", "event_type": "Beat", "instant": 1},
+                {"id": "y", "event_type": "Beat", "instant": 2},
+            ],
+            TimeUnit.number,
+            number_type,
+        )
+
+        assert self._ids(data.filter(max_coord=math.inf)) == ["x", "y"]
+        assert self._ids(data.filter(min_coord=-math.inf)) == ["x", "y"]
+        assert self._ids(data.filter(min_coord=math.inf)) == []
+        assert self._ids(data.filter(max_coord=-math.inf)) == []
+
+    @pytest.mark.parametrize("bound", ["min_coord", "max_coord"])
+    def test_a_nan_bound_is_refused(self, bound):
+        with pytest.raises(ValueError) as refusal:
+            self._tenths().filter(**{bound: math.nan})
+
+        assert str(refusal.value) == "NaN names no position: it compares with no cell"
 
 
 class TestReducedAtTheDoorsOnly:

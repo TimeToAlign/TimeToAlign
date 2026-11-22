@@ -447,15 +447,15 @@ the library writes back against the same literal text.
   of unknown length at offset 12 with `child_offset`, `offset [12, 1] of
   'late' is beyond the length [10, 1] of its parent 'score'`. A child ending
   exactly at 10 is read, and the parent writes `[10, 1]` back in both forms.
-  The library used to grow the parent to 12 instead, which is what these
-  pin. On a seconds root of length `60.0`, an end of `62.5`, an offset of
+  The parent is never grown to the child's end, which is what these pin.
+  On a seconds root of length `60.0`, an end of `62.5`, an offset of
   `75.0` and a segment of unknown length whose successor starts at `61.0`
   are refused with the values spelled as written (`ends at 62.5`, `offset
   75.0`, `ends at 61.0`). The setters keep the library's own message, since
   no JSON spelling exists there.
 - **A child's end is the sum a reader computes.** The rule is TimeToShare's,
-  delegated to its `child_ends`, so the reader and the validators cannot
-  disagree: where the parent and the child are both `float`, the end is the
+  applied by the format's validator before the library reads anything, so
+  the reader and the validators cannot disagree: where the parent and the child are both `float`, the end is the
   double sum of the two JSON numbers, exact otherwise. A `points` page of
   length `932.2326510101616` holding a child at offset `76.70371459980326`
   of length `855.5289364103584` ends, in doubles, exactly at the page's
@@ -789,6 +789,17 @@ tables are absent, is one more byte-identical round trip.
   of the two texts (`difflib.unified_diff`) is asserted exactly: one hunk
   adding the four lines of the new timeline, nothing else changed.
 - `to_file` returns the path it wrote.
+- **A file is validated as it is written.** The fixture
+  `discrete_logical.minimal.yaml` styles named timestamps at 0 and 480
+  ticks; read and shortened to length 400, its styling names a coordinate
+  beyond the end. `to_file` with the styling (as read) is refused by the
+  validator (`timestamp_coordinate` at
+  `#/graphical/timestamps/1/coordinate`, the message naming
+  `'timestamp_2'`) and writes no file; `to_file(styling=False)` writes a
+  manifest without `graphical` (keys `@context`, `meta`, `timelines`,
+  `timetoshare`), which reads back with length 400. A writer validating
+  the whole manifest whatever the file holds refuses the second; one
+  validating nothing writes the first.
 
 ### Measure maps in a manifest (`test_manifest_measure_maps.py`)
 
@@ -909,8 +920,13 @@ segno, a coda or a repeat start rather than guessing it from a name.
   `repeat_count` other than 1 is refused at construction, and reading a
   `repeat_count` elsewhere, a target on a `jump_to` or `flow_marker`, a
   target naming no `jump_to`, a missing target on a `dal_segno`, an unknown
-  `type` and a manifestation of another type are each refused with the
-  exact message.
+  `type`, a manifestation of another type and a `repeat_count` of 0 are
+  each refused by the format's validator. Its code and the JSON pointer of
+  the fault are asserted exactly; of its message only what names the fault
+  (the key, the value: `'repeat_count'`, `'nowhere'`, `'jump_over'`), since
+  the wording is TimeToShare's and changes there without any change in what
+  is refused. The library's own refusal at construction is asserted with
+  its whole message.
 - **Score loaders keep their traversal.** The flow tests (`test_flow.py`)
   are the oracle and stay green: the traversal reads the controller, not
   the registry. The registry of the ms3 measures of Couperin's
@@ -1607,10 +1623,15 @@ of a manifest without groups whose one root is that line: the group holds
 out of the minimal form) and locked when it states `true` (written `true`
 in both forms).
 
-`from_dict` refuses each malformed input with a `ValueError` naming the
-problem: a missing required key, a member naming no timeline, a timeline id
-written twice, an order that is not a permutation of the members, a member
-nested with another member, and a group id that equals a timeline id. A root
+`from_dict` refuses each malformed input with the format validator's
+refusal (a `ValueError`): a missing required key, a member naming no
+timeline, a timeline id written twice, an order that is not a permutation
+of the members, a member nested with another member, a group id that equals
+a timeline id, and one holding a control character. Each case asserts the
+code and the JSON pointer of the fault exactly and, of the message, the part
+naming the fault (`'members'`, `'Z'`, the first holder `#/timelines/0/id`,
+`U+0009`, both `'R'` and `'K'`): the wording is TimeToShare's and changes
+there without any change in what is refused. A root
 that holds no member is not refused: a group is read with the timelines its
 members need, and such a root is left out.
 
@@ -2073,27 +2094,60 @@ truncate_events=False)` over the Notes holds `n3`…`n6` (each fully inside,
 `n6` ending at the slice's end), and `get_regions_at(3/10)` with regions
 `[1/10, 3/10)` and `[3/10, 7/10)` names the second one only.
 
-**A float bound on an exact axis is the double's exact value**
-(`test_a_float_bound_on_a_fraction_axis_is_its_double` for `get_events`,
-`test_a_float_query_on_a_fraction_axis_is_its_double` for
-`get_events_at`). The bound is
-re-expressed in the axis's number type, so on a `fraction` axis `0.1` is
-`3602879701896397/36028797018963968`, a little more than `1/10`, and `1/3`
-written as a float is a little less than `1/3`. That is what holds, stated
-in the docstrings of `get_events`, `get_events_at` and `EventData.filter`;
-whether a float query should snap to a stored cell instead is not decided,
-and this test pins what holds so a change to it is a visible decision. On a
-fraction quarters timeline with a Beat `tenth` at `1/10` and a Beat `third`
-at `1/3`:
+**A float query compares as a key; an exact one exactly**
+(`TestQueriesOnExactAxes`). A position written as a float names the value
+it denotes: it is compared with the float side of the stored cells (the
+nearest double to each stored value), so a decimal finds the stored ratio
+it was written for. A position written exactly (an `int`, a `Fraction`)
+is compared exactly with the ratios and never rounded onto the axis. The
+two readers are `get_events(min_coord=, max_coord=)` and `get_events_at`;
+both are asserted on event IDs. What would break each row: a float
+re-expressed as its double's exact ratio misses `1/10` at `0.1`; a float
+rounded onto an `int` axis puts `10.5` at `10`; an exact query compared as a
+float finds `1/10` at `Fraction(0.1)`, the double's ratio, which is not
+`1/10`.
+
+On a `fraction` quarters timeline with Beats `tenth` at `1/10` and
+`third` at `1/3`:
 
 | Query | Asserted |
 |---|---|
-| `get_events(min_coord=0.1)` | `third` (the `1/10` Beat is below the bound) |
-| `get_events(max_coord=0.1)` | `tenth` (it is below the bound) |
-| `get_events_at(0.1)` | nothing |
-| `get_events_at(1 / 3)` | nothing |
-| `get_events_at(Fraction(1, 10))` | `tenth` |
+| `get_events(min_coord=0.1)` | `tenth`, `third` |
+| `get_events(max_coord=0.1)` | nothing (`tenth` is not below `0.1`) |
 | `get_events(min_coord=Fraction(1, 10))` | `tenth`, `third` |
+| `get_events(min_coord=Fraction(0.1))` | `third` (the double's exact ratio lies above `1/10`) |
+| `get_events_at(0.1)` | `tenth` |
+| `get_events_at(1 / 3)` | `third` |
+| `get_events_at(Fraction(1, 10))` | `tenth` |
+| `get_events_at(Fraction(0.1))` | nothing |
+
+On a `fraction` quarters timeline with Notes `b` on `[1/3, 2/3)` and `c` on
+`[1/2, 1)`, `get_events_at(2 / 3)` finds `c` alone: `b`'s end is the
+double `0.6666666666666666`, equal to the query, and an interval holds its
+start, not its end. `get_events_at(Fraction(2, 3))` finds `c` alone too,
+exactly. On an `int` ticks timeline with Notes `x` on `[10, 11)` and `y` on
+`[11, 12)`: `min_coord=10.5` keeps `y` only, `max_coord=10.5` keeps `x`
+only, `get_events_at(11.5)` finds `y`, `min_coord=Fraction(21, 2)` keeps `y`
+and `get_events_at(Fraction(23, 2))` finds `y` (exact, not rounded to 12,
+where `y` would not hold). A child is reached with the position as written:
+a `fraction` parent holding a child at offset `1/10` with a Beat at its 0
+finds it at `get_events_at(0.1)`, under the child's ID.
+
+**Infinite and NaN positions** (`TestNonFinitePositions`). An infinite
+float is an ordinary double compared as a key: on a seconds (`float`), a
+quarters (`fraction`) and a ticks (`int`) timeline with Notes at 1 and 2,
+`get_events(max_coord=math.inf)` and `get_events(min_coord=-math.inf)`
+return both, `get_events(min_coord=math.inf)` and `max_coord=-math.inf`
+none, and `get_events_at(math.inf)` finds nothing. NaN names no position:
+`get_events(min_coord=math.nan)`, `max_coord=math.nan` and
+`get_events_at(math.nan)` raise `ValueError` `NaN names no position: it
+compares with no cell` on every axis, instead of answering an empty result
+nobody asked for.
+
+**A timeline's events are not handed out** (`TestGetEventsIsACopy`).
+`get_events()` without a filter returns an `EventData` of its own: `is` the
+timeline's `events` is false, and `extend` on it with a Note at `[10, 11)`
+leaves a timeline of length 4 holding its one event, length 4.
 
 ### `test_base.py` - Core Timeline Functionality
 
@@ -2528,8 +2582,8 @@ need contents opt in.
 
 6. **Scale Tests** (2 tests)
    - Adding 1,000 children holds exactly 1,000.
-   - Depth-first iteration of a chain 100 deep yields `level_1` … `level_99`
-     in order, level *i* at root offset *i* (each level sits at offset 1 on
+   - Depth-first iteration of a chain 100 deep yields `depth_1` … `depth_99`
+     in order, the timeline at depth *i* at root offset *i* (each sits at offset 1 on
      its parent).
 
 7. **Cross-Unit Child Addition via Conversion Map** (11 tests)
@@ -3054,7 +3108,7 @@ MetricMap` for any timeline carrying one. The registry is now populated by
    - Performance MIDI to Timeline
    - Score MIDI to Timeline
    - Nested MIDI timelines
-   - Real file benchmarks
+   - A discrete timeline from MIDI-shaped event data
 
 3. **Score Loader Integration** (2 tests)
    - Note events from score
@@ -4039,6 +4093,16 @@ format-specific consumers receive a stable dictionary layout.
 `test_factory.py` exercises `EventStore.create_timeline()` for direct events,
 multi-store children, and store selection. It pins child IDs and event counts
 to distinguish direct placement from child construction.
+
+Stores of one unit and two number types make one timeline
+(`TestStoresOfTwoNumberTypes`): a store holding a `fraction` quarters table
+(`a` on `[1/3, 2/3)`) and then a `float` one (a Beat `b` at `0.75`) gives,
+with `flatten=True`, a `fraction` timeline `t` of length `3/4` holding
+`t:a` at `1/3` and `t:b` at `3/4` (the double `0.75` as its exact ratio),
+and with `group_by="event_type"` a `fraction` timeline whose children
+`Beat` and `Note` hold `b` at `3/4` and `a` at `1/3`. Both joins pass
+through `EventData.concat`, which re-expresses the second table's rows in
+the first's number type (`tests/storage/README.md`, "One axis per table").
 
 A timeline made from an `EventData` holds its events in an `EventData` of
 its own, over the same table (tables are immutable, so sharing one costs

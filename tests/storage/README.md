@@ -233,7 +233,7 @@ by declaration rather than by the rows of one batch.
 ### `test_events.py` - One axis per table: number type kept, cells reduced
 
 **Purpose:** An `EventData` reads every cell in its one unit and number type,
-and holds one spelling of each value. Three ways in broke that.
+and holds one spelling of each value, whatever way its rows came in.
 
 **Contract and what proves it** (`TestOneAxisPerTable`):
 
@@ -249,16 +249,53 @@ and holds one spelling of each value. Three ways in broke that.
   written before, whose column carries only the bare `unit` key, still reads
   as before (`float`, `0.3333333333333333`): that branch is the reader's
   fallback, asserted on a table written with the old metadata by hand.
-- **`extend` and `concat` refuse rows of another number type.** They
-  checked the unit only, so a `fraction` table absorbed a `float` table's
-  rows and read their dyadics as authored ratios. Both now raise the
-  `ValueError` they raise for a unit mismatch, with the message `Number type
-  mismatch: fraction vs float`, and the table is unchanged (one row). A
-  table of the same unit and number type still joins (two rows).
+- **`extend` and `concat` join rows of another number type, re-expressed
+  in the receiving table's** (`TestJoiningNumberTypes`). The rule is the one
+  every value landing on an axis obeys: float → fraction as the double's
+  exact ratio (`Fraction(x)`, no denominator limiting), fraction → float as
+  the nearest double (`float(r)`), onto `int` nearest with ties to even
+  (`express_as`). What proves it is the cells, read member by member, and
+  the joined table's declared number type and field metadata, for each
+  direction:
+  - a `fraction` quarters table (`a` at `[1/3, 2/3)`) absorbing a `float`
+    one (`b` at `0.1` lasting `0.2`, an instant `c` at `0.5`): `b`'s start
+    is `3602879701896397/36028797018963968` (`Fraction(0.1)`), its end
+    `1351079888211149/4503599627370496` (`Fraction(0.1 + 0.2)`), its
+    duration their exact difference, `7205759403792795/36028797018963968`
+    (not `Fraction(0.2)`: an exact table reads a row through `end - start`,
+    so the duration of a joined interval is its end minus its start);
+    `c` stays an instant at `1/2`; every coordinate field declares
+    `fraction`;
+  - the reverse, the `float` table absorbing the `fraction` one: `a`'s cells
+    are `0.3333333333333333` and `0.6666666666666666`, each mirrored by its
+    double's exact ratio (`6004799503160661/18014398509481984`), the
+    duration `0.3333333333333333` (a float table keeps each value
+    re-expressed, the doubles agreeing within its tolerance);
+  - an `int` table absorbing `fraction` rows `[5/2, 7/2)` and `[3/2, 9/2)`
+    and a `float` row `[2.5, 3.5)`: ties go to the even neighbour, so the
+    rows are `[2, 4)`, `[2, 4)` and `[2, 4)`, durations `2`, every cell
+    `denominator` 1; and a `fraction` table absorbing the `int` rows keeps
+    them as `n/1`.
+  `extend` and `concat` give the same table; the receiving table's own rows
+  are unchanged. A table of another unit is still refused (`Unit mismatch:
+  quarters vs seconds`), as no number can be re-expressed across units
+  without a C-Map. The joins the factory makes (`flatten=True`,
+  `group_by=`) are proven end to end in `tests/timelines/test_factory.py`
+  (`TestStoresOfTwoNumberTypes`).
+- **Bounds of `filter`** (`TestFilterBounds`). An exact bound (`int`,
+  `Fraction`) compares exactly on an `int` or `fraction` table; a bound
+  written as a float compares as a key with the float side of the cells, so
+  `min_coord=0.1` keeps a start at `1/10` on a `fraction` table and
+  `min_coord=10.5` on an `int` table keeps a start at 11 and leaves out one
+  at 10. An infinite float bound is an ordinary double: `max_coord=inf`
+  keeps every row and `min_coord=inf` none, on `float`, `fraction` and
+  `int` tables alike. NaN names no position and is refused (`NaN names no
+  position: it compares with no cell`) rather than answering an empty
+  table nobody asked for.
 - **Cells are reduced on entry.** A ratio stated as `2/4` is accepted and
   held as `1/2` at every door that takes whole cells: `EventData(table)`,
-  `EventData.from_parquet`, and therefore `concat` (which builds through the
-  constructor) and `extend` (whose argument was built through it). Each is
+  `EventData.from_parquet`; `concat` and `extend` join tables that entered
+  through those doors, so their rows stay reduced without a second pass. Each is
   asserted on the cells read back (`(1, 2)`, never `(2, 4)`), never by
   refusing the input. A table whose `start` cells spell one value three
   ways, `2/4`, `4/8` and `1/2`, holds three equal cells after entry, and

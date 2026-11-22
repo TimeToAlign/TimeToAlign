@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, Iterator
 
@@ -599,6 +600,26 @@ class ConversionMapsMixin:
                 exists, or the path is a C-Map declared to write fractions and
                 *value* is a float, which it cannot resolve exactly.
         """
+        # Expressed on THIS timeline's axis, in the type it declares -- which
+        # may differ from its unit's default when the caller chose otherwise.
+        return Coordinate(
+            express_as(self._position_on_axis(value), self._number_type),
+            self._unit,
+            number_type=self._number_type,
+        )
+
+    def _position_on_axis(self, value: CoordinateSpec) -> int | float | Fraction:
+        """The position *value* names on this timeline's axis, not yet expressed.
+
+        The unit is converted through the C-Map and a descendant's position
+        carried up by its offsets, but the number is left as that arithmetic
+        gives it: :meth:`_convert_coordinate_to_self` writes it in the
+        declared number type, a query compares it as it stands
+        (:meth:`_query_position`).
+
+        Raises:
+            ValueError: As :meth:`_convert_coordinate_to_self`.
+        """
         resolved = resolve_coordinate_spec(value)
         owner_id = resolved.timeline_id or self._id
         path = self._descendant_offset_path(owner_id)
@@ -651,14 +672,7 @@ class ConversionMapsMixin:
 
         for offset in reversed(offsets):
             native_value = shift_number(native_value, offset.value, subtract=False)
-
-        # Expressed on THIS timeline's axis, in the type it declares -- which
-        # may differ from its unit's default when the caller chose otherwise.
-        return Coordinate(
-            express_as(native_value, self._number_type),
-            self._unit,
-            number_type=self._number_type,
-        )
+        return native_value
 
     def get_coordinate_at(
         self,
@@ -865,3 +879,27 @@ class ConversionMapsMixin:
     def _resolve_axis_value(self, coord: CoordinateSpec) -> int | float | Fraction:
         """Resolve a coordinate and return its native numeric value."""
         return self._convert_coordinate_to_self(coord).value
+
+    def _query_position(self, coord: CoordinateSpec) -> int | float | Fraction:
+        """The position a query names on this axis, as a comparison reads it.
+
+        A position written as a float is a float, compared as a key with the
+        float side of the stored cells
+        (:func:`~timetoalign.core.time.compare_number_column`): ``0.1`` finds
+        a value stored as ``1/10`` on a ``fraction`` axis, and ``10.5`` lies
+        between ``10`` and ``11`` on an ``int`` axis. An exact position (an
+        ``int``, a ``Fraction``, a ``Coordinate`` holding one) stays exact
+        and is not rounded onto the axis. Units and descendants resolve as
+        :meth:`_convert_coordinate_to_self` resolves them.
+
+        Raises:
+            ValueError: If the position is NaN, which names no position, or
+                as :meth:`_convert_coordinate_to_self`.
+        """
+        position = self._position_on_axis(coord)
+        if not isinstance(resolve_coordinate_spec(coord).value, float):
+            return position
+        position = float(position)
+        if math.isnan(position):
+            raise ValueError("NaN names no position: it compares with no cell")
+        return position

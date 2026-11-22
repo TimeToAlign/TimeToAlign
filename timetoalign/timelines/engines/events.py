@@ -17,6 +17,7 @@ from timetoalign.core import (
     CoordinateValue,
     Duration,
     EventReference,
+    NumberType,
     Projection,
 )
 from timetoalign.core.ids import quote_id
@@ -799,6 +800,14 @@ class EventsMixin:
         leave it null. Segment events (internal bookkeeping) are always
         excluded.
 
+        A bound written as a float is compared as a key, with the float
+        side of each event's ``start``: on a ``fraction`` axis
+        ``min_coord=0.1`` keeps an event starting at ``1/10``, on an
+        ``int`` axis ``min_coord=10.5`` leaves out an event starting at 10
+        and ``max_coord=10.5`` keeps it, and ``max_coord=math.inf`` keeps
+        every event. An exact bound (an ``int``, a ``Fraction``) is compared
+        exactly on an ``int`` or ``fraction`` axis, never rounded.
+
         Args:
             temporal_type: Filter by "instant" or "interval".
             event_type: Filter by event type name.
@@ -809,19 +818,17 @@ class EventsMixin:
                 (converted via inverse C-Map).
             max_coord: Maximum coordinate (exclusive). Same conversion
                 rules as min_coord.
-
-        Bounds are written in this timeline's number type before they are
-        compared, exactly on an ``int`` or ``fraction`` axis. A float bound
-        on an exact axis is therefore the exact value of that double: on a
-        ``fraction`` axis ``0.1`` is a little more than ``1/10``, so
-        ``min_coord=0.1`` leaves out an event starting at ``1/10``. Pass
-        ``Fraction(1, 10)`` to name ``1/10``.
             **field_filters: Additional field equality filters. Each
                 kwarg name is a field name, and the value is the
                 required value (or a list of values for OR logic).
 
         Returns:
-            A filtered EventData with all matching events.
+            A filtered EventData with all matching events, a table of its
+            own: changing it changes nothing on the timeline.
+
+        Raises:
+            ValueError: If a bound is NaN, or cannot be resolved onto this
+                timeline.
 
         Examples:
             >>> # Filter by coordinate range
@@ -836,10 +843,10 @@ class EventsMixin:
             >>> events = tl.get_events(pitch=60)  # Only middle C
             >>> events = tl.get_events(pitch=[60, 62, 64])  # C, D, E
         """
-        # Bounds on this timeline's axis, in its number type: compared
-        # exactly on an exact axis, as floats on a float one.
-        min_value = None if min_coord is None else self._resolve_axis_value(min_coord)
-        max_value = None if max_coord is None else self._resolve_axis_value(max_coord)
+        # Bounds on this timeline's axis, as written: a float compares as a
+        # key, an exact bound exactly (``compare_number_column``).
+        min_value = None if min_coord is None else self._query_position(min_coord)
+        max_value = None if max_coord is None else self._query_position(max_coord)
         # Start with own events, always excluding segment events
         result = self._events
         sources = [result.schema]
@@ -886,6 +893,10 @@ class EventsMixin:
         if field_filters:
             result = result.filter(**field_filters)
 
+        if result is self._events:
+            # Never the timeline's own table: rows added to the result would
+            # land on the timeline past every check of ``add_events``.
+            result = result._derived(result.table)
         return result
 
     def _rebuilt(self, rows: Iterable[dict[str, Any]]) -> EventData:
@@ -972,11 +983,13 @@ class EventsMixin:
         For interval events, an event is "active" if the coordinate falls
         within [start, end).
 
-        Positions are compared in this timeline's number type, exactly on an
-        ``int`` or ``fraction`` axis. A float *coord* on an exact axis is the
-        exact value of that double: on a ``fraction`` axis
-        ``get_events_at(0.1)`` finds no event at ``1/10`` (the double is a
-        little more); ``get_events_at(Fraction(1, 10))`` does.
+        A *coord* written as a float is compared as a key, with the float
+        side of the stored positions: on a ``fraction`` axis
+        ``get_events_at(0.1)`` finds an event at ``1/10``, on an ``int``
+        axis ``get_events_at(11.5)`` finds an event spanning ``[11, 12)``.
+        An exact *coord* (an ``int``, a ``Fraction``) is compared exactly on
+        an ``int`` or ``fraction`` axis, never rounded. A float axis
+        compares floats whatever the query.
 
         Args:
             coord: Coordinate to query (in this timeline's unit).
@@ -987,6 +1000,10 @@ class EventsMixin:
             Dict mapping timeline_id to list of events active at that coordinate.
             Child events have coordinates in their local coordinate system.
 
+        Raises:
+            ValueError: If *coord* is NaN, or cannot be resolved onto this
+                timeline.
+
         Examples:
             >>> events = score.get_events_at(50.0)
             >>> events["score:1"]  # Events in root at coord 50
@@ -994,32 +1011,27 @@ class EventsMixin:
             >>> events["measure_5"]  # Events in measure 5
             [...]
         """
-        # On this timeline's axis, in its number type: exact on an exact axis.
-        coord_val = self._resolve_axis_value(coord)
+        # On this timeline's axis, as written: a float compares as a key.
+        position = self._query_position(coord)
         result: dict[str, list[dict[str, Any]]] = {}
 
         # Get events from this timeline
-        local_events = self._get_events_at_local(coord_val, tolerance)
+        local_events = self._get_events_at_local(position, tolerance)
         if local_events:
             result[self._id] = local_events
 
-        # Check children
+        # Each child holding the position, by its offset (the rule its
+        # stamps follow), the position kept as written.
         if include_children:
-            ts = self.get_timestamp_at(coord_val)
-
-            for child_id in self._children.keys():
-                try:
-                    child_coord = ts.get_coordinate_for(child_id, format="coordinate")
-                except KeyError:
-                    # The stamp names exactly the children holding the
-                    # position (``_holds_position``).
+            for child_id, child in self._children.items():
+                child_position = self._get_child_coordinate(child_id, position)
+                if child_position is None:
                     continue
-                child_result = self._children[child_id].get_events_at(
-                    child_coord.value,
-                    tolerance=tolerance,
-                    include_children=True,
+                result.update(
+                    child.get_events_at(
+                        child_position, tolerance=tolerance, include_children=True
+                    )
                 )
-                result.update(child_result)
 
         return result
 
@@ -1030,9 +1042,16 @@ class EventsMixin:
     ) -> list[dict[str, Any]]:
         """Get events at a coordinate in this timeline (local, no children).
 
-        Positions are compared in this timeline's number type: exactly on an
-        ``int`` or ``fraction`` axis, as floats on a ``float`` axis.
+        Positions are compared exactly on an ``int`` or ``fraction`` axis
+        when *coord* is exact; as floats on a ``float`` axis, and wherever
+        *coord* is a float (a float compares as a key).
         """
+        as_floats = isinstance(coord, float) or self._number_type is NumberType.float
+
+        def as_key(value: int | float | Fraction) -> int | float | Fraction:
+            return float(value) if as_floats else value
+
+        coord = as_key(coord)
         result = []
 
         for event in _decoded_rows(self.get_events(include_children=False)):
@@ -1041,7 +1060,7 @@ class EventsMixin:
             if temporal_type == "instant":
                 instant_val = self._extract_coord_value(event, "instant", "start")
                 if instant_val is not None:
-                    if abs(instant_val - coord) <= tolerance:
+                    if abs(as_key(instant_val) - coord) <= tolerance:
                         result.append(dict(event))
 
             elif temporal_type == "interval":
@@ -1050,7 +1069,7 @@ class EventsMixin:
 
                 if start_val is not None and end_val is not None:
                     # Left-inclusive, right-exclusive: [start, end)
-                    if start_val <= coord < end_val:
+                    if as_key(start_val) <= coord < as_key(end_val):
                         result.append(dict(event))
 
         return result

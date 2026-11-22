@@ -1535,6 +1535,7 @@ class FileForm(timetoshare.FileForm):
 
 
 _NEW_FILE = FileForm(minimal=True, styling=True, serialization="yaml")
+"""The form of an object not read from a file: minimal, styled, canonical YAML."""
 
 _VALIDATED_BY_THE_FILE: ContextVar[bool] = ContextVar(
     "_VALIDATED_BY_THE_FILE", default=False
@@ -1550,9 +1551,6 @@ def _validated_by_the_file() -> Iterator[None]:
         yield
     finally:
         _VALIDATED_BY_THE_FILE.reset(token)
-
-
-"""The form of an object not read from a file: minimal, styled, canonical YAML."""
 
 
 def _timeline_objects(data: Any) -> Iterator[dict[str, Any]]:

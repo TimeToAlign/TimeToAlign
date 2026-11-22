@@ -17,6 +17,7 @@ import verovio
 from timetoalign.core import NumberType, TimeUnit
 from timetoalign.core.enums import ExtrapolationPolicy
 from timetoalign.core.time import build_number_struct_array, rational_to_struct
+from timetoalign.loader._xml import XML_ID
 
 from .base import ScoreLoader
 from .events import ScoreEventType
@@ -38,8 +39,6 @@ if TYPE_CHECKING:
     )
 
 module_logger = logging.getLogger(__name__)
-
-_XML_ID = "{http://www.w3.org/XML/1998/namespace}id"
 
 # ``useFractions`` (exact ``qfrac`` onsets in the timemap) exists from 4.4 on.
 _MIN_VERSION = (4, 4)
@@ -229,7 +228,7 @@ def _single_int(value: str | None, element: ET.Element) -> int | None:
         return int(value)
     except ValueError:
         raise ValueError(
-            f"Element {element.get(_XML_ID)!r} states {value!r} where one integer "
+            f"Element {element.get(XML_ID)!r} states {value!r} where one integer "
             "is expected"
         ) from None
 
@@ -252,7 +251,7 @@ def _check_unique_ids(root: ET.Element, score: _Score) -> None:
     MuseScore repeat ids of ``<harm>`` and ``<dynam>``) is listed in
     ``duplicate_ids``.
     """
-    counts = Counter(el.get(_XML_ID) for el in root.iter() if el.get(_XML_ID))
+    counts = Counter(el.get(XML_ID) for el in root.iter() if el.get(XML_ID))
     score.ids = set(counts)
     duplicates = sorted(xml_id for xml_id, count in counts.items() if count > 1)
     read = {
@@ -309,7 +308,7 @@ def _read_score(mei: str) -> _Score:
         if tag == "mdiv":
             score.movements.append(
                 _Movement(
-                    xml_id=element.get(_XML_ID),
+                    xml_id=element.get(XML_ID),
                     n=element.get("n"),
                     label=element.get("label"),
                     parent=ctx.get("movement"),
@@ -323,7 +322,7 @@ def _read_score(mei: str) -> _Score:
         elif tag == "measure":
             score.measures.append(
                 _Measure(
-                    xml_id=element.get(_XML_ID),
+                    xml_id=element.get(XML_ID),
                     n=element.get("n"),
                     left=element.get("left"),
                     right=element.get("right"),
@@ -342,7 +341,7 @@ def _read_score(mei: str) -> _Score:
         elif tag == "tie":
             score.ties.append(
                 (
-                    element.get(_XML_ID),
+                    element.get(XML_ID),
                     (element.get("startid") or "").lstrip("#") or None,
                     (element.get("endid") or "").lstrip("#") or None,
                 )
@@ -360,7 +359,7 @@ def _read_score(mei: str) -> _Score:
             staff = (element.get("staff") or "").split()
             score.tempos.append(
                 _Tempo(
-                    xml_id=element.get(_XML_ID),
+                    xml_id=element.get(XML_ID),
                     measure=ctx["measure"],
                     text=" ".join("".join(element.itertext()).split()),
                     bpm=float(bpm) if bpm is not None else None,
@@ -376,13 +375,13 @@ def _read_score(mei: str) -> _Score:
                 "chord": element,
                 "staff_override": element.get("staff") or ctx.get("staff_override"),
             }
-            score.chord_notes[element.get(_XML_ID)] = [
-                note.get(_XML_ID)
+            score.chord_notes[element.get(XML_ID)] = [
+                note.get(XML_ID)
                 for note in element.iter()
                 if _local(note.tag) == "note"
             ]
         elif tag in ("note", "rest", "mRest") and "measure" in ctx:
-            score.timed[element.get(_XML_ID)] = _timed(element, tag, ctx)
+            score.timed[element.get(XML_ID)] = _timed(element, tag, ctx)
         for child in element:
             walk(child, ctx)
 
@@ -399,7 +398,7 @@ def _timed(element: ET.Element, tag: str, ctx: dict[str, Any]) -> _Timed:
     dur = element.get("dur") or (chord.get("dur") if chord is not None else None)
     dots = element.get("dots") or (chord.get("dots") if chord is not None else None)
     timed = _Timed(
-        xml_id=element.get(_XML_ID),
+        xml_id=element.get(XML_ID),
         kind=tag,
         measure=ctx["measure"],
         staff=staff,
@@ -424,7 +423,7 @@ def _timed(element: ET.Element, tag: str, ctx: dict[str, Any]) -> _Timed:
         timed.tie = element.get("tie") or (
             chord.get("tie") if chord is not None else None
         )
-        timed.chord = chord.get(_XML_ID) if chord is not None else None
+        timed.chord = chord.get(XML_ID) if chord is not None else None
     return timed
 
 

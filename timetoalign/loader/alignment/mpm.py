@@ -90,6 +90,7 @@ from typing_extensions import Self
 from timetoalign.alignment.claims import MatchClaim
 from timetoalign.core import Provenance, TimeUnit
 from timetoalign.display.html import code
+from timetoalign.loader._xml import XML_ID
 from timetoalign.loader.base import AlignmentLoader
 from timetoalign.loader.physical.audio import AudioLoader
 from timetoalign.maps.convenience import SamplesToSeconds, TicksToQuarters
@@ -124,9 +125,6 @@ _PERF_DGT_ID = "perf:dgt_1"
 #: Group ids.
 _SCORE_GROUP = "score"
 _PERF_GROUP = "perf"
-
-#: The XML-namespace ``xml:id`` attribute key.
-_XML_ID = "{http://www.w3.org/XML/1998/namespace}id"
 
 #: The MPM map element local-names this loader recognises specially.
 #: Any *other* map type is emitted generically (its entries carry their
@@ -438,7 +436,7 @@ class MpmLoader(AlignmentLoader):
                 continue
             notes.append(
                 {
-                    "xml_id": element.get(_XML_ID),
+                    "xml_id": element.get(XML_ID),
                     "date": int(float(element.get("date"))),
                     "pitch": int(float(element.get("midi.pitch"))),
                     "pitchname": element.get("pitchname"),
@@ -545,7 +543,7 @@ class MpmLoader(AlignmentLoader):
             event_type = tag[:1].upper() + tag[1:]
             date = int(float(element.get("date")))
             event: dict[str, Any] = {
-                "id": element.get(_XML_ID) or f"{event_type.lower()}:{index}",
+                "id": element.get(XML_ID) or f"{event_type.lower()}:{index}",
                 "start": date,
                 "event_type": event_type,
             }
@@ -650,7 +648,7 @@ class MpmLoader(AlignmentLoader):
         snake-cased so the column name is a clean identifier.
         """
         for key, value in element.attrib.items():
-            if key == _XML_ID:
+            if key == XML_ID:
                 continue
             local = etree.QName(key).localname if key.startswith("{") else key
             if local == "date":

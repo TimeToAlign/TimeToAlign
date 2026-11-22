@@ -230,6 +230,44 @@ by declaration rather than by the rows of one batch.
   holding a reference concatenates and the column reads `[None,
   {"timeline_id": "clt_6", "event_id": "x1azmn68"}]`.
 
+### `test_coordinate_range.py` - `EventData.coordinate_range()`
+
+**Purpose:** `coordinate_range()` (read by every `create_timeline`) finds the
+smallest and largest number among the `start` and `end` cells with array
+kernels instead of decoding one Python number per cell, and answers exactly
+what the per-cell reading answered.
+
+**Why a comparison proves it:** the per-cell reading is correct by
+construction (every non-null cell decoded with `struct_to_coordinate` in the
+axis's number type, then Python's `min` and `max`), so the test keeps it,
+in the test file only, as the reference, and asserts that the two agree on
+every table: equal results, the same Python type for each end (`int`,
+`float` or `Fraction` as the axis declares), and the same `repr` (so the
+sign of a zero is compared too: `min` and `max` give the first of equal
+values in column order). Where the extremes can be stated they are also
+asserted as literals.
+
+**What could go wrong, and the table that would show it:**
+
+- Two ratios sharing one double but differing exactly. The kernel finds
+  the extreme double; the exact extreme must still win among the cells
+  holding it. Seeded columns of neighbours `n/(3·2⁶⁰)` around 1 and -1
+  and `n/(3·2⁵⁰)` around 2⁹ (dozens share each double), on both columns,
+  with nulls between.
+- Integers past `2⁵³`, where neighbouring integers share a double: ticks
+  `2⁶² − j` and `−2⁶² + j`, shuffled.
+- Floats: large and small magnitudes of both signs, and `0.0` / `-0.0`
+  in both orders (the first in column order is the answer).
+- The extreme lying in `end` only, or in `start` only; `end` entirely null;
+  columns of several chunks; a single row; every cell null (`None`); an
+  empty table (`None`).
+- Cells holding only a `value` (older artifacts): read as their double's
+  exact ratio, as before.
+- The event tables the storage and core tests build (decimal durations on
+  quarters, completions past int64 cross-products, ticks past `2⁵³`,
+  three-decimal seconds, Projections) through `from_dicts` and
+  `from_arrays`.
+
 ### `test_store_summary_contract.py` - store summaries and cards
 
 Every store a loader exposes (single, dict, score, MIDI, graphical,

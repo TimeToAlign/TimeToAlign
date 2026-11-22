@@ -589,7 +589,7 @@ class Timeline(
             number_type=data.number_type,
             **kwargs,
         )
-        timeline._events = type(data)(data.table, data.unit, data.number_type)
+        timeline._events = data._derived(data.table)
         return timeline
 
     # endregion

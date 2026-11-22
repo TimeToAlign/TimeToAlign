@@ -1636,6 +1636,16 @@ each class two tests, following `TestUnexpectedErrorsPropagate` in
   with `extrapolate="error"` read at 70 seconds is absent from the display
   (exact `str()` asserted), while the milliseconds map beside it is shown.
 
+A result its target cannot be written in is the same documented case when
+the result is not finite. A `LinearMap` ×`1e300` from seconds into samples
+read at `1e10` seconds gives an infinity, which has no integer: it raised
+`OverflowError` from `str(stamp)`, an error the row catch does not take. The
+value is now refused where it is written (`to_canonical`, behind
+`express_as`) with `ValueError`, so the display leaves the samples row out
+(exact `str()` asserted: the source row alone). The refusal itself is
+asserted with its message for an infinity into an `int` target and a NaN
+into a `fraction` target, and a `float` target still holds an infinity.
+
 ---
 
 ### `test_field_scalar_parity.py` - Scalar `to(*)` vs Field `convert_to(*)` Parity

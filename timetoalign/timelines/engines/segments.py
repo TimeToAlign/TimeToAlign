@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from fractions import Fraction
 from typing import TYPE_CHECKING, Any
 
 from timetoalign.core import CoordinateSpec
@@ -331,13 +332,14 @@ class SegmentsMixin:
             ... )
         """
         end = (
-            float(self._require_length("split up to the end").value)
+            self._require_length("split up to the end").value
             if include_after_last
             else None
         )
         match_fn = self._resolve_predicate(predicate)
 
-        split_coords: list[float] = []
+        # Boundaries in this timeline's number type: exact on an exact axis.
+        split_coords: list[int | float | Fraction] = []
         events_sorted = self._sorted_event_dicts()
 
         for event in events_sorted:
@@ -346,13 +348,13 @@ class SegmentsMixin:
                 if coord is None:
                     coord = self._extract_coord_value(event, "start", "instant")
                 if coord is not None:
-                    split_coords.append(float(coord))
+                    split_coords.append(coord)
 
         split_coords = sorted(set(split_coords))
 
-        boundaries: list[float] = []
+        boundaries: list[int | float | Fraction] = []
         if include_before_first:
-            boundaries.append(float(self.origin.value))
+            boundaries.append(self.origin.value)
         boundaries.extend(split_coords)
         if end is not None:
             boundaries.append(end)

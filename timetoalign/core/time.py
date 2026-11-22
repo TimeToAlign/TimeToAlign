@@ -285,11 +285,24 @@ def to_canonical(
     someone deliberately wrote down. That is a mistake upstream, and saying so
     is more useful than quietly recording zero.
 
+    A non-finite float (an infinity, NaN) has no integer and no ratio, so
+    only a ``float`` field can hold it.
+
     Raises:
-        ValueError: On an exact non-integral value into an ``int`` field, or
-            an unknown rounding mode.
+        ValueError: On an exact non-integral value into an ``int`` field, a
+            non-finite value into an ``int`` or ``fraction`` field, or an
+            unknown rounding mode.
     """
     number = parse_number(value)
+    if (
+        number_type is not NumberType.float
+        and isinstance(number, float)
+        and not math.isfinite(number)
+    ):
+        raise ValueError(
+            f"the non-finite value {number} cannot be stored as "
+            f"{number_type.name}: only a float holds it"
+        )
     if number_type is NumberType.int:
         if isinstance(number, int):
             return number

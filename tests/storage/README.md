@@ -269,6 +269,24 @@ and holds one spelling of each value. Three ways in broke that.
   `add_projections` of the same Projection at `1/2`, gave a second
   Projection (`projection_2`), since Projections are matched by their cells;
   now it is the same Projection (`projection_1`, one event).
+- **Cells are reduced at the doors only** (`TestReducedAtTheDoorsOnly`). A
+  table derived from tables already held (rows selected by `filter` or
+  `where`, IDs prefixed, tables joined by `concat`, a column retyped, a
+  timeline's own copy, the rows `get_events` rebuilds from a timeline and
+  its children) holds cells that were reduced when they entered, so
+  reducing them again costs a pass over every coordinate column and changes
+  nothing. The proof counts the calls of the one reducing function,
+  `storage.events._in_lowest_terms`, replaced for the test by a counting
+  wrapper around it: `EventData(table)` and `EventData.from_parquet` call it
+  once each (the doors); `filter`, `prefix_ids`, `concat`, a timeline made
+  by `create_timeline`, and `get_events(temporal_type=, event_type=,
+  min_coord=, max_coord=)` on a flat timeline and on a parent with a child
+  call it zero times. A table of no rows is not given to it at all, as it
+  holds no cell to reduce (a new timeline starts with one). The results are
+  asserted too (IDs and the reduced
+  cells), so a path that skipped the reduction and then returned wrong rows
+  would not pass on the count alone; the reduction tests above pass
+  unmodified, which is what shows the doors still reduce.
 
 ### `test_coordinate_range.py` - `EventData.coordinate_range()`
 

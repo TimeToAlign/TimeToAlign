@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from timetoalign.core import NumberType, TimeUnit
+from timetoalign.loader.score.stores.notes import NoteEventData
 from timetoalign.storage import EventData, SingleStore
 from timetoalign.storage.store import EventStore
 from timetoalign.timelines import (
@@ -602,3 +603,19 @@ class TestTimelinesHoldTheirOwnEvents:
         assert (a.n_events, b.n_events, len(source)) == (2, 1, 1)
         assert a.events is not b.events
         assert all(events is not source for events in (a.events, b.events))
+
+    @pytest.mark.parametrize("make", ["create_timeline", "from_event_data"])
+    def test_the_timeline_keeps_the_class_and_state_of_its_source(self, make):
+        rows = NoteEventData.from_dicts(
+            [{"id": "n1", "event_type": "Note", "start": 0, "end": 1, "midi": 60}],
+            TimeUnit.quarters,
+        )
+        source = NoteEventData(rows.table, rows.unit, rows.number_type, has_rests=True)
+        if make == "create_timeline":
+            timeline = source.create_timeline()
+        else:
+            timeline = ContinuousLogicalTimeline.from_event_data(source)
+
+        for events in (timeline.events, source.filter(event_type="Note")):
+            assert type(events) is NoteEventData
+            assert events.has_rests is True

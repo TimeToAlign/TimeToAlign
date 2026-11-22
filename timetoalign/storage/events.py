@@ -17,6 +17,7 @@ Design principles:
 
 from __future__ import annotations
 
+import copy
 import logging
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import contextmanager
@@ -731,9 +732,48 @@ class EventData(SemanticFieldAccessMixin):
             number_type: The number type for coordinate interpretation.
                 Defaults to the one the unit itself uses.
         """
-        self._table = _in_lowest_terms(table)
+        # A table of no rows holds no cell to reduce.
+        self._hold(
+            _in_lowest_terms(table) if table.num_rows else table, unit, number_type
+        )
+
+    def _hold(
+        self, table: pa.Table, unit: TimeUnit, number_type: NumberType | None
+    ) -> None:
+        """Hold *table*, as it stands, on *unit* in *number_type*."""
+        self._table = table
         self._unit = unit
         self._number_type = unit.resolve_number_type(number_type)
+
+    @classmethod
+    def _of_reduced(
+        cls, table: pa.Table, unit: TimeUnit, number_type: NumberType | None = None
+    ) -> Self:
+        """An instance over *table*, whose coordinate cells are in lowest terms.
+
+        The constructor of tables derived from tables already held (rows
+        selected, joined, retyped): their cells were reduced when they
+        entered, so the reduction :meth:`__init__` runs on every table from
+        outside is not run again. It sets the base's state only, so it serves
+        classes whose ``__init__`` adds none; an instance of any class derives
+        a table through :meth:`_derived`.
+        """
+        data = cls.__new__(cls)
+        data._hold(table, unit, number_type)
+        return data
+
+    def _derived(self, table: pa.Table) -> Self:
+        """This EventData's class and state over *table*, derived from its own.
+
+        *table* holds cells of tables already held, so they are in lowest
+        terms and not reduced again (:meth:`_of_reduced`). The state a
+        subclass sets (``NoteEventData.has_rests``) is kept; the cached
+        field views are not, since they wrap the former table.
+        """
+        derived = copy.copy(self)
+        derived._table = table
+        derived._reset_field_cache()
+        return derived
 
     # region Schema
 
@@ -1075,11 +1115,15 @@ class EventData(SemanticFieldAccessMixin):
             An empty EventData with the appropriate schema.
         """
         number_type = unit.resolve_number_type(number_type)
+        return cls(cls._empty_table(unit, number_type), unit, number_type)
+
+    @classmethod
+    def _empty_table(cls, unit: TimeUnit, number_type: NumberType) -> pa.Table:
+        """The table of no events of this class on *unit* in *number_type*."""
         schema = cls.get_schema(unit, number_type=number_type)
         metadata = make_table_metadata(unit, number_type, loader_class=cls.__name__)
         schema = schema.with_metadata(metadata)
-        table = pa.table({name: [] for name in cls.field_names()}, schema=schema)
-        return cls(table, unit, number_type)
+        return pa.table({name: [] for name in cls.field_names()}, schema=schema)
 
     @classmethod
     def from_dicts(
@@ -1131,9 +1175,24 @@ class EventData(SemanticFieldAccessMixin):
             ... ], unit=TimeUnit.seconds)
         """
         number_type = unit.resolve_number_type(number_type)
+        table = cls._rows_table(
+            rows, unit, number_type, interval_policy=interval_policy
+        )
+        return cls(table, unit, number_type)
+
+    @classmethod
+    def _rows_table(
+        cls,
+        rows: Projection | Sequence[dict[str, Any] | Projection],
+        unit: TimeUnit,
+        number_type: NumberType,
+        *,
+        interval_policy: IntervalPolicy = IntervalPolicy.warn,
+    ) -> pa.Table:
+        """The table :meth:`from_dicts` makes of *rows*, before it is held."""
         rows = _event_rows(rows)
         if not rows:
-            return cls.empty(unit, number_type)
+            return cls._empty_table(unit, number_type)
 
         # Mint the IDs the rows lack, above the IDs the rows give.
         minted = iter(
@@ -1191,8 +1250,7 @@ class EventData(SemanticFieldAccessMixin):
                 schema, sorted(extra_field_names), processed_rows
             )
 
-        table = pa.Table.from_pylist(processed_rows, schema=schema)
-        return cls(table, unit, number_type)
+        return pa.Table.from_pylist(processed_rows, schema=schema)
 
     @classmethod
     def from_arrays(
@@ -1710,7 +1768,7 @@ class EventData(SemanticFieldAccessMixin):
 
         # Use promote_options="default" to handle schema differences
         new_table = pa.concat_tables(tables, promote_options="default")
-        return self.__class__(new_table, self.unit, self.number_type)
+        return self._derived(new_table)
 
     def prefix_ids(self, prefix: str) -> "EventData":
         """Return a new EventData with all event IDs prefixed.
@@ -1738,7 +1796,7 @@ class EventData(SemanticFieldAccessMixin):
         )
         idx = self._table.schema.get_field_index("id")
         new_table = self._table.set_column(idx, self._table.schema.field(idx), new_ids)
-        return self.__class__(new_table, self._unit, self._number_type)
+        return self._derived(new_table)
 
     def _with_segment_renamed(self, old_id: str, new_id: str) -> "EventData":
         """Return a copy whose segment row for child *old_id* names *new_id*.
@@ -1765,7 +1823,7 @@ class EventData(SemanticFieldAccessMixin):
             values = table.column(idx)
             renamed = pc.if_else(mask, pa.scalar(new_id, values.type), values)
             table = table.set_column(idx, table.schema.field(idx), renamed)
-        return self.__class__(table, self._unit, self._number_type)
+        return self._derived(table)
 
     # endregion
 
@@ -1795,7 +1853,11 @@ class EventData(SemanticFieldAccessMixin):
         table's number type reads it: exactly on an ``int`` or ``fraction``
         table (ratios cross-multiplied, so positions closer than a float
         can tell apart are told apart), on the float side of a ``float``
-        table. The minimum is inclusive and the maximum exclusive.
+        table. The minimum is inclusive and the maximum exclusive. A float
+        bound on an exact table is the exact value of that double: on a
+        ``fraction`` table ``0.1`` is a little more than ``1/10``, so
+        ``min_coord=0.1`` leaves out a start at ``1/10``; pass
+        ``Fraction(1, 10)`` to name ``1/10``.
 
         Returns:
             A new EventData with filtered events.
@@ -1838,7 +1900,7 @@ class EventData(SemanticFieldAccessMixin):
                     filtered.column("start"), value, comparison, self.number_type
                 )
             )
-        return self.__class__(filtered, self.unit, self.number_type)
+        return self._derived(filtered)
 
     def column_values(self, name: str, *, default: Any = None) -> list[Any]:
         """Return a column's values as plain, decoded Python objects.
@@ -1905,7 +1967,7 @@ class EventData(SemanticFieldAccessMixin):
             A new EventData with filtered events.
         """
         filtered = self._table.filter(expression)
-        return self.__class__(filtered, self.unit, self.number_type)
+        return self._derived(filtered)
 
     # endregion
 
@@ -2136,9 +2198,7 @@ class EventData(SemanticFieldAccessMixin):
             >>> events.head()      # first five events
             >>> events.head(3)     # first three events
         """
-        preview = type(self)(
-            self._table.slice(0, max(n, 0)), self._unit, self._number_type
-        )
+        preview = self._derived(self._table.slice(0, max(n, 0)))
         return preview.to_dataframe()
 
     # endregion

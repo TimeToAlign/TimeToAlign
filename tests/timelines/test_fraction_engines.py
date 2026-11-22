@@ -3,9 +3,19 @@
 from __future__ import annotations
 
 from fractions import Fraction
+from typing import Any
+
+import pytest
 
 from timetoalign.core import NumberType, TimeUnit, struct_to_rational
-from timetoalign.timelines import Timeline
+from timetoalign.core.time import struct_to_coordinate
+from timetoalign.timelines import (
+    ContinuousLogicalTimeline,
+    ContinuousPhysicalTimeline,
+    DiscreteLogicalTimeline,
+    SegmentLine,
+    Timeline,
+)
 
 
 def _fraction_timeline(uid: str, length: Fraction) -> Timeline:
@@ -169,3 +179,179 @@ def test_fraction_timestamp_coordinate_uses_stored_pair() -> None:
 
     direct_query = timeline.get_timestamp(0.5)
     assert direct_query.is_interpolated is False
+
+
+# -- Boundaries reach the event paths in the axis's number type -------------
+
+_AXES = {
+    "fraction": (ContinuousLogicalTimeline, Fraction(1, 10)),
+    "int": (DiscreteLogicalTimeline, 10),
+    "float": (ContinuousPhysicalTimeline, 0.5),
+}
+_PARTS = [["n0"], ["n1", "n2"], ["n3", "n4", "n5", "n6"], ["n7", "n8", "n9"]]
+
+
+def _ten_notes(axis: str) -> tuple[Timeline, Any]:
+    """Notes ``n0``..``n9`` on ``[k*s, (k+1)*s)``; ``n0``, ``n2``, ``n6`` cut."""
+    timeline_class, step = _AXES[axis]
+    timeline = timeline_class(length=10 * step)
+    timeline.add_events(
+        [
+            {
+                "id": f"n{k}",
+                "event_type": "Note",
+                "start": k * step,
+                "end": (k + 1) * step,
+                **({"cut": True} if k in (0, 2, 6) else {}),
+            }
+            for k in range(10)
+        ]
+    )
+    return timeline, step
+
+
+def _typed(value: Any) -> tuple[type, Any]:
+    return type(value), value
+
+
+def _local_starts(timeline: Timeline) -> list[tuple[str, tuple[type, Any]]]:
+    """Each own event's ID and child-local start, typed as the axis reads it."""
+    return [
+        (row["id"], _typed(struct_to_coordinate(row["start"], timeline.number_type)))
+        for row in timeline.get_events(include_children=False)
+    ]
+
+
+def _expected_part(ids: list[str], step: Any) -> list[tuple[str, tuple[type, Any]]]:
+    return [(event_id, _typed(j * step)) for j, event_id in enumerate(ids)]
+
+
+def _parts(line: SegmentLine) -> list[tuple[Any, Any, Any]]:
+    """Each segment's typed offset, typed length and typed local starts."""
+    parts = []
+    for index in range(line.n_segments):
+        offset, segment = line.get_segment_by_index(index)
+        parts.append(
+            (_typed(offset.value), _typed(segment.length.value), _local_starts(segment))
+        )
+    return parts
+
+
+def _expected_parts(step: Any) -> list[tuple[Any, Any, Any]]:
+    offsets, lengths = [0, 1, 3, 7], [1, 2, 4, 3]
+    return [
+        (_typed(offset * step), _typed(length * step), _expected_part(ids, step))
+        for offset, length, ids in zip(offsets, lengths, _PARTS, strict=True)
+    ]
+
+
+@pytest.mark.parametrize("axis", list(_AXES))
+class TestBoundariesInTheAxisType:
+    """Library callers hand ``get_events`` boundaries in the axis's type."""
+
+    def test_child_from_region(self, axis: str) -> None:
+        timeline, step = _ten_notes(axis)
+        timeline.create_region(1 * step, 3 * step, id="r")
+
+        child = timeline.create_child_from_region("r")
+
+        assert _typed(timeline.get_child_offset(child.id).value) == _typed(1 * step)
+        assert _typed(child.length.value) == _typed(2 * step)
+        assert _local_starts(child) == _expected_part(["n1", "n2"], step)
+
+    def test_segment_line_by_splitting(self, axis: str) -> None:
+        timeline, step = _ten_notes(axis)
+
+        line = timeline.create_segment_line_by_splitting({"cut": True})
+
+        assert _parts(line) == _expected_parts(step)
+
+    def test_segment_line_from_segmentation(self, axis: str) -> None:
+        timeline, step = _ten_notes(axis)
+
+        line = SegmentLine.from_segmentation(
+            timeline, [0, 1 * step, 3 * step, 7 * step, 10 * step]
+        )
+
+        assert _parts(line) == _expected_parts(step)
+
+
+def _ids(rows: Any) -> list[str]:
+    return [row["id"] for row in rows]
+
+
+def test_a_slice_ends_before_its_exact_end() -> None:
+    """``get_slice`` compares instants with its exact bounds."""
+    timeline = _fraction_timeline("beats", Fraction(1))
+    timeline.add_events(
+        [
+            {"id": f"b{k}", "event_type": "Beat", "instant": Fraction(k, 10)}
+            for k in range(10)
+        ]
+    )
+
+    sliced = timeline.get_slice(0, Fraction(1, 10))
+
+    assert _ids(sliced.get_events()) == ["b0"]
+
+
+def test_a_slice_holds_the_intervals_fully_inside() -> None:
+    """Without truncation, an interval ending at the slice's end is inside."""
+    timeline, _ = _ten_notes("fraction")
+
+    sliced = timeline.get_slice(Fraction(3, 10), Fraction(7, 10), truncate_events=False)
+
+    assert _ids(sliced.get_events()) == ["n3", "n4", "n5", "n6"]
+
+
+def test_the_region_at_an_exact_boundary_is_the_one_starting_there() -> None:
+    timeline, _ = _ten_notes("fraction")
+    timeline.create_region(Fraction(1, 10), Fraction(3, 10), id="before")
+    timeline.create_region(Fraction(3, 10), Fraction(7, 10), id="after")
+
+    assert [region.id for region in timeline.get_regions_at(Fraction(3, 10))] == [
+        "after"
+    ]
+
+
+def _tenth_and_third() -> Timeline:
+    timeline = _fraction_timeline("score", Fraction(1))
+    timeline.add_events(
+        [
+            {"id": "tenth", "event_type": "Beat", "instant": Fraction(1, 10)},
+            {"id": "third", "event_type": "Beat", "instant": Fraction(1, 3)},
+        ]
+    )
+    return timeline
+
+
+@pytest.mark.parametrize(
+    ("query", "ids"),
+    [
+        ({"min_coord": 0.1}, ["third"]),
+        ({"max_coord": 0.1}, ["tenth"]),
+        ({"min_coord": Fraction(1, 10)}, ["tenth", "third"]),
+    ],
+    ids=["min-float", "max-float", "min-fraction"],
+)
+def test_a_float_bound_on_a_fraction_axis_is_its_double(
+    query: dict[str, Any], ids: list[str]
+) -> None:
+    """A float bound is the exact value of its double, not a nearby ratio."""
+    assert _ids(_tenth_and_third().get_events(**query)) == ids
+
+
+@pytest.mark.parametrize(
+    ("at", "ids"),
+    [(0.1, []), (1 / 3, []), (Fraction(1, 10), ["tenth"])],
+    ids=["tenth-float", "third-float", "tenth-fraction"],
+)
+def test_a_float_query_on_a_fraction_axis_is_its_double(
+    at: Any, ids: list[str]
+) -> None:
+    """``get_events_at`` finds an event at the double's exact value only."""
+    found = _tenth_and_third().get_events_at(at)
+
+    assert {key: _ids(rows) for key, rows in found.items()} == (
+        {"score": ids} if ids else {}
+    )

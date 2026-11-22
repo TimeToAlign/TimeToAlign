@@ -1004,10 +1004,10 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
                             f"{previous} and {schema_field.type}."
                         )
             table = pa.concat_tables(tables, promote_options="permissive")
-            return EventData(table, result_unit, result_number_type)
+            return EventData._of_reduced(table, result_unit, result_number_type)
 
         empty = EventData.empty(result_unit, result_number_type)
-        return EventData(
+        return EventData._of_reduced(
             empty.table.append_column("timeline_id", pa.array([], type=pa.string())),
             result_unit,
             result_number_type,

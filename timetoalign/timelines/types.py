@@ -634,9 +634,8 @@ class SegmentLine(SegmentLineMixin, Timeline):
                 f"Segmentation requires at least 2 coordinates, got {len(split_coords)}"
             )
 
-        coords = sorted(
-            float(source._resolve_axis_value(coord)) for coord in split_coords
-        )
+        # In the source's number type: exact boundaries on an exact axis.
+        coords = sorted(source._resolve_axis_value(coord) for coord in split_coords)
         source_class = type(source)
 
         if cls is SegmentLine:

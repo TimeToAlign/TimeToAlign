@@ -115,7 +115,7 @@ def create_timeline_from_event_data(
     # The timeline's own wrapper over the (immutable) table: adding events
     # to it replaces its table and leaves the source and every other
     # timeline made from the source as they are.
-    timeline._events = type(source)(source.table, source.unit, source.number_type)
+    timeline._events = source._derived(source.table)
     return _flag_minted(timeline, minted)
 
 
@@ -261,7 +261,7 @@ def _create_grouped_timeline(
             continue
 
         # Create EventData for this group
-        group_data = EventData(
+        group_data = EventData._of_reduced(
             filtered_table, merged_data.unit, merged_data.number_type
         )
 

@@ -410,51 +410,60 @@ def _malformed(change: Any) -> dict[str, Any]:
 
 
 @pytest.mark.parametrize(
-    ("change", "code", "message"),
+    ("change", "code", "path", "message"),
     [
         (
             lambda d: d.pop("timetoshare"),
             "not_a_manifest",
+            "#",
             "not a TimeToShare manifest",
         ),
         (
             lambda d: d["groups"][0].pop("members"),
             "schema",
+            "#/groups/0",
             "'members' is a required property",
         ),
         (
             lambda d: d["groups"][0]["members"].append("Z"),
             "group_member",
+            "#/groups/0/members/3",
             "'Z' names no timeline of this manifest",
         ),
         (
             lambda d: d["groups"][0]["members"].append("A"),
             "schema",
+            "#/groups/0/members",
             "['#A', '#B', '#C', '#A'] has non-unique elements",
         ),
         (
             lambda d: d["timelines"].append(d["timelines"][0]),
             "duplicate_id",
+            "#/timelines/3/id",
             "'A' is not unique in the manifest, first at #/timelines/0/id",
         ),
         (
             lambda d: d["graphical"]["order"].update(group_1=["A", "B"]),
             "display_order",
+            "#/graphical/order/group_1",
             "member 'C' of group 'group_1' is missing",
         ),
         (
             lambda d: d["graphical"].update(order=["A", "B", "C"]),
             "schema",
+            "#/graphical/order",
             "['A', 'B', 'C'] is not of type 'object'",
         ),
         (
             lambda d: (d["groups"][0].update(id="A"), d["graphical"].pop("order")),
             "duplicate_id",
+            "#/groups/0/id",
             "'A' is not unique in the manifest, first at #/timelines/0/id",
         ),
         (
             lambda d: (d["groups"][0].update(id="a\tb"), d["graphical"].pop("order")),
             "schema",
+            "#/groups/0/id",
             r"'#a\tb' should not be valid under {'pattern': '[\\u0000-\\u001f]'}",
         ),
     ],
@@ -471,14 +480,14 @@ def _malformed(change: Any) -> dict[str, Any]:
     ],
 )
 def test_from_dict_refuses_malformed_input(
-    change: Any, code: str, message: str
+    change: Any, code: str, path: str, message: str
 ) -> None:
     """Each malformed dictionary is refused by the format's validator, its words."""
     data = _malformed(change)
 
     with pytest.raises(ValueError) as refused:
         TimelineGroup.from_dict(filed(data))
-    assert refusal(refused.value) == (code, message)
+    assert refusal(refused.value) == (code, path, message)
 
 
 def test_from_dict_refuses_a_parent_beside_its_child() -> None:
@@ -492,6 +501,7 @@ def test_from_dict_refuses_a_parent_beside_its_child() -> None:
         TimelineGroup.from_dict(filed(data))
     assert refusal(refused.value) == (
         "group_member",
+        "#/groups/0/members/2",
         "member 'R' contains member 'K' of the same group",
     )
 

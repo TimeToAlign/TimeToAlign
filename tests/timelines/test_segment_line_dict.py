@@ -239,38 +239,44 @@ def _mixed_classes(data: dict[str, Any]) -> None:
 
 
 @pytest.mark.parametrize(
-    ("change", "code", "message"),
+    ("change", "code", "path", "message"),
     [
         (
             _mixed_classes,
             "child_unit",
+            "#/timelines/0/children/1/unit",
             "child 'second' has unit 'points', its parent 'line' has 'pixels'",
         ),
         (
             lambda d: _second(d).update(is_segment_line=True, length=0),
             "segment_line",
+            "#/timelines/0/children/1/is_segment_line",
             "segment 'second' of segment line 'line' differs from segment 'first' in "
             "is_segment_line",
         ),
         (
             lambda d: _second(d).update(offset=250),
             "segment_line",
+            "#/timelines/0/children/1/offset",
             "segment 'second' of segment line 'line' does not start where the one "
             "before it ends",
         ),
         (
             lambda d: _second(d).update(offset=350),
             "child_end",
+            "#/timelines/0/children/1/length",
             "child 'second' ends at 550, beyond the length 500 of its parent 'line'",
         ),
         (
             lambda d: d.update(length=600),
             "segment_line",
+            "#/timelines/0/length",
             "the segments of segment line 'line' do not end at its length",
         ),
         (
             lambda d: d.update(is_segment_line="yes"),
             "schema",
+            "#/timelines/0/is_segment_line",
             "'yes' is not of type 'boolean'",
         ),
     ],
@@ -283,11 +289,11 @@ def _mixed_classes(data: dict[str, Any]) -> None:
         "non_boolean_flag",
     ],
 )
-def test_from_dict_refuses(change: Any, code: str, message: str) -> None:
+def test_from_dict_refuses(change: Any, code: str, path: str, message: str) -> None:
     """Each malformed segment line is refused by the format's validator, its words."""
     with pytest.raises(ValueError) as refused:
         Timeline.from_dict(filed(_refused(change)))
-    assert refusal(refused.value) == (code, message)
+    assert refusal(refused.value) == (code, path, message)
 
 
 def test_a_stale_class_key_is_not_read() -> None:

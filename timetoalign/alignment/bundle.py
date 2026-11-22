@@ -4503,9 +4503,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         <timetoalign.timelines.manifest.ManifestFileMixin.to_file>` writes
         a manifest, with the MatchClaim table and the Projections table
         (:meth:`_write_tables`) written between a first writing of the
-        manifest, which validates it before any file is written, and the
-        writing that names them. A manifest never names an event's ID: where
-        the bundle writes a table, its Projections lie in
+        manifest, which validates and serializes it before any file is
+        written, and the writing that names them. A manifest never names an
+        event's ID: where the bundle writes a table, its Projections lie in
         ``projections.parquet`` alone and the events of its timelines are
         not written into the manifest, so writing event rows (``events``,
         given or as read) is refused before any file is written.

@@ -308,8 +308,14 @@ the library writes back against the same literal text.
   library reads (`from_dict`, `from_file`, whatever class reads it) and
   every manifest it writes (`to_dict`, `to_file`) goes through
   TimeToShare's `validate` whole, and a refusal reaches the caller
-  unchanged: a `timetoshare.SchemaValidationError` whose `code` and
-  `message` the tests assert exactly (`tests/helpers.py`'s `refusal`); the
+  unchanged: a `timetoshare.SchemaValidationError` whose `code`, `path`
+  (as a JSON pointer) and `message` the tests assert exactly
+  (`tests/helpers.py`'s `refusal` returns the three). The path is where the
+  fault lies, and a message often does not say it: an ID held twice is
+  refused at its second holder (the message names the first, the path the
+  second), and a reference naming nothing (`'clt_9' names no timeline of
+  this manifest`) is placed only by its path; a test asserting code and
+  message alone would pass a validator blaming the wrong element. The
   validator's warnings (unknown keys) raise nothing. What proves it is a
   rule the library never checked itself: a named timestamp, which the
   library keeps unread with the styling. A timestamp on `clt_9`, a
@@ -324,7 +330,19 @@ the library writes back against the same literal text.
   `to_file` refuses the same and leaves the directory empty, and a bundle
   holding MatchClaims and Projections given such a timestamp writes
   neither its manifest nor its two tables: the refusal comes before any
-  file. Every other refusal pinned below in the validator's words is the
+  file. The serialization refuses before any file too, because the
+  manifest is serialized before a table is written: the same bundle
+  holding a `DiscretePhysicalTimeline` of length `2**53 + 1` written with
+  `serialization="jcs"` raises the serialization's `ValueError` (`the
+  integer 9007199254740993 cannot be written in RFC 8785 JSON, whose
+  numbers are doubles`), and an unknown serialization name (`"rfc8785"`)
+  raises its own; in both cases the directory stays empty and the
+  bundle's `resources` are unchanged (a writer that wrote the tables
+  first leaves `match_claims.parquet` and `projections.parquet` behind and
+  renames the resources). Into a directory already holding the bundle's
+  package, written in YAML, and then given a belief that changes its
+  MatchClaim table, the refused `jcs` writing leaves every file with its
+  bytes and the `resources` as they were. Every other refusal pinned below in the validator's words is the
   same rule seen from another case; a valid manifest reads and writes
   byte for byte as before (the round trips of this file,
   `test_manifest_files.py` and the conformance tests are unchanged).
@@ -358,7 +376,9 @@ the library writes back against the same literal text.
   `"timetoshare": "0.1.0"` raises its `UnsupportedVersionError`,
   `unsupported TimeToShare version "0.1.0"; this package reads 0.2.0
   only`. Nothing else is read first, so the refusal cannot depend on the
-  rest of the content.
+  rest of the content. Writing stamps the format's own
+  `timetoshare.SCHEMA_VERSION` (`0.2.0`, asserted), never a copy of it, so
+  the library cannot write a version its validator no longer reads.
 - **Defaults are supplied.** A minimal manifest (only `id`, `unit` and
   `length` per timeline, only `id` and `coordinate` per marker, and so on)
   and its complete twin, both literal, read to objects whose complete and

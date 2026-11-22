@@ -22,7 +22,6 @@ from timetoalign.alignment import AlignmentBundle
 from timetoalign.core import Coordinate, NumberType, SupportPolicy, TimeUnit
 from timetoalign.maps import LinearMap
 from timetoalign.timelines import Timeline, TimelineGroup
-from timetoalign.timelines.manifest import TIMETOSHARE_VERSION
 from timetoalign.timelines.structure import MeasureMap
 from timetoalign.timelines.types import (
     ContinuousLogicalTimeline,
@@ -47,7 +46,11 @@ def _text(data: dict[str, Any]) -> str:
 def test_a_manifest_without_the_marker_is_refused(reader: str) -> None:
     with pytest.raises(ValueError) as refused:
         READERS[reader]({"timelines": []})
-    assert refusal(refused.value) == ("not_a_manifest", "not a TimeToShare manifest")
+    assert refusal(refused.value) == (
+        "not_a_manifest",
+        "#",
+        "not a TimeToShare manifest",
+    )
 
 
 @pytest.mark.parametrize("reader", list(READERS), ids=list(READERS))
@@ -59,8 +62,8 @@ def test_another_version_is_refused_naming_the_current_one(reader: str) -> None:
     )
 
 
-def test_the_marker_is_written_from_one_constant() -> None:
-    assert TIMETOSHARE_VERSION == "0.2.0"
+def test_the_marker_is_the_format_s_version() -> None:
+    assert timetoshare.SCHEMA_VERSION == "0.2.0"
     assert bare(AlignmentBundle().to_dict(minimal=True)) == {
         "@context": dict(FORMAT_CONTEXT),
         "timetoshare": "0.2.0",
@@ -301,7 +304,7 @@ def test_the_minimal_form_compares_a_default_by_value() -> None:
 
     assert written == {
         "@context": dict(FORMAT_CONTEXT),
-        "timetoshare": TIMETOSHARE_VERSION,
+        "timetoshare": timetoshare.SCHEMA_VERSION,
         "timelines": [
             {
                 "id": "take",
@@ -538,7 +541,11 @@ def test_each_bare_key_checks_its_representation(
 ) -> None:
     with pytest.raises(ValueError) as refused:
         AlignmentBundle.from_dict(filed(_with_value(path, value)))
-    assert refusal(refused.value) == ("representation", message)
+    assert refusal(refused.value) == (
+        "representation",
+        timetoshare.json_pointer(("timelines", 0, *path)),
+        message,
+    )
 
 
 @pytest.mark.parametrize(
@@ -607,7 +614,9 @@ def test_every_axis_kind_checks_its_representation(
     code = (
         "schema" if isinstance(length, str) or length == [1, 8.5] else "representation"
     )
-    assert refusal(refused.value) == (code, message)
+    # A member of a fraction is refused where it lies, every other value as the length.
+    path = "#/timelines/0/length/1" if length == [1, 8.5] else "#/timelines/0/length"
+    assert refusal(refused.value) == (code, path, message)
 
 
 @pytest.mark.parametrize(
@@ -1315,6 +1324,7 @@ def test_the_manifest_id_is_unique_with_the_timeline_ids() -> None:
         AlignmentBundle.from_dict(filed(data))
     assert refusal(refused.value) == (
         "manifest_id",
+        "#/id",
         "'score' is not unique in the manifest, first at #/timelines/0/id",
     )
 
@@ -1333,6 +1343,7 @@ def test_the_order_is_an_object() -> None:
         AlignmentBundle.from_dict(filed(data))
     assert refusal(refused.value) == (
         "schema",
+        "#/graphical/order",
         "[['score'], ['perf']] is not of type 'object'",
     )
 
@@ -1345,6 +1356,7 @@ def test_an_order_naming_no_group_or_timeline_is_refused() -> None:
         AlignmentBundle.from_dict(filed(data))
     assert refusal(refused.value) == (
         "order_key",
+        "#/graphical/order/g3",
         "'g3' names no group or timeline of this manifest",
     )
 
@@ -1663,24 +1675,28 @@ def test_unknown_row_keys_are_kept_and_force_their_row() -> None:
 
 
 @pytest.mark.parametrize(
-    ("manifest", "message"),
+    ("manifest", "path", "message"),
     [
         (
             _quarters_root([]),
+            "#/measure_maps/0/rows",
             "[] should be non-empty",
         ),
         (
             _quarters_root([{"time_signature": "4/4"}]),
+            "#/measure_maps/0/rows/0",
             "'ID' is a required property",
         ),
         (
             _quarters_root([{"count": 1, "time_signature": "4/4", "qstamp": -1}]),
+            "#/measure_maps/0/rows/0/qstamp",
             "-1 is less than the minimum of 0",
         ),
         (
             _quarters_root(
                 [{"count": 1, "time_signature": "4/4", "actual_length": -1}]
             ),
+            "#/measure_maps/0/rows/0/actual_length",
             "-1 is less than or equal to the minimum of 0",
         ),
         (
@@ -1695,17 +1711,18 @@ def test_unknown_row_keys_are_kept_and_force_their_row() -> None:
                     }
                 ]
             ),
+            "#/timelines/0/conversion_maps/0",
             "'x_values' is a required property",
         ),
     ],
     ids=["empty", "no_count_or_id", "negative_qstamp", "negative_length", "map_key"],
 )
 def test_rows_and_maps_a_manifest_refuses(
-    manifest: dict[str, Any], message: str
+    manifest: dict[str, Any], path: str, message: str
 ) -> None:
     with pytest.raises(ValueError) as refused:
         Timeline.from_dict(filed(manifest))
-    assert refusal(refused.value) == ("schema", message)
+    assert refusal(refused.value) == ("schema", path, message)
 
 
 @pytest.mark.parametrize(
@@ -1749,26 +1766,28 @@ def _parent_with(child: dict[str, Any], *, locked: bool) -> dict[str, Any]:
 
 @pytest.mark.parametrize("locked", [False, True], ids=["unlocked", "locked"])
 @pytest.mark.parametrize(
-    ("child", "message"),
+    ("child", "path", "message"),
     [
         (
             {"id": "coda", "unit": "quarters", "offset": [8, 1], "length": [4, 1]},
+            "#/timelines/0/children/0/length",
             "child 'coda' ends at [12, 1], beyond the length [10, 1] of its parent 'score'",
         ),
         (
             {"id": "late", "unit": "quarters", "offset": [12, 1], "length": None},
+            "#/timelines/0/children/0/offset",
             "offset [12, 1] of 'late' is beyond the length [10, 1] of its parent 'score'",
         ),
     ],
     ids=["end", "start"],
 )
 def test_reading_never_changes_a_length(
-    child: dict[str, Any], message: str, locked: bool
+    child: dict[str, Any], path: str, message: str, locked: bool
 ) -> None:
     with pytest.raises(ValueError) as refused:
         Timeline.from_dict(filed(_parent_with(child, locked=locked)))
     code = "child_end" if child["length"] is not None else "child_offset"
-    assert refusal(refused.value) == (code, message)
+    assert refusal(refused.value) == (code, path, message)
 
     fits = {"id": "coda", "unit": "quarters", "offset": [6, 1], "length": [4, 1]}
     score = Timeline.from_dict(filed(_parent_with(fits, locked=locked)))
@@ -1777,14 +1796,16 @@ def test_reading_never_changes_a_length(
 
 
 @pytest.mark.parametrize(
-    ("children", "message"),
+    ("children", "path", "message"),
     [
         (
             [{"id": "take", "unit": "seconds", "offset": 50.0, "length": 12.5}],
+            "#/timelines/0/children/0/length",
             "child 'take' ends at 62.5, beyond the length 60.0 of its parent 'rec'",
         ),
         (
             [{"id": "take", "unit": "seconds", "offset": 75.0, "length": None}],
+            "#/timelines/0/children/0/offset",
             "offset 75.0 of 'take' is beyond the length 60.0 of its parent 'rec'",
         ),
         (
@@ -1792,13 +1813,14 @@ def test_reading_never_changes_a_length(
                 {"id": "a", "unit": "seconds", "offset": 0.0, "length": None},
                 {"id": "b", "unit": "seconds", "offset": 61.0, "length": 1.0},
             ],
+            "#/timelines/0/children/0/length",
             "child 'a' ends at 61.0, beyond the length 60.0 of its parent 'rec'",
         ),
     ],
     ids=["end", "offset", "unknown_segment"],
 )
 def test_a_child_beyond_its_parent_is_refused_in_the_validators_words(
-    children: list[dict[str, Any]], message: str
+    children: list[dict[str, Any]], path: str, message: str
 ) -> None:
     root = {"id": "rec", "unit": "seconds", "length": 60.0, "children": children}
     if len(children) == 2:
@@ -1806,7 +1828,7 @@ def test_a_child_beyond_its_parent_is_refused_in_the_validators_words(
     with pytest.raises(ValueError) as refused:
         Timeline.from_dict(filed({"timetoshare": "0.2.0", "timelines": [root]}))
     code = "child_offset" if message.startswith("offset") else "child_end"
-    assert refusal(refused.value) == (code, message)
+    assert refusal(refused.value) == (code, path, message)
 
 
 PAGE, AT, SYSTEM = 932.2326510101616, 76.70371459980326, 855.5289364103584
@@ -1907,7 +1929,11 @@ def test_any_other_child_ends_at_the_exact_sum(
 ) -> None:
     with pytest.raises(ValueError) as refused:
         Timeline.from_dict(filed(manifest))
-    assert refusal(refused.value) == ("child_end", message)
+    assert refusal(refused.value) == (
+        "child_end",
+        "#/timelines/0/children/0/length",
+        message,
+    )
 
 
 WORDS: dict[str, Any] = {
@@ -1967,23 +1993,27 @@ def test_words_naming_parts_and_facets_are_overrides() -> None:
 
 
 @pytest.mark.parametrize(
-    ("timeline", "message"),
+    ("timeline", "path", "message"),
     [
         (
             {"id": "x", "unit": "quarters", "length": [-12, 1]},
+            "#/timelines/0/length/0",
             "-12 is less than the minimum of 0",
         ),
         (
             {"id": "x", "unit": "seconds", "length": -8.0},
+            "#/timelines/0/length",
             "-8.0 is less than the minimum of 0",
         ),
     ],
     ids=["fraction", "float"],
 )
-def test_a_negative_length_is_refused(timeline: dict[str, Any], message: str) -> None:
+def test_a_negative_length_is_refused(
+    timeline: dict[str, Any], path: str, message: str
+) -> None:
     with pytest.raises(ValueError) as refused:
         Timeline.from_dict(filed({"timetoshare": "0.2.0", "timelines": [timeline]}))
-    assert refusal(refused.value) == ("schema", message)
+    assert refusal(refused.value) == ("schema", path, message)
     with pytest.raises(ValueError) as refused:
         ContinuousLogicalTimeline(length=Fraction(-12), uid="x")
     assert str(refused.value) == "length -12 of 'x' is negative"
@@ -2141,6 +2171,7 @@ def test_a_timestamp_display_word_the_format_lacks_is_refused() -> None:
 
     assert refusal(refused.value) == (
         "schema",
+        "#/graphical/timestamps/0/display/0",
         "'flag' is not one of ['wedge', 'name', 'id', 'coordinate', 'cross_section']",
     )
 
@@ -2169,18 +2200,20 @@ def _stamped(timeline: str, coordinate: list[int]) -> dict[str, Any]:
     ids=["timeline", "bundle"],
 )
 @pytest.mark.parametrize(
-    ("timeline", "coordinate", "code", "message"),
+    ("timeline", "coordinate", "code", "path", "message"),
     [
         (
             "clt_9",
             [3, 1],
             "timestamp_timeline",
+            "#/graphical/timestamps/0/timeline",
             "'clt_9' names no timeline of this manifest",
         ),
         (
             "clt_1",
             [13, 1],
             "timestamp_coordinate",
+            "#/graphical/timestamps/0/coordinate",
             "coordinate [13, 1] of 'timestamp_1' is beyond the length [12, 1] of "
             "its timeline 'clt_1'",
         ),
@@ -2188,11 +2221,16 @@ def _stamped(timeline: str, coordinate: list[int]) -> dict[str, Any]:
     ids=["no_such_timeline", "beyond_its_length"],
 )
 def test_a_manifest_the_format_refuses_is_not_read(
-    reader: Any, timeline: str, coordinate: list[int], code: str, message: str
+    reader: Any,
+    timeline: str,
+    coordinate: list[int],
+    code: str,
+    path: str,
+    message: str,
 ) -> None:
     with pytest.raises(ValueError) as refused:
         reader(_stamped(timeline, coordinate))
-    assert refusal(refused.value) == (code, message)
+    assert refusal(refused.value) == (code, path, message)
 
 
 def test_a_manifest_the_format_refuses_is_not_written(tmp_path: Any) -> None:
@@ -2206,7 +2244,11 @@ def test_a_manifest_the_format_refuses_is_not_written(tmp_path: Any) -> None:
     for write in (score.to_dict, lambda: score.to_file(tmp_path / "score.yaml")):
         with pytest.raises(ValueError) as refused:
             write()
-        assert refusal(refused.value) == ("timestamp_coordinate", message)
+        assert refusal(refused.value) == (
+            "timestamp_coordinate",
+            "#/graphical/timestamps/0/coordinate",
+            message,
+        )
     assert list(tmp_path.iterdir()) == []
 
 

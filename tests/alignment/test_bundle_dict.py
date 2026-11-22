@@ -362,23 +362,36 @@ def _malformed(change: Callable[[dict[str, Any]], Any]) -> dict[str, Any]:
 
 
 @pytest.mark.parametrize(
-    ("change", "code", "message"),
+    ("change", "code", "path", "message"),
     [
         (
             lambda d: d.pop("timetoshare"),
             "not_a_manifest",
+            "#",
             "not a TimeToShare manifest",
         ),
-        (lambda d: d.pop("timelines"), "schema", "'timelines' is a required property"),
-        (lambda d: d.update(id=""), "schema", r"'#' does not match '^#[\\s\\S]'"),
+        (
+            lambda d: d.pop("timelines"),
+            "schema",
+            "#",
+            "'timelines' is a required property",
+        ),
+        (
+            lambda d: d.update(id=""),
+            "schema",
+            "#/id",
+            r"'#' does not match '^#[\\s\\S]'",
+        ),
         (
             lambda d: d["timelines"].append(d["timelines"][0]),
             "duplicate_id",
+            "#/timelines/5/id",
             "'audio' is not unique in the manifest, first at #/timelines/0/id",
         ),
         (
             lambda d: d["groups"].append(d["groups"][0]),
             "duplicate_id",
+            "#/groups/2/id",
             "'group_1' is not unique in the manifest, first at #/groups/0/id",
         ),
         (
@@ -389,16 +402,19 @@ def _malformed(change: Callable[[dict[str, Any]], Any]) -> dict[str, Any]:
                 ),
             ),
             "duplicate_id",
+            "#/groups/0/id",
             "'notes' is not unique in the manifest, first at #/timelines/3/id",
         ),
         (
             lambda d: d["groups"][0]["members"].append("ghost"),
             "group_member",
+            "#/groups/0/members/2",
             "'ghost' names no timeline of this manifest",
         ),
         (
             lambda d: d["groups"][0]["members"].append("score"),
             "schema",
+            "#/groups/0/members",
             "['#audio', '#score', '#score'] has non-unique elements",
         ),
         (
@@ -407,16 +423,19 @@ def _malformed(change: Callable[[dict[str, Any]], Any]) -> dict[str, Any]:
                 d["graphical"]["order"]["group_2"].append("image"),
             ),
             "group_member",
+            "#/groups/1/members/2",
             "member 'image' contains member 'holes' of the same group",
         ),
         (
             lambda d: d["graphical"]["order"].update(group_7=["score"]),
             "order_key",
+            "#/graphical/order/group_7",
             "'group_7' names no group or timeline of this manifest",
         ),
         (
             lambda d: d["graphical"]["order"].update(group_1=["score"]),
             "display_order",
+            "#/graphical/order/group_1",
             "member 'audio' of group 'group_1' is missing",
         ),
     ],
@@ -435,14 +454,14 @@ def _malformed(change: Callable[[dict[str, Any]], Any]) -> dict[str, Any]:
     ],
 )
 def test_from_dict_refuses_malformed_input(
-    change: Callable[[dict[str, Any]], Any], code: str, message: str
+    change: Callable[[dict[str, Any]], Any], code: str, path: str, message: str
 ) -> None:
     """Each malformed dictionary is refused by the format's validator, its words."""
     data = _malformed(change)
 
     with pytest.raises(ValueError) as refused:
         AlignmentBundle.from_dict(filed(data))
-    assert refusal(refused.value) == (code, message)
+    assert refusal(refused.value) == (code, path, message)
 
 
 # endregion

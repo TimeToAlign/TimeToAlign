@@ -89,13 +89,16 @@ def reading(reader: Any) -> Any:
     return read
 
 
-def refusal(error: BaseException) -> tuple[str, str]:
-    """Return the ``(code, message)`` of the format validator's refusal.
+def refusal(error: BaseException) -> tuple[str, str, str]:
+    """Return the ``(code, path, message)`` of the format validator's refusal.
 
     The library validates every manifest it reads and writes with
     TimeToShare's validator and passes its refusal on unchanged, a
-    ``timetoshare.SchemaValidationError`` whose ``str`` starts with the JSON
-    pointer of the fault; a test asserts the code and the message exactly.
+    ``timetoshare.SchemaValidationError``; a test asserts its code, the
+    JSON pointer of the fault (``#/timelines/1/regions/0/id``) and its
+    message exactly. The path is where the fault lies, which the message
+    alone does not always say: an ID held twice is refused at its second
+    holder, the message naming the first.
     """
     assert isinstance(error, timetoshare.SchemaValidationError), repr(error)
-    return error.code, error.message
+    return error.code, timetoshare.json_pointer(error.path), error.message

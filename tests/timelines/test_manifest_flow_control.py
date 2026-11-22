@@ -267,46 +267,54 @@ def test_only_a_repeat_end_has_a_repeat_count() -> None:
 
 
 @pytest.mark.parametrize(
-    ("flow", "code", "message"),
+    ("flow", "code", "path", "message"),
     [
         (
             [_element("dc", "jump_from", "da_capo", 8, repeat_count=2)],
             "schema",
+            "#/timelines/0/flow_control/0/repeat_count",
             "2 should not be valid under {}",
         ),
         (
             [_element("s", "jump_to", "segno", 4, target="s")],
             "schema",
+            "#/timelines/0/flow_control/0/target",
             "'#s' should not be valid under {}",
         ),
         (
             [_element("f", "flow_marker", "fine", 4, repeat_count=1)],
             "schema",
+            "#/timelines/0/flow_control/0/repeat_count",
             "1 should not be valid under {}",
         ),
         (
             [_element("ds", "jump_from", "dal_segno", 8, target="nowhere")],
             "dangling_target",
+            "#/timelines/0/flow_control/0/target",
             "'nowhere' names no jump_to of this timeline",
         ),
         (
             [_element("ds", "jump_from", "dal_segno", 8)],
             "schema",
+            "#/timelines/0/flow_control/0",
             "'target' is a required property",
         ),
         (
             [_element("x", "jump_over", "segno", 8)],
             "schema",
+            "#/timelines/0/flow_control/0/type",
             "'jump_over' is not one of ['jump_from', 'jump_to', 'flow_marker']",
         ),
         (
             [_element("s", "jump_to", "fine", 8)],
             "schema",
+            "#/timelines/0/flow_control/0/manifestation",
             "'fine' is not one of ['repeat_start', 'segno', 'coda']",
         ),
         (
             [_element("back", "jump_from", "repeat_end", 8, repeat_count=0)],
             "schema",
+            "#/timelines/0/flow_control/0/repeat_count",
             "0 is less than the minimum of 1",
         ),
     ],
@@ -322,11 +330,11 @@ def test_only_a_repeat_end_has_a_repeat_count() -> None:
     ],
 )
 def test_reading_refuses_what_the_format_does_not_define(
-    flow: list[dict[str, Any]], code: str, message: str
+    flow: list[dict[str, Any]], code: str, path: str, message: str
 ) -> None:
     with pytest.raises(ValueError) as refused:
         Timeline.from_dict(filed(_manifest(flow)))
-    assert refusal(refused.value) == (code, message)
+    assert refusal(refused.value) == (code, path, message)
 
 
 @pytest.mark.parametrize(

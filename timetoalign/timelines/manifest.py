@@ -104,9 +104,6 @@ if TYPE_CHECKING:
     from .base import Timeline
     from .structure import MeasureMap
 
-TIMETOSHARE_VERSION = "0.2.0"
-"""The TimeToShare version the library reads and writes."""
-
 # region Bare values on a timeline's own axis
 
 
@@ -1091,7 +1088,7 @@ class Manifest(_OpenObject):
         ]
         for measure_map in self.measure_maps:
             entries.id_of(measure_map)
-        fields: dict[str, Any] = {"timetoshare": TIMETOSHARE_VERSION}
+        fields: dict[str, Any] = {"timetoshare": timetoshare.SCHEMA_VERSION}
         if self.id is not None:
             fields["id"] = self.id
         fields.update(
@@ -1648,9 +1645,10 @@ class ManifestFileMixin:
         canonical YAML, without event rows or external references. An
         :class:`~timetoalign.alignment.AlignmentBundle` holding MatchClaims
         or Projections writes its tables beside the manifest and names them
-        in its ``resources``: its manifest is written (and validated) once
-        before any table, so that a refusal writes no file, and once more
-        naming the tables written.
+        in its ``resources``: its manifest is written (validated and
+        serialized) once before any table, and once more naming the tables
+        written. The manifest is validated with its styling even where
+        ``styling=False`` leaves the styling out of the file.
 
         Args:
             path: The file to write, UTF-8 with line feeds; it is
@@ -1670,9 +1668,11 @@ class ManifestFileMixin:
 
         Raises:
             ValueError: If ``to_dict`` cannot write the manifest (the
-                format's validator refusing it among others), or the
-                serialization refuses a value of it; either before any file
-                is written.
+                format's validator refusing it among others), the
+                serialization is unknown or refuses a value of the manifest,
+                or a table beside it is refused. Each of these refusals
+                comes before any file is written and leaves the object's
+                ``resources`` unchanged.
 
         Examples:
             >>> import tempfile
@@ -1706,21 +1706,29 @@ class ManifestFileMixin:
             **{key: value for key, value in given.items() if value is not None},
         )
         path = Path(path)
-        # The manifest is written, hence validated, before any file is: a
-        # manifest the format refuses leaves no table behind.
-        manifest = self.to_dict(
-            minimal=False,
-            events=form.events,
-            external_references=form.external_references,
-        )
-        if self._write_tables(path.parent):
-            # The resources now name the tables written.
-            manifest = self.to_dict(
+        # The manifest is written (hence validated) and serialized before any
+        # file is: a manifest the format refuses, or a serialization refusing
+        # the form or a value of it, leaves no table behind. A second manifest
+        # differs from the first in its resources alone, so the serialization
+        # refuses nothing in it that it accepted in the first.
+        text = timetoshare.dumps_file(
+            self.to_dict(
                 minimal=False,
                 events=form.events,
                 external_references=form.external_references,
+            ),
+            form,
+        )
+        if self._write_tables(path.parent):
+            # The resources now name the tables written.
+            text = timetoshare.dumps_file(
+                self.to_dict(
+                    minimal=False,
+                    events=form.events,
+                    external_references=form.external_references,
+                ),
+                form,
             )
-        text = timetoshare.dumps_file(manifest, form)
         path.write_text(text, encoding="utf-8", newline="")
         return path
 

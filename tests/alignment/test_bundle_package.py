@@ -224,38 +224,42 @@ class TestResources:
         assert bundle.to_dict()["resources"] == [entry]
 
     @pytest.mark.parametrize(
-        ("resources", "code", "message"),
+        ("resources", "code", "path", "message"),
         [
             (
                 [_resource(timelines=["#score", "#ghost"])],
                 "resource_timeline",
+                "#/resources/0/timelines/1",
                 "'ghost' names no timeline of this manifest",
             ),
             (
                 [_resource(), _resource(id="#resource_2")],
                 "resource_type",
+                "#/resources/1/type",
                 "a manifest names at most one resource of the type MatchClaim; "
                 "'resource_1' is one",
             ),
             (
                 [_resource(integrity={"algorithm": "CRC32", "digest": "ab"})],
                 "schema",
+                "#/resources/0/integrity/algorithm",
                 "'CRC32' is not one of ['MD5', 'SHA-1', 'SHA-256', 'SHA-384', 'SHA-512']",
             ),
             (
                 [_resource(id="#resource_1"), _resource(id="#resource_1", type="Note")],
                 "duplicate_id",
+                "#/resources/1/id",
                 "'resource_1' is not unique in the manifest, first at #/resources/0/id",
             ),
         ],
         ids=["timeline_unknown", "match_claim_twice", "algorithm", "id_twice"],
     )
     def test_malformed_resources_are_refused(
-        self, resources: list[dict[str, Any]], code: str, message: str
+        self, resources: list[dict[str, Any]], code: str, path: str, message: str
     ) -> None:
         with pytest.raises(ValueError) as refused:
             Manifest.read(_manifest(resources=resources))
-        assert refusal(refused.value) == (code, message)
+        assert refusal(refused.value) == (code, path, message)
 
 
 class TestWriting:
@@ -277,10 +281,62 @@ class TestWriting:
 
         assert refusal(refused.value) == (
             "timestamp_coordinate",
+            "#/graphical/timestamps/0/coordinate",
             "coordinate [20, 1] of 'timestamp_1' is beyond the length [16, 1] of "
             "its timeline 'score'",
         )
         assert list(tmp_path.iterdir()) == []
+
+    @pytest.mark.parametrize(
+        ("serialization", "message"),
+        [
+            (
+                "jcs",
+                "the integer 9007199254740993 cannot be written in RFC 8785 JSON, "
+                "whose numbers are doubles",
+            ),
+            ("rfc8785", "unknown serialization 'rfc8785'"),
+        ],
+        ids=["value", "name"],
+    )
+    def test_a_serialization_refusal_writes_no_file(
+        self, tmp_path: Path, serialization: Any, message: str
+    ) -> None:
+        bundle = _bundle()
+        bundle.add_timeline(DiscretePhysicalTimeline(length=2**53 + 1, uid="long"))
+
+        with pytest.raises(ValueError) as refused:
+            bundle.to_file(tmp_path / "package.yaml", serialization=serialization)
+
+        assert type(refused.value) is ValueError
+        assert str(refused.value) == message
+        assert list(tmp_path.iterdir()) == []
+        assert bundle.resources == []
+
+    def test_a_serialization_refusal_keeps_a_written_package(
+        self, tmp_path: Path
+    ) -> None:
+        bundle = _bundle()
+        bundle.add_timeline(DiscretePhysicalTimeline(length=2**53 + 1, uid="long"))
+        bundle.to_file(tmp_path / "package.yaml")
+        written = {p.name: p.read_bytes() for p in tmp_path.iterdir()}
+        resources = list(bundle.resources)
+        assert sorted(written) == FILES
+        # A belief changes the MatchClaim table a writing would write, so a
+        # writer that wrote the tables before refusing changes the bytes.
+        bundle.add_match_claim_belief(
+            "claim_1", actor="wd:Q1", belief="false", date="2026-11-22"
+        )
+
+        with pytest.raises(ValueError) as refused:
+            bundle.to_file(tmp_path / "package.yaml", serialization="jcs")
+
+        assert str(refused.value) == (
+            "the integer 9007199254740993 cannot be written in RFC 8785 JSON, "
+            "whose numbers are doubles"
+        )
+        assert {p.name: p.read_bytes() for p in tmp_path.iterdir()} == written
+        assert bundle.resources == resources
 
     def test_the_package_is_written_and_named(self, tmp_path: Path) -> None:
         bundle = _bundle()
@@ -581,7 +637,12 @@ class TestWriting:
 
         assert sorted(
             path.relative_to(tmp_path).as_posix() for path in tmp_path.rglob("*")
-        ) == ["package.yaml", "projections.parquet", "tables", "tables/claims.parquet"]
+        ) == [
+            "package.yaml",
+            "projections.parquet",
+            "tables",
+            "tables/claims.parquet",
+        ]
         assert [(r.id, r.type, r.timelines, r.url) for r in bundle.resources] == [
             (
                 "resource_7",

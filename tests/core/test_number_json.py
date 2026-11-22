@@ -353,6 +353,7 @@ class TestNumberJson:
             ContinuousLogicalTimeline.from_dict(payload)
         assert refusal(error.value) == (
             "representation",
+            "#/timelines/0/length",
             "length 12 of 'score' is an int on a fraction axis: write [12, 1]",
         )
 
@@ -366,6 +367,7 @@ class TestNumberJson:
             ContinuousLogicalTimeline.from_dict(payload)
         assert refusal(error.value) == (
             "representation",
+            "#/timelines/0/children/0/offset",
             "offset 0.5 of 'child' is a float on a fraction axis: write [1, 2]",
         )
 

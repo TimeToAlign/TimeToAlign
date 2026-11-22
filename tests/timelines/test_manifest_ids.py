@@ -451,6 +451,7 @@ def _scalar(map_id: str) -> dict[str, Any]:
             ),
             (
                 "duplicate_id",
+                "#/timelines/1/regions/0/id",
                 "'intro' is not unique in the manifest, first at "
                 "#/timelines/0/regions/0/id",
             ),
@@ -471,6 +472,7 @@ def _scalar(map_id: str) -> dict[str, Any]:
             ),
             (
                 "duplicate_id",
+                "#/timelines/1/flow_control/0/id",
                 "'m' is not unique in the manifest, first at "
                 "#/timelines/0/conversion_maps/0/id",
             ),
@@ -491,6 +493,7 @@ def _scalar(map_id: str) -> dict[str, Any]:
             ),
             (
                 "duplicate_id",
+                "#/timelines/1/id",
                 "'perf' is not unique in the manifest, first at "
                 "#/timelines/0/children/0/id",
             ),
@@ -503,6 +506,7 @@ def _scalar(map_id: str) -> dict[str, Any]:
             ),
             (
                 "duplicate_id",
+                "#/groups/0/id",
                 "'g' is not unique in the manifest, first at #/timelines/1/regions/0/id",
             ),
         ),
@@ -525,6 +529,7 @@ def _scalar(map_id: str) -> dict[str, Any]:
             ),
             (
                 "duplicate_id",
+                "#/measure_maps/0/id",
                 "'bars' is not unique in the manifest, first at "
                 "#/timelines/1/flow_control/0/id",
             ),
@@ -556,6 +561,7 @@ def _scalar(map_id: str) -> dict[str, Any]:
             ),
             (
                 "manifest_id",
+                "#/id",
                 "'op35' is not unique in the manifest, first at "
                 "#/timelines/0/conversion_maps/0/maps/0/id",
             ),
@@ -571,7 +577,7 @@ def _scalar(map_id: str) -> dict[str, Any]:
     ],
 )
 def test_an_id_held_twice_in_a_manifest_is_refused(
-    data: dict[str, Any], refused_with: tuple[str, str]
+    data: dict[str, Any], refused_with: tuple[str, str, str]
 ) -> None:
     for root in data["timelines"]:
         alone = {"timetoshare": "0.2.0", "timelines": [root]}
@@ -1077,6 +1083,7 @@ class TestNestedMaps:
             Timeline.from_dict(filed(payload))
         assert refusal(refused.value) == (
             "duplicate_id",
+            "#/timelines/0/conversion_maps/0/maps/1/id",
             "'lmap_1' is not unique in the manifest, first at "
             "#/timelines/0/conversion_maps/0/maps/0/id",
         )

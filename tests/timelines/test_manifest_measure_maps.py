@@ -377,6 +377,7 @@ def test_a_record_map_directly_on_a_ticks_timeline_is_refused() -> None:
             reader(copy.deepcopy(manifest))
         assert refusal(refused.value) == (
             "conversion_map",
+            "#/timelines/0/conversion_maps/0/source_unit",
             "MeasureRecordMap 'bars' has source unit 'quarters', its timeline 'score' "
             "has 'ticks'",
         )
@@ -463,11 +464,12 @@ def test_an_entry_no_timeline_names_is_kept() -> None:
 
 
 @pytest.mark.parametrize(
-    ("change", "code", "message"),
+    ("change", "code", "path", "message"),
     [
         (
             {"measure_maps": [{"id": "score", "rows": ROWS}]},
             "duplicate_id",
+            "#/measure_maps/0/id",
             "'score' is not unique in the manifest, first at #/timelines/0/id",
         ),
         (
@@ -476,11 +478,13 @@ def test_an_entry_no_timeline_names_is_kept() -> None:
                 "groups": [{"id": "g", "members": ["score"]}],
             },
             "duplicate_id",
+            "#/measure_maps/0/id",
             "'g' is not unique in the manifest, first at #/groups/0/id",
         ),
         (
             {"id": "op35", "measure_maps": [{"id": "op35", "rows": ROWS}]},
             "manifest_id",
+            "#/id",
             "'op35' is not unique in the manifest, first at #/measure_maps/0/id",
         ),
         (
@@ -491,6 +495,7 @@ def test_an_entry_no_timeline_names_is_kept() -> None:
                 ]
             },
             "duplicate_id",
+            "#/measure_maps/1/id",
             "'bars' is not unique in the manifest, first at #/measure_maps/0/id",
         ),
         (
@@ -506,6 +511,7 @@ def test_an_entry_no_timeline_names_is_kept() -> None:
                 ],
             },
             "duplicate_id",
+            "#/measure_maps/0/id",
             "'bars' is not unique in the manifest, first at "
             "#/timelines/0/regions/0/id",
         ),
@@ -513,7 +519,7 @@ def test_an_entry_no_timeline_names_is_kept() -> None:
     ids=["timeline", "group", "manifest", "twice", "region"],
 )
 def test_a_measure_map_id_is_unique_with_the_manifest_s_ids(
-    change: dict[str, Any], code: str, message: str
+    change: dict[str, Any], code: str, path: str, message: str
 ) -> None:
     manifest = {
         "timetoshare": "0.2.0",
@@ -522,7 +528,7 @@ def test_a_measure_map_id_is_unique_with_the_manifest_s_ids(
     }
     with pytest.raises(ValueError) as refused:
         AlignmentBundle.from_dict(filed(manifest))
-    assert refusal(refused.value) == (code, message)
+    assert refusal(refused.value) == (code, path, message)
 
 
 def test_a_minted_measure_map_id_is_minted_around_the_manifest_s_ids() -> None:

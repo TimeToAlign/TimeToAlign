@@ -16,6 +16,7 @@ from timetoshare import (
     FORMAT_CONTEXT,
     UNITS,
     SchemaValidationError,
+    UnsupportedVersionError,
     canonical_order,
     complete,
     dumps,
@@ -472,40 +473,6 @@ def test_a_bundle_reads_every_fixture(fixture: str) -> None:
         assert dumps(written) == dumps(minimal(written_complete))
 
 
-STYLE_RULES = {
-    "address_facet_with_part",
-    "address_facet_without_id",
-    "rule_select_empty_addresses",
-    "rule_select_inside_unknown_element",
-    "rule_select_projection",
-    "rule_select_unknown_element",
-    "rule_set_content_not_string",
-    "rule_set_dasharray_malformed",
-    "rule_set_max_width_zero",
-    "rule_set_neither_object_nor_string",
-    "rule_set_opacity_above_one",
-    "rule_set_shadow_lower_case",
-    "rule_set_stroke_lower_case",
-}
-"""Rejection cases about ``graphical.rules``, which the library keeps unread."""
-
-BAND_ORDER_RULES = {
-    "band_order_missing_line",
-    "band_order_old_form",
-    "band_order_unknown_entry",
-}
-"""Rejection cases about a band order's entries, which the library keeps unchecked."""
-
-TIMESTAMP_RULES = {
-    "timestamp_coordinate_beyond_length",
-    "timestamp_coordinate_negative",
-    "timestamp_display_repeated",
-    "timestamp_display_unknown",
-    "timestamp_id_is_timeline_id",
-    "timestamp_timeline_unknown",
-}
-"""Rejection cases about ``graphical.timestamps``, which the library keeps unread."""
-
 REJECTIONS = {path.stem: path for path in rejection_paths()}
 
 
@@ -520,34 +487,27 @@ def _whole_reader(manifest: Any) -> Callable[[Any], Any]:
     return AlignmentBundle.from_dict
 
 
-@pytest.mark.parametrize(
-    "case",
-    sorted(set(REJECTIONS) - STYLE_RULES - BAND_ORDER_RULES - TIMESTAMP_RULES),
-)
+@pytest.mark.parametrize("case", sorted(REJECTIONS))
 def test_the_library_refuses_every_rejection_case(case: str) -> None:
-    """Both the whole reader and the bundle reader refuse each case."""
-    manifest = rejection_case(REJECTIONS[case]).manifest
-    for reader in {_whole_reader(manifest), AlignmentBundle.from_dict}:
-        with pytest.raises(ValueError):
-            reader(manifest)
+    """Both the whole reader and the bundle reader refuse each case as the validator.
 
-
-def test_rule_band_order_and_timestamp_cases_are_the_only_unread_cases() -> None:
-    """The library keeps rules, band orders and named timestamps unchecked.
-
-    So it accepts these cases. A band order is written back unchanged with its
-    timeline, the named timestamps as the package's complete form writes them.
+    The library validates every manifest it reads with the package's
+    validator and passes its refusal on unchanged, so each case is refused
+    with the case's own code at the case's own path; the version case with
+    the package's ``UnsupportedVersionError``.
     """
-    unread = STYLE_RULES | BAND_ORDER_RULES | TIMESTAMP_RULES
-    assert unread <= set(REJECTIONS)
-    for case in sorted(unread):
-        manifest = rejection_case(REJECTIONS[case]).manifest
-        written = AlignmentBundle.from_dict(manifest).to_dict(minimal=False)
-        if case in BAND_ORDER_RULES:
-            assert written["graphical"]["order"] == manifest["graphical"]["order"]
-        if case in TIMESTAMP_RULES:
-            timestamps = complete(manifest)["graphical"]["timestamps"]
-            assert written["graphical"]["timestamps"] == timestamps
+    rejection = rejection_case(REJECTIONS[case])
+    for reader in {_whole_reader(rejection.manifest), AlignmentBundle.from_dict}:
+        with pytest.raises(ValueError) as refused:
+            reader(rejection.manifest)
+        if rejection.error == "UnsupportedVersionError":
+            assert type(refused.value) is UnsupportedVersionError
+        else:
+            assert isinstance(refused.value, SchemaValidationError)
+            assert (refused.value.code, refused.value.path) == (
+                rejection.code,
+                rejection.path,
+            )
 
 
 SEVERAL_DEPTHS_ROW = {
@@ -630,6 +590,24 @@ def test_row_rules_beyond_the_schema_are_the_library_s(
         Timeline.from_dict(value)
 
 
+def _refused_alike(value: dict[str, Any]) -> SchemaValidationError:
+    """Return the validator's refusal of *value*, the library's being the same.
+
+    The library reads a manifest through the package's validator, so its
+    refusal is the validator's own: the same code, path and message.
+    """
+    with pytest.raises(SchemaValidationError) as refused:
+        validate(value)
+    with pytest.raises(SchemaValidationError) as library:
+        Timeline.from_dict(value)
+    assert (library.value.code, library.value.path, library.value.message) == (
+        refused.value.code,
+        refused.value.path,
+        refused.value.message,
+    )
+    return refused.value
+
+
 def _with_length(timeline: Timeline, length: Any) -> dict[str, Any]:
     """Return the timeline's manifest with its length replaced by *length*."""
     value = timeline.to_dict()
@@ -674,13 +652,9 @@ def test_both_readers_refuse_a_representation_alike(length: Any, message: str) -
     value = _with_length(
         DiscreteLogicalTimeline(length=960, unit="ticks", uid="ticks"), length
     )
-    with pytest.raises(SchemaValidationError) as refused:
-        validate(value)
-    assert refused.value.path == ("timelines", 0, "length")
-    assert refused.value.message == message
-    with pytest.raises(ValueError) as library:
-        Timeline.from_dict(value)
-    assert str(library.value) == message
+    refused = _refused_alike(value)
+    assert refused.path == ("timelines", 0, "length")
+    assert (refused.code, refused.message) == ("representation", message)
 
 
 def test_both_readers_refuse_an_integer_no_double_holds() -> None:
@@ -692,12 +666,8 @@ def test_both_readers_refuse_an_integer_no_double_holds() -> None:
     message = (
         "length 9007199254740993 of 'take' is an int on a float axis: write a float"
     )
-    with pytest.raises(SchemaValidationError) as refused:
-        validate(value)
-    assert refused.value.message == message
-    with pytest.raises(ValueError) as library:
-        Timeline.from_dict(value)
-    assert str(library.value) == message
+    refused = _refused_alike(value)
+    assert (refused.code, refused.message) == ("representation", message)
 
 
 def _beyond(
@@ -777,12 +747,8 @@ def test_both_readers_refuse_a_child_beyond_its_parent_alike(
     value: dict[str, Any], path: tuple[Any, ...], message: str
 ) -> None:
     """A child beyond its parent's known length is refused in the same words."""
-    with pytest.raises(SchemaValidationError) as refused:
-        validate(value)
-    assert (refused.value.path, refused.value.message) == (path, message)
-    with pytest.raises(ValueError) as library:
-        Timeline.from_dict(value)
-    assert str(library.value) == message
+    refused = _refused_alike(value)
+    assert (refused.path, refused.message) == (path, message)
 
 
 def test_both_readers_refuse_a_string_length() -> None:
@@ -790,11 +756,12 @@ def test_both_readers_refuse_a_string_length() -> None:
     value = _with_length(
         DiscreteLogicalTimeline(length=960, unit="ticks", uid="ticks"), "480"
     )
-    with pytest.raises(SchemaValidationError) as refused:
-        validate(value)
-    assert refused.value.path == ("timelines", 0, "length")
-    with pytest.raises(ValueError, match="^length \"480\" of 'ticks' is not a number$"):
-        Timeline.from_dict(value)
+    refused = _refused_alike(value)
+    assert (refused.code, refused.path, refused.message) == (
+        "schema",
+        ("timelines", 0, "length"),
+        "'480' is not of type 'number'",
+    )
 
 
 def test_int64_boundary() -> None:

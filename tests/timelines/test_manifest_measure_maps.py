@@ -15,7 +15,7 @@ from typing import Any
 import pytest
 from timetoshare import FORMAT_CONTEXT
 
-from tests.helpers import bare, filed, reading
+from tests.helpers import bare, filed, reading, refusal
 from timetoalign import Ms3Loader
 from timetoalign.alignment import AlignmentBundle
 from timetoalign.maps import (
@@ -375,8 +375,10 @@ def test_a_record_map_directly_on_a_ticks_timeline_is_refused() -> None:
     for reader in (reading(Timeline.from_dict), reading(AlignmentBundle.from_dict)):
         with pytest.raises(ValueError) as refused:
             reader(copy.deepcopy(manifest))
-        assert str(refused.value) == (
-            "Map source unit 'quarters' does not match timeline unit 'ticks'"
+        assert refusal(refused.value) == (
+            "conversion_map",
+            "MeasureRecordMap 'bars' has source unit 'quarters', its timeline 'score' "
+            "has 'ticks'",
         )
 
 
@@ -461,25 +463,25 @@ def test_an_entry_no_timeline_names_is_kept() -> None:
 
 
 @pytest.mark.parametrize(
-    ("change", "message"),
+    ("change", "code", "message"),
     [
         (
             {"measure_maps": [{"id": "score", "rows": ROWS}]},
-            "the id 'score' is held twice in the manifest: by measure map 'score' "
-            "and by timeline 'score'",
+            "duplicate_id",
+            "'score' is not unique in the manifest, first at #/timelines/0/id",
         ),
         (
             {
                 "measure_maps": [{"id": "g", "rows": ROWS}],
                 "groups": [{"id": "g", "members": ["score"]}],
             },
-            "the id 'g' is held twice in the manifest: by measure map 'g' and by "
-            "group 'g'",
+            "duplicate_id",
+            "'g' is not unique in the manifest, first at #/groups/0/id",
         ),
         (
             {"id": "op35", "measure_maps": [{"id": "op35", "rows": ROWS}]},
-            "the id 'op35' is held twice in the manifest: by the manifest and by "
-            "measure map 'op35'",
+            "manifest_id",
+            "'op35' is not unique in the manifest, first at #/measure_maps/0/id",
         ),
         (
             {
@@ -488,8 +490,8 @@ def test_an_entry_no_timeline_names_is_kept() -> None:
                     {"id": "bars", "rows": ROWS},
                 ]
             },
-            "the id 'bars' is held twice in the manifest: by measure map 'bars' "
-            "and by measure map 'bars'",
+            "duplicate_id",
+            "'bars' is not unique in the manifest, first at #/measure_maps/0/id",
         ),
         (
             {
@@ -503,14 +505,15 @@ def test_an_entry_no_timeline_names_is_kept() -> None:
                     }
                 ],
             },
-            "the id 'bars' is held twice in the manifest: by measure map 'bars' "
-            "and by region 'bars' of timeline 'score'",
+            "duplicate_id",
+            "'bars' is not unique in the manifest, first at "
+            "#/timelines/0/regions/0/id",
         ),
     ],
     ids=["timeline", "group", "manifest", "twice", "region"],
 )
 def test_a_measure_map_id_is_unique_with_the_manifest_s_ids(
-    change: dict[str, Any], message: str
+    change: dict[str, Any], code: str, message: str
 ) -> None:
     manifest = {
         "timetoshare": "0.2.0",
@@ -519,7 +522,7 @@ def test_a_measure_map_id_is_unique_with_the_manifest_s_ids(
     }
     with pytest.raises(ValueError) as refused:
         AlignmentBundle.from_dict(filed(manifest))
-    assert str(refused.value) == message
+    assert refusal(refused.value) == (code, message)
 
 
 def test_a_minted_measure_map_id_is_minted_around_the_manifest_s_ids() -> None:

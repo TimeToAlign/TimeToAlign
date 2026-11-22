@@ -304,6 +304,43 @@ reads what its own writer produced proves nothing about the format, so the
 tests read manifests written by hand from the format's rules, and compare what
 the library writes back against the same literal text.
 
+- **The format's validator decides at the boundary.** Every manifest the
+  library reads (`from_dict`, `from_file`, whatever class reads it) and
+  every manifest it writes (`to_dict`, `to_file`) goes through
+  TimeToShare's `validate` whole, and a refusal reaches the caller
+  unchanged: a `timetoshare.SchemaValidationError` whose `code` and
+  `message` the tests assert exactly (`tests/helpers.py`'s `refusal`); the
+  validator's warnings (unknown keys) raise nothing. What proves it is a
+  rule the library never checked itself: a named timestamp, which the
+  library keeps unread with the styling. A timestamp on `clt_9`, a
+  timeline the manifest lacks, is refused on reading with
+  `timestamp_timeline`, `'clt_9' names no timeline of this manifest`; one
+  at `[13, 1]` on `clt_1` of length `[12, 1]` with `timestamp_coordinate`,
+  `coordinate [13, 1] of 'timestamp_1' is beyond the length [12, 1] of its
+  timeline 'clt_1'`, through `Timeline` and `AlignmentBundle` alike. The
+  writing side: a valid manifest whose timestamp sits at `[11, 1]` is read,
+  `length` set to 10, and `to_dict` refuses with `coordinate [11, 1] of
+  'timestamp_1' is beyond the length [10, 1] of its timeline 'clt_1'`;
+  `to_file` refuses the same and leaves the directory empty, and a bundle
+  holding MatchClaims and Projections given such a timestamp writes
+  neither its manifest nor its two tables: the refusal comes before any
+  file. Every other refusal pinned below in the validator's words is the
+  same rule seen from another case; a valid manifest reads and writes
+  byte for byte as before (the round trips of this file,
+  `test_manifest_files.py` and the conformance tests are unchanged).
+- **Rules of the library alone.** A manifest the format admits may still
+  be refused by the library where it cannot hold what is written; these
+  checks stay the library's, with its own words, and are pinned where
+  they are tested: a negative child offset (below), a region ending
+  before it starts, measure-map rows whose `count` does not increase, a
+  `next` beyond the last row, a measure view over rows without lengths, a
+  `LinearMap` of scalar 0, a `ChainMap` whose links' units do not meet,
+  and a timeline holding two maps that read a measure map as its own.
+  The readers of one element outside a manifest (a measure-map entry, a
+  flow-control array, a region, a conversion map) see no validator, so
+  they keep the format's rules they check: the measure-map entry and
+  flow-control tests read the bare element and assert the library's
+  words.
 - **IDs in the file form.** A manifest dict, what `to_dict` returns and
   `from_dict` reads, writes every ID as `#` followed by the ID, while every
   object holds IDs bare. Most literals are written with bare IDs, as the
@@ -314,14 +351,14 @@ the library writes back against the same literal text.
   only. Literals that stand for file text (`test_manifest_files.py`) and the
   assertions on a written manifest's own keys (`test_base.py`,
   `test_maps_integration.py`, the doctests) spell the `#` themselves. A
-  literal whose empty bundle `id` becomes `#` is refused with
-  `#/id: '#' is not written as an ID: nothing follows the '#'`; a bare ID
-  in a manifest is refused with its path, `#/timelines/0/id: 'score' is not
-  written as an ID: it does not start with '#'`.
-- **The version marker.** Without `timetoshare` each reader raises exactly
-  `not a TimeToShare manifest`; `"timetoshare": "0.1.0"` raises a message
-  naming both `'0.1.0'` and `0.2.0`. Nothing else is read first, so the
-  refusal cannot depend on the rest of the content.
+  literal whose empty bundle `id` becomes `#`, or a bare ID in a manifest,
+  is refused by the validator (`schema`).
+- **The version marker.** Without `timetoshare` each reader raises the
+  validator's `not_a_manifest`, `not a TimeToShare manifest`;
+  `"timetoshare": "0.1.0"` raises its `UnsupportedVersionError`,
+  `unsupported TimeToShare version "0.1.0"; this package reads 0.2.0
+  only`. Nothing else is read first, so the refusal cannot depend on the
+  rest of the content.
 - **Defaults are supplied.** A minimal manifest (only `id`, `unit` and
   `length` per timeline, only `id` and `coordinate` per marker, and so on)
   and its complete twin, both literal, read to objects whose complete and
@@ -346,15 +383,17 @@ the library writes back against the same literal text.
   is exact, otherwise the axis's number type: `[5, 2]` on a float axis says
   `write 2.5`, `[1, 3]` says `write a float`, `[1, 2]` on an int axis says
   `write an int`, and `0.1` on a fraction axis names its exact pair
-  `[3602879701896397, 36028797018963968]`. These are the messages of the
-  TimeToShare validators, word for word. What a JSON round trip may
+  `[3602879701896397, 36028797018963968]`. These are the validator's
+  refusals, code `representation`, its message asserted exactly. What a JSON round trip may
   respell is read as the number type decides, each case asserting the value
   AND its Python type: `480.0` on an int axis is the int `480`, `8` on a
   float axis the float `8.0`, `[1, 8.0]` on a fraction axis the Fraction
   `1/8` (a JavaScript writer may respell any member). The respelling never
   admits a value that no reading of the axis allows: `[1, 8.5]` (a
-  non-integral member) is refused as no number, and `[480, 1.0]` on an int
-  axis is still a fraction on an int axis (`write 480`).
+  non-integral member) is refused by the schema (`8.5 is not of type
+  'integer'`), `"8"` likewise (`'8' is not of type 'number'`), and
+  `[480, 1.0]` on an int axis is still a fraction on an int axis
+  (`write 480`).
 - **Unknown keys are kept where they were found.** One literal manifest
   carries an `x-note` key on the manifest, a root and a child timeline, a
   region, a `flow_marker`, a `jump_from`, a `jump_to`, a conversion map and a
@@ -375,14 +414,17 @@ the library writes back against the same literal text.
   take no part in equality.
 - **Measure-map rows a manifest refuses.** The rows of a manifest follow the
   schema: empty `rows`, a row with neither `count` nor `ID`, a negative
-  `qstamp` and an `actual_length` of `-1` each raise the exact message naming
-  the row's position. A conversion map lacking a key its type writes and has
-  no default for (a `TableMap` without `x_values`) raises naming the key.
+  `qstamp` and an `actual_length` of `-1` are each refused by the
+  validator (`schema`, its message exactly), and so is a conversion map
+  lacking a key its type requires (a `TableMap` without `x_values`). The
+  reader of one measure-map entry, `MeasureMap.from_dict`, sees no
+  validator and refuses the same four rows in its own words, naming the
+  row's position.
 - **Reading never changes a length.** A root `score` (quarters, length
   `[10, 1]`) holding a child `coda` at offset 8 with length 4 is refused,
-  locked or not, with the TimeToShare validators' words: `child 'coda'
-  ends at [12, 1], beyond the length [10, 1] of its parent 'score'`; a child
-  `late` of unknown length at offset 12 is refused with `offset [12, 1] of
+  locked or not, by the validator (`child_end`): `child 'coda' ends at
+  [12, 1], beyond the length [10, 1] of its parent 'score'`; a child `late`
+  of unknown length at offset 12 with `child_offset`, `offset [12, 1] of
   'late' is beyond the length [10, 1] of its parent 'score'`. A child ending
   exactly at 10 is read, and the parent writes `[10, 1]` back in both forms.
   The library used to grow the parent to 12 instead, which is what these
@@ -416,8 +458,10 @@ the library writes back against the same literal text.
   `TimelineGroup.from_dict(..., group_id="regions_1")`, which give the root
   and the group these ids. (Free ids with slashes, spaces and URIs are
   proved under "Manifest identity" below.) A negative length is
-  refused on reading (`[-12, 1]` on quarters, `-8.0` on seconds:
-  `length -12 of 'x' is negative`) and on construction.
+  refused on reading by the schema (`[-12, 1]` on quarters: `-12 is less
+  than the minimum of 0`; `-8.0` on seconds: `-8.0 is less than the
+  minimum of 0`) and on construction in the library's words (`length -12
+  of 'x' is negative`).
 - **A negative child offset is not supported yet.** The format admits a
   child at a negative offset; the library does not place one yet. A child
   `neg` at `[-5, 2]` on a quarters root, at `-1` on a samples root and at
@@ -457,7 +501,9 @@ the library writes back against the same literal text.
   a timestamp, whose default `["wedge", "name", "cross_section"]` the
   complete form states and the minimal form leaves out, and whose words are
   written in the canonical order `wedge`, `name`, `id`, `coordinate`,
-  `cross_section`, an unknown word after them by code point. Read from a
+  `cross_section`; a word the format lacks (`flag`) is refused by the
+  validator (`schema`, `'flag' is not one of ['wedge', 'name', 'id',
+  'coordinate', 'cross_section']`). Read from a
   one-root manifest through `Timeline` and `AlignmentBundle` alike: a
   timestamp without `display` is written with the default in the complete
   form and without it in the minimal one; the complete form of every one
@@ -466,15 +512,14 @@ the library writes back against the same literal text.
   both the default `false`), which the minimal form leaves out; one stating the default as
   `["cross_section", "wedge", "name"]` is written exactly as the first in
   both forms; one stating `["name", "wedge"]` is written `["wedge",
-  "name"]` in both; one stating `["flag", "coordinate", "wedge"]` is
-  written `["wedge", "coordinate", "flag"]`; every other member of a
+  "name"]` in both; one stating `["coordinate", "id", "wedge"]` is
+  written `["wedge", "id", "coordinate"]`; every other member of a
   timestamp, an unknown one included, is written as given, and the input
   is never changed.
 - **A groupstamp lies in a group.** A named timestamp with `"groupstamp":
   true` draws its line across the frame of the groups its timeline lies in,
-  so the format refuses one whose timeline lies in none, and the library
-  refuses it where it checks the named MatchStamps, on reading and on
-  writing, with TimeToShare's message. Read: a one-root manifest without
+  so the format refuses one whose timeline lies in none, and so does the
+  library, on reading and on writing, through the validator. Read: a one-root manifest without
   groups holding a groupstamp on its root raises, through `Timeline` and
   `AlignmentBundle` alike, `#/graphical/timestamps/0/groupstamp:
   'timestamp_1' is a groupstamp, but its timeline 'r' is a member of no
@@ -559,10 +604,10 @@ the library writes back against the same literal text.
   the groups is an unknown key: kept and written back, never read, so the
   bundle's `support_policy` stays `omit`.
 - **`graphical.order`** is the object keyed by a group's id or by a
-  timeline's id, of a root or a descendant. The list form is refused with
-  `'graphical.order' must map group or timeline ids to orders`, and a key
-  naming neither with `'graphical.order' names no group or timeline:
-  ['g3']`. The keys `score` (a root) and `part` (a child) of the band-order
+  timeline's id, of a root or a descendant. The list form is refused by
+  the validator with `schema`, `[['score'], ['perf']] is not of type
+  'object'`, and a key naming neither with `order_key`, `'g3' names no
+  group or timeline of this manifest`. The keys `score` (a root) and `part` (a child) of the band-order
   manifests below are read, so a reader that looked among the roots alone
   would fail.
 - **Band orders are kept, never read.** A timeline's entry of
@@ -591,8 +636,8 @@ the library writes back against the same literal text.
   and in the other form equal to the other literal. Mutating the input's
   lists after reading changes nothing written, so the library holds its own
   copy. A band order that is no permutation of the bands (`["line",
-  "markers"]`) is read and written back unchanged, which is what
-  leaving the check to the validators means.
+  "markers"]`), which the format admits, is read and written back
+  unchanged.
 - **A band order without its timeline is left out.** An entry is written
   when a timeline of its key's id is written, and left out otherwise. A
   key naming no written timeline makes the manifest invalid, and the

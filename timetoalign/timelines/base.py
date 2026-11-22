@@ -78,14 +78,8 @@ from .manifest import (
     ManifestFileMixin,
     axis_value_from_json,
     axis_value_to_json,
-    check_children_fit,
     listed,
     matches_any,
-    read_id,
-    read_list,
-    read_meta,
-    read_name,
-    require_object,
     select,
 )
 from .regions import Region
@@ -1937,49 +1931,40 @@ class Timeline(
                 measure views name.
 
         Raises:
-            ValueError: If the object is malformed, or holds more than one
-                map reading a measure map as the timeline's.
+            ValueError: If the object breaks a rule of the library alone:
+                more than one map reading a measure map as the timeline's, a
+                negative child offset, or an element the library cannot read
+                (see the element readers).
         """
-        from .types import SegmentLine, SegmentLineMixin, get_timeline_class
+        from .types import SegmentLine, get_timeline_class
 
-        require_object(data, "a timeline", ("id", "unit", "length"))
-        timeline_id = read_id(data["id"], "a timeline")
+        # The manifest holding *data* was admitted by the format's validator
+        # (``Manifest.read``): its shape, its numbers and their containment
+        # are the format's and are not checked again here.
+        timeline_id = data["id"]
         what = f"timeline {timeline_id!r}"
-        try:
-            unit = TimeUnit(data["unit"])
-        except (TypeError, ValueError) as error:
-            raise ValueError(f"{what} has an unknown unit {data['unit']!r}") from error
-        number_type = unit.default_number_type
-        if "number_type" in data:
-            try:
-                number_type = NumberType[data["number_type"]]
-            except (KeyError, TypeError) as error:
-                raise ValueError(
-                    f"{what} has an unknown number_type {data['number_type']!r}"
-                ) from error
+        unit = TimeUnit(data["unit"])
+        number_type = (
+            NumberType[data["number_type"]]
+            if "number_type" in data
+            else unit.default_number_type
+        )
         is_segment_line = data.get("is_segment_line", False)
         locked = data.get("locked", False)
-        for key, value in (("is_segment_line", is_segment_line), ("locked", locked)):
-            if not isinstance(value, bool):
-                raise ValueError(f"{what} has a non-boolean {key!r}")
         length = (
             None
             if data["length"] is None
-            else _refuse_negative_length(
-                axis_value_from_json(
-                    data["length"],
-                    key="length",
-                    owner=timeline_id,
-                    unit=unit,
-                    number_type=number_type,
-                ),
-                timeline_id,
+            else axis_value_from_json(
+                data["length"],
+                key="length",
+                owner=timeline_id,
+                unit=unit,
+                number_type=number_type,
             )
         )
 
         placed: list[tuple[Coordinate, Timeline]] = []
-        for child_data in read_list(data, "children", what):
-            require_object(child_data, f"a child of {what}", ("offset",))
+        for child_data in data.get("children", []):
             child = Timeline._from_timeline_object(
                 child_data, is_root=False, measure_maps=measure_maps
             )
@@ -1996,21 +1981,9 @@ class Timeline(
             unit.domain.value, discrete=unit.is_discrete
         )
         if is_segment_line:
-            segment_types = {type(child) for _, child in placed}
-            if len(segment_types) > 1:
-                names = sorted(segment_type.__name__ for segment_type in segment_types)
-                raise ValueError(
-                    f"Segment line {what} has segments of mixed classes: {names}"
-                )
-            segment_type = segment_types.pop() if segment_types else timeline_class
-            innermost = segment_type
-            while issubclass(innermost, SegmentLineMixin):
-                innermost = innermost._segment_type
-            if innermost is not timeline_class:
-                raise ValueError(
-                    f"Segment line {what} is a {timeline_class.__name__} but its "
-                    f"segments are {innermost.__name__!r}"
-                )
+            # The format gives every segment its line's unit and the line's
+            # segments one ``is_segment_line``: they are of one class.
+            segment_type = type(placed[0][1]) if placed else timeline_class
             timeline_class = SegmentLine[segment_type]
 
         timeline = timeline_class(
@@ -2018,16 +1991,16 @@ class Timeline(
             unit=unit,
             number_type=number_type,
             uid=timeline_id,
-            name=read_name(data, what),
+            name=data.get("name"),
             locked=False,
-            meta=read_meta(data, what),
+            meta=copy.deepcopy(data.get("meta", {})),
         )
 
         # Event coordinates arrive as JSON numbers; decode them back to the
         # numbers the EventData builder expects. Segment events are recreated
         # by the children.
         events = []
-        for row in read_list(data, "events", what):
+        for row in data.get("events", []):
             if row.get("event_type") == SEGMENT_EVENT_TYPE:
                 continue
             event = dict(row)
@@ -2042,8 +2015,6 @@ class Timeline(
         if references:
             timeline.add_external_references(references, validate=False)
 
-        # Reading never changes a length: a child must fit the written one.
-        check_children_fit(data, number_type)
         # A segment line's segments in offset order, so that they append
         # contiguously whatever order the object lists them in.
         if is_segment_line:
@@ -2052,7 +2023,7 @@ class Timeline(
             timeline._embed_child(child, offset, locked=timeline._kept_lock(child))
 
         records = []
-        for map_data in read_list(data, "conversion_maps", what):
+        for map_data in data.get("conversion_maps", []):
             cmap = ConversionMap.from_dict(map_data, measure_maps=measure_maps)
             if _is_record_map_on(cmap, unit):
                 records.append(cmap)
@@ -2066,13 +2037,13 @@ class Timeline(
             )
         if records:
             timeline._set_measure_record_map(records[0])
-        for region_data in read_list(data, "regions", what):
+        for region_data in data.get("regions", []):
             timeline.add_region(
                 Region.from_dict(region_data, unit=unit, number_type=number_type)
             )
         timeline.flow_control._absorb(
             FlowControlRegistry.from_dict(
-                read_list(data, "flow_control", what),
+                data.get("flow_control", []),
                 unit=unit,
                 number_type=number_type,
             )

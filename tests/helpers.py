@@ -87,3 +87,15 @@ def reading(reader: Any) -> Any:
     read.__name__ = reader.__name__
     read.__qualname__ = reader.__qualname__
     return read
+
+
+def refusal(error: BaseException) -> tuple[str, str]:
+    """Return the ``(code, message)`` of the format validator's refusal.
+
+    The library validates every manifest it reads and writes with
+    TimeToShare's validator and passes its refusal on unchanged, a
+    ``timetoshare.SchemaValidationError`` whose ``str`` starts with the JSON
+    pointer of the fault; a test asserts the code and the message exactly.
+    """
+    assert isinstance(error, timetoshare.SchemaValidationError), repr(error)
+    return error.code, error.message

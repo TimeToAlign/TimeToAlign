@@ -12,7 +12,7 @@ from typing import Any
 import pytest
 from timetoshare import FORMAT_CONTEXT
 
-from tests.helpers import bare, filed
+from tests.helpers import bare, filed, refusal
 from timetoalign.timelines import SegmentLine, Timeline
 from timetoalign.timelines.types import (
     ContinuousLogicalTimeline,
@@ -239,30 +239,39 @@ def _mixed_classes(data: dict[str, Any]) -> None:
 
 
 @pytest.mark.parametrize(
-    ("change", "message"),
+    ("change", "code", "message"),
     [
-        (_mixed_classes, r"Segment line timeline 'line' has segments of mixed classes"),
+        (
+            _mixed_classes,
+            "child_unit",
+            "child 'second' has unit 'points', its parent 'line' has 'pixels'",
+        ),
         (
             lambda d: _second(d).update(is_segment_line=True, length=0),
-            r"Segment line timeline 'line' has segments of mixed classes",
+            "segment_line",
+            "segment 'second' of segment line 'line' differs from segment 'first' in "
+            "is_segment_line",
         ),
         (
             lambda d: _second(d).update(offset=250),
-            r"SegmentLine requires contiguous segments\. Expected offset 300, "
-            r"got 250\.",
+            "segment_line",
+            "segment 'second' of segment line 'line' does not start where the one "
+            "before it ends",
         ),
         (
             lambda d: _second(d).update(offset=350),
-            r"^child 'second' ends at 550, beyond the length 500 of its parent "
-            r"'line'$",
+            "child_end",
+            "child 'second' ends at 550, beyond the length 500 of its parent 'line'",
         ),
         (
             lambda d: d.update(length=600),
-            r"Segment line 'line' has segments ending at 500, but its length is 600",
+            "segment_line",
+            "the segments of segment line 'line' do not end at its length",
         ),
         (
             lambda d: d.update(is_segment_line="yes"),
-            r"timeline 'line' has a non-boolean 'is_segment_line'",
+            "schema",
+            "'yes' is not of type 'boolean'",
         ),
     ],
     ids=[
@@ -274,10 +283,11 @@ def _mixed_classes(data: dict[str, Any]) -> None:
         "non_boolean_flag",
     ],
 )
-def test_from_dict_refuses(change: Any, message: str) -> None:
-    """Each malformed segment line is refused with a ValueError naming it."""
-    with pytest.raises(ValueError, match=message):
+def test_from_dict_refuses(change: Any, code: str, message: str) -> None:
+    """Each malformed segment line is refused by the format's validator, its words."""
+    with pytest.raises(ValueError) as refused:
         Timeline.from_dict(filed(_refused(change)))
+    assert refusal(refused.value) == (code, message)
 
 
 def test_a_stale_class_key_is_not_read() -> None:

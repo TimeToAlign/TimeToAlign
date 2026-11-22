@@ -12,7 +12,7 @@ from typing import Any
 import pytest
 from timetoshare import FORMAT_CONTEXT
 
-from tests.helpers import bare, filed, reading
+from tests.helpers import bare, filed, reading, refusal
 from timetoalign.alignment import AlignmentBundle
 from timetoalign.core import Coordinate, IdCoordinate, TimeUnit
 from timetoalign.core.time import express_as
@@ -410,33 +410,52 @@ def _malformed(change: Any) -> dict[str, Any]:
 
 
 @pytest.mark.parametrize(
-    ("change", "message"),
+    ("change", "code", "message"),
     [
-        (lambda d: d.pop("timetoshare"), "not a TimeToShare manifest"),
-        (lambda d: d["groups"][0].pop("members"), r"lacks the key\(s\) \['members'\]"),
-        (lambda d: d["groups"][0]["members"].append("Z"), "names member 'Z'"),
-        (lambda d: d["groups"][0]["members"].append("A"), "names a member twice"),
+        (
+            lambda d: d.pop("timetoshare"),
+            "not_a_manifest",
+            "not a TimeToShare manifest",
+        ),
+        (
+            lambda d: d["groups"][0].pop("members"),
+            "schema",
+            "'members' is a required property",
+        ),
+        (
+            lambda d: d["groups"][0]["members"].append("Z"),
+            "group_member",
+            "'Z' names no timeline of this manifest",
+        ),
+        (
+            lambda d: d["groups"][0]["members"].append("A"),
+            "schema",
+            "['#A', '#B', '#C', '#A'] has non-unique elements",
+        ),
         (
             lambda d: d["timelines"].append(d["timelines"][0]),
-            "the id 'A' is held twice in the manifest: by timeline 'A' and by "
-            "timeline 'A'",
+            "duplicate_id",
+            "'A' is not unique in the manifest, first at #/timelines/0/id",
         ),
         (
             lambda d: d["graphical"]["order"].update(group_1=["A", "B"]),
-            "not a permutation of its members",
+            "display_order",
+            "member 'C' of group 'group_1' is missing",
         ),
         (
             lambda d: d["graphical"].update(order=["A", "B", "C"]),
-            "'graphical.order' must map group or timeline ids to orders",
+            "schema",
+            "['A', 'B', 'C'] is not of type 'object'",
         ),
         (
             lambda d: (d["groups"][0].update(id="A"), d["graphical"].pop("order")),
-            "the id 'A' is held twice in the manifest: by timeline 'A' and by "
-            "group 'A'",
+            "duplicate_id",
+            "'A' is not unique in the manifest, first at #/timelines/0/id",
         ),
         (
             lambda d: (d["groups"][0].update(id="a\tb"), d["graphical"].pop("order")),
-            r"Invalid id 'a\\tb'",
+            "schema",
+            r"'#a\tb' should not be valid under {'pattern': '[\\u0000-\\u001f]'}",
         ),
     ],
     ids=[
@@ -451,12 +470,15 @@ def _malformed(change: Any) -> dict[str, Any]:
         "invalid_group_id",
     ],
 )
-def test_from_dict_refuses_malformed_input(change: Any, message: str) -> None:
-    """Each malformed dictionary is refused with a message naming the problem."""
+def test_from_dict_refuses_malformed_input(
+    change: Any, code: str, message: str
+) -> None:
+    """Each malformed dictionary is refused by the format's validator, its words."""
     data = _malformed(change)
 
-    with pytest.raises(ValueError, match=message):
+    with pytest.raises(ValueError) as refused:
         TimelineGroup.from_dict(filed(data))
+    assert refusal(refused.value) == (code, message)
 
 
 def test_from_dict_refuses_a_parent_beside_its_child() -> None:
@@ -466,11 +488,12 @@ def test_from_dict_refuses_a_parent_beside_its_child() -> None:
     data["groups"][0]["members"].append("R")
     data["graphical"]["order"]["group_1"].append("R")
 
-    with pytest.raises(
-        ValueError,
-        match="Timeline 'R' cannot join group 'group_1': it is nested with member 'K'",
-    ):
+    with pytest.raises(ValueError) as refused:
         TimelineGroup.from_dict(filed(data))
+    assert refusal(refused.value) == (
+        "group_member",
+        "member 'R' contains member 'K' of the same group",
+    )
 
 
 def test_groups_sharing_a_member_read_each_group() -> None:

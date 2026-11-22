@@ -14,8 +14,18 @@ MatchClaim table beside it), its ``graphical``, and its inline JSON-LD
 share: the version marker, the reading of the manifest around its timelines
 and groups, its resources (:class:`Resource`), the writing of that
 envelope, of the measure maps its
-timelines name and of the ``@context`` its statements need, the check of
-the statements, and the codec of a bare value on a timeline's own axis.
+timelines name and of the ``@context`` its statements need, and the codec of
+a bare value on a timeline's own axis.
+
+Every manifest read and every manifest written is validated whole by
+TimeToShare's validator (:func:`timetoshare.validate`): the library reads
+and writes exactly the manifests the format admits, and a refusal is the
+validator's ``timetoshare.SchemaValidationError`` (a ``ValueError``) with
+its ``code`` and message unchanged. Its warnings are not reported. A few
+rules are the library's alone and checked by its readers of the elements: a
+negative child offset, a region ending before it starts, the rows of a
+measure map that do not follow one another, and maps the library cannot
+evaluate.
 
 A value on a timeline's own axis (``length``, ``offset``, region ``start``
 and ``end``, break and marker ``coordinate``, jump ``from_coordinate`` and
@@ -47,7 +57,7 @@ import json
 import math
 import os
 import re
-from collections.abc import Collection, Container, Iterable, Iterator, Mapping
+from collections.abc import Collection, Iterable, Iterator, Mapping
 from dataclasses import asdict, dataclass, field, replace
 from fractions import Fraction
 from os import PathLike
@@ -59,7 +69,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 import timetoshare
-from timetoshare import FORMAT_CONTEXT, child_ends, load_catalogue, loads
+from timetoshare import FORMAT_CONTEXT, load_catalogue, loads
 from timetoshare.serialization import Serialization
 from timetoshare.tables import (
     PROJECTION_OF_TYPE,
@@ -207,52 +217,6 @@ def spell(value: Any) -> str:
     return repr(value)
 
 
-def _spelled_on(value: Fraction, number_type: NumberType) -> str:
-    """Spell *value* as an axis of *number_type* writes it, as a pair if inexact."""
-    if number_type is NumberType.int and value.denominator == 1:
-        return spell(value.numerator)
-    if number_type is NumberType.float and Fraction(float(value)) == value:
-        return spell(float(value))
-    return spell([value.numerator, value.denominator])
-
-
-def check_children_fit(data: Mapping[str, Any], number_type: NumberType) -> None:
-    """Refuse a child beyond the known ``length`` of the timeline object *data*.
-
-    Child by child in array order: an ``offset`` beyond the length, or else an
-    end beyond it where the end is known (offset plus length, or, in a
-    segment line, a segment of unknown length's successor's offset). Where
-    the parent and the child are both ``float``, the end is the double sum a
-    reader computes, exact otherwise; the ends are TimeToShare's
-    (``child_ends``). A child of another unit is left to the reader, which
-    refuses it. The messages are the TimeToShare validators', values spelled
-    as written.
-
-    Raises:
-        ValueError: ``offset 75.0 of 'take' is beyond the length 60.0 of its
-            parent 'recording'``, or ``child 'coda' ends at [12, 1], beyond
-            the length [10, 1] of its parent 'score'``.
-    """
-    length = data["length"]
-    if length is None:
-        return
-    bound = Fraction(number_from_json(length))
-    parent = data["id"]
-    for child, end in zip(data.get("children", []), child_ends(data), strict=True):
-        if child["unit"] != data["unit"]:
-            continue
-        if Fraction(number_from_json(child["offset"])) > bound:
-            raise ValueError(
-                f"offset {spell(child['offset'])} of '{child['id']}' is beyond the "
-                f"length {spell(length)} of its parent '{parent}'"
-            )
-        if end is not None and end > bound:
-            raise ValueError(
-                f"child '{child['id']}' ends at {_spelled_on(end, number_type)}, "
-                f"beyond the length {spell(length)} of its parent '{parent}'"
-            )
-
-
 # endregion
 
 
@@ -308,153 +272,6 @@ def read_id(value: Any, what: str) -> str:
     if not isinstance(value, str):
         raise ValueError(f"{what} id must be a string, got {value!r}")
     return validate_id(value)
-
-
-def read_list(data: Mapping[str, Any], key: str, what: str) -> list[Any]:
-    """Read an optional array, ``[]`` by default.
-
-    Raises:
-        ValueError: If the value is not an array.
-    """
-    value = data.get(key, [])
-    if not isinstance(value, list):
-        raise ValueError(f"{what}'s {key!r} must be an array")
-    return value
-
-
-def bare_ids(data: Mapping[str, Any]) -> dict[str, Any]:
-    """Return a manifest as a file holds it with every ID bare.
-
-    A manifest file writes every ID, an element's own and every reference
-    to one, as ``#`` followed by the ID; the library holds IDs bare
-    (:func:`timetoshare.with_bare_ids`).
-
-    Raises:
-        ValueError: If an ID is not written so, its path first:
-            ``#/timelines/0/id: 'score' is not written as an ID: it does not
-            start with '#'``.
-    """
-    try:
-        return timetoshare.with_bare_ids(data)
-    except timetoshare.FileIdError as error:
-        pointer = timetoshare.json_pointer(error.path)
-        raise ValueError(f"{pointer}: {error}") from None
-
-
-def check_statements(data: Mapping[str, Any]) -> None:
-    """Refuse a manifest whose statements break a rule of the format.
-
-    The rules of the ``@context``, the statements and their provenance are
-    TimeToShare's: :func:`timetoshare.statement_problems` checks them, and
-    nothing else, and the first problem is raised. A manifest is checked as
-    it is read, before anything else is read, and as it is written, so that
-    a manifest whose statements break a rule is never emitted. *data* is in
-    the file form; the messages quote IDs bare.
-
-    Raises:
-        timetoshare.SchemaValidationError: The first problem, a
-            ``ValueError`` whose message starts with its path in *data*:
-            ``#/timelines/0/statements/dcterms:source/0/id: '#ghost' names
-            no element of this manifest``.
-    """
-    problems = timetoshare.statement_problems(data)
-    if problems:
-        raise problems[0]
-
-
-def check_matchstamps(data: Mapping[str, Any]) -> None:
-    """Refuse a manifest whose named MatchStamps break a rule of the format.
-
-    The library keeps ``graphical`` as given, the named MatchStamps
-    (``graphical.matchstamps``) and their match timestamps among it, and
-    refuses what the format refuses about them: the rules are TimeToShare's
-    (:func:`timetoshare.matchstamp_problems`, the schema of each match
-    timestamp and MatchStamp, an ID of a MatchStamp or an alignment anchor
-    held twice in the manifest, an anchor naming an unknown, an unflagged or
-    a same-timeline timestamp, anchors not connected, two match timestamps
-    on one coordinate, a match timestamp no MatchStamp names), and the first
-    problem is raised. A manifest is checked as it is read and as it is
-    written. *data* is in the file form.
-
-    Raises:
-        timetoshare.SchemaValidationError: The first problem, a
-            ``ValueError``: ``#/graphical/matchstamps/0/alignment_anchors:
-            the alignment anchors of 'matchstamp_1' are not one connected
-            set``.
-    """
-    problems = timetoshare.matchstamp_problems(data)
-    if problems:
-        raise problems[0]
-
-
-def check_groupstamps(data: Mapping[str, Any]) -> None:
-    """Refuse a manifest holding a groupstamp that lies in no group.
-
-    A named timestamp with ``groupstamp: true`` draws its line across the
-    frame of each group its timeline lies in, so the format requires that
-    timeline to lie in one: a timeline lies in a group when it or one of its
-    ancestors is listed in the group's ``members`` (a member's descendants
-    are drawn inside the member's card); an ancestor of a member lies in no
-    group through it. A match timestamp is checked as any other, and a
-    timestamp naming no timeline of the manifest, like the rest of
-    ``graphical.timestamps``, is kept unread. A manifest is checked as it is
-    read and as it is written. *data* holds bare IDs.
-
-    Raises:
-        timetoshare.SchemaValidationError: The first groupstamp lying in no
-            group, a ``ValueError``: ``#/graphical/timestamps/0/groupstamp:
-            'timestamp_1' is a groupstamp, but its timeline 'clt_1' is a
-            member of no group and lies in none``.
-    """
-    graphical = data.get("graphical")
-    timestamps = graphical.get("timestamps") if isinstance(graphical, Mapping) else None
-    flagged = [
-        (index, timestamp)
-        for index, timestamp in enumerate(
-            timestamps if isinstance(timestamps, list) else []
-        )
-        if isinstance(timestamp, Mapping) and timestamp.get("groupstamp") is True
-    ]
-    if not flagged:
-        return
-    members = {
-        member
-        for group in _object_entries(data, "groups")
-        for member in (
-            group["members"] if isinstance(group.get("members"), list) else []
-        )
-        if isinstance(member, str)
-    }
-    lying: dict[str, bool] = {}
-    pending = [(root, False) for root in _object_entries(data, "timelines")]
-    while pending:
-        timeline, inside = pending.pop()
-        identifier = timeline.get("id")
-        inside = inside or identifier in members
-        if isinstance(identifier, str):
-            lying[identifier] = lying.get(identifier, False) or inside
-        pending.extend(
-            (child, inside) for child in _object_entries(timeline, "children")
-        )
-    for index, timestamp in flagged:
-        identifier = timestamp.get("timeline")
-        if isinstance(identifier, str) and lying.get(identifier) is False:
-            raise timetoshare.SchemaValidationError(
-                "groupstamp",
-                ("graphical", "timestamps", index, "groupstamp"),
-                f"'{timestamp.get('id')}' is a groupstamp, but its timeline "
-                f"'{identifier}' is a member of no group and lies in none",
-            )
-
-
-def _object_entries(owner: Mapping[str, Any], key: str) -> list[Mapping[str, Any]]:
-    """The objects of the list *owner* holds under *key*; none where it holds no list."""
-    value = owner.get(key)
-    return (
-        [entry for entry in value if isinstance(entry, Mapping)]
-        if isinstance(value, list)
-        else []
-    )
 
 
 def _leave_out_unwritten(
@@ -767,39 +584,6 @@ def resource_path(directory: str | PathLike[str], url: str) -> Path:
     return Path(directory) / unquote(parts.path)
 
 
-def read_resources(items: list[Any], timelines: Container[str]) -> list[Resource]:
-    """Read ``resources``: every entry, each timeline it names known.
-
-    Args:
-        items: The entries, IDs bare.
-        timelines: The IDs of every timeline of the manifest, at any depth.
-
-    Raises:
-        ValueError: If an entry is malformed (:meth:`Resource.from_dict`),
-            names a timeline the manifest lacks, or a second resource has
-            the type ``MatchClaim`` or ``Projection``.
-    """
-    resources = [
-        Resource.from_dict(item, f"resource {index}")
-        for index, item in enumerate(items)
-    ]
-    for resource in resources:
-        unknown = [tid for tid in resource.timelines if tid not in timelines]
-        if unknown:
-            raise ValueError(
-                f"resource {quote_id(resource.id)} names timelines the manifest "
-                f"lacks: {unknown}"
-            )
-    for table_type in TABLE_RESOURCE_TYPES:
-        held = [resource.id for resource in resources if resource.type == table_type]
-        if len(held) > 1:
-            raise ValueError(
-                f"at most one resource has the type {table_type!r}; the manifest "
-                f"names {len(held)}: {held}"
-            )
-    return resources
-
-
 # endregion
 
 
@@ -1012,9 +796,8 @@ class Manifest(_OpenObject):
     its statements and provenance with the prefixes it declares, the members
     of its ``graphical`` other than ``order``
     (``styling``) and the band orders of its timelines (``band_orders``),
-    both kept as given and never interpreted (the named MatchStamps among
-    the styling are checked, :func:`check_matchstamps`, and so are the
-    groupstamps, :func:`check_groupstamps`), whether it holds
+    both kept as given and never interpreted (the format's validator checks
+    them as it checks the whole manifest read and written), whether it holds
     ``graphical`` at all, the measure maps no timeline names, and every key
     the library does not read.
 
@@ -1073,74 +856,54 @@ class Manifest(_OpenObject):
         """Read a manifest: its envelope, its timelines and its raw groups.
 
         *data* is the manifest as a file holds it, every ID written ``#``
-        followed by the ID; it is read with bare IDs (:func:`bare_ids`), as
-        every object of the library holds them. The statements and their
-        provenance are checked first, then the named MatchStamps, by
-        TimeToShare's rules (:func:`check_statements`,
-        :func:`check_matchstamps`), then the groupstamps
-        (:func:`check_groupstamps`). The measure maps are read next, then
-        every root timeline is rebuilt, its conversion maps reading the
-        measure maps they name, and every timeline of the roots' trees is
-        indexed by id. Every id is unique across the manifest: the
-        manifest's own, every timeline, root or descendant, group, measure
-        map, conversion map at any depth, region and flow-control element.
-        Groups are left
-        as JSON for the class reading them. ``graphical.order`` is split by
-        its keys: a group's display order goes to the content, a timeline's
-        band order to the envelope, unchecked. The measure maps no timeline
-        names are kept on the envelope, and so are its resources, each
-        naming timelines of the manifest. The manifest, every timeline and
-        every region keep their statements and provenance as written; every
-        timeline and region with the prefixes of the manifest's ``@context``
-        it uses that the catalogue lacks or gives another namespace, the
-        manifest with every such prefix its ``@context`` declares, used or
-        not (the context its MatchClaims' actors are read under). A manifest without
-        ``@context`` and without statements reads; the format's warnings
-        are not reported.
+        followed by the ID. It is validated first, whole, by the format's
+        validator (:func:`timetoshare.validate`), so that the library reads
+        exactly the manifests the format admits; its warnings (unknown keys
+        and the like) are not reported. It is then read with bare IDs
+        (:func:`timetoshare.with_bare_ids`), as every object of the library
+        holds them. The measure maps are read next, then every root timeline
+        is rebuilt, its conversion maps reading the measure maps they name,
+        and every element of the manifest is indexed by id (:func:`unique_ids`).
+        Groups are left as JSON for the class reading them.
+        ``graphical.order`` is split by its keys: a group's display order
+        goes to the content, a timeline's band order to the envelope. The
+        measure maps no timeline names are kept on the envelope, and so are
+        its resources. The manifest, every timeline and every region keep
+        their statements and provenance as written; every timeline and
+        region with the prefixes of the manifest's ``@context`` it uses that
+        the catalogue lacks or gives another namespace, the manifest with
+        every such prefix its ``@context`` declares, used or not (the
+        context its MatchClaims' actors are read under).
 
         Returns:
             The envelope, and the manifest's content.
 
         Raises:
-            ValueError: If *data* is no TimeToShare manifest (``"not a
-                TimeToShare manifest"``), names another version, writes an ID
-                without its ``#`` (:func:`bare_ids`), or is malformed:
-                statements or provenance breaking a rule of the format (the
-                first problem, a ``timetoshare.SchemaValidationError``), named
-                MatchStamps breaking one (:func:`check_matchstamps`), a
-                groupstamp lying in no group (:func:`check_groupstamps`), an id
-                held twice anywhere in the manifest (see
-                :func:`unique_ids`), a ``graphical.order`` that is no object
-                or names no group or timeline; a resource that is malformed,
-                names a timeline the manifest lacks, or is a second
-                resource of the type ``MatchClaim`` or ``Projection``
-                (:func:`read_resources`).
+            timetoshare.SchemaValidationError: The validator's refusal, a
+                ``ValueError`` carrying the validator's ``code`` and message
+                unchanged: ``#/graphical/timestamps/0/timeline: 'clt_9' names
+                no timeline of this manifest``.
+            timetoshare.UnsupportedVersionError: A ``ValueError``, if *data*
+                names another version than the library's.
+            ValueError: If the manifest is valid but breaks a rule of the
+                library alone: a negative child offset, a region ending
+                before it starts, a measure map or conversion map the library
+                cannot read (see the element readers).
         """
-        if not isinstance(data, dict) or "timetoshare" not in data:
-            raise ValueError("not a TimeToShare manifest")
-        version = data["timetoshare"]
-        if version != TIMETOSHARE_VERSION:
-            raise ValueError(
-                f"unsupported TimeToShare version {version!r}: this library reads "
-                f"TimeToShare {TIMETOSHARE_VERSION} only"
-            )
-        require_object(data, "a TimeToShare manifest", ("timelines",))
-        bare = bare_ids(data)
-        check_statements(data)
-        check_matchstamps(data)
-        check_groupstamps(bare)
+        timetoshare.validate(data)
+        bare = timetoshare.with_bare_ids(data)
         own = {
             key: value
             for key, value in data.get("@context", {}).items()
             if key not in FORMAT_CONTEXT
         }
         data = bare
-        manifest_id = read_id(data["id"], "the manifest") if "id" in data else None
+        manifest_id = data.get("id")
         state = read_statement_state(data)
         manifest = cls(
             id=manifest_id,
-            name=read_name(data, "the manifest"),
-            meta=read_meta(data, "the manifest"),
+            name=data.get("name"),
+            meta=copy.deepcopy(data.get("meta", {})),
             statement_state=state,
             prefixes=declared_prefixes(own),
         )
@@ -1149,12 +912,11 @@ class Manifest(_OpenObject):
         holders: list[tuple[str, str]] = []
         if manifest_id is not None:
             holders.append((manifest_id, "the manifest"))
-        read_maps = _read_measure_maps(read_list(data, "measure_maps", "the manifest"))
+        read_maps = _read_measure_maps(data.get("measure_maps", []))
         holders.extend(
             (measure_map.id, f"measure map {quote_id(measure_map.id)}")
             for measure_map in read_maps
         )
-        unique_ids(holders)
         measure_maps = {measure_map.id: measure_map for measure_map in read_maps}
         roots, timelines = _read_roots(data["timelines"], measure_maps)
         if own:
@@ -1165,21 +927,18 @@ class Manifest(_OpenObject):
             for root in roots
             for element_id, description in root._tree_ids().items()
         )
-        manifest.resources = read_resources(
-            read_list(data, "resources", "the manifest"), timelines
-        )
+        manifest.resources = [
+            Resource.from_dict(item, f"resource {index}")
+            for index, item in enumerate(data.get("resources", []))
+        ]
         holders.extend(
             (resource.id, f"resource {quote_id(resource.id)}")
             for resource in manifest.resources
         )
-        groups = read_list(data, "groups", "the manifest")
-        group_ids = [
-            group.get("id") if isinstance(group, dict) else None for group in groups
-        ]
+        groups = data.get("groups", [])
+        group_ids = [group["id"] for group in groups]
         holders.extend(
-            (group_id, f"group {quote_id(group_id)}")
-            for group_id in group_ids
-            if isinstance(group_id, str)
+            (group_id, f"group {quote_id(group_id)}") for group_id in group_ids
         )
         ids = unique_ids(holders)
         named = {
@@ -1196,22 +955,9 @@ class Manifest(_OpenObject):
 
         order: dict[str, Any] = {}
         if "graphical" in data:
-            graphical = require_object(data["graphical"], "'graphical'")
+            graphical = data["graphical"]
             manifest.has_graphical = True
             order = graphical.get("order", {})
-            if not isinstance(order, dict):
-                raise ValueError(
-                    "'graphical.order' must map group or timeline ids to orders"
-                )
-            unknown = sorted(
-                str(key)
-                for key in order
-                if key not in group_ids and key not in timelines
-            )
-            if unknown:
-                raise ValueError(
-                    f"'graphical.order' names no group or timeline: {unknown}"
-                )
             manifest.band_orders = {
                 key: copy.deepcopy(entry)
                 for key, entry in order.items()
@@ -1264,10 +1010,11 @@ class Manifest(_OpenObject):
         name, the prefixes its statements use (:func:`timetoshare.with_context`)
         and the *table_prefixes*, each standing for the namespace the holders
         using it declare, else the catalogue's (:meth:`_prefix_table`); a
-        prefix neither uses is not written, declared or not. The statements and provenance
-        written, the named MatchStamps and the groupstamps are checked as a
-        manifest read is, so that a manifest whose statements, MatchStamps
-        or groupstamps break a rule of the format is never emitted.
+        prefix neither uses is not written, declared or not. The manifest
+        written is validated whole by the format's validator
+        (:func:`timetoshare.validate`), as a manifest read is, so that a
+        manifest the format refuses is never emitted; its warnings are not
+        reported.
 
         Args:
             roots: The root timelines.
@@ -1292,13 +1039,14 @@ class Manifest(_OpenObject):
                 given id, or one's given id is held by another element), two
                 holders written use one prefix for two namespaces (``the
                 prefix 'ex' stands for 'http://a.example/' on timeline
-                'clt_1' and for 'http://b.example/' on timeline 'clt_2'``), or
-                the statements written break a rule of the format (the first
-                problem, a ``timetoshare.SchemaValidationError``): a value
-                naming an element of no manifest of the roots, for instance;
-                or a groupstamp kept with the styling lies in no group
-                written (:func:`check_groupstamps`), its group's member
-                removed, for instance.
+                'clt_1' and for 'http://b.example/' on timeline 'clt_2'``).
+            timetoshare.SchemaValidationError: The validator's refusal of the
+                manifest written, a ``ValueError`` carrying its ``code`` and
+                message unchanged: a named timestamp kept with the styling
+                beyond the length its timeline was given since, for instance
+                (``#/graphical/timestamps/0/coordinate: coordinate [11, 1] of
+                'timestamp_1' is beyond the length [10, 1] of its timeline
+                'clt_1'``).
         """
         trees = [
             timeline
@@ -1377,7 +1125,6 @@ class Manifest(_OpenObject):
         if order or self.styling or self.has_graphical:
             fields["graphical"] = {"order": order, **copy.deepcopy(self.styling)}
         built = self._dict_form(fields, minimal=False)
-        check_groupstamps(built)
         result = timetoshare.minimal(built) if minimal else timetoshare.complete(built)
         result = timetoshare.with_context(timetoshare.with_file_ids(result), prefixes)
         declared = {
@@ -1385,8 +1132,7 @@ class Manifest(_OpenObject):
             **{p: prefixes[p] for p in table_prefixes if p in prefixes},
         }
         result["@context"] = {**FORMAT_CONTEXT, **dict(sorted(declared.items()))}
-        check_statements(result)
-        check_matchstamps(result)
+        timetoshare.validate(result)
         return result
 
     def _prefix_table(
@@ -1606,25 +1352,18 @@ def _read_measure_maps(items: list[Any]) -> list[MeasureMap]:
 
 
 def _read_roots(
-    items: Any, measure_maps: Mapping[str, MeasureMap]
+    items: list[dict[str, Any]], measure_maps: Mapping[str, MeasureMap]
 ) -> tuple[list[Timeline], dict[str, Timeline]]:
     """Rebuild the root timelines and index every timeline of their trees by id.
 
-    Raises:
-        ValueError: If *items* is not an array of timeline objects.
+    *items* are the root timeline objects of a manifest the format's
+    validator admitted.
     """
     from .base import Timeline
 
-    if not isinstance(items, list):
-        raise ValueError(f"'timelines' must be an array, got {type(items).__name__}")
     roots: list[Timeline] = []
     index: dict[str, Timeline] = {}
     for item in items:
-        if not isinstance(item, dict):
-            raise ValueError(
-                f"each entry of 'timelines' must be a timeline object, got "
-                f"{type(item).__name__}"
-            )
         root = Timeline._from_timeline_object(item, measure_maps=measure_maps)
         roots.append(root)
         for timeline in [
@@ -1812,12 +1551,17 @@ class ManifestFileMixin:
             data: The manifest as the file holds it.
         """
 
-    def _write_tables(self, directory: Path) -> None:
+    def _write_tables(self, directory: Path) -> bool:
         """Write the object's tables into *directory* and name them as resources.
 
         Args:
             directory: The manifest's directory.
+
+        Returns:
+            Whether a table was written (none here), so that the manifest
+            naming it is written anew.
         """
+        return False
 
     @classmethod
     def from_dict(cls, data: dict[str, Any], **selection: str | None) -> Self:
@@ -1903,8 +1647,10 @@ class ManifestFileMixin:
         not read from a file, the minimal form, the styling included, in
         canonical YAML, without event rows or external references. An
         :class:`~timetoalign.alignment.AlignmentBundle` holding MatchClaims
-        writes its tables beside the manifest first and names them in its
-        ``resources``.
+        or Projections writes its tables beside the manifest and names them
+        in its ``resources``: its manifest is written (and validated) once
+        before any table, so that a refusal writes no file, and once more
+        naming the tables written.
 
         Args:
             path: The file to write, UTF-8 with line feeds; it is
@@ -1923,8 +1669,10 @@ class ManifestFileMixin:
             The path written.
 
         Raises:
-            ValueError: If ``to_dict`` cannot write the manifest, or the
-                serialization refuses a value of it.
+            ValueError: If ``to_dict`` cannot write the manifest (the
+                format's validator refusing it among others), or the
+                serialization refuses a value of it; either before any file
+                is written.
 
         Examples:
             >>> import tempfile
@@ -1958,12 +1706,20 @@ class ManifestFileMixin:
             **{key: value for key, value in given.items() if value is not None},
         )
         path = Path(path)
-        self._write_tables(path.parent)
+        # The manifest is written, hence validated, before any file is: a
+        # manifest the format refuses leaves no table behind.
         manifest = self.to_dict(
             minimal=False,
             events=form.events,
             external_references=form.external_references,
         )
+        if self._write_tables(path.parent):
+            # The resources now name the tables written.
+            manifest = self.to_dict(
+                minimal=False,
+                events=form.events,
+                external_references=form.external_references,
+            )
         text = timetoshare.dumps_file(manifest, form)
         path.write_text(text, encoding="utf-8", newline="")
         return path

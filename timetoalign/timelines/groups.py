@@ -84,10 +84,6 @@ from .manifest import (
     Manifest,
     ManifestFileMixin,
     matches_any,
-    read_id,
-    read_meta,
-    read_name,
-    require_object,
     select,
 )
 from .statements import rename_references
@@ -550,11 +546,7 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
             cls._from_group_object(
                 group_data,
                 content.timelines,
-                (
-                    content.order.get(group_data.get("id"))
-                    if isinstance(group_data, dict)
-                    else None
-                ),
+                content.order.get(group_data["id"]),
             )
             for group_data in content.groups
         ]
@@ -625,34 +617,18 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
                 by id.
             order: The members' display order, or None for ``members`` order.
 
-        Raises:
-            ValueError: If the object or the order is malformed.
+        The manifest holding *data* was admitted by the format's validator
+        (``Manifest.read``): the members, each naming a timeline of the
+        manifest once, and the order, a permutation of them, are the
+        format's rules and are not checked again here.
         """
-        require_object(data, "a group object", ("id", "members"))
-        group_id = read_id(data["id"], "a group")
-        what = f"group {quote_id(group_id)}"
+        group_id = data["id"]
         members = data["members"]
-        if not isinstance(members, list) or not all(
-            isinstance(member, str) for member in members
-        ):
-            raise ValueError(f"{what} members must be an array of ids")
-        if len(set(members)) != len(members):
-            raise ValueError(f"{what} names a member twice")
-        for member in members:
-            if member not in timelines:
-                raise ValueError(
-                    f"{what} names member {quote_id(member)}, which is no timeline of "
-                    "'timelines'"
-                )
         if order is None:
             order = members
-        elif (
-            not isinstance(order, list)
-            or len(order) != len(members)
-            or set(order) != set(members)
-        ):
-            raise ValueError(f"the order of {what} is not a permutation of its members")
-        group = cls(id=group_id, name=read_name(data, what), meta=read_meta(data, what))
+        group = cls(
+            id=group_id, name=data.get("name"), meta=copy.deepcopy(data.get("meta", {}))
+        )
         # Members keep the lock the manifest states.
         for member in order:
             group._admit_member(timelines[member])

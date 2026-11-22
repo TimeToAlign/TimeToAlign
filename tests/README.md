@@ -77,42 +77,20 @@ hand-written rejection cases, one rule each. Every case is read by the class
 that would read its manifest as a whole (`Timeline.from_dict` for one root
 and no group, `TimelineGroup.from_dict` for one anonymous group, otherwise
 `AlignmentBundle.from_dict`) and by `AlignmentBundle.from_dict`, which reads
-every manifest, and each must raise `ValueError`. A reader that accepted a
-manifest the validators refuse would let an invalid document through one of
-two doors. The cases are listed from the package, not copied, so a case
-added there is covered here without an edit. The three exceptions are the
-rules the library leaves to the validators because it keeps what they
-check as given: the rules about `graphical.rules` (selectors with
-their addresses, and declarations), which the library never interprets,
-the rules about
-the entries of a band order (a `graphical.order` entry keyed by a
-timeline), which the library writes back with its timeline unchecked,
-and the rules about the named timestamps of `graphical.timestamps` (the
-timeline each names, its coordinate, its ID and the words of its
-`display`), which the library keeps unread but for the order and default
-of `display`. Those cases are listed by name in the test with that reason, and
-the test fails if a listed case is refused by the library or no longer
-exists, so the list cannot outgrow the truth; each band-order case is also
-written back by `AlignmentBundle.from_dict` with its `graphical.order`
-unchanged, and each named-timestamp case, written in the complete form,
-with its `graphical.timestamps` as the package's `complete` writes them
-(the complete form states the defaults `matchstamp: false` and
-`groupstamp: false` where a case leaves them out). The list follows the
-package's cases: a case the package deleted leaves it (IDs are free, so
-no case about a malformed timestamp ID remains). The named MatchStamps are no exception: the library keeps
-`graphical.matchstamps` and the match timestamps as given but refuses what
-the format refuses about them, by the package's own check of them alone
-(`timetoshare.matchstamp_problems`), so the nine MatchStamp cases (a
-malformed MatchStamp ID, a claim listed twice, an anchor ID repeated, an
-anchor naming an unknown, an unflagged or a same-timeline timestamp,
-anchors not connected, two match timestamps on one coordinate, a match
-timestamp no MatchStamp names) are refused like any other. Nor are the
-groupstamps: a named timestamp with `groupstamp: true` must lie in a group
-(its timeline, or an ancestor of it, a member of one), which the library
-checks itself where it checks the MatchStamps (`check_groupstamps`), so
-the three cases (a groupstamp in a manifest without groups, on a child of
-an ungrouped root, on the parent of a member) are refused, and the fixture
-whose groupstamp lies on a member's child is read.
+every manifest. The library validates every manifest it reads with the
+package's `validate` and passes its refusal on unchanged, so each reader
+must raise the case's own code at the case's own path (the version case:
+the package's `UnsupportedVersionError`). A reader that accepted a manifest
+the validator refuses would let an invalid document through one of two
+doors; one that refused it for another reason first would answer with
+another code. The cases are listed from the package, not copied, so a case
+added there is covered here without an edit, and there is no exception:
+the rules about `graphical.rules`, band orders, named timestamps, named
+MatchStamps and groupstamps, which the library keeps as given, are the
+validator's like every other. Where both refusals are compared on one
+value (a representation, an integer no double holds, a child beyond its
+parent, a string length), the library's code, path and message equal the
+validator's.
 
 **The shared warning cases.** `warning_paths()` lists manifests carrying
 unknown keys at many depths, each with the `unknown_keys` the validators

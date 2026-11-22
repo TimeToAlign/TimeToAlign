@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 
-from tests.helpers import bare, filed
+from tests.helpers import bare, filed, refusal
 from timetoalign import Ms3Loader
 from timetoalign.core import (
     ActivationCondition,
@@ -24,7 +24,7 @@ from timetoalign.core import (
 )
 from timetoalign.testdata import ensure_data
 from timetoalign.timelines import Timeline
-from timetoalign.timelines.flowcontrol import Break, Jump, Marker
+from timetoalign.timelines.flowcontrol import Break, FlowControlRegistry, Jump, Marker
 from timetoalign.timelines.types import ContinuousLogicalTimeline
 
 F = Fraction
@@ -267,6 +267,69 @@ def test_only_a_repeat_end_has_a_repeat_count() -> None:
 
 
 @pytest.mark.parametrize(
+    ("flow", "code", "message"),
+    [
+        (
+            [_element("dc", "jump_from", "da_capo", 8, repeat_count=2)],
+            "schema",
+            "2 should not be valid under {}",
+        ),
+        (
+            [_element("s", "jump_to", "segno", 4, target="s")],
+            "schema",
+            "'#s' should not be valid under {}",
+        ),
+        (
+            [_element("f", "flow_marker", "fine", 4, repeat_count=1)],
+            "schema",
+            "1 should not be valid under {}",
+        ),
+        (
+            [_element("ds", "jump_from", "dal_segno", 8, target="nowhere")],
+            "dangling_target",
+            "'nowhere' names no jump_to of this timeline",
+        ),
+        (
+            [_element("ds", "jump_from", "dal_segno", 8)],
+            "schema",
+            "'target' is a required property",
+        ),
+        (
+            [_element("x", "jump_over", "segno", 8)],
+            "schema",
+            "'jump_over' is not one of ['jump_from', 'jump_to', 'flow_marker']",
+        ),
+        (
+            [_element("s", "jump_to", "fine", 8)],
+            "schema",
+            "'fine' is not one of ['repeat_start', 'segno', 'coda']",
+        ),
+        (
+            [_element("back", "jump_from", "repeat_end", 8, repeat_count=0)],
+            "schema",
+            "0 is less than the minimum of 1",
+        ),
+    ],
+    ids=[
+        "repeat_count_on_da_capo",
+        "target_on_jump_to",
+        "repeat_count_on_flow_marker",
+        "dangling_target",
+        "missing_target",
+        "unknown_type",
+        "foreign_manifestation",
+        "repeat_count_zero",
+    ],
+)
+def test_reading_refuses_what_the_format_does_not_define(
+    flow: list[dict[str, Any]], code: str, message: str
+) -> None:
+    with pytest.raises(ValueError) as refused:
+        Timeline.from_dict(filed(_manifest(flow)))
+    assert refusal(refused.value) == (code, message)
+
+
+@pytest.mark.parametrize(
     ("flow", "message"),
     [
         (
@@ -319,11 +382,13 @@ def test_only_a_repeat_end_has_a_repeat_count() -> None:
         "repeat_count_zero",
     ],
 )
-def test_reading_refuses_what_the_format_does_not_define(
+def test_the_flow_control_reader_refuses_what_the_format_does_not_define(
     flow: list[dict[str, Any]], message: str
 ) -> None:
+    # The reader of a bare flow-control array, outside a manifest, keeps
+    # these rules of the format itself: nothing validates its input before.
     with pytest.raises(ValueError) as refused:
-        Timeline.from_dict(filed(_manifest(flow)))
+        FlowControlRegistry.from_dict(flow, unit=TimeUnit.quarters)
     assert str(refused.value) == message
 
 

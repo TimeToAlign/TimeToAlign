@@ -26,6 +26,7 @@ from timetoshare.tables import (
     projection_problems,
 )
 
+from tests.helpers import refusal
 from timetoalign.alignment import (
     AlignmentBundle,
     MatchClaim,
@@ -223,38 +224,64 @@ class TestResources:
         assert bundle.to_dict()["resources"] == [entry]
 
     @pytest.mark.parametrize(
-        ("resources", "message"),
+        ("resources", "code", "message"),
         [
             (
                 [_resource(timelines=["#score", "#ghost"])],
-                "resource 'resource_1' names timelines the manifest lacks: ['ghost']",
+                "resource_timeline",
+                "'ghost' names no timeline of this manifest",
             ),
             (
                 [_resource(), _resource(id="#resource_2")],
-                "at most one resource has the type 'MatchClaim'; the manifest "
-                "names 2: ['resource_1', 'resource_2']",
+                "resource_type",
+                "a manifest names at most one resource of the type MatchClaim; "
+                "'resource_1' is one",
             ),
             (
                 [_resource(integrity={"algorithm": "CRC32", "digest": "ab"})],
-                "'CRC32' is no hash function a resource's integrity names: write "
-                "one of ['MD5', 'SHA-1', 'SHA-256', 'SHA-384', 'SHA-512']",
+                "schema",
+                "'CRC32' is not one of ['MD5', 'SHA-1', 'SHA-256', 'SHA-384', 'SHA-512']",
             ),
             (
                 [_resource(id="#resource_1"), _resource(id="#resource_1", type="Note")],
-                "the id 'resource_1' is held twice in the manifest: by resource "
-                "'resource_1' and by resource 'resource_1'",
+                "duplicate_id",
+                "'resource_1' is not unique in the manifest, first at #/resources/0/id",
             ),
         ],
         ids=["timeline_unknown", "match_claim_twice", "algorithm", "id_twice"],
     )
     def test_malformed_resources_are_refused(
-        self, resources: list[dict[str, Any]], message: str
+        self, resources: list[dict[str, Any]], code: str, message: str
     ) -> None:
-        with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+        with pytest.raises(ValueError) as refused:
             Manifest.read(_manifest(resources=resources))
+        assert refusal(refused.value) == (code, message)
 
 
 class TestWriting:
+    def test_a_manifest_the_format_refuses_writes_no_file(self, tmp_path: Path) -> None:
+        bundle = _bundle()
+        bundle.styling = {
+            "timestamps": [
+                {
+                    "id": "timestamp_1",
+                    "name": "T1",
+                    "timeline": "score",
+                    "coordinate": [20, 1],
+                }
+            ]
+        }
+
+        with pytest.raises(ValueError) as refused:
+            bundle.to_file(tmp_path / "package.yaml")
+
+        assert refusal(refused.value) == (
+            "timestamp_coordinate",
+            "coordinate [20, 1] of 'timestamp_1' is beyond the length [16, 1] of "
+            "its timeline 'score'",
+        )
+        assert list(tmp_path.iterdir()) == []
+
     def test_the_package_is_written_and_named(self, tmp_path: Path) -> None:
         bundle = _bundle()
 

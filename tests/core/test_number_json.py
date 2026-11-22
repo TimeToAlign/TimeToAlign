@@ -19,6 +19,7 @@ from typing import Any, Callable
 
 import pytest
 
+from tests.helpers import refusal
 from timetoalign.alignment import AlignmentBundle
 from timetoalign.alignment.claims import AlignmentAnchor, MatchClaim
 from timetoalign.alignment.graph import MatchGraph
@@ -350,8 +351,9 @@ class TestNumberJson:
         payload["timelines"][0]["length"] = 12
         with pytest.raises(ValueError) as error:
             ContinuousLogicalTimeline.from_dict(payload)
-        assert str(error.value) == (
-            "length 12 of 'score' is an int on a fraction axis: write [12, 1]"
+        assert refusal(error.value) == (
+            "representation",
+            "length 12 of 'score' is an int on a fraction axis: write [12, 1]",
         )
 
     def test_timeline_offset_representation_mismatch_is_refused(self) -> None:
@@ -362,8 +364,9 @@ class TestNumberJson:
         payload["timelines"][0]["children"][0]["offset"] = 0.5
         with pytest.raises(ValueError) as error:
             ContinuousLogicalTimeline.from_dict(payload)
-        assert str(error.value) == (
-            "offset 0.5 of 'child' is a float on a fraction axis: write [1, 2]"
+        assert refusal(error.value) == (
+            "representation",
+            "offset 0.5 of 'child' is a float on a fraction axis: write [1, 2]",
         )
 
 

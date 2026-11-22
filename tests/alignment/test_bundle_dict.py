@@ -16,7 +16,7 @@ from typing import Any
 import pytest
 from timetoshare import FORMAT_CONTEXT
 
-from tests.helpers import bare, filed
+from tests.helpers import bare, filed, refusal
 from timetoalign.alignment import AlignmentBundle
 from timetoalign.core import SupportPolicy
 from timetoalign.loader import RekordboxLoader
@@ -362,23 +362,24 @@ def _malformed(change: Callable[[dict[str, Any]], Any]) -> dict[str, Any]:
 
 
 @pytest.mark.parametrize(
-    ("change", "message"),
+    ("change", "code", "message"),
     [
-        (lambda d: d.pop("timetoshare"), "not a TimeToShare manifest"),
-        (lambda d: d.pop("timelines"), r"lacks the key\(s\) \['timelines'\]"),
         (
-            lambda d: d.update(id=""),
-            "#/id: '#' is not written as an ID: nothing follows the '#'",
+            lambda d: d.pop("timetoshare"),
+            "not_a_manifest",
+            "not a TimeToShare manifest",
         ),
+        (lambda d: d.pop("timelines"), "schema", "'timelines' is a required property"),
+        (lambda d: d.update(id=""), "schema", r"'#' does not match '^#[\\s\\S]'"),
         (
             lambda d: d["timelines"].append(d["timelines"][0]),
-            "the id 'audio' is held twice in the manifest: by timeline 'audio' and "
-            "by timeline 'audio'",
+            "duplicate_id",
+            "'audio' is not unique in the manifest, first at #/timelines/0/id",
         ),
         (
             lambda d: d["groups"].append(d["groups"][0]),
-            "the id 'group_1' is held twice in the manifest: by group 'group_1' "
-            "and by group 'group_1'",
+            "duplicate_id",
+            "'group_1' is not unique in the manifest, first at #/groups/0/id",
         ),
         (
             lambda d: (
@@ -387,32 +388,36 @@ def _malformed(change: Callable[[dict[str, Any]], Any]) -> dict[str, Any]:
                     notes=d["graphical"]["order"].pop("group_1")
                 ),
             ),
-            "the id 'notes' is held twice in the manifest: by timeline 'notes' and "
-            "by group 'notes'",
+            "duplicate_id",
+            "'notes' is not unique in the manifest, first at #/timelines/3/id",
         ),
         (
             lambda d: d["groups"][0]["members"].append("ghost"),
-            "names member 'ghost'",
+            "group_member",
+            "'ghost' names no timeline of this manifest",
         ),
         (
             lambda d: d["groups"][0]["members"].append("score"),
-            "names a member twice",
+            "schema",
+            "['#audio', '#score', '#score'] has non-unique elements",
         ),
         (
             lambda d: (
                 d["groups"][1]["members"].append("image"),
                 d["graphical"]["order"]["group_2"].append("image"),
             ),
-            "Timeline 'image' cannot join group 'group_2': it is nested with "
-            "member 'holes'",
+            "group_member",
+            "member 'image' contains member 'holes' of the same group",
         ),
         (
             lambda d: d["graphical"]["order"].update(group_7=["score"]),
-            r"'graphical.order' names no group or timeline: \['group_7'\]",
+            "order_key",
+            "'group_7' names no group or timeline of this manifest",
         ),
         (
             lambda d: d["graphical"]["order"].update(group_1=["score"]),
-            "the order of group 'group_1' is not a permutation of its members",
+            "display_order",
+            "member 'audio' of group 'group_1' is missing",
         ),
     ],
     ids=[
@@ -430,13 +435,14 @@ def _malformed(change: Callable[[dict[str, Any]], Any]) -> dict[str, Any]:
     ],
 )
 def test_from_dict_refuses_malformed_input(
-    change: Callable[[dict[str, Any]], Any], message: str
+    change: Callable[[dict[str, Any]], Any], code: str, message: str
 ) -> None:
-    """Each malformed dictionary is refused with a message naming the problem."""
+    """Each malformed dictionary is refused by the format's validator, its words."""
     data = _malformed(change)
 
-    with pytest.raises(ValueError, match=message):
+    with pytest.raises(ValueError) as refused:
         AlignmentBundle.from_dict(filed(data))
+    assert refusal(refused.value) == (code, message)
 
 
 # endregion

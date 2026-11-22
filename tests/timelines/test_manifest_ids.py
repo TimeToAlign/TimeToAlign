@@ -12,7 +12,7 @@ from typing import Any
 import pytest
 from timetoshare import validate
 
-from tests.helpers import bare, filed
+from tests.helpers import bare, filed, refusal
 from timetoalign.alignment import AlignmentBundle
 from timetoalign.core import Coordinate, FlowControlElement, TimeUnit
 from timetoalign.loader.alignment import ParangonadaLoader
@@ -443,16 +443,16 @@ def _scalar(map_id: str) -> dict[str, Any]:
 
 
 @pytest.mark.parametrize(
-    ("data", "holders"),
+    ("data", "refused_with"),
     [
         (
             _root_pair(
                 {"regions": [_region("intro")]}, {"regions": [_region("intro")]}
             ),
             (
-                "intro",
-                "region 'intro' of timeline 'score'",
-                "region 'intro' of timeline 'perf'",
+                "duplicate_id",
+                "'intro' is not unique in the manifest, first at "
+                "#/timelines/0/regions/0/id",
             ),
         ),
         (
@@ -470,9 +470,9 @@ def _scalar(map_id: str) -> dict[str, Any]:
                 },
             ),
             (
-                "m",
-                "conversion map 'm' of timeline 'score'",
-                "flow_marker 'm' of timeline 'perf'",
+                "duplicate_id",
+                "'m' is not unique in the manifest, first at "
+                "#/timelines/0/conversion_maps/0/id",
             ),
         ),
         (
@@ -489,7 +489,11 @@ def _scalar(map_id: str) -> dict[str, Any]:
                 },
                 {},
             ),
-            ("perf", "timeline 'perf'", "timeline 'perf'"),
+            (
+                "duplicate_id",
+                "'perf' is not unique in the manifest, first at "
+                "#/timelines/0/children/0/id",
+            ),
         ),
         (
             _root_pair(
@@ -497,7 +501,10 @@ def _scalar(map_id: str) -> dict[str, Any]:
                 {"regions": [_region("g")]},
                 groups=[{"id": "g", "members": ["score"]}],
             ),
-            ("g", "region 'g' of timeline 'perf'", "group 'g'"),
+            (
+                "duplicate_id",
+                "'g' is not unique in the manifest, first at #/timelines/1/regions/0/id",
+            ),
         ),
         (
             _root_pair(
@@ -516,7 +523,11 @@ def _scalar(map_id: str) -> dict[str, Any]:
                     {"id": "bars", "rows": [{"count": 1, "time_signature": "4/4"}]}
                 ],
             ),
-            ("bars", "measure map 'bars'", "jump_to 'bars' of timeline 'perf'"),
+            (
+                "duplicate_id",
+                "'bars' is not unique in the manifest, first at "
+                "#/timelines/1/flow_control/0/id",
+            ),
         ),
         (
             _root_pair(
@@ -544,9 +555,9 @@ def _scalar(map_id: str) -> dict[str, Any]:
                 id="op35",
             ),
             (
-                "op35",
-                "the manifest",
-                "conversion map 'op35' nested in conversion map 'chain' of timeline 'score'",
+                "manifest_id",
+                "'op35' is not unique in the manifest, first at "
+                "#/timelines/0/conversion_maps/0/maps/0/id",
             ),
         ),
     ],
@@ -560,18 +571,14 @@ def _scalar(map_id: str) -> dict[str, Any]:
     ],
 )
 def test_an_id_held_twice_in_a_manifest_is_refused(
-    data: dict[str, Any], holders: tuple[str, str, str]
+    data: dict[str, Any], refused_with: tuple[str, str]
 ) -> None:
-    element_id, first, second = holders
     for root in data["timelines"]:
         alone = {"timetoshare": "0.2.0", "timelines": [root]}
         assert Timeline.from_dict(filed(alone)).id == root["id"]
     with pytest.raises(ValueError) as refused:
         AlignmentBundle.from_dict(filed(data))
-    assert str(refused.value) == (
-        f"the id '{element_id}' is held twice in the manifest: by {first} and by "
-        f"{second}"
-    )
+    assert refusal(refused.value) == refused_with
 
 
 def _joining(uid: str) -> ContinuousLogicalTimeline:
@@ -1058,17 +1065,21 @@ class TestNestedMaps:
             {
                 "type": "ChainMap",
                 "id": "cmap_1",
+                "source_unit": "quarters",
+                "target_unit": "minutes",
                 "maps": [
                     {"type": "LinearMap", "id": "lmap_1", **QUARTERS_TO_SECONDS},
                     {"type": "LinearMap", "id": "lmap_1", **SECONDS_TO_MINUTES},
                 ],
             }
         ]
-        with pytest.raises(
-            ValueError,
-            match="its id 'lmap_1' is already held by conversion map 'lmap_1'",
-        ):
+        with pytest.raises(ValueError) as refused:
             Timeline.from_dict(filed(payload))
+        assert refusal(refused.value) == (
+            "duplicate_id",
+            "'lmap_1' is not unique in the manifest, first at "
+            "#/timelines/0/conversion_maps/0/maps/0/id",
+        )
 
 
 # endregion

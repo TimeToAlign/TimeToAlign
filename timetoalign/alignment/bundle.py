@@ -479,11 +479,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         bundle._measure_maps = manifest.measure_maps
         bundle._set_statement_state(manifest.statement_state, manifest.prefixes)
         for group_data in content.groups:
-            group_id = group_data.get("id") if isinstance(group_data, dict) else None
             group = TimelineGroup._from_group_object(
-                group_data,
-                content.timelines,
-                content.order.get(group_id) if isinstance(group_id, str) else None,
+                group_data, content.timelines, content.order.get(group_data["id"])
             )
             bundle.add_group(group)
         for root in content.roots:
@@ -4504,8 +4501,10 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
 
         As :meth:`ManifestFileMixin.to_file
         <timetoalign.timelines.manifest.ManifestFileMixin.to_file>` writes
-        a manifest, after the MatchClaim table and the Projections table
-        (:meth:`_write_tables`). A manifest never names an event's ID: where
+        a manifest, with the MatchClaim table and the Projections table
+        (:meth:`_write_tables`) written between a first writing of the
+        manifest, which validates it before any file is written, and the
+        writing that names them. A manifest never names an event's ID: where
         the bundle writes a table, its Projections lie in
         ``projections.parquet`` alone and the events of its timelines are
         not written into the manifest, so writing event rows (``events``,
@@ -4540,7 +4539,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             external_references=external_references,
         )
 
-    def _write_tables(self, directory: Path) -> None:
+    def _write_tables(self, directory: Path) -> bool:
         """Write the package tables into *directory* and name them in :attr:`resources`.
 
         A bundle holding MatchClaims writes its MatchClaim table
@@ -4562,6 +4561,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         :attr:`resources` as they are: a manifest read without its tables
         names them still.
 
+        Returns:
+            Whether a table was written.
+
         Raises:
             ValueError: As :meth:`MatchClaimField.to_parquet` refuses the
                 MatchClaim table, or as
@@ -4572,7 +4574,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         claims = self.match_claim_table
         projections = self._projection_table()
         if len(claims) == 0 and projections.num_rows == 0:
-            return
+            return False
         named = {r.type: r for r in self.resources if r.type in TABLE_RESOURCE_TYPES}
         taken = {*self._scope_ids(), *(r.id for r in self.resources)}
         written: dict[str, Resource] = {}
@@ -4633,6 +4635,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         self.resources = [r for r in resources if r is not None] + list(
             written.values()
         )
+        return True
 
     def to_dict(
         self,

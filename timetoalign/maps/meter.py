@@ -278,11 +278,16 @@ class MetricMap(ConversionMap[int]):
         one: beat 1 is the downbeat and every quarter note is one beat,
         whatever the measure's time signature (the three quarters of a 6/8
         measure are beats 1, 2 and 3, not the two dotted beats it is
-        conducted in). The measure is the last one starting at or before
-        *quarters*; a position before the first measure is counted from the
-        first measure's downbeat (a beat below 1), a position beyond the
-        last measure from the last measure's downbeat. A ``Fraction`` input
-        is used exactly, a ``float`` as its exact binary value.
+        conducted in). The measure is found on the position's double
+        (``float(quarters)``): the last one starting at or before it; a
+        position before the first measure is counted from the first
+        measure's downbeat (a beat below 1), a position beyond the last
+        measure from the last measure's downbeat. The offset within the
+        measure is exact: a ``Fraction`` input is subtracted as given, any
+        other input as the exact binary value of its double. So a
+        ``Fraction`` just below a downbeat whose double rounds onto that
+        downbeat is counted from the measure starting there, a beat just
+        below 1.
 
         Args:
             quarters: Position in quarter notes.

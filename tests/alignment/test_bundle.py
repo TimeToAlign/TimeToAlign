@@ -18,7 +18,10 @@ Per ZERO TOLERANCE policy, all assertions use exact expected values.
 
 from __future__ import annotations
 
+import inspect
+from collections.abc import Callable
 from fractions import Fraction
+from typing import Any
 
 import pytest
 
@@ -32,6 +35,7 @@ from timetoalign.alignment.bundle import _ALL_BELIEFS
 from timetoalign.alignment.filters import ClaimFilter
 from timetoalign.alignment.graph import MatchGraph
 from timetoalign.alignment.matchline import MatchLine
+from timetoalign.alignment.warpmap import WarpMap
 from timetoalign.core import (
     Belief,
     Coordinate,
@@ -2539,6 +2543,48 @@ def _frames(excinfo: pytest.ExceptionInfo[RuntimeError]) -> list[str]:
     return [entry.name for entry in excinfo.traceback]
 
 
+def _statement(excinfo: pytest.ExceptionInfo[RuntimeError], frame: str) -> str:
+    """The statement the traceback passes through in *frame*, on one line."""
+    (entry,) = [entry for entry in excinfo.traceback if entry.name == frame]
+    return " ".join(str(entry.statement).split())
+
+
+def _scaled_claims(tl_a_id: str, tl_b_id: str, ratio: float) -> list[MatchClaim]:
+    """``tl_a`` at 0, 50, 100 matches ``tl_b`` at 0, 50·ratio, 100·ratio."""
+    return [
+        _seconds_claim(tl_a_id, value, tl_b_id, value * ratio)
+        for value in (0.0, 50.0, 100.0)
+    ]
+
+
+def _with_third_members() -> AlignmentBundle:
+    """The cross-group bundle plus ``image2`` (400) beside ``score`` and
+    ``audio2`` (100) beside ``audio``."""
+    bundle, *_ = _make_cross_group_bundle()
+    bundle.add_timeline(Timeline(length=400, uid="image2"), grouped_with="score")
+    bundle.add_timeline(Timeline(length=100, uid="audio2"), grouped_with="audio")
+    return bundle
+
+
+def _refusing(
+    monkeypatch: pytest.MonkeyPatch,
+    owner: type,
+    name: str,
+    error: type[Exception],
+    when: Callable[[dict[str, Any]], bool],
+) -> None:
+    """Make ``owner.name`` raise *error* for the calls *when* selects."""
+    original = getattr(owner, name)
+    signature = inspect.signature(original)
+
+    def refused(*args: Any, **kwargs: Any) -> Any:
+        if when(signature.bind(*args, **kwargs).arguments):
+            raise error("refused")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(owner, name, refused)
+
+
 class TestUnexpectedErrorsPropagate:
     """Only the failures that mean "no line" or "does not reach" are read so."""
 
@@ -2589,6 +2635,230 @@ class TestUnexpectedErrorsPropagate:
         assert milliseconds[0] == Coordinate(25000.0, TimeUnit.milliseconds)
         assert table.column("milliseconds").null_count == 1
         assert table.column("milliseconds")[1].is_valid is False
+
+    # The six fallbacks of the transfer paths: an unexpected error
+    # propagates from its catch, the documented one keeps its answer.
+
+    def test_transfer_direct_warp_propagates(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        bundle, *_ = _make_cross_group_bundle()
+        bundle.add_match_claims(_scaled_claims("score", "audio", 0.5))
+        monkeypatch.setattr(WarpMap, "_interpolate_float", _raise_boom)
+
+        with pytest.raises(RuntimeError, match="^boom$") as excinfo:
+            bundle.transfer(60.0, "score", "audio")
+        assert _statement(excinfo, "transfer") == (
+            "return warp._interpolate_float(coord)"
+        )
+
+    def test_transfer_direct_warp_refusing_answers_none(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        bundle, *_ = _make_cross_group_bundle()
+        bundle.add_match_claims(_scaled_claims("score", "audio", 0.5))
+        assert bundle.transfer(60.0, "score", "audio") == 30.0
+
+        _refusing(
+            monkeypatch, WarpMap, "_interpolate_float", ValueError, lambda a: True
+        )
+        assert bundle.transfer(60.0, "score", "audio") is None
+
+    @staticmethod
+    def _through_source_group() -> AlignmentBundle:
+        bundle = _with_third_members()
+        bundle.add_match_claims(_scaled_claims("image", "audio", 0.5))
+        bundle.add_match_claims(_scaled_claims("image2", "audio", 0.2))
+        return bundle
+
+    def test_transfer_through_source_group_propagates(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        bundle = self._through_source_group()
+        monkeypatch.setattr(WarpMap, "_interpolate_float", _raise_boom)
+
+        with pytest.raises(RuntimeError, match="^boom$") as excinfo:
+            bundle.transfer(50.0, "score", "audio")
+        assert _statement(excinfo, "transfer") == (
+            "return warp._interpolate_float(intermediate.value)"
+        )
+
+    @pytest.mark.parametrize("error", [KeyError, ValueError])
+    def test_transfer_through_source_group_skips_a_refused_member(
+        self, monkeypatch: pytest.MonkeyPatch, error: type[Exception]
+    ) -> None:
+        bundle = self._through_source_group()
+        assert bundle.transfer(50.0, "score", "audio") == 50.0
+
+        _refusing(
+            monkeypatch,
+            TimelineGroup,
+            "get_coordinate_at",
+            error,
+            lambda a: a["timeline_id"] == "image",
+        )
+        bundle = self._through_source_group()
+        assert bundle.transfer(50.0, "score", "audio") == 20.0
+
+    @staticmethod
+    def _through_target_group() -> AlignmentBundle:
+        bundle = _with_third_members()
+        bundle.add_match_claims(_scaled_claims("image", "audio", 0.5))
+        bundle.add_match_claims(_scaled_claims("image", "audio2", 0.2))
+        return bundle
+
+    def test_transfer_through_target_group_propagates(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        bundle = self._through_target_group()
+        monkeypatch.setattr(WarpMap, "_interpolate_float", _raise_boom)
+
+        with pytest.raises(RuntimeError, match="^boom$") as excinfo:
+            bundle.transfer(50.0, "image", "midi")
+        assert _statement(excinfo, "transfer") == (
+            "warped = warp._interpolate_float(coord)"
+        )
+
+    @pytest.mark.parametrize("error", [KeyError, ValueError])
+    def test_transfer_through_target_group_skips_a_refused_member(
+        self, monkeypatch: pytest.MonkeyPatch, error: type[Exception]
+    ) -> None:
+        bundle = self._through_target_group()
+        assert bundle.transfer(50.0, "image", "midi") == 25.0
+
+        _refusing(
+            monkeypatch,
+            TimelineGroup,
+            "get_coordinate_at",
+            error,
+            lambda a: a["at"].timeline_id == "audio",
+        )
+        bundle = self._through_target_group()
+        assert bundle.transfer(50.0, "image", "midi") == 10.0
+
+    def test_group_timestamp_propagates(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        bundle, *_ = _make_cross_group_bundle()
+        monkeypatch.setattr(TimelineGroup, "get_timestamp_at", _raise_boom)
+
+        with pytest.raises(RuntimeError, match="^boom$") as excinfo:
+            bundle.get_matchstamp_at(50.0, "score")
+        assert _statement(excinfo, "_get_group_timestamp").startswith(
+            "ts = group.get_timestamp_at("
+        )
+
+    def test_group_timestamp_outside_the_member_gives_the_source(self) -> None:
+        bundle, *_ = _make_cross_group_bundle()
+        assert _stamp_values(bundle.get_matchstamp_at(50.0, "score")) == {
+            "score": 50.0,
+            "image": 100.0,
+        }
+        assert _stamp_values(bundle.get_matchstamp_at(300.0, "score")) == {
+            "score": 300.0
+        }
+
+    def test_group_timestamp_key_error_gives_the_source(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        bundle, *_ = _make_cross_group_bundle()
+        _refusing(
+            monkeypatch, TimelineGroup, "get_timestamp_at", KeyError, lambda a: True
+        )
+        assert _stamp_values(bundle.get_matchstamp_at(50.0, "score")) == {"score": 50.0}
+
+    @staticmethod
+    def _closure_direct() -> AlignmentBundle:
+        bundle, *_ = _make_cross_group_bundle()
+        bundle.add_match_claims(_scaled_claims("score", "audio", 0.5))
+        bundle.add_match_claims(_scaled_claims("score", "midi", 0.2))
+        return bundle
+
+    def test_closure_direct_warp_propagates(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        bundle = self._closure_direct()
+        monkeypatch.setattr(AlignmentBundle, "_transfer_coordinate", _raise_boom)
+
+        with pytest.raises(RuntimeError, match="^boom$") as excinfo:
+            bundle.get_matchstamp_at(60.0, "score")
+        assert _statement(excinfo, "_transfer_to_group") == (
+            "transferred = self._transfer_coordinate( warp, coordinate, "
+            "target_tl_id, support_policy, )"
+        )
+
+    def test_closure_direct_warp_skips_a_refused_target(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        assert _stamp_values(
+            self._closure_direct().get_matchstamp_at(60.0, "score")
+        ) == {
+            "score": 60.0,
+            "image": 120.0,
+            "audio": 30.0,
+            "midi": 30.0,
+        }
+
+        _refusing(
+            monkeypatch,
+            AlignmentBundle,
+            "_transfer_coordinate",
+            ValueError,
+            lambda a: a["target_tl_id"] == "audio",
+        )
+        assert _stamp_values(
+            self._closure_direct().get_matchstamp_at(60.0, "score")
+        ) == {
+            "score": 60.0,
+            "image": 120.0,
+            "audio": 12.0,
+            "midi": 12.0,
+        }
+
+    @staticmethod
+    def _closure_indirect() -> AlignmentBundle:
+        bundle, *_ = _make_cross_group_bundle()
+        bundle.add_match_claims(_scaled_claims("image", "audio", 0.5))
+        bundle.add_match_claims(_scaled_claims("image", "midi", 0.2))
+        return bundle
+
+    def test_closure_warp_through_source_group_propagates(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        bundle = self._closure_indirect()
+        monkeypatch.setattr(AlignmentBundle, "_transfer_coordinate", _raise_boom)
+
+        with pytest.raises(RuntimeError, match="^boom$") as excinfo:
+            bundle.get_matchstamp_at(40.0, "score")
+        assert _statement(excinfo, "_transfer_to_group") == (
+            "transferred = self._transfer_coordinate( warp, "
+            "float(intermediate.value), target_tl_id, support_policy, )"
+        )
+
+    def test_closure_warp_through_source_group_skips_a_refused_target(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        assert _stamp_values(
+            self._closure_indirect().get_matchstamp_at(40.0, "score")
+        ) == {"score": 40.0, "image": 80.0, "audio": 40.0, "midi": 40.0}
+
+        _refusing(
+            monkeypatch,
+            AlignmentBundle,
+            "_transfer_coordinate",
+            ValueError,
+            lambda a: a["target_tl_id"] == "audio",
+        )
+        assert _stamp_values(
+            self._closure_indirect().get_matchstamp_at(40.0, "score")
+        ) == {"score": 40.0, "image": 80.0, "audio": 16.0, "midi": 16.0}
+
+
+def _stamp_values(stamp: object) -> dict[str, float]:
+    """A stamp's coordinates as ``{timeline id: value}``, every one in seconds."""
+    coordinates = stamp.coordinates  # type: ignore[attr-defined]
+    assert {coordinate.unit for coordinate in coordinates.values()} == {
+        TimeUnit.seconds
+    }
+    return {tl_id: coordinate.value for tl_id, coordinate in coordinates.items()}
 
 
 # endregion

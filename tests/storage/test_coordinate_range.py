@@ -277,3 +277,87 @@ class TestEdges:
             NumberType.fraction,
         )
         assert _assert_agrees(data) == (Fraction(0.1), Fraction(1, 2))
+
+
+def _dictionary_column(
+    chunks: list[tuple[list[Any], list[int | None]]], number_type: NumberType
+) -> pa.ChunkedArray:
+    """A dictionary-encoded column: per chunk, its dictionary and its indices."""
+    return pa.chunked_array(
+        [
+            pa.DictionaryArray.from_arrays(
+                pa.array(indices, pa.int32()), _cells(values, number_type)
+            )
+            for values, indices in chunks
+        ],
+        type=pa.dictionary(pa.int32(), RATIONAL_STRUCT_TYPE),
+    )
+
+
+class TestDictionaryEncodedColumns:
+    """A dictionary-encoded ``start`` or ``end`` column is decoded before reading."""
+
+    @staticmethod
+    def _one_chunk() -> EventData:
+        column = _dictionary_column(
+            [([Fraction(1, 3), Fraction(5, 2)], [1, 0, 1])], NumberType.fraction
+        )
+        table = pa.table(
+            {
+                "start": column,
+                "end": column,
+                "event_type": pa.array(["Note"] * 3),
+                "id": pa.array(["a", "b", "c"]),
+            }
+        )
+        return EventData(table, TimeUnit.quarters, NumberType.fraction)
+
+    def test_one_chunk(self) -> None:
+        assert _assert_agrees(self._one_chunk()) == (Fraction(1, 3), Fraction(5, 2))
+
+    def test_chunks_with_their_own_dictionaries(self) -> None:
+        start = _dictionary_column(
+            [
+                ([Fraction(7, 3), Fraction(-1, 9)], [0, None, 1]),
+                ([], []),
+                ([Fraction(11, 4)], [None, 0]),
+            ],
+            NumberType.fraction,
+        )
+        end = _dictionary_column(
+            [([Fraction(5, 2)], [0, 0, None]), ([Fraction(3)], [None, 0])],
+            NumberType.fraction,
+        )
+        data = EventData(
+            pa.table({"start": start, "end": end}),
+            TimeUnit.quarters,
+            NumberType.fraction,
+        )
+        assert _assert_agrees(data) == (Fraction(-1, 9), Fraction(3))
+
+    def test_a_sliced_column(self) -> None:
+        column = _dictionary_column(
+            [([-5, 2, 9, 40], [3, 1, 2, 0, 1])], NumberType.int
+        ).slice(1, 3)
+        data = EventData(
+            pa.table({"start": column, "end": pa.nulls(3, type=RATIONAL_STRUCT_TYPE)}),
+            TimeUnit.ticks,
+            NumberType.int,
+        )
+        assert _assert_agrees(data) == (-5, 9)
+
+    def test_a_dictionary_start_beside_a_plain_end(self) -> None:
+        start = _dictionary_column([([0.25, 1.5], [1, 0])], NumberType.float)
+        end = pa.chunked_array(
+            [_cells([0.75, 4.125], NumberType.float)], type=RATIONAL_STRUCT_TYPE
+        )
+        data = EventData(
+            pa.table({"start": start, "end": end}),
+            TimeUnit.seconds,
+            NumberType.float,
+        )
+        assert _assert_agrees(data) == (0.25, 4.125)
+
+    def test_create_timeline_reads_the_range(self) -> None:
+        timeline = self._one_chunk().create_timeline()
+        assert timeline.length == Coordinate(Fraction(5, 2), TimeUnit.quarters)

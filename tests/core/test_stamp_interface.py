@@ -10,22 +10,25 @@ from timetoalign.alignment import AlignmentBundle
 from timetoalign.alignment.graph import MatchStamp
 from timetoalign.core import Coordinate, IdCoordinate, TimeUnit
 from timetoalign.core.timestamp import Stamp, TimeStamp
-from timetoalign.maps import TableMap
-from timetoalign.timelines import Timeline
+from timetoalign.maps import LinearMap, TableMap
+from timetoalign.timelines import Timeline, TimelineGroup
+
+
+def _milliseconds(uid: str) -> TableMap:
+    """A seconds-to-milliseconds map, ``[0, 100] -> [0, 100000]``."""
+    return TableMap(
+        x_values=[0.0, 100.0],
+        y_values=[0.0, 100000.0],
+        source_unit=TimeUnit.seconds,
+        target_unit=TimeUnit.milliseconds,
+        uid=uid,
+    )
 
 
 def _timeline_with_maps() -> Timeline:
     """Build a timeline with exact-value conversion maps."""
     timeline = Timeline(length=100, unit=TimeUnit.seconds, uid="clock")
-    timeline.add_conversion_map(
-        TableMap(
-            x_values=[0.0, 100.0],
-            y_values=[0.0, 100000.0],
-            source_unit=TimeUnit.seconds,
-            target_unit=TimeUnit.milliseconds,
-            uid="clock-ms",
-        )
-    )
+    timeline.add_conversion_map(_milliseconds("clock-ms"))
     timeline.add_conversion_map(
         TableMap(
             x_values=[0.0, 100.0],
@@ -234,3 +237,86 @@ def test_matchstamp_repr_html_surfaces_conversion_rows() -> None:
     disabled = _matchstamp_with_maps(conversion_maps=False)._repr_html_()
     assert "milliseconds" not in disabled
     assert "frames" not in disabled
+
+
+class TestOneSpecOneAnswer:
+    """``conversion_maps`` enables maps one by one, for every reader alike."""
+
+    @staticmethod
+    def _pair() -> tuple[TimelineGroup, TableMap]:
+        left = Timeline(length=100, unit=TimeUnit.seconds, uid="left")
+        left_ms = _milliseconds("left-ms")
+        left.add_conversion_map(left_ms)
+        right = Timeline(length=100, unit=TimeUnit.seconds, uid="right")
+        right.add_conversion_map(_milliseconds("right-ms"))
+        return TimelineGroup(id="pair", timelines=[left, right]), left_ms
+
+    @pytest.mark.parametrize("by", ["map", "selector"])
+    def test_a_map_the_spec_leaves_out_converts_nothing(self, by: str) -> None:
+        group, left_ms = self._pair()
+        spec = [left_ms] if by == "map" else ["left-ms"]
+        stamp = group.get_timestamp_at(10.0, "left", conversion_maps=spec)
+
+        assert (
+            stamp.get_unit(TimeUnit.milliseconds, timeline_id="left", format="float")
+            == 10000.0
+        )
+        with pytest.raises(KeyError) as unit_refusal:
+            stamp.get_unit(TimeUnit.milliseconds, timeline_id="right")
+        assert unit_refusal.value.args[0] == (
+            "No eligible conversion to 'milliseconds' on stamp from 'left'"
+        )
+        with pytest.raises(KeyError) as selector_refusal:
+            stamp.get_conversion_for("right-ms")
+        assert (
+            selector_refusal.value.args[0] == "Unknown conversion selector 'right-ms'"
+        )
+        assert str(stamp) == (
+            "TimeStamp @10 seconds\n"
+            "  left          10 seconds\n"
+            "  right         10 seconds\n"
+            "  milliseconds  10000 milliseconds"
+        )
+
+    @staticmethod
+    def _clock_with_two_millisecond_maps() -> Timeline:
+        timeline = _timeline_with_maps()
+        timeline.add_conversion_map(
+            LinearMap(
+                scalar=1000,
+                offset=5,
+                source_unit=TimeUnit.seconds,
+                target_unit=TimeUnit.milliseconds,
+                uid="clock-ms-offset",
+            )
+        )
+        return timeline
+
+    def test_a_spec_naming_one_of_two_maps_converts_through_it(self) -> None:
+        stamp = self._clock_with_two_millisecond_maps().get_timestamp(
+            25.0, conversion_maps=["clock-ms-offset"]
+        )
+
+        assert stamp.get_unit(TimeUnit.milliseconds, format="float") == 25005.0
+
+    def test_two_enabled_maps_are_ambiguous(self) -> None:
+        stamp = self._clock_with_two_millisecond_maps().get_timestamp(25.0)
+
+        with pytest.raises(ValueError) as refusal:
+            stamp.get_unit(TimeUnit.milliseconds)
+        assert str(refusal.value) == (
+            "Timeline 'clock' has 2 conversion maps targeting 'milliseconds'; name"
+            " the one you mean. Candidates: clock-ms (seconds_to_milliseconds),"
+            " clock-ms-offset (seconds_to_milliseconds)"
+        )
+
+    def test_no_enabled_map_asks_the_source_to_choose_nothing(self) -> None:
+        stamp = self._clock_with_two_millisecond_maps().get_timestamp(
+            25.0, conversion_maps=False
+        )
+
+        with pytest.raises(KeyError) as refusal:
+            stamp.get_unit(TimeUnit.milliseconds)
+        assert refusal.value.args[0] == (
+            "No eligible conversion to 'milliseconds' on stamp from 'clock'"
+        )

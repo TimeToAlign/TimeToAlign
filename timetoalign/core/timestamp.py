@@ -683,7 +683,11 @@ class Stamp(ABC):
         A map that does not reach the coordinate (it raises ``ValueError``:
         outside its domain, or a value its target cannot be written in,
         :class:`~timetoalign.maps.base.OutputNumberTypeError` included) is
-        left out of the rows. Any other error is a defect and propagates.
+        left out of the rows. So is a map that fails with any other error:
+        the rows serve only ``str``, ``repr`` and ``_repr_html_``, which must
+        not raise (debuggers, logging and test reports call them), and the
+        failure stays visible where a value is asked for, in
+        :meth:`get_unit` and :meth:`get_conversion_for`, which propagate it.
         """
         getter = getattr(self.source, "_get_conversion_maps_for_timeline", None)
         if getter is None:
@@ -697,7 +701,7 @@ class Stamp(ABC):
                     value = cmap._evaluate(coordinate.value)
                     if cmap.target_unit is not None:
                         value = self._on_unit(value, cmap.target_unit, cmap).value
-                except ValueError:
+                except Exception:
                     continue
                 if cmap.target_unit is not None:
                     label = cmap.target_unit.value
@@ -887,44 +891,19 @@ class TimeStamp(Stamp):
     def _unit_map_for(
         self, timeline_id: str, unit: TimeUnit
     ) -> "ConversionMap[Any] | None":
-        """The source's unit map for *timeline_id*, where ``conversion_maps`` admits *unit*."""
-        if not self._unit_resolution_enabled(unit):
-            return None
-        return self.source._get_unit_map_for_timeline(timeline_id, unit)
+        """The one map into *unit* on *timeline_id* that ``conversion_maps`` enables.
 
-    def _unit_resolution_enabled(self, unit: TimeUnit) -> bool:
-        """Return whether conversion-map specification permits a unit."""
-        spec = self.conversion_maps
-        if spec is True:
-            return True
-        if spec is False or spec is None:
-            return False
-
-        requested = spec if isinstance(spec, list) else [spec]
-        maps = [
+        ``None`` where none is enabled. Several enabled maps are ambiguous:
+        the source refuses to pick one (``ValueError`` naming them).
+        """
+        enabled = [
             cmap
-            for timeline_id in self.coordinates
             for cmap in self.source._get_unit_maps_for_timeline(timeline_id, unit)
+            if self._conversion_map_enabled(cmap)
         ]
-
-        for allowed in requested:
-            if isinstance(allowed, TimeUnit) and allowed == unit:
-                return True
-            if isinstance(allowed, str):
-                try:
-                    if TimeUnit(allowed) == unit:
-                        return True
-                except ValueError:
-                    pass
-                for cmap in maps:
-                    if cmap.matches_selector(allowed):
-                        return True
-            elif isinstance(allowed, ConversionMap):
-                if allowed.target_unit == unit:
-                    return True
-                if any(cmap.matches_selector(allowed.id) for cmap in maps):
-                    return True
-        return False
+        if len(enabled) > 1:
+            return self.source._get_unit_map_for_timeline(timeline_id, unit)
+        return enabled[0] if enabled else None
 
     def _number_type_for(self, timeline_id: str) -> str | None:
         """Get the numeric type name, retaining group compatibility."""

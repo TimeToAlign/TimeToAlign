@@ -384,6 +384,27 @@ double 0.1 rebuilt as a ratio nothing stated. Now:
   float boundaries would turn into a float. A label is no number: a
   `ConstantMap` or step function of strings answers the string as before.
 
+**A constant on a target unit is a number or a string**
+(`TestConstantOnATargetUnit` in `test_constant.py`). A target unit writes
+the constant as that unit writes numbers; a string is a label the format
+admits beside it (a manifest's `ConstantMap` holds a number or a string,
+with any `target_unit`). Anything else can never be written: `None` raised
+`TypeError` (`cannot read NoneType as a number`) and `True` (`Boolean
+values are not valid number cells`) from every stamp display reading the
+map. So `ConstantMap(value=…, target_unit="milliseconds")` is refused at
+construction for `None`, `True`, `numpy.bool_(True)` and `{"a": 1}`, with
+the exact `TypeError` naming the unit, the type and the value (`A
+ConstantMap on the target unit 'milliseconds' holds a number or a string,
+not NoneType: None`); `bool` is checked before the number test because it
+is an `int`. Accepted on the same unit, each with the value it answers at 0:
+`3` (`3.0`, milliseconds being float-canonical), `Fraction(1, 3)`
+(`0.3333333333333333`) and the label `"x"` (`"x"`), each of exactly that
+type. Without a target unit nothing is refused: `ConstantMap(value=None)`
+answers `None`, as before (`test_scalar_conversion_none`). The manifest
+reader still reads every `ConstantMap` the format admits: the string `"x"`
+with `target_unit: milliseconds` round-trips through `to_dict` /
+`ConversionMap.from_dict` to an equal map.
+
 ### `test_interpolation.py` - InterpolationMap
 
 **Purpose:** Validates `InterpolationMap`, the anchor-pair engine used by

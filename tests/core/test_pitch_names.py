@@ -16,24 +16,24 @@ from timetoalign.core.events import (
 )
 
 CASES = [
-    # (input, output, (step, alter, octave) read back, or None)
-    ("Bb3", "B♭3", ("B", -1, 3)),
-    ("F#4", "F♯4", ("F", 1, 4)),
-    ("F##4", "F♯♯4", ("F", 2, 4)),
-    ("Bbb2", "B♭♭2", ("B", -2, 2)),
-    ("F#♯4", "F♯♯4", ("F", 2, 4)),
+    # (input, output, (fifths, octave) read back, or None)
+    ("Bb3", "B♭3", (-2, 3)),
+    ("F#4", "F♯4", (6, 4)),
+    ("F##4", "F♯♯4", (13, 4)),
+    ("Bbb2", "B♭♭2", (-9, 2)),
+    ("F#♯4", "F♯♯4", (13, 4)),
     ("C#", "C♯", None),
-    ("C-1", "C-1", ("C", 0, -1)),
-    ("Cb-1", "C♭-1", ("C", -1, -1)),
-    ("eb5", "e♭5", ("E", -1, 5)),
-    ("bb3", "b♭3", ("B", -1, 3)),
-    ("E♭5", "E♭5", ("E", -1, 5)),
-    ("C4", "C4", ("C", 0, 4)),
+    ("C-1", "C-1", (0, -1)),
+    ("Cb-1", "C♭-1", (-7, -1)),
+    ("eb5", "e♭5", (-3, 5)),
+    ("bb3", "b♭3", (-2, 3)),
+    ("E♭5", "E♭5", (-3, 5)),
+    ("C4", "C4", (0, 4)),
     ("", "", None),
     ("rest", "rest", None),
-    ("Bb3\n", "B♭3\n", ("B", -1, 3)),
-    (" Bb3", " B♭3", ("B", -1, 3)),
-    ("Bb3 ", "B♭3 ", ("B", -1, 3)),
+    ("Bb3\n", "B♭3\n", (-2, 3)),
+    (" Bb3", " B♭3", (-2, 3)),
+    ("Bb3 ", "B♭3 ", (-2, 3)),
     ("G3, Bb4", "G3, Bb4", None),
 ]
 
@@ -45,7 +45,7 @@ def test_a_name_is_respelled_with_sharp_and_flat_signs(name, expected, pitch):
     assert canonical_pitch_name(name) == expected
     if pitch is not None:
         read = SpecificPitch.from_string(expected)
-        assert (read.step, read.alter, read.octave) == pitch
+        assert (read.fifths, read.octave) == pitch
 
 
 def test_the_column_form_respells_each_cell_as_the_function_does():

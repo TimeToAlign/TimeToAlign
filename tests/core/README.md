@@ -424,7 +424,7 @@ float: one answer per axis, not one per entry point. Each producer is asserted
 on the value *and* its Python type, since `Fraction(10, 1) == 10.0` compares
 equal and an equality-only check would pass on a wrong-typed axis.
 
-**The MatchClaim lane is a producer too.** A `MatchClaim` answers coordinate
+**MatchClaims are producers too.** A `MatchClaim` answers coordinate
 queries, and so does the `MatchStamp` built from it — the same position, twice.
 They disagreed. An event value read out of storage arrives as the cell's exact
 side (`{value: 2.5, numerator: 5, denominator: 2}`), the scalar

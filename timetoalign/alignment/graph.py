@@ -321,23 +321,17 @@ class MatchStamp(Stamp):
         """Errors name the stamp by its class."""
         return "MatchStamp"
 
-    def _unit_map_for(
+    def _unit_maps_on(
+        self, timeline_id: str, unit: TimeUnit
+    ) -> "list[ConversionMap[Any]]":
+        """The bundle timeline's maps into *unit*."""
+        return self.source.get_timeline(timeline_id)._get_unit_maps(unit)
+
+    def _unit_map_on(
         self, timeline_id: str, unit: TimeUnit
     ) -> "ConversionMap[Any] | None":
-        """The one map into *unit* on *timeline_id* that ``conversion_maps`` enables.
-
-        ``None`` where none is enabled. Several enabled maps are ambiguous:
-        the timeline refuses to pick one (``ValueError`` naming them).
-        """
-        timeline = self.source.get_timeline(timeline_id)
-        enabled = [
-            cmap
-            for cmap in timeline._get_unit_maps(unit)
-            if self._conversion_map_enabled(cmap)
-        ]
-        if len(enabled) > 1:
-            return timeline._get_unit_map(unit)
-        return enabled[0] if enabled else None
+        """The bundle timeline's one map into *unit*."""
+        return self.source.get_timeline(timeline_id)._get_unit_map(unit)
 
     def filter_by_timelines(
         self,

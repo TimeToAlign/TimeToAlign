@@ -464,7 +464,7 @@ def _malformed(change: Any) -> dict[str, Any]:
             lambda d: (d["groups"][0].update(id="a\tb"), d["graphical"].pop("order")),
             "schema",
             "#/groups/0/id",
-            r"'#a\tb' should not be valid under {'pattern': '[\\u0000-\\u001f]'}",
+            r"'#a\tb' holds U+0009: no control character (U+0000 to U+001F) is admitted here",
         ),
     ],
     ids=[

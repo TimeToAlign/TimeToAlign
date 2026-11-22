@@ -64,6 +64,11 @@ naming it) and drop the cached loader module, both restored by `monkeypatch`.
   and so does the statement `from timetoalign.loader.score import Music21Loader`.
 * **Loading.** `Ms3Loader` imports without `ms3` (it needs it only to read a notes, chords or
   harmonies TSV), so the same message is raised by `load()` of a notes TSV.
+* **Graphical sources.** `ImageSource` imports without its backends. Without `pymupdf`,
+  `ImageSource.from_image_file` raises exactly `ImageSource needs pymupdf: pip install
+  "timetoalign[graphical]"`; without pillow, `draw_rectangle`, `draw_line` and `draw_path`
+  raise exactly `Drawing on an ImageSource needs PIL: pip install "timetoalign[graphical]"`
+  (pillow's import name is `PIL`, which is what Python reports missing).
 * **Nothing else changes.** With every dependency installed, each package's `__all__` lists its
   core names followed by the optional loaders in their declared order, and a name the package
   does not export raises `AttributeError` in Python's own wording.

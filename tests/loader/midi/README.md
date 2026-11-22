@@ -64,7 +64,8 @@ for this path.
 ## Score loader and stores
 
 The Beethoven score test pins 3,751 events, non-null tick resolution, Partitura metadata with four
-parts, and populated pitch data. An empty MIDI file must raise `EOFError`. `ScoreMidiEventData`
+parts, and populated pitch data. A score states no velocity, so every note's `velocity` is null
+(the loader used to write `64`, a value the file does not hold). An empty MIDI file must raise `EOFError`. `ScoreMidiEventData`
 must contain the three score-only fields, while both event-data classes retain their declared
 nullable fields and can be constructed from dictionaries.
 

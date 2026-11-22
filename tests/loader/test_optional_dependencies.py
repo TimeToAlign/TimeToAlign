@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from timetoalign.loader.graphical.source import ImageMetadata, ImageSource
 from timetoalign.loader.score import Ms3Loader
 
 MISSING = [
@@ -89,6 +90,40 @@ def test_ms3_load_names_the_extra(
     with pytest.raises(ImportError) as excinfo:
         Ms3Loader().load(source)
     assert str(excinfo.value) == 'Ms3Loader needs ms3: pip install "timetoalign[ms3]"'
+
+
+GRAPHICAL = 'pip install "timetoalign[graphical]"'
+
+
+def test_an_image_source_without_pymupdf_names_the_extra(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setitem(sys.modules, "pymupdf", None)
+    with pytest.raises(ImportError) as excinfo:
+        ImageSource.from_image_file(tmp_path / "page.png")
+    assert str(excinfo.value) == f"ImageSource needs pymupdf: {GRAPHICAL}"
+
+
+@pytest.mark.parametrize(
+    "draw",
+    [
+        lambda image: image.draw_rectangle(0, 0, 1, 1),
+        lambda image: image.draw_line(0, 0, 1, 1),
+        lambda image: image.draw_path(None),
+    ],
+    ids=["draw_rectangle", "draw_line", "draw_path"],
+)
+def test_drawing_without_pillow_names_the_extra(
+    monkeypatch: pytest.MonkeyPatch, draw
+) -> None:
+    import pymupdf
+
+    pixmap = pymupdf.Pixmap(pymupdf.csRGB, pymupdf.IRect(0, 0, 2, 2), False)
+    image = ImageSource(pixmap, ImageMetadata(width=2, height=2, source_type="file"))
+    monkeypatch.setitem(sys.modules, "PIL", None)
+    with pytest.raises(ImportError) as excinfo:
+        draw(image)
+    assert str(excinfo.value) == f"Drawing on an ImageSource needs PIL: {GRAPHICAL}"
 
 
 @pytest.mark.parametrize(

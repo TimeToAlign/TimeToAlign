@@ -168,6 +168,14 @@ write is a defect of one of them.
   equal and not just the names also proves that each loader attaches its name to the right
   pitch. On this score 217 of the ms3 names carry a sharp, two of them `B♯4`, and no name holds
   `#` or `b`.
+- **Pitch names from Verovio** (slow). Chopin has no MEI, so Verovio is compared on Beethoven
+  Op. 18 No. 4/iv, whose `ABC` directory holds the MEI and the ms3 notes TSV of one score.
+  Verovio renders its own expansion, which leaves out the endings at MCs 44-45, 93-94 and
+  102-103, so the note counts differ and the comparison is of the sets of distinct `(MIDI
+  pitch, name)` pairs: Verovio's 64 pairs must all be among ms3's 65. The one pair only ms3
+  gives, `(42, "F♯2")`, belongs to the score's only F♯2, in MC 45, an ending Verovio leaves
+  out. A loader
+  spelling one name otherwise (`F#2`, `Gb2`) adds a pair outside ms3's and fails.
 - **Measure onsets are stated, never copied.** `mn_onset` is a note's position in its notated
   measure, `mc_onset` its position in the measure count; they differ wherever a notated measure
   is split, for instance at an anacrusis. The TSV states both (its first note: `mc_onset` 0,
@@ -328,9 +336,9 @@ the whole movement 118, 118, 3 and 1441, exactly the TSV's counts.
 ms3 spells accidentals in ASCII (`Bb3`, `F#4`); the loader writes the `name` column in the
 library's spelling, `♯` and `♭` after the step letter (`canonical_pitch_name`, see
 `tests/core/README.md`, "Pitch names in one spelling"), as the other score loaders do. An empty
-`name` cell states no name and reads as null: reading it as text gave the string `"nan"`, a
-name no note has. The octave of MIDI pitches 0 to 11 is `-1`, and its `-` is no flat: the
-specific pitch used to count it as one, so `C-1` read as C♭ in octave -1.
+`name` cell states no name and reads as null, never as the string `"nan"`, a name no note has.
+The octave of MIDI pitches 0 to 11 is `-1`, and its `-` is no flat: `C-1` is C in octave -1,
+not C♭.
 
 The proof is one notes TSV in `tmp_path` with five notes whose `name` cells are, in row
 order, `Bb3`, `F#4`, `C-1`, `F##4` and empty (the last with MIDI 60 and octave 4). The loaded

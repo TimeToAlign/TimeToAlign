@@ -69,6 +69,10 @@ naming it) and drop the cached loader module, both restored by `monkeypatch`.
   "timetoalign[graphical]"`; without pillow, `draw_rectangle`, `draw_line` and `draw_path`
   raise exactly `Drawing on an ImageSource needs PIL: pip install "timetoalign[graphical]"`
   (pillow's import name is `PIL`, which is what Python reports missing).
+* **What the midi cases reach.** `timetoalign.loader` imports `partitura` and `mido` when it is
+  imported itself, so they are hidden only after the package is imported: the midi cases test the
+  package's attribute lookup, not an installation without partitura or mido, where importing the
+  package already fails with Python's `ModuleNotFoundError`.
 * **Nothing else changes.** With every dependency installed, each package's `__all__` lists its
   core names followed by the optional loaders in their declared order, and a name the package
   does not export raises `AttributeError` in Python's own wording.

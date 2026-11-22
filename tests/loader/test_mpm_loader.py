@@ -41,6 +41,7 @@ import pytest
 from lxml import etree
 
 from timetoalign.core import Domain, TimeUnit
+from timetoalign.loader._xml import XML_ID
 from timetoalign.loader.alignment import MpmLoader
 from timetoalign.maps.linear import ScalarMap
 from timetoalign.maps.table import TableMap
@@ -59,8 +60,6 @@ SCORE_DLT_ID = "score:dlt_1"
 PERF_CPT_ID = "perf:cpt_1"
 PERF_DPT_ID = "perf:dpt_1"
 PERF_DGT_ID = "perf:dgt_1"
-
-_XML_ID = "{http://www.w3.org/XML/1998/namespace}id"
 
 
 #: Per-specimen expectations.  ``markup`` is the per-type Counter of MPM
@@ -432,7 +431,7 @@ def test_ref_xmlid_bijection(specimen: dict[str, Any]) -> None:
     mpr_root = _parse(specimen["mpr"])
     msm_name = next(c.get("file") for c in mpr_root if _localname(c) == "msm")
     msm_root = _parse(specimen["mpr"].parent / Path(msm_name).name)
-    msm_ids = [n.get(_XML_ID) for n in msm_root.iter() if _localname(n) == "note"]
+    msm_ids = [n.get(XML_ID) for n in msm_root.iter() if _localname(n) == "note"]
 
     # Alignment refs.
     alignment = next(el for el in mpr_root.iter() if _localname(el) == "alignment")

@@ -33,7 +33,7 @@ from collections.abc import Collection
 from dataclasses import dataclass, field
 from fractions import Fraction
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 import networkx as nx
 import pandas as pd
@@ -53,7 +53,6 @@ from timetoalign.core.retrieval import (
     coordinate_to_dict,
     dispatch_retrieval,
     format_coordinates,
-    number_type_for_converted_unit,
     validate_coordinate_collection,
     validate_key_collection,
 )
@@ -66,12 +65,14 @@ from timetoalign.core.time import (
 from timetoalign.core.timestamp import (
     ConversionMapsSpec,
     Stamp,
+    _DisplayRow,
     _format_stamp_value,
 )
 from timetoalign.timelines.groups import _groups_by_timeline
 
 if TYPE_CHECKING:
     from timetoalign.alignment.bundle import AlignmentBundle
+    from timetoalign.maps.base import ConversionMap
     from timetoalign.timelines import Timeline
     from timetoalign.timelines.groups import TimelineGroup
 
@@ -133,6 +134,14 @@ class MatchStamp(Stamp):
         >>> stamp.get_coordinate_for("audio", format="float")
         45.5
     """
+
+    _affordances: ClassVar[tuple[str, ...]] = (
+        "stamp.get_coordinate_for(<tl_id>)",
+        "stamp.get_coordinates_for(<tl_ids>)",
+        "stamp.get_unit(<unit>)",
+        "stamp.get_conversion_for(<key>)",
+    )
+    _text_tags: ClassVar[bool] = True
 
     coordinates: dict[str, Coordinate] = field(default_factory=dict)
     source_id: str = ""
@@ -304,137 +313,22 @@ class MatchStamp(Stamp):
         """Number of timeline pairs linked by an inferred edge."""
         return len(self.inferred_pairs)
 
-    def get_unit(
-        self,
-        unit: TimeUnit,
-        *,
-        timeline_id: str | None = None,
-        format: CoordinateFormat = "id_coordinate",
-        rounding: Rounding = "round",
-    ) -> CoordinateResult | pd.Series:
-        """Get the query coordinate converted to a unit.
-
-        Unit conversion is delegated to the source timeline's owning group so
-        the same conversion-map selection rules as ``TimeStamp`` apply.
-
-        Args:
-            unit: The target unit.
-            timeline_id: Optional stored axis to select explicitly.
-            format: Requested coordinate output format.
-            rounding: Integral projection mode.
-
-        Returns:
-            The converted coordinate projection.
-        """
-        if not isinstance(unit, TimeUnit):
-            raise TypeError("get_unit requires a TimeUnit")
-        candidates = (
-            [timeline_id] if timeline_id is not None else list(self.coordinates)
-        )
-        for candidate in candidates:
-            coordinate = self.coordinates.get(candidate)
-            if coordinate is None:
-                if timeline_id is not None:
-                    raise KeyError(f"Unknown timeline ID {candidate!r} on MatchStamp")
-                continue
-            if coordinate.unit == unit:
-                converted = Coordinate(
-                    coordinate.value,
-                    unit,
-                    number_type=number_type_for_converted_unit(
-                        coordinate.number_type, unit
-                    ),
-                )
-            else:
-                if self.source is None:
-                    continue
-                cmap = self.source.get_timeline(candidate)._get_unit_map(unit)
-                if cmap is None or not self._conversion_map_enabled(cmap):
-                    continue
-                converted = self._on_unit(cmap._evaluate(coordinate.value), unit, cmap)
-            identified = IdCoordinate.from_coordinate(converted, candidate)
-            return format_coordinates(
-                [identified],
-                format=format,
-                rounding=rounding,
-                scalar=True,
-                series_name=candidate,
-            )
-        raise KeyError(f"No eligible conversion to {unit.value!r} on MatchStamp")
-
-    def _unit_for(self, timeline_id: str) -> TimeUnit | None:
-        """Get the unit associated with a timeline ID."""
-        coordinate = self.coordinates.get(timeline_id)
-        return None if coordinate is None else coordinate.unit
-
-    def _conversion_rows(self) -> list[tuple[str, Any, str]]:
-        """Surface every enabled C-Map across the cross-section.
-
-        For each present timeline, evaluate each of its conversion maps at that
-        timeline's own coordinate, yielding ``(label, value, suffix)`` triples
-        with the same collision-qualification and formatting rules
-        :class:`TimeStamp` uses. Empty when no source bundle is attached, no map
-        is enabled by ``conversion_maps``, or a map raises at this coordinate.
-        """
-        if self.source is None:
-            return []
-        getter = getattr(self.source, "_get_conversion_maps_for_timeline", None)
-        if getter is None:
-            return []
-        collected: list[tuple[str, Any, str, str]] = []
-        for timeline_id, coordinate in self.coordinates.items():
-            for cmap in getter(timeline_id):
-                if not self._conversion_map_enabled(cmap):
-                    continue
-                try:
-                    value = cmap._evaluate(coordinate.value)
-                    if cmap.target_unit is not None:
-                        value = self._on_unit(value, cmap.target_unit, cmap).value
-                except Exception:
-                    continue
-                if cmap.target_unit is not None:
-                    label = cmap.target_unit.value
-                    suffix = cmap.target_unit.value
-                else:
-                    label = cmap.name
-                    suffix = ""
-                collected.append((label, value, suffix, timeline_id))
-        return self._qualify_conversion_rows(collected)
-
     def has_timeline(self, timeline_id: str) -> bool:
         """Check if timeline is in this stamp."""
         return timeline_id in self.coordinates
 
-    def get_conversion_for(self, key: str) -> object:
-        """Return an enabled conversion-map value by selector.
+    def _error_name(self) -> str:
+        """Errors name the stamp by its class."""
+        return "MatchStamp"
 
-        Args:
-            key: Map name, ID, selector, or target-unit name.
-
-        Returns:
-            The map result without numeric projection.
-
-        Raises:
-            KeyError: If no eligible conversion matches.
-        """
-        if self.source is None:
-            raise KeyError(f"Unknown conversion selector {key!r}")
-        getter = getattr(self.source, "_get_conversion_maps_for_timeline", None)
-        if getter is None:
-            raise KeyError(f"Unknown conversion selector {key!r}")
-        for timeline_id, coordinate in self.coordinates.items():
-            for cmap in getter(timeline_id):
-                if not self._conversion_map_enabled(cmap):
-                    continue
-                matches = cmap.matches_selector(key) or cmap.name == key
-                if not matches and cmap.target_unit is not None:
-                    matches = cmap.target_unit.value == key
-                if matches:
-                    value = cmap._evaluate(coordinate.value)
-                    if cmap.target_unit is None:
-                        return value
-                    return self._on_unit(value, cmap.target_unit, cmap).value
-        raise KeyError(f"Unknown conversion selector {key!r}")
+    def _unit_map_for(
+        self, timeline_id: str, unit: TimeUnit
+    ) -> "ConversionMap[Any] | None":
+        """The timeline's own unit map, where ``conversion_maps`` enables it."""
+        cmap = self.source.get_timeline(timeline_id)._get_unit_map(unit)
+        if cmap is None or not self._conversion_map_enabled(cmap):
+            return None
+        return cmap
 
     def filter_by_timelines(
         self,
@@ -613,189 +507,56 @@ class MatchStamp(Stamp):
         )
         return f"MatchStamp({', '.join(entries)})"
 
-    def __str__(self) -> str:
-        """Readable cross-section showing all coordinates.
+    def _coordinate_rows(self) -> list[_DisplayRow]:
+        """Every coordinate in storage order, tagged by the pairs naming it.
 
-        Examples:
-            >>> stamp = MatchStamp(
-            ...     coordinates={
-            ...         "score": Coordinate(4, TimeUnit.quarters),
-            ...         "parts": Coordinate(4, TimeUnit.quarters),
-            ...         "audio": Coordinate(2.5, TimeUnit.seconds),
-            ...     },
-            ...     source_id="score",
-            ...     stated_pairs=[("score", "audio")],
-            ...     inferred_pairs=[("score", "parts")],
-            ... )
-            >>> print(stamp)
-            MatchStamp (3 timelines, 2 edges)
-              score   4 quarters  stated
-              parts   4 quarters  inferred
-              audio  2.5 seconds  stated
+        ``stated`` where a stated pair names the timeline, else ``inferred``
+        where an inferred pair does, else untagged.
         """
-        n_edges = self.n_stated_pairs + self.n_inferred_pairs
-        lines: list[str] = [
-            f"MatchStamp ({self.n_timelines} timelines, {n_edges} edges)"
-        ]
-
-        if not self.coordinates:
-            return lines[0]
-
-        # Classify each timeline by edge type
-        stated_tls = set()
-        for a, b in self.stated_pairs:
-            stated_tls.add(a)
-            stated_tls.add(b)
-        inferred_tls = set()
-        for a, b in self.inferred_pairs:
-            inferred_tls.add(a)
-            inferred_tls.add(b)
-
-        entries: list[tuple[str, str, str]] = []
-        for tl_id, coord in self.coordinates.items():
-            if tl_id in stated_tls:
-                tag = "stated"
-            elif tl_id in inferred_tls:
-                tag = "inferred"
+        stated = {timeline_id for pair in self.stated_pairs for timeline_id in pair}
+        inferred = {timeline_id for pair in self.inferred_pairs for timeline_id in pair}
+        rows: list[_DisplayRow] = []
+        for timeline_id, coordinate in self.coordinates.items():
+            value = _format_stamp_value(coordinate.value, coordinate.unit.value)
+            if timeline_id in stated:
+                tag, look = "stated", "strong"
+            elif timeline_id in inferred:
+                tag, look = "inferred", "inferred"
             else:
-                tag = ""
-            entries.append(
-                (
-                    tl_id,
-                    _format_stamp_value(coord.value, coord.unit.value),
-                    tag,
-                )
-            )
+                tag, look = "", "plain"
+            rows.append(_DisplayRow(timeline_id, value, tag, look, tag))
+        return rows
 
-        for label, value, suffix in self._conversion_rows():
-            entries.append((label, _format_stamp_value(value, suffix), ""))
-
+    def _claim_rows(self) -> list[_DisplayRow]:
+        """One row per interval claim: its counterpart, or ``MISSING``."""
+        rows: list[_DisplayRow] = []
         for index, (claim, timeline_id, coordinate) in enumerate(
             self._interval_candidate_rows(), 1
         ):
-            entries.append(
-                (
-                    f"{claim.timeline_a_id}<->{claim.timeline_b_id}",
-                    (
-                        "MISSING"
-                        if coordinate is None
-                        else _format_stamp_value(
-                            coordinate.value, coordinate.unit.value
-                        )
-                    ),
-                    f"interval claim {index} ({timeline_id})",
-                )
-            )
-
-        if entries:
-            max_id = max(len(e[0]) for e in entries)
-            max_coord = max(len(e[1]) for e in entries)
-            for tl_id, coord_str, tag in entries:
-                line = f"  {tl_id:<{max_id}}  {coord_str:>{max_coord}}"
-                if tag:
-                    line += f"  {tag}"
-                lines.append(line)
-
-        return "\n".join(lines)
-
-    def _repr_html_(self) -> str:
-        """Return HTML representation for Jupyter notebooks.
-
-        Displays the MatchStamp as an HTML table showing all coordinates
-        with their edge types, mirroring the TimeStamp HTML display.
-        """
-        import html as html_mod
-
-        from timetoalign.display.html import affordance_line
-
-        n_edges = self.n_stated_pairs + self.n_inferred_pairs
-
-        # Classify timelines
-        stated_tls = set()
-        for a, b in self.stated_pairs:
-            stated_tls.add(a)
-            stated_tls.add(b)
-        inferred_tls = set()
-        for a, b in self.inferred_pairs:
-            inferred_tls.add(a)
-            inferred_tls.add(b)
-
-        rows = []
-        for tl_id, coord in self.coordinates.items():
-            esc_id = html_mod.escape(tl_id)
-            formatted = html_mod.escape(
-                _format_stamp_value(coord.value, coord.unit.value)
-            )
-            if tl_id in stated_tls:
-                tag = "<em>stated</em>"
-                rows.append(
-                    f"<tr><td><strong>{esc_id}</strong></td>"
-                    f"<td style='text-align: right;'>{formatted}</td>"
-                    f"<td>{tag}</td></tr>"
-                )
-            elif tl_id in inferred_tls:
-                tag = "<em style='color: #666;'>inferred</em>"
-                rows.append(
-                    f"<tr><td style='color: #666;'>{esc_id}</td>"
-                    f"<td style='text-align: right;'>{formatted}</td>"
-                    f"<td>{tag}</td></tr>"
-                )
-            else:
-                rows.append(
-                    f"<tr><td>{esc_id}</td>"
-                    f"<td style='text-align: right;'>{formatted}</td>"
-                    f"<td></td></tr>"
-                )
-
-        for label, value, suffix in self._conversion_rows():
-            rows.append(
-                f"<tr><td style='color: #666;'>{html_mod.escape(label)}</td>"
-                f"<td style='text-align: right;'>"
-                f"{html_mod.escape(_format_stamp_value(value, suffix))}</td>"
-                f"<td style='color: #666;'><em>cmap</em></td></tr>"
-            )
-
-        for index, (claim, timeline_id, coordinate) in enumerate(
-            self._interval_candidate_rows(), 1
-        ):
-            label = html_mod.escape(f"{claim.timeline_a_id}<->{claim.timeline_b_id}")
             value = (
                 "MISSING"
                 if coordinate is None
                 else _format_stamp_value(coordinate.value, coordinate.unit.value)
             )
-            rows.append(
-                f"<tr><td style='color: #666;'>{label}</td>"
-                f"<td style='text-align: right;'>{html_mod.escape(value)}</td>"
-                f"<td style='color: #666;'><em>interval claim {index} "
-                f"({html_mod.escape(timeline_id)})</em></td></tr>"
-            )
+            tag = f"interval claim {index} ({timeline_id})"
+            label = f"{claim.timeline_a_id}<->{claim.timeline_b_id}"
+            rows.append(_DisplayRow(label, value, tag, "muted", tag))
+        return rows
 
-        badge = (
+    def _text_header(self) -> str:
+        """``MatchStamp (<n> timelines, <m> edges)``."""
+        return (
+            f"MatchStamp ({self.n_timelines} timelines, "
+            f"{self.n_stated_pairs + self.n_inferred_pairs} edges)"
+        )
+
+    def _html_badge(self) -> str:
+        """The numbers of timelines and edges."""
+        n_edges = self.n_stated_pairs + self.n_inferred_pairs
+        return (
             f" <span style='background: #e3f2fd; padding: 0 4px; "
             f"border-radius: 3px; font-size: 0.8em;'>"
             f"{self.n_timelines} timelines, {n_edges} edges</span>"
-        )
-
-        affordances = [
-            "stamp.get_coordinate_for(<tl_id>)",
-            "stamp.get_coordinates_for(<tl_ids>)",
-            "stamp.get_unit(<unit>)",
-            "stamp.get_conversion_for(<key>)",
-        ]
-        return (
-            f"<div style='font-family: monospace;'>"
-            f"<strong>MatchStamp</strong>{badge}"
-            f"<table style='border-collapse: collapse; margin-top: 4px;'>"
-            f"<thead><tr style='border-bottom: 1px solid #ccc;'>"
-            f"<th style='text-align: left; padding: 2px 8px;'>ID</th>"
-            f"<th style='text-align: right; padding: 2px 8px;'>Coordinate</th>"
-            f"<th style='text-align: left; padding: 2px 8px;'>Type</th>"
-            f"</tr></thead>"
-            f"<tbody>{''.join(rows)}</tbody>"
-            f"</table>"
-            f"{affordance_line(affordances)}"
-            f"</div>"
         )
 
 

@@ -887,7 +887,7 @@ _EP_LABELS: tuple[str, ...] = (
 
 
 class EnharmonicPitch(TwelveTETPitchMixin, BaseModel):
-    """Enharmonic pitch scalar -- MIDI number with pitch-name display.
+    """Enharmonic pitch scalar -- MIDI pitch with pitch-name display.
 
     Pydantic v2 ``BaseModel``, frozen.  Storage struct (derived):
     ``{midi_number: int64}``.  ``pitch_class`` and ``octave`` are
@@ -1950,7 +1950,7 @@ class Note(ScalarVocabulary, BaseModel):
     instead, the field is dropped from the pa.Schema and pitch is
     represented exactly once on the EventData.  ``NoteEventData`` (a
     spelled score source) stores ``specific_pitch`` as the sole default
-    semantic pitch field and keeps the source MIDI number as a
+    semantic pitch field and keeps the source MIDI pitch as a
     non-default raw ``midi`` int that affords an ``EnharmonicPitch`` view
     on request.  Number-only sources store the bare number instead (as a
     raw ``pitch`` int or an ``EnharmonicPitch`` ``{midi_number}`` struct).
@@ -2067,7 +2067,7 @@ class Note(ScalarVocabulary, BaseModel):
 
         # Represent-once resolution.  A spelled source stores the full
         # ``specific_pitch`` (the most-expressive faithful type); prefer
-        # it.  Otherwise fall back to the bare MIDI number a number-only
+        # it.  Otherwise fall back to the bare MIDI pitch a number-only
         # source carries — either the non-default raw ``midi`` int on a
         # spelled NoteEventData, or a ``pitch`` value that arrives as an
         # ``EnharmonicPitch`` ``{midi_number}`` struct dict (or a plain

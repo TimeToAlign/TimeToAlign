@@ -1,8 +1,8 @@
 """AlignmentBundle - The primary entry point for alignment workflows.
 
 This module implements the `AlignmentBundle` class, a single entry point for
-all alignment workflows as described in the API redesign specification. The
-bundle manages timelines, groups, and coordinate transfer operations.
+all alignment workflows. The bundle manages timelines, groups, and coordinate
+transfer operations.
 
 Within a group, coordinate transfer uses typed coordinate retrieval.
 Across groups, transfer is mediated by

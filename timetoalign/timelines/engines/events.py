@@ -714,9 +714,12 @@ class EventsMixin:
             found anywhere in the hierarchy.
 
         Examples:
-            >>> event = timeline.get_event("notes:note:000001")
-            >>> event["id"]
-            'notes:note:000001'
+            >>> from timetoalign import Timeline, TimeUnit
+            >>> timeline = Timeline(length=4, unit=TimeUnit.quarters)
+            >>> timeline.add_events([{"event_type": "Note", "start": 0, "end": 1}])
+            ['note_1']
+            >>> timeline.get_event("note_1")["id"]
+            'note_1'
             >>> timeline.get_event("nonexistent") is None
             True
         """

@@ -1,4 +1,4 @@
-"""Tests for Circle 1 score scalars: MidiPitch, SpecificPitch, Note, Measure, DcmlHarmony."""
+"""Tests for the score scalars: MidiPitch, SpecificPitch, Note, Measure, DcmlHarmony."""
 
 from __future__ import annotations
 

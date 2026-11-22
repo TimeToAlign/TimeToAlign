@@ -88,5 +88,5 @@ in the MIDI-loader tests.
 From the repository root:
 
 ```bash
-/home/laser/miniconda3/envs/timetoalign/bin/python -m pytest --runslow tests/loader/midi
+python -m pytest --runslow tests/loader/midi
 ```

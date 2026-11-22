@@ -1,7 +1,7 @@
-"""Tests for Step 2 (``field_specs``) blueprint resolution.
+"""Tests for ``field_specs`` blueprint resolution (the second step of the tabular pipeline).
 
 Validation logic is documented in ``tests/loader/README.md`` (the
-``test_step2_field_specs.py`` row).  Summary:
+``test_field_specs.py`` row).  Summary:
 
 * A purpose-built loader subclass loads a tiny in-memory CSV and
   declares one or more blueprint-mode :class:`SemanticField` instances

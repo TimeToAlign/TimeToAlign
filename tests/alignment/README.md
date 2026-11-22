@@ -1484,7 +1484,7 @@ TimeToShare's own artifacts:
   (`from_package_table`) to the same claims.
 - **What the library writes, TimeToShare accepts.** TimeToShare's table
   requires every id, and a field built from columns or claims mints none
-  (the bundle mints, `id_system_spec.md` §2), so what is written is a
+  (only the bundle mints), so what is written is a
   bundle's `match_claim_table`. A field from `from_columns` over a fraction
   `quarters`, an int `samples` and a float `seconds` timeline (a float `0.1`
   among the cells), with a shared provenance, holds three null ids; added to
@@ -1809,7 +1809,7 @@ then fails to load. Each test pins one of these with exact values.
   `source_a`, `claim_2` null, `claim_3` null: the column is carried row
   for row, null for a row added, and never compared by the succession
   rule.
-- **An unreduced fraction in the package's tables** (T104's "any fraction
+- **An unreduced fraction in the package's tables** (the format's rule that "any fraction
   is valid" at the file boundary, through the whole path). A package of
   `score` (quarters, fraction, 8; `n1` at 1/2) and `audio` (seconds, float,
   60.0; `o1` at 1.0) with `claim_1` `n1` ↔ `o1` and `claim_2` the position

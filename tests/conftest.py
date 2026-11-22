@@ -76,12 +76,16 @@ def pytest_collection_modifyitems(config, items):
 def rekordbox_specimen() -> Path:
     """The Rekordbox collection specimen, skipping where it is absent.
 
-    The specimen is not part of a fetched corpus; it lives in a local
-    checkout of the test-data repository.
+    The specimen is not yet part of a released corpus, so it is looked up
+    where the corpora are extracted (``timetoalign.testdata.DATA_DIR``,
+    ``TTA_TESTDATA_DIR`` when set) under ``audio/moriero_dj_set/``. To run
+    the tests that need it, point ``TTA_TESTDATA_DIR`` at the ``data/``
+    directory of a checkout of the test-data repository, or place the
+    file there.
     """
-    specimen = Path(
-        "/home/laser/git/tta/tta_test_data/data/audio/moriero_dj_set/rekordbox.xml"
-    )
+    from timetoalign.testdata import DATA_DIR
+
+    specimen = DATA_DIR / "audio" / "moriero_dj_set" / "rekordbox.xml"
     if not specimen.exists():
         pytest.skip(f"Test data file not found: {specimen}")
     return specimen

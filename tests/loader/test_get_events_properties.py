@@ -2,7 +2,7 @@
 
 The ``properties=`` argument controls which *raw, unconsumed source
 columns* survive as property columns alongside the fields produced by
-``column_specs`` / ``field_specs``.  Per the design spec:
+``column_specs`` / ``field_specs``:
 
 * Column-spec emissions are **fields** (they carry ``b"timetoalign"``
   metadata) and are always preserved — they are NOT property columns.

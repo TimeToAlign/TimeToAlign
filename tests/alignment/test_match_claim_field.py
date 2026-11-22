@@ -481,6 +481,141 @@ class TestConnectsGroups:
         assert MatchClaimField.from_claims([]).connects_groups({"A"}, {"B"}) is False
 
 
+def _ids_row_by_row(field: MatchClaimField) -> set[str]:
+    """The timeline ids as they were read before: every row, A column first."""
+    data = field._raw.data
+    ids: set[str] = set()
+    if data is None or len(data) == 0:
+        return ids
+    for name in ("timeline_a_id", "timeline_b_id"):
+        ids.update(v for v in data.field(name).to_pylist() if v is not None)
+    return ids
+
+
+def _counting_reads(monkeypatch: pytest.MonkeyPatch) -> list[pa.Array]:
+    """Record the array of every read of a field's timeline ids."""
+    reads: list[pa.Array] = []
+    read = MatchClaimField._distinct_timeline_ids
+
+    def counted(data: pa.StructArray) -> tuple[str, ...]:
+        reads.append(data)
+        return read(data)
+
+    monkeypatch.setattr(
+        MatchClaimField, "_distinct_timeline_ids", staticmethod(counted)
+    )
+    return reads
+
+
+class TestTimelineIdsReadOnce:
+    """``timeline_ids`` answers as the row-by-row reading did, read once per table."""
+
+    def _fields(
+        self, gold_field: MatchClaimField, thoresen: list[MatchClaim]
+    ) -> list[MatchClaimField]:
+        b_first = MatchClaimField.from_columns(
+            timeline_a_ids=["B", "C", "A"],
+            timeline_b_ids=["A", "B", "C"],
+            event_a_ids=["b0", "c0", "a0"],
+            event_b_ids=["a1", "b1", "c1"],
+            coordinate_a=[1.0, 2.0, 3],
+            coordinate_b=[4, 5.0, 6.0],
+            timelines=GOLD_AXES,
+        )
+        return [
+            gold_field,
+            MatchClaimField.from_claims(_every_kind(NONE5)),
+            MatchClaimField.from_claims(thoresen),
+            b_first,
+            gold_field.filter(timeline_ids={"C"}),
+            MatchClaimField.from_claims([]),
+        ]
+
+    def test_same_ids_in_the_same_order(
+        self,
+        gold_field: MatchClaimField,
+        thoresen_segment_claims: list[MatchClaim],
+    ) -> None:
+        expected = [
+            ["A", "B", "C"],
+            ["score", "midi", "float_score", "audio", "pcm"],
+            ["dgt_1", "dgt_2"],
+            ["B", "C", "A"],
+            ["A", "B", "C"],
+            [],
+        ]
+        fields = self._fields(gold_field, thoresen_segment_claims)
+        for field, ids in zip(fields, expected, strict=True):
+            assert field.timeline_ids == set(ids)
+            assert list(field.timeline_ids) == list(_ids_row_by_row(field))
+
+    def test_one_field_reads_once(
+        self, gold_field: MatchClaimField, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        reads = _counting_reads(monkeypatch)
+        for _ in range(5):
+            assert gold_field.timeline_ids == {"A", "B", "C"}
+        assert len(reads) == 1
+
+    def test_the_returned_set_is_the_caller_s(
+        self, gold_field: MatchClaimField
+    ) -> None:
+        ids = gold_field.timeline_ids
+        ids.add("Z")
+        assert gold_field.timeline_ids == {"A", "B", "C"}
+
+    def test_a_bundle_reads_its_table_once_per_state(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        score = ContinuousLogicalTimeline(length=16, uid="score")
+        audio = ContinuousPhysicalTimeline(length=60.0, uid="audio")
+        bundle = AlignmentBundle(id="reads")
+        bundle.add_timeline(score)
+        bundle.add_timeline(audio)
+        bundle.add_match_claims(
+            [
+                MatchClaim.from_events(
+                    {"id": f"n{q}", "start": q},
+                    score,
+                    {"id": f"o{q}", "start": q / 2},
+                    audio,
+                )
+                for q in (0, 4, 8)
+            ]
+        )
+        reads = _counting_reads(monkeypatch)
+
+        first = bundle.match_claim_table
+        for q in (0, 4, 8, 4, 0):
+            bundle.get_matchstamp_at(q, "score")
+        assert sum(data is first._raw.data for data in reads) == 1
+
+        bundle.add_match_claims(
+            [
+                MatchClaim.from_events(
+                    {"id": "n12", "start": 12},
+                    score,
+                    {"id": "o12", "start": 6.0},
+                    audio,
+                )
+            ]
+        )
+        second = bundle.match_claim_table
+        assert second is not first
+        for q in (0, 4, 8, 12, 0):
+            bundle.get_matchstamp_at(q, "score")
+        assert sum(data is first._raw.data for data in reads) == 1
+        assert sum(data is second._raw.data for data in reads) == 1
+
+    def test_an_assigned_table_answers_its_own_ids(
+        self, gold_field: MatchClaimField
+    ) -> None:
+        bundle = AlignmentBundle(id="assigned")
+        assert bundle.match_claim_table.timeline_ids == set()
+        bundle.match_claim_table = gold_field
+        assert bundle.match_claim_table.timeline_ids == {"A", "B", "C"}
+
+
 # endregion
 
 

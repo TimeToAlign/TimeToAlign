@@ -1307,7 +1307,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         if warp is not None:
             try:
                 return warp._interpolate_float(coord)
-            except Exception as e:
+            except ValueError as e:
                 self._logger.warning(
                     "WarpMap forward failed for %s -> %s at %s: %s",
                     from_timeline,
@@ -1339,7 +1339,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                     )
                     assert isinstance(intermediate, Coordinate)
                     return warp._interpolate_float(intermediate.value)
-                except Exception:
+                except (KeyError, ValueError):
                     continue
 
         # Try indirect via a TARGET group: warp to a reachable group member,
@@ -1363,7 +1363,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                     )
                     assert isinstance(result, Coordinate)
                     return float(result.value)
-                except Exception:
+                except (KeyError, ValueError):
                     continue
 
         # A single exact claim cannot construct a WarpMap, but it is still a
@@ -3845,7 +3845,11 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                                 number_type=target_type,
                             )
                         )
-                    except Exception:
+                    except ValueError:
+                        # The map does not reach this position (outside its
+                        # domain) or its value cannot be written on the
+                        # target unit: the cell stays null. Any other error
+                        # is a defect and propagates.
                         derived.append(None)
                 field_lists[col_name] = derived
 
@@ -3986,7 +3990,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             belief_key: The belief filter the claims are read under.
 
         Returns:
-            MatchLine for the source, or None if construction fails.
+            MatchLine for the source, or None where no claim names it.
         """
         cache_key = (belief_key, source_tl_id)
         if cache_key in self._matchline_cache:
@@ -3997,20 +4001,12 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             self._matchline_cache[cache_key] = None
             return None
 
-        try:
-            match_line = MatchLine.from_claims(
-                claims=self._materialized(naming),
-                source_timeline_id=source_tl_id,
-            )
-        except Exception as e:
-            self._logger.debug(
-                "Failed to build MatchLine for source '%s': %s",
-                source_tl_id,
-                e,
-            )
-            self._matchline_cache[cache_key] = None
-            return None
-
+        # Building a line from claims checked on entry has no failure that
+        # means "no line": an error here propagates and is never cached.
+        match_line = MatchLine.from_claims(
+            claims=self._materialized(naming),
+            source_timeline_id=source_tl_id,
+        )
         self._matchline_cache[cache_key] = match_line
         return match_line
 
@@ -4124,7 +4120,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             # Converting between members needs both lengths; that is not a
             # position outside the source member, so it is not swallowed.
             raise
-        except Exception as e:
+        except (KeyError, ValueError) as e:
             self._logger.debug(
                 f"Failed to get group timestamp at {coordinate} on {timeline_id}: {e}"
             )
@@ -4351,7 +4347,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                     target_tl_id,
                     support_policy,
                 )
-            except Exception:
+            except ValueError:
                 continue
             if transferred is not None:
                 return (target_tl_id, transferred)
@@ -4392,7 +4388,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                         target_tl_id,
                         support_policy,
                     )
-                except Exception:
+                except ValueError:
                     continue
                 if transferred is not None:
                     return (target_tl_id, transferred)

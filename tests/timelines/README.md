@@ -503,19 +503,33 @@ the library writes back against the same literal text.
   of `graphical` with a default, as TimeToShare's `complete` writes it),
   through `Timeline` and `AlignmentBundle` alike; a manifest read without
   `graphical` is written without it. Presence is part of the round trip.
-- **A stored elision is written back unchanged.** `graphical.elisions` is a
-  styling member the library keeps without reading, as it keeps `rules`. A
-  one-root manifest whose `graphical` holds two elisions on the root, given
-  out of the canonical order (the later one first) and one with a `width`
-  of the `ratio` form, is read through `Timeline` and `AlignmentBundle`
-  alike and written back in both forms. The minimal form equals the literal
-  read (same order, `width` kept, nothing added); the complete form equals
-  it with each elision's default `display` stated and the other members of
-  `graphical` at their defaults, as `timetoshare.complete` writes them. The
-  elision model is TimeToShare's: the library neither orders, checks nor
-  interprets an elision, so a test of its own can only prove that nothing
-  of the stored list is lost, reordered or invented on the way through.
-  Elisions are never part of the timelines the library builds.
+- **A stored elision is written back unchanged.** `graphical.elisions` and
+  `graphical.rules` are styling members the library keeps without reading.
+  A one-root manifest whose `graphical` holds two elisions on the root,
+  given out of the canonical order (the later one first), is read through
+  `Timeline` and `AlignmentBundle` alike and written back in both forms.
+  The first elision states every optional member: a `width` of the `ratio`
+  form, a `name` and a `display` of all five words (`ellipsis`, `name`,
+  `id`, `coordinate`, `continuation`) in canonical order; the second states
+  none. Two rules addressed to the root's cards carry the four elision
+  properties, once with values (`elision-mode: proportional`,
+  `elision-proportion: 0.5`, `elision-depths: "1 2"`, `elision-display:
+  "ellipsis name"`) and once with the words `auto` and `none`. The minimal
+  form equals the literal read (same order, every member kept, nothing
+  added); the complete form equals it with the second elision's default
+  `display` stated (the format's own `timetoshare.DEFAULTS`, so the test
+  does not restate it) and the other members of `graphical` at their
+  defaults, as `timetoshare.complete` writes them. The elision model is
+  TimeToShare's: the library neither orders, checks nor interprets an
+  elision or a rule, so a test of its own can only prove that nothing of
+  the stored values is lost, reordered, rewritten or invented on the way
+  through. Elisions are never part of the timelines the library builds.
+- **A stored elision survives a file round trip.** The same manifest is
+  written with `to_file` to YAML and to JSON and read again with
+  `from_file`, through both classes. The file lists the elisions in the
+  format's canonical order (by ID), so the minimal form read back equals
+  the manifest with the elisions sorted by ID, rules and every value
+  unchanged; writing the read object again gives the same bytes.
 - **A styling member at its default is dropped as TimeToShare drops it.**
   The library keeps the styling read (every member of `graphical` but
   `order`) in TimeToShare's minimal form and has no default table of its

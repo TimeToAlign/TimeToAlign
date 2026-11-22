@@ -2118,10 +2118,43 @@ ELISIONS = [
         "start": [3, 2],
         "end": [3, 1],
         "width": {"ratio": 0.5},
+        "name": "Bridge",
+        "display": ["ellipsis", "name", "id", "coordinate", "continuation"],
     },
     {"id": "elision_1", "timeline": "r", "start": [0, 1], "end": [1, 2]},
 ]
-ELISION_DISPLAY = ["strip", "name", "coordinate"]
+ELISION_RULES = [
+    {
+        "select": {"addresses": [{"id": "r", "part": ["card"]}]},
+        "set": {
+            "elision-mode": "proportional",
+            "elision-proportion": 0.5,
+            "elision-depths": "1 2",
+            "elision-display": "ellipsis name",
+        },
+    },
+    {
+        "select": {"addresses": [{"id": "r", "part": ["card"]}]},
+        "set": {
+            "elision-mode": "auto",
+            "elision-proportion": "auto",
+            "elision-depths": "auto",
+            "elision-display": "none",
+        },
+    },
+]
+
+
+def _elision_manifest() -> dict[str, Any]:
+    return {
+        "@context": dict(FORMAT_CONTEXT),
+        "timetoshare": "0.2.0",
+        "timelines": [{"id": "r", "unit": "quarters", "length": [4, 1]}],
+        "graphical": {
+            "elisions": copy.deepcopy(ELISIONS),
+            "rules": copy.deepcopy(ELISION_RULES),
+        },
+    }
 
 
 @pytest.mark.parametrize(
@@ -2130,24 +2163,42 @@ ELISION_DISPLAY = ["strip", "name", "coordinate"]
     ids=["timeline", "bundle"],
 )
 def test_a_stored_elision_is_written_back_unchanged(reader: Any) -> None:
-    data = {
-        "@context": dict(FORMAT_CONTEXT),
-        "timetoshare": "0.2.0",
-        "timelines": [{"id": "r", "unit": "quarters", "length": [4, 1]}],
-        "graphical": {"elisions": copy.deepcopy(ELISIONS)},
-    }
+    data = _elision_manifest()
 
     read = reader(copy.deepcopy(data))
 
     assert bare(read.to_dict(minimal=True)) == data
     assert bare(read.to_dict(minimal=False))["graphical"] == {
-        "elisions": [{**elision, "display": ELISION_DISPLAY} for elision in ELISIONS],
+        "elisions": [
+            ELISIONS[0],
+            {**ELISIONS[1], "display": timetoshare.DEFAULTS["elision"]["display"]},
+        ],
         "order": {},
-        "rules": [],
+        "rules": ELISION_RULES,
         "styles": {},
         "timestamps": [],
         "matchstamps": [],
     }
+
+
+@pytest.mark.parametrize("extension", [".yaml", ".json"])
+@pytest.mark.parametrize("cls", [Timeline, AlignmentBundle], ids=["timeline", "bundle"])
+def test_a_stored_elision_survives_a_file_round_trip(
+    cls: Any, extension: str, tmp_path: Any
+) -> None:
+    data = _elision_manifest()
+    read = reading(cls.from_dict)(copy.deepcopy(data))
+
+    path = read.to_file(tmp_path / f"elisions{extension}")
+    again = cls.from_file(path)
+
+    # A file lists the elisions in the format's canonical order, by ID.
+    in_file = copy.deepcopy(data)
+    in_file["graphical"]["elisions"].sort(key=lambda elision: elision["id"])
+    assert bare(again.to_dict(minimal=True)) == in_file
+    assert path.read_text(encoding="utf-8").count("elision-mode") == 2
+    again.to_file(tmp_path / f"again{extension}")
+    assert (tmp_path / f"again{extension}").read_bytes() == path.read_bytes()
 
 
 def _stamp(number: int, **members: Any) -> dict[str, Any]:

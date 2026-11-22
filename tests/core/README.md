@@ -1274,15 +1274,44 @@ The proof is a table of cases, each with one exact expected string:
 | `bb3` | `b♭3` | a step written `b` stays a step |
 | `E♭5`, `C4` | unchanged | already canonical, no accidental |
 | `""`, `rest` | unchanged | no pitch name |
+| `Bb3\n`, ` Bb3`, `Bb3 ` | `B♭3\n`, ` B♭3`, `B♭3 ` | whitespace around a name is read past and kept |
+| `G3, Bb4` | unchanged | two names are no pitch name |
 
 A reading that counted `-` as a flat fails on `C-1`, one that respelled every `b` of the string
-fails on `bb3`, and one that rewrote the step fails on `eb5`. Every output
-written with an octave is read back by `SpecificPitch.from_string` to the pitch the input
-names, so the spelling is the library's own.
+fails on `bb3`, and one that rewrote the step fails on `eb5`. The whitespace rows hold the
+function to the reading of `SpecificPitch.from_string`, which strips the name and then matches
+it whole: a match anchored by `$` alone reads `Bb3\n` and drops its newline, one without the
+strip leaves ` Bb3` unrespelled although the parser reads it as B♭3, and one that matched a
+prefix would respell `G3, Bb4` into a string that names neither pitch. Every output written
+with an octave is read back by `SpecificPitch.from_string` to the pitch the input names, so the
+spelling is the library's own. A value that is not a string raises `TypeError` with exactly
+`A pitch name is a string, not int: 60`.
 
 The column form is checked on a column holding a null, `rest`, a chord `G3,D4,Bb4,F#5` (with
-`sep=","`: `G3,D4,B♭4,F♯5`) and a repeated name, against the scalar function cell by cell, and
-the input column is left unchanged.
+`sep=","`: `G3,D4,B♭4,F♯5`; `G3, Bb4` with `sep=","`: `G3, B♭4`, the space kept) and a repeated
+name, against the scalar function cell by cell, and the input column is left unchanged.
+
+**Every column type a caller hands in.** A frame read from Parquet or CSV holds its names in
+whichever type the reader chose, so the column form is run on the names `Bb3`, null, `F#4`,
+`C4`, `Bb3` (index 10 to 14, column name `name`) in each type, and must give exactly
+`B♭3`, null, `F♯4`, `C4`, `B♭3` with the index and the name kept and the input unchanged:
+
+| Column type | Type returned | Why |
+|---|---|---|
+| `object` | `object` | the names are replaced in the column's own type |
+| `str`, `string[python]`, `string[pyarrow]`, `ArrowDtype(string)` | the same | as `object`; the null stays the type's own null |
+| `category` | `category`, categories `B♭3`, `C4`, `F♯4` | the categories are respelled, every row keeps its category |
+| `ArrowDtype(dictionary(int32, string))` | the same | the dictionary is respelled, every row keeps its index |
+
+A rewrite that writes new values into the column fails here twice: a categorical column
+refuses a value outside its categories, and an Arrow dictionary column wrote another row's
+name into the null. Two categories that respell to one name become one category:
+`Bb3`, `B♭3`, null, `F#4` as an ordered categorical with the categories `F#4` < `Bb3` < `B♭3`
+gives the values `B♭3`, `B♭3`, null, `F♯4` and the ordered categories `F♯4` < `B♭3`; as an
+`ArrowDtype(dictionary(int8, string))` column it gives the dictionary `B♭3`, `F♯4` and the
+indices 0, 0, null, 1. An Arrow column of two chunks with different dictionaries (`Bb3`, null
+and `F#4`, `Bb3`) gives `B♭3`, null, `F♯4`, `B♭3`. The function takes a pandas column only;
+a `pyarrow` array is not accepted.
 
 ### `test_ids.py` - Scoped ID System
 

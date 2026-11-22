@@ -19,6 +19,7 @@ verovio = pytest.importorskip("verovio")
 
 from timetoalign.core.enums import FlowMode  # noqa: E402
 from timetoalign.core.time import struct_to_rational  # noqa: E402
+from timetoalign.loader._xml import XML_ID  # noqa: E402
 from timetoalign.loader.score import Music21Loader, VerovioLoader  # noqa: E402
 from timetoalign.timelines import (  # noqa: E402
     ContinuousLogicalTimeline,
@@ -32,7 +33,6 @@ on_pinned_version = pytest.mark.skipif(
 )
 
 _MEI_NS = "{http://www.music-encoding.org/ns/mei}"
-_XML_ID = "{http://www.w3.org/XML/1998/namespace}id"
 _STEP_SEMITONES = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
 
 _HEAD = """<?xml version="1.0" encoding="UTF-8"?>
@@ -348,7 +348,7 @@ def _span(row: dict) -> tuple[Fraction, Fraction]:
 
 def _fixture_ids(path: Path, tag: str) -> set[str]:
     root = ET.parse(path).getroot()
-    return {el.get(_XML_ID) for el in root.iter(f"{_MEI_NS}{tag}") if el.get(_XML_ID)}
+    return {el.get(XML_ID) for el in root.iter(f"{_MEI_NS}{tag}") if el.get(XML_ID)}
 
 
 def _generated_id(events: dict[str, dict], mei: dict[str, Path]) -> str:

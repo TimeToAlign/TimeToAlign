@@ -2174,15 +2174,22 @@ either kind of frame against the other loses no note with an accidental.
   `.notes` file read with pandas) and an ms3 frame with `E♭5`, `F♯4`, `C4` (as the loader
   writes them), one staff, untied; and the reverse, ASCII on the score side. Each pairing
   matches exactly 3 notes and leaves none unmatched on either side, and the prepared `pitch`
-  columns are `["E♭5", "F♯4", "C4"]` on both sides. Before the respelling only `C4` matched.
+  columns are `["E♭5", "F♯4", "C4"]` on both sides. Without the respelling only `C4` would
+  match.
+* **A categorical name column.** The ms3 frame's `name` column as a pandas categorical (what
+  `read_parquet` gives for a dictionary-encoded column, or `read_csv(dtype="category")`)
+  holding `Eb5`, `F#4`, `C4`, against the ASCII performance frame: the prepared `pitch` column
+  is `["E♭5", "F♯4", "C4"]`, still categorical with the categories `C4`, `E♭5`, `F♯4`, and the
+  match gives exactly 3 matched and none unmatched, as with an `object` column. A respelling
+  that wrote new values into the column raises here, since a categorical refuses a value
+  outside its categories.
 * **The EEP recording against the score** (slow; `StringQuartetEEP_I_Normal` and
   `ABC/n04op18-4_04_unfolded.notes.tsv`, matched on `pitch` and `staff`). Three pairings
   give one count: the `EepNotesLoader` notes against the TSV read with pandas (ASCII), against
   the TSV read by `Ms3Loader` (`♯`/`♭`), and the `.notes` files read with pandas (ASCII)
   against the `Ms3Loader` notes. Each matches exactly 3741 notes, leaving 15 EEP notes and
-  10 score notes unmatched: the counts measured with ASCII names on both sides before the
-  score loader respelled its names. With the `Ms3Loader` names respelled and the EEP names
-  not, the same match gave 2792, 964 and 959.
+  10 score notes unmatched, the counts of the two files matched with one spelling on both
+  sides, so no pairing loses a note to its spelling.
 
 ## SUPRA Integration Tests (`test_supra_integration.py`)
 

@@ -187,7 +187,8 @@ class ScoreMidiLoader(MidiLoader):
                 "end": int(row["onset_div"] + row["duration_div"]),
                 "duration": int(row["duration_div"]),
                 "pitch": int(row["pitch"]),
-                # A score states no velocity.
+                # Partitura's score parse carries no velocity, so none is written;
+                # parser="mido" reads the file's own values.
                 "velocity": None,
                 "voice": int(row["voice"]) if "voice" in row.dtype.names else None,
                 "staff": int(row["staff"]) if "staff" in row.dtype.names else None,

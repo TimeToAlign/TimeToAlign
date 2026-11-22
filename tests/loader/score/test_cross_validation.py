@@ -44,6 +44,8 @@ from timetoalign.loader.score.partitura import PartituraLoader
 from timetoalign.loader.score.store import ScoreStore
 from timetoalign.testdata import ensure_data
 
+from .conftest import SCORE_DIR
+
 DATA_DIR = ensure_data("vienna_1x22")
 MS3_DIR = DATA_DIR / "ms3"
 CHOPIN_XML = DATA_DIR / "Chopin_op10_no3.musicxml"
@@ -196,6 +198,29 @@ class TestPitchNameParity:
         assert sum("♯" in name for name in names) == 217
         assert names.count("B♯4") == 2
         assert [name for name in names if "#" in name or "b" in name[1:]] == []
+
+    @pytest.mark.slow
+    def test_verovio_names_are_among_ms3s(self):
+        pytest.importorskip("verovio")
+        from timetoalign.loader.score import VerovioLoader
+
+        score = SCORE_DIR / "beethoven_op18-4iv_multimodal" / "ABC"
+
+        def distinct_pairs(store: ScoreStore) -> set:
+            df = store.notes.to_dataframe()
+            df = df[df["event_type"] == "Note"]
+            return set(zip(df["midi"], df["name"]))
+
+        verovio = distinct_pairs(
+            VerovioLoader.from_file(score / "n04op18-4_04.mei").store
+        )
+        ms3 = distinct_pairs(
+            Ms3Loader.from_file(score / "n04op18-4_04.notes.tsv").store
+        )
+
+        assert (len(verovio), len(ms3)) == (64, 65)
+        assert verovio <= ms3
+        assert ms3 - verovio == {(42, "F♯2")}
 
 
 class TestMeasureOnsets:

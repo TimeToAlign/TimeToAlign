@@ -328,7 +328,7 @@ def _performance_frame(names: list[str]) -> pd.DataFrame:
     return pd.DataFrame({"start": [0.5, 1.0, 1.5], "pitch": names, "staff": [1] * 3})
 
 
-def _score_frame(names: list[str]) -> pd.DataFrame:
+def _score_frame(names: list[str] | pd.Series) -> pd.DataFrame:
     return pd.DataFrame(
         {
             "name": names,
@@ -358,6 +358,28 @@ def test_names_spelled_either_way_match(performance, score):
 
     assert eep["pitch"].tolist() == SIGNS
     assert abc["pitch"].tolist() == SIGNS
+    assert (result.n_matched, result.n_unmatched_source, result.n_unmatched_target) == (
+        3,
+        0,
+        0,
+    )
+
+
+def test_a_categorical_name_column_matches():
+    names = pd.Series(ASCII, dtype="category")
+    eep = prepare_eep_notes_for_matching(_performance_frame(ASCII))
+    abc = prepare_abc_notes_for_matching(_score_frame(names))
+
+    result = match_notes_by_attributes(
+        eep,
+        abc,
+        ["pitch", "staff"],
+        target_coord_column="quarterbeats_playthrough",
+        create_claims=False,
+    )
+
+    assert abc["pitch"].tolist() == SIGNS
+    assert abc["pitch"].cat.categories.tolist() == ["C4", "E♭5", "F♯4"]
     assert (result.n_matched, result.n_unmatched_source, result.n_unmatched_target) == (
         3,
         0,

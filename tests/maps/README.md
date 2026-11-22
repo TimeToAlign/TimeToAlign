@@ -783,7 +783,7 @@ assertions whose two sides execute the *identical* sequence of float
 operations (bit-exact — asserted with `==`) and assertions that round-trip an
 arbitrary float through a lossy composition or compare a float map's output to
 an independently-computed gold value (genuinely rounding — kept with
-`pytest.approx`). 12 `approx` sites remain, and they belong to these classes:
+`pytest.approx`). 9 `approx` sites remain, and they belong to these classes:
 
 - **Forward-then-inverse round-trips** — `inverse(forward(x)) == approx(x)`
   and `forward(inverse(x)) == approx(x)` for `LinearMap`, `ScalarMap`,

@@ -542,6 +542,14 @@ class SemanticFieldAccessMixin:
         """
         self._field_cache.clear()
 
+    def _reset_field_cache(self) -> None:
+        """Give this instance a cache of its own, empty.
+
+        A shallow copy shares its source's cache; clearing it would empty
+        the source's too, so the copy takes a new one instead.
+        """
+        self.__field_cache = {}
+
     # -- get_raw() -----------------------------------------------------------
 
     def get_raw(self, name: str) -> DataField:

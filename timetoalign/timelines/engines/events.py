@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from fractions import Fraction
 from typing import Any, Literal
 
@@ -201,7 +201,7 @@ def _null_columns_typed_as(data: EventData, sources: list[pa.Schema]) -> EventDa
                 continue
             table = table.set_column(index, field, pa.nulls(len(table), field.type))
             changed = True
-    return type(data)(table, data.unit, data.number_type) if changed else data
+    return data._derived(table) if changed else data
 
 
 def _held_by(row: dict[str, Any], child_id: str) -> dict[str, Any]:
@@ -804,11 +804,18 @@ class EventsMixin:
             event_type: Filter by event type name.
             include_children: If True (default), include events from all
                 children with root-relative coordinates.
-            min_coord: Minimum coordinate (inclusive). Can be a float in
+            min_coord: Minimum coordinate (inclusive). Can be a number in
                 native units or a `Coordinate` with a different unit
                 (converted via inverse C-Map).
             max_coord: Maximum coordinate (exclusive). Same conversion
                 rules as min_coord.
+
+        Bounds are written in this timeline's number type before they are
+        compared, exactly on an ``int`` or ``fraction`` axis. A float bound
+        on an exact axis is therefore the exact value of that double: on a
+        ``fraction`` axis ``0.1`` is a little more than ``1/10``, so
+        ``min_coord=0.1`` leaves out an event starting at ``1/10``. Pass
+        ``Fraction(1, 10)`` to name ``1/10``.
             **field_filters: Additional field equality filters. Each
                 kwarg name is a field name, and the value is the
                 required value (or a list of values for OR logic).
@@ -839,14 +846,8 @@ class EventsMixin:
         segment_data = result.filter(event_type=SEGMENT_EVENT_TYPE)
         if len(segment_data) > 0:
             result = _null_columns_typed_as(
-                EventData.from_dicts(
-                    [
-                        row
-                        for row in result
-                        if row.get("event_type") != SEGMENT_EVENT_TYPE
-                    ],
-                    self._unit,
-                    self._number_type,
+                self._rebuilt(
+                    row for row in result if row.get("event_type") != SEGMENT_EVENT_TYPE
                 ),
                 sources,
             )
@@ -870,9 +871,7 @@ class EventsMixin:
                                 val, child_offset, subtract=False
                             )
                     all_rows.append(_held_by(row, child_id))
-            result = _null_columns_typed_as(
-                EventData.from_dicts(all_rows, self._unit, self._number_type), sources
-            )
+            result = _null_columns_typed_as(self._rebuilt(all_rows), sources)
 
         if temporal_type is not None:
             result = result.filter(temporal_type=temporal_type)
@@ -888,6 +887,15 @@ class EventsMixin:
             result = result.filter(**field_filters)
 
         return result
+
+    def _rebuilt(self, rows: Iterable[dict[str, Any]]) -> EventData:
+        """An EventData of *rows*, read from this timeline's tables or its children's.
+
+        The rows' cells are in lowest terms already (held cells, shifted by
+        the exact engine), so the table is held without being reduced again.
+        """
+        table = EventData._rows_table(list(rows), self._unit, self._number_type)
+        return EventData._of_reduced(table, self._unit, self._number_type)
 
     def _get_exact_coordinate_value(
         self, timeline_id: str, axis: float
@@ -963,6 +971,12 @@ class EventsMixin:
 
         For interval events, an event is "active" if the coordinate falls
         within [start, end).
+
+        Positions are compared in this timeline's number type, exactly on an
+        ``int`` or ``fraction`` axis. A float *coord* on an exact axis is the
+        exact value of that double: on a ``fraction`` axis
+        ``get_events_at(0.1)`` finds no event at ``1/10`` (the double is a
+        little more); ``get_events_at(Fraction(1, 10))`` does.
 
         Args:
             coord: Coordinate to query (in this timeline's unit).

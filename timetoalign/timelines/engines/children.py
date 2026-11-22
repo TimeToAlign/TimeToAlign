@@ -305,9 +305,7 @@ class ChildrenMixin:
         combined = events.concat(row)
         order = list(range(len(events)))
         order[position] = len(events)
-        self._events = type(events)(
-            combined.table.take(order), events.unit, events.number_type
-        )
+        self._events = events._derived(combined.table.take(order))
 
     def validate_child(
         self,
@@ -1270,8 +1268,8 @@ class ChildrenMixin:
             region: The region defining the source interval.
         """
         events_in_region = self.get_events(
-            min_coord=float(region.start.value),
-            max_coord=float(region.end.value),
+            min_coord=region.start,
+            max_coord=region.end,
         )
 
         adjusted_events = []
@@ -1437,9 +1435,9 @@ class ChildrenMixin:
         # recursively-sliced child).
         all_events = self.get_events(include_children=False)
 
-        # Convert start/end to float for comparison with PyArrow struct values
-        start_f = float(start)
-        end_f = float(end)
+        # *start* and *end* are in this timeline's number type and each cell
+        # is read exactly (coordinate_numeric_value), so an exact axis is
+        # compared exactly and a float one as its doubles.
 
         adjusted_events = []
         for event in all_events:
@@ -1453,7 +1451,7 @@ class ChildrenMixin:
                     continue
                 coord = coordinate_numeric_value(start_dict)
                 # Left-inclusive, right-exclusive: start <= coord < end
-                if coord >= start_f and coord < end_f:
+                if start <= coord < end:
                     ev["start"] = shift_coordinate(start_dict, start, subtract=True)
                     adjusted_events.append(ev)
 
@@ -1479,7 +1477,7 @@ class ChildrenMixin:
                     adjusted_events.append(ev)
                 else:
                     # Only include fully contained intervals
-                    if ev_start >= start_f and ev_end <= end_f:
+                    if ev_start >= start and ev_end <= end:
                         ev["start"] = shift_coordinate(
                             ev_start_dict, start, subtract=True
                         )

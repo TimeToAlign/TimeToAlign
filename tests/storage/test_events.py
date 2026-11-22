@@ -943,3 +943,96 @@ class TestOneAxisPerTable:
 
         assert read.add_projections([Projection(start=half)]) == ["projection_1"]
         assert read.n_events == 1
+
+
+class TestReducedAtTheDoorsOnly:
+    """Tables derived from held tables are not reduced a second time."""
+
+    @staticmethod
+    def _counted(monkeypatch: pytest.MonkeyPatch) -> list[pa.Table]:
+        """Record every table the reducing function is given."""
+        reduced: list[pa.Table] = []
+        reduce = storage.events._in_lowest_terms
+
+        def counting(table: pa.Table) -> pa.Table:
+            reduced.append(table)
+            return reduce(table)
+
+        monkeypatch.setattr(storage.events, "_in_lowest_terms", counting)
+        return reduced
+
+    @staticmethod
+    def _notes(*starts: Fraction) -> list[dict[str, Any]]:
+        return [
+            {
+                "id": f"n{k}",
+                "event_type": "Note",
+                "start": start,
+                "duration": Fraction(1, 3),
+            }
+            for k, start in enumerate(starts)
+        ]
+
+    @staticmethod
+    def _starts(data: EventData) -> list[tuple[str, tuple[int, int]]]:
+        return [
+            (row["id"], (row["start"]["numerator"], row["start"]["denominator"]))
+            for row in data
+        ]
+
+    def test_the_doors_reduce(self, monkeypatch, tmp_path):
+        data = EventData.from_dicts(self._notes(Fraction(1, 2)), TimeUnit.quarters)
+        path = tmp_path / "notes.parquet"
+        data.to_parquet(path)
+        reduced = self._counted(monkeypatch)
+
+        EventData(data.table, TimeUnit.quarters)
+        EventData.from_parquet(path)
+
+        assert len(reduced) == 2
+
+    def test_derived_tables_are_not_reduced_again(self, monkeypatch):
+        data = EventData.from_dicts(
+            self._notes(Fraction(1, 2), Fraction(2, 3)), TimeUnit.quarters
+        )
+        other = EventData.from_dicts(
+            [{"id": "b", "event_type": "Beat", "instant": Fraction(5, 4)}],
+            TimeUnit.quarters,
+        )
+        reduced = self._counted(monkeypatch)
+
+        filtered = data.filter(min_coord=Fraction(2, 3))
+        prefixed = data.prefix_ids("p")
+        joined = data.concat(other)
+        timeline = data.create_timeline()
+
+        assert reduced == []
+        assert self._starts(filtered) == [("n1", (2, 3))]
+        assert self._starts(prefixed) == [("p:n0", (1, 2)), ("p:n1", (2, 3))]
+        assert self._starts(joined) == [("n0", (1, 2)), ("n1", (2, 3)), ("b", (5, 4))]
+        assert self._starts(timeline.events) == [("n0", (1, 2)), ("n1", (2, 3))]
+
+    def test_a_filtered_get_events_reduces_nothing(self, monkeypatch):
+        flat = ContinuousLogicalTimeline(length=4, uid="flat")
+        flat.add_events(self._notes(Fraction(1, 2), Fraction(2, 3), Fraction(3, 2)))
+        parent = ContinuousLogicalTimeline(length=4, uid="parent")
+        parent.add_events(self._notes(Fraction(1, 2)))
+        child = ContinuousLogicalTimeline(length=2, uid="child")
+        child.add_events(
+            [{"id": "c", "event_type": "Note", "start": Fraction(1, 6), "end": 1}]
+        )
+        parent.add_child(child, offset=Fraction(1, 3))
+        reduced = self._counted(monkeypatch)
+        query = {
+            "temporal_type": "interval",
+            "event_type": "Note",
+            "min_coord": Fraction(1, 2),
+            "max_coord": Fraction(3, 2),
+        }
+
+        flat_rows = flat.get_events(**query)
+        parent_rows = parent.get_events(**query)
+
+        assert reduced == []
+        assert self._starts(flat_rows) == [("n0", (1, 2)), ("n1", (2, 3))]
+        assert self._starts(parent_rows) == [("n0", (1, 2)), ("c", (1, 2))]

@@ -16,6 +16,7 @@ from tests.alignment.helpers import match_claim
 from timetoalign.alignment import AlignmentBundle, MatchClaim
 from timetoalign.alignment.graph import MatchStamp
 from timetoalign.core import Coordinate, NumberType, TimeUnit
+from timetoalign.core.time import express_as
 from timetoalign.core.timestamp import Stamp, TimeStamp
 from timetoalign.maps import IntervalToConstantMap, LinearMap, TableMap
 from timetoalign.timelines import Timeline, TimelineGroup
@@ -658,3 +659,51 @@ class TestUnexpectedErrorsPropagate:
             "  milliseconds  70000 milliseconds\n"
             "  section                     coda"
         )
+
+
+class TestANonFiniteResultIsNotWritten:
+    """An infinite C-Map result is a value its target cannot be written in."""
+
+    def test_the_row_is_left_out(self) -> None:
+        timeline = Timeline(length=None, unit=TimeUnit.seconds, uid="u")
+        timeline.add_conversion_map(
+            LinearMap(
+                scalar=1e300,
+                source_unit=TimeUnit.seconds,
+                target_unit=TimeUnit.samples,
+                uid="u-samples",
+            )
+        )
+
+        assert str(timeline.get_timestamp(1e10)) == (
+            "TimeStamp @10000000000 seconds\n  u  10000000000 seconds"
+        )
+
+    @pytest.mark.parametrize(
+        ("value", "number_type", "message"),
+        [
+            (
+                float("inf"),
+                NumberType.int,
+                "the non-finite value inf cannot be stored as int: "
+                "only a float holds it",
+            ),
+            (
+                float("nan"),
+                NumberType.fraction,
+                "the non-finite value nan cannot be stored as fraction: "
+                "only a float holds it",
+            ),
+        ],
+        ids=["inf-int", "nan-fraction"],
+    )
+    def test_an_exact_target_refuses_it(
+        self, value: float, number_type: NumberType, message: str
+    ) -> None:
+        with pytest.raises(ValueError) as refusal:
+            express_as(value, number_type)
+
+        assert str(refusal.value) == message
+
+    def test_a_float_target_holds_it(self) -> None:
+        assert express_as(float("inf"), NumberType.float) == float("inf")

@@ -2040,6 +2040,61 @@ The timestamp checks distinguish the typed default from explicit projections:
 timestamp remains marked with `is_interpolated=True` and is re-expressed in
 the axis's declared canonical number type.
 
+**Boundaries reach the event paths in the axis's number type**
+(`TestBoundariesInTheAxisType`). `get_events(min_coord=, max_coord=)`
+compares exactly on an exact axis, so a library caller that turns an exact
+boundary into a float first moves it: `float(Fraction(1, 10))` is a little
+more than `1/10`, `float(Fraction(3, 10))` and `float(Fraction(7, 10))` a
+little less. Three callers did, and their parts lost or gained the event at
+the boundary; the shifted child-local starts and segment lengths were the
+doubles' dyadics (`-1/90071992547409920` and the like) rather than tenths.
+The specimen is ten Notes `n0`…`n9` on `[k·s, (k+1)·s)`, boundaries at
+`1·s`, `3·s`, `7·s`, with `s = 1/10` on a `fraction` quarters axis, where
+the defect shows, and `s = 10` on an `int` ticks axis and `s = 0.5` on a
+`float` seconds axis, whose boundaries no float conversion moves and whose
+results are therefore those of before (each axis case run against the code
+before the fix: the fraction cases fail there, the int and float ones pass).
+For each axis every part is asserted on its exact event IDs, the child-local
+start of each event (`j·s`), its offset and its length (`1·s`, `2·s`, `4·s`,
+`3·s`), each value with its Python type, so a length that equals the
+expected value but arrives as a float on an exact axis fails:
+
+| Call | Parts asserted |
+|---|---|
+| `create_child_from_region` on `[1·s, 3·s)` | one child: `n1`, `n2` at `0`, `1·s`; offset `1·s`, length `2·s` |
+| `create_segment_line_by_splitting` at the ends of `n0`, `n2`, `n6` | `[n0]`, `[n1, n2]`, `[n3 … n6]`, `[n7, n8, n9]` |
+| `SegmentLine.from_segmentation([0, 1·s, 3·s, 7·s, 10·s])` | the same four parts |
+
+Two further readers converted the same way and are pinned on the fraction
+axis, each with the boundary the double moves to the wrong side:
+`get_slice(0, 1/10)` over Beats at `k/10` holds `b0` alone (the Beat at
+`1/10` is the slice's end, exclusive), `get_slice(3/10, 7/10,
+truncate_events=False)` over the Notes holds `n3`…`n6` (each fully inside,
+`n6` ending at the slice's end), and `get_regions_at(3/10)` with regions
+`[1/10, 3/10)` and `[3/10, 7/10)` names the second one only.
+
+**A float bound on an exact axis is the double's exact value**
+(`test_a_float_bound_on_a_fraction_axis_is_its_double` for `get_events`,
+`test_a_float_query_on_a_fraction_axis_is_its_double` for
+`get_events_at`). The bound is
+re-expressed in the axis's number type, so on a `fraction` axis `0.1` is
+`3602879701896397/36028797018963968`, a little more than `1/10`, and `1/3`
+written as a float is a little less than `1/3`. That is what holds, stated
+in the docstrings of `get_events`, `get_events_at` and `EventData.filter`;
+whether a float query should snap to a stored cell instead is not decided,
+and this test pins what holds so a change to it is a visible decision. On a
+fraction quarters timeline with a Beat `tenth` at `1/10` and a Beat `third`
+at `1/3`:
+
+| Query | Asserted |
+|---|---|
+| `get_events(min_coord=0.1)` | `third` (the `1/10` Beat is below the bound) |
+| `get_events(max_coord=0.1)` | `tenth` (it is below the bound) |
+| `get_events_at(0.1)` | nothing |
+| `get_events_at(1 / 3)` | nothing |
+| `get_events_at(Fraction(1, 10))` | `tenth` |
+| `get_events(min_coord=Fraction(1, 10))` | `tenth`, `third` |
+
 ### `test_base.py` - Core Timeline Functionality
 
 **Purpose:** Validates the fundamental Timeline contract and behavior.
@@ -3996,6 +4051,14 @@ Beat to `a`, and asserts the counts `a` 2, `b` 1, source 1, and that no two
 of the three are the same object. What `events` returns and what `extend`
 does are unchanged: `extend` still replaces the table of the object it is
 called on, which is now only that timeline's.
+
+The timeline's `EventData` is a copy of the source's, of its class and its
+state, not a new instance of the class: a `NoteEventData` holding
+`has_rests=True` gave each timeline a `NoteEventData` with `has_rests`
+`False`, the constructor's default. The test makes timelines of such a
+source both ways and asserts `type(events) is NoteEventData` and
+`events.has_rests is True` on each, and the same of `source.filter(...)`,
+since a filter derives its table through the same copy.
 
 `test_types.py` resolves continuous, discrete, string-unit, and unmatched-unit
 inputs to the most specific matching classes. Further-derived classes also

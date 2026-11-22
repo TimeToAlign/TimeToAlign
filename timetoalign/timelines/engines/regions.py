@@ -561,7 +561,7 @@ class RegionsMixin:
             [Region('region_1', name='verse', 30-90 quarters),
              Region('region_2', name='chorus', 60-120 quarters)]
         """
-        coord_val = float(self._resolve_axis_value(coord))
+        coord_val = self._resolve_axis_value(coord)
         matching = [r for r in self._regions.values() if r.contains(coord_val)]
         matching.sort(key=lambda r: float(r.start.value))
         return matching

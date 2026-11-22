@@ -26,6 +26,7 @@ from timetoshare import (
     with_context,
 )
 
+from tests.helpers import refusal
 from timetoalign.alignment import AlignmentBundle
 from timetoalign.timelines import Timeline, TimelineGroup
 from timetoalign.timelines.types import (
@@ -283,6 +284,36 @@ def test_each_argument_overrides_one_inference(
     source = _write(tmp_path / "group.yaml", dumps(STYLED))
     target = TimelineGroup.from_file(source).to_file(tmp_path / "out", **argument)
     assert _read(target) == expected
+
+
+def test_a_file_is_validated_as_it_is_written(tmp_path: Path) -> None:
+    """Styling the format refuses blocks a styled file only.
+
+    The fixture names timestamps at 0 and 480 ticks; shortened to 400, the
+    timeline's styling names a coordinate beyond its end.
+    """
+    timeline = Timeline.from_file(FIXTURE_ROOT / "discrete_logical.minimal.yaml")
+    timeline.length = 400
+
+    with pytest.raises(ValueError) as refused:
+        timeline.to_file(tmp_path / "styled.yaml")
+    code, path, message = refusal(refused.value)
+    assert (code, path) == (
+        "timestamp_coordinate",
+        "#/graphical/timestamps/1/coordinate",
+    )
+    assert "'timestamp_2'" in message
+    assert not (tmp_path / "styled.yaml").exists()
+
+    written = timeline.to_file(tmp_path / "plain.yaml", styling=False)
+
+    assert sorted(loads(_read(written))) == [
+        "@context",
+        "meta",
+        "timelines",
+        "timetoshare",
+    ]
+    assert Timeline.from_file(written).length.value == 400
 
 
 def test_an_object_built_in_code_is_written_minimal_styled_in_yaml(

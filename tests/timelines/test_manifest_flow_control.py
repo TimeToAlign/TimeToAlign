@@ -300,7 +300,7 @@ def test_only_a_repeat_end_has_a_repeat_count() -> None:
             "'target'",
         ),
         (
-            [_element("x", "jump_over", "segno", 8)],
+            [_element("x", "jump_over", "fine", 8)],
             "schema",
             "#/timelines/0/flow_control/0/type",
             "'jump_over'",
@@ -372,7 +372,7 @@ def test_reading_refuses_what_the_format_does_not_define(
             "lands at the timeline's start",
         ),
         (
-            [_element("x", "jump_over", "segno", 8)],
+            [_element("x", "jump_over", "fine", 8)],
             "a flow-control element has the unknown type 'jump_over'; an element is "
             "one of ['flow_marker', 'jump_from', 'jump_to']",
         ),

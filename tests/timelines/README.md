@@ -934,7 +934,8 @@ segno, a coda or a repeat start rather than guessing it from a name.
   `repeat_count` elsewhere, a target on a `jump_to` or `flow_marker`, a
   target naming no `jump_to`, a missing target on a `dal_segno`, an unknown
   `type`, a manifestation of another type and a `repeat_count` of 0 are
-  each refused by the format's validator. Its code and the JSON pointer of
+  each refused by the format's validator, each case breaking one rule only so that
+  the reported pointer is that fault's. Its code and the JSON pointer of
   the fault are asserted exactly; of its message only what names the fault
   (the key, the value: `'repeat_count'`, `'nowhere'`, `'jump_over'`), since
   the wording is TimeToShare's and changes there without any change in what

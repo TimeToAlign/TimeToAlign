@@ -10,6 +10,7 @@ from fractions import Fraction
 from typing import Any
 
 import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 
 from timetoalign import storage
@@ -23,6 +24,11 @@ from timetoalign.core import (
     TimeUnit,
 )
 from timetoalign.core.fields import field_metadata
+from timetoalign.core.time import (
+    RATIONAL_STRUCT_TYPE,
+    CoordinateField,
+    build_number_struct_array,
+)
 from timetoalign.storage.events import EventData, mint_event_ids
 from timetoalign.timelines import ContinuousLogicalTimeline
 
@@ -798,3 +804,142 @@ class TestProjectionRows:
             EventData.from_dicts(
                 Projection(start=Coordinate(2.0, TimeUnit.seconds)), TimeUnit.samples
             )
+
+
+class TestOneAxisPerTable:
+    """One unit, one number type and one spelling of each value per table."""
+
+    @staticmethod
+    def _quarters(*rows: dict[str, Any]) -> EventData:
+        return EventData.from_dicts(list(rows), TimeUnit.quarters)
+
+    def test_a_further_coordinate_column_keeps_its_number_type(self, tmp_path):
+        data = EventData.from_arrays(
+            {
+                "id": ["e1"],
+                "event_type": ["Beat"],
+                "start": build_number_struct_array(
+                    [Fraction(1, 3)], number_type=NumberType.fraction
+                ),
+                "onset": build_number_struct_array(
+                    [Fraction(1, 3)], number_type=NumberType.fraction
+                ),
+            },
+            TimeUnit.quarters,
+        )
+        path = tmp_path / "events.parquet"
+        data.to_parquet(path)
+        back = EventData.from_parquet(path)
+
+        assert field_metadata(back.schema.field("onset")) == {
+            "unit": "quarters",
+            "number_type": "fraction",
+            "version": 1,
+        }
+        assert field_metadata(back.schema.field("onset")) == field_metadata(
+            back.schema.field("start")
+        )
+        (onset,) = [f for f in back.get_fields(CoordinateField) if f.name == "onset"]
+        assert onset.number_type is NumberType.fraction
+        assert onset[0].value == Fraction(1, 3)
+        assert type(onset[0].value) is Fraction
+
+    def test_a_file_written_before_reads_as_before(self, tmp_path):
+        data = self._quarters({"id": "e1", "event_type": "Beat", "instant": 0})
+        table = data.table.append_column(
+            pa.field("onset", RATIONAL_STRUCT_TYPE, metadata={"unit": "quarters"}),
+            build_number_struct_array(
+                [Fraction(1, 3)], number_type=NumberType.fraction
+            ),
+        )
+        path = tmp_path / "events.parquet"
+        pq.write_table(table, path)
+        back = EventData.from_parquet(path)
+
+        (onset,) = [f for f in back.get_fields(CoordinateField) if f.name == "onset"]
+        assert onset.number_type is NumberType.float
+        assert onset[0].value == 0.3333333333333333
+
+    @pytest.mark.parametrize("join", ["extend", "concat"])
+    def test_rows_of_another_number_type_are_refused(self, join):
+        exact = self._quarters({"id": "e1", "event_type": "Beat", "instant": 1})
+        floats = EventData.from_dicts(
+            [{"id": "e2", "event_type": "Beat", "instant": 0.5}],
+            TimeUnit.quarters,
+            NumberType.float,
+        )
+
+        with pytest.raises(ValueError) as refusal:
+            getattr(exact, join)(floats)
+
+        assert str(refusal.value) == "Number type mismatch: fraction vs float"
+        assert len(exact) == 1
+
+    @pytest.mark.parametrize("join", ["extend", "concat"])
+    def test_rows_of_the_same_axis_join(self, join):
+        first = self._quarters({"id": "e1", "event_type": "Beat", "instant": 1})
+        second = self._quarters({"id": "e2", "event_type": "Beat", "instant": 2})
+
+        joined = getattr(first, join)(second)
+
+        assert len(first if joined is None else joined) == 2
+
+    @staticmethod
+    def _spelled(data: EventData, pairs: list[tuple[int, int]]) -> pa.Table:
+        """*data*'s table with its ``start`` cells spelled as *pairs*."""
+        table = data.table
+        index = table.schema.get_field_index("start")
+        cells = table.column(index).combine_chunks()
+        spelled = pa.StructArray.from_arrays(
+            [
+                cells.field("value"),
+                pa.array([n for n, _ in pairs], pa.int64()),
+                pa.array([d for _, d in pairs], pa.int64()),
+            ],
+            fields=list(cells.type),
+        )
+        return table.set_column(index, table.schema.field(index), spelled)
+
+    @staticmethod
+    def _start_pairs(table: pa.Table) -> list[tuple[int, int]]:
+        return [
+            (cell["numerator"], cell["denominator"])
+            for cell in table.column("start").to_pylist()
+        ]
+
+    def test_cells_are_reduced_on_entry(self, tmp_path):
+        half = Fraction(1, 2)
+        data = self._quarters(
+            *({"id": f"e{i}", "event_type": "Beat", "instant": half} for i in range(3))
+        )
+        table = self._spelled(data, [(2, 4), (4, 8), (1, 2)])
+
+        entered = EventData(table, TimeUnit.quarters)
+        assert self._start_pairs(entered.table) == [(1, 2)] * 3
+        assert entered.column_values("start") == [half] * 3
+
+        path = tmp_path / "spelled.parquet"
+        pq.write_table(table, path)
+        read = EventData.from_parquet(path)
+        assert self._start_pairs(read.table) == [(1, 2)] * 3
+
+        written = tmp_path / "written.parquet"
+        read.to_parquet(written)
+        assert self._start_pairs(pq.read_table(written)) == [(1, 2)] * 3
+
+        joined = self._quarters({"id": "x", "event_type": "Beat", "instant": 1})
+        assert self._start_pairs(joined.concat(entered).table)[1:] == [(1, 2)] * 3
+        joined.extend(entered)
+        assert self._start_pairs(joined.table)[1:] == [(1, 2)] * 3
+
+    def test_a_projection_read_unreduced_is_the_same_projection(self, tmp_path):
+        half = Coordinate(Fraction(1, 2), TimeUnit.quarters)
+        timeline = ContinuousLogicalTimeline(length=2)
+        assert timeline.add_projections([Projection(start=half)]) == ["projection_1"]
+        path = tmp_path / "projections.parquet"
+        pq.write_table(self._spelled(timeline.events, [(2, 4)]), path)
+
+        read = EventData.from_parquet(path).create_timeline()
+
+        assert read.add_projections([Projection(start=half)]) == ["projection_1"]
+        assert read.n_events == 1

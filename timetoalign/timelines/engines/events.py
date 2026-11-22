@@ -21,10 +21,12 @@ from timetoalign.core import (
 )
 from timetoalign.core.ids import quote_id
 from timetoalign.core.time import (
+    combine_numbers,
     coordinate_numeric_value,
     exact_coordinate_value,
     express_as,
     shift_coordinate,
+    to_canonical,
 )
 from timetoalign.core.timestamp import _format_coordinate_value
 from timetoalign.storage import EventData
@@ -177,6 +179,31 @@ def _held_by_key(
     ]
 
 
+def _null_columns_typed_as(data: EventData, sources: list[pa.Schema]) -> EventData:
+    """*data* with each column holding only nulls typed as in *sources*.
+
+    Rows rebuilt into a table (:meth:`EventData.from_dicts`) carry their
+    further columns' types in their values alone, so a column holding no
+    value (``mn_onset`` from a loader that states none) would come out as
+    strings. Such a column takes the field (type and metadata) it has in
+    the first of *sources* holding it, the tables the rows were read from.
+    """
+    table = data.table
+    changed = False
+    for schema in sources:
+        for field in schema:
+            index = table.schema.get_field_index(field.name)
+            if (
+                index < 0
+                or table.schema.field(index).type == field.type
+                or table.column(index).null_count != len(table)
+            ):
+                continue
+            table = table.set_column(index, field, pa.nulls(len(table), field.type))
+            changed = True
+    return type(data)(table, data.unit, data.number_type) if changed else data
+
+
 def _held_by(row: dict[str, Any], child_id: str) -> dict[str, Any]:
     """*row*, an event a child reported, tagged with the timeline holding it.
 
@@ -289,9 +316,9 @@ class EventsMixin:
 
         if self._locked and not allow_expansion:
             raise ValueError(
-                f"Adding content ending at {_format_coordinate_value(float(required))} "
+                f"Adding content ending at {_format_coordinate_value(required)} "
                 f"exceeds timeline length "
-                f"{_format_coordinate_value(float(self._length.value))}. "
+                f"{_format_coordinate_value(self._length.value)}. "
                 f"Timeline is locked. "
                 "Use allow_expansion=True to override."
             )
@@ -377,11 +404,9 @@ class EventsMixin:
                 _check_projection_row(row, self._id)
         rows = self._rows_with_ids(rows)
 
-        # Validate and find max coordinate
-        max_coord = 0.0
-        for row in rows:
-            coord = self._get_event_end_coordinate(row)
-            max_coord = max(max_coord, coord)
+        # The farthest end, in this timeline's number type: exact on an
+        # exact axis, so it is compared and grown to as it will be stored.
+        max_coord = max(self._get_event_end_coordinate(row) for row in rows)
 
         # Ensure capacity
         self._ensure_capacity(max_coord, allow_expansion)
@@ -677,27 +702,36 @@ class EventsMixin:
         new_data = data_class.from_dicts(rows, self._unit, self._number_type)
         self._events.extend(new_data)
 
-    def _get_event_end_coordinate(self, row: dict[str, Any]) -> float:
+    def _get_event_end_coordinate(self, row: dict[str, Any]) -> int | float | Fraction:
         """Extract the end coordinate from an event dict.
 
+        The end is written in this timeline's number type, as the row will
+        be stored: on an ``int`` or ``fraction`` axis it is exact (``start +
+        duration`` added on the ratios), on a ``float`` axis a float.
+
         Args:
-            row: Event dictionary. Coordinate fields may be raw floats
+            row: Event dictionary. Coordinate fields may be raw numbers
                 or struct dicts (``{"value": ..., ...}``).
 
         Returns:
-            The end coordinate as float.
+            The end coordinate in this timeline's number type.
         """
+        number_type = self._number_type
+        start = row.get("start")
         if row.get("instant") is not None:
-            return self._coord_to_float(row["instant"])
-        if row.get("end") is not None:
-            return self._coord_to_float(row["end"])
-        if row.get("start") is not None and row.get("duration") is not None:
-            return self._coord_to_float(row["start"]) + self._coord_to_float(
-                row["duration"]
+            end = self._coord_to_value(row["instant"])
+        elif row.get("end") is not None:
+            end = self._coord_to_value(row["end"])
+        elif start is not None and row.get("duration") is not None:
+            return combine_numbers(
+                self._coord_to_value(start),
+                self._coord_to_value(row["duration"]),
+                "add",
+                number_type,
             )
-        if row.get("start") is not None:
-            return self._coord_to_float(row["start"])
-        return 0.0
+        else:
+            end = 0 if start is None else self._coord_to_value(start)
+        return to_canonical(end, number_type)
 
     def get_event(self, event_id: str) -> dict[str, Any] | None:
         """Look up a single event by its ``id`` field.
@@ -795,22 +829,26 @@ class EventsMixin:
             >>> events = tl.get_events(pitch=60)  # Only middle C
             >>> events = tl.get_events(pitch=[60, 62, 64])  # C, D, E
         """
-        min_coord_float: float | None = None
-        max_coord_float: float | None = None
-
-        if min_coord is not None:
-            min_coord_float = float(self._resolve_axis_value(min_coord))
-
-        if max_coord is not None:
-            max_coord_float = float(self._resolve_axis_value(max_coord))
+        # Bounds on this timeline's axis, in its number type: compared
+        # exactly on an exact axis, as floats on a float one.
+        min_value = None if min_coord is None else self._resolve_axis_value(min_coord)
+        max_value = None if max_coord is None else self._resolve_axis_value(max_coord)
         # Start with own events, always excluding segment events
         result = self._events
+        sources = [result.schema]
         segment_data = result.filter(event_type=SEGMENT_EVENT_TYPE)
         if len(segment_data) > 0:
-            result = EventData.from_dicts(
-                [row for row in result if row.get("event_type") != SEGMENT_EVENT_TYPE],
-                self._unit,
-                self._number_type,
+            result = _null_columns_typed_as(
+                EventData.from_dicts(
+                    [
+                        row
+                        for row in result
+                        if row.get("event_type") != SEGMENT_EVENT_TYPE
+                    ],
+                    self._unit,
+                    self._number_type,
+                ),
+                sources,
             )
 
         # Include children's events with offset-adjusted coordinates
@@ -821,6 +859,7 @@ class EventsMixin:
                 child_events = child.get_events(
                     include_children=True,  # recurse
                 )
+                sources.append(child_events.schema)
                 for event in child_events:
                     row = dict(event)
                     # Adjust coordinates to root space
@@ -831,7 +870,9 @@ class EventsMixin:
                                 val, child_offset, subtract=False
                             )
                     all_rows.append(_held_by(row, child_id))
-            result = EventData.from_dicts(all_rows, self._unit, self._number_type)
+            result = _null_columns_typed_as(
+                EventData.from_dicts(all_rows, self._unit, self._number_type), sources
+            )
 
         if temporal_type is not None:
             result = result.filter(temporal_type=temporal_type)
@@ -839,8 +880,8 @@ class EventsMixin:
         if event_type is not None:
             result = result.filter(event_type=event_type)
 
-        if min_coord_float is not None or max_coord_float is not None:
-            result = result.filter(min_coord=min_coord_float, max_coord=max_coord_float)
+        if min_value is not None or max_value is not None:
+            result = result.filter(min_coord=min_value, max_coord=max_value)
 
         # Apply arbitrary field filters
         if field_filters:
@@ -889,7 +930,7 @@ class EventsMixin:
         self,
         event: dict[str, Any],
         *keys: str,
-    ) -> float | None:
+    ) -> int | float | Fraction | None:
         """Extract coordinate value from event, trying multiple keys.
 
         Args:
@@ -897,12 +938,13 @@ class EventsMixin:
             *keys: Keys to try in order (e.g., "start", "instant").
 
         Returns:
-            The coordinate value as float, or None if not found.
+            The coordinate value in this timeline's number type (exact on an
+            ``int`` or ``fraction`` axis), or None if not found.
         """
         for key in keys:
             val = event.get(key)
             if val is not None:
-                return float(coordinate_numeric_value(val))
+                return express_as(coordinate_numeric_value(val), self._number_type)
         return None
 
     def get_events_at(
@@ -938,7 +980,8 @@ class EventsMixin:
             >>> events["measure_5"]  # Events in measure 5
             [...]
         """
-        coord_val = float(self._resolve_axis_value(coord))
+        # On this timeline's axis, in its number type: exact on an exact axis.
+        coord_val = self._resolve_axis_value(coord)
         result: dict[str, list[dict[str, Any]]] = {}
 
         # Get events from this timeline
@@ -968,10 +1011,14 @@ class EventsMixin:
 
     def _get_events_at_local(
         self,
-        coord: float,
+        coord: int | float | Fraction,
         tolerance: float,
     ) -> list[dict[str, Any]]:
-        """Get events at a coordinate in this timeline (local, no children)."""
+        """Get events at a coordinate in this timeline (local, no children).
+
+        Positions are compared in this timeline's number type: exactly on an
+        ``int`` or ``fraction`` axis, as floats on a ``float`` axis.
+        """
         result = []
 
         for event in _decoded_rows(self.get_events(include_children=False)):
@@ -998,6 +1045,6 @@ class EventsMixin:
         """Return events as dicts sorted by start coordinate."""
         events_list = _decoded_rows(self.get_events(include_children=False))
         events_list.sort(
-            key=lambda e: self._extract_coord_value(e, "start", "instant") or 0.0
+            key=lambda e: float(self._extract_coord_value(e, "start", "instant") or 0)
         )
         return events_list

@@ -230,6 +230,46 @@ by declaration rather than by the rows of one batch.
   holding a reference concatenates and the column reads `[None,
   {"timeline_id": "clt_6", "event_id": "x1azmn68"}]`.
 
+### `test_events.py` - One axis per table: number type kept, cells reduced
+
+**Purpose:** An `EventData` reads every cell in its one unit and number type,
+and holds one spelling of each value. Three ways in broke that.
+
+**Contract and what proves it** (`TestOneAxisPerTable`):
+
+- **A further coordinate column keeps its number type through Parquet.**
+  `from_arrays` given a coordinate column outside the schema (`onset`,
+  holding `1/3` on a `fraction` quarters table) wrote only `{unit}` beside
+  it, so after `to_parquet` / `from_parquet` its `CoordinateField` declared
+  `float` and read `0.3333333333333333`. It is now written by the builder
+  that writes the base columns (unit and number type in the metadata blob):
+  the blob reads `{"unit": "quarters", "number_type": "fraction", "version":
+  1}`, the same as `start`'s, and the field read back declares `fraction` and
+  holds `Fraction(1, 3)`. A file
+  written before, whose column carries only the bare `unit` key, still reads
+  as before (`float`, `0.3333333333333333`): that branch is the reader's
+  fallback, asserted on a table written with the old metadata by hand.
+- **`extend` and `concat` refuse rows of another number type.** They
+  checked the unit only, so a `fraction` table absorbed a `float` table's
+  rows and read their dyadics as authored ratios. Both now raise the
+  `ValueError` they raise for a unit mismatch, with the message `Number type
+  mismatch: fraction vs float`, and the table is unchanged (one row). A
+  table of the same unit and number type still joins (two rows).
+- **Cells are reduced on entry.** A ratio stated as `2/4` is accepted and
+  held as `1/2` at every door that takes whole cells: `EventData(table)`,
+  `EventData.from_parquet`, and therefore `concat` (which builds through the
+  constructor) and `extend` (whose argument was built through it). Each is
+  asserted on the cells read back (`(1, 2)`, never `(2, 4)`), never by
+  refusing the input. A table whose `start` cells spell one value three
+  ways, `2/4`, `4/8` and `1/2`, holds three equal cells after entry, and
+  `to_parquet` writes `(1, 2)` three times: the bytes on disk are the
+  reduced spelling, read with `pyarrow.parquet` directly, not through the
+  library. The defect this closes, end to end: a Projection at `2/4` in a
+  Parquet file, read with `from_parquet` and placed on a timeline, then
+  `add_projections` of the same Projection at `1/2`, gave a second
+  Projection (`projection_2`), since Projections are matched by their cells;
+  now it is the same Projection (`projection_1`, one event).
+
 ### `test_coordinate_range.py` - `EventData.coordinate_range()`
 
 **Purpose:** `coordinate_range()` (read by every `create_timeline`) finds the

@@ -183,6 +183,13 @@ write is a defect of one of them.
   Music21 derive only `mc_onset`, so their `mn_onset` is null on every note, control and
   annotation row: a copy of `mc_onset` there would claim a fact the source does not state, and
   the TSV shows that it would be wrong.
+- **A column of nulls keeps its type.** Every store declares `mn_onset` as a rational struct
+  (`struct<value: double, numerator: int64, denominator: int64>`), and the stores of Partitura and
+  Music21 keep that type though every cell is null. The timeline's `get_events()` rebuilds its
+  rows into a new table, which took each further column's type from its values, so a column of
+  nulls came out as `string`. The test asserts, for both loaders, that the `mn_onset` field of
+  `create_timeline().get_events()` has the store's struct type and its metadata, and that every
+  one of its cells is null (547 Partitura events, 536 Music21 events).
 
 ## Loader-specific assertions
 

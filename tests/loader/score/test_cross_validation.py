@@ -35,6 +35,7 @@ from collections import Counter
 from pathlib import Path
 
 import pandas as pd
+import pyarrow as pa
 import pytest
 
 from timetoalign.core.events import EnharmonicPitch, MidiPitch
@@ -250,3 +251,24 @@ class TestMeasureOnsets:
             name: table.column("mn_onset").null_count for name, table in facets.items()
         }
         assert nulls == rows
+
+    @pytest.mark.parametrize(
+        ("loader_class", "n_events"), [(PartituraLoader, 547), (Music21Loader, 536)]
+    )
+    def test_a_column_of_nulls_keeps_the_stores_type(self, loader_class, n_events):
+        loader = loader_class().load(CHOPIN_XML)
+        declared = loader.store.notes.table.schema.field("mn_onset")
+
+        events = loader.create_timeline().get_events().table
+
+        assert events.num_rows == n_events
+        assert events.schema.field("mn_onset") == declared
+        assert declared.type == pa.struct(
+            [
+                ("value", pa.float64()),
+                ("numerator", pa.int64()),
+                ("denominator", pa.int64()),
+            ]
+        )
+        assert events.schema.field("mn_onset").metadata == declared.metadata
+        assert events.column("mn_onset").null_count == n_events

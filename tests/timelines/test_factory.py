@@ -581,3 +581,24 @@ class TestTimelineChildrenStructure:
         assert timeline.n_children == 0
         assert timeline.n_events == 1
         assert timeline.length.value == 100
+
+
+class TestTimelinesHoldTheirOwnEvents:
+    """A timeline made from an EventData holds its own EventData."""
+
+    @pytest.mark.parametrize("make", ["create_timeline", "from_event_data"])
+    def test_adding_to_one_timeline_changes_no_other(self, make):
+        source = EventData.from_dicts(
+            [{"id": "e1", "event_type": "Beat", "instant": 1}], TimeUnit.quarters
+        )
+        if make == "create_timeline":
+            a, b = source.create_timeline(), source.create_timeline()
+        else:
+            a = ContinuousLogicalTimeline.from_event_data(source)
+            b = ContinuousLogicalTimeline.from_event_data(source)
+
+        a.add_events([{"id": "e2", "event_type": "Beat", "instant": 2}])
+
+        assert (a.n_events, b.n_events, len(source)) == (2, 1, 1)
+        assert a.events is not b.events
+        assert all(events is not source for events in (a.events, b.events))

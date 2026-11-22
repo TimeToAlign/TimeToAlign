@@ -577,7 +577,8 @@ class Timeline(
             **kwargs: Additional arguments passed to __init__ (except unit/number_type).
 
         Returns:
-            A new Timeline wrapping the EventData.
+            A new Timeline holding the events in its own ``EventData`` over
+            the same table: adding events to it leaves *data* unchanged.
         """
         coord_range = data.coordinate_range()
         length = coord_range[1] if coord_range else 0
@@ -588,7 +589,7 @@ class Timeline(
             number_type=data.number_type,
             **kwargs,
         )
-        timeline._events = data
+        timeline._events = type(data)(data.table, data.unit, data.number_type)
         return timeline
 
     # endregion
@@ -1463,24 +1464,6 @@ class Timeline(
                 return struct_to_rational(value)
             return value["value"]
         return value
-
-    @staticmethod
-    def _coord_to_float(value: Any) -> float:
-        """Convert a coordinate value to float.
-
-        Handles both raw numeric values and coordinate struct dicts
-        (e.g., ``{"value": 4.5, "numerator": 9, "denominator": 2}``)
-        as produced by MeasureData and other loader stores.
-
-        Args:
-            value: A numeric value or a dict with a ``"value"`` key.
-
-        Returns:
-            The coordinate as a float.
-        """
-        if isinstance(value, dict):
-            return float(value["value"])
-        return float(value)
 
     # endregion
 

@@ -3976,6 +3976,18 @@ format-specific consumers receive a stable dictionary layout.
 multi-store children, and store selection. It pins child IDs and event counts
 to distinguish direct placement from child construction.
 
+A timeline made from an `EventData` holds its events in an `EventData` of
+its own, over the same table (tables are immutable, so sharing one costs
+nothing and changes nothing). Before, the timeline held the very object it
+was given: two timelines made from one `EventData` and the `EventData`
+itself were one object, so `a.add_events(...)` added the row to all three.
+The test makes `a` and `b` from one source of one Beat (by
+`EventData.create_timeline()` and by `Timeline.from_event_data()`), adds a
+Beat to `a`, and asserts the counts `a` 2, `b` 1, source 1, and that no two
+of the three are the same object. What `events` returns and what `extend`
+does are unchanged: `extend` still replaces the table of the object it is
+called on, which is now only that timeline's.
+
 `test_types.py` resolves continuous, discrete, string-unit, and unmatched-unit
 inputs to the most specific matching classes. Further-derived classes also
 participate in resolution. The unmatched input verifies the documented base

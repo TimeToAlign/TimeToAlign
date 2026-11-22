@@ -16,8 +16,7 @@ If you attempt to import a loader whose dependency is not installed, an
 
 from __future__ import annotations
 
-from importlib import import_module
-from typing import Any
+from timetoalign.loader._optional import import_optional, resolve_optional
 
 from .events import ScoreEventType
 from .measuremap import MeasureMapLoader
@@ -29,19 +28,8 @@ __all__ = [
     "ScoreEventType",
 ]
 
-# ---------------------------------------------------------------------------
-# Optional loader backends — guarded so that importing the package never
-# fails merely because one backend's dependency is absent.
-# ---------------------------------------------------------------------------
-
-try:
-    from .partitura import PartituraLoader
-
-    __all__.append("PartituraLoader")
-except ImportError:
-    pass
-
-
+# Optional loader backends: importing the package never fails because one
+# backend's dependency is absent; asking for that backend names its extra.
 _OPTIONAL_LOADERS = {
     "PartituraLoader": ("partitura", "partitura"),
     "Music21Loader": ("music21", "music21"),
@@ -49,39 +37,5 @@ _OPTIONAL_LOADERS = {
     "VerovioLoader": ("verovio", "verovio"),
 }
 
-
-def __getattr__(name: str) -> Any:
-    """Resolve optional score loaders with actionable dependency errors."""
-    target = _OPTIONAL_LOADERS.get(name)
-    if target is None:
-        raise AttributeError(name)
-    module_name, extra = target
-    try:
-        return getattr(import_module(f"{__name__}.{module_name}"), name)
-    except ModuleNotFoundError as exc:
-        raise ImportError(
-            f"{name} requires its optional dependency; install "
-            f"timetoalign[{extra}] to use this loader."
-        ) from exc
-
-
-try:
-    from .music21 import Music21Loader
-
-    __all__.append("Music21Loader")
-except ImportError:
-    pass
-
-try:
-    from .ms3 import Ms3Loader
-
-    __all__.append("Ms3Loader")
-except ImportError:
-    pass
-
-try:
-    from .verovio import VerovioLoader
-
-    __all__.append("VerovioLoader")
-except ImportError:
-    pass
+__all__ += import_optional(__name__, _OPTIONAL_LOADERS, globals())
+__getattr__ = resolve_optional(__name__, _OPTIONAL_LOADERS)

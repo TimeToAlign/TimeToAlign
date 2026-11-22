@@ -31,6 +31,7 @@ of the original per-field columns. Only note count and MIDI pitch (exact match)
 cross-validation remain.
 """
 
+from collections import Counter
 from pathlib import Path
 
 import pandas as pd
@@ -170,3 +171,57 @@ class TestMidiPitchExact:
         ]
         if loader_class is Ms3Loader:
             assert enharmonic[0].midi_number == midi[0].midi_number == 59
+
+
+class TestPitchNameParity:
+    """Every loader gives every note the same name, spelled with ``♯``/``♭``.
+
+    The rows of the three loaders are not in one order (sorted by MIDI pitch,
+    ties in parser order), so the multisets of ``(MIDI pitch, name)`` pairs are
+    compared.
+    """
+
+    @staticmethod
+    def _pairs(df: pd.DataFrame) -> Counter:
+        return Counter(zip(df["midi_number"], df["name"]))
+
+    def test_partitura_names(self, gold_df, partitura_df):
+        assert self._pairs(gold_df) == self._pairs(partitura_df)
+
+    def test_music21_names(self, gold_df, music21_df):
+        assert self._pairs(gold_df) == self._pairs(music21_df)
+
+    def test_ms3_names_use_the_signs(self, gold_df):
+        names = gold_df["name"].tolist()
+        assert sum("♯" in name for name in names) == 217
+        assert names.count("B♯4") == 2
+        assert [name for name in names if "#" in name or "b" in name[1:]] == []
+
+
+class TestMeasureOnsets:
+    """``mn_onset`` is written only where the source states it."""
+
+    def test_ms3_keeps_the_stated_onsets(self):
+        row = Ms3Loader().load(CHOPIN_TSV).store.notes.table.slice(0, 1).to_pylist()[0]
+        assert (row["mc_onset"]["numerator"], row["mc_onset"]["denominator"]) == (0, 1)
+        assert (row["mn_onset"]["numerator"], row["mn_onset"]["denominator"]) == (3, 8)
+
+    @pytest.mark.parametrize(
+        ("loader_class", "rows"),
+        [
+            (PartituraLoader, {"notes": 498, "controls": 22, "annotations": 5}),
+            (Music21Loader, {"notes": 498, "controls": 11, "annotations": 5}),
+        ],
+    )
+    def test_musicxml_loaders_state_no_mn_onset(self, loader_class, rows):
+        store = loader_class().load(CHOPIN_XML).store
+        facets = {
+            "notes": store.notes.table,
+            "controls": store.controls.table,
+            "annotations": store.annotations.table,
+        }
+        assert {name: table.num_rows for name, table in facets.items()} == rows
+        nulls = {
+            name: table.column("mn_onset").null_count for name, table in facets.items()
+        }
+        assert nulls == rows

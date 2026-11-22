@@ -292,11 +292,7 @@ class Music21Loader(ScoreLoader):
                                 if mc_onset is not None
                                 else None
                             ),
-                            "mn_onset": (
-                                rational_to_struct(mc_onset)
-                                if mc_onset is not None
-                                else None
-                            ),
+                            "mn_onset": None,
                             "subtype": obj.__class__.__name__,
                             "value": None,
                             "text": str(obj),
@@ -325,11 +321,7 @@ class Music21Loader(ScoreLoader):
                                 if mc_onset is not None
                                 else None
                             ),
-                            "mn_onset": (
-                                rational_to_struct(mc_onset)
-                                if mc_onset is not None
-                                else None
-                            ),
+                            "mn_onset": None,
                             "subtype": "TextExpression",
                             "text": getattr(obj, "content", str(obj)),
                             "staff": None,
@@ -343,7 +335,7 @@ class Music21Loader(ScoreLoader):
         self._anacrusis_offset = m21_offset
 
         # Build data
-        notes_data = getattr(NoteEventData, "from_" + "dicts")(
+        notes_data = NoteEventData.from_dicts(
             note_rows,
             unit=TimeUnit.quarters,
             number_type=NumberType.fraction,
@@ -361,7 +353,7 @@ class Music21Loader(ScoreLoader):
         )
 
         controls_data = (
-            getattr(ControlEventData, "from_" + "dicts")(
+            ControlEventData.from_dicts(
                 control_rows,
                 unit=TimeUnit.quarters,
                 number_type=NumberType.fraction,
@@ -371,7 +363,7 @@ class Music21Loader(ScoreLoader):
         )
 
         annotations_data = (
-            getattr(AnnotationEventData, "from_" + "dicts")(
+            AnnotationEventData.from_dicts(
                 annotation_rows,
                 unit=TimeUnit.quarters,
                 number_type=NumberType.fraction,
@@ -454,7 +446,7 @@ class Music21Loader(ScoreLoader):
             "mc": mc,
             "mn": mn,
             "mc_onset": rational_to_struct(mc_onset),
-            "mn_onset": rational_to_struct(mc_onset),
+            "mn_onset": None,
             "timesig": None,
             "duration": None,
             "nominal_duration": None,
@@ -463,7 +455,6 @@ class Music21Loader(ScoreLoader):
             "midi": midi,
             "tpc": tpc,
             "octave": octave,
-            "velocity": 64,
             "tied": None,
             "gracenote": None,
             "chord_id": chord_id,

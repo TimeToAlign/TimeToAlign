@@ -50,6 +50,27 @@ version, including its suffix. Both plain and bracketed `4.3.1` must raise the
 normal minimum-version `ImportError`, with the full reported version in its
 message, rather than failing integer conversion.
 
+## Optional dependencies
+
+`test_optional_dependencies.py` proves that a loader whose package is missing is reported the same
+way everywhere, naming the extra that installs it. The tests do not uninstall anything: they set
+the dependency's entry in `sys.modules` to `None` (so importing it raises `ModuleNotFoundError`
+naming it) and drop the cached loader module, both restored by `monkeypatch`.
+
+* **Package exports.** For each optional loader of `timetoalign.loader.score` (Partitura,
+  Music21, Verovio) and `timetoalign.loader.midi` (`PerformanceMidiLoader` needing `mido`,
+  `ScoreMidiLoader` needing `partitura`), asking the package for the loader raises
+  `ImportError` with exactly `<Loader> needs <package>: pip install "timetoalign[<extra>]"`,
+  and so does the statement `from timetoalign.loader.score import Music21Loader`.
+* **Loading.** `Ms3Loader` imports without `ms3` (it needs it only to read a notes, chords or
+  harmonies TSV), so the same message is raised by `load()` of a notes TSV.
+* **Nothing else changes.** With every dependency installed, each package's `__all__` lists its
+  core names followed by the optional loaders in their declared order, and a name the package
+  does not export raises `AttributeError` in Python's own wording.
+
+`AudioLoader` reads through a chain of backends, so a missing one is not an error by itself;
+its message naming `timetoalign[audio]` is pinned in `physical/test_audio.py`.
+
 ## Categories
 
 | File / Subdirectory | What it validates |

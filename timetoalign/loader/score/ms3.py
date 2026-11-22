@@ -17,6 +17,7 @@ from timetoalign.core.time import (
     coordinate_to_struct,
     rational_to_struct,
 )
+from timetoalign.loader._optional import missing_dependency
 
 from .base import ScoreLoader
 from .store import ScoreStore
@@ -36,6 +37,19 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from timetoalign.timelines import ContinuousLogicalTimeline, MeasureMap
+
+# ms3 spells accidentals in ASCII; the library's pitch names use the
+# canonical sharp and flat signs.
+_ACCIDENTAL_SIGNS = str.maketrans({"#": "\u266f", "b": "\u266d"})
+
+
+def _pitch_name(name: str) -> str:
+    """Respell an ms3 pitch name (``"F#4"``, ``"Bb3"``) with ``♯``/``♭``.
+
+    Only the characters after the step letter are respelled, so a step
+    written ``b`` stays a step.
+    """
+    return name[:1] + name[1:].translate(_ACCIDENTAL_SIGNS)
 
 
 class Ms3Loader(ScoreLoader):
@@ -290,11 +304,10 @@ class Ms3Loader(ScoreLoader):
         else:
             try:
                 import ms3
-            except ImportError:
+            except ModuleNotFoundError as error:
                 raise ImportError(
-                    "Ms3Loader requires 'ms3' for non-measure facets. "
-                    "Install with pip install ms3"
-                )
+                    missing_dependency("Ms3Loader", error.name, "ms3")
+                ) from error
             df = ms3.load_tsv(str(source))
 
         # Determine category from filename
@@ -618,7 +631,7 @@ class Ms3Loader(ScoreLoader):
 
             note_rows.append(
                 {
-                    "name": str(row.get("name", "")),
+                    "name": _pitch_name(str(row.get("name", ""))),
                     "temporal_type": (
                         "interval" if (dur_qb is not None and dur_qb > 0) else "instant"
                     ),
@@ -670,7 +683,7 @@ class Ms3Loader(ScoreLoader):
                 }
             )
 
-        notes_data = getattr(NoteEventData, "from_" + "dicts")(
+        notes_data = NoteEventData.from_dicts(
             note_rows,
             unit=TimeUnit.quarters,
             number_type=NumberType.fraction,
@@ -1089,7 +1102,7 @@ class Ms3Loader(ScoreLoader):
                 }
             )
 
-        annotations_data = getattr(AnnotationEventData, "from_" + "dicts")(
+        annotations_data = AnnotationEventData.from_dicts(
             annotation_rows,
             unit=TimeUnit.quarters,
             number_type=NumberType.fraction,
@@ -1200,7 +1213,7 @@ class Ms3Loader(ScoreLoader):
                 }
             )
 
-        controls_data = getattr(ControlEventData, "from_" + "dicts")(
+        controls_data = ControlEventData.from_dicts(
             control_rows,
             unit=TimeUnit.quarters,
             number_type=NumberType.fraction,

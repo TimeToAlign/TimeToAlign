@@ -32,6 +32,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterator, Literal, TypeVar
 
+from timetoalign.loader._optional import optional_module
 from timetoalign.loader.base import Loader
 
 if TYPE_CHECKING:
@@ -71,26 +72,6 @@ def _require_rate_and_channels(sample_rate: int, channels: int) -> None:
         raise _CannotRead(f"the file states sample rate {sample_rate}")
     if channels <= 0:
         raise _CannotRead(f"the file states {channels} channels")
-
-
-def _get_soundfile():
-    """Lazy import of soundfile with helpful error message."""
-    try:
-        import soundfile
-
-        return soundfile
-    except ImportError:
-        return None
-
-
-def _get_mutagen():
-    """Lazy import of mutagen for MP3/M4A support."""
-    try:
-        import mutagen
-
-        return mutagen
-    except ImportError:
-        return None
 
 
 def _get_wave():
@@ -346,7 +327,7 @@ class AudioLoader(Loader[AudioInfo]):
         Raises:
             _CannotRead: If soundfile is not installed or cannot read the file.
         """
-        sf = _get_soundfile()
+        sf = optional_module("soundfile")
         if sf is None:
             raise _NotInstalled("not installed")
         try:
@@ -384,7 +365,7 @@ class AudioLoader(Loader[AudioInfo]):
                 states no sample rate or duration for it, or states a sample
                 rate or channel count that is not positive.
         """
-        mutagen = _get_mutagen()
+        mutagen = optional_module("mutagen")
         if mutagen is None:
             raise _NotInstalled("not installed")
         try:

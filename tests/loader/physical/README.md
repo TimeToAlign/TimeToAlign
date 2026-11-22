@@ -85,7 +85,7 @@ test on such a count can tell the two apart. What must hold:
 - a 15-sample WAV at 44100 Hz (written by the test file's own
   `create_wav_file`) loads as exactly 15 samples with `backend == "soundfile"`,
   and as exactly 15 with `backend == "wave"` when soundfile is reported as not
-  installed (the module's `_get_soundfile` patched to return `None`);
+  installed (`sys.modules["soundfile"]` set to `None`, so importing it fails);
 - three counts that the float round trip truncates load exactly through the
   default chain: **15**, the smallest affected count (`15 / 44100 * 44100` is
   `14.999999999999998`); **44109**, the first affected count past one second

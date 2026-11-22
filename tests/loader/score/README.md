@@ -10,7 +10,7 @@ loaded by `Ms3Loader` is authoritative whenever loaders are compared.
 | `conftest.py` | Seven specimen definitions, source lookup, size guards, and `.flow.csv` parsing. |
 | `test_score_parsing_matrix.py` | CSV modes, folded and unfolded counts, loader/format combinations, exact flow-control profiles, target-flow reproduction, cross-loader counts, and pinned parser differences. |
 | `test_loaders.py` | MS3 coordinate and duration semantics, pitch schema, Partitura measure/MIDI regressions, shared `mc_onset`, anacrusis offsets, and parquet round trips. |
-| `test_cross_validation.py` | Exact Chopin note-count and MIDI-pitch agreement across MS3, Partitura, and Music21. |
+| `test_cross_validation.py` | Exact Chopin note-count, MIDI-pitch and pitch-name agreement across MS3, Partitura, and Music21; measure onsets only where the source states them (see "Cross-loader parity" below). |
 | `test_measuremap_loader.py` | MeasureMap expansion, validation, traversal, schema, and comparison with MS3. |
 | `test_flow_csv_validation.py` | Right-open ranges, exact atomic boundaries, live Partitura boundaries, and CSV serialization. |
 | `test_partitura_exactness.py` | Exact Partitura coordinate pairs, instant nulls, flattened timelines, and agreement with Partitura's float map. |
@@ -151,6 +151,30 @@ different on `flow_only`: it completes repeat regions by inferring boundaries.
   in `_handle_metersig`, because staff 3 states its meter only as `meter.sym="cut"`; on
   `c05n05_musete` and `c11n08_Rondeau` it raises `TypeError` in `_find_dir_positions`, because a
   `<dir>` with a `@type` is placed by `@startid` and states no `@tstamp`.
+
+## Cross-loader parity
+
+`test_cross_validation.py` loads Chopin Op. 10 No. 3 three times: the ms3 notes TSV and the
+MusicXML through Partitura and through Music21. Each loader parses with a different library, so
+an agreement is evidence that all three read the score, and a disagreement on a column they all
+write is a defect of one of them.
+
+- **Note count and MIDI pitch.** 498 notes each; the MIDI pitches agree exactly.
+- **Pitch names.** The name a loader gives a note is its spelling, so the three must give every
+  note the same name, written with `♯`/`♭`. ms3 writes ASCII (`G#4`), so this holds only when
+  `Ms3Loader` respells at the loader. The rows of the three loaders are not in one order (the
+  sort is by MIDI pitch, and ties keep whatever order each parser produced), so the comparison
+  is of the multisets of `(MIDI pitch, name)` pairs, which must be equal; that the pairs are
+  equal and not just the names also proves that each loader attaches its name to the right
+  pitch. On this score 217 of the ms3 names carry a sharp, two of them `B♯4`, and no name holds
+  `#` or `b`.
+- **Measure onsets are stated, never copied.** `mn_onset` is a note's position in its notated
+  measure, `mc_onset` its position in the measure count; they differ wherever a notated measure
+  is split, for instance at an anacrusis. The TSV states both (its first note: `mc_onset` 0,
+  `mn_onset` 3/8), so `Ms3Loader` keeps them. MusicXML states neither as such and Partitura and
+  Music21 derive only `mc_onset`, so their `mn_onset` is null on every note, control and
+  annotation row: a copy of `mc_onset` there would claim a fact the source does not state, and
+  the TSV shows that it would be wrong.
 
 ## Loader-specific assertions
 

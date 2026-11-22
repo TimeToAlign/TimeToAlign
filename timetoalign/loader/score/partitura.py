@@ -603,7 +603,7 @@ class PartituraLoader(ScoreLoader):
                         "mc": mc,
                         "mn": mn,
                         "mc_onset": _coordinate_struct(mc_onset),
-                        "mn_onset": _coordinate_struct(mc_onset),
+                        "mn_onset": None,
                         "timesig": None,
                         "duration": None,
                         "nominal_duration": None,
@@ -612,7 +612,6 @@ class PartituraLoader(ScoreLoader):
                         "midi": midi,
                         "tpc": tpc,
                         "octave": octave,
-                        "velocity": 64,
                         "tied": None,
                         "gracenote": (
                             "grace" if isinstance(obj, pts.GraceNote) else None
@@ -681,7 +680,7 @@ class PartituraLoader(ScoreLoader):
         self._anacrusis_offset = offset
 
         # Build data
-        notes_data = getattr(NoteEventData, "from_" + "dicts")(
+        notes_data = NoteEventData.from_dicts(
             note_rows,
             unit=TimeUnit.quarters,
             number_type=NumberType.fraction,
@@ -699,7 +698,7 @@ class PartituraLoader(ScoreLoader):
         )
 
         controls_data = (
-            getattr(ControlEventData, "from_" + "dicts")(
+            ControlEventData.from_dicts(
                 control_rows,
                 unit=TimeUnit.quarters,
                 number_type=NumberType.fraction,
@@ -709,7 +708,7 @@ class PartituraLoader(ScoreLoader):
         )
 
         annotations_data = (
-            getattr(AnnotationEventData, "from_" + "dicts")(
+            AnnotationEventData.from_dicts(
                 annotation_rows,
                 unit=TimeUnit.quarters,
                 number_type=NumberType.fraction,

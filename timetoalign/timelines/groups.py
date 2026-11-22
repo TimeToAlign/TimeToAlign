@@ -123,11 +123,11 @@ def _held_ids(timelines: Iterable["Timeline"]) -> dict[str, str]:
     elements — because that is what a file holding the timeline writes.
     """
     held: dict[str, str] = {}
-    roots: list[Timeline] = []
+    seen: set[int] = set()
     for timeline in timelines:
         root = _root(timeline)
-        if not any(seen is root for seen in roots):
-            roots.append(root)
+        if id(root) not in seen:
+            seen.add(id(root))
             held.update(root._tree_ids())
     return held
 
@@ -234,12 +234,11 @@ class _IdScope:
 
     def _member_roots(self) -> list["Timeline"]:
         """Return the root of every member's tree, once each, in member order."""
-        roots: list[Timeline] = []
+        roots: dict[int, Timeline] = {}
         for member in self._scope_members():
             root = _root(member)
-            if not any(seen is root for seen in roots):
-                roots.append(root)
-        return roots
+            roots.setdefault(id(root), root)
+        return list(roots.values())
 
     def _rename_member_references(self, old_id: str, new_id: str) -> None:
         """Make the statements of the members' trees and of the scope's own

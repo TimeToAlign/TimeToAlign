@@ -47,7 +47,9 @@ from timetoalign.timelines import (
     Timeline,
     TimelineGroup,
 )
+from timetoalign.timelines import groups as groups_module
 from timetoalign.timelines.flowcontrol import Break, Jump, Marker
+from timetoalign.timelines.manifest import _manifest_ids_of
 from timetoalign.timelines.regions import Region
 
 SEGNO = FlowControlElement.segno
@@ -1238,6 +1240,94 @@ class TestLoaderParity:
             assert isinstance(element_id, str) and element_id
             assert not any(ord(character) < 0x20 for character in element_id)
             assert not element_id.startswith("tl:")
+
+
+# endregion
+
+
+# region Ids read once per manifest
+
+
+def _flat_bundle(roots: int) -> AlignmentBundle:
+    bundle = AlignmentBundle()
+    for index in range(roots):
+        timeline = ContinuousLogicalTimeline(length=F(32), uid=f"t{index}")
+        timeline.add_conversion_map(
+            LinearMap(scalar=2, source_unit="quarters", target_unit="seconds")
+        )
+        timeline.create_region(0, 4, name="r")
+        bundle.add_timeline(timeline)
+    return bundle
+
+
+@pytest.fixture
+def id_passes(monkeypatch: pytest.MonkeyPatch) -> list[int]:
+    """Record each pass over the trees a group or bundle holds."""
+    passes: list[int] = []
+    held_ids = groups_module._held_ids
+
+    def counting(timelines: Any) -> dict[str, str]:
+        passes.append(1)
+        return held_ids(timelines)
+
+    monkeypatch.setattr(groups_module, "_held_ids", counting)
+    return passes
+
+
+class TestIdsReadOncePerManifest:
+    """A manifest's ids are read in one pass, however many roots it has."""
+
+    @pytest.mark.parametrize("roots", [3, 12])
+    def test_writing_reads_the_ids_once(self, id_passes: list[int], roots: int) -> None:
+        bundle = _flat_bundle(roots)
+        id_passes.clear()
+        bundle.to_dict()
+        assert len(id_passes) == 1
+
+    @pytest.mark.parametrize("roots", [3, 12])
+    def test_reading_admits_no_root_again(
+        self, id_passes: list[int], roots: int
+    ) -> None:
+        data = _flat_bundle(roots).to_dict()
+        id_passes.clear()
+        bundle = AlignmentBundle.from_dict(data)
+        assert len(id_passes) == 0
+        assert set(bundle.timelines) == {f"t{index}" for index in range(roots)}
+        assert bundle.to_dict() == data
+
+    def test_ids_read_together_are_the_ids_read_root_by_root(self) -> None:
+        a = ContinuousLogicalTimeline(length=F(8), uid="a")
+        a.create_region(0, 1, id="ra")
+        b = ContinuousLogicalTimeline(length=F(8), uid="b")
+        b.add_conversion_map(LinearMap(scalar=2))
+        c = ContinuousLogicalTimeline(length=F(8), uid="c")
+        d = ContinuousLogicalTimeline(length=F(8), uid="d")
+        first = AlignmentBundle(id="first")
+        first.add_group(TimelineGroup(id="g", timelines=[a, b]))
+        first.add_timeline(c)
+        second = AlignmentBundle(id="second")
+        second.add_timeline(c)
+        second.add_timeline(d)
+        roots = [a, b, c]
+
+        one_by_one: dict[str, str] = {}
+        for root in roots:
+            for element_id, holder in root._manifest_ids().items():
+                one_by_one.setdefault(element_id, holder)
+        together = _manifest_ids_of(roots)
+
+        assert together == one_by_one
+        assert together == {
+            "a": "timeline 'a'",
+            "ra": "region 'ra' of timeline 'a'",
+            "b": "timeline 'b'",
+            "lmap_1": "conversion map 'lmap_1' of timeline 'b'",
+            "c": "timeline 'c'",
+            "d": "timeline 'd'",
+            "g": "group 'g'",
+            "first": "bundle 'first'",
+            "second": "bundle 'second'",
+        }
 
 
 # endregion

@@ -1125,6 +1125,22 @@ display. The tests prove four properties, each against literal expected ids.
   at quarter 12 (its Fine is a break at the end of its bar, 42, and no jump
   target), and both D.S. al Fine jumps target `jump_to_1`; the da capo and
   repeat jumps of the Rondeau `c11n08_Rondeau` target `None`.
+- **A manifest's ids are read once per write, never once per root**
+  (`TestIdsReadOncePerManifest`). Reading every id a group or bundle holds
+  is one pass over all its trees (`groups._held_ids`); asking it once per
+  root made writing and reading a bundle of N roots cost N passes, each
+  over all N trees. The test counts the passes, so it fails on the
+  quadratic shape whatever the machine's speed: for a flat bundle of 3 and
+  of 12 roots (each with one `LinearMap` and one region), `to_dict` makes
+  exactly one pass, and `AlignmentBundle.from_dict` of that manifest makes
+  none (the reader has found every id of the manifest unique, so no root
+  needs admitting). That the ids read in one pass are the ids read root by
+  root is proved on a manifest where the two could differ: roots of a
+  bundle holding a group with a given id, an ungrouped root, and a root
+  also held by a second bundle with a given id; the ids of all roots read
+  together equal the union of `Timeline._manifest_ids` of each root, id
+  for id and holder description for holder description. The bytes written
+  stay pinned by the round-trip, twin and canonical-order tests, unchanged.
 
 Loader parity (`test_manifest_ids.py::TestLoaderParity`): for one specimen
 each of the ms3 (with and without D.S. jumps), score-MIDI, lab, audio (its

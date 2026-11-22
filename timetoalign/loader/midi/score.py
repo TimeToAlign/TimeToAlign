@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any, ClassVar
 
+import mido
 import pyarrow as pa
 
 from timetoalign.core.backends import suppressed_backend_warnings
 
 with suppressed_backend_warnings():
     import partitura as pt
+    from partitura.io.importmidi import quantize
     from partitura.score import Part, PartGroup, Score
 
 from timetoalign.core import NumberType, TimeUnit
@@ -18,6 +21,50 @@ from timetoalign.core import NumberType, TimeUnit
 from .base import MidiLoader
 from .constants import MidiEventType
 from .events import MidiEventData, ScoreMidiEventData
+
+# Partitura numbers the notes of a score MIDI file ``n0``, ``n1``, ... in the
+# order it pairs them; a note array of several parts prefixes ``P00_``, ...
+_PARTITURA_NOTE_ID = re.compile(r"(?:P\d+_)?n(\d+)")
+
+
+def _partitura_note_velocities(
+    mid: mido.MidiFile, quantization_unit: int | None
+) -> list[tuple[int, int, int, int]]:
+    """Read every note of a MIDI file in Partitura's score numbering.
+
+    ``partitura.load_score_midi`` pairs note-ons with note-offs but keeps no
+    velocity. This pass pairs the same messages the same way (per track,
+    keyed by channel and pitch; a note-on of velocity 0 ends a note; a
+    note-off without a sounding note is ignored) and orders the notes as
+    Partitura numbers them: tracks and channels in ascending order, each
+    channel's notes in the order they end.
+
+    Args:
+        mid: The parsed MIDI file.
+        quantization_unit: The quantization Partitura applies to times.
+
+    Returns:
+        ``(onset, pitch, duration, velocity)`` per note, at index ``i`` for
+        Partitura's note ``n{i}``.
+    """
+    notes: dict[tuple[int, int], list[tuple[int, int, int, int]]] = {}
+    for track_number, track in enumerate(mid.tracks):
+        time = 0
+        sounding: dict[tuple[int, int], tuple[int, int]] = {}
+        for message in track:
+            time += message.time
+            if message.type not in ("note_on", "note_off"):
+                continue
+            at = quantize(time, quantization_unit) if quantization_unit else time
+            key = (message.channel, message.note)
+            if message.type == "note_on" and message.velocity > 0:
+                sounding[key] = (at, message.velocity)
+            elif key in sounding:
+                onset, velocity = sounding.pop(key)
+                notes.setdefault((track_number, message.channel), []).append(
+                    (onset, message.note, at - onset, velocity)
+                )
+    return [note for key in sorted(notes) for note in notes[key]]
 
 
 class ScoreMidiLoader(MidiLoader):
@@ -31,6 +78,9 @@ class ScoreMidiLoader(MidiLoader):
     schema containing ``voice``, ``staff``, and ``part_id``. ``parser="mido"``
     parses only MIDI messages and emits the base :class:`MidiEventData` schema;
     it is appropriate when structural score information is not required.
+    Both parsers write each note's ``velocity`` as its note-on message states
+    it; partitura's score parse keeps none, so the default path reads the
+    velocities from the same file and joins them to partitura's notes.
     """
 
     _event_data_class: ClassVar[type[MidiEventData]] = ScoreMidiEventData
@@ -91,6 +141,37 @@ class ScoreMidiLoader(MidiLoader):
         """Return the ticks per beat (PPQ) of the loaded file."""
         return self._ticks_per_beat
 
+    def _stated_velocity(
+        self, row: Any, stated: list[tuple[int, int, int, int]]
+    ) -> int | None:
+        """Return the velocity the file states for one of Partitura's notes.
+
+        Args:
+            row: A row of Partitura's note array.
+            stated: The file's notes in Partitura's numbering.
+
+        Returns:
+            The note-on velocity, or None where Partitura assigned no note ID
+            (``assign_note_ids=False``), so no note of the file is named.
+
+        Raises:
+            ValueError: If the note Partitura numbers is not the file's note
+                of that number, so the velocity cannot be joined.
+        """
+        if not self._assign_note_ids:
+            return None
+        note_id = str(row["id"])
+        match = _PARTITURA_NOTE_ID.fullmatch(note_id)
+        number = int(match.group(1)) if match else None
+        note = (int(row["onset_div"]), int(row["pitch"]), int(row["duration_div"]))
+        if number is None or number >= len(stated) or stated[number][:3] != note:
+            raise ValueError(
+                f"Partitura's note {note_id!r} (onset {note[0]}, pitch {note[1]}, "
+                f"duration {note[2]}) is not the file's note of that number, so "
+                f"its velocity cannot be read; parser='mido' reads every velocity."
+            )
+        return stated[number][3]
+
     def _load_source(
         self, source: Path
     ) -> tuple[dict[str, Any], dict[str, pa.ChunkedArray]]:
@@ -111,11 +192,13 @@ class ScoreMidiLoader(MidiLoader):
                 on0_means_off=True,
             )
 
-        # Load score using partitura
+        # Load score using partitura, from the file parsed once: the same
+        # messages give the velocities partitura's score parse leaves out.
         # Note: partitura can return Score, Part, PartGroup, or list
+        mid = mido.MidiFile(source)
         with suppressed_backend_warnings():
             score_data = pt.load_score_midi(
-                source,
+                mid,
                 part_voice_assign_mode=self._part_voice_assign_mode,
                 quantization_unit=self._quantization_unit,
                 estimate_voice_info=self._estimate_voice_info,
@@ -168,6 +251,8 @@ class ScoreMidiLoader(MidiLoader):
             include_divs_per_quarter=True,  # To get PPQ info
         )
 
+        stated = _partitura_note_velocities(mid, self._quantization_unit)
+
         # Extract events
         events = []
 
@@ -187,9 +272,7 @@ class ScoreMidiLoader(MidiLoader):
                 "end": int(row["onset_div"] + row["duration_div"]),
                 "duration": int(row["duration_div"]),
                 "pitch": int(row["pitch"]),
-                # Partitura's score parse carries no velocity, so none is written;
-                # parser="mido" reads the file's own values.
-                "velocity": None,
+                "velocity": self._stated_velocity(row, stated),
                 "voice": int(row["voice"]) if "voice" in row.dtype.names else None,
                 "staff": int(row["staff"]) if "staff" in row.dtype.names else None,
                 # Part ID is tricky in unified array, but partitura usually encodes it in ID

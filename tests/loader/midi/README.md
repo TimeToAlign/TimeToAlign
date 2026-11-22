@@ -61,12 +61,36 @@ The tests also pin the mido tick resolution and exact narrow ``MidiEventData`` c
 explicitly excluding voice, staff, and part identifiers. Structural parser options are rejected
 for this path.
 
+## Score velocities
+
+A MIDI note states its velocity in its note-on message, and both score parsers write that value
+into `velocity`; no velocity is invented, and none is left out where the file states one.
+Partitura's score parse pairs note-ons with note-offs but drops the velocity, so the default path
+reads it from the same file in the same pairing and joins it to Partitura's notes by note number
+(Partitura numbers its notes `n0`, `n1`, … in its own pairing order).
+
+The expected values come from the bytes, never from the loader: the test reads each file with
+`mido`, pairs every note-on (velocity above 0) with the next note-off or zero-velocity note-on of
+the same track, channel and pitch, and takes `(start tick, pitch, duration in ticks, velocity)`
+of every note. Each parser's notes, read as the same tuple, must equal that multiset exactly, so
+a velocity joined to the wrong note fails as surely as a missing one. The velocities themselves
+are also pinned as written in the files:
+
+| File | Notes | Velocities |
+|---|---|---|
+| `beethoven_op18.mid` | 3,751 | 100 on every note |
+| `beethoven_mtd.mid` | 16 | 80 on every note |
+| `rachmaninoff_piano.mid` | 111 | 112 on 98 notes, 127 on 13 |
+
+`rachmaninoff_piano.mid` is the one that tells a correct join from a wrong one: its two values are
+spread over notes of different pitches and positions. The Beethoven quartet is checked on both
+parsers (`parser="mido"` reads the event stream directly); the two small files on the default
+parser.
+
 ## Score loader and stores
 
 The Beethoven score test pins 3,751 events, the tick resolution 480 the file header states, Partitura metadata with four
-parts, and populated pitch data. Partitura's score parse carries no velocity, so every note's
-`velocity` is null; `parser="mido"` reads the file's own values (this file states 100 on every
-note). An empty MIDI file must raise `EOFError`. `ScoreMidiEventData`
+parts, and populated pitch data. An empty MIDI file must raise `EOFError`. `ScoreMidiEventData`
 must contain the three score-only fields, while both event-data classes retain their declared
 nullable fields and can be constructed from dictionaries.
 

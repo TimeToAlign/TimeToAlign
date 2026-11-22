@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import Counter
 from pathlib import Path
 
+import mido
 import pytest
 
 from timetoalign.loader.midi import (
@@ -142,6 +143,86 @@ PARTITURA_BEETHOVEN_SORTED_PITCH_MULTISETS = (
 )
 
 
+def _notes_in_the_file(path: Path) -> Counter:
+    """Every note of a MIDI file as the bytes state it, read with mido alone.
+
+    A note-on of velocity above 0 starts a note of its track, channel and
+    pitch; the next note-off or zero-velocity note-on of the same key ends it.
+
+    Returns:
+        The multiset of ``(start tick, pitch, duration in ticks, velocity)``.
+    """
+    notes: Counter = Counter()
+    for track in mido.MidiFile(path).tracks:
+        tick = 0
+        sounding: dict[tuple[int, int], tuple[int, int]] = {}
+        for message in track:
+            tick += message.time
+            if message.type not in ("note_on", "note_off"):
+                continue
+            key = (message.channel, message.note)
+            if message.type == "note_on" and message.velocity > 0:
+                sounding[key] = (tick, message.velocity)
+            elif key in sounding:
+                start, velocity = sounding.pop(key)
+                notes[(start, message.note, tick - start, velocity)] += 1
+    return notes
+
+
+def _notes_loaded(loader: ScoreMidiLoader) -> Counter:
+    """The loader's notes as ``(start, pitch, duration, velocity)``, ticks exact."""
+    rows = loader.events.table.to_pylist()
+    assert {row["event_type"] for row in rows} == {MidiEventType.NOTE}
+    for row in rows:
+        assert row["start"]["denominator"] == 1
+        assert row["duration"]["denominator"] == 1
+    return Counter(
+        (
+            row["start"]["numerator"],
+            row["pitch"],
+            row["duration"]["numerator"],
+            row["velocity"],
+        )
+        for row in rows
+    )
+
+
+class TestScoreMidiVelocities:
+    """Both parsers write the velocity each note-on states (see README)."""
+
+    @pytest.mark.parametrize(
+        ("file_name", "velocities"),
+        [
+            ("beethoven_op18.mid", {100: 3751}),
+            ("beethoven_mtd.mid", {80: 16}),
+            ("rachmaninoff_piano.mid", {112: 98, 127: 13}),
+        ],
+    )
+    def test_the_default_parser_reads_the_stated_velocities(
+        self, score_midi_dir: Path, file_name: str, velocities: dict[int, int]
+    ) -> None:
+        path = score_midi_dir / file_name
+        loader = ScoreMidiLoader().load(path)
+
+        assert Counter(loader.events.table.column("velocity").to_pylist()) == velocities
+        stated = _notes_in_the_file(path)
+        stated_velocities: Counter = Counter()
+        for (_, _, _, velocity), count in stated.items():
+            stated_velocities[velocity] += count
+        assert stated_velocities == velocities
+        assert _notes_loaded(loader) == stated
+
+    def test_the_mido_parser_reads_the_stated_velocities(
+        self, beethoven_score_path: Path
+    ) -> None:
+        loader = ScoreMidiLoader(parser="mido").load(beethoven_score_path)
+
+        assert Counter(loader.events.table.column("velocity").to_pylist()) == {
+            100: 3751
+        }
+        assert _notes_loaded(loader) == _notes_in_the_file(beethoven_score_path)
+
+
 class TestScoreMidiLoader:
     """Tests for loading score MIDI files."""
 
@@ -162,8 +243,8 @@ class TestScoreMidiLoader:
         # Check events have score info
         df = loader.events.to_dataframe()
         assert not df["pitch"].isnull().all()
-        # A score states no velocity.
-        assert loader.events.table.column("velocity").null_count == 3751
+        # The file states velocity 100 on every note.
+        assert loader.events.table.column("velocity").to_pylist() == [100] * 3751
 
     def test_load_empty_raises(self, tmp_path: Path) -> None:
         """Loading invalid/empty file raises error."""

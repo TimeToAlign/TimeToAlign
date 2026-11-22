@@ -53,7 +53,7 @@ from timetoalign.core.enums import FlowControlElement, FlowMode
 from timetoalign.timelines.flow import FlowMap, compute_qb_sections
 from timetoalign.timelines.flowcontrol import Break, Jump
 
-DATA_DIR = Path("~/git/beethoven_eroica_variations_op35/measures").expanduser()
+DATA_DIR = Path("~/git/beethoven_eroica_variations_op35/full/measures").expanduser()
 COUNT_THROUGH_TSV = (
     DATA_DIR
     / "15-variations-and-fugue-in-e-flat-major-op-35-eroica-ludwig-van-beethoven.measures.tsv"

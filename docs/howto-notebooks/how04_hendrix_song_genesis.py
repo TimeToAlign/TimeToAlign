@@ -279,8 +279,8 @@ conceptual_claims[0] if conceptual_claims else "No conceptual claims"
 # conceptual link.
 
 # %%
-# Display an example NOMATCH claim (names the present section, points at the
-# version that lacks it)
+# Display an example NOMATCH claim (from the version that has the section to
+# the version that lacks it)
 nomatch_claims[0] if nomatch_claims else "No NOMATCH claims"
 
 # %%

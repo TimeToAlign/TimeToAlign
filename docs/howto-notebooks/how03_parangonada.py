@@ -218,9 +218,8 @@ szegedi_synchronous[0]
 
 # %% [markdown]
 # A {{< glossary NOMATCH >}} claim carries no anchor — there is no second
-# coordinate to record — but it keeps the unmatched side's coordinate so the
-# dangling note stays legible. Its text repr prints that coordinate inline
-# (`...@<coord>`) with a `[NOMATCH]` flag:
+# coordinate to record; the unmatched note's own event holds its position.
+# Its text repr names the two timelines and flags the claim `[NOMATCH]`:
 
 # %%
 szegedi_nomatch = [

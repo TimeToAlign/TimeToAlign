@@ -2129,9 +2129,42 @@ exactly. On an `int` ticks timeline with Notes `x` on `[10, 11)` and `y` on
 `[11, 12)`: `min_coord=10.5` keeps `y` only, `max_coord=10.5` keeps `x`
 only, `get_events_at(11.5)` finds `y`, `min_coord=Fraction(21, 2)` keeps `y`
 and `get_events_at(Fraction(23, 2))` finds `y` (exact, not rounded to 12,
-where `y` would not hold). A child is reached with the position as written:
-a `fraction` parent holding a child at offset `1/10` with a Beat at its 0
-finds it at `get_events_at(0.1)`, under the child's ID.
+where `y` would not hold).
+
+**A float key meets a child's exact boundaries on the axis it was written
+on** (`TestFloatKeysAcrossChildren`). A float position is never carried
+down by float subtraction: `0.3 - 0.1` is `0.19999999999999998`, which lies
+inside a child of length `1/5` that ends at `3/10`, and `0.4 - 0.3 - 0.1`
+is not 0, so a lane subtracting doubles counts one boundary in two siblings
+and misses an instant at a grandchild's start. `get_events_at` carries the
+exact offsets of the path instead and compares the key with the double of
+each exact position on the queried axis: a child holds the key where
+`float(o) <= key < float(o + extent)` (`o` the child's exact position on the
+queried axis), its end too where no sibling starts there (the rule of
+`_holds_position`), and a row is compared at `float(o + start)`, the very
+double `get_events(min_coord=, max_coord=)` compares, since it shifts each
+child row exactly onto the queried axis first. So both readers agree on
+every boundary: a position is a child's boundary in one reader exactly
+when it is in the other. On a `fraction` quarters parent of length 1, with
+Notes as named:
+
+- `A` at `1/10` (length `1/5`, Note `a_last` on its `[1/10, 1/5)`, i.e.
+  `[1/5, 3/10)` on the parent) beside `B` at `3/10` (length `7/10`, Note
+  `b_first` on its `[0, 1/10)`), `B` holding `B1` at `1/10` (length
+  `1/10`, a Beat `b1_start` at its 0, i.e. `2/5` on the parent):
+  `get_events_at(0.3)` and `get_events_at(Fraction(3, 10))` find
+  `{B: [b_first]}` (the boundary is `B`'s alone, `A` does not hold it);
+  `get_events_at(0.4)` and `Fraction(2, 5)` find `{B1: [b1_start]}`
+  (`b_first` ends there); `get_events(min_coord=0.3)` holds `b_first` and
+  `b1_start` and `get_events(max_coord=0.3)` holds `a_last` alone, the
+  same side of `0.3` as `get_events_at` places them.
+- `C` at 0 (length `1/10`, the parent's only child, Note `c_note` on
+  `[0, 1/10)` and a Beat `c_end` at `1/10`, its end): `get_events_at(0.1)`
+  and `get_events_at(Fraction(1, 10))` find `{C: [c_end]}`, since nothing
+  follows `C` and it holds its end; `get_events(min_coord=0.1)` holds
+  `c_end` alone and `get_events(max_coord=0.1)` `c_note` alone.
+- A child at offset `1/10` with a Beat at its 0 is found at
+  `get_events_at(0.1)`, under the child's ID.
 
 **Infinite and NaN positions** (`TestNonFinitePositions`). An infinite
 float is an ordinary double compared as a key: on a seconds (`float`), a

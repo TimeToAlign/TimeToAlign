@@ -431,6 +431,109 @@ class TestQueriesOnExactAxes:
     def test_positions_on_an_int_axis_are_not_rounded(self, at: Any) -> None:
         assert _found(self._ticks().get_events_at(at)) == {"ticks": ["y"]}
 
+
+class TestFloatKeysAcrossChildren:
+    """A float key meets each child's exact boundaries on the queried axis."""
+
+    @staticmethod
+    def _adjoining() -> Timeline:
+        """``A`` [1/10, 3/10) beside ``B`` [3/10, 1), ``B1`` [2/5, 1/2) in ``B``."""
+        parent = _fraction_timeline("P", Fraction(1))
+        a = _fraction_timeline("A", Fraction(1, 5))
+        a.add_events(
+            [
+                {
+                    "id": "a_last",
+                    "event_type": "Note",
+                    "start": Fraction(1, 10),
+                    "end": Fraction(1, 5),
+                }
+            ]
+        )
+        b = _fraction_timeline("B", Fraction(7, 10))
+        b.add_events(
+            [
+                {
+                    "id": "b_first",
+                    "event_type": "Note",
+                    "start": 0,
+                    "end": Fraction(1, 10),
+                }
+            ]
+        )
+        b1 = _fraction_timeline("B1", Fraction(1, 10))
+        b1.add_events([{"id": "b1_start", "event_type": "Beat", "instant": 0}])
+        b.add_child(b1, offset=Fraction(1, 10))
+        parent.add_child(a, offset=Fraction(1, 10))
+        parent.add_child(b, offset=Fraction(3, 10))
+        return parent
+
+    @staticmethod
+    def _last_child() -> Timeline:
+        """``C`` [0, 1/10), the only child, with a Beat at its end."""
+        parent = _fraction_timeline("P", Fraction(1))
+        c = _fraction_timeline("C", Fraction(1, 10))
+        c.add_events(
+            [
+                {
+                    "id": "c_note",
+                    "event_type": "Note",
+                    "start": 0,
+                    "end": Fraction(1, 10),
+                },
+                {"id": "c_end", "event_type": "Beat", "instant": Fraction(1, 10)},
+            ]
+        )
+        parent.add_child(c, offset=0)
+        return parent
+
+    @pytest.mark.parametrize(
+        ("at", "found"),
+        [
+            (0.3, {"B": ["b_first"]}),
+            (Fraction(3, 10), {"B": ["b_first"]}),
+            (0.4, {"B1": ["b1_start"]}),
+            (Fraction(2, 5), {"B1": ["b1_start"]}),
+        ],
+        ids=[
+            "boundary-float",
+            "boundary-fraction",
+            "grandchild-float",
+            "grandchild-fraction",
+        ],
+    )
+    def test_a_boundary_of_two_siblings_is_counted_once(
+        self, at: Any, found: dict[str, list[str]]
+    ) -> None:
+        assert _found(self._adjoining().get_events_at(at)) == found
+
+    @pytest.mark.parametrize(
+        ("query", "ids"),
+        [
+            ({"min_coord": 0.3}, ["b_first", "b1_start"]),
+            ({"max_coord": 0.3}, ["a_last"]),
+        ],
+        ids=["min", "max"],
+    )
+    def test_bounds_place_the_boundary_as_the_position_does(
+        self, query: dict[str, Any], ids: list[str]
+    ) -> None:
+        assert _ids(self._adjoining().get_events(**query)) == ids
+
+    @pytest.mark.parametrize("at", [0.1, Fraction(1, 10)], ids=["float", "fraction"])
+    def test_the_end_of_a_last_child_is_held(self, at: Any) -> None:
+        assert _found(self._last_child().get_events_at(at)) == {"C": ["c_end"]}
+
+    @pytest.mark.parametrize(
+        ("query", "ids"),
+        [({"min_coord": 0.1}, ["c_end"]), ({"max_coord": 0.1}, ["c_note"])],
+        ids=["min", "max"],
+    )
+    def test_bounds_at_the_end_of_a_last_child(
+        self, query: dict[str, Any], ids: list[str]
+    ) -> None:
+        assert _ids(self._last_child().get_events(**query)) == ids
+
     def test_a_child_is_reached_with_the_position_as_written(self) -> None:
         parent = _fraction_timeline("parent", Fraction(1))
         child = _fraction_timeline("child", Fraction(1, 2))

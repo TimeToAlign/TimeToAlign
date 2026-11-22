@@ -39,6 +39,8 @@ from timetoalign.storage.events import (
     refuse_shared_projection_ids,
 )
 
+from .children import placed_on
+
 SEGMENT_EVENT_TYPE = "Segment"
 
 #: The keys a Projection row may hold a value under: its ID, its type, its
@@ -989,7 +991,12 @@ class EventsMixin:
         axis ``get_events_at(11.5)`` finds an event spanning ``[11, 12)``.
         An exact *coord* (an ``int``, a ``Fraction``) is compared exactly on
         an ``int`` or ``fraction`` axis, never rounded. A float axis
-        compares floats whatever the query.
+        compares floats whatever the query. Children are decided on this
+        axis too: their positions and boundaries are placed here by exact
+        offsets and compared with the query, so a position lies on the same
+        side of a child's boundary as in ``get_events(min_coord=,
+        max_coord=)``, and a boundary two adjoining children share belongs
+        to the one starting there.
 
         Args:
             coord: Coordinate to query (in this timeline's unit).
@@ -1013,54 +1020,66 @@ class EventsMixin:
         """
         # On this timeline's axis, as written: a float compares as a key.
         position = self._query_position(coord)
+        if self._number_type is NumberType.float:
+            position = float(position)
         result: dict[str, list[dict[str, Any]]] = {}
+        self._collect_events_at(position, (), tolerance, include_children, result)
+        return result
 
-        # Get events from this timeline
-        local_events = self._get_events_at_local(position, tolerance)
+    def _collect_events_at(
+        self,
+        key: int | float | Fraction,
+        offsets: tuple[CoordinateValue, ...],
+        tolerance: float,
+        include_children: bool,
+        result: dict[str, list[dict[str, Any]]],
+    ) -> None:
+        """Add the events active at *key* here, and in each child holding it.
+
+        *key* stays on the axis it was queried on; *offsets* lead from there
+        down to this timeline, outermost first. A child is entered where it
+        holds the key (``_holds_position``, its exact boundaries placed on
+        the queried axis), never by subtracting a float from them.
+        """
+        local_events = self._get_events_at_local(key, offsets, tolerance)
         if local_events:
             result[self._id] = local_events
-
-        # Each child holding the position, by its offset (the rule its
-        # stamps follow), the position kept as written.
-        if include_children:
-            for child_id, child in self._children.items():
-                child_position = self._get_child_coordinate(child_id, position)
-                if child_position is None:
-                    continue
-                result.update(
-                    child.get_events_at(
-                        child_position, tolerance=tolerance, include_children=True
-                    )
-                )
-
-        return result
+        if not include_children:
+            return
+        for child_id, child in self._children.items():
+            path = (*offsets, self._child_offsets[child_id].value)
+            if child._holds_position(key, offsets=path):
+                child._collect_events_at(key, path, tolerance, True, result)
 
     def _get_events_at_local(
         self,
-        coord: int | float | Fraction,
+        key: int | float | Fraction,
+        offsets: tuple[CoordinateValue, ...],
         tolerance: float,
     ) -> list[dict[str, Any]]:
-        """Get events at a coordinate in this timeline (local, no children).
+        """This timeline's own events active at *key*, rows as held (local).
 
-        Positions are compared exactly on an ``int`` or ``fraction`` axis
-        when *coord* is exact; as floats on a ``float`` axis, and wherever
-        *coord* is a float (a float compares as a key).
+        Each position is placed on the queried axis by the exact offsets of
+        the path (*offsets*, outermost first), as ``get_events`` shifts a
+        child's rows, and compared there: exactly where *key* is exact and
+        the axis ``int`` or ``fraction``, as doubles where *key* is a float
+        (a float compares as a key) or the axis is ``float``.
         """
-        as_floats = isinstance(coord, float) or self._number_type is NumberType.float
+        as_float = isinstance(key, float) or self._number_type is NumberType.float
+        if as_float:
+            key = float(key)
 
-        def as_key(value: int | float | Fraction) -> int | float | Fraction:
-            return float(value) if as_floats else value
+        def placed(value: int | float | Fraction) -> int | float | Fraction:
+            return placed_on(value, offsets, as_float=as_float)
 
-        coord = as_key(coord)
         result = []
-
         for event in _decoded_rows(self.get_events(include_children=False)):
             temporal_type = event.get("temporal_type")
 
             if temporal_type == "instant":
                 instant_val = self._extract_coord_value(event, "instant", "start")
                 if instant_val is not None:
-                    if abs(as_key(instant_val) - coord) <= tolerance:
+                    if abs(placed(instant_val) - key) <= tolerance:
                         result.append(dict(event))
 
             elif temporal_type == "interval":
@@ -1069,7 +1088,7 @@ class EventsMixin:
 
                 if start_val is not None and end_val is not None:
                     # Left-inclusive, right-exclusive: [start, end)
-                    if as_key(start_val) <= coord < as_key(end_val):
+                    if placed(start_val) <= key < placed(end_val):
                         result.append(dict(event))
 
         return result

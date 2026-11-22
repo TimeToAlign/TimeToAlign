@@ -284,6 +284,8 @@ quartodoc:
         - name: AlignmentBundle
           package: timetoalign.alignment
           include_inherited: true
+          exclude:
+            - transfer
         - name: SupportPolicy
           package: timetoalign.core
         - name: AlignmentAnchor

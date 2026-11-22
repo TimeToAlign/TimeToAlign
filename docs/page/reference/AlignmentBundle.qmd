@@ -123,7 +123,6 @@ row by row, provenance included (:class:`MatchClaimField` equality).
 | [summary](#timetoalign.alignment.AlignmentBundle.summary) | Get a summary of the bundle contents. |
 | [to_dict](#timetoalign.alignment.AlignmentBundle.to_dict) | Write the bundle as a TimeToShare manifest. |
 | [to_file](#timetoalign.alignment.AlignmentBundle.to_file) | Write the package: the manifest and, beside it, the bundle's tables. |
-| [transfer](#timetoalign.alignment.AlignmentBundle.transfer) | Transfer a coordinate from one timeline to another. |
 | [transfer_interval](#timetoalign.alignment.AlignmentBundle.transfer_interval) | Transfer an interval from one timeline to another. |
 
 ### add_belief { #timetoalign.alignment.AlignmentBundle.add_belief }
@@ -247,9 +246,9 @@ it is.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                     |
-|--------|----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If the group's given ID is already held in the bundle (a minted one is minted again instead), if a given id of a member's manifest tree is held by another element of the bundle's trees (a minted id held there is minted again instead), by a group or by the bundle, or if a Projection of a member's tree has an ID a Projection of the bundle's trees holds (the message names the ID and both timelines). |
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                |
+|--------|----------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the group's given ID is already held in the bundle (a minted one is minted again instead), or if a given id of a member's manifest tree is held by another element of the bundle's trees (a minted id held there is minted again instead), by a group or by the bundle. |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -523,10 +522,10 @@ bundle, grouped or not, joins a further group through
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-|--------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If the timeline is already in the bundle while no group is requested, or already in the group it would join; if ``grouped_with`` names a timeline of several groups; if a given id of its manifest tree — of any timeline, conversion map, region or flow-control element of it — is held by another element of the bundle's trees (a minted id held there is minted again instead), by a group or by the bundle; if a Projection of its tree has an ID a Projection of the bundle's trees holds, minted or given (a Projection's ID is never minted again; the message names the ID and both timelines). Nothing has changed then. |
-|        | [KeyError](`KeyError`)     | If grouped_with names no timeline of the bundle's trees, naming every timeline the bundle knows.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                       |
+|--------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the timeline is already in the bundle while no group is requested, or already in the group it would join; if ``grouped_with`` names a timeline of several groups; if a given id of its manifest tree — of any timeline, conversion map, region or flow-control element of it — is held by another element of the bundle's trees (a minted id held there is minted again instead), by a group or by the bundle. |
+|        | [KeyError](`KeyError`)     | If grouped_with names no timeline of the bundle's trees, naming every timeline the bundle knows.                                                                                                                                                                                                                                                                                                                  |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -876,9 +875,9 @@ does not hold, and its ``to_dict`` raises.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                                                                                                                                        |
-|--------|----------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If two source bundles share a given group ID, a given timeline ID collision would occur across bundles, two source bundles hold a MatchClaim under one id (the message names the id and both bundles), or a Projection under one ID (the message names the ID and both timelines). |
+| Name   | Type                       | Description                                                                                                                                                                                               |
+|--------|----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If two source bundles share a given group ID, a given timeline ID collision would occur across bundles, or two source bundles hold a MatchClaim under one id (the message names the id and both bundles). |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -2308,9 +2307,11 @@ Write the package: the manifest and, beside it, the bundle's tables.
 
 As :meth:`ManifestFileMixin.to_file
 <timetoalign.timelines.manifest.ManifestFileMixin.to_file>` writes
-a manifest, after the MatchClaim table and the Projections table
-(:meth:`_write_tables`). A manifest never names an event's ID: where
-the bundle writes a table, its Projections lie in
+a manifest, with the MatchClaim table and the Projections table
+(:meth:`_write_tables`) written between a first writing of the
+manifest, which validates and serializes it before any file is
+written, and the writing that names them. A manifest never names an
+event's ID: where the bundle writes a table, its Projections lie in
 ``projections.parquet`` alone and the events of its timelines are
 not written into the manifest, so writing event rows (``events``,
 given or as read) is refused before any file is written.
@@ -2320,56 +2321,6 @@ given or as read) is refused before any file is written.
 | Name   | Type                       | Description                                                                                                                                                                         |
 |--------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 |        | [ValueError](`ValueError`) | If event rows would be written beside a table, or as :meth:`ManifestFileMixin.to_file <timetoalign.timelines.manifest.ManifestFileMixin.to_file>` and :meth:`_write_tables` refuse. |
-
-### transfer { #timetoalign.alignment.AlignmentBundle.transfer }
-
-```python
-alignment.AlignmentBundle.transfer(
-    coord,
-    from_timeline,
-    to_timeline,
-    *,
-    believer=None,
-    beliefs=DEFAULT_BELIEFS,
-)
-```
-
-Transfer a coordinate from one timeline to another.
-
-Automatically determines the conversion path:
-
-1. If both timelines are in the same group: typed group retrieval.
-2. If in different groups with MatchClaims: builds a ``MatchLine``
-   and a cached ``WarpMap`` and calls it to
-   interpolate the coordinate.
-3. If no path exists: returns ``None``.
-
-Low-level coordinate transfer utility. For user-facing coordinate
-queries, use ``get_matchstamp_at()`` which returns a full cross-section
-as a MatchStamp.
-
-#### Parameters {.doc-section .doc-section-parameters}
-
-| Name          | Type                                                                                   | Description                                                                                                               | Default           |
-|---------------|----------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------|-------------------|
-| coord         | [CoordinateSpec](`timetoalign.core.CoordinateSpec`)                                    | The coordinate value to transfer.                                                                                         | _required_        |
-| from_timeline | [str](`str`)                                                                           | ID of the source timeline.                                                                                                | _required_        |
-| to_timeline   | [str](`str`)                                                                           | ID of the target timeline.                                                                                                | _required_        |
-| believer      | [str](`str`) \| None                                                                   | The actor whose beliefs filter the MatchClaims read (the belief filter); ``None`` reads every claim.                      | `None`            |
-| beliefs       | [Collection](`collections.abc.Collection`)\[[BeliefState](`timetoshare.BeliefState`)\] | The states read for the believer (``"true"``, ``"undecided"``, ``"unlikely"``, ``"false"``); default all but ``"false"``. | `DEFAULT_BELIEFS` |
-
-#### Returns {.doc-section .doc-section-returns}
-
-| Name   | Type                     | Description                                            |
-|--------|--------------------------|--------------------------------------------------------|
-|        | [float](`float`) \| None | The transferred coordinate, or None if no path exists. |
-
-#### Raises {.doc-section .doc-section-raises}
-
-| Name   | Type                       | Description                                           |
-|--------|----------------------------|-------------------------------------------------------|
-|        | [KeyError](`KeyError`)     | If either id names no timeline of the bundle's trees. |
-|        | [ValueError](`ValueError`) | If *beliefs* is not a collection of belief states.    |
 
 ### transfer_interval { #timetoalign.alignment.AlignmentBundle.transfer_interval }
 

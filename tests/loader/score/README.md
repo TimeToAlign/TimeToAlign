@@ -715,5 +715,5 @@ older than 4.4 (no exact timemap positions) raises `ImportError` naming the vers
 From the repository root:
 
 ```bash
-/home/laser/miniconda3/envs/timetoalign/bin/python -m pytest --runslow tests/loader/score
+python -m pytest --runslow tests/loader/score
 ```

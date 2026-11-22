@@ -238,3 +238,27 @@ non-empty notebook card. The alignment store's facts are its events, its
 C-Maps, its domains and its table names (`event_count`, `cmap_count`,
 `domains`, `store_names`): it holds no MatchClaims, which live in the
 MatchClaim table, so no match count appears among them.
+
+### `test_timeline_factory_import.py` - `create_timeline()` after `import timetoalign`
+
+**What would prove it:** the storage layer builds timelines through a factory
+that the timeline layer registers when it is imported, and `import timetoalign`
+loads the timeline layer lazily, so the defect shows only in an interpreter
+that has imported nothing else. A test inside the pytest process cannot see
+it: some other test has always imported `timetoalign.timelines` already.
+Each check therefore runs a fresh interpreter (`sys.executable -c`) that does
+`import timetoalign` and nothing more, first asserts that
+`timetoalign.timelines` is NOT yet in `sys.modules` (otherwise the check would
+pass whether or not the fix exists), then calls the entry point and prints
+what it made.
+
+- `EventData.from_dicts` of one `Note` `[0, 1)` quarters, then
+  `create_timeline(uid="notes")`: a `ContinuousLogicalTimeline` with id
+  `notes` holding one event.
+- `SingleStore` of the same data, then `create_timeline(uid="clt_1")`: a
+  `ContinuousLogicalTimeline` with id `clt_1` whose events are
+  `["clt_1:note_1"]` (the store prefixes the event ID with the timeline's).
+
+The child's standard output must be exactly those lines, and its exit code 0;
+before the fix both calls raised `RuntimeError: Timeline creation requires
+timetoalign.timelines`.

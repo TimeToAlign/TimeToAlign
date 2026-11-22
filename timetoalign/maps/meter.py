@@ -272,16 +272,35 @@ class MetricMap(ConversionMap[int]):
         )
 
     def beat_in_measure(self, quarters: float | Fraction) -> Fraction:
-        """Get the beat position within the current measure.
+        """Get the position within its measure, counted in quarter-note beats.
 
-        Beat positions are 1-indexed (beat 1 = downbeat).
-        Returns a Fraction for exact representation.
+        The beat is the distance from the measure's downbeat in quarters, plus
+        one: beat 1 is the downbeat and every quarter note is one beat,
+        whatever the measure's time signature (the three quarters of a 6/8
+        measure are beats 1, 2 and 3, not the two dotted beats it is
+        conducted in). The measure is the last one starting at or before
+        *quarters*; a position before the first measure is counted from the
+        first measure's downbeat (a beat below 1), a position beyond the
+        last measure from the last measure's downbeat. A ``Fraction`` input
+        is used exactly, a ``float`` as its exact binary value.
 
         Args:
             quarters: Position in quarter notes.
 
         Returns:
             Beat position as Fraction (1-indexed, e.g., Fraction(3, 2) for beat 1.5).
+
+        Examples:
+            >>> two_bars_of_six_eight = MetricMap.from_boundaries(
+            ...     boundaries=[
+            ...         (Fraction(0), 1, "1", Fraction(3)),
+            ...         (Fraction(3), 2, "2", Fraction(3)),
+            ...     ]
+            ... )
+            >>> two_bars_of_six_eight.beat_in_measure(Fraction(9, 2))
+            Fraction(5, 2)
+            >>> two_bars_of_six_eight.beat_in_measure(-1)
+            Fraction(0, 1)
         """
         x = float(quarters)
 
@@ -297,8 +316,7 @@ class MetricMap(ConversionMap[int]):
             else Fraction(x) - measure_start
         )
 
-        # Convert to beat (1-indexed)
-        # Assuming quarter = 1 beat for now; could be generalized with beat_unit
+        # One beat per quarter note, counted from 1 at the downbeat.
         return offset + Fraction(1, 1)
 
     def _to_manifest(self, *, minimal: bool, entries: MeasureMapIds) -> dict[str, Any]:

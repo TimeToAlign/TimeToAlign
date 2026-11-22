@@ -571,7 +571,7 @@ class Ms3Loader(ScoreLoader):
             nominal_duration = self._parse_fraction(row.get("nominal_duration"))
             scalar = self._parse_fraction(row.get("scalar"))
 
-            # Pitch - source MIDI number (raw int; NON-DEFAULT — affords an
+            # Pitch - source MIDI pitch (raw int; NON-DEFAULT — affords an
             # EnharmonicPitch view on request, redundant with specific_pitch).
             midi = int(row["midi"]) if pd.notna(row.get("midi")) else None
 

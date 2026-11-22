@@ -149,16 +149,31 @@ class FlowMap:
         """Build a FlowMap from a Flow, interval-like descriptors, or nothing.
 
         Args:
-            source: ``None`` for an empty map, a :class:`Flow` for MC-space
-                sections, or a single/collection of interval-like descriptors
-                for directly-built sections. May mix in
-                :class:`~timetoalign.timelines.flow.sections.Gap` entries to
-                place the spans rather than concatenate them.
+            source: What the sections are built from, one of four kinds:
+
+                - ``None``: an empty map without sections (what
+                  :meth:`inverse` starts from before filling them in).
+                - a :class:`Flow`: one section per playthrough section of
+                  the flow, its source range the measure counts
+                  ``[mc_start, mc_end)`` (integer MC space, not quarters;
+                  :meth:`from_qb_sections` builds the quarter form), the
+                  sections laid end to end on the target axis. Sets
+                  :attr:`flow`.
+                - a mapping ``{target coordinate: span}``: each span (or
+                  collection of spans) placed at its key, as
+                  :meth:`from_dict` does; cannot be combined with *at*.
+                - one interval-like descriptor, or an iterable of them: a
+                  region id (resolved through *resolve*), a ``Region``, a
+                  ``(start, end)`` pair, a ``Timeline`` or an interval
+                  event, one section each, in the descriptors' own
+                  coordinates; the spans follow each other on the target
+                  axis unless :class:`~timetoalign.timelines.flow.sections.Gap`
+                  entries mixed in or *at* place them.
             id: Identifier for this FlowMap. Defaults to the flow's mode value
-                for a Flow source, or ``"default"`` for interval descriptors.
+                for a Flow source, else ``"default"``.
             resolve: Callable mapping a region id to an interval-like object
                 (e.g. a timeline's ``get_region``), used only when *source*
-                carries region-name strings.
+                carries region ids.
             at: Target coordinate for each played span, in the order the spans
                 are given. One entry per span; use ``None`` for a span that
                 should follow its predecessor. Cannot be combined with ``Gap``

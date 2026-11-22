@@ -333,28 +333,15 @@ class MeasureMapLoader(ScoreLoader):
     def compute_default_traversal(self) -> list[int]:
         """Compute the default traversal sequence from the expanded data.
 
-        The algorithm follows the 'next' field, using visit counts to
-        choose which branch to take at repeat points.
-
-        From the design spec:
-        ```python
-        sequence = []
-        current_mc = 1
-        visit_counts = defaultdict(int)
-
-        while current_mc != -1:
-            bar = get_bar_by_mc(mm_data, current_mc)
-            sequence.append(bar["ID"])
-            next_options = bar["next"]
-            visit_counts[current_mc] += 1
-            idx = min(visit_counts[current_mc] - 1, len(next_options) - 1)
-            current_mc = next_options[idx]
-
-        return TraversalMap(sequence=sequence)
-        ```
+        The walk starts at MC 1 and follows the 'next' field, using visit
+        counts to choose which branch to take at repeat points: the n-th
+        visit of a measure takes its n-th ``next`` entry, or its last one
+        once the entries are used up. It stops at ``-1`` (the end of the
+        piece), at a measure without ``next`` entries or not in the data,
+        and after ten times as many steps as there are measures.
 
         Returns:
-            List of MC values in traversal order.
+            List of MC values in traversal order (empty without data).
         """
         from collections import defaultdict
 

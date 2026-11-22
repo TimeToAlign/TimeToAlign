@@ -4,7 +4,7 @@ This module provides classes for computing and representing "flows" — the
 sequence of measure visitations that results from following flow control
 instructions (repeats, voltas, D.S., D.C., etc.).
 
-From the design spec (measure_handling_design.md Part 14):
+The classes involved:
 
     FlowMode: Enum for flow computation modes
     FlowStep: A single step in a Flow sequence
@@ -113,9 +113,18 @@ class FlowControllerBase(ABC):
     def create_flow_map(self, flow: Flow | None = None) -> FlowMap:
         """Create a FlowMap from a computed Flow.
 
-        If this controller has MeasureUnit data (i.e. is a ScoreFlowController),
-        the FlowMap is built in **quarterbeat space** using `compute_qb_sections`.
-        Otherwise falls back to MC-number space (legacy behaviour).
+        The map is built in **quarterbeat space**: `compute_qb_sections`
+        places each section of the flow by the durations of the controller's
+        measure units (``iter_units``). Where that is impossible the map is
+        built in **MC-number space** instead, each section spanning its
+        measure counts ``[mc_start, mc_end)`` on the source axis and the
+        sections laid end to end on the target axis, and nothing tells the
+        caller so: this happens when the controller has no ``iter_units``
+        (``AttributeError``), when the flow has no sections, or when a
+        section starts or ends at a measure count the controller has no unit
+        for (both ``ValueError``). ``ScoreFlowController`` overrides
+        this method and always builds in quarterbeat space, raising instead
+        of falling back.
 
         Args:
             flow: The Flow to create a map from. If None, computes DEFAULT flow.

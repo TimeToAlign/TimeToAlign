@@ -179,8 +179,7 @@ class InstantEventLike(TimedObjectLike, Protocol):
 class IntervalEventLike(TimedObjectLike, Protocol):
     """A timed object spanning an interval [start, end).
 
-    Uses the canonical TTA model names from AGENTS.md Section 1.3:
-    StartInstant -> ``start``, EndInstant -> ``end``.
+    The model's StartInstant is ``start``, its EndInstant ``end``.
     Intervals are left-inclusive, right-exclusive ``[start, end)``.
     """
 
@@ -242,7 +241,7 @@ class EnharmonicPitchLike(GenericPitchLike, Protocol):
     """Enharmonic pitch: MIDI-level representation with octave.
 
     Called "enharmonic" because it **equates** enharmonic equivalents
-    (C\u266f4 and D\u266d4 share MIDI number 61).
+    (C\u266f4 and D\u266d4 share MIDI pitch 61).
 
     The ``MidiPitch`` scalar (alias ``EnharmonicPitch``) satisfies this.
     """

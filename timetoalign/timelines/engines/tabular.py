@@ -336,22 +336,22 @@ class TabularExportMixin:
 
         Examples:
             >>> from timetoalign.timelines import Timeline
-            >>> parent = Timeline(length=20, unit=TimeUnit.seconds, uid="timeline:1")
-            >>> child = Timeline(length=10, unit=TimeUnit.seconds, uid="clt_1")
+            >>> parent = Timeline(length=20, unit=TimeUnit.seconds, uid="cpt_1")
+            >>> child = Timeline(length=10, unit=TimeUnit.seconds, uid="cpt_2")
             >>> parent.add_child(child, offset=5)
             >>> parent.add_events([{"event_type": "Note", "instant": 5.0}])
-            >>> child.add_events(
-            ...     [{"id": "clt_1:note:000001", "event_type": "Note", "start": 0.0, "end": 2.5}]
-            ... )
-            >>> ts = parent.get_timestamp_for("note:000001")
+            ['note_1']
+            >>> child.add_events([{"event_type": "Chord", "start": 0.0, "end": 2.5}])
+            ['chord_1']
+            >>> ts = parent.get_timestamp_for("note_1")
             >>> ts.axis  # For instant events
-            IdCoordinate(5.0, seconds, 'timeline:1')
+            IdCoordinate(5.0, seconds, 'cpt_1')
 
-            >>> ts = parent.get_timestamp_for("clt_1:note:000001")
+            >>> ts = parent.get_timestamp_for("chord_1")  # found on the child
             >>> ts.start.axis  # For interval events
-            IdCoordinate(5.0, seconds, 'timeline:1')
+            IdCoordinate(5.0, seconds, 'cpt_1')
             >>> ts.end.axis
-            IdCoordinate(7.5, seconds, 'timeline:1')
+            IdCoordinate(7.5, seconds, 'cpt_1')
 
         See Also:
             get_timestamp_at: Get timestamp by coordinate.

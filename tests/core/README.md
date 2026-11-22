@@ -1109,7 +1109,7 @@ The Coordinate class is the atomic unit for all temporal positioning in TTA. Tes
 
 ---
 
-### `test_score_scalars.py` - Circle 1 Score Scalars
+### `test_score_scalars.py` - Score Scalars
 
 **Purpose:** Validates construction and protocol conformance for the score-level
 scalars `MidiPitch`, `SpecificPitch`, `Note`, `Measure`, and `DcmlHarmony`.

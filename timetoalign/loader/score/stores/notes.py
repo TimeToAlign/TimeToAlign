@@ -27,7 +27,7 @@ class NoteEventData(EventData):
     faithfully supports :class:`~timetoalign.core.events.SpecificPitch`
     (step + alter + octave), so ``specific_pitch`` is the **sole default
     semantic pitch field** and :meth:`get_pitch_field` returns it.  The
-    source MIDI number is kept only as the **non-default raw ``midi``
+    source MIDI pitch is kept only as the **non-default raw ``midi``
     int** column — redundant data the spelling already determines — which
     the EventData *affords* as an
     :class:`~timetoalign.core.events.EnharmonicPitch` view on request via
@@ -37,7 +37,7 @@ class NoteEventData(EventData):
 
     Pitch / pitch-adjacent fields:
     - specific_pitch: {step, alter, octave, cents} (SpecificPitchField, default)
-    - midi: source MIDI number (raw int64; affords EnharmonicPitch on request)
+    - midi: source MIDI pitch (raw int64; affords EnharmonicPitch on request)
     - tpc: Tonal Pitch Class (fifths)
     - octave: Octave number
     """
@@ -52,7 +52,7 @@ class NoteEventData(EventData):
         # semantic pitch field (schema derived from the paired Field's
         # pydantic model, see core/events.py).
         pa.field("specific_pitch", SpecificPitchField.pa_schema, nullable=True),
-        # The source MIDI number, kept as a NON-DEFAULT raw int.  It is
+        # The source MIDI pitch, kept as a NON-DEFAULT raw int.  It is
         # redundant with ``specific_pitch`` (the spelling determines it),
         # so it is NOT a semantic pitch struct; it affords an
         # EnharmonicPitch view on request (see _afforded_fields).
@@ -108,7 +108,7 @@ class NoteEventData(EventData):
 
     @property
     def enharmonic_pitch_field(self) -> EnharmonicPitchField:
-        """Return an ``EnharmonicPitchField`` view over the source MIDI number.
+        """Return an ``EnharmonicPitchField`` view over the source MIDI pitch.
 
         The score stores pitch once (as ``specific_pitch``); the
         EnharmonicPitch view is *afforded* on request from the raw

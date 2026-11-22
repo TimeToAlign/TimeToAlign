@@ -401,7 +401,7 @@ class MpmLoader(AlignmentLoader):
             "start": start,
             "event_type": "Note",
             # Default semantic pitch field: EnharmonicPitch over the bare
-            # MIDI number (the most-expressive faithful type here).
+            # MIDI pitch (the most-expressive faithful type here).
             "pitch": {"midi_number": note["pitch"]},
             # Verbatim spelling, kept as non-default raw columns.
             "pitchname": note["pitchname"],
@@ -935,7 +935,7 @@ class MpmLoader(AlignmentLoader):
                     "id": note["ref"],
                     "start": note["milliseconds_date"] / 1000.0,
                     "event_type": "Note",
-                    # Observed onsets carry a bare MIDI number: afford
+                    # Observed onsets carry a bare MIDI pitch: afford
                     # EnharmonicPitch via its {midi_number} struct.
                     "pitch": {"midi_number": note["pitch"]},
                     "velocity": note["velocity"],

@@ -1946,6 +1946,10 @@ class EventData(SemanticFieldAccessMixin):
             >>> filtered = data.create_timeline(filters={"event_type": "Note"})
         """
         if _timeline_factory is None:
+            # The timeline layer registers the factory when it is imported,
+            # which ``import timetoalign`` alone does not do.
+            import timetoalign.timelines  # noqa: F401
+        if _timeline_factory is None:
             raise RuntimeError("Timeline creation requires timetoalign.timelines")
         return _timeline_factory(self, uid, filters)
 

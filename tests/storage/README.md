@@ -259,23 +259,28 @@ and holds one spelling of each value, whatever way its rows came in.
   direction:
   - a `fraction` quarters table (`a` at `[1/3, 2/3)`) absorbing a `float`
     one (`b` at `0.1` lasting `0.2`, an instant `c` at `0.5`): `b`'s start
-    is `3602879701896397/36028797018963968` (`Fraction(0.1)`), its end
-    `1351079888211149/4503599627370496` (`Fraction(0.1 + 0.2)`), its
-    duration their exact difference, `7205759403792795/36028797018963968`
-    (not `Fraction(0.2)`: an exact table reads a row through `end - start`,
-    so the duration of a joined interval is its end minus its start);
-    `c` stays an instant at `1/2`; every coordinate field declares
-    `fraction`;
+    is `3602879701896397/36028797018963968` (`Fraction(0.1)`), its
+    duration `3602879701896397/18014398509481984` (`Fraction(0.2)`), its
+    end their exact sum, `10808639105689191/36028797018963968`
+    (`Fraction(0.1) + Fraction(0.2)`, not `Fraction(0.1 + 0.2)`: start and
+    duration are the stored pair of an event and the end is derived from
+    them, so on an exact table the joined row's end is its start plus its
+    duration, exactly, and the row stays consistent under the exact checks
+    the table reads it through); `c` stays an instant at `1/2`; every
+    coordinate field declares `fraction`;
   - the reverse, the `float` table absorbing the `fraction` one: `a`'s cells
     are `0.3333333333333333` and `0.6666666666666666`, each mirrored by its
     double's exact ratio (`6004799503160661/18014398509481984`), the
     duration `0.3333333333333333` (a float table keeps each value
     re-expressed, the doubles agreeing within its tolerance);
   - an `int` table absorbing `fraction` rows `[5/2, 7/2)` and `[3/2, 9/2)`
-    and a `float` row `[2.5, 3.5)`: ties go to the even neighbour, so the
-    rows are `[2, 4)`, `[2, 4)` and `[2, 4)`, durations `2`, every cell
-    `denominator` 1; and a `fraction` table absorbing the `int` rows keeps
-    them as `n/1`.
+    and a `float` row `[2.5, 3.5)`: start and duration are re-expressed,
+    ties to the even neighbour, and the end is their sum, so the rows keep
+    their durations: `5/2` → start 2, duration 1, end 3; `3/2` → start 2,
+    duration 3, end 5; `2.5` → start 2, duration 1, end 3; every cell
+    `denominator` 1 (re-expressing the ends instead would give `[2, 4)`
+    three times, durations 2, and lose the stated durations 1 and 3); and a
+    `fraction` table absorbing the `int` rows keeps them as `n/1`.
   `extend` and `concat` give the same table; the receiving table's own rows
   are unchanged. A table of another unit is still refused (`Unit mismatch:
   quarters vs seconds`), as no number can be re-expressed across units

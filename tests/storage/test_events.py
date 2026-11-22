@@ -1027,13 +1027,14 @@ class TestJoiningNumberTypes:
             (
                 "b",
                 (0.1, 3602879701896397, 36028797018963968),
-                (0.30000000000000004, 1351079888211149, 4503599627370496),
-                (0.20000000000000004, 7205759403792795, 36028797018963968),
+                (0.30000000000000004, 10808639105689191, 36028797018963968),
+                (0.2, 3602879701896397, 18014398509481984),
             ),
             ("c", (0.5, 1, 2), None, None),
         ]
         assert joined.column_values("start")[1] == Fraction(0.1)
-        assert joined.column_values("end")[1] == Fraction(0.1 + 0.2)
+        assert joined.column_values("duration")[1] == Fraction(0.2)
+        assert joined.column_values("end")[1] == Fraction(0.1) + Fraction(0.2)
 
     def test_a_float_table_takes_ratios_as_the_nearest_floats(self, join):
         joined = _joined(self._decimals(), self._thirds(), join)
@@ -1066,9 +1067,9 @@ class TestJoiningNumberTypes:
         assert _declared(joined) == dict.fromkeys(("start", "end", "duration"), "int")
         assert _row_cells(joined, "start", "end", "duration") == [
             ("x", (10.0, 10, 1), (11.0, 11, 1), (1.0, 1, 1)),
-            ("y", (2.0, 2, 1), (4.0, 4, 1), (2.0, 2, 1)),
-            ("z", (2.0, 2, 1), (4.0, 4, 1), (2.0, 2, 1)),
-            ("w", (2.0, 2, 1), (4.0, 4, 1), (2.0, 2, 1)),
+            ("y", (2.0, 2, 1), (3.0, 3, 1), (1.0, 1, 1)),
+            ("z", (2.0, 2, 1), (5.0, 5, 1), (3.0, 3, 1)),
+            ("w", (2.0, 2, 1), (3.0, 3, 1), (1.0, 1, 1)),
         ]
 
     def test_a_fraction_table_takes_integers_as_they_stand(self, join):

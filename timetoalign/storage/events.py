@@ -460,11 +460,14 @@ def _on_number_type(
     ratio, ``fraction`` → ``float`` as the nearest double, onto ``int``
     nearest with ties to even (as :func:`~timetoalign.core.time.express_as`
     writes one value). Every coordinate column is re-expressed and its
-    field declares *target*. On an ``int`` or ``fraction`` target a row
-    holding ``start`` and ``end`` then has the duration ``end - start``, so
-    the row stays consistent in the exact arithmetic the table reads it in
-    (two rounded positions, or two doubles' exact ratios, need not differ
-    by the re-expressed duration). Vectorized, one pass per column.
+    field declares *target*. ``start`` and ``duration`` are the stored pair
+    of an event and ``end`` is derived from them: on an ``int`` or
+    ``fraction`` target a row holding ``start`` and ``duration`` then ends
+    at ``start + duration``, exactly, so it keeps its duration and stays
+    consistent in the exact arithmetic the table reads it in (a re-expressed
+    end, rounded or the exact ratio of a double, need not lie at the
+    re-expressed start plus the re-expressed duration). Vectorized, one pass
+    per column.
 
     Raises:
         ValueError: If an exact ratio does not fit int64 (a double below
@@ -491,17 +494,17 @@ def _on_number_type(
         table = table.set_column(index, retyped, cells)
     names = table.schema.names
     if target is not NumberType.float and {"start", "end", "duration"} <= set(names):
-        start, end = table.column("start"), table.column("end")
-        spans = combine_number_columns(
-            end.combine_chunks(), start.combine_chunks(), "subtract", target
+        start, duration = table.column("start"), table.column("duration")
+        ends = combine_number_columns(
+            start.combine_chunks(), duration.combine_chunks(), "add", target
         )
-        index = names.index("duration")
-        duration = pc.if_else(
-            pc.and_(start.is_valid(), end.is_valid()),
-            spans,
+        index = names.index("end")
+        end = pc.if_else(
+            pc.and_(start.is_valid(), duration.is_valid()),
+            ends,
             table.column(index).combine_chunks(),
         )
-        table = table.set_column(index, table.schema.field(index), duration)
+        table = table.set_column(index, table.schema.field(index), end)
     return table
 
 
@@ -1844,8 +1847,9 @@ class EventData(SemanticFieldAccessMixin):
         Rows of another number type join re-expressed in this table's: a
         float as its exact ratio on a ``fraction`` table, a ratio as the
         nearest float on a ``float`` table, nearest (ties to even) on an
-        ``int`` table. On an ``int`` or ``fraction`` table an interval's
-        duration is then its end minus its start.
+        ``int`` table. On an ``int`` or ``fraction`` table an interval
+        keeps its start and duration, so re-expressed, and ends at their
+        exact sum.
 
         Args:
             other: Another EventData of the same unit (extra fields are

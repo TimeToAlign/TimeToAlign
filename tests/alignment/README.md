@@ -2547,6 +2547,40 @@ that day. The property is that two runs agree, so the assertion has to be
 between two runs. The spec-order test is the companion that pins *which*
 deterministic order was chosen, so "stable but wrong" also fails.
 
+### One spec, one map, for both stamps (`TestConversionMapChoice`)
+
+A `TimeStamp` and a `MatchStamp` share one interface, so a `conversion_maps`
+spec must choose the same map on both. The claim under test: among several
+maps into one unit, `get_unit` converts through the one map the spec
+enables, refuses (the timeline's ambiguity `ValueError`) when the spec
+enables more than one, and finds none (`KeyError`) when it enables none.
+
+The fixture is ONE timeline `clock` (seconds, length 100) holding two maps
+into milliseconds that answer differently at every position, so the value
+read names the map that produced it: `clock-ms`, a `TableMap` `[0, 100] s ->
+[0, 100000] ms` (25 s → 25000 ms), and `clock-ms-offset`, a `LinearMap`
+`1000·x + 5` (25 s → 25005 ms). The `TimeStamp` is `clock.get_timestamp(25.0,
+conversion_maps=spec)`; the `MatchStamp` is the bundle's
+`get_matchstamp_at(25.0, "clock", conversion_maps=spec)` with `clock` grouped
+alone in a bundle. Each case is asserted on both stamps by one
+parametrisation, so the two cannot drift apart:
+
+| spec | `get_unit(milliseconds, format="float")` |
+|---|---|
+| `["clock-ms-offset"]` (selector) | `25005.0` |
+| `[<the clock-ms-offset map>]` (the map object) | `25005.0` |
+| `["clock-ms"]` | `25000.0` |
+| `True` | `ValueError` `Timeline 'clock' has 2 conversion maps targeting 'milliseconds'; name the one you mean. Candidates: clock-ms (seconds_to_milliseconds), clock-ms-offset (seconds_to_milliseconds)` |
+| `["clock-ms", "clock-ms-offset"]` | the same `ValueError` |
+| `False` | `KeyError` `No eligible conversion to 'milliseconds' on stamp from 'clock'` (TimeStamp) / `... on MatchStamp` (each stamp names itself) |
+
+**Validity rationale:** the two maps differ by 5 ms, so a stamp converting
+through the wrong map, or through whichever was attached first, fails the
+value assertion rather than passing by coincidence; and the ambiguity case
+proves that naming one map is what removes the refusal, not a change that
+picks a map silently. Before the fix the `MatchStamp` raised the ambiguity
+for a spec naming one map.
+
 ### Key Test Classes
 
 | Class | Tests | Purpose |

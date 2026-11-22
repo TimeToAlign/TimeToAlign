@@ -25,9 +25,12 @@ from timetoalign.alignment.graph import MatchGraph
 from timetoalign.alignment.graph import MatchStamp as MatchStampType
 from timetoalign.core import Coordinate, IdCoordinate
 from timetoalign.core.enums import Domain, TimeUnit
+from timetoalign.core.timestamp import TimeStamp
+from timetoalign.maps import LinearMap, TableMap
 from timetoalign.timelines import (
     ContinuousPhysicalTimeline,
     DiscreteGraphicalTimeline,
+    Timeline,
     TimelineGroup,
 )
 
@@ -1856,6 +1859,99 @@ class TestMatchStampDeterminism:
             outputs.add(completed.stdout)
 
         assert len(outputs) == 1
+
+
+# endregion
+
+
+# region Conversion map choice
+
+
+class TestConversionMapChoice:
+    """A ``conversion_maps`` spec chooses the same map on both stamps.
+
+    Validation logic is documented in ``tests/alignment/README.md`` under
+    "One spec, one map, for both stamps".
+    """
+
+    AMBIGUOUS = (
+        "Timeline 'clock' has 2 conversion maps targeting 'milliseconds'; name"
+        " the one you mean. Candidates: clock-ms (seconds_to_milliseconds),"
+        " clock-ms-offset (seconds_to_milliseconds)"
+    )
+
+    @staticmethod
+    def _clock() -> tuple[Timeline, LinearMap]:
+        """``clock`` with two millisecond maps, 25 s -> 25000 and 25005 ms."""
+        clock = Timeline(length=100, unit=TimeUnit.seconds, uid="clock")
+        clock.add_conversion_map(
+            TableMap(
+                x_values=[0.0, 100.0],
+                y_values=[0.0, 100000.0],
+                source_unit=TimeUnit.seconds,
+                target_unit=TimeUnit.milliseconds,
+                uid="clock-ms",
+            )
+        )
+        offset = LinearMap(
+            scalar=1000,
+            offset=5,
+            source_unit=TimeUnit.seconds,
+            target_unit=TimeUnit.milliseconds,
+            uid="clock-ms-offset",
+        )
+        clock.add_conversion_map(offset)
+        return clock, offset
+
+    @classmethod
+    def _stamp(cls, kind: str, spec: object) -> TimeStamp | MatchStampType:
+        clock, offset = cls._clock()
+        if spec == "the offset map":
+            spec = [offset]
+        if kind == "TimeStamp":
+            return clock.get_timestamp(25.0, conversion_maps=spec)
+        bundle = AlignmentBundle(id="maps")
+        bundle.add_timeline(clock, as_group="clock-group")
+        return bundle.get_matchstamp_at(25.0, "clock", conversion_maps=spec)
+
+    @pytest.mark.parametrize("kind", ["TimeStamp", "MatchStamp"])
+    @pytest.mark.parametrize(
+        ("spec", "expected"),
+        [
+            (["clock-ms-offset"], 25005.0),
+            ("the offset map", 25005.0),
+            (["clock-ms"], 25000.0),
+        ],
+    )
+    def test_a_spec_naming_one_of_two_maps_converts_through_it(
+        self, kind: str, spec: object, expected: float
+    ) -> None:
+        stamp = self._stamp(kind, spec)
+
+        assert type(stamp).__name__ == kind
+        assert stamp.get_unit(TimeUnit.milliseconds, format="float") == expected
+
+    @pytest.mark.parametrize("kind", ["TimeStamp", "MatchStamp"])
+    @pytest.mark.parametrize("spec", [True, ["clock-ms", "clock-ms-offset"]])
+    def test_two_enabled_maps_are_ambiguous(self, kind: str, spec: object) -> None:
+        stamp = self._stamp(kind, spec)
+
+        with pytest.raises(ValueError) as refusal:
+            stamp.get_unit(TimeUnit.milliseconds)
+        assert str(refusal.value) == self.AMBIGUOUS
+
+    @pytest.mark.parametrize(
+        ("kind", "name"),
+        [("TimeStamp", "stamp from 'clock'"), ("MatchStamp", "MatchStamp")],
+    )
+    def test_no_enabled_map_converts_nothing(self, kind: str, name: str) -> None:
+        stamp = self._stamp(kind, False)
+
+        with pytest.raises(KeyError) as refusal:
+            stamp.get_unit(TimeUnit.milliseconds)
+        assert refusal.value.args[0] == (
+            f"No eligible conversion to 'milliseconds' on {name}"
+        )
 
 
 # endregion

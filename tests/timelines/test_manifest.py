@@ -1459,6 +1459,7 @@ ONE_ROOT = {
         "resources": [],
         "graphical": {
             "order": ONE_ROOT_BANDS,
+            "elisions": [],
             "styles": {},
             "rules": [],
             "timestamps": [],
@@ -1485,6 +1486,7 @@ GROUPED = {
         "resources": [],
         "graphical": {
             "order": GROUPED_BANDS,
+            "elisions": [],
             "styles": {},
             "rules": [],
             "timestamps": [],
@@ -2099,6 +2101,7 @@ def test_a_graphical_object_read_is_written_back(reader: Any) -> None:
 
     assert bare(read.to_dict(minimal=True)) == {**data, "graphical": {}}
     assert bare(read.to_dict(minimal=False))["graphical"] == {
+        "elisions": [],
         "order": {},
         "rules": [],
         "styles": {},
@@ -2106,6 +2109,45 @@ def test_a_graphical_object_read_is_written_back(reader: Any) -> None:
         "matchstamps": [],
     }
     assert "graphical" not in bare(reader(copy.deepcopy(data)).to_dict())
+
+
+ELISIONS = [
+    {
+        "id": "elision_2",
+        "timeline": "r",
+        "start": [3, 2],
+        "end": [3, 1],
+        "width": {"ratio": 0.5},
+    },
+    {"id": "elision_1", "timeline": "r", "start": [0, 1], "end": [1, 2]},
+]
+ELISION_DISPLAY = ["strip", "name", "coordinate"]
+
+
+@pytest.mark.parametrize(
+    "reader",
+    [reading(Timeline.from_dict), reading(AlignmentBundle.from_dict)],
+    ids=["timeline", "bundle"],
+)
+def test_a_stored_elision_is_written_back_unchanged(reader: Any) -> None:
+    data = {
+        "@context": dict(FORMAT_CONTEXT),
+        "timetoshare": "0.2.0",
+        "timelines": [{"id": "r", "unit": "quarters", "length": [4, 1]}],
+        "graphical": {"elisions": copy.deepcopy(ELISIONS)},
+    }
+
+    read = reader(copy.deepcopy(data))
+
+    assert bare(read.to_dict(minimal=True)) == data
+    assert bare(read.to_dict(minimal=False))["graphical"] == {
+        "elisions": [{**elision, "display": ELISION_DISPLAY} for elision in ELISIONS],
+        "order": {},
+        "rules": [],
+        "styles": {},
+        "timestamps": [],
+        "matchstamps": [],
+    }
 
 
 def _stamp(number: int, **members: Any) -> dict[str, Any]:

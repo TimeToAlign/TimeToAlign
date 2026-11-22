@@ -498,11 +498,24 @@ the library writes back against the same literal text.
   writes an anonymous bundle.
 - **A `graphical` object read is written back.** `"graphical": {}` on a
   one-root manifest is written back as `{}` in the minimal form and as
-  `{"order": {}, "rules": [], "styles": {}, "timestamps": [],
-  "matchstamps": []}` in the complete form (every member of `graphical`
-  with a default, as TimeToShare's `complete` writes it),
+  `{"elisions": [], "order": {}, "rules": [], "styles": {},
+  "timestamps": [], "matchstamps": []}` in the complete form (every member
+  of `graphical` with a default, as TimeToShare's `complete` writes it),
   through `Timeline` and `AlignmentBundle` alike; a manifest read without
   `graphical` is written without it. Presence is part of the round trip.
+- **A stored elision is written back unchanged.** `graphical.elisions` is a
+  styling member the library keeps without reading, as it keeps `rules`. A
+  one-root manifest whose `graphical` holds two elisions on the root, given
+  out of the canonical order (the later one first) and one with a `width`
+  of the `ratio` form, is read through `Timeline` and `AlignmentBundle`
+  alike and written back in both forms. The minimal form equals the literal
+  read (same order, `width` kept, nothing added); the complete form equals
+  it with each elision's default `display` stated and the other members of
+  `graphical` at their defaults, as `timetoshare.complete` writes them. The
+  elision model is TimeToShare's: the library neither orders, checks nor
+  interprets an elision, so a test of its own can only prove that nothing
+  of the stored list is lost, reordered or invented on the way through.
+  Elisions are never part of the timelines the library builds.
 - **A styling member at its default is dropped as TimeToShare drops it.**
   The library keeps the styling read (every member of `graphical` but
   `order`) in TimeToShare's minimal form and has no default table of its

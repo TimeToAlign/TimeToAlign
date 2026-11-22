@@ -207,6 +207,29 @@ def _as_float_lane(value: Any) -> Any:
     return value
 
 
+def ambiguous_unit_maps(
+    timeline_id: str, unit: "TimeUnit", candidates: "Sequence[ConversionMap[Any]]"
+) -> ValueError:
+    """The refusal for a request that several maps into *unit* could answer.
+
+    One text for every reader that must not pick among them: the timeline's
+    own ``_get_unit_map`` and a stamp choosing the map for ``get_unit``.
+
+    Args:
+        timeline_id: The timeline holding the maps.
+        unit: The target unit.
+        candidates: The maps on *timeline_id* targeting *unit*.
+
+    Returns:
+        The ``ValueError`` to raise, naming every candidate.
+    """
+    listed = ", ".join(f"{cmap.id} ({cmap.name})" for cmap in candidates)
+    return ValueError(
+        f"Timeline '{timeline_id}' has {len(candidates)} conversion maps "
+        f"targeting '{unit}'; name the one you mean. Candidates: {listed}"
+    )
+
+
 # region TimeStampSource Protocol
 
 
@@ -762,16 +785,6 @@ class Stamp(ABC):
         """Every map on *timeline_id* into *unit*, in attachment order."""
 
     @abstractmethod
-    def _unit_map_on(
-        self, timeline_id: str, unit: TimeUnit
-    ) -> "ConversionMap[Any] | None":
-        """The one map on *timeline_id* into *unit*, refusing to pick among several.
-
-        Raises:
-            ValueError: If several maps target *unit*.
-        """
-
-    @abstractmethod
     def _coordinate_rows(self) -> list[_DisplayRow]:
         """One display row per stored coordinate, in display order."""
 
@@ -795,16 +808,13 @@ class Stamp(ABC):
         """The one map into *unit* on *timeline_id* that ``conversion_maps`` enables.
 
         Asked only when the stamp has a source. ``None`` where none is
-        enabled. Several enabled maps are ambiguous: the timeline refuses to
-        pick one (``ValueError`` naming them).
+        enabled. Several enabled maps are ambiguous: ``ValueError`` naming
+        every map the timeline holds into *unit* (:func:`ambiguous_unit_maps`).
         """
-        enabled = [
-            cmap
-            for cmap in self._unit_maps_on(timeline_id, unit)
-            if self._conversion_map_enabled(cmap)
-        ]
+        candidates = self._unit_maps_on(timeline_id, unit)
+        enabled = [cmap for cmap in candidates if self._conversion_map_enabled(cmap)]
         if len(enabled) > 1:
-            return self._unit_map_on(timeline_id, unit)
+            raise ambiguous_unit_maps(timeline_id, unit, candidates)
         return enabled[0] if enabled else None
 
     @staticmethod
@@ -917,12 +927,6 @@ class TimeStamp(Stamp):
     ) -> "list[ConversionMap[Any]]":
         """The source's maps into *unit* on *timeline_id* (a member or descendant)."""
         return self.source._get_unit_maps_for_timeline(timeline_id, unit)
-
-    def _unit_map_on(
-        self, timeline_id: str, unit: TimeUnit
-    ) -> "ConversionMap[Any] | None":
-        """The source's one map into *unit* on *timeline_id*."""
-        return self.source._get_unit_map_for_timeline(timeline_id, unit)
 
     def _number_type_for(self, timeline_id: str) -> str | None:
         """Get the numeric type name, retaining group compatibility."""

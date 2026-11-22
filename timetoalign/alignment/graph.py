@@ -327,12 +327,6 @@ class MatchStamp(Stamp):
         """The bundle timeline's maps into *unit*."""
         return self.source.get_timeline(timeline_id)._get_unit_maps(unit)
 
-    def _unit_map_on(
-        self, timeline_id: str, unit: TimeUnit
-    ) -> "ConversionMap[Any] | None":
-        """The bundle timeline's one map into *unit*."""
-        return self.source.get_timeline(timeline_id)._get_unit_map(unit)
-
     def filter_by_timelines(
         self,
         *,

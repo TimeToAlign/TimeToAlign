@@ -2574,6 +2574,12 @@ parametrisation, so the two cannot drift apart:
 | `["clock-ms", "clock-ms-offset"]` | the same `ValueError` |
 | `False` | `KeyError` `No eligible conversion to 'milliseconds' on stamp from 'clock'` (TimeStamp) / `... on MatchStamp` (each stamp names itself) |
 
+The text of each stamp (`str()`) is asserted beside the value: for the three
+naming cases its lines after the header are exactly the stamp's own row
+(`clock 25 seconds`) and ONE conversion row (`milliseconds 25005
+milliseconds`, or `25000`), the value `get_unit` returned, so the display
+cannot name another map than the getter converts through.
+
 **Validity rationale:** the two maps differ by 5 ms, so a stamp converting
 through the wrong map, or through whichever was attached first, fails the
 value assertion rather than passing by coincidence; and the ambiguity case

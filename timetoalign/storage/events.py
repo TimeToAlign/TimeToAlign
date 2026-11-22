@@ -388,6 +388,44 @@ def _inconsistency(
     )
 
 
+def _extreme_coordinate(
+    cells: pa.ChunkedArray,
+    values: pa.ChunkedArray,
+    extreme: pa.Scalar,
+    number_type: NumberType,
+    pick: Callable[[Iterable[Any]], Any],
+) -> int | float | Fraction:
+    """The smallest or largest number of a column of number cells, decided exactly.
+
+    ``extreme`` is the float extreme of the cells' ``value`` members. A cell's
+    double is its number correctly rounded, and rounding never reverses an
+    order, so the exact extreme is among the cells whose double equals it.
+    On a float axis those cells hold one number (equal doubles differ at most
+    in the sign of zero) and the first of them answers, as ``min`` and ``max``
+    over the column in order do. On an exact axis the distinct candidate cells
+    are read exactly and ``pick`` decides among them, so two ratios sharing a
+    double are still ordered by their exact values.
+
+    Args:
+        cells: The number cells, nulls included.
+        values: Their ``value`` members.
+        extreme: The minimum or maximum of ``values``.
+        number_type: The axis's declared number type.
+        pick: ``min`` or ``max``.
+
+    Returns:
+        The extreme in the axis's number type.
+    """
+    candidates = pc.equal(values, extreme)
+    if number_type is NumberType.float:
+        return values[pc.index(candidates, True).as_py()].as_py()
+    chosen = pa.Table.from_struct_array(pc.filter(cells, candidates).combine_chunks())
+    distinct = chosen.group_by(chosen.column_names).aggregate([])
+    return pick(
+        struct_to_coordinate(cell, number_type) for cell in distinct.to_pylist()
+    )
+
+
 def _has_value_subfield(pa_type: pa.DataType) -> bool:
     """Return True iff *pa_type* is a struct with a ``value`` sub-field.
 
@@ -1879,19 +1917,27 @@ class EventData(SemanticFieldAccessMixin):
         """
         if self.count == 0:
             return None
-
-        coordinate_values: list[float | Fraction] = []
-        for field_name in ["start", "end"]:
-            for cell in self._table.column(field_name).to_pylist():
-                if cell is None or cell.get("value") is None:
-                    continue
-
-                coordinate_values.append(struct_to_coordinate(cell, self._number_type))
-
-        if not coordinate_values:
+        lows: list[int | float | Fraction] = []
+        highs: list[int | float | Fraction] = []
+        for name in ("start", "end"):
+            cells = self._table.column(name)
+            values = pc.struct_field(cells, "value")
+            if values.null_count == len(values):
+                continue
+            extremes = pc.min_max(values)
+            lows.append(
+                _extreme_coordinate(
+                    cells, values, extremes["min"], self._number_type, min
+                )
+            )
+            highs.append(
+                _extreme_coordinate(
+                    cells, values, extremes["max"], self._number_type, max
+                )
+            )
+        if not lows:
             return None
-
-        return min(coordinate_values), max(coordinate_values)
+        return min(lows), max(highs)
 
     def event_types(self) -> list[str]:
         """Get the list of unique event types.

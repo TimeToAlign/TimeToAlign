@@ -182,7 +182,8 @@ piece.id, piece.name, piece.length
 # %% [markdown]
 # A bare value must be written in its axis's number type; reading never
 # coerces it. A length of `32` on a quarters axis is an integer where the
-# axis counts fractions, and the error says what to write instead.
+# axis counts fractions. The error names the value's place in the manifest,
+# as a JSON pointer, and says what to write instead.
 
 # %%
 try:
@@ -260,10 +261,10 @@ show(group_data)
 group_data["timelines"][0]["children"][0]["offset"]
 
 # %% [markdown]
-# `graphical` may also carry `styles` and `rules`, the TimeToShare
-# styling. The library does not interpret them: `from_dict()` keeps them as
-# the group's `styling` and `to_dict()` writes them back. In the complete
-# form they appear at their defaults.
+# `graphical` may also carry `styles`, `rules`, `timestamps` and
+# `matchstamps`, the TimeToShare styling. The library does not interpret
+# them: `from_dict()` keeps them as the group's `styling` and `to_dict()`
+# writes them back. In the complete form they appear at their defaults.
 
 # %%
 group.to_dict(minimal=False)["graphical"]
@@ -441,11 +442,17 @@ Timeline.from_dict(annotated).to_dict() == annotated
 #
 # `to_file()` writes an object's manifest to a file and returns its path;
 # `from_file()` reads a file as `from_dict()` reads a manifest, taking the
-# same selection arguments. A file is written in **canonical YAML** unless
-# you ask for another serialization: the keys of every object sorted, the
-# arrays in a canonical order, every member and every item on lines of its
-# own, and a list of plain values, such as a Fraction pair, on one line.
-# Equal manifests so give equal text. Floats keep their float spelling:
+# same selection arguments.
+#
+# The format's validator checks every manifest the library reads and every
+# manifest it writes. A manifest it refuses raises a `ValueError`, and
+# `to_file()` then writes no file.
+#
+# A file is written in **canonical YAML** unless you ask for another
+# serialization: the keys of every object sorted, the arrays in a canonical
+# order, every member and every item on lines of its own, and a list of
+# plain values, such as a Fraction pair, on one line. Equal manifests so
+# give equal text. Floats keep their float spelling:
 # the recording's `10.0` seconds stay `10.0`. The file opens with the
 # whole `@context`.
 

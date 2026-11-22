@@ -88,28 +88,28 @@ audio_tl.events.to_dataframe()[["id", "temporal_type", "event_type"]]
 
 # %% [markdown]
 # ### Event Validation
+#
+# A root timeline grows to hold the events you add. A locked timeline, one
+# built with `locked=True` (see the lock below), keeps its length: an event
+# beyond its end raises `ValueError` and nothing is added, unless
+# `allow_expansion=True` lets the timeline grow.
 
 # %%
+clip = ContinuousPhysicalTimeline(length=10.0, uid="clip", locked=True)
+late_beat = {
+    "id": "late",
+    "temporal_type": "instant",
+    "event_type": "Beat",
+    "instant": 15.0,
+}
 try:
-    audio_tl.add_events(
-        [
-            {
-                "id": "oob",
-                "temporal_type": "instant",
-                "event_type": "Beat",
-                "instant": 15.0,
-            }
-        ]
-    )
+    clip.add_events([late_beat])
 except ValueError as e:
     print(f"ValueError: {e}")
 
 # %%
-audio_tl.add_events(
-    [{"id": "oob", "temporal_type": "instant", "event_type": "Beat", "instant": 15.0}],
-    allow_expansion=True,
-)
-{"n_events": audio_tl.n_events, "length": audio_tl.length}
+clip.add_events([late_beat], allow_expansion=True)
+{"n_events": clip.n_events, "length": clip.length}
 
 # %% [markdown]
 # ### Filtering Events

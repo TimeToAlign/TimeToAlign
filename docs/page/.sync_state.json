@@ -2,7 +2,7 @@
   "how01_coordinate_math.py": "b6c1669c843fbc3185e546514e5ba240d0dffb106021d492fb9c998bd21fbe68",
   "how01_advanced_cmaps.py": "00698add53468d2c8ca921032ec374b4b90f17dbe923c7c2d6aa19c37d0affd5",
   "how01_advanced_timestamps.py": "fdc425f83d5f1e334e38d36d4070ab3e14a66e811c9def2959700e1d1267c1df",
-  "how01_manual_timeline_construction.py": "a0493c99262115943c18464711b81c1f0acfba11936d2881adad55b28aa8c7f9",
+  "how01_manual_timeline_construction.py": "6d2524938c86fcc473f5eb5a2736332c630490d7196b3b80f4df1281d5ca9310",
   "how01_graphical_timelines.py": "ec8cde968f4cb58afdaaf631f6854ac2468d122c22c9fdf3e2c667721804fcbe",
   "how01_loading_data.py": "a5d1b222764d205256b706eaf5b2ee5cb2b60d44d715a12baff4a5a379f0a8d9",
   "how01_tabular_loaders.py": "15f7f861b883a4da2d3fec7262fbb6f56c014b1390d8f7f05e6b6d8c12694266",
@@ -33,7 +33,7 @@
   "tut08_data_model.py": "8faff22931435cb61c183c1465d208f2f131deffd8c7bbeff5816a1e717bbfbe",
   "tut09_pitch_and_harmony.py": "8aff86fbb8f45134d76549fb41d70b235c547d90375c05eee05640e9cbf9a08f",
   "how04_load_anything.py": "41796204d34b782a2df2349043b1a4c1a454fb57965e7be6bd754961c96012c4",
-  "how02_group_and_bundle_files.py": "3f1c2aeb1f5e40b119ce5d703d81a1c1edeed43d9bf67be543af9fd54911e4d0",
+  "how02_group_and_bundle_files.py": "ab63f74427a53dc79f3ee7ffa9dd528a195f4f2de03fc5cc1cf25181ad338735",
   "how03_describe_the_work.py": "f2faeda32e67334f51b261b196858b2fb6827de97e85d4cd5b515e35bf988d29",
   "how03_engraved_score_alignment.py": "fcc4ce9465217bd82717e462edf97e32a784bf6b921c6c97df66a580d77d9bc7",
   "how03_match_claims_package.py": "858f2eeddd6328ad4eef3b55832e9919c71cc6a784f6447900cf62b33a23e8c7"

@@ -1930,6 +1930,12 @@ class TestConversionMapChoice:
 
         assert type(stamp).__name__ == kind
         assert stamp.get_unit(TimeUnit.milliseconds, format="float") == expected
+        # The text shows the one conversion row, with the value `get_unit` gave.
+        rows = [line.split() for line in str(stamp).splitlines()[1:]]
+        assert rows == [
+            ["clock", "25", "seconds"],
+            ["milliseconds", str(int(expected)), "milliseconds"],
+        ]
 
     @pytest.mark.parametrize("kind", ["TimeStamp", "MatchStamp"])
     @pytest.mark.parametrize("spec", [True, ["clock-ms", "clock-ms-offset"]])

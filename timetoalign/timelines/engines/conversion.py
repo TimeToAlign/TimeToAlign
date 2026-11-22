@@ -32,6 +32,7 @@ from timetoalign.core.retrieval import (
     validate_key_collection,
 )
 from timetoalign.core.time import shift_number
+from timetoalign.core.timestamp import ambiguous_unit_maps
 from timetoalign.maps import ConversionMap, OutputNumberTypeError
 
 if TYPE_CHECKING:
@@ -440,11 +441,7 @@ class ConversionMapsMixin:
             return None
         if name is None:
             if len(candidates) > 1:
-                listed = ", ".join(f"{cmap.id} ({cmap.name})" for cmap in candidates)
-                raise ValueError(
-                    f"Timeline '{self._id}' has {len(candidates)} conversion maps "
-                    f"targeting '{unit}'; name the one you mean. Candidates: {listed}"
-                )
+                raise ambiguous_unit_maps(self._id, unit, candidates)
             return candidates[0]
         for cmap in candidates:
             if cmap.id == name:

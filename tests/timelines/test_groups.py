@@ -1557,3 +1557,74 @@ class TestScoreLoaderCreateFlowController:
 
 
 # endregion
+
+
+# region C-Map columns of the group table
+
+
+def _raise_boom(*args: object, **kwargs: object) -> None:
+    raise RuntimeError("boom")
+
+
+def _clock_group() -> TimelineGroup:
+    """A 100-second ``clock`` with a milliseconds map over ``[0, 100]`` and a
+    frames map over ``[0, 50]`` that refuses beyond it."""
+    clock = ContinuousPhysicalTimeline(length=100, unit=TimeUnit.seconds, uid="clock")
+    clock.add_conversion_map(
+        TableMap(
+            x_values=[0.0, 100.0],
+            y_values=[0.0, 100000.0],
+            source_unit=TimeUnit.seconds,
+            target_unit=TimeUnit.milliseconds,
+            uid="clock-ms",
+        )
+    )
+    clock.add_conversion_map(
+        TableMap(
+            x_values=[0.0, 50.0],
+            y_values=[0.0, 2500.0],
+            source_unit=TimeUnit.seconds,
+            target_unit=TimeUnit.frames,
+            extrapolate="error",
+            uid="clock-frames",
+        )
+    )
+    return TimelineGroup(id="clock-group", timelines=[clock])
+
+
+class TestConversionColumnErrors:
+    """A map gets no column only where it does not reach every row."""
+
+    def test_a_failing_map_propagates(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        group = _clock_group()
+        monkeypatch.setattr(TableMap, "_convert_array", _raise_boom)
+
+        with pytest.raises(RuntimeError, match="^boom$") as excinfo:
+            group.get_timestamp_table([25.0], "clock", conversion_maps=True)
+        (entry,) = [e for e in excinfo.traceback if e.name == "_cmap_columns"]
+        assert " ".join(str(entry.statement).split()) == (
+            "converted = cmap.convert_array(values[timeline_id])"
+        )
+
+    def test_a_map_not_reaching_a_row_gets_no_column(self) -> None:
+        group = _clock_group()
+
+        reached = group.get_timestamp_table([25.0], "clock", conversion_maps=True)
+        assert reached.column_names == [
+            "clock",
+            "seconds_to_milliseconds",
+            "seconds_to_frames",
+        ]
+        assert reached.column("seconds_to_frames").to_pylist() == [
+            {"value": 1250.0, "numerator": 1250, "denominator": 1}
+        ]
+
+        partly = group.get_timestamp_table([25.0, 75.0], "clock", conversion_maps=True)
+        assert partly.column_names == ["clock", "seconds_to_milliseconds"]
+        assert partly.column("seconds_to_milliseconds").to_pylist() == [
+            {"value": 25000.0, "numerator": 25000, "denominator": 1},
+            {"value": 75000.0, "numerator": 75000, "denominator": 1},
+        ]
+
+
+# endregion

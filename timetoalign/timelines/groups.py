@@ -1418,8 +1418,10 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
                     continue
                 try:
                     converted = cmap.convert_array(values[timeline_id])
-                except Exception:
-                    # Skip C-Maps that fail (e.g., out of bounds)
+                except ValueError:
+                    # The map does not reach every row (a value outside its
+                    # domain): it gets no column. Any other error is a
+                    # defect and propagates.
                     continue
                 columns.append(
                     TimestampColumn(

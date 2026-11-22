@@ -267,8 +267,9 @@ so the rule cannot be mistaken for a preference for floats: a
 fraction-canonical target stays exact from an integer-locked source.
 
 **Validity Rationale:** asserting only that `repr()` no longer raises would
-pass on a display that silently omitted the offending row — the existing
-`except Exception: continue` guard would happily swallow it. The tests
+pass on a display that silently omitted the offending row — the row guard
+leaves out a map raising `ValueError` (a map not reaching the coordinate,
+see `test_stamp_display.py` below) and would happily swallow it. The tests
 therefore assert the rendered row's exact value against the `get_unit` value
 for the same stamp and unit, so a skipped row fails as loudly as a wrong one.
 Both `repr()` and `_repr_html_()` are exercised, since they are separate
@@ -1583,6 +1584,57 @@ explicitly, matching the opt-in getter pattern elsewhere in the module. Every
 existing exact-value assertion in this file passes `conversion_maps=True`
 (or `False`) explicitly through `_matchstamp_with_maps`, so none depend on
 the getter default.
+
+### `test_stamp_display.py` - One display for both stamp classes
+
+**Purpose:** `TimeStamp` and `MatchStamp` share one implementation of
+`get_unit`, `get_conversion_for`, the C-Map rows, `__str__` and
+`_repr_html_`, all on `Stamp`; each class answers only the questions on
+which the two differ (how an error names the stamp, which unit map converts
+a timeline's coordinate, its coordinate rows, its claim rows, its header and
+its badge). Moving code may not change what anybody sees, so the proof is
+byte equality with the output from before the move, not a description of
+the output.
+
+**Strategy.** A fixed set of stamps is built through the public getters
+(and, for stamps without a source, the constructors), chosen so that every
+kind of row and every branch of both displays occurs at least once:
+
+| Stamp | What it exercises |
+|---|---|
+| `timestamp_children_and_maps` | source row, child rows, a numeric C-Map (`milliseconds`), a discrete one (`frames`), a label map (`section`) |
+| `timestamp_outside_a_map` | a map that does not reach the position (`frames`, `extrapolate="error"`) leaves its row out; children not reached are absent |
+| `timestamp_without_maps` | `conversion_maps=False`: coordinates only |
+| `timestamp_exact` | a fraction axis (`19/2 quarters`) and its ticks conversion |
+| `timestamp_interpolated` | a stamp without source, the `interpolated` badge |
+| `timestamp_group_colliding_labels` | two members holding maps of one label: rows qualified as `left:milliseconds` |
+| `matchstamp_bundle_maps` | a bundle stamp with its C-Map rows (right-aligned values) |
+| `matchstamp_bundle_no_maps` | the matchstamp getters' default `conversion_maps=False` |
+| `matchstamp_tags` | `stated`, `inferred` and untagged rows, an exact and a pixel value |
+| `matchstamp_crossfade` | interval-claim rows with their counterparts |
+| `matchstamp_loop_ambiguity` | two claim rows for one timeline that stays out of the coordinates |
+| `matchstamp_missing_counterpart` | a claim row reading `MISSING` |
+
+For each, `str()`, `_repr_html_()` and `repr()` are compared with string
+literals. **The literals were not written by hand**: they are the output of
+the same construction run once against the library as it stood before the
+shared implementation (its parent commit), pasted verbatim. A display that
+drifts by one space, one escaped character or one reordered row fails.
+
+**Unexpected errors propagate.** A C-Map row is left out only where the map
+does not reach the coordinate, which a map states by raising `ValueError`
+(outside its domain, or `OutputNumberTypeError`, a `ValueError`, for a
+value its target cannot be written in); any other error is a defect. For
+each class two tests, following `TestUnexpectedErrorsPropagate` in
+`tests/alignment/test_bundle.py`:
+
+- `TableMap._evaluate` replaced by one raising `RuntimeError("boom")` makes
+  `str(stamp)` raise it, and the traceback passes `Stamp._conversion_rows`
+  at the statement `value = cmap._evaluate(coordinate.value)`, so the error
+  came through that catch and was not swallowed;
+- the documented case keeps its answer: a frames map over `[0, 50]` seconds
+  with `extrapolate="error"` read at 70 seconds is absent from the display
+  (exact `str()` asserted), while the milliseconds map beside it is shown.
 
 ---
 

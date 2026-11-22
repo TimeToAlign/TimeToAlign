@@ -20,14 +20,16 @@ ConversionMap was registered for that relationship.
 from __future__ import annotations
 
 import logging
-from abc import ABC
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from fractions import Fraction
 from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
+    ClassVar,
     Iterator,
+    NamedTuple,
     Protocol,
     Sequence,
     runtime_checkable,
@@ -280,13 +282,93 @@ class TimeStampSource(Protocol):
 # region Stamp
 
 
+class _DisplayRow(NamedTuple):
+    """One row of a stamp's text and HTML displays."""
+
+    label: str
+    """Timeline id, C-Map label or claim pair."""
+    value: str
+    """The value as displayed, unit included."""
+    tag: str
+    """The HTML Type column (empty leaves the cell empty)."""
+    look: str
+    """The HTML styling: ``strong``, ``plain``, ``muted`` or ``inferred``."""
+    text_tag: str
+    """The tag the text display appends where the stamp lays tags out."""
+
+
+def _row_html(row: _DisplayRow) -> str:
+    """Render one display row as an HTML table row."""
+    import html
+
+    label = html.escape(row.label)
+    tag = html.escape(row.tag)
+    if row.look == "strong":
+        label_cell = f"<td><strong>{label}</strong></td>"
+    elif row.look == "plain":
+        label_cell = f"<td>{label}</td>"
+    else:
+        label_cell = f"<td style='color: #666;'>{label}</td>"
+    if not tag:
+        tag_cell = "<td></td>"
+    elif row.look == "muted":
+        tag_cell = f"<td style='color: #666;'><em>{tag}</em></td>"
+    elif row.look == "inferred":
+        tag_cell = f"<td><em style='color: #666;'>{tag}</em></td>"
+    else:
+        tag_cell = f"<td><em>{tag}</em></td>"
+    return (
+        f"<tr>{label_cell}<td style='text-align: right;'>"
+        f"{html.escape(row.value)}</td>{tag_cell}</tr>"
+    )
+
+
 class Stamp(ABC):
     """Shared typed retrieval behavior for synchronized instant stamps."""
+
+    _affordances: ClassVar[tuple[str, ...]]
+    """The calls the HTML display offers to try next."""
+    _text_tags: ClassVar[bool]
+    """Whether the text display right-aligns values and appends row tags."""
 
     coordinates: dict[str, Coordinate]
     source_id: str
     source: object | None
     is_interpolated: bool
+
+    def __str__(self) -> str:
+        """Readable cross-section: one line per coordinate, C-Map and claim row.
+
+        A ``TimeStamp`` reads ``TimeStamp @<axis>`` and lists its rows with
+        their values as written; a ``MatchStamp`` reads ``MatchStamp (<n>
+        timelines, <m> edges)``, right-aligns the values and appends each
+        row's tag (``stated``, ``inferred``, ``interval claim <i>
+        (<timeline>)``).
+
+        Examples:
+            >>> print(timeline.get_timestamp_at(25.0))
+            TimeStamp @25 seconds
+              audio         25 seconds
+              intro         25 seconds
+              verse         15 seconds
+              milliseconds  25000 milliseconds
+        """
+        rows = self._display_rows()
+        lines = [self._text_header()]
+        if rows:
+            label_width = max(len(row.label) for row in rows)
+            if self._text_tags:
+                value_width = max(len(row.value) for row in rows)
+                for row in rows:
+                    line = f"  {row.label:<{label_width}}  {row.value:>{value_width}}"
+                    if row.text_tag:
+                        line += f"  {row.text_tag}"
+                    lines.append(line)
+            else:
+                lines.extend(
+                    f"  {row.label:<{label_width}}  {row.value}" for row in rows
+                )
+        return "\n".join(lines)
 
     @property
     def axis(self) -> IdCoordinate:
@@ -487,20 +569,209 @@ class Stamp(ABC):
         coordinate = self.coordinates.get(timeline_id)
         return None if coordinate is None else coordinate.unit
 
-    def get_conversion_for(self, key: str) -> object:
-        """Return a structured conversion-map value by selector.
+    def get_unit(
+        self,
+        unit: TimeUnit,
+        *,
+        timeline_id: str | None = None,
+        format: CoordinateFormat = "id_coordinate",
+        rounding: Rounding = "round",
+    ) -> CoordinateResult | pd.Series:
+        """Convert one stored coordinate through an eligible unit map.
+
+        Without ``timeline_id`` the stored timelines are tried in order and
+        the first one already in *unit*, or holding a map into it that this
+        stamp's ``conversion_maps`` enables, answers.
 
         Args:
-            key: Conversion-map selector.
+            unit: Requested target unit.
+            timeline_id: Optional stored axis to select explicitly.
+            format: Requested coordinate output format.
+            rounding: Integral projection mode.
+
+        Returns:
+            The converted coordinate projection.
 
         Raises:
-            KeyError: Always for a stamp without conversion-map resolution.
+            KeyError: If the selected timeline is absent or no eligible map exists.
         """
-        raise KeyError(f"Unknown conversion selector {key!r} on this stamp")
+        if not isinstance(unit, TimeUnit):
+            raise TypeError("get_unit requires a TimeUnit")
+        candidates = (
+            [timeline_id] if timeline_id is not None else list(self.coordinates)
+        )
+        for candidate in candidates:
+            coordinate = self.coordinates.get(candidate)
+            if coordinate is None:
+                if timeline_id is not None:
+                    raise KeyError(
+                        f"Unknown timeline ID {candidate!r} on {self._error_name()}"
+                    )
+                continue
+            if coordinate.unit == unit:
+                converted = Coordinate(
+                    coordinate.value,
+                    unit,
+                    number_type=number_type_for_converted_unit(
+                        coordinate.number_type, unit
+                    ),
+                )
+            else:
+                if self.source is None:
+                    continue
+                cmap = self._unit_map_for(candidate, unit)
+                if cmap is None:
+                    continue
+                converted = self._on_unit(cmap._evaluate(coordinate.value), unit, cmap)
+            identified = IdCoordinate.from_coordinate(converted, candidate)
+            return format_coordinates(
+                [identified],
+                format=format,
+                rounding=rounding,
+                scalar=True,
+                series_name=candidate,
+            )
+        raise KeyError(
+            f"No eligible conversion to {unit.value!r} on {self._error_name()}"
+        )
 
-    def _unit_resolution_enabled(self, unit: TimeUnit) -> bool:
-        """Return whether the stamp's conversion-map spec permits a unit."""
-        return True
+    def get_conversion_for(self, key: str) -> object:
+        """Return the output of a conversion map addressed by selector.
+
+        Searches the C-Maps of every stored timeline, in storage order, for
+        an enabled map whose name, id, selector, or target-unit name is
+        *key*, and evaluates it at that timeline's coordinate.
+
+        Args:
+            key: A conversion-map name, id, selector, or target-unit name.
+
+        Returns:
+            The C-Map's output at this instant without projection: written on
+            the target unit where the map has one, as the map answers
+            otherwise.
+
+        Raises:
+            KeyError: If no enabled map matches ``key``.
+        """
+        getter = getattr(self.source, "_get_conversion_maps_for_timeline", None)
+        if getter is None:
+            raise KeyError(f"Unknown conversion selector {key!r}")
+        for timeline_id, coordinate in self.coordinates.items():
+            for cmap in getter(timeline_id):
+                if not self._conversion_map_enabled(cmap):
+                    continue
+                matches = cmap.matches_selector(key) or cmap.name == key
+                if not matches and cmap.target_unit is not None:
+                    matches = cmap.target_unit.value == key
+                if matches:
+                    value = cmap._evaluate(coordinate.value)
+                    if cmap.target_unit is None:
+                        return value
+                    return self._on_unit(value, cmap.target_unit, cmap).value
+        raise KeyError(f"Unknown conversion selector {key!r}")
+
+    def _conversion_rows(self) -> list[tuple[str, Any, str]]:
+        """Surface every enabled C-Map across the cross-section.
+
+        Returns ``(label, value, suffix)`` for each conversion map attached to
+        a stored timeline, evaluated at that timeline's coordinate. ``label``
+        is the map's target-unit name when it has one, else the map's name;
+        labels that collide across owners are qualified with the owning
+        timeline id. ``suffix`` is the unit appended to numeric values in
+        displays (empty for label/structured maps).
+
+        A map that does not reach the coordinate (it raises ``ValueError``:
+        outside its domain, or a value its target cannot be written in,
+        :class:`~timetoalign.maps.base.OutputNumberTypeError` included) is
+        left out of the rows. Any other error is a defect and propagates.
+        """
+        getter = getattr(self.source, "_get_conversion_maps_for_timeline", None)
+        if getter is None:
+            return []
+        collected: list[tuple[str, Any, str, str]] = []  # (label, value, suffix, owner)
+        for timeline_id, coordinate in self.coordinates.items():
+            for cmap in getter(timeline_id):
+                if not self._conversion_map_enabled(cmap):
+                    continue
+                try:
+                    value = cmap._evaluate(coordinate.value)
+                    if cmap.target_unit is not None:
+                        value = self._on_unit(value, cmap.target_unit, cmap).value
+                except ValueError:
+                    continue
+                if cmap.target_unit is not None:
+                    label = cmap.target_unit.value
+                    suffix = cmap.target_unit.value
+                else:
+                    label = cmap.name
+                    suffix = ""
+                collected.append((label, value, suffix, timeline_id))
+        return self._qualify_conversion_rows(collected)
+
+    def _repr_html_(self) -> str:
+        """Return an HTML table of the rows :meth:`__str__` lists.
+
+        One row per coordinate, C-Map and claim, with its kind in the Type
+        column, under the class name and the stamp's badge, followed by the
+        calls a reader might try next.
+        """
+        from timetoalign.display.html import affordance_line
+
+        rows = "".join(_row_html(row) for row in self._display_rows())
+        return (
+            f"<div style='font-family: monospace;'>"
+            f"<strong>{type(self).__name__}</strong>{self._html_badge()}"
+            f"<table style='border-collapse: collapse; margin-top: 4px;'>"
+            f"<thead><tr style='border-bottom: 1px solid #ccc;'>"
+            f"<th style='text-align: left; padding: 2px 8px;'>ID</th>"
+            f"<th style='text-align: right; padding: 2px 8px;'>Coordinate</th>"
+            f"<th style='text-align: left; padding: 2px 8px;'>Type</th>"
+            f"</tr></thead>"
+            f"<tbody>{rows}</tbody>"
+            f"</table>"
+            f"{affordance_line(list(self._affordances))}"
+            f"</div>"
+        )
+
+    def _display_rows(self) -> list[_DisplayRow]:
+        """The rows of both displays: coordinates, then C-Maps, then claims."""
+        conversions = [
+            _DisplayRow(label, _format_stamp_value(value, suffix), "cmap", "muted", "")
+            for label, value, suffix in self._conversion_rows()
+        ]
+        return self._coordinate_rows() + conversions + self._claim_rows()
+
+    def _claim_rows(self) -> list[_DisplayRow]:
+        """Display rows after the C-Map rows: none on a stamp naming no claims."""
+        return []
+
+    # Hooks: what each kind of stamp answers in its own way.
+
+    @abstractmethod
+    def _error_name(self) -> str:
+        """How an error message names this stamp."""
+
+    @abstractmethod
+    def _unit_map_for(
+        self, timeline_id: str, unit: TimeUnit
+    ) -> "ConversionMap[Any] | None":
+        """The enabled map converting *timeline_id*'s coordinate into *unit*.
+
+        Asked only when the stamp has a source; ``None`` where the timeline
+        holds no such map or this stamp's ``conversion_maps`` disables it.
+        """
+
+    @abstractmethod
+    def _coordinate_rows(self) -> list[_DisplayRow]:
+        """One display row per stored coordinate, in display order."""
+
+    @abstractmethod
+    def _text_header(self) -> str:
+        """The first line of the text display."""
+
+    @abstractmethod
+    def _html_badge(self) -> str:
+        """The badge beside the class name in the HTML display (may be empty)."""
 
     def _conversion_map_enabled(self, cmap: "ConversionMap[Any]") -> bool:
         """Return whether this stamp's spec surfaces *cmap*."""
@@ -562,6 +833,13 @@ class TimeStamp(Stamp):
         10.5
     """
 
+    _affordances: ClassVar[tuple[str, ...]] = (
+        "ts.get_coordinate_for(<tl_id>)",
+        "ts.get_unit(<unit>)",
+        "ts.get_conversion_for(<key>)",
+    )
+    _text_tags: ClassVar[bool] = False
+
     coordinates: dict[str, Coordinate]
     source_id: str
     source: TimeStampSource | None = field(default=None)
@@ -592,167 +870,27 @@ class TimeStamp(Stamp):
             )
         object.__setattr__(self, "coordinates", normalized)
 
-    def get_unit(
-        self,
-        unit: TimeUnit,
-        *,
-        timeline_id: str | None = None,
-        format: CoordinateFormat = "id_coordinate",
-        rounding: Rounding = "round",
-    ) -> CoordinateResult | pd.Series:
-        """Convert one stored coordinate through an eligible unit map.
-
-        Args:
-            unit: Requested target unit.
-            timeline_id: Optional stored axis to select explicitly.
-            format: Requested coordinate output format.
-            rounding: Integral projection mode.
-
-        Returns:
-            The converted coordinate projection.
-
-        Raises:
-            KeyError: If the selected timeline is absent or no eligible map exists.
-        """
-        if not isinstance(unit, TimeUnit):
-            raise TypeError("get_unit requires a TimeUnit")
-        candidates = (
-            [timeline_id] if timeline_id is not None else self._surfaceable_ids()
+    def __repr__(self) -> str:
+        interp = " (interpolated)" if self.is_interpolated else ""
+        conversions = "".join(
+            f", {label}={value!r}" for label, value, _suffix in self._conversion_rows()
         )
-        for candidate in candidates:
-            if candidate not in self.coordinates:
-                if timeline_id is not None:
-                    raise KeyError(
-                        f"Unknown timeline ID {candidate!r} on stamp from {self.source_id!r}"
-                    )
-                continue
-            coordinate = self.coordinates[candidate]
-            if coordinate.unit == unit:
-                converted = Coordinate(
-                    coordinate.value,
-                    unit,
-                    number_type=number_type_for_converted_unit(
-                        coordinate.number_type, unit
-                    ),
-                )
-            else:
-                if self.source is None or not self._unit_resolution_enabled(unit):
-                    continue
-                umap = self.source._get_unit_map_for_timeline(candidate, unit)
-                if umap is None:
-                    continue
-                converted = self._on_unit(umap._evaluate(coordinate.value), unit, umap)
-            identified = IdCoordinate.from_coordinate(converted, candidate)
-            return format_coordinates(
-                [identified],
-                format=format,
-                rounding=rounding,
-                scalar=True,
-                series_name=candidate,
-            )
-        raise KeyError(
-            f"No eligible conversion to {unit.value!r} on stamp from {self.source_id!r}"
+        return (
+            f"TimeStamp(axis={self.axis}, source={self.source_id!r}"
+            f"{conversions}{interp})"
         )
 
-    def _surfaceable_ids(self) -> list[str]:
-        """Timeline IDs whose C-Maps this stamp surfaces: source, then subtree.
+    def _error_name(self) -> str:
+        """Errors name the stamp by its source timeline."""
+        return f"stamp from {self.source_id!r}"
 
-        The source comes first, followed by every descendant (Timeline) or
-        member and member-descendant (TimelineGroup). Deeper relations are
-        gathered via ``_get_descendant_timeline_ids`` when the source exposes
-        it, otherwise the direct relations are used.
-        """
-        return list(self.coordinates)
-
-    def _coordinate_on(self, timeline_id: str) -> int | float | Fraction | None:
-        """Resolve this stamp's coordinate on *timeline_id* (source or subtree).
-
-        Returns the coordinate in its stored canonical representation so a
-        conversion map receives the declared axis type.
-        """
-        coordinate = self.coordinates.get(timeline_id)
-        return None if coordinate is None else coordinate.value
-
-    def _conversion_rows(self) -> list[tuple[str, Any, str]]:
-        """Surface every C-Map across the cross-section.
-
-        Returns ``(label, value, suffix)`` for each conversion map attached to
-        the source or any descendant present at this axis, evaluated at that
-        timeline's coordinate. ``label`` is the map's target-unit name when it
-        has one, else the map's name; labels that collide across owners are
-        qualified with the owning timeline id. ``suffix`` is the unit appended
-        to numeric values in displays (empty for label/structured maps).
-        """
-        getter = getattr(self.source, "_get_conversion_maps_for_timeline", None)
-        if getter is None:
-            return []
-
-        collected: list[tuple[str, Any, str, str]] = []  # (label, value, suffix, owner)
-        for timeline_id in self._surfaceable_ids():
-            coordinate = self.coordinates.get(timeline_id)
-            if coordinate is None:
-                continue
-            for cmap in getter(timeline_id):
-                if not self._conversion_map_enabled(cmap):
-                    continue
-                try:
-                    value = cmap._evaluate(coordinate.value)
-                    if cmap.target_unit is not None:
-                        value = self._on_unit(value, cmap.target_unit, cmap).value
-                except Exception:
-                    # A display cross-section never propagates a single map's
-                    # evaluation failure (e.g. a coordinate outside a map's
-                    # domain): that map is simply omitted from the row set.
-                    continue
-                if cmap.target_unit is not None:
-                    label = cmap.target_unit.value
-                    suffix = cmap.target_unit.value
-                else:
-                    label = cmap.name
-                    suffix = ""
-                collected.append((label, value, suffix, timeline_id))
-
-        return self._qualify_conversion_rows(collected)
-
-    def get_conversion_for(self, key: str) -> object:
-        """Get the raw output of a conversion map addressed by name/selector.
-
-        Searches the source and every descendant/member present at this axis
-        for a C-Map whose name, id, selector, or target-unit name is *key*, and
-        evaluates it at that timeline's coordinate.
-
-        Args:
-            key: A conversion-map name, id, selector, or target-unit name.
-
-        Returns:
-            The C-Map's output at this instant without projection.
-
-        Raises:
-            KeyError: If no enabled map matches ``key``.
-        """
-        getter = getattr(self.source, "_get_conversion_maps_for_timeline", None)
-        if getter is None:
-            raise KeyError(f"Unknown conversion selector {key!r}")
-        for timeline_id in self._surfaceable_ids():
-            coordinate = self.coordinates.get(timeline_id)
-            if coordinate is None:
-                continue
-            for cmap in getter(timeline_id):
-                if not self._conversion_map_enabled(cmap):
-                    continue
-                matches = cmap.matches_selector(key) or cmap.name == key
-                if not matches and cmap.target_unit is not None:
-                    matches = cmap.target_unit.value == key
-                if matches:
-                    value = cmap._evaluate(coordinate.value)
-                    if cmap.target_unit is None:
-                        return value
-                    return self._on_unit(value, cmap.target_unit, cmap).value
-        raise KeyError(f"Unknown conversion selector {key!r}")
-
-    def _unit_for(self, timeline_id: str) -> "TimeUnit | None":
-        """Get the unit associated with a timeline ID."""
-        return Stamp._unit_for(self, timeline_id)
+    def _unit_map_for(
+        self, timeline_id: str, unit: TimeUnit
+    ) -> "ConversionMap[Any] | None":
+        """The source's unit map for *timeline_id*, where ``conversion_maps`` admits *unit*."""
+        if not self._unit_resolution_enabled(unit):
+            return None
+        return self.source._get_unit_map_for_timeline(timeline_id, unit)
 
     def _unit_resolution_enabled(self, unit: TimeUnit) -> bool:
         """Return whether conversion-map specification permits a unit."""
@@ -765,7 +903,7 @@ class TimeStamp(Stamp):
         requested = spec if isinstance(spec, list) else [spec]
         maps = [
             cmap
-            for timeline_id in self._surfaceable_ids()
+            for timeline_id in self.coordinates
             for cmap in self.source._get_unit_maps_for_timeline(timeline_id, unit)
         ]
 
@@ -801,144 +939,43 @@ class TimeStamp(Stamp):
             number_type = timeline.number_type if timeline is not None else None
         return number_type.name if number_type is not None else None
 
-    def __repr__(self) -> str:
-        interp = " (interpolated)" if self.is_interpolated else ""
-        conversions = "".join(
-            f", {label}={value!r}" for label, value, _suffix in self._conversion_rows()
-        )
-        return (
-            f"TimeStamp(axis={self.axis}, source={self.source_id!r}"
-            f"{conversions}{interp})"
-        )
-
-    def __str__(self) -> str:
-        """Readable cross-section showing all reachable coordinates and units.
-
-        Examples:
-            >>> print(timeline.get_timestamp_at(25.0))
-            TimeStamp @25 seconds
-              audio      25 seconds
-              intro      25 seconds
-              verse      15 seconds
-              chorus     -5 seconds
-              milliseconds   25000
-              samples  1200000
-        """
-
-        lines: list[str] = []
-
-        # Header: axis value with unit
-        axis_entry = self.coordinates[self.source_id]
-        unit_str = axis_entry.unit.value
-        lines.append(
-            f"TimeStamp @{_format_coordinate_value(axis_entry.value, unit_str)}"
-        )
-
-        # Collect all entries: (label, value_str)
-        entries: list[tuple[str, str]] = []
-
-        # Source timeline
-        entries.append(
-            (
+    def _coordinate_rows(self) -> list[_DisplayRow]:
+        """The source's coordinate (``axis``), then every other (``child``)."""
+        source = self.coordinates[self.source_id]
+        rows = [
+            _DisplayRow(
                 self.source_id,
-                _format_coordinate_value(axis_entry.value, unit_str),
+                _format_coordinate_value(source.value, source.unit.value),
+                "axis",
+                "strong",
+                "",
             )
+        ]
+        rows.extend(
+            _DisplayRow(
+                timeline_id,
+                _format_coordinate_value(coordinate.value, coordinate.unit.value),
+                "child",
+                "plain",
+                "",
+            )
+            for timeline_id, coordinate in self.coordinates.items()
+            if timeline_id != self.source_id
         )
+        return rows
 
-        # Children / related timelines (skip source_id to avoid duplicate)
-        for tid, coordinate in self.coordinates.items():
-            if tid == self.source_id:
-                continue
-            entries.append(
-                (tid, _format_coordinate_value(coordinate.value, coordinate.unit.value))
-            )
+    def _text_header(self) -> str:
+        """``TimeStamp @<axis>``."""
+        axis = self.coordinates[self.source_id]
+        return f"TimeStamp @{_format_coordinate_value(axis.value, axis.unit.value)}"
 
-        # C-Map conversions (all kinds, across the whole subtree)
-        for label, value, suffix in self._conversion_rows():
-            entries.append((label, _format_stamp_value(value, suffix)))
-
-        # Align fields
-        if entries:
-            max_label = max(len(e[0]) for e in entries)
-            for label, value_str in entries:
-                lines.append(f"  {label:<{max_label}}  {value_str}")
-
-        return "\n".join(lines)
-
-    def _repr_html_(self) -> str:
-        """Return HTML representation for Jupyter notebooks.
-
-        Displays the timestamp as an HTML table showing all coordinates
-        with their units, organized by timeline and C-Map.
-        """
-        import html
-
-        from timetoalign.display.html import affordance_line
-
-        def _fmt_html(value: int | float | Fraction, unit_name: str = "") -> str:
-            """Format for HTML display, keeping unit separate."""
-            return _format_coordinate_value(value, unit_name)
-
-        rows = []
-
-        # Add axis coordinate
-        axis_entry = self.coordinates[self.source_id]
-        axis_unit_name = axis_entry.unit.value
-        rows.append(
-            f"<tr><td><strong>{html.escape(self.source_id)}</strong></td>"
-            f"<td style='text-align: right;'>"
-            f"{_fmt_html(axis_entry.value, axis_unit_name)}</td>"
-            f"<td><em>axis</em></td></tr>"
-        )
-
-        # Add related timeline coordinates (children) - skip source_id to avoid duplicate
-        for tid, coordinate in self.coordinates.items():
-            if tid == self.source_id:
-                continue
-            rows.append(
-                f"<tr><td>{html.escape(tid)}</td>"
-                f"<td style='text-align: right;'>"
-                f"{_fmt_html(coordinate.value, coordinate.unit.value)}</td>"
-                f"<td><em>child</em></td></tr>"
-            )
-
-        # Add C-Map conversions (all kinds, across the whole subtree)
-        for label, value, suffix in self._conversion_rows():
-            rows.append(
-                f"<tr><td style='color: #666;'>{html.escape(label)}</td>"
-                f"<td style='text-align: right;'>"
-                f"{html.escape(_format_stamp_value(value, suffix))}</td>"
-                f"<td style='color: #666;'><em>cmap</em></td></tr>"
-            )
-
-        interp_badge = (
+    def _html_badge(self) -> str:
+        """``interpolated`` where the stamp is, else nothing."""
+        if not self.is_interpolated:
+            return ""
+        return (
             " <span style='background: #ffeb3b; padding: 0 4px; "
             "border-radius: 3px; font-size: 0.8em;'>interpolated</span>"
-            if self.is_interpolated
-            else ""
-        )
-
-        affordances = affordance_line(
-            [
-                "ts.get_coordinate_for(<tl_id>)",
-                "ts.get_unit(<unit>)",
-                "ts.get_conversion_for(<key>)",
-            ]
-        )
-
-        return (
-            f"<div style='font-family: monospace;'>"
-            f"<strong>TimeStamp</strong>{interp_badge}"
-            f"<table style='border-collapse: collapse; margin-top: 4px;'>"
-            f"<thead><tr style='border-bottom: 1px solid #ccc;'>"
-            f"<th style='text-align: left; padding: 2px 8px;'>ID</th>"
-            f"<th style='text-align: right; padding: 2px 8px;'>Coordinate</th>"
-            f"<th style='text-align: left; padding: 2px 8px;'>Type</th>"
-            f"</tr></thead>"
-            f"<tbody>{''.join(rows)}</tbody>"
-            f"</table>"
-            f"{affordances}"
-            f"</div>"
         )
 
 

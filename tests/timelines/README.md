@@ -1450,6 +1450,21 @@ level vocabulary remain queryable but do not affect equality.
 
 ### `test_groups.py` and `test_group_definition.py` - Timeline Groups
 
+**A C-Map column only where the map reaches every row
+(`TestConversionColumnErrors`).** A group's timestamp table converts each
+member's column through each numeric C-Map as one array; a map raising
+`ValueError` (a row outside its domain) gets no column, and any other error
+is a defect that propagates. Two tests, as the bundle's catches are tested
+(`tests/alignment/test_bundle.py::TestUnexpectedErrorsPropagate`): with
+`TableMap._convert_array` raising `RuntimeError("boom")`,
+`get_timestamp_table([25.0], "clock", conversion_maps=True)` raises it, and
+the traceback passes `_cmap_columns` at the statement `converted =
+cmap.convert_array(values[timeline_id])`; and on a 100-second `clock`
+carrying a milliseconds map over `[0, 100]` and a frames map over `[0, 50]`
+with `extrapolate="error"`, the rows `[25.0]` give the columns `clock`,
+`seconds_to_milliseconds`, `seconds_to_frames` (1250 frames), the rows
+`[25.0, 75.0]` only `clock` and `seconds_to_milliseconds` (25000 and 75000).
+
 A `TimelineGroup` is an array of member timelines that, by definition, share
 one graphical start and one graphical end: every member's 0 coincides with
 every other member's 0, every member's length with every other member's

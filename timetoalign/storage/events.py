@@ -65,6 +65,7 @@ from .schema import (
     get_base_field_names,
     is_coordinate_type,
     make_base_schema,
+    make_coordinate_field,
     make_table_metadata,
     parse_table_metadata,
 )
@@ -426,6 +427,23 @@ def _extreme_coordinate(
     )
 
 
+def _in_lowest_terms(table: pa.Table) -> pa.Table:
+    """*table* with the ratio of every coordinate cell in lowest terms.
+
+    Memory holds one spelling of each value (:func:`in_lowest_terms`): a
+    cell stating ``2/4`` is held as ``1/2``. Every coordinate column is
+    reduced, the base ones and any further one; a column's field and its
+    metadata are kept. One vectorized pass per coordinate column.
+    """
+    for index, field in enumerate(table.schema):
+        if is_coordinate_type(field.type) and all(
+            field.type.field(member).type == pa.int64()
+            for member in ("numerator", "denominator")
+        ):
+            table = table.set_column(index, field, in_lowest_terms(table.column(index)))
+    return table
+
+
 def _has_value_subfield(pa_type: pa.DataType) -> bool:
     """Return True iff *pa_type* is a struct with a ``value`` sub-field.
 
@@ -704,13 +722,16 @@ class EventData(SemanticFieldAccessMixin):
 
         Use class methods (from_dicts, from_arrays, etc.) to create instances.
 
+        Every coordinate cell is reduced on entry: a ratio stated as ``2/4``
+        is accepted and held as ``1/2``, so cells compare by value.
+
         Args:
             table: The PyArrow table containing events.
             unit: The time unit for coordinates.
             number_type: The number type for coordinate interpretation.
                 Defaults to the one the unit itself uses.
         """
-        self._table = table
+        self._table = _in_lowest_terms(table)
         self._unit = unit
         self._number_type = unit.resolve_number_type(number_type)
 
@@ -1202,7 +1223,7 @@ class EventData(SemanticFieldAccessMixin):
 
                 For coordinate fields (start, end, duration):
                 - If pa.StructArray: taken whole; any ratio is accepted and
-                  read by its value (``2/4`` is ``1/2``), held reduced
+                  reduced on entry (``2/4`` is held as ``1/2``)
                 - If numeric/string array: parsed via build_number_struct_array
 
             unit: The time unit for coordinates.
@@ -1443,22 +1464,17 @@ class EventData(SemanticFieldAccessMixin):
             # Use provided field if available (has metadata from CoordinateField etc.)
             if name in provided_fields:
                 inferred_fields.append(provided_fields[name])
+            elif is_coordinate_type(arr.type):
+                # A further coordinate column is on this table's axis: its
+                # unit and number type are written as the base columns'
+                # are, so it reads back in the type it was given in.
+                inferred_fields.append(
+                    make_coordinate_field(
+                        name, unit, nullable=True, number_type=number_type
+                    ).with_type(arr.type)
+                )
             else:
-                # For coordinate struct fields, add unit metadata
-                # This enables dataframe conversion to properly convert them
-
-                if is_coordinate_type(arr.type):
-                    # Coordinate field - add unit metadata (use default unit)
-                    inferred_fields.append(
-                        pa.field(
-                            name,
-                            arr.type,
-                            nullable=True,
-                            metadata={"unit": str(unit)},
-                        )
-                    )
-                else:
-                    inferred_fields.append(pa.field(name, arr.type, nullable=True))
+                inferred_fields.append(pa.field(name, arr.type, nullable=True))
 
         # Extend schema with extra fields
         if inferred_fields:
@@ -1634,6 +1650,22 @@ class EventData(SemanticFieldAccessMixin):
 
     # region Extend/Merge
 
+    def _refuse_other_axis(self, other: "EventData") -> None:
+        """Refuse events on another axis than this table's.
+
+        The cells of a table are read in its one number type, so rows of
+        another unit or number type cannot join it.
+
+        Raises:
+            ValueError: If *other* has another unit or number type.
+        """
+        if other.unit != self.unit:
+            raise ValueError(f"Unit mismatch: {self.unit} vs {other.unit}")
+        if other.number_type is not self.number_type:
+            raise ValueError(
+                f"Number type mismatch: {self.number_type} vs {other.number_type}"
+            )
+
     def extend(self, other: "EventData") -> None:
         """Extend this data with events from another EventData (in-place).
 
@@ -1642,10 +1674,9 @@ class EventData(SemanticFieldAccessMixin):
                 are allowed and will be merged using schema promotion).
 
         Raises:
-            ValueError: If units don't match.
+            ValueError: If the units or the number types don't match.
         """
-        if other.unit != self.unit:
-            raise ValueError(f"Unit mismatch: {self.unit} vs {other.unit}")
+        self._refuse_other_axis(other)
 
         # Use promote_options="default" to handle schema differences
         # (e.g., extra fields from JSON loaders). Missing fields are
@@ -1670,12 +1701,11 @@ class EventData(SemanticFieldAccessMixin):
             A new EventData containing all events.
 
         Raises:
-            ValueError: If any units don't match.
+            ValueError: If any units or number types don't match.
         """
         tables = [self._table]
         for other in others:
-            if other.unit != self.unit:
-                raise ValueError(f"Unit mismatch: {self.unit} vs {other.unit}")
+            self._refuse_other_axis(other)
             tables.append(other._table)
 
         # Use promote_options="default" to handle schema differences
@@ -1761,10 +1791,11 @@ class EventData(SemanticFieldAccessMixin):
             max_coord: Maximum coordinate (exclusive), optionally with a unit.
             **kwargs: Exact match filters for other fields (e.g. event_category="note").
 
-        Coordinate bounds are compared against the stored float coordinate
-        representation. Fraction bounds are converted to float for this
-        comparison; integer and float bounds retain their respective types.
-        The minimum remains inclusive and the maximum remains exclusive.
+        Coordinate bounds are compared with each event's ``start`` as the
+        table's number type reads it: exactly on an ``int`` or ``fraction``
+        table (ratios cross-multiplied, so positions closer than a float
+        can tell apart are told apart), on the float side of a ``float``
+        table. The minimum is inclusive and the maximum exclusive.
 
         Returns:
             A new EventData with filtered events.
@@ -1779,38 +1810,16 @@ class EventData(SemanticFieldAccessMixin):
             expr = pc.equal(pc.field("event_type"), event_type)
             mask = expr if mask is None else (mask & expr)
 
-        if min_coord is not None or max_coord is not None:
-            # For coordinate filtering, we use the float 'value' field
-            # Check start.value
-            coord_val = pc.struct_field(pc.field("start"), "value")
-
-            if min_coord is not None:
-                resolved_min = resolve_coordinate_spec(min_coord)
-                if resolved_min.unit is not None and resolved_min.unit != self.unit:
-                    raise ValueError(
-                        f"Coordinate unit mismatch: {resolved_min.unit} vs {self.unit}"
-                    )
-                min_value = (
-                    float(resolved_min.value)
-                    if isinstance(resolved_min.value, Fraction)
-                    else resolved_min.value
+        bounds = []
+        for bound, comparison in ((min_coord, "greater_equal"), (max_coord, "less")):
+            if bound is None:
+                continue
+            resolved = resolve_coordinate_spec(bound)
+            if resolved.unit is not None and resolved.unit != self.unit:
+                raise ValueError(
+                    f"Coordinate unit mismatch: {resolved.unit} vs {self.unit}"
                 )
-                expr = pc.greater_equal(coord_val, min_value)
-                mask = expr if mask is None else (mask & expr)
-
-            if max_coord is not None:
-                resolved_max = resolve_coordinate_spec(max_coord)
-                if resolved_max.unit is not None and resolved_max.unit != self.unit:
-                    raise ValueError(
-                        f"Coordinate unit mismatch: {resolved_max.unit} vs {self.unit}"
-                    )
-                max_value = (
-                    float(resolved_max.value)
-                    if isinstance(resolved_max.value, Fraction)
-                    else resolved_max.value
-                )
-                expr = pc.less(coord_val, max_value)
-                mask = expr if mask is None else (mask & expr)
+            bounds.append((resolved.value, comparison))
 
         # Generic kwargs filtering
         for name, val in kwargs.items():
@@ -1819,10 +1828,16 @@ class EventData(SemanticFieldAccessMixin):
                 expr = pc.equal(pc.field(name), val)
                 mask = expr if mask is None else (mask & expr)
 
-        if mask is None:
+        if mask is None and not bounds:
             return self
 
-        filtered = self._table.filter(mask)
+        filtered = self._table if mask is None else self._table.filter(mask)
+        for value, comparison in bounds:
+            filtered = filtered.filter(
+                compare_number_column(
+                    filtered.column("start"), value, comparison, self.number_type
+                )
+            )
         return self.__class__(filtered, self.unit, self.number_type)
 
     def column_values(self, name: str, *, default: Any = None) -> list[Any]:

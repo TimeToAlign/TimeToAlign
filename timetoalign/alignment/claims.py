@@ -2972,16 +2972,31 @@ class MatchClaimField(SemanticField[MatchClaim]):
         """The distinct timeline ids appearing in either id column.
 
         Reads the struct's two id sub-fields vectorized (no claim is
-        materialised).
+        materialised), once per table: the ids are kept beside the struct
+        array they were read from and read again only when the field holds
+        another array. Every call returns a new set.
         """
         data = self._raw.data
         if data is None or len(data) == 0:
             return set()
-        ids: set[str] = set()
-        for name in ("timeline_a_id", "timeline_b_id"):
-            column = data.field(name)
-            ids.update(v for v in column.to_pylist() if v is not None)
-        return ids
+        cached = self.__dict__.get("_timeline_ids_read")
+        if cached is None or cached[0] is not data:
+            cached = (data, self._distinct_timeline_ids(data))
+            self._timeline_ids_read = cached
+        return set(cached[1])
+
+    @staticmethod
+    def _distinct_timeline_ids(data: pa.StructArray) -> tuple[str, ...]:
+        """The distinct timeline ids of *data*'s two id columns, A's first.
+
+        Each id appears where it first occurs in the A column followed by
+        the B column, so a set built from them iterates as one built row by
+        row from both columns.
+        """
+        both = pa.concat_arrays(
+            [data.field("timeline_a_id"), data.field("timeline_b_id")]
+        )
+        return tuple(pc.unique(both.drop_null()).to_pylist())
 
     @property
     def _ids(self) -> pa.Array:

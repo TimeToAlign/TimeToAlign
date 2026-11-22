@@ -1370,6 +1370,31 @@ they need each timeline's domain and unit, which the store does not hold — so
 the bundle resolves them into the set of timeline IDs that pass and hands that
 set to `within`.
 
+### Timeline ids, read once per table (`TestTimelineIdsReadOnce`)
+
+`timeline_ids` is asked on every position query (the bundle's warp units),
+so it is read from the two id columns once per struct array and kept beside
+it. Two things must hold, and each has its own proof:
+
+1. **The answer is the one the row-by-row reading gave**, as a set and in
+   its iteration order: for every field the alignment fixtures build (the
+   gold vector, every claim kind from `_every_kind`, the Thoresen segment
+   claims of `conftest.py`, a field whose B column names an id before its
+   A column does, a filtered field, an empty one) `list(ids)` equals
+   `list` of a set filled from `timeline_a_id` then `timeline_b_id` row by
+   row (the former expression, kept in the test as the oracle). Equal
+   insertion sequences make equal sets with equal iteration order, so the
+   comparison is exact in one process.
+2. **It is read once per table state**: the read is counted (a wrapper
+   around `MatchClaimField._distinct_timeline_ids` recording the array it
+   was given). One field asked five times reads once. In a bundle, five
+   `get_matchstamp_at` queries read the bundle's MatchClaim table exactly
+   once; a claim added makes a new table, read once more for the next five
+   queries (two reads of a table in all, one per state). Assigning another
+   field to `match_claim_table` answers that field's ids at once (a field
+   never answers for another array), and a caller adding to the returned
+   set changes nothing the next call returns.
+
 ---
 
 ## Claim Ids (`test_claim_ids.py`)
@@ -2792,6 +2817,34 @@ The bundle caches MatchLines per (belief filter, source timeline) and
 WarpMaps per (belief filter, source timeline, target timeline), negative
 results included. Every change of the MatchClaim table clears both, with
 the MatchGraphs and the belief-filtered views of the table.
+
+### Unexpected errors propagate (`TestUnexpectedErrorsPropagate`)
+
+Two places read a failure of what they call as a negative answer, and may
+only do so for the failures that mean it:
+
+- a MatchLine is built from the claims naming its source, which were
+  checked when they joined the bundle, so building it has no failure that
+  means "no line" (a source no claim names has none, and that is decided
+  before building). A `MatchLine.from_claims` replaced by one raising
+  `RuntimeError("boom")` makes `transfer(50.0, "score", "audio")` raise it,
+  and the MatchLine cache holds no entry for `score` afterwards; with the
+  builder restored the same call answers `25.0`, so nothing was cached as
+  "no line".
+- a conversion column of `get_matchstamp_table` holds a null where the map
+  does not reach the row (its `ValueError`: outside its domain, or a value
+  the target unit refuses). A `TableMap._evaluate` replaced by one raising
+  `RuntimeError("boom")` makes `get_matchstamp_table([25.0], "clock",
+  conversion_maps=True)` raise it from `_assemble_matchstamp_table` (the
+  traceback names the frame, so the error is not one raised elsewhere).
+  The documented case keeps its null: a seconds→milliseconds `TableMap`
+  over `[0, 50]` with `extrapolate="error"` on a 100-second `clock` gives
+  the rows `25.0` and `75.0` the cells `25000.0` and null.
+
+The other catches of the bundle's transfer paths take the same narrowing
+(`ValueError`, and `KeyError` where a group conversion names a member);
+the existing transfer and closure tests pin that their answers are
+unchanged.
 
 ### `get_matchstamp_table` Conversion Columns
 

@@ -2526,3 +2526,69 @@ class TestGetMatchstampTableConversionColumns:
 
 
 # endregion
+
+
+# region Test: unexpected errors propagate
+
+
+def _raise_boom(*args: object, **kwargs: object) -> None:
+    raise RuntimeError("boom")
+
+
+def _frames(excinfo: pytest.ExceptionInfo[RuntimeError]) -> list[str]:
+    return [entry.name for entry in excinfo.traceback]
+
+
+class TestUnexpectedErrorsPropagate:
+    """Only the failures that mean "no line" or "does not reach" are read so."""
+
+    def test_a_failing_matchline_build_propagates_uncached(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        bundle, score_tl, _, audio_tl, _ = _make_cross_group_bundle()
+        bundle.add_match_claims(_make_linear_claims(score_tl.id, audio_tl.id, 3))
+
+        with monkeypatch.context() as patched:
+            patched.setattr(MatchLine, "from_claims", classmethod(_raise_boom))
+            with pytest.raises(RuntimeError, match="^boom$") as excinfo:
+                bundle.transfer(50.0, "score", "audio")
+        assert "_get_or_build_match_line" in _frames(excinfo)
+        assert (_ALL_BELIEFS, "score") not in bundle._matchline_cache
+
+        assert bundle.transfer(50.0, "score", "audio") == 25.0
+
+    def test_a_failing_conversion_map_propagates_from_the_table(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        bundle = _clock_bundle_with_maps()
+        monkeypatch.setattr(TableMap, "_evaluate", _raise_boom)
+
+        with pytest.raises(RuntimeError, match="^boom$") as excinfo:
+            bundle.get_matchstamp_table([25.0], "clock", conversion_maps=True)
+        assert "_assemble_matchstamp_table" in _frames(excinfo)
+
+    def test_a_map_not_reaching_a_row_leaves_a_null(self) -> None:
+        timeline = Timeline(length=100, unit=TimeUnit.seconds, uid="clock")
+        timeline.add_conversion_map(
+            TableMap(
+                x_values=[0.0, 50.0],
+                y_values=[0.0, 50000.0],
+                source_unit=TimeUnit.seconds,
+                target_unit=TimeUnit.milliseconds,
+                extrapolate="error",
+                uid="clock-ms",
+            )
+        )
+        bundle = AlignmentBundle(id="partial-map")
+        bundle.add_timeline(timeline, as_group="clock-group")
+
+        table = bundle.get_matchstamp_table([25.0, 75.0], "clock", conversion_maps=True)
+
+        assert table.column_names == ["clock", "milliseconds"]
+        milliseconds = CoordinateField.from_table(table, "milliseconds")
+        assert milliseconds[0] == Coordinate(25000.0, TimeUnit.milliseconds)
+        assert table.column("milliseconds").null_count == 1
+        assert table.column("milliseconds")[1].is_valid is False
+
+
+# endregion

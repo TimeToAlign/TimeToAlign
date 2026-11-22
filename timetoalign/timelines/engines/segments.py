@@ -346,7 +346,7 @@ class SegmentsMixin:
                 if coord is None:
                     coord = self._extract_coord_value(event, "start", "instant")
                 if coord is not None:
-                    split_coords.append(coord)
+                    split_coords.append(float(coord))
 
         split_coords = sorted(set(split_coords))
 

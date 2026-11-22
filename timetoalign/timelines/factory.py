@@ -94,7 +94,8 @@ def create_timeline_from_event_data(
         filters: Optional EventData filters.
 
     Returns:
-        A timeline containing the selected events.
+        A timeline containing the selected events, held in its own
+        ``EventData``: adding events to the timeline leaves *data* unchanged.
     """
     source = data.filter(**filters) if filters else data
     timeline_class, effective_number_type = _infer_timeline_class_and_number_type(
@@ -111,7 +112,10 @@ def create_timeline_from_event_data(
         number_type=effective_number_type,
         uid=uid,
     )
-    timeline._events = source
+    # The timeline's own wrapper over the (immutable) table: adding events
+    # to it replaces its table and leaves the source and every other
+    # timeline made from the source as they are.
+    timeline._events = type(source)(source.table, source.unit, source.number_type)
     return _flag_minted(timeline, minted)
 
 

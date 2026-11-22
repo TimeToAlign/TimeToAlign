@@ -491,6 +491,54 @@ with a valid one, and the bundle holds no claim afterwards: every check
 precedes any change. The valid claim is then added alone, so the refusal is
 the bad claim's and not the batch's.
 
+#### Events are measured and found in the axis's number type
+
+A timeline's event paths are producers and readers of positions too, and two
+of them worked on doubles where the axis declares an exact type.
+
+**Capacity.** Adding events measures their farthest end, compares it with
+the length and, on an unlocked timeline, grows the length to it. Measured as
+a float, a locked `fraction` timeline of length `1/10` refused an event
+ending at `1/10` (the double `0.1` is a little more than `1/10`, so the
+message read "0.1 exceeds 0.1"), and an unlocked one grew to the double's
+dyadic, `6004799503160661/4503599627370496`, after an end at `4/3`. The end
+is now written in the axis's number type before it is compared or grown to,
+`start + duration` added on the ratios, so it is what the row will store.
+Each case is asserted on the value and its Python type, on every number
+type:
+
+| Axis | Length | Event end | Asserted |
+|---|---|---|---|
+| quarters, `fraction`, locked | `1/10` | `1/10` | added; length `Fraction(1, 10)` |
+| quarters, `fraction` | `1` | `4/3` | length `Fraction(4, 3)` |
+| quarters, `fraction` | `1` | start `1/3`, duration `1` | length `Fraction(4, 3)` |
+| ticks, `int`, locked | `10` | `10` | added; length `10` |
+| ticks, `int` | `10` | `12` | length `12` (an `int`) |
+| seconds, `float`, locked | `0.3` | `0.1 + 0.2` | refused, as before (`0.30000000000000004` exceeds `0.3`) |
+| seconds, `float` | `1.0` | `1.5` | length `1.5` (a `float`) |
+
+The float rows keep today's behaviour on purpose: on a float axis the double
+is the value, and `0.1 + 0.2` is past `0.3`.
+
+**Range and point queries.** `get_events(min_coord=, max_coord=)` and
+`get_events_at` compared doubles, so on a fraction axis two positions closer
+than a double can tell apart were one position. The specimen is two
+neighbours over the denominator `D = 3·2**60`: `a = (D+1)/D` and
+`b = (D+2)/D`, whose doubles are both `1.0` (asserted, or the test would not
+test anything) and whose ratios fit int64. With Beats `a` at `a` and `b` at
+`b` and a Note `n` on `[a, b)`:
+
+| Query | Asserted ids |
+|---|---|
+| `get_events(min_coord=b)` | `b` |
+| `get_events(max_coord=b)` | `a`, `n` |
+| `get_events_at(a)` | `a`, `n` |
+| `get_events_at(b)` | `b` (the Note ends there, `[start, end)`) |
+
+Before, the first two answered `a, b, n` and nothing, and each point query
+answered both Beats. On a float axis nothing changes: the comparison is the
+doubles', and the existing tests of these methods pass unmodified.
+
 #### A published table writes the columns its axes declare
 
 `group.get_timestamps_at(...)` and the group's frame present the same

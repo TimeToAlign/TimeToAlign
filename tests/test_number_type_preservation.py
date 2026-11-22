@@ -808,3 +808,105 @@ def test_a_claim_off_its_axes_is_refused_when_added() -> None:
     assert len(bundle.match_claim_table) == 0
     bundle.add_match_claims([on_axes])
     assert len(bundle.match_claim_table) == 1
+
+
+# -- Events are measured and found in the axis's number type ---------------
+
+
+@pytest.mark.parametrize(
+    ("timeline", "row", "length"),
+    [
+        (
+            ContinuousLogicalTimeline(length=Fraction(1, 10), locked=True),
+            {"start": Fraction(0), "end": Fraction(1, 10)},
+            Fraction(1, 10),
+        ),
+        (
+            ContinuousLogicalTimeline(length=Fraction(1)),
+            {"start": Fraction(0), "end": Fraction(4, 3)},
+            Fraction(4, 3),
+        ),
+        (
+            ContinuousLogicalTimeline(length=Fraction(1)),
+            {"start": Fraction(1, 3), "duration": Fraction(1)},
+            Fraction(4, 3),
+        ),
+        (DiscreteLogicalTimeline(length=10, locked=True), {"start": 0, "end": 10}, 10),
+        (DiscreteLogicalTimeline(length=10), {"start": 0, "end": 12}, 12),
+        (ContinuousPhysicalTimeline(length=1.0), {"start": 0.0, "end": 1.5}, 1.5),
+    ],
+    ids=[
+        "fraction-locked-at-length",
+        "fraction-grows-exactly",
+        "fraction-start-plus-duration",
+        "int-locked-at-length",
+        "int-grows",
+        "float-grows",
+    ],
+)
+def test_adding_events_measures_the_end_in_the_axis_type(timeline, row, length) -> None:
+    """The end is compared and grown to as it will be stored."""
+    timeline.add_events([{"event_type": "Note", **row}])
+
+    assert timeline.n_events == 1
+    assert timeline.length.value == length
+    assert type(timeline.length.value) is type(length)
+
+
+def test_a_float_axis_compares_its_doubles() -> None:
+    """On a float axis the double is the value: 0.1 + 0.2 is past 0.3."""
+    timeline = ContinuousPhysicalTimeline(length=0.3, locked=True)
+
+    with pytest.raises(ValueError) as refusal:
+        timeline.add_events([{"event_type": "Note", "start": 0.1, "duration": 0.2}])
+
+    assert str(refusal.value) == (
+        "Adding content ending at 0.30000000000000004 exceeds timeline length 0.3. "
+        "Timeline is locked. Use allow_expansion=True to override."
+    )
+    assert timeline.n_events == 0
+
+
+_D = 3 * 2**60
+_A = Fraction(_D + 1, _D)
+_B = Fraction(_D + 2, _D)
+
+
+def _neighbours() -> ContinuousLogicalTimeline:
+    """Two Beats and a Note between positions no double tells apart."""
+    timeline = ContinuousLogicalTimeline(length=2, uid="score")
+    timeline.add_events(
+        [
+            {"id": "a", "event_type": "Beat", "instant": _A},
+            {"id": "b", "event_type": "Beat", "instant": _B},
+            {"id": "n", "event_type": "Note", "start": _A, "end": _B},
+        ]
+    )
+    return timeline
+
+
+def test_the_neighbours_are_one_double() -> None:
+    """The specimen tests something: both positions are the double 1.0."""
+    assert (float(_A), float(_B)) == (1.0, 1.0)
+
+
+@pytest.mark.parametrize(
+    ("bounds", "ids"),
+    [({"min_coord": _B}, ["b"]), ({"max_coord": _B}, ["a", "n"])],
+    ids=["min", "max"],
+)
+def test_a_range_query_compares_exactly(bounds, ids) -> None:
+    """``get_events`` bounds tell apart what a double cannot."""
+    events = _neighbours().get_events(**bounds)
+
+    assert sorted(row["id"] for row in events) == ids
+
+
+@pytest.mark.parametrize(("at", "ids"), [(_A, ["a", "n"]), (_B, ["b"])], ids=["a", "b"])
+def test_a_point_query_compares_exactly(at, ids) -> None:
+    """``get_events_at`` finds the events at the exact position only."""
+    found = _neighbours().get_events_at(at)
+
+    assert {key: sorted(row["id"] for row in rows) for key, rows in found.items()} == {
+        "score": ids
+    }

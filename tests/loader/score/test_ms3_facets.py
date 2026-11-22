@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from timetoalign.core import SpecificPitch
 from timetoalign.loader.score.ms3 import Ms3Loader
 
 MEASURES = (
@@ -212,10 +213,18 @@ def test_names_are_spelled_with_sharp_and_flat_signs_and_an_empty_one_is_null(
 
     assert table.column("name").to_pylist() == ["B♭3", "F♯4", "C-1", "F♯♯4", None]
     assert table.column("midi").to_pylist() == [58, 66, 0, 67, 60]
-    pitches = table.column("specific_pitch").to_pylist()
-    assert [
-        None if p is None else (p["step"], p["alter"], p["octave"]) for p in pitches
-    ] == [("B", -1, 3), ("F", 1, 4), ("C", 0, -1), ("F", 2, 4), None]
+    pitches = [
+        None if row is None else SpecificPitch.from_row(row)
+        for row in table.column("specific_pitch").to_pylist()
+    ]
+    # Line of fifths: B♭ = 5 - 7, F♯ = -1 + 7, C = 0, F♯♯ = -1 + 14.
+    assert [None if p is None else (p.fifths, p.octave) for p in pitches] == [
+        (-2, 3),
+        (6, 4),
+        (0, -1),
+        (13, 4),
+        None,
+    ]
 
 
 # Three 4/4 measures; each refusal case removes one cell (see "MS3 measures

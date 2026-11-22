@@ -1389,7 +1389,7 @@ it. Two things must hold, and each has its own proof:
    around `MatchClaimField._distinct_timeline_ids` recording the array it
    was given). One field asked five times reads once. In a bundle, five
    `get_matchstamp_at` queries read the bundle's MatchClaim table exactly
-   once; a claim added makes a new table, read once more for the next five
+   once; a MatchClaim added makes a new table, read once more for the next five
    queries (two reads of a table in all, one per state). Assigning another
    field to `match_claim_table` answers that field's ids at once (a field
    never answers for another array), and a caller adding to the returned
@@ -2819,12 +2819,26 @@ these lazily on first use and caches them until the table changes.
 - **Private state only where nothing observable exists.** The cache tests
   count the work the cache saves (calls of `WarpMap.from_match_line`,
   through `monkeypatch`) and never read the cache; the ambiguity test places
-  a MatchLine in the bundle's MatchLine cache, because claims cannot state
-  the ambiguous line it needs.
+  a MatchLine in the bundle's MatchLine cache, because MatchClaims cannot
+  state the ambiguous line it needs.
 - **Counts and derivations, never ranges or clocks.** A scale claim is
   proved by counted work: `MatchClaimField.from_columns` over 100,000 rows
-  constructs no `MatchClaim` and no `AlignmentAnchor` (their `__init__`
-  counted through `monkeypatch`), with no wall-clock threshold. Thoresen's
+  constructs no `MatchClaim` and no `AlignmentAnchor`, with no wall-clock
+  threshold. A count proves this only if every way of building a pydantic
+  model passes the counter, and `__init__` is not such a point:
+  `model_validate` (behind both classes' `from_dict`) and `model_construct`
+  build an instance without calling it. Every validating construction
+  (`__init__`, `model_validate`, `model_validate_json`, `model_validate_strings`)
+  runs the class's `__pydantic_validator__`, so the test replaces that
+  validator on both classes by one counting each call, and counts
+  `model_construct`, the one path that validates nothing. Two controls prove
+  the counter sees what it guards: each of those five paths, called once on
+  `AlignmentAnchor`, is counted once, and `MatchClaim.from_dict` of an
+  instant MatchClaim counts its one `AlignmentAnchor` and one `MatchClaim`; and on the field the count stays empty through
+  `from_columns` and `len`, then reading one row back (`field[50_000]`, the
+  library's own row-to-object path) counts exactly one `AlignmentAnchor` and
+  one `MatchClaim`. Copying an existing claim (`model_copy`, `copy`) builds
+  nothing from a row and is not counted. Thoresen's
   H′ is `967 + 378/867 · 967 = 1203915/867` and `967 + 517/867 · 967 =
   1338328/867` (segment 2 of DGT1 spans `[967, 1934)`), computed in
   `Fraction`; its WarpMap transfer is the nearest pixel, 1389. A match file
@@ -2864,14 +2878,14 @@ the MatchGraphs and the belief-filtered views of the table.
 Two places read a failure of what they call as a negative answer, and may
 only do so for the failures that mean it:
 
-- a MatchLine is built from the claims naming its source, which were
+- a MatchLine is built from the MatchClaims naming its source, which were
   checked when they joined the bundle, so building it has no failure that
-  means "no line" (a source no claim names has none, and that is decided
+  means "no line" (a source no MatchClaim names has none, and that is decided
   before building). A `MatchLine.from_claims` replaced by one raising
-  `RuntimeError("boom")` makes `transfer(50.0, "score", "audio")` raise it,
-  and the MatchLine cache holds no entry for `score` afterwards; with the
-  builder restored the same call answers `25.0`, so nothing was cached as
-  "no line".
+  `RuntimeError("boom")` makes `transfer(50.0, "score", "audio")` raise it
+  from `_get_or_build_match_line`;
+  with the builder restored the same call answers `25.0`, so the failure was
+  not cached as "no line" (the cache itself is private and not read).
 - a conversion column of `get_matchstamp_table` holds a null where the map
   does not reach the row (its `ValueError`: outside its domain, or a value
   the target unit refuses). A `TableMap._evaluate` replaced by one raising

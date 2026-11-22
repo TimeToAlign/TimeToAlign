@@ -189,7 +189,13 @@ write is a defect of one of them.
   rows into a new table, which took each further column's type from its values, so a column of
   nulls came out as `string`. The test asserts, for both loaders, that the `mn_onset` field of
   `create_timeline().get_events()` has the store's struct type and its metadata, and that every
-  one of its cells is null (547 Partitura events, 536 Music21 events).
+  one of its cells is null (547 Partitura events, 536 Music21 events). The timeline holds one
+  child per store and `get_events()` returns their events: 498 notes, 22 measures (the score's
+  22 bars), the controls (Partitura 22: six slurs, fourteen loudness directions, one time and one
+  key signature; Music21 11: six dynamics, three metronome marks, one key and one time
+  signature) and 5 text annotations, so 547 = 498 + 22 + 22 + 5 and 536 = 498 + 22 + 11 + 5.
+  The per-facet counts asserted beside them (`notes` 498, `controls` 22 or 11, `annotations`
+  5) are the same stores' rows.
 
 ## Loader-specific assertions
 
@@ -354,9 +360,12 @@ not C♭.
 The proof is one notes TSV in `tmp_path` with five notes whose `name` cells are, in row
 order, `Bb3`, `F#4`, `C-1`, `F##4` and empty (the last with MIDI 60 and octave 4). The loaded
 `name` column must be exactly `["B♭3", "F♯4", "C-1", "F♯♯4", None]` and the specific pitches'
-`(step, alter, octave)` exactly `("B", -1, 3)`, `("F", 1, 4)`, `("C", 0, -1)`, `("F", 2, 4)`
-and none for the nameless note (no spelling, no specific pitch), while its MIDI pitch 60
-stays.
+`(fifths, octave)` exactly `(-2, 3)`, `(6, 4)`, `(0, -1)`, `(13, 4)` and none for the nameless
+note (no spelling, no specific pitch), while its MIDI pitch 60 stays. A spelling is a position on
+the line of fifths (C 0, G 1, … B 5, F -1; each sharp adds 7, each flat takes 7 away), so B♭ is
+5 - 7 = -2, F♯ is -1 + 7 = 6 and F♯♯ is -1 + 14 = 13. Each stored pitch is read back as a
+`SpecificPitch` (`SpecificPitch.from_row`) and compared by its `fifths` and `octave`, never by
+the members the column happens to store.
 
 ## MS3 measures without a count or a length
 

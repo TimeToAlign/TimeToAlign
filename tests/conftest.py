@@ -13,6 +13,23 @@ with contextlib.suppress(Exception):
 
 import numpy as np
 import pytest
+from hypothesis import HealthCheck, settings
+
+# A property test asserts correctness; time belongs to the budget tests. On
+# its first draw in a process Hypothesis collects the literal constants of
+# the project's modules (cached per source hash under ``.hypothesis/``),
+# which costs about a second on a cold cache (a fresh checkout, a changed
+# module) and more on a loaded machine: enough to fail the ``too_slow``
+# health check on whichever property test draws first. The per-example
+# deadline is a wall-clock limit of the same kind. ``print_blob`` makes a
+# failure print the blob that reproduces it.
+settings.register_profile(
+    "timetoalign",
+    deadline=None,
+    suppress_health_check=[HealthCheck.too_slow],
+    print_blob=True,
+)
+settings.load_profile("timetoalign")
 
 
 def _c_int_bound_ldexp(real_ldexp):

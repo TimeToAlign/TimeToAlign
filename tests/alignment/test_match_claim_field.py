@@ -1857,22 +1857,102 @@ class TestEdgeCases:
             assert gone not in timetoalign.__all__
 
 
+class _CountingValidator:
+    """A model's validator that records every validation it runs."""
+
+    def __init__(self, inner: object, name: str, built: list[str]) -> None:
+        self._inner = inner
+        self._name = name
+        self._built = built
+
+    def validate_python(self, *args: object, **kwargs: object) -> object:
+        self._built.append(self._name)
+        return self._inner.validate_python(*args, **kwargs)
+
+    def validate_json(self, *args: object, **kwargs: object) -> object:
+        self._built.append(self._name)
+        return self._inner.validate_json(*args, **kwargs)
+
+    def validate_strings(self, *args: object, **kwargs: object) -> object:
+        self._built.append(self._name)
+        return self._inner.validate_strings(*args, **kwargs)
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(self._inner, name)
+
+
+def _count_constructions(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Count every MatchClaim and AlignmentAnchor built from then on.
+
+    Every validating construction (``__init__``, ``model_validate``,
+    ``model_validate_json``, ``model_validate_strings``) runs the class's
+    ``__pydantic_validator__``; ``model_construct`` validates nothing and is
+    counted on its own.
+    """
+    built: list[str] = []
+    for model in (MatchClaim, AlignmentAnchor):
+        monkeypatch.setattr(
+            model,
+            "__pydantic_validator__",
+            _CountingValidator(model.__pydantic_validator__, model.__name__, built),
+        )
+
+        def counting_construct(
+            *args: object,
+            _construct=model.model_construct,
+            _name=model.__name__,
+            **kwargs: object,
+        ) -> object:
+            built.append(_name)
+            return _construct(*args, **kwargs)
+
+        monkeypatch.setattr(model, "model_construct", staticmethod(counting_construct))
+    return built
+
+
 class TestScale:
     """The vectorized path scales without building Python objects."""
 
+    def test_the_count_sees_every_construction(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        built = _count_constructions(monkeypatch)
+        values = {
+            "timeline_a_id": "A",
+            "timeline_b_id": "B",
+            "coordinate_a": Coordinate(1, TimeUnit.quarters),
+            "coordinate_b": Coordinate(1.5, TimeUnit.seconds),
+        }
+        anchor = AlignmentAnchor(**values)
+        AlignmentAnchor.model_validate(values)
+        AlignmentAnchor.model_construct(**values)
+        AlignmentAnchor.model_validate_json(anchor.model_dump_json())
+        AlignmentAnchor.model_validate_strings(
+            {"timeline_a_id": "A", "timeline_b_id": "B"}
+            | {
+                key: anchor.model_dump(mode="json")[key]
+                for key in ("coordinate_a", "coordinate_b")
+            }
+        )
+        assert built == ["AlignmentAnchor"] * 5
+
+        built.clear()
+        claim = MatchClaimField.from_columns(
+            timeline_a_ids=["A"],
+            timeline_b_ids=["B"],
+            event_a_ids=["a0"],
+            event_b_ids=["b0"],
+            coordinate_a=[1],
+            coordinate_b=[1.5],
+            timelines=GOLD_AXES,
+        )[0]
+        built.clear()
+        MatchClaim.from_dict(claim.to_dict())
+        assert built == ["AlignmentAnchor", "MatchClaim"]
+
     def test_scale_builds_columnar(self, monkeypatch: pytest.MonkeyPatch) -> None:
         n = 100_000
-        built: list[str] = []
-        for model in (MatchClaim, AlignmentAnchor):
-            original = model.__init__
-
-            def counting(
-                self, *args, _original=original, _name=model.__name__, **kwargs
-            ):
-                built.append(_name)
-                _original(self, *args, **kwargs)
-
-            monkeypatch.setattr(model, "__init__", counting)
+        built = _count_constructions(monkeypatch)
 
         field = MatchClaimField.from_columns(
             timeline_a_ids=["A"] * n,
@@ -1888,6 +1968,8 @@ class TestScale:
         # The vectorized path builds no MatchClaim and no AlignmentAnchor.
         assert built == []
         claim = field[50_000]
+        # Reading one row back builds exactly its anchor and its claim.
+        assert built == ["AlignmentAnchor", "MatchClaim"]
         assert claim.start_anchor.coordinate_a == Coordinate(50_000, TimeUnit.quarters)
         assert claim.start_anchor.coordinate_b == Coordinate(50_000.5, TimeUnit.seconds)
         assert field.timeline_ids == {"A", "B"}

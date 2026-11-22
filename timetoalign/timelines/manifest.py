@@ -102,6 +102,7 @@ from .statements import (
 
 if TYPE_CHECKING:
     from .base import Timeline
+    from .groups import _IdScope
     from .structure import MeasureMap
 
 # region Bare values on a timeline's own axis
@@ -271,6 +272,35 @@ def read_id(value: Any, what: str) -> str:
     return validate_id(value)
 
 
+def _manifest_ids_of(timelines: Iterable[Timeline]) -> dict[str, str]:
+    """Map every id of the manifests *timelines* belong to, to its holder's description.
+
+    A timeline's manifest is its tree and, while the tree is held by groups
+    or bundles, every tree those hold, with each group's and bundle's given
+    id (``Timeline._manifest_ids``, which asks this for one timeline). Each
+    tree and each group or bundle is read once however many of *timelines*
+    it holds, so the roots of one bundle cost one pass over the bundle. An
+    id held twice keeps its first holder: the trees in the order of
+    *timelines*, then the groups and bundles in the order they are met.
+    """
+    ids: dict[str, str] = {}
+    roots: set[int] = set()
+    containers: dict[int, _IdScope] = {}
+    for timeline in timelines:
+        root = timeline._tree_root()
+        if id(root) in roots:
+            continue
+        roots.add(id(root))
+        for element_id, description in root._tree_ids().items():
+            ids.setdefault(element_id, description)
+        for container in root._scope_containers():
+            containers.setdefault(id(container), container)
+    for container in containers.values():
+        for element_id, description in container._scope_ids().items():
+            ids.setdefault(element_id, description)
+    return ids
+
+
 def _leave_out_unwritten(
     fields: dict[str, Any], roots: list[Timeline], written: set[str]
 ) -> dict[str, Any]:
@@ -278,9 +308,9 @@ def _leave_out_unwritten(
 
     A timeline or a group written on its own writes part of the manifests
     it belongs to: a value may name an element of those manifests
-    (``Timeline._manifest_ids`` of the roots written) that this one does
-    not hold. The pair naming it, its provenance entry and every ``basis``
-    or ``stated_by`` item naming it are left out. A reference naming no
+    (:func:`_manifest_ids_of` of the roots written) that this one does not
+    hold. The pair naming it, its provenance entry and every ``basis`` or
+    ``stated_by`` item naming it are left out. A reference naming no
     element of any of those manifests stays, for the check of the manifest
     written to refuse.
 
@@ -289,9 +319,7 @@ def _leave_out_unwritten(
         roots: The roots written.
         written: Every ID the manifest written holds.
     """
-    known: set[str] = set()
-    for root in roots:
-        known.update(root._manifest_ids())
+    known = _manifest_ids_of(roots).keys()
     return timetoshare.with_references_renamed(fields, dict.fromkeys(known - written))
 
 

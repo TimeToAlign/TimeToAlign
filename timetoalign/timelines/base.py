@@ -76,6 +76,7 @@ from .flowcontrol import FlowControlRegistry
 from .manifest import (
     Manifest,
     ManifestFileMixin,
+    _manifest_ids_of,
     axis_value_from_json,
     axis_value_to_json,
     listed,
@@ -973,11 +974,7 @@ class Timeline(
         kinds. A minted group id is left out, since a given id that takes it
         mints the group again (:meth:`_settle_scope`).
         """
-        ids = self._tree_ids()
-        for container in self._scope_containers():
-            for element_id, description in container._scope_ids().items():
-                ids.setdefault(element_id, description)
-        return ids
+        return _manifest_ids_of((self,))
 
     def _manifest_roots(self) -> list[Timeline]:
         """Return the root of every tree of this timeline's manifest, once each.
@@ -985,12 +982,12 @@ class Timeline(
         The manifest is as for :meth:`_manifest_ids`: this timeline's tree,
         first, and every tree the groups and bundles holding it hold.
         """
-        roots = [self._tree_root()]
+        root = self._tree_root()
+        roots = {id(root): root}
         for container in self._scope_containers():
             for root in container._member_roots():
-                if not any(seen is root for seen in roots):
-                    roots.append(root)
-        return roots
+                roots.setdefault(id(root), root)
+        return list(roots.values())
 
     def _settle_scope(self, given: set[str], joining: Sequence[_IdScope] = ()) -> None:
         """Mint again every minted group id that the *given* ids now take.
@@ -1169,13 +1166,13 @@ class Timeline(
         (``_IdScope._statements_holder``).
         """
         containers = self._scope_containers()
-        roots: list[Timeline] = [self._tree_root()]
+        root = self._tree_root()
+        roots = {id(root): root}
         for container in containers:
             for member in container._scope_members():
                 root = member._tree_root()
-                if not any(seen is root for seen in roots):
-                    roots.append(root)
-        return statement_holders(roots, containers)
+                roots.setdefault(id(root), root)
+        return statement_holders(list(roots.values()), containers)
 
     def _rename_references(self, old_id: str, new_id: str) -> None:
         """Make every statement of this timeline's manifest naming *old_id*

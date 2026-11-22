@@ -483,9 +483,13 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 group_data, content.timelines, content.order.get(group_data["id"])
             )
             bundle.add_group(group)
+        # Manifest.read found every id of the manifest unique, the groups'
+        # included, and a group read holds its given id: admitting a root
+        # (``add_timeline``) would rename nothing and refuse nothing, at the
+        # cost of a pass over the bundle's trees per root.
         for root in content.roots:
             if bundle.timelines.get(root.id) is not root:
-                bundle.add_timeline(root)
+                bundle._register(root)
         return bundle
 
     @classmethod

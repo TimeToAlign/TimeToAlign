@@ -213,7 +213,10 @@ group list `["audio", "descriptors", "mocap", "score"]`. Durations are exact:
 a signal entry's `duration_seconds` is `n_samples / sample_rate` (asserted with
 `==`, not `approx`) — the 441000-sample / 44100 Hz `CatalogueEntry` gives
 exactly `10.0`, and the legacy-CSV `duration_seconds` equals
-`n_samples / frame_rate` bit-for-bit. `TestRepoVizzLoaderIntegration.test_multiple_recordings`
+`n_samples / frame_rate` bit-for-bit. The legacy CSV `vln1_bow_vel.csv`
+states `framerate=240` on line 1 and 63965 values on line 2, so the loader
+reports `frame_rate == 240` and `n_samples == 63965`; its timeline carries
+exactly one `SamplesToSeconds` map, under which sample 240 is `1.0` second. `TestRepoVizzLoaderIntegration.test_multiple_recordings`
 no longer merely checks "both load"; it pins the counts above **and** the fact
 that the two takes carry distinct audio content: the shared cardioid-ambient
 entry (`ROOT0_Audi1_Audi0_Ambi0`, "Cardioid microphone", 44100 Hz) has

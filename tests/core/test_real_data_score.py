@@ -79,8 +79,8 @@ class TestChopinEnharmonicPitchFieldFromTSV:
         ef = chopin_store.notes.get_field(EnharmonicPitch)
         assert isinstance(ef, EnharmonicPitchField)
         assert ef.name == "midi"
-        # Total rows include rests (which have null pitch), so len >= 498
-        assert len(ef) >= 498
+        # One row per row of the notes TSV: 498, every one a note (no rests).
+        assert len(ef) == 498
 
     def test_paired_field_first_element(self, chopin_store) -> None:
         """The afforded EnharmonicPitchField[0] is EnharmonicPitch(B3)."""
@@ -211,7 +211,8 @@ class TestBeethovenHarmonies:
         assert dcml_rows[1].chord_type == "Mm7"
 
     def test_harmony_count(self, dcml_rows: list[DcmlHarmony]) -> None:
-        assert len(dcml_rows) > 0
+        # One scalar per row of the harmonies TSV.
+        assert len(dcml_rows) == 386
 
 
 # ---------------------------------------------------------------------------

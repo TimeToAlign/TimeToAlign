@@ -13,6 +13,7 @@ import pytest
 from timetoalign.core.events import (
     DcmlHarmonyField,
     EnharmonicPitchField,
+    SpecificPitch,
     SpecificPitchField,
     WesternTertianHarmonyField,
 )
@@ -330,7 +331,7 @@ class TestEventDataComposition:
         )
         spf = store.specific_pitch_field
         assert isinstance(spf, SpecificPitchField)
-        assert spf[0] is not None
+        assert spf[0] == SpecificPitch(step="C", alter=0, octave=4, cents=0.0)
 
     def test_plain_event_data_has_field_access(self) -> None:
         from timetoalign.storage.events import EventData

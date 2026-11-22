@@ -152,7 +152,7 @@ class TestScoreMidiLoader:
         loader.load(beethoven_score_path)
 
         assert len(loader) == 3751  # beethoven_op18.mid has 3751 events
-        assert loader.ticks_per_beat is not None
+        assert loader.ticks_per_beat == 480  # the file header's division
 
         # Check metadata
         meta = loader.metadata["sources"][0]

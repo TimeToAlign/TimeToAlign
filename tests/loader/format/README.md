@@ -50,7 +50,7 @@ Tests for `XmlLoader`, a generic XML-to-flat-table loader using `xml.etree.Eleme
 | `TestAutoDetection` | 3 | Auto-detection of principal tags (elements appearing at least twice) |
 | `TestTypeParsing` | 1 | int / float / bool / string attribute value parsing |
 | `TestTextContent` | 2 | Element text extraction as the `_text` field |
-| `TestRepoVizzXml` | 8 | Real RepoVizz manifest: 6 Audio, 4 Annotation, >100 Signal elements |
+| `TestRepoVizzXml` | 8 | Real RepoVizz manifest: 6 Audio, 4 Annotation, 318 Signal elements (counted in the file with `ElementTree`, independently of the loader) |
 | `TestXmlLoaderStore` | 8 | `store` DictStore integration and iteration |
 | `TestXmlLoaderEdgeCases` | 11 | Error handling, empty/single-element XML, clear/repr, ancestor toggle |
 | `TestLoadElement` | 2 | `load_element()` from an `ElementTree` |
@@ -83,3 +83,8 @@ Tests for `XmlLoader`, a generic XML-to-flat-table loader using `xml.etree.Eleme
 | **Total** | **74** | **All pass** |
 
 All tests pass in parallel mode (`pytest-xdist -n auto`).
+
+**Clearing.** A clear test first pins the exact number of tables it removes:
+the Wagner file's three list-valued keys (`stave_measures`, `staves`,
+`system_measures`) are three tables in the loader and in its store; the
+synthetic `SIMPLE_XML` has one principal tag, `item`, hence one table.

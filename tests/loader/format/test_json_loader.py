@@ -273,13 +273,14 @@ class TestJsonLoaderEdgeCases:
             loader.load("/nonexistent/path.json")
 
     def test_clear_resets_state(self, wagner_loader: JsonLoader) -> None:
-        assert len(wagner_loader) > 0
+        # The file's three list-valued keys are three tables.
+        assert len(wagner_loader) == 3
         wagner_loader.clear()
         assert len(wagner_loader) == 0
         assert wagner_loader.raw_data is None
 
     def test_clear_resets_store(self, wagner_loader: JsonLoader) -> None:
-        assert len(wagner_loader.store) > 0
+        assert len(wagner_loader.store) == 3
         wagner_loader.clear()
         assert len(wagner_loader.store) == 0
 

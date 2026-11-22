@@ -386,10 +386,18 @@ class TestRichExport:
         lines = content.strip().split("\n")
 
         # Header
+        # The format's version, the five names the context states, two clocks.
         info_lines = [ln for ln in lines if ln.startswith("info(")]
-        assert (
-            len(info_lines) >= 6
-        )  # version + piece + score + midi + composer + perf + 2 clock
+        assert info_lines == [
+            "info(matchFileVersion,1.0.0).",
+            "info(piece,Chopin_op10_no3).",
+            "info(scoreFileName,Chopin_op10_no3.musicxml).",
+            "info(midiFileName,Chopin_op10_no3_p01.mid).",
+            "info(composer,Frèdéryk Chopin).",
+            "info(performer,Pianist 01).",
+            "info(midiClockUnits,480).",
+            "info(midiClockRate,500000).",
+        ]
 
         # Score properties
         prop_lines = [ln for ln in lines if ln.startswith("scoreprop(")]
@@ -496,7 +504,8 @@ class TestRoundTripMatchfileLoader:
 
         # Verify header completeness
         exported_info = [ln for ln in exported_lines if ln.startswith("info(")]
-        assert len(exported_info) >= len(original_info_lines)
+        # Every header field of the original is read and written back as it was.
+        assert exported_info == original_info_lines
 
         # The number of match lines in the export should equal the number
         # of synchronous claims (stamps in the MatchLine)

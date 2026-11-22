@@ -275,8 +275,9 @@ class TestRepoVizzLoaderCsvMode:
         """CSV file loads successfully."""
         loader = RepoVizzLoader.from_file(csv_file_path)
         assert loader.is_xml_mode is False
-        assert loader.n_samples > 0
-        assert loader.frame_rate > 0
+        # Line 1 states framerate=240; line 2 holds 63965 values.
+        assert loader.n_samples == 63965
+        assert loader.frame_rate == 240
 
     def test_csv_info_properties(self, csv_file_path: Path) -> None:
         """CSV loader provides info properties."""
@@ -301,8 +302,11 @@ class TestRepoVizzLoaderCsvMode:
         loader = RepoVizzLoader.from_file(csv_file_path)
         tl = loader.create_timeline()
 
-        # Check that a conversion map was attached
-        assert len(tl._conversion_maps) > 0
+        # One SamplesToSeconds map at the file's 240 Hz: sample 240 is 1 s.
+        assert tl.n_conversion_maps == 1
+        assert (
+            tl.get_timestamp_at(240).get_unit(TimeUnit.seconds, format="float") == 1.0
+        )
 
     def test_csv_timeline_custom_uid(self, csv_file_path: Path) -> None:
         """CSV timeline can have custom uid."""

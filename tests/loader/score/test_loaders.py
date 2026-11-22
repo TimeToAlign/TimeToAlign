@@ -6,6 +6,7 @@ import json
 from fractions import Fraction
 from pathlib import Path
 
+import pyarrow.parquet as pq
 import pytest
 
 from timetoalign.loader.score.ms3 import Ms3Loader
@@ -550,32 +551,19 @@ class TestAnacrusisOffset:
         assert ScoreStore.empty().anacrusis_offset == 0.0
 
     def test_offset_propagates_to_measure_coordinates(self, chopin_xml):
-        """Measures also get shifted: measure 1 start should be >= offset.
+        """Measures are shifted by the same offset as the notes.
 
-        The anacrusis note (onset at `offset`) belongs to measure 1.  After
-        normalisation measure 1's start coordinate should equal `offset`
-        (the anacrusis note is its only content before the downbeat) — or,
-        at minimum, be >= 0.
-        We verify >= 0 conservatively (the exact value depends on partitura's
-        measure boundary model).
+        The MusicXML's measure 1 holds one note of 8 divisions at 16 per
+        quarter: an anacrusis of 1/2 quarter. Shifted by the offset 1/2, it
+        spans [0, 1/2), and measure 2 starts on the first downbeat at 1/2.
         """
         loader = PartituraLoader()
         loader.load(chopin_xml)
-        offset = loader.anacrusis_offset
 
-        # All measure onsets in the mc_onset column are relative to measure
-        # start, so can be 0 regardless of anacrusis.  Instead check via the
-        # quarterbeats_float value in the raw measure rows indirectly through
-        # the fact that measures_data was built from shifted rows.
-        # The minimum measure start coordinate should be >= 0.
-        measures = loader.store.measures
-        if len(measures) == 0:
-            pytest.skip("No measures in store")
-        # first_measure = list(measures)[0]
-        # 'start' struct may have null values due to a pre-existing schema
-        # mapping issue; use 'duration_qb_float'/'quarterbeats_float' proxy.
-        # The reliable check is via metadata offset > 0 already verified above.
-        assert offset > 0.0  # Chopin has an anacrusis
+        starts = loader.store.measures.table.column("start").to_pylist()[:2]
+        assert [
+            Fraction(cell["numerator"], cell["denominator"]) for cell in starts
+        ] == [Fraction(0), Fraction(1, 2)]
 
 
 # region Parquet Serialization Tests
@@ -690,9 +678,9 @@ class TestScoreLoaderParquet:
         out_dir = tmp_path / "loader_out"
         loader.to_parquet(out_dir)
 
-        assert (out_dir / "notes.parquet").exists()
-        # The file must be non-trivial (the bug was that it was empty)
-        assert (out_dir / "notes.parquet").stat().st_size > 100
+        # The file must hold every note (the bug was that it was empty):
+        # one row per row of the notes TSV.
+        assert pq.read_table(out_dir / "notes.parquet").num_rows == 498
 
     def test_loader_round_trip(self, chopin_tsv_notes, tmp_path):
         """ScoreLoader.from_parquet restores a usable loader."""

@@ -386,7 +386,8 @@ class TestBoundaryRule:
         last = [beat for beat in grid.iter_beats() if beat.segment == 2]
 
         assert last[-1].seconds == Fraction("29.81")
-        assert Fraction(30) - last[-1].seconds < Fraction(1, 4)
+        # 19/100 s before the extent: within half a 120 BPM beat (1/4 s), kept.
+        assert Fraction(30) - last[-1].seconds == Fraction(19, 100)
 
     def test_a_beat_exactly_at_the_extent_is_not_generated(self) -> None:
         """The extent bounds the grid half-openly."""

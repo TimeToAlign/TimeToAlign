@@ -57,8 +57,8 @@ class TestIIIFManifestLoading:
         # Returns self for chaining
         assert result is loader
 
-        # Manifest is now loaded
-        assert loader._manifest_info is not None
+        # Manifest is now loaded: it holds one canvas.
+        assert loader.n_canvases == 1
 
     def test_load_nonexistent_file_raises(self, tmp_path: Path) -> None:
         """Loading nonexistent file raises FileNotFoundError."""
@@ -152,8 +152,7 @@ class TestManifestMetadata:
         """SUPRA manifest has a label."""
         # The label is "Meistersinger von Nürnberg : Vorspiel"
         label = loaded_supra_loader.label
-        assert label is not None
-        assert "Meistersinger" in label
+        assert label == "Meistersinger von Nürnberg : Vorspiel"
 
     def test_supra_manifest_id(self, loaded_supra_loader: IIIFManifestLoader) -> None:
         """SUPRA manifest has Stanford PURL as ID."""
@@ -213,8 +212,10 @@ class TestCanvasAccess:
     def test_canvas_has_id(self, loaded_supra_loader: IIIFManifestLoader) -> None:
         """Canvas has a valid ID."""
         canvas = loaded_supra_loader.get_canvas(0)
-        assert canvas.id is not None
-        assert len(canvas.id) > 0
+        assert canvas.id == (
+            "https://purl.stanford.edu/fd660zf8362/iiif/canvas/"
+            "cocina-fileSet-fd660zf8362-fd660zf8362_1"
+        )
 
 
 # endregion

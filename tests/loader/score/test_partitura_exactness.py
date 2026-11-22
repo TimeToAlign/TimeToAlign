@@ -13,6 +13,8 @@ from timetoalign.testdata import ensure_data
 
 CHOPIN_XML = ensure_data("vienna_1x22") / "Chopin_op10_no3.musicxml"
 BEETHOVEN_XML = ensure_data("score") / "beethoven_woo71" / "WoO71.musicxml"
+# Divisions per quarter, as each file's <divisions> elements state them.
+DIVISIONS = {CHOPIN_XML: 16, BEETHOVEN_XML: 72}
 
 
 def _pair(value: dict[str, object]) -> Fraction:
@@ -54,7 +56,7 @@ def test_flattened_partitura_timeline_preserves_instant_nulls() -> None:
     assert sum(row["duration"] is not None for row in rows) == 516
 
 
-def test_chopin_division_positions_are_exact_and_match_float_map() -> None:
+def test_chopin_division_positions_are_exact() -> None:
     """Dotted Partitura figures use exact integer-division quarter values."""
     loader = PartituraLoader.from_file(CHOPIN_XML)
     notes = loader.store.notes.table.to_pylist()
@@ -83,16 +85,17 @@ def test_chopin_division_positions_are_exact_and_match_float_map() -> None:
     assert _pair(triplet["start"]) == Fraction(3, 4)
     assert _pair(triplet["duration"]) == Fraction(1, 4)
 
+    # The file states 16 divisions per quarter and its first note at
+    # division 0, so a note at division t starts at exactly t/16 quarters.
     for index in (dotted_index, triplet_index):
         exact = _pair(notes[index]["start"])
-        float_map_value = float(part.quarter_map(partitura_notes[index].start.t))
-        assert abs(float(exact) - (float_map_value + loader.anacrusis_offset)) < 1e-6
+        assert exact == Fraction(partitura_notes[index].start.t, DIVISIONS[CHOPIN_XML])
 
 
 @pytest.mark.slow
-def test_partitura_exact_coordinates_agree_on_both_specimens() -> None:
-    """Exact division integration agrees with Partitura's float map."""
-    for path in (CHOPIN_XML, BEETHOVEN_XML):
+def test_partitura_exact_coordinates_are_the_file_divisions() -> None:
+    """Every start is its division count over the file's divisions per quarter."""
+    for path, divisions in DIVISIONS.items():
         loader = PartituraLoader.from_file(path)
         part = pt.load_score(str(path), force_note_ids=True).parts[0]
         partitura_events = [
@@ -103,9 +106,4 @@ def test_partitura_exact_coordinates_agree_on_both_specimens() -> None:
         for row, obj in zip(
             loader.store.notes.table.to_pylist(), partitura_events, strict=True
         ):
-            assert row["start"] is not None
-            exact = _pair(row["start"])
-            float_map_value = float(part.quarter_map(obj.start.t))
-            assert (
-                abs(float(exact) - (float_map_value + loader.anacrusis_offset)) < 1e-6
-            )
+            assert _pair(row["start"]) == Fraction(obj.start.t, divisions)

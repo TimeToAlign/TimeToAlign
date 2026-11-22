@@ -514,8 +514,8 @@ class TestFractionProperties:
         t2q = TicksToQuarters(ppq)
         quarters = t2q(ticks)
 
-        expected = Fraction(ticks, ppq)
-        assert quarters == pytest.approx(float(expected), rel=1e-12)
+        assert quarters == Fraction(ticks, ppq)
+        assert type(quarters) is Fraction
 
 
 # endregion

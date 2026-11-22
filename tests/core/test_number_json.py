@@ -568,7 +568,8 @@ _JSON_CASES = _json_safety_cases()
 def test_to_dict_is_json_serializable(payload: dict[str, Any]) -> None:
     """No ``to_dict`` may leak a Fraction, a Coordinate, or any other
     non-JSON object into its output."""
-    assert json.loads(json.dumps(payload)) is not None
+    # Raises TypeError on any object JSON cannot hold.
+    json.dumps(payload)
 
 
 class TestClaimDictForm:

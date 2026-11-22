@@ -93,9 +93,15 @@ child up by its name, and the event ids keep the store name as their prefix.
 - `test_performance_midi_to_timeline`: `PerformanceMidiLoader` on
   `supra_raw.mid` yields **exactly 2** children — `notes` and `controls`
   (`assert timeline.n_children == 2`, an exact count, not `>= 1`).
-- `test_performance_midi_notes_child_has_events`: the `notes` child is
-  non-empty. Its exact event count is specimen-dependent and intentionally left
-  as `> 0` (the piano-roll note total is not part of the gold standard).
+- `test_performance_midi_notes_child_has_events`: the `notes` child holds
+  exactly **30092** events. Source: the file's sounding note-ons (`note_on`
+  with velocity > 0, counted over every track with `mido`, independently of
+  the loader), which is also the roll's `MUSICAL_HOLES` in the SUPRA ATON
+  analysis: one note per punched hole.
+- `test_score_midi_to_timeline_structure`: `ScoreMidiLoader` on
+  `beethoven_op18.mid` reads notes only (its parse excludes control
+  messages), so the timeline has **no** children and holds the file's
+  **3751** sounding note-ons directly.
 
 ## Beethoven WoO71 Gold Standard (`test_beethoven_woo71.py`)
 
@@ -103,14 +109,9 @@ A second, larger gold specimen (Beethoven Piano Trio WoO71) with exact TSV
 counts: **4753** notes, **397** measures, and **8** volta notes with null
 `quarterbeats`. All of these are asserted with exact `==`.
 
-**Retained `pytest.approx` — documentary scale ratio.** One assertion,
-`test_beethoven_has_more_notes_than_chopin`, records the *order-of-magnitude*
-size ratio versus Chopin as `ratio == pytest.approx(9.54, rel=0.1)`. The gold
-`9.54` is a rounded human-readable figure, **not** the bit-exact quotient
-`4753 / 498 = 9.5441…`; the loose `rel=0.1` tolerance is the point of the check
-(the real correctness gate is the exact `4753` count and the `ratio > 5`
-assertion just above it). It is therefore kept as `approx` rather than pinned
-to a false `== 9.54`.
+**Scale ratios are exact.** The size ratios versus Chopin are the quotients
+of the gold counts, `Fraction(4753, 498)` notes and `Fraction(397, 22)`
+measures, asserted with `==`; no tolerance and no lower bound.
 
 ## Test Data Specimens
 

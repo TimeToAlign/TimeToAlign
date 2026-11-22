@@ -160,7 +160,8 @@ class TestConstantMapWithCombinationMap:
         assert "seconds" in result
         assert "filename" in result
         assert result["filename"] == "page1_1.jpeg"
-        assert abs(result["seconds"] - 433.0 * 30.0 / 866) < 1e-10
+        # A ScalarMap writes scalar × input on its float target axis.
+        assert result["seconds"] == 433.0 * (30.0 / 866)
 
     def test_combination_array(self):
         """Test array conversion in CombinationMap with ConstantMap."""

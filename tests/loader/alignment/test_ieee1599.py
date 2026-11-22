@@ -603,8 +603,9 @@ class TestNotationalLayer:
         assert first.length.value == 426
         assert len(first_rows) == 22
         assert first_rows[-1]["start"]["value"] == 411.0
+        # The drop from 411 to 53 (358 pixels) passes half the span of
+        # 49..422 (186.5 pixels), so 53 opens the second accolade.
         assert second_rows[0]["start"]["value"] == 53.0
-        assert 411 - 53 > (422 - 49) / 2
 
     def test_page_file_map_resolves_each_gymnopedie_page(self, ieee1599_loader) -> None:
         """Every page's first box maps to its verbatim image file name."""

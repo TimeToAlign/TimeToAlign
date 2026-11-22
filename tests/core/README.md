@@ -638,6 +638,11 @@ naming exactly the offending options. Silently ignoring them would be the
 alternative, and it hides a caller's mistaken belief that the Arrow result was
 shaped.
 
+A frame holds one scalar per cell, never a dict, and its rows are the
+receiver's default row source: the timeline's two events (its boundaries
+only with `include_boundaries=True`), the group's common start and end, the
+bundle's three claim anchors — 2, 2 and 3 rows.
+
 **Cells are coordinate structs, and a frame cell is a scalar.** Every
 timestamp table — a timeline's, a group's, a bundle's match-stamp table —
 carries `IdCoordinateField` columns for timeline axes and `CoordinateField`
@@ -1171,6 +1176,21 @@ scalars `MidiPitch`, `SpecificPitch`, `Note`, `Measure`, and `DcmlHarmony`.
 mutating a field raises `pydantic.ValidationError` (message contains
 `"frozen"`). The `test_frozen_immutable` cases assert `pytest.raises(
 ValidationError)` — the concrete class, not a bare `Exception`.
+
+**Exact values:** a constructed `Note` keeps the duration it was given (`1/2`
+quarter for the note, `1` for the rest), compared by value, never by
+presence.
+
+---
+
+### `test_column_builder.py` - The store-builder dumps no row
+
+**Purpose:** `build_struct_array` assembles a struct array column by column
+and is byte-equivalent to the row-wise `pa.array(model_dump(...))` path it
+replaces. The saving is proved by counted work, not by a clock: building
+10,000 `SpecificPitch` scalars calls `model_dump` zero times (counted through
+`monkeypatch`) and the array equals the row-wise one. A wall-clock speedup
+threshold fails under load and proves nothing about the result.
 
 ---
 
@@ -1883,7 +1903,11 @@ four measure views over one two-bar measure map): its `to_dict()` is
 JSON-safe and keeps exact Fractions, its name is written only when given
 (`null` in the complete form, left out of the minimal form it writes by
 default), and a custom name round-trips through `ConversionMap.from_dict`, a view
-given the measure map it names.
+given the measure map it names. JSON-safety is proved by `json.dumps`
+raising on any object JSON cannot hold; the forms still contain tuples (a
+MatchLine's and a MatchStamp graph form's `stated_pairs` and
+`inferred_pairs`), which JSON reads back as lists, so a round trip is not
+compared for equality.
 
 ### Coordinate cell rendering
 
@@ -2008,6 +2032,18 @@ What proves the entry is the format's and holds nothing else:
 - **Field.** `ProvenanceField.from_provenances` of entries and `None` reads
   each row back equal (`None` where none), its type the scalar's derived
   struct.
+
+### `test_real_data_score.py` - Counts read off the source files
+
+Every count is the row count of the file the test reads: the Chopin Op. 10
+No. 3 notes TSV has 498 rows, all notes (a `midi` in every row), so its
+`EnharmonicPitch` field has 498 entries; the Beethoven Op. 18/4 harmonies
+TSV has 386 rows, one `DcmlHarmony` each.
+
+### `test_coordinate_field.py` - Values, not presence
+
+A non-null struct reads back as the coordinate it was built from
+(`1.0` and `3.0` seconds), a null one as `None`.
 
 ## Running Tests
 

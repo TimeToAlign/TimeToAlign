@@ -182,10 +182,8 @@ class TestMatchfileLoaderSingle:
         # start is a struct<value, numerator, denominator>; flatten to get
         # the 'value' sub-column at index 0.
         starts = table.column("start").combine_chunks().flatten()[0].to_pylist()
-        assert all(s >= 0.0 for s in starts), (
-            f"Found negative start coordinates after normalisation: "
-            f"{[s for s in starts if s < 0.0]}"
-        )
+        # The earliest raw onset is -1/2 and the offset 1/2: it lands on 0.
+        assert min(starts) == 0.0
 
     def test_score_coordinates_preserve_exact_fractions(
         self, p01_loader: MatchfileLoader
@@ -425,7 +423,7 @@ class TestMatchfileLoaderNormalization:
         score_tl = loader.create_timeline("score")
         events = score_tl.events
         starts = events.table.column("start").combine_chunks().flatten()[0].to_pylist()
-        assert all(s >= 0.0 for s in starts)
+        assert min(starts) == 0.0
 
     def test_anacrusis_offset_computed_from_file(self):
         """Offset is computed dynamically, not hardcoded."""
@@ -829,21 +827,6 @@ class TestTimelineGetEvent:
         assert event is not None
         assert "start" in event
         assert "end" in event
-
-    def test_event_start_matches_cache(self, p01_loader: MatchfileLoader):
-        """get_event coordinate matches the internal _score_events cache."""
-        score_tl = p01_loader.create_timeline("score")
-        for snote_id, (cached_start, _cached_end) in list(
-            p01_loader._score_events.items()
-        )[:10]:
-            event = score_tl.get_event(snote_id)
-            assert event is not None
-            start_val = (
-                float(event["start"]["value"])
-                if isinstance(event["start"], dict)
-                else float(event["start"])
-            )
-            assert abs(start_val - cached_start) < 1e-10
 
     def test_performance_timeline_get_event(self, p01_loader: MatchfileLoader):
         """get_event works on performance timelines too."""

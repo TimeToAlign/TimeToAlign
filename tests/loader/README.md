@@ -136,7 +136,20 @@ attaches are exact where the file is: its anacrusis offset is
 ShiftMap reads `Fraction(1, 2)` quarters as `Fraction(0)`; and the
 ticks→seconds map divides the header's clock rate by its clock units
 exactly (scalar `Fraction(1, 960)`), so 480 ticks, one quarter of
-500000 µs, are `0.5` seconds by equality, not within a tolerance.
+500000 µs, are `0.5` seconds by equality, not within a tolerance. The
+file's first snote states `onset_in_beats` `-0.5000`, so with the offset
+`1/2` the earliest score start is exactly `0`, whether or not the ShiftMap
+is attached. `test_mixins.py` reads a `SpecificPitchField` back as the
+`SpecificPitch` its input row states, `cents` included.
+
+The graphical loaders read their values off the SUPRA files. ATON: the
+analysis states `MUSICAL_HOLES` 30092 and `FIRST_HOLE` 15343px, and its
+`HOLES` block holds 30092 `HOLE` blocks (one more sits in `BADHOLES`), so
+the loader holds 30092 holes; the first is the first block, `K0_N1`
+(origin 15343/445, size 41/22, centroid 15363.4/455.816, area 816,
+perimeter 114.473, circularity 0.78, tracker hole 12, MIDI key -1). IIIF:
+the manifest has one canvas, whose `@id` and the manifest's label are
+compared as written.
 
 A matchfile names both notes of every alignment line, so each MatchClaim
 names them: a `snote(<id>,…)-note(<id>,…)` line is a synchronous interval

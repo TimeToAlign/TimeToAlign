@@ -439,3 +439,128 @@ class TestMinimalATONTimeline:
 
 
 # endregion
+
+
+# region Test: Hole event IDs
+
+# The first six hole blocks of the SUPRA roll fd660zf8362, as
+# (@ID, ORIGIN_ROW, ORIGIN_COL, TRACKER_HOLE, MIDI_KEY): three holes on
+# three tracker holes share the @ID K0_N1.
+SUPRA_FIRST_SIX_HOLES = [
+    ("K0_N1", 15343, 445, 12, -1),
+    ("K0_N2", 15391, 445, 12, -1),
+    ("K88_N1", 15617, 3737, 99, -1),
+    ("K86_N1", 15626, 3661, 97, -1),
+    ("K0_N1", 15638, 216, 6, -1),
+    ("K0_N1", 15638, 293, 8, -1),
+]
+
+
+def _write_aton(path: Path, holes: list[tuple[str, int, int, int, int]]) -> Path:
+    """Write an ATON file holding the given hole blocks."""
+    blocks = "".join(
+        "@@BEGIN: HOLE\n"
+        f"@ID:\t\t{hole_id}\n"
+        f"@ORIGIN_ROW:\t{row}px\n"
+        f"@ORIGIN_COL:\t{col}px\n"
+        "@WIDTH_ROW:\t31px\n"
+        "@WIDTH_COL:\t22px\n"
+        f"@TRACKER_HOLE:\t{tracker}\n"
+        f"@MIDI_KEY:\t{key}\n"
+        "@@END: HOLE\n\n"
+        for hole_id, row, col, tracker, key in holes
+    )
+    path.write_text(
+        "@@BEGIN: ROLLINFO\n"
+        "@IMAGE_WIDTH:\t4096px\n"
+        "@IMAGE_LENGTH:\t299400px\n"
+        "@@END: ROLLINFO\n\n"
+        f"@@BEGIN: HOLES\n\n{blocks}@@END: HOLES\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def _event_ids_and_names(timeline: DiscreteGraphicalTimeline) -> tuple[list, list]:
+    events = timeline.get_events().table
+    return events.column("id").to_pylist(), events.column("name").to_pylist()
+
+
+class TestHoleEventIds:
+    """Event IDs of holes (see README "ATONLoader event IDs")."""
+
+    def test_holes_sharing_an_id_are_told_apart_by_tracker_hole(
+        self, tmp_path: Path
+    ) -> None:
+        """The colliding SUPRA rows give six distinct IDs, the names as written."""
+        path = _write_aton(tmp_path / "first_six.txt", SUPRA_FIRST_SIX_HOLES)
+        timeline = ATONLoader.from_file(path).create_timeline(uid="dgt_1")
+
+        ids, names = _event_ids_and_names(timeline)
+        assert ids == [
+            "hole_K0_N1_tracker12",
+            "hole_K0_N2",
+            "hole_K88_N1",
+            "hole_K86_N1",
+            "hole_K0_N1_tracker6",
+            "hole_K0_N1_tracker8",
+        ]
+        assert names == ["K0_N1", "K0_N2", "K88_N1", "K86_N1", "K0_N1", "K0_N1"]
+
+    def test_ids_that_do_not_collide_are_unchanged(
+        self, loaded_minimal_loader: ATONLoader
+    ) -> None:
+        """minimal.aton's five distinct IDs keep the form hole_<ID>."""
+        ids, names = _event_ids_and_names(loaded_minimal_loader.create_timeline())
+        assert ids == [
+            "hole_H1_N1",
+            "hole_H2_N2",
+            "hole_H3_N3",
+            "hole_H4_N4",
+            "hole_H5_N5",
+        ]
+        assert names == ["H1_N1", "H2_N2", "H3_N3", "H4_N4", "H5_N5"]
+
+    def test_a_hole_stated_twice_is_refused(self, tmp_path: Path) -> None:
+        """One @ID twice on one tracker hole derives one ID twice: refused."""
+        holes = [("K0_N1", 15638, 216, 6, -1), ("K0_N1", 15638, 216, 6, -1)]
+        loader = ATONLoader.from_file(_write_aton(tmp_path / "twice.txt", holes))
+
+        with pytest.raises(ValueError) as raised:
+            loader.create_timeline(uid="dgt_1")
+        assert str(raised.value) == (
+            "Event id 'hole_K0_N1_tracker6' is given twice in one call to "
+            "add_events on timeline 'dgt_1'"
+        )
+
+    @pytest.mark.slow
+    def test_supra_roll_loads_whole(self, loaded_supra_loader: ATONLoader) -> None:
+        """30092 events, 30092 IDs; the 992 holes of shared @IDs carry a tracker."""
+        timeline = loaded_supra_loader.create_timeline(uid="dgt_1")
+        ids, names = _event_ids_and_names(timeline)
+
+        assert timeline.n_events == 30092
+        assert len(set(ids)) == 30092
+        holes = loaded_supra_loader.holes
+        with_tracker = [
+            event_id == f"hole_{hole.id}_tracker{hole.tracker_hole}"
+            for event_id, hole in zip(ids, holes, strict=True)
+        ]
+        plain = [
+            event_id == f"hole_{hole.id}"
+            for event_id, hole in zip(ids, holes, strict=True)
+        ]
+        assert sum(with_tracker) == 992
+        assert sum(plain) == 29100
+        assert names == [hole.id for hole in holes]
+        assert ids[:6] == [
+            "hole_K0_N1_tracker12",
+            "hole_K0_N2_tracker12",
+            "hole_K88_N1",
+            "hole_K86_N1",
+            "hole_K0_N1_tracker6",
+            "hole_K0_N1_tracker8",
+        ]
+
+
+# endregion

@@ -1144,3 +1144,50 @@ the held axis in place: the calibration still reads seconds. After
 ``clear()`` the loader holds nothing (``repr`` says "not loaded") and reads
 the second file, whose title "Time (minutes)" makes its calibration read
 minutes, so the axis held is provably the new file's.
+
+## `ATONLoader` event IDs — validation logic
+
+`ATONLoader.create_timeline` turns every hole block into an event whose ID is
+derived from the block's `@ID`: `hole_<ID>`. The SUPRA analysis software
+does not give every hole an ID of its own. It writes `K<key>_N<n>`, counting
+`n` per tracker-bar hole, and it writes key `0` for every hole that is no
+note (the expression tracks, `MIDI_KEY -1`), so holes on different tracker
+holes share one `@ID`. In the SUPRA roll `fd660zf8362` this happens to 301
+IDs (`K0_N1` … ), held by 992 holes on the tracker holes 3 to 13. Two of
+them are the first rows of the roll at row 15638: `K0_N1` on tracker hole 6
+(column 216) and `K0_N1` on tracker hole 8 (column 293), two different
+punches. No ID is held twice on one tracker hole, and no two hole blocks are
+identical, so the file states distinct holes, never one hole twice.
+
+What tells such holes apart is what the file states beside the ID: the
+tracker hole. A hole whose `@ID` no other hole of the file holds keeps
+`hole_<ID>`; every hole whose `@ID` another hole holds too gets
+`hole_<ID>_tracker<TRACKER_HOLE>`. The event's `name` stays the `@ID` as
+written.
+
+What proves it (`test_aton_loader.py`, class `TestHoleEventIds`):
+
+* **The colliding rows load.** A file written to `tmp_path` holds the first
+  six hole blocks of the SUPRA roll, their `@ID`, origin and tracker hole
+  as the file states them (`K0_N1` on
+  tracker hole 12, `K0_N2` on 12, `K88_N1` on 99, `K86_N1` on 97, `K0_N1` on 6
+  and `K0_N1` on 8: `K0_N1` three times). The event IDs are, in
+  file order, exactly `hole_K0_N1_tracker12`, `hole_K0_N2`, `hole_K88_N1`,
+  `hole_K86_N1`, `hole_K0_N1_tracker6`, `hole_K0_N1_tracker8`; the names
+  are the six `@ID`s as written. The rule is decided by the file, not by the
+  key `0`: `K0_N2`, held once, keeps its plain ID.
+* **IDs that did not collide do not change.** `minimal.aton`, whose five IDs
+  are distinct, gives exactly `hole_H1_N1` … `hole_H5_N5`, as before.
+* **The SUPRA roll loads whole** (slow). `create_timeline` gives 30092
+  events with 30092 distinct IDs; exactly 992 of them end in
+  `_tracker<n>`, which is the number of holes whose `@ID` is shared, and the
+  other 29100 are `hole_<ID>` of their block; the names are the `@ID`s in
+  file order. In the whole roll `K0_N2` is shared too, so the first six IDs
+  are `hole_K0_N1_tracker12`, `hole_K0_N2_tracker12`, `hole_K88_N1`,
+  `hole_K86_N1`, `hole_K0_N1_tracker6`, `hole_K0_N1_tracker8`: the same
+  holes, decided by the file they are read from.
+* **A hole stated twice is still refused.** Two blocks with the same `@ID`
+  on the same tracker hole derive one ID twice; `add_events` refuses it
+  (`Event id 'hole_K0_N1_tracker6' is given twice in one call to add_events
+  on timeline 'dgt_1'`). The loader does not decide that a repeated block
+  is one hole.

@@ -520,7 +520,7 @@ class SegmentLineMixin:
 
         # Recursively slice children (segments)
         if include_children:
-            self._copy_children_to_slice(sliced, s, e)
+            self._copy_children_to_slice(sliced, s, e, truncate_events)
 
         # Copy conversion maps
         if copy_cmaps:

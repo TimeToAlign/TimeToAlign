@@ -32,9 +32,11 @@ class SegmentsMixin:
         Given k+1 sorted coordinates, produces a new SegmentLine with k
         contiguous segments. Each segment's class matches self's class.
         Each segment takes the events starting in its span, whole (it grows
-        to hold one running past its end), and the part of this timeline's
-        area of an image (``meta["box"]``, ``meta["image"]``) over its span,
-        so a Box keeps its shape and its start moves with the segment.
+        to hold one running past its end), and, where this timeline holds
+        Boxes, the part of its area of an image (``meta["box"]``,
+        ``meta["image"]``) over its span, as
+        :meth:`~timetoalign.timelines.Timeline.get_slice` states it, so a Box
+        keeps its shape and its start moves with the segment.
 
         Does NOT modify self. Returns a new independent SegmentLine.
 
@@ -47,8 +49,9 @@ class SegmentsMixin:
 
         Raises:
             ValueError: If fewer than 2 boundaries or not monotonically
-                increasing, or a Box would move into a segment not starting
-                at 0 while this timeline states no ``meta["box"]``.
+                increasing; if this timeline holds Boxes and its
+                ``meta["box"]`` is no shape, or a Box would move into a
+                segment not starting at 0 while it states no ``meta["box"]``.
 
         Examples:
             >>> measures = audio_tl.create_segment_line(
